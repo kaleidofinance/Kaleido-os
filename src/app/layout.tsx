@@ -7,26 +7,26 @@ import { ClientProviders } from "@/app/client-provider"
 import { shareTechMono, zenDots } from "@/lib/font"
 
 export const metadata: Metadata = {
-  title: "Kaleido Agentic DeFI OS",
-  description: "Lend, Borrow, and Thrive with Kaleido: Where Ai Agent Meets DeFi on Abstract Chain.",
+  title: "Kaleido Agentic OS",
+  description: "The Autonomous Financial Layer: Where Luca AI meets deep DeFi liquidity on Abstract.",
   icons: "./favicon.ico",
-  keywords: "lend, blockchain, kaleido, defi, dapp, abstract finance",
-  applicationName: "Kaleido Agentic DeFI OS",
-  authors: [{ name: "Kaleido Agentic DeFI OS" }],
+  keywords: "kaleido, agentic os, luca ai, defi, abstract, lending, trading",
+  applicationName: "Kaleido Agentic OS",
+  authors: [{ name: "Kaleido Team" }],
   openGraph: {
     type: "website",
     url: "https://app.kaleidofinance.xyz",
-    title: "Kaleido Agentic DeFI OS | AI DeFi Platform",
-    siteName: "Kaleido Agentic DeFI OS",
+    title: "Kaleido Agentic OS | The Autonomous Financial Layer",
+    siteName: "Kaleido Agentic OS",
     description:
-      "Kaleido Agentic DeFI OS is a decentralized lending platform where users can lend and borrow assets powered by AI agents on the Abstract blockchain.",
+      "Kaleido Agentic OS is the world’s first DeFi Operating System designed for both humans and autonomous agents, powered by the Luca AI engine.",
     images: ["https://app.kaleidofinance.xyz/logo.png"],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Kaleido Agentic DeFI OS | AI DeFi Platform",
+    title: "Kaleido Agentic OS | Autonomous DeFi",
     description:
-      "Kaleido Agentic DeFI OS is a decentralized lending platform where users can lend and borrow assets powered by AI agents on the Abstract blockchain.",
+      "Transforming passive DeFi into active execution with Luca AI. Deploy, Stake, and Reason with Kaleido Agentic OS.",
     images: ["https://app.kaleidofinance.xyz/logo.png"],
   },
 }
