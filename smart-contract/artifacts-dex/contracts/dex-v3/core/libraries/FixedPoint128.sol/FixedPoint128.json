@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "FixedPoint128",
+  "sourceName": "contracts/dex-v3/core/libraries/FixedPoint128.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea26469706673582212200d8ef2e09291ce3479d8434d12825570a3629a9923799c77e2b39917bdb3a7d964736f6c63430008140033",
+  "deployedBytecode": "0x600080fdfea26469706673582212200d8ef2e09291ce3479d8434d12825570a3629a9923799c77e2b39917bdb3a7d964736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

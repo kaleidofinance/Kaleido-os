@@ -1,0 +1,162 @@
+{
+  "_format": "hh-zksolc-artifact-1",
+  "contractName": "LibDiamond",
+  "sourceName": "contracts/libraries/LibDiamond.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "EmptyCalldata",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "selector",
+          "type": "bytes4"
+        }
+      ],
+      "name": "ImmutableFunction",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InValidFacetCutAction",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InitCallFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "MustBeZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NoCode",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NoSelectorsInFacet",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NoZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NonEmptyCalldata",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "selector",
+          "type": "bytes4"
+        }
+      ],
+      "name": "NonExistentSelector",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotDiamondOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "selector",
+          "type": "bytes4"
+        }
+      ],
+      "name": "SameSelectorReplacement",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "selector",
+          "type": "bytes4"
+        }
+      ],
+      "name": "SelectorExists",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "facetAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "enum IDiamondCut.FacetCutAction",
+              "name": "action",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bytes4[]",
+              "name": "functionSelectors",
+              "type": "bytes4[]"
+            }
+          ],
+          "indexed": false,
+          "internalType": "struct IDiamondCut.FacetCut[]",
+          "name": "_diamondCut",
+          "type": "tuple[]"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "_init",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes",
+          "name": "_calldata",
+          "type": "bytes"
+        }
+      ],
+      "name": "DiamondCut",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    }
+  ],
+  "bytecode": "0x00000001002001900000000c0000613d0000008001000039000000400010043f0000000001000416000000000001004b0000000c0000c13d00000020010000390000010000100443000001200000044300000005010000410000000f0001042e000000000100001900000010000104300000000e000004320000000f0001042e00000010000104300000000000000000000000000000000000000000000000000000000200000000000000000000000000000040000001000000000000000000fb5051641d352d16ef41056ebf3264260212a24e9cf9598708b18f992544aecc",
+  "deployedBytecode": "0x00000001002001900000000c0000613d0000008001000039000000400010043f0000000001000416000000000001004b0000000c0000c13d00000020010000390000010000100443000001200000044300000005010000410000000f0001042e000000000100001900000010000104300000000e000004320000000f0001042e00000010000104300000000000000000000000000000000000000000000000000000000200000000000000000000000000000040000001000000000000000000fb5051641d352d16ef41056ebf3264260212a24e9cf9598708b18f992544aecc",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "factoryDeps": {}
+}

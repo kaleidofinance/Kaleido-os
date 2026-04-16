@@ -1,0 +1,73 @@
+WARNING: You are currently using Node.js v25.2.1, which is not supported by Hardhat. This can lead to unexpected behavior. See https://v2.hardhat.org/nodejs-versions
+
+
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Compiling contracts for ZKsync Era with zksolc v1.5.15 and zkvm-solc v0.7.6-1.0.2
+Compiling 1 Solidity file
+Compiling contracts for ZKsync Era with zksolc v1.5.15 and zkvm-solc v0.7.6-1.0.2
+Compiling 153 Solidity files
+Compiling contracts for ZKsync Era with zksolc v1.5.15 and zkvm-solc v0.6.12-1.0.2
+Compiling 19 Solidity files
+Compiling contracts for ZKsync Era with zksolc v1.5.15 and zkvm-solc v0.6.12-1.0.2
+Compiling 1 Solidity file
+Compiling contracts for ZKsync Era with zksolc v1.5.15 and zkvm-solc v0.7.6-1.0.2
+Compiling 1 Solidity file
+Compiling contracts for ZKsync Era with zksolc v1.5.15 and zkvm-solc v0.8.20-1.0.2
+Compiling 120 Solidity files
+base64-sol/base64.sol: Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.7.6;"
+
+contracts/dex-v3/periphery/test/TestERC20PermitAllowed.sol:49:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        uint256 expiry,
+        ^------------^
+
+contracts/dex-v3/periphery/test/TestERC20PermitAllowed.sol:51:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        uint8 v,
+        ^-----^
+
+contracts/dex-v3/periphery/test/TestERC20PermitAllowed.sol:52:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        bytes32 r,
+        ^-------^
+
+contracts/dex-v3/periphery/test/TestERC20PermitAllowed.sol:53:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        bytes32 s
+        ^-------^
+
+contracts/dex-v3/periphery/libraries/ChainId.sol:8:5: Warning: Function state mutability can be restricted to pure
+    function get() internal view returns (uint256 chainId) {
+    ^ (Relevant source part starts here and spans across multiple lines).
+
+contracts/dex-v3/periphery/test/OracleTest.sol:64:5: Warning: Function state mutability can be restricted to pure
+    function getChainedPrice(address[] memory tokens, int24[] memory ticks) public view returns (int256 syntheticTick) {
+    ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning: SPDX license identifier not provided in source file. Before publishing, consider adding a comment containing "SPDX-License-Identifier: <SPDX-License>" to each source file. Use "SPDX-License-Identifier: UNLICENSED" for non-open-source code. Please see https://spdx.org for more information.
+--> contracts/lib/UnstructuredStorage.sol
+
+
+Warning: SPDX license identifier not provided in source file. Before publishing, consider adding a comment containing "SPDX-License-Identifier: <SPDX-License>" to each source file. Use "SPDX-License-Identifier: UNLICENSED" for non-open-source code. Please see https://spdx.org for more information.
+--> contracts/utils/HashGenerator.sol
+
+
+Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.20;"
+--> base64-sol/base64.sol
+
+
+Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.20;"
+--> contracts/facets/pp.sol
+
+
+Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.20;"
+--> contracts/lib/UnstructuredStorage.sol
+
+
+Successfully compiled 246 Solidity files
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+--- 🏗️ CREATING SOVEREIGN V3 POOL (SORTED) ---
+Creation TX Sent: 0x665cb654c92390ba288109d03b52a4eb23def985f4b8f90ea15a3d65f2de4b26
+❌ Sorted Creation Failed: transaction execution reverted (action="sendTransaction", data=null, reason=null, invocation=null, revert=null, transaction={ "data": "", "from": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955", "to": "0xC75161E02E4599f1E68c4E9ea5bab001186D512B" }, receipt={ "_type": "TransactionReceipt", "blobGasPrice": null, "blobGasUsed": null, "blockHash": "0x08d8fff320773938f4c586162d7045c0a6411088b2878b2233d6323768917f00", "blockNumber": 17279297, "contractAddress": null, "cumulativeGasUsed": "0", "from": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955", "gasPrice": "25000000", "gasUsed": "88749", "hash": "0x665cb654c92390ba288109d03b52a4eb23def985f4b8f90ea15a3d65f2de4b26", "index": 0, "l1BatchNumber": null, "l1BatchTxIndex": null, "l2ToL1Logs": [  ], "logs": [ { "_type": "log", "address": "0x000000000000000000000000000000000000800A", "blockHash": "0x08d8fff320773938f4c586162d7045c0a6411088b2878b2233d6323768917f00", "blockNumber": 17279297, "data": "0x000000000000000000000000000000000000000000000000000071afd498d000", "index": 0, "l1BatchNumber": null, "removed": null, "topics": [ "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", "0x00000000000000000000000028b7b3dc96e5b2c6047d7ad9b05fd9e2fc7e8955", "0x0000000000000000000000000000000000000000000000000000000000008001" ], "transactionHash": "0x665cb654c92390ba288109d03b52a4eb23def985f4b8f90ea15a3d65f2de4b26", "transactionIndex": 0 }, { "_type": "log", "address": "0x000000000000000000000000000000000000800A", "blockHash": "0x08d8fff320773938f4c586162d7045c0a6411088b2878b2233d6323768917f00", "blockNumber": 17279297, "data": "0x00000000000000000000000000000000000000000000000000006fab3e480cc0", "index": 1, "l1BatchNumber": null, "removed": null, "topics": [ "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", "0x0000000000000000000000000000000000000000000000000000000000008001", "0x00000000000000000000000028b7b3dc96e5b2c6047d7ad9b05fd9e2fc7e8955" ], "transactionHash": "0x665cb654c92390ba288109d03b52a4eb23def985f4b8f90ea15a3d65f2de4b26", "transactionIndex": 0 } ], "logsBloom": "0x00000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000040000000008000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000010000000000000000000000000000004000000000000000001000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000002008000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000", "root": null, "status": 0, "to": "0xC75161E02E4599f1E68c4E9ea5bab001186D512B" }, code=CALL_EXCEPTION, version=6.16.0)

@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "LowGasSafeMath",
+  "sourceName": "contracts/dex-v3/core/libraries/LowGasSafeMath.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea2646970667358221220f1d19ac1c2ec1bedc9ec1a0f1b2d98f14a82c999fb861df293d9fbefc4832b6e64736f6c63430008140033",
+  "deployedBytecode": "0x600080fdfea2646970667358221220f1d19ac1c2ec1bedc9ec1a0f1b2d98f14a82c999fb861df293d9fbefc4832b6e64736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

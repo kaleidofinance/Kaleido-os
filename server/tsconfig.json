@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "ES2020",
+    "moduleResolution": "Node",
+    "moduleDetection": "force",
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  }
+}

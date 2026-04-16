@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "LibAppStorage",
+  "sourceName": "contracts/libraries/LibAppStorage.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea2646970667358221220b71224b21c6628684932a0eaffccd246906855332e12088b484333bc91a32ffc64736f6c63430008140033",
+  "deployedBytecode": "0x600080fdfea2646970667358221220b71224b21c6628684932a0eaffccd246906855332e12088b484333bc91a32ffc64736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

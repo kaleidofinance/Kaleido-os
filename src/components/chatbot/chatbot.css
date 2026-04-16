@@ -1,0 +1,538 @@
+/* Additional styles for the chatbot widget */
+
+.chatbot-input::placeholder {
+  color: #6b7280; /* text-gray-500 for dark mode */
+  opacity: 1;
+}
+
+.chatbot-input {
+  color: #ffffff; /* white text for dark mode */
+}
+
+/* Markdown content styling */
+.markdown-content {
+  line-height: 1.5;
+}
+
+.markdown-content p {
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content ul, 
+.markdown-content ol {
+  margin-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content ul {
+  list-style-type: disc;
+}
+
+.markdown-content ol {
+  list-style-type: decimal;
+}
+
+.markdown-content h1, 
+.markdown-content h2, 
+.markdown-content h3, 
+.markdown-content h4 {
+  font-weight: 600;
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.3;
+}
+
+.markdown-content h1 {
+  font-size: 1.15rem;
+}
+
+.markdown-content h2 {
+  font-size: 1.05rem;
+}
+
+.markdown-content h3 {
+  font-size: 0.95rem;
+}
+
+.markdown-content h4 {
+  font-size: 0.9rem;
+}
+
+.markdown-content pre {
+  background: #1e1e30;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+  border: 1px solid #2a2a40;
+}
+
+.markdown-content code {
+  font-family: monospace;
+  padding: 0.1rem 0.2rem;
+  background: #1e1e30;
+  border-radius: 0.25rem;
+  font-size: 0.85rem;
+  color: #00ff99;
+}
+
+.markdown-content pre code {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  display: block;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: pre;
+  color: #e5e7eb;
+}
+
+/* Custom scrollbar for code blocks */
+.markdown-content pre::-webkit-scrollbar {
+  height: 4px;
+  width: 4px;
+}
+
+.markdown-content pre::-webkit-scrollbar-track {
+  background: #1e1e30;
+  border-radius: 3px;
+}
+
+.markdown-content pre::-webkit-scrollbar-thumb {
+  background: #00ff99;
+  border-radius: 3px;
+}
+
+.markdown-content pre::-webkit-scrollbar-thumb:hover {
+  background: #00cc7a;
+}
+
+/* Firefox scrollbar for code blocks */
+.markdown-content pre {
+  scrollbar-width: thin;
+  scrollbar-color: #00ff99 #1e1e30;
+}
+
+/* Copy button for code blocks - now using fixed position implementation */
+.markdown-content pre {
+  padding-right: 0.5rem; /* Same padding as the rest */
+}
+
+.markdown-content blockquote {
+  border-left: 4px solid #22c55e; /* Green accent for quotes */
+  padding-left: 1rem;
+  margin-left: 0;
+  font-style: italic;
+  color: #4b5563;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.markdown-content table th,
+.markdown-content table td {
+  border: 1px solid #d1d5db;
+  padding: 0.5rem;
+}
+
+.markdown-content table th {
+  background-color: #f9fafb;
+}
+
+.markdown-content a {
+  color: #22c55e; /* Green for links */
+  text-decoration: underline;
+}
+
+.markdown-content strong {
+  font-weight: 600; /* Less bold than the default browser bold */
+  color: #374151; /* Dark gray color for better readability */
+}
+
+.markdown-content em {
+  font-style: italic;
+  color: #4B5563;
+}
+
+.markdown-content del {
+  text-decoration: line-through;
+  color: #6B7280;
+}
+
+.markdown-content hr {
+  border: 0;
+  border-top: 1px solid #E5E7EB;
+  margin: 0.75rem 0;
+}
+
+/* Code block wrapper for fixed copy button */
+.code-block-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.code-block-wrapper pre {
+  width: 100%;
+  margin: 0;
+}
+
+/* Fixed copy button that stays in place when scrolling */
+.copy-button-fixed {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0.2rem;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #22c55e; /* Green border */
+  border-radius: 0.25rem;
+  color: #22c55e; /* Green icon color */
+  font-size: 0.75rem;
+  z-index: 10;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.code-block-wrapper:hover .copy-button-fixed {
+  opacity: 1;
+}
+
+.copy-button-fixed:hover {
+  background: #22c55e;
+  color: white;
+  border-color: #22c55e;
+}
+
+/* Typing animation cursor */
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: #22c55e;
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: blink 0.8s infinite;
+}
+
+/* Custom scrollbar for the chat message container */
+.chatbot-messages-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.chatbot-messages-container::-webkit-scrollbar-track {
+  background: #12121f;
+  border-radius: 3px;
+}
+
+.chatbot-messages-container::-webkit-scrollbar-thumb {
+  background: #00ff99;
+  border-radius: 3px;
+}
+
+.chatbot-messages-container::-webkit-scrollbar-thumb:hover {
+  background: #00cc7a;
+}
+
+/* Firefox scrollbar styling */
+.chatbot-messages-container {
+  scrollbar-width: thin;
+  scrollbar-color: #00ff99 #12121f;
+}
+
+/* Chat history dropdown styles */
+.chatbot-history-dropdown {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  max-height: 300px;
+  overflow-y: auto;
+  border-bottom: 2px solid rgba(34, 197, 94, 0.3);
+}
+
+.chatbot-history-dropdown::-webkit-scrollbar {
+  width: 4px; /* Changed from 6px to 4px for slimmer scrollbar */
+}
+
+.chatbot-history-dropdown::-webkit-scrollbar-track {
+  background: #e9f7ef; /* Light green track */
+  border-radius: 3px;
+}
+
+.chatbot-history-dropdown::-webkit-scrollbar-thumb {
+  background: #22c55e; /* Green color for scrollbar */
+  border-radius: 3px;
+}
+
+.chatbot-history-dropdown::-webkit-scrollbar-thumb:hover {
+  background: #16a34a; /* Darker green on hover */
+}
+
+/* Firefox scrollbar for history dropdown */
+.chatbot-history-dropdown {
+  scrollbar-width: thin;
+  scrollbar-color: #22c55e #e9f7ef;
+}
+
+/* History item hover effect */
+.chatbot-history-list li {
+  position: relative;
+  transition: all 0.2s ease;
+  border-left: 4px solid transparent;
+}
+
+.chatbot-history-list li:hover {
+  background-color: rgba(34, 197, 94, 0.08);
+}
+
+.chatbot-history-list li::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(to right, rgba(34, 197, 94, 0.2), transparent);
+}
+
+/* Custom tooltips */
+.tooltip-wrapper {
+  position: relative;
+}
+
+.tooltip-wrapper .tooltip {
+  visibility: hidden;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  text-align: center;
+  border-radius: 4px;
+  padding: 5px 10px;
+  position: absolute;
+  z-index: 100;
+  top: 125%; /* Changed from bottom: 125% to top: 125% */
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.tooltip-wrapper .tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: 100%; /* Changed from top: 100% to bottom: 100% */
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: transparent transparent rgba(0, 0, 0, 0.8) transparent; /* Changed arrow direction */
+}
+
+.tooltip-wrapper:hover .tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Special case for buttons at the bottom of the container */
+.p-3.bg-white.border-t.border-[#00ff99]/30 .tooltip-wrapper .tooltip {
+  top: auto;
+  bottom: 125%;
+}
+
+.p-3.bg-white.border-t.border-[#00ff99]/30 .tooltip-wrapper .tooltip::after {
+  bottom: auto;
+  top: 100%;
+  border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+}
+
+/* Actions dropdown styles */
+.chatbot-actions-dropdown {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  max-height: 300px;
+  overflow-y: auto;
+  border-bottom: 2px solid rgba(34, 197, 94, 0.3);
+}
+
+.chatbot-actions-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+
+.chatbot-actions-dropdown::-webkit-scrollbar-track {
+  background: #e9f7ef;
+  border-radius: 3px;
+}
+
+.chatbot-actions-dropdown::-webkit-scrollbar-thumb {
+  background: #22c55e;
+  border-radius: 3px;
+}
+
+.chatbot-actions-dropdown::-webkit-scrollbar-thumb:hover {
+  background: #16a34a;
+}
+
+.chatbot-actions-dropdown {
+  scrollbar-width: thin;
+  scrollbar-color: #22c55e #e9f7ef;
+}
+
+.chatbot-actions-list li {
+  position: relative;
+  transition: all 0.2s ease;
+  border-left: 4px solid transparent;
+}
+
+.chatbot-actions-list li:hover {
+  background-color: rgba(34, 197, 94, 0.08);
+}
+
+.chatbot-actions-list li::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(to right, rgba(34, 197, 94, 0.2), transparent);
+}
+
+/* Function suggestion component styles */
+.function-suggestion-container {
+  margin-top: 0.5rem;
+}
+
+.function-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.function-option .option-button {
+  transition: all 0.2s;
+  text-align: left;
+  width: 100%;
+}
+
+.function-option .option-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Function result component styles */
+.function-result {
+  margin-top: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.function-result h3 {
+  font-size: 0.9rem;
+}
+
+.risk-score {
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+}
+
+/* Animation for function results */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.function-result {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.function-suggestion-container {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Confidence level indicators */
+.confidence-high {
+  border-left: 4px solid #22c55e !important; /* Green for high confidence */
+}
+
+.confidence-medium {
+  border-left: 4px solid #eab308 !important; /* Yellow for medium confidence */
+}
+
+.confidence-low {
+  border-left: 4px solid #f97316 !important; /* Orange for low confidence */
+}
+
+/* Animated actions icon */
+@keyframes zapPulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.pulse-animation {
+  animation: zapPulse 1.5s ease-in-out infinite;
+}
+
+/* Mobile responsiveness fixes */
+@media (max-width: 640px) {
+  /* Ensure chat window doesn't overflow the screen */
+  .chatbot-messages-container {
+    padding: 0.75rem;
+  }
+  
+  /* Make function suggestions more compact on mobile */
+  .function-suggestion-button {
+    padding: 0.5rem !important;
+    margin-bottom: 0.5rem;
+  }
+  
+  /* Ensure the chat widget fits within viewport and doesn't cause horizontal scrolling */
+  .chatbot-widget {
+    max-width: calc(100vw - 20px);
+    right: 50%;
+    transform: translateX(50%);
+  }
+}
+
+/* Fix for very small screens (iPhone SE, etc) */
+@media (max-width: 380px) {
+  .chatbot-input {
+    font-size: 14px;
+    padding: 0.375rem 0.5rem;
+  }
+}

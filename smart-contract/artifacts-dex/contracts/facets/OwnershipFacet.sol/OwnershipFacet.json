@@ -1,0 +1,61 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "OwnershipFacet",
+  "sourceName": "contracts/facets/OwnershipFacet.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "NotDiamondOwner",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080806040523461001657610158908161001c8239f35b600080fdfe608080604052600436101561001357600080fd5b600090813560e01c9081638da5cb5b146100da575063f2fde38b1461003757600080fd5b346100d75760203660031901126100d7576004356001600160a01b03818116918290036100d3577fc8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c13208054918216918233036100c1576001600160a01b031916831790557f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e08380a380f35b604051630305808160e41b8152600490fd5b8280fd5b80fd5b90503461011e578160031936011261011e577fc8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c1320546001600160a01b03168152602090f35b5080fdfea26469706673582212204afb383b71508d6bca93dd0a48a51b9bc14b4b4b214e4455f4c9811f760dba4164736f6c63430008140033",
+  "deployedBytecode": "0x608080604052600436101561001357600080fd5b600090813560e01c9081638da5cb5b146100da575063f2fde38b1461003757600080fd5b346100d75760203660031901126100d7576004356001600160a01b03818116918290036100d3577fc8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c13208054918216918233036100c1576001600160a01b031916831790557f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e08380a380f35b604051630305808160e41b8152600490fd5b8280fd5b80fd5b90503461011e578160031936011261011e577fc8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c1320546001600160a01b03168152602090f35b5080fdfea26469706673582212204afb383b71508d6bca93dd0a48a51b9bc14b4b4b214e4455f4c9811f760dba4164736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

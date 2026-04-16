@@ -1,0 +1,36 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "Pausable",
+  "sourceName": "contracts/utils/Pausable.sol",
+  "abi": [
+    {
+      "anonymous": false,
+      "inputs": [],
+      "name": "Resumed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [],
+      "name": "Stopped",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "isStopped",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x60808060405234601457609a908161001a8239f35b600080fdfe6080806040526004361015601257600080fd5b600090813560e01c633f683b6a14602857600080fd5b34606057816003193601126060576020907f1df5a87403d44e79bb5bae604cc35893f91579295110caa0a72ce3703878b00154158152f35b5080fdfea264697066735822122081afcb25cd952ff03050eed9e8dd06ca162c9aa6339e9d25c9269258327e868964736f6c63430008140033",
+  "deployedBytecode": "0x6080806040526004361015601257600080fd5b600090813560e01c633f683b6a14602857600080fd5b34606057816003193601126060576020907f1df5a87403d44e79bb5bae604cc35893f91579295110caa0a72ce3703878b00154158152f35b5080fdfea264697066735822122081afcb25cd952ff03050eed9e8dd06ca162c9aa6339e9d25c9269258327e868964736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

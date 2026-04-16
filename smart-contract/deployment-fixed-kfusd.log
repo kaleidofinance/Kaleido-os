@@ -1,0 +1,77 @@
+WARNING: You are currently using Node.js v25.1.0, which is not supported by Hardhat. This can lead to unexpected behavior. See https://hardhat.org/nodejs-versions
+
+
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Compiling contracts for ZKsync Era with zksolc v1.5.15 and zkvm-solc v0.8.24-1.0.2
+Compiling 66 Solidity files
+Warning: SPDX license identifier not provided in source file. Before publishing, consider adding a comment containing "SPDX-License-Identifier: <SPDX-License>" to each source file. Use "SPDX-License-Identifier: UNLICENSED" for non-open-source code. Please see https://spdx.org for more information.
+--> contracts/lib/UnstructuredStorage.sol
+
+
+Warning: SPDX license identifier not provided in source file. Before publishing, consider adding a comment containing "SPDX-License-Identifier: <SPDX-License>" to each source file. Use "SPDX-License-Identifier: UNLICENSED" for non-open-source code. Please see https://spdx.org for more information.
+--> contracts/utils/HashGenerator.sol
+
+
+Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.24;"
+--> contracts/facets/pp.sol
+
+
+Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.24;"
+--> contracts/lib/UnstructuredStorage.sol
+
+
+Successfully compiled 66 Solidity files
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+🚀 Deploying Fixed kfUSD Contract...
+
+✅ Deploying with account: 0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955
+   Balance: 9.025878992555854473 ETH
+
+📖 Reading configuration from old kfUSD contract...
+   Mint Fee: 30 basis points
+   Redeem Fee: 30 basis points
+   YieldTreasury: 0x9977ac5FDdb3B3B8bB22d438b3177F8EA8d4A809
+   Auto Transfer Fees: true
+   Deployment Ratio: 5000 basis points
+   Supported Collaterals: 3 assets
+
+📦 Deploying new kfUSD contract...
+✅ New kfUSD deployed to: 0xB85D6E4E5aF7055bF279d2EcFcD3CcC0C648cEFf
+
+⚙️  Configuring new kfUSD contract...
+✅ Set fees: 30 mint, 30 redeem
+✅ Set YieldTreasury: 0x9977ac5FDdb3B3B8bB22d438b3177F8EA8d4A809
+✅ Set autoTransferFees: true
+
+📋 Adding supported collaterals...
+   ✅ Added USDC as collateral
+   ✅ Added USDT as collateral
+   ✅ Added USDe as collateral
+✅ Granted MINTER_ROLE to 0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955
+
+🔄 Updating YieldTreasury...
+✅ Revoked YIELD_SOURCE_ROLE from old kfUSD
+✅ Granted YIELD_SOURCE_ROLE to new kfUSD
+✅ Registered new kfUSD as yield source
+
+📝 Migration info saved to: migration-kfusd-abstractTestnet-1763069344660.json
+
+============================================================
+✅ DEPLOYMENT SUMMARY
+============================================================
+
+Old kfUSD: 0xf55C1Bc56618e9b47479b9B650A540Bc9b218ed1
+New kfUSD: 0xB85D6E4E5aF7055bF279d2EcFcD3CcC0C648cEFf
+
+Configuration migrated:
+  - Fees: 30 mint / 30 redeem
+  - YieldTreasury: 0x9977ac5FDdb3B3B8bB22d438b3177F8EA8d4A809
+  - Auto Transfer: true
+  - Collaterals: 3 assets
+
+✅ YieldTreasury updated to use new kfUSD
+
+⚠️  IMPORTANT: Update frontend with new address!
+   New kfUSD Address: 0xB85D6E4E5aF7055bF279d2EcFcD3CcC0C648cEFf
+
+============================================================

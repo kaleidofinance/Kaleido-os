@@ -1,0 +1,192 @@
+{
+  "manifestVersion": "3.2",
+  "proxies": [],
+  "impls": {
+    "0f9dbc8ae40e43d7de8bb20989171ced0d364eb70e86988fdfcdda1dd7ed8c10": {
+      "address": "0xc6860A399865C112727f72E75983f319A449C8F4",
+      "txHash": "0x218764d5aaeaea4985797b7ee4920974ea65a82dd569377e14b7ca8b5794eb11",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_uint8",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:62",
+            "retypedFrom": "bool"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:67"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "admin",
+            "type": "t_address",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:9"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "IstKLDToken",
+            "type": "t_contract(IstKLD)10990",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:11"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "totalStakers",
+            "type": "t_uint256",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:20"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "WITHDRAWAL_WAITING_PERIOD",
+            "type": "t_uint256",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:21"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "userinfo",
+            "type": "t_mapping(t_address,t_struct(UserInfo)11729_storage)",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:23"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "supportedToken",
+            "type": "t_mapping(t_address,t_bool)",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:24"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "totalPooledKLD",
+            "type": "t_mapping(t_address,t_uint256)",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:25"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "totalShares",
+            "type": "t_mapping(t_address,t_uint256)",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:26"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "withdrawalRequestTimestamp",
+            "type": "t_mapping(t_address,t_uint256)",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:27"
+          },
+          {
+            "contract": "KLDVaultStorage",
+            "label": "kldToken",
+            "type": "t_address",
+            "src": "contracts\\KLDStake\\KLDVaultStorage.sol:30"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\ContextUpgradeable.sol:36"
+          },
+          {
+            "contract": "PausableUpgradeable",
+            "label": "_paused",
+            "type": "t_bool",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\PausableUpgradeable.sol:29"
+          },
+          {
+            "contract": "PausableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\PausableUpgradeable.sol:102"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:22"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:87"
+          },
+          {
+            "contract": "ERC1967UpgradeUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\ERC1967\\ERC1967UpgradeUpgradeable.sol:211"
+          },
+          {
+            "contract": "UUPSUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\UUPSUpgradeable.sol:107"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "_status",
+            "type": "t_uint256",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\ReentrancyGuardUpgradeable.sol:74"
+          }
+        ],
+        "types": {
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_contract(IstKLD)10990": {
+            "label": "contract IstKLD"
+          },
+          "t_mapping(t_address,t_struct(UserInfo)11729_storage)": {
+            "label": "mapping(address => struct KLDVaultStorage.UserInfo)"
+          },
+          "t_struct(UserInfo)11729_storage": {
+            "label": "struct KLDVaultStorage.UserInfo",
+            "members": [
+              {
+                "label": "totalKldDeposit",
+                "type": "t_uint256"
+              },
+              {
+                "label": "hasStaked",
+                "type": "t_bool"
+              },
+              {
+                "label": "hasRequestedWithdrawal",
+                "type": "t_bool"
+              }
+            ]
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)"
+          },
+          "t_uint8": {
+            "label": "uint8"
+          }
+        },
+        "namespaces": {}
+      }
+    }
+  }
+}

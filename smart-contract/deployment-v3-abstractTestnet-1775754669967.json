@@ -1,0 +1,15 @@
+{
+  "network": "abstractTestnet",
+  "chainId": 11124,
+  "timestamp": "2026-04-09T17:11:09.967Z",
+  "contracts": {
+    "factory": "0xC75161E02E4599f1E68c4E9ea5bab001186D512B",
+    "router": "0x447bF75BF8b28ff8D4eCd4475aBfCC15328C9a6C",
+    "positionManager": "0xc1D67ca827A11553E20a4E84A6DEc8661e5164B0",
+    "positionDescriptor": "0x77bEFF0f9679aB7D75cD5Ce572C6BA8AC3f1B97e",
+    "nftDescriptor": "0x9315a0688e5a61681032cD147B115A7Eb028a589",
+    "quoter": "0x7Fa40aB9b0bb7Ef9403cbCe018c40e9C8350d1AE",
+    "weth": "0x618B1561b189972482168fd31f5B5a3B5A10Ce33",
+    "poolInitCodeHash": "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54"
+  }
+}

@@ -1,0 +1,416 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* DEX Component Styles */
+.bg-board {
+  background-color: #1a1a1a;
+}
+
+.bg-inputPanel {
+  background: linear-gradient(135deg, #000000 0%, #1a3d1a 100%);
+}
+
+.bg-tokenSelector {
+  background-color: #3a3a3a;
+}
+
+.border-borderline {
+  border-color: #333333;
+}
+
+.border-borderColor {
+  border-color: #444444;
+}
+
+.text-tokenSelector {
+  color: #38e07b;
+}
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+:root {
+  --background: #000;
+  --foreground: #fff;
+  /* --scrollbar-bg: #1e1e1e;
+	--scrollbar-handle: #ff4d00;
+	--scrollbar-handle-hover: #e63e00; */
+}
+
+@media screen and (min-width: 1024px) {
+  html {
+    zoom: 0.85;
+    -moz-transform: scale(0.85);
+    -moz-transform-origin: top center;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000;
+    --foreground: #fff;
+  }
+}
+
+@media screen and (min-width: 1024px) and (max-width: 1106px) {
+  .fixedText {
+    font-size: 10px;
+  }
+}
+
+@media screen and (min-width: 1024px) and (max-width: 1080px) {
+  .fixedCardStakeText {
+    font-size: 20px;
+  }
+}
+
+@media screen and (min-width: 770px) and (max-width: 1033px) {
+  .fixedcardText {
+    font-size: 10px;
+  }
+}
+@media screen and (max-width: 373px) {
+  .dropdown {
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    /* height: 30px; */
+    right: 10px;
+    position: absolute;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* WebKit-based browsers */
+/* ::-webkit-scrollbar {
+	width: 12px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--scrollbar-bg);
+}
+
+::-webkit-scrollbar-thumb {
+	background-color: var(--scrollbar-handle);
+	border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background-color: var(--scrollbar-handle-hover);
+} */
+
+/* Firefox */
+/* html {
+	scrollbar-width: thin;
+	scrollbar-color: var(--scrollbar-handle) var(--scrollbar-bg);
+} */
+.custom-corner-header {
+  position: relative;
+}
+
+/* Common styles for all corners */
+.custom-corner-header::before,
+.custom-corner-header::after,
+.custom-corner-header::part-bottom-left,
+.custom-corner-header::part-bottom-right {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #00ff99;
+  z-index: 20;
+}
+
+/* Top-left */
+.custom-corner-header::before {
+  top: 0;
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+/* Top-right */
+.custom-corner-header::after {
+  top: 0;
+  right: 0;
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+
+/* Bottom-left */
+.custom-corner-header::part-bottom-left {
+  bottom: 0;
+  left: 0;
+  clip-path: polygon(0 100%, 0 0, 100% 100%);
+}
+
+/* Bottom-right */
+.custom-corner-header::part-bottom-right {
+  bottom: 0;
+  right: 0;
+  clip-path: polygon(100% 100%, 100% 0, 0 100%);
+}
+
+.above1 {
+  background: linear-gradient(180deg, rgba(0, 128, 0, 1), rgba(0, 255, 0, 0.9), rgba(0, 255, 140, 0.9));
+}
+
+.one {
+  background: linear-gradient(180deg, rgba(0, 128, 0, 0.3), rgba(0, 255, 0, 0.7), rgba(0, 255, 174, 0.9));
+}
+
+.btw051_099 {
+  background: linear-gradient(180deg, rgba(0, 255, 179, 0.9) 100%, rgba(173, 255, 47, 0.9) 0%);
+}
+
+.btw03_05 {
+  background: linear-gradient(180deg, rgba(0, 255, 170, 0.9) 0%, /* Orange */ rgba(0, 255, 47, 0.9) 100% /* Reddish */);
+}
+
+.below03 {
+  background: linear-gradient(180deg, rgba(0, 255, 132, 0.9) 0%, rgba(0, 139, 102, 0.9) 100%);
+}
+
+.filledInActive {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+.scale-110 {
+  transform: scale(1.1);
+  transition: transform 0.3s ease;
+}
+
+.scale-100 {
+  transform: scale(1);
+  transition: transform 0.3s ease;
+}
+
+/* UI MODIFICATION LIBRARY START*/
+/* UI MODIFICATION LIBRARY START*/
+
+/* KALEIDO SCROLLBAR */
+.kaleido-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.kaleido-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+
+.kaleido-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 153, 0.2);
+  border-radius: 10px;
+  border: 1px solid rgba(0, 255, 153, 0.1);
+}
+
+.kaleido-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 153, 0.4);
+}
+
+/* Original Scrollbar (Preserved for compatibility) */
+*::-webkit-scrollbar-track {
+  -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+  background-color: transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  background-color: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+/* Define the active-link class */
+.active-link {
+  position: relative;
+}
+
+.active-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -30px; /* Adjust the distance between the underline and the link text */
+  height: 5px; /* Adjust the thickness of the underline */
+  background-color: rgb(92, 221, 0); /* Adjust to your custom color */
+  transform: scaleX(0); /* Start with the underline hidden */
+  transform-origin: left;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+  transition: transform 0.3s ease-out; /* Animation for the underline */
+}
+
+.active-link:hover::after,
+.active-link.active::after {
+  transform: scaleX(1); /* Expand the underline when active or hovered */
+}
+
+/* Mobile specific adjustments using media queries */
+@media (max-width: 640px) {
+  .active-link::after {
+    bottom: -3px; /* Move the underline closer to the text on mobile */
+    height: 2px; /* Make the underline thinner for a cleaner look on smaller screens */
+  }
+
+  /* You can also adjust padding for mobile links */
+  .active-link {
+    padding-bottom: 6px; /* Slightly reduce padding for mobile */
+  }
+}
+
+/* Dashboard Card Classes */
+.portfolio-card {
+  /* border: 1px solid #dd4d003f; */
+  /* box-shadow: rgba(221, 79, 0, 0.4) -5px 5px, rgba(221, 79, 0, 0.3) -10px 10px, rgba(221, 79, 0, 0.2) -15px 15px, rgba(221, 79, 0, 0.1) -20px 20px, rgba(221, 79, 0, 0.05) -25px 25px; */
+  box-shadow:
+    rgba(255, 255, 255, 0.1) 0px 4px 16px,
+    rgba(255, 255, 255, 0.1) 0px 8px 24px,
+    rgba(255, 255, 255, 0.1) 0px 16px 56px;
+}
+
+.profit-card {
+  /* border: 1px solid #dd4d003f; */
+  /* box-shadow: rgba(221, 79, 0, 0.4) 0px 5px, rgba(221, 79, 0, 0.3) 0px 10px, rgba(221, 79, 0, 0.2) 0px 15px, rgba(221, 79, 0, 0.1) 0px 20px, rgba(221, 79, 0, 0.05) 0px 25px; */
+  box-shadow:
+    rgba(255, 255, 255, 0.1) 0px 4px 16px,
+    rgba(255, 255, 255, 0.1) 0px 8px 24px,
+    rgba(255, 255, 255, 0.1) 0px 16px 56px;
+}
+
+.health-card {
+  /* border: 1px solid #dd4d003f; */
+  /* box-shadow: rgba(221, 79, 0, 0.4) 5px 5px, rgba(221, 79, 0, 0.3) 10px 10px, rgba(221, 79, 0, 0.2) 15px 15px, rgba(221, 79, 0, 0.1) 20px 20px, rgba(221, 79, 0, 0.05) 25px 25px; */
+  box-shadow:
+    rgba(255, 255, 255, 0.1) 0px 4px 16px,
+    rgba(255, 255, 255, 0.1) 0px 8px 24px,
+    rgba(255, 255, 255, 0.1) 0px 16px 56px;
+}
+
+.portfolio-card:hover,
+.profit-card:hover,
+.health-card:hover {
+  box-shadow: rgba(255, 255, 255, 0.4) 0px 30px 190px;
+  cursor: pointer;
+  transform: scale(1.025);
+  transition: ease-out 0.5s;
+}
+
+/* Custom Button Hover Effect */
+.u-btn1:hover {
+  background-color: #0fbd60;
+  transform: scale(1.05);
+}
+
+.u-btn1::before,
+.u-btn1::after,
+.u-btn1 div::before,
+.u-btn1 div::after {
+  border: none !important;
+}
+
+/* Open Orders */
+.open-orders,
+.filled-orders {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.u-no-scroll-y {
+  overflow: hidden;
+}
+
+/* Shadow Link */
+.u-class-shadow {
+  box-shadow: rgba(255, 255, 255, 0.4) 0px 30px 190px;
+  border-radius: 5px;
+}
+
+.u-class-shadow-2 {
+  box-shadow: 13px 15px 77px 8px rgba(255, 255, 255, 0.29);
+  -webkit-box-shadow: 13px 15px 77px 8px rgba(255, 255, 255, 0.29);
+  -moz-box-shadow: 13px 15px 77px 8px rgba(255, 255, 255, 0.29);
+  border-radius: 5px;
+}
+
+.u-class-shadow-3 {
+  box-shadow: -197px -42px 363px -52px rgba(255, 255, 255, 0.35);
+  -webkit-box-shadow: -197px -42px 363px -52px rgba(255, 255, 255, 0.35);
+  -moz-box-shadow: -197px -42px 363px -52px rgba(255, 255, 255, 0.35);
+  border-radius: 5px;
+}
+
+.u-class-shadow-4 {
+  /* box-shadow: rgba(255, 255, 255, 0.3) 0px 1px 2px 0px, rgba(255, 255, 255, 0.15) 0px 1px 3px 1px; */
+  box-shadow:
+    rgba(255, 255, 255, 0.27) 0px 0px 0.25em,
+    rgba(255, 255, 255, 0.05) 0px 0.25em 1em;
+}
+
+/* UI MODIFICATION LIBRARY END*/
+
+/* Custom Animations for DeFi Cards */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+/* UI MODIFICATION LIBRARY END*/

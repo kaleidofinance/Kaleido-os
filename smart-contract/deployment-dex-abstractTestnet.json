@@ -1,0 +1,10 @@
+{
+  "network": "abstractTestnet",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "KaleidoSwapFactory": "0x0960d0CFE3AaB7Bb7d0718d41A9d949Ab37F4063",
+    "WETH9": "0x618B1561b189972482168fd31f5B5a3B5A10Ce33",
+    "KaleidoSwapRouter": "0x3032eE3C14caed0E58e91A92CaBffba7AC89A0e9"
+  },
+  "timestamp": "2025-12-17T13:29:37.419Z"
+}

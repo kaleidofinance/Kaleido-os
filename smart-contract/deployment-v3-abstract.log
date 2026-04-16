@@ -1,0 +1,109 @@
+WARNING: You are currently using Node.js v25.2.1, which is not supported by Hardhat. This can lead to unexpected behavior. See https://v2.hardhat.org/nodejs-versions
+
+
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Compiling contracts for ZKsync Era with zksolc v1.5.11 and zkvm-solc v0.8.20-1.0.1
+Compiling 118 Solidity files
+Compiling contracts for ZKsync Era with zksolc v1.5.11 and zkvm-solc v0.7.6-1.0.1
+Compiling 1 Solidity file
+Compiling contracts for ZKsync Era with zksolc v1.5.11 and zkvm-solc v0.6.12-1.0.1
+Compiling 1 Solidity file
+Compiling contracts for ZKsync Era with zksolc v1.5.11 and zkvm-solc v0.6.12-1.0.1
+Compiling 19 Solidity files
+Compiling contracts for ZKsync Era with zksolc v1.5.11 and zkvm-solc v0.7.6-1.0.1
+Compiling 1 Solidity file
+Compiling contracts for ZKsync Era with zksolc v1.5.11 and zkvm-solc v0.7.6-1.0.1
+Compiling 153 Solidity files
+base64-sol/base64.sol: Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.7.6;"
+
+contracts/dex-v3/periphery/test/TestERC20PermitAllowed.sol:49:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        uint256 expiry,
+        ^------------^
+
+contracts/dex-v3/periphery/test/TestERC20PermitAllowed.sol:51:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        uint8 v,
+        ^-----^
+
+contracts/dex-v3/periphery/test/TestERC20PermitAllowed.sol:52:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        bytes32 r,
+        ^-------^
+
+contracts/dex-v3/periphery/test/TestERC20PermitAllowed.sol:53:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        bytes32 s
+        ^-------^
+
+contracts/dex-v3/periphery/libraries/ChainId.sol:8:5: Warning: Function state mutability can be restricted to pure
+    function get() internal view returns (uint256 chainId) {
+    ^ (Relevant source part starts here and spans across multiple lines).
+
+contracts/dex-v3/periphery/test/OracleTest.sol:64:5: Warning: Function state mutability can be restricted to pure
+    function getChainedPrice(address[] memory tokens, int24[] memory ticks) public view returns (int256 syntheticTick) {
+    ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning: SPDX license identifier not provided in source file. Before publishing, consider adding a comment containing "SPDX-License-Identifier: <SPDX-License>" to each source file. Use "SPDX-License-Identifier: UNLICENSED" for non-open-source code. Please see https://spdx.org for more information.
+--> contracts/lib/UnstructuredStorage.sol
+
+
+Warning: SPDX license identifier not provided in source file. Before publishing, consider adding a comment containing "SPDX-License-Identifier: <SPDX-License>" to each source file. Use "SPDX-License-Identifier: UNLICENSED" for non-open-source code. Please see https://spdx.org for more information.
+--> contracts/utils/HashGenerator.sol
+
+
+Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.20;"
+--> base64-sol/base64.sol
+
+
+Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.20;"
+--> contracts/facets/pp.sol
+
+
+Warning: Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.20;"
+--> contracts/lib/UnstructuredStorage.sol
+
+
+Successfully compiled 244 Solidity files
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+Yul codegen is only supported for solc >= 0.8. Flag forceEVMLA will automatically be set to true by default.
+🚀 Deploying KaleidoSwap V3 contracts...
+✅ Deploying with account: 0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955
+   Balance: 4.839654153512251142 ETH
+
+📦 1. Deploying KaleidoSwapV3Factory...
+Linking of some libraries for contract contracts/dex-v3/core/KaleidoSwapV3Factory.sol:KaleidoSwapV3Factory are ignored as they are provided as the duplicate of the already linked libraries.
+✅ Factory deployed at: 0xC75161E02E4599f1E68c4E9ea5bab001186D512B
+   Pool init code hash (constant): 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
+   Pool init code hash: 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
+
+📦 2. Deploying SwapRouter...
+Linking of some libraries for contract contracts/dex-v3/periphery/SwapRouter.sol:SwapRouter are ignored as they are provided as the duplicate of the already linked libraries.
+✅ SwapRouter deployed at: 0x447bF75BF8b28ff8D4eCd4475aBfCC15328C9a6C
+
+📦 3. Deploying NFTDescriptor...
+Linking of some libraries for contract contracts/dex-v3/periphery/libraries/NFTDescriptor.sol:NFTDescriptor are ignored as they are provided as the duplicate of the already linked libraries.
+✅ NFTDescriptor deployed at: 0x9315a0688e5a61681032cD147B115A7Eb028a589
+
+📦 4. Deploying NonfungibleTokenPositionDescriptor...
+✅ PositionDescriptor deployed at: 0x77bEFF0f9679aB7D75cD5Ce572C6BA8AC3f1B97e
+
+📦 5. Deploying NonfungiblePositionManager...
+Linking of some libraries for contract contracts/dex-v3/periphery/NonfungiblePositionManager.sol:NonfungiblePositionManager are ignored as they are provided as the duplicate of the already linked libraries.
+✅ PositionManager deployed at: 0xc1D67ca827A11553E20a4E84A6DEc8661e5164B0
+
+📦 6. Deploying Quoter...
+Linking of some libraries for contract contracts/dex-v3/periphery/lens/Quoter.sol:Quoter are ignored as they are provided as the duplicate of the already linked libraries.
+✅ Quoter deployed at: 0x7Fa40aB9b0bb7Ef9403cbCe018c40e9C8350d1AE
+
+============================================================
+✅ DEPLOYMENT SUMMARY
+============================================================
+Factory:           0xC75161E02E4599f1E68c4E9ea5bab001186D512B
+SwapRouter:        0x447bF75BF8b28ff8D4eCd4475aBfCC15328C9a6C
+PositionManager:   0xc1D67ca827A11553E20a4E84A6DEc8661e5164B0
+Quoter:            0x7Fa40aB9b0bb7Ef9403cbCe018c40e9C8350d1AE
+WETH:              0x618B1561b189972482168fd31f5B5a3B5A10Ce33
+
+⚠️  IMPORTANT: Update frontend with new V3 addresses!
+📋 Full addresses saved to: deployment-v3-abstractTestnet-1775754669967.json
+============================================================
