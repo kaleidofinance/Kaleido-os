@@ -8,9 +8,9 @@ import { shareTechMono, zenDots } from "@/lib/font"
 
 export const metadata: Metadata = {
   title: "Kaleido Agentic OS",
-  description: "The Autonomous Financial Layer: Where Luca AI meets deep DeFi liquidity on Abstract.",
+  description: "The Autonomous Financial Layer: Where Luca AI meets deep DeFi liquidity.",
   icons: "./favicon.ico",
-  keywords: "kaleido, agentic os, luca ai, defi, abstract, lending, trading",
+  keywords: "kaleido, agentic os, luca ai, defi, autonomous finance, lending, trading",
   applicationName: "Kaleido Agentic OS",
   authors: [{ name: "Kaleido Team" }],
   openGraph: {

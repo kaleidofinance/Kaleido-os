@@ -6,7 +6,7 @@
 
 **Kaleido Agentic OS** is the world's first **Unified DeFi Operating System** designed for the age of autonomous agents. Built on the **EIP-2535 Diamond Standard**, Kaleido transforms passive liquidity into an active execution environment where humans and AI agents (powered by **Luca**) interact seamlessly.
 
-Our mission is to provide an intelligent, modular liquidity layer on the **Abstract Chain**, merging high-performance DeFi primitives with a native reasoning engine.
+Our mission is to provide an intelligent, modular liquidity layer, merging high-performance DeFi primitives with a native reasoning engine.
 
 ---
 
@@ -50,7 +50,7 @@ The protocol uses a Diamond proxy to aggregate specialized facets:
 - **ProtocolFacet**: Lending & Marketplace logic.
 - **KLDVault**: Staking & Yield distribution.
 
-### Stablecoin Ecosystem (Abstract Testnet)
+### Stablecoin Ecosystem
 - **kfUSD (Stablecoin)**: `0x7f815685a7D686Ced7AE695c01974425C4ee7790`
 - **kafUSD (Yield Vault)**: `0x8e78C32efe55e77335f488dd0bf87A8Eb9d39D6c`
 - **USDC Collateral**: `0x572f4901f03055ffC1D936a60Ccc3CbF13911BE3`
@@ -63,15 +63,6 @@ The protocol uses a Diamond proxy to aggregate specialized facets:
 1. Clone: `git clone https://github.com/kaleidofinance/Kaleido-os.git`
 2. Install: `yarn install`
 3. Start: `yarn dev`
-
-### Project Structure
-```text
-kaleido-os/
-├── src/hooks/        # Hardened Point System & Activity Indexer
-├── src/app/api/      # Supabase-cached Leaderboard & Registry
-├── src/lib/supabase/ # Local Protocol Indexer (Swap/LP Logs)
-└── smart-contract/   # Diamond Facets & Stablecoin Logic
-```
 
 ---
 
