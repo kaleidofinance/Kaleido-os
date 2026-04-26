@@ -345,12 +345,12 @@
 }
 
 /* Special case for buttons at the bottom of the container */
-.p-3.bg-white.border-t.border-[#00ff99]/30 .tooltip-wrapper .tooltip {
+.p-3.bg-white.border-t.border-\[\#00ff99\]\/30 .tooltip-wrapper .tooltip {
   top: auto;
   bottom: 125%;
 }
 
-.p-3.bg-white.border-t.border-[#00ff99]/30 .tooltip-wrapper .tooltip::after {
+.p-3.bg-white.border-t.border-\[\#00ff99\]\/30 .tooltip-wrapper .tooltip::after {
   bottom: auto;
   top: 100%;
   border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
