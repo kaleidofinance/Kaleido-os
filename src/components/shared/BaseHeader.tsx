@@ -18,6 +18,7 @@ interface BaseHeaderProps {
     farms?: number
   }
   loading?: boolean
+  children?: React.ReactNode
 }
 
 const BaseHeader = ({ 
@@ -28,7 +29,8 @@ const BaseHeader = ({
   backgroundImage,
   backgroundOverlay = true,
   statsData,
-  loading = false
+  loading = false,
+  children
 }: BaseHeaderProps) => {
   const [isClient, setIsClient] = useState(false)
 
@@ -61,7 +63,7 @@ const BaseHeader = ({
             </p>
           </div>
           <div className="relative mt-6 hidden lg:ml-6 lg:mt-0 lg:block">
-            <MktIcons />
+            {children || <MktIcons />}
           </div>
         </div>
       </header>
@@ -154,7 +156,7 @@ const BaseHeader = ({
           
           {/* Keep the original MktIcons (floating crypto assets) on the right */}
           <div className="relative hidden lg:block ml-auto">
-            <MktIcons />
+            {children || <MktIcons />}
           </div>
         </div>
       </div>

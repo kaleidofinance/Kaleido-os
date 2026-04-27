@@ -17,7 +17,7 @@ async function test() {
         console.log(`✅ Success! Max Listing ID: ${maxId}`);
     } catch (error) {
         console.error("❌ Error calling getListingId:");
-        console.error(error.message || error);
+        console.error((error as any).message || error);
     }
 }
 

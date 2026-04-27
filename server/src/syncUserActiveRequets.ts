@@ -35,7 +35,7 @@ class NonceManager {
     if (this.currentNonce === null) {
       this.currentNonce = await provider.getTransactionCount(wallet.address, "pending")
     }
-    return this.currentNonce
+    return this.currentNonce ?? 0
   }
 
   async getNextNonce(): Promise<number> {

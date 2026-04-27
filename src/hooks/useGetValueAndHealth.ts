@@ -31,6 +31,8 @@ import {
   referralPointAtom,
   data5Atom,
   AVA3Atom,
+  AVA4Atom,
+  AVA5Atom,
 } from "@/constants/atom"
 import { useAtom } from "jotai"
 import { sendHealthFactorWarning } from "@/utils/notificationService"
@@ -56,6 +58,8 @@ const useGetValueAndHealth = () => {
   const [AVA, setAVA] = useAtom(AVAAtom)
   const [AVA2, setAVA2] = useAtom(AVA2Atom)
   const [AVA3, setAVA3] = useAtom(AVA3Atom)
+  const [AVA4, setAVA4] = useAtom(AVA4Atom)
+  const [AVA5, setAVA5] = useAtom(AVA5Atom)
   const [availBal, setAvailBal] = useAtom(availBalAtom)
 
   const [totalPooledKLD, setTotalPooledKLD] = useAtom(totalPooledKLDAtom)
@@ -253,6 +257,24 @@ const useGetValueAndHealth = () => {
           setData5(0)
         }
 
+        // Fetch kfUSD collateral
+        try {
+          const res6 = await contract.gets_addressToCollateralDeposited(address, kfUSD_ADDRESS)
+          const kfUSDCollateral = ethers.formatUnits(res6, 18)
+          setAVA4(Number(kfUSDCollateral))
+        } catch (error) {
+          setAVA4(0)
+        }
+
+        // Fetch USDT collateral
+        try {
+          const res7 = await contract.gets_addressToCollateralDeposited(address, USDT_ADDRESS)
+          const usdtCollateral = ethers.formatUnits(res7, 6)
+          setAVA5(Number(usdtCollateral))
+        } catch (error) {
+          setAVA5(0)
+        }
+
         try {
           const UserRequest = await contract.getUserActiveRequests(address)
           // const usdcCollateral = ethers.formatUnits(res4, 6);
@@ -398,6 +420,8 @@ const useGetValueAndHealth = () => {
 
   return {
     AVA3,
+    AVA4,
+    AVA5,
     data5,
     timeLeft,
     userstKldBalance,
