@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
     "@abstract-foundation/agw-client": "^1.8.2",
@@ -32,9 +35,7 @@
     "@web3modal/ethers": "5.0.6",
     "@web3modal/wallet": "5.0.6",
     "axios": "^1.7.2",
-    "brew": "^0.0.8",
     "connectkit": "^1.9.0",
-    "crypto": "^1.0.1",
     "ethcall": "^6.0.6",
     "ethers": "6.13.1",
     "ethers-decode-error": "^2.1.3",

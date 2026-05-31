@@ -1,0 +1,19 @@
+# Hardhat / Foundry build output (should not be committed)
+artifacts/
+artifacts-dex/
+artifacts-dex-zk/
+artifacts-zk/
+cache/
+cache-dex/
+cache-dex-zk/
+cache-zk/
+out/
+typechain/
+typechain-types/
+
+# Dependencies
+node_modules/
+
+# Deployment / run logs
+*.log
+DEPLOY_LOG_ISOLATED.txt
