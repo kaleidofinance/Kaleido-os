@@ -1,103 +1,208 @@
-"use client"
+"use client";
 
-import Image from "next/image"
-import { Btn } from "../shared/Btn"
-import { tokenData2 } from "@/constants/utils/tokenData2"
-import { useEffect, useState } from "react"
-import { getEthBalance } from "@/constants/utils/getEthBalance"
+import Image from "next/image";
+import { Btn } from "../shared/Btn";
+import { tokenData2 } from "@/constants/utils/tokenData2";
+import { useEffect, useState } from "react";
+import { getEthBalance } from "@/constants/utils/getEthBalance";
 
-import { toast } from "sonner"
-import { isSupportedChain } from "@/config/chain"
-import { fetchOmniAssetBalance, OmniPortfolioItem } from "@/constants/utils/omniChainBalances"
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
-import DepositModal from "@/components/shared/DepositModal"
-import CreateOrderModal from "@/components/modals/CreateOrderModal"
-import { formatWithCommas } from "@/constants/utils/formatNumber"
+import { toast } from "sonner";
+import { isSupportedChain } from "@/config/chain";
+import {
+  fetchOmniAssetBalance,
+  OmniPortfolioItem,
+} from "@/constants/utils/omniChainBalances";
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import DepositModal from "@/components/shared/DepositModal";
+import CreateOrderModal from "@/components/modals/CreateOrderModal";
+import { formatWithCommas } from "@/constants/utils/formatNumber";
 
 const Collateral = ({ id }: { id?: string }) => {
-  const [updatedTokenData, setUpdatedTokenData] = useState<any[]>(tokenData2)
-  const [omniData, setOmniData] = useState<Record<string, OmniPortfolioItem>>({})
-  const [showDepositModal, setShowDepositModal] = useState(false)
-  const [showLendModal, setShowLendModal] = useState(false)
-  const [selectedTokenForLend, setSelectedTokenForLend] = useState("ETH")
-  const activeAccount = useActiveAccount()
-  const activeChain = useActiveWalletChain()
-  const address = activeAccount?.address
+  const [updatedTokenData, setUpdatedTokenData] = useState<any[]>(tokenData2);
+  const [omniData, setOmniData] = useState<Record<string, OmniPortfolioItem>>(
+    {},
+  );
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showLendModal, setShowLendModal] = useState(false);
+  const [selectedTokenForLend, setSelectedTokenForLend] = useState("ETH");
+  const activeAccount = useActiveAccount();
+  const activeChain = useActiveWalletChain();
+  const address = activeAccount?.address;
 
-  const ENABLED_CHAINS = [2741, 8453, 56, 137, 999] // Abstract, Base, BSC, Polygon, Hyperliquid
+  const ENABLED_CHAINS = [2741, 8453, 56, 137, 999]; // Abstract, Base, BSC, Polygon, Hyperliquid
 
   useEffect(() => {
     const fetchAllBalances = async () => {
       if (activeAccount && address) {
         try {
-          const tokens = ["ETH", "USDC", "USDR", "kfUSD", "USDT"]
+          const tokens = ["ETH", "USDC", "USDR", "kfUSD", "USDT"];
           const results = await Promise.all(
-            tokens.map(token => fetchOmniAssetBalance(address, token, ENABLED_CHAINS))
-          )
+            tokens.map((token) =>
+              fetchOmniAssetBalance(address, token, ENABLED_CHAINS),
+            ),
+          );
 
-          const newOmniData: Record<string, OmniPortfolioItem> = {}
-          results.forEach(res => {
-            newOmniData[res.token] = res
-          })
-          setOmniData(newOmniData)
+          const newOmniData: Record<string, OmniPortfolioItem> = {};
+          results.forEach((res) => {
+            newOmniData[res.token] = res;
+          });
+          setOmniData(newOmniData);
 
           const updatedData = tokenData2.map((item) => {
-            const omni = newOmniData[item.token]
+            const omni = newOmniData[item.token];
             if (omni) {
-              return { 
-                ...item, 
+              return {
+                ...item,
                 tokenPrice: omni.totalBalance,
                 isMultichain: omni.chains.length > 1,
-                chains: omni.chains
-              }
+                chains: omni.chains,
+              };
             }
-            return { ...item, tokenPrice: "0" }
-          })
+            return { ...item, tokenPrice: "0" };
+          });
 
-          setUpdatedTokenData(updatedData)
+          setUpdatedTokenData(updatedData);
         } catch (error) {
-          console.error("Omni-fetch error:", error)
+          console.error("Omni-fetch error:", error);
         }
       }
-    }
-    fetchAllBalances()
-  }, [activeAccount, address])
+    };
+    fetchAllBalances();
+  }, [activeAccount, address]);
 
   const handleDepositClick = (token: string) => {
     if (["ETH", "USDC", "USDR", "kfUSD", "USDT"].includes(token)) {
-      setShowDepositModal(true)
+      setShowDepositModal(true);
     } else {
-      toast.warning(`${token} support not available on the testnet.`, { duration: 1000 })
+      toast.warning(`${token} support not available on the testnet.`, {
+        duration: 1000,
+      });
     }
-  }
+  };
 
   const handleLendClick = (token: string) => {
     if (["ETH", "USDC", "USDR", "kfUSD", "USDT"].includes(token)) {
-      setSelectedTokenForLend(token)
-      setShowLendModal(true)
+      setSelectedTokenForLend(token);
+      setShowLendModal(true);
     } else {
-      toast.warning(`${token} support not available on the testnet.`, { duration: 1000 })
+      toast.warning(`${token} support not available on the testnet.`, {
+        duration: 1000,
+      });
     }
-  }
+  };
 
   return (
-    <div className="u-class-shadow-2 w-full min-w-0 overflow-hidden rounded-xl bg-black/40 backdrop-blur-md border border-[#00ff99]/10 py-6 transition-all hover:border-[#00ff99]/30" {...(id ? { id } : {})}>
+    <div
+      className="u-class-shadow-2 w-full min-w-0 overflow-hidden rounded-xl bg-black/40 backdrop-blur-md border border-[#00ff99]/10 py-6 transition-all hover:border-[#00ff99]/30"
+      {...(id ? { id } : {})}
+    >
       <div className="mb-3 px-4 text-lg sm:px-6 sm:text-xl">
         <h3>Wallet&apos;s Portfolio</h3>
       </div>
-      <div className="relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6 kaleido-scrollbar">
+      <div className="space-y-3 px-3 sm:hidden">
+        {updatedTokenData.map((item, index) => (
+          <div
+            key={index}
+            className="rounded-xl border border-[#00ff99]/10 bg-black/30 p-3"
+          >
+            <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <img
+                    src={item.icon}
+                    alt={item.icon}
+                    className="h-5 w-5 shrink-0"
+                  />
+                  <span className="truncate font-medium text-white">
+                    {item.token}
+                  </span>
+                </div>
+                {item.isMultichain && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {item.chains?.map((c: any) => (
+                      <span
+                        key={c.chainId}
+                        className="rounded-[4px] border border-[#00ff99]/30 bg-[#00ff99]/10 px-1 py-0.5 text-[8px] font-bold uppercase text-[#00ff99]"
+                      >
+                        {c.chainName}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1 text-xs text-[#00ff99]">
+                <Image
+                  src={
+                    ["ETH", "USDC", "USDR", "kfUSD", "USDT"].includes(
+                      item.token,
+                    )
+                      ? "/mark.svg"
+                      : "/toggleOff.svg"
+                  }
+                  alt="tick"
+                  width={12}
+                  height={10}
+                  priority
+                  quality={100}
+                />
+                Collateral
+              </div>
+            </div>
+            <div className="mb-3 rounded-lg bg-white/5 p-2 text-xs text-gray-400">
+              Wallet Balance:{" "}
+              <span className="break-words text-sm font-semibold text-white">
+                {formatWithCommas(
+                  item.tokenPrice,
+                  item.token === "ETH" ? 4 : 3,
+                )}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleDepositClick(item.token)}
+                className="min-h-10 rounded-lg border border-[#00ff99]/30 bg-[#00ff99]/10 px-2 text-xs font-bold text-[#00ff99]"
+              >
+                {item.chains?.some(
+                  (c: any) => c.chainId !== 2741 && c.chainId !== 11124,
+                ) && parseFloat(item.tokenPrice) > 0
+                  ? "Bridge"
+                  : "Deposit"}
+              </button>
+              <button
+                onClick={() => handleLendClick(item.token)}
+                className="min-h-10 rounded-lg border border-white/10 bg-[#2a2a2a] px-2 text-xs font-bold text-white"
+              >
+                Lend
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="relative hidden max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:block sm:px-6 kaleido-scrollbar">
         <table className="min-w-[560px] text-center text-xs sm:min-w-full sm:text-sm">
           <thead>
             <tr className="text-center text-white/70">
-              <th className="sticky top-0 py-2 text-start font-medium bg-[#060606] z-20">Asset</th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">Wallet Balance</th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">Collateral</th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">Actions</th>
+              <th className="sticky top-0 py-2 text-start font-medium bg-[#060606] z-20">
+                Asset
+              </th>
+              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+                Wallet Balance
+              </th>
+              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+                Collateral
+              </th>
+              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
             {updatedTokenData.map((item, index) => (
-              <tr key={index} className="text-center text-xs sm:text-sm border-t border-white/5">
+              <tr
+                key={index}
+                className="text-center text-xs sm:text-sm border-t border-white/5"
+              >
                 <td className="flex flex-col pt-3 text-start">
                   <div className="flex items-center gap-2">
                     <img src={item.icon} alt={item.icon} className="w-4" />
@@ -106,7 +211,10 @@ const Collateral = ({ id }: { id?: string }) => {
                   {item.isMultichain && (
                     <div className="mt-1 flex max-w-[140px] flex-wrap gap-1">
                       {item.chains?.map((c: any) => (
-                        <span key={c.chainId} className="px-1 py-0.5 rounded-[4px] bg-[#00ff99]/10 border border-[#00ff99]/30 text-[8px] text-[#00ff99] uppercase font-bold">
+                        <span
+                          key={c.chainId}
+                          className="px-1 py-0.5 rounded-[4px] bg-[#00ff99]/10 border border-[#00ff99]/30 text-[8px] text-[#00ff99] uppercase font-bold"
+                        >
                           {c.chainName}
                         </span>
                       ))}
@@ -115,14 +223,21 @@ const Collateral = ({ id }: { id?: string }) => {
                 </td>
                 <td className="pt-2">
                   <div className="flex flex-col items-center">
-                    <span>{formatWithCommas(item.tokenPrice, item.token === "ETH" ? 4 : 3)}</span>
+                    <span>
+                      {formatWithCommas(
+                        item.tokenPrice,
+                        item.token === "ETH" ? 4 : 3,
+                      )}
+                    </span>
                   </div>
                 </td>
                 <td className="pt-2">
                   <div className="flex flex-col items-center">
                     <Image
                       src={
-                        ["ETH", "USDC", "USDR", "kfUSD", "USDT"].includes(item.token)
+                        ["ETH", "USDC", "USDR", "kfUSD", "USDT"].includes(
+                          item.token,
+                        )
                           ? "/mark.svg"
                           : "/toggleOff.svg"
                       }
@@ -137,10 +252,23 @@ const Collateral = ({ id }: { id?: string }) => {
                 <td className="pt-2">
                   <div className="flex justify-center gap-2">
                     <div onClick={() => handleDepositClick(item.token)}>
-                      <Btn text={item.chains?.some((c: any) => c.chainId !== 2741 && c.chainId !== 11124) && parseFloat(item.tokenPrice) > 0 ? "Bridge" : "Deposit"} css="deposit-collateral-btn min-h-10 w-20 sm:w-24 justify-center" />
+                      <Btn
+                        text={
+                          item.chains?.some(
+                            (c: any) =>
+                              c.chainId !== 2741 && c.chainId !== 11124,
+                          ) && parseFloat(item.tokenPrice) > 0
+                            ? "Bridge"
+                            : "Deposit"
+                        }
+                        css="deposit-collateral-btn min-h-10 w-20 sm:w-24 justify-center"
+                      />
                     </div>
                     <div onClick={() => handleLendClick(item.token)}>
-                      <Btn text="Lend" css="lend-btn min-h-10 w-20 sm:w-24 justify-center" />
+                      <Btn
+                        text="Lend"
+                        css="lend-btn min-h-10 w-20 sm:w-24 justify-center"
+                      />
                     </div>
                   </div>
                 </td>
@@ -149,18 +277,22 @@ const Collateral = ({ id }: { id?: string }) => {
           </tbody>
         </table>
       </div>
-      
+
       {/* Deposit Modal */}
-      <DepositModal open={showDepositModal} onOpenChange={setShowDepositModal} action="deposit" />
+      <DepositModal
+        open={showDepositModal}
+        onOpenChange={setShowDepositModal}
+        action="deposit"
+      />
 
       {/* Lend Modal (Create Order) */}
-      <CreateOrderModal 
-        isOpen={showLendModal} 
-        onClose={() => setShowLendModal(false)} 
+      <CreateOrderModal
+        isOpen={showLendModal}
+        onClose={() => setShowLendModal(false)}
         initialToken={selectedTokenForLend}
       />
     </div>
-  )
-}
+  );
+};
 
-export default Collateral
+export default Collateral;

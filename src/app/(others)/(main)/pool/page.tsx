@@ -9,13 +9,13 @@ import Button from "@/components/shared/Button";
 import { Grid, List, Plus, Minus, Search } from "lucide-react";
 import Link from "next/link";
 
-type ViewMode = 'card' | 'table';
+type ViewMode = "card" | "table";
 
 export default function Pool() {
   const [activeTab, setActiveTab] = useState("all-pools");
-  const [viewMode, setViewMode] = useState<ViewMode>('card');
+  const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [searchQuery, setSearchQuery] = useState("");
-  
+
   return (
     <div className="flex min-w-0 flex-col space-y-6 sm:space-y-10">
       <div className="pt-4 sm:pt-10">
@@ -29,28 +29,28 @@ export default function Pool() {
           className="mt-4 min-w-0 sm:mt-6"
         >
           <div className="flex min-w-0 flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
-            <Tabs.List className="kaleido-scrollbar flex w-full gap-2 overflow-x-auto pb-2 sm:gap-4 lg:w-auto lg:pb-0">
-                <Tabs.Trigger
-                  value="all-pools"
+            <Tabs.List className="kaleido-scrollbar flex w-full gap-2 overflow-x-auto pb-2 sm:flex-wrap sm:gap-4 lg:w-auto lg:pb-0">
+              <Tabs.Trigger
+                value="all-pools"
                 className="whitespace-nowrap px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-medium transition-colors data-[state=active]:bg-green-500 data-[state=active]:text-black data-[state=inactive]:text-gray-400 data-[state=inactive]:hover:text-white text-sm sm:text-base"
-                >
-                  All Pools
-                </Tabs.Trigger>
-                <Tabs.Trigger
-                  value="user-pools"
+              >
+                All Pools
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="user-pools"
                 className="whitespace-nowrap px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-medium transition-colors data-[state=active]:bg-green-500 data-[state=active]:text-black data-[state=inactive]:text-gray-400 data-[state=inactive]:hover:text-white text-sm sm:text-base"
-                >
-                  Your V2 Pools
-                </Tabs.Trigger>
-                <Tabs.Trigger
-                  value="v3-positions"
-                  className="whitespace-nowrap px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-medium transition-colors data-[state=active]:bg-green-500 data-[state=active]:text-black data-[state=inactive]:text-gray-400 data-[state=inactive]:hover:text-white text-sm sm:text-base flex items-center gap-2"
-                >
-                  <span className="flex h-2 w-2 rounded-full bg-[#00ff99] shadow-[0_0_8px_#00ff99]"></span>
-                  V3 Positions
-                </Tabs.Trigger>
+              >
+                Your V2 Pools
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="v3-positions"
+                className="whitespace-nowrap px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-medium transition-colors data-[state=active]:bg-green-500 data-[state=active]:text-black data-[state=inactive]:text-gray-400 data-[state=inactive]:hover:text-white text-sm sm:text-base flex items-center gap-2"
+              >
+                <span className="flex h-2 w-2 rounded-full bg-[#00ff99] shadow-[0_0_8px_#00ff99]"></span>
+                V3 Positions
+              </Tabs.Trigger>
             </Tabs.List>
-            
+
             <div className="flex w-full min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4 lg:w-auto">
               {/* Search Box */}
               <div className="relative w-full min-w-0 flex-1 lg:max-w-md">
@@ -65,57 +65,57 @@ export default function Pool() {
                   className="block w-full pl-10 pr-3 py-2 border border-[#00ff99]/30 rounded-lg bg-black/40 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#00ff99]/50 focus:border-[#00ff99]/50 transition-colors"
                 />
               </div>
-              
+
               {/* View Mode Toggle and Action Button */}
-              <div className="flex min-w-0 items-center justify-between gap-2 sm:justify-start sm:gap-4">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 sm:justify-start sm:gap-4">
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => setViewMode('card')}
+                    onClick={() => setViewMode("card")}
                     className={`px-3 py-2 sm:px-4 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                      viewMode === 'card' 
-                        ? 'bg-green-500 text-white' 
-                        : 'border border-[#00ff99]/30 text-gray-400 hover:text-white hover:border-[#00ff99]/50'
+                      viewMode === "card"
+                        ? "bg-green-500 text-white"
+                        : "border border-[#00ff99]/30 text-gray-400 hover:text-white hover:border-[#00ff99]/50"
                     }`}
                   >
                     <Grid size={18} />
                     <span className="hidden sm:inline">Cards</span>
                   </button>
                   <button
-                    onClick={() => setViewMode('table')}
+                    onClick={() => setViewMode("table")}
                     className={`px-3 py-2 sm:px-4 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                      viewMode === 'table' 
-                        ? 'bg-green-500 text-white' 
-                        : 'border border-[#00ff99]/30 text-gray-400 hover:text-white hover:border-[#00ff99]/50'
+                      viewMode === "table"
+                        ? "bg-green-500 text-white"
+                        : "border border-[#00ff99]/30 text-gray-400 hover:text-white hover:border-[#00ff99]/50"
                     }`}
                   >
                     <List size={18} />
                     <span className="hidden sm:inline">Table</span>
                   </button>
                 </div>
-                
+
                 {/* Conditional Action Button */}
                 {activeTab === "all-pools" ? (
                   <Link href="/create-pool">
-                      <Button
+                    <Button
                       variant="primary"
                       startIcon={<Plus size={18} />}
                       size="sm"
-                      className="bg-green-500 hover:bg-green-600 text-white whitespace-nowrap"
-                      >
-                        Create Pool
-                      </Button>
-                    </Link>
+                      className="whitespace-nowrap bg-green-500 text-white hover:bg-green-600"
+                    >
+                      Create Pool
+                    </Button>
+                  </Link>
                 ) : (
                   <Link href="/remove-pool">
-                      <Button
+                    <Button
                       variant="primary"
                       startIcon={<Minus size={18} />}
                       size="sm"
-                      className="bg-red-500 hover:bg-red-600 text-white whitespace-nowrap"
-                      >
-                        Remove Pool
-                      </Button>
-                    </Link>
+                      className="whitespace-nowrap bg-red-500 text-white hover:bg-red-600"
+                    >
+                      Remove Pool
+                    </Button>
+                  </Link>
                 )}
               </div>
             </div>
