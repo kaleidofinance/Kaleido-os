@@ -283,7 +283,7 @@ export const Header = () => {
 
       {/* Mobile Navigation Overlay */}
       {isMenuOpen && (
-        <div className="absolute left-0 top-full h-[calc(100vh-100%)] w-full overflow-y-auto bg-black/95 backdrop-blur-xl lg:hidden flex flex-col items-center pt-10 gap-6 z-[999]">
+        <div className="absolute left-0 top-full max-h-[calc(100vh-80px)] w-full overflow-y-auto bg-black/95 backdrop-blur-xl lg:hidden flex flex-col items-center pt-10 gap-6 z-[999]">
           <nav className="flex w-full flex-col items-center space-y-5 px-4 font-[family-name:var(--font-zenDots)] text-lg">
             <Link 
               href="/" 
