@@ -23,16 +23,16 @@ export default function StablePage() {
   }, [balances.kafUSD, withdrawalInfo.unlockTime, userRewards.totalRewards]);
 
   return (
-    <div className="flex min-w-0 flex-col space-y-6 sm:space-y-10">
+    <div className="flex flex-col space-y-10">
       {/* Combined Stats Section */}
-      <div className="pt-4 sm:pt-10">
+      <div className="pt-10">
         <CombinedStats />
       </div>
       
       {/* Unified Operations Section - Mint | Redeem | Lock | Withdraw */}
-      <div className="flex h-full min-w-0 flex-col items-center justify-center space-y-6 px-0 py-4 sm:space-y-9 sm:px-4">
+      <div className="flex h-full flex-col items-center justify-center space-y-9 px-4 py-4">
         {/* Tabs */}
-        <div className="kaleido-scrollbar mb-2 flex w-full justify-start gap-1 overflow-x-auto sm:justify-center">
+        <div className="mb-2 flex space-x-1 w-full justify-center overflow-x-auto">
           <button
             onClick={() => setActiveTab("mint")}
             className={`border-b-2 px-2.5 py-0.5 text-base sm:text-[20px] whitespace-nowrap ${
@@ -69,7 +69,7 @@ export default function StablePage() {
 
         {/* User Vault Info Bar - Only shown for Lock/Withdraw */}
         {(activeTab === "lock" || activeTab === "withdraw") && (
-          <div className="w-full min-w-0 rounded-xl border border-[#00ff6e]/20 bg-black/60 p-3 backdrop-blur-sm sm:p-4 lg:w-[500px]">
+          <div className="lg:w-[500px] sm:w-full w-full bg-black/60 backdrop-blur-sm border border-[#00ff6e]/20 rounded-xl p-4">
             <div className="flex flex-col gap-4">
               <div className="flex flex-row sm:flex-row items-center justify-between">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
@@ -77,7 +77,7 @@ export default function StablePage() {
                     <Shield className="w-5 h-5 text-green-400" />
                     <div>
                       <p className="text-xs text-gray-400">kafUSD Balance</p>
-                      <p className="break-words text-base font-semibold text-white sm:text-lg">{userVaultStats.kafusdBalance}</p>
+                      <p className="text-lg font-semibold text-white">{userVaultStats.kafusdBalance}</p>
                     </div>
                   </div>
                   <div className="hidden sm:block h-8 w-px bg-[#00ff6e]/20 absolute left-1/3"></div>
@@ -85,7 +85,7 @@ export default function StablePage() {
                     <DollarSign className="w-5 h-5 text-green-400" />
                     <div>
                       <p className="text-xs text-gray-400">Total Rewards</p>
-                      <p className="break-words text-base font-semibold text-white sm:text-lg">{userVaultStats.totalRewards}</p>
+                      <p className="text-lg font-semibold text-white">{userVaultStats.totalRewards}</p>
                     </div>
                   </div>
                   <div className="hidden sm:block h-8 w-px bg-[#00ff6e]/20 absolute left-2/3"></div>
@@ -93,7 +93,7 @@ export default function StablePage() {
                     <Clock className="w-5 h-5 text-green-400" />
                     <div>
                       <p className="text-xs text-gray-400">Unlock Time</p>
-                      <p className="break-words text-base font-semibold text-white sm:text-lg">{userVaultStats.unlockTime}</p>
+                      <p className="text-lg font-semibold text-white">{userVaultStats.unlockTime}</p>
                     </div>
                   </div>
                 </div>
@@ -141,7 +141,7 @@ export default function StablePage() {
           </div>
         )}
 
-        <div className="relative h-auto w-full min-w-0 rounded-2xl border border-[#00ff6e]/30 bg-black p-4 sm:p-6 lg:w-[500px] text-white shadow-md">
+        <div className="lg:w-[500px] sm:w-full w-full bg-black h-auto rounded-2xl p-6 shadow-md text-white relative overflow-visible border border-[#00ff6e]/30">
           <div className="relative z-10">
             {activeTab === "mint" || activeTab === "redeem" ? (
               <MintRedeem mode={activeTab} />

@@ -257,7 +257,7 @@ export default function YieldVaults() {
         </button>
       </div>
 
-      <div className="relative h-auto w-full min-w-0 rounded-2xl border border-[#00ff6e]/30 bg-black p-4 sm:p-6 lg:w-[600px] lg:p-8 text-white shadow-md">
+      <div className="lg:w-[600px] sm:w-full w-full bg-black h-auto rounded-2xl p-8 shadow-md text-white relative overflow-visible border border-[#00ff6e]/30">
         <div className="relative z-10">
           <div className="flex flex-col space-y-4">
             <div className="flex justify-between items-center mb-6">

@@ -104,13 +104,13 @@ const Balance = () => {
   }
 
   return (
-    <div id="balances-card" className="custom-corner-header w-full min-w-0 overflow-hidden bg-black/40 backdrop-blur-md rounded-xl border border-[#00ff99]/10 py-4 transition-all hover:border-[#00ff99]/30">
-      <div className="mb-2 px-4 text-lg sm:px-6 sm:text-xl">
+    <div id="balances-card" className="custom-corner-header w-full bg-black/40 backdrop-blur-md rounded-xl border border-[#00ff99]/10 py-4 transition-all hover:border-[#00ff99]/30">
+      <div className="mb-1 px-6 text-xl">
         <h3>Collateral&apos;s Balance</h3>
       </div>
 
       {/* Summary Section */}
-      <div className="mb-2 flex flex-col gap-1 border-y border-[#00ff99]/30 p-2 text-xs text-white/50 sm:flex-row sm:justify-between">
+      <div className="mb-2 flex justify-between border-y border-[#00ff99]/30 p-1 text-xs text-white/50">
         <h4 className="p-1 sm:p-0">
           Total Bal: <span className="pl-1">{`$${formatWithCommas(collateralVal ? collateralVal : 0)}`}</span>
         </h4>
@@ -120,8 +120,8 @@ const Balance = () => {
       </div>
 
       {/* Scrollable Table */}
-      <div className="relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6 kaleido-scrollbar">
-        <table className="min-w-[520px] text-xs sm:min-w-full sm:text-sm">
+      <div className="px-6 relative overflow-y-auto max-h-[220px] kaleido-scrollbar">
+        <table className="min-w-full text-sm">
           <thead>
             <tr className="text-center text-white/70">
               <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">Asset</th>
@@ -169,7 +169,7 @@ const Balance = () => {
                 </td> */}
                 {/* Deposit and Withdraw */}
                 <td className="pt-2">
-                  <div className="flex justify-center gap-2 whitespace-nowrap">
+                  <div className="flex justify-center gap-2">
                     <button onClick={() => setShowDepositModal(true)}>
                       <Btn text="Deposit" />
                     </button>

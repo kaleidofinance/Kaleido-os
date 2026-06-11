@@ -111,12 +111,12 @@ const StakeBoard = () => {
         </button>
       </div>
 
-      <div className="w-full max-w-xl rounded-xl border border-[#00ff6e]/30 bg-[#0a0a0a] bg-opacity-75 p-4 sm:p-6 lg:p-8">
+      <div className="w-full max-w-xl rounded-xl border border-[#00ff6e]/30 bg-[#0a0a0a] bg-opacity-75 p-8">
         {activeTab === "stake" ? (
           <>
-            <h2 className="mb-4 text-2xl font-extrabold text-white sm:mb-6 sm:text-3xl">Stake Your Token</h2>
+            <h2 className="mb-6 text-3xl font-extrabold text-white">Stake Your Token</h2>
 
-            <div className="mb-2 flex flex-col gap-1 break-words font-mono text-sm text-[#b3ffcc] sm:flex-row sm:items-center sm:justify-between sm:text-base">
+            <div className="mb-2 flex items-center justify-between font-mono text-[#b3ffcc]">
               <span>$KLD Balance: {Number(kldbal).toFixed(3)}</span>
               <button
                 onClick={() => setStakeAmount(kldbal)}
@@ -172,9 +172,9 @@ const StakeBoard = () => {
           </>
         ) : (
           <>
-            <h2 className="mb-4 text-2xl font-extrabold text-white sm:mb-6 sm:text-3xl">Withdraw Your Token</h2>
+            <h2 className="mb-6 text-3xl font-extrabold text-white">Withdraw Your Token</h2>
 
-            <div className="mb-2 flex flex-col gap-1 break-words font-mono text-sm text-[#b3ffcc] sm:flex-row sm:items-center sm:justify-between sm:text-base">
+            <div className="mb-2 flex items-center justify-between font-mono text-[#b3ffcc]">
               <span>Your $stKLD Balance: {Number(stkldbal).toFixed(3)}</span>
               <button
                 onClick={() => setWithdrawAmount(stkldbal)}
