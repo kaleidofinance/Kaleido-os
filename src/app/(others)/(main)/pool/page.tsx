@@ -17,19 +17,19 @@ export default function Pool() {
   const [searchQuery, setSearchQuery] = useState("");
   
   return (
-    <div className="flex flex-col space-y-10">
-      <div className="pt-10">
+    <div className="flex min-w-0 flex-col space-y-6 sm:space-y-10">
+      <div className="pt-4 sm:pt-10">
         <PoolHeader />
       </div>
-      <div className="text-white p-4 lg:p-10 sm:p-5">
+      <div className="min-w-0 p-0 text-white sm:p-5 lg:p-10">
         <Tabs.Root
           defaultValue="all-pools"
           value={activeTab}
           onValueChange={setActiveTab}
-          className="mt-6"
+          className="mt-4 min-w-0 sm:mt-6"
         >
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center space-y-4 lg:space-y-0">
-            <Tabs.List className="flex space-x-2 sm:space-x-4 overflow-x-auto w-full lg:w-auto pb-2 lg:pb-0">
+          <div className="flex min-w-0 flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
+            <Tabs.List className="kaleido-scrollbar flex w-full gap-2 overflow-x-auto pb-2 sm:gap-4 lg:w-auto lg:pb-0">
                 <Tabs.Trigger
                   value="all-pools"
                 className="whitespace-nowrap px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-medium transition-colors data-[state=active]:bg-green-500 data-[state=active]:text-black data-[state=inactive]:text-gray-400 data-[state=inactive]:hover:text-white text-sm sm:text-base"
@@ -51,9 +51,9 @@ export default function Pool() {
                 </Tabs.Trigger>
             </Tabs.List>
             
-            <div className="flex flex-col sm:flex-row w-full lg:w-auto items-stretch sm:items-center gap-4">
+            <div className="flex w-full min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4 lg:w-auto">
               {/* Search Box */}
-              <div className="relative flex-1 lg:max-w-md w-full">
+              <div className="relative w-full min-w-0 flex-1 lg:max-w-md">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Search className="h-5 w-5 text-gray-400" />
                 </div>
@@ -67,7 +67,7 @@ export default function Pool() {
               </div>
               
               {/* View Mode Toggle and Action Button */}
-              <div className="flex items-center space-x-2 sm:space-x-4 justify-between sm:justify-start">
+              <div className="flex min-w-0 items-center justify-between gap-2 sm:justify-start sm:gap-4">
                 <div className="flex space-x-2">
                   <button
                     onClick={() => setViewMode('card')}

@@ -66,13 +66,13 @@ export default function MarketPlacePage() {
 
 
   return (
-    <div className="w-full mt-4 md:mt-10 px-4">
-      <div className="w-full px-1">
+    <div className="mt-4 w-full min-w-0 px-0 sm:px-4 md:mt-10">
+      <div className="w-full min-w-0 px-0 sm:px-1">
         <div className="mb-8">
           <MktHeader />
         </div>
-        <div className="flex flex-col space-y-4">
-          <div className="flex flex-col space-y-2">
+        <div className="flex min-w-0 flex-col space-y-4">
+          <div className="flex min-w-0 flex-col space-y-2">
             {/* <h2 className="text-lg font-semibold">Filter By</h2> */}
             <DataFiltersPanel />
           </div>

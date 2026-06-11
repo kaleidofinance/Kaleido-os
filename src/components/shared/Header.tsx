@@ -88,8 +88,8 @@ export const Header = () => {
     <header
       className={`sticky left-0 top-0 z-[100] w-full transition-all duration-300 ${
         scrolled
-          ? "bg-black/80 backdrop-blur-xl py-3 md:py-4 border-b border-[#00ff99]/30 shadow-[0_4px_30px_rgba(0,255,153,0.1)]"
-          : "bg-black/40 backdrop-blur-md p-4 md:p-6 border-b border-[#00ff99]/10"
+          ? "bg-black/80 backdrop-blur-xl px-3 py-2 sm:px-4 md:py-4 border-b border-[#00ff99]/30 shadow-[0_4px_30px_rgba(0,255,153,0.1)]"
+          : "bg-black/40 backdrop-blur-md p-3 sm:p-4 md:p-6 border-b border-[#00ff99]/10"
       }`}
     >
       {/* Corner Borders */}
@@ -98,7 +98,7 @@ export const Header = () => {
       <span className="absolute bottom-0 left-0 h-[10px] w-[10px] border-b border-l border-[#00ff99]"></span>
       <span className="absolute bottom-0 right-0 h-[10px] w-[10px] border-b border-r border-[#00ff99]"></span>
 
-      <div className="flex w-full flex-wrap items-center justify-between gap-4 lg:flex-nowrap">
+      <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 sm:gap-4 lg:flex-nowrap">
         {/* Logo Section */}
         <Link href="/" className="block shrink-0">
           <Image
@@ -108,7 +108,7 @@ export const Header = () => {
             quality={100}
             height={100}
             width={100}
-            className=""
+            className="h-12 w-12 sm:h-16 sm:w-16 md:h-[100px] md:w-[100px]"
           />
         </Link>
 
@@ -140,11 +140,11 @@ export const Header = () => {
         </nav>
 
         {/* User Actions Section */}
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           {/* Notifications Icon (Keep visible) */}
           <div className="relative">
             <button
-              className="relative flex items-center justify-center p-2 text-white hover:text-[#36b169] focus:outline-none"
+              className="relative flex min-h-10 min-w-10 items-center justify-center p-2 text-white hover:text-[#36b169] focus:outline-none"
               aria-label="Notifications"
               onClick={() => setShowNotifications((prev) => !prev)}
             >
@@ -165,7 +165,7 @@ export const Header = () => {
                   className="fixed inset-0 z-40" 
                   onClick={() => setShowNotifications(false)}
                 ></div>
-                <div className="absolute right-0 top-12 z-50 w-80 sm:w-96 rounded-2xl bg-[#0f0f1a]/95 backdrop-blur-2xl p-5 shadow-[0_0_50px_rgba(0,0,0,0.5),0_0_20px_rgba(0,255,153,0.1)] border border-[#00ff99]/30 text-white max-h-[500px] overflow-y-auto">
+                <div className="fixed inset-x-3 top-20 z-50 max-h-[70vh] overflow-y-auto rounded-2xl border border-[#00ff99]/30 bg-[#0f0f1a]/95 p-4 text-white shadow-[0_0_50px_rgba(0,0,0,0.5),0_0_20px_rgba(0,255,153,0.1)] backdrop-blur-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-96 sm:max-h-[500px] sm:p-5">
                   {/* Neon Corners */}
                   <span className="absolute left-0 top-0 h-[8px] w-[8px] border-l border-t border-[#00ff99]"></span>
                   <span className="absolute right-0 top-0 h-[8px] w-[8px] border-r border-t border-[#00ff99]"></span>
@@ -283,8 +283,8 @@ export const Header = () => {
 
       {/* Mobile Navigation Overlay */}
       {isMenuOpen && (
-        <div className="absolute left-0 top-full h-screen w-full bg-black/95 backdrop-blur-xl lg:hidden flex flex-col items-center pt-10 gap-6 z-[999]">
-          <nav className="flex flex-col items-center space-y-6 font-[family-name:var(--font-zenDots)] text-lg">
+        <div className="absolute left-0 top-full h-[calc(100vh-100%)] w-full overflow-y-auto bg-black/95 backdrop-blur-xl lg:hidden flex flex-col items-center pt-10 gap-6 z-[999]">
+          <nav className="flex w-full flex-col items-center space-y-5 px-4 font-[family-name:var(--font-zenDots)] text-lg">
             <Link 
               href="/" 
               className={`${isActive("/dashboard")} hover:text-[#00ff99] transition-colors`}

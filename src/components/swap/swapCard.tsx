@@ -472,12 +472,12 @@ function SwapCard({
   };
 
   return (
-    <div className="lg:w-[600px] sm:w-full bg-board/80 backdrop-blur-sm h-auto min-h-[500px] rounded-2xl p-8 shadow-xl text-white relative overflow-hidden border border-[#00ff99]/20">
+    <div className="w-full min-w-0 bg-board/80 backdrop-blur-sm h-auto min-h-[500px] rounded-2xl p-4 sm:p-6 lg:w-[600px] lg:p-8 shadow-xl text-white relative overflow-hidden border border-[#00ff99]/20">
       {/* Subtle overlay for transparency effect with faint green tint */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#00ff99]/5 via-transparent to-[#00ff99]/10 pointer-events-none"></div>
       
-      <div className="flex justify-between items-center relative z-10">
-        <h1 className="text-2xl font-bold text-white">Swap</h1>
+      <div className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:justify-between items-center relative z-10">
+        <h1 className="text-xl font-bold text-white sm:text-2xl">Swap</h1>
         <button 
           onClick={() => setOpen(true)}
           className="p-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -537,10 +537,10 @@ function SwapCard({
 
         <div className="flex flex-col space-y-2 mt-2">
           <div className="flex flex-col space-y-1">
-            <div className="flex justify-between ">
+            <div className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:justify-between ">
               <p className="text-gray-400 font-normal">Exchange Rate</p>
               <p 
-                className="font-normal text-white cursor-pointer hover:text-green-400 transition-colors select-none"
+                className="min-w-0 break-words text-left font-normal text-white transition-colors hover:text-green-400 sm:text-right cursor-pointer select-none"
                 onClick={() => setInvertRate(!invertRate)}
                 title="Click to invert exchange rate"
               >
@@ -552,14 +552,14 @@ function SwapCard({
                   : "-"}
               </p>
             </div>
-            <div className="flex justify-between">
+            <div className="flex items-center justify-between gap-3 text-sm">
               <p className="text-gray-400 font-normal">Slippage Tolerance</p>
               <p className="text-green-500 front-normal">{slippage || "0.5"}%</p>
             </div>
             {fromAmount && toAmount && parseFloat(fromAmount) > 0 && (
                <div className="bg-[#00ff99]/5 rounded-lg px-3 py-2.5 mt-1 border border-[#00ff99]/10 space-y-2">
                  {/* Header Row */}
-                 <div className="flex justify-between items-center">
+                 <div className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:justify-between items-center">
                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Smart Router</p>
                    <div className="flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#00ff99] animate-pulse"></span>
@@ -570,7 +570,7 @@ function SwapCard({
                    </div>
                  </div>
                  {/* Visual Route Map */}
-                 <div className="flex items-center gap-1 flex-wrap">
+                 <div className="flex min-w-0 flex-wrap items-center gap-1">
                    {(() => {
                      const resolveSymbol = (addr: string) => {
                        if (!addr) return "?";
@@ -582,7 +582,7 @@ function SwapCard({
                      };
 
                      const tokenBadge = (symbol: string, isEndpoint: boolean = false) => (
-                       <span key={`tok-${symbol}-${Math.random()}`} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isEndpoint ? "bg-[#00ff99]/20 text-[#00ff99]" : "bg-white/10 text-white"}`}>
+                       <span key={`tok-${symbol}-${Math.random()}`} className={`max-w-[80px] truncate px-1.5 py-0.5 rounded text-[10px] font-bold ${isEndpoint ? "bg-[#00ff99]/20 text-[#00ff99]" : "bg-white/10 text-white"}`}>
                          {symbol}
                        </span>
                      );
@@ -653,7 +653,7 @@ function SwapCard({
                </div>
             )}
              {priceImpact !== null && (
-               <div className="flex justify-between">
+               <div className="flex items-center justify-between gap-3 text-sm">
                  <p className="text-gray-400 font-normal">Price Impact</p>
                  <p className={`font-medium ${priceImpact > 5 ? "text-red-500" : priceImpact > 2 ? "text-yellow-500" : "text-gray-300"}`}>
                    {priceImpact < 0.01 ? "< 0.01%" : `${priceImpact.toFixed(2)}%`}

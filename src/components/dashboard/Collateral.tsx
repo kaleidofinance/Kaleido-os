@@ -81,12 +81,12 @@ const Collateral = ({ id }: { id?: string }) => {
   }
 
   return (
-    <div className="u-class-shadow-2 w-full rounded-xl bg-black/40 backdrop-blur-md border border-[#00ff99]/10 py-6 transition-all hover:border-[#00ff99]/30" {...(id ? { id } : {})}>
-      <div className="mb-3 px-6 text-xl">
+    <div className="u-class-shadow-2 w-full min-w-0 overflow-hidden rounded-xl bg-black/40 backdrop-blur-md border border-[#00ff99]/10 py-6 transition-all hover:border-[#00ff99]/30" {...(id ? { id } : {})}>
+      <div className="mb-3 px-4 text-lg sm:px-6 sm:text-xl">
         <h3>Wallet&apos;s Portfolio</h3>
       </div>
-      <div className="px-6 relative overflow-y-auto max-h-[220px] kaleido-scrollbar">
-        <table className="min-w-full text-center text-sm">
+      <div className="relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6 kaleido-scrollbar">
+        <table className="min-w-[560px] text-center text-xs sm:min-w-full sm:text-sm">
           <thead>
             <tr className="text-center text-white/70">
               <th className="sticky top-0 py-2 text-start font-medium bg-[#060606] z-20">Asset</th>
@@ -104,7 +104,7 @@ const Collateral = ({ id }: { id?: string }) => {
                     <span>{item.token}</span>
                   </div>
                   {item.isMultichain && (
-                    <div className="mt-1 flex gap-1">
+                    <div className="mt-1 flex max-w-[140px] flex-wrap gap-1">
                       {item.chains?.map((c: any) => (
                         <span key={c.chainId} className="px-1 py-0.5 rounded-[4px] bg-[#00ff99]/10 border border-[#00ff99]/30 text-[8px] text-[#00ff99] uppercase font-bold">
                           {c.chainName}
@@ -137,10 +137,10 @@ const Collateral = ({ id }: { id?: string }) => {
                 <td className="pt-2">
                   <div className="flex justify-center gap-2">
                     <div onClick={() => handleDepositClick(item.token)}>
-                      <Btn text={item.chains?.some((c: any) => c.chainId !== 2741 && c.chainId !== 11124) && parseFloat(item.tokenPrice) > 0 ? "Bridge" : "Deposit"} css="deposit-collateral-btn w-24 justify-center" />
+                      <Btn text={item.chains?.some((c: any) => c.chainId !== 2741 && c.chainId !== 11124) && parseFloat(item.tokenPrice) > 0 ? "Bridge" : "Deposit"} css="deposit-collateral-btn min-h-10 w-20 sm:w-24 justify-center" />
                     </div>
                     <div onClick={() => handleLendClick(item.token)}>
-                      <Btn text="Lend" css="lend-btn w-24 justify-center" />
+                      <Btn text="Lend" css="lend-btn min-h-10 w-20 sm:w-24 justify-center" />
                     </div>
                   </div>
                 </td>
