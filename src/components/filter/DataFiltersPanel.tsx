@@ -125,13 +125,13 @@ export const DataFiltersPanel = () => {
   }
 
   return (
-    <div className="w-full mt-4" data-tour="filter-card">
+    <div className="mt-4 w-full min-w-0" data-tour="filter-card">
       {/* Compact Filter Bar */}
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <Filter className="h-6 w-6 text-green-400" />
-            <h2 className="text-2xl font-bold text-white">Filters</h2>
+            <h2 className="text-xl font-bold text-white sm:text-2xl">Filters</h2>
             {getActiveFilterCount() > 0 && (
               <div className="rounded-full bg-green-500 px-3 py-1 text-sm font-semibold text-black">
                 {getActiveFilterCount()} Active
@@ -150,11 +150,11 @@ export const DataFiltersPanel = () => {
         </div>
 
         {/* Filter Chips */}
-        <div className="flex flex-wrap gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
           {/* Token Filter Chip */}
           <button
             onClick={() => setIsTokenModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm font-medium text-green-400 transition-all hover:bg-green-500/20 hover:border-green-500/50"
+            className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs sm:px-4 sm:text-sm font-medium text-green-400 transition-all hover:bg-green-500/20 hover:border-green-500/50"
           >
             {getSelectedTokenImage() && (
               <img src={getSelectedTokenImage()!} alt={getSelectedTokenLabel()} className="h-4 w-4 rounded-full" />
@@ -166,7 +166,7 @@ export const DataFiltersPanel = () => {
           {/* Status Filter Chip */}
           <button
             onClick={() => setIsStatusModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400 transition-all hover:bg-blue-500/20 hover:border-blue-500/50"
+            className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs sm:px-4 sm:text-sm font-medium text-blue-400 transition-all hover:bg-blue-500/20 hover:border-blue-500/50"
           >
             {statusLabels[selectedOrder]}
             <ChevronDown className="h-3 w-3" />
@@ -175,7 +175,7 @@ export const DataFiltersPanel = () => {
           {/* Interest Rate Filter Chip */}
           <button
             onClick={() => setIsInterestModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2 text-sm font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50"
+            className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs sm:px-4 sm:text-sm font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50"
           >
             <SlidersHorizontal className="h-4 w-4" />
             Up to {interestRate}%
@@ -185,7 +185,7 @@ export const DataFiltersPanel = () => {
           {/* Volume Filter Chip */}
           <button
             onClick={() => setIsVolumeModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-400 transition-all hover:bg-yellow-500/20 hover:border-yellow-500/50"
+            className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs sm:px-4 sm:text-sm font-medium text-yellow-400 transition-all hover:bg-yellow-500/20 hover:border-yellow-500/50"
           >
             {selectedVolumeRanges.length > 0 ? `${selectedVolumeRanges.length} ranges` : 'All volumes'}
             <ChevronDown className="h-3 w-3" />
@@ -194,7 +194,7 @@ export const DataFiltersPanel = () => {
           {/* Advanced Options Chip */}
           <button
             onClick={() => setIsAdvancedModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl border border-gray-500/30 bg-[#2a2a2a]/10 px-4 py-2 text-sm font-medium text-gray-400 transition-all hover:bg-[#2a2a2a]/20 hover:border-gray-500/50"
+            className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-gray-500/30 bg-[#2a2a2a]/10 px-3 py-2 text-xs sm:px-4 sm:text-sm font-medium text-gray-400 transition-all hover:bg-[#2a2a2a]/20 hover:border-gray-500/50"
           >
             <Filter className="h-4 w-4" />
             Advanced
@@ -209,7 +209,7 @@ export const DataFiltersPanel = () => {
           <Dialog.Overlay className="fixed inset-0 bg-black/80 z-50" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Dialog.Title className="text-xl font-bold text-white">Select Token</Dialog.Title>
                 <Dialog.Close asChild>
                   <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">
@@ -269,7 +269,7 @@ export const DataFiltersPanel = () => {
           <Dialog.Overlay className="fixed inset-0 bg-black/80 z-50" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Dialog.Title className="text-xl font-bold text-white">Select Status</Dialog.Title>
                 <Dialog.Close asChild>
                   <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">
@@ -308,7 +308,7 @@ export const DataFiltersPanel = () => {
           <Dialog.Overlay className="fixed inset-0 bg-black/80 z-50" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Dialog.Title className="text-xl font-bold text-white">Interest Rate</Dialog.Title>
                 <Dialog.Close asChild>
                   <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">
@@ -367,7 +367,7 @@ export const DataFiltersPanel = () => {
           <Dialog.Overlay className="fixed inset-0 bg-black/80 z-50" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Dialog.Title className="text-xl font-bold text-white">Volume Ranges</Dialog.Title>
                 <Dialog.Close asChild>
                   <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">
@@ -408,7 +408,7 @@ export const DataFiltersPanel = () => {
           <Dialog.Overlay className="fixed inset-0 bg-black/80 z-50" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Dialog.Title className="text-xl font-bold text-white">Advanced Options</Dialog.Title>
                 <Dialog.Close asChild>
                   <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">

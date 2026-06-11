@@ -508,13 +508,13 @@ function CreatePool() {
   }, [price, minPrice, maxPrice]);
 
   return (
-    <div className="flex flex-col space-y-10">
-      <div className="pt-10">
+    <div className="flex min-w-0 flex-col space-y-6 overflow-x-hidden sm:space-y-10">
+      <div className="px-3 pt-6 sm:px-4 sm:pt-10">
         <CreatePoolHeader />
       </div>
-      <div className="py-12">
-        <div className="flex justify-center items-center">
-        <div className="w-full max-w-5xl px-8 py-8 bg-modal/90 backdrop-blur-md border border-[#00ff99]/20 rounded-2xl relative overflow-hidden shadow-[0_0_50px_rgba(0,255,153,0.05)]">
+      <div className="px-3 py-6 sm:px-4 sm:py-12">
+        <div className="flex min-w-0 items-center justify-center">
+        <div className="relative w-full min-w-0 max-w-5xl overflow-hidden rounded-2xl border border-[#00ff99]/20 bg-modal/90 px-3 py-5 shadow-[0_0_50px_rgba(0,255,153,0.05)] backdrop-blur-md sm:px-8 sm:py-8">
           {/* Subtle overlay for transparency effect with faint green tint */}
           <div className="absolute inset-0 bg-gradient-to-br from-tokenSelector/5 via-transparent to-tokenSelector/10 pointer-events-none"></div>
             <div className="relative z-10">

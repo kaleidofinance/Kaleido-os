@@ -66,12 +66,12 @@ export default function Trade() {
   const [toToken, setToToken] = useState<IToken | null>(ACTIVE_TOKENS[1] || null);
 
   return (
-    <div className="flex flex-col space-y-10">
-      <div className="pt-10">
+    <div className="flex min-w-0 flex-col space-y-6 overflow-x-hidden sm:space-y-10">
+      <div className="px-3 pt-6 sm:px-4 sm:pt-10">
         <SwapHeader />
       </div>
-      <div className="flex flex-col lg:flex-row gap-6 justify-center items-start h-full px-4 py-10">
-        <div className="flex flex-col gap-6">
+      <div className="flex h-full min-w-0 flex-col items-center justify-center gap-6 px-3 py-6 sm:px-4 sm:py-10 lg:flex-row lg:items-start">
+        <div className="flex w-full min-w-0 flex-col gap-6 lg:w-auto">
           <SwapCardPage 
             fromToken={fromToken}
             toToken={toToken}
@@ -81,7 +81,7 @@ export default function Trade() {
           {/* Token Info Cards - Under swap box */}
           <TokenInfoCards fromToken={fromToken} toToken={toToken} />
         </div>
-        <div className="lg:w-[700px] w-full">
+        <div className="w-full min-w-0 lg:w-[700px]">
           <PriceChart 
             fromTokenAddress={fromToken?.address}
             toTokenAddress={toToken?.address}

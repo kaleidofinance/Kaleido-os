@@ -569,7 +569,7 @@ function ChatbotWidget() {
   };
 
   return (
-    <div className="fixed bottom-5 right-5 z-[9999] max-w-full">
+    <div className="fixed bottom-4 right-3 z-[9999] max-w-[calc(100vw-1.5rem)] sm:bottom-5 sm:right-5 sm:max-w-full">
       {/* Chat toggle button */}
       <div className="relative group">
         <button 
@@ -597,14 +597,14 @@ function ChatbotWidget() {
 
       {/* Chat widget */}
       {isOpen && (
-        <div className="absolute bottom-16 right-0 sm:right-0 xs:right-[-5px] w-[95vw] max-w-[550px] h-[85vh] max-h-[750px] md:h-[750px] bg-[#1a1a2e]/95 backdrop-blur-xl rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col border border-[#00ff99]/30 overflow-hidden chatbot-widget">
+        <div className="absolute bottom-16 right-0 flex h-[min(82dvh,720px)] w-[calc(100vw-1.5rem)] max-w-[550px] flex-col overflow-hidden rounded-2xl border border-[#00ff99]/30 bg-[#1a1a2e]/95 shadow-[0_0_50px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:h-[85vh] sm:w-[95vw] sm:rounded-3xl md:h-[750px]">
           {/* Header */}
-          <div className="flex items-center justify-between bg-[#0f0f1a]/80 backdrop-blur-sm text-white p-4 border-b border-[#00ff99]/20">
-            <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-start justify-between gap-2 border-b border-[#00ff99]/20 bg-[#0f0f1a]/80 p-3 text-white backdrop-blur-sm sm:items-center sm:p-4">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#00ff99] to-[#00cc7a] flex items-center justify-center shadow-lg shadow-[#00ff99]/30">
                 <RiRobot2Fill className="text-[#0f0f1a] text-sm" />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
                 <h3 className="font-semibold text-[#00ff99]">Luca AI</h3>
                 {healthFactor > 0 && (
                   <div 
@@ -642,7 +642,7 @@ function ChatbotWidget() {
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               {/* History button */}
               <div className="tooltip-wrapper">
                 <button 
@@ -965,12 +965,12 @@ function ChatbotWidget() {
           {/* Chat messages */}
           <div 
             ref={chatContainerRef}
-            className="flex-1 overflow-y-auto p-4 bg-[#12121f] chatbot-messages-container"
+            className="chatbot-messages-container min-h-0 flex-1 overflow-y-auto bg-[#12121f] p-3 sm:p-4"
           >
             {messages.map((msg, index) => (
               <div 
                 key={index}
-                className={`max-w-[85%] mb-3 p-3 rounded-2xl backdrop-blur-sm ${
+                className={`mb-3 max-w-[92%] break-words rounded-2xl p-3 backdrop-blur-sm sm:max-w-[85%] ${
                   msg.role === 'user' 
                     ? 'ml-auto bg-gradient-to-r from-[#00ff99]/20 to-[#00cc7a]/10 text-white border border-[#00ff99]/30 rounded-br-md' 
                     : 'mr-auto bg-[#1e1e30]/80 text-gray-200 border border-[#2a2a40] rounded-bl-md'
@@ -1044,7 +1044,7 @@ function ChatbotWidget() {
           </div>
           
           {/* Quick Action Buttons */}
-          <div className="px-4 py-2 bg-[#0f0f1a]/60 border-t border-[#00ff99]/10 flex gap-2 overflow-x-auto scrollbar-hide no-scrollbar">
+          <div className="no-scrollbar flex shrink-0 gap-2 overflow-x-auto border-t border-[#00ff99]/10 bg-[#0f0f1a]/60 px-3 py-2 scrollbar-hide sm:px-4">
             <button 
               onClick={() => sendMessage("Initialize Bridge")}
               className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full bg-[#00ccff]/10 text-[#00ccff] border border-[#00ccff]/30 hover:bg-[#00ccff]/20 hover:scale-105 transition-all whitespace-nowrap flex items-center gap-2"
@@ -1078,8 +1078,8 @@ function ChatbotWidget() {
           </div>
           
           {/* Input area */}
-          <div className="p-4 bg-[#0f0f1a]/80 border-t border-[#00ff99]/20">
-            <div className="flex items-center gap-3">
+          <div className="shrink-0 border-t border-[#00ff99]/20 bg-[#0f0f1a]/80 p-3 sm:p-4">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <input
                 ref={inputRef}
                 type="text"
@@ -1087,13 +1087,13 @@ function ChatbotWidget() {
                 onChange={(e) => setCurrentMessage(e.target.value)}
                 onKeyDown={handleKeyPress}
                 placeholder="Ask Luca anything..."
-                className="chatbot-input flex-1 px-4 py-3 bg-[#1a1a2e] border border-[#00ff99]/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00ff99]/50 focus:border-transparent text-white placeholder-gray-500"
+                className="chatbot-input min-w-0 flex-1 rounded-xl border border-[#00ff99]/20 bg-[#1a1a2e] px-3 py-3 text-white placeholder-gray-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#00ff99]/50 sm:px-4"
                 disabled={isLoading}
               />
               <button
                 onClick={handleSend}
                 disabled={isLoading || !currentMessage.trim()}
-                className="p-3 bg-gradient-to-r from-[#00ff99] to-[#00cc7a] text-[#0f0f1a] rounded-xl hover:shadow-lg hover:shadow-[#00ff99]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="shrink-0 rounded-xl bg-gradient-to-r from-[#00ff99] to-[#00cc7a] p-3 text-[#0f0f1a] transition-all hover:shadow-lg hover:shadow-[#00ff99]/30 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <IoMdSend className="text-lg" />
               </button>

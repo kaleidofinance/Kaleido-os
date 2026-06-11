@@ -135,12 +135,12 @@ export default function LiquidityInputPanel({
   };
 
   return (
-    <div className="flex flex-col space-y-3">
+    <div className="flex min-w-0 flex-col space-y-3">
       {/* Pool Type Selector & Alert */}
       {noLiquidity && (
         <div className="space-y-6">
            {/* New Pool Alert */}
-          <div className="relative overflow-hidden rounded-xl border border-[#00ff99]/30 bg-gradient-to-r from-[#00ff99]/10 to-transparent p-6 backdrop-blur-sm">
+          <div className="relative overflow-hidden rounded-xl border border-[#00ff99]/30 bg-gradient-to-r from-[#00ff99]/10 to-transparent p-4 backdrop-blur-sm sm:p-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div className="space-y-1">
                 <h3 className="text-[#00ff99] text-lg font-bold">First Liquidity Provider</h3>
@@ -153,7 +153,7 @@ export default function LiquidityInputPanel({
           </div>
 
           {/* DEX Version Selector */}
-          <div className="bg-white/5 p-1 rounded-xl flex border border-white/10 relative backdrop-blur-sm">
+          <div className="relative flex min-w-0 flex-col rounded-xl border border-white/10 bg-white/5 p-1 backdrop-blur-sm min-[390px]:flex-row">
             <button
                 onClick={() => onDexVersionChange?.("v2")}
                 className={`flex-1 py-2.5 px-4 rounded-lg text-xs font-bold uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2
@@ -172,7 +172,7 @@ export default function LiquidityInputPanel({
 
           {/* Pool Type Selector (V2 only) or Fee Tier Selector (V3) */}
           {dexVersion === "v2" ? (
-            <div className="bg-white/5 p-1 rounded-xl flex border border-white/10 relative backdrop-blur-sm">
+            <div className="relative flex min-w-0 flex-col rounded-xl border border-white/10 bg-white/5 p-1 backdrop-blur-sm min-[390px]:flex-row">
                 <button
                     onClick={() => onPoolTypeChange?.("volatile")}
                     className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold uppercase tracking-wide transition-all duration-300 flex flex-col items-center gap-1
@@ -208,8 +208,8 @@ export default function LiquidityInputPanel({
 
           {/* V3 Range Selector */}
           {dexVersion === "v3" && (
-            <div className="rounded-xl border border-[#00ff99]/20 bg-[#00ff99]/5 p-6 backdrop-blur-sm animate-in fade-in slide-in-from-top-4 duration-500">
-                <div className="flex justify-between items-center mb-6">
+            <div className="animate-in fade-in slide-in-from-top-4 rounded-xl border border-[#00ff99]/20 bg-[#00ff99]/5 p-4 backdrop-blur-sm duration-500 sm:p-6">
+                <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-1">
                         <h4 className="text-[#00ff99] font-bold text-base uppercase tracking-wider">Set Price Range</h4>
                         <p className="text-gray-400 text-xs">Concentrate your liquidity for higher efficiency.</p>
@@ -234,7 +234,7 @@ export default function LiquidityInputPanel({
                     />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                     <div className={`bg-black/40 rounded-xl p-4 border transition-all ${isFullRange ? "border-white/5 opacity-50" : "border-white/5 hover:border-[#00ff99]/30"}`}>
                         <span className="text-[10px] text-gray-500 font-bold uppercase block mb-2">Low Price</span>
                         <div className="flex items-center justify-between gap-2">
@@ -252,7 +252,7 @@ export default function LiquidityInputPanel({
                                 disabled={isFullRange}
                                 value={isFullRange ? "0" : minPrice}
                                 onChange={(e) => onMinPriceChange?.(e.target.value)}
-                                className="w-full bg-transparent text-center text-xl font-mono font-bold text-white focus:outline-none disabled:text-gray-500"
+                                className="w-full min-w-0 bg-transparent text-center text-base font-mono font-bold text-white focus:outline-none disabled:text-gray-500 sm:text-xl"
                             />
                             <button 
                                 disabled={isFullRange}
@@ -283,7 +283,7 @@ export default function LiquidityInputPanel({
                                 disabled={isFullRange}
                                 value={isFullRange ? "∞" : maxPrice}
                                 onChange={(e) => onMaxPriceChange?.(e.target.value)}
-                                className="w-full bg-transparent text-center text-xl font-mono font-bold text-white focus:outline-none disabled:text-gray-500"
+                                className="w-full min-w-0 bg-transparent text-center text-base font-mono font-bold text-white focus:outline-none disabled:text-gray-500 sm:text-xl"
                             />
                             <button 
                                 disabled={isFullRange}
@@ -317,8 +317,8 @@ export default function LiquidityInputPanel({
         {/* Token A Input */}
         <div className="flex flex-col space-y-3">
           
-          <div className="group relative rounded-xl border border-white/10 bg-white/5 p-4 transition-all duration-300 hover:border-[#00ff99]/50 hover:shadow-[0_0_30px_rgba(0,255,153,0.05)] focus-within:border-[#00ff99] focus-within:shadow-[0_0_30px_rgba(0,255,153,0.1)] backdrop-blur-sm">
-             <div className="flex justify-between items-center mb-2">
+          <div className="group relative min-w-0 rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm transition-all duration-300 hover:border-[#00ff99]/50 hover:shadow-[0_0_30px_rgba(0,255,153,0.05)] focus-within:border-[#00ff99] focus-within:shadow-[0_0_30px_rgba(0,255,153,0.1)] sm:p-4">
+             <div className="mb-2 flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-center min-[390px]:justify-between">
                 <div className="flex items-center">
                     <span className="text-xs font-mono text-[#00ff99]">
                       Balance: {formatBalance(balance)}
@@ -346,9 +346,9 @@ export default function LiquidityInputPanel({
                 onChange={(e) => onValueChange(e.target.value)}
                 type="number"
                 step="any"
-                className="w-full bg-transparent border-none outline-none text-2xl font-bold text-white placeholder:text-gray-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none font-mono mt-1"
+                className="mt-1 w-full min-w-0 border-none bg-transparent text-xl font-bold text-white outline-none placeholder:text-gray-700 [appearance:textfield] font-mono sm:text-2xl [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
-              <div className="flex justify-between items-end">
+              <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-end min-[390px]:justify-between">
                 <div className="h-6">
                  {usdValueA && (
                     <span className="text-sm font-medium text-gray-500">≈ {usdValueA}</span>
@@ -376,8 +376,8 @@ export default function LiquidityInputPanel({
         {/* Token B Input */}
         <div className="flex flex-col space-y-3">
           
-          <div className="group relative rounded-xl border border-white/10 bg-white/5 p-4 transition-all duration-300 hover:border-[#00ff99]/50 hover:shadow-[0_0_30px_rgba(0,255,153,0.05)] focus-within:border-[#00ff99] focus-within:shadow-[0_0_30px_rgba(0,255,153,0.1)] backdrop-blur-sm">
-            <div className="flex justify-between items-center mb-2">
+          <div className="group relative min-w-0 rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm transition-all duration-300 hover:border-[#00ff99]/50 hover:shadow-[0_0_30px_rgba(0,255,153,0.05)] focus-within:border-[#00ff99] focus-within:shadow-[0_0_30px_rgba(0,255,153,0.1)] sm:p-4">
+            <div className="mb-2 flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-center min-[390px]:justify-between">
                 <span className="text-xs font-mono text-[#00ff99]">
                   Balance: {formatBalance(tobalance)}
                 </span>
@@ -390,9 +390,9 @@ export default function LiquidityInputPanel({
                 onChange={(e) => onToValueChange(e.target.value)}
                 type="number"
                 step="any"
-                className="w-full bg-transparent border-none outline-none text-2xl font-bold text-white placeholder:text-gray-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none font-mono mt-1"
+                className="mt-1 w-full min-w-0 border-none bg-transparent text-xl font-bold text-white outline-none placeholder:text-gray-700 [appearance:textfield] font-mono sm:text-2xl [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
-              <div className="flex justify-between items-end">
+              <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-end min-[390px]:justify-between">
                  <div className="h-6">
                  {usdValueB && (
                     <span className="text-sm font-medium text-gray-500">≈ {usdValueB}</span>

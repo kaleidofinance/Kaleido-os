@@ -103,14 +103,14 @@ export default function MyOrdersModal({ isOpen, onClose, onCreateOrder }: MyOrde
     <Dialog.Root open={isOpen} onOpenChange={onClose}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-6xl max-h-[90vh] -translate-x-1/2 -translate-y-1/2 bg-black/40 backdrop-blur-md border border-[#00ff99]/20 rounded-xl overflow-hidden shadow-2xl shadow-black/50">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex w-[calc(100vw-1rem)] max-w-6xl max-h-[calc(100dvh-1rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-[#00ff99]/20 bg-black/90 shadow-2xl shadow-black/50 backdrop-blur-md sm:w-[calc(100vw-2rem)] sm:max-h-[90vh]">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-[#00ff99]/10">
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#00ff99]/10 p-4 sm:items-center sm:p-6">
             <div>
-              <Dialog.Title className="text-2xl font-bold text-white">
+              <Dialog.Title className="text-xl font-bold text-white sm:text-2xl">
                 My Orders
               </Dialog.Title>
-              <p className="text-gray-400 mt-1">
+              <p className="mt-1 text-xs leading-relaxed text-gray-400 sm:text-sm">
                 Total: {orderSummary.total} | Open: {orderSummary.open} | Filled: {orderSummary.filled} | Closed: {orderSummary.closed}
               </p>
             </div>
@@ -125,10 +125,10 @@ export default function MyOrdersModal({ isOpen, onClose, onCreateOrder }: MyOrde
           </div>
 
           {/* Tab Navigation */}
-          <div className="flex border-b border-[#00ff99]/10">
+          <div className="flex shrink-0 overflow-x-auto border-b border-[#00ff99]/10">
             <button
               onClick={() => setActiveTab('active')}
-              className={`px-6 py-3 text-sm font-medium transition-colors ${
+              className={`shrink-0 px-4 py-3 text-xs font-medium transition-colors sm:px-6 sm:text-sm ${
                 activeTab === 'active'
                   ? 'text-white border-b-2 border-[#00ff99]'
                   : 'text-gray-400 hover:text-white'
@@ -138,7 +138,7 @@ export default function MyOrdersModal({ isOpen, onClose, onCreateOrder }: MyOrde
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`px-6 py-3 text-sm font-medium transition-colors ${
+              className={`shrink-0 px-4 py-3 text-xs font-medium transition-colors sm:px-6 sm:text-sm ${
                 activeTab === 'history'
                   ? 'text-white border-b-2 border-[#00ff99]'
                   : 'text-gray-400 hover:text-white'
@@ -148,7 +148,7 @@ export default function MyOrdersModal({ isOpen, onClose, onCreateOrder }: MyOrde
             </button>
             <button
               onClick={() => setActiveTab('transactions')}
-              className={`px-6 py-3 text-sm font-medium transition-colors ${
+              className={`shrink-0 px-4 py-3 text-xs font-medium transition-colors sm:px-6 sm:text-sm ${
                 activeTab === 'transactions'
                   ? 'text-white border-b-2 border-[#00ff99]'
                   : 'text-gray-400 hover:text-white'
@@ -159,7 +159,7 @@ export default function MyOrdersModal({ isOpen, onClose, onCreateOrder }: MyOrde
           </div>
 
           {/* Content */}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+          <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6">
             {isLoading ? (
               <div className="flex h-32 items-center justify-center gap-3 text-center">
                 <Spinner size={"3"} />
@@ -172,11 +172,11 @@ export default function MyOrdersModal({ isOpen, onClose, onCreateOrder }: MyOrde
                     {activeTab === 'active' && (
                       <div className="space-y-6">
                         {/* Orders Details - Only show Open Orders and Create Order */}
-                        <div className="min-h-[70vh] w-full bg-transparent px-2 py-6 md:px-8">
-                          <div className="mx-auto flex max-w-6xl flex-col gap-8 md:flex-row md:gap-6">
+                        <div className="w-full bg-transparent px-0 py-3 sm:px-2 sm:py-6 md:px-8">
+                          <div className="mx-auto flex max-w-6xl min-w-0 flex-col gap-4 md:flex-row md:gap-6">
                             {/* Orders column */}
-                            <div className="flex w-full flex-col gap-6 md:w-3/4">
-                              <div className="rounded-2xl bg-black/20 backdrop-blur-sm border border-white/5 px-2 py-4 shadow-lg md:px-6">
+                            <div className="flex w-full min-w-0 flex-col gap-4 md:w-3/4 md:gap-6">
+                              <div className="overflow-x-auto rounded-2xl border border-white/5 bg-black/20 px-2 py-4 shadow-lg backdrop-blur-sm md:px-6">
                                 <OrdersDetails orderSample={formattedOrders} />
                               </div>
                             </div>
@@ -184,18 +184,18 @@ export default function MyOrdersModal({ isOpen, onClose, onCreateOrder }: MyOrde
                         </div>
 
                         {/* Pending Repayments */}
-                        <div className="w-full rounded-lg p-4">
+                        <div className="w-full min-w-0 rounded-lg p-2 sm:p-4">
                           <PendingRepayments />
                         </div>
                       </div>
                     )}
 
                     {activeTab === 'history' && (
-                      <div className="min-h-[70vh] w-full bg-transparent px-2 py-6 md:px-8">
-                        <div className="mx-auto flex max-w-6xl flex-col gap-8 md:flex-row md:gap-6">
+                      <div className="w-full bg-transparent px-0 py-3 sm:px-2 sm:py-6 md:px-8">
+                        <div className="mx-auto flex max-w-6xl min-w-0 flex-col gap-4 md:flex-row md:gap-6">
                           {/* Orders column */}
-                          <div className="flex w-full flex-col gap-6 md:w-3/4">
-                            <div className="rounded-2xl bg-black/20 backdrop-blur-sm border border-white/5 px-2 py-4 shadow-lg md:px-6">
+                          <div className="flex w-full min-w-0 flex-col gap-4 md:w-3/4 md:gap-6">
+                            <div className="overflow-x-auto rounded-2xl border border-white/5 bg-black/20 px-2 py-4 shadow-lg backdrop-blur-sm md:px-6">
                               <OrdersDetails orderSample={formattedOrders} />
                             </div>
                           </div>
@@ -204,7 +204,7 @@ export default function MyOrdersModal({ isOpen, onClose, onCreateOrder }: MyOrde
                     )}
 
                     {activeTab === 'transactions' && (
-                      <div className="w-full rounded-lg p-4">
+                      <div className="w-full min-w-0 rounded-lg p-2 sm:p-4">
                         <TransactionHistory />
                       </div>
                     )}

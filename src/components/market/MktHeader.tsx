@@ -12,6 +12,7 @@ const MktHeader = () => {
       type="market"
       backgroundImage="/banners/marketplaceheaderbg.png"
       backgroundOverlay={false}
+      mobileContained={true}
       loading={loading}
       statsData={{
         totalPooledKLD: stats.totalTVL.toString(),

@@ -58,10 +58,10 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
 
   return (
     <div id="usage-card" className="w-full rounded-xl border border-[#00ff99]/30 bg-black/40 backdrop-blur-md py-6 transition-all hover:border-[#00ff99]/40">
-      <div className="mb-1 px-6 text-xl">
+      <div className="mb-1 px-4 text-lg sm:px-6 sm:text-xl">
         <h3>Your Usage</h3>
       </div>
-      <div className="mb-6 flex items-center justify-between border-y border-[#00ff99]/30 p-1 text-xs text-white/50">
+      <div className="mb-6 flex flex-col gap-1 border-y border-[#00ff99]/30 p-2 text-xs text-white/50 sm:flex-row sm:items-center sm:justify-between sm:p-1">
         <h4 className="p-1">
           Total Collateral: <span className="pl-1">{`$${formatWithCommas(collateralVal ? collateralVal : 0)}`}</span>
         </h4>
@@ -71,7 +71,7 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
       </div>
 
       <div className="relative mb-4 flex flex-col items-center">
-        <div className="w-48 h-48 sm:w-64 sm:h-64">
+        <div className="h-44 w-44 sm:h-64 sm:w-64">
           <CircularProgressbar
             value={actualPower}
             circleRatio={4.7 / 5}
@@ -163,7 +163,7 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
         </div>
       )}
 
-      <div className="m-auto mt-5 w-4/6 px-6 space-y-3">
+      <div className="m-auto mt-5 w-full space-y-3 px-4 sm:w-4/6 sm:px-6">
         <button 
           onClick={() => setIsOrdersModalOpen(true)} 
           className="w-full rounded-xl bg-[#19aa61] py-3 text-sm font-normal hover:scale-105"

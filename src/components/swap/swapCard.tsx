@@ -472,7 +472,7 @@ function SwapCard({
   };
 
   return (
-    <div className="lg:w-[600px] sm:w-full bg-board/80 backdrop-blur-sm h-auto min-h-[500px] rounded-2xl p-8 shadow-xl text-white relative overflow-hidden border border-[#00ff99]/20">
+    <div className="relative h-auto min-h-[500px] w-full min-w-0 overflow-hidden rounded-2xl border border-[#00ff99]/20 bg-board/80 p-4 text-white shadow-xl backdrop-blur-sm sm:p-8 lg:w-[600px]">
       {/* Subtle overlay for transparency effect with faint green tint */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#00ff99]/5 via-transparent to-[#00ff99]/10 pointer-events-none"></div>
       
@@ -537,10 +537,10 @@ function SwapCard({
 
         <div className="flex flex-col space-y-2 mt-2">
           <div className="flex flex-col space-y-1">
-            <div className="flex justify-between ">
+            <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:justify-between ">
               <p className="text-gray-400 font-normal">Exchange Rate</p>
               <p 
-                className="font-normal text-white cursor-pointer hover:text-green-400 transition-colors select-none"
+                className="break-words text-left font-normal text-white transition-colors hover:text-green-400 sm:text-right cursor-pointer select-none"
                 onClick={() => setInvertRate(!invertRate)}
                 title="Click to invert exchange rate"
               >
@@ -662,7 +662,7 @@ function SwapCard({
             )}
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex min-w-0 gap-2">
             {!isApproved && !isWrapAction && !insufficientLiquidity ? (
                  <Button 
                    fullWidth={true} 

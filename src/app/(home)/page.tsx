@@ -222,8 +222,8 @@ export default function DashboardPage() {
   }, [])
 
   return (
-    <div className="w-full p-4">
-      <div className="w-full">
+    <div className="w-full min-w-0 overflow-x-hidden px-3 py-4 sm:p-4">
+      <div className="w-full min-w-0">
         <h3 className="mb-4 text-xl">
           {"Welcome, "}
           <span className="text-[#00dd55]">{capitalizeFirstLetter(user)}</span>
@@ -345,7 +345,7 @@ export default function DashboardPage() {
         )}
 
         {/* Top section: Dashboard Cards */}
-        <div className="mb-14 flex flex-wrap gap-4">
+        <div className="mb-10 flex min-w-0 flex-col gap-4 sm:mb-14 sm:flex-row sm:flex-wrap">
           <DashboardCard
             text={"Total Portfolio"}
             figure={`$${formatPortfolioValue(fig, { compact: false })}`}
@@ -373,15 +373,15 @@ export default function DashboardPage() {
         </div>
 
         {/* Bottom section: Two halves */}
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-6 sm:gap-10 lg:grid-cols-2">
           {/* Left half: Balance and Collateral stacked */}
-          <div className="flex flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-5">
             <Balance />
             <Collateral id="collateral-card" />
           </div>
 
           {/* Right half: Usage alone */}
-          <div className="w-full">
+          <div className="w-full min-w-0">
             <Usage activeReq={activeReq} collateralVal={collateralVal} />
           </div>
         </div>

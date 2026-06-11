@@ -68,7 +68,7 @@ export default function LeaderboardPage() {
   const maxPoints = leaderboard[0]?.totalPoints || 1
 
   return (
-    <div className="min-h-screen py-8 px-2">
+    <div className="min-h-screen min-w-0 overflow-x-hidden px-3 py-6 sm:px-4 sm:py-8">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
@@ -101,9 +101,9 @@ export default function LeaderboardPage() {
       )}
 
       {/* Table */}
-      <div className="rounded-xl border border-white/5 overflow-hidden backdrop-blur-xl bg-black/20">
+      <div className="overflow-hidden rounded-xl border border-white/5 bg-black/20 backdrop-blur-xl">
         {/* Table Header */}
-        <div className="grid grid-cols-12 px-4 py-3 border-b border-white/5 text-xs text-white/30 uppercase tracking-wider">
+        <div className="hidden grid-cols-12 border-b border-white/5 px-4 py-3 text-xs uppercase tracking-wider text-white/30 sm:grid">
           <div className="col-span-1">Rank</div>
           <div className="col-span-4">Wallet</div>
           <div className="col-span-4">Progress</div>
@@ -137,10 +137,10 @@ export default function LeaderboardPage() {
           return (
             <div
               key={entry.wallet}
-              className={`grid grid-cols-12 items-center px-4 py-3.5 border-b border-white/5 transition-all ${getRankStyle(rank)} ${isMe ? "ring-1 ring-inset ring-[#00ff99]/20" : ""}`}
+              className={`grid grid-cols-[auto_1fr] gap-3 px-3 py-3.5 sm:grid-cols-12 sm:items-center sm:px-4 border-b border-white/5 transition-all ${getRankStyle(rank)} ${isMe ? "ring-1 ring-inset ring-[#00ff99]/20" : ""}`}
             >
               {/* Rank */}
-              <div className="col-span-1 font-bold text-sm">
+              <div className="font-bold text-sm sm:col-span-1">
                 {rank <= 3 ? (
                   <span className="text-lg">{MEDALS[rank - 1]}</span>
                 ) : (
@@ -149,13 +149,13 @@ export default function LeaderboardPage() {
               </div>
 
               {/* Wallet */}
-              <div className="col-span-4">
-                <div className="flex items-center gap-2">
+              <div className="min-w-0 sm:col-span-4">
+                <div className="flex min-w-0 items-center gap-2">
                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#00ff99]/20 to-[#00ff99]/5 border border-[#00ff99]/10 flex items-center justify-center text-xs text-[#00ff99] font-bold">
                     {entry.wallet.slice(2, 4).toUpperCase()}
                   </div>
-                  <div>
-                    <p className={`text-sm font-mono font-medium ${isMe ? "text-[#00ff99]" : "text-white/80"}`}>
+                  <div className="min-w-0">
+                    <p className={`truncate text-sm font-mono font-medium ${isMe ? "text-[#00ff99]" : "text-white/80"}`}>
                       {shortenAddress(entry.wallet)}
                       {isMe && <span className="ml-1.5 text-xs bg-[#00ff99]/10 text-[#00ff99] px-1.5 py-0.5 rounded-full">You</span>}
                     </p>
@@ -168,7 +168,7 @@ export default function LeaderboardPage() {
               </div>
 
               {/* Progress bar */}
-              <div className="col-span-4 pr-4">
+              <div className="col-span-2 pr-0 sm:col-span-4 sm:pr-4">
                 <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-700 ${getBarColor(rank)}`}
@@ -178,7 +178,7 @@ export default function LeaderboardPage() {
               </div>
 
               {/* Points */}
-              <div className="col-span-3 text-right">
+              <div className="col-start-2 row-start-1 text-right sm:col-span-3 sm:col-start-auto sm:row-start-auto">
                 <p className={`text-sm font-bold tabular-nums ${rank === 1 ? "text-yellow-400" : rank <= 3 ? "text-white" : "text-white/70"}`}>
                   {entry.totalPoints.toLocaleString()}
                 </p>
@@ -192,7 +192,7 @@ export default function LeaderboardPage() {
       {/* Point System Legend */}
       <div className="mt-6 rounded-xl border border-white/5 bg-black/20 p-4 backdrop-blur-xl">
         <p className="text-xs text-white/30 uppercase tracking-wider mb-3">How Points Are Earned</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 gap-3 min-[390px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           {[
             { label: "Swap Volume", value: "$1 = 1 pt", icon: "🔄" },
             { label: "Agent Swap (Luca)", value: "$1 = 1.2 pts", icon: "🤖" },

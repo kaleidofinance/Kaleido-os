@@ -66,8 +66,8 @@ export default function MarketPlacePage() {
 
 
   return (
-    <div className="w-full mt-4 md:mt-10 px-4">
-      <div className="w-full px-1">
+    <div className="mt-4 w-full min-w-0 overflow-x-hidden px-3 md:mt-10 md:px-4">
+      <div className="w-full min-w-0 px-0 sm:px-1">
         <div className="mb-8">
           <MktHeader />
         </div>

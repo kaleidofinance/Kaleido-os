@@ -18,6 +18,7 @@ interface BaseHeaderProps {
     farms?: number
   }
   loading?: boolean
+  mobileContained?: boolean
   children?: React.ReactNode
 }
 
@@ -30,6 +31,7 @@ const BaseHeader = ({
   backgroundOverlay = true,
   statsData,
   loading = false,
+  mobileContained = false,
   children
 }: BaseHeaderProps) => {
   const [isClient, setIsClient] = useState(false)
@@ -40,7 +42,7 @@ const BaseHeader = ({
 
   if (!isClient) {
     return (
-      <header className="w-full rounded-lg border border-[#1a9443]/20 bg-black sm:px-10 relative overflow-hidden">
+      <header className={`w-full rounded-lg border border-[#1a9443]/20 bg-black sm:px-10 relative overflow-hidden ${mobileContained ? "max-sm:min-w-0" : ""}`}>
         {backgroundImage && (
           <div className="absolute inset-0 z-0">
             <Image
@@ -55,10 +57,10 @@ const BaseHeader = ({
             )}
           </div>
         )}
-        <div className="relative z-10 flex w-full flex-col items-start justify-between p-4 lg:flex-row lg:items-center lg:p-0">
-          <div className="w-full text-start lg:w-2/3">
-            <h3 className="text-2xl font-bold sm:text-3xl lg:text-[40px]">{title}</h3>
-            <p className="mt-2 text-sm sm:text-base lg:text-[15px]">
+        <div className={`relative z-10 flex w-full flex-col items-start justify-between p-4 lg:flex-row lg:items-center lg:p-0 ${mobileContained ? "max-sm:min-w-0 max-sm:p-4" : ""}`}>
+          <div className={`w-full text-start lg:w-2/3 ${mobileContained ? "max-sm:min-w-0" : ""}`}>
+            <h3 className={`text-2xl font-bold sm:text-3xl lg:text-[40px] ${mobileContained ? "max-sm:text-[1.45rem] max-sm:leading-tight" : ""}`}>{title}</h3>
+            <p className={`mt-2 text-sm sm:text-base lg:text-[15px] ${mobileContained ? "max-sm:text-xs max-sm:leading-relaxed" : ""}`}>
               {description}
             </p>
           </div>
@@ -71,7 +73,7 @@ const BaseHeader = ({
   }
 
   return (
-    <header className="w-full rounded-lg border border-[#1a9443]/30 bg-black sm:px-10 relative overflow-hidden">
+    <header className={`w-full rounded-lg border border-[#1a9443]/30 bg-black sm:px-10 relative overflow-hidden ${mobileContained ? "max-sm:min-w-0" : ""}`}>
       {backgroundImage && (
         <div className="absolute inset-0 z-0">
           <Image
@@ -87,18 +89,18 @@ const BaseHeader = ({
         </div>
       )}
       
-      <div className="relative z-10 flex w-full flex-col items-start justify-between p-4 lg:flex-row lg:items-center lg:p-0">
-        <div className="w-full text-start lg:w-2/3">
-          <h3 className="text-2xl font-bold sm:text-3xl lg:text-[40px]">{title}</h3>
-          <p className="mt-2 text-sm sm:text-base lg:text-[15px]">
+      <div className={`relative z-10 flex w-full flex-col items-start justify-between p-4 lg:flex-row lg:items-center lg:p-0 ${mobileContained ? "max-sm:min-w-0 max-sm:p-4" : ""}`}>
+        <div className={`w-full text-start lg:w-2/3 ${mobileContained ? "max-sm:min-w-0" : ""}`}>
+          <h3 className={`text-2xl font-bold sm:text-3xl lg:text-[40px] ${mobileContained ? "max-sm:text-[1.45rem] max-sm:leading-tight" : ""}`}>{title}</h3>
+          <p className={`mt-2 text-sm sm:text-base lg:text-[15px] ${mobileContained ? "max-sm:text-xs max-sm:leading-relaxed" : ""}`}>
             {description}
           </p>
         </div>
         
-        <div className="relative mt-6 lg:mt-0 lg:ml-6 flex items-center justify-center w-full">
+        <div className={`relative mt-6 lg:mt-0 lg:ml-6 flex items-center justify-center w-full ${mobileContained ? "max-sm:min-w-0" : ""}`}>
           {/* Analytics positioned in center area */}
           {showStats && (
-            <div className="grid grid-cols-2 gap-4 lg:flex lg:items-center lg:gap-12 z-10 relative lg:absolute lg:left-1/2 lg:transform lg:-translate-x-1/2 bg-gradient-to-r from-black/20 via-black/30 to-black/20 backdrop-blur-md border border-[#00ff99]/60 rounded-2xl p-4 lg:px-10 lg:py-8 shadow-2xl transition-all duration-300 hover:bg-gradient-to-r hover:from-black/30 hover:via-black/40 hover:to-black/30 hover:border-[#00ff99]/80 hover:shadow-3xl hover:scale-105 hover:shadow-[#00ff99]/20 justify-items-center w-full lg:w-auto">
+            <div className={`grid grid-cols-2 gap-4 lg:flex lg:items-center lg:gap-12 z-10 relative lg:absolute lg:left-1/2 lg:transform lg:-translate-x-1/2 bg-gradient-to-r from-black/20 via-black/30 to-black/20 backdrop-blur-md border border-[#00ff99]/60 rounded-2xl p-4 lg:px-10 lg:py-8 shadow-2xl transition-all duration-300 hover:bg-gradient-to-r hover:from-black/30 hover:via-black/40 hover:to-black/30 hover:border-[#00ff99]/80 hover:shadow-3xl lg:hover:scale-105 hover:shadow-[#00ff99]/20 justify-items-center w-full lg:w-auto ${mobileContained ? "max-sm:min-w-0 max-sm:gap-2 max-sm:p-3" : ""}`}>
               {/* First stat - TVL / Total Staked (KLD) */}
               <div className="flex flex-col items-center text-center w-full lg:min-w-[80px] group cursor-pointer transition-all duration-300 hover:scale-110 hover:transform relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#00ff99]/10 to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>

@@ -104,13 +104,13 @@ const Balance = () => {
   }
 
   return (
-    <div id="balances-card" className="custom-corner-header w-full bg-black/40 backdrop-blur-md rounded-xl border border-[#00ff99]/10 py-4 transition-all hover:border-[#00ff99]/30">
-      <div className="mb-1 px-6 text-xl">
+    <div id="balances-card" className="custom-corner-header w-full min-w-0 bg-black/40 backdrop-blur-md rounded-xl border border-[#00ff99]/10 py-4 transition-all hover:border-[#00ff99]/30">
+      <div className="mb-1 px-4 text-lg sm:px-6 sm:text-xl">
         <h3>Collateral&apos;s Balance</h3>
       </div>
 
       {/* Summary Section */}
-      <div className="mb-2 flex justify-between border-y border-[#00ff99]/30 p-1 text-xs text-white/50">
+      <div className="mb-2 flex flex-col gap-1 border-y border-[#00ff99]/30 p-2 text-xs text-white/50 sm:flex-row sm:justify-between sm:p-1">
         <h4 className="p-1 sm:p-0">
           Total Bal: <span className="pl-1">{`$${formatWithCommas(collateralVal ? collateralVal : 0)}`}</span>
         </h4>
@@ -120,8 +120,8 @@ const Balance = () => {
       </div>
 
       {/* Scrollable Table */}
-      <div className="px-6 relative overflow-y-auto max-h-[220px] kaleido-scrollbar">
-        <table className="min-w-full text-sm">
+      <div className="relative max-h-[260px] overflow-y-auto px-4 kaleido-scrollbar sm:max-h-[220px] sm:px-6">
+        <table className="min-w-full text-sm max-sm:hidden">
           <thead>
             <tr className="text-center text-white/70">
               <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">Asset</th>
@@ -182,6 +182,39 @@ const Balance = () => {
             ))}
           </tbody>
         </table>
+        <div className="space-y-3 sm:hidden">
+          {filteredBalanceData.map((item, index) => (
+            <div key={index} className="rounded-xl border border-white/10 bg-black/40 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <img src={item.assetImg} alt={item.assetName} className="h-6 w-6 shrink-0" />
+                  <span className="font-medium">{item.assetName}</span>
+                </div>
+                <span className="text-right text-xs text-white/50">${formatWithCommas(item.marketValue.replace("$", ""))}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg bg-white/5 p-2">
+                  <p className="text-white/40">Balance</p>
+                  <p className="mt-1 text-sm text-white">{formatWithCommas(item.balance, item.assetName === "ETH" ? 4 : 2)}</p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-2">
+                  <p className="text-white/40">Price</p>
+                  <p className="mt-1 text-sm text-white">
+                    {item.assetName === "ETH"
+                      ? `$${formatWithCommas(etherPrice)}`
+                      : ["USDC", "USDR", "kfUSD", "USDT"].includes(item.assetName)
+                        ? `$${formatWithCommas(usdcPrice || 1)}`
+                        : "$1.00"}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button onClick={() => setShowDepositModal(true)} className="rounded-lg bg-[#19aa61] px-3 py-2 text-xs text-white">Deposit</button>
+                <button onClick={() => setShowWithdrawModal(true)} className="rounded-lg bg-[#2a2a2a] px-3 py-2 text-xs text-white">Withdraw</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
       
       {/* Deposit Modal */}

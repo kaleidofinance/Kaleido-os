@@ -8,6 +8,7 @@ const SwapHeader = () => {
       showStats={false}
       backgroundImage="/banners/swapheaderbg.png"
       backgroundOverlay={false}
+      mobileContained={true}
     />
   )
 }

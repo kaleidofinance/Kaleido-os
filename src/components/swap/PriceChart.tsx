@@ -112,7 +112,7 @@ export default function PriceChart({
   // If loading or no data, show loading state
   if (loading && !spotPrice) {
     return (
-      <div className={`bg-black/90 backdrop-blur-sm h-[500px] w-[700px] rounded-2xl p-6 shadow-xl text-white relative overflow-hidden border border-[#00ff99]/20 ${className}`}>
+      <div className={`bg-black/90 backdrop-blur-sm h-[360px] w-full max-w-[700px] rounded-2xl p-3 sm:h-[500px] sm:p-6 shadow-xl text-white relative overflow-hidden border border-[#00ff99]/20 ${className}`}>
         <div className="flex items-center justify-center h-full">
           <Loading />
         </div>
@@ -123,7 +123,7 @@ export default function PriceChart({
   // If no price history, show message
   if (activeHistory.length === 0) {
     return (
-      <div className={`bg-black/90 backdrop-blur-sm h-[500px] w-[700px] rounded-2xl p-6 shadow-xl text-white relative overflow-hidden border border-[#00ff99]/20 ${className}`}>
+      <div className={`bg-black/90 backdrop-blur-sm h-[360px] w-full max-w-[700px] rounded-2xl p-3 sm:h-[500px] sm:p-6 shadow-xl text-white relative overflow-hidden border border-[#00ff99]/20 ${className}`}>
         <div className="flex items-center justify-center h-full">
           <p className="text-gray-400">No price history available for this pair</p>
         </div>
@@ -174,7 +174,7 @@ export default function PriceChart({
   }).join(' ');
 
   return (
-    <div className={`bg-black/90 backdrop-blur-sm h-[500px] w-[700px] rounded-2xl p-6 shadow-xl text-white relative overflow-hidden border border-[#00ff99]/20 ${className}`}>
+    <div className={`bg-black/90 backdrop-blur-sm h-[360px] w-full max-w-[700px] rounded-2xl p-3 sm:h-[500px] sm:p-6 shadow-xl text-white relative overflow-hidden border border-[#00ff99]/20 ${className}`}>
       {/* Retro grid overlay */}
       <div className="absolute inset-0 opacity-20">
         <svg width="100%" height="100%" className="absolute inset-0">
@@ -189,9 +189,9 @@ export default function PriceChart({
       
       <div className="relative z-10">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-6">
-            <h3 className="text-xl font-bold text-white font-mono">
+        <div className="mb-4 flex flex-col items-start justify-between gap-3 sm:mb-6 sm:flex-row sm:items-center">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-6">
+            <h3 className="text-base font-bold text-white font-mono sm:text-xl">
               {fromTokenSymbol} / {toTokenSymbol}
             </h3>
             <div className="flex bg-[#1a1a1a] rounded-lg p-1 border border-[#333]">
@@ -223,7 +223,7 @@ export default function PriceChart({
         </div>
 
         {/* Chart Container */}
-        <div className="relative bg-black/50 rounded-lg p-4 border border-[#00ff99]/20">
+        <div className="relative rounded-lg border border-[#00ff99]/20 bg-black/50 p-2 sm:p-4">
           <svg width={chartWidth} height={chartHeight} className="w-full h-auto">
             {/* Background grid */}
             <defs>

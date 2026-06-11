@@ -140,7 +140,7 @@ const LoadMoreButton = ({
       <div className="text-sm text-gray-400">
         Showing {currentCount} of {total} total results
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 min-[390px]:flex-row">
         {loadOptions
           .filter((amount) => amount <= remainingCount)
           .map((amount) => (
@@ -371,9 +371,9 @@ const BorrowRow = ({ data, address, etherPrice, usdcPrice, onCloseAd, index, fil
       </div>
 
       {/* Mobile Card Layout - Hidden on desktop */}
-      <div className="flex flex-col border-b border-[#00ff99]/30 bg-black p-4 lg:hidden">
+      <div className="mx-0 mb-3 flex min-w-0 flex-col rounded-xl border border-[#00ff99]/20 bg-black/80 p-3 lg:hidden">
         {/* Header Row */}
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <Image
               src={tokenInfo?.image || "/Eye.svg"}
@@ -395,7 +395,7 @@ const BorrowRow = ({ data, address, etherPrice, usdcPrice, onCloseAd, index, fil
         </div>
 
         {/* Info Grid */}
-        <div className="mb-3 grid grid-cols-2 gap-3 text-sm">
+        <div className="mb-3 grid grid-cols-1 gap-2 text-sm min-[390px]:grid-cols-2">
           <div>
             <div className="text-xs text-gray-400">Origin</div>
             <div className="font-medium">{formatAddress(data.sender)}</div>
@@ -429,7 +429,7 @@ const BorrowRow = ({ data, address, etherPrice, usdcPrice, onCloseAd, index, fil
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 min-[390px]:flex-row">
           <button
             onClick={() => {
               if (address) {
@@ -604,9 +604,9 @@ const LendRow = ({ data, filters, index }: any) => {
       </div>
 
       {/* Mobile Card Layout */}
-      <div className="flex flex-col border-b border-[#00ff99]/30 bg-black p-4 lg:hidden">
+      <div className="mx-0 mb-3 flex min-w-0 flex-col rounded-xl border border-[#00ff99]/20 bg-black/80 p-3 lg:hidden">
         {/* Header */}
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <Image
               src={tokenInfo?.image || "/Eye.svg"}
@@ -628,7 +628,7 @@ const LendRow = ({ data, filters, index }: any) => {
         </div>
 
         {/* Info Grid */}
-        <div className="mb-3 grid grid-cols-2 gap-3 text-sm">
+        <div className="mb-3 grid grid-cols-1 gap-2 text-sm min-[390px]:grid-cols-2">
           <div>
             <div className="text-xs text-gray-400">Borrower</div>
             <div className="font-medium">{formatAddress(data.author)}</div>
@@ -660,7 +660,7 @@ const LendRow = ({ data, filters, index }: any) => {
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 min-[390px]:flex-row">
           <button
             onClick={() => {
               if (filters?.address && data.status !== "SERVICED") {
@@ -780,7 +780,7 @@ const HorizontalListingLayout = () => {
   // Error handling
   if (currentData.error) {
     return (
-      <div className="w-full py-5">
+      <div className="w-full min-w-0 py-5">
         <div className="flex flex-col items-center justify-center px-4 py-16">
           <div className="mb-4 text-6xl">⚠️</div>
           <h3 className="mb-2 text-center text-xl font-semibold text-red-400">Unable to Load Data</h3>
@@ -811,7 +811,7 @@ const HorizontalListingLayout = () => {
   // Loading state
   if (currentData.loading) {
     return (
-      <div className="w-full py-5">
+      <div className="w-full min-w-0 py-5">
         <div className="px-4 sm:px-12">
           <LoadingSkeleton />
         </div>
@@ -820,9 +820,9 @@ const HorizontalListingLayout = () => {
   }
 
   return (
-    <div className="w-full py-5">
+    <div className="w-full min-w-0 py-5">
       {/* Header with Tab Switch */}
-      <div className="mb-6 flex flex-col gap-4 px-4 sm:flex-row sm:items-center sm:justify-between sm:px-12">
+      <div className="mb-6 flex min-w-0 flex-col gap-4 px-0 sm:flex-row sm:items-center sm:justify-between sm:px-12">
         <div className="flex w-full space-x-1 rounded-lg bg-[#2a2a2a] p-1 sm:w-auto">
           {/* Tab buttons with responsive text */}
           <button
