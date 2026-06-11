@@ -33,12 +33,12 @@ export default function TokenInputPanel({
   };
 
   const PercentButtons = () => (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-1.5 sm:gap-2">
       {[25, 50, 75, 100].map((percent) => (
         <button
           key={percent}
           onClick={() => calculatePercentage(percent, balance)}
-          className="text-xs font-semibold text-[#00ff99] hover:bg-[#00ff99]/10 rounded px-1.5 py-0.5 transition-colors uppercase tracking-wide border border-[#00ff99]/30"
+          className="min-h-7 rounded border border-[#00ff99]/30 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#00ff99] transition-colors hover:bg-[#00ff99]/10 sm:text-xs"
         >
           {percent === 100 ? "Max" : `${percent}%`}
         </button>
@@ -47,29 +47,29 @@ export default function TokenInputPanel({
   );
 
   return (
-    <div className="w-full h-32 rounded-xl bg-[#0a2915]/40 backdrop-blur-md p-5 flex flex-col space-y-2 mt-5 relative overflow-hidden border border-[#00ff99]/10">
-      <div className="flex justify-between items-center relative z-10">
-        <div className="flex items-center gap-2">
+    <div className="relative mt-4 flex min-h-32 w-full min-w-0 flex-col space-y-2 overflow-hidden rounded-xl border border-[#00ff99]/10 bg-[#0a2915]/40 p-3 backdrop-blur-md sm:mt-5 sm:p-5">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
            <p className="text-gray-400 font-medium">
              {label === "from" ? "From" : "To"}
            </p>
            <PercentButtons />
         </div>
-        <span className="text-xs text-[#00ff99] font-mono">
+        <span className="max-w-full truncate text-xs font-mono text-[#00ff99]">
           Balance: {formatBalance(balance)}
         </span>
       </div>
-      <div className="px-3 flex justify-between relative z-10 pt-2">
-        <div className="flex flex-col">
+      <div className="relative z-10 flex min-w-0 items-end justify-between gap-2 px-0 pt-2 sm:px-3">
+        <div className="flex min-w-0 flex-1 flex-col">
             <input
               placeholder="0.0"
               value={value}
               onChange={(e) => onValueChange(e.target.value)}
               type="number"
               maxLength={20}
-              className="bg-transparent sm:w-full lg:w-48 border-none focus:outline-none focus:border-none h-10
-                text-3xl font-medium text-white
-                placeholder:text-3xl placeholder:font-medium placeholder:text-gray-400 focus:ring-0 resize-none overflow-hidden [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="bg-transparent w-full min-w-0 max-w-[150px] sm:max-w-none lg:w-48 border-none focus:outline-none focus:border-none h-10
+                text-2xl font-medium text-white sm:text-3xl
+                placeholder:text-2xl sm:placeholder:text-3xl placeholder:font-medium placeholder:text-gray-400 focus:ring-0 resize-none overflow-hidden [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             {usdValue && (
                 <p className="text-gray-500 font-medium text-sm mt-1">≈${usdValue}</p>
