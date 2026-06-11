@@ -28,9 +28,9 @@ export const metadata: Metadata = {
 
 export default function HomeLayout({ children }: { children: React.ReactNode }) {
   return (
-    <section className="relative mx-auto min-h-screen w-full max-w-[1600px] px-3 text-white sm:px-4 md:px-8">
+    <section className="max-w-[1600px] relative mx-auto min-h-screen w-full text-white px-4 md:px-8">
       <Header />
-      <main className="min-w-0 pt-3 sm:pt-0">{children}</main>
+      <main className="pt-6 sm:pt-0">{children}</main>
     </section>
   )
 }

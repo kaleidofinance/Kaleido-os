@@ -1,15 +1,8 @@
-import Image from "next/image";
-import { useState, useEffect } from "react";
-import { useAtom } from "jotai";
-import {
-  Search,
-  X,
-  Filter,
-  ChevronDown,
-  Check,
-  SlidersHorizontal,
-} from "lucide-react";
-import * as Dialog from "@radix-ui/react-dialog";
+import Image from "next/image"
+import { useState, useEffect } from "react"
+import { useAtom } from "jotai"
+import { Search, X, Filter, ChevronDown, Check, SlidersHorizontal } from "lucide-react"
+import * as Dialog from "@radix-ui/react-dialog"
 import {
   selectedTokenAtom,
   selectedOrderAtom,
@@ -19,129 +12,117 @@ import {
   filterByOwnerAtom,
   searchByIdAtom,
   filtervolumebyOrder,
-} from "@/constants/atom";
-import { useEnhancedCardData } from "@/components/market/EnhancedCardlayout";
-import { tokenImageMap } from "@/constants/utils/tokenImageMap";
-import { orderTypesArray, statusLabels } from "@/constants/types/orders";
-import SliderControl from "../ui/slider";
-import { getMinimumInterest } from "@/constants/utils/minimumInterest";
-import { AMOUNT_FILTERS } from "@/constants/utils/AmountFilter";
-import { Ordertype } from "@/constants/types";
+} from "@/constants/atom"
+import { useEnhancedCardData } from "@/components/market/EnhancedCardlayout"
+import { tokenImageMap } from "@/constants/utils/tokenImageMap"
+import { orderTypesArray, statusLabels } from "@/constants/types/orders"
+import SliderControl from "../ui/slider"
+import { getMinimumInterest } from "@/constants/utils/minimumInterest"
+import { AMOUNT_FILTERS } from "@/constants/utils/AmountFilter"
+import { Ordertype } from "@/constants/types"
 
 export const DataFiltersPanel = () => {
   // Use atoms directly for filter state management
-  const [selectedToken, setSelectedToken] = useAtom(selectedTokenAtom);
-  const [selectedOrder, setSelectedOrder] = useAtom(selectedOrderAtom);
-  const [activeTable] = useAtom(activeTableAtom);
-  const [interestRate] = useAtom(interestAtom);
-  const [selectedVolumeRanges, setSelectedVolumeRanges] = useAtom(
-    selectedVolumeRangesAtom,
-  );
-  const [filterByOwner, setFilterByOwner] = useAtom(filterByOwnerAtom);
-  const [searchById, setSearchById] = useAtom(searchByIdAtom);
-  const [filterbyVolumeOrder, setFilterByVolumeOrder] =
-    useAtom(filtervolumebyOrder);
-  const [, setInterestRate] = useAtom(interestAtom);
+  const [selectedToken, setSelectedToken] = useAtom(selectedTokenAtom)
+  const [selectedOrder, setSelectedOrder] = useAtom(selectedOrderAtom)
+  const [activeTable] = useAtom(activeTableAtom)
+  const [interestRate] = useAtom(interestAtom)
+  const [selectedVolumeRanges, setSelectedVolumeRanges] = useAtom(selectedVolumeRangesAtom)
+  const [filterByOwner, setFilterByOwner] = useAtom(filterByOwnerAtom)
+  const [searchById, setSearchById] = useAtom(searchByIdAtom)
+  const [filterbyVolumeOrder, setFilterByVolumeOrder] = useAtom(filtervolumebyOrder)
+  const [, setInterestRate] = useAtom(interestAtom)
 
   // Local state for debounced search input
-  const [localSearchValue, setLocalSearchValue] = useState(searchById);
-
+  const [localSearchValue, setLocalSearchValue] = useState(searchById)
+  
   // Modal states
-  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
-  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-  const [isInterestModalOpen, setIsInterestModalOpen] = useState(false);
-  const [isVolumeModalOpen, setIsVolumeModalOpen] = useState(false);
-  const [isAdvancedModalOpen, setIsAdvancedModalOpen] = useState(false);
+  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false)
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false)
+  const [isInterestModalOpen, setIsInterestModalOpen] = useState(false)
+  const [isVolumeModalOpen, setIsVolumeModalOpen] = useState(false)
+  const [isAdvancedModalOpen, setIsAdvancedModalOpen] = useState(false)
 
   // Get filtered data from the enhanced hook
-  const { borrowData, lendData } = useEnhancedCardData();
+  const { borrowData, lendData } = useEnhancedCardData()
 
   // Get active data based on current table
-  const activeData =
-    activeTable === "lend" ? lendData.filteredData : borrowData.filteredData;
-  const minInterest = getMinimumInterest(
-    Array.isArray(activeData) ? activeData : [],
-  );
+  const activeData = activeTable === "lend" ? lendData.filteredData : borrowData.filteredData
+  const minInterest = getMinimumInterest(Array.isArray(activeData) ? activeData : [])
 
   // Update local value when atom changes
   useEffect(() => {
-    setLocalSearchValue(searchById);
-  }, [searchById]);
+    setLocalSearchValue(searchById)
+  }, [searchById])
 
   // Debounced search - update atom after user stops typing
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setSearchById(localSearchValue);
-    }, 300);
-    return () => clearTimeout(timeoutId);
-  }, [localSearchValue, setSearchById]);
+      setSearchById(localSearchValue)
+    }, 300)
+    return () => clearTimeout(timeoutId)
+  }, [localSearchValue, setSearchById])
 
   // Helper function to toggle volume filters
   const toggleVolumeFilter = (range: { min: number; max: number }) => {
     const isSelected = selectedVolumeRanges.some(
-      (selectedRange) =>
-        selectedRange.min === range.min && selectedRange.max === range.max,
-    );
+      (selectedRange) => selectedRange.min === range.min && selectedRange.max === range.max,
+    )
     if (isSelected) {
       // Remove the range
       setSelectedVolumeRanges(
         selectedVolumeRanges.filter(
-          (selectedRange) =>
-            !(
-              selectedRange.min === range.min && selectedRange.max === range.max
-            ),
+          (selectedRange) => !(selectedRange.min === range.min && selectedRange.max === range.max),
         ),
-      );
+      )
     } else {
       // Add the range
-      setSelectedVolumeRanges([...selectedVolumeRanges, range]);
+      setSelectedVolumeRanges([...selectedVolumeRanges, range])
     }
-  };
+  }
 
   // Clear search function
   const handleClearSearch = () => {
-    setLocalSearchValue("");
-    setSearchById("");
-  };
+    setLocalSearchValue("")
+    setSearchById("")
+  }
 
   // Handle volume order change
-  const handleFilterbyvolumeOrder = (
-    e: React.ChangeEvent<HTMLSelectElement>,
-  ) => {
-    setFilterByVolumeOrder(e.target.value);
-  };
+  const handleFilterbyvolumeOrder = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFilterByVolumeOrder(e.target.value)
+  }
 
   // Helper functions for modal system
   const getActiveFilterCount = () => {
-    let count = 0;
-    if (selectedToken !== "All Tokens") count++;
-    if (selectedOrder !== "All Orders") count++;
-    if (interestRate < 100) count++;
-    if (selectedVolumeRanges.length > 0) count++;
-    if (filterByOwner) count++;
-    return count;
-  };
+    let count = 0
+    if (selectedToken !== "All Tokens") count++
+    if (selectedOrder !== "All Orders") count++
+    if (interestRate < 100) count++
+    if (selectedVolumeRanges.length > 0) count++
+    if (filterByOwner) count++
+    return count
+  }
 
   const getSelectedTokenLabel = () => {
-    if (selectedToken === "All Tokens") return "All Tokens";
-    const token = tokenImageMap[selectedToken];
-    return token ? token.label : "Unknown Token";
-  };
+    if (selectedToken === "All Tokens") return "All Tokens"
+    const token = tokenImageMap[selectedToken]
+    return token ? token.label : "Unknown Token"
+  }
 
   const getSelectedTokenImage = () => {
-    if (selectedToken === "All Tokens") return null;
-    const token = tokenImageMap[selectedToken];
-    return token ? token.image : null;
-  };
+    if (selectedToken === "All Tokens") return null
+    const token = tokenImageMap[selectedToken]
+    return token ? token.image : null
+  }
 
   const clearAllFilters = () => {
-    setSelectedToken("All Tokens");
-    setSelectedOrder("All Orders");
-    setInterestRate(100);
-    setSelectedVolumeRanges([]);
-    setFilterByOwner(false);
-    setFilterByVolumeOrder("Highest");
-  };
+    setSelectedToken("All Tokens")
+    setSelectedOrder("All Orders")
+    setInterestRate(100)
+    setSelectedVolumeRanges([])
+    setFilterByOwner(false)
+    setFilterByVolumeOrder("Highest")
+  }
 
   return (
     <div className="w-full mt-4" data-tour="filter-card">
@@ -169,18 +150,14 @@ export const DataFiltersPanel = () => {
         </div>
 
         {/* Filter Chips */}
-        <div className="flex flex-wrap gap-2 sm:gap-3">
+        <div className="flex flex-wrap gap-3">
           {/* Token Filter Chip */}
           <button
             onClick={() => setIsTokenModalOpen(true)}
-            className="flex min-h-10 min-w-0 items-center gap-2 rounded-xl border border-[#00ff99]/30 bg-[#00ff99]/10 px-3 py-2 text-xs font-medium text-[#00ff99] transition-all hover:border-[#00ff99]/50 hover:bg-[#00ff99]/20 sm:px-4 sm:text-sm"
+            className="flex items-center gap-2 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm font-medium text-green-400 transition-all hover:bg-green-500/20 hover:border-green-500/50"
           >
             {getSelectedTokenImage() && (
-              <img
-                src={getSelectedTokenImage()!}
-                alt={getSelectedTokenLabel()}
-                className="h-4 w-4 rounded-full"
-              />
+              <img src={getSelectedTokenImage()!} alt={getSelectedTokenLabel()} className="h-4 w-4 rounded-full" />
             )}
             {getSelectedTokenLabel()}
             <ChevronDown className="h-3 w-3" />
@@ -189,7 +166,7 @@ export const DataFiltersPanel = () => {
           {/* Status Filter Chip */}
           <button
             onClick={() => setIsStatusModalOpen(true)}
-            className="flex min-h-10 min-w-0 items-center gap-2 rounded-xl border border-[#00ff99]/30 bg-[#00ff99]/10 px-3 py-2 text-xs font-medium text-[#00ff99] transition-all hover:border-[#00ff99]/50 hover:bg-[#00ff99]/20 sm:px-4 sm:text-sm"
+            className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400 transition-all hover:bg-blue-500/20 hover:border-blue-500/50"
           >
             {statusLabels[selectedOrder]}
             <ChevronDown className="h-3 w-3" />
@@ -198,7 +175,7 @@ export const DataFiltersPanel = () => {
           {/* Interest Rate Filter Chip */}
           <button
             onClick={() => setIsInterestModalOpen(true)}
-            className="flex min-h-10 min-w-0 items-center gap-2 rounded-xl border border-[#00ff99]/30 bg-[#00ff99]/10 px-3 py-2 text-xs font-medium text-[#00ff99] transition-all hover:border-[#00ff99]/50 hover:bg-[#00ff99]/20 sm:px-4 sm:text-sm"
+            className="flex items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2 text-sm font-medium text-purple-400 transition-all hover:bg-purple-500/20 hover:border-purple-500/50"
           >
             <SlidersHorizontal className="h-4 w-4" />
             Up to {interestRate}%
@@ -208,18 +185,16 @@ export const DataFiltersPanel = () => {
           {/* Volume Filter Chip */}
           <button
             onClick={() => setIsVolumeModalOpen(true)}
-            className="flex min-h-10 min-w-0 items-center gap-2 rounded-xl border border-[#00ff99]/30 bg-[#00ff99]/10 px-3 py-2 text-xs font-medium text-[#00ff99] transition-all hover:border-[#00ff99]/50 hover:bg-[#00ff99]/20 sm:px-4 sm:text-sm"
+            className="flex items-center gap-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-400 transition-all hover:bg-yellow-500/20 hover:border-yellow-500/50"
           >
-            {selectedVolumeRanges.length > 0
-              ? `${selectedVolumeRanges.length} ranges`
-              : "All volumes"}
+            {selectedVolumeRanges.length > 0 ? `${selectedVolumeRanges.length} ranges` : 'All volumes'}
             <ChevronDown className="h-3 w-3" />
           </button>
 
           {/* Advanced Options Chip */}
           <button
             onClick={() => setIsAdvancedModalOpen(true)}
-            className="flex min-h-10 min-w-0 items-center gap-2 rounded-xl border border-white/10 bg-[#2a2a2a]/30 px-3 py-2 text-xs font-medium text-gray-300 transition-all hover:border-[#00ff99]/30 hover:bg-[#00ff99]/10 hover:text-[#00ff99] sm:px-4 sm:text-sm"
+            className="flex items-center gap-2 rounded-xl border border-gray-500/30 bg-[#2a2a2a]/10 px-4 py-2 text-sm font-medium text-gray-400 transition-all hover:bg-[#2a2a2a]/20 hover:border-gray-500/50"
           >
             <Filter className="h-4 w-4" />
             Advanced
@@ -235,25 +210,20 @@ export const DataFiltersPanel = () => {
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <Dialog.Title className="text-xl font-bold text-white">
-                  Select Token
-                </Dialog.Title>
+                <Dialog.Title className="text-xl font-bold text-white">Select Token</Dialog.Title>
                 <Dialog.Close asChild>
-                  <button
-                    className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors"
-                    aria-label="Close"
-                  >
+                  <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">
                     <X className="h-5 w-5 text-gray-400" />
                   </button>
                 </Dialog.Close>
               </div>
-
+              
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {/* All Tokens Option */}
                 <button
                   onClick={() => {
-                    setSelectedToken("All Tokens");
-                    setIsTokenModalOpen(false);
+                    setSelectedToken("All Tokens")
+                    setIsTokenModalOpen(false)
                   }}
                   className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-all ${
                     selectedToken === "All Tokens"
@@ -265,9 +235,7 @@ export const DataFiltersPanel = () => {
                     ALL
                   </div>
                   <span className="font-medium">All Tokens</span>
-                  {selectedToken === "All Tokens" && (
-                    <Check className="h-5 w-5 ml-auto" />
-                  )}
+                  {selectedToken === "All Tokens" && <Check className="h-5 w-5 ml-auto" />}
                 </button>
 
                 {/* Individual Tokens */}
@@ -275,8 +243,8 @@ export const DataFiltersPanel = () => {
                   <button
                     key={tokenAddress}
                     onClick={() => {
-                      setSelectedToken(tokenAddress);
-                      setIsTokenModalOpen(false);
+                      setSelectedToken(tokenAddress)
+                      setIsTokenModalOpen(false)
                     }}
                     className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-all ${
                       selectedToken === tokenAddress
@@ -284,15 +252,9 @@ export const DataFiltersPanel = () => {
                         : "hover:bg-[#2a2a2a] text-white"
                     }`}
                   >
-                    <img
-                      src={token.image}
-                      alt={token.label}
-                      className="h-8 w-8 rounded-full"
-                    />
+                    <img src={token.image} alt={token.label} className="h-8 w-8 rounded-full" />
                     <span className="font-medium">{token.label}</span>
-                    {selectedToken === tokenAddress && (
-                      <Check className="h-5 w-5 ml-auto" />
-                    )}
+                    {selectedToken === tokenAddress && <Check className="h-5 w-5 ml-auto" />}
                   </button>
                 ))}
               </div>
@@ -308,26 +270,21 @@ export const DataFiltersPanel = () => {
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <Dialog.Title className="text-xl font-bold text-white">
-                  Select Status
-                </Dialog.Title>
+                <Dialog.Title className="text-xl font-bold text-white">Select Status</Dialog.Title>
                 <Dialog.Close asChild>
-                  <button
-                    className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors"
-                    aria-label="Close"
-                  >
+                  <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">
                     <X className="h-5 w-5 text-gray-400" />
                   </button>
                 </Dialog.Close>
               </div>
-
+              
               <div className="space-y-2">
                 {orderTypesArray.map((status) => (
                   <button
                     key={status}
                     onClick={() => {
-                      setSelectedOrder(status as Ordertype);
-                      setIsStatusModalOpen(false);
+                      setSelectedOrder(status as Ordertype)
+                      setIsStatusModalOpen(false)
                     }}
                     className={`flex w-full items-center justify-between rounded-lg px-4 py-3 text-left transition-all ${
                       selectedOrder === status
@@ -346,28 +303,20 @@ export const DataFiltersPanel = () => {
       </Dialog.Root>
 
       {/* Interest Rate Modal */}
-      <Dialog.Root
-        open={isInterestModalOpen}
-        onOpenChange={setIsInterestModalOpen}
-      >
+      <Dialog.Root open={isInterestModalOpen} onOpenChange={setIsInterestModalOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/80 z-50" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <Dialog.Title className="text-xl font-bold text-white">
-                  Interest Rate
-                </Dialog.Title>
+                <Dialog.Title className="text-xl font-bold text-white">Interest Rate</Dialog.Title>
                 <Dialog.Close asChild>
-                  <button
-                    className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors"
-                    aria-label="Close"
-                  >
+                  <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">
                     <X className="h-5 w-5 text-gray-400" />
                   </button>
                 </Dialog.Close>
               </div>
-
+              
               <div className="space-y-4">
                 <div className="rounded-xl bg-[#2a2a2a]/50 p-4 border border-green-500/60">
                   <SliderControl min={minInterest} />
@@ -376,12 +325,12 @@ export const DataFiltersPanel = () => {
                     <span className="font-semibold text-white">{`${interestRate}%`}</span>
                   </div>
                 </div>
-
+                
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      setInterestRate(25);
-                      setIsInterestModalOpen(false);
+                      setInterestRate(25)
+                      setIsInterestModalOpen(false)
                     }}
                     className="flex-1 rounded-lg bg-[#2a2a2a] px-4 py-2 text-sm text-white hover:bg-[#2a2a2a] border border-green-500/60"
                   >
@@ -389,8 +338,8 @@ export const DataFiltersPanel = () => {
                   </button>
                   <button
                     onClick={() => {
-                      setInterestRate(50);
-                      setIsInterestModalOpen(false);
+                      setInterestRate(50)
+                      setIsInterestModalOpen(false)
                     }}
                     className="flex-1 rounded-lg bg-[#2a2a2a] px-4 py-2 text-sm text-white hover:bg-[#2a2a2a] border border-green-500/60"
                   >
@@ -398,8 +347,8 @@ export const DataFiltersPanel = () => {
                   </button>
                   <button
                     onClick={() => {
-                      setInterestRate(100);
-                      setIsInterestModalOpen(false);
+                      setInterestRate(100)
+                      setIsInterestModalOpen(false)
                     }}
                     className="flex-1 rounded-lg bg-[#2a2a2a] px-4 py-2 text-sm text-white hover:bg-[#2a2a2a] border border-green-500/60"
                   >
@@ -419,31 +368,22 @@ export const DataFiltersPanel = () => {
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <Dialog.Title className="text-xl font-bold text-white">
-                  Volume Ranges
-                </Dialog.Title>
+                <Dialog.Title className="text-xl font-bold text-white">Volume Ranges</Dialog.Title>
                 <Dialog.Close asChild>
-                  <button
-                    className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors"
-                    aria-label="Close"
-                  >
+                  <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">
                     <X className="h-5 w-5 text-gray-400" />
                   </button>
                 </Dialog.Close>
               </div>
-
+              
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {AMOUNT_FILTERS.map(({ label, min, max }) => {
-                  const isChecked = selectedVolumeRanges.some(
-                    (range) => range.min === min && range.max === max,
-                  );
+                  const isChecked = selectedVolumeRanges.some((range) => range.min === min && range.max === max)
                   return (
                     <label
                       key={label}
                       className={`flex cursor-pointer select-none items-center rounded-lg px-3 py-2 transition-all ${
-                        isChecked
-                          ? "bg-[#2a2a2a] border border-green-500/80"
-                          : "hover:bg-[#2a2a2a]"
+                        isChecked ? "bg-[#2a2a2a] border border-green-500/80" : "hover:bg-[#2a2a2a]"
                       }`}
                     >
                       <input
@@ -454,7 +394,7 @@ export const DataFiltersPanel = () => {
                       />
                       <span className="ml-3 text-sm text-white">{label}</span>
                     </label>
-                  );
+                  )
                 })}
               </div>
             </div>
@@ -463,34 +403,24 @@ export const DataFiltersPanel = () => {
       </Dialog.Root>
 
       {/* Advanced Options Modal */}
-      <Dialog.Root
-        open={isAdvancedModalOpen}
-        onOpenChange={setIsAdvancedModalOpen}
-      >
+      <Dialog.Root open={isAdvancedModalOpen} onOpenChange={setIsAdvancedModalOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/80 z-50" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-black/95 rounded-xl border border-green-500/60 shadow-2xl shadow-green-500/40">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <Dialog.Title className="text-xl font-bold text-white">
-                  Advanced Options
-                </Dialog.Title>
+                <Dialog.Title className="text-xl font-bold text-white">Advanced Options</Dialog.Title>
                 <Dialog.Close asChild>
-                  <button
-                    className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors"
-                    aria-label="Close"
-                  >
+                  <button className="rounded-full p-2 hover:bg-[#2a2a2a] transition-colors" aria-label="Close">
                     <X className="h-5 w-5 text-gray-400" />
                   </button>
                 </Dialog.Close>
               </div>
-
+              
               <div className="space-y-4">
                 {/* Owner Filter */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-300">
-                    My Orders Only
-                  </span>
+                  <span className="text-sm font-medium text-gray-300">My Orders Only</span>
                   <label className="relative inline-flex cursor-pointer items-center">
                     <input
                       type="checkbox"
@@ -506,9 +436,7 @@ export const DataFiltersPanel = () => {
 
                 {/* Sort by Amount */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-300">
-                    Sort by Amount
-                  </label>
+                  <label className="text-sm font-medium text-gray-300">Sort by Amount</label>
                   <select
                     value={filterbyVolumeOrder}
                     onChange={handleFilterbyvolumeOrder}
@@ -524,5 +452,5 @@ export const DataFiltersPanel = () => {
         </Dialog.Portal>
       </Dialog.Root>
     </div>
-  );
-};
+  )
+}

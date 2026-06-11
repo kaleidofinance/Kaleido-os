@@ -241,7 +241,7 @@ const SingleTokenCard = ({ token }: { token: IToken }) => {
   const isPositive = processedData.change24h >= 0;
 
   return (
-    <div className="min-w-0 flex-1 bg-tokenSelector/5 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-tokenSelector/50">
+    <div className="flex-1 bg-tokenSelector/5 backdrop-blur-sm rounded-xl p-4 border border-tokenSelector/50">
       <div className="flex items-center space-x-3 mb-3">
         <div className="w-12 h-12 bg-black rounded-lg flex items-center justify-center border border-tokenSelector/50">
           <img 
@@ -277,7 +277,7 @@ const SingleTokenCard = ({ token }: { token: IToken }) => {
 
 const TokenInfoCards: React.FC<TokenInfoCardsProps> = ({ fromToken, toToken }) => {
   return (
-    <div className="flex w-full min-w-0 flex-col gap-3 sm:gap-4 lg:w-[600px] lg:flex-row">
+    <div className="flex flex-col lg:flex-row gap-4 w-full lg:w-[600px]">
       {fromToken && <SingleTokenCard token={fromToken} />}
       {toToken && <SingleTokenCard token={toToken} />}
     </div>

@@ -44,9 +44,9 @@ export function SwapFrom({
     setSearchedToken(filtered);
   }, [searchkeyToken]);
   return (
-    <div className="flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bg-black border border-[#00ff99]/50 px-3 py-2 text-xs sm:gap-2 sm:px-4 sm:text-sm font-bold text-white hover:border-[#00ff99] transition-all cursor-pointer">
+    <div className="flex items-center gap-2 rounded-full bg-black border border-[#00ff99]/50 px-4 py-2 text-sm font-bold text-white hover:border-[#00ff99] transition-all cursor-pointer">
       {selectedFromToken && validAddress(selectedFromToken?.address) ? (
-        <div className="flex min-w-0 flex-row space-x-1.5 sm:space-x-2 items-center">
+        <div className="flex flex-row space-x-2 items-center">
           <TokenIcon
             symbol={selectedFromToken?.symbol || ""}
             size="sm"
@@ -121,9 +121,9 @@ export function SwapTo({
     setSearchedToken(filtered);
   }, [searchkeyToken]);
   return (
-    <div className="flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bg-black border border-[#00ff99]/50 px-3 py-2 text-xs sm:gap-2 sm:px-4 sm:text-sm font-bold text-white hover:border-[#00ff99] transition-all cursor-pointer">
+    <div className="flex items-center gap-2 rounded-full bg-black border border-[#00ff99]/50 px-4 py-2 text-sm font-bold text-white hover:border-[#00ff99] transition-all cursor-pointer">
       {selectedToken && validAddress(selectedToken?.address) ? (
-        <div className="flex min-w-0 flex-row space-x-1.5 sm:space-x-2 items-center">
+        <div className="flex flex-row space-x-2 items-center">
           <TokenIcon
             symbol={selectedToken?.symbol || ""}
             size="sm"

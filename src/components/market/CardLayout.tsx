@@ -1,35 +1,35 @@
-"use client";
-import Image from "next/image";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { ethers } from "ethers";
-import { useAtom } from "jotai";
-import { activeTableAtom } from "@/constants/atom";
-import { formatAddress } from "@/constants/utils/formatAddress";
-import { tokenImageMap } from "@/constants/utils/tokenImageMap";
-import { convertbasisPointsToPercentage } from "@/constants/utils/FormatInterestRate";
-import { getTimeUntil } from "@/constants/utils/formatOderDate";
-import { getOverdue } from "@/constants/utils/formatOderDate";
-import { formatAmounts } from "@/constants/utils/formatpoints";
-import { ADDRESS_1 } from "@/constants/utils/addresses";
-import { Btn2 } from "../shared/Btn2";
-import { useEnhancedCardData } from "@/components/market/EnhancedCardlayout";
-import useGetValueAndHealth from "@/hooks/useGetValueAndHealth";
-import useDataFiltersPanel from "@/hooks/useDataFilterPanel";
+"use client"
+import Image from "next/image"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { ethers } from "ethers"
+import { useAtom } from "jotai"
+import { activeTableAtom } from "@/constants/atom"
+import { formatAddress } from "@/constants/utils/formatAddress"
+import { tokenImageMap } from "@/constants/utils/tokenImageMap"
+import { convertbasisPointsToPercentage } from "@/constants/utils/FormatInterestRate"
+import { getTimeUntil } from "@/constants/utils/formatOderDate"
+import { getOverdue } from "@/constants/utils/formatOderDate"
+import { formatAmounts } from "@/constants/utils/formatpoints"
+import { ADDRESS_1 } from "@/constants/utils/addresses"
+import { Btn2 } from "../shared/Btn2"
+import { useEnhancedCardData } from "@/components/market/EnhancedCardlayout"
+import useGetValueAndHealth from "@/hooks/useGetValueAndHealth"
+import useDataFiltersPanel from "@/hooks/useDataFilterPanel"
 
 // Types
 interface ListingData {
-  listingId?: string;
-  requestId?: string;
-  tokenAddress: string;
-  amount: string;
-  interest: number;
-  status: string;
-  returnDate: string;
-  sender?: string;
-  author?: string;
-  minAmount?: string;
-  maxAmount?: string;
-  totalRepayment?: string;
+  listingId?: string
+  requestId?: string
+  tokenAddress: string
+  amount: string
+  interest: number
+  status: string
+  returnDate: string
+  sender?: string
+  author?: string
+  minAmount?: string
+  maxAmount?: string
+  totalRepayment?: string
 }
 
 // Skeleton Components
@@ -81,7 +81,7 @@ const HorizontalRowSkeleton = () => (
       <div className="h-10 rounded bg-[#2a2a2a]"></div>
     </div>
   </div>
-);
+)
 
 const LoadingSkeleton = ({ count = 10 }: { count?: number }) => (
   <div className="space-y-0">
@@ -89,7 +89,7 @@ const LoadingSkeleton = ({ count = 10 }: { count?: number }) => (
       <HorizontalRowSkeleton key={i} />
     ))}
   </div>
-);
+)
 
 // Enhanced Load More Button Component with Infinite Scroll Support
 const LoadMoreButton = ({
@@ -101,18 +101,18 @@ const LoadMoreButton = ({
   total,
   isInfiniteScrollMode,
 }: {
-  onLoadMore: (amount: number) => void;
-  onLoadAll: () => void;
-  isLoading: boolean;
-  hasMore: boolean;
-  currentCount: number;
-  total: number;
-  isInfiniteScrollMode: boolean;
+  onLoadMore: (amount: number) => void
+  onLoadAll: () => void
+  isLoading: boolean
+  hasMore: boolean
+  currentCount: number
+  total: number
+  isInfiniteScrollMode: boolean
 }) => {
-  const loadOptions = [25, 50, 100];
-  const remainingCount = total - currentCount;
+  const loadOptions = [25, 50, 100]
+  const remainingCount = total - currentCount
 
-  if (!hasMore || remainingCount <= 0) return null;
+  if (!hasMore || remainingCount <= 0) return null
 
   // If in infinite scroll mode, show different UI
   if (isInfiniteScrollMode) {
@@ -132,7 +132,7 @@ const LoadMoreButton = ({
           </div>
         )}
       </div>
-    );
+    )
   }
 
   return (
@@ -176,8 +176,8 @@ const LoadMoreButton = ({
         </div>
       )}
     </div>
-  );
-};
+  )
+}
 
 // Custom hook for infinite scroll
 const useInfiniteScroll = (
@@ -187,95 +187,76 @@ const useInfiniteScroll = (
   isEnabled: boolean = true,
   threshold: number = 200,
 ) => {
-  const observerRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!isEnabled || !hasMore || isLoading) return;
+    if (!isEnabled || !hasMore || isLoading) return
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const target = entries[0];
+        const target = entries[0]
         if (target.isIntersecting) {
-          callback();
+          callback()
         }
       },
       {
         rootMargin: `${threshold}px`,
         threshold: 0.1,
       },
-    );
+    )
 
-    const currentRef = observerRef.current;
+    const currentRef = observerRef.current
     if (currentRef) {
-      observer.observe(currentRef);
+      observer.observe(currentRef)
     }
 
     return () => {
       if (currentRef) {
-        observer.unobserve(currentRef);
+        observer.unobserve(currentRef)
       }
-    };
-  }, [callback, hasMore, isLoading, isEnabled, threshold]);
+    }
+  }, [callback, hasMore, isLoading, isEnabled, threshold])
 
-  return observerRef;
-};
+  return observerRef
+}
 
 // Individual Row Components (keeping your existing components)
-const BorrowRow = ({
-  data,
-  address,
-  etherPrice,
-  usdcPrice,
-  onCloseAd,
-  index,
-  filters,
-}: any) => {
-  const tokenInfo = useMemo(
-    () => tokenImageMap[data.tokenAddress],
-    [data.tokenAddress],
-  );
+const BorrowRow = ({ data, address, etherPrice, usdcPrice, onCloseAd, index, filters }: any) => {
+  const tokenInfo = useMemo(() => tokenImageMap[data.tokenAddress], [data.tokenAddress])
 
   const statusInfo = useMemo(() => {
     const statusLabels: Record<string, { text: string; color: string }> = {
       OPEN: { text: "Open", color: "bg-green-500" },
-      SERVICED: { text: "Serviced", color: "bg-[#19aa61]" },
+      SERVICED: { text: "Serviced", color: "bg-yellow-500" },
       OVERDUE: { text: "Overdue", color: "bg-red-500" },
-    };
-    const [message, isOverdue] = getOverdue(data.returnDate);
-    const statusKey = data.status || message;
-    const overrideStatus =
-      data.status === "OPEN" && isOverdue ? "OVERDUE" : statusKey;
+    }
+    const [message, isOverdue] = getOverdue(data.returnDate)
+    const statusKey = data.status || message
+    const overrideStatus = data.status === "OPEN" && isOverdue ? "OVERDUE" : statusKey
     const status = statusLabels[overrideStatus as string] || {
       text: overrideStatus || "Unknown",
       color: "bg-[#2a2a2a]",
-    };
-    return { status, isOverdue };
-  }, [data.status, data.returnDate]);
+    }
+    return { status, isOverdue }
+  }, [data.status, data.returnDate])
 
   const priceCalculations = useMemo(() => {
     // Use the props passed to the component instead of accessing filters directly
-    const ethPrice = Number(filters?.etherPrice) || 0;
-    const usdPrice = Number(filters?.usdcPrice) || 0;
-    const basePrice = tokenInfo?.label === "ETH" ? ethPrice : usdPrice;
-    const amount = Number(ethers.formatEther(data.amount));
-    const minAmount = formatAmounts(data.minAmount, data.tokenAddress, true);
-    const maxAmount = formatAmounts(data.maxAmount, data.tokenAddress, true);
+    const ethPrice = Number(filters?.etherPrice) || 0
+    const usdPrice = Number(filters?.usdcPrice) || 0
+    const basePrice = tokenInfo?.label === "ETH" ? ethPrice : usdPrice
+    const amount = Number(ethers.formatEther(data.amount))
+    const minAmount = formatAmounts(data.minAmount, data.tokenAddress, true)
+    const maxAmount = formatAmounts(data.maxAmount, data.tokenAddress, true)
 
     return {
-      volumeUSD: (
-        amount *
-        basePrice *
-        (tokenInfo?.label === "ETH" ? 1 : 1e12)
-      ).toFixed(2),
+      volumeUSD: (amount * basePrice * (tokenInfo?.label === "ETH" ? 1 : 1e12)).toFixed(2),
       minUSD: (Number(minAmount) * basePrice).toFixed(2),
       maxUSD: (Number(maxAmount) * basePrice).toFixed(2),
-      volumeDisplay:
-        tokenInfo?.label === "ETH"
-          ? amount.toFixed(4)
-          : (amount * 1e12).toFixed(3),
+      volumeDisplay: tokenInfo?.label === "ETH" ? amount.toFixed(4) : (amount * 1e12).toFixed(3),
       minDisplay: formatAmounts(data.minAmount, data.tokenAddress),
       maxDisplay: formatAmounts(data.maxAmount, data.tokenAddress),
-    };
+    }
   }, [
     data.amount,
     data.minAmount,
@@ -284,11 +265,11 @@ const BorrowRow = ({
     filters?.etherPrice,
     filters?.usdcPrice,
     data.tokenAddress,
-  ]);
+  ])
 
   const canCloseAd = useMemo(() => {
-    return data.sender?.toLowerCase() === address?.toLowerCase();
-  }, [data.sender, data.author, data.status, address]); // Use address prop instead of filters?.address
+    return data.sender?.toLowerCase() === address?.toLowerCase()
+  }, [data.sender, data.author, data.status, address]) // Use address prop instead of filters?.address
 
   return (
     <>
@@ -304,9 +285,7 @@ const BorrowRow = ({
               height={32}
               className="rounded-full"
             />
-            <span className="hidden font-medium sm:block">
-              {tokenInfo?.label || "N/A"}
-            </span>
+            <span className="hidden font-medium sm:block">{tokenInfo?.label || "N/A"}</span>
           </div>
 
           {/* Origin */}
@@ -332,17 +311,13 @@ const BorrowRow = ({
             <div className="font-medium">
               {priceCalculations.volumeDisplay} {tokenInfo?.label}
             </div>
-            <div className="text-xs text-gray-500">
-              ${priceCalculations.volumeUSD}
-            </div>
+            <div className="text-xs text-gray-500">${priceCalculations.volumeUSD}</div>
           </div>
 
           {/* Rate */}
           <div className="w-16 lg:w-20">
             <div className="text-xs text-gray-400">Rate</div>
-            <div className="font-medium text-green-400">
-              {convertbasisPointsToPercentage(data.interest)}%
-            </div>
+            <div className="font-medium text-green-400">{convertbasisPointsToPercentage(data.interest)}%</div>
           </div>
 
           {/* Duration */}
@@ -373,7 +348,7 @@ const BorrowRow = ({
                 statusInfo.isOverdue
                   ? "cursor-not-allowed bg-[#2a2a2a] text-gray-400"
                   : "bg-[#FF4D00] text-black hover:bg-[#FF6D20]"
-              } ${!address ? "opacity-70" : ""}`}
+              } ${!address ? 'opacity-70' : ''}`}
             >
               {address ? "Borrow" : "Connect"}
             </button>
@@ -391,9 +366,7 @@ const BorrowRow = ({
           </div>
 
           {/* ID */}
-          <div className="hidden w-16 text-xs text-gray-500 lg:block">
-            #{data.listingId}
-          </div>
+          <div className="hidden w-16 text-xs text-gray-500 lg:block">#{data.listingId}</div>
         </div>
       </div>
 
@@ -429,18 +402,14 @@ const BorrowRow = ({
           </div>
           <div>
             <div className="text-xs text-gray-400">Rate</div>
-            <div className="font-medium text-green-400">
-              {convertbasisPointsToPercentage(data.interest)}%
-            </div>
+            <div className="font-medium text-green-400">{convertbasisPointsToPercentage(data.interest)}%</div>
           </div>
           <div>
             <div className="text-xs text-gray-400">Available</div>
             <div className="font-medium">
               {priceCalculations.volumeDisplay} {tokenInfo?.label}
             </div>
-            <div className="text-xs text-gray-500">
-              ${priceCalculations.volumeUSD}
-            </div>
+            <div className="text-xs text-gray-500">${priceCalculations.volumeUSD}</div>
           </div>
           <div>
             <div className="text-xs text-gray-400">Duration</div>
@@ -472,7 +441,7 @@ const BorrowRow = ({
               statusInfo.isOverdue
                 ? "cursor-not-allowed bg-[#2a2a2a] text-gray-400"
                 : "bg-[#FF4D00] text-black hover:bg-[#FF6D20]"
-            } ${!address ? "opacity-70" : ""}`}
+            } ${!address ? 'opacity-70' : ''}`}
           >
             {address ? "Borrow" : "Connect"}
           </button>
@@ -490,41 +459,34 @@ const BorrowRow = ({
         </div>
       </div>
     </>
-  );
-};
+  )
+}
 
 const LendRow = ({ data, filters, index }: any) => {
-  const tokenInfo = useMemo(
-    () => tokenImageMap[data.tokenAddress],
-    [data.tokenAddress],
-  );
+  const tokenInfo = useMemo(() => tokenImageMap[data.tokenAddress], [data.tokenAddress])
 
   const statusInfo = useMemo(() => {
     const statusLabels: Record<string, { text: string; color: string }> = {
       OPEN: { text: "Open", color: "bg-green-500" },
-      SERVICED: { text: "Serviced", color: "bg-[#19aa61]" },
+      SERVICED: { text: "Serviced", color: "bg-yellow-500" },
       OVERDUE: { text: "Overdue", color: "bg-red-500" },
-    };
-    const [message, isOverdue] = getOverdue(data.returnDate);
-    const statusKey = data.status || message;
-    const overrideStatus =
-      data.status === "OPEN" && isOverdue ? "OVERDUE" : statusKey;
+    }
+    const [message, isOverdue] = getOverdue(data.returnDate)
+    const statusKey = data.status || message
+    const overrideStatus = data.status === "OPEN" && isOverdue ? "OVERDUE" : statusKey
     const status = statusLabels[overrideStatus as string] || {
       text: overrideStatus || "Unknown",
       color: "bg-[#2a2a2a]",
-    };
-    return { status, isOverdue };
-  }, [data.status, data.returnDate]);
+    }
+    return { status, isOverdue }
+  }, [data.status, data.returnDate])
 
   const priceCalculations = useMemo(() => {
-    const ethPrice = Number(filters?.etherPrice) || 0;
-    const usdPrice = Number(filters?.usdcPrice) || 0;
-    const filteredAmount = formatAmounts(data.amount, data.tokenAddress);
-    const filteredRepayAmount = formatAmounts(
-      data.totalRepayment,
-      data.tokenAddress,
-    );
-    const basePrice = tokenInfo?.label === "ETH" ? ethPrice : usdPrice * 1e12;
+    const ethPrice = Number(filters?.etherPrice) || 0
+    const usdPrice = Number(filters?.usdcPrice) || 0
+    const filteredAmount = formatAmounts(data.amount, data.tokenAddress)
+    const filteredRepayAmount = formatAmounts(data.totalRepayment, data.tokenAddress)
+    const basePrice = tokenInfo?.label === "ETH" ? ethPrice : usdPrice * 1e12
 
     return {
       loanAmountUSD:
@@ -537,22 +499,12 @@ const LendRow = ({ data, filters, index }: any) => {
           : ((data.totalRepayment * basePrice) / 1e18).toFixed(2),
       loanAmountDisplay: filteredAmount,
       repaymentDisplay: filteredRepayAmount,
-    };
-  }, [
-    data.amount,
-    data.totalRepayment,
-    data.tokenAddress,
-    tokenInfo?.label,
-    filters?.etherPrice,
-    filters?.usdcPrice,
-  ]);
+    }
+  }, [data.amount, data.totalRepayment, data.tokenAddress, tokenInfo?.label, filters?.etherPrice, filters?.usdcPrice])
 
   const canCloseRequest = useMemo(() => {
-    return (
-      data.author?.toLowerCase() === filters?.address?.toLowerCase() &&
-      data.status === "OPEN"
-    );
-  }, [data.author, data.status, filters?.address]);
+    return data.author?.toLowerCase() === filters?.address?.toLowerCase() && data.status === "OPEN"
+  }, [data.author, data.status, filters?.address])
 
   return (
     <>
@@ -569,9 +521,7 @@ const LendRow = ({ data, filters, index }: any) => {
               height={32}
               className="rounded-full"
             />
-            <span className="hidden font-medium sm:block">
-              {tokenInfo?.label || "N/A"}
-            </span>
+            <span className="hidden font-medium sm:block">{tokenInfo?.label || "N/A"}</span>
           </div>
 
           {/* Origin */}
@@ -586,9 +536,7 @@ const LendRow = ({ data, filters, index }: any) => {
             <div className="font-medium">
               {priceCalculations.loanAmountDisplay} {tokenInfo?.label}
             </div>
-            <div className="text-xs text-gray-500">
-              ${priceCalculations.loanAmountUSD}
-            </div>
+            <div className="text-xs text-gray-500">${priceCalculations.loanAmountUSD}</div>
           </div>
 
           {/* Repayment */}
@@ -597,17 +545,13 @@ const LendRow = ({ data, filters, index }: any) => {
             <div className="font-medium text-green-400">
               {priceCalculations.repaymentDisplay} {tokenInfo?.label}
             </div>
-            <div className="text-xs text-gray-500">
-              ${priceCalculations.repaymentUSD}
-            </div>
+            <div className="text-xs text-gray-500">${priceCalculations.repaymentUSD}</div>
           </div>
 
           {/* Rate */}
           <div className="w-16 lg:w-20">
             <div className="text-xs text-gray-400">Rate</div>
-            <div className="font-medium text-green-400">
-              {convertbasisPointsToPercentage(data.interest)}%
-            </div>
+            <div className="font-medium text-green-400">{convertbasisPointsToPercentage(data.interest)}%</div>
           </div>
 
           {/* Duration */}
@@ -630,11 +574,7 @@ const LendRow = ({ data, filters, index }: any) => {
             <button
               onClick={() => {
                 if (filters?.address && data.status !== "SERVICED") {
-                  filters?.serviceRequest(
-                    data.requestId,
-                    String(data.tokenAddress),
-                    data.amount,
-                  );
+                  filters?.serviceRequest(data.requestId, String(data.tokenAddress), data.amount)
                 }
               }}
               disabled={data.status === "SERVICED"}
@@ -642,7 +582,7 @@ const LendRow = ({ data, filters, index }: any) => {
                 data.status === "SERVICED"
                   ? "cursor-not-allowed bg-[#2a2a2a] text-gray-400"
                   : "bg-[#FF4D00] text-black hover:bg-[#FF6D20]"
-              } ${!filters?.address ? "opacity-70" : ""}`}
+              } ${!filters?.address ? 'opacity-70' : ''}`}
             >
               {filters?.address ? "Lend" : "Connect"}
             </button>
@@ -659,9 +599,7 @@ const LendRow = ({ data, filters, index }: any) => {
           </div>
 
           {/* ID - Hidden on small screens */}
-          <div className="hidden w-16 text-xs text-gray-500 lg:block">
-            #{data.requestId}
-          </div>
+          <div className="hidden w-16 text-xs text-gray-500 lg:block">#{data.requestId}</div>
         </div>
       </div>
 
@@ -697,18 +635,14 @@ const LendRow = ({ data, filters, index }: any) => {
           </div>
           <div>
             <div className="text-xs text-gray-400">Rate</div>
-            <div className="font-medium text-green-400">
-              {convertbasisPointsToPercentage(data.interest)}%
-            </div>
+            <div className="font-medium text-green-400">{convertbasisPointsToPercentage(data.interest)}%</div>
           </div>
           <div>
             <div className="text-xs text-gray-400">Loan Amount</div>
             <div className="font-medium">
               {priceCalculations.loanAmountDisplay} {tokenInfo?.label}
             </div>
-            <div className="text-xs text-gray-500">
-              ${priceCalculations.loanAmountUSD}
-            </div>
+            <div className="text-xs text-gray-500">${priceCalculations.loanAmountUSD}</div>
           </div>
           <div>
             <div className="text-xs text-gray-400">Duration</div>
@@ -722,9 +656,7 @@ const LendRow = ({ data, filters, index }: any) => {
           <div className="font-medium text-green-400">
             {priceCalculations.repaymentDisplay} {tokenInfo?.label}
           </div>
-          <div className="text-xs text-gray-500">
-            ${priceCalculations.repaymentUSD}
-          </div>
+          <div className="text-xs text-gray-500">${priceCalculations.repaymentUSD}</div>
         </div>
 
         {/* Actions */}
@@ -732,11 +664,7 @@ const LendRow = ({ data, filters, index }: any) => {
           <button
             onClick={() => {
               if (filters?.address && data.status !== "SERVICED") {
-                filters?.serviceRequest(
-                  data.requestId,
-                  String(data.tokenAddress),
-                  data.amount,
-                );
+                filters?.serviceRequest(data.requestId, String(data.tokenAddress), data.amount)
               }
             }}
             disabled={data.status === "SERVICED"}
@@ -744,7 +672,7 @@ const LendRow = ({ data, filters, index }: any) => {
               data.status === "SERVICED"
                 ? "cursor-not-allowed bg-[#2a2a2a] text-gray-400"
                 : "bg-[#FF4D00] text-black hover:bg-[#FF6D20]"
-            } ${!filters?.address ? "opacity-70" : ""}`}
+            } ${!filters?.address ? 'opacity-70' : ''}`}
           >
             {filters?.address ? "Lend" : "Connect"}
           </button>
@@ -759,36 +687,27 @@ const LendRow = ({ data, filters, index }: any) => {
         </div>
       </div>
     </>
-  );
-};
+  )
+}
 
 // Main Component with Infinite Scroll
 const HorizontalListingLayout = () => {
   // Use the filters panel hook
-  const filters = useDataFiltersPanel();
+  const filters = useDataFiltersPanel()
 
   // Use the enhanced card data hook for filtering
-  const hookData = useEnhancedCardData();
-  const {
-    borrowData,
-    lendData,
-    activeTable,
-    refresh,
-    loadMore,
-    stats,
-    rawBorrowData,
-    rawLendData,
-  } = hookData;
+  const hookData = useEnhancedCardData()
+  const { borrowData, lendData, activeTable, refresh, loadMore, stats, rawBorrowData, rawLendData } = hookData
 
   // Get price data
-  const { etherPrice, usdcPrice } = useGetValueAndHealth();
+  const { etherPrice, usdcPrice } = useGetValueAndHealth()
 
   // Get current user address - we'll get this from the hook data
-  const [activeTableState, setActiveTableState] = useAtom(activeTableAtom);
+  const [activeTableState, setActiveTableState] = useAtom(activeTableAtom)
 
   // Infinite scroll state
-  const [isInfiniteScrollMode, setIsInfiniteScrollMode] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isInfiniteScrollMode, setIsInfiniteScrollMode] = useState(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Get current filtered data based on active table
   const currentData = useMemo(() => {
@@ -802,7 +721,7 @@ const HorizontalListingLayout = () => {
         isLoadingMore: rawLendData.isLoadingMore,
         total: rawLendData.total || 0,
         address: undefined, // We'll handle this differently
-      };
+      }
     } else {
       return {
         data: borrowData.filteredData || [],
@@ -813,25 +732,16 @@ const HorizontalListingLayout = () => {
         isLoadingMore: rawBorrowData.isLoadingMore,
         total: rawBorrowData.total || 0,
         address: undefined, // We'll handle this differently
-      };
+      }
     }
-  }, [activeTable, borrowData, lendData, rawBorrowData, rawLendData]);
+  }, [activeTable, borrowData, lendData, rawBorrowData, rawLendData])
 
   // Infinite scroll callback
   const handleInfiniteScroll = useCallback(() => {
-    if (
-      isInfiniteScrollMode &&
-      currentData.hasMore &&
-      !currentData.isLoadingMore
-    ) {
-      loadMore(800); // Load 50 more items at a time during infinite scroll
+    if (isInfiniteScrollMode && currentData.hasMore && !currentData.isLoadingMore) {
+      loadMore(800) // Load 50 more items at a time during infinite scroll
     }
-  }, [
-    isInfiniteScrollMode,
-    currentData.hasMore,
-    currentData.isLoadingMore,
-    loadMore,
-  ]);
+  }, [isInfiniteScrollMode, currentData.hasMore, currentData.isLoadingMore, loadMore])
 
   // Setup infinite scroll observer
   const infiniteScrollRef = useInfiniteScroll(
@@ -839,33 +749,33 @@ const HorizontalListingLayout = () => {
     currentData.hasMore,
     currentData.isLoadingMore,
     isInfiniteScrollMode,
-  );
+  )
 
   // Handle Load All (switch to infinite scroll mode)
   const handleLoadAll = useCallback(() => {
-    setIsInfiniteScrollMode(true);
+    setIsInfiniteScrollMode(true)
     // Load more data immediately to start the infinite scroll
     if (currentData.hasMore && !currentData.isLoadingMore) {
-      loadMore(100); // Load a bigger chunk initially
+      loadMore(100) // Load a bigger chunk initially
     }
-  }, [currentData.hasMore, currentData.isLoadingMore, loadMore]);
+  }, [currentData.hasMore, currentData.isLoadingMore, loadMore])
 
   // Tab switching - reset infinite scroll mode
   const handleTabSwitch = useCallback(
     (tab: "borrow" | "lend") => {
       if (tab !== activeTable) {
-        setActiveTableState(tab);
-        setIsInfiniteScrollMode(false); // Reset infinite scroll when switching tabs
+        setActiveTableState(tab)
+        setIsInfiniteScrollMode(false) // Reset infinite scroll when switching tabs
       }
     },
     [activeTable, setActiveTableState],
-  );
+  )
 
   // Reset infinite scroll mode on refresh
   const handleRefresh = useCallback(() => {
-    setIsInfiniteScrollMode(false);
-    refresh();
-  }, [refresh]);
+    setIsInfiniteScrollMode(false)
+    refresh()
+  }, [refresh])
 
   // Error handling
   if (currentData.error) {
@@ -873,9 +783,7 @@ const HorizontalListingLayout = () => {
       <div className="w-full py-5">
         <div className="flex flex-col items-center justify-center px-4 py-16">
           <div className="mb-4 text-6xl">⚠️</div>
-          <h3 className="mb-2 text-center text-xl font-semibold text-red-400">
-            Unable to Load Data
-          </h3>
+          <h3 className="mb-2 text-center text-xl font-semibold text-red-400">Unable to Load Data</h3>
           <p className="mb-4 max-w-md text-center text-gray-400">
             {currentData.error.includes("net::ERR_INSUFFICIENT_RESOURCES")
               ? "Server resources are temporarily unavailable. Please try again later."
@@ -897,7 +805,7 @@ const HorizontalListingLayout = () => {
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   // Loading state
@@ -908,7 +816,7 @@ const HorizontalListingLayout = () => {
           <LoadingSkeleton />
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -919,31 +827,22 @@ const HorizontalListingLayout = () => {
           {/* Tab buttons with responsive text */}
           <button
             className={`flex-1 rounded-md px-4 py-2 text-sm transition-all sm:flex-initial sm:px-6 sm:text-base ${
-              activeTable === "borrow"
-                ? "bg-[#FF4D00] font-medium text-black"
-                : "text-gray-400 hover:text-white"
+              activeTable === "borrow" ? "bg-[#FF4D00] font-medium text-black" : "text-gray-400 hover:text-white"
             }`}
             onClick={() => handleTabSwitch("borrow")}
           >
-            <span className="sm:hidden">
-              Borrow ({borrowData.listings?.length || 0})
-            </span>
+            <span className="sm:hidden">Borrow ({borrowData.listings?.length || 0})</span>
             <span className="hidden sm:inline">
-              Borrow ({borrowData.listings?.length || 0}/{borrowData.total || 0}
-              )
+              Borrow ({borrowData.listings?.length || 0}/{borrowData.total || 0})
             </span>
           </button>
           <button
             className={`flex-1 rounded-md px-4 py-2 text-sm transition-all sm:flex-initial sm:px-6 sm:text-base ${
-              activeTable === "lend"
-                ? "bg-[#FF4D00] font-medium text-black"
-                : "text-gray-400 hover:text-white"
+              activeTable === "lend" ? "bg-[#FF4D00] font-medium text-black" : "text-gray-400 hover:text-white"
             }`}
             onClick={() => handleTabSwitch("lend")}
           >
-            <span className="sm:hidden">
-              Lend ({lendData.requests?.length || 0})
-            </span>
+            <span className="sm:hidden">Lend ({lendData.requests?.length || 0})</span>
             <span className="hidden sm:inline">
               Lend ({lendData.requests?.length || 0}/{lendData.total || 0})
             </span>
@@ -955,12 +854,10 @@ const HorizontalListingLayout = () => {
           {isInfiniteScrollMode && (
             <button
               onClick={() => setIsInfiniteScrollMode(false)}
-              className="rounded-lg border border-[#00ff99]/30 bg-[#00ff99]/10 px-3 py-2 text-sm text-[#00ff99] transition-colors hover:bg-[#00ff99]/20"
+              className="rounded-lg border border-yellow-600 bg-yellow-900 px-3 py-2 text-sm text-yellow-100 transition-colors hover:bg-yellow-800"
             >
               <span className="sm:hidden">📄 Manual Loading</span>
-              <span className="hidden sm:inline">
-                📄 Switch to Manual Loading
-              </span>
+              <span className="hidden sm:inline">📄 Switch to Manual Loading</span>
             </button>
           )}
           <button
@@ -977,15 +874,9 @@ const HorizontalListingLayout = () => {
         <div className="hidden border-b border-[#00ff99]/30 bg-[#2a2a2a] px-4 py-3 sm:px-12 lg:block">
           <div className="flex items-center gap-4 text-xs font-medium uppercase tracking-wider text-gray-400 lg:gap-6">
             <div className="w-20 lg:w-24">Token</div>
-            <div className="w-24 lg:w-32">
-              {activeTable === "borrow" ? "Origin" : "Borrower"}
-            </div>
-            <div className="w-32 lg:w-40">
-              {activeTable === "borrow" ? "Volume Range" : "Loan Amount"}
-            </div>
-            <div className="w-28 lg:w-32">
-              {activeTable === "borrow" ? "Available" : "Repayment"}
-            </div>
+            <div className="w-24 lg:w-32">{activeTable === "borrow" ? "Origin" : "Borrower"}</div>
+            <div className="w-32 lg:w-40">{activeTable === "borrow" ? "Volume Range" : "Loan Amount"}</div>
+            <div className="w-28 lg:w-32">{activeTable === "borrow" ? "Available" : "Repayment"}</div>
             <div className="w-16 lg:w-20">Rate</div>
             <div className="w-20 lg:w-24">Duration</div>
             <div className="w-20 lg:w-24">Status</div>
@@ -998,34 +889,29 @@ const HorizontalListingLayout = () => {
         {/* Data Container */}
         <div ref={scrollContainerRef} className="px-4 sm:px-12">
           {/* Empty State - Only show if no data and not loading */}
-          {!currentData.loading &&
-            !currentData.error &&
-            currentData.count === 0 && (
-              <div className="flex flex-col items-center justify-center py-16">
-                <div className="mb-4 text-6xl">🔍</div>
-                <h3 className="mb-2 text-xl font-semibold text-white">
-                  No {activeTable === "borrow" ? "borrowing" : "lending"}{" "}
-                  opportunities found
-                </h3>
-                <p className="max-w-md text-center text-gray-400">
-                  {stats.totalBorrowItems > 0 || stats.totalLendItems > 0
-                    ? "Try adjusting your filters to see more results"
-                    : "Try refreshing the data or check back later"}
-                </p>
-                <div className="mt-2 text-sm text-gray-500">
-                  Filter efficiency:{" "}
-                  {activeTable === "lend"
-                    ? stats.filterEfficiency.lend
-                    : stats.filterEfficiency.borrow}
-                </div>
-                <button
-                  onClick={handleRefresh}
-                  className="mt-4 rounded-lg bg-[#FF4D00] px-4 py-2 text-black transition-colors hover:bg-[#FF6D20]"
-                >
-                  Refresh
-                </button>
+          {!currentData.loading && !currentData.error && currentData.count === 0 && (
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="mb-4 text-6xl">🔍</div>
+              <h3 className="mb-2 text-xl font-semibold text-white">
+                No {activeTable === "borrow" ? "borrowing" : "lending"} opportunities found
+              </h3>
+              <p className="max-w-md text-center text-gray-400">
+                {stats.totalBorrowItems > 0 || stats.totalLendItems > 0
+                  ? "Try adjusting your filters to see more results"
+                  : "Try refreshing the data or check back later"}
+              </p>
+              <div className="mt-2 text-sm text-gray-500">
+                Filter efficiency:{" "}
+                {activeTable === "lend" ? stats.filterEfficiency.lend : stats.filterEfficiency.borrow}
               </div>
-            )}
+              <button
+                onClick={handleRefresh}
+                className="mt-4 rounded-lg bg-[#FF4D00] px-4 py-2 text-black transition-colors hover:bg-[#FF6D20]"
+              >
+                Refresh
+              </button>
+            </div>
+          )}
 
           {/* Data Rows - Show if we have data and no error */}
           {!currentData.error && currentData.count > 0 && (
@@ -1041,12 +927,7 @@ const HorizontalListingLayout = () => {
                     />
                   ))
                 : currentData.data.map((data: any, index) => (
-                    <LendRow
-                      key={`lend-${data.requestId}-${index}`}
-                      data={data}
-                      filters={filters}
-                      index={index}
-                    />
+                    <LendRow key={`lend-${data.requestId}-${index}`} data={data} filters={filters} index={index} />
                   ))}
             </div>
           )}
@@ -1059,56 +940,45 @@ const HorizontalListingLayout = () => {
           )}
         </div>
         {/* Load More Button or Infinite Scroll Indicator */}
-        {!currentData.error &&
-          !currentData.loading &&
-          currentData.count > 0 &&
-          currentData.hasMore && (
-            <LoadMoreButton
-              onLoadMore={loadMore}
-              onLoadAll={handleLoadAll}
-              isLoading={currentData.isLoadingMore}
-              hasMore={currentData.hasMore}
-              currentCount={currentData.count}
-              total={currentData.total}
-              isInfiniteScrollMode={isInfiniteScrollMode}
-            />
-          )}
+        {!currentData.error && !currentData.loading && currentData.count > 0 && currentData.hasMore && (
+          <LoadMoreButton
+            onLoadMore={loadMore}
+            onLoadAll={handleLoadAll}
+            isLoading={currentData.isLoadingMore}
+            hasMore={currentData.hasMore}
+            currentCount={currentData.count}
+            total={currentData.total}
+            isInfiniteScrollMode={isInfiniteScrollMode}
+          />
+        )}
 
         {/* Infinite Scroll Trigger Element */}
         {isInfiniteScrollMode && currentData.hasMore && (
-          <div
-            ref={infiniteScrollRef}
-            className="flex h-20 items-center justify-center"
-          >
+          <div ref={infiniteScrollRef} className="flex h-20 items-center justify-center">
             {/* This invisible element triggers the infinite scroll */}
           </div>
         )}
 
         {/* End of Results Indicator */}
-        {!currentData.error &&
-          !currentData.loading &&
-          currentData.count > 0 &&
-          !currentData.hasMore && (
-            <div className="flex flex-col items-center gap-4 py-8">
-              <div className="text-lg">🎉</div>
-              <div className="text-center text-gray-400">
-                <div className="font-medium">You've reached the end!</div>
-                <div className="text-sm">
-                  Showing all {currentData.count}{" "}
-                  {activeTable === "borrow" ? "borrowing" : "lending"}{" "}
-                  opportunities
-                </div>
+        {!currentData.error && !currentData.loading && currentData.count > 0 && !currentData.hasMore && (
+          <div className="flex flex-col items-center gap-4 py-8">
+            <div className="text-lg">🎉</div>
+            <div className="text-center text-gray-400">
+              <div className="font-medium">You've reached the end!</div>
+              <div className="text-sm">
+                Showing all {currentData.count} {activeTable === "borrow" ? "borrowing" : "lending"} opportunities
               </div>
-              {isInfiniteScrollMode && (
-                <button
-                  onClick={() => setIsInfiniteScrollMode(false)}
-                  className="rounded-lg border border-[#00ff99]/30 bg-black px-4 py-2 text-sm text-white transition-colors hover:border-[#FF4D00] hover:bg-[#2a2a2a]"
-                >
-                  Switch to Manual Loading
-                </button>
-              )}
             </div>
-          )}
+            {isInfiniteScrollMode && (
+              <button
+                onClick={() => setIsInfiniteScrollMode(false)}
+                className="rounded-lg border border-[#00ff99]/30 bg-black px-4 py-2 text-sm text-white transition-colors hover:border-[#FF4D00] hover:bg-[#2a2a2a]"
+              >
+                Switch to Manual Loading
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Filter Stats - Development Only */}
         {/* {process.env.NODE_ENV === "development" && (
@@ -1125,7 +995,7 @@ const HorizontalListingLayout = () => {
         )} */}
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default HorizontalListingLayout;
+export default HorizontalListingLayout
