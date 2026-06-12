@@ -610,22 +610,22 @@ function ChatbotWidget() {
                   <div 
                     className={`text-[8px] px-1.5 py-0.5 rounded border font-bold animate-pulse flex items-center gap-1 ${
                       healthFactor < 1.1 ? 'bg-red-500/20 text-red-500 border-red-500/40' :
-                      healthFactor < 1.8 ? 'bg-[#ffd700]/20 text-[#ffd700] border-[#ffd700]/40' :
+                      healthFactor < 1.8 ? 'bg-[#d1d5db]/20 text-[#d1d5db] border-[#d1d5db]/40' :
                       'bg-[#00ff99]/20 text-[#00ff99] border-[#00ff99]/40'
                     }`}
                     title="Your Lending Health Factor"
                   >
-                    <div className={`w-1 h-1 rounded-full ${healthFactor < 1.1 ? 'bg-red-500' : healthFactor < 1.8 ? 'bg-[#ffd700]' : 'bg-[#00ff99]'}`}></div>
+                    <div className={`w-1 h-1 rounded-full ${healthFactor < 1.1 ? 'bg-red-500' : healthFactor < 1.8 ? 'bg-[#d1d5db]' : 'bg-[#00ff99]'}`}></div>
                     HF: {typeof healthFactor === 'number' ? Number(healthFactor).toFixed(2) : healthFactor}
                   </div>
                 )}
                 
                 {/* Neural Link Status Orb */}
                 <div 
-                  className={`text-[8px] px-1.5 py-0.5 rounded border font-bold flex items-center gap-1 ${isSynced ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-gray-500/10 text-gray-500 border-gray-500/20'}`}
+                  className={`text-[8px] px-1.5 py-0.5 rounded border font-bold flex items-center gap-1 ${isSynced ? 'bg-[#2a2a2a]/60 text-gray-300 border-gray-500/30' : 'bg-gray-500/10 text-gray-500 border-gray-500/20'}`}
                   title={isSynced ? "Neural Link Active" : "Neural Link Offline"}
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full ${isSynced ? 'bg-blue-400 shadow-[0_0_8px_#60a5fa] animate-pulse' : 'bg-gray-500'}`}></div>
+                  <div className={`w-1.5 h-1.5 rounded-full ${isSynced ? 'bg-gray-400 shadow-[0_0_8px_#9ca3af] animate-pulse' : 'bg-gray-500'}`}></div>
                   SYNC
                 </div>
 
@@ -778,7 +778,7 @@ function ChatbotWidget() {
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
                         Arbitrage Scout AI
-                        <span className="text-[7px] px-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded uppercase font-bold">PULSE Hunt</span>
+                        <span className="text-[7px] px-1 bg-[#2a2a2a]/60 text-gray-300 border border-white/10 rounded uppercase font-bold">PULSE Hunt</span>
                     </div>
                     <div className="text-[10px] text-gray-400">Luca hunts cross-chain price discrepancies</div>
                   </div>
@@ -789,14 +789,14 @@ function ChatbotWidget() {
                         checked={permissions.arbitrageMode}
                         onChange={() => setPermissions((p: any) => ({...p, arbitrageMode: !p.arbitrageMode}))}
                     />
-                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-400"></div>
+                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-400"></div>
                   </label>
                 </div>
 
                 <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
-                    <div className="text-xs font-bold text-[#ffd700] flex items-center gap-1">
-                      <FiZap className="fill-[#ffd700]" /> Speed Mode
+                    <div className="text-xs font-bold text-[#d1d5db] flex items-center gap-1">
+                      <FiZap className="fill-[#d1d5db]" /> Speed Mode
                     </div>
                     <div className="text-[10px] text-gray-400">Skip confirmation cards; execute instantly</div>
                   </div>
@@ -807,7 +807,7 @@ function ChatbotWidget() {
                         checked={permissions.speedMode}
                         onChange={() => setPermissions((p: AgentPermissions) => ({...p, speedMode: !p.speedMode}))}
                     />
-                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#ffd700]"></div>
+                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d1d5db]"></div>
                   </label>
                 </div>
 
@@ -911,9 +911,9 @@ function ChatbotWidget() {
                          <div className="flex justify-between items-start mb-2">
                            <div className="flex items-center gap-2">
                              <div className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${
-                               tx.type === 'SWAP' ? 'bg-[#00ccff]/20 text-[#00ccff]' :
-                               tx.type === 'BORROW' ? 'bg-purple-500/20 text-purple-500' :
-                               tx.type === 'LIST' ? 'bg-amber-500/20 text-amber-500' :
+                               tx.type === 'SWAP' ? 'bg-[#d1d5db]/20 text-[#d1d5db]' :
+                               tx.type === 'BORROW' ? 'bg-[#2a2a2a]/60 text-gray-300' :
+                               tx.type === 'LIST' ? 'bg-[#2a2a2a]/60 text-gray-300' :
                                'bg-[#00ff99]/20 text-[#00ff99]'
                              }`}>
                                {tx.type}
@@ -922,7 +922,7 @@ function ChatbotWidget() {
                            </div>
                            <div className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-full ${
                              tx.status === 'success' ? 'bg-[#00ff99]/10 text-[#00ff99]' :
-                             tx.status === 'pending' ? 'bg-amber-500/10 text-amber-500 animate-pulse' :
+                             tx.status === 'pending' ? 'bg-[#2a2a2a]/40 text-gray-300 animate-pulse' :
                              'bg-red-500/10 text-red-500'
                            }`}>
                              {tx.status}
@@ -1047,7 +1047,7 @@ function ChatbotWidget() {
           <div className="px-4 py-2 bg-[#111111]/60 border-t border-[#00ff99]/10 flex gap-2 overflow-x-auto scrollbar-hide no-scrollbar">
             <button 
               onClick={() => sendMessage("Initialize Bridge")}
-              className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full bg-[#00ccff]/10 text-[#00ccff] border border-[#00ccff]/30 hover:bg-[#00ccff]/20 hover:scale-105 transition-all whitespace-nowrap flex items-center gap-2"
+              className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full bg-[#d1d5db]/10 text-[#d1d5db] border border-[#d1d5db]/30 hover:bg-[#d1d5db]/20 hover:scale-105 transition-all whitespace-nowrap flex items-center gap-2"
             >
               <FiZap className="text-[10px]" /> Initialize Bridge
             </button>
@@ -1065,7 +1065,7 @@ function ChatbotWidget() {
             </button>
             <button 
               onClick={() => sendMessage("Draw Credit")}
-              className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full bg-[#ffd700]/10 text-[#ffd700] border border-[#ffd700]/30 hover:bg-[#ffd700]/20 hover:scale-105 transition-all whitespace-nowrap flex items-center gap-2"
+              className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full bg-[#d1d5db]/10 text-[#d1d5db] border border-[#d1d5db]/30 hover:bg-[#d1d5db]/20 hover:scale-105 transition-all whitespace-nowrap flex items-center gap-2"
             >
               <FiPlus className="text-[10px]" /> Draw Credit
             </button>

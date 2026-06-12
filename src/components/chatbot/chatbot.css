@@ -481,11 +481,11 @@
 }
 
 .confidence-medium {
-  border-left: 4px solid #eab308 !important; /* Yellow for medium confidence */
+  border-left: 4px solid #6b7280 !important; /* Neutral gray for medium confidence */
 }
 
 .confidence-low {
-  border-left: 4px solid #f97316 !important; /* Orange for low confidence */
+  border-left: 4px solid #4b5563 !important; /* Dark gray for low confidence */
 }
 
 /* Animated actions icon */

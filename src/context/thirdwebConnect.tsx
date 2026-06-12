@@ -131,11 +131,11 @@ export default function ConnectWallet() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="mb-1 text-xs text-[#9ca3af]">⚠️ Network</p>
-                        <p className="text-sm text-yellow-400">Wrong Network</p>
+                        <p className="text-sm text-gray-300">Wrong Network</p>
                       </div>
                       <button
                         onClick={handleSwitchChain}
-                        className="rounded bg-yellow-600 px-2 py-1 text-xs text-white transition-colors hover:bg-yellow-700"
+                        className="rounded bg-[#2a2a2a] px-2 py-1 text-xs text-white transition-colors hover:bg-[#2a2a2a]"
                       >
                         Switch
                       </button>

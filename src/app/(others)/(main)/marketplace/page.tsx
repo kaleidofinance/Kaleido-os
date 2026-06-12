@@ -84,7 +84,7 @@ export default function MarketPlacePage() {
         <div className="fixed bottom-28 right-5 z-50 flex flex-col items-end">
           <div className="group relative">
             <button
-              className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-xl text-white shadow-lg hover:bg-blue-700"
+              className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-[#2a2a2a] text-xl text-white shadow-lg hover:bg-[#333333]"
               onClick={() => setShowTourDropdown((prev) => !prev)}
               aria-label="Open Tour Menu"
               type="button"

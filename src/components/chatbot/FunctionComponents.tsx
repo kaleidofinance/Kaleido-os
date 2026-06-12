@@ -232,10 +232,10 @@ export const TransactionProposal: React.FC<TransactionProposalProps> = ({ result
       case 'marketplace':
         return (
           <div className="lend-details mb-4">
-            <div className="bg-[#12121f] p-3 rounded-lg border border-[#00ccff]/20">
+            <div className="bg-[#12121f] p-3 rounded-lg border border-[#d1d5db]/20">
               <div className="text-[10px] text-gray-500 uppercase">{result.action === 'list' ? 'Create Listing' : 'Accept Listing'}</div>
               <div className="font-bold text-white text-lg">Listing #{result.listingId}</div>
-              <div className="text-[9px] text-[#00ccff] font-bold uppercase">{result.amount} {result.token || 'KALE'}</div>
+              <div className="text-[9px] text-[#d1d5db] font-bold uppercase">{result.amount} {result.token || 'KALE'}</div>
             </div>
           </div>
         );
@@ -431,20 +431,20 @@ export const FunctionResult: React.FC<FunctionResultProps> = ({ message, onConfi
   // Render differently based on the executed function
   switch (executedFunction) {    case 'getMarketplaceListings':
       return (
-        <div className="function-result marketplace-discovery p-4 rounded-2xl bg-gradient-to-b from-[#1a1a2e] to-[#0f0f1a] border border-[#00ccff]/30 my-3 shadow-2xl">
+        <div className="function-result marketplace-discovery p-4 rounded-2xl bg-gradient-to-b from-[#1a1a2e] to-[#0f0f1a] border border-[#d1d5db]/30 my-3 shadow-2xl">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h3 className="text-xs font-bold text-[#00ccff] uppercase tracking-widest mb-1">Marketplace Opportunities</h3>
+              <h3 className="text-xs font-bold text-[#d1d5db] uppercase tracking-widest mb-1">Marketplace Opportunities</h3>
               <div className="text-xl font-black text-white">{result.total} Active Listings Found</div>
             </div>
-            <div className="p-2 bg-[#00ccff]/10 rounded-lg text-[#00ccff]">
+            <div className="p-2 bg-[#d1d5db]/10 rounded-lg text-[#d1d5db]">
               <FiShoppingCart size={20} />
             </div>
           </div>
           
           <div className="space-y-3 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
             {result.listings.map((item: any, i: number) => (
-              <div key={i} className="p-3 rounded-xl bg-[#1e1e30]/50 border border-white/5 hover:border-[#00ccff]/40 transition-all group">
+              <div key={i} className="p-3 rounded-xl bg-[#1e1e30]/50 border border-white/5 hover:border-[#d1d5db]/40 transition-all group">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded bg-[#12121f] border border-white/10 flex items-center justify-center text-[10px] font-bold text-gray-400">
@@ -460,7 +460,7 @@ export const FunctionResult: React.FC<FunctionResultProps> = ({ message, onConfi
                         // This would trigger a follow-up action or pre-fill the input
                         // For now we just simulate clicking it
                     }}
-                    className="px-3 py-1.5 bg-[#00ccff]/10 hover:bg-[#00ccff]/20 text-[#00ccff] text-[10px] font-bold rounded-md transition-all uppercase tracking-tighter"
+                    className="px-3 py-1.5 bg-[#d1d5db]/10 hover:bg-[#d1d5db]/20 text-[#d1d5db] text-[10px] font-bold rounded-md transition-all uppercase tracking-tighter"
                   >
                     View Details
                   </button>
@@ -475,7 +475,7 @@ export const FunctionResult: React.FC<FunctionResultProps> = ({ message, onConfi
             </div>
           )}
 
-          <button className="w-full mt-4 py-2 border border-[#00ccff]/10 rounded-lg text-[10px] text-gray-400 hover:text-[#00ccff] transition-all uppercase font-bold tracking-widest">
+          <button className="w-full mt-4 py-2 border border-[#d1d5db]/10 rounded-lg text-[10px] text-gray-400 hover:text-[#d1d5db] transition-all uppercase font-bold tracking-widest">
               Refresh Market Data
           </button>
         </div>
@@ -534,7 +534,7 @@ export const FunctionResult: React.FC<FunctionResultProps> = ({ message, onConfi
             <div className="w-full h-2 bg-gray-800 rounded-full flex overflow-hidden mb-6 shadow-inner">
               {result.tokens.map((token: TokenBalance, i: number) => {
                 const percentage = (Number(token.valueUSD) / total) * 100;
-                const colors = ['bg-[#00ff99]', 'bg-[#ffd700]', 'bg-[#00ccff]', 'bg-[#ff00ff]'];
+                const colors = ['bg-[#00ff99]', 'bg-[#d1d5db]', 'bg-[#d1d5db]', 'bg-[#9ca3af]'];
                 return (
                   <div 
                     key={i} 
@@ -640,8 +640,8 @@ export const FunctionResult: React.FC<FunctionResultProps> = ({ message, onConfi
 const getRiskScoreColor = (score: number): string => {
   if (score >= 80) return 'bg-green-600';
   if (score >= 60) return 'bg-green-500';
-  if (score >= 40) return 'bg-yellow-500';
-  if (score >= 20) return 'bg-orange-500';
+  if (score >= 40) return 'bg-[#2a2a2a]';
+  if (score >= 20) return 'bg-[#2a2a2a]';
   return 'bg-red-500';
 };
 

@@ -57,9 +57,9 @@ export const Header = () => {
   const getLevelColor = (level: string) => {
     switch (level) {
       case 'success': return 'bg-green-500'
-      case 'warning': return 'bg-yellow-500'
+      case 'warning': return 'bg-[#2a2a2a]'
       case 'error': return 'bg-red-500'
-      default: return 'bg-blue-500'
+      default: return 'bg-[#2a2a2a]'
     }
   }
 

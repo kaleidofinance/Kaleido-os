@@ -115,7 +115,7 @@ export default function KFUSDDashboard() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-2">
-            <ArrowDownRight className="w-5 h-5 text-orange-400 mr-2" />
+            <ArrowDownRight className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-sm font-medium text-gray-400">Daily Redeem Volume</h3>
           </div>
           <p className="text-2xl font-bold text-white">{dashboardStats.dailyRedeemVolume}</p>
@@ -123,7 +123,7 @@ export default function KFUSDDashboard() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-2">
-            <DollarSign className="w-5 h-5 text-purple-400 mr-2" />
+            <DollarSign className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-sm font-medium text-gray-400">Fees Generated</h3>
           </div>
           <p className="text-2xl font-bold text-white">{dashboardStats.totalFeesGenerated}</p>
@@ -131,7 +131,7 @@ export default function KFUSDDashboard() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-2">
-            <Shield className="w-5 h-5 text-blue-400 mr-2" />
+            <Shield className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-sm font-medium text-gray-400">Treasury Buffer</h3>
           </div>
           <p className="text-2xl font-bold text-white">{dashboardStats.treasuryBuffer}</p>
@@ -178,12 +178,12 @@ export default function KFUSDDashboard() {
             <div key={index} className="flex items-center justify-between py-3 border-b border-gray-700/50 last:border-b-0">
               <div className="flex items-center">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
-                  activity.type === "mint" ? "bg-green-500/20" : "bg-orange-500/20"
+                  activity.type === "mint" ? "bg-green-500/20" : "bg-[#2a2a2a]/60"
                 }`}>
                   {activity.type === "mint" ? (
                     <TrendingUp className="w-4 h-4 text-green-400" />
                   ) : (
-                    <ArrowDownRight className="w-4 h-4 text-orange-400" />
+                    <ArrowDownRight className="w-4 h-4 text-gray-300" />
                   )}
                 </div>
                 <div>
@@ -214,7 +214,7 @@ export default function KFUSDDashboard() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <TrendingUp className="w-5 h-5 text-blue-400 mr-2" />
+            <TrendingUp className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-lg font-semibold text-white">Launchpad</h3>
           </div>
           <p className="text-gray-300 text-sm">
@@ -224,7 +224,7 @@ export default function KFUSDDashboard() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <Activity className="w-5 h-5 text-purple-400 mr-2" />
+            <Activity className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-lg font-semibold text-white">DEX & Swap</h3>
           </div>
           <p className="text-gray-300 text-sm">
@@ -234,7 +234,7 @@ export default function KFUSDDashboard() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <Globe className="w-5 h-5 text-orange-400 mr-2" />
+            <Globe className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-lg font-semibold text-white">Cross-Chain</h3>
           </div>
           <p className="text-gray-300 text-sm">

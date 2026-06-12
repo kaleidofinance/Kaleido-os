@@ -12,9 +12,9 @@ export default function NotificationsPage() {
   const getLevelColor = (level: string) => {
     switch (level) {
       case 'success': return 'bg-green-100 border-green-500 text-green-800'
-      case 'warning': return 'bg-yellow-100 border-yellow-500 text-yellow-800'
+      case 'warning': return 'bg-[#2a2a2a] border-gray-500 text-gray-200'
       case 'error': return 'bg-red-100 border-red-500 text-red-800'
-      default: return 'bg-blue-100 border-blue-500 text-blue-800'
+      default: return 'bg-[#2a2a2a] border-gray-500 text-gray-200'
     }
   }
 
@@ -57,7 +57,7 @@ export default function NotificationsPage() {
         <div className="bg-[#18181b] rounded-lg shadow-sm p-6 mb-6 border border-[#232323]">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <BellIcon className="w-8 h-8 text-blue-400" />
+              <BellIcon className="w-8 h-8 text-gray-300" />
               <div>
                 <h1 className="text-2xl font-bold text-white">Notifications</h1>
                 <p className="text-gray-300">
@@ -69,7 +69,7 @@ export default function NotificationsPage() {
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
-                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="flex items-center space-x-2 px-4 py-2 bg-[#2a2a2a] text-white rounded-lg hover:bg-[#333333] transition-colors"
                 >
                   <CheckIcon className="w-4 h-4" />
                   <span>Mark all read</span>
@@ -141,9 +141,9 @@ export default function NotificationsPage() {
                   notification.read ? 'opacity-75' : ''
                 } ${
                   notification.level === 'success' ? 'border-l-green-500 bg-green-900/30' :
-                  notification.level === 'warning' ? 'border-l-yellow-500 bg-yellow-900/30' :
+                  notification.level === 'warning' ? 'border-l-gray-500 bg-[#2a2a2a]/30' :
                   notification.level === 'error' ? 'border-l-red-500 bg-red-900/30' :
-                  'border-l-blue-500 bg-blue-900/30'
+                  'border-l-gray-500 bg-[#2a2a2a]/30'
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -152,7 +152,7 @@ export default function NotificationsPage() {
                       <span className="text-lg">{getLevelIcon(notification.level)}</span>
                       <h3 className="font-semibold text-white">{notification.title}</h3>
                       {!notification.read && (
-                        <span className="px-2 py-1 bg-blue-800 text-blue-100 text-xs rounded-full">
+                        <span className="px-2 py-1 bg-[#2a2a2a] text-gray-100 text-xs rounded-full">
                           New
                         </span>
                       )}
@@ -166,7 +166,7 @@ export default function NotificationsPage() {
                         {!notification.read && (
                           <button
                             onClick={() => markAsRead(notification.id)}
-                            className="text-sm text-blue-300 hover:text-blue-500"
+                            className="text-sm text-gray-300 hover:text-gray-300"
                           >
                             Mark read
                           </button>

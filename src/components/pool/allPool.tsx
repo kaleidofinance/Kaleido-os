@@ -278,7 +278,7 @@ export default function AllPool({ viewMode = 'card', searchQuery = '' }: AllPool
     const labels = [];
     
     if (pair.stable) {
-      labels.push({ text: 'Stable', color: 'bg-blue-500/20 text-blue-400' });
+      labels.push({ text: 'Stable', color: 'bg-[#2a2a2a]/60 text-gray-300' });
     }
     
     // Check if it's a new pool (created within last 7 days)
@@ -287,7 +287,7 @@ export default function AllPool({ viewMode = 'card', searchQuery = '' }: AllPool
     const isNewPool = pair.createdAt && pair.createdAt > sevenDaysAgo;
     
     if (isNewPool) {
-      labels.push({ text: 'New', color: 'bg-purple-500/20 text-purple-400' });
+      labels.push({ text: 'New', color: 'bg-[#2a2a2a]/60 text-gray-300' });
     }
     
     // Check if it's high liquidity (over $10M)
@@ -399,7 +399,7 @@ export default function AllPool({ viewMode = 'card', searchQuery = '' }: AllPool
                                 <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-medium">
                                   Farm
                                 </span>
-                                <CheckCircle size={16} className="text-yellow-400" />
+                                <CheckCircle size={16} className="text-gray-300" />
                               </>
                             ) : (
                               getPoolLabels(pair).map((label, index) => (
@@ -433,7 +433,7 @@ export default function AllPool({ viewMode = 'card', searchQuery = '' }: AllPool
                       )}
                     </div>
                   </div>
-                  <div className="text-end text-orange-400 flex items-center justify-end gap-1 relative">
+                  <div className="text-end text-gray-300 flex items-center justify-end gap-1 relative">
                     ×{2.0 + (index * 0.5)}
                     <div
                       className="relative"
@@ -528,7 +528,7 @@ export default function AllPool({ viewMode = 'card', searchQuery = '' }: AllPool
                                 <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-medium">
                                   Farm
                                 </span>
-                                <CheckCircle size={16} className="text-yellow-400" />
+                                <CheckCircle size={16} className="text-gray-300" />
                               </>
                             ) : (
                               getPoolLabels(pair).map((label, index) => (
@@ -571,7 +571,7 @@ export default function AllPool({ viewMode = 'card', searchQuery = '' }: AllPool
                       </div>
                       <div>
                         <p className="text-gray-400 text-xs">Multiplier</p>
-                        <div className="font-medium text-orange-400 flex items-center gap-1 relative">
+                        <div className="font-medium text-gray-300 flex items-center gap-1 relative">
                           ×{2.0 + (index * 0.5)}
                           <div
                             className="relative"
@@ -653,7 +653,7 @@ export default function AllPool({ viewMode = 'card', searchQuery = '' }: AllPool
                           <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-medium">
                             Farm
                           </span>
-                          <CheckCircle size={16} className="text-yellow-400" />
+                          <CheckCircle size={16} className="text-gray-300" />
                         </>
                       ) : (
                         getPoolLabels(pair).map((label, labelIndex) => (
@@ -699,7 +699,7 @@ export default function AllPool({ viewMode = 'card', searchQuery = '' }: AllPool
                 <div className="flex justify-between items-center">
                   <span className="text-gray-400 text-sm">Multiplier</span>
                   <div className="flex items-center gap-1">
-                    <span className="text-orange-400 font-medium">×{2.0 + (index * 0.5)}</span>
+                    <span className="text-gray-300 font-medium">×{2.0 + (index * 0.5)}</span>
                     <div
                       className="relative"
                       onMouseEnter={() => setHoveredMultiplier(pair.address)}
@@ -807,7 +807,7 @@ export default function AllPool({ viewMode = 'card', searchQuery = '' }: AllPool
             
             <div className="mb-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Combined APR: <span className="text-purple-600 font-bold">30.73%</span>
+                Combined APR: <span className="text-gray-300 font-bold">30.73%</span>
               </h3>
               <div className="text-sm text-gray-600 mb-2">
                 • LP Fee APR: <span className="font-bold">30.73%</span>

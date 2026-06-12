@@ -172,15 +172,15 @@ export default function StakeModal({
 
           {/* User Position */}
           {userPosition && (
-            <div className="bg-gradient-to-br from-orange-500/10 to-orange-600/10 border border-orange-500/20 rounded-xl p-4 backdrop-blur-sm">
-              <h4 className="text-sm font-medium text-orange-300 mb-3 flex items-center">
-                <span className="w-2 h-2 bg-orange-400 rounded-full mr-2"></span>
+            <div className="bg-gradient-to-br from-[#2a2a2a]/40 to-[#333333]/40 border border-white/10 rounded-xl p-4 backdrop-blur-sm">
+              <h4 className="text-sm font-medium text-gray-300 mb-3 flex items-center">
+                <span className="w-2 h-2 bg-gray-300 rounded-full mr-2"></span>
                 Your Position
               </h4>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-300">Points Earned:</span>
-                  <span className="text-sm font-semibold text-orange-400">
+                  <span className="text-sm font-semibold text-gray-300">
                     {earnedPoints}
                   </span>
                 </div>
@@ -189,7 +189,7 @@ export default function StakeModal({
                     <span className="text-sm text-gray-300">
                       Unclaimed Points:
                     </span>
-                    <span className="text-sm font-semibold text-orange-300">
+                    <span className="text-sm font-semibold text-gray-300">
                       {unclaimedPoints}
                     </span>
                   </div>
@@ -219,7 +219,7 @@ export default function StakeModal({
                   variant="outline"
                   onClick={handleClaim}
                   disabled={isClaiming}
-                  className="border-orange-500 text-orange-400 hover:bg-orange-500/10 font-semibold py-3"
+                  className="border-gray-500 text-gray-300 hover:bg-[#2a2a2a]/40 font-semibold py-3"
                 >
                   {isClaiming ? "Claiming..." : "Claim Points"}
                 </Button>

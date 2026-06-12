@@ -254,7 +254,7 @@ export default function TransactionHistoryModal({
       case "completed":
         return "text-green-400";
       case "pending":
-        return "text-yellow-400";
+        return "text-gray-300";
       case "failed":
         return "text-red-400";
       default:
