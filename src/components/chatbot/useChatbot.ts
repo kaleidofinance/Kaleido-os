@@ -97,12 +97,12 @@ export function useChatbot() {
     return () => clearInterval(interval);
   }, [userId]);
 
-  // --- SENTINEL HEARTBEAT: Automated Yield Monitoring ---
+  // --- Automated Yield Monitoring ---
   useEffect(() => {
     // Only run if sentient brain is active and synced
     if (!isSynced || !conversationId) return;
 
-    const runSentinelCheck = async () => {
+    const runYieldMonitorCheck = async () => {
         try {
             // Check permissions before scouting (OFF by default)
             const savedPerms = localStorage.getItem('luca_agent_permissions');
@@ -111,20 +111,20 @@ export function useChatbot() {
             if (!perms.sentinelMode) return;
 
             // Cooldown Check: Don't alert more than once per hour
-            const lastAlert = localStorage.getItem('last_sentinel_alert');
+            const lastAlert = localStorage.getItem('last_yield_monitor_alert');
             const oneHour = 3600000;
             if (lastAlert && (Date.now() - parseInt(lastAlert)) < oneHour) {
                 return;
             }
 
 
-            // 1. Scout for USDC yield gaps
+            // 1. Check for USDC yield gaps
             if (perms.sentinelMode) {
                 const gap = await findYieldGap("USDC", 4.0);
                 if (gap) {
-                    const sentinelMessage: Message = {
+                    const yieldMessage: Message = {
                         role: 'assistant',
-                        content: `[SENTINEL ALERT] I've found a superior yield opportunity. Your USDC is currently earning ~4%, but I've identified a ${gap.supplyApr}% yield on ${gap.protocol}. Would you like me to optimize your collateral?`,
+                        content: `Yield opportunity found: your USDC is currently earning ~4%, and ${gap.protocol} is offering ${gap.supplyApr}%. Would you like me to optimize your collateral?`,
                         isNew: true,
                         contentType: 'functionResult',
                         functionData: {
@@ -142,25 +142,25 @@ export function useChatbot() {
                     };
                     setMessages(prev => {
                         const lastMessage = prev[prev.length - 1];
-                        if (lastMessage?.content.includes("[SENTINEL ALERT]")) return prev;
-                        return [...prev, sentinelMessage];
+                        if (lastMessage?.content.includes("Yield opportunity found:")) return prev;
+                        return [...prev, yieldMessage];
                     });
-                    saveMessage(conversationId, sentinelMessage);
-                    localStorage.setItem('last_sentinel_alert', Date.now().toString());
+                    saveMessage(conversationId, yieldMessage);
+                    localStorage.setItem('last_yield_monitor_alert', Date.now().toString());
                 }
             }
 
-            // 2. Scout for Arbitrage Opportunties
+            // 2. Check for Arbitrage Opportunties
             if (perms.arbitrageMode) {
                 const arb = await findArbitrageGap("USDC");
                 if (arb) {
                     const healingNotice = arb.remediationAttempts && arb.remediationAttempts > 1 
-                        ? ` (Healed autonomously in ${arb.remediationAttempts} cycles 🛡️)` 
+                        ? ` (Route verified after ${arb.remediationAttempts} checks)`
                         : "";
                     
                     const arbMessage: Message = {
                         role: 'assistant',
-                        content: `[PULSE ALERT] Cross-chain arbitrage detected! ${arb.token} is trading with a ${arb.profitPercent}% gap between ${arb.fromChain} and ${arb.toChain}.${healingNotice} \n\nSecurity Audit: ${arb.securityScore < 20 ? '✅ Shielded' : '⚠️ Risk Detected (' + arb.securityScore + ')'} \nEstimated profit: $${arb.estimatedProfitUsd}. Capture now?`,
+                        content: `Cross-chain arbitrage opportunity detected! ${arb.token} is trading with a ${arb.profitPercent}% gap between ${arb.fromChain} and ${arb.toChain}.${healingNotice} \n\nSafety check: ${arb.securityScore < 20 ? '✅ Passed' : '⚠️ Risk detected (' + arb.securityScore + ')'} \nEstimated profit: $${arb.estimatedProfitUsd}. Run this opportunity?`,
                         isNew: true,
                         contentType: 'functionResult',
                         functionData: {
@@ -175,23 +175,23 @@ export function useChatbot() {
                     };
                     setMessages(prev => {
                         const lastMessage = prev[prev.length - 1];
-                        if (lastMessage?.content.includes("[PULSE ALERT]")) return prev;
+                        if (lastMessage?.content.includes("Cross-chain arbitrage opportunity detected!")) return prev;
                         return [...prev, arbMessage];
                     });
                     saveMessage(conversationId, arbMessage);
-                    localStorage.setItem('last_sentinel_alert', Date.now().toString());
+                    localStorage.setItem('last_yield_monitor_alert', Date.now().toString());
                 }
             }
         } catch (error) {
-            console.error("Sentinel check failed:", error);
+            console.error("Yield monitor check failed:", error);
         }
     };
 
     // Run every 5 minutes
-    const interval = setInterval(runSentinelCheck, 300000);
+    const interval = setInterval(runYieldMonitorCheck, 300000);
     
     // Also run once after initial sync (delayed slightly for UX)
-    const timeout = setTimeout(runSentinelCheck, 8000);
+    const timeout = setTimeout(runYieldMonitorCheck, 8000);
 
     return () => {
         clearInterval(interval);

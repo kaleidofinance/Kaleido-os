@@ -513,7 +513,7 @@ function ChatbotWidget() {
             const eventName = data.tourType === 'deposit' || data.tourType === 'collateral' ? 'startCollateralTour' : 'startDashboardTour';
             window.dispatchEvent(new CustomEvent(eventName));
             setIsOpen(false); 
-            toast.success(`Starting autonomous ${data.tourType} tour...`);
+            toast.success(`Starting ${data.tourType} tour...`);
         }
       } catch (err: any) {
           console.error("Agent action failed:", err);
@@ -620,23 +620,23 @@ function ChatbotWidget() {
                   </div>
                 )}
                 
-                {/* Neural Link Status Orb */}
+                {/* AI Connection Status */}
                 <div 
                   className={`text-[8px] px-1.5 py-0.5 rounded border font-bold flex items-center gap-1 ${isSynced ? 'bg-[#2a2a2a]/60 text-gray-300 border-gray-500/30' : 'bg-gray-500/10 text-gray-500 border-gray-500/20'}`}
-                  title={isSynced ? "Neural Link Active" : "Neural Link Offline"}
+                  title={isSynced ? "AI connection active" : "AI connection offline"}
                 >
                   <div className={`w-1.5 h-1.5 rounded-full ${isSynced ? 'bg-gray-400 shadow-[0_0_8px_#9ca3af] animate-pulse' : 'bg-gray-500'}`}></div>
-                  SYNC
+                  {isSynced ? "Connected" : "Offline"}
                 </div>
 
-                {/* Sentinel Mode Orb */}
+                {/* Yield Monitor Status */}
                 {permissions.sentinelMode && (
                   <div 
                     className="text-[8px] px-1.5 py-0.5 rounded border border-[#00ff99]/40 bg-[#00ff99]/20 text-[#00ff99] font-bold flex items-center gap-1"
-                    title="Yield Sentinel Mode Active"
+                    title="Yield monitoring active"
                   >
                     <div className="w-1.5 h-1.5 rounded-full bg-[#00ff99] shadow-[0_0_8px_#00ff99] animate-pulse"></div>
-                    SENTINEL
+                    Yield
                   </div>
                 )}
               </div>
@@ -709,16 +709,16 @@ function ChatbotWidget() {
             <div className="bg-[#0b0b0b] border-b border-[#00ff99]/20 p-4 animate-in slide-in-from-top duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <FaShieldAlt className="text-[#00ff99]" />
-                <h4 className="text-sm font-bold text-white uppercase tracking-tight">Agent Permissions</h4>
+                <h4 className="text-sm font-bold text-white uppercase tracking-tight">AI Settings</h4>
               </div>
               
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
-                        Infinite DEX Approval
+                        Swap Token Approval
                         {isInfiniteApproved() && (
-                            <span className="text-[7px] px-1 bg-[#00ff99]/20 text-[#00ff99] border border-[#00ff99]/30 rounded uppercase font-bold animate-pulse">Live Active</span>
+                            <span className="text-[7px] px-1 bg-[#00ff99]/20 text-[#00ff99] border border-[#00ff99]/30 rounded uppercase font-bold animate-pulse">Active</span>
                         )}
                     </div>
                     <div className="text-[10px] text-gray-400">Allow Luca to spend tokens for swaps</div>
@@ -737,9 +737,9 @@ function ChatbotWidget() {
                 <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
-                        Lending Pre-Auth
+                        Lending Approval
                         {isInfiniteApproved() && (
-                            <span className="text-[7px] px-1 bg-[#00ff99]/20 text-[#00ff99] border border-[#00ff99]/30 rounded uppercase font-bold animate-pulse">Live Active</span>
+                            <span className="text-[7px] px-1 bg-[#00ff99]/20 text-[#00ff99] border border-[#00ff99]/30 rounded uppercase font-bold animate-pulse">Active</span>
                         )}
                     </div>
                     <div className="text-[10px] text-gray-400">Allow Luca to manage deposits</div>
@@ -758,10 +758,10 @@ function ChatbotWidget() {
                 <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
-                        Yield Sentinel AI
-                        <span className="text-[7px] px-1 bg-[#00ff99]/10 text-[#00ff99]/60 border border-[#00ff99]/10 rounded uppercase font-bold">Background Scout</span>
+                        Yield Monitor
+                        <span className="text-[7px] px-1 bg-[#00ff99]/10 text-[#00ff99]/60 border border-[#00ff99]/10 rounded uppercase font-bold">Background</span>
                     </div>
-                    <div className="text-[10px] text-gray-400">Luca scouts Abstract for yield opportunities</div>
+                    <div className="text-[10px] text-gray-400">Luca monitors Abstract for yield opportunities</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input 
@@ -777,10 +777,10 @@ function ChatbotWidget() {
                 <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
-                        Arbitrage Scout AI
-                        <span className="text-[7px] px-1 bg-[#2a2a2a]/60 text-gray-300 border border-white/10 rounded uppercase font-bold">PULSE Hunt</span>
+                        Arbitrage Monitor
+                        <span className="text-[7px] px-1 bg-[#2a2a2a]/60 text-gray-300 border border-white/10 rounded uppercase font-bold">Monitoring</span>
                     </div>
-                    <div className="text-[10px] text-gray-400">Luca hunts cross-chain price discrepancies</div>
+                    <div className="text-[10px] text-gray-400">Luca monitors cross-chain price differences</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input 
@@ -798,7 +798,7 @@ function ChatbotWidget() {
                     <div className="text-xs font-bold text-[#d1d5db] flex items-center gap-1">
                       <FiZap className="fill-[#d1d5db]" /> Speed Mode
                     </div>
-                    <div className="text-[10px] text-gray-400">Skip confirmation cards; execute instantly</div>
+                    <div className="text-[10px] text-gray-400">Skip confirmations and run actions instantly</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input 
@@ -813,7 +813,7 @@ function ChatbotWidget() {
 
                 <div className="mt-4 p-2 bg-[#00ff99]/5 rounded border border-[#00ff99]/10">
                     <p className="text-[9px] text-gray-400 text-center uppercase tracking-widest font-bold">
-                        Security Note: These toggles enable "Max Allowance" for the protocol contracts on first use.
+                        Security note: these toggles may request max allowance for app contracts on first use.
                     </p>
                 </div>
               </div>
@@ -833,7 +833,7 @@ function ChatbotWidget() {
                       className={`flex-1 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-all ${historyTab === 'txs' ? 'text-[#00ff99] border-b-2 border-[#00ff99] bg-[#00ff99]/5' : 'text-gray-500 hover:text-gray-300'}`}
                       onClick={() => setHistoryTab('txs')}
                   >
-                      Protocol Ledger
+                      Transaction History
                   </button>
               </div>
 
@@ -898,7 +898,7 @@ function ChatbotWidget() {
                         }}
                         className="mt-4 px-4 py-2 bg-[#00ff99]/20 text-[#00ff99] text-[10px] font-bold rounded-full hover:bg-[#00ff99]/30 transition-all uppercase tracking-widest border border-[#00ff99]/30"
                       >
-                        New Session
+                        New Chat
                       </button>
                     </div>
                   )}
@@ -947,7 +947,7 @@ function ChatbotWidget() {
                         <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-white/5 flex items-center justify-center">
                             <FaShieldAlt className="text-gray-500 text-xl" />
                         </div>
-                        <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">No transactions logged</div>
+                        <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">No transactions yet</div>
                     </div>
                   )}
                 </div>

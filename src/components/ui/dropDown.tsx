@@ -1,15 +1,16 @@
-"use client"
+"use client";
 
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
-import { ReactNode, useState } from "react"
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { ReactNode, useState } from "react";
 
 type DropdownProps = {
-  trigger: ReactNode
-  children: ReactNode
-  side?: "top" | "right" | "bottom" | "left"
-  align?: "start" | "center" | "end"
-  sideOffset?: number
-}
+  trigger: ReactNode;
+  children: ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+  sideOffset?: number;
+  contentClassName?: string;
+};
 
 export default function Dropdown({
   trigger,
@@ -17,8 +18,9 @@ export default function Dropdown({
   side = "bottom",
   align = "start",
   sideOffset = 8,
+  contentClassName = "",
 }: DropdownProps) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false);
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
@@ -26,7 +28,7 @@ export default function Dropdown({
 
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="rounded-lg border border-[#404040] bg-[#2a2a2a] p-4 shadow-xl"
+          className={`z-[1000] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-lg border border-[#404040] bg-[#2a2a2a] p-4 shadow-xl ${contentClassName}`}
           side={side}
           align={align}
           sideOffset={sideOffset}
@@ -35,5 +37,5 @@ export default function Dropdown({
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
-  )
+  );
 }

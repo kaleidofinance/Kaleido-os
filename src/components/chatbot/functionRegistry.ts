@@ -454,7 +454,7 @@ export const functionRegistry: FunctionDefinition[] = [
     name: "Autonomous Tour",
     requiresWallet: false,
     isAction: true,
-    description: "Initialize an autonomous guided tour of the platform features",
+    description: "Start a guided tour of the platform features",
     patterns: ["start tour", "show me around", "explain the app", "how do i use this", "guide me", "tour", "walkthrough"],
     execute: async (params) => ({
       type: 'tour',
@@ -464,13 +464,13 @@ export const functionRegistry: FunctionDefinition[] = [
   },
   {
     id: "identifyAgent",
-    name: "Agent Identity",
+    name: "AI Assistant",
     requiresWallet: false,
     isAction: false,
     description: "Get information about Luca's identity and mission",
     patterns: ["who are you", "what is your name", "tell me about yourself", "who is luca"],
     execute: async () => {
-      return "I am Luca, your AI-powered DeFi Co-Pilot and the central intelligence of the Kaleido Agentic OS. I live on the Abstract Chain, and my mission is to help you automate, monitor, and scale your wealth across the multichain ecosystem.";
+      return "I am Luca, your AI-powered DeFi assistant for Kaleido. I can help you trade, bridge, monitor risk, and manage positions across supported chains.";
     },
   },
   {
@@ -482,10 +482,10 @@ export const functionRegistry: FunctionDefinition[] = [
     patterns: ["what can you do", "help", "commands", "features", "how do you work"],
     execute: async () => {
       return "I can manage your entire DeFi lifecycle locally. My core modules include:\n\n" +
-             "• **Gateway Agent:** Omni-chain bridging from 15+ networks.\n" +
-             "• **Risk Sentinel:** Real-time health factor monitoring.\n" +
-             "• **Recursive Autonomy:** Circular swap and volume farming macros.\n" +
-             "• **Portfolio Oracle:** Instant snapshots across Base, Arbitrum, Mainnet, and Hyperliquid.\n\n" +
+             "• **Bridge Assistant:** Omni-chain bridging from 15+ networks.\n" +
+             "• **Risk Monitor:** Real-time health factor monitoring.\n" +
+             "• **Automated Strategies:** Circular swap and volume farming macros.\n" +
+             "• **Portfolio Snapshot:** Instant snapshots across Base, Arbitrum, Mainnet, and Hyperliquid.\n\n" +
              "Just ask me to 'Swap', 'Bridge', or 'Check my risk' to start.";
     },
   },
@@ -497,7 +497,7 @@ export const functionRegistry: FunctionDefinition[] = [
     description: "Understand the vision and benefits of the Kaleido DeFi OS",
     patterns: ["what is kaleido", "tell me about kaleido", "kaleido vision", "why use kaleido"],
     execute: async () => {
-      return "Kaleido is the first **Agentic DeFi OS** built natively on the Abstract Chain. We combine peer-to-peer liquidity with autonomous AI agents to remove the friction from decentralized finance. Here, you don't just trade; you command an ecosystem.";
+      return "Kaleido is the first **Agentic DeFi OS** built natively on the Abstract Chain. We combine peer-to-peer liquidity with autonomous AI agents to remove the friction from decentralized finance. Here, you can trade, manage positions, and use AI-assisted DeFi tools.";
     },
   },
   // --- NATIVE ABSTRACT AGENT SKILLS ---
@@ -842,10 +842,10 @@ export const detectFunctions = (message: string): FunctionDetectionResult => {
 
     // High hurdle for semantic autonomy (90% precision goal)
     if (bestLocalScore > 0.75) {
-      console.log(`[Sentient] Autonomous match: ${bestLocalMatch?.id} (${Math.round(bestLocalScore * 100)}%)`);
+      console.log(`[AI] Local match: ${bestLocalMatch?.id} (${Math.round(bestLocalScore * 100)}%)`);
       exact.push(bestLocalMatch!);
     } else if (bestLocalScore > 0.45) {
-      console.log(`[Sentient] Suggestions mode: ${bestLocalMatch?.id} (${Math.round(bestLocalScore * 100)}%)`);
+      console.log(`[AI] Suggestions mode: ${bestLocalMatch?.id} (${Math.round(bestLocalScore * 100)}%)`);
       partial.push(bestLocalMatch!);
     }
   }

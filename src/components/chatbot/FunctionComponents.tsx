@@ -316,7 +316,7 @@ const BridgeCard: React.FC<{ action: ActionProposedResult }> = ({ action }) => {
           <div className="p-2 bg-[#36b169]/20 rounded-lg text-[#36b169]">
             <FiZap />
           </div>
-          <span className="text-[10px] uppercase font-black tracking-widest text-[#36b169]">Gateway Agent</span>
+          <span className="text-[10px] uppercase font-black tracking-widest text-[#36b169]">Bridge Assistant</span>
         </div>
         <div className="text-[10px] text-gray-500 font-bold bg-white/5 px-2 py-0.5 rounded uppercase">Route: {action.fromChain} → {action.toChain}</div>
       </div>
