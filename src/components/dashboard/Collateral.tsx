@@ -85,21 +85,21 @@ const Collateral = ({ id }: { id?: string }) => {
       <div className="mb-3 px-4 text-lg sm:px-6 sm:text-xl">
         <h3>Wallet&apos;s Portfolio</h3>
       </div>
-      <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6">
-        <table className="min-w-[560px] table-fixed text-center text-sm sm:min-w-full">
+      <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-hidden overflow-y-auto px-3 sm:px-6">
+        <table className="min-w-full text-center text-sm">
           <thead>
             <tr className="text-center text-white/70">
-              <th className="sticky top-0 w-1/4 py-2 text-start font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 py-2 text-start font-medium bg-[#060606] z-20">
                 Asset
               </th>
-              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
                 <span className="sm:hidden">Balance</span>
                 <span className="hidden sm:inline">Wallet Balance</span>
               </th>
-              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
                 Collateral
               </th>
-              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
                 Actions
               </th>
             </tr>
@@ -117,10 +117,10 @@ const Collateral = ({ id }: { id?: string }) => {
                       alt={item.icon}
                       className="w-5 shrink-0 sm:w-4"
                     />
-                    <span className="truncate">{item.token}</span>
+                    <span className="min-w-0 truncate">{item.token}</span>
                   </div>
                   {item.isMultichain && (
-                    <div className="mt-1 flex gap-1">
+                    <div className="mt-1 flex flex-wrap gap-1">
                       {item.chains?.map((c: any) => (
                         <span
                           key={c.chainId}
