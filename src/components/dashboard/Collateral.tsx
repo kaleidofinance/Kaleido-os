@@ -86,19 +86,19 @@ const Collateral = ({ id }: { id?: string }) => {
         <h3>Wallet&apos;s Portfolio</h3>
       </div>
       <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6">
-        <table className="min-w-[520px] table-auto text-center text-sm sm:min-w-full">
+        <table className="min-w-[560px] table-fixed text-center text-sm sm:min-w-full">
           <thead>
             <tr className="text-center text-white/70">
-              <th className="sticky top-0 py-2 text-start font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 w-1/4 py-2 text-start font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Asset
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Wallet Balance
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Collateral
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Actions
               </th>
             </tr>
@@ -109,7 +109,7 @@ const Collateral = ({ id }: { id?: string }) => {
                 key={index}
                 className="text-center text-xs sm:text-sm border-t border-white/5"
               >
-                <td className="flex min-w-[120px] flex-col pt-3 text-start">
+                <td className="flex flex-col pt-3 text-start">
                   <div className="flex min-w-0 items-center gap-2">
                     <img
                       src={item.icon}
@@ -131,7 +131,7 @@ const Collateral = ({ id }: { id?: string }) => {
                     </div>
                   )}
                 </td>
-                <td className="min-w-[130px] pt-2">
+                <td className="pt-2">
                   <div className="flex flex-col items-center">
                     <span>
                       {formatWithCommas(
@@ -141,7 +141,7 @@ const Collateral = ({ id }: { id?: string }) => {
                     </span>
                   </div>
                 </td>
-                <td className="min-w-[95px] pt-2">
+                <td className="pt-2">
                   <div className="flex flex-col items-center">
                     <Image
                       src={
@@ -159,7 +159,7 @@ const Collateral = ({ id }: { id?: string }) => {
                     />
                   </div>
                 </td>
-                <td className="min-w-[120px] pt-2">
+                <td className="pt-2">
                   <div className="flex justify-center">
                     <div onClick={() => handleDepositClick(item.token)}>
                       <Btn
