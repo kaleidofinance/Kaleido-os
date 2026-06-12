@@ -169,7 +169,8 @@ const Collateral = ({ id }: { id?: string }) => {
                 Asset
               </th>
               <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
-                Wallet Balance
+                <span className="lg:hidden">Balance</span>
+                <span className="hidden lg:inline">Wallet Balance</span>
               </th>
               <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Collateral
