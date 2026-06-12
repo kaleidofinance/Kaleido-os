@@ -59,18 +59,18 @@
 }
 
 .markdown-content pre {
-  background: #1e1e30;
+  background: #1f1f1f;
   padding: 0.4rem 0.5rem;
   border-radius: 0.375rem;
   overflow-x: auto;
   margin: 0.5rem 0;
-  border: 1px solid #2a2a40;
+  border: 1px solid #333333;
 }
 
 .markdown-content code {
   font-family: monospace;
   padding: 0.1rem 0.2rem;
-  background: #1e1e30;
+  background: #1f1f1f;
   border-radius: 0.25rem;
   font-size: 0.85rem;
   color: #00ff99;
@@ -94,7 +94,7 @@
 }
 
 .markdown-content pre::-webkit-scrollbar-track {
-  background: #1e1e30;
+  background: #1f1f1f;
   border-radius: 3px;
 }
 
@@ -110,7 +110,7 @@
 /* Firefox scrollbar for code blocks */
 .markdown-content pre {
   scrollbar-width: thin;
-  scrollbar-color: #00ff99 #1e1e30;
+  scrollbar-color: #00ff99 #1f1f1f;
 }
 
 /* Copy button for code blocks - now using fixed position implementation */
@@ -232,7 +232,7 @@
 }
 
 .chatbot-messages-container::-webkit-scrollbar-track {
-  background: #12121f;
+  background: #141414;
   border-radius: 3px;
 }
 
@@ -248,7 +248,7 @@
 /* Firefox scrollbar styling */
 .chatbot-messages-container {
   scrollbar-width: thin;
-  scrollbar-color: #00ff99 #12121f;
+  scrollbar-color: #00ff99 #141414;
 }
 
 /* Chat history dropdown styles */
