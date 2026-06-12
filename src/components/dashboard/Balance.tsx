@@ -1,37 +1,27 @@
-"use client";
+"use client"
 
-import Image from "next/image";
-import { Btn } from "../shared/Btn";
-import useGetValueAndHealth from "@/hooks/useGetValueAndHealth";
-import NoAssets from "./NoAssets";
-import { ethers } from "ethers";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { useState, useEffect } from "react";
-import DepositModal from "@/components/shared/DepositModal";
-import { formatWithCommas } from "@/constants/utils/formatNumber";
+import Image from "next/image"
+import { Btn } from "../shared/Btn"
+import useGetValueAndHealth from "@/hooks/useGetValueAndHealth"
+import NoAssets from "./NoAssets"
+import { ethers } from "ethers"
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
+import { useState, useEffect } from "react"
+import DepositModal from "@/components/shared/DepositModal"
+import { formatWithCommas } from "@/constants/utils/formatNumber"
 
 const Balance = () => {
-  const [mounted, setMounted] = useState(false);
-  const [showDepositModal, setShowDepositModal] = useState(false);
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const activeAccount = useActiveAccount();
-  const address = activeAccount?.address;
-
+  const [mounted, setMounted] = useState(false)
+  const [showDepositModal, setShowDepositModal] = useState(false)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const activeAccount = useActiveAccount()
+  const address = activeAccount?.address
+  
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const {
-    etherPrice,
-    usdcPrice,
-    data3,
-    data4,
-    data5,
-    AVA4,
-    AVA5,
-    collateralVal,
-    availBal,
-  } = useGetValueAndHealth();
+    setMounted(true)
+  }, [])
+  
+  const { etherPrice, usdcPrice, data3, data4, data5, AVA4, AVA5, collateralVal, availBal } = useGetValueAndHealth()
 
   // Initialize the array with dynamic balance and market value calculation
   const balanceData = [
@@ -91,10 +81,10 @@ const Balance = () => {
       collateralStatus: "On",
       tokenPrice: 1,
     },
-  ];
+  ]
 
   // Filter out tokens with 0 balance
-  const filteredBalanceData = balanceData.filter((item) => item.balance > 0);
+  const filteredBalanceData = balanceData.filter((item) => item.balance > 0)
 
   // If no tokens have a non-zero balance, return null or an alternative message
   if (filteredBalanceData.length === 0) {
@@ -102,7 +92,7 @@ const Balance = () => {
       <div>
         <NoAssets />
       </div>
-    );
+    )
   }
 
   if (!activeAccount || !address) {
@@ -110,82 +100,50 @@ const Balance = () => {
       <div>
         <NoAssets />
       </div>
-    );
+    )
   }
 
   return (
-    <div
-      id="balances-card"
-      className="custom-corner-header w-full min-w-0 overflow-hidden bg-black/40 backdrop-blur-md rounded-xl border border-[#00ff99]/10 py-4 transition-all hover:border-[#00ff99]/30"
-    >
-      <div className="mb-1 px-4 text-lg sm:px-6 sm:text-xl">
+    <div id="balances-card" className="custom-corner-header w-full bg-black/40 backdrop-blur-md rounded-xl border border-[#00ff99]/10 py-4 transition-all hover:border-[#00ff99]/30">
+      <div className="mb-1 px-6 text-xl">
         <h3>Collateral&apos;s Balance</h3>
       </div>
 
       {/* Summary Section */}
-      <div className="mb-2 flex flex-col gap-1 border-y border-[#00ff99]/30 p-2 text-xs text-white/50 sm:flex-row sm:justify-between sm:p-1">
+      <div className="mb-2 flex justify-between border-y border-[#00ff99]/30 p-1 text-xs text-white/50">
         <h4 className="p-1 sm:p-0">
-          Total Bal:{" "}
-          <span className="pl-1">{`$${formatWithCommas(collateralVal ? collateralVal : 0)}`}</span>
+          Total Bal: <span className="pl-1">{`$${formatWithCommas(collateralVal ? collateralVal : 0)}`}</span>
         </h4>
         <div className="p-1 text-right sm:p-0 sm:text-left">
-          Max Withdrawal:{" "}
-          <span className="pl-1">
-            {" "}
-            {`$${formatWithCommas(availBal ? Number(availBal) / 1e16 : 0)}`}
-          </span>
+          Max Withdrawal: <span className="pl-1"> {`$${formatWithCommas(availBal ? (Number(availBal) / 1e16) : 0)}`}</span>
         </div>
       </div>
 
       {/* Scrollable Table */}
-      <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6">
-        <table className="min-w-[520px] text-sm sm:min-w-full">
+      <div className="px-6 relative overflow-y-auto max-h-[220px] kaleido-scrollbar">
+        <table className="min-w-full text-sm">
           <thead>
             <tr className="text-center text-white/70">
-              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">
-                Asset
-              </th>
-              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">
-                Balance
-              </th>
-              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">
-                Value
-              </th>
-              <th className="sticky top-0 py-2 font-medium hidden sm:table-cell bg-[#060606] z-20">
-                Price
-              </th>
-              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">
-                Actions
-              </th>
+              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">Asset</th>
+              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">Balance</th>
+              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">Value</th>
+              <th className="sticky top-0 py-2 font-medium hidden sm:table-cell bg-[#060606] z-20">Price</th>
+              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredBalanceData.map((item, index) => (
-              <tr
-                key={index}
-                className="text-center text-xs sm:text-sm border-t border-white/5"
-              >
+              <tr key={index} className="text-center text-xs sm:text-sm border-t border-white/5">
                 {/* Asset */}
                 <td className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                  <img
-                    src={item.assetImg}
-                    alt={item.assetName}
-                    className="h-6 w-6"
-                  />
+                  <img src={item.assetImg} alt={item.assetName} className="h-6 w-6" />
                   <span>{item.assetName}</span>
                 </td>
                 {/* Balance */}
-                <td className="pt-2">
-                  {formatWithCommas(
-                    item.balance,
-                    item.assetName === "ETH" ? 4 : 2,
-                  )}
-                </td>
+                <td className="pt-2">{formatWithCommas(item.balance, item.assetName === "ETH" ? 4 : 2)}</td>
                 {/* Market Value */}
                 <td className="pt-2">
-                  {item.marketValue
-                    ? `$${formatWithCommas(item.marketValue.replace("$", ""))}`
-                    : "—"}
+                  {item.marketValue ? `$${formatWithCommas(item.marketValue.replace("$", ""))}` : "—"}
                 </td>
 
                 {/* Net Profit (Price) */}
@@ -225,22 +183,14 @@ const Balance = () => {
           </tbody>
         </table>
       </div>
-
+      
       {/* Deposit Modal */}
-      <DepositModal
-        open={showDepositModal}
-        onOpenChange={setShowDepositModal}
-        action="deposit"
-      />
-
+      <DepositModal open={showDepositModal} onOpenChange={setShowDepositModal} action="deposit" />
+      
       {/* Withdraw Modal */}
-      <DepositModal
-        open={showWithdrawModal}
-        onOpenChange={setShowWithdrawModal}
-        action="withdraw"
-      />
+      <DepositModal open={showWithdrawModal} onOpenChange={setShowWithdrawModal} action="withdraw" />
     </div>
-  );
-};
+  )
+}
 
-export default Balance;
+export default Balance
