@@ -213,7 +213,7 @@ export const Header = () => {
                   className="fixed inset-0 z-40"
                   onClick={() => setShowNotifications(false)}
                 ></div>
-                <div className="fixed right-3 top-20 z-50 w-[calc(100vw-1.5rem)] max-w-[22rem] overflow-hidden rounded-2xl border border-[#00ff99]/30 bg-[#0f0f1a]/95 text-white shadow-[0_0_50px_rgba(0,0,0,0.5),0_0_20px_rgba(0,255,153,0.1)] backdrop-blur-2xl sm:absolute sm:right-0 sm:top-12 sm:w-96 sm:max-w-none">
+                <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-1.5rem)] max-w-[22rem] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-[#00ff99]/30 bg-[#0f0f1a]/95 text-white shadow-[0_0_50px_rgba(0,0,0,0.5),0_0_20px_rgba(0,255,153,0.1)] backdrop-blur-2xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-96 sm:max-w-none sm:translate-x-0 sm:translate-y-0">
                   {/* Neon Corners */}
                   <span className="absolute left-0 top-0 h-[8px] w-[8px] border-l border-t border-[#00ff99]"></span>
                   <span className="absolute right-0 top-0 h-[8px] w-[8px] border-r border-t border-[#00ff99]"></span>
@@ -234,7 +234,7 @@ export const Header = () => {
                     )}
                   </div>
 
-                  <div className="max-h-[min(24rem,calc(100vh-9rem))] overflow-y-auto p-4 sm:max-h-[500px] sm:p-5">
+                  <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-4 sm:max-h-[500px] sm:p-5">
                     {notifications.length === 0 ? (
                       <div className="flex flex-col items-center justify-center space-y-3 py-8 text-center opacity-70">
                         <BellIcon
