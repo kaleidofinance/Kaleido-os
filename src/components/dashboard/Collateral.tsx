@@ -14,7 +14,6 @@ import {
 } from "@/constants/utils/omniChainBalances";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import DepositModal from "@/components/shared/DepositModal";
-import CreateOrderModal from "@/components/modals/CreateOrderModal";
 import { formatWithCommas } from "@/constants/utils/formatNumber";
 
 const Collateral = ({ id }: { id?: string }) => {
@@ -23,8 +22,6 @@ const Collateral = ({ id }: { id?: string }) => {
     {},
   );
   const [showDepositModal, setShowDepositModal] = useState(false);
-  const [showLendModal, setShowLendModal] = useState(false);
-  const [selectedTokenForLend, setSelectedTokenForLend] = useState("ETH");
   const activeAccount = useActiveAccount();
   const activeChain = useActiveWalletChain();
   const address = activeAccount?.address;
@@ -80,17 +77,6 @@ const Collateral = ({ id }: { id?: string }) => {
     }
   };
 
-  const handleLendClick = (token: string) => {
-    if (["ETH", "USDC", "USDR", "kfUSD", "USDT"].includes(token)) {
-      setSelectedTokenForLend(token);
-      setShowLendModal(true);
-    } else {
-      toast.warning(`${token} support not available on the testnet.`, {
-        duration: 1000,
-      });
-    }
-  };
-
   return (
     <div
       className="u-class-shadow-2 w-full min-w-0 overflow-hidden rounded-xl bg-black/40 backdrop-blur-md border border-[#00ff99]/10 py-5 transition-all hover:border-[#00ff99]/30 sm:py-6"
@@ -99,20 +85,20 @@ const Collateral = ({ id }: { id?: string }) => {
       <div className="mb-3 px-4 text-lg sm:px-6 sm:text-xl">
         <h3>Wallet&apos;s Portfolio</h3>
       </div>
-      <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6">
-        <table className="min-w-[560px] text-center text-sm sm:min-w-full">
+      <div className="kaleido-scrollbar relative max-h-[220px] overflow-y-auto px-3 sm:px-6">
+        <table className="w-full table-fixed text-center text-xs sm:text-sm">
           <thead>
             <tr className="text-center text-white/70">
-              <th className="sticky top-0 py-2 text-start font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-[28%] py-2 text-start font-medium bg-[#060606] z-20">
                 Asset
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-[27%] py-2 text-center font-medium bg-[#060606] z-20">
                 Wallet Balance
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-[17%] py-2 text-center font-medium bg-[#060606] z-20">
                 Collateral
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-[28%] py-2 text-center font-medium bg-[#060606] z-20">
                 Actions
               </th>
             </tr>
@@ -124,13 +110,13 @@ const Collateral = ({ id }: { id?: string }) => {
                 className="text-center text-xs sm:text-sm border-t border-white/5"
               >
                 <td className="flex flex-col pt-3 text-start">
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <img
                       src={item.icon}
                       alt={item.icon}
                       className="w-5 shrink-0 sm:w-4"
                     />
-                    <span>{item.token}</span>
+                    <span className="truncate">{item.token}</span>
                   </div>
                   {item.isMultichain && (
                     <div className="mt-1 flex gap-1">
@@ -174,7 +160,7 @@ const Collateral = ({ id }: { id?: string }) => {
                   </div>
                 </td>
                 <td className="pt-2">
-                  <div className="flex justify-center gap-2">
+                  <div className="flex justify-center">
                     <div onClick={() => handleDepositClick(item.token)}>
                       <Btn
                         text={
@@ -186,12 +172,6 @@ const Collateral = ({ id }: { id?: string }) => {
                             : "Deposit"
                         }
                         css="deposit-collateral-btn w-20 justify-center text-center sm:w-24"
-                      />
-                    </div>
-                    <div onClick={() => handleLendClick(item.token)}>
-                      <Btn
-                        text="Lend"
-                        css="lend-btn w-20 justify-center text-center sm:w-24"
                       />
                     </div>
                   </div>
@@ -207,13 +187,6 @@ const Collateral = ({ id }: { id?: string }) => {
         open={showDepositModal}
         onOpenChange={setShowDepositModal}
         action="deposit"
-      />
-
-      {/* Lend Modal (Create Order) */}
-      <CreateOrderModal
-        isOpen={showLendModal}
-        onClose={() => setShowLendModal(false)}
-        initialToken={selectedTokenForLend}
       />
     </div>
   );
