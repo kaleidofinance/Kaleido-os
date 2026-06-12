@@ -85,20 +85,21 @@ const Collateral = ({ id }: { id?: string }) => {
       <div className="mb-3 px-4 text-lg sm:px-6 sm:text-xl">
         <h3>Wallet&apos;s Portfolio</h3>
       </div>
-      <div className="kaleido-scrollbar relative max-h-[220px] overflow-y-auto px-3 sm:px-6">
-        <table className="w-full table-fixed text-center text-xs sm:text-sm">
+      <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6">
+        <table className="min-w-[560px] table-fixed text-center text-sm sm:min-w-full">
           <thead>
             <tr className="text-center text-white/70">
-              <th className="sticky top-0 w-[28%] py-2 text-start font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-1/4 py-2 text-start font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Asset
               </th>
-              <th className="sticky top-0 w-[27%] py-2 text-center font-medium bg-[#060606] z-20">
-                Wallet Balance
+              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+                <span className="sm:hidden">Balance</span>
+                <span className="hidden sm:inline">Wallet Balance</span>
               </th>
-              <th className="sticky top-0 w-[17%] py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Collateral
               </th>
-              <th className="sticky top-0 w-[28%] py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Actions
               </th>
             </tr>
