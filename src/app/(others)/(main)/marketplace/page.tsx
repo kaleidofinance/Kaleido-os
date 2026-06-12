@@ -1,32 +1,33 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import MktHeader from "@/components/market/MktHeader"
-import CardLayout from "@/components/market/CardLayout"
-import PleaseConnect from "@/components/shared/PleaseConnect"
-import { Spinner } from "@radix-ui/themes"
-import { useActiveAccount } from "thirdweb/react"
-import { DataFiltersPanel } from "@/components/filter/DataFiltersPanel"
-import Joyride from "react-joyride"
-import { IoMdCompass } from "react-icons/io"
+import { useState, useEffect } from "react";
+import MktHeader from "@/components/market/MktHeader";
+import CardLayout from "@/components/market/CardLayout";
+import PleaseConnect from "@/components/shared/PleaseConnect";
+import { Spinner } from "@radix-ui/themes";
+import { useActiveAccount } from "thirdweb/react";
+import { DataFiltersPanel } from "@/components/filter/DataFiltersPanel";
+import Joyride from "react-joyride";
+import { IoMdCompass } from "react-icons/io";
 
 export default function MarketPlacePage() {
-  const activeAccount = useActiveAccount()
-  const address = activeAccount?.address
-  const [isClient, setIsClient] = useState(false)
-  const [runTour, setRunTour] = useState(false)
-  const [showTourDropdown, setShowTourDropdown] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const activeAccount = useActiveAccount();
+  const address = activeAccount?.address;
+  const [isClient, setIsClient] = useState(false);
+  const [runTour, setRunTour] = useState(false);
+  const [showTourDropdown, setShowTourDropdown] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setIsClient(true)
-    setMounted(true)
-  }, [])
+    setIsClient(true);
+    setMounted(true);
+  }, []);
 
   const marketplaceTourSteps = [
     {
       target: '[data-tour="filter-card"]',
-      content: "Here you can control the display of available lend and borrow offers.",
+      content:
+        "Here you can control the display of available lend and borrow offers.",
       placement: "bottom",
       disableBeacon: true,
     },
@@ -54,20 +55,19 @@ export default function MarketPlacePage() {
       placement: "bottom",
       disableBeacon: true,
     },
-  ]
+  ];
 
   if (!isClient) {
     return (
       <div className="my-64 flex justify-center text-[#00ff6e]">
         <Spinner size={"3"} />
       </div>
-    )
+    );
   }
 
-
   return (
-    <div className="w-full mt-4 md:mt-10 px-4">
-      <div className="w-full px-1">
+    <div className="mt-4 w-full px-2 md:mt-10 md:px-4">
+      <div className="w-full px-0 md:px-1">
         <div className="mb-8">
           <MktHeader />
         </div>
@@ -108,8 +108,8 @@ export default function MarketPlacePage() {
                 <button
                   className="w-full rounded-lg px-5 py-3 text-left font-medium text-gray-800 transition-colors duration-150 hover:bg-[#f3f4f6] hover:text-[#22c55e] focus:outline-none"
                   onClick={() => {
-                    setRunTour(true)
-                    setShowTourDropdown(false)
+                    setRunTour(true);
+                    setShowTourDropdown(false);
                   }}
                 >
                   Marketplace Tutorial
@@ -169,11 +169,12 @@ export default function MarketPlacePage() {
               last: "Finish",
             }}
             callback={(data) => {
-              if (data.status === "finished" || data.status === "skipped") setRunTour(false)
+              if (data.status === "finished" || data.status === "skipped")
+                setRunTour(false);
             }}
           />
         )}
       </div>
     </div>
-  )
+  );
 }
