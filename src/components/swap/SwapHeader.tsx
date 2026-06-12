@@ -1,4 +1,4 @@
-import BaseHeader from "../shared/BaseHeader"
+import BaseHeader from "../shared/BaseHeader";
 
 const SwapHeader = () => {
   return (
@@ -9,7 +9,7 @@ const SwapHeader = () => {
       backgroundImage="/banners/swapheaderbg.png"
       backgroundOverlay={false}
     />
-  )
-}
+  );
+};
 
-export default SwapHeader
+export default SwapHeader;
