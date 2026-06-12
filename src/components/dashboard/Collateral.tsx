@@ -85,21 +85,27 @@ const Collateral = ({ id }: { id?: string }) => {
       <div className="mb-3 px-4 text-lg sm:px-6 sm:text-xl">
         <h3>Wallet&apos;s Portfolio</h3>
       </div>
-      <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6">
-        <table className="min-w-[560px] table-fixed text-center text-sm sm:min-w-full">
+      <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-hidden overflow-y-auto px-3 sm:px-6">
+        <table className="w-full table-fixed text-center text-sm">
+          <colgroup>
+            <col className="w-[28%] sm:w-1/4" />
+            <col className="w-[23%] sm:w-1/4" />
+            <col className="w-[23%] sm:w-1/4" />
+            <col className="w-[26%] sm:w-1/4" />
+          </colgroup>
           <thead>
             <tr className="text-center text-white/70">
-              <th className="sticky top-0 w-1/4 py-2 text-start font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 py-2 pr-2 text-start text-[13px] font-medium bg-[#060606] z-20 whitespace-nowrap sm:text-sm">
                 Asset
               </th>
-              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 py-2 text-center text-[13px] font-medium bg-[#060606] z-20 whitespace-nowrap sm:text-sm">
                 <span className="sm:hidden">Balance</span>
                 <span className="hidden sm:inline">Wallet Balance</span>
               </th>
-              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 py-2 text-center text-[13px] font-medium bg-[#060606] z-20 whitespace-nowrap sm:text-sm">
                 Collateral
               </th>
-              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+              <th className="sticky top-0 py-2 pl-2 text-center text-[13px] font-medium bg-[#060606] z-20 whitespace-nowrap sm:text-sm">
                 Actions
               </th>
             </tr>
@@ -110,7 +116,7 @@ const Collateral = ({ id }: { id?: string }) => {
                 key={index}
                 className="text-center text-xs sm:text-sm border-t border-white/5"
               >
-                <td className="flex flex-col pt-3 text-start">
+                <td className="flex flex-col pt-3 pr-2 text-start">
                   <div className="flex min-w-0 items-center gap-2">
                     <img
                       src={item.icon}
@@ -160,7 +166,7 @@ const Collateral = ({ id }: { id?: string }) => {
                     />
                   </div>
                 </td>
-                <td className="pt-2">
+                <td className="pt-2 pl-2">
                   <div className="flex justify-center">
                     <div onClick={() => handleDepositClick(item.token)}>
                       <Btn
@@ -172,7 +178,7 @@ const Collateral = ({ id }: { id?: string }) => {
                             ? "Bridge"
                             : "Deposit"
                         }
-                        css="deposit-collateral-btn w-20 justify-center text-center sm:w-24"
+                        css="deposit-collateral-btn w-[68px] justify-center px-1 text-center text-[13px] sm:w-24 sm:px-2 sm:text-base"
                       />
                     </div>
                   </div>
