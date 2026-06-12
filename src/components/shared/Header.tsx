@@ -213,98 +213,105 @@ export const Header = () => {
                   className="fixed inset-0 z-40"
                   onClick={() => setShowNotifications(false)}
                 ></div>
-                <div className="fixed inset-x-3 top-20 z-50 max-h-[70vh] overflow-y-auto rounded-2xl border border-[#00ff99]/30 bg-[#0f0f1a]/95 p-4 text-white shadow-[0_0_50px_rgba(0,0,0,0.5),0_0_20px_rgba(0,255,153,0.1)] backdrop-blur-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-96 sm:max-h-[500px] sm:p-5">
+                <div className="fixed right-3 top-20 z-50 w-[calc(100vw-1.5rem)] max-w-[22rem] overflow-hidden rounded-2xl border border-[#00ff99]/30 bg-[#0f0f1a]/95 text-white shadow-[0_0_50px_rgba(0,0,0,0.5),0_0_20px_rgba(0,255,153,0.1)] backdrop-blur-2xl sm:absolute sm:right-0 sm:top-12 sm:w-96 sm:max-w-none">
                   {/* Neon Corners */}
                   <span className="absolute left-0 top-0 h-[8px] w-[8px] border-l border-t border-[#00ff99]"></span>
                   <span className="absolute right-0 top-0 h-[8px] w-[8px] border-r border-t border-[#00ff99]"></span>
                   <span className="absolute bottom-0 left-0 h-[8px] w-[8px] border-b border-l border-[#00ff99]"></span>
                   <span className="absolute bottom-0 right-0 h-[8px] w-[8px] border-b border-r border-[#00ff99]"></span>
 
-                  <div className="flex items-center justify-between mb-5">
-                    <h3 className="text-lg font-bold text-[#00ff99] tracking-tight uppercase">
-                      System Logs
+                  <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-5">
+                    <h3 className="text-base font-bold text-[#00ff99] sm:text-lg">
+                      Notifications
                     </h3>
                     {unreadCount > 0 && (
                       <button
                         onClick={markAllAsRead}
-                        className="text-xs text-gray-400 hover:text-[#00ff99] transition-colors uppercase font-medium"
+                        className="text-xs font-medium text-gray-400 transition-colors hover:text-[#00ff99]"
                       >
-                        Purge Unread
+                        Mark all read
                       </button>
                     )}
                   </div>
 
-                  {notifications.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 space-y-3 opacity-60">
-                      <BellIcon
-                        width={32}
-                        height={32}
-                        className="text-[#00ff99]/30"
-                      />
-                      <div className="text-sm font-medium text-gray-400 uppercase tracking-widest">
-                        Zero Anomalies Detected
+                  <div className="max-h-[min(24rem,calc(100vh-9rem))] overflow-y-auto p-4 sm:max-h-[500px] sm:p-5">
+                    {notifications.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center space-y-3 py-8 text-center opacity-70">
+                        <BellIcon
+                          width={32}
+                          height={32}
+                          className="text-[#00ff99]/30"
+                        />
+                        <div>
+                          <p className="text-sm font-medium text-gray-300">
+                            No notifications
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            You'll see notifications here when they arrive.
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Show only the first 3 notifications in the dropdown for better density */}
-                      {notifications.slice(0, 3).map((notification) => (
-                        <div
-                          key={notification.id}
-                          className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
-                            notification.read
-                              ? "bg-white/5 border-white/10 opacity-70"
-                              : "bg-[#00ff99]/5 border-[#00ff99]/20 shadow-[0_0_15px_rgba(0,255,153,0.05)]"
-                          }`}
-                          onClick={() => markAsRead(notification.id)}
-                        >
-                          <div className="flex items-start gap-4">
-                            <div
-                              className={`mt-1.5 w-2 h-2 shrink-0 rounded-full ${
-                                notification.read
-                                  ? "bg-gray-600"
-                                  : "bg-[#00ff99] shadow-[0_0_8px_#00ff99] animate-pulse"
-                              }`}
-                            ></div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Show only the first 3 notifications in the dropdown for better density */}
+                        {notifications.slice(0, 3).map((notification) => (
+                          <div
+                            key={notification.id}
+                            className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
+                              notification.read
+                                ? "bg-white/5 border-white/10 opacity-70"
+                                : "bg-[#00ff99]/5 border-[#00ff99]/20 shadow-[0_0_15px_rgba(0,255,153,0.05)]"
+                            }`}
+                            onClick={() => markAsRead(notification.id)}
+                          >
+                            <div className="flex items-start gap-4">
+                              <div
+                                className={`mt-1.5 w-2 h-2 shrink-0 rounded-full ${
+                                  notification.read
+                                    ? "bg-gray-600"
+                                    : "bg-[#00ff99] shadow-[0_0_8px_#00ff99] animate-pulse"
+                                }`}
+                              ></div>
 
-                            <div className="flex-1 min-w-0">
-                              <div className="flex justify-between items-start mb-1">
-                                <div
-                                  className={`font-bold text-sm ${notification.read ? "text-gray-300" : "text-white"}`}
-                                >
-                                  {notification.title}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start mb-1">
+                                  <div
+                                    className={`font-bold text-sm ${notification.read ? "text-gray-300" : "text-white"}`}
+                                  >
+                                    {notification.title}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500 font-mono">
+                                    {formatTimestamp(notification.timestamp)}
+                                  </div>
                                 </div>
-                                <div className="text-[10px] text-gray-500 font-mono">
-                                  {formatTimestamp(notification.timestamp)}
+                                <div className="text-xs text-gray-400 leading-relaxed line-clamp-2">
+                                  {notification.body}
                                 </div>
-                              </div>
-                              <div className="text-xs text-gray-400 leading-relaxed line-clamp-2">
-                                {notification.body}
                               </div>
                             </div>
                           </div>
+                        ))}
+
+                        {/* Footnote & Actions */}
+                        <div className="pt-4 border-t border-white/10 flex flex-col gap-3">
+                          {notifications.length > 3 && (
+                            <div className="text-center text-[10px] text-gray-500 uppercase tracking-tighter">
+                              + {notifications.length - 3} more notification
+                              {notifications.length - 3 > 1 ? "s" : ""}
+                            </div>
+                          )}
+
+                          <Link
+                            href="/notifications"
+                            onClick={() => setShowNotifications(false)}
+                            className="w-full py-2.5 rounded-lg bg-[#00ff99]/10 hover:bg-[#00ff99]/20 border border-[#00ff99]/30 text-[#00ff99] transition-all text-center text-xs font-bold uppercase tracking-widest shadow-[0_0_15px_rgba(0,255,153,0.1)]"
+                          >
+                            View all notifications
+                          </Link>
                         </div>
-                      ))}
-
-                      {/* Footnote & Actions */}
-                      <div className="pt-4 border-t border-white/10 flex flex-col gap-3">
-                        {notifications.length > 3 && (
-                          <div className="text-center text-[10px] text-gray-500 uppercase tracking-tighter">
-                            + {notifications.length - 3} additional signal
-                            {notifications.length - 3 > 1 ? "s" : ""} in buffer
-                          </div>
-                        )}
-
-                        <Link
-                          href="/notifications"
-                          onClick={() => setShowNotifications(false)}
-                          className="w-full py-2.5 rounded-lg bg-[#00ff99]/10 hover:bg-[#00ff99]/20 border border-[#00ff99]/30 text-[#00ff99] transition-all text-center text-xs font-bold uppercase tracking-widest shadow-[0_0_15px_rgba(0,255,153,0.1)]"
-                        >
-                          Access Archives
-                        </Link>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </>
             )}
