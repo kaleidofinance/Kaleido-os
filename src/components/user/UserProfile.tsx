@@ -65,7 +65,7 @@ export const UserProfile = ({
         <div className="group">
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-[10px] uppercase tracking-widest text-[#00ff99] font-bold">
-              Encrypted Address
+              Wallet Address
             </p>
             <button
               onClick={() => handleCopy(address as string, "address")}
@@ -76,7 +76,7 @@ export const UserProfile = ({
             </button>
           </div>
           <div className="select-all break-all rounded-lg border border-white/5 bg-white/5 p-2 font-mono text-xs text-gray-400 transition-colors group-hover:border-[#00ff99]/10 sm:text-sm">
-            {address ? address : "Address hidden"}
+            {address ? address : "Connect wallet to view address"}
           </div>
         </div>
 
@@ -84,7 +84,7 @@ export const UserProfile = ({
         <div className="group">
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-[10px] uppercase tracking-widest text-[#00ff99] font-bold">
-              Network Invite
+              Referral Link
             </p>
             <button
               onClick={() => handleCopy(REFERRAL_LINK, "link")}
@@ -103,7 +103,7 @@ export const UserProfile = ({
         <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-2 sm:gap-4">
           <div className="space-y-1">
             <p className="text-[10px] uppercase text-gray-500 font-bold">
-              Total Nodes
+              Total Referrals
             </p>
             <p className="text-xl font-bold text-white tracking-tighter">
               {totalReferrals !== null ? totalReferrals : "--"}
@@ -111,7 +111,7 @@ export const UserProfile = ({
           </div>
           <div className="space-y-1">
             <p className="text-[10px] uppercase text-gray-500 font-bold">
-              Point System
+              Referral Points
             </p>
             <p className="text-xl font-bold text-[#00ff99] tracking-tighter shadow-green-glow">
               {referralPoint !== null ? referralPoint.toLocaleString() : "--"}
@@ -127,7 +127,7 @@ export const UserProfile = ({
             className="w-full flex items-center justify-center gap-2 rounded-lg border border-[#00ff99]/50 bg-[#00ff99]/20 py-3 text-sm font-bold text-[#00ff99] shadow-[0_0_20px_rgba(0,255,153,0.1)]"
           >
             <span className="w-2 h-2 rounded-full bg-[#00ff99] shadow-[0_0_8px_#00ff99]"></span>
-            SIGNAL LINKED
+            X Account Linked
           </button>
         ) : (
           <button
@@ -139,7 +139,7 @@ export const UserProfile = ({
                 : "bg-[#00ff99] text-[#0f0f1a] hover:shadow-[0_0_25px_rgba(0,255,153,0.4)] hover:scale-[1.02]"
             }`}
           >
-            {clicked ? "SYNCHRONIZING..." : "Link Signal (X)"}
+            {clicked ? "Linking..." : "Link X Account"}
           </button>
         )}
 
@@ -150,7 +150,7 @@ export const UserProfile = ({
           className="w-full"
         >
           <button className="w-full py-3 rounded-lg border border-white/10 text-white text-sm font-bold uppercase tracking-widest transition-all hover:bg-white/5 hover:border-[#00ff99]/30">
-            Follow Pulse
+            Follow on X
           </button>
         </Link>
       </div>
