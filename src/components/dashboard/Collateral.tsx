@@ -86,26 +86,95 @@ const Collateral = ({ id }: { id?: string }) => {
         <h3>Wallet&apos;s Portfolio</h3>
       </div>
       <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-hidden overflow-y-auto px-3 sm:px-6">
-        <table className="w-full table-fixed text-center text-sm">
-          <colgroup>
-            <col className="w-[28%] sm:w-1/4" />
-            <col className="w-[23%] sm:w-1/4" />
-            <col className="w-[23%] sm:w-1/4" />
-            <col className="w-[26%] sm:w-1/4" />
-          </colgroup>
+        <div className="sm:hidden">
+          <div className="sticky top-0 z-20 grid grid-cols-[minmax(0,1.15fr)_minmax(58px,0.85fr)_minmax(58px,0.85fr)_74px] items-center bg-[#060606] py-2 text-center text-[13px] font-medium text-white/70">
+            <div className="text-start">Asset</div>
+            <div>Balance</div>
+            <div>Collateral</div>
+            <div>Actions</div>
+          </div>
+          <div>
+            {updatedTokenData.map((item, index) => (
+              <div
+                key={index}
+                className="grid grid-cols-[minmax(0,1.15fr)_minmax(58px,0.85fr)_minmax(58px,0.85fr)_74px] items-center border-t border-white/5 py-3 text-center text-xs"
+              >
+                <div className="min-w-0 text-start">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <img
+                      src={item.icon}
+                      alt={item.icon}
+                      className="w-5 shrink-0"
+                    />
+                    <span className="min-w-0 truncate">{item.token}</span>
+                  </div>
+                  {item.isMultichain && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {item.chains?.map((c: any) => (
+                        <span
+                          key={c.chainId}
+                          className="px-1 py-0.5 rounded-[4px] bg-[#00ff99]/10 border border-[#00ff99]/30 text-[8px] text-[#00ff99] uppercase font-bold"
+                        >
+                          {c.chainName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  {formatWithCommas(
+                    item.tokenPrice,
+                    item.token === "ETH" ? 4 : 3,
+                  )}
+                </div>
+                <div className="flex justify-center">
+                  <Image
+                    src={
+                      ["ETH", "USDC", "USDR", "kfUSD", "USDT"].includes(
+                        item.token,
+                      )
+                        ? "/mark.svg"
+                        : "/toggleOff.svg"
+                    }
+                    alt="tick"
+                    width={12}
+                    height={10}
+                    priority
+                    quality={100}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <div onClick={() => handleDepositClick(item.token)}>
+                    <Btn
+                      text={
+                        item.chains?.some(
+                          (c: any) => c.chainId !== 2741 && c.chainId !== 11124,
+                        ) && parseFloat(item.tokenPrice) > 0
+                          ? "Bridge"
+                          : "Deposit"
+                      }
+                      css="deposit-collateral-btn w-[68px] justify-center px-1 text-center text-[13px]"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <table className="hidden min-w-full table-fixed text-center text-sm sm:table">
           <thead>
             <tr className="text-center text-white/70">
-              <th className="sticky top-0 py-2 pr-2 text-start text-[13px] font-medium bg-[#060606] z-20 whitespace-nowrap sm:text-sm">
+              <th className="sticky top-0 w-1/4 py-2 text-start font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Asset
               </th>
-              <th className="sticky top-0 py-2 text-center text-[13px] font-medium bg-[#060606] z-20 whitespace-nowrap sm:text-sm">
-                <span className="sm:hidden">Balance</span>
-                <span className="hidden sm:inline">Wallet Balance</span>
+              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
+                Wallet Balance
               </th>
-              <th className="sticky top-0 py-2 text-center text-[13px] font-medium bg-[#060606] z-20 whitespace-nowrap sm:text-sm">
+              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Collateral
               </th>
-              <th className="sticky top-0 py-2 pl-2 text-center text-[13px] font-medium bg-[#060606] z-20 whitespace-nowrap sm:text-sm">
+              <th className="sticky top-0 w-1/4 py-2 text-center font-medium bg-[#060606] z-20 whitespace-nowrap">
                 Actions
               </th>
             </tr>
@@ -116,7 +185,7 @@ const Collateral = ({ id }: { id?: string }) => {
                 key={index}
                 className="text-center text-xs sm:text-sm border-t border-white/5"
               >
-                <td className="flex flex-col pt-3 pr-2 text-start">
+                <td className="pt-3 text-start">
                   <div className="flex min-w-0 items-center gap-2">
                     <img
                       src={item.icon}
@@ -166,7 +235,7 @@ const Collateral = ({ id }: { id?: string }) => {
                     />
                   </div>
                 </td>
-                <td className="pt-2 pl-2">
+                <td className="pt-2">
                   <div className="flex justify-center">
                     <div onClick={() => handleDepositClick(item.token)}>
                       <Btn
@@ -178,7 +247,7 @@ const Collateral = ({ id }: { id?: string }) => {
                             ? "Bridge"
                             : "Deposit"
                         }
-                        css="deposit-collateral-btn w-[68px] justify-center px-1 text-center text-[13px] sm:w-24 sm:px-2 sm:text-base"
+                        css="deposit-collateral-btn w-20 justify-center text-center sm:w-24"
                       />
                     </div>
                   </div>
