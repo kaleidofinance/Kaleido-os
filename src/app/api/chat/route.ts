@@ -37,10 +37,10 @@ export async function POST(request: NextRequest) {
           // 🛡️ Security Gate: Threshold Verification
           const amount = parseFloat(result.amount || "0");
           if (amount > 1000) {
-              console.warn(`[SENTINEL] Auditor Blocked High-Value Intent: ${amount} units.`);
+              console.warn(`[Safety] Blocked high-value action: ${amount} units.`);
               return NextResponse.json({
-                  response: "I've drafted a high-value strategy, but the Sentinel Auditor has blocked it for your safety (Exceeds $1,000 limit). Please break your request into smaller chunks.",
-                  context: { status: 'blocked_by_sentinel', reason: 'threshold_exceeded' }
+                  response: "I've drafted a high-value strategy, but the safety checks blocked it for your protection (Exceeds $1,000 limit). Please break your request into smaller chunks.",
+                  context: { status: 'blocked_by_safety_check', reason: 'threshold_exceeded' }
               });
           }
 
@@ -63,10 +63,10 @@ export async function POST(request: NextRequest) {
           );
 
           if (!isWhitelisted && result.target) {
-              console.warn(`[SENTINEL] Auditor Blocked Unvetted Destination on Chain ${chainId}: ${result.target}`);
+              console.warn(`[Safety] Blocked unverified destination on Chain ${chainId}: ${result.target}`);
               return NextResponse.json({
-                  response: `The Sentinel Auditor has blocked this transaction. The protocol "${result.target}" is not currently whitelisted for high-security operations on Chain ID ${chainId}.`,
-                  context: { status: 'blocked_by_sentinel', reason: 'unvetted_omnichain_target' }
+                  response: `This transaction was blocked by safety checks. The protocol "${result.target}" is not currently whitelisted for high-security operations on Chain ID ${chainId}.`,
+                  context: { status: 'blocked_by_safety_check', reason: 'unvetted_omnichain_target' }
               });
           }
       }
