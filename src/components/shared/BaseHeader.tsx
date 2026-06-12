@@ -35,7 +35,8 @@ const BaseHeader = ({
   children,
 }: BaseHeaderProps) => {
   const [isClient, setIsClient] = useState(false);
-  const hasCompactMobileStats = type === "pool" || type === "swap";
+  const hasCompactMobileStats =
+    type === "market" || type === "pool" || type === "swap";
   const formatCompactCurrency = (value?: string) =>
     "$" +
     new Intl.NumberFormat("en-US", {
@@ -43,19 +44,44 @@ const BaseHeader = ({
       maximumFractionDigits: 1,
     }).format(Number(value || 0));
 
-  const compactMobileStats = [
-    { label: "TVL", value: formatCompactCurrency(statsData?.totalPooledKLD) },
-    {
-      label: "LIQUIDITY",
-      value: statsData?.totalStakers
-        ? Number(statsData.totalStakers).toLocaleString("en-US")
-        : "0",
-    },
-    {
-      label: "TOTAL VOLUME",
-      value: formatCompactCurrency(statsData?.userKldDeposit),
-    },
-  ];
+  const compactMobileStats =
+    type === "swap"
+      ? [
+          {
+            label: "TVL",
+            value: formatCompactCurrency(statsData?.totalPooledKLD),
+          },
+          {
+            label: "LIQUIDITY",
+            value: statsData?.totalStakers
+              ? Number(statsData.totalStakers).toLocaleString("en-US")
+              : "0",
+          },
+          {
+            label: "TOTAL VOLUME",
+            value: formatCompactCurrency(statsData?.userKldDeposit),
+          },
+        ]
+      : [
+          {
+            label: "TVL",
+            value: formatCompactCurrency(statsData?.totalPooledKLD),
+          },
+          {
+            label: type === "market" ? "SERVICE REQUEST" : "POOLS",
+            value: statsData?.totalStakers
+              ? Number(statsData.totalStakers).toLocaleString("en-US")
+              : "0",
+          },
+          {
+            label: type === "market" ? "TOTAL VOLUME" : "VOLUME",
+            value: formatCompactCurrency(statsData?.userKldDeposit),
+          },
+          {
+            label: type === "market" ? "REVENUE" : "FEES",
+            value: formatCompactCurrency(statsData?.fees24h),
+          },
+        ];
 
   useEffect(() => {
     setIsClient(true);
@@ -157,16 +183,18 @@ const BaseHeader = ({
         <div className="relative mt-6 lg:mt-0 lg:ml-6 flex items-center justify-center w-full">
           {/* Analytics positioned in center area */}
           {showStats && hasCompactMobileStats && (
-            <div className="grid w-full max-w-[22rem] grid-cols-3 gap-2 rounded-2xl border border-[#00ff99]/60 bg-gradient-to-r from-black/20 via-black/30 to-black/20 p-3 shadow-2xl backdrop-blur-md sm:max-w-[24rem] sm:p-4 lg:hidden">
+            <div
+              className={`${type === "swap" ? "max-w-[22rem] grid-cols-3 gap-2 p-3 sm:p-4" : "max-w-[23rem] grid-cols-4 gap-1.5 p-2 sm:gap-2 sm:p-3"} grid w-full rounded-2xl border border-[#00ff99]/60 bg-gradient-to-r from-black/20 via-black/30 to-black/20 shadow-2xl backdrop-blur-md sm:max-w-[24rem] lg:hidden`}
+            >
               {compactMobileStats.map((stat) => (
                 <div
                   key={stat.label}
-                  className="flex min-w-0 flex-col items-center justify-center rounded-xl bg-black/20 px-1.5 py-3 text-center"
+                  className="flex min-w-0 flex-col items-center justify-center rounded-xl bg-black/20 px-1 py-2 text-center sm:px-1.5 sm:py-3"
                 >
-                  <div className="min-h-[1.9rem] max-w-[5.8rem] font-mono text-[8px] font-semibold uppercase leading-[0.95rem] tracking-[0.14em] text-white/80 sm:max-w-none sm:text-[10px]">
+                  <div className="min-h-[1.9rem] max-w-[5.4rem] font-mono text-[7px] font-semibold uppercase leading-[0.85rem] tracking-[0.08em] text-white/80 sm:max-w-none sm:text-[9px] sm:tracking-[0.12em]">
                     {stat.label}
                   </div>
-                  <div className="mt-1 max-w-full truncate font-mono text-base font-extrabold leading-tight text-white sm:text-lg">
+                  <div className="mt-1 max-w-full truncate font-mono text-sm font-extrabold leading-tight text-white sm:text-base">
                     {stat.value}
                   </div>
                 </div>
