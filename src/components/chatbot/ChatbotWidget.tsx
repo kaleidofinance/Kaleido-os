@@ -597,12 +597,12 @@ function ChatbotWidget() {
 
       {/* Chat widget */}
       {isOpen && (
-        <div className="absolute bottom-16 right-0 sm:right-0 xs:right-[-5px] w-[95vw] max-w-[550px] h-[85vh] max-h-[750px] md:h-[750px] bg-[#1a1a2e]/95 backdrop-blur-xl rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col border border-[#00ff99]/30 overflow-hidden chatbot-widget">
+        <div className="absolute bottom-16 right-0 sm:right-0 xs:right-[-5px] w-[95vw] max-w-[550px] h-[85vh] max-h-[750px] md:h-[750px] bg-[#0b0b0b]/95 backdrop-blur-xl rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col border border-[#00ff99]/30 overflow-hidden chatbot-widget">
           {/* Header */}
-          <div className="flex items-center justify-between bg-[#0f0f1a]/80 backdrop-blur-sm text-white p-4 border-b border-[#00ff99]/20">
+          <div className="flex items-center justify-between bg-[#111111]/80 backdrop-blur-sm text-white p-4 border-b border-[#00ff99]/20">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#00ff99] to-[#00cc7a] flex items-center justify-center shadow-lg shadow-[#00ff99]/30">
-                <RiRobot2Fill className="text-[#0f0f1a] text-sm" />
+                <RiRobot2Fill className="text-[#111111] text-sm" />
               </div>
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-[#00ff99]">Luca AI</h3>
@@ -706,14 +706,14 @@ function ChatbotWidget() {
           
           {/* Settings / Permissions Panel */}
           {showSettings && (
-            <div className="bg-[#1a1a2e] border-b border-[#00ff99]/20 p-4 animate-in slide-in-from-top duration-300">
+            <div className="bg-[#0b0b0b] border-b border-[#00ff99]/20 p-4 animate-in slide-in-from-top duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <FaShieldAlt className="text-[#00ff99]" />
                 <h4 className="text-sm font-bold text-white uppercase tracking-tight">Agent Permissions</h4>
               </div>
               
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-[#12121f] rounded-lg border border-[#00ff99]/10">
+                <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
                         Infinite DEX Approval
@@ -734,7 +734,7 @@ function ChatbotWidget() {
                   </label>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-[#12121f] rounded-lg border border-[#00ff99]/10">
+                <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
                         Lending Pre-Auth
@@ -755,7 +755,7 @@ function ChatbotWidget() {
                   </label>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-[#12121f] rounded-lg border border-[#00ff99]/10">
+                <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
                         Yield Sentinel AI
@@ -774,7 +774,7 @@ function ChatbotWidget() {
                   </label>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-[#12121f] rounded-lg border border-[#00ff99]/10">
+                <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
                         Arbitrage Scout AI
@@ -793,7 +793,7 @@ function ChatbotWidget() {
                   </label>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-[#12121f] rounded-lg border border-[#00ff99]/10">
+                <div className="flex items-center justify-between p-3 bg-[#141414] rounded-lg border border-[#00ff99]/10">
                   <div>
                     <div className="text-xs font-bold text-[#ffd700] flex items-center gap-1">
                       <FiZap className="fill-[#ffd700]" /> Speed Mode
@@ -821,8 +821,8 @@ function ChatbotWidget() {
           )}
                    {/* History dropdown */}
           {showHistory && (
-            <div className="bg-[#1a1a2e] border-b border-[#00ff99]/20 max-h-80 overflow-y-auto chatbot-history-dropdown flex flex-col">
-              <div className="flex bg-[#0f0f1a] border-b border-[#00ff99]/10 sticky top-0 z-10">
+            <div className="bg-[#0b0b0b] border-b border-[#00ff99]/20 max-h-80 overflow-y-auto chatbot-history-dropdown flex flex-col">
+              <div className="flex bg-[#111111] border-b border-[#00ff99]/10 sticky top-0 z-10">
                   <button 
                       className={`flex-1 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-all ${historyTab === 'chats' ? 'text-[#00ff99] border-b-2 border-[#00ff99] bg-[#00ff99]/5' : 'text-gray-500 hover:text-gray-300'}`}
                       onClick={() => setHistoryTab('chats')}
@@ -856,7 +856,7 @@ function ChatbotWidget() {
                         return (
                           <li 
                             key={convo.id} 
-                            className="transition-colors border-l-0 border-l-[#00ff99] hover:border-l-4 hover:bg-[#12121f] cursor-pointer group"
+                            className="transition-colors border-l-0 border-l-[#00ff99] hover:border-l-4 hover:bg-[#141414] cursor-pointer group"
                             onClick={() => {
                               openConversation(convo.id);
                               setTimeout(scrollToBottom, 50);
@@ -907,7 +907,7 @@ function ChatbotWidget() {
                 <div className="p-2 space-y-2 pb-4">
                   {agentTransactions.length > 0 ? (
                     agentTransactions.map((tx) => (
-                      <div key={tx.id} className="p-3 bg-[#12121f] rounded-xl border border-white/5 hover:border-[#00ff99]/30 transition-all group">
+                      <div key={tx.id} className="p-3 bg-[#141414] rounded-xl border border-white/5 hover:border-[#00ff99]/30 transition-all group">
                          <div className="flex justify-between items-start mb-2">
                            <div className="flex items-center gap-2">
                              <div className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${
@@ -965,7 +965,7 @@ function ChatbotWidget() {
           {/* Chat messages */}
           <div 
             ref={chatContainerRef}
-            className="flex-1 overflow-y-auto p-4 bg-[#12121f] chatbot-messages-container"
+            className="flex-1 overflow-y-auto p-4 bg-[#141414] chatbot-messages-container"
           >
             {messages.map((msg, index) => (
               <div 
@@ -973,7 +973,7 @@ function ChatbotWidget() {
                 className={`max-w-[85%] mb-3 p-3 rounded-2xl backdrop-blur-sm ${
                   msg.role === 'user' 
                     ? 'ml-auto bg-gradient-to-r from-[#00ff99]/20 to-[#00cc7a]/10 text-white border border-[#00ff99]/30 rounded-br-md' 
-                    : 'mr-auto bg-[#1e1e30]/80 text-gray-200 border border-[#2a2a40] rounded-bl-md'
+                    : 'mr-auto bg-[#1f1f1f]/80 text-gray-200 border border-[#333333] rounded-bl-md'
                 }`}
               >
                 <div className="font-semibold text-xs mb-1">
@@ -1029,7 +1029,7 @@ function ChatbotWidget() {
 
             {/* Loading indicator */}
             {isLoading && (
-              <div className="max-w-[85%] mr-auto bg-[#1e1e30]/80 p-3 rounded-2xl border border-[#2a2a40] rounded-bl-md">
+              <div className="max-w-[85%] mr-auto bg-[#1f1f1f]/80 p-3 rounded-2xl border border-[#333333] rounded-bl-md">
                 <div className="font-semibold text-xs mb-1 text-gray-400">Luca</div>
                 <div className="flex flex-col">
                   <div className="flex space-x-1 mb-1">
@@ -1044,7 +1044,7 @@ function ChatbotWidget() {
           </div>
           
           {/* Quick Action Buttons */}
-          <div className="px-4 py-2 bg-[#0f0f1a]/60 border-t border-[#00ff99]/10 flex gap-2 overflow-x-auto scrollbar-hide no-scrollbar">
+          <div className="px-4 py-2 bg-[#111111]/60 border-t border-[#00ff99]/10 flex gap-2 overflow-x-auto scrollbar-hide no-scrollbar">
             <button 
               onClick={() => sendMessage("Initialize Bridge")}
               className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full bg-[#00ccff]/10 text-[#00ccff] border border-[#00ccff]/30 hover:bg-[#00ccff]/20 hover:scale-105 transition-all whitespace-nowrap flex items-center gap-2"
@@ -1078,7 +1078,7 @@ function ChatbotWidget() {
           </div>
           
           {/* Input area */}
-          <div className="p-4 bg-[#0f0f1a]/80 border-t border-[#00ff99]/20">
+          <div className="p-4 bg-[#111111]/80 border-t border-[#00ff99]/20">
             <div className="flex items-center gap-3">
               <input
                 ref={inputRef}
@@ -1087,13 +1087,13 @@ function ChatbotWidget() {
                 onChange={(e) => setCurrentMessage(e.target.value)}
                 onKeyDown={handleKeyPress}
                 placeholder="Ask Luca anything..."
-                className="chatbot-input flex-1 px-4 py-3 bg-[#1a1a2e] border border-[#00ff99]/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00ff99]/50 focus:border-transparent text-white placeholder-gray-500"
+                className="chatbot-input flex-1 px-4 py-3 bg-[#0b0b0b] border border-[#00ff99]/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00ff99]/50 focus:border-transparent text-white placeholder-gray-500"
                 disabled={isLoading}
               />
               <button
                 onClick={handleSend}
                 disabled={isLoading || !currentMessage.trim()}
-                className="p-3 bg-gradient-to-r from-[#00ff99] to-[#00cc7a] text-[#0f0f1a] rounded-xl hover:shadow-lg hover:shadow-[#00ff99]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="p-3 bg-gradient-to-r from-[#00ff99] to-[#00cc7a] text-[#111111] rounded-xl hover:shadow-lg hover:shadow-[#00ff99]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 <IoMdSend className="text-lg" />
               </button>
