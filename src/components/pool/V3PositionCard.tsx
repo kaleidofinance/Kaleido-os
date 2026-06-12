@@ -107,8 +107,8 @@ export default function V3PositionCard({ position, onCollectFees, onRemoveLiquid
               <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-gray-400 font-medium">{feePercent}% Fee Tier</span>
                   {hasLiquidity ? (
-                    <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter ${isInRange ? "bg-[#00ff99]/20 text-[#00ff99]" : "bg-yellow-500/20 text-yellow-500"}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${isInRange ? "bg-[#00ff99] animate-pulse" : "bg-yellow-500"}`}></span>
+                    <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter ${isInRange ? "bg-[#00ff99]/20 text-[#00ff99]" : "bg-[#2a2a2a]/60 text-gray-300"}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${isInRange ? "bg-[#00ff99] animate-pulse" : "bg-[#2a2a2a]"}`}></span>
                         {isInRange ? "In Range" : "Out of Range"}
                     </span>
                   ) : (

@@ -20,7 +20,7 @@ export default function ReserveDashboard() {
       amount: "$1,169,539",
       yield: "0%",
       description: "Base Reserve (Stability Anchor)",
-      color: "blue",
+      color: "neutral",
       health: "Excellent"
     },
     {
@@ -38,7 +38,7 @@ export default function ReserveDashboard() {
       amount: "$584,769",
       yield: "4.8%",
       description: "Treasury bill yields",
-      color: "purple",
+      color: "neutral",
       health: "Excellent"
     }
   ];
@@ -72,9 +72,7 @@ export default function ReserveDashboard() {
 
   const getColorClass = (color: string) => {
     switch (color) {
-      case "blue": return "text-blue-400 bg-blue-500/20";
       case "green": return "text-green-400 bg-green-500/20";
-      case "purple": return "text-purple-400 bg-purple-500/20";
       default: return "text-gray-400 bg-[#2a2a2a]/20";
     }
   };
@@ -82,8 +80,8 @@ export default function ReserveDashboard() {
   const getHealthColor = (health: string) => {
     switch (health) {
       case "Excellent": return "text-green-400";
-      case "Good": return "text-blue-400";
-      case "Fair": return "text-yellow-400";
+      case "Good": return "text-gray-300";
+      case "Fair": return "text-gray-300";
       case "Poor": return "text-red-400";
       default: return "text-gray-400";
     }
@@ -104,7 +102,7 @@ export default function ReserveDashboard() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <DollarSign className="w-5 h-5 text-blue-400 mr-2" />
+            <DollarSign className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-sm font-medium text-gray-400">Total Supply</h3>
           </div>
           <p className="text-2xl font-bold text-white">{reserveStats.totalSupply}</p>
@@ -113,7 +111,7 @@ export default function ReserveDashboard() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <TrendingUp className="w-5 h-5 text-purple-400 mr-2" />
+            <TrendingUp className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-sm font-medium text-gray-400">Collateral Ratio</h3>
           </div>
           <p className="text-2xl font-bold text-white">{reserveStats.collateralRatio}</p>
@@ -122,7 +120,7 @@ export default function ReserveDashboard() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <Lock className="w-5 h-5 text-orange-400 mr-2" />
+            <Lock className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-sm font-medium text-gray-400">Treasury Buffer</h3>
           </div>
           <p className="text-2xl font-bold text-white">{reserveStats.treasuryBuffer}</p>
@@ -168,9 +166,7 @@ export default function ReserveDashboard() {
               <div className="w-full bg-[#2a2a2a] rounded-full h-2">
                 <div 
                   className={`h-2 rounded-full ${
-                    asset.color === "blue" ? "bg-blue-500" :
-                    asset.color === "green" ? "bg-green-500" :
-                    "bg-purple-500"
+                    asset.color === "green" ? "bg-green-500" : "bg-[#2a2a2a]"
                   }`}
                   style={{ width: asset.allocation }}
                 ></div>
@@ -214,7 +210,7 @@ export default function ReserveDashboard() {
           
           <div className="text-center">
             <div className="flex items-center justify-center mb-2">
-              <Zap className="w-5 h-5 text-blue-400 mr-2" />
+              <Zap className="w-5 h-5 text-gray-300 mr-2" />
               <h4 className="text-white font-semibold">Next Rebalance</h4>
             </div>
             <p className="text-gray-300">{reserveStats.nextRebalance}</p>
@@ -222,7 +218,7 @@ export default function ReserveDashboard() {
           
           <div className="text-center">
             <div className="flex items-center justify-center mb-2">
-              <Globe className="w-5 h-5 text-purple-400 mr-2" />
+              <Globe className="w-5 h-5 text-gray-300 mr-2" />
               <h4 className="text-white font-semibold">Chain Status</h4>
             </div>
             <p className="text-green-400 font-semibold">Abstract Chain</p>
@@ -234,14 +230,14 @@ export default function ReserveDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <Eye className="w-5 h-5 text-blue-400 mr-2" />
+            <Eye className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-lg font-semibold text-white">Transparency</h3>
           </div>
           <p className="text-gray-300 text-sm mb-4">
             All reserve data is publicly verifiable on-chain. Users can independently verify 
             total supply, collateral reserves, and asset allocation at any time.
           </p>
-          <button className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors">
+          <button className="w-full py-2 bg-[#2a2a2a] hover:bg-[#2a2a2a] text-white font-semibold rounded-lg transition-colors">
             View On-Chain Data
           </button>
         </div>

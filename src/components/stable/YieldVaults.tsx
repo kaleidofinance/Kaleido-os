@@ -523,14 +523,14 @@ export default function YieldVaults() {
               {activeTab === "unlock" && (
                 <>
                   {!hasWithdrawalRequest ? (
-                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
-                      <p className="text-yellow-400 text-sm">
+                    <div className="bg-[#2a2a2a]/40 border border-white/10 rounded-lg p-3">
+                      <p className="text-gray-300 text-sm">
                         ⚠️ Your assets will be available after a 7-day cooldown period
                       </p>
                     </div>
                   ) : cooldownEndTime && Date.now() < cooldownEndTime ? (
-                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                      <p className="text-blue-400 text-sm flex items-center gap-2">
+                    <div className="bg-[#2a2a2a]/40 border border-white/10 rounded-lg p-3">
+                      <p className="text-gray-300 text-sm flex items-center gap-2">
                         ⏳ Cooldown active. Withdrawal available in: <span className="font-bold">{timeRemaining || "Calculating..."}</span>
                       </p>
                     </div>
@@ -563,7 +563,7 @@ export default function YieldVaults() {
                   className={`w-full rounded-lg bg-gradient-to-r ${
                     activeTab === "lock" 
                       ? "from-green-500 to-green-600" 
-                      : "from-orange-500 to-orange-600"
+                      : "from-[#2a2a2a] to-[#333333]"
                   } py-4 font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-50 hover:opacity-90`}
                 >
                   {isLocking || isUnlocking 

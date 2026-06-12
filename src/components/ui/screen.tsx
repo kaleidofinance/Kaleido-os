@@ -70,11 +70,11 @@ const screens = [
         </p>
         <div className="space-y-2">
             <div className="flex items-center gap-3 p-2 bg-white/5 rounded-lg border border-white/5">
-                <FiZap className="text-[#ffd700]" />
+                <FiZap className="text-[#d1d5db]" />
                 <span className="text-xs text-gray-400">Agentic Yield Harvesting</span>
             </div>
             <div className="flex items-center gap-3 p-2 bg-white/5 rounded-lg border border-white/5">
-                <FiActivity className="text-[#00ccff]" />
+                <FiActivity className="text-[#d1d5db]" />
                 <span className="text-xs text-gray-400">Immutable Audit Ledger 📜</span>
             </div>
         </div>

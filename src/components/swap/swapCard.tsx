@@ -655,7 +655,7 @@ function SwapCard({
              {priceImpact !== null && (
                <div className="flex justify-between">
                  <p className="text-gray-400 font-normal">Price Impact</p>
-                 <p className={`font-medium ${priceImpact > 5 ? "text-red-500" : priceImpact > 2 ? "text-yellow-500" : "text-gray-300"}`}>
+                 <p className={`font-medium ${priceImpact > 5 ? "text-red-500" : priceImpact > 2 ? "text-gray-300" : "text-gray-300"}`}>
                    {priceImpact < 0.01 ? "< 0.01%" : `${priceImpact.toFixed(2)}%`}
                  </p>
                </div>

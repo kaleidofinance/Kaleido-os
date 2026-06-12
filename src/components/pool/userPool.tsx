@@ -123,7 +123,7 @@ export default function UserPool({ viewMode = 'card', searchQuery = '' }: UserPo
                         stablecoins.includes(pair.token1?.symbol || '');
     
     if (isStablePair) {
-      labels.push({ text: 'Stable', color: 'bg-blue-500/20 text-blue-400' });
+      labels.push({ text: 'Stable', color: 'bg-[#2a2a2a]/60 text-gray-300' });
     }
     
     // Check if it's a new pool (created within last 7 days)
@@ -132,7 +132,7 @@ export default function UserPool({ viewMode = 'card', searchQuery = '' }: UserPo
     const isNewPool = pair.createdAt && pair.createdAt > sevenDaysAgo;
     
     if (isNewPool) {
-      labels.push({ text: 'New', color: 'bg-purple-500/20 text-purple-400' });
+      labels.push({ text: 'New', color: 'bg-[#2a2a2a]/60 text-gray-300' });
     }
     
     // Check if it's high liquidity (over $10M)
@@ -252,7 +252,7 @@ export default function UserPool({ viewMode = 'card', searchQuery = '' }: UserPo
                               <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-medium">
                                 Farm
                               </span>
-                              <CheckCircle size={16} className="text-yellow-400" />
+                              <CheckCircle size={16} className="text-gray-300" />
                             </>
                           ) : (
                             getPoolLabels(pair.pair).map((label, index) => (
@@ -343,7 +343,7 @@ export default function UserPool({ viewMode = 'card', searchQuery = '' }: UserPo
                               <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-medium">
                                 Farm
                               </span>
-                              <CheckCircle size={16} className="text-yellow-400" />
+                              <CheckCircle size={16} className="text-gray-300" />
                             </>
                           ) : (
                             getPoolLabels(pair.pair).map((label, index) => (
@@ -380,7 +380,7 @@ export default function UserPool({ viewMode = 'card', searchQuery = '' }: UserPo
                     {/* Action buttons */}
                     <div className="flex justify-end gap-2">
                       <Link href={`/pool/pair/${pair.pairAddress}?tokenA=${pair.pair.token0?.address || ''}&tokenB=${pair.pair.token1?.address || ''}&symbolA=${pair.pair.token0?.symbol || ''}&symbolB=${pair.pair.token1?.symbol || ''}`}>
-                        <button className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition-colors">
+                        <button className="px-3 py-1 bg-[#2a2a2a] hover:bg-[#2a2a2a] text-white text-sm rounded transition-colors">
                           Claim
                         </button>
                       </Link>
@@ -450,7 +450,7 @@ export default function UserPool({ viewMode = 'card', searchQuery = '' }: UserPo
                           <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-medium">
                             Farm
                           </span>
-                          <CheckCircle size={16} className="text-yellow-400" />
+                          <CheckCircle size={16} className="text-gray-300" />
                         </>
                       ) : (
                         getPoolLabels(pair.pair).map((label, labelIndex) => (

@@ -133,21 +133,21 @@ const TransactionHistory = () => {
         <p className="text-center text-gray-400">No transactions found.</p>
       ) : (
         <>
-          <div className="scrollbar-thin scrollbar-thumb-purple-600 scrollbar-track-gray-800 max-h-[600px] space-y-6 overflow-y-auto rounded-lg pr-3">
+          <div className="scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 max-h-[600px] space-y-6 overflow-y-auto rounded-lg pr-3">
             {currentItems.map(({ id, eventName, date, details }) => {
               const labels = LABEL_MAP[eventName] || {}
 
               // Badge color logic for vibrancy
               const badgeColor = eventName.includes("Created")
-                ? "bg-indigo-700 text-indigo-300"
+                ? "bg-[#2a2a2a] text-gray-300"
                 : eventName.includes("Deposited")
                   ? "bg-green-700 text-green-300"
                   : eventName.includes("Withdrawn")
-                    ? "bg-yellow-700 text-yellow-300"
+                    ? "bg-[#2a2a2a] text-gray-300"
                     : eventName.includes("Liquidated")
                       ? "bg-red-700 text-red-300"
                       : eventName.includes("Serviced")
-                        ? "bg-purple-700 text-purple-300"
+                        ? "bg-[#2a2a2a] text-gray-300"
                         : "bg-[#2a2a2a] text-gray-300"
 
               return (

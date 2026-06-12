@@ -36,7 +36,7 @@ const Button: React.FC<ButtonProps> = ({
     secondary: "bg-[#2a2a2a] hover:bg-[#2a2a2a] text-white focus:ring-gray-500",
     outline:
       "bg-transparent border-[rgba(34,197,94,0.3)] text-[#22c55e] border text-[15px] cursor-pointer rounded-[8px] hover:bg-[rgba(34,197,94,0.1)] focus:ring-green-500",
-    ghost: "text-blue-600 hover:bg-blue-50 focus:ring-blue-500",
+    ghost: "text-gray-300 hover:bg-[#2a2a2a]/40 focus:ring-gray-500",
     danger: "bg-red-600 hover:bg-red-700 text-white focus:ring-red-500",
   };
 

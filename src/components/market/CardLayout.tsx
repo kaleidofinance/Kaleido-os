@@ -227,7 +227,7 @@ const BorrowRow = ({ data, address, etherPrice, usdcPrice, onCloseAd, index, fil
   const statusInfo = useMemo(() => {
     const statusLabels: Record<string, { text: string; color: string }> = {
       OPEN: { text: "Open", color: "bg-green-500" },
-      SERVICED: { text: "Serviced", color: "bg-yellow-500" },
+      SERVICED: { text: "Serviced", color: "bg-[#2a2a2a]" },
       OVERDUE: { text: "Overdue", color: "bg-red-500" },
     }
     const [message, isOverdue] = getOverdue(data.returnDate)
@@ -468,7 +468,7 @@ const LendRow = ({ data, filters, index }: any) => {
   const statusInfo = useMemo(() => {
     const statusLabels: Record<string, { text: string; color: string }> = {
       OPEN: { text: "Open", color: "bg-green-500" },
-      SERVICED: { text: "Serviced", color: "bg-yellow-500" },
+      SERVICED: { text: "Serviced", color: "bg-[#2a2a2a]" },
       OVERDUE: { text: "Overdue", color: "bg-red-500" },
     }
     const [message, isOverdue] = getOverdue(data.returnDate)
@@ -854,7 +854,7 @@ const HorizontalListingLayout = () => {
           {isInfiniteScrollMode && (
             <button
               onClick={() => setIsInfiniteScrollMode(false)}
-              className="rounded-lg border border-yellow-600 bg-yellow-900 px-3 py-2 text-sm text-yellow-100 transition-colors hover:bg-yellow-800"
+              className="rounded-lg border border-gray-500/40 bg-[#2a2a2a] px-3 py-2 text-sm text-gray-100 transition-colors hover:bg-[#333333]"
             >
               <span className="sm:hidden">📄 Manual Loading</span>
               <span className="hidden sm:inline">📄 Switch to Manual Loading</span>

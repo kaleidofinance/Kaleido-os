@@ -26,21 +26,21 @@ export default function YieldDistribution() {
       amount: "$28,456",
       percentage: "31.9%",
       description: "Treasury bill yields from BlackRock BUIDL",
-      color: "blue"
+      color: "neutral"
     },
     {
       name: "Minting Fees",
       amount: "$8,234",
       percentage: "9.2%",
       description: "Fees from kfUSD minting operations",
-      color: "purple"
+      color: "neutral"
     },
     {
       name: "Redemption Fees",
       amount: "$4,567",
       percentage: "5.1%",
       description: "Fees from kfUSD redemption operations",
-      color: "orange"
+      color: "neutral"
     },
     {
       name: "Other Revenue",
@@ -64,24 +64,20 @@ export default function YieldDistribution() {
       percentage: "30%",
       amount: "$26,770",
       description: "Rewards for providing liquidity and mining",
-      color: "blue"
+      color: "neutral"
     },
     {
       recipient: "Ecosystem Growth & Buybacks",
       percentage: "20%",
       amount: "$17,847",
       description: "KLD buybacks and ecosystem incentives",
-      color: "purple"
+      color: "neutral"
     }
   ];
 
   const getColorClass = (color: string) => {
     switch (color) {
       case "green": return "text-green-400 bg-green-500/20";
-      case "blue": return "text-blue-400 bg-blue-500/20";
-      case "purple": return "text-purple-400 bg-purple-500/20";
-      case "orange": return "text-orange-400 bg-orange-500/20";
-      case "gray": return "text-gray-400 bg-[#2a2a2a]/20";
       default: return "text-gray-400 bg-[#2a2a2a]/20";
     }
   };
@@ -89,10 +85,6 @@ export default function YieldDistribution() {
   const getBarColor = (color: string) => {
     switch (color) {
       case "green": return "bg-green-500";
-      case "blue": return "bg-blue-500";
-      case "purple": return "bg-purple-500";
-      case "orange": return "bg-orange-500";
-      case "gray": return "bg-[#2a2a2a]";
       default: return "bg-[#2a2a2a]";
     }
   };
@@ -112,7 +104,7 @@ export default function YieldDistribution() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <Activity className="w-5 h-5 text-blue-400 mr-2" />
+            <Activity className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-sm font-medium text-gray-400">Daily Yield</h3>
           </div>
           <p className="text-2xl font-bold text-white">{yieldStats.dailyYield}</p>
@@ -121,7 +113,7 @@ export default function YieldDistribution() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <DollarSign className="w-5 h-5 text-purple-400 mr-2" />
+            <DollarSign className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-sm font-medium text-gray-400">Monthly Yield</h3>
           </div>
           <p className="text-2xl font-bold text-white">{yieldStats.monthlyYield}</p>
@@ -130,7 +122,7 @@ export default function YieldDistribution() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <Users className="w-5 h-5 text-orange-400 mr-2" />
+            <Users className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-sm font-medium text-gray-400">Treasury Share</h3>
           </div>
           <p className="text-2xl font-bold text-white">{yieldStats.treasuryShare}</p>
@@ -221,8 +213,8 @@ export default function YieldDistribution() {
           </div>
           
           <div className="text-center">
-            <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <PieChart className="w-8 h-8 text-blue-400" />
+            <div className="w-16 h-16 bg-[#2a2a2a]/60 rounded-full flex items-center justify-center mx-auto mb-4">
+              <PieChart className="w-8 h-8 text-gray-300" />
             </div>
             <h4 className="text-white font-semibold mb-2">Distribution</h4>
             <p className="text-gray-300 text-sm">
@@ -231,8 +223,8 @@ export default function YieldDistribution() {
           </div>
           
           <div className="text-center">
-            <div className="w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-purple-400" />
+            <div className="w-16 h-16 bg-[#2a2a2a]/60 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Shield className="w-8 h-8 text-gray-300" />
             </div>
             <h4 className="text-white font-semibold mb-2">Value Support</h4>
             <p className="text-gray-300 text-sm">
@@ -260,14 +252,14 @@ export default function YieldDistribution() {
 
         <div className="bg-black/20 backdrop-blur-sm border border-green-500/40 rounded-xl p-6">
           <div className="flex items-center mb-3">
-            <DollarSign className="w-5 h-5 text-blue-400 mr-2" />
+            <DollarSign className="w-5 h-5 text-gray-300 mr-2" />
             <h3 className="text-lg font-semibold text-white">Economic Engine</h3>
           </div>
           <p className="text-gray-300 text-sm mb-4">
             kfUSD serves as the economic engine powering Kaleido's modular DeFi ecosystem, 
             blending USDC-like stability with Ethena-grade yield and AI-driven management.
           </p>
-          <button className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors">
+          <button className="w-full py-2 bg-[#2a2a2a] hover:bg-[#2a2a2a] text-white font-semibold rounded-lg transition-colors">
             Learn More
           </button>
         </div>

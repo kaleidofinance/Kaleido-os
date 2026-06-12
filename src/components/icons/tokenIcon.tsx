@@ -89,11 +89,11 @@ export default function TokenIcon({
   const TokenFallback = () => (
     <div
       className={`
-      ${sizeConfig.icon} 
-      bg-gradient-to-br from-blue-500 to-purple-600 
-      rounded-full 
-      flex items-center justify-center 
-      ${sizeConfig.fallback} 
+      ${sizeConfig.icon}
+      bg-gradient-to-br from-[#2a2a2a] to-[#333333]
+      rounded-full
+      flex items-center justify-center
+      ${sizeConfig.fallback}
       ${className}
       font-semibold text-white
     `}
@@ -141,10 +141,10 @@ export default function TokenIcon({
         return (
           <div
             className={`
-            flex items-center ${sizeConfig.detailed} 
-            bg-white dark:bg-[#2a2a2a] 
-            rounded-lg border border-gray-200 dark:border-gray-700 
-            ${sizeConfig.container} 
+            flex items-center ${sizeConfig.detailed}
+            bg-white dark:bg-[#2a2a2a]
+            rounded-lg border border-gray-200 dark:border-gray-700
+            ${sizeConfig.container}
             shadow-sm hover:shadow-md transition-shadow
             ${className}
           `}
@@ -173,7 +173,7 @@ export default function TokenIcon({
           <div
             className={`
         flex items-center justify-between w-full
-        ${sizeConfig.detailed} 
+        ${sizeConfig.detailed}
         ${sizeConfig.container}
         ${className}
       `}

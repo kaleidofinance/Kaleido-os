@@ -20,16 +20,16 @@ function shortenAddress(addr: string) {
 }
 
 function getRankStyle(rank: number) {
-  if (rank === 1) return "border-yellow-400/40 bg-yellow-400/5"
+  if (rank === 1) return "border-white/20 bg-white/5"
   if (rank === 2) return "border-white/20 bg-white/5"
-  if (rank === 3) return "border-orange-400/30 bg-orange-400/5"
+  if (rank === 3) return "border-white/20 bg-gray-300/5"
   return "border-white/5 bg-black/20"
 }
 
 function getBarColor(rank: number) {
-  if (rank === 1) return "bg-yellow-400"
+  if (rank === 1) return "bg-gray-300"
   if (rank === 2) return "bg-white/70"
-  if (rank === 3) return "bg-orange-400"
+  if (rank === 3) return "bg-gray-300"
   return "bg-[#00ff99]"
 }
 
@@ -179,7 +179,7 @@ export default function LeaderboardPage() {
 
               {/* Points */}
               <div className="col-span-3 text-right">
-                <p className={`text-sm font-bold tabular-nums ${rank === 1 ? "text-yellow-400" : rank <= 3 ? "text-white" : "text-white/70"}`}>
+                <p className={`text-sm font-bold tabular-nums ${rank === 1 ? "text-gray-300" : rank <= 3 ? "text-white" : "text-white/70"}`}>
                   {entry.totalPoints.toLocaleString()}
                 </p>
                 <p className="text-xs text-white/25">pts</p>
