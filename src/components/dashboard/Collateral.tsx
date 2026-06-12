@@ -79,26 +79,26 @@ const Collateral = ({ id }: { id?: string }) => {
 
   return (
     <div
-      className="u-class-shadow-2 w-full min-w-0 overflow-hidden rounded-xl bg-black/40 backdrop-blur-md border border-[#00ff99]/10 py-6 transition-all hover:border-[#00ff99]/30"
+      className="u-class-shadow-2 w-full min-w-0 overflow-hidden rounded-xl bg-black/40 backdrop-blur-md border border-[#00ff99]/10 py-5 transition-all hover:border-[#00ff99]/30 sm:py-6"
       {...(id ? { id } : {})}
     >
-      <div className="mb-3 px-6 text-xl">
+      <div className="mb-3 px-4 text-lg sm:px-6 sm:text-xl">
         <h3>Wallet&apos;s Portfolio</h3>
       </div>
-      <div className="px-6 relative overflow-y-auto max-h-[220px] kaleido-scrollbar">
-        <table className="min-w-full text-center text-sm">
+      <div className="kaleido-scrollbar relative max-h-[220px] overflow-y-auto px-3 sm:px-6">
+        <table className="w-full table-fixed text-center text-xs sm:text-sm">
           <thead>
             <tr className="text-center text-white/70">
-              <th className="sticky top-0 py-2 text-start font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-[28%] py-2 text-start font-medium bg-[#060606] z-20">
                 Asset
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-[27%] py-2 text-center font-medium bg-[#060606] z-20">
                 Wallet Balance
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-[17%] py-2 text-center font-medium bg-[#060606] z-20">
                 Collateral
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 w-[28%] py-2 text-center font-medium bg-[#060606] z-20">
                 Actions
               </th>
             </tr>
@@ -110,9 +110,13 @@ const Collateral = ({ id }: { id?: string }) => {
                 className="text-center text-xs sm:text-sm border-t border-white/5"
               >
                 <td className="flex flex-col pt-3 text-start">
-                  <div className="flex items-center gap-2">
-                    <img src={item.icon} alt={item.icon} className="w-4" />
-                    <span>{item.token}</span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <img
+                      src={item.icon}
+                      alt={item.icon}
+                      className="w-5 shrink-0 sm:w-4"
+                    />
+                    <span className="truncate">{item.token}</span>
                   </div>
                   {item.isMultichain && (
                     <div className="mt-1 flex gap-1">
@@ -167,7 +171,7 @@ const Collateral = ({ id }: { id?: string }) => {
                             ? "Bridge"
                             : "Deposit"
                         }
-                        css="deposit-collateral-btn w-24 justify-center"
+                        css="deposit-collateral-btn w-20 justify-center text-center sm:w-24"
                       />
                     </div>
                   </div>
