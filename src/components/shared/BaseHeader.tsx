@@ -7,7 +7,7 @@ interface BaseHeaderProps {
   title: string;
   description: string;
   showStats?: boolean;
-  type?: "stake" | "pool" | "market" | "swap";
+  type?: "stake" | "pool" | "market";
   backgroundImage?: string;
   backgroundOverlay?: boolean;
   statsData?: {
@@ -18,7 +18,6 @@ interface BaseHeaderProps {
     farms?: number;
   };
   loading?: boolean;
-  statsMobileOnly?: boolean;
   children?: React.ReactNode;
 }
 
@@ -31,12 +30,10 @@ const BaseHeader = ({
   backgroundOverlay = true,
   statsData,
   loading = false,
-  statsMobileOnly = false,
   children,
 }: BaseHeaderProps) => {
   const [isClient, setIsClient] = useState(false);
-  const hasCompactMobileStats =
-    type === "market" || type === "pool" || type === "swap";
+  const hasCompactMobileStats = type === "market" || type === "pool";
   const formatCompactCurrency = (value?: string) =>
     "$" +
     new Intl.NumberFormat("en-US", {
@@ -44,44 +41,26 @@ const BaseHeader = ({
       maximumFractionDigits: 1,
     }).format(Number(value || 0));
 
-  const compactMobileStats =
-    type === "swap"
-      ? [
-          {
-            label: "TVL",
-            value: formatCompactCurrency(statsData?.totalPooledKLD),
-          },
-          {
-            label: "LIQUIDITY",
-            value: statsData?.totalStakers
-              ? Number(statsData.totalStakers).toLocaleString("en-US")
-              : "0",
-          },
-          {
-            label: "TOTAL VOLUME",
-            value: formatCompactCurrency(statsData?.userKldDeposit),
-          },
-        ]
-      : [
-          {
-            label: "TVL",
-            value: formatCompactCurrency(statsData?.totalPooledKLD),
-          },
-          {
-            label: type === "market" ? "SERVICE REQUEST" : "POOLS",
-            value: statsData?.totalStakers
-              ? Number(statsData.totalStakers).toLocaleString("en-US")
-              : "0",
-          },
-          {
-            label: type === "market" ? "TOTAL VOLUME" : "VOLUME",
-            value: formatCompactCurrency(statsData?.userKldDeposit),
-          },
-          {
-            label: type === "market" ? "REVENUE" : "FEES",
-            value: formatCompactCurrency(statsData?.fees24h),
-          },
-        ];
+  const compactMobileStats = [
+    {
+      label: "TVL",
+      value: formatCompactCurrency(statsData?.totalPooledKLD),
+    },
+    {
+      label: type === "market" ? "SERVICE REQUEST" : "POOLS",
+      value: statsData?.totalStakers
+        ? Number(statsData.totalStakers).toLocaleString("en-US")
+        : "0",
+    },
+    {
+      label: type === "market" ? "TOTAL VOLUME" : "VOLUME",
+      value: formatCompactCurrency(statsData?.userKldDeposit),
+    },
+    {
+      label: type === "market" ? "REVENUE" : "FEES",
+      value: formatCompactCurrency(statsData?.fees24h),
+    },
+  ];
 
   useEffect(() => {
     setIsClient(true);
@@ -183,9 +162,7 @@ const BaseHeader = ({
         <div className="relative mt-6 lg:mt-0 lg:ml-6 flex items-center justify-center w-full">
           {/* Analytics positioned in center area */}
           {showStats && hasCompactMobileStats && (
-            <div
-              className={`${type === "swap" ? "max-w-[22rem] grid-cols-3 gap-2 p-3 sm:p-4" : "max-w-[23rem] grid-cols-4 gap-1.5 p-2 sm:gap-2 sm:p-3"} grid w-full rounded-2xl border border-[#00ff99]/60 bg-gradient-to-r from-black/20 via-black/30 to-black/20 shadow-2xl backdrop-blur-md sm:max-w-[24rem] lg:hidden`}
-            >
+            <div className="grid w-full max-w-[23rem] grid-cols-4 gap-1.5 rounded-2xl border border-[#00ff99]/60 bg-gradient-to-r from-black/20 via-black/30 to-black/20 p-2 shadow-2xl backdrop-blur-md sm:max-w-[24rem] sm:gap-2 sm:p-3 lg:hidden">
               {compactMobileStats.map((stat) => (
                 <div
                   key={stat.label}
@@ -202,7 +179,7 @@ const BaseHeader = ({
             </div>
           )}
 
-          {showStats && !statsMobileOnly && (
+          {showStats && (
             <div
               className={`${hasCompactMobileStats ? "hidden" : "grid"} w-full max-w-[21.5rem] grid-cols-2 justify-items-center gap-x-2 gap-y-5 rounded-2xl border border-[#00ff99]/60 bg-gradient-to-r from-black/20 via-black/30 to-black/20 p-4 shadow-2xl backdrop-blur-md transition-all duration-300 hover:border-[#00ff99]/80 hover:bg-gradient-to-r hover:from-black/30 hover:via-black/40 hover:to-black/30 hover:shadow-3xl hover:shadow-[#00ff99]/20 sm:max-w-[24rem] sm:gap-4 lg:absolute lg:left-1/2 lg:z-10 lg:flex lg:w-auto lg:max-w-none lg:-translate-x-1/2 lg:transform lg:items-center lg:gap-12 lg:px-10 lg:py-8 lg:hover:scale-105`}
             >
