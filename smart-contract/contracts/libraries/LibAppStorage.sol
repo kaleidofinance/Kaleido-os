@@ -70,6 +70,14 @@ library LibAppStorage {
         /// @dev maps addresses (bots/contracts) that are allowed to award points
         mapping(address => bool) approvedPointAwarders;
 
+        // --- Agent delegation. Appended only; never reorder the fields above,
+        // --- doing so would corrupt every existing storage slot.
+
+        /// @dev user => agent => bounded authority granted by that user
+        mapping(address => mapping(address => AgentPermission)) agentPermissions;
+        /// @dev user => agent => token => whether the agent may touch that token
+        mapping(address => mapping(address => mapping(address => bool))) agentTokens;
+
     }
     
         function layout() internal pure returns (Layout storage l) {

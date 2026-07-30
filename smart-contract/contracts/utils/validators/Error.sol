@@ -61,3 +61,20 @@ error Protocol__InvalidRequestId();
 error Protocol__RequestNotFound();
 error Protocol__InsufficientCollateralBalance();
 error Protocol__LoanAmountTooLow();
+
+/// interest ///
+error Protocol__InterestTooSmall();
+error Protocol__TermTooShort();
+
+/// agent delegation ///
+error Protocol__NoAgentPermission();
+error Protocol__PermissionExpired();
+error Protocol__PermissionRevoked();
+error Protocol__ActionNotPermitted();
+error Protocol__TokenNotPermitted();
+error Protocol__ExceedsActionLimit();
+error Protocol__ExceedsEpochLimit();
+error Protocol__InterestWorseThanPermitted();
+error Protocol__WouldBreachHealthFloor();
+error Protocol__AgentCannotDelegate();
+error Protocol__InvalidPermission();
