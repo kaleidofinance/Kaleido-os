@@ -79,27 +79,29 @@ const Collateral = ({ id }: { id?: string }) => {
 
   return (
     <div
-      className="u-class-shadow-2 w-full min-w-0 overflow-hidden rounded-xl bg-black/40 backdrop-blur-md border border-[#00ff99]/10 py-5 transition-all hover:border-[#00ff99]/30 sm:py-6"
+      className="u-class-shadow-2 w-full min-w-0 overflow-hidden rounded-xl border border-edge bg-surface py-5 transition-colors hover:border-edge-strong sm:py-6"
       {...(id ? { id } : {})}
     >
-      <div className="mb-3 px-4 text-lg sm:px-6 sm:text-xl">
-        <h3>Wallet&apos;s Portfolio</h3>
+      <div className="mb-3 px-4 sm:px-6">
+        <h3 className="text-[11px] uppercase tracking-[0.1em] text-content-muted">
+          Wallet balances
+        </h3>
       </div>
       <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-hidden overflow-y-auto px-3 sm:px-6">
         <table className="min-w-full text-center text-sm">
           <thead>
-            <tr className="text-center text-white/70">
-              <th className="sticky top-0 py-2 text-start font-medium bg-[#060606] z-20">
+            <tr>
+              <th className="sticky top-0 z-20 bg-surface py-2 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
                 Asset
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 z-20 bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
                 <span className="sm:hidden">Balance</span>
-                <span className="hidden sm:inline">Wallet Balance</span>
+                <span className="hidden sm:inline">Wallet balance</span>
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 z-20 bg-surface py-2 text-center text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
                 Collateral
               </th>
-              <th className="sticky top-0 py-2 text-center font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 z-20 bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
                 Actions
               </th>
             </tr>
@@ -108,23 +110,25 @@ const Collateral = ({ id }: { id?: string }) => {
             {updatedTokenData.map((item, index) => (
               <tr
                 key={index}
-                className="text-center text-xs sm:text-sm border-t border-white/5"
+                className="border-t border-edge text-xs sm:text-sm"
               >
-                <td className="flex flex-col pt-3 text-start">
+                <td className="py-2.5 text-start align-top">
                   <div className="flex min-w-0 items-center gap-2">
                     <img
                       src={item.icon}
-                      alt={item.icon}
-                      className="w-5 shrink-0 sm:w-4"
+                      alt=""
+                      className="w-5 shrink-0 rounded-full sm:w-4"
                     />
-                    <span className="min-w-0 truncate">{item.token}</span>
+                    <span className="min-w-0 truncate text-content">
+                      {item.token}
+                    </span>
                   </div>
                   {item.isMultichain && (
-                    <div className="mt-1 flex flex-wrap gap-1">
+                    <div className="mt-1.5 flex flex-wrap gap-1">
                       {item.chains?.map((c: any) => (
                         <span
                           key={c.chainId}
-                          className="px-1 py-0.5 rounded-[4px] bg-[#00ff99]/10 border border-[#00ff99]/30 text-[8px] text-[#00ff99] uppercase font-bold"
+                          className="rounded-[4px] border border-edge bg-surface-raised px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-content-muted"
                         >
                           {c.chainName}
                         </span>
@@ -132,17 +136,13 @@ const Collateral = ({ id }: { id?: string }) => {
                     </div>
                   )}
                 </td>
-                <td className="pt-2">
-                  <div className="flex flex-col items-center">
-                    <span>
-                      {formatWithCommas(
-                        item.tokenPrice,
-                        item.token === "ETH" ? 4 : 3,
-                      )}
-                    </span>
-                  </div>
+                <td className="py-2.5 text-right align-top font-mono tabular-nums text-content">
+                  {formatWithCommas(
+                    item.tokenPrice,
+                    item.token === "ETH" ? 4 : 3,
+                  )}
                 </td>
-                <td className="pt-2">
+                <td className="py-2.5 align-top">
                   <div className="flex flex-col items-center">
                     <Image
                       src={
@@ -160,8 +160,8 @@ const Collateral = ({ id }: { id?: string }) => {
                     />
                   </div>
                 </td>
-                <td className="pt-2">
-                  <div className="flex justify-center">
+                <td className="py-2.5 align-top">
+                  <div className="flex justify-end">
                     <div onClick={() => handleDepositClick(item.token)}>
                       <Btn
                         text={

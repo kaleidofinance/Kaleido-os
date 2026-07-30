@@ -20,6 +20,53 @@ import Joyride, { Step } from "react-joyride";
 import { IoMdCompass } from "react-icons/io";
 import { shareTechMono, zenDots } from "@/lib/font";
 
+const tourFont = `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`;
+
+/** Shared by both tours. Reads the design tokens so the tour matches the app
+ *  instead of dropping a light-themed card onto a dark screen. */
+const tourStyles = {
+  options: {
+    zIndex: 10000,
+    primaryColor: "var(--accent)",
+    textColor: "var(--text-primary)",
+    arrowColor: "var(--surface-raised)",
+    backgroundColor: "var(--surface-raised)",
+    overlayColor: "rgba(0,0,0,0.6)",
+  },
+  buttonNext: {
+    backgroundColor: "var(--accent)",
+    color: "var(--text-on-accent)",
+    fontWeight: 600,
+    borderRadius: "7px",
+    padding: "8px 14px",
+    fontFamily: tourFont,
+  },
+  buttonBack: { color: "var(--text-secondary)", fontFamily: tourFont },
+  buttonSkip: { color: "var(--text-muted)", fontFamily: tourFont },
+  tooltip: {
+    fontFamily: tourFont,
+    fontSize: "0.95rem",
+    color: "var(--text-primary)",
+    backgroundColor: "var(--surface-raised)",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "10px",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+  },
+  tooltipTitle: {
+    fontWeight: 700,
+    color: "var(--text-primary)",
+    fontFamily: tourFont,
+  },
+};
+
+const tourLocale = {
+  last: "Finish",
+  next: "Next",
+  skip: "Skip",
+  back: "Back",
+  close: "Close",
+};
+
 export default function DashboardPage() {
   const [user, setUser] = useState("User");
   const [health, setHealth] = useState<number | string>("0");
@@ -235,9 +282,11 @@ export default function DashboardPage() {
   return (
     <div className="w-full overflow-x-hidden px-2 py-4 sm:p-4">
       <div className="w-full">
-        <h3 className="mb-4 text-xl">
+        <h3 className="mb-6 text-xl text-content-secondary">
           {"Welcome, "}
-          <span className="text-[#00dd55]">{capitalizeFirstLetter(user)}</span>
+          <span className="font-mono text-content">
+            {capitalizeFirstLetter(user)}
+          </span>
         </h3>
         {mounted && (
           <>
@@ -249,51 +298,8 @@ export default function DashboardPage() {
               showSkipButton
               showProgress
               spotlightClicks={true}
-              styles={{
-                options: {
-                  zIndex: 10000,
-                  primaryColor: "#22c55e",
-                  textColor: "#222",
-                  arrowColor: "#fff",
-                  backgroundColor: "#fff",
-                  overlayColor: "rgba(0,0,0,0.4)",
-                },
-                buttonNext: {
-                  backgroundColor: "#22c55e",
-                  color: "#fff",
-                  fontWeight: 600,
-                  borderRadius: "6px",
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                },
-                buttonBack: {
-                  color: "#22c55e",
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                },
-                buttonSkip: {
-                  color: "#22c55e",
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                },
-                tooltip: {
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                  fontSize: "1rem",
-                  color: "#222",
-                  backgroundColor: "#fff",
-                  borderRadius: "10px",
-                  boxShadow: "0 2px 16px 0 rgba(34,197,94,0.10)",
-                },
-                tooltipTitle: {
-                  fontWeight: 700,
-                  color: "#22c55e",
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                },
-              }}
-              locale={{
-                last: "Finish",
-                next: "Next",
-                skip: "Skip",
-                back: "Back",
-                close: "Close",
-              }}
+              styles={tourStyles}
+              locale={tourLocale}
               callback={(data) => handleJoyrideCallback(data, "page")}
             />
 
@@ -305,51 +311,8 @@ export default function DashboardPage() {
               showSkipButton
               showProgress
               spotlightClicks={true}
-              styles={{
-                options: {
-                  zIndex: 10000,
-                  primaryColor: "#22c55e",
-                  textColor: "#222",
-                  arrowColor: "#fff",
-                  backgroundColor: "#fff",
-                  overlayColor: "rgba(0,0,0,0.4)",
-                },
-                buttonNext: {
-                  backgroundColor: "#22c55e",
-                  color: "#fff",
-                  fontWeight: 600,
-                  borderRadius: "6px",
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                },
-                buttonBack: {
-                  color: "#22c55e",
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                },
-                buttonSkip: {
-                  color: "#22c55e",
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                },
-                tooltip: {
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                  fontSize: "1rem",
-                  color: "#222",
-                  backgroundColor: "#fff",
-                  borderRadius: "10px",
-                  boxShadow: "0 2px 16px 0 rgba(34,197,94,0.10)",
-                },
-                tooltipTitle: {
-                  fontFamily: `var(${zenDots.variable}), ${shareTechMono.style.fontFamily}`,
-                  fontWeight: 700,
-                  color: "#22c55e",
-                },
-              }}
-              locale={{
-                last: "Finish",
-                next: "Next",
-                skip: "Skip",
-                back: "Back",
-                close: "Close",
-              }}
+              styles={tourStyles}
+              locale={tourLocale}
               callback={(data) => handleJoyrideCallback(data, "collateral")}
             />
           </>
@@ -394,7 +357,7 @@ export default function DashboardPage() {
             figure={health}
             extraCSS="health-card"
             icon={
-              <div className="flex h-11 w-[24.6px] place-items-end bg-white/80 px-[0.6px] pt-1 shadow shadow-[#C2C2C21A]">
+              <div className="flex h-11 w-[24.6px] place-items-end rounded-[2px] border border-edge-strong bg-surface-sunken px-[1px] py-[1px]">
                 <div className={`${batteryCSS(health)} w-full`}></div>
               </div>
             }
@@ -420,9 +383,10 @@ export default function DashboardPage() {
       <div className="fixed bottom-28 right-5 z-50 flex flex-col items-end">
         <div className="group relative">
           <button
-            className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-[#2a2a2a] text-xl text-white shadow-lg hover:bg-[#333333]"
+            className="mb-2 flex h-14 w-14 items-center justify-center rounded-full border border-edge bg-surface-raised text-xl text-content-secondary shadow-lg transition-colors hover:border-edge-strong hover:text-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
             onClick={() => setShowTourDropdown((prev) => !prev)}
             aria-label="Open Tour Menu"
+            aria-expanded={showTourDropdown}
             type="button"
           >
             <IoMdCompass />
@@ -430,19 +394,19 @@ export default function DashboardPage() {
           {/* Tooltip on hover */}
           {!showTourDropdown && (
             <div className="absolute bottom-20 right-0 z-50 mb-2 hidden flex-col items-end group-hover:flex">
-              <div className="mr-2 whitespace-nowrap rounded-lg bg-[#2a2a2a] px-3 py-2 text-xs font-medium text-white shadow-lg">
+              <div className="mr-2 whitespace-nowrap rounded-lg border border-edge bg-surface-raised px-3 py-2 text-xs text-content-secondary shadow-lg">
                 Available page tours
               </div>
-              <div className="mr-6 mt-[-6px] h-3 w-3 rotate-45 bg-[#2a2a2a]"></div>
+              <div className="mr-6 mt-[-6px] h-3 w-3 rotate-45 border-b border-r border-edge bg-surface-raised"></div>
             </div>
           )}
           {showTourDropdown && (
-            <div className="absolute bottom-16 right-0 w-60 rounded-xl border border-gray-200 bg-white px-0.5 py-2 shadow-2xl">
-              <div className="select-none border-b border-gray-100 px-5 py-2 text-lg font-semibold tracking-wide text-gray-700">
+            <div className="absolute bottom-16 right-0 w-60 rounded-xl border border-edge bg-surface-raised py-1.5 shadow-2xl">
+              <div className="select-none border-b border-edge px-5 py-2 text-[11px] uppercase tracking-[0.1em] text-content-muted">
                 Tours
               </div>
               <button
-                className="w-full rounded-lg px-5 py-3 text-left font-medium text-gray-800 transition-colors duration-150 hover:bg-[#f3f4f6] hover:text-[#22c55e] focus:outline-none"
+                className="w-full px-5 py-3 text-left text-content-secondary transition-colors hover:bg-surface-hover hover:text-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                 onClick={() => {
                   setRunPageTour(true);
                   setShowTourDropdown(false);
@@ -451,7 +415,7 @@ export default function DashboardPage() {
                 Dashboard
               </button>
               <button
-                className="w-full rounded-lg px-5 py-3 text-left font-medium text-gray-800 transition-colors duration-150 hover:bg-[#f3f4f6] hover:text-[#22c55e] focus:outline-none"
+                className="w-full px-5 py-3 text-left text-content-secondary transition-colors hover:bg-surface-hover hover:text-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                 onClick={() => {
                   setRunTour(true);
                   setShowTourDropdown(false);

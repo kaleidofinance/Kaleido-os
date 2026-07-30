@@ -1,3 +1,5 @@
+@import "./tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -170,24 +172,27 @@ body {
   clip-path: polygon(100% 100%, 100% 0, 0 100%);
 }
 
+/* Health factor battery fill. The colour must track risk — these were all
+   shades of green previously, so a position one step from liquidation looked
+   identical to a safe one. */
 .above1 {
-  background: linear-gradient(180deg, rgba(0, 128, 0, 1), rgba(0, 255, 0, 0.9), rgba(0, 255, 140, 0.9));
+  background: var(--positive);
 }
 
 .one {
-  background: linear-gradient(180deg, rgba(0, 128, 0, 0.3), rgba(0, 255, 0, 0.7), rgba(0, 255, 174, 0.9));
+  background: var(--warning);
 }
 
 .btw051_099 {
-  background: linear-gradient(180deg, rgba(0, 255, 179, 0.9) 100%, rgba(173, 255, 47, 0.9) 0%);
+  background: var(--warning);
 }
 
 .btw03_05 {
-  background: linear-gradient(180deg, rgba(0, 255, 170, 0.9) 0%, rgba(0, 255, 47, 0.9) 100%);
+  background: var(--accent-alt);
 }
 
 .below03 {
-  background: linear-gradient(180deg, rgba(0, 255, 132, 0.9) 0%, rgba(0, 139, 102, 0.9) 100%);
+  background: var(--negative);
 }
 
 .filledInActive {
@@ -321,19 +326,24 @@ body {
     rgba(255, 255, 255, 0.1) 0px 16px 56px;
 }
 
+/* Summary tiles. The 190px white glow read as a light leak on a dark ground;
+   the border shift in DashboardCard carries the hover state instead. */
 .portfolio-card:hover,
 .profit-card:hover,
 .health-card:hover {
-  box-shadow: rgba(255, 255, 255, 0.4) 0px 30px 190px;
   cursor: pointer;
-  transform: scale(1.025);
-  transition: ease-out 0.5s;
 }
 
-/* Custom Button Hover Effect */
+/* Secondary buttons. Previously filled green on hover, which spent the accent
+   on every minor control; the accent is reserved for primary actions. */
 .u-btn1:hover {
-  background-color: #0fbd60;
-  transform: scale(1.05);
+  background-color: var(--surface-hover);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .u-btn1 {
+    transition: background-color 0.15s ease-out;
+  }
 }
 
 .u-btn1::before,
@@ -361,11 +371,11 @@ body {
   border-radius: 5px;
 }
 
+/* Was a 77px white glow, which read as a light leak against the dark ground
+   and whose border-radius silently overrode the rounded-xl on its consumers.
+   Panels are separated by border and elevation now, not glow. */
 .u-class-shadow-2 {
-  box-shadow: 13px 15px 77px 8px rgba(255, 255, 255, 0.29);
-  -webkit-box-shadow: 13px 15px 77px 8px rgba(255, 255, 255, 0.29);
-  -moz-box-shadow: 13px 15px 77px 8px rgba(255, 255, 255, 0.29);
-  border-radius: 5px;
+  box-shadow: none;
 }
 
 .u-class-shadow-3 {

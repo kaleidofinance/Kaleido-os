@@ -67,22 +67,33 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
     : 0;
   const actualPower = isNaN(powerLeft) ? 0 : powerLeft;
 
+  // The gauge has to carry risk, not just a number. Previously it rendered the
+  // same green at 5% as at 95%, so the one element meant to warn you never did.
+  const powerToken =
+    actualPower >= 50
+      ? "var(--positive)"
+      : actualPower >= 20
+        ? "var(--warning)"
+        : "var(--negative)";
+
   return (
     <div
       id="usage-card"
-      className="w-full min-w-0 overflow-hidden rounded-xl border border-[#00ff99]/30 bg-black/40 backdrop-blur-md py-5 transition-all hover:border-[#00ff99]/40 sm:py-6"
+      className="w-full min-w-0 overflow-hidden rounded-xl border border-edge bg-surface py-5 transition-colors hover:border-edge-strong sm:py-6"
     >
-      <div className="mb-1 px-4 text-lg sm:px-6 sm:text-xl">
-        <h3>Your Usage</h3>
+      <div className="mb-3 px-4 sm:px-6">
+        <h3 className="text-[11px] uppercase tracking-[0.1em] text-content-muted">
+          Borrowing
+        </h3>
       </div>
-      <div className="mb-6 flex flex-col gap-1 border-y border-[#00ff99]/30 p-2 text-xs text-white/50 sm:flex-row sm:items-center sm:justify-between sm:p-1">
-        <h4 className="p-1">
-          Total Collateral:{" "}
-          <span className="pl-1">{`$${formatWithCommas(collateralVal ? collateralVal : 0)}`}</span>
+      <div className="mb-6 flex flex-col gap-1 border-y border-edge px-4 py-2 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <h4 className="text-content-muted">
+          Collateral
+          <span className="pl-2 font-mono tabular-nums text-content">{`$${formatWithCommas(collateralVal ? collateralVal : 0)}`}</span>
         </h4>
-        <h4 className="p-1">
-          Total Borrowed:{" "}
-          <span className="pl-1">{`$${formatWithCommas(totalBorrowed)}`}</span>
+        <h4 className="text-content-muted">
+          Borrowed
+          <span className="pl-2 font-mono tabular-nums text-content">{`$${formatWithCommas(totalBorrowed)}`}</span>
         </h4>
       </div>
 
@@ -93,19 +104,21 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
             circleRatio={4.7 / 5}
             counterClockwise
             styles={buildStyles({
-              pathColor: `#00ff99`,
-              trailColor: "rgba(255, 255, 255, 0.4)",
+              pathColor: powerToken,
+              trailColor: "var(--border-subtle)",
             })}
           />
         </div>
 
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <div className="flex items-center rounded-xl border border-[#00ff99]/50 bg-black/60 backdrop-blur-sm px-4 py-2 text-xl text-[#00ff99] font-bold shadow-[0_0_15px_rgba(0,255,153,0.2)]">
-            <span className="m-auto pr-[2px]"></span>
-            {actualPower.toFixed(2)}%
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+          <div
+            className="font-mono text-3xl tabular-nums tracking-tight"
+            style={{ color: powerToken }}
+          >
+            {actualPower.toFixed(1)}%
           </div>
-          <p className="text-xs sm:text-sm font-medium text-white shadow-black drop-shadow-md">
-            Borrow Power Left
+          <p className="text-[11px] uppercase tracking-[0.08em] text-content-muted">
+            Borrow power left
           </p>
         </div>
       </div>
@@ -113,8 +126,26 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
       {totalBorrowed > 0 && (
         <div className="mb-2 px-4">
           <div className="max-h-40 overflow-auto">
-            <table className="min-w-full text-center text-xs sm:text-sm">
-              <thead></thead>
+            <table className="min-w-full text-xs sm:text-sm">
+              <thead>
+                <tr>
+                  <th className="sticky top-0 z-20 bg-surface py-2 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
+                    Loan
+                  </th>
+                  <th className="sticky top-0 z-20 bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
+                    Borrowed
+                  </th>
+                  <th className="sticky top-0 z-20 bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
+                    Owed
+                  </th>
+                  <th className="sticky top-0 z-20 bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
+                    Rate
+                  </th>
+                  <th className="sticky top-0 z-20 bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
               <tbody>
                 {filteredReq.map((item, index) => {
                   const tokenData = tokenImageMap[item.tokenAddress] || {
@@ -123,17 +154,20 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
                   };
 
                   return (
-                    <tr key={index} className="text-white/50">
-                      <td className="flex items-center gap-1 pt-3 text-start text-white">
-                        <img
-                          src={tokenData.image}
-                          alt={tokenData.label}
-                          className="w-4 sm:w-5"
-                        />
-                        <span>{tokenData.label}</span>
+                    <tr key={index} className="border-t border-edge">
+                      <td className="py-2.5 text-start">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={tokenData.image}
+                            alt=""
+                            className="w-4 shrink-0 rounded-full sm:w-5"
+                          />
+                          <span className="text-content">
+                            {tokenData.label}
+                          </span>
+                        </div>
                       </td>
-                      <td className="pt-2">
-                        {" "}
+                      <td className="py-2.5 text-right font-mono tabular-nums text-content-secondary">
                         {formatWithCommas(
                           ethers.formatUnits(
                             item.amount,
@@ -143,8 +177,7 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
                         )}
                       </td>
 
-                      <td className="pt-2">
-                        {" "}
+                      <td className="py-2.5 text-right font-mono tabular-nums text-content">
                         {formatWithCommas(
                           ethers.formatUnits(
                             item.totalRepayment,
@@ -153,13 +186,14 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
                           3,
                         )}
                       </td>
-                      <td className="pt-2">
+                      <td className="py-2.5 text-right font-mono tabular-nums text-content-secondary">
                         {convertbasisPointsToPercentage(item.interest)}%
                       </td>
-                      <td className="flex justify-center pt-2">
+                      <td className="py-2.5">
+                        <div className="flex justify-end">
                         <Btn2
                           text="Repay"
-                          css="text-white/90 text-center bg-[#2a2a2a] px-2 py-1 rounded-md text-xs sm:text-sm"
+                          css="rounded-md border border-edge bg-surface-raised px-2.5 py-1 text-xs text-content-secondary transition-colors hover:border-edge-strong hover:text-content sm:text-sm"
                           onClick={() => {
                             const repaymentValue = ethers
                               .parseUnits(
@@ -198,6 +232,7 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
                           //   repay(item.requestId, item.tokenAddress, repaymentInSmallestUnit);
                           // }}
                         />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -210,16 +245,16 @@ const Usage = ({ activeReq, collateralVal }: UsageProps) => {
 
       <div className="m-auto mt-5 w-full max-w-xs space-y-3 px-4 sm:w-4/6 sm:px-6">
         <button
-          onClick={() => setIsOrdersModalOpen(true)}
-          className="w-full rounded-xl bg-[#19aa61] py-3 text-sm font-normal hover:scale-105"
+          onClick={() => setIsCreateOrderModalOpen(true)}
+          className="w-full rounded-xl bg-accent py-2.5 text-sm font-semibold text-content-onAccent transition-colors hover:bg-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          My Orders
+          Create order
         </button>
         <button
-          onClick={() => setIsCreateOrderModalOpen(true)}
-          className="w-full rounded-xl bg-[#2a2a2a] py-2 text-sm font-normal hover:scale-105"
+          onClick={() => setIsOrdersModalOpen(true)}
+          className="w-full rounded-xl border border-edge bg-surface-raised py-2.5 text-sm text-content-secondary transition-colors hover:border-edge-strong hover:text-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          Create Order
+          My orders
         </button>
       </div>
 

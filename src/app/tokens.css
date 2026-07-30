@@ -1,0 +1,104 @@
+/* ============================================
+ * Kaleido Design Tokens
+ * ============================================
+ * Single source of truth for color.
+ *
+ * Two layers:
+ *   1. Primitives  - raw ramps, never used directly in components
+ *   2. Semantic    - what components actually reference
+ *
+ * Components should only ever use semantic tokens. If you need a
+ * color that isn't here, add a semantic token rather than reaching
+ * for a primitive or a literal hex.
+ *
+ * Nothing consumes these yet - adopting them is per-component and
+ * incremental. Existing classes are untouched.
+ * ============================================ */
+
+:root {
+  /* --- 1. Primitives -------------------------------------- */
+
+  /* Neutrals. Very slightly green-tinted rather than pure grey,
+     so the accent sits on the ground instead of floating on it. */
+  --kld-neutral-950: #0a0e0c;
+  --kld-neutral-900: #0d110f;
+  --kld-neutral-850: #141a17;
+  --kld-neutral-800: #1a211d;
+  --kld-neutral-700: #232c27;
+  --kld-neutral-600: #2c3831;
+  --kld-neutral-500: #3d4a43;
+  --kld-neutral-400: #6b7f74;
+  --kld-neutral-300: #9eb7a8;
+  --kld-neutral-200: #c4d3cb;
+  --kld-neutral-100: #e8edea;
+
+  /* Green - primary brand accent.
+     Deliberately stepped down from the previous #00ff99. Pure neon
+     at full chroma vibrates against dark backgrounds and forces
+     every other element to compete with it. */
+  --kld-green-600: #1f9d63;
+  --kld-green-500: #2fbf78;
+  --kld-green-400: #3dd68c;
+  --kld-green-300: #6de5ab;
+
+  /* Orange - complementary accent. Softened from #ff4d00 to sit
+     at roughly the same visual weight as the green, so neither
+     one dominates when they appear together. */
+  --kld-orange-600: #d1651f;
+  --kld-orange-500: #ea7b34;
+  --kld-orange-400: #f0803c;
+  --kld-orange-300: #f5a06e;
+
+  /* Red - reserved for loss and destructive actions only. */
+  --kld-red-500: #e0505c;
+  --kld-red-400: #f0616d;
+
+  /* --- 2. Semantic ---------------------------------------- */
+
+  /* Surfaces, in elevation order. Each step is a single small
+     jump - large jumps read as noise on a dark UI. */
+  --surface-base: var(--kld-neutral-900); /* page background   */
+  --surface-sunken: var(--kld-neutral-950); /* inputs, wells     */
+  --surface: var(--kld-neutral-850); /* cards, panels     */
+  --surface-raised: var(--kld-neutral-800); /* modals, dropdowns */
+  --surface-hover: var(--kld-neutral-700);
+
+  /* Borders. Subtle is the default; use `strong` only where a
+     boundary genuinely needs to be read as a division. */
+  --border-subtle: var(--kld-neutral-700);
+  --border-strong: var(--kld-neutral-600);
+  --border-accent: var(--kld-green-600);
+
+  /* Text. */
+  --text-primary: var(--kld-neutral-100);
+  --text-secondary: var(--kld-neutral-300);
+  --text-muted: var(--kld-neutral-400);
+  --text-on-accent: var(--kld-neutral-950);
+
+  /* Accents. `accent` is the primary action color and should be
+     rare - if everything is accented, nothing is. `accent-alt` is
+     the orange, for secondary emphasis and highlight moments. */
+  --accent: var(--kld-green-400);
+  --accent-hover: var(--kld-green-300);
+  --accent-pressed: var(--kld-green-500);
+  --accent-subtle: rgb(61 214 140 / 0.12);
+
+  --accent-alt: var(--kld-orange-400);
+  --accent-alt-hover: var(--kld-orange-300);
+  --accent-alt-subtle: rgb(240 128 60 / 0.12);
+
+  /* Market direction. Intentionally NOT the same as --accent:
+     brand green and "price up" green must stay distinguishable,
+     or a green number stops carrying information. */
+  --positive: var(--kld-green-300);
+  --positive-subtle: rgb(109 229 171 / 0.12);
+  --negative: var(--kld-red-400);
+  --negative-subtle: rgb(240 97 109 / 0.12);
+
+  /* Status. */
+  --warning: var(--kld-orange-300);
+  --danger: var(--kld-red-500);
+
+  /* Focus ring - must stay visible against every surface. */
+  --focus-ring: var(--kld-green-400);
+}

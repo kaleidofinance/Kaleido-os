@@ -116,22 +116,23 @@ const Balance = () => {
   return (
     <div
       id="balances-card"
-      className="custom-corner-header w-full min-w-0 overflow-hidden bg-black/40 backdrop-blur-md rounded-xl border border-[#00ff99]/10 py-4 transition-all hover:border-[#00ff99]/30"
+      className="custom-corner-header w-full min-w-0 overflow-hidden rounded-xl border border-edge bg-surface py-4 transition-colors hover:border-edge-strong"
     >
-      <div className="mb-1 px-4 text-lg sm:px-6 sm:text-xl">
-        <h3>Collateral&apos;s Balance</h3>
+      <div className="mb-3 px-4 sm:px-6">
+        <h3 className="text-[11px] uppercase tracking-[0.1em] text-content-muted">
+          Deposited collateral
+        </h3>
       </div>
 
       {/* Summary Section */}
-      <div className="mb-2 flex flex-col gap-1 border-y border-[#00ff99]/30 p-2 text-xs text-white/50 sm:flex-row sm:justify-between sm:p-1">
-        <h4 className="p-1 sm:p-0">
-          Total Bal:{" "}
-          <span className="pl-1">{`$${formatWithCommas(collateralVal ? collateralVal : 0)}`}</span>
+      <div className="mb-2 flex flex-col gap-1 border-y border-edge px-4 py-2 text-xs sm:flex-row sm:justify-between sm:px-6">
+        <h4 className="text-content-muted">
+          Total
+          <span className="pl-2 font-mono tabular-nums text-content">{`$${formatWithCommas(collateralVal ? collateralVal : 0)}`}</span>
         </h4>
-        <div className="p-1 text-right sm:p-0 sm:text-left">
-          Max Withdrawal:{" "}
-          <span className="pl-1">
-            {" "}
+        <div className="text-content-muted">
+          Max withdrawal
+          <span className="pl-2 font-mono tabular-nums text-content">
             {`$${formatWithCommas(availBal ? Number(availBal) / 1e16 : 0)}`}
           </span>
         </div>
@@ -141,20 +142,20 @@ const Balance = () => {
       <div className="kaleido-scrollbar relative max-h-[220px] overflow-x-auto overflow-y-auto px-3 sm:px-6">
         <table className="min-w-[520px] text-sm sm:min-w-full">
           <thead>
-            <tr className="text-center text-white/70">
-              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">
+            <tr>
+              <th className="sticky top-0 z-20 bg-surface py-2 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
                 Asset
               </th>
-              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 z-20 bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
                 Balance
               </th>
-              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 z-20 bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
                 Value
               </th>
-              <th className="sticky top-0 py-2 font-medium hidden sm:table-cell bg-[#060606] z-20">
+              <th className="sticky top-0 z-20 hidden bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted sm:table-cell">
                 Price
               </th>
-              <th className="sticky top-0 py-2 font-medium bg-[#060606] z-20">
+              <th className="sticky top-0 z-20 bg-surface py-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-content-muted">
                 Actions
               </th>
             </tr>
@@ -163,33 +164,35 @@ const Balance = () => {
             {filteredBalanceData.map((item, index) => (
               <tr
                 key={index}
-                className="text-center text-xs sm:text-sm border-t border-white/5"
+                className="border-t border-edge text-xs sm:text-sm"
               >
                 {/* Asset */}
-                <td className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                  <img
-                    src={item.assetImg}
-                    alt={item.assetName}
-                    className="h-6 w-6"
-                  />
-                  <span>{item.assetName}</span>
+                <td className="py-2.5">
+                  <div className="flex items-center gap-2">
+                    <img
+                      src={item.assetImg}
+                      alt=""
+                      className="h-6 w-6 shrink-0 rounded-full"
+                    />
+                    <span className="text-content">{item.assetName}</span>
+                  </div>
                 </td>
                 {/* Balance */}
-                <td className="pt-2">
+                <td className="py-2.5 text-right font-mono tabular-nums text-content">
                   {formatWithCommas(
                     item.balance,
                     item.assetName === "ETH" ? 4 : 2,
                   )}
                 </td>
                 {/* Market Value */}
-                <td className="pt-2">
+                <td className="py-2.5 text-right font-mono tabular-nums text-content">
                   {item.marketValue
                     ? `$${formatWithCommas(item.marketValue.replace("$", ""))}`
                     : "—"}
                 </td>
 
-                {/* Net Profit (Price) */}
-                <td className={`pt-2 text-white hidden sm:table-cell`}>
+                {/* Unit price */}
+                <td className="hidden py-2.5 text-right font-mono tabular-nums text-content-secondary sm:table-cell">
                   {item.assetName === "ETH"
                     ? `$${formatWithCommas(etherPrice)}`
                     : ["USDC", "USDR", "kfUSD", "USDT"].includes(item.assetName)
@@ -210,12 +213,18 @@ const Balance = () => {
                   </div>
                 </td> */}
                 {/* Deposit and Withdraw */}
-                <td className="pt-2">
-                  <div className="flex justify-center gap-2">
-                    <button onClick={() => setShowDepositModal(true)}>
+                <td className="py-2.5">
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setShowDepositModal(true)}
+                      aria-label={`Deposit ${item.assetName}`}
+                    >
                       <Btn text="Deposit" />
                     </button>
-                    <button onClick={() => setShowWithdrawModal(true)}>
+                    <button
+                      onClick={() => setShowWithdrawModal(true)}
+                      aria-label={`Withdraw ${item.assetName}`}
+                    >
                       <Btn text="Withdraw" />
                     </button>
                   </div>
