@@ -7,7 +7,10 @@ export const envVars = {
 
   httpRPCab: process.env.NEXT_PUBLIC_HTTP_RPC_AB,
 
-  privateKey: process.env.NEXT_PUBLIC_PRIVATE_KEY,
+  // NOTE: no private key here. Signing keys must never be exposed via a
+  // NEXT_PUBLIC_ variable — Next.js inlines those into the browser bundle.
+  // Server-side signing reads process.env.PRIVATE_KEY directly; see
+  // src/app/api/referral/route.ts.
 
   measurementId: process.env.NEXT_PUBLIC_MEASUREMENT_ID,
 
