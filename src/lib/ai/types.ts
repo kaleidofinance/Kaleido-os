@@ -37,11 +37,24 @@ export interface PlanStep {
   [key: string]: unknown;
 }
 
+/** A READ tool the model asked for — awaiting server-side execution. */
+export interface ReadCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
 export interface ChatResult {
   /** The model's natural-language reply. */
   text: string;
   /** Signable steps; empty when the model only conversed. */
   plan: PlanStep[];
+  /**
+   * READ tools the model requested this turn. Every tool in the catalog is
+   * reachable through this array — the agent loop executes each and feeds
+   * results back, not just a hardcoded default. Empty once the model has
+   * enough context and moves to a plan or a plain reply.
+   */
+  reads: ReadCall[];
   provider: string;
   model: string;
 }

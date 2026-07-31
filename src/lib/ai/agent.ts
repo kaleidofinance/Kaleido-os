@@ -11,18 +11,23 @@ import {
 /**
  * The agent loop.
  *
- * Luca gets one round of grounding before it commits to a plan: it asks for
- * whatever READ tools it needs, we execute them server-side, feed the results
- * back, and let it produce the final answer and plan. Two passes is the right
- * shape here — it's enough for "look at my positions, then propose", and it
- * bounds latency and spend far more predictably than an open-ended loop.
+ * Every READ tool in the catalog is reachable here — not just a hardcoded
+ * default. Whatever the model calls (getQuote, getPortfolio, getMarkets,
+ * getChains, in any combination or order) gets executed server-side and fed
+ * back, so "plan across protocols and chains" actually has the tools to do
+ * it: check markets, get a quote, check where funds sit across chains, then
+ * commit to a plan.
  *
- * Read-tool requests surface as text on the first pass (the providers only
- * return EXECUTE calls as plan steps), so we detect them by name and run them.
- * If the provider returns a plan immediately, we're done in one pass.
+ * Bounded at MAX_READ_ROUNDS so a model that never converges can't loop
+ * forever — after the cap we return whatever text it has rather than error.
+ *
+ * On the very first turn, if the model didn't ask for anything but we have a
+ * wallet address, we still seed portfolio context — most opening messages
+ * ("what should I do?") benefit from it even when the model doesn't think to
+ * ask, and it costs one extra read tool call to get right by default.
  */
 
-const MAX_READ_ROUNDS = 1;
+const MAX_READ_ROUNDS = 3;
 
 export interface AgentInput {
   message: string;
@@ -44,37 +49,52 @@ export async function runAgent(
   const messages: ChatMessage[] = [{ role: "user", content: input.message }];
 
   let result = await provider.chat({ system, messages, tools: TOOL_CATALOG });
+  let seededPortfolio = false;
 
-  // If the model already produced a plan, it had what it needed.
-  if (result.plan.length > 0) return result;
-
-  // Otherwise give it one grounding round: run the reads its answer implies,
-  // hand back the data, and ask again.
   for (let round = 0; round < MAX_READ_ROUNDS; round++) {
-    const context = await gatherContext(input);
-    if (!context) break;
+    // A plan means it had what it needed — stop.
+    if (result.plan.length > 0) break;
 
-    messages.push({ role: "assistant", content: result.text });
+    let contextBlock: string | null = null;
+
+    if (result.reads.length > 0) {
+      // Run exactly what the model asked for, whatever mix of tools that is.
+      const resolved = await Promise.all(
+        result.reads.map(async (r) => ({
+          tool: r.name,
+          args: r.args,
+          result: await runReadTool(r.name, r.args),
+        })),
+      );
+      contextBlock = JSON.stringify(resolved, null, 2);
+    } else if (!seededPortfolio && input.address) {
+      // Default seed: only once, only when the model asked for nothing.
+      seededPortfolio = true;
+      const portfolio = await runReadTool("getPortfolio", {
+        address: input.address,
+      });
+      contextBlock = JSON.stringify(
+        [{ tool: "getPortfolio", args: { address: input.address }, result: portfolio }],
+        null,
+        2,
+      );
+    } else {
+      // Nothing left to ground on — whatever text the model has is final.
+      break;
+    }
+
+    messages.push({ role: "assistant", content: result.text || "(tool calls only)" });
     messages.push({
       role: "user",
       content:
-        `Here is the current on-chain data for this account:\n\n${context}\n\n` +
-        "Using only these figures, give your answer. If you are proposing actions, call the execute tools now.",
+        `Tool results:\n\n${contextBlock}\n\n` +
+        "Use only this data — don't estimate. If you now have enough to answer or " +
+        "propose a plan, do so; call execute tools for anything signable. If you still " +
+        "need more information, call another read tool.",
     });
 
     result = await provider.chat({ system, messages, tools: TOOL_CATALOG });
-    if (result.plan.length > 0) break;
   }
 
   return result;
-}
-
-/**
- * Fetches the context Luca almost always needs — the user's position — and
- * formats it for the model. Returns null when there's no address to read.
- */
-async function gatherContext(input: AgentInput): Promise<string | null> {
-  if (!input.address) return null;
-  const portfolio = await runReadTool("getPortfolio", { address: input.address });
-  return JSON.stringify(portfolio, null, 2);
 }

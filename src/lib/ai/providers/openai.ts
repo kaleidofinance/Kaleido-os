@@ -1,4 +1,4 @@
-import type { ChatInput, ChatProvider, ChatResult, PlanStep } from "../types";
+import type { ChatInput, ChatProvider, ChatResult, PlanStep, ReadCall } from "../types";
 import { EXECUTE_TOOLS } from "../toolCatalog";
 
 /**
@@ -58,22 +58,30 @@ export class OpenAIProvider implements ChatProvider {
       }>;
     };
     const message = data.choices?.[0]?.message;
+    const calls = message?.tool_calls ?? [];
 
-    const plan: PlanStep[] = (message?.tool_calls ?? [])
+    const parseArgs = (raw: string): Record<string, unknown> => {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        console.warn("[openai] unparseable tool arguments:", raw);
+        return {};
+      }
+    };
+
+    const plan: PlanStep[] = calls
       .filter((c) => EXECUTE_TOOLS.has(c.function.name))
-      .map((c) => {
-        let args: Record<string, unknown> = {};
-        try {
-          args = JSON.parse(c.function.arguments);
-        } catch {
-          console.warn("[openai] unparseable tool arguments:", c.function.arguments);
-        }
-        return { kind: c.function.name, ...args };
-      });
+      .map((c) => ({ kind: c.function.name, ...parseArgs(c.function.arguments) }));
+
+    // Every non-execute call is a READ request — reachable, not dropped.
+    const reads: ReadCall[] = calls
+      .filter((c) => !EXECUTE_TOOLS.has(c.function.name))
+      .map((c) => ({ name: c.function.name, args: parseArgs(c.function.arguments) }));
 
     return {
       text: (message?.content ?? "").trim(),
       plan,
+      reads,
       provider: this.id,
       model: this.model,
     };

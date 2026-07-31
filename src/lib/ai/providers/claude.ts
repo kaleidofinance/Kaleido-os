@@ -1,4 +1,4 @@
-import type { ChatInput, ChatProvider, ChatResult, PlanStep } from "../types";
+import type { ChatInput, ChatProvider, ChatResult, PlanStep, ReadCall } from "../types";
 import { EXECUTE_TOOLS } from "../toolCatalog";
 
 /**
@@ -52,7 +52,23 @@ export class ClaudeProvider implements ChatProvider {
       throw new Error(`Claude ${res.status}: ${detail.slice(0, 200)}`);
     }
 
-    const data = (await res.json()) as { content?: AnthropicBlock[] };
+    const data = (await res.json()) as {
+      content?: AnthropicBlock[];
+      stop_reason?: string;
+    };
+
+    // A safety-classifier decline is a normal 200, not an error — surface it
+    // as a plain reply rather than throwing and losing the turn.
+    if (data.stop_reason === "refusal") {
+      return {
+        text: "I can't help with that request.",
+        plan: [],
+        reads: [],
+        provider: this.id,
+        model: this.model,
+      };
+    }
+
     const blocks = data.content ?? [];
 
     const text = blocks
@@ -61,10 +77,18 @@ export class ClaudeProvider implements ChatProvider {
       .join("\n")
       .trim();
 
-    const plan: PlanStep[] = blocks
-      .filter((b) => b.type === "tool_use" && b.name && EXECUTE_TOOLS.has(b.name))
+    const toolUses = blocks.filter((b) => b.type === "tool_use" && b.name);
+
+    const plan: PlanStep[] = toolUses
+      .filter((b) => EXECUTE_TOOLS.has(b.name as string))
       .map((b) => ({ kind: b.name as string, ...(b.input ?? {}) }));
 
-    return { text, plan, provider: this.id, model: this.model };
+    // Every non-execute tool_use is a READ request — none are dropped, so the
+    // whole catalog is reachable, not just whichever tool got hardcoded.
+    const reads: ReadCall[] = toolUses
+      .filter((b) => !EXECUTE_TOOLS.has(b.name as string))
+      .map((b) => ({ name: b.name as string, args: b.input ?? {} }));
+
+    return { text, plan, reads, provider: this.id, model: this.model };
   }
 }
