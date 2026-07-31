@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 import TokenSelector from "@/components/v2/TokenSelector";
+import PlanReview from "@/components/v2/PlanReview";
 import { ABSTRACT_TOKENS } from "@/constants/tokens";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import type { Intent } from "@/lib/v2/intents";
+import { KALEIDOSWAP_V3_ROUTER } from "@/constants/utils/addresses";
 import s from "../trade.module.css";
 
 const DEFAULT_FEE = 3000;
@@ -24,11 +26,11 @@ export default function SwapPage() {
   const [amountIn, setAmountIn] = useState("500");
   const [amountOut, setAmountOut] = useState("");
   const [quoting, setQuoting] = useState(false);
-  const [swapping, setSwapping] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
 
   const { balance: balanceIn, loading: balanceInLoading } = useTokenBalance(tokenIn);
-  const { getV3AmountOut, swapV3 } = useV3SwapRouter();
+  const { getV3AmountOut } = useV3SwapRouter();
 
   useEffect(() => {
     const amount = parseFloat(amountIn);
@@ -76,31 +78,39 @@ export default function SwapPage() {
     setAmountIn(amountOut || "0");
   };
 
-  const handleSwap = async () => {
-    if (!isConnected) return toast.error("Connect a wallet to swap.");
-    if (!amountOut || quoting) return;
-    setSwapping(true);
-    try {
-      const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
-      await swapV3(
-        tokenIn.address,
-        tokenOut.address,
-        DEFAULT_FEE,
-        amountIn,
-        minOut,
-        deadline,
-        tokenIn.decimals,
-        tokenOut.decimals,
-      );
-      toast.success(`Swapped ${amountIn} ${tokenIn.symbol} for ${tokenOut.symbol}`);
-      setAmountIn("");
-      setAmountOut("");
-    } catch (err) {
-      console.error("[v2/trade/swap]", err);
-      toast.error("Swap failed — see console for details");
-    } finally {
-      setSwapping(false);
-    }
+  // A swap is a two-step plan: approve the router to move tokenIn, then swap.
+  // The approve resolver no-ops when allowance already covers it, so the step
+  // simply shows "already done" — one code path whether or not approval exists.
+  const plan: Intent[] = useMemo(
+    () => [
+      {
+        kind: "approve",
+        token: tokenIn.address,
+        spender: KALEIDOSWAP_V3_ROUTER,
+        amount: amountIn || "0",
+        decimals: tokenIn.decimals,
+        symbol: tokenIn.symbol,
+      },
+      {
+        kind: "swap",
+        tokenIn: tokenIn.address,
+        tokenOut: tokenOut.address,
+        amountIn: amountIn || "0",
+        amountOutMin: minOut || "0",
+        fee: DEFAULT_FEE,
+        decimalsIn: tokenIn.decimals,
+        decimalsOut: tokenOut.decimals,
+        symbolIn: tokenIn.symbol,
+        symbolOut: tokenOut.symbol,
+      },
+    ],
+    [tokenIn, tokenOut, amountIn, minOut],
+  );
+
+  const onComplete = () => {
+    setReviewing(false);
+    setAmountIn("");
+    setAmountOut("");
   };
 
   const ctaLabel = !isConnected
@@ -111,9 +121,7 @@ export default function SwapPage() {
         ? `Insufficient ${tokenIn.symbol}`
         : quoting
           ? "Fetching quote…"
-          : swapping
-            ? "Swapping…"
-            : "Review swap";
+          : "Review swap";
 
   const ctaDisabled =
     !isConnected ||
@@ -121,8 +129,22 @@ export default function SwapPage() {
     parseFloat(amountIn) <= 0 ||
     insufficientBalance ||
     quoting ||
-    swapping ||
     !amountOut;
+
+  if (reviewing) {
+    return (
+      <div className={s.card}>
+        <div className={s.box}>
+          <PlanReview
+            intents={plan}
+            submitLabel={`Sign & swap`}
+            onComplete={onComplete}
+            onCancel={() => setReviewing(false)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -196,7 +218,7 @@ export default function SwapPage() {
             <span>Minimum received</span>
             <b className="tabular">{minOut ? `${minOut} ${tokenOut.symbol}` : "—"}</b>
           </div>
-          <button className={s.cta} disabled={ctaDisabled} onClick={handleSwap}>
+          <button className={s.cta} disabled={ctaDisabled} onClick={() => setReviewing(true)}>
             {ctaLabel}
           </button>
         </div>
