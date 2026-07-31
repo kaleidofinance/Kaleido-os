@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import TokenSelector from "@/components/v2/TokenSelector";
 import PlanReview from "@/components/v2/PlanReview";
+import SwapSettings, { AUTO_SLIPPAGE_BPS } from "@/components/v2/SwapSettings";
 import { ABSTRACT_TOKENS } from "@/constants/tokens";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
@@ -13,7 +14,6 @@ import { KALEIDOSWAP_V3_ROUTER } from "@/constants/utils/addresses";
 import s from "../trade.module.css";
 
 const DEFAULT_FEE = 3000;
-const SLIPPAGE_BPS = 50;
 
 const findToken = (symbol: string) =>
   ABSTRACT_TOKENS.find((t) => t.symbol === symbol) ?? ABSTRACT_TOKENS[0];
@@ -28,6 +28,8 @@ export default function SwapPage() {
   const [quoting, setQuoting] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
+  const [slippageBps, setSlippageBps] = useState(AUTO_SLIPPAGE_BPS);
+  const [deadlineMin, setDeadlineMin] = useState(20);
 
   const { balance: balanceIn, loading: balanceInLoading } = useTokenBalance(tokenIn);
   const { getV3AmountOut } = useV3SwapRouter();
@@ -68,9 +70,9 @@ export default function SwapPage() {
 
   const minOut = useMemo(() => {
     if (!amountOut) return "";
-    const n = Number(amountOut) * (1 - SLIPPAGE_BPS / 10000);
+    const n = Number(amountOut) * (1 - slippageBps / 10000);
     return n.toFixed(tokenOut.decimals > 6 ? 6 : tokenOut.decimals);
-  }, [amountOut, tokenOut.decimals]);
+  }, [amountOut, slippageBps, tokenOut.decimals]);
 
   const flip = () => {
     setTokenIn(tokenOut);
@@ -102,9 +104,10 @@ export default function SwapPage() {
         decimalsOut: tokenOut.decimals,
         symbolIn: tokenIn.symbol,
         symbolOut: tokenOut.symbol,
+        deadlineMin,
       },
     ],
-    [tokenIn, tokenOut, amountIn, minOut],
+    [tokenIn, tokenOut, amountIn, minOut, deadlineMin],
   );
 
   const onComplete = () => {
@@ -149,6 +152,14 @@ export default function SwapPage() {
   return (
     <>
       <div className={s.card}>
+        <div className={s.cardTop}>
+          <SwapSettings
+            slippageBps={slippageBps}
+            onSlippage={setSlippageBps}
+            deadlineMin={deadlineMin}
+            onDeadline={setDeadlineMin}
+          />
+        </div>
         <div className={s.box}>
           <div className={s.bl}>Sell</div>
           <div className={s.amt}>
@@ -212,7 +223,10 @@ export default function SwapPage() {
         <div className={s.box} style={{ marginTop: 4 }}>
           <div className={s.kv}>
             <span>Max slippage</span>
-            <b>{(SLIPPAGE_BPS / 100).toFixed(2)}% · Auto</b>
+            <b>
+              {(slippageBps / 100).toFixed(2)}%
+              {slippageBps === AUTO_SLIPPAGE_BPS ? " · Auto" : ""}
+            </b>
           </div>
           <div className={s.kv}>
             <span>Minimum received</span>

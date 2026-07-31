@@ -40,6 +40,12 @@
   gap: 4px;
 }
 
+.cardTop {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
 .box {
   background: var(--k-card);
   border-radius: var(--k-r-xl);

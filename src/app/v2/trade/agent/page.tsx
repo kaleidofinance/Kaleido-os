@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
+import AgentSettings from "@/components/v2/AgentSettings";
 import s from "./agent.module.css";
 
 /**
@@ -32,9 +34,11 @@ const SUGGESTIONS = [
 
 export default function AgentPage() {
   const { chainId, address } = useWalletV2();
+  const { settings } = useAgentSettings(address);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const send = async (text: string) => {
@@ -53,6 +57,15 @@ export default function AgentPage() {
           message: content,
           chainId: chainId ?? 11124,
           address,
+          // Guardrails travel with the request so the server-side auditor gate
+          // can enforce the user's own limits, not a hardcoded threshold.
+          limits: {
+            maxPerAction: settings.maxPerAction,
+            maxPerDay: settings.maxPerDay,
+            minHealthFactor: settings.minHealthFactor,
+            slippageBps: settings.slippageBps,
+            allowedActions: settings.allowedActions,
+          },
         }),
       });
       const data = await res.json().catch(() => null);
@@ -87,8 +100,21 @@ export default function AgentPage() {
           <div className={s.name}>Luca</div>
           <div className={s.sub}>Reads your positions · signs with your wallet</div>
         </div>
+        <button
+          className={s.gear}
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Agent settings"
+        >
+          ⚙
+        </button>
         <span className={s.dot} />
       </div>
+
+      <AgentSettings
+        address={address}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
 
       <div className={s.body} ref={scrollRef}>
         {empty ? (

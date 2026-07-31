@@ -51,7 +51,7 @@ register("swap", {
   }),
   resolve: async (ctx, i) => {
     const router = new ethers.Contract(KALEIDOSWAP_V3_ROUTER, V3_ROUTER_ABI, ctx.signer);
-    const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
+    const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
     const tx = await router.exactInputSingle({
       tokenIn: i.tokenIn,
       tokenOut: i.tokenOut,

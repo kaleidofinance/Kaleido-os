@@ -1,0 +1,129 @@
+.wrap {
+  position: relative;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--k-well2);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  padding: 6px 12px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.trigger:hover {
+  color: var(--k-t1);
+}
+.gear {
+  font-size: 13px;
+}
+.triggerLabel {
+  font-variant-numeric: tabular-nums;
+}
+
+.pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  background: var(--k-card);
+  border-radius: var(--k-r-lg);
+  box-shadow: var(--k-shadow-pop);
+  padding: 16px;
+  z-index: 40;
+}
+
+.row {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  margin-bottom: 10px;
+}
+
+.presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.preset {
+  background: var(--k-well2);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  padding: 7px 12px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.preset:hover {
+  color: var(--k-t1);
+}
+.presetOn {
+  background: #fff;
+  color: #0d0d0d;
+  font-weight: var(--k-fw-med);
+}
+
+.customBox {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--k-well2);
+  border-radius: var(--k-r-pill);
+  padding: 0 12px;
+  min-width: 74px;
+}
+.customOn {
+  outline: 1px solid var(--k-t3);
+}
+.customInput {
+  width: 40px;
+  border: 0;
+  background: none;
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  outline: none;
+  padding: 7px 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pct {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+
+.warn {
+  font-size: var(--k-fs-xs);
+  color: var(--k-alt);
+  margin-top: 10px;
+  line-height: 1.4;
+}
+
+.divider {
+  height: 1px;
+  background: var(--k-line);
+  margin: 14px 0;
+}
+
+.deadlineRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.deadlineInput {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--k-well2);
+  border-radius: var(--k-r-pill);
+  padding: 0 12px;
+}
+.deadlineInput .customInput {
+  width: 32px;
+}

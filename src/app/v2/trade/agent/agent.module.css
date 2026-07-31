@@ -34,8 +34,24 @@
   font-size: var(--k-fs-xs);
   color: var(--k-t2);
 }
-.dot {
+.gear {
   margin-left: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+}
+.gear:hover {
+  background: var(--k-well2);
+  color: var(--k-t1);
+}
+.dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;

@@ -35,6 +35,8 @@ export type Intent =
       decimalsOut: number;
       symbolIn: string;
       symbolOut: string;
+      /** Transaction deadline in minutes. Defaults to 20 if omitted. */
+      deadlineMin?: number;
     }
   | {
       kind: "stake";
