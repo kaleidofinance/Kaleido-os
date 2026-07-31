@@ -21,6 +21,7 @@
   padding: 8px 16px;
   border-radius: var(--k-r-pill);
   cursor: pointer;
+  text-decoration: none;
 }
 .tb:hover {
   color: var(--k-t1);

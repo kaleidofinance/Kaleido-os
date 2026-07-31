@@ -1,0 +1,148 @@
+.card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--k-card);
+  border-radius: var(--k-r-xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 460px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--k-line);
+}
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--k-well2);
+  color: var(--k-t2);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+.name {
+  font-size: var(--k-fs-base);
+}
+.sub {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+.dot {
+  margin-left: auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--k-brand);
+}
+
+.body {
+  flex: 1;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.intro {
+  margin: auto 0;
+  text-align: center;
+  padding: 20px 8px;
+}
+.introTitle {
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  margin-bottom: 8px;
+}
+.introBody {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  line-height: 1.55;
+  max-width: 40ch;
+  margin: 0 auto;
+}
+
+.msg {
+  max-width: 82%;
+  font-size: var(--k-fs-base);
+  line-height: 1.5;
+  padding: 11px 14px;
+  border-radius: var(--k-r-md);
+}
+.me {
+  background: var(--k-well2);
+  align-self: flex-end;
+  border-bottom-right-radius: 6px;
+}
+.ai {
+  background: var(--k-well);
+  align-self: flex-start;
+  border-bottom-left-radius: 6px;
+}
+.typing {
+  color: var(--k-t2);
+}
+
+.suggest {
+  display: flex;
+  gap: var(--k-s2);
+  flex-wrap: wrap;
+  padding: 0 18px 14px;
+}
+.chip {
+  background: var(--k-well2);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  padding: 8px 14px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.chip:hover {
+  background: var(--k-hover);
+  color: var(--k-t1);
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border-top: 1px solid var(--k-line);
+}
+.input {
+  flex: 1;
+  border: 0;
+  background: none;
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-base);
+  outline: none;
+}
+.input::placeholder {
+  color: var(--k-t3);
+}
+.send {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  border: 0;
+  cursor: pointer;
+  font-size: 15px;
+  flex: none;
+}
+.send:disabled {
+  background: var(--k-well2);
+  color: var(--k-t3);
+  cursor: not-allowed;
+}

@@ -1,0 +1,70 @@
+/* Shared styling for Trade modes whose UI is built but whose execution is
+   deferred (Limit, Buy, Sell) — the preset pills and the honest note. */
+
+.presets {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.preset {
+  background: var(--k-well2);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  padding: 7px 13px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.preset:hover {
+  color: var(--k-t1);
+}
+.presetOn {
+  background: #fff;
+  color: #0d0d0d;
+  font-weight: var(--k-fw-med);
+}
+
+.note {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  margin: 12px 2px 0;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.bigZero {
+  text-align: center;
+  font-size: 56px;
+  font-weight: var(--k-fw-body);
+  letter-spacing: -0.035em;
+  color: var(--k-t3);
+  padding: 18px 0 6px;
+}
+.bigZero.filled {
+  color: var(--k-t1);
+}
+.centerPresets {
+  display: flex;
+  gap: 7px;
+  justify-content: center;
+  margin-top: 4px;
+}
+.assetRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  cursor: default;
+}
+.assetName {
+  flex: 1;
+}
+.assetTitle {
+  font-size: var(--k-fs-base);
+}
+.assetSub {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
