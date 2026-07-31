@@ -1,0 +1,140 @@
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s6);
+  padding: 14px 20px;
+  position: sticky;
+  top: 0;
+  background: var(--k-bg);
+  z-index: 30;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  color: var(--k-brand);
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  text-decoration: none;
+}
+.mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--k-brand);
+}
+
+.menu {
+  display: flex;
+  gap: var(--k-s6);
+  overflow-x: auto;
+}
+.item {
+  font-size: var(--k-fs-base);
+  color: var(--k-t2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.item:hover {
+  color: var(--k-t1);
+}
+.on {
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+}
+
+.right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: var(--k-fs-base);
+}
+.icon:hover {
+  background: var(--k-card);
+  color: var(--k-t1);
+}
+
+.net {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  background: var(--k-card);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 7px 13px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.net:hover {
+  background: var(--k-well2);
+}
+.dots {
+  display: flex;
+}
+.dots i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--k-card);
+  margin-left: -4px;
+}
+.dots i:first-child {
+  margin-left: 0;
+}
+.caret {
+  font-size: 11px;
+  color: var(--k-t2);
+}
+
+.addr {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  background: var(--k-card);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 7px 14px 7px 8px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.addr:hover {
+  background: var(--k-well2);
+}
+.avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--k-well2);
+}
+
+.connect {
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 10px 20px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.connect:hover {
+  background: var(--k-brand-hover);
+}
