@@ -3,6 +3,9 @@ import { readOnlyProvider } from "@/config/provider";
 import { envVars } from "@/constants/envVars";
 import protocolAbi from "@/abi/ProtocolFacet.json";
 import { ABSTRACT_TOKENS } from "@/constants/tokens";
+import { supabase } from "@/lib/supabase/supabaseClient";
+import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
+import { fetchOmniAssetBalance } from "@/constants/utils/omniChainBalances";
 
 /**
  * Server-side execution of Luca's READ tools.
@@ -75,36 +78,154 @@ async function getPortfolio(args: Json): Promise<Json> {
   }
 }
 
+/** Resolves a token address to its symbol; falls back to a short address. */
+function symbolFor(address: string): string {
+  const match = ABSTRACT_TOKENS.find(
+    (t) => t.address?.toLowerCase() === address?.toLowerCase(),
+  );
+  return match?.symbol ?? `${address?.slice(0, 6)}…${address?.slice(-4)}`;
+}
+
+/**
+ * Reads the indexed offer book from Supabase.
+ *
+ * `kaleido_listings` are lender offers (what you can borrow from);
+ * `kaleido_requests` are borrower asks (what you can fund). Sorting is
+ * side-aware: a borrower wants the lowest APR, a lender the highest — the
+ * same polarity rule the Borrow page's rate colouring uses.
+ */
 async function getMarkets(args: Json): Promise<Json> {
   const asset = String(args.asset ?? "").toUpperCase();
-  const token = ABSTRACT_TOKENS.find((t) => t.symbol.toUpperCase() === asset);
-  if (!token) {
+  const side = String(args.side ?? "borrow").toLowerCase();
+  const wantLend = side === "lend";
+
+  const token = asset
+    ? ABSTRACT_TOKENS.find((t) => t.symbol.toUpperCase() === asset)
+    : undefined;
+  if (asset && !token) {
     return {
       error: `Unknown asset "${asset}"`,
       knownAssets: ABSTRACT_TOKENS.map((t) => t.symbol),
     };
   }
-  // Live offers are indexed off-chain (Supabase) and surfaced client-side via
-  // useDataFilterPanel. Returning the address + a clear capability note keeps
-  // the model honest rather than inventing rates.
-  return {
-    asset: token.symbol,
-    address: token.address,
-    side: args.side ?? "both",
-    offers: [],
-    note:
-      "Live offer data is not yet wired into the server-side agent. Do not invent rates — tell the user to check the Borrow page, or ask them for a rate to quote against.",
-  };
+
+  try {
+    let query = supabase
+      .from(wantLend ? "kaleido_requests" : "kaleido_listings")
+      .select("*")
+      .eq("status", "OPEN")
+      // Borrowers want the cheapest rate first; lenders the richest.
+      .order("interest", { ascending: !wantLend })
+      .limit(40);
+
+    if (token) query = query.eq("tokenAddress", token.address);
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const offers = (data ?? [])
+      .map((row: Record<string, unknown>) => {
+        const tokenAddress = String(row.tokenAddress ?? "");
+        const returnDate = Number(row.returnDate ?? 0);
+        let amount: string | null = null;
+        try {
+          amount = ethers.formatUnits(
+            String(row.amount ?? "0"),
+            getTokenDecimals(tokenAddress),
+          );
+        } catch {
+          amount = null;
+        }
+        return {
+          id: row.listingId ?? row.requestId ?? null,
+          asset: symbolFor(tokenAddress),
+          amount,
+          aprBps: row.interest !== undefined ? Number(row.interest) : null,
+          maturesUnix: returnDate || null,
+          termDays:
+            returnDate > nowSec
+              ? Number(((returnDate - nowSec) / 86_400).toFixed(1))
+              : null,
+          counterparty: String(row.sender ?? row.author ?? ""),
+        };
+      })
+      // Drop anything already past maturity — it isn't fillable.
+      .filter((o) => o.termDays !== null)
+      .slice(0, 12);
+
+    return {
+      venue: "Kaleido",
+      side: wantLend ? "lend" : "borrow",
+      asset: token?.symbol ?? "all",
+      offers,
+      note:
+        offers.length === 0
+          ? "No open offers match. Suggest the user post their own offer at the rate they want."
+          : "aprBps is an annual rate in basis points (100 bps = 1%). Use getQuote with a specific amount and maturity to compute the real cost over the term before comparing offers.",
+      coverage:
+        "Only Kaleido's own order book is indexed here. You may reason about external protocols in general terms, but never state a specific external rate as fact.",
+    };
+  } catch (err) {
+    return { error: `getMarkets failed: ${(err as Error).message}` };
+  }
 }
 
+/**
+ * Chains swept by the balance indexer. Matches the set Collateral.tsx uses,
+ * plus Abstract testnet so dev wallets resolve.
+ */
+const INDEXED_CHAINS = [2741, 11124, 8453, 56, 137, 42161, 999];
+
+/**
+ * Cross-chain balance read.
+ *
+ * Reuses fetchOmniAssetBalance — the same indexer the Collateral card uses. It
+ * is pure ethers against read-only RPCs per chain, so it runs server-side
+ * unchanged. Failed chains resolve to "0" inside the indexer rather than
+ * rejecting, so one dead RPC degrades a single row instead of the whole read.
+ */
 async function getChains(args: Json): Promise<Json> {
-  return {
-    address: args.address,
-    asset: args.asset,
-    chains: [],
-    note:
-      "Cross-chain balance indexing is not yet wired server-side. You may reason about bridging in general terms, but do not state specific balances or bridge quotes as fact.",
-  };
+  const address = String(args.address ?? "");
+  const asset = String(args.asset ?? "").toUpperCase();
+
+  if (!ethers.isAddress(address)) {
+    return { error: "A valid wallet address is required" };
+  }
+
+  // The indexer only knows ETH plus its stablecoin config.
+  const SUPPORTED = ["ETH", "USDC", "USDT", "USDR", "kfUSD"];
+  const match = SUPPORTED.find((s) => s.toUpperCase() === asset);
+  if (!match) {
+    return {
+      error: `Cross-chain balances are not indexed for "${asset}"`,
+      indexedAssets: SUPPORTED,
+    };
+  }
+
+  try {
+    const result = await fetchOmniAssetBalance(address, match, INDEXED_CHAINS);
+    const byChain = result.chains.map((c) => ({
+      chain: c.chainName,
+      chainId: c.chainId,
+      balance: c.balance,
+    }));
+
+    return {
+      asset: result.token,
+      totalBalance: result.totalBalance,
+      // The indexer filters out zero balances, so this is where funds actually are.
+      byChain,
+      note:
+        byChain.length === 0
+          ? "No balance found for this asset on any indexed chain."
+          : byChain.length > 1
+            ? "Holdings span multiple chains. Kaleido cannot execute a bridge itself — if a plan needs one, say the bridge step is manual and describe it rather than proposing it as a signable action."
+            : "All holdings for this asset are on a single chain.",
+    };
+  } catch (err) {
+    return { error: `getChains failed: ${(err as Error).message}` };
+  }
 }
 
 const HANDLERS: Record<string, (args: Json) => Promise<Json>> = {
