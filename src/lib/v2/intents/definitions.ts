@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { KALEIDOSWAP_V3_ROUTER } from "@/constants/utils/addresses";
+import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import { register } from "./registry";
 
 /**
@@ -77,6 +78,31 @@ register("stake", {
     const vault = new ethers.Contract(i.vault, VAULT_ABI, ctx.signer);
     const amount = ethers.parseUnits(i.amount, 18);
     const tx = await vault.deposit(i.token, i.stToken, amount);
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/* ----------------------------------------------- grantAgentPermission -- */
+register("grantAgentPermission", {
+  render: (i) => ({
+    title: `Delegate to ${i.agent.slice(0, 6)}…${i.agent.slice(-4)}`,
+    detail: `Up to $${i.maxNotionalPerAction} per action, $${i.maxNotionalPerEpoch} per period, health floor ${(i.minHealthFactorBps / 100).toFixed(2)}. Revocable any time.`,
+  }),
+  resolve: async (ctx, i) => {
+    const facet = new ethers.Contract(i.diamond, agentPermissionAbi, ctx.signer);
+    // USD notional is 1e18-scaled on-chain, matching the facet's units.
+    const tx = await facet.grantAgentPermission(
+      i.agent,
+      ethers.parseUnits(i.maxNotionalPerAction, 18),
+      ethers.parseUnits(i.maxNotionalPerEpoch, 18),
+      BigInt(i.epochDurationSec),
+      BigInt(i.expiryUnix),
+      i.maxInterestBps,
+      i.minHealthFactorBps,
+      i.allowedActions,
+      i.tokens,
+    );
     await tx.wait();
     return { hash: tx.hash };
   },

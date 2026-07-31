@@ -159,15 +159,41 @@
   margin: 0 0 12px;
   line-height: 1.5;
 }
-.delegateBtn {
-  background: var(--k-well2);
+.delegateInput {
+  width: 100%;
+  background: var(--k-bg);
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-sm);
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  padding: 10px 12px;
+  outline: none;
+  margin-bottom: 10px;
+}
+.delegateInput:focus {
+  border-color: var(--k-brand);
+}
+.delegateInput::placeholder {
   color: var(--k-t3);
+}
+.delegateBtn {
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
   border: 0;
   font: inherit;
   font-size: var(--k-fs-sm);
   font-weight: var(--k-fw-med);
   padding: 10px 16px;
   border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.delegateBtn:hover:not(:disabled) {
+  background: var(--k-brand-hover);
+}
+.delegateBtn:disabled {
+  background: var(--k-well2);
+  color: var(--k-t3);
   cursor: not-allowed;
 }
 .delegateNote {

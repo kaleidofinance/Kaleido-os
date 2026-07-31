@@ -85,6 +85,16 @@
   margin: 0 auto;
 }
 
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.plan {
+  background: var(--k-well);
+  border-radius: var(--k-r-lg);
+  padding: 14px;
+}
 .msg {
   max-width: 82%;
   font-size: var(--k-fs-base);

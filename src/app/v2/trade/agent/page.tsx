@@ -4,25 +4,26 @@ import { useRef, useState } from "react";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import AgentSettings from "@/components/v2/AgentSettings";
+import PlanReview from "@/components/v2/PlanReview";
+import { intentsFromChat } from "@/lib/v2/intents/fromChat";
+import type { Intent } from "@/lib/v2/intents";
 import s from "./agent.module.css";
 
 /**
  * Agent — Luca as a trading mode.
  *
- * Wired to the real /api/chat route, which forwards to the AI engine and
- * applies the server-side auditor gate (value threshold + per-chain venue
- * allowlist). When the AI engine isn't running the route returns a graceful
- * fallback message, so this page degrades honestly rather than erroring.
- *
- * Plan rendering (turning a returned tool-call into signable steps) is
- * deliberately not here yet — that needs the intent renderer/resolver registry
- * from the component map. For now Luca converses; execution stays behind the
- * per-mode manual flows until that registry exists.
+ * Wired to the real /api/chat route (AI engine + server-side auditor gate).
+ * When the model returns a plan (context.plan: Intent[]), it's rendered inline
+ * as a signable PlanReview through the intent registry — the same flow a manual
+ * swap uses. Text-only replies just render as a message. The engine emits
+ * intents; the frontend validates and signs them.
  */
 
 interface Msg {
   role: "user" | "assistant";
   text: string;
+  /** Present when the model returned a signable plan. */
+  plan?: Intent[];
 }
 
 const SUGGESTIONS = [
@@ -73,7 +74,11 @@ export default function AgentPage() {
         data?.response ??
         data?.error ??
         "I couldn't reach the reasoning engine just now. Try again shortly.";
-      setMessages((m) => [...m, { role: "assistant", text: reply }]);
+      const plan = intentsFromChat(data);
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", text: reply, plan: plan.length ? plan : undefined },
+      ]);
     } catch {
       setMessages((m) => [
         ...m,
@@ -127,11 +132,25 @@ export default function AgentPage() {
           </div>
         ) : (
           messages.map((m, i) => (
-            <div
-              key={i}
-              className={`${s.msg} ${m.role === "user" ? s.me : s.ai}`}
-            >
-              {m.text}
+            <div key={i} className={s.turn}>
+              <div className={`${s.msg} ${m.role === "user" ? s.me : s.ai}`}>
+                {m.text}
+              </div>
+              {m.plan && (
+                <div className={s.plan}>
+                  <PlanReview
+                    intents={m.plan}
+                    submitLabel="Sign & run"
+                    onComplete={() =>
+                      setMessages((prev) =>
+                        prev.map((msg, idx) =>
+                          idx === i ? { ...msg, plan: undefined } : msg,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+              )}
             </div>
           ))
         )}

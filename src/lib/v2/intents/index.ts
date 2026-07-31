@@ -8,6 +8,7 @@
 import "./definitions";
 
 export { renderIntent, resolveIntent, isRegistered } from "./registry";
+export { AGENT_ACTIONS } from "./types";
 export type {
   Intent,
   IntentKind,

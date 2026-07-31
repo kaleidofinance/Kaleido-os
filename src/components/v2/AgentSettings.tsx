@@ -1,11 +1,25 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { isAddress } from "ethers";
 import {
   useAgentSettings,
   type AgentAction,
 } from "@/hooks/v2/useAgentSettings";
+import PlanReview from "@/components/v2/PlanReview";
+import { AGENT_ACTIONS, type Intent } from "@/lib/v2/intents";
+import { envVars } from "@/constants/envVars";
+import { ABSTRACT_TOKENS } from "@/constants/tokens";
 import s from "./AgentSettings.module.css";
+
+/** Maps the settings' action toggles onto the facet's on-chain bitmask. */
+const ACTION_BITS: Record<AgentAction, number> = {
+  borrow: AGENT_ACTIONS.BORROW,
+  lend: AGENT_ACTIONS.LEND,
+  stake: AGENT_ACTIONS.DEPOSIT_COLLATERAL,
+  swap: AGENT_ACTIONS.WITHDRAW_COLLATERAL,
+  provideLiquidity: AGENT_ACTIONS.DEPOSIT_COLLATERAL,
+};
 
 /**
  * Agent settings panel — the guardrails on Luca, plus the on-chain delegation
@@ -33,6 +47,8 @@ const ACTION_LABELS: Record<AgentAction, string> = {
 
 export default function AgentSettings({ address, open, onClose }: AgentSettingsProps) {
   const { settings, update, toggleAction } = useAgentSettings(address);
+  const [agentAddr, setAgentAddr] = useState("");
+  const [grant, setGrant] = useState<Intent[] | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -42,6 +58,32 @@ export default function AgentSettings({ address, open, onClose }: AgentSettingsP
   }, [open, onClose]);
 
   if (!open) return null;
+
+  const diamond = envVars.lendbitDiamondAddress;
+  const validAgent = isAddress(agentAddr);
+
+  const buildGrant = () => {
+    if (!validAgent || !diamond) return;
+    // Bitmask from the enabled action toggles.
+    let bits = 0;
+    (Object.keys(settings.allowedActions) as AgentAction[]).forEach((a) => {
+      if (settings.allowedActions[a]) bits |= ACTION_BITS[a];
+    });
+    const grantIntent: Intent = {
+      kind: "grantAgentPermission",
+      diamond,
+      agent: agentAddr,
+      maxNotionalPerAction: String(settings.maxPerAction),
+      maxNotionalPerEpoch: String(settings.maxPerDay),
+      epochDurationSec: 86_400, // one day, matching "max per day"
+      expiryUnix: Math.floor(Date.now() / 1000) + 30 * 86_400, // 30-day grant
+      maxInterestBps: 0, // no rate cap by default
+      minHealthFactorBps: Math.round(settings.minHealthFactor * 10_000),
+      allowedActions: bits,
+      tokens: ABSTRACT_TOKENS.map((t) => t.address),
+    };
+    setGrant([grantIntent]);
+  };
 
   const num = (v: string) => {
     const n = parseFloat(v.replace(/[^0-9.]/g, ""));
@@ -124,18 +166,41 @@ export default function AgentSettings({ address, open, onClose }: AgentSettingsP
           <section className={s.section}>
             <div className={s.sectionTitle}>Delegate to an external agent</div>
             <div className={s.delegate}>
-              <p className={s.delegateBody}>
-                Grant a bounded, revocable on-chain permission so an SDK- or
-                MCP-connected agent can act within these same limits without you
-                signing each step.
-              </p>
-              <button className={s.delegateBtn} disabled>
-                Coming soon
-              </button>
-              <p className={s.delegateNote}>
-                Enforced by the protocol&apos;s agent-permission facet. Not yet
-                callable from this interface.
-              </p>
+              {grant ? (
+                <PlanReview
+                  intents={grant}
+                  submitLabel="Grant permission"
+                  onComplete={() => setGrant(null)}
+                  onCancel={() => setGrant(null)}
+                />
+              ) : (
+                <>
+                  <p className={s.delegateBody}>
+                    Grant a bounded, revocable on-chain permission so an SDK- or
+                    MCP-connected agent acts within the limits above — without you
+                    signing each step. Uses your spending caps, health floor and
+                    allowed actions.
+                  </p>
+                  <input
+                    className={s.delegateInput}
+                    placeholder="Agent wallet address (0x…)"
+                    value={agentAddr}
+                    onChange={(e) => setAgentAddr(e.target.value.trim())}
+                    aria-label="Agent address"
+                  />
+                  <button
+                    className={s.delegateBtn}
+                    disabled={!validAgent || !diamond}
+                    onClick={buildGrant}
+                  >
+                    Review delegation
+                  </button>
+                  <p className={s.delegateNote}>
+                    Enforced on-chain by the agent-permission facet. Revoke any
+                    time; the budget resets per day.
+                  </p>
+                </>
+              )}
             </div>
           </section>
         </div>

@@ -46,7 +46,32 @@ export type Intent =
       stToken: string;
       amount: string;
       symbol: string;
+    }
+  | {
+      kind: "grantAgentPermission";
+      /** Diamond address exposing AgentPermissionFacet. */
+      diamond: string;
+      agent: string;
+      maxNotionalPerAction: string;
+      maxNotionalPerEpoch: string;
+      epochDurationSec: number;
+      expiryUnix: number;
+      maxInterestBps: number;
+      minHealthFactorBps: number;
+      /** Bitmask of ACTION_* flags. */
+      allowedActions: number;
+      tokens: string[];
     };
+
+/** AgentPermissionFacet action bitmask (mirrors LibAgentPermission). */
+export const AGENT_ACTIONS = {
+  BORROW: 1,
+  LEND: 2,
+  REPAY: 4,
+  DEPOSIT_COLLATERAL: 8,
+  WITHDRAW_COLLATERAL: 16,
+  CLOSE: 32,
+} as const;
 
 export type IntentKind = Intent["kind"];
 
