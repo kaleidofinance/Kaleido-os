@@ -55,13 +55,39 @@ should beat six days of intensive farming, and today it does not.
 Accrues continuously while capital is at risk. This is the majority of the
 allocation and it is what loyalty actually means.
 
-| Source | Measured as | Read from |
-|---|---|---|
-| `stake` | staked KLD, USD-valued | KLD vault `getUserDeposit` |
-| `lp` | V3 position value, **in-range only** | position manager + pool `slot0` |
-| `collateral` | collateral deposited | Diamond `gets_addressToCollateralDeposited` |
-| `vault` | kafUSD vault deposit | stablecoin vault |
-| `lend` | capital actually lent out on serviced listings | `kaleido_requests` where `status = SERVICED` |
+| Source | Measured as | Rate | Read from |
+|---|---|---|---|
+| `stake` | staked KLD, USD-valued | 1.0× | KLD vault `getUserDeposit` |
+| `lp` | V3 position value, **in-range only** | 1.5× | position manager + pool `slot0` |
+| `vault` | kafUSD vault deposit | 1.0× | stablecoin vault |
+| `lend` | capital lent out on serviced loans | **1.0×** | `kaleido_requests` where `status = SERVICED` |
+| `borrow` | outstanding principal, interest accruing | **0.4×** | Diamond active requests |
+| `collateral_idle` | collateral **not** backing a live loan | **0.25×** | Diamond `gets_addressToCollateralDeposited` |
+| `collateral_backing` | collateral backing a live loan | **0×** | — paid via the `borrow` leg |
+
+#### Why lending and borrowing are not paid equally
+
+The deciding factor is not risk appetite, it is **recursion**. If collateral
+earns and borrowing also earns at full rate, one capital commitment is paid
+twice — and the borrowed asset can be redeposited or swapped to be paid a third
+time. That is a farming loop, and it is how COMP was mined in 2020: it
+manufactured fake TVL and real bad debt, on positions the protocol then had to
+liquidate.
+
+Two rules close it:
+
+1. **Collateral backing a live loan earns nothing on its own.** The `borrow`
+   leg is the payment for that capital. Only genuinely idle collateral accrues,
+   and at a low rate, because pre-positioning is mildly useful but unproductive.
+2. **Borrowing accrues well below lending.** Borrowing must earn *something* —
+   this is a P2P order book, not a pool, so a match needs both sides and a book
+   with no borrowers is dead. But on an isolated loan the lender carries the
+   residual credit risk while the borrower holds what amounts to an option to
+   walk away from their collateral. Pay the party holding the risk more.
+
+If a loop still looks profitable at these rates, the borrow rate is too high.
+Sanity-check it against the interest actually paid: points earned on a borrow
+should never exceed the interest cost of holding it.
 
 Accrual for one wallet, one source, one epoch:
 
@@ -217,11 +243,53 @@ fastest way to lose a community.
 
 ---
 
-## 8. Open questions
+## 8. Leaderboard disclosure
+
+Three tiers, tightening privacy without losing the competitive pull that makes
+a leaderboard a growth lever in the first place.
+
+| Audience | Sees |
+|---|---|
+| Public, during season | Top N by **rank and point total only** |
+| Any user, about themselves | Their own exact rank and points |
+| Public long tail | **Percentile** — "top 12%", not "#4,832" |
+| Everyone, at TGE freeze | The **complete table**, for audit and dispute |
+
+**Never publish USD position sizes.** A public wallet-to-balance map is a
+phishing and MEV target list, and it advertises how concentrated the protocol
+is.
+
+Exact per-wallet points stay private *during* the season because publishing
+them hands farmers a targeting function: if the wallet at rank 50 visibly holds
+48,000 points, everyone knows exactly how much to deposit to displace it. Rank
+and percentile preserve the competition without publishing the threshold.
+
+At the freeze that inverts — the allocation must be fully auditable and
+disputable, so everything is published before any token moves.
+
+---
+
+## 9. Life after TGE
+
+Points are a customer-acquisition cost. The risk is not that they fail to
+attract users, it is that they attract users who leave the moment the incentive
+stops. Two things worth deciding before launch rather than after:
+
+- **Taper, do not cliff.** Emissions that drop to zero at TGE tell mercenary
+  capital exactly when to exit, all at once. A published, declining schedule
+  lets it leave gradually.
+- **Give points a second life that is not the token.** Converting a portion of
+  a season's points into ongoing utility — fee discounts, priority in the
+  order book, higher agent quota — retains the users who were going to stay
+  anyway, and costs nothing to someone who was always going to sell.
+
+Luca is the actual retention argument. Points buy the first visit; the agent
+has to earn the second.
+
+---
+
+## 10. Still open
 
 - Season length, and whether points carry across seasons or reset.
-- Whether lending and borrowing earn at the same rate (they are not the same
-  risk).
-- Whether the leaderboard is public per-wallet or bucketed — public
-  per-wallet is better for credibility and worse for privacy.
 - Snapshot cadence: hourly is defensible, more frequent gets expensive fast.
+- Whether the Season 0 bonus (§7) is flat per wallet or tiered by activity.
