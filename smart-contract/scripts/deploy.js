@@ -52,7 +52,16 @@ async function deployDiamond() {
 
   // Deploy Facets
   console.log("Deploying Diamond Facets...");
-  const FacetNames = ["DiamondLoupeFacet", "OwnershipFacet", "ProtocolFacet"];
+  // AgentPermissionFacet is what bounds Luca on-chain: per-agent spend budgets
+  // and token allowlists that hold even if someone bypasses the frontend. It
+  // was written but never cut into the diamond, so it must be in the list for a
+  // fresh deploy or the agent has no on-chain limits at all.
+  const FacetNames = [
+    "DiamondLoupeFacet",
+    "OwnershipFacet",
+    "ProtocolFacet",
+    "AgentPermissionFacet",
+  ];
   const cut = [];
 
   for (const FacetName of FacetNames) {
