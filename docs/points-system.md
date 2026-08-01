@@ -269,22 +269,67 @@ disputable, so everything is published before any token moves.
 
 ---
 
-## 9. Life after TGE
+## 9. Seasons continue after TGE
 
-Points are a customer-acquisition cost. The risk is not that they fail to
-attract users, it is that they attract users who leave the moment the incentive
-stops. Two things worth deciding before launch rather than after:
+TGE is the end of Season 1, not the end of the program. Multi-season is the
+dominant model in 2026 — Backpack is on Season 4 with 25% of supply committed
+to the community, and Apyx raised its Season 2 budget to 6% of supply from 4%
+in Season 1. Points remain the acquisition channel indefinitely.
 
-- **Taper, do not cliff.** Emissions that drop to zero at TGE tell mercenary
-  capital exactly when to exit, all at once. A published, declining schedule
-  lets it leave gradually.
-- **Give points a second life that is not the token.** Converting a portion of
-  a season's points into ongoing utility — fee discounts, priority in the
-  order book, higher agent quota — retains the users who were going to stay
-  anyway, and costs nothing to someone who was always going to sell.
+One structural thing changes the moment the token trades, and the conversion
+mechanic has to account for it.
 
-Luca is the actual retention argument. Points buy the first visit; the agent
-has to earn the second.
+### Post-TGE, points are priceable
+
+Before TGE, points have no computable value — people farm on faith. After TGE
+there is a market price, so anyone can derive "1 point ≈ $X" from the last
+season's conversion and decide whether cost-to-farm beats expected payout.
+Farming stops being speculation and becomes arbitrage, executed by people who
+are much better at it than the average user.
+
+### Fixed budget per season, pro-rata within it
+
+**Publish a token budget per season. Never publish a points-to-token rate.**
+
+| Mechanic | Behaviour under 10× expected participation |
+|---|---|
+| Fixed rate (`1 pt = N tokens`) | Liability scales with farmers. You owe 10×. Unbounded and exploitable. |
+| **Fixed budget, pro-rata** | Each point is worth 1/10th. Marginal farmers leave on their own. Bounded. |
+
+The budget model self-regulates: heavy participation dilutes each point until
+farming stops being profitable, and light participation concentrates it until
+farming resumes. The budget is the lever between seasons — raise it to buy
+growth, lower it to conserve supply — and it is adjusted *between* seasons,
+never inside one.
+
+### Carve the multi-season allocation before TGE
+
+This is the decision that cannot be deferred. If 10% of supply is allocated for
+the TGE drop and seasons are planned afterward, there is nothing to distribute
+by Season 3, and minting more is a governance fight. Commit the full
+multi-season budget up front — Backpack's 25% is the whole program, not the
+first drop.
+
+Suggested shape, to be set by tokenomics rather than here:
+
+- Season 1 / TGE drop: a defined slice
+- Seasons 2–N: the remainder, on a published schedule
+- The schedule is public from day one, so farmers can price it and loyal users
+  can see the program has a future
+
+### Eventually, fee revenue should fund it
+
+Emissions-funded growth is borrowing from future holders. The healthy end state
+replaces some of the seasonal token budget with real fee revenue, so incentives
+are paid out of what the protocol earns rather than what it prints. Worth
+naming as a direction now even if the switch is years out.
+
+### What retains people is not the points
+
+Points buy the first visit. Luca has to earn the second. A strong points
+program pointed at a mediocre product just accelerates churn — it pays people
+to discover that they do not want to stay. The agent needs to be genuinely good
+*before* the incentive brings volume, not after.
 
 ---
 
