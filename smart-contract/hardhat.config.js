@@ -11,8 +11,28 @@
 
 require("dotenv").config();
 require("@nomicfoundation/hardhat-toolbox");
-require("@matterlabs/hardhat-zksync");
-require("@matterlabs/hardhat-zksync-upgradable");
+
+/**
+ * zkSync plugins are needed only for Abstract — every other target is plain
+ * EVM and compiles with solc. They are loaded optionally because they pull
+ * git-hosted dependencies (@matterlabs/zksync-telemetry-js, and transitively
+ * @zksync/contracts over git+ssh) that locked-down CI and sandboxed
+ * environments refuse to fetch.
+ *
+ * Loading them optionally means someone deploying to Base or BNB does not need
+ * the zkSync toolchain installed at all. If they are missing, the Abstract
+ * networks below will fail at deploy time with a clear plugin error rather than
+ * taking down the whole config at require time.
+ */
+try {
+  require("@matterlabs/hardhat-zksync");
+  require("@matterlabs/hardhat-zksync-upgradable");
+} catch {
+  console.warn(
+    "[hardhat] zkSync plugins unavailable — EVM targets still work; " +
+      "Abstract (abstractMainnet/abstractTestnet) requires them.",
+  );
+}
 
 /**
  * Deployer accounts for a network.
