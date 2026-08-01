@@ -18,11 +18,11 @@ import s from "./trade.module.css";
  * meant to trade here, sitting beside Swap the way Limit and Buy do.
  */
 const TABS = [
-  { href: "/v2/trade/agent", label: "Agent" },
-  { href: "/v2/trade/swap", label: "Swap" },
-  { href: "/v2/trade/limit", label: "Limit" },
-  { href: "/v2/trade/buy", label: "Buy" },
-  { href: "/v2/trade/sell", label: "Sell" },
+  { href: "/trade/agent", label: "Agent" },
+  { href: "/trade/swap", label: "Swap" },
+  { href: "/trade/limit", label: "Limit" },
+  { href: "/trade/buy", label: "Buy" },
+  { href: "/trade/sell", label: "Sell" },
 ];
 
 export default function TradeLayout({ children }: { children: ReactNode }) {

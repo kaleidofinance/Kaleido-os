@@ -8,9 +8,9 @@ import { StableProvider, useStable } from "./StableContext";
 import s from "./stable.module.css";
 
 const TABS = [
-  { href: "/v2/stable/mint", label: "Mint" },
-  { href: "/v2/stable/redeem", label: "Redeem" },
-  { href: "/v2/stable/earn", label: "Earn" },
+  { href: "/stable/mint", label: "Mint" },
+  { href: "/stable/redeem", label: "Redeem" },
+  { href: "/stable/earn", label: "Earn" },
 ];
 
 /**

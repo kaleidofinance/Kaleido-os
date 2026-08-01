@@ -13,7 +13,7 @@ import s from "./pool.module.css";
  */
 export default function PoolLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const onNew = pathname === "/v2/pool/new";
+  const onNew = pathname === "/pool/new";
 
   return (
     <>
@@ -22,11 +22,11 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
         <div className={s.head}>
           <h1 className={s.h1}>{onNew ? "New position" : "Your positions"}</h1>
           {onNew ? (
-            <Link href="/v2/pool" className={s.bt}>
+            <Link href="/pool" className={s.bt}>
               Cancel
             </Link>
           ) : (
-            <Link href="/v2/pool/new" className={`${s.bt} ${s.btWhite}`}>
+            <Link href="/pool/new" className={`${s.bt} ${s.btWhite}`}>
               + New position
             </Link>
           )}

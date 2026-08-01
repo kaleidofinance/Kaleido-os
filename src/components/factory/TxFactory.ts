@@ -21,7 +21,7 @@ const useTxFactory = () => {
           id: loadingToastId,
           action: {
             label: "Post an offer",
-            onClick: () => router.push("/v2/borrow"),
+            onClick: () => router.push("/borrow"),
           },
         })
       } else {
@@ -29,7 +29,7 @@ const useTxFactory = () => {
           id: loadingToastId,
           action: {
             label: "Post an offer",
-            onClick: () => router.push("/v2/borrow"),
+            onClick: () => router.push("/borrow"),
           },
         })
       }

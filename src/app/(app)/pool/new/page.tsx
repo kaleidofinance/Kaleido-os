@@ -150,7 +150,7 @@ export default function NewPositionPage() {
       );
 
       toast.success("Position created");
-      router.push("/v2/pool");
+      router.push("/pool");
     } catch (err) {
       console.error("[v2/pool/new] mint failed", err);
       toast.error("Couldn't create the position");

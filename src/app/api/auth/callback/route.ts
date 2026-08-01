@@ -111,7 +111,7 @@ export async function GET(req: Request) {
     // The legacy /verify page is gone. The cookie below still drives
     // /api/auth/user, so the Twitter link itself survives — only its landing
     // page moved. It has no v2 equivalent yet.
-    const response = NextResponse.redirect(new URL("/v2/portfolio", req.url))
+    const response = NextResponse.redirect(new URL("/portfolio", req.url))
 
     response.cookies.delete("twitter_oauth_state")
     response.cookies.delete("twitter_code_verifier")

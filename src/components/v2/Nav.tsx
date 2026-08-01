@@ -9,14 +9,21 @@ import { getChainMeta } from "@/constants/chains";
 import NetworkSelector from "./NetworkSelector";
 import styles from "./Nav.module.css";
 
+/**
+ * Trade leads: it is the front door and the reason most people arrive.
+ *
+ * `primary` marks the five that earn a slot in the mobile tab bar. Seven tabs
+ * do not fit a phone without becoming unreadable, so Stake and Stable stay in
+ * the top strip on mobile and appear in full on desktop.
+ */
 const LINKS = [
-  { href: "/v2/portfolio", label: "Portfolio" },
-  { href: "/v2/trade", label: "Trade" },
-  { href: "/v2/borrow", label: "Borrow" },
-  { href: "/v2/pool", label: "Pool" },
-  { href: "/v2/stake", label: "Stake" },
-  { href: "/v2/stable", label: "Stable" },
-  { href: "/v2/explore", label: "Explore" },
+  { href: "/trade", label: "Trade", icon: "⇄", primary: true },
+  { href: "/pool", label: "Pool", icon: "◎", primary: true },
+  { href: "/borrow", label: "Borrow", icon: "⇢", primary: true },
+  { href: "/stake", label: "Stake", icon: "▲", primary: false },
+  { href: "/stable", label: "Stable", icon: "$", primary: false },
+  { href: "/explore", label: "Explore", icon: "◈", primary: true },
+  { href: "/portfolio", label: "Portfolio", icon: "◍", primary: true },
 ];
 
 export default function Nav() {
@@ -26,8 +33,9 @@ export default function Nav() {
   const chainMeta = getChainMeta(chainId);
 
   return (
-    <nav className={styles.nav}>
-      <Link href="/v2/portfolio" className={styles.logo}>
+    <>
+      <nav className={styles.nav}>
+      <Link href="/trade" className={styles.logo}>
         <span className={styles.mark} />
         Kaleido
       </Link>
@@ -73,6 +81,28 @@ export default function Nav() {
           <button className={styles.connect}>Connect</button>
         )}
       </div>
-    </nav>
+      </nav>
+
+      {/* Bottom tab bar — phones only. Thumb-reachable, and it survives the
+          top strip scrolling out of view. */}
+      <div className={styles.tabbar} role="navigation" aria-label="Primary">
+        {LINKS.filter((l) => l.primary).map((l) => {
+          const active = pathname?.startsWith(l.href);
+          return (
+            <Link
+              key={l.href}
+              href={l.href}
+              className={`${styles.tab} ${active ? styles.tabOn : ""}`}
+              aria-current={active ? "page" : undefined}
+            >
+              <span className={styles.tabIcon} aria-hidden="true">
+                {l.icon}
+              </span>
+              {l.label}
+            </Link>
+          );
+        })}
+      </div>
+    </>
   );
 }
