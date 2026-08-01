@@ -43,7 +43,7 @@ async function interactWithContract(byteArray) {
     const providerUrl = 'https://api.testnet.abs.xyz';
     
     // Use your private key to create a new Wallet instance for signing the transaction
-    const privateKey = "9e5345ca0415a07573d5b63737e0126382daceb88286d6947055b3d49270c139"; // Make sure to store your private key securely
+    const privateKey = process.env.DEPLOYER_PRIVATE_KEY; // Make sure to store your private key securely
     const wallet = new ethers.Wallet(privateKey);
 
     // Connect the wallet to the provider (Abstract Testnet)

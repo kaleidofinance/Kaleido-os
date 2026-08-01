@@ -2,7 +2,7 @@ const { ethers } = require("hardhat");
 
 async function main() {
   const rpcUrl = "https://api.testnet.abs.xyz"; // Abstract Testnet
-  const privateKey = "9e5345ca0415a07573d5b63737e0126382daceb88286d6947055b3d49270c139"; 
+  const privateKey = process.env.DEPLOYER_PRIVATE_KEY; 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   const wallet = new ethers.Wallet(privateKey, provider);
 

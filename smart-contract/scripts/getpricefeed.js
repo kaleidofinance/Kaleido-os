@@ -12,9 +12,9 @@ const errorDecoder = ErrorDecoder.create([diamondAbi]);
 // Constants
 const CONSTANTS = {
   PRIVATE_KEY:
-    "9e5345ca0415a07573d5b63737e0126382daceb88286d6947055b3d49270c139",
+    process.env.DEPLOYER_PRIVATE_KEY,
   BOT_PRIVATE_KEY:
-    "40eda24dde12f9f97a31022da6e3346b775827487afe41cec661d38802c1f3dc",
+    process.env.BOT_PRIVATE_KEY,
   PROTOCOL_CONTRACT_ADDRESS: "0xBCc9e3d13CeB24C46Aa2BC7521265B3ace4bb410",
   DIAMOND_CONTRACT_ADDRESS: "0x2aC60481a9EA2e67D80CdfBF587c63c88A5874ac",
   RPC_URL: "https://api.testnet.abs.xyz",
