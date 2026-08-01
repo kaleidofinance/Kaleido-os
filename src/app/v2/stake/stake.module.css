@@ -197,3 +197,29 @@
   color: var(--k-t3);
   cursor: not-allowed;
 }
+
+/* request / cancel sit under the main action — same lifecycle, lower weight */
+.subActions {
+  display: flex;
+  gap: var(--k-s2);
+  margin-top: 8px;
+}
+.subBtn {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--k-line2);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  padding: 11px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.subBtn:hover:not(:disabled) {
+  color: var(--k-t1);
+  border-color: var(--k-t3);
+}
+.subBtn:disabled {
+  color: var(--k-t3);
+  cursor: not-allowed;
+}

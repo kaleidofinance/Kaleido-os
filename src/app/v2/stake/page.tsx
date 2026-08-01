@@ -16,6 +16,16 @@ const fmt = (n: number | null, dp = 2) =>
     ? "—"
     : n.toLocaleString("en-US", { maximumFractionDigits: dp });
 
+/** Cooldown countdown, e.g. "13d 4h" or "2h 15m". */
+const fmtCooldown = (secs: number) => {
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+};
+
 export default function StakePage() {
   const { isConnected } = useWalletV2();
   const stake = useStakeV2();
@@ -44,12 +54,37 @@ export default function StakePage() {
     const a = parseFloat(amount);
     if (!a || a <= 0) return;
     try {
-      if (mode === "stake") await stake.stake(amount);
-      else await stake.unstake(amount);
+      if (mode === "stake") {
+        await stake.stake(amount);
+      } else if (stake.cooldownActive) {
+        // Cooldown still running — withdrawing now would revert.
+        return;
+      } else {
+        await stake.unstake(amount);
+      }
       setAmount("");
     } catch (err) {
       console.error("[v2/stake]", err);
       toast.error(mode === "stake" ? "Stake failed" : "Unstake failed");
+    }
+  };
+
+  const onRequest = async () => {
+    if (!isConnected) return toast.error("Connect a wallet first.");
+    const a = parseFloat(amount);
+    if (!a || a <= 0) return toast.error("Enter an amount to unstake.");
+    try {
+      await stake.requestWithdrawal(amount);
+    } catch (err) {
+      console.error("[v2/stake] request", err);
+    }
+  };
+
+  const onCancel = async () => {
+    try {
+      await stake.cancelWithdrawal();
+    } catch (err) {
+      console.error("[v2/stake] cancel", err);
     }
   };
 
@@ -65,7 +100,9 @@ export default function StakePage() {
             : "Unstaking…"
           : mode === "stake"
             ? `Stake ${amount} KLD`
-            : `Unstake ${amount} stKLD`;
+            : stake.cooldownActive
+              ? `Unlocks in ${fmtCooldown(stake.cooldownLeft)}`
+              : `Unstake ${amount} stKLD`;
 
   return (
     <>
@@ -186,9 +223,48 @@ export default function StakePage() {
                 <span>How yield accrues</span>
                 <b>Exchange rate rises</b>
               </div>
-              <button className={s.ctaBtn} disabled={!isConnected || !amount || insufficient || busy} onClick={submit}>
+              {mode === "unstake" && (
+                <div className={s.kv}>
+                  <span>Unstaking</span>
+                  <b>
+                    {stake.cooldownActive
+                      ? `Unlocks in ${fmtCooldown(stake.cooldownLeft)}`
+                      : "Request, then withdraw after the cooldown"}
+                  </b>
+                </div>
+              )}
+              <button
+                className={s.ctaBtn}
+                disabled={
+                  !isConnected ||
+                  !amount ||
+                  insufficient ||
+                  busy ||
+                  (mode === "unstake" && stake.cooldownActive)
+                }
+                onClick={submit}
+              >
                 {cta}
               </button>
+
+              {mode === "unstake" && (
+                <div className={s.subActions}>
+                  <button
+                    className={s.subBtn}
+                    disabled={!isConnected || stake.requesting}
+                    onClick={onRequest}
+                  >
+                    {stake.requesting ? "Requesting…" : "Request withdrawal"}
+                  </button>
+                  <button
+                    className={s.subBtn}
+                    disabled={!isConnected || stake.cancelling}
+                    onClick={onCancel}
+                  >
+                    {stake.cancelling ? "Cancelling…" : "Cancel request"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
