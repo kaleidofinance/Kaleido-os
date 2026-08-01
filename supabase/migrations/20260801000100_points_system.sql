@@ -34,7 +34,12 @@ create table if not exists public.point_seasons (
   -- budget / total_points, and cannot be known before the season closes.
   supply_budget numeric,
   frozen_at     timestamptz,
-  created_at    timestamptz not null default now()
+  -- Must be set true deliberately. A rehearsal season on testnet stays false
+  -- forever, so a dry run can never be mistaken for a claimable allocation.
+  converts_to_tokens boolean not null default false,
+  created_at    timestamptz not null default now(),
+  -- A season cannot carry a token budget unless it is meant to convert.
+  check (supply_budget is null or converts_to_tokens)
 );
 
 -- ---------------------------------------------------------------------------
@@ -51,6 +56,10 @@ create table if not exists public.point_chains (
   -- Multiplier on everything earned on this chain. Lets a new deployment be
   -- boosted to pull liquidity across without rewriting any source rate.
   multiplier numeric not null default 1.0,
+  -- Gas is free on a testnet, so points earned there are free to mint in
+  -- unlimited quantity. Testnet chains exist to rehearse the indexer, never to
+  -- earn allocation. See the point_conversion_violations view below.
+  is_testnet boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -238,6 +247,28 @@ select
 from public.point_balances
 where sybil_flag is null;
 
+-- Safety net. Must return zero rows before any season is frozen and converted.
+--
+-- Points earned on a testnet cost nothing to mint, so if any appear inside a
+-- season that converts to tokens, the allocation is compromised and the freeze
+-- must stop. Cheaper to check this than to unwind an airdrop.
+create or replace view public.point_conversion_violations as
+select
+  s.id            as season,
+  s.label         as season_label,
+  c.chain_id,
+  c.label         as chain_label,
+  count(*)        as offending_rows,
+  sum(e.points)   as offending_points
+from public.point_epochs e
+join public.point_chains  c on c.chain_id = e.chain_id
+join public.point_seasons s on s.id       = e.season
+where c.is_testnet and s.converts_to_tokens
+group by s.id, s.label, c.chain_id, c.label;
+
+comment on view public.point_conversion_violations is
+  'Pre-freeze check: testnet points sitting inside a converting season. Must be empty before any allocation is computed.';
+
 -- ---------------------------------------------------------------------------
 -- RLS: service-role writes, public reads
 -- ---------------------------------------------------------------------------
@@ -284,25 +315,31 @@ from anon, authenticated;
 -- Seed: Season 1 and the surfaces that exist today
 -- ---------------------------------------------------------------------------
 
-insert into public.point_seasons (id, label, starts_at)
-values (1, 'Season 1 — pre-TGE', now())
+-- Season 0 is the testnet rehearsal: it proves the indexer, the accrual and
+-- the leaderboard behave before any of it is load-bearing. It never converts.
+-- Season 1 is the real pre-TGE season; converts_to_tokens flips to true only
+-- once a supply budget is actually committed.
+insert into public.point_seasons (id, label, starts_at, converts_to_tokens) values
+  (0, 'Season 0 — testnet rehearsal', now(), false),
+  (1, 'Season 1 — pre-TGE',           now(), false)
 on conflict (id) do nothing;
 
 -- Chains mirror src/constants/chains.ts. All start disabled: points switch on
 -- per chain only once that chain's contracts are deployed and indexed, which
 -- is deliberately independent of whether the app can already trade there.
-insert into public.point_chains (chain_id, label, enabled, multiplier) values
-  (2741,    'Abstract',              false, 1.0),
-  (11124,   'Abstract Testnet',      false, 1.0),
-  (1,       'Ethereum',              false, 1.0),
-  (11155111,'Sepolia',               false, 1.0),
-  (8453,    'Base',                  false, 1.0),
-  (84532,   'Base Sepolia',          false, 1.0),
-  (56,      'BNB Smart Chain',       false, 1.0),
-  (97,      'BNB Smart Chain Testnet', false, 1.0),
-  (4663,    'Robinhood Chain',       false, 1.0),
-  (46630,   'Robinhood Chain Testnet', false, 1.0),
-  (5042002, 'Arc Testnet',           false, 1.0)
+insert into public.point_chains (chain_id, label, enabled, multiplier, is_testnet) values
+  (2741,    'Abstract',                false, 1.0, false),
+  (11124,   'Abstract Testnet',        false, 1.0, true),
+  (1,       'Ethereum',                false, 1.0, false),
+  (11155111,'Sepolia',                 false, 1.0, true),
+  (8453,    'Base',                    false, 1.0, false),
+  (84532,   'Base Sepolia',            false, 1.0, true),
+  (56,      'BNB Smart Chain',         false, 1.0, false),
+  (97,      'BNB Smart Chain Testnet', false, 1.0, true),
+  (4663,    'Robinhood Chain',         false, 1.0, false),
+  (46630,   'Robinhood Chain Testnet', false, 1.0, true),
+  -- Arc has no mainnet yet; its testnet is the only Arc that exists today.
+  (5042002, 'Arc Testnet',             false, 1.0, true)
 on conflict (chain_id) do nothing;
 
 -- Live surfaces. Three trade modes (limit, buy, sell) are "coming soon" stubs
@@ -346,4 +383,14 @@ insert into public.point_source_rates
   ('vault',           1, 1.0,  1.0, 0,   null,  null),
   ('stable_mint',     1, 0.5,  1.0, 10,  10000, null),
   ('referral',        1, 0,    1.0, 0,   5000,  null)
+on conflict (source_slug, season) do nothing;
+
+-- The rehearsal runs on identical rates, so Season 0 exercises the real
+-- arithmetic rather than a simplified stand-in. Copied rather than retyped so
+-- the two cannot drift.
+insert into public.point_source_rates
+  (source_slug, season, rate, multiplier, min_usd, daily_cap_usd, daily_cap_pts, multiplier_action_limit)
+select source_slug, 0, rate, multiplier, min_usd, daily_cap_usd, daily_cap_pts, multiplier_action_limit
+from public.point_source_rates
+where season = 1
 on conflict (source_slug, season) do nothing;
