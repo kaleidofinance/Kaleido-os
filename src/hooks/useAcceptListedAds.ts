@@ -71,10 +71,10 @@ const useAcceptListedAds = () => {
 
           if (receipt.status) {
             toast.success("You accepted listed ads successfully!", { id: loadingToastId })
-            // v2 callers pass onSuccess to stay inside their own shell; legacy
-            // pages omit it and keep the original redirect.
-            if (onSuccess) onSuccess()
-            else router.push("/")
+            // Callers handle their own navigation — this used to redirect to a
+
+            // legacy route that no longer exists.
+            onSuccess?.()
             return
           }
 

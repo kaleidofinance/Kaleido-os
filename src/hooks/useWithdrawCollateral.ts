@@ -80,9 +80,10 @@ const useWithdrawCollateral = () => {
           toast.success(`${_amountOfCollateral} successfully withdrawn!`, {
             id: toastId,
           })
-          // v2 callers pass onSuccess to stay inside their own shell; legacy
-          // pages omit it and keep the original redirect.
-          return onSuccess ? onSuccess() : router.push("/")
+          // Callers handle their own navigation — this used to redirect to a
+
+          // legacy route that no longer exists.
+          return onSuccess?.()
         } else {
           toast.error("Failed to withdraw collateral.", {
             id: toastId,

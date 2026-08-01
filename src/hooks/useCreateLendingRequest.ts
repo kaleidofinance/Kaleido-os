@@ -78,8 +78,10 @@ const useCreateLendingRequest = () => {
   ) => {
     const receipt = await transaction.wait()
 
-    // v2 callers pass onSuccess to stay inside their own shell; legacy pages
-    // omit it and keep the original redirect.
+    // Callers handle their own navigation — this used to redirect to a
+
+
+    // legacy route that no longer exists.
     if (receipt.status && SUPPORTED_CHAIN_ID[0] == chainId) {
       toast.success("Loan Pool created!", {
         id: loadingToastId,
@@ -87,7 +89,7 @@ const useCreateLendingRequest = () => {
       if (address) {
         sendLoanCreatedNotification(address, "borrow")
       }
-      return onSuccess ? onSuccess() : router.push("/successful")
+      return onSuccess?.()
     } else if (receipt.status && chainId !== SUPPORTED_CHAIN_ID[0]) {
       toast.success("Loan Pool created, kindly wait for few minutes!", {
         id: loadingToastId,
@@ -95,7 +97,7 @@ const useCreateLendingRequest = () => {
       if (address) {
         sendLoanCreatedNotification(address, "borrow")
       }
-      return onSuccess ? onSuccess() : router.push("/successful")
+      return onSuccess?.()
     } else {
       toast.error("Pool creation failed!", {
         id: loadingToastId,

@@ -136,10 +136,10 @@ const useDepositCollateral = () => {
               `Kindly wait for few minutes for your deposited ${_amountOfCollateral} to go cross-chain!`,
             )
           }
-          // v2 callers pass onSuccess to stay inside their own shell; legacy
-          // pages omit it and keep the original redirect.
-          if (onSuccess) onSuccess()
-          else router.push("/")
+          // Callers handle their own navigation — this used to redirect to a
+
+          // legacy route that no longer exists.
+          onSuccess?.()
         } else {
           toast.error("Transaction failed!", {
             id: toastId,

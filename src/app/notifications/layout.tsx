@@ -1,10 +1,15 @@
-import { Header } from "@/components/shared/Header"
+import Nav from "@/components/v2/Nav"
 
+/**
+ * Notifications rides the v2 shell now. It used to mount the legacy Header,
+ * which was the last thing keeping that component — and its links to routes
+ * that no longer exist — alive.
+ */
 export default function NotificationsLayout({ children }: { children: React.ReactNode }) {
   return (
-    <section className="relative mx-auto w-[91%] min-h-screen bg-black text-white">
-      <Header />
-      <main className="pt-6 sm:pt-4">{children}</main>
-    </section>
+    <div className="kaleido-v2">
+      <Nav />
+      <main className="mx-auto w-full max-w-[900px] px-5 pb-16 pt-2">{children}</main>
+    </div>
   )
-} 
+}
