@@ -25,7 +25,7 @@ const useDepositNativeCollateral = () => {
   const router = useRouter()
 
   return useCallback(
-    async (_amountOfCollateral: string) => {
+    async (_amountOfCollateral: string, onSuccess?: () => void) => {
       if (!isSupportedChain(chainId)) return toast.warning("SWITCH TO SUPPORTED CHAINS")
 
       if (!activeChain) {
@@ -78,7 +78,10 @@ const useDepositNativeCollateral = () => {
               `Kindly wait for few minutes for your deposited ${_amountOfCollateral} ETH to go cross-chain!`,
             )
           }
-          router.push("/")
+          // Callers handle their own navigation — this used to redirect to a
+
+          // legacy route that no longer exists.
+          onSuccess?.()
         } else {
           toast.error("Transaction failed!", {
             id: toastId,

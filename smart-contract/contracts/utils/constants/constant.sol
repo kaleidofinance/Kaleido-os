@@ -30,4 +30,10 @@ library Constants {
 
     uint256 constant MIN_LOAN_AMOUNT = 10 * 1e16; // 10 USD
 
+    /// @dev Interest is quoted as an APR, so rates are comparable across terms.
+    uint256 constant SECONDS_PER_YEAR = 365 days;
+    /// @dev Floor on loan duration. Without one, APR pricing makes near-instant
+    ///      loans round down to zero interest.
+    uint256 constant MIN_LOAN_DURATION = 1 days;
+
 }

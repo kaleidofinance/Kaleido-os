@@ -1,0 +1,223 @@
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s6);
+  padding: 14px 20px;
+  position: sticky;
+  top: 0;
+  background: var(--k-bg);
+  z-index: 30;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  color: var(--k-brand);
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  text-decoration: none;
+}
+.mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--k-brand);
+}
+
+.menu {
+  display: flex;
+  gap: var(--k-s6);
+  overflow-x: auto;
+  /* Without this a flex item defaults to min-width:auto and refuses to shrink
+     below its content, so overflow-x never engages and the whole nav grows
+     past the viewport — pushing the wallet button off-screen on mobile. */
+  min-width: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.menu::-webkit-scrollbar {
+  display: none;
+}
+.item {
+  font-size: var(--k-fs-base);
+  color: var(--k-t2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.item:hover {
+  color: var(--k-t1);
+}
+.on {
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+}
+
+.right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: var(--k-fs-base);
+}
+.icon:hover {
+  background: var(--k-card);
+  color: var(--k-t1);
+}
+
+.net {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  background: var(--k-card);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 7px 13px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.net:hover {
+  background: var(--k-well2);
+}
+.netIcon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex: none;
+}
+.netIcon i {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+.caret {
+  font-size: 11px;
+  color: var(--k-t2);
+}
+
+.addr {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  background: var(--k-card);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 7px 14px 7px 8px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.addr:hover {
+  background: var(--k-well2);
+}
+.avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--k-well2);
+}
+
+.connect {
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 10px 20px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.connect:hover {
+  background: var(--k-brand-hover);
+}
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .nav {
+    gap: var(--k-s3);
+    padding: 12px 14px;
+  }
+  /* The logo wordmark costs width the nav links need; the mark alone still
+     identifies and still links home. */
+  .logo {
+    font-size: 0;
+    gap: 0;
+  }
+  /* Search has no mobile affordance yet — reclaim the space. */
+  .icon {
+    display: none;
+  }
+  .menu {
+    gap: var(--k-s4);
+  }
+  .net {
+    padding: 7px 10px;
+    font-size: var(--k-fs-xs);
+  }
+  .addr {
+    padding: 6px 11px 6px 6px;
+    font-size: var(--k-fs-xs);
+  }
+  .connect {
+    padding: 9px 15px;
+  }
+}
+
+/* ---------- bottom tab bar (phones) ---------- */
+.tabbar {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: var(--k-bg);
+    border-top: 1px solid var(--k-line);
+    /* Clears the home indicator on notched phones. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 9px 2px 7px;
+    font-size: 10px;
+    color: var(--k-t2);
+    text-decoration: none;
+    /* Comfortable thumb target even though the label is small. */
+    min-height: 48px;
+    justify-content: center;
+  }
+  .tabOn {
+    color: var(--k-brand);
+  }
+  .tabIcon {
+    font-size: 16px;
+    line-height: 1;
+  }
+}

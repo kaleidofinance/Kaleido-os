@@ -1,0 +1,216 @@
+.wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 22px 20px 70px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s5);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s4);
+}
+.h1 {
+  font-size: var(--k-fs-2xl);
+  font-weight: var(--k-fw-med);
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+
+/* stat strip */
+.strip {
+  background: var(--k-card);
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s4) var(--k-s5);
+  display: flex;
+  flex-wrap: wrap;
+}
+.stat {
+  padding: 0 24px;
+  border-left: 1px solid var(--k-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s1);
+  flex: 1;
+  min-width: 150px;
+}
+.stat:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+.sLabel {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.sVal {
+  font-size: var(--k-fs-xl);
+  letter-spacing: -0.02em;
+}
+
+/* tabs */
+.tabs {
+  display: flex;
+  gap: 7px;
+}
+.tab {
+  background: var(--k-card);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  padding: 9px 17px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--k-t1);
+}
+.tabOn {
+  background: #fff;
+  color: #0d0d0d;
+  font-weight: var(--k-fw-med);
+}
+
+/* table */
+.table {
+  background: var(--k-card);
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s2);
+}
+.thead {
+  display: grid;
+  padding: 10px 14px 6px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.pools .thead,
+.pools .row {
+  grid-template-columns: 1.8fr 1fr 1fr 1fr 0.8fr;
+}
+.tx .thead,
+.tx .row {
+  grid-template-columns: 1.1fr 1.6fr 1fr 0.8fr 1fr;
+}
+.row {
+  display: grid;
+  gap: var(--k-s3);
+  align-items: center;
+  padding: 14px;
+  border-radius: var(--k-r-md);
+}
+.row:hover {
+  background: var(--k-well2);
+}
+.right {
+  text-align: right;
+  justify-self: end;
+}
+
+.pairCell {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  min-width: 0;
+}
+.pair {
+  display: flex;
+  align-items: center;
+}
+.tki {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 600;
+  background: #333;
+  color: var(--k-t2);
+  border: 2px solid var(--k-card);
+}
+.tki + .tki {
+  margin-left: -9px;
+}
+.pairName {
+  font-size: var(--k-fs-base);
+}
+.pairFee {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+
+.badge {
+  font-size: var(--k-fs-xs);
+  padding: 4px 10px;
+  border-radius: var(--k-r-pill);
+  background: var(--k-well2);
+  color: var(--k-t2);
+  white-space: nowrap;
+}
+.badge.agent {
+  background: var(--k-brand-dim);
+  color: var(--k-brand);
+}
+
+.txLink {
+  color: var(--k-t2);
+  text-decoration: none;
+}
+.txLink:hover {
+  color: var(--k-t1);
+  text-decoration: underline;
+}
+
+.empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+}
+.rowSkeleton {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: 14px;
+}
+.skCircle {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--k-well2);
+  flex: none;
+}
+.skLine {
+  height: 14px;
+  border-radius: 8px;
+  background: var(--k-well2);
+  flex: 1;
+}
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .wrap {
+    padding: 16px 14px 60px;
+  }
+  .strip {
+    padding: var(--k-s3) var(--k-s4);
+  }
+  .stat {
+    padding: 0 14px;
+    min-width: 120px;
+  }
+  /* Five columns inside 280px crushes every cell. Scroll the table in its own
+     container instead, so the columns stay legible and the page body never
+     scrolls sideways. */
+  .table {
+    overflow-x: auto;
+  }
+  .pools .thead,
+  .pools .row,
+  .tx .thead,
+  .tx .row {
+    min-width: 560px;
+  }
+}

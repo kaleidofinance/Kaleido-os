@@ -1671,18 +1671,104 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
     /// @param _amount the amount the user want to borrow
     /// @param _interest the percentage the user has agreed to payback
     /// @return _totalRepayment the amount the user is to payback
+    /**
+     * @dev Prices a loan by pro-rating the APR over its actual duration.
+     *
+     *      Previously this applied `_interest` as a flat percentage and ignored
+     *      `_returnDate` entirely, so 10% over 7 days cost the same as 10% over
+     *      two years. That left the marketplace with no comparable price: two
+     *      listings could not be ranked without mentally dividing by term, and
+     *      any displayed "APY" was not one.
+     *
+     *      `_interest` is now an APR in basis points.
+     */
     function _calculateLoanInterest(
         uint256 _returnDate,
         uint256 _amount,
         uint16 _interest
     ) internal view returns (uint256 _totalRepayment) {
-        if (_returnDate < block.timestamp)
+        if (_returnDate <= block.timestamp)
             revert Protocol__DateMustBeInFuture();
-        // Calculate the total repayment amount including interest
-        _totalRepayment =
-            _amount +
-            Utils.calculatePercentage(_amount, _interest);
+
+        uint256 _duration = _returnDate - block.timestamp;
+        if (_duration < Constants.MIN_LOAN_DURATION)
+            revert Protocol__TermTooShort();
+
+        uint256 _interestAmount = (_amount * uint256(_interest) * _duration) /
+            (Constants.BASIS_POINTS * Constants.SECONDS_PER_YEAR);
+
+        // Integer division floors, so a small enough amount or short enough
+        // term would otherwise produce a free loan.
+        if (_interestAmount == 0) revert Protocol__InterestTooSmall();
+
+        _totalRepayment = _amount + _interestAmount;
         return _totalRepayment;
+    }
+
+    /**
+     * @notice Quotes a loan without originating it.
+     * @dev This is what makes the order book sortable: the UI and Luca both
+     *      call it to compare offers on equal terms. Deliberately does not
+     *      apply the duration floor or the zero-interest guard, so a caller can
+     *      display a quote for terms that would be rejected at origination.
+     *
+     * @param _amount Principal.
+     * @param _interest APR in basis points.
+     * @param _returnDate Maturity timestamp.
+     * @return totalRepayment Principal plus pro-rated interest.
+     * @return interestAmount Interest component alone.
+     * @return durationSeconds Term length used for the calculation.
+     */
+    function getQuote(
+        uint256 _amount,
+        uint16 _interest,
+        uint256 _returnDate
+    )
+        external
+        view
+        returns (
+            uint256 totalRepayment,
+            uint256 interestAmount,
+            uint256 durationSeconds
+        )
+    {
+        if (_returnDate <= block.timestamp) return (_amount, 0, 0);
+
+        durationSeconds = _returnDate - block.timestamp;
+        interestAmount =
+            (_amount * uint256(_interest) * durationSeconds) /
+            (Constants.BASIS_POINTS * Constants.SECONDS_PER_YEAR);
+        totalRepayment = _amount + interestAmount;
+    }
+
+    /**
+     * @notice Quotes borrowing `_amount` from an existing listing.
+     * @dev The single call a marketplace row needs to render a comparable
+     *      price, so clients don't have to re-implement the interest formula.
+     */
+    function getListingQuote(
+        uint96 _listingId,
+        uint256 _amount
+    )
+        external
+        view
+        returns (
+            uint256 totalRepayment,
+            uint256 interestAmount,
+            uint256 durationSeconds,
+            uint16 aprBps
+        )
+    {
+        LoanListing storage _listing = _appStorage.loanListings[_listingId];
+        aprBps = _listing.interest;
+
+        if (_listing.returnDate <= block.timestamp) return (_amount, 0, 0, aprBps);
+
+        durationSeconds = _listing.returnDate - block.timestamp;
+        interestAmount =
+            (_amount * uint256(aprBps) * durationSeconds) /
+            (Constants.BASIS_POINTS * Constants.SECONDS_PER_YEAR);
+        totalRepayment = _amount + interestAmount;
     }
 
     /// @dev for getting the gitcoinpoint score

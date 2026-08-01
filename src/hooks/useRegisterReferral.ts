@@ -1,59 +1,59 @@
 "use client"
-import { getKaleidoContract } from "@/config/contracts"
+
 import { useCallback, useState } from "react"
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
-import { toast } from "sonner"
-import { ethers6Adapter } from "thirdweb/adapters/ethers6"
-import { client } from "@/config/client"
 import { isAddress } from "ethers"
-import { ErrorDecoder } from "ethers-decode-error"
-import kaleidoAbi from "@/abi/ProtocolFacet.json"
-import { ethers } from "ethers"
-import { envVars } from "@/constants/envVars"
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
 
-const errorDecoder = ErrorDecoder.create([kaleidoAbi])
-
+/**
+ * Registers the connected address under an upliner.
+ *
+ * The on-chain call is owner-gated, so signing happens server-side in
+ * /api/referral. This hook previously built a signer in the browser from
+ * NEXT_PUBLIC_PRIVATE_KEY, which shipped the Diamond owner key to every
+ * visitor in the JS bundle.
+ */
 export const useRegisterReferral = () => {
   const activeAccount = useActiveAccount()
   const activeChain = useActiveWalletChain()
   const address = activeAccount?.address
 
+  const [isRegistering, setIsRegistering] = useState(false)
+
   const registerUpliner = useCallback(
     async (upliner: string) => {
-      if (!activeChain) {
-        toast.error("Chain not connected")
-        return
-      }
-      if (!activeAccount) {
-        toast.error("invalid account")
-        return
-      }
-      if (!isAddress(upliner)) {
-        toast.error("invalid upliner address")
-        return
-      }
+      if (!activeChain || !address) return
+      if (!isAddress(upliner)) return
+      if (upliner.toLowerCase() === address.toLowerCase()) return
 
-      const provider = new ethers.JsonRpcProvider(envVars.httpRPCab)
-      const wallet = new ethers.Wallet(envVars.privateKey || "", provider)
-      if (!wallet) {
-        toast.error("Signer not available")
-        return
-      }
-      const contract = getKaleidoContract(wallet)
+      setIsRegistering(true)
       try {
-        await contract.registerUpliner.staticCall(upliner, address)
-        const transaction = await contract.registerUpliner(upliner, address)
-        const receipt = transaction.wait()
-        console.log("Upliner Successfully registered Transaction receipt:", receipt)
+        const response = await fetch("/api/referral", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ upliner, downliner: address }),
+        })
+
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          // Referral registration is a background courtesy triggered by a URL
+          // param — a failure shouldn't interrupt the user with a toast.
+          console.error("Referral registration failed:", result?.error ?? response.status)
+          return
+        }
+
+        return result?.status as "registered" | "already_registered" | undefined
       } catch (error) {
-        const err = await errorDecoder.decode(error)
-        console.error("Error registering upliner:", err)
+        console.error("Referral registration failed:", error)
+      } finally {
+        setIsRegistering(false)
       }
     },
-    [activeChain, activeAccount, client],
+    [activeChain, address],
   )
 
   return {
     registerUpliner,
+    isRegistering,
   }
 }

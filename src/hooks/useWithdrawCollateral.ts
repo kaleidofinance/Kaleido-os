@@ -26,7 +26,7 @@ const useWithdrawCollateral = () => {
   const router = useRouter()
 
   return useCallback(
-    async (_tokenCollateralAddress: string, _amountOfCollateral: string) => {
+    async (_tokenCollateralAddress: string, _amountOfCollateral: string, onSuccess?: () => void) => {
       if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK")
 
       if (!activeChain) {
@@ -80,7 +80,10 @@ const useWithdrawCollateral = () => {
           toast.success(`${_amountOfCollateral} successfully withdrawn!`, {
             id: toastId,
           })
-          return router.push("/")
+          // Callers handle their own navigation — this used to redirect to a
+
+          // legacy route that no longer exists.
+          return onSuccess?.()
         } else {
           toast.error("Failed to withdraw collateral.", {
             id: toastId,

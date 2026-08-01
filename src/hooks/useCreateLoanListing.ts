@@ -35,14 +35,21 @@ const useCreateLoanListing = () => {
 
   // Remove the separate state variables - use the prices directly from the hook
 
-  const handleTransactionResult = async (transaction: ethers.Contract, loadingToastId: string | number | undefined) => {
+  const handleTransactionResult = async (
+    transaction: ethers.Contract,
+    loadingToastId: string | number | undefined,
+    onSuccess?: () => void,
+  ) => {
     const receipt = await transaction.wait()
     if (receipt.status) {
       toast.success("Loan order created!", { id: loadingToastId })
       if (address) {
         sendLoanCreatedNotification(address, "lending")
       }
-      router.push("/successful")
+      // Callers handle their own navigation — this used to redirect to a
+
+      // legacy route that no longer exists.
+      onSuccess?.()
     } else {
       toast.error("Transaction failed!", { id: loadingToastId })
     }
@@ -56,6 +63,7 @@ const useCreateLoanListing = () => {
       _returnDate: number,
       _interest: number,
       _loanCurrency: string,
+      onSuccess?: () => void,
     ) => {
       if (!isSupportedChain(chainId)) {
         toast.warning("SWITCH NETWORK")
@@ -146,7 +154,7 @@ const useCreateLoanListing = () => {
             { value: _weiAmount },
           )
 
-          await handleTransactionResult(transaction, loadingToastId)
+          await handleTransactionResult(transaction, loadingToastId, onSuccess)
         } else {
           if (currency === USDC_ADDRESS) {
             if (val === 0 || val < Number(_amount)) {
@@ -196,7 +204,7 @@ const useCreateLoanListing = () => {
             currency,
           )
 
-          await handleTransactionResult(transaction, loadingToastId)
+          await handleTransactionResult(transaction, loadingToastId, onSuccess)
         }
       } catch (error: unknown) {
         // console.error("Error creating loan listing:", error)

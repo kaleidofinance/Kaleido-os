@@ -1,26 +1,68 @@
 /**
  * @type import('hardhat/config').HardhatUserConfig
+ *
+ * Credentials come from the environment. Nothing secret belongs in this file:
+ * the previous version hardcoded a deployer private key and two block-explorer
+ * API keys, and because it is committed they are permanently public. Those keys
+ * must never be reused — generate a fresh deployer offline for mainnet.
+ *
+ * Copy .env.example to .env (already gitignored) before deploying.
  */
 
+require("dotenv").config();
 require("@nomicfoundation/hardhat-toolbox");
-require("@matterlabs/hardhat-zksync");
-require("@matterlabs/hardhat-zksync-upgradable");
+
+/**
+ * zkSync plugins are needed only for Abstract — every other target is plain
+ * EVM and compiles with solc. They are loaded optionally because they pull
+ * git-hosted dependencies (@matterlabs/zksync-telemetry-js, and transitively
+ * @zksync/contracts over git+ssh) that locked-down CI and sandboxed
+ * environments refuse to fetch.
+ *
+ * Loading them optionally means someone deploying to Base or BNB does not need
+ * the zkSync toolchain installed at all. If they are missing, the Abstract
+ * networks below will fail at deploy time with a clear plugin error rather than
+ * taking down the whole config at require time.
+ */
+try {
+  require("@matterlabs/hardhat-zksync");
+  require("@matterlabs/hardhat-zksync-upgradable");
+} catch {
+  console.warn(
+    "[hardhat] zkSync plugins unavailable — EVM targets still work; " +
+      "Abstract (abstractMainnet/abstractTestnet) requires them.",
+  );
+}
+
+/**
+ * Deployer accounts for a network.
+ *
+ * Returns an empty list when no key is configured so that `compile`, `test` and
+ * every read-only task still work without credentials present. Deploying
+ * without a key fails at that point, which is the correct moment to find out.
+ */
+const accounts = () => {
+  const key = process.env.DEPLOYER_PRIVATE_KEY;
+  if (!key) return [];
+  return [key.startsWith("0x") ? key : `0x${key}`];
+};
+
+/** Per-chain RPC override, falling back to a public endpoint. */
+const rpc = (envVar, fallback) => process.env[envVar] || fallback;
 
 module.exports = {
   zksolc: {
     version: "1.5.11",
     compilerSource: "binary",
     settings: {
-      optimizer: {
-        enabled: true,
-        mode: "z",
-      },
+      optimizer: { enabled: true, mode: "z" },
       enableEraVMExtensions: true,
       codegen: "yul",
     },
   },
 
   defaultNetwork: "hardhat",
+
   networks: {
     hardhat: {
       chainId: 31337,
@@ -30,40 +72,102 @@ module.exports = {
       gas: 30000000,
       initialBaseFeePerGas: 0,
     },
-    baseTestnet: {
-      url: "https://sepolia.base.org",
-      chainId: 84532,
-      accounts: [
-        "9e5345ca0415a07573d5b63737e0126382daceb88286d6947055b3d49270c139",
-      ],
-      timeout: 120000,
-    },
+
+    // --- Abstract (zkSync stack — compiled with zksolc, hence zksync: true) ---
     abstractTestnet: {
-      url: "https://api.testnet.abs.xyz",
+      url: rpc("ABSTRACT_TESTNET_RPC", "https://api.testnet.abs.xyz"),
       ethNetwork: "sepolia",
       zksync: true,
       chainId: 11124,
-      accounts: [
-        "9e5345ca0415a07573d5b63737e0126382daceb88286d6947055b3d49270c139",
-      ],
+      accounts: accounts(),
       timeout: 120000,
       verifyURL: "https://api-sepolia.abscan.org/api",
     },
     abstractMainnet: {
-      url: "https://api.mainnet.abs.xyz",
+      url: rpc("ABSTRACT_MAINNET_RPC", "https://api.mainnet.abs.xyz"),
       ethNetwork: "mainnet",
       zksync: true,
       chainId: 2741,
-      accounts: [
-        "9e5345ca0415a07573d5b63737e0126382daceb88286d6947055b3d49270c139",
-      ],
-      timeout: 60000,
+      accounts: accounts(),
+      timeout: 120000,
+      verifyURL: "https://api.abscan.org/api",
+    },
+
+    // --- Ethereum ---
+    sepolia: {
+      url: rpc("SEPOLIA_RPC", "https://rpc.sepolia.org"),
+      chainId: 11155111,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+    ethereum: {
+      url: rpc("ETHEREUM_RPC", "https://eth.merkle.io"),
+      chainId: 1,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+
+    // --- Base ---
+    baseTestnet: {
+      url: rpc("BASE_SEPOLIA_RPC", "https://sepolia.base.org"),
+      chainId: 84532,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+    base: {
+      url: rpc("BASE_RPC", "https://mainnet.base.org"),
+      chainId: 8453,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+
+    // --- BNB Smart Chain ---
+    bscTestnet: {
+      url: rpc("BSC_TESTNET_RPC", "https://data-seed-prebsc-1-s1.bnbchain.org:8545"),
+      chainId: 97,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+    bsc: {
+      url: rpc("BSC_RPC", "https://bsc-dataseed.bnbchain.org"),
+      chainId: 56,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+
+    // --- Robinhood Chain (Arbitrum Orbit L2) ---
+    robinhoodTestnet: {
+      url: rpc("ROBINHOOD_TESTNET_RPC", "https://rpc.testnet.chain.robinhood.com"),
+      chainId: 46630,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+    robinhood: {
+      url: rpc("ROBINHOOD_RPC", "https://rpc.mainnet.chain.robinhood.com"),
+      chainId: 4663,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+
+    // --- Arc (Circle). Testnet only: mainnet has not launched. ---
+    arcTestnet: {
+      url: rpc("ARC_TESTNET_RPC", "https://rpc.testnet.arc.network"),
+      chainId: 5042002,
+      accounts: accounts(),
+      timeout: 120000,
     },
   },
+
   etherscan: {
     apiKey: {
-      abstractTestnet: "TACK2D1RGYX9U7MC31SZWWQ7FCWRYQ96AD",
-      abstractMainnet: "IEYKU3EEM5XCD76N7Y7HF9HG7M9ARZ2H4A",
+      abstractTestnet: process.env.ABSCAN_API_KEY || "",
+      abstractMainnet: process.env.ABSCAN_API_KEY || "",
+      sepolia: process.env.ETHERSCAN_API_KEY || "",
+      mainnet: process.env.ETHERSCAN_API_KEY || "",
+      baseTestnet: process.env.BASESCAN_API_KEY || "",
+      base: process.env.BASESCAN_API_KEY || "",
+      bscTestnet: process.env.BSCSCAN_API_KEY || "",
+      bsc: process.env.BSCSCAN_API_KEY || "",
     },
     customChains: [
       {
@@ -82,71 +186,72 @@ module.exports = {
           browserURL: "https://abscan.org/",
         },
       },
+      {
+        network: "baseTestnet",
+        chainId: 84532,
+        urls: {
+          apiURL: "https://api-sepolia.basescan.org/api",
+          browserURL: "https://sepolia.basescan.org/",
+        },
+      },
+      {
+        network: "robinhoodTestnet",
+        chainId: 46630,
+        urls: {
+          apiURL: "https://explorer.testnet.chain.robinhood.com/api",
+          browserURL: "https://explorer.testnet.chain.robinhood.com/",
+        },
+      },
+      {
+        network: "robinhood",
+        chainId: 4663,
+        urls: {
+          apiURL: "https://robinhoodchain.blockscout.com/api",
+          browserURL: "https://robinhoodchain.blockscout.com/",
+        },
+      },
+      {
+        network: "arcTestnet",
+        chainId: 5042002,
+        urls: {
+          apiURL: "https://testnet.arcscan.app/api",
+          browserURL: "https://testnet.arcscan.app/",
+        },
+      },
     ],
   },
+
   solidity: {
     compilers: [
-      {
-        version: "0.8.9",
-        settings: {
-          optimizer: { enabled: true, runs: 200 },
-        },
-      },
-      {
-        version: "0.8.20",
-        settings: {
-          optimizer: { enabled: true, runs: 200 },
-        },
-      },
-      {
-        version: "0.8.24",
-        settings: {
-          optimizer: { enabled: true, runs: 200 },
-        },
-      },
-      {
-        version: "0.5.16",
-        settings: {
-          optimizer: { enabled: true, runs: 200 },
-        },
-      },
-      {
-        version: "0.6.6",
-        settings: {
-          optimizer: { enabled: true, runs: 200 },
-        },
-      },
-      {
-        version: "0.6.12",
-        settings: {
-          optimizer: { enabled: true, runs: 200 },
-        },
-      },
+      { version: "0.8.9", settings: { optimizer: { enabled: true, runs: 200 } } },
+      { version: "0.8.20", settings: { optimizer: { enabled: true, runs: 200 } } },
+      { version: "0.8.24", settings: { optimizer: { enabled: true, runs: 200 } } },
+      { version: "0.5.16", settings: { optimizer: { enabled: true, runs: 200 } } },
+      { version: "0.6.6", settings: { optimizer: { enabled: true, runs: 200 } } },
+      { version: "0.6.12", settings: { optimizer: { enabled: true, runs: 200 } } },
     ],
     overrides: {
       "@aragon/os/contracts/lib/math/SafeMath.sol": {
         version: "0.4.24",
-        settings: { optimizer: { enabled: false } }
+        settings: { optimizer: { enabled: false } },
       },
       "contracts/KLDStake/Token/stKLD.sol": {
         version: "0.8.9",
-        settings: { optimizer: { enabled: true, runs: 200 } }
+        settings: { optimizer: { enabled: true, runs: 200 } },
       },
       "contracts/dex/test/WETH9.sol": {
         version: "0.5.16",
-        settings: { optimizer: { enabled: true, runs: 200 } }
-      }
-    }
+        settings: { optimizer: { enabled: true, runs: 200 } },
+      },
+    },
   },
+
   paths: {
     sources: "./contracts",
     tests: "./test",
     cache: "./cache",
-    artifacts: "./artifacts"
+    artifacts: "./artifacts",
   },
-  // Exclude KLDStake contracts from compilation (they have Solidity version conflicts)
-  // We only need stablecoin contracts for this deployment
-  mocha: {
-    timeout: 40000
-  },
+
+  mocha: { timeout: 40000 },
 };

@@ -1,5 +1,6 @@
 const { getSelectors, FacetCutAction } = require("./libraries/diamond.js");
-const { ethers } = require("hardhat");
+const hre = require("hardhat");
+const { ethers } = hre;
 
 async function deployDiamond() {
   const accounts = await ethers.getSigners();
@@ -10,15 +11,25 @@ async function deployDiamond() {
   const contractOwner = accounts[0];
   console.log("👑 Deploying contract with account:", contractOwner.address);
 
+  /**
+   * Transaction overrides, applied only on zkSync.
+   *
+   * Every hardcoded value in this script was tuned for Abstract. On an EVM
+   * chain a fixed gasLimit is at best redundant and at worst wrong in both
+   * directions — too high and the transaction cannot be mined, too low and it
+   * runs out of gas — while a fixed 40 gwei maxFeePerGas can strand a
+   * transaction the moment the network is busier than that.
+   *
+   * Returning {} on EVM chains lets the provider estimate gas and price from
+   * current conditions, which is correct on all five of them.
+   */
+  const zk = Boolean(hre.network.config.zksync);
+  const opts = (overrides) => (zk ? overrides : {});
+
   // Deploy DiamondCutFacet
   console.log("Deploying DiamondCutFacet...");
   const DiamondCutFacet = await ethers.getContractFactory("DiamondCutFacet");
-  const diamondCutFacet = await DiamondCutFacet.deploy({
-    gasLimit: 3000000,
-    // type: 2, // EIP-1559 transaction type
-    // maxFeePerGas: ethers.parseUnits('40', 'gwei'),
-    // maxPriorityFeePerGas: ethers.parseUnits('40', 'gwei'),
-  });
+  const diamondCutFacet = await DiamondCutFacet.deploy(opts({ gasLimit: 3000000 }));
   await diamondCutFacet.waitForDeployment();
   console.log("DiamondCutFacet deployed:", await diamondCutFacet.getAddress());
 
@@ -28,12 +39,7 @@ async function deployDiamond() {
   const diamond = await Diamond.deploy(
     contractOwner.address,
     await diamondCutFacet.getAddress(),
-    {
-      gasLimit: 3000000,
-      // type: 2,
-      // maxFeePerGas: ethers.parseUnits('40', 'gwei'),
-      // maxPriorityFeePerGas: ethers.parseUnits('40', 'gwei'),
-    },
+    opts({ gasLimit: 3000000 }),
   );
   await diamond.waitForDeployment();
   console.log("Diamond deployed:", await diamond.getAddress());
@@ -41,18 +47,29 @@ async function deployDiamond() {
   // Deploy DiamondInit
   console.log("Deploying Diamond Init Contract...");
   const DiamondInit = await ethers.getContractFactory("DiamondInit");
-  const diamondInit = await DiamondInit.deploy({
-    gasLimit: 3000000,
-    type: 2,
-    maxFeePerGas: ethers.parseUnits("40", "gwei"),
-    maxPriorityFeePerGas: ethers.parseUnits("40", "gwei"),
-  });
+  const diamondInit = await DiamondInit.deploy(
+    opts({
+      gasLimit: 3000000,
+      type: 2,
+      maxFeePerGas: ethers.parseUnits("40", "gwei"),
+      maxPriorityFeePerGas: ethers.parseUnits("40", "gwei"),
+    }),
+  );
   await diamondInit.waitForDeployment();
   console.log("DiamondInit deployed:", await diamondInit.getAddress());
 
   // Deploy Facets
   console.log("Deploying Diamond Facets...");
-  const FacetNames = ["DiamondLoupeFacet", "OwnershipFacet", "ProtocolFacet"];
+  // AgentPermissionFacet is what bounds Luca on-chain: per-agent spend budgets
+  // and token allowlists that hold even if someone bypasses the frontend. It
+  // was written but never cut into the diamond, so it must be in the list for a
+  // fresh deploy or the agent has no on-chain limits at all.
+  const FacetNames = [
+    "DiamondLoupeFacet",
+    "OwnershipFacet",
+    "ProtocolFacet",
+    "AgentPermissionFacet",
+  ];
   const cut = [];
 
   for (const FacetName of FacetNames) {
@@ -62,28 +79,26 @@ async function deployDiamond() {
       "0x5B9853Aa298CEc2AB5F17237817b863f1DCeBAF9";
     const pythPriceOracleAddress = "0x0d50f180dc8ec83ffe820cdf1b142C77Af0Bf6aE";
     const kaleidovaultAddress = "0x1FDD717733CDf231C8E7e27def75A849673F9293";
-    // Special handling for ProtocolFacet
-    const deploymentOptions =
-      FacetName === "ProtocolFacet"
-        ? {
-            //  pythPriceOracleAddress: pythPriceOracleAddress,
-            gasLimit: 400000000, // Significantly increased gas limit
-            // type: 2,
-            // maxFeePerGas: ethers.parseUnits('40', 'gwei'),
-            // maxPriorityFeePerGas: ethers.parseUnits('40', 'gwei'),
-            // customData: {
-            //   gasPerPubdataByteLimit: 80000
-            // }
-          }
-        : {
-            gasLimit: 50000000,
-            // type: 2,
-            // maxFeePerGas: ethers.parseUnits('40', 'gwei'),
-            // maxPriorityFeePerGas: ethers.parseUnits('40', 'gwei'),
-            // customData: {
-            //   gasPerPubdataByteLimit: 80000
-            // }
-          };
+    /**
+     * Gas limits are zkSync-only.
+     *
+     * The previous values — 400,000,000 for ProtocolFacet and 50,000,000 for
+     * the rest — are both larger than an entire Ethereum block (~30,000,000).
+     * On Sepolia, Base, BNB, Robinhood or Arc such a transaction can never be
+     * included; the deploy fails before it starts. They were tuned for
+     * Abstract, where gas accounting is completely different.
+     *
+     * On EVM chains we omit gasLimit entirely and let the provider estimate,
+     * which is both correct and self-adjusting. If an estimate reverts, that
+     * is real signal — usually a contract over the EIP-170 size limit — and
+     * should be fixed rather than papered over with a bigger number. Run
+     * scripts/check-contract-sizes.js first.
+     */
+    const deploymentOptions = hre.network.config.zksync
+      ? FacetName === "ProtocolFacet"
+        ? { gasLimit: 400000000 }
+        : { gasLimit: 50000000 }
+      : {};
 
     try {
       console.log(`Deploying ${FacetName} with options:`, deploymentOptions);
@@ -147,13 +162,8 @@ async function deployDiamond() {
     cut,
     await diamondInit.getAddress(),
     functionCall,
-    {
-      gasLimit: 40000000,
-      // type: 2,
-      // maxFeePerGas: ethers.parseUnits('40', 'gwei'),
-      // maxPriorityFeePerGas: ethers.parseUnits('40', 'gwei'),
-      // customData: { gasPerPubdataByteLimit: 80000 }
-    },
+    // 40,000,000 also exceeds an Ethereum block. zkSync only; estimate elsewhere.
+    hre.network.config.zksync ? { gasLimit: 40000000 } : {},
   );
   console.log("Diamond cut tx: ", tx.hash);
 

@@ -71,9 +71,17 @@ const useCreateLendingRequest = () => {
     return true
   }
 
-  const handleTransactionResult = async (transaction: any, loadingToastId: string | number | undefined) => {
+  const handleTransactionResult = async (
+    transaction: any,
+    loadingToastId: string | number | undefined,
+    onSuccess?: () => void,
+  ) => {
     const receipt = await transaction.wait()
 
+    // Callers handle their own navigation — this used to redirect to a
+
+
+    // legacy route that no longer exists.
     if (receipt.status && SUPPORTED_CHAIN_ID[0] == chainId) {
       toast.success("Loan Pool created!", {
         id: loadingToastId,
@@ -81,7 +89,7 @@ const useCreateLendingRequest = () => {
       if (address) {
         sendLoanCreatedNotification(address, "borrow")
       }
-      return router.push("/successful")
+      return onSuccess?.()
     } else if (receipt.status && chainId !== SUPPORTED_CHAIN_ID[0]) {
       toast.success("Loan Pool created, kindly wait for few minutes!", {
         id: loadingToastId,
@@ -89,7 +97,7 @@ const useCreateLendingRequest = () => {
       if (address) {
         sendLoanCreatedNotification(address, "borrow")
       }
-      return router.push("/successful")
+      return onSuccess?.()
     } else {
       toast.error("Pool creation failed!", {
         id: loadingToastId,
@@ -132,7 +140,13 @@ const useCreateLendingRequest = () => {
   }
 
   return useCallback(
-    async (_amount: string, _interest: number, _returnDate: number, _loanCurrency: string) => {
+    async (
+      _amount: string,
+      _interest: number,
+      _returnDate: number,
+      _loanCurrency: string,
+      onSuccess?: () => void,
+    ) => {
       if (!isSupportedChain(chainId)) {
         toast.warning("SWITCH NETWORK", { duration: 1000 })
         return
@@ -191,7 +205,7 @@ const useCreateLendingRequest = () => {
         await contract.createLendingRequest.staticCall(_weiAmount, _basisPointInterest, _returnDate, currency)
         const transaction = await contract.createLendingRequest(_weiAmount, _basisPointInterest, _returnDate, currency)
 
-        await handleTransactionResult(transaction, loadingToastId)
+        await handleTransactionResult(transaction, loadingToastId, onSuccess)
       } catch (error: unknown) {
         // console.error("Error creating lending request:", error)
         await handleError(error, loadingToastId)

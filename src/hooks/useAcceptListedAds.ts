@@ -34,7 +34,7 @@ const useAcceptListedAds = () => {
   const router = useRouter()
 
   return useCallback(
-    async (_orderId: number, _amount: string, tokenType: string) => {
+    async (_orderId: number, _amount: string, tokenType: string, onSuccess?: () => void) => {
       if (!activeAccount || !activeChain) {
         toast.warning("Wallet not connected")
         return
@@ -71,7 +71,10 @@ const useAcceptListedAds = () => {
 
           if (receipt.status) {
             toast.success("You accepted listed ads successfully!", { id: loadingToastId })
-            router.push("/")
+            // Callers handle their own navigation — this used to redirect to a
+
+            // legacy route that no longer exists.
+            onSuccess?.()
             return
           }
 

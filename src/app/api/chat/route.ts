@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getProvider } from '@/lib/ai';
+import { runAgent } from '@/lib/ai/agent';
 
 // The AI Engine API URL and timeout (set in environment variables)
 const AI_ENGINE_API_URL = process.env.AI_ENGINE_API_URL || 'http://127.0.0.1:8000';
@@ -7,7 +9,39 @@ const AI_ENGINE_TIMEOUT = parseInt(process.env.AI_ENGINE_TIMEOUT || '300000', 10
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
+
+    // --- Provider-agnostic agent loop -----------------------------------
+    // When an AI key is configured (Claude, OpenAI, …) Luca runs here: read
+    // tools ground the reasoning, execute tools become the signable plan the
+    // frontend renders via PlanReview. Falls through to the legacy AI-engine
+    // proxy below when no key is set, so existing deployments are unaffected.
+    const provider = getProvider();
+    if (provider) {
+      try {
+        const result = await runAgent(provider, {
+          message: String(body.message ?? ""),
+          address: body.address,
+          chainId: body.chainId,
+          limits: body.limits,
+        });
+        return NextResponse.json({
+          response: result.text,
+          context: {
+            plan: result.plan,
+            provider: result.provider,
+            model: result.model,
+          },
+        });
+      } catch (aiError: any) {
+        console.error("[chat] provider failed:", aiError);
+        return NextResponse.json({
+          response:
+            "I couldn't complete that just now — the reasoning service returned an error. Try again shortly.",
+          context: { status: "provider_error" },
+        });
+      }
+    }
+
     // Check if AI Engine API is available
     try {      // Forward the request to the AI Engine API
       const response = await fetch(`${AI_ENGINE_API_URL}/chat`, {

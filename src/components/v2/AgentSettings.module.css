@@ -1,0 +1,224 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: 86vh;
+  background: var(--k-card);
+  border-radius: var(--k-r-xl);
+  box-shadow: var(--k-shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  padding: 16px 18px 12px;
+  flex: none;
+}
+.title {
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+}
+.x {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  font-size: var(--k-fs-base);
+  display: grid;
+  place-items: center;
+}
+.x:hover {
+  background: var(--k-well2);
+  color: var(--k-t1);
+}
+
+.body {
+  padding: 0 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s5);
+}
+.lede {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+.sectionTitle {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-s3);
+}
+.fieldLabel {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+}
+.fieldInput {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--k-well);
+  border-radius: var(--k-r-sm);
+  padding: 8px 12px;
+  flex: none;
+}
+.fieldInput input {
+  width: 68px;
+  border: 0;
+  background: none;
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  outline: none;
+  text-align: right;
+}
+.fieldSuffix {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--k-fs-sm);
+}
+.toggle {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--k-well2);
+  position: relative;
+  cursor: pointer;
+  border: 0;
+  flex: none;
+}
+.toggle i {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--k-t2);
+  transition: left 0.15s;
+}
+.toggleOn {
+  background: var(--k-brand);
+}
+.toggleOn i {
+  left: 21px;
+  background: var(--k-brand-fg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toggle i {
+    transition: none;
+  }
+}
+
+.delegate {
+  background: var(--k-well);
+  border-radius: var(--k-r-md);
+  padding: 14px 16px;
+}
+.delegateBody {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.delegateInput {
+  width: 100%;
+  background: var(--k-bg);
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-sm);
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  padding: 10px 12px;
+  outline: none;
+  margin-bottom: 10px;
+}
+.delegateInput:focus {
+  border-color: var(--k-brand);
+}
+.delegateInput::placeholder {
+  color: var(--k-t3);
+}
+.delegateBtn {
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 10px 16px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.delegateBtn:hover:not(:disabled) {
+  background: var(--k-brand-hover);
+}
+.delegateBtn:disabled {
+  background: var(--k-well2);
+  color: var(--k-t3);
+  cursor: not-allowed;
+}
+.delegateNote {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  margin: 10px 0 0;
+  line-height: 1.45;
+}
+
+.footer {
+  padding: 14px 18px 18px;
+  flex: none;
+}
+.done {
+  width: 100%;
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  border: 0;
+  font: inherit;
+  font-size: 16px;
+  font-weight: var(--k-fw-med);
+  padding: 14px;
+  border-radius: var(--k-r-md);
+  cursor: pointer;
+}
+.done:hover {
+  background: var(--k-brand-hover);
+}

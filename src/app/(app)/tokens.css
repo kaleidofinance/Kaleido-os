@@ -1,0 +1,167 @@
+/* ============================================================
+ * Kaleido v2 — design tokens
+ * ============================================================
+ * The system derived from the mockups: Uniswap's app craft
+ * (rounded cards, pill buttons, generous type, no monospace,
+ * invisible borders) in Kaleido's palette (green + orange, not
+ * magenta).
+ *
+ * This file is intentionally separate from src/app/tokens.css.
+ * That one is the interim skin the current dashboard still uses;
+ * its token names (--surface, --accent, --text-primary) differ.
+ * The two coexist during migration — the old one is removed when
+ * the last legacy page is replaced.
+ *
+ * Two rules the palette enforces, because they were the whole
+ * point of the design review:
+ *
+ *   1. TWO GREENS, never confused. --brand (emerald, teal-leaning)
+ *      is a FILL and appears only on chrome: the logo and the one
+ *      primary action per view. --pos (grass, yellow-leaning) is
+ *      TEXT and appears only in numeric columns. They are ~23° of
+ *      hue apart and never share a zone, so a green button and a
+ *      green P&L figure never read as the same thing.
+ *
+ *   2. THE ACCENT IS RARE. Brand green shows up two or three times
+ *      on a page, like Uniswap's pink. Status labels are neutral;
+ *      only genuine problems earn orange or red.
+ * ============================================================ */
+
+.kaleido-v2 {
+  /* --- neutrals: warm-black ground, not pure #000 --- */
+  --k-bg: #0d0d0d;
+  --k-card: #1b1b1b;
+  --k-well: #141414;
+  --k-well2: #242424;
+  --k-hover: #2e2e2e;
+  --k-line: rgba(255, 255, 255, 0.07);
+  --k-line2: rgba(255, 255, 255, 0.12);
+
+  --k-t1: #ffffff;
+  --k-t2: #9b9b9b;
+  --k-t3: #5e5e5e;
+
+  /* --- brand green: FILL, chrome only (hue ~164) --- */
+  --k-brand: #00b383;
+  --k-brand-hover: #0ac795;
+  --k-brand-dim: rgba(0, 179, 131, 0.13);
+  --k-brand-fg: #04170f; /* text on a brand fill */
+
+  /* --- data green: TEXT, numbers only (hue ~141) --- */
+  --k-pos: #4cc46a;
+  --k-neg: #ff5f52;
+
+  /* --- secondary accent: attention without alarm --- */
+  --k-alt: #f0803c;
+  --k-alt-dim: rgba(240, 128, 60, 0.14);
+
+  /* --- danger: destructive + hard failure --- */
+  --k-danger: #ff5f52;
+  --k-danger-dim: rgba(255, 95, 82, 0.14);
+
+  /* --- per-chain identity. Used for the badge on token icons and
+     the network selector. Neutral metadata — never a semantic. --- */
+  --k-chain-abstract: #00b383;
+  --k-chain-base: #0052ff;
+  --k-chain-arbitrum: #12aaff;
+  --k-chain-polygon: #8247e5;
+  --k-chain-bsc: #f0b90b;
+  --k-chain-ethereum: #627eea;
+
+  /* --- radii: Uniswap's generous scale --- */
+  --k-r-sm: 12px; /* inputs, small controls */
+  --k-r-md: 16px; /* buttons, inner wells */
+  --k-r-lg: 20px; /* cards, table containers */
+  --k-r-xl: 24px; /* the swap/agent card, modals */
+  --k-r-pill: 999px; /* nav pills, chips, primary buttons */
+
+  /* --- type scale: 6 sizes, nothing between. Weight 485 is the
+     Uniswap-like soft body weight; 535 is its "medium". --- */
+  --k-fs-xs: 13px;
+  --k-fs-sm: 14px;
+  --k-fs-base: 16px;
+  --k-fs-lg: 19px;
+  --k-fs-xl: 22px;
+  --k-fs-2xl: 30px;
+  --k-fs-hero: 52px;
+  --k-fw-body: 485;
+  --k-fw-med: 535;
+
+  /* --- spacing --- */
+  --k-s1: 4px;
+  --k-s2: 8px;
+  --k-s3: 12px;
+  --k-s4: 16px;
+  --k-s5: 20px;
+  --k-s6: 26px;
+  --k-s7: 34px;
+
+  /* --- elevation. Cards sit on the ground by contrast, not shadow;
+     shadow is reserved for things that float (modals, toasts). --- */
+  --k-shadow-pop: 0 12px 30px rgba(0, 0, 0, 0.45);
+  --k-shadow-modal: 0 20px 50px rgba(0, 0, 0, 0.5);
+
+  --k-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* Neutralise the global html{zoom:0.85} hack for the v2 subtree
+     without touching the legacy app. 1 / 0.85 ≈ 1.176. Removed once
+     the global bug is deleted (when legacy pages are gone). */
+  --k-unzoom: 1.17647;
+}
+
+/* Light theme. The mockups commit to dark, but a stablecoin app
+   ships light eventually; defining it now keeps the door open and
+   forces the brand green to a value with contrast on white. */
+.kaleido-v2[data-theme="light"] {
+  --k-bg: #ffffff;
+  --k-card: #ffffff;
+  --k-well: #f9f9f9;
+  --k-well2: #f0f0f0;
+  --k-hover: #ebebeb;
+  --k-line: rgba(19, 19, 19, 0.08);
+  --k-line2: rgba(19, 19, 19, 0.14);
+
+  --k-t1: #131313;
+  --k-t2: #6d7873;
+  --k-t3: #9aa39e;
+
+  --k-brand: #12a866; /* #00b383 has no contrast on white */
+  --k-brand-hover: #0e8f57;
+  --k-brand-dim: rgba(18, 168, 102, 0.1);
+  --k-brand-fg: #ffffff;
+
+  --k-pos: #0c8911;
+  --k-neg: #e01a2b;
+  --k-alt: #e2650f;
+  --k-alt-dim: rgba(226, 101, 15, 0.1);
+  --k-danger: #e01a2b;
+  --k-danger-dim: rgba(224, 26, 43, 0.08);
+
+  --k-shadow-pop: 0 12px 30px rgba(19, 19, 19, 0.1);
+  --k-shadow-modal: 0 20px 50px rgba(19, 19, 19, 0.12);
+}
+
+/* ------------------------------------------------------------------
+ * Base element styling for the v2 subtree. Scoped to .kaleido-v2 so
+ * none of it leaks into the legacy app.
+ * ------------------------------------------------------------------ */
+.kaleido-v2 {
+  background: var(--k-bg);
+  color: var(--k-t1);
+  font-family: var(--k-font);
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-body);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+@media screen and (min-width: 1024px) {
+  .kaleido-v2 {
+    zoom: var(--k-unzoom);
+  }
+}
+
+.kaleido-v2 .tabular {
+  font-variant-numeric: tabular-nums;
+}

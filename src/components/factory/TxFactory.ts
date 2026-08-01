@@ -20,16 +20,16 @@ const useTxFactory = () => {
         toast.success("100 USDC claimed successfully!", {
           id: loadingToastId,
           action: {
-            label: "Create Order",
-            onClick: () => router.push("/create-order"),
+            label: "Post an offer",
+            onClick: () => router.push("/borrow"),
           },
         })
       } else {
         toast.success("10,000 KLD claimed successfully!", {
           id: loadingToastId,
           action: {
-            label: "Create Order",
-            onClick: () => router.push("/create-order"),
+            label: "Post an offer",
+            onClick: () => router.push("/borrow"),
           },
         })
       }
