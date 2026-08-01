@@ -4,8 +4,10 @@
  * Target: Abstract Testnet (Chain ID: 11124)
  */
 
-const { ethers } = require("hardhat");
+const hre = require("hardhat");
+const { ethers } = hre;
 const fs = require("fs");
+const path = require("path");
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -26,14 +28,35 @@ async function main() {
   const factoryAddress = await factory.getAddress();
   console.log("✅ Factory deployed at:", factoryAddress);
 
-  // Pool init code hash is a constant — fetch as property (ZKsync deploys may not expose it as a function)
-  let poolInitCodeHash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54";
-  try {
-    poolInitCodeHash = await factory.POOL_INIT_CODE_HASH();
-  } catch (_) {
-    console.log("   Pool init code hash (constant):", poolInitCodeHash);
+  // Pool init code hash. This is the keccak of the pool's creation bytecode,
+  // and it is compiler-specific: zksolc (Abstract) and solc (every other
+  // chain) produce different bytecode from identical source. PoolAddress.sol
+  // hardcodes it, and the periphery authenticates swap callbacks against an
+  // address derived from it — so a stale value does not fail here, it fails at
+  // the first swap. Derive it from this build rather than trusting a literal.
+  const poolArtifact = await hre.artifacts.readArtifact("KaleidoSwapV3Pool");
+  const poolInitCodeHash = ethers.keccak256(poolArtifact.bytecode);
+  console.log("   Pool init code hash (from this build):", poolInitCodeHash);
+
+  if (!hre.network.config.zksync) {
+    // EVM targets: the constant must agree with what we just compiled.
+    // On zkSync the comparison is meaningless — CREATE2 derivation differs
+    // there, so pools must be resolved via factory.getPool() regardless.
+    const src = fs.readFileSync(
+      path.join(__dirname, "..", "contracts", "dex-v3", "periphery", "libraries", "PoolAddress.sol"),
+      "utf8",
+    );
+    const declared = (src.match(/POOL_INIT_CODE_HASH\s*=\s*(0x[0-9a-fA-F]{64})/) || [])[1];
+    if (declared && declared.toLowerCase() !== poolInitCodeHash.toLowerCase()) {
+      throw new Error(
+        `POOL_INIT_CODE_HASH mismatch on ${hre.network.name}.\n` +
+          `  PoolAddress.sol declares ${declared}\n` +
+          `  this build produces      ${poolInitCodeHash}\n` +
+          "Update the constant, recompile, and redeploy — otherwise every pool\n" +
+          "address the router and position manager derive will be wrong.",
+      );
+    }
   }
-  console.log("   Pool init code hash:", poolInitCodeHash);
 
   // 3. Deploy SwapRouter
   console.log("\n📦 2. Deploying SwapRouter...");
