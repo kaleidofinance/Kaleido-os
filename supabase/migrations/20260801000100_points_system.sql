@@ -1,7 +1,7 @@
 -- Kaleido points system.
 -- Spec: docs/points-system.md
 --
--- Two design constraints drive the shape of this schema:
+-- Three design constraints drive the shape of this schema:
 --
 -- 1. NEW EARNABLE PRODUCTS MUST NOT REQUIRE A MIGRATION. Perp trading, a
 --    launchpad, and the on/off-ramp are all planned. Sources therefore live in
@@ -11,6 +11,13 @@
 -- 2. POINTS ARE NEVER WRITTEN BY A CLIENT. Every table here is service-role
 --    write, public read. The browser reads point_balances and the leaderboard
 --    view; it can touch nothing else.
+--
+-- 3. NOTHING HERE ASSUMES A PARTICULAR CONTRACT DEPLOYMENT. The protocol is
+--    being rewritten and redeployed across six chains, so points are keyed by
+--    (chain_id, source) and valued from an independent price source rather
+--    than by calling the protocol's own getUsdValue. A redeploy must not
+--    invalidate a season of points, and the same wallet can earn on several
+--    chains at once.
 
 -- ---------------------------------------------------------------------------
 -- Seasons
@@ -28,6 +35,23 @@ create table if not exists public.point_seasons (
   supply_budget numeric,
   frozen_at     timestamptz,
   created_at    timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
+-- Chain registry
+-- ---------------------------------------------------------------------------
+
+-- Mirrors src/constants/chains.ts. Chains are data, not an enum, for the same
+-- reason sources are: the protocol deploys to more of them over time, and a
+-- chain can be earning on mainnet while still disabled for points.
+create table if not exists public.point_chains (
+  chain_id   int  primary key,
+  label      text not null,
+  enabled    boolean not null default false,
+  -- Multiplier on everything earned on this chain. Lets a new deployment be
+  -- boosted to pull liquidity across without rewriting any source rate.
+  multiplier numeric not null default 1.0,
+  created_at timestamptz not null default now()
 );
 
 -- ---------------------------------------------------------------------------
@@ -88,15 +112,20 @@ comment on column public.point_source_rates.multiplier_action_limit is
 create table if not exists public.point_snapshots (
   id           bigserial   primary key,
   wallet       text        not null,
+  chain_id     int         not null references public.point_chains(chain_id),
   source_slug  text        not null references public.point_sources(slug),
   usd_value    numeric     not null check (usd_value >= 0),
+  -- Kept alongside usd_value because a token without a reliable USD price —
+  -- KLD before TGE, for one — still has to accrue in its own units.
+  raw_amount   numeric,
+  raw_symbol   text,
   block_number bigint      not null,
   taken_at     timestamptz not null,
-  unique (wallet, source_slug, block_number)
+  unique (wallet, chain_id, source_slug, block_number)
 );
 
 create index if not exists point_snapshots_wallet_idx
-  on public.point_snapshots (wallet, source_slug, taken_at desc);
+  on public.point_snapshots (wallet, chain_id, source_slug, taken_at desc);
 
 -- Derived accrual. Append-only: a mistake is corrected by writing a
 -- compensating row, never by editing history. A points program whose past can
@@ -104,6 +133,7 @@ create index if not exists point_snapshots_wallet_idx
 create table if not exists public.point_epochs (
   id           bigserial   primary key,
   wallet       text        not null,
+  chain_id     int         not null references public.point_chains(chain_id),
   source_slug  text        not null references public.point_sources(slug),
   season       int         not null references public.point_seasons(id),
   epoch_start  timestamptz not null,
@@ -112,7 +142,7 @@ create table if not exists public.point_epochs (
   points       numeric     not null,
   created_at   timestamptz not null default now(),
   check (epoch_end > epoch_start),
-  unique (wallet, source_slug, epoch_start)
+  unique (wallet, chain_id, source_slug, epoch_start)
 );
 
 create index if not exists point_epochs_wallet_season_idx
@@ -129,10 +159,14 @@ create table if not exists public.point_actions (
   season             int         not null references public.point_seasons(id),
 
   -- The whole anti-replay story. One transaction, one credit, forever.
-  tx_hash            text        not null unique,
-  chain_id           int         not null,
+  -- Unique per chain, not globally: the same hash can legitimately exist on
+  -- two chains, and a replay across chains must not be silently credited twice
+  -- nor silently dropped.
+  tx_hash            text        not null,
+  chain_id           int         not null references public.point_chains(chain_id),
 
-  -- Server-derived via the Diamond's getUsdValue. Never client-supplied.
+  -- Server-derived from an independent price feed, never client-supplied and
+  -- never read back from the protocol's own oracle — see header note 3.
   usd_value          numeric     not null check (usd_value >= 0),
   multiplier_applied numeric     not null default 1.0,
   points             numeric     not null,
@@ -142,7 +176,9 @@ create table if not exists public.point_actions (
 
   -- Not nullable on purpose: a row only exists once the server has fetched
   -- the receipt and confirmed the transaction really did what it claims.
-  verified_at        timestamptz not null default now()
+  verified_at        timestamptz not null default now(),
+
+  unique (chain_id, tx_hash)
 );
 
 create index if not exists point_actions_wallet_day_idx
@@ -207,6 +243,7 @@ where sybil_flag is null;
 -- ---------------------------------------------------------------------------
 
 alter table public.point_seasons       enable row level security;
+alter table public.point_chains        enable row level security;
 alter table public.point_sources       enable row level security;
 alter table public.point_source_rates  enable row level security;
 alter table public.point_snapshots     enable row level security;
@@ -217,6 +254,7 @@ alter table public.agent_usage_daily   enable row level security;
 
 -- Readable: the program has to be publicly auditable to be believed.
 create policy "seasons readable"  on public.point_seasons      for select using (true);
+create policy "chains readable"   on public.point_chains       for select using (true);
 create policy "sources readable"  on public.point_sources      for select using (true);
 create policy "rates readable"    on public.point_source_rates for select using (true);
 create policy "balances readable" on public.point_balances     for select using (true);
@@ -232,6 +270,7 @@ create policy "balances readable" on public.point_balances     for select using 
 -- upsert into `kaleido` (useUpdateTable.ts sets usernames) and break profiles.
 revoke insert, update, delete on
   public.point_seasons,
+  public.point_chains,
   public.point_sources,
   public.point_source_rates,
   public.point_snapshots,
@@ -248,6 +287,23 @@ from anon, authenticated;
 insert into public.point_seasons (id, label, starts_at)
 values (1, 'Season 1 — pre-TGE', now())
 on conflict (id) do nothing;
+
+-- Chains mirror src/constants/chains.ts. All start disabled: points switch on
+-- per chain only once that chain's contracts are deployed and indexed, which
+-- is deliberately independent of whether the app can already trade there.
+insert into public.point_chains (chain_id, label, enabled, multiplier) values
+  (2741,    'Abstract',              false, 1.0),
+  (11124,   'Abstract Testnet',      false, 1.0),
+  (1,       'Ethereum',              false, 1.0),
+  (11155111,'Sepolia',               false, 1.0),
+  (8453,    'Base',                  false, 1.0),
+  (84532,   'Base Sepolia',          false, 1.0),
+  (56,      'BNB Smart Chain',       false, 1.0),
+  (97,      'BNB Smart Chain Testnet', false, 1.0),
+  (4663,    'Robinhood Chain',       false, 1.0),
+  (46630,   'Robinhood Chain Testnet', false, 1.0),
+  (5042002, 'Arc Testnet',           false, 1.0)
+on conflict (chain_id) do nothing;
 
 -- Live surfaces. Three trade modes (limit, buy, sell) are "coming soon" stubs
 -- and are registered below as disabled rather than omitted, so turning them on
