@@ -6,6 +6,7 @@ import { ABSTRACT_TOKENS } from "@/constants/tokens";
 import { supabase } from "@/lib/supabase/supabaseClient";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import { fetchOmniAssetBalance } from "@/constants/utils/omniChainBalances";
+import { getBridgeQuote } from "./bridgeQuotes";
 
 /**
  * Server-side execution of Luca's READ tools.
@@ -229,7 +230,7 @@ async function getChains(args: Json): Promise<Json> {
         byChain.length === 0
           ? "No balance found for this asset on any indexed chain."
           : byChain.length > 1
-            ? "Holdings span multiple chains. Kaleido cannot execute a bridge itself — if a plan needs one, say the bridge step is manual and describe it rather than proposing it as a signable action."
+            ? "Holdings span multiple chains. Call getBridgeRoute for the real cost and time of moving them. Kaleido still cannot execute a bridge itself, so present it as a manual step the user completes with the provider, never as a signable action."
             : "All holdings for this asset are on a single chain.",
     };
   } catch (err) {
@@ -237,11 +238,27 @@ async function getChains(args: Json): Promise<Json> {
   }
 }
 
+/**
+ * Bridge quote. Kaleido cannot execute the bridge, so this is strictly a read:
+ * it tells the user what a move would cost and who would perform it.
+ */
+async function getBridgeRoute(args: Json): Promise<Json> {
+  const result = await getBridgeQuote({
+    fromChain: String(args.fromChain ?? ""),
+    toChain: String(args.toChain ?? ""),
+    asset: String(args.asset ?? ""),
+    amount: String(args.amount ?? ""),
+    address: args.address ? String(args.address) : undefined,
+  });
+  return result as unknown as Json;
+}
+
 const HANDLERS: Record<string, (args: Json) => Promise<Json>> = {
   getQuote,
   getPortfolio,
   getMarkets,
   getChains,
+  getBridgeRoute,
 };
 
 export function isReadTool(name: string): boolean {

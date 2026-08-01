@@ -171,6 +171,24 @@ export const TOOL_CATALOG: ToolSpec[] = [
       required: ["address", "asset"],
     },
   },
+  {
+    name: "getBridgeRoute",
+    kind: "read",
+    description:
+      "Cost and time to bridge an asset between two chains, quoted from Relay and LI.FI. Use when the user's funds are on the wrong chain for what they want to do. Kaleido does not execute bridges — report the quote and say the user completes it with the provider. If fee or time come back null they are genuinely unknown; say so rather than estimating.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        fromChain: { type: "string", description: "Chain name or id, e.g. \"Base\" or \"8453\"" },
+        toChain: { type: "string", description: "Chain name or id" },
+        asset: { type: "string", description: "Symbol, e.g. \"USDC\"" },
+        amount: amount,
+        address: { type: "string", description: "User wallet, improves quote accuracy" },
+      },
+      required: ["fromChain", "toChain", "asset", "amount"],
+    },
+  },
 ];
 
 /** Just the tool names whose calls become plan intents. */
