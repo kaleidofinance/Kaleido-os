@@ -337,3 +337,18 @@
   margin: 0;
   line-height: 1.55;
 }
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .wrap {
+    padding: 16px 14px 60px;
+  }
+  /* Same reasoning as Explore: let the order book scroll rather than crushing
+     six columns into a phone width. */
+  .table {
+    overflow-x: auto;
+  }
+  .tw {
+    min-width: 620px;
+  }
+}

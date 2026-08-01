@@ -393,3 +393,10 @@
   color: var(--k-t3);
   cursor: not-allowed;
 }
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .wrap {
+    padding: 16px 14px 60px;
+  }
+}

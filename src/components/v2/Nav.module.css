@@ -29,6 +29,15 @@
   display: flex;
   gap: var(--k-s6);
   overflow-x: auto;
+  /* Without this a flex item defaults to min-width:auto and refuses to shrink
+     below its content, so overflow-x never engages and the whole nav grows
+     past the viewport — pushing the wallet button off-screen on mobile. */
+  min-width: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.menu::-webkit-scrollbar {
+  display: none;
 }
 .item {
   font-size: var(--k-fs-base);
@@ -138,4 +147,36 @@
 }
 .connect:hover {
   background: var(--k-brand-hover);
+}
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .nav {
+    gap: var(--k-s3);
+    padding: 12px 14px;
+  }
+  /* The logo wordmark costs width the nav links need; the mark alone still
+     identifies and still links home. */
+  .logo {
+    font-size: 0;
+    gap: 0;
+  }
+  /* Search has no mobile affordance yet — reclaim the space. */
+  .icon {
+    display: none;
+  }
+  .menu {
+    gap: var(--k-s4);
+  }
+  .net {
+    padding: 7px 10px;
+    font-size: var(--k-fs-xs);
+  }
+  .addr {
+    padding: 6px 11px 6px 6px;
+    font-size: var(--k-fs-xs);
+  }
+  .connect {
+    padding: 9px 15px;
+  }
 }

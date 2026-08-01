@@ -4,7 +4,6 @@ import Web3Modal from "@/context/web3Modal"
 import { Toaster } from "sonner"
 import { AbstractContext } from "@/context/AbstractProvider"
 import { ClientAnalytics } from "@/components/Analytics/ClientAnalytics"
-import { WelcomeDialog } from "@/components/modals/Dialog"
 import ExposedReferralHandler from "@/components/ReferralHandler"
 import { NotificationsProvider } from "@/context/NotificationsContext"
 import { Provider as JotaiProvider } from "jotai"
@@ -19,7 +18,6 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
               <ClientAnalytics />
               <main className="min-h-screen">
                 <ExposedReferralHandler />
-                <WelcomeDialog />
                 {children}
               </main>
               <Toaster richColors position="top-right" toastOptions={{ style: { zIndex: 100000 } }} />

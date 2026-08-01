@@ -279,3 +279,10 @@
   font-size: var(--k-fs-xs);
   color: var(--k-t2);
 }
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .wrap {
+    padding: 16px 14px 60px;
+  }
+}

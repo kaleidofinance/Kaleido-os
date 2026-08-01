@@ -188,3 +188,29 @@
   background: var(--k-well2);
   flex: 1;
 }
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .wrap {
+    padding: 16px 14px 60px;
+  }
+  .strip {
+    padding: var(--k-s3) var(--k-s4);
+  }
+  .stat {
+    padding: 0 14px;
+    min-width: 120px;
+  }
+  /* Five columns inside 280px crushes every cell. Scroll the table in its own
+     container instead, so the columns stay legible and the page body never
+     scrolls sideways. */
+  .table {
+    overflow-x: auto;
+  }
+  .pools .thead,
+  .pools .row,
+  .tx .thead,
+  .tx .row {
+    min-width: 560px;
+  }
+}
