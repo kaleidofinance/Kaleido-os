@@ -83,18 +83,19 @@
 .net:hover {
   background: var(--k-well2);
 }
-.dots {
-  display: flex;
-}
-.dots i {
-  width: 11px;
-  height: 11px;
+.netIcon {
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  border: 2px solid var(--k-card);
-  margin-left: -4px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex: none;
 }
-.dots i:first-child {
-  margin-left: 0;
+.netIcon i {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
 }
 .caret {
   font-size: 11px;

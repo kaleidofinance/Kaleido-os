@@ -5,6 +5,13 @@ import { ethers } from "ethers";
 import Nav from "@/components/v2/Nav";
 import useDataFiltersPanel from "@/hooks/useDataFilterPanel";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useBorrowV2, type ActiveLoan } from "@/hooks/v2/useBorrowV2";
+import {
+  PostOfferModal,
+  PostRequestModal,
+  TakeLoanModal,
+  CollateralModal,
+} from "@/components/v2/BorrowModals";
 import { formatAddress } from "@/constants/utils/formatAddress";
 import { convertbasisPointsToPercentage } from "@/constants/utils/FormatInterestRate";
 import { getTimeUntil, getOverdue } from "@/constants/utils/formatOderDate";
@@ -42,20 +49,59 @@ interface Row {
   author?: string;
 }
 
+type Tab = "borrow" | "lend" | "mine";
+
 export default function BorrowPage() {
   const filters = useDataFiltersPanel();
   const { isConnected } = useWalletV2();
+  const borrow = useBorrowV2();
   const [sortKey, setSortKey] = useState<SortKey>("interest");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [tab, setTab] = useState<Tab>("borrow");
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [collateralOpen, setCollateralOpen] = useState(false);
+  const [takeTarget, setTakeTarget] = useState<{
+    listingId: number;
+    min: number;
+    max: number;
+    symbol: string;
+  } | null>(null);
+  const [repaying, setRepaying] = useState<number | null>(null);
 
-  const isBorrow = filters?.activeTable !== "lend";
+  const isBorrow = tab !== "lend";
+  const refresh = () => filters?.refreshListings?.();
+
+  const onRepay = async (loan: ActiveLoan) => {
+    setRepaying(loan.requestId);
+    try {
+      await borrow.repay(loan);
+      refresh();
+    } finally {
+      setRepaying(null);
+    }
+  };
+
+  const openTake = (row: Row) => {
+    const decimals = getTokenDecimals(row.tokenAddress);
+    const raw = row as Row & { minAmount?: string; maxAmount?: string; min_amount?: string; max_amount?: string };
+    const min = raw.minAmount ?? raw.min_amount ?? "0";
+    const max = raw.maxAmount ?? raw.max_amount ?? row.amount;
+    setTakeTarget({
+      listingId: Number(row.listingId),
+      min: Number(ethers.formatUnits(min, decimals)),
+      max: Number(ethers.formatUnits(max, decimals)),
+      symbol: tokenImageMap[row.tokenAddress]?.label ?? "USDC",
+    });
+  };
 
   const rows: Row[] = useMemo(() => {
+    if (tab === "mine") return [];
     const page = isBorrow
       ? filters?.paginatedBorrowData
       : filters?.paginatedLendData;
     return (page?.data ?? []) as unknown as Row[];
-  }, [isBorrow, filters?.paginatedBorrowData, filters?.paginatedLendData]);
+  }, [tab, isBorrow, filters?.paginatedBorrowData, filters?.paginatedLendData]);
 
   const loading = isBorrow ? filters?.loadingBorrow : filters?.lendLoading;
 
@@ -110,23 +156,118 @@ export default function BorrowPage() {
           <h1 className={s.h1}>Borrow</h1>
           <div className={s.toggle}>
             <button
-              className={`${s.tg} ${isBorrow ? s.on : ""}`}
-              onClick={() => filters?.handleTableChange?.("borrow")}
-              aria-pressed={isBorrow}
+              className={`${s.tg} ${tab === "borrow" ? s.on : ""}`}
+              onClick={() => {
+                setTab("borrow");
+                filters?.handleTableChange?.("borrow");
+              }}
+              aria-pressed={tab === "borrow"}
             >
               Borrow
             </button>
             <button
-              className={`${s.tg} ${!isBorrow ? s.on : ""}`}
-              onClick={() => filters?.handleTableChange?.("lend")}
-              aria-pressed={!isBorrow}
+              className={`${s.tg} ${tab === "lend" ? s.on : ""}`}
+              onClick={() => {
+                setTab("lend");
+                filters?.handleTableChange?.("lend");
+              }}
+              aria-pressed={tab === "lend"}
             >
               Lend
+            </button>
+            <button
+              className={`${s.tg} ${tab === "mine" ? s.on : ""}`}
+              onClick={() => setTab("mine")}
+              aria-pressed={tab === "mine"}
+            >
+              My loans
+            </button>
+          </div>
+
+          <div className={s.headActions}>
+            <button className={s.ghostBtn} onClick={() => setCollateralOpen(true)}>
+              Collateral
+            </button>
+            <button
+              className={s.whiteBtn}
+              onClick={() => (tab === "lend" ? setRequestOpen(true) : setOfferOpen(true))}
+            >
+              {tab === "lend" ? "+ Post request" : "+ Post offer"}
             </button>
           </div>
         </div>
 
         <div className={s.cols}>
+          {tab === "mine" ? (
+            <div>
+              <div className={s.gHead}>
+                <span className={s.gTitle}>Your loans</span>
+                <span className={s.gCount}>
+                  {borrow.loans.length} outstanding
+                </span>
+              </div>
+              <div className={s.table}>
+                {borrow.loans.length === 0 ? (
+                  <div className={s.empty}>
+                    <div className={s.emptyTitle}>Nothing outstanding.</div>
+                    <div className={s.emptySub}>
+                      Loans you take will appear here with what you owe.
+                    </div>
+                  </div>
+                ) : (
+                  <div className={s.tw}>
+                    <div className={`${s.tr} ${s.mineRow} ${s.thead}`}>
+                      <span>Asset</span>
+                      <span className={s.cellNum}>Owed</span>
+                      <span className={s.cellNum}>APR</span>
+                      <span className={s.cellNum}>Due</span>
+                      <span />
+                    </div>
+                    {borrow.loans.map((loan) => (
+                      <div key={loan.requestId} className={`${s.tr} ${s.mineRow}`}>
+                        <div className={s.asset}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            className={s.aImg}
+                            src={tokenImageMap[loan.tokenAddress]?.image ?? "/Eye.svg"}
+                            alt=""
+                          />
+                          <div className={s.aMeta}>
+                            <div className={s.aName}>{loan.symbol}</div>
+                            <div className={s.aSub}>
+                              from {loan.lender ? formatAddress(loan.lender) : "—"}
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`${s.cellNum} tabular`}>
+                          {Number(loan.totalRepayment).toLocaleString(undefined, {
+                            maximumFractionDigits: 6,
+                          })}
+                        </span>
+                        <span className={`${s.cellNum} tabular`}>
+                          {convertbasisPointsToPercentage(loan.interestBps)}%
+                        </span>
+                        <span
+                          className={`${s.cellNum} tabular ${loan.overdue ? s.rateBad : s.term}`}
+                        >
+                          {loan.overdue ? "Overdue" : getTimeUntil(loan.returnDate)}
+                        </span>
+                        <span className={s.actionCell}>
+                          <button
+                            className={s.actBtn}
+                            disabled={!isConnected || repaying === loan.requestId}
+                            onClick={() => onRepay(loan)}
+                          >
+                            {repaying === loan.requestId ? "Repaying…" : "Repay"}
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
           <div>
             <div className={s.gHead}>
               <span className={s.gTitle}>
@@ -256,7 +397,7 @@ export default function BorrowPage() {
                               disabled={isOverdue || !isConnected}
                               onClick={() =>
                                 isBorrow
-                                  ? filters?.handleBorrowAllocation(row)
+                                  ? openTake(row)
                                   : filters?.serviceRequest(
                                       Number(row.requestId),
                                       String(row.tokenAddress),
@@ -274,8 +415,30 @@ export default function BorrowPage() {
               </div>
             </div>
           </div>
+          )}
 
           <aside className={s.side}>
+            <div className={s.card}>
+              <div className={s.cardTitle}>Your position</div>
+              <div className={s.posRow}>
+                <span className={s.cardBody}>Collateral</span>
+                <span className="tabular">
+                  ${borrow.collateralValueUsd.toLocaleString(undefined, {
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+              <div className={s.posRow}>
+                <span className={s.cardBody}>Health factor</span>
+                <span className={`tabular ${borrow.healthFactor !== null && borrow.healthFactor < 1.2 ? s.rateBad : ""}`}>
+                  {borrow.healthFactor === null ? "—" : borrow.healthFactor.toFixed(2)}
+                </span>
+              </div>
+              <div className={s.posRow}>
+                <span className={s.cardBody}>Open loans</span>
+                <span className="tabular">{borrow.loans.length}</span>
+              </div>
+            </div>
             <div className={s.card}>
               <div className={s.cardTitle}>Rates are per year</div>
               <p className={s.cardBody}>
@@ -294,6 +457,32 @@ export default function BorrowPage() {
           </aside>
         </div>
       </main>
+
+      <PostOfferModal
+        open={offerOpen}
+        onClose={() => setOfferOpen(false)}
+        borrow={borrow}
+        onDone={refresh}
+      />
+      <PostRequestModal
+        open={requestOpen}
+        onClose={() => setRequestOpen(false)}
+        borrow={borrow}
+        onDone={refresh}
+      />
+      <TakeLoanModal
+        open={takeTarget !== null}
+        onClose={() => setTakeTarget(null)}
+        borrow={borrow}
+        listing={takeTarget}
+        onDone={refresh}
+      />
+      <CollateralModal
+        open={collateralOpen}
+        onClose={() => setCollateralOpen(false)}
+        borrow={borrow}
+        onDone={refresh}
+      />
     </>
   );
 }

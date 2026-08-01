@@ -1,8 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NetworkIcon } from "@web3icons/react/dynamic";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { getChainMeta } from "@/constants/chains";
+import NetworkSelector from "./NetworkSelector";
 import styles from "./Nav.module.css";
 
 const LINKS = [
@@ -17,7 +21,9 @@ const LINKS = [
 
 export default function Nav() {
   const pathname = usePathname();
-  const { shortAddress, chainName, isConnected } = useWalletV2();
+  const { shortAddress, chainId, chainName, isConnected } = useWalletV2();
+  const [networkOpen, setNetworkOpen] = useState(false);
+  const chainMeta = getChainMeta(chainId);
 
   return (
     <nav className={styles.nav}>
@@ -45,15 +51,19 @@ export default function Nav() {
         <button className={styles.icon} aria-label="Search">
           ⌕
         </button>
-        <button className={styles.net}>
-          <span className={styles.dots}>
-            <i style={{ background: "var(--k-chain-abstract)" }} />
-            <i style={{ background: "var(--k-chain-base)" }} />
-            <i style={{ background: "var(--k-chain-arbitrum)" }} />
+        <button className={styles.net} onClick={() => setNetworkOpen(true)}>
+          <span className={styles.netIcon}>
+            <NetworkIcon
+              id={chainMeta?.iconId ?? "abstract-sepolia"}
+              variant="branded"
+              size={16}
+              fallback={<i style={{ background: chainMeta?.color ?? "var(--k-chain-abstract)" }} />}
+            />
           </span>
           {chainName}
           <span className={styles.caret}>▾</span>
         </button>
+        <NetworkSelector open={networkOpen} onClose={() => setNetworkOpen(false)} />
         {isConnected ? (
           <button className={styles.addr}>
             <span className={styles.avatar} />

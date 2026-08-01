@@ -26,7 +26,15 @@ const Collateral = ({ id }: { id?: string }) => {
   const activeChain = useActiveWalletChain();
   const address = activeAccount?.address;
 
-  const ENABLED_CHAINS = [2741, 8453, 56, 137, 999]; // Abstract, Base, BSC, Polygon, Hyperliquid
+  const ENABLED_CHAINS = [
+    2741, 11124, // Abstract
+    1, 11155111, // Ethereum / Sepolia
+    8453, 84532, // Base / Base Sepolia
+    56, 97, // BSC / BSC Testnet
+    4663, 46630, // Robinhood Chain / Testnet
+    5042002, // Arc Testnet
+    137, 999, // Polygon, Hyperliquid
+  ];
 
   useEffect(() => {
     const fetchAllBalances = async () => {

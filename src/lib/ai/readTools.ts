@@ -173,9 +173,18 @@ async function getMarkets(args: Json): Promise<Json> {
 
 /**
  * Chains swept by the balance indexer. Matches the set Collateral.tsx uses,
- * plus Abstract testnet so dev wallets resolve.
+ * plus Abstract testnet so dev wallets resolve, plus the new mainnet/testnet
+ * pairs from the chain registry (src/constants/chains.ts).
  */
-const INDEXED_CHAINS = [2741, 11124, 8453, 56, 137, 42161, 999];
+const INDEXED_CHAINS = [
+  2741, 11124, // Abstract
+  1, 11155111, // Ethereum / Sepolia
+  8453, 84532, // Base / Base Sepolia
+  56, 97, // BSC / BSC Testnet
+  4663, 46630, // Robinhood Chain / Testnet
+  5042002, // Arc Testnet
+  137, 42161, 999, // Polygon, Arbitrum, Hyperliquid
+];
 
 /**
  * Cross-chain balance read.

@@ -26,7 +26,7 @@ const useWithdrawCollateral = () => {
   const router = useRouter()
 
   return useCallback(
-    async (_tokenCollateralAddress: string, _amountOfCollateral: string) => {
+    async (_tokenCollateralAddress: string, _amountOfCollateral: string, onSuccess?: () => void) => {
       if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK")
 
       if (!activeChain) {
@@ -80,7 +80,9 @@ const useWithdrawCollateral = () => {
           toast.success(`${_amountOfCollateral} successfully withdrawn!`, {
             id: toastId,
           })
-          return router.push("/")
+          // v2 callers pass onSuccess to stay inside their own shell; legacy
+          // pages omit it and keep the original redirect.
+          return onSuccess ? onSuccess() : router.push("/")
         } else {
           toast.error("Failed to withdraw collateral.", {
             id: toastId,

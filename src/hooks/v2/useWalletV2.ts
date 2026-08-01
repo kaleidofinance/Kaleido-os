@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { CHAINS_BY_ID } from "@/constants/chains";
 
 /**
  * Bridge hook — the single place v2 reads wallet state.
@@ -17,16 +18,6 @@ export interface WalletV2 {
   isConnected: boolean;
 }
 
-const CHAIN_NAMES: Record<number, string> = {
-  11124: "Abstract",
-  2741: "Abstract",
-  8453: "Base",
-  42161: "Arbitrum",
-  137: "Polygon",
-  56: "BNB Chain",
-  1: "Ethereum",
-};
-
 const short = (addr?: string) =>
   addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : undefined;
 
@@ -39,7 +30,7 @@ export const useWalletV2 = (): WalletV2 => {
     address,
     shortAddress: short(address),
     chainId: chain?.id,
-    chainName: chain?.id ? (CHAIN_NAMES[chain.id] ?? "Unknown") : "Abstract",
+    chainName: chain?.id ? (CHAINS_BY_ID[chain.id]?.shortName ?? "Unknown") : "Abstract",
     isConnected: Boolean(address),
   };
 };

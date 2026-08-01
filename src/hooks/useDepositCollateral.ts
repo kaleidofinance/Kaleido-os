@@ -29,7 +29,7 @@ const useDepositCollateral = () => {
   const { val, usdrVal, kfusdVal, usdtVal } = useCheckAllowance()
 
   return useCallback(
-    async (_amountOfCollateral: string, tokenAddress: string) => {
+    async (_amountOfCollateral: string, tokenAddress: string, onSuccess?: () => void) => {
       if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK")
 
       if (!activeChain) {
@@ -136,7 +136,10 @@ const useDepositCollateral = () => {
               `Kindly wait for few minutes for your deposited ${_amountOfCollateral} to go cross-chain!`,
             )
           }
-          router.push("/")
+          // v2 callers pass onSuccess to stay inside their own shell; legacy
+          // pages omit it and keep the original redirect.
+          if (onSuccess) onSuccess()
+          else router.push("/")
         } else {
           toast.error("Transaction failed!", {
             id: toastId,

@@ -1,28 +1,27 @@
 import { ethers } from "ethers";
 import { readOnlyProvider } from "@/config/provider";
 import { USDC_ADDRESS, USDR, kfUSD_ADDRESS, USDT_ADDRESS } from "./addresses";
+import { CHAINS_BY_ID } from "@/constants/chains";
+
+const providerCache = new Map<number, ethers.JsonRpcProvider>();
 
 // High-Performance Omni-Chain Provider Hub
 export const getOmniProvider = (chainId: number) => {
-  switch (chainId) {
-    case 11124: // Abstract Testnet
-    case 2741:
-      return readOnlyProvider;
-    case 8453: // Base
-      return new ethers.JsonRpcProvider("https://mainnet.base.org", { chainId: 8453, name: 'base' }, { staticNetwork: true });
-    case 56: // BSC
-      return new ethers.JsonRpcProvider("https://rpc.ankr.com/bsc", { chainId: 56, name: 'bsc' }, { staticNetwork: true });
-    case 137: // Polygon
-      return new ethers.JsonRpcProvider("https://polygon-rpc.com", { chainId: 137, name: 'polygon' }, { staticNetwork: true });
-    case 42161: // Arbitrum
-      return new ethers.JsonRpcProvider("https://arb1.arbitrum.io/rpc", { chainId: 42161, name: 'arbitrum' }, { staticNetwork: true });
-    case 1: // Ethereum Mainnet
-      return new ethers.JsonRpcProvider("https://cloudflare-eth.com", { chainId: 1, name: 'mainnet' }, { staticNetwork: true });
-    case 999: // Hyperliquid
-      return new ethers.JsonRpcProvider("https://rpc.hyperliquid.xyz/evm", { chainId: 999, name: 'hyperliquid' }, { staticNetwork: true });
-    default:
-      return readOnlyProvider;
-  }
+  if (chainId === 11124 || chainId === 2741) return readOnlyProvider; // Abstract — shares the app's RPC
+
+  const cached = providerCache.get(chainId);
+  if (cached) return cached;
+
+  const meta = CHAINS_BY_ID[chainId];
+  if (!meta) return readOnlyProvider;
+
+  const provider = new ethers.JsonRpcProvider(
+    meta.rpcUrls[0],
+    { chainId, name: meta.shortName.toLowerCase() },
+    { staticNetwork: true },
+  );
+  providerCache.set(chainId, provider);
+  return provider;
 };
 
 export interface ChainBalance {
@@ -44,15 +43,7 @@ const TOKEN_CONFIG: Record<string, { address: string; decimals: number }> = {
   USDT: { address: USDT_ADDRESS, decimals: 6 },
 };
 
-const CHAIN_METADATA: Record<number, string> = {
-  2741: "Abstract",
-  8453: "Base",
-  56: "BSC",
-  137: "Polygon",
-  999: "Hyperliquid",
-  1: "Mainnet",
-  42161: "Arbitrum"
-};
+const resolveChainName = (chainId: number) => CHAINS_BY_ID[chainId]?.name ?? "Unknown";
 
 export const fetchOmniAssetBalance = async (address: string, token: string, chainIds: number[]): Promise<OmniPortfolioItem> => {
   const config = TOKEN_CONFIG[token];
@@ -66,12 +57,12 @@ export const fetchOmniAssetBalance = async (address: string, token: string, chai
           const bal = await provider.getBalance(address);
           return {
             chainId,
-            chainName: CHAIN_METADATA[chainId] || "Unknown",
+            chainName: resolveChainName(chainId),
             balance: parseFloat(ethers.formatEther(bal)).toFixed(4)
           };
         }
 
-        if (!config) return { chainId, chainName: CHAIN_METADATA[chainId] || "Unknown", balance: "0" };
+        if (!config) return { chainId, chainName: resolveChainName(chainId), balance: "0" };
 
         const contract = new ethers.Contract(
           config.address,
@@ -82,11 +73,11 @@ export const fetchOmniAssetBalance = async (address: string, token: string, chai
         const bal = await contract.balanceOf(address);
         return {
           chainId,
-          chainName: CHAIN_METADATA[chainId] || "Unknown",
+          chainName: resolveChainName(chainId),
           balance: ethers.formatUnits(bal, config.decimals)
         };
       } catch (e) {
-        return { chainId, chainName: CHAIN_METADATA[chainId] || "Unknown", balance: "0" };
+        return { chainId, chainName: resolveChainName(chainId), balance: "0" };
       }
     })
   );

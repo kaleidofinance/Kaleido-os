@@ -30,6 +30,7 @@
     "@tanstack/react-query-persist-client": "^5.83.0",
     "@vercel/analytics": "^1.5.0",
     "@wagmi/core": "^2.17.2",
+    "@web3icons/react": "^4.1.19",
     "@web3modal/ethers": "5.0.6",
     "@web3modal/wallet": "5.0.6",
     "axios": "^1.7.2",
