@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProvider } from '@/lib/ai';
 import { runAgent } from '@/lib/ai/agent';
+import { consumeModelRequest, peekModelUsage } from '@/lib/ai/credits';
+
+/**
+ * Reports remaining model quota without spending any, so the UI can show a
+ * balance on load. Kept separate from POST because rendering a number must
+ * never cost a request.
+ */
+export async function GET(request: NextRequest) {
+  const wallet = request.nextUrl.searchParams.get('address') ?? undefined;
+  const usage = await peekModelUsage(wallet);
+  return NextResponse.json({
+    provider: Boolean(getProvider()),
+    ...usage,
+  });
+}
 
 // The AI Engine API URL and timeout (set in environment variables)
 const AI_ENGINE_API_URL = process.env.AI_ENGINE_API_URL || 'http://127.0.0.1:8000';
@@ -17,6 +32,25 @@ export async function POST(request: NextRequest) {
     // proxy below when no key is set, so existing deployments are unaffected.
     const provider = getProvider();
     if (provider) {
+      // Quota is spent here, at the point of dispatch, and nowhere earlier.
+      // A turn the client answered locally never reaches this route at all, so
+      // routing locally first is what makes the allowance go far.
+      const quota = await consumeModelRequest(body.address);
+      if (!quota.allowed) {
+        return NextResponse.json(
+          {
+            response: !body.address
+              ? "Connect your wallet to use the reasoning engine. Direct commands like `swap 500 USDC to KLD` work without it."
+              : `You've used all ${quota.quota} reasoning requests for today. Direct commands still work, and the allowance resets at 00:00 UTC.`,
+            context: {
+              status: 'quota_exhausted',
+              credits: { used: quota.used, quota: quota.quota, remaining: 0 },
+            },
+          },
+          { status: 429 },
+        );
+      }
+
       try {
         const result = await runAgent(provider, {
           message: String(body.message ?? ""),
@@ -30,6 +64,11 @@ export async function POST(request: NextRequest) {
             plan: result.plan,
             provider: result.provider,
             model: result.model,
+            credits: {
+              used: quota.used,
+              quota: quota.quota,
+              remaining: quota.remaining,
+            },
           },
         });
       } catch (aiError: any) {

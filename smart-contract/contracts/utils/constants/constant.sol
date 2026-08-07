@@ -13,19 +13,40 @@ library Constants {
     uint256 constant SPECIAL_GITPOINT = 600 * SCALING_FACTOR;
     uint256 constant EXTRA_POINT = 500 * SCALING_FACTOR;
     uint256 constant REFERRAL_PERCENTAGE = 1000; 
+    /// @dev Sentinel for native value, not a real address. Chain-agnostic by
+    ///      construction, so it stays a compile-time constant. The frontend
+    ///      mirrors it as NATIVE_SENTINEL.lending; the DEX uses the separate
+    ///      0xEeee… convention, and the two must not be interchanged.
     address constant NATIVE_TOKEN = address(1);
     uint256 constant SCALING_FACTOR = 1e18;
-    address constant WETH = 0x9EDCde0257F2386Ce177C3a7FCdd97787F0D841d;
-    address constant USDC = 0x572f4901f03055ffC1D936a60Ccc3CbF13911BE3;
 
-
-
-
-
-    //PRICE FEED
-    bytes32 constant ETH_USD = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
-    bytes32 constant WETH_USD = 0x9d4294bbcd1174d6f2003ec365831e64cc31d9f6f15a2b85399db8d5000960f6;
-    bytes32 constant USDC_USD = 0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a;
+    /*
+     * REMOVED: WETH, USDC, and the ETH_USD / WETH_USD / USDC_USD price feed
+     * ids.
+     *
+     * The two addresses were Abstract-testnet values written as Solidity
+     * `constant`s, which bakes them into the bytecode of every chain this is
+     * deployed to. Kaleido now targets eleven networks, so a literal that is
+     * only correct on one of them is a deployment hazard rather than a
+     * convenience.
+     *
+     * All five were dead: nothing outside this file referenced
+     * Constants.WETH, Constants.USDC, or any of the feed ids. ProtocolFacet is
+     * the sole importer of this library and uses only NATIVE_TOKEN and the
+     * numeric constants.
+     *
+     * Where the live equivalents come from instead:
+     *   - wrapped native  -> constructor argument (KaleidoSwapRouter.WETH is
+     *                        already `immutable`, set at deploy)
+     *   - collateral/loan tokens and their price feed ids -> registered at
+     *     runtime via addCollateralToken(token, priceFeed) and
+     *     addLoanableToken(token, priceFeed), which is already how the
+     *     protocol learns about assets
+     *
+     * Pyth feed ids are global rather than per-chain, so they belong with the
+     * per-chain token registration that supplies them, not in a shared
+     * compile-time constant that implies one fixed asset set.
+     */
 
 
     uint256 constant MIN_LOAN_AMOUNT = 10 * 1e16; // 10 USD

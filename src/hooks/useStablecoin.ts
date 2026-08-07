@@ -11,8 +11,10 @@ import kfUSDAbi from "@/contracts/kfUSD.json";
 import kafUSDAbi from "@/contracts/kafUSD.json";
 import yieldTreasuryAbi from "@/contracts/YieldTreasury.json";
 
-// Contract addresses (Abstract Testnet)
-const CONTRACTS = {
+// Contract addresses (Abstract Testnet). Exported so the local-command planner
+// (useLocalPlanner.ts) builds intents against the same addresses this hook
+// uses, rather than a second hardcoded copy drifting from it after a redeploy.
+export const STABLE_CONTRACTS = {
   USDC: "0x572f4901f03055ffC1D936a60Ccc3CbF13911BE3",
   USDT: "0x717A36E56b33585Bd00260422FfCc3270af34D3E", // Updated
   USDe: "0x2F7744E8fcc75F8F26Ea455968556591091cb46F", // Updated
@@ -127,11 +129,11 @@ export function useStablecoin() {
 
       // Fetch all balances
       const [usdcBal, usdtBal, usdeBal, kfusdBal, kafusdBal] = await Promise.all([
-        getBalance(CONTRACTS.USDC, 6),
-        getBalance(CONTRACTS.USDT, 6),
-        getBalance(CONTRACTS.USDe, 18),
-        getBalance(CONTRACTS.kfUSD, 18),
-        getBalance(CONTRACTS.kafUSD, 18),
+        getBalance(STABLE_CONTRACTS.USDC, 6),
+        getBalance(STABLE_CONTRACTS.USDT, 6),
+        getBalance(STABLE_CONTRACTS.USDe, 18),
+        getBalance(STABLE_CONTRACTS.kfUSD, 18),
+        getBalance(STABLE_CONTRACTS.kafUSD, 18),
       ]);
 
       setBalances({
@@ -159,7 +161,7 @@ export function useStablecoin() {
     try {
       const signer = await getSigner();
       const yieldTreasuryContract = new ethers.Contract(
-        CONTRACTS.YieldTreasury,
+        STABLE_CONTRACTS.YieldTreasury,
         yieldTreasuryAbi.abi,
         signer
       );
@@ -185,8 +187,8 @@ export function useStablecoin() {
         let symbol = "UNKNOWN";
         let decimals = 18;
         
-        // Check our CONTRACTS mapping first for common tokens
-        for (const [key, value] of Object.entries(CONTRACTS)) {
+        // Check our STABLE_CONTRACTS mapping first for common tokens
+        for (const [key, value] of Object.entries(STABLE_CONTRACTS)) {
           if (value.toLowerCase() === asset.toLowerCase()) {
             symbol = key;
             break;
@@ -240,7 +242,7 @@ export function useStablecoin() {
 
     try {
       const signer = await getSigner();
-      const kafUSDContract = new ethers.Contract(CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
+      const kafUSDContract = new ethers.Contract(STABLE_CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
       
       // Fetch withdrawal request time and cooldown period
       const [withdrawalRequestTime, cooldownPeriod, withdrawalAmount] = await Promise.all([
@@ -311,12 +313,12 @@ export function useStablecoin() {
 
     try {
       const signer = await getSigner();
-      const kfUSDContract = new ethers.Contract(CONTRACTS.kfUSD, kfUSDAbi.abi, signer);
+      const kfUSDContract = new ethers.Contract(STABLE_CONTRACTS.kfUSD, kfUSDAbi.abi, signer);
 
       const [usdcBalances, usdtBalances, usdeBalances] = await Promise.all([
-        kfUSDContract.getBalances(CONTRACTS.USDC),
-        kfUSDContract.getBalances(CONTRACTS.USDT),
-        kfUSDContract.getBalances(CONTRACTS.USDe),
+        kfUSDContract.getBalances(STABLE_CONTRACTS.USDC),
+        kfUSDContract.getBalances(STABLE_CONTRACTS.USDT),
+        kfUSDContract.getBalances(STABLE_CONTRACTS.USDe),
       ]);
 
       setIdleBalances({
@@ -337,17 +339,17 @@ export function useStablecoin() {
     try {
       const signer = await getSigner();
       
-      const kfUSDContract = new ethers.Contract(CONTRACTS.kfUSD, kfUSDAbi.abi, signer);
-      const kafUSDContract = new ethers.Contract(CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
-      const yieldTreasuryContract = new ethers.Contract(CONTRACTS.YieldTreasury, yieldTreasuryAbi.abi, signer);
+      const kfUSDContract = new ethers.Contract(STABLE_CONTRACTS.kfUSD, kfUSDAbi.abi, signer);
+      const kafUSDContract = new ethers.Contract(STABLE_CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
+      const yieldTreasuryContract = new ethers.Contract(STABLE_CONTRACTS.YieldTreasury, yieldTreasuryAbi.abi, signer);
       
       // Fetch all stats from contracts
       const [kfUSDTotalSupply, totalMinted, usdcCollateral, usdtCollateral, usdeCollateral, kafUSDTotalSupply, mintFee, redeemFee] = await Promise.all([
         kfUSDContract.totalSupply(),
         kfUSDContract.totalMinted(),
-        kfUSDContract.collateralBalances(CONTRACTS.USDC),
-        kfUSDContract.collateralBalances(CONTRACTS.USDT),
-        kfUSDContract.collateralBalances(CONTRACTS.USDe),
+        kfUSDContract.collateralBalances(STABLE_CONTRACTS.USDC),
+        kfUSDContract.collateralBalances(STABLE_CONTRACTS.USDT),
+        kfUSDContract.collateralBalances(STABLE_CONTRACTS.USDe),
         kafUSDContract.totalSupply(),
         kfUSDContract.mintFee(),
         kfUSDContract.redeemFee(),
@@ -377,8 +379,8 @@ export function useStablecoin() {
               decimals = await assetContract.decimals().catch(() => 18);
             } catch {
               // If we can't get decimals, assume based on known tokens
-              if (asset.toLowerCase() === CONTRACTS.USDC.toLowerCase() || 
-                  asset.toLowerCase() === CONTRACTS.USDT.toLowerCase()) {
+              if (asset.toLowerCase() === STABLE_CONTRACTS.USDC.toLowerCase() || 
+                  asset.toLowerCase() === STABLE_CONTRACTS.USDT.toLowerCase()) {
                 decimals = 6;
               }
             }
@@ -513,7 +515,7 @@ export function useStablecoin() {
 
     try {
       const signer = await getSigner();
-      const collateralAddress = CONTRACTS[collateralToken as keyof typeof CONTRACTS];
+      const collateralAddress = STABLE_CONTRACTS[collateralToken as keyof typeof STABLE_CONTRACTS];
       
       if (!collateralAddress) {
         throw new Error(`Invalid collateral token: ${collateralToken}`);
@@ -521,7 +523,7 @@ export function useStablecoin() {
 
       // Get collateral and kfUSD contracts
       const collateralContract = new ethers.Contract(collateralAddress, erc20Abi, signer);
-      const kfUSDContract = new ethers.Contract(CONTRACTS.kfUSD, kfUSDAbi.abi, signer);
+      const kfUSDContract = new ethers.Contract(STABLE_CONTRACTS.kfUSD, kfUSDAbi.abi, signer);
 
       // Parse amounts
       const collateralDecimals = collateralToken === "USDT" || collateralToken === "USDC" ? 6 : 18;
@@ -534,9 +536,9 @@ export function useStablecoin() {
       const kfUSDAmount = collateralAmount * ethers.parseUnits("1", 18 - collateralDecimals);
 
       // Approve collateral
-      const allowance = await collateralContract.allowance(activeAccount.address, CONTRACTS.kfUSD);
+      const allowance = await collateralContract.allowance(activeAccount.address, STABLE_CONTRACTS.kfUSD);
       if (allowance < collateralAmount) {
-        const approveTx = await collateralContract.approve(CONTRACTS.kfUSD, collateralAmount);
+        const approveTx = await collateralContract.approve(STABLE_CONTRACTS.kfUSD, collateralAmount);
         await approveTx.wait();
       }
 
@@ -567,19 +569,19 @@ export function useStablecoin() {
 
     try {
       const signer = await getSigner();
-      const outputAddress = CONTRACTS[outputToken as keyof typeof CONTRACTS];
+      const outputAddress = STABLE_CONTRACTS[outputToken as keyof typeof STABLE_CONTRACTS];
       
       if (!outputAddress) {
         throw new Error(`Invalid output token: ${outputToken}`);
       }
 
-      const kfUSDContract = new ethers.Contract(CONTRACTS.kfUSD, kfUSDAbi.abi, signer);
+      const kfUSDContract = new ethers.Contract(STABLE_CONTRACTS.kfUSD, kfUSDAbi.abi, signer);
       const kfUSDAmount = ethers.parseUnits(amount, 18);
 
       // Approve kfUSD for redemption
-      const allowance = await kfUSDContract.allowance(activeAccount.address, CONTRACTS.kfUSD);
+      const allowance = await kfUSDContract.allowance(activeAccount.address, STABLE_CONTRACTS.kfUSD);
       if (allowance < kfUSDAmount) {
-        const approveTx = await kfUSDContract.approve(CONTRACTS.kfUSD, kfUSDAmount);
+        const approveTx = await kfUSDContract.approve(STABLE_CONTRACTS.kfUSD, kfUSDAmount);
         await approveTx.wait();
       }
 
@@ -612,22 +614,22 @@ export function useStablecoin() {
 
     try {
       const signer = await getSigner();
-      const assetAddress = CONTRACTS[assetToken as keyof typeof CONTRACTS];
+      const assetAddress = STABLE_CONTRACTS[assetToken as keyof typeof STABLE_CONTRACTS];
       
       if (!assetAddress) {
         throw new Error(`Invalid asset token: ${assetToken}`);
       }
 
-      const kafUSDContract = new ethers.Contract(CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
+      const kafUSDContract = new ethers.Contract(STABLE_CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
       const assetContract = new ethers.Contract(assetAddress, erc20Abi, signer);
       // USDC and USDT have 6 decimals, USDe has 18 decimals
       const assetDecimals = assetToken === "USDT" || assetToken === "USDC" ? 6 : 18;
       const assetAmount = ethers.parseUnits(amount, assetDecimals);
 
       // Approve asset
-      const allowance = await assetContract.allowance(activeAccount.address, CONTRACTS.kafUSD);
+      const allowance = await assetContract.allowance(activeAccount.address, STABLE_CONTRACTS.kafUSD);
       if (allowance < assetAmount) {
-        const approveTx = await assetContract.approve(CONTRACTS.kafUSD, assetAmount);
+        const approveTx = await assetContract.approve(STABLE_CONTRACTS.kafUSD, assetAmount);
         await approveTx.wait();
       }
 
@@ -659,7 +661,7 @@ export function useStablecoin() {
 
     try {
       const signer = await getSigner();
-      const kafUSDContract = new ethers.Contract(CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
+      const kafUSDContract = new ethers.Contract(STABLE_CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
       const kafUSDAmount = ethers.parseUnits(amount, 18);
 
       const requestTx = await kafUSDContract.requestWithdrawal(kafUSDAmount);
@@ -689,13 +691,13 @@ export function useStablecoin() {
 
     try {
       const signer = await getSigner();
-      const outputAddress = CONTRACTS[outputToken as keyof typeof CONTRACTS];
+      const outputAddress = STABLE_CONTRACTS[outputToken as keyof typeof STABLE_CONTRACTS];
       
       if (!outputAddress) {
         throw new Error(`Invalid output token: ${outputToken}`);
       }
 
-      const kafUSDContract = new ethers.Contract(CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
+      const kafUSDContract = new ethers.Contract(STABLE_CONTRACTS.kafUSD, kafUSDAbi.abi, signer);
       const completeTx = await kafUSDContract.completeWithdrawal(outputAddress);
       const receipt = await completeTx.wait();
 
@@ -725,7 +727,7 @@ export function useStablecoin() {
     try {
       const signer = await getSigner();
       const yieldTreasuryContract = new ethers.Contract(
-        CONTRACTS.YieldTreasury,
+        STABLE_CONTRACTS.YieldTreasury,
         yieldTreasuryAbi.abi,
         signer
       );
@@ -734,7 +736,7 @@ export function useStablecoin() {
       if (assetToken === "ALL") {
          claimTx = await yieldTreasuryContract.claimAllYield();
       } else {
-        const assetAddress = CONTRACTS[assetToken as keyof typeof CONTRACTS];
+        const assetAddress = STABLE_CONTRACTS[assetToken as keyof typeof STABLE_CONTRACTS];
         if (!assetAddress) {
           throw new Error(`Invalid asset token: ${assetToken}`);
         }
@@ -768,13 +770,13 @@ export function useStablecoin() {
     try {
       const signer = await getSigner();
       const yieldTreasuryContract = new ethers.Contract(
-        CONTRACTS.YieldTreasury,
+        STABLE_CONTRACTS.YieldTreasury,
         yieldTreasuryAbi.abi,
         signer
       );
       
       // Claim kfUSD yield (which can then be locked in kafUSD to compound)
-      const claimTx = await yieldTreasuryContract.claimAndCompound(CONTRACTS.kfUSD);
+      const claimTx = await yieldTreasuryContract.claimAndCompound(STABLE_CONTRACTS.kfUSD);
       const receipt = await claimTx.wait();
 
       if (receipt.status) {

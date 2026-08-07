@@ -18,11 +18,18 @@
   font-weight: var(--k-fw-med);
   text-decoration: none;
 }
+/* Kaleido mark. The source art carries its own dark backdrop, so the circle is
+   zoomed onto the centred glyph and the leftover edges read as the bar. */
 .mark {
   width: 24px;
   height: 24px;
+  flex: none;
   border-radius: 50%;
-  background: var(--k-brand);
+  background-color: var(--k-brand);
+  background-image: url("/newklogo2.png");
+  background-size: 240%;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .menu {
