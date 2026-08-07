@@ -603,3 +603,22 @@ guess:
 | `config/provider.ts` | `chainId` must match whatever `envVars.httpRPC` serves. Guessing one without the other makes every read silently return another chain's data. |
 | `context/web3Modal.tsx` — `SUPPORTED_CHAIN_ID = [11124]` | Twelve importers, several indexing positionally (`[0]`, and a `[1]` in `getUsdcBalance` that is already `undefined`). Replace with a per-chain check derived from `DEPLOYMENTS`, don't grow the array. |
 
+**Found while verifying the above, and a Phase 1 blocker rather than a Gate A
+one** — `constants/utils/getUsdcBalance.ts` resolves token addresses without a
+usable chain dimension:
+
+- `getUsdcAddressByChainId` has three branches. `SUPPORTED_CHAIN_ID[1]` is
+  `undefined`, so that `case` can never match a numeric chain id, and both
+  remaining paths return `USDC_ADDRESS` — the Abstract testnet address — for
+  every chain.
+- `getUsdRBalance`, `getKfUSDBalance` and `getUSDTBalance` take `chainId`, use it
+  to pick a provider, then read a single hardcoded address regardless.
+
+`getProviderByChainId` does switch correctly across six chains, so the result is
+an Abstract address queried against a foreign RPC: a revert or a zero, not an
+error anyone sees. This matters for points beyond portfolio display, because
+`usd_seconds` accrues on observed balances — a silent zero is not a neutral
+reading, it is a wrong one that lowers a real balance to nothing. Resolve it
+with `getToken(chainId, address)` from the registry when Phase 1 wires
+valuation, and delete these per-token helpers rather than adding chains to them.
+
