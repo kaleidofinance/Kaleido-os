@@ -16,16 +16,18 @@
   padding: 15px 18px;
   border-bottom: 1px solid var(--k-line);
 }
+/* Kaleido mark. The source art carries its own dark backdrop, so the circle is
+   zoomed onto the centred glyph and the leftover edges read as the card. */
 .avatar {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
+  flex: none;
   border-radius: 50%;
-  background: var(--k-well2);
-  color: var(--k-t2);
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 600;
+  background-color: var(--k-well2);
+  background-image: url("/newklogo2.png");
+  background-size: 240%;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 .name {
   font-size: var(--k-fs-base);
@@ -36,14 +38,15 @@
 }
 .gear {
   margin-left: auto;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: none;
   border: 0;
   color: var(--k-t2);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 20px;
+  line-height: 1;
   display: grid;
   place-items: center;
 }
@@ -56,6 +59,19 @@
   height: 7px;
   border-radius: 50%;
   background: var(--k-brand);
+}
+
+/* Marks a turn the local parser answered, so the no-cost path is visible
+   rather than silent. Deliberately quiet: it's provenance, not a feature. */
+.viaTag {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--k-line);
+  color: var(--k-t2);
+  font-size: 10px;
+  letter-spacing: 0.02em;
 }
 
 .body {
