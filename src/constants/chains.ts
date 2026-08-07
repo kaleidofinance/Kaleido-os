@@ -3,9 +3,17 @@
  * explorers and icon lookups — verified against viem/chains (already a repo
  * dependency) and each chain's own docs, not invented.
  *
- * Only Abstract has the Kaleido Diamond/DEX contracts deployed. Every other
- * chain here is wired for wallet network-switching and the omni-chain
- * balance indexer (portfolio viewing), not for trading — see `tradable`.
+ * NOTHING IS DEPLOYED ANYWHERE TODAY. The contracts were rewritten and are
+ * being redeployed from scratch, testnet first, in priority order: Arc, Base,
+ * Robinhood, BNB Smart Chain, Ethereum. Abstract is no longer the home chain —
+ * it stays registered for balance reading only.
+ *
+ * So every chain here is currently wired for wallet network-switching and the
+ * omni-chain balance indexer (portfolio viewing), and none is tradable. Do not
+ * read `tradable` alone as "you can trade here": it means "the Diamond is
+ * *intended* to be here", and must be paired with `isDeployed()` from
+ * registry.ts, which checks whether an address actually exists. `tradableChains()`
+ * does exactly that and is the function UI should gate on.
  */
 
 export interface ChainMeta {
@@ -22,14 +30,19 @@ export interface ChainMeta {
   iconId: string;
   /** Fallback dot color when the icon library has no asset yet. */
   color: string;
-  /** True once the Kaleido Diamond is deployed there. Abstract only, today. */
+  /**
+   * True where the Kaleido Diamond is *intended* to live. NOT a deployment
+   * check on its own — nothing is deployed anywhere yet. Pair it with
+   * `isDeployed()` from registry.ts, or just use `tradableChains()`, which
+   * ands the two together.
+   */
   tradable?: boolean;
   /** True for chains announced but not yet live on mainnet (e.g. Arc). */
   comingSoon?: boolean;
 }
 
 export const CHAINS: ChainMeta[] = [
-  // ---- Abstract (Kaleido home chain) ----
+  // ---- Abstract (deprioritised: balance reading only, never tradable) ----
   {
     id: 2741,
     name: "Abstract",
@@ -41,7 +54,6 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "Abscan", url: "https://abscan.org" },
     iconId: "abstract",
     color: "#00b383",
-    tradable: true,
   },
   {
     id: 11124,
@@ -54,7 +66,6 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "Abscan", url: "https://explorer.testnet.abs.xyz" },
     iconId: "abstract-sepolia",
     color: "#00b383",
-    tradable: true,
   },
 
   // ---- Ethereum ----
@@ -69,6 +80,7 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "Etherscan", url: "https://etherscan.io" },
     iconId: "ethereum",
     color: "#627eea",
+    tradable: true,
   },
   {
     id: 11155111,
@@ -81,6 +93,7 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "Etherscan", url: "https://sepolia.etherscan.io" },
     iconId: "sepolia",
     color: "#627eea",
+    tradable: true,
   },
 
   // ---- Base ----
@@ -95,6 +108,7 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "Basescan", url: "https://basescan.org" },
     iconId: "base",
     color: "#0052ff",
+    tradable: true,
   },
   {
     id: 84532,
@@ -107,6 +121,7 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "Basescan", url: "https://sepolia.basescan.org" },
     iconId: "base-sepolia",
     color: "#0052ff",
+    tradable: true,
   },
 
   // ---- BNB Smart Chain ----
@@ -121,6 +136,7 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "BscScan", url: "https://bscscan.com" },
     iconId: "binance-smart-chain",
     color: "#f0b90b",
+    tradable: true,
   },
   {
     id: 97,
@@ -133,6 +149,7 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "BscScan", url: "https://testnet.bscscan.com" },
     iconId: "binance-smart-chain-testnet",
     color: "#f0b90b",
+    tradable: true,
   },
 
   // ---- Robinhood Chain (Arbitrum Orbit L2, launched 2025) ----
@@ -147,6 +164,7 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" },
     iconId: "robinhood",
     color: "#00c805",
+    tradable: true,
   },
   {
     id: 46630,
@@ -159,6 +177,7 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "Blockscout", url: "https://explorer.testnet.chain.robinhood.com" },
     iconId: "robinhood",
     color: "#00c805",
+    tradable: true,
   },
 
   // ---- Arc (Circle's stablecoin L1 — testnet only, mainnet targeted summer 2026) ----
@@ -176,6 +195,7 @@ export const CHAINS: ChainMeta[] = [
     blockExplorer: { name: "ArcScan", url: "https://testnet.arcscan.app" },
     iconId: "arc",
     color: "#5546ff",
+    tradable: true,
   },
 
   // ---- Already indexed by the omni-chain balance reader; kept for parity ----
@@ -218,10 +238,27 @@ export const CHAINS_BY_ID: Record<number, ChainMeta> = Object.fromEntries(
   CHAINS.map((c) => [c.id, c]),
 );
 
-/** Where Kaleido's contracts actually live — everything else is view-only for now. */
-export const DEFAULT_CHAIN_ID = 11124;
+/**
+ * There is deliberately no DEFAULT_CHAIN_ID.
+ *
+ * It used to be 11124 (Abstract Testnet), which is now neither the home chain
+ * nor deployed. Any constant of this shape is a guess that outlives the reason
+ * for it: the previous one silently sent reads, `chainId ?? DEFAULT` fallbacks
+ * and the agent's token resolution to a chain the app had moved off, and none
+ * of those call sites failed — they just produced answers about the wrong
+ * chain.
+ *
+ * Callers should use the wallet's connected chain and handle "not connected"
+ * or "not deployed here" explicitly. `isDeployed()` in registry.ts is the check
+ * for the latter.
+ */
 
-export const TRADABLE_CHAIN_IDS = CHAINS.filter((c) => c.tradable).map((c) => c.id);
+/** Chains where the Diamond is *intended* to live. Not a deployment check —
+ * every entry is still undeployed today. Use `tradableChains()` from
+ * registry.ts to get the ones a user can actually trade on. */
+export const INTENDED_TRADABLE_CHAIN_IDS = CHAINS.filter((c) => c.tradable).map(
+  (c) => c.id,
+);
 
 export const getChainMeta = (chainId: number | undefined): ChainMeta | undefined =>
   chainId === undefined ? undefined : CHAINS_BY_ID[chainId];

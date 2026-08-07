@@ -119,26 +119,46 @@ export async function POST(request: NextRequest) {
 
           // 🛡️ Security Gate: Omni-Chain Destination Verification
           // We validate the destination protocol against a chain-specific whitelist.
-          const chainId = result.chainId || body.chainId || 11124; // Default to Abstract Testnet
-          
+          //
+          // Two deliberate choices here, both about which way this fails:
+          //
+          // 1. `body.chainId` only — NOT `result.chainId`. `result` is model
+          //    output, so honouring it would let the model nominate the chain
+          //    whose whitelist it is checked against, i.e. choose its own
+          //    security policy. The wallet's connected chain is the only
+          //    trustworthy source.
+          // 2. No default. This used to fall back to 11124 (Abstract Testnet),
+          //    which meant a request with no chain got a populated whitelist
+          //    and could pass. An unknown chain must yield an EMPTY whitelist
+          //    so the check below fails closed.
+          const chainId: number | undefined =
+              typeof body.chainId === "number" ? body.chainId : undefined;
+
           const MULTICHAIN_WHITELIST: Record<string, string[]> = {
-              "11124": ["Kaleido", "Morpho", "USDC", "KLD"], // Abstract
               "8453": ["Base", "Aave", "Aerodrome", "Uniswap"], // Base
+              "84532": ["Base", "Aave", "Aerodrome", "Uniswap"], // Base Sepolia
               "137": ["Polygon", "Aave", "Quickswap"],       // Polygon
               "56": ["BSC", "Pancakeswap", "Venus", "Stargate"], // BSC
-              "1": ["Ethereum", "Aave", "Uniswap", "Lido"]   // Mainnet
+              "97": ["BSC", "Pancakeswap", "Venus", "Stargate"], // BSC Testnet
+              "1": ["Ethereum", "Aave", "Uniswap", "Lido"],  // Mainnet
+              "11155111": ["Ethereum", "Aave", "Uniswap", "Lido"], // Sepolia
+              "4663": ["Robinhood"],                          // Robinhood Chain
+              "46630": ["Robinhood"],                         // Robinhood Testnet
+              "5042002": ["Arc", "USDC"]                      // Arc Testnet
           };
 
-          const allowedNames = MULTICHAIN_WHITELIST[chainId.toString()] || [];
-          const isWhitelisted = allowedNames.some(name => 
-              (result.target?.toLowerCase().includes(name.toLowerCase())) || 
+          const allowedNames = chainId === undefined
+              ? []
+              : MULTICHAIN_WHITELIST[chainId.toString()] || [];
+          const isWhitelisted = allowedNames.some(name =>
+              (result.target?.toLowerCase().includes(name.toLowerCase())) ||
               (result.protocol?.toLowerCase().includes(name.toLowerCase()))
           );
 
           if (!isWhitelisted && result.target) {
-              console.warn(`[Safety] Blocked unverified destination on Chain ${chainId}: ${result.target}`);
+              console.warn(`[Safety] Blocked unverified destination on Chain ${chainId ?? "unknown"}: ${result.target}`);
               return NextResponse.json({
-                  response: `This transaction was blocked by safety checks. The protocol "${result.target}" is not currently whitelisted for high-security operations on Chain ID ${chainId}.`,
+                  response: `This transaction was blocked by safety checks. The protocol "${result.target}" is not currently whitelisted for high-security operations on Chain ID ${chainId ?? "unknown"}.`,
                   context: { status: 'blocked_by_safety_check', reason: 'unvetted_omnichain_target' }
               });
           }

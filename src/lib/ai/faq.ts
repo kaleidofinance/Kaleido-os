@@ -84,7 +84,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
     id: "chains",
     triggers: ["multichain", "which chains", "cross chain", "other networks", "what chains"],
     answer:
-      "Right now the Diamond (Kaleido's contracts) is deployed only on Abstract — that's the one chain you can actually trade on. The wallet can switch to and show balances on several other chains (Ethereum, Base, BNB Chain, Polygon, Arbitrum, and a few more), but those are read-only for portfolio viewing today, not tradable.",
+      "Kaleido's contracts are being redeployed from scratch after a rewrite, so there is no chain you can trade on right now — including Abstract, which was the old home chain and is no longer a priority. The rollout is testnet first, then mainnet, in this order: Arc, Base, Robinhood Chain, BNB Smart Chain, Ethereum. Until then the wallet can still switch networks and show your balances across all of them, which is portfolio viewing only.",
   },
   {
     id: "model-credits",

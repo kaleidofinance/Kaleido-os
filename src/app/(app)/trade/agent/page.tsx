@@ -7,6 +7,8 @@ import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { useLocalPlanner } from "@/hooks/v2/useLocalPlanner";
 import { ACTIVE_TOKENS } from "@/constants/tokens";
+import { isDeployed } from "@/constants/registry";
+import { getChainMeta } from "@/constants/chains";
 import AgentSettings from "@/components/v2/AgentSettings";
 import PlanReview from "@/components/v2/PlanReview";
 import { intentsFromChat } from "@/lib/v2/intents/fromChat";
@@ -117,6 +119,36 @@ export default function AgentPage() {
       return true;
     }
 
+    /*
+     * Refuse to build a transaction on a chain with no contracts.
+     *
+     * Everything past this point resolves addresses out of ACTIVE_TOKENS and
+     * the legacy address constants, which still hold the pre-rewrite Abstract
+     * Testnet deployment. Those addresses are dead, so a plan built from them
+     * would render as a perfectly normal, signable review — and fail (or worse,
+     * send value to a contract that isn't there) on submit.
+     *
+     * A wrong plan that looks right is the expensive failure here, so this
+     * fails loudly and early instead. Parsing, slot-filling, `help` and FAQ all
+     * still work above: the grammar is worth exercising before a deploy, it just
+     * must not produce something signable.
+     */
+    if (!isDeployed(chainId)) {
+      const here = getChainMeta(chainId)?.name;
+      say(
+        `I parsed that, but I can't build it: Kaleido's contracts aren't deployed${
+          here ? ` on ${here}` : " on any chain yet"
+        }. They were rewritten and are being redeployed from scratch, testnet ` +
+          `first, starting with Arc, Base, Robinhood, BNB Smart Chain and ` +
+          `Ethereum. Until then I'd be pointing you at dead addresses, so I'd ` +
+          `rather stop here than hand you a plan that looks signable and isn't. ` +
+          `Everything else still works — ask me how a product behaves, or run ` +
+          `\`help\` to see the commands I'll be able to execute.`,
+        { via: "local" },
+      );
+      return true;
+    }
+
     const built = await buildPlan(result.command, {
       slippageBps: settings.slippageBps,
       deadlineMin: 20,
@@ -179,7 +211,11 @@ export default function AgentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: content,
-          chainId: chainId ?? 11124,
+          // No fallback. The old `?? 11124` silently told the server every
+          // disconnected user was on Abstract Testnet, so answers came back
+          // confidently scoped to a chain the user wasn't on. Undefined is the
+          // truth when no wallet is connected, and the server can say so.
+          chainId,
           address,
           // Guardrails travel with the request so the server-side auditor gate
           // can enforce the user's own limits, not a hardcoded threshold.

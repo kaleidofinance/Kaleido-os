@@ -1,6 +1,7 @@
 # Kaleido Points — pre-TGE design
 
-Status: **design, not built.** Accrual runtime deliberately undecided.
+Status: **schema and arithmetic built; runtime not.** See §11 for what exists,
+what is missing, and the build order.
 
 The goal is a points program that converts to an airdrop allocation at TGE and
 survives contact with professional farmers. This document is the spec the
@@ -338,3 +339,267 @@ to discover that they do not want to stay. The agent needs to be genuinely good
 - Season length, and whether points carry across seasons or reset.
 - Snapshot cadence: hourly is defensible, more frequent gets expensive fast.
 - Whether the Season 0 bonus (§7) is flat per wallet or tiered by activity.
+
+---
+
+## 11. Implementation plan
+
+Written after the contract rewrite, when Abstract was deprioritised and no
+contracts were deployed anywhere. Two facts drive the whole ordering.
+
+### 11a. Where things actually stand
+
+| Layer | Where | Status |
+|---|---|---|
+| Spec | this document | ✅ |
+| Schema — 9 tables, 2 views, RLS closed, seeded | `supabase/migrations/20260801000100_points_system.sql` | ✅ |
+| Accrual arithmetic — pure, 20 tests | `src/lib/points/accrual.ts` | ✅ |
+| Valuation — symbol-keyed, server-only | `src/lib/points/prices.ts` | ✅ |
+| Legacy write lockdown | `20260801000000_lock_activity_writes.sql` | ✅ |
+| **Snapshotter** — time sources → `point_snapshots` | — | ❌ |
+| **Verifier** — receipts → `point_actions` | — | ❌ |
+| **Materializer** — epochs + actions → `point_balances` | — | ❌ |
+| **Read API + UI rewiring** | — | ❌ |
+
+The design half is done. What is missing is entirely runtime: nothing writes a
+snapshot, verifies a receipt, or materialises a balance.
+
+### 11b. Three facts that reorder the work
+
+**Nothing is deployed.** This removes the single largest task in the original
+plan. Wallet discovery — reconstructing who to snapshot from historical logs —
+does not exist when you index a fresh contract from block 0. The wallet universe
+starts empty and grows with real usage.
+
+It also settles §7. If contracts only ever ran on testnet, `kaleido_protocol_activity`
+holds nothing but testnet activity, and the schema's own rule (testnet chains
+never convert) disposes of it. There is nothing worth migrating. A flat, capped
+Season 0 participation bonus is the clean answer.
+
+**Abstract is deprioritised.** Season 0's rehearsal chain is no longer Abstract
+Testnet; it is the testnet of whichever priority chain deploys first. Abstract
+stays in `chains.ts` for balance reading but loses `tradable`.
+
+**Testnet comes first, deliberately.** Every priority chain deploys to its
+testnet and is proven there before its mainnet is touched. This is the fact that
+moves the most work *earlier*: Phases 4 and 5 are gated on "a deployment exists
+to index", and a testnet deployment satisfies that completely. An RPC endpoint,
+a receipt and an event log are the same shape on Base Sepolia as on Base. So the
+verifier and the snapshotter unblock at the **first testnet deploy**, not at
+mainnet, and the entire pipeline can be running end to end before a single
+mainnet address exists.
+
+It also promotes Season 0 from a hypothetical to the plan of record. Season 0 is
+seeded `converts_to_tokens = false`, and the schema forbids it carrying a
+`supply_budget` at all — so the rehearsal is structurally incapable of being
+mistaken for a claimable allocation, no matter how long it runs or how many
+points it mints.
+
+One gap this exposes. `is_testnet` appears in exactly three places: the column,
+the seed, and the `point_conversion_violations` view — which **detects** the
+problem at freeze time rather than **preventing** it at write time. That is the
+right trade while testnet is hypothetical. Once testnet is where everything
+starts, the materializer should refuse to write an epoch for an `is_testnet`
+chain into a season with `converts_to_tokens = true`, and fail loudly. Catching
+it in the view still works, but only after the bad rows exist.
+
+None of the three facts touches the schema, because chains and sources are
+registry rows rather than enums. All three are `UPDATE`s.
+
+### 11c. Chain rollout
+
+Priority order: **Arc, Base, Robinhood, BNB Smart Chain, Ethereum.** Each ships
+testnet first (Gate A) and mainnet only after (Gate B) — so the table below reads
+left to right as the actual rollout sequence per chain, not as two alternatives.
+
+All nine corresponding rows are already seeded in `point_chains`, every one
+`enabled = false`, and every testnet row correctly carries `is_testnet = true`.
+Turning a chain on is an `UPDATE`, gated on §11f.
+
+| Chain | Mainnet | Testnet | Note |
+|---|---|---|---|
+| Arc | — | 5042002 | **No mainnet yet.** Fine for Gate A, which is where Arc leads. Arc clears Gate B only when its mainnet ships. |
+| Base | 8453 | 84532 | |
+| Robinhood | 4663 | 46630 | |
+| BNB | 56 | 97 | |
+| Ethereum | 1 | 11155111 | |
+| Abstract | 2741 | 11124 | Registered, never `tradable`. Balance reading only. |
+
+Two gaps to close:
+
+- **Polygon (137), Arbitrum (42161) and Hyperliquid (999) have no `point_chains`
+  row.** They exist in `chains.ts` for balance reading. `point_snapshots.chain_id`
+  is a foreign key, so points cannot be recorded there at all until seeded.
+  Fine while they stay view-only; a blocker the moment they are not.
+- `point_chains.multiplier` is the bootstrap lever. Boosting a new deployment to
+  pull liquidity across needs no source-rate change.
+
+Multichain valuation is already correct by construction: `prices.ts` keys on
+**symbol, not address**, because a dollar of USDC is a dollar of USDC wherever it
+sits. Five chains need no per-chain pricing work.
+
+### 11d. How each product earns
+
+Fifteen sources are registered — ten live, five pre-registered and disabled so
+shipping a product is an `UPDATE`, not a migration.
+
+**Time-weighted, ~70% of emissions.** Accrues in `usd-seconds` while capital
+sits. `accrueInterval` credits **`min(previous, current)`**, so depositing before
+a snapshot and withdrawing after earns nothing.
+
+| Source | Product | Rate | Read from |
+|---|---|---|---|
+| `lp` | Pool | 1.5 | Position manager + pool `slot0`, **in-range only** |
+| `stake` | Stake | 1.0 | KLD vault `getUserDeposit` |
+| `vault` | Stable › Earn | 1.0 | kafUSD vault |
+| `lend` | Borrow | 1.0 | Serviced loans only |
+| `borrow` | Borrow | 0.4 | Diamond active requests |
+| `collateral_idle` | Borrow | 0.25 | Collateral **not** backing a loan |
+| `collateral_backing` | — | **0** | Paid via the `borrow` leg |
+
+That last row is the anti-recursion rule and the most load-bearing number here.
+If collateral earned *and* borrowing earned at full rate, one capital commitment
+is paid twice, and the borrowed asset can be redeposited to be paid a third
+time. That is how COMP was mined in 2020.
+
+**Action-weighted, ~30%.** One credit per `(chain_id, tx_hash)`, forever, only
+after the server has fetched the receipt.
+
+| Source | Product | Rate × mult | Floor | Daily cap |
+|---|---|---|---|---|
+| `swap` | Trade › Swap | 1.0 | $10 | 50k pts |
+| `agent_swap` | Luca | 1.0 × **1.2** | $25 | 30k pts, multiplier decays after 20/day |
+| `stable_mint` | Stable › Mint/Redeem | 0.5 | $10 | 10k pts |
+| `referral` | Social | flat | — | 5k pts, **30d referee activity first** |
+
+**Pre-registered, disabled:** `perp`, `launchpad`, `onramp`, `offramp`,
+`limit_order`.
+
+Two deliberate exclusions. **Pool minting earns no action points** and is not an
+agent command — a chat-typed tick range silently opens out-of-range, earning
+nothing, which is a correctness risk rather than a data gap. **The localStorage
+AI metric is dropped**; agent usage scores via `is_agent_initiated` on a verified
+swap, an on-chain fact.
+
+### 11e. Build order
+
+Contract-free work first, because it is testable today against synthetic
+snapshots — `accrual.ts` is pure and takes observations as input, so the
+arithmetic, the caps and the disclosure tiers can all be rehearsed with no chain.
+
+| Phase | Contract-coupled | Build |
+|---|---|---|
+| 0 — Cleanup (§11g) | No | ✅ done |
+| 1 — Materializer: epochs + actions → `point_balances` | No | Now |
+| 2 — Read API: `/api/points/[address]`, leaderboard | No | Now |
+| 3 — UI rewiring, kill the silent insert | No | Now |
+| 4 — Verifier: receipt fetch, log decode, USD derivation | Yes | **First testnet deploy** |
+| 5 — Snapshotter: six time sources, hourly, per chain | Yes | **First testnet deploy** |
+
+Phases 4 and 5 need a chain to read from, not a *mainnet* to read from. A testnet
+deployment unblocks both. Nothing in either phase distinguishes the two: the RPC
+calls, receipts, event ABIs and `slot0` reads are identical, and the only
+difference — that testnet points must never convert — lives in the season config,
+not in the worker.
+
+Phase 4 takes a client-submitted `tx_hash` as a **claim**, never as truth: the
+server fetches the receipt, decodes the logs and derives USD itself. This is far
+cheaper than a full event indexer and equally safe, because verification is
+server-side either way.
+
+Phase 5 is a cron worker under `server/src/points/`, following the existing
+worker patterns (`config/envSchema`, `db/supabase.ts`, Pino, Sentry).
+
+### 11f. Deploy gates
+
+Two gates, in order. Neither is a migration; both are `UPDATE`s plus a passing
+test run.
+
+**Gate A — testnet, opens Season 0.** Per chain:
+
+1. Contracts deployed to that chain's testnet, addresses populated in
+   `DEPLOYMENTS` in `src/constants/registry.ts` (deliberately empty today),
+   `poolInitCodeHash` verified against *that* deployment's compiled bytecode, and
+   `registry.test.ts` passing for the chain.
+2. `point_chains.enabled = true` for the **testnet** chain id, once the
+   snapshotter has run and reconciled against on-chain state.
+
+Season 0 then rehearses the full pipeline — snapshot, accrue, verify, materialise,
+leaderboard — with `converts_to_tokens = false`. Points mint freely and mean
+nothing, which is the point: it is the only way to find out whether the caps, the
+`min(previous, current)` rule and the disclosure tiers behave under real usage
+before they are load-bearing.
+
+What Gate A is actually testing for, beyond "it runs":
+
+- Snapshot cadence holds under real wallet counts without RPC cost blowing up
+  (§10 lists cadence as open — Season 0 is how it gets decided).
+- `collateral_backing = 0` genuinely closes the recursion, verified by trying to
+  farm it on a testnet where capital is free.
+- Sybil flagging catches a wallet fan-out that costs nothing to attempt.
+- Action verification is idempotent per `(chain_id, tx_hash)` across replays and
+  reorgs.
+
+**Gate B — mainnet, opens Season 1.** Adds, on top of Gate A for that chain:
+
+3. `poolInitCodeHash` **re-verified for the mainnet deployment.** It is a property
+   of compiled bytecode, not of source, so a testnet value does not carry over —
+   and a wrong one fails at the first swap callback, not at deploy.
+4. Contract addresses in `DEPLOYMENTS` are the mainnet set, not testnet values
+   promoted by accident.
+5. `point_chains.enabled = true` for the **mainnet** chain id.
+6. `point_conversion_violations` returns zero rows.
+7. The multi-season supply carve is decided (§10, and see below) before
+   `converts_to_tokens` flips to true on Season 1.
+
+Gate B is where a testnet-first plan can quietly go wrong, so the sequencing
+matters: **flip `converts_to_tokens` only after the testnet chain rows are
+accounted for.** Testnet chains may stay `enabled` after mainnet ships — useful
+for continuing to exercise the indexer — but the moment a converting season is
+live, every testnet row inside it is an allocation leak. That is what
+`point_conversion_violations` is for, and per §11b the materializer should refuse
+the write rather than leave the view to find it afterwards.
+
+### 11g. Phase 0 — stale Abstract facts
+
+Wrong today, independent of points, and Phase 1 should not be built on top.
+
+**Done.**
+
+| Where | Was | Now |
+|---|---|---|
+| `chains.ts` header + `tradable` doc | "Only Abstract has the contracts deployed" | States nothing is deployed anywhere; `tradable` documented as *intent*, to be paired with `isDeployed()` |
+| `chains.ts` — Abstract 2741/11124 | the only `tradable: true` chains | `tradable` dropped; moved to the nine priority-chain rows instead. Safe because `tradableChains()` ands it with `isDeployed()`, which is still false everywhere |
+| `chains.ts` — `DEFAULT_CHAIN_ID = 11124` | dead testnet, zero importers | Removed. A default chain id is a guess that outlives its reason — callers use the connected chain and handle "not deployed" explicitly |
+| `chains.ts` — `TRADABLE_CHAIN_IDS` | name implied a deployment check | `INTENDED_TRADABLE_CHAIN_IDS`, so the name can't be mistaken for one |
+| `tokens.ts` — `ABSTRACT_MAINNET_CHAIN_ID = 11124` | 11124 is *testnet*; mainnet is 2741 | Removed (zero importers) rather than corrected |
+| `tokens.ts` — `ABSTRACT_TOKENS` | undocumented dead addresses | Marked legacy: display-only, never for building a transaction, expected to shrink to nothing as `TOKENS` fills |
+| `faq.ts` — chains topic | "Abstract … the one chain you can actually trade on" | States nothing is tradable yet and gives the real testnet-first rollout order |
+| `agent/page.tsx` — plan path | built signable plans from dead addresses | Gated on `isDeployed(chainId)`; refuses with a true reason. Parse, slot-fill, `help` and FAQ still run |
+| `agent/page.tsx` — `chainId ?? 11124` | told the server every disconnected user was on Abstract | Sends `undefined`, which is the truth |
+| `chat/route.ts` — whitelist gate | `result.chainId \|\| body.chainId \|\| 11124` | Fails **closed**: `body.chainId` only, no default. See below |
+| `provider.ts` | comment said "sepolia"; network named `abstract-sepolia` | Comment corrected, network renamed `abstract-testnet`, blocker documented |
+
+Two of these were more than tidying.
+
+**The chat route's security gate failed open.** It picked the whitelist with
+`result.chainId || body.chainId || 11124`. `result` is *model output*, so the
+model could nominate the chain whose whitelist it was checked against — it chose
+its own security policy. And the `11124` default meant a request carrying no
+chain still got a populated whitelist and could pass. It now reads `body.chainId`
+only, with no default, so an unknown chain yields an empty whitelist and the
+check rejects.
+
+**The agent built signable plans from dead addresses.** This was the one that
+bit soonest, because it doesn't fail — it renders a normal PlanReview that fails
+on submit. The gate sits after parsing deliberately: the grammar is worth
+exercising before a deploy, it just must not produce something signable.
+
+**Deferred to Gate A**, both needing a real deployment to point at rather than a
+guess:
+
+| Where | Why it waits |
+|---|---|
+| `config/provider.ts` | `chainId` must match whatever `envVars.httpRPC` serves. Guessing one without the other makes every read silently return another chain's data. |
+| `context/web3Modal.tsx` — `SUPPORTED_CHAIN_ID = [11124]` | Twelve importers, several indexing positionally (`[0]`, and a `[1]` in `getUsdcBalance` that is already `undefined`). Replace with a per-chain check derived from `DEPLOYMENTS`, don't grow the array. |
+

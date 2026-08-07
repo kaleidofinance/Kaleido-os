@@ -1,6 +1,26 @@
 import { IToken } from "./types/dex";
 
-export const ABSTRACT_MAINNET_CHAIN_ID = 11124;
+/**
+ * LEGACY — Abstract Testnet (11124) only, and every address below is dead.
+ *
+ * These are the pre-rewrite deployment. The contracts have since been rewritten
+ * and are being redeployed from scratch, testnet first, on Arc / Base /
+ * Robinhood / BNB / Ethereum. Abstract is deprioritised to balance-reading only.
+ *
+ * Nothing here should be used to build a transaction. It survives because ten
+ * UI files still read it for cosmetic data — symbols, logos, decimals for
+ * display — and deleting it outright would blank those screens before the
+ * chain-keyed replacement (`TOKENS` in registry.ts) has anything in it.
+ *
+ * The replacement is per (chainId, address), which is the actual identity of a
+ * token; a bare address here is meaningless without the chain it sits on. As
+ * each chain deploys, populate `TOKENS` and move call sites over. This file is
+ * expected to shrink to nothing.
+ *
+ * The constant previously exported here as `ABSTRACT_MAINNET_CHAIN_ID` was set
+ * to 11124, which is the TESTNET id — Abstract mainnet is 2741. Nothing
+ * imported it, so it is removed rather than corrected.
+ */
 
 export const ABSTRACT_TOKENS: IToken[] = [
   {
