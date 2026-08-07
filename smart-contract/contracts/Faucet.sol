@@ -8,8 +8,14 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract KaleidoTokenFaucet is Ownable(msg.sender){
     using SafeERC20 for IERC20;
-    address public USDC = 0x572f4901f03055ffC1D936a60Ccc3CbF13911BE3;
-    address public KLD = 0x0c61dbCF1e8DdFF0E237a256257260fDF6934505;
+
+    /// @dev Set at deploy rather than hardcoded. These were Abstract-testnet
+    ///      literals, which made the faucet undeployable on the other testnets
+    ///      without editing the source. Left mutable so the existing
+    ///      owner-only setUSDCAddress keeps working; the fix here is only that
+    ///      the initial values now come from the constructor.
+    address public USDC;
+    address public KLD;
 
     // State variables
     uint256 public MIN_CLAIM_AMOUNT = 100 * 10**6; // 100 USDC
@@ -42,6 +48,14 @@ contract KaleidoTokenFaucet is Ownable(msg.sender){
         address indexed claimer,
         uint256 indexed date
     );
+
+    /// @param _usdc  USDC (or its testnet mock) on the chain being deployed to.
+    /// @param _kld   The KLD token on that same chain.
+    constructor(address _usdc, address _kld) {
+        require(_usdc != address(0) && _kld != address(0), "Faucet: zero token");
+        USDC = _usdc;
+        KLD = _kld;
+    }
 
     // Claim function
     function claimToken() external {
