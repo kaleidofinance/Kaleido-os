@@ -13,47 +13,43 @@ Our mission is to provide an intelligent, modular liquidity layer, merging high-
 ## Key Pillars
 
 ### 1. Agentic Execution (Luca AI)
-Luca is the heartbeat of the OS. More than a bot, Luca is a **native co-pilot** that facilitates:
-*   **Intent-Based Swaps:** Interpreting natural language to find and execute the best paths.
-*   **LP Management:** Automated insights into concentrated liquidity performance.
-*   **Contextual Assistance:** Real-time risk scoring and portfolio health monitoring.
+Luca is the OS's reasoning layer — provider-agnostic (Claude or OpenAI, whichever key is configured) and wired to real read tools, not a scripted demo.
+*   **Local-first command routing:** A stated instruction ("swap 500 USDC to KLD", "borrow 500 USDC at 8% for 30 days") is parsed and priced deterministically, on-device, with zero model calls. The provider is reached only for things that are genuinely a reasoning question ("what's my cheapest borrow?").
+*   **Metered reasoning, unmetered trading:** Model calls are rationed per wallet per day (server-enforced); a user's own trades are never capped by that limit — that cap exists to protect the shared model bill, not to restrict what you do with your own funds.
+*   **Signable plans:** Whichever path answers, the result is a plan rendered for review — nothing executes until the user signs it with their own wallet.
 
-### 2. The Point Economy (Sybil-Resistant)
-A production-hardened rewards engine built to value **commitment over automation**.
-*   **Point Guard:** Capital-gated security system requiring minimum staked KLD for non-on-chain points.
-*   **Volume-Weighted:** Rewards are calculated based on USD volume ($1 = 1pt), neutralizing bot farming.
-*   **Leaderboard 🏆:** Real-time global ranking with point breakdowns across all products.
+### 2. Modular DeFi Stack
+*   **V3 Concentrated-Liquidity DEX:** Swap, and open/manage LP positions with a real range picker.
+*   **P2P Lending Marketplace:** Post or fill borrow requests and lending listings; deposit/withdraw collateral; repay.
+*   **kfUSD Stablecoin:** Multi-collateral (USDC/USDT/USDe), minted and redeemed 1:1, backed by the kafUSD yield vault.
+*   **Liquid Staking ($stKLD):** Stake KLD for a liquid, appreciating staking derivative.
+*   **Buy / Sell:** Fiat on/off-ramp via MoonPay.
+*   **Agent-to-Agent Payments (x402):** A machine-payable pricing API (`/api/x402`) so other agents can call Kaleido directly, not just humans through the UI.
 
-### 3. Modular DeFi Stack
-*   **V3 Omni-Pool DEX:** Concentrated liquidity for maximum capital efficiency.
-*   **P2P Marketplace:** A social lending/borrowing layer with intent-based listings.
-*   **kfUSD Stablecoin:** A multi-collateral stablecoin backed by yield-generating vaults (kafUSD).
-*   **Liquid Staking ($stKLD):** High-yield staking with full derivative liquidity.
+### 3. The Point Economy — being rebuilt, not shipped
+The original points system (referrals/marketplace/LP/AI/staking/swaps) turned out to be farmable in half its inputs and is now write-locked at the database level. The replacement — server-computed, receipt-verified, time-weighted accrual — is specified in [`docs/points-system.md`](docs/points-system.md) but **not yet implemented**. Treat any point total shown today as Season 0 participation evidence, not a balance.
 
 ---
 
 ## Technical Features
 
-*   **Next.js 14 / TypeScript:** High-performance, type-safe architecture.
-*   **Diamond Standard (EIP-2535):** Fully modular and upgradeable smart contract core.
-*   **Hardware-Aware UI:** Adaptive performance scaling based on device memory/computing power.
-*   **Biometric Integrity:** FaceScan-ready onboarding to ensure distinct protocol participants.
-*   **Tailwind CSS:** Modern, responsive dark-glassmorphism aesthetic.
+*   **Next.js 14 / TypeScript**, App Router.
+*   **Diamond Standard (EIP-2535):** modular, upgradeable smart contract core, deployable across EVM chains.
+*   **thirdweb** for wallet connection (MetaMask, Rainbow) and chain management; **ethers v6** for all contract calls.
+*   **Supabase**, service-role-gated for anything that spends a shared resource (model quota, points); anon-key reads stay public where the data is meant to be (activity feed, leaderboard).
 
 ---
 
-## Smart Contracts
+## Smart Contracts (Abstract Testnet)
 
-### Core Architecture
-The protocol uses a Diamond proxy to aggregate specialized facets:
+Addresses below are the ones the app is currently wired to — see [`.env.example`](.env.example) for the complete, authoritative list (RPCs, faucet, oracle, etc.), since these get redeployed and drift is real.
+
 - **Diamond**: `0x7286F2708f8f4d0a1a1b6c19f5D14AdB4c3207B2`
-- **ProtocolFacet**: Lending & Marketplace logic.
-- **KLDVault**: Staking & Yield distribution.
-
-### Stablecoin Ecosystem
-- **kfUSD (Stablecoin)**: `0x7f815685a7D686Ced7AE695c01974425C4ee7790`
-- **kafUSD (Yield Vault)**: `0x8e78C32efe55e77335f488dd0bf87A8Eb9d39D6c`
-- **USDC Collateral**: `0x572f4901f03055ffC1D936a60Ccc3CbF13911BE3`
+- **KLD (native token)**: `0x0c61dbCF1e8DdFF0E237a256257260fDF6934505`
+- **KLD Vault (staking)**: see `NEXT_PUBLIC_KLD_VAULT_ADDRESS`
+- **kfUSD (stablecoin)**: `0x913f3354942366809A05e89D288cCE60d87d7348`
+- **kafUSD (yield vault)**: `0x601191730174c2651E76dC69325681a5A5D5B9a6`
+- **USDC collateral**: `0x572f4901f03055ffC1D936a60Ccc3CbF13911BE3`
 
 ---
 
@@ -61,20 +57,22 @@ The protocol uses a Diamond proxy to aggregate specialized facets:
 
 ### Installation
 1. Clone: `git clone https://github.com/kaleidofinance/Kaleido-os.git`
-2. Install: `yarn install`
-3. Start: `yarn dev`
+2. Copy `.env.example` to `.env` and fill in the values you need (see comments in the file — the AI provider and MoonPay keys are optional; the app degrades gracefully without them).
+3. Install: `npm install`
+4. Start: `npm run dev` (or `npm run dev:turbo` for a substantially faster cold compile)
 
 ---
 
 ## Roadmap
 
-- [x] Unified Point System & Leaderboard
-- [x] Volume-Weighted Indexer (DEX/AI)
-- [x] Point Guard Security Layer
+- [x] V3 DEX, P2P lending, kfUSD/kafUSD, liquid staking — shipped, live on the Trade/Pool/Borrow/Stable/Stake surfaces
+- [x] Luca: provider-agnostic agent layer with real read tools
+- [x] Local-first command routing — trading works even when the model is unreachable or a wallet's quota is exhausted
+- [x] x402 machine-payable API surface (services/verify)
+- [ ] Server-verified, time-weighted points system (spec written, not implemented — see `docs/points-system.md`)
 - [ ] Cross-Chain Liquidity Bridges
 - [ ] Agentic Mobile Interface
-- [ ] x402 Agent-to-Agent Payments
 
 ---
 
-Built with ❤️ by the Kaleido Team. **Deploy, Stake, and Reason.**
+Built by the Kaleido Team. **Deploy, Stake, and Reason.**
