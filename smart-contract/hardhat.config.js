@@ -226,6 +226,21 @@ module.exports = {
       { version: "0.8.9", settings: { optimizer: { enabled: true, runs: 200 } } },
       { version: "0.8.20", settings: { optimizer: { enabled: true, runs: 200 } } },
       { version: "0.8.24", settings: { optimizer: { enabled: true, runs: 200 } } },
+      /**
+       * The V3 fork. 73 files under contracts/dex-v3 pin `=0.7.6` exactly, so
+       * without this entry `compile` fails on every one of them with "No
+       * compiler version matched" — nothing in dex-v3 has ever been built in
+       * this checkout.
+       *
+       * runs is 1,000,000 to match upstream Uniswap V3. This is not cosmetic:
+       * poolInitCodeHash in src/constants/registry.ts is the keccak of the
+       * compiled pool bytecode, so changing the optimizer settings changes the
+       * hash, and a stale hash does not fail at deploy — it fails at the first
+       * swap, when the callback authenticates against a derived address that
+       * holds no code. Change these settings and you must re-run
+       * scripts/verify-pool-init-hash.js and update the registry.
+       */
+      { version: "0.7.6", settings: { optimizer: { enabled: true, runs: 1000000 } } },
       { version: "0.5.16", settings: { optimizer: { enabled: true, runs: 200 } } },
       { version: "0.6.6", settings: { optimizer: { enabled: true, runs: 200 } } },
       { version: "0.6.12", settings: { optimizer: { enabled: true, runs: 200 } } },
@@ -242,6 +257,20 @@ module.exports = {
       "contracts/dex/test/WETH9.sol": {
         version: "0.5.16",
         settings: { optimizer: { enabled: true, runs: 200 } },
+      },
+      /**
+       * These two exceed the 24,576-byte contract size limit at runs=1,000,000.
+       * Upstream Uniswap periphery compiles them at a low run count for exactly
+       * this reason. Neither is the pool, so lowering runs here does not affect
+       * poolInitCodeHash.
+       */
+      "contracts/dex-v3/periphery/NonfungiblePositionManager.sol": {
+        version: "0.7.6",
+        settings: { optimizer: { enabled: true, runs: 2000 } },
+      },
+      "contracts/dex-v3/periphery/NonfungibleTokenPositionDescriptor.sol": {
+        version: "0.7.6",
+        settings: { optimizer: { enabled: true, runs: 2000 } },
       },
     },
   },
