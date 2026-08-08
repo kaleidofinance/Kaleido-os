@@ -6,67 +6,75 @@ export type ActivityType =
   | "add_liquidity" // Adding LP position
   | "remove_liquidity"
 
-interface LogActivityParams {
+export interface LogActivityParams {
   wallet: string
   activityType: ActivityType
   tokenIn: string
   tokenOut: string
-  amountInUsd: number   // USD value of the input — this drives the point weight
+  /** Client-side estimate only. Never trusted as a point weight — see below. */
+  amountInUsd: number
   txHash: string
   isAgentInitiated?: boolean
 }
 
 /**
- * Logs a protocol interaction to Supabase for the local indexer.
- * Points are awarded based on USD volume, not action count.
+ * Activity logging is disabled until the server-side ingest route exists.
  *
- * Volume-weight formula:
- *   swap/lp     → 1 point per $1 USD
- *   agent_swap  → 1.2 points per $1 USD (20% bonus for using Luca)
+ * This used to compute `points_earned` in the browser and INSERT it into
+ * `kaleido_protocol_activity` with the `NEXT_PUBLIC` anon key. Three things
+ * were wrong with that, in increasing order of severity:
+ *
+ * 1. The insert's failure was swallowed into a `console.warn`. A user whose
+ *    write was rejected saw a successful swap and assumed they had earned
+ *    points; nothing surfaced the miss.
+ * 2. `amountInUsd` was `parseFloat(amountIn)` — the raw token amount, not USD.
+ *    A 1,000 USDC swap scored 1,000 and a 0.5 ETH swap scored 0.5, weighting
+ *    the system against exactly the valuable assets it meant to reward.
+ * 3. The browser both computed and wrote its own point balance. Whether that
+ *    is mintable depends entirely on RLS on `kaleido_protocol_activity`, which
+ *    has not been verified — and the anon key and project URL both ship in the
+ *    client bundle, so the endpoint is reachable without going through this
+ *    function at all.
+ *
+ * Making (1) loud would have left (2) and (3) standing. The rule the points
+ * design is built on is that the client never writes points and never computes
+ * them: every write is service-role, and every action point is anchored to a
+ * transaction hash the server fetched and decoded itself. A client insert
+ * cannot satisfy that no matter how its errors are reported, so the write is
+ * gone rather than fixed.
+ *
+ * Nothing is lost by disabling it today: no contracts are deployed, so there is
+ * no real activity to record. Existing rows are testnet-only and denominated in
+ * mixed units, which is why the plan treats them as Season 0 participation
+ * rather than a balance to migrate.
+ *
+ * Replacement (docs/points-system.md §4, §7): a server route that takes
+ * `{ chainId, txHash }`, fetches the receipt, decodes the Swap/Mint log, values
+ * it server-side, and writes with the service-role key. The call sites here
+ * already have the receipt hash to hand it.
+ *
+ * The signature is kept so those call sites keep documenting what they would
+ * send, and so re-enabling this is a one-file change.
  */
-export async function logProtocolActivity(params: LogActivityParams): Promise<void> {
-  const {
-    wallet,
-    activityType,
-    tokenIn,
-    tokenOut,
-    amountInUsd,
-    txHash,
-    isAgentInitiated = false,
-  } = params
-
-  // Calculate the point value for this action
-  const basePoints = Math.floor(amountInUsd) // $1 = 1 point
-  const multiplier = isAgentInitiated || activityType === "agent_swap" ? 1.2 : 1.0
-  const pointsEarned = Math.floor(basePoints * multiplier)
-
-  try {
-    const { error } = await supabase.from("kaleido_protocol_activity").insert({
-      wallet: wallet.toLowerCase(),
-      activity_type: activityType,
-      token_in: tokenIn,
-      token_out: tokenOut,
-      amount_in_usd: amountInUsd,
-      points_earned: pointsEarned,
-      is_agent_initiated: isAgentInitiated,
-      tx_hash: txHash,
-      created_at: new Date().toISOString(),
-    })
-
-    if (error) {
-      console.warn("⚠️ Failed to log protocol activity:", error.message)
-    } else {
-      console.log(`📝 Activity Logged: ${activityType} | $${amountInUsd} | +${pointsEarned} pts${isAgentInitiated ? " (Luca 1.2x)" : ""}`)
-    }
-  } catch (e) {
-    // Non-blocking — never throw, activity logging should never break a swap
-    console.warn("⚠️ logProtocolActivity exception:", e)
+export async function logProtocolActivity(_params: LogActivityParams): Promise<void> {
+  if (process.env.NODE_ENV !== "production") {
+    console.info(
+      "[points] Activity logging is disabled — points must be written server-side. " +
+        "See logProtocolActivity.ts and docs/points-system.md §4.",
+    )
   }
 }
 
 /**
- * Fetches the total volume-weighted points for a wallet from the local indexer.
- * Called by the Point System aggregator in useGetValueAndHealth.
+ * Reads the Season 0 activity total for a wallet.
+ *
+ * Read-only, and public read is what the anon key is for, so this stays. But
+ * the number is not a verified point balance: every row predates the ingest
+ * route above, so the amounts are unverified and mis-denominated. It is a
+ * record of participation.
+ *
+ * Phase 1 repoints this at `point_balances` — a server-computed total — at
+ * which point the client-side sum in `useGetValueAndHealth` goes away too.
  */
 export async function getActivityPoints(wallet: string): Promise<number> {
   try {

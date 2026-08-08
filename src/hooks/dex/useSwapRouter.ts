@@ -154,10 +154,10 @@ export const useSwapRouter = () => {
       }
       const receipt = await tx.wait();
 
-      // 📝 Local Indexer: Log swap volume to Supabase (non-blocking)
+      // Records the swap for points. Currently a no-op: the write moved
+      // server-side, and until that route exists nothing is recorded. The
+      // receipt hash is what the server route will verify against.
       if (receipt?.status === 1 && activeAccount?.address) {
-        // amountIn is in token units — we log it as a best-effort USD approximation
-        // The Point System uses points_earned from the table, not raw USD
         logProtocolActivity({
           wallet: activeAccount.address,
           activityType: "swap",
@@ -368,7 +368,10 @@ export const useSwapRouter = () => {
             toDec
         );
 
-        // 📝 Local Indexer: Agent swaps get the 1.2x multiplier flag
+        // Agent swaps carry the 1.2x flag. No-op today — see logProtocolActivity.
+        // NOTE: this passes symbols where the other call sites pass addresses.
+        // Fix before the server ingest route lands, or these rows key on a
+        // string that is not chain-unique.
         const receipt = await tx.wait();
         if (receipt?.status === 1 && activeAccount?.address) {
           logProtocolActivity({
