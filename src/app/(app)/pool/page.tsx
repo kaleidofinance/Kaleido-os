@@ -4,20 +4,23 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useV3Positions, type V3Position } from "@/hooks/dex/useV3Positions";
 import { usePoolV3 } from "@/hooks/v2/usePoolV3";
-import { ABSTRACT_TOKENS } from "@/constants/tokens";
+import { decimalsForAddress, symbolForAddress } from "@/constants/tokens";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { tickToPrice } from "@/constants/utils/v3Math";
 import s from "./pool.module.css";
 
-const decimalsFor = (address: string) =>
-  ABSTRACT_TOKENS.find((t) => t.address?.toLowerCase() === address?.toLowerCase())
-    ?.decimals ?? 18;
-
-const symbolFor = (address: string) =>
-  ABSTRACT_TOKENS.find((t) => t.address?.toLowerCase() === address?.toLowerCase())
-    ?.symbol ?? `${address?.slice(0, 6)}…`;
+/**
+ * Display-only decimals for a position's token.
+ *
+ * The `?? 18` is a deliberate, visible guess and only safe because these feed
+ * tickToPrice for a rendered price label. Never reuse this shape to size a
+ * transfer: an unregistered 6-decimal token read as 18 is off by 10^12.
+ */
+const decimalsFor = (chainId: number | undefined, address: string) =>
+  decimalsForAddress(chainId, address) ?? 18;
 
 /** Current-tick lookups, keyed by position — fetched once per position on mount. */
-function useCurrentTicks(positions: V3Position[]) {
+function useCurrentTicks(positions: V3Position[], chainId: number | undefined) {
   const { getCurrentTick } = usePoolV3();
   const [ticks, setTicks] = useState<Record<string, number | null>>({});
 
@@ -29,8 +32,8 @@ function useCurrentTicks(positions: V3Position[]) {
         p.token0,
         p.token1,
         p.fee,
-        decimalsFor(p.token0),
-        decimalsFor(p.token1),
+        decimalsFor(chainId, p.token0),
+        decimalsFor(chainId, p.token1),
       ).then((r) => {
         if (!cancelled) setTicks((prev) => ({ ...prev, [p.tokenId]: r?.tick ?? null }));
       });
@@ -106,8 +109,13 @@ function RangeBar({
 
 export default function PoolPage() {
   const { positions, loading, collectFees, removeLiquidity, refresh } = useV3Positions();
-  const currentTicks = useCurrentTicks(positions);
+  const { chainId } = useWalletV2();
+  const currentTicks = useCurrentTicks(positions, chainId);
   const [busy, setBusy] = useState<string | null>(null);
+
+  // Bound to this chain so a position's raw addresses resolve against the right
+  // registry — the same address means a different token on a different chain.
+  const symbolFor = (address: string) => symbolForAddress(chainId, address);
 
   const withActive = positions.filter((p) => Number(p.liquidity) > 0);
 
@@ -192,8 +200,8 @@ export default function PoolPage() {
               tickLower={p.tickLower}
               tickUpper={p.tickUpper}
               currentTick={currentTicks[p.tokenId] ?? null}
-              decimals0={decimalsFor(p.token0)}
-              decimals1={decimalsFor(p.token1)}
+              decimals0={decimalsFor(chainId, p.token0)}
+              decimals1={decimalsFor(chainId, p.token1)}
             />
 
             <div className={s.stats}>

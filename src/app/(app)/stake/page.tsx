@@ -6,10 +6,8 @@ import Nav from "@/components/v2/Nav";
 import { useStakeV2 } from "@/hooks/v2/useStakeV2";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
-import { ABSTRACT_TOKENS } from "@/constants/tokens";
+import { chainTokenBySymbol } from "@/constants/tokens";
 import s from "./stake.module.css";
-
-const KLD = ABSTRACT_TOKENS.find((t) => t.symbol === "KLD") ?? ABSTRACT_TOKENS[0];
 
 const fmt = (n: number | null, dp = 2) =>
   n === null
@@ -27,9 +25,13 @@ const fmtCooldown = (secs: number) => {
 };
 
 export default function StakePage() {
-  const { isConnected } = useWalletV2();
+  const { isConnected, chainId } = useWalletV2();
   const stake = useStakeV2();
-  const { balance: kldBalance, loading: kldLoading } = useTokenBalance(KLD);
+  // Resolved per-chain rather than from a compiled-in constant. Returns
+  // undefined until KLD is registered for this chain; useTokenBalance accepts
+  // null and reports 0, which is the truthful reading when there is no token.
+  const kld = useMemo(() => chainTokenBySymbol(chainId, "KLD") ?? null, [chainId]);
+  const { balance: kldBalance, loading: kldLoading } = useTokenBalance(kld);
 
   const [mode, setMode] = useState<"stake" | "unstake">("stake");
   const [amount, setAmount] = useState("");

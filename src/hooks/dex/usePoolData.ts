@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ethers } from 'ethers';
 import { KALEIDOSWAP_FACTORY } from '@/constants/utils/addresses';
 import { ITradingPair } from '@/constants/types/dex';
-import { ABSTRACT_TOKENS } from '@/constants/tokens';
+import { chainTokenByAddress } from '@/constants/tokens';
 
 const FACTORY_ABI = [
   "function allPairsLength() external view returns (uint)",
@@ -67,6 +67,10 @@ export const usePoolData = () => {
       activeFetchPromise = (async () => {
         if (typeof window === "undefined" || !window.ethereum) return [];
         const provider = new ethers.BrowserProvider(window.ethereum);
+        // Read the chain off the provider we're actually querying, rather than
+        // naming one. Every token built below is tagged with it, and registry
+        // lookups are only valid against the chain the pair was read from.
+        const chainId = Number((await provider.getNetwork()).chainId);
         const factory = new ethers.Contract(KALEIDOSWAP_FACTORY, FACTORY_ABI, provider);
 
         const pairsLength = await factory.allPairsLength();
@@ -81,9 +85,11 @@ export const usePoolData = () => {
           Array.from({ length: pairsCount }, (_, i) => factory.allPairs(i))
         );
 
-        // RPC Context for Volume (Fetch once for all pools)
-        const rpcUrl = "https://api.testnet.abs.xyz";
-        const rpcProvider = new ethers.JsonRpcProvider(rpcUrl);
+        // Volume context, fetched once for all pools. This used to open a second
+        // provider hardcoded to Abstract Testnet's RPC, so on any other chain it
+        // queried logs from a chain the pairs don't exist on. Reuse the wallet's
+        // provider — same chain as the factory read, by construction.
+        const rpcProvider = provider;
         const currentBlock = await rpcProvider.getBlockNumber();
         const fromBlock = Math.max(0, currentBlock - 5000); 
 
@@ -103,8 +109,8 @@ export const usePoolData = () => {
             const reserve0 = reserves.reserve0;
             const reserve1 = reserves.reserve1;
 
-            let token0 = ABSTRACT_TOKENS.find(t => t.address.toLowerCase() === token0Address.toLowerCase());
-            let token1 = ABSTRACT_TOKENS.find(t => t.address.toLowerCase() === token1Address.toLowerCase());
+            let token0 = chainTokenByAddress(chainId, token0Address);
+            let token1 = chainTokenByAddress(chainId, token1Address);
 
             // Fetch missing token info in parallel if needed
             if (!token0) {
@@ -119,7 +125,7 @@ export const usePoolData = () => {
                 symbol,
                 name,
                 decimals: Number(decimals),
-                chainId: 11124,
+                chainId,
                 verified: false,
                 logoURI: '',
               };
@@ -137,7 +143,7 @@ export const usePoolData = () => {
                 symbol,
                 name,
                 decimals: Number(decimals),
-                chainId: 11124,
+                chainId,
                 verified: false,
                 logoURI: '',
               };

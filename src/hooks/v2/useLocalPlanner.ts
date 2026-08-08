@@ -14,7 +14,8 @@ import {
   KLD_ADDRESS,
   stKLD_ADDRESS,
 } from "@/constants/utils/addresses";
-import { ACTIVE_TOKENS } from "@/constants/tokens";
+import { symbolForAddress } from "@/constants/tokens";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import type { Intent } from "@/lib/v2/intents";
 import type { Command } from "@/lib/v2/intents/fromCommand";
 
@@ -121,9 +122,15 @@ export interface PoolPositionRef {
   liquidity: string;
 }
 
-function symbolForPoolToken(address: string): string {
-  const known = ACTIVE_TOKENS.find((t) => t.address?.toLowerCase() === address?.toLowerCase());
-  return known?.symbol ?? `${address.slice(0, 6)}…`;
+/**
+ * Display label for a position's token, on a given chain.
+ *
+ * Only ever used to build a summary line the user reads before signing, so a
+ * truncated address is an acceptable answer. It must not be used to pick an
+ * address to transact with.
+ */
+function symbolForPoolToken(chainId: number | undefined, address: string): string {
+  return symbolForAddress(chainId, address);
 }
 
 /** The slice of an active loan the planner needs. */
@@ -141,13 +148,14 @@ const daysFromNow = (days: number) =>
 /**
  * Re-resolves a token against the lending registry.
  *
- * The DEX and the P2P protocol disagree about native ETH: ACTIVE_TOKENS carries
- * the swap-router sentinel (0xEeee…), while BORROW_CURRENCIES uses ADDRESS_1,
- * which is what ProtocolFacet expects. Passing the parser's token straight
- * through would send collateral to the wrong address and try to ERC20-approve
- * something that isn't a token. Symbols are the only stable key across the two
- * lists, so lending commands re-resolve here and refuse anything the protocol
- * doesn't accept, rather than silently proceeding with a DEX address.
+ * The DEX and the P2P protocol disagree about native ETH: the DEX-side token
+ * carries the swap-router sentinel (0xEeee…), while BORROW_CURRENCIES uses
+ * ADDRESS_1, which is what ProtocolFacet expects. Passing the parser's token
+ * straight through would send collateral to the wrong address and try to
+ * ERC20-approve something that isn't a token. Symbols are the only stable key
+ * across the two lists, so lending commands re-resolve here and refuse anything
+ * the protocol doesn't accept, rather than silently proceeding with a DEX
+ * address.
  */
 function toLendingCurrency(symbol: string) {
   return BORROW_CURRENCIES.find(
@@ -162,6 +170,7 @@ const unsupported = (symbol: string): PlanResult => ({
 
 export function useLocalPlanner() {
   const { getV3AmountOut } = useV3SwapRouter();
+  const { chainId } = useWalletV2();
 
   const buildPlan = useCallback(
     async (command: Command, opts: PlannerOptions): Promise<PlanResult> => {
@@ -504,7 +513,7 @@ export function useLocalPlanner() {
       /* ------------------------------------------------------ stablecoin -- */
       // STABLE_TOKEN lists the exact collateral/output tokens the app accepts
       // (USDC/USDT/USDe). Re-resolving by symbol here, rather than trusting the
-      // parser's ACTIVE_TOKENS match, means "mint 500 kld" fails loudly instead
+      // token the parser matched, means "mint 500 kld" fails loudly instead
       // of quoting a token the stablecoin contracts were never told about.
       const STABLE_TOKEN: Record<string, { address: string; decimals: number }> = {
         USDC: { address: STABLE_CONTRACTS.USDC, decimals: 6 },
@@ -681,7 +690,7 @@ export function useLocalPlanner() {
             error: `I can't find position #${command.positionId} in your wallet.`,
           };
         }
-        const pairLabel = `${symbolForPoolToken(pos.token0)}/${symbolForPoolToken(pos.token1)}`;
+        const pairLabel = `${symbolForPoolToken(chainId, pos.token0)}/${symbolForPoolToken(chainId, pos.token1)}`;
 
         if (command.kind === "collectFees") {
           return {
@@ -783,7 +792,7 @@ export function useLocalPlanner() {
         },
       };
     },
-    [getV3AmountOut],
+    [getV3AmountOut, chainId],
   );
 
   return { buildPlan };

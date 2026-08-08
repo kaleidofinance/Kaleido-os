@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ethers } from "ethers";
@@ -12,7 +12,8 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3PositionManager } from "@/hooks/dex/useV3PositionManager";
 import { usePoolV3 } from "@/hooks/v2/usePoolV3";
-import { ABSTRACT_TOKENS } from "@/constants/tokens";
+import { chainTokens } from "@/constants/tokens";
+import { getChainMeta } from "@/constants/chains";
 import type { IToken } from "@/constants/types/dex";
 import {
   TICK_SPACINGS,
@@ -35,9 +36,6 @@ const FEE_TIERS = [
 
 const RANGE_PRESETS = ["Full range", "±5%", "±10%", "Custom"] as const;
 
-const findToken = (symbol: string) =>
-  ABSTRACT_TOKENS.find((t) => t.symbol === symbol) ?? ABSTRACT_TOKENS[0];
-
 /**
  * mintPosition already handles token sorting, pool-init-if-needed and the
  * sqrtPriceX96 math internally — real logic worth trusting rather than
@@ -47,14 +45,17 @@ const findToken = (symbol: string) =>
  */
 export default function NewPositionPage() {
   const router = useRouter();
-  const { isConnected, address } = useWalletV2();
+  const { isConnected, address, chainId } = useWalletV2();
   const account = useActiveAccount();
   const chain = useActiveWalletChain();
   const { getCurrentTick } = usePoolV3();
   const { mintPosition } = useV3PositionManager();
 
-  const [token0, setToken0] = useState<IToken>(() => findToken("KLD"));
-  const [token1, setToken1] = useState<IToken>(() => findToken("USDC"));
+  // Seeded from the connected chain's registry, never from a compiled-in list:
+  // a KLD address is only meaningful together with the chain it lives on.
+  const available = useMemo(() => chainTokens(chainId), [chainId]);
+  const [token0, setToken0] = useState<IToken | null>(null);
+  const [token1, setToken1] = useState<IToken | null>(null);
   const [pickerFor, setPickerFor] = useState<"0" | "1" | null>(null);
   const [fee, setFee] = useState(3000);
   const [preset, setPreset] = useState<(typeof RANGE_PRESETS)[number]>("±10%");
@@ -64,10 +65,19 @@ export default function NewPositionPage() {
   const [amount1, setAmount1] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Re-seed on chain change. Carrying a token across chains would pair two
+  // addresses that never shared a pool, and the decimals may differ too.
+  useEffect(() => {
+    const pick = (sym: string) => available.find((t) => t.symbol === sym);
+    setToken0(pick("KLD") ?? available[0] ?? null);
+    setToken1(pick("USDC") ?? available[1] ?? null);
+  }, [available]);
+
   const { balance: balance0 } = useTokenBalance(token0);
   const { balance: balance1 } = useTokenBalance(token1);
 
   const applyPreset = async (p: (typeof RANGE_PRESETS)[number]) => {
+    if (!token0 || !token1) return;
     setPreset(p);
     if (p === "Custom") return;
     const tick = await getCurrentTick(
@@ -98,6 +108,7 @@ export default function NewPositionPage() {
     if (preset === "Full range") {
       return { tickLower: -887272, tickUpper: 887272 };
     }
+    if (!token0 || !token1) return null;
     const lo = parseFloat(minPrice);
     const hi = parseFloat(maxPrice);
     if (!lo || !hi || hi <= lo) return null;
@@ -107,12 +118,12 @@ export default function NewPositionPage() {
       tickLower: nearestUsableTick(Math.min(rawLower, rawUpper), spacing),
       tickUpper: nearestUsableTick(Math.max(rawLower, rawUpper), spacing),
     };
-  }, [minPrice, maxPrice, preset, spacing, token0.decimals, token1.decimals]);
+  }, [minPrice, maxPrice, preset, spacing, token0, token1]);
 
-  const ready = isConnected && amount0 && amount1 && ticks !== null;
+  const ready = isConnected && token0 && token1 && amount0 && amount1 && ticks !== null;
 
   const submit = async () => {
-    if (!ready || !account || !chain) return;
+    if (!ready || !account || !chain || !token0 || !token1) return;
     setBusy(true);
     try {
       const signer = ethers6Adapter.signer.toEthers({ client, chain, account });
@@ -158,6 +169,29 @@ export default function NewPositionPage() {
       setBusy(false);
     }
   };
+
+  /*
+   * Every hook has run, so returning here is safe. Without a pair there is
+   * nothing to render: no pool exists to add liquidity to, and the form below
+   * dereferences both tokens on every line.
+   */
+  if (!token0 || !token1) {
+    const here = getChainMeta(chainId)?.name;
+    return (
+      <div className={s.form}>
+        <div className={s.box}>
+          <div className={s.bl}>No pools here yet</div>
+          <p className={s.priceHint}>
+            Kaleido&apos;s contracts aren&apos;t deployed
+            {here ? ` on ${here}` : " on any network"} yet, so there are no
+            tokens to pair. They&apos;re being redeployed from scratch — testnet
+            first — starting with Arc, Base, Robinhood, BNB Smart Chain and
+            Ethereum.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

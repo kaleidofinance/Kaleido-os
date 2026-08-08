@@ -17,8 +17,18 @@ import { ethers } from "ethers"
  * Still correct for reading Abstract balances, which is the only thing Abstract
  * is kept registered for.
  */
+/**
+ * The chain `readOnlyProvider` is pinned to.
+ *
+ * Exported so server-side callers can scope a registry lookup to the chain they
+ * are actually reading. A token address is only meaningful together with its
+ * chain, and server code has no wallet to ask — this constant is the answer,
+ * and it moves in lockstep with the provider below.
+ */
+export const READ_ONLY_CHAIN_ID = 11124
+
 export const readOnlyProvider = new ethers.JsonRpcProvider(envVars.httpRPC, {
-    chainId: 11124,
+    chainId: READ_ONLY_CHAIN_ID,
     name: "abstract-testnet"
 }, { staticNetwork: true })
 

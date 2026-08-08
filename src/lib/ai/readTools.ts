@@ -1,8 +1,12 @@
 import { ethers } from "ethers";
-import { readOnlyProvider } from "@/config/provider";
+import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { envVars } from "@/constants/envVars";
 import protocolAbi from "@/abi/ProtocolFacet.json";
-import { ABSTRACT_TOKENS } from "@/constants/tokens";
+import {
+  chainTokenBySymbol,
+  chainTokens,
+  symbolForAddress,
+} from "@/constants/tokens";
 import { supabase } from "@/lib/supabase/supabaseClient";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import { fetchOmniAssetBalance } from "@/constants/utils/omniChainBalances";
@@ -79,12 +83,15 @@ async function getPortfolio(args: Json): Promise<Json> {
   }
 }
 
-/** Resolves a token address to its symbol; falls back to a short address. */
+/**
+ * Resolves a token address to its symbol; falls back to a short address.
+ *
+ * Scoped to READ_ONLY_CHAIN_ID because that is the chain these handlers read
+ * from. The Supabase order book stores bare addresses, and an address means a
+ * different token on a different chain — so the lookup has to name one.
+ */
 function symbolFor(address: string): string {
-  const match = ABSTRACT_TOKENS.find(
-    (t) => t.address?.toLowerCase() === address?.toLowerCase(),
-  );
-  return match?.symbol ?? `${address?.slice(0, 6)}…${address?.slice(-4)}`;
+  return symbolForAddress(READ_ONLY_CHAIN_ID, address);
 }
 
 /**
@@ -101,13 +108,20 @@ async function getMarkets(args: Json): Promise<Json> {
   const wantLend = side === "lend";
 
   const token = asset
-    ? ABSTRACT_TOKENS.find((t) => t.symbol.toUpperCase() === asset)
+    ? chainTokenBySymbol(READ_ONLY_CHAIN_ID, asset)
     : undefined;
   if (asset && !token) {
-    return {
-      error: `Unknown asset "${asset}"`,
-      knownAssets: ABSTRACT_TOKENS.map((t) => t.symbol),
-    };
+    const known = chainTokens(READ_ONLY_CHAIN_ID).map((t) => t.symbol);
+    // Distinguish "that symbol isn't one of ours" from "we have no token
+    // registry on this chain at all". The model relays this to the user, and
+    // the two call for completely different answers.
+    return known.length === 0
+      ? {
+          error:
+            "No tokens are registered on the chain this server reads from, so no asset can be resolved by symbol.",
+          knownAssets: [],
+        }
+      : { error: `Unknown asset "${asset}"`, knownAssets: known };
   }
 
   try {

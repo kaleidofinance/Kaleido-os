@@ -573,7 +573,9 @@ Wrong today, independent of points, and Phase 1 should not be built on top.
 | `chains.ts` — `DEFAULT_CHAIN_ID = 11124` | dead testnet, zero importers | Removed. A default chain id is a guess that outlives its reason — callers use the connected chain and handle "not deployed" explicitly |
 | `chains.ts` — `TRADABLE_CHAIN_IDS` | name implied a deployment check | `INTENDED_TRADABLE_CHAIN_IDS`, so the name can't be mistaken for one |
 | `tokens.ts` — `ABSTRACT_MAINNET_CHAIN_ID = 11124` | 11124 is *testnet*; mainnet is 2741 | Removed (zero importers) rather than corrected |
-| `tokens.ts` — `ABSTRACT_TOKENS` | undocumented dead addresses | Marked legacy: display-only, never for building a transaction, expected to shrink to nothing as `TOKENS` fills |
+| `tokens.ts` — `ABSTRACT_TOKENS` / `ACTIVE_TOKENS` | eight dead 11124 addresses, read on whatever chain the user was connected to | **Deleted.** `tokens.ts` is now a thin chain-scoped adapter over `registry.ts` holding zero addresses: `chainTokens`, `chainTokenBySymbol`, `chainTokenByAddress`, `symbolForAddress`, `decimalsForAddress`. Every call site takes a `chainId`, and empty is the honest answer until a chain deploys |
+| `tokens.ts` — `searchTokens` | dead, zero importers | Removed. `TokenSelector` filters `chainTokens(chainId)` inline |
+| `tokens.ts` — decimals fallback | `?? 18` buried in the helper | `decimalsForAddress` returns `undefined`. Display-only callers may `?? 18`, which makes the guess visible at the call site instead of hiding it behind a lookup |
 | `faq.ts` — chains topic | "Abstract … the one chain you can actually trade on" | States nothing is tradable yet and gives the real testnet-first rollout order |
 | `agent/page.tsx` — plan path | built signable plans from dead addresses | Gated on `isDeployed(chainId)`; refuses with a true reason. Parse, slot-fill, `help` and FAQ still run |
 | `agent/page.tsx` — `chainId ?? 11124` | told the server every disconnected user was on Abstract | Sends `undefined`, which is the truth |

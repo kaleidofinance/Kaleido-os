@@ -9,7 +9,8 @@ import {
 import PlanReview from "@/components/v2/PlanReview";
 import { AGENT_ACTIONS, type Intent } from "@/lib/v2/intents";
 import { envVars } from "@/constants/envVars";
-import { ABSTRACT_TOKENS } from "@/constants/tokens";
+import { chainTokens } from "@/constants/tokens";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import s from "./AgentSettings.module.css";
 
 /** Maps the settings' action toggles onto the facet's on-chain bitmask. */
@@ -47,6 +48,7 @@ const ACTION_LABELS: Record<AgentAction, string> = {
 
 export default function AgentSettings({ address, open, onClose }: AgentSettingsProps) {
   const { settings, update, toggleAction } = useAgentSettings(address);
+  const { chainId } = useWalletV2();
   const [agentAddr, setAgentAddr] = useState("");
   const [grant, setGrant] = useState<Intent[] | null>(null);
 
@@ -61,9 +63,14 @@ export default function AgentSettings({ address, open, onClose }: AgentSettingsP
 
   const diamond = envVars.lendbitDiamondAddress;
   const validAgent = isAddress(agentAddr);
+  // The grant's token allow-list is chain-scoped: it names addresses on the
+  // chain the user is signing from. Empty means nothing is deployed here, and
+  // an empty allow-list is not something to sign — depending on how the facet
+  // reads it, it is either a useless grant or an unbounded one.
+  const grantable = chainTokens(chainId);
 
   const buildGrant = () => {
-    if (!validAgent || !diamond) return;
+    if (!validAgent || !diamond || grantable.length === 0) return;
     // Bitmask from the enabled action toggles.
     let bits = 0;
     (Object.keys(settings.allowedActions) as AgentAction[]).forEach((a) => {
@@ -80,7 +87,7 @@ export default function AgentSettings({ address, open, onClose }: AgentSettingsP
       maxInterestBps: 0, // no rate cap by default
       minHealthFactorBps: Math.round(settings.minHealthFactor * 10_000),
       allowedActions: bits,
-      tokens: ABSTRACT_TOKENS.map((t) => t.address),
+      tokens: grantable.map((t) => t.address),
     };
     setGrant([grantIntent]);
   };
@@ -190,14 +197,15 @@ export default function AgentSettings({ address, open, onClose }: AgentSettingsP
                   />
                   <button
                     className={s.delegateBtn}
-                    disabled={!validAgent || !diamond}
+                    disabled={!validAgent || !diamond || grantable.length === 0}
                     onClick={buildGrant}
                   >
                     Review delegation
                   </button>
                   <p className={s.delegateNote}>
-                    Enforced on-chain by the agent-permission facet. Revoke any
-                    time; the budget resets per day.
+                    {grantable.length === 0
+                      ? "No tokens are deployed on this network yet, so there's nothing to delegate authority over."
+                      : "Enforced on-chain by the agent-permission facet. Revoke any time; the budget resets per day."}
                   </p>
                 </>
               )}

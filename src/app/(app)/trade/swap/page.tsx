@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import TokenSelector from "@/components/v2/TokenSelector";
 import PlanReview from "@/components/v2/PlanReview";
 import SwapSettings, { AUTO_SLIPPAGE_BPS } from "@/components/v2/SwapSettings";
-import { ABSTRACT_TOKENS } from "@/constants/tokens";
+import { chainTokens } from "@/constants/tokens";
+import { getChainMeta } from "@/constants/chains";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
@@ -15,14 +16,20 @@ import s from "../trade.module.css";
 
 const DEFAULT_FEE = 3000;
 
-const findToken = (symbol: string) =>
-  ABSTRACT_TOKENS.find((t) => t.symbol === symbol) ?? ABSTRACT_TOKENS[0];
-
 export default function SwapPage() {
-  const { isConnected } = useWalletV2();
+  const { isConnected, chainId } = useWalletV2();
 
-  const [tokenIn, setTokenIn] = useState<IToken>(() => findToken("USDC"));
-  const [tokenOut, setTokenOut] = useState<IToken>(() => findToken("KLD"));
+  /*
+   * Token state is nullable and seeded from the chain, not from a module-level
+   * constant. The previous `ABSTRACT_TOKENS.find(...) ?? ABSTRACT_TOKENS[0]`
+   * could never return undefined, so the whole page assumed a token always
+   * existed — true only while a hardcoded Abstract list was compiled in. With a
+   * real per-chain registry the honest answer on an undeployed chain is "none",
+   * and the page has to be able to say so.
+   */
+  const available = useMemo(() => chainTokens(chainId), [chainId]);
+  const [tokenIn, setTokenIn] = useState<IToken | null>(null);
+  const [tokenOut, setTokenOut] = useState<IToken | null>(null);
   const [amountIn, setAmountIn] = useState("500");
   const [amountOut, setAmountOut] = useState("");
   const [quoting, setQuoting] = useState(false);
@@ -31,12 +38,22 @@ export default function SwapPage() {
   const [slippageBps, setSlippageBps] = useState(AUTO_SLIPPAGE_BPS);
   const [deadlineMin, setDeadlineMin] = useState(20);
 
+  // Re-seed on every chain change. A token from the previous chain is not a
+  // valid selection here — same symbol, different asset, possibly different
+  // decimals — so the pair resets rather than carrying across.
+  useEffect(() => {
+    const pick = (sym: string) => available.find((t) => t.symbol === sym);
+    setTokenIn(pick("USDC") ?? available[0] ?? null);
+    setTokenOut(pick("KLD") ?? available[1] ?? null);
+    setAmountOut("");
+  }, [available]);
+
   const { balance: balanceIn, loading: balanceInLoading } = useTokenBalance(tokenIn);
   const { getV3AmountOut } = useV3SwapRouter();
 
   useEffect(() => {
     const amount = parseFloat(amountIn);
-    if (!amount || amount <= 0 || tokenIn.address === tokenOut.address) {
+    if (!tokenIn || !tokenOut || !amount || amount <= 0 || tokenIn.address === tokenOut.address) {
       setAmountOut("");
       return;
     }
@@ -69,10 +86,10 @@ export default function SwapPage() {
     isConnected && !balanceInLoading && Number(balanceIn) < parseFloat(amountIn || "0");
 
   const minOut = useMemo(() => {
-    if (!amountOut) return "";
+    if (!amountOut || !tokenOut) return "";
     const n = Number(amountOut) * (1 - slippageBps / 10000);
     return n.toFixed(tokenOut.decimals > 6 ? 6 : tokenOut.decimals);
-  }, [amountOut, slippageBps, tokenOut.decimals]);
+  }, [amountOut, slippageBps, tokenOut]);
 
   const flip = () => {
     setTokenIn(tokenOut);
@@ -84,29 +101,32 @@ export default function SwapPage() {
   // The approve resolver no-ops when allowance already covers it, so the step
   // simply shows "already done" — one code path whether or not approval exists.
   const plan: Intent[] = useMemo(
-    () => [
-      {
-        kind: "approve",
-        token: tokenIn.address,
-        spender: KALEIDOSWAP_V3_ROUTER,
-        amount: amountIn || "0",
-        decimals: tokenIn.decimals,
-        symbol: tokenIn.symbol,
-      },
-      {
-        kind: "swap",
-        tokenIn: tokenIn.address,
-        tokenOut: tokenOut.address,
-        amountIn: amountIn || "0",
-        amountOutMin: minOut || "0",
-        fee: DEFAULT_FEE,
-        decimalsIn: tokenIn.decimals,
-        decimalsOut: tokenOut.decimals,
-        symbolIn: tokenIn.symbol,
-        symbolOut: tokenOut.symbol,
-        deadlineMin,
-      },
-    ],
+    () =>
+      !tokenIn || !tokenOut
+        ? []
+        : [
+            {
+              kind: "approve",
+              token: tokenIn.address,
+              spender: KALEIDOSWAP_V3_ROUTER,
+              amount: amountIn || "0",
+              decimals: tokenIn.decimals,
+              symbol: tokenIn.symbol,
+            },
+            {
+              kind: "swap",
+              tokenIn: tokenIn.address,
+              tokenOut: tokenOut.address,
+              amountIn: amountIn || "0",
+              amountOutMin: minOut || "0",
+              fee: DEFAULT_FEE,
+              decimalsIn: tokenIn.decimals,
+              decimalsOut: tokenOut.decimals,
+              symbolIn: tokenIn.symbol,
+              symbolOut: tokenOut.symbol,
+              deadlineMin,
+            },
+          ],
     [tokenIn, tokenOut, amountIn, minOut, deadlineMin],
   );
 
@@ -118,21 +138,49 @@ export default function SwapPage() {
 
   const ctaLabel = !isConnected
     ? "Connect wallet"
-    : !amountIn || parseFloat(amountIn) <= 0
-      ? "Enter an amount"
-      : insufficientBalance
-        ? `Insufficient ${tokenIn.symbol}`
-        : quoting
-          ? "Fetching quote…"
-          : "Review swap";
+    : !tokenIn || !tokenOut
+      ? "No tokens on this network"
+      : !amountIn || parseFloat(amountIn) <= 0
+        ? "Enter an amount"
+        : insufficientBalance
+          ? `Insufficient ${tokenIn.symbol}`
+          : quoting
+            ? "Fetching quote…"
+            : "Review swap";
 
   const ctaDisabled =
     !isConnected ||
+    !tokenIn ||
+    !tokenOut ||
     !amountIn ||
     parseFloat(amountIn) <= 0 ||
     insufficientBalance ||
     quoting ||
     !amountOut;
+
+  /*
+   * All hooks have run by this point, so an early return here is safe.
+   * Rendering the swap form without a token pair would mean dereferencing null
+   * in a dozen places; more importantly there is nothing useful to show, since
+   * no token on this chain means no pool to route through either.
+   */
+  if (!tokenIn || !tokenOut) {
+    const here = getChainMeta(chainId)?.name;
+    return (
+      <div className={s.card}>
+        <div className={s.box}>
+          <div className={s.bl}>Swap unavailable</div>
+          <p>
+            Kaleido&apos;s contracts aren&apos;t deployed
+            {here ? ` on ${here}` : " on any network"} yet, so there are no
+            tokens to swap here. They&apos;re being redeployed from scratch —
+            testnet first — starting with Arc, Base, Robinhood, BNB Smart Chain
+            and Ethereum.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (reviewing) {
     return (

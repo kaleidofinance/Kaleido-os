@@ -6,7 +6,7 @@ import { client } from "@/config/client";
 import { defineChain } from "thirdweb/chains";
 
 import { KALEIDOSWAP_ROUTER, WETH_ADDRESS, KLD_ADDRESS, ADDRESS_1 as ETH_ADDRESS } from "@/constants/utils/addresses";
-import { ACTIVE_TOKENS } from "@/constants/tokens";
+import { chainTokenBySymbol } from "@/constants/tokens";
 import { logProtocolActivity } from "@/lib/supabase/logProtocolActivity";
 
 const ROUTER_ADDRESS = KALEIDOSWAP_ROUTER;
@@ -310,22 +310,44 @@ export const useSwapRouter = () => {
         const signer = await getSigner();
         if (!signer) throw new Error("Wallet not connected");
 
-        // Dynamic mapping based on ACTIVE_TOKENS
-        const findToken = (sym: string) => ACTIVE_TOKENS.find(t => t.symbol.toUpperCase() === sym.toUpperCase());
-        
-        const fromTokenData = findToken(fromSymbol);
-        const toTokenData = findToken(toSymbol);
+        const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+        const chainId = activeChain?.id;
 
-        const fromAddr = fromSymbol.toUpperCase() === 'ETH' ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" : (fromTokenData?.address || fromSymbol);
-        const toAddr = toSymbol.toUpperCase() === 'ETH' ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" : (toTokenData?.address || toSymbol);
-        
-        // Find decimals (defaulting to 18)
-        const fromDec = fromTokenData?.decimals || 18;
-        const toDec = toTokenData?.decimals || 18;
+        /*
+         * Symbols are resolved against the connected chain's registry, and an
+         * unknown one is a hard error.
+         *
+         * This used to fall back to `fromTokenData?.address || fromSymbol` —
+         * passing the literal string "USDC" where an address belongs — and to
+         * `?.decimals || 18`. Both turn "I don't know this token" into a
+         * transaction: the first reverts on a garbage address, the second
+         * misprices a 6-decimal token by 10^12 and can sign away a million
+         * times the intended amount. This is an agent-initiated path, so no
+         * human reads the values before they're used.
+         */
+        const resolve = (sym: string) => {
+            if (sym.toUpperCase() === "ETH") {
+                return { address: NATIVE, decimals: 18 };
+            }
+            const known = chainTokenBySymbol(chainId, sym);
+            if (!known) {
+                throw new Error(
+                    `Unknown token "${sym}" on chain ${chainId ?? "(none connected)"} — refusing to build a swap for a token this chain doesn't have registered.`,
+                );
+            }
+            return { address: known.address, decimals: known.decimals };
+        };
+
+        const from = resolve(fromSymbol);
+        const to = resolve(toSymbol);
+        const fromAddr = from.address;
+        const toAddr = to.address;
+        const fromDec = from.decimals;
+        const toDec = to.decimals;
 
         const path = [
-            fromAddr === "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" ? WETH_ADDRESS : fromAddr,
-            toAddr === "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" ? WETH_ADDRESS : toAddr
+            fromAddr === NATIVE ? WETH_ADDRESS : fromAddr,
+            toAddr === NATIVE ? WETH_ADDRESS : toAddr
         ];
 
         // For Agent swaps, we'll use a 2% slippage for reliability
@@ -361,7 +383,7 @@ export const useSwapRouter = () => {
         }
 
         return tx;
-    }, [getSigner, swap, getAmountsOut]);
+    }, [getSigner, swap, getAmountsOut, activeAccount?.address, activeChain?.id]);
 
     return {
         getAmountsOut,

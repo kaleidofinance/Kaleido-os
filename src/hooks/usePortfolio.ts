@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { ethers } from "ethers"
-import { useActiveAccount } from "thirdweb/react"
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
 
 import useGetValueAndHealth from "@/hooks/useGetValueAndHealth"
 import useGetActiveRequest from "@/hooks/useGetActiveRequest"
@@ -11,7 +11,7 @@ import { useV3Positions } from "@/hooks/dex/useV3Positions"
 import { getKaleidoContract } from "@/config/contracts"
 import { readOnlyProvider } from "@/config/provider"
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals"
-import { ABSTRACT_TOKENS } from "@/constants/tokens"
+import { symbolForAddress } from "@/constants/tokens"
 
 /**
  * usePortfolio — the unified view of everything an address holds.
@@ -86,20 +86,6 @@ const HEALTH_SCALE = 1e-18
 /** getUsdValue returns a 1e16-scaled figure, matching Usage.tsx and Balance.tsx. */
 const USD_SCALE = 1e16
 
-/**
- * Resolves a token address to its symbol. Neither V3Position nor Request
- * carries one — both store raw addresses — so we look it up against the
- * token list rather than showing an address in the UI.
- */
-const symbolFor = (tokenAddress: string | undefined): string => {
-  if (!tokenAddress) return "Unknown"
-  const match = ABSTRACT_TOKENS.find(
-    (t) => t.address?.toLowerCase() === tokenAddress.toLowerCase(),
-  )
-  if (match) return match.symbol
-  return `${tokenAddress.slice(0, 6)}…${tokenAddress.slice(-4)}`
-}
-
 /** Parses useStablecoin's pre-formatted "$1,234.56" reward string. */
 const parseUsdString = (value: string | undefined): number => {
   if (!value) return 0
@@ -117,6 +103,16 @@ const toneForHealth = (health: number | null): StateTone => {
 export const usePortfolio = (): Portfolio => {
   const activeAccount = useActiveAccount()
   const address = activeAccount?.address
+  const chainId = useActiveWalletChain()?.id
+
+  /*
+   * Resolves a token address to its symbol. Neither V3Position nor Request
+   * carries one — both store raw addresses — so we look it up rather than show
+   * an address. Bound to the connected chain: the same address is a different
+   * token elsewhere, and an unregistered one falls back to `0x1234…abcd`.
+   */
+  const symbolFor = (tokenAddress: string | undefined): string =>
+    symbolForAddress(chainId, tokenAddress)
 
   const {
     data,
@@ -237,7 +233,7 @@ export const usePortfolio = (): Portfolio => {
     })
 
     return rows
-  }, [address, AVA, AVA2, AVA3, AVA4, AVA5, activeReq])
+  }, [address, AVA, AVA2, AVA3, AVA4, AVA5, activeReq, chainId])
 
   // --- Earning ----------------------------------------------------------
   const earning = useMemo<Position[]>(() => {
@@ -294,7 +290,7 @@ export const usePortfolio = (): Portfolio => {
     }
 
     return rows
-  }, [address, userstKldBalance, v3Positions, balances, stats, withdrawalInfo])
+  }, [address, userstKldBalance, v3Positions, balances, stats, withdrawalInfo, chainId])
 
   // --- Derived totals ---------------------------------------------------
   const collateralUsd = useMemo<number | null>(() => {

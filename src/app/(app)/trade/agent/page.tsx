@@ -6,7 +6,7 @@ import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { useLocalPlanner } from "@/hooks/v2/useLocalPlanner";
-import { ACTIVE_TOKENS } from "@/constants/tokens";
+import { chainTokens } from "@/constants/tokens";
 import { isDeployed } from "@/constants/registry";
 import { getChainMeta } from "@/constants/chains";
 import AgentSettings from "@/components/v2/AgentSettings";
@@ -122,11 +122,11 @@ export default function AgentPage() {
     /*
      * Refuse to build a transaction on a chain with no contracts.
      *
-     * Everything past this point resolves addresses out of ACTIVE_TOKENS and
-     * the legacy address constants, which still hold the pre-rewrite Abstract
-     * Testnet deployment. Those addresses are dead, so a plan built from them
-     * would render as a perfectly normal, signable review — and fail (or worse,
-     * send value to a contract that isn't there) on submit.
+     * Everything past this point resolves addresses out of the token registry
+     * and the legacy address constants, which still hold the pre-rewrite
+     * Abstract Testnet deployment. Those addresses are dead, so a plan built
+     * from them would render as a perfectly normal, signable review — and fail
+     * (or worse, send value to a contract that isn't there) on submit.
      *
      * A wrong plan that looks right is the expensive failure here, so this
      * fails loudly and early instead. Parsing, slot-filling, `help` and FAQ all
@@ -169,6 +169,11 @@ export default function AgentPage() {
     const content = text.trim();
     if (!content || busy) return;
 
+    // The vocabulary the parser resolves symbols against, scoped to the chain
+    // the user is on. "swap 500 usdc" names a different contract on each chain,
+    // so there is no chain-free answer to what "usdc" means.
+    const vocabulary = chainTokens(chainId);
+
     setMessages((m) => [...m, { role: "user", text: content }]);
     setInput("");
     setBusy(true);
@@ -178,7 +183,7 @@ export default function AgentPage() {
       // through a provider costs a credit, adds latency, and introduces the one
       // failure mode a grammar can't have: a confidently wrong number.
       if (pending) {
-        const filled = fillSlot(pending.draft, pending.missing, content, ACTIVE_TOKENS);
+        const filled = fillSlot(pending.draft, pending.missing, content, vocabulary);
         if (filled.status !== "unknown") {
           await planLocally(filled);
           return;
@@ -188,7 +193,7 @@ export default function AgentPage() {
         setPending(null);
       }
 
-      const parsed = parseCommand(content, ACTIVE_TOKENS);
+      const parsed = parseCommand(content, vocabulary);
       if (parsed.status !== "unknown") {
         await planLocally(parsed);
         return;
