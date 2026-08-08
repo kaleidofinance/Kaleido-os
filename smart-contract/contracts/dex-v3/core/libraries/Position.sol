@@ -1,4 +1,7 @@
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Derived from Uniswap V3 Core. Published under BUSL-1.1 with a Change Date of
+// 2023-04-01, after which it converted to GPL-2.0-or-later. Copyleft applies —
+// see contracts/dex-v3/core/libraries/LICENSE and LICENSING.md.
 pragma solidity >=0.5.0 <0.8.0;
 
 import './FullMath.sol';

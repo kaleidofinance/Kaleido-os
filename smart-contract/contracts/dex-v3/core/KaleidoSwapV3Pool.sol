@@ -1,4 +1,12 @@
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Derived from Uniswap V3 Core (Uniswap Labs). Uniswap published this file
+// under BUSL-1.1 with a Change Date of 2023-04-01; on that date it converted
+// to GPL-2.0-or-later, as the BUSL text itself provides. See the verbatim
+// Uniswap license at contracts/dex-v3/core/libraries/LICENSE.
+//
+// The header here used to read BUSL-1.1, which asserted a production-use
+// restriction that had already expired. Copyleft still applies: this file and
+// works derived from it are GPL-2.0-or-later, not MIT.
 pragma solidity =0.7.6;
 
 import './interfaces/IKaleidoSwapV3Pool.sol';
