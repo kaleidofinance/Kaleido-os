@@ -12,10 +12,22 @@ cd smart-contract
 npm install
 ```
 
-### 2. Run Security Audit Script
+### 2. Check Contract Sizes
 ```bash
-npx hardhat run scripts/security-audit.js
+npx hardhat run scripts/check-contract-sizes.js
 ```
+
+This replaces the old `security-audit.js`, which has been deleted. That script
+grepped the Solidity source for the *string* `ReentrancyGuard` and printed a
+pass — it did not check that the modifier was applied to any function, so it
+reported clean on a contract that merely imported the guard. A check that
+cannot fail is worse than no check: it produced an audit trail claiming
+coverage the code did not have.
+
+The size check earns its place instead: EIP-170 caps deployed bytecode at
+24,576 bytes on every EVM chain, Abstract does not enforce it, and
+`allowUnlimitedContractSize` hides it in local tests — so a contract can pass
+this whole suite and still be undeployable on Base.
 
 ### 3. Run Security Test Suite
 ```bash

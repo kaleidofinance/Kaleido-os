@@ -180,7 +180,19 @@ npx hardhat run scripts/deploy.js --network abstractMainnet
 
 ## Contract Addresses
 
-### Abstract Testnet
+**Nothing is currently deployed.** `DEPLOYMENTS` in `src/constants/registry.ts`
+is empty for every chain, and that map is the only place the app reads
+addresses from — not this README, and not the `deployment-*.json` files the
+scripts emit. `isDeployed(chainId)` stays false until `diamond` is set there.
+
+The addresses below are a **historical record of a decommissioned Abstract
+testnet deployment**. They are kept for provenance only. Do not copy them
+anywhere: they were deployed from the compromised key committed in an earlier
+`hardhat.config.js`, they were built with a compiler configuration that no
+longer matches this repo, and Abstract has since been deprioritized in favour
+of Arc, Base, Robinhood, BNB Smart Chain, and Ethereum.
+
+### Abstract Testnet (decommissioned)
 
 #### Diamond Infrastructure (EIP-2535)
 - **Diamond**: `0x7286F2708f8f4d0a1a1b6c19f5D14AdB4c3207B2`
@@ -221,15 +233,22 @@ npx hardhat run scripts/deploy.js --network abstractMainnet
 
 ## Development Scripts
 
-### Setup
+See [`scripts/README.md`](scripts/README.md) for the full deploy path. The two
+checks worth running before anything else:
 
 ```bash
-# Setup deployment ratio for stablecoin
-npx hardhat run scripts/set-deployment-ratio.js --network abstractTestnet
+# EIP-170 size ceiling — Abstract does not enforce it and the local hardhat
+# network hides it, so a facet can pass tests and be undeployable on Base.
+npx hardhat run scripts/check-contract-sizes.js
 
-# Check contract state
-npx hardhat run scripts/check-contract-state.js --network abstractTestnet
+# V3 only: the pool init code hash is compiler-specific and a stale value does
+# not fail at deploy — it fails at the first swap.
+npx hardhat run scripts/verify-pool-init-hash.js --network <net>
 ```
+
+`set-deployment-ratio.js` and `check-contract-state.js` were deleted along with
+79 other one-off scripts written against the decommissioned deployment; they
+had its addresses baked in as literals and would have queried dead contracts.
 
 ### Verification
 

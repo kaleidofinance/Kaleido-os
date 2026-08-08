@@ -52,54 +52,29 @@ yarn hardhat compile
 node_modules/.bin/hardhat compile
 ```
 
-## Option 5: Deploy to Testnet Directly
+## Option 5: Deploy to a Testnet Directly
 
-Since Abstract Testnet is configured in `hardhat.config.js`, you can deploy directly to testnet without running unit tests.
+You can deploy to a testnet without running unit tests first. Use the existing
+script — do not hand-write a new one. This directory previously accumulated ~95
+single-use deployment scripts, each with one network's addresses hardcoded, and
+82 of them had to be deleted; `scripts/deploy-stablecoin.js` is the maintained
+path and takes its inputs from the environment.
 
-### Deployment Script
-
-Create a deployment script to test on Abstract Testnet:
-
-```javascript
-// scripts/deploy-stablecoin-testnet.js
-const { ethers } = require("hardhat");
-
-async function main() {
-  console.log("Deploying to Abstract Testnet...");
-  
-  const [deployer] = await ethers.getSigners();
-  console.log("Deploying with account:", deployer.address);
-  
-  // Deploy kfUSD
-  const kfUSD = await ethers.deployContract("kfUSD");
-  await kfUSD.waitForDeployment();
-  console.log("kfUSD deployed to:", await kfUSD.getAddress());
-  
-  // Deploy kafUSD
-  const kafUSD = await ethers.deployContract("kafUSD", [await kfUSD.getAddress()]);
-  await kafUSD.waitForDeployment();
-  console.log("kafUSD deployed to:", await kafUSD.getAddress());
-  
-  // Configure
-  const MINTER_ROLE = ethers.id("MINTER_ROLE");
-  await kfUSD.grantRole(MINTER_ROLE, deployer.address);
-  await kfUSD.grantRole(MINTER_ROLE, await kafUSD.getAddress());
-  
-  console.log("Deployment complete!");
-}
-
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
-```
-
-Then run:
 ```bash
-yarn hardhat run scripts/deploy-stablecoin-testnet.js --network abstractTestnet
+cd smart-contract
+npx hardhat run scripts/deploy-stablecoin.js --network baseTestnet
 ```
+
+Base Sepolia is the recommended first target: plain EVM (no zksolc toolchain),
+a working faucet, and a real explorer. Every network in `hardhat.config.js` is
+a valid `--network` value.
+
+Deploying needs `DEPLOYER_PRIVATE_KEY` in `smart-contract/.env`. Generate a
+fresh key — the one committed in an earlier version of `hardhat.config.js` is
+permanently public and must never be reused.
+
+See [`smart-contract/scripts/README.md`](../../smart-contract/scripts/README.md)
+for the full deploy order and the checks that must run before it.
 
 ## Option 6: Review Code Manually
 

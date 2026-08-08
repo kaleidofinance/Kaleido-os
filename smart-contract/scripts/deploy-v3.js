@@ -1,7 +1,17 @@
 /**
- * KaleidoSwap V3 Deployment Script
- * Deploys rebranded KaleidoSwap V3 contracts from source
- * Target: Abstract Testnet (Chain ID: 11124)
+ * KaleidoSwap V3 deployment — factory, router, position manager, quoter.
+ *
+ * Chain-agnostic. The wrapped-native address is NOT derivable from the chain's
+ * native symbol and differs everywhere: WETH on Ethereum, WBNB on BNB, WPOL on
+ * Polygon, and on Arc it wraps USDC rather than ether. It is therefore required
+ * input, not a default — this script used to hardcode Abstract testnet's WETH,
+ * which would have silently deployed a router pointed at a non-contract on
+ * every other chain.
+ *
+ *   WRAPPED_NATIVE=0x... npx hardhat run scripts/deploy-v3.js --network baseTestnet
+ *
+ * Writes deployment-v3-<network>-<timestamp>.json. Copy the addresses into
+ * DEPLOYMENTS in src/constants/registry.ts, including poolInitCodeHash.
  */
 
 const hre = require("hardhat");
@@ -17,8 +27,26 @@ async function main() {
   const balance = await ethers.provider.getBalance(deployer.address);
   console.log("   Balance:", ethers.formatEther(balance), "ETH");
 
-  // Abstract Testnet WETH — same as used in V2 deployment
-  const WETH_ADDRESS = "0x618B1561b189972482168fd31f5B5a3B5A10Ce33";
+  const WETH_ADDRESS = process.env.WRAPPED_NATIVE;
+  if (!WETH_ADDRESS || !ethers.isAddress(WETH_ADDRESS)) {
+    throw new Error(
+      "WRAPPED_NATIVE is required and must be a valid address.\n" +
+        "It is the wrapped-native token on the target chain and cannot be\n" +
+        "guessed from the native symbol — on Arc it wraps USDC, not ether.\n" +
+        `Example: WRAPPED_NATIVE=0x... npx hardhat run scripts/deploy-v3.js --network ${hre.network.name}`,
+    );
+  }
+
+  const code = await ethers.provider.getCode(WETH_ADDRESS);
+  if (code === "0x") {
+    throw new Error(
+      `WRAPPED_NATIVE ${WETH_ADDRESS} holds no code on ${hre.network.name}.\n` +
+        "This is almost always an address copied from another chain. Deploying\n" +
+        "against it would produce a router that reverts on every native-token\n" +
+        "path, and nothing here would fail until then.",
+    );
+  }
+  console.log("   Wrapped native:", WETH_ADDRESS);
 
   // 1. Deploy Factory
   console.log("\n📦 1. Deploying KaleidoSwapV3Factory...");
@@ -76,7 +104,11 @@ async function main() {
 
   // 5. Deploy NonfungibleTokenPositionDescriptor (linked library)
   console.log("\n📦 4. Deploying NonfungibleTokenPositionDescriptor...");
-  const nativeCurrencyLabelBytes = ethers.encodeBytes32String("ETH");
+  // Baked into every position NFT's rendered SVG. Wrong here means "ETH" on a
+  // BNB deployment, permanently, on already-minted tokens.
+  const nativeLabel = process.env.NATIVE_LABEL || "ETH";
+  const nativeCurrencyLabelBytes = ethers.encodeBytes32String(nativeLabel);
+  console.log("   Native currency label:", nativeLabel);
   const PositionDescriptor = await ethers.getContractFactory(
     "NonfungibleTokenPositionDescriptor",
     {
@@ -118,8 +150,8 @@ async function main() {
   // Save deployment addresses
   const timestamp = Date.now();
   const deployment = {
-    network: "abstractTestnet",
-    chainId: 11124,
+    network: hre.network.name,
+    chainId: Number((await ethers.provider.getNetwork()).chainId),
     timestamp: new Date().toISOString(),
     contracts: {
       factory: factoryAddress,
@@ -133,18 +165,25 @@ async function main() {
     },
   };
 
-  const outFile = `deployment-v3-abstractTestnet-${timestamp}.json`;
+  const outFile = `deployment-v3-${hre.network.name}-${timestamp}.json`;
   fs.writeFileSync(outFile, JSON.stringify(deployment, null, 2));
 
   console.log("\n============================================================");
   console.log("✅ DEPLOYMENT SUMMARY");
   console.log("============================================================");
+  console.log("Network:          ", hre.network.name, `(chainId ${deployment.chainId})`);
   console.log("Factory:          ", factoryAddress);
   console.log("SwapRouter:       ", routerAddress);
   console.log("PositionManager:  ", positionManagerAddress);
   console.log("Quoter:           ", quoterAddress);
-  console.log("WETH:             ", WETH_ADDRESS);
-  console.log("\n⚠️  IMPORTANT: Update frontend with new V3 addresses!");
+  console.log("Wrapped native:   ", WETH_ADDRESS);
+  console.log("Pool init hash:   ", poolInitCodeHash);
+  console.log(
+    `\n⚠️  Add these to DEPLOYMENTS[${deployment.chainId}] in ` +
+      "src/constants/registry.ts.\n" +
+      "    The app reads addresses only from there — nothing is picked up from\n" +
+      "    this JSON file, and isDeployed() stays false until `diamond` is set.",
+  );
   console.log("📋 Full addresses saved to:", outFile);
   console.log("============================================================");
 }
