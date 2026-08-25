@@ -1,16 +1,76 @@
+/* Trade is a single-screen surface: the card *is* the page, and the document
+   never scrolls. Anything that does not fit scrolls inside the card.
+
+   The shell is an exact-height flex column rather than
+   `calc(100dvh - <nav height>)` because the nav's height is not a constant —
+   a "Connect" button is ~4px taller than a connected address pill, and mobile
+   drops its padding — so any hardcoded number is wrong in some state. Making
+   the nav `flex: none` and the hero `flex: 1` gets the same result exactly,
+   with nothing to keep in sync.
+
+   dvh, not vh: on mobile Safari `vh` is the *largest* viewport, so 100vh is
+   taller than what you can actually see and the card sits half under the URL
+   bar. */
+.shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .hero {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 30px 20px 70px;
+  padding: 12px 20px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--k-s4);
+  /* `safe` is load-bearing here, not a modifier. A centred flex column that
+     overflows spills out of BOTH ends, and `.shell` above is `overflow: hidden`
+     — so a card taller than the hero pushed the tab strip off the top edge and
+     clipped it away entirely, with no scroll anywhere to reach it. `safe center`
+     centres while the content fits and falls back to `start` the moment it does
+     not, so the tabs stay on screen at any window height. The plain `center`
+     first is the fallback for engines that don't parse the keyword. */
+  justify-content: center;
+  justify-content: safe center;
+  gap: var(--k-s3);
 }
 
 .tabs {
   display: flex;
   gap: 4px;
+  flex: none;
+}
+
+/* The card's arena. Sized to the card, not to the leftover space: centring
+   happens once, on the hero, so the tabs stay tucked against the card as a
+   single group rather than the tabs pinning to the top and the card floating
+   in the middle.
+
+   `min-height: 0` is the pair to `flex-shrink: 1` — without it a flex item
+   refuses to shrink below its content, so a card taller than the window would
+   push the shell past 100dvh and put the scrollbar back on the document,
+   which is the exact thing this is here to prevent.
+
+   A row rather than a column, because the chart panel sits beside the card. With
+   the chart closed there is one child and `justify-content: center` places it
+   exactly where `align-items: center` did in the column, so nothing moves.
+   `align-items: stretch` is what makes the panel match the card's height without
+   either of them knowing the other's — the row's height comes from the card, and
+   the panel's plot is the flexible part that absorbs it. */
+.stage {
+  flex: 0 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: center;
+  gap: var(--k-s3);
 }
 .tb {
   background: none;
@@ -26,36 +86,257 @@
 .tb:hover {
   color: var(--k-t1);
 }
+/* The selected tab was the one --k-glass-strong surface in the app carrying
+   neither an inset top edge nor a drop shadow, so it sat flush in the strip and
+   selection read as a change of colour rather than a lift — which is the whole
+   idiom of a segmented control.
+
+   --k-shadow-sm rather than --k-shadow-glass because this pill is about 34px
+   tall and glass blurs over 32px: the shadow would be as wide as the thing
+   casting it and would read as a smudge under the strip. */
 .tb.on {
   background: var(--k-card);
   color: var(--k-t1);
   font-weight: var(--k-fw-med);
+  box-shadow: var(--k-shadow-sm);
+}
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .tb.on {
+    background: var(--k-glass-strong);
+    -webkit-backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+    /* Both halves, for the reason in tokens.css's elevation block: the shadow
+       is what lifts this in light mode, and the lit top edge is what lifts it in
+       dark, where a black shadow over a #000 ground composites away to nothing.
+       Neither one covers both themes on its own. */
+    box-shadow:
+      inset 0 1px 0 var(--k-glass-highlight),
+      var(--k-shadow-sm);
+  }
 }
 
 .card {
   width: 100%;
   max-width: 520px;
+  /* Shrink but never grow: the swap card keeps its natural height on a normal
+     screen and only gives ground when the window is too short for it. The
+     `min-height: 0` is what permits that — a flex item's default floor is its
+     content, which would push the shell past 100dvh. */
+  flex: 0 1 auto;
+  min-height: 0;
+  /* Keeps its natural height when the chart panel is the taller of the two.
+     Without it the stretch that sizes the panel would also stretch the card,
+     leaving its content pinned to the top of a box with air underneath. */
+  align-self: center;
+  /* The pair to `align-self: center`, and what finally lets the `overflow-y`
+     below do anything at all. Centring takes the card out of the row's stretch,
+     so its height became purely content-driven — `flex: 0 1 auto` and
+     `min-height: 0` govern WIDTH in a flex row, not height — and an unbounded
+     height is why a tall card overflowed the hero instead of scrolling inside
+     itself. Capping it at the stage's height is what makes the sentence above
+     ("shrink but never grow") true in the cross axis too. */
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* The anchor for `.settings`. */
+  position: relative;
+}
+.card::-webkit-scrollbar {
+  display: none;
 }
 
-.cardTop {
+/* Percentage chips and the slippage gear, riding the first well's label row at
+   its top-right corner — the row already says "Sell" and nothing else, so the
+   controls that qualify the sell cost no height at all. They used to be a strip
+   of their own above the card, 34px spent on one button.
+
+   Absolutely positioned over the well rather than placed inside its label row,
+   which is the obvious way to do it and does not work: `.box` carries
+   `backdrop-filter`, and a `backdrop-filter` element is a backdrop root — the
+   settings popover, which is glass, would sample the well's own flat fill
+   instead of the page and render as mud. As a sibling it samples the page, the
+   way every other glass surface here does.
+
+   `top`/`right` trace the well's own padding, so the group's top edge lands on
+   the label's, and `align-items: center` keeps the chips and the gear on one
+   line whichever is taller. */
+.settings {
+  position: absolute;
+  top: 17px;
+  right: 18px;
+  z-index: 3;
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 4px;
+  align-items: center;
+  gap: 6px;
 }
 
 .box {
   background: var(--k-card);
+  border: 1px solid var(--k-line);
   border-radius: var(--k-r-xl);
   padding: 17px 18px;
 }
 
+/* The Sell/Buy wells are the swap card's framing surfaces, so they take glass.
+   They hold two things — a 34px amount and a token pill — not dense copy, so
+   blur behind them costs no legibility. */
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .box {
+    background: var(--k-glass);
+    border-color: var(--k-glass-line);
+    -webkit-backdrop-filter: blur(var(--k-glass-blur))
+      saturate(var(--k-glass-sat));
+    backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));
+    /* --k-shadow-pop, up from --k-shadow-glass, which was `0 8px 32px` at 0.08
+       in light mode: an 8px offset under a 32px blur leaves almost the whole
+       shadow hidden behind the surface casting it, so these wells sat flat on
+       the page. Most of the fix is the offset, not the alpha.
+
+       Not --k-shadow-modal, which is what the equivalent single surface on Agent
+       takes. These wells stack 4px apart, and modal's 20px offset would drop the
+       upper well's shadow into the middle of the lower one as a dark band across
+       its top edge. pop's 12px still spills onto the seam, but softly enough to
+       read as a fold rather than a smudge — the one thing to look at if this
+       ever reads dirty. */
+    box-shadow:
+      inset 0 1px 0 var(--k-glass-highlight),
+      var(--k-shadow-pop);
+  }
+}
+
+/* Two-tone wells, the way Uniswap does it. It earns its keep: the two are 4px
+   apart with matching radii, so at one fill they read as a single tall surface
+   with a seam across it rather than as two sides of a control.
+
+   The rule is positional — top well recessed, bottom well raised — and it is
+   positional on purpose. "The well you put your own money into is the deep one"
+   is the nicer story and it does not survive Limit, where you type into both;
+   following it there inverts the card against every other tab, so flipping
+   between Swap and Limit shows two different silhouettes for no reason a user
+   could name. Position holds on all five.
+
+   The first pass at this used --k-glass for the deep side and
+   --k-glass-strong for the raised one, and was invisible: three points of white
+   alpha over a #141413 ground is not a step the eye can find. A recess has to
+   go *below* the ground, so `.deep` washes black and drops the lit top edge for
+   an inset groove, while `.raised` keeps the highlight and the drop shadow. The
+   optical cue does most of the work; the fill difference just backs it up.
+
+   Both tokens invert per theme, which is the reason they are tokens: the
+   naive version darkens the sell well in dark mode and darkens it in light
+   mode too, and light mode wants it *greyer*, not dirtier. */
+.deep {
+  background: var(--k-well);
+}
+.raised {
+  background: var(--k-card);
+}
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .deep {
+    background: var(--k-glass-deep);
+    /* Two shadows, and the second is why this rule had to change alongside
+       `.box`. box-shadow replaces rather than accumulates across rules, so
+       `.deep` declaring only the groove threw away the drop shadow `.box` had
+       just been given — the upper well would have sat flat on the page while the
+       lower one floated, splitting the single surface the two-tone rule above
+       exists to keep whole. The groove says "recessed relative to my neighbour";
+       the drop shadow lifts the pair off the page. Different jobs. */
+    box-shadow: var(--k-shadow-inset), var(--k-shadow-pop);
+  }
+  .raised {
+    background: var(--k-glass-strong);
+  }
+}
+
+/* The well takes the focus indication on behalf of the field inside it.
+ *
+ * The global rule rings anything focusable with 2px of brand at 2px offset,
+ * which is right for a button — a brief flash as you tab past. It is wrong for
+ * the amount field, because a text input matches :focus-visible however focus
+ * arrived, so the ring sits around the number for as long as you are typing:
+ * the loudest thing on a screen whose subject is the number itself.
+ *
+ * Tinting the well's own 1px border says the same thing on a perimeter four
+ * times the length, at a fraction of the weight.
+ *
+ * `:has(.inp:focus-visible)` rather than the shorter `:focus-within`, which
+ * would have been a bug: :focus-within ignores the focus-visible distinction
+ * entirely, so clicking the token pill with a mouse would light the whole well
+ * up — the exact thing `:focus:not(:focus-visible)` exists to prevent. Scoping
+ * to the text field also leaves the buttons in here on the normal path, ringing
+ * themselves when tabbed to and staying quiet when clicked.
+ *
+ * The pair lives inside `@supports selector(:has(*))` so it fails safe: a
+ * browser without :has drops both rules and keeps the original outline, rather
+ * than dropping the tint alone and leaving keyboard users a bare caret. */
+@supports selector(:has(*)) {
+  .box:has(.inp:focus-visible) {
+    border-color: var(--k-brand);
+  }
+  /* `.box .inp`, not `.inp`: one class ties the global rule on specificity, and
+     which one won would then come down to stylesheet order — not ours to
+     guarantee. */
+  .box .inp:focus-visible {
+    outline: none;
+  }
+}
+
+/* "Sell" / "Buy". `cursor: default` for the same reason as the agent card's
+   header — see `.head` in agent.module.css. A field label is part of the
+   control, not text. */
 .bl {
+  cursor: default;
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
   margin-bottom: 9px;
+}
+
+/* 25 / 50 / 75 / Max. Sized to sit level with the settings trigger beside it —
+   same padding, same pill radius — so the corner reads as one group of controls
+   rather than chips with a bigger button bolted on the end.
+
+   Recessed with the same wash and groove as `.deep`, not filled with an opaque
+   grey: an opaque fill ignores the glass under it and lands on the card as a
+   patch of a different material. Translucent, the well shows through and the
+   chip reads as a dent in it. No backdrop-filter of its own — blurs do not
+   compose, and the surface behind it is already blurred. */
+.quick {
+  display: flex;
+  gap: 4px;
+}
+.qk {
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  padding: 4px 10px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  line-height: 1.4;
+}
+/* Hover goes brand-tinted — the same --k-brand-dim wash the rest of the app
+   uses for an active row. The label stays --k-t1 rather than going brand with
+   it: brand text on a brand wash measures about 2.8:1 in light mode, so a chip
+   would get *harder* to read at the moment you point at it. The fill carries
+   the colour, the text carries the contrast. */
+.qk:hover:not(:disabled) {
+  background: var(--k-brand-dim);
+  color: var(--k-t1);
+}
+.qk:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .amt {
@@ -98,11 +379,14 @@
   cursor: pointer;
 }
 
+/* Recessed into the well it sits in, same wash and groove as `.quick` — an opaque
+   grey pill lands on the well as a patch of a different material. */
 .pill {
   display: flex;
   align-items: center;
   gap: var(--k-s2);
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
   font-size: var(--k-fs-base);
@@ -113,8 +397,11 @@
   cursor: pointer;
   flex: none;
 }
+/* A brand wash, not `filter: brightness()`: brightening a translucent fill mostly
+   brightens whatever is behind it, which barely registers. */
 .pill:hover {
-  filter: brightness(1.18);
+  background: var(--k-brand-dim);
+  box-shadow: none;
 }
 .tki {
   width: 28px;
@@ -125,19 +412,26 @@
   place-items: center;
   font-size: 10px;
   font-weight: 600;
-  background: #333;
+  /* Scaffolding for three letters, and it now sits inside a translucent pill —
+     so it darkens rather than filling. `.tkiArt` drops it entirely. */
+  background: var(--k-glass-deep);
   color: var(--k-t2);
   position: relative;
 }
-.cb {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 14px;
-  height: 14px;
-  border-radius: 5px;
-  border: 2px solid var(--k-card);
+/* Holding a real logo instead of a monogram — see `.tkiArt` in
+   TokenSelector.module.css. The grey disc is scaffolding for three letters and
+   becomes a stray ring the moment there is artwork to put on it. */
+.tkiArt {
+  background: none;
 }
+.tkiArt > svg {
+  display: block;
+  border-radius: 50%;
+}
+/* The chain badge is TokenIcon's own `.badge` now. What was here was a 14px
+   rounded square with a border and nothing inside it — the pill drew the ring and
+   never rendered the network mark, so the swap form showed an unlabelled coloured
+   dot. `.tki` above keeps `position: relative` for the badge to hang off. */
 .cv {
   font-size: 12px;
   color: var(--k-t2);
@@ -197,10 +491,44 @@
 .cta:hover:not(:disabled) {
   background: var(--k-brand-hover);
 }
+/* Recessed rather than filled with an opaque grey — see `.send:disabled` in
+   agent.module.css. This is the one on Swap ("Enter an amount") and on Limit,
+   where the CTA is disabled by default, so it is on screen more than the live
+   state is. */
 .cta:disabled {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t3);
   cursor: not-allowed;
+}
+
+/* Rate and minimum received, on one line under the CTA.
+
+   These used to be a third card — two key/value rows in their own bordered,
+   blurred, 17px-padded well, about 110px of card for two numbers that qualify
+   the trade rather than being it. Uniswap prints the same information as a
+   single line beneath the button, and it is right to: nothing here is a
+   control, so nothing here needs a surface.
+
+   Hidden entirely until there is a quote. A row of em dashes is a promise that
+   a number is coming, which is a thing to say while quoting and not before. */
+.quote {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  padding: 9px 4px 0;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.quote span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quote b {
+  color: var(--k-t1);
+  font-weight: var(--k-fw-body);
 }
 
 .stubTitle {
@@ -217,7 +545,13 @@
 
 /* ---------- mobile ---------- */
 @media (max-width: 720px) {
-  .wrap {
-    padding: 16px 14px 60px;
+  /* The bottom tab bar is `position: fixed`, so it is out of flow and would
+     sit on top of the card's CTA. Padding the shell reserves its strip —
+     48px of tab plus the home-indicator inset on notched phones. */
+  .shell {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+  .hero {
+    padding: 10px 14px 14px;
   }
 }

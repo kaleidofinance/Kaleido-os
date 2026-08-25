@@ -1,0 +1,15 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-21T19:09:37.202Z",
+  "contracts": {
+    "v2Factory": "0xc6e96bcb53bf9f5235Df8c4018717DEA3d9d7fb6",
+    "v2Router": "0xe049B8d1E31510BE156B9230169aC2199989D93A",
+    "wrappedNative": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14"
+  },
+  "notes": {
+    "feeToSetter": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+    "pairResolution": "factory.getPair — no init code hash to keep in sync"
+  }
+}

@@ -1,0 +1,222 @@
+/* One row, shared by the nav panel and /notifications. Sizing comes from the
+   container, not from here, so the same row reads correctly in a 380px panel and
+   a full-width page. */
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-s2);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--k-line);
+  position: relative;
+}
+.row:last-child {
+  border-bottom: 0;
+}
+/* --k-row-hover, not --k-well2: the panel is glass, and an opaque hover fill
+   punches a solid rectangle through the blur. */
+.row:hover {
+  background: var(--k-row-hover);
+}
+
+/* Unread marker as a left edge rather than a bold title: weight changes shift
+   the text baseline and make the list jitter as things are read. */
+.unread::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--k-brand);
+}
+
+.focused {
+  background: var(--k-brand-dim);
+}
+
+/* A pending permission ask outranks everything else in the list. */
+.asking {
+  background: var(--k-alt-dim);
+}
+.asking:hover {
+  background: var(--k-alt-dim);
+}
+
+.main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-s3);
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  margin-top: 6px;
+  background: var(--k-t3);
+}
+.info {
+  background: var(--k-t3);
+}
+.success {
+  background: var(--k-pos);
+}
+.warning {
+  background: var(--k-alt);
+}
+.error {
+  background: var(--k-danger);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--k-s2);
+}
+.title {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  flex: 1;
+  min-width: 0;
+}
+.time {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  white-space: nowrap;
+  flex: none;
+}
+
+.text {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  line-height: 1.45;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  margin-top: 2px;
+}
+
+.chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--k-r-pill);
+  border: 1px solid var(--k-line2);
+  color: var(--k-t2);
+  white-space: nowrap;
+}
+/* Category tints, kept subtle: the chip labels the row, it doesn't compete with
+   the level dot for urgency. Risk gets danger because a liquidation notice
+   should look like one at a glance. */
+.c_agent {
+  color: var(--k-brand);
+  border-color: var(--k-brand-dim);
+  background: var(--k-brand-dim);
+}
+.c_risk {
+  color: var(--k-danger);
+  border-color: var(--k-danger-dim);
+  background: var(--k-danger-dim);
+}
+.c_orders {
+  color: var(--k-alt);
+  border-color: var(--k-alt-dim);
+  background: var(--k-alt-dim);
+}
+.c_system {
+  color: var(--k-t3);
+}
+
+.resolved {
+  font-size: 11px;
+  color: var(--k-t3);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding-top: 2px;
+}
+
+.deny,
+.approve {
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  padding: 5px 12px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.deny {
+  background: transparent;
+  border: 1px solid var(--k-line2);
+  color: var(--k-t2);
+}
+.deny:hover {
+  color: var(--k-t1);
+  border-color: var(--k-t3);
+}
+.approve {
+  background: var(--k-brand);
+  border: 0;
+  color: var(--k-brand-fg);
+  font-weight: var(--k-fw-med);
+}
+.approve:hover {
+  background: var(--k-brand-hover);
+}
+
+/* Hidden until hover on pointer devices — a per-row ✕ on every line turns the
+   list into a column of buttons. Always visible on touch, where there is no
+   hover to reveal it. */
+.kill {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t3);
+  cursor: pointer;
+  font-size: 11px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+}
+.row:hover .kill,
+.kill:focus-visible {
+  opacity: 1;
+}
+.kill:hover {
+  background: var(--k-well2);
+  color: var(--k-t1);
+}
+@media (hover: none) {
+  .kill {
+    opacity: 1;
+  }
+}

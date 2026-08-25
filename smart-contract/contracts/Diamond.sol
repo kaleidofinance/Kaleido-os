@@ -32,6 +32,32 @@ contract Diamond {
     }
 
     /// @dev Acts as our contructor
+    ///
+    /// NOT ON THE DEPLOY PATH. deploy.js initializes through
+    /// `DiamondInit.init()` delivered as the `_init` argument of `diamondCut`,
+    /// and never calls this — so nothing in a normal deploy runs it. It stays
+    /// because it is owner-callable on the diamond directly and is the only
+    /// bulk-registration entry point; the five deployed chains got their assets
+    /// from register-tokens.js instead, which is why native is collateral on all
+    /// five and loanable on none.
+    ///
+    /// Registers each token on BOTH sides at once: `s_isLoanable` and a price
+    /// feed, which `_isTokenAllowed` reads, so an initialize token is borrowable
+    /// and depositable. That is a blunter instrument than the two per-side owner
+    /// calls in ProtocolFacet, and worth knowing before using it.
+    ///
+    /// This used to end by writing `_appStorage.swapRouter =
+    /// 0x96ff7D9dbf52FdcAe79157d3b249282c7FABd409`, a pre-rebuild Abstract
+    /// testnet router. It was removed rather than parameterised. Nothing in
+    /// contracts/ reads `AppStorage.swapRouter` and it has no getter, so the
+    /// write configured no behaviour; the literal is codeless on all five chains
+    /// we deploy to, so the one thing it accomplished was to guarantee that the
+    /// first reader anyone added would resolve to a dead address. Because this
+    /// function is off the deploy path, no deployed diamond ever received it.
+    /// An operator who wants the slot set has `setSwapRouter`, which deploy.js
+    /// calls when SWAP_ROUTER is configured. Removing a write does not affect
+    /// storage layout.
+    ///
     /// @param _tokens address of all the tokens
     /// @param _priceFeeds address of all the pricefeed tokens
     function initialize(
@@ -47,9 +73,6 @@ contract Diamond {
             _appStorage.s_priceFeeds[_tokens[i]] = _priceFeeds[i];
             _appStorage.s_collateralToken.push(_tokens[i]);
         }
-        _appStorage.swapRouter = address(
-            0x96ff7D9dbf52FdcAe79157d3b249282c7FABd409
-        );
     }
 
     // Find facet for function that is called and execute the

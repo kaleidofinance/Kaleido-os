@@ -1,561 +1,790 @@
-"use client"
+"use client";
 
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react"
-import { v4 as uuidv4 } from "uuid"
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { v4 as uuidv4 } from "uuid";
+import { useActiveAccount } from "thirdweb/react";
+import {
+  categorise,
+  readActionType,
+  type Category,
+  type NotificationRequest,
+} from "@/lib/notifications/taxonomy";
+import { deliver, setOpenHandler } from "@/lib/notifications/deliver";
+import {
+  setNotificationEmitter,
+  type LocalNotification,
+} from "@/lib/notifications/emit";
+import { MOCK_DATA, mockNotifications } from "@/lib/mock";
 
-// Play notification sound function (copied from notification service to avoid circular imports)
-const playNotificationSound = (): void => {
-  try {
-    // Create a notification sound using Web Audio API
-    if (typeof window !== "undefined" && "AudioContext" in window) {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+/**
+ * The notification centre's single source of truth.
+ *
+ * This file was rewritten rather than extended, because the previous version had
+ * four defects that were each individually invisible and collectively fatal to
+ * a notification centre:
+ *
+ *  1. It leaked a WebSocket and two intervals per mount. The effect declared an
+ *     outer `connectWebSocket` that declared an *inner* one, duplicated the
+ *     history fetch and the 60s sync, and returned its cleanup from the inner
+ *     function instead of from the effect — so nothing was ever torn down, the
+ *     socket's `onclose` reconnected every 5s, and the sockets compounded. With
+ *     an OS-notification layer on top, that means duplicate toasts, one per
+ *     leaked socket, growing for as long as the tab stays open.
+ *  2. Its effect had `[]` deps and read the wallet once from localStorage, so
+ *     connecting a wallet after page load never started notifications. The bell
+ *     would have sat at zero forever for exactly the users who just arrived.
+ *  3. `unreadCount` was separate stored state that drifted: `markAsRead`
+ *     decremented unconditionally whether or not the item was unread, and
+ *     `setUnreadCount` was called *inside* `setNotifications` updaters — a side
+ *     effect in a reducer, run twice under StrictMode. The badge is the feature;
+ *     it is now derived, which deletes the whole class of bug.
+ *  4. It read `metadata.action_type` into a commented-out debug log and then
+ *     dropped it, so the categories the backend was already sending never
+ *     reached the UI.
+ *
+ * Two more surfaced once the store was the only writer, both in the transport:
+ * the host fell back to `window.location.origin`, where Next serves neither
+ * `/ws/receiver` nor `/notifications/history`, so every user paid a permanent
+ * reconnect loop and a 60s 404 poll; and the history sync returned the server's
+ * rows alone, which deleted anything raised in this browser. See the transport
+ * effect and `origin` on Notification.
+ */
 
-      // Create a pleasant notification sound (two-tone chime)
-      const playTone = (frequency: number, duration: number, delay: number = 0) => {
-        setTimeout(() => {
-          const oscillator = audioContext.createOscillator()
-          const gainNode = audioContext.createGain()
-
-          oscillator.connect(gainNode)
-          gainNode.connect(audioContext.destination)
-
-          oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
-          oscillator.type = "sine"
-
-          // Smooth fade in and out to avoid clicking sounds
-          gainNode.gain.setValueAtTime(0, audioContext.currentTime)
-          gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + 0.01)
-          gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + duration - 0.01)
-          gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration)
-
-          oscillator.start(audioContext.currentTime)
-          oscillator.stop(audioContext.currentTime + duration)
-        }, delay)
-      }
-
-      // Play a pleasant two-tone notification sound
-      playTone(800, 0.15, 0) // First tone (higher)
-      playTone(600, 0.2, 100) // Second tone (lower) with slight delay
-
-      // console.log("🔊 Notification sound played")
-    }
-  } catch (error) {
-    // console.warn("Could not play notification sound:", error)
-  }
-}
-
-interface Notification {
-  id: string
-  title: string
-  body: string
-  level: "info" | "warning" | "error" | "success"
-  timestamp: number
-  read: boolean
+export interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  level: "info" | "warning" | "error" | "success";
+  timestamp: number;
+  read: boolean;
+  category: Category;
+  /** Raw backend action_type, kept so an unmapped value is debuggable. */
+  actionType?: string;
+  /** Present when this notification is an agent permission ask. */
+  request?: NotificationRequest;
+  /**
+   * Where the row came from.
+   *
+   * "local" means it was raised in this browser by emit.ts and the server has
+   * never heard of it. The history sync therefore must not treat its own list as
+   * authoritative over these — see fetchHistory, where replacing the list
+   * wholesale used to delete every locally-raised notification within 60s.
+   */
+  origin?: "local" | "remote";
 }
 
 interface NotificationsContextType {
-  notifications: Notification[]
-  unreadCount: number
-  markAsRead: (id: string) => void
-  markAllAsRead: () => void
-  deleteNotification: (id: string) => void
-  clearAll: () => void
-  addNotification: (notification: Notification | Omit<Notification, "id" | "timestamp" | "read">) => void
+  notifications: Notification[];
+  unreadCount: number;
+  markAsRead: (id: string) => void;
+  markAllAsRead: () => void;
+  deleteNotification: (id: string) => void;
+  clearAll: () => void;
+  /** Records the outcome of a permission ask so the row stops asking. */
+  resolveRequest: (id: string, status: "approved" | "denied") => void;
+  /**
+   * Raises a notification from inside this browser.
+   *
+   * Also registered into emit.ts's module slot, which is how write hooks and
+   * polling effects reach it without taking a context dependency. Exposed here
+   * too so a component that already has the context doesn't need the slot.
+   */
+  notifyLocal: (n: LocalNotification) => void;
+  /* Panel state lives here so the nav bell, a clicked OS notification and the
+     service worker can all drive one panel without prop-drilling through Nav. */
+  panelOpen: boolean;
+  focusedId: string | null;
+  openPanel: (id?: string) => void;
+  closePanel: () => void;
 }
 
-const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined)
+const NotificationsContext = createContext<
+  NotificationsContextType | undefined
+>(undefined);
+
+const STORAGE_KEY = "kaleido_notifications";
+const MAX_STORED = 50;
+
+/* -------------------------------------------------------------------------- */
+/* Storage                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function loadStored(): Notification[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Notifications persisted before this field existed have no category, and
+    // trusting a stored value would also pin anything mis-categorised by an old
+    // build. Re-deriving from actionType on every load keeps one rule in one
+    // place — taxonomy.ts — rather than two that can disagree.
+    return (
+      parsed
+        // Demo rows are never restored. NEXT_PUBLIC_MOCK_DATA seeds fixture
+        // notifications straight into state (see the transport effect), and any
+        // mutation on one — marking it read, resolving its request — goes through
+        // `commit`, which persists. Without this line those rows outlive the flag:
+        // switch it off and yesterday's fixtures are still in the bell with nothing
+        // left in the code to explain them. Deliberately not gated on the flag, so
+        // it still cleans up after `src/lib/mock` has been deleted outright.
+        .filter((n: Notification) => !n?.id?.startsWith("mock-"))
+        .map((n: Notification) => ({
+          ...n,
+          category: categorise(n.actionType),
+        }))
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveStored(list: Notification[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(list.slice(0, MAX_STORED)),
+    );
+  } catch {
+    /* quota exceeded or storage disabled — notifications stay in memory */
+  }
+}
+
+/**
+ * Extracts an agent permission ask from a raw payload, if there is one.
+ *
+ * Returns undefined for the overwhelming majority of notifications — a filled
+ * loan is news, not a question. Only a payload that explicitly carries a
+ * `request` becomes actionable, so a backend that knows nothing about this
+ * feature can never accidentally produce a row with Approve/Deny buttons.
+ */
+function parseRequest(
+  raw: Record<string, any>,
+): NotificationRequest | undefined {
+  const r = raw?.metadata?.request ?? raw?.request;
+  if (!r || (r.kind !== "plan" && r.kind !== "limit")) return undefined;
+  return {
+    kind: r.kind,
+    summary: typeof r.summary === "string" ? r.summary : "",
+    intents: Array.isArray(r.intents) ? r.intents : undefined,
+    limit: r.limit,
+    // Always starts pending. A backend claiming something is already approved
+    // would let a signal skip the one gate this feature exists to provide.
+    status: "pending",
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Provider                                                                   */
+/* -------------------------------------------------------------------------- */
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
-  const wsRef = useRef<WebSocket | null>(null)
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
-  // Load notifications from localStorage on startup
-  const loadLocalNotifications = () => {
-    try {
-      if (typeof window !== "undefined") {
-        const stored = localStorage.getItem("kaleido_notifications")
-        if (stored) {
-          const parsedNotifications = JSON.parse(stored)
-          // console.log("Loaded notifications from localStorage:", parsedNotifications.length)
-          setNotifications(parsedNotifications)
-          setUnreadCount(parsedNotifications.filter((n: Notification) => !n.read).length)
-          return parsedNotifications
-        }
-      }
-    } catch (error) {
-      // console.error("Error loading notifications from localStorage:", error)
-    }
-    return []
-  }
+  /*
+   * The wallet comes from thirdweb, not from a one-shot localStorage read.
+   *
+   * The old code read `localStorage.kaleidoAddress` once inside a `[]` effect,
+   * which is why connecting a wallet mid-session never started notifications:
+   * nothing re-ran. A hook value re-renders, so the transport effect below
+   * re-subscribes on its own when the address changes.
+   */
+  const account = useActiveAccount();
+  const address = account?.address;
 
-  // Save notifications to localStorage
-  const saveLocalNotifications = (notifications: Notification[]) => {
-    try {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("kaleido_notifications", JSON.stringify(notifications))
-        // console.log("Saved notifications to localStorage:", notifications.length)
-      }
-    } catch (error) {
-      // console.error("Error saving notifications to localStorage:", error)
-    }
-  }
+  /*
+   * Two mirrors of render state, both read from callbacks that outlive the
+   * render that created them.
+   *
+   * `addressRef` — the WebSocket's onmessage fires between renders; reading
+   *   `address` from the closure would compare an incoming target_user against
+   *   whatever wallet was connected when the socket opened.
+   * `listRef` — lets handleSignal answer "have I already seen this?"
+   *   synchronously. A setState updater cannot: it runs during the next render
+   *   pass, after the function that would act on its answer has returned.
+   */
+  const addressRef = useRef<string | undefined>(address);
+  addressRef.current = address;
 
-  // Fetch notifications from server on startup
-  const fetchNotificationsFromServer = async (isPeriodicSync = false, userAddress?: string) => {
-    try {
-      const backendHost =
-        process.env.NEXT_PUBLIC_API_BASE ||
-        (typeof window !== "undefined" ? window.location.origin : "http://localhost:8000")
+  const listRef = useRef<Notification[]>([]);
 
-      // Include user filter if address is provided
-      const url = userAddress
-        ? `${backendHost}/notifications/history?user_address=${encodeURIComponent(userAddress)}`
-        : `${backendHost}/notifications/history`
+  /* Derived, never stored. See defect 3 in the file header. */
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.read).length,
+    [notifications],
+  );
 
-      const response = await fetch(url)
-      if (response.ok) {
-        const responseData = await response.json()
-        const serverNotifications = responseData.notifications || []
-        // console.log(
-        //   `Fetched ${serverNotifications.length} notifications from server${userAddress ? ` for user ${userAddress}` : ""}`,
-        // )
+  /**
+   * Keeps listRef in step with committed state.
+   *
+   * Deliberately an effect rather than an assignment inside `commit`'s updater:
+   * a reducer that writes to a ref is the same category of mistake as the
+   * original's `setUnreadCount` inside `setNotifications`, and React may run an
+   * updater for a render it later discards. The cost is that listRef trails by
+   * one paint, which is exactly the window handleSignal documents and the
+   * authoritative check inside `commit` covers.
+   */
+  useEffect(() => {
+    listRef.current = notifications;
+  }, [notifications]);
 
-        // For periodic sync and initial load, merge with existing state to preserve read status
-        setNotifications((prev) => {
-          // Convert server format to our format
-          const formattedNotifications: Notification[] = serverNotifications.map((notif: any) => {
-            // Check if this notification already exists locally
-            const existingNotif = prev.find((p) => p.id === (notif.id || notif.uuid))
+  /** Single writer: every mutation goes through here so persistence can't drift. */
+  const commit = useCallback(
+    (updater: (prev: Notification[]) => Notification[]) => {
+      setNotifications((prev) => {
+        const next = updater(prev);
+        if (next === prev) return prev;
+        saveStored(next);
+        return next;
+      });
+    },
+    [],
+  );
 
-            return {
-              id: notif.id || notif.uuid || uuidv4(),
-              title: notif.title || "",
-              body: notif.body || "",
-              level: notif.level || "info",
-              timestamp: notif.timestamp || Date.now(),
-              read: existingNotif ? existingNotif.read : false, // Preserve read status if exists, otherwise unread
-            }
-          })
+  const openPanel = useCallback((id?: string) => {
+    setFocusedId(id ?? null);
+    setPanelOpen(true);
+  }, []);
 
-          // For periodic sync, only update if there are actual changes
-          if (isPeriodicSync) {
-            const hasNewNotifications = formattedNotifications.some((notif) => !prev.some((p) => p.id === notif.id))
-            const hasRemovedNotifications = prev.some((p) => !formattedNotifications.some((notif) => notif.id === p.id))
+  const closePanel = useCallback(() => {
+    setPanelOpen(false);
+    setFocusedId(null);
+  }, []);
 
-            if (!hasNewNotifications && !hasRemovedNotifications) {
-              // console.log("Periodic sync: no changes detected")
-              return prev // No changes, keep existing state
-            }
+  /* ------------------------------------------------------------------ */
+  /* Mutations                                                          */
+  /* ------------------------------------------------------------------ */
 
-            // console.log("Periodic sync detected changes, updating notifications")
-          } else {
-            // console.log("Initial load: setting notifications from server")
-          }
+  const markAsRead = useCallback(
+    (id: string) => {
+      commit((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+      );
+    },
+    [commit],
+  );
 
-          // Update unread count based on merged notifications
-          const unreadCount = formattedNotifications.filter((n) => !n.read).length
-          // console.log("Notification count update:", {
-          //   totalNotifications: formattedNotifications.length,
-          //   unreadCount: unreadCount,
-          //   readCount: formattedNotifications.filter((n) => n.read).length,
-          // })
+  const markAllAsRead = useCallback(() => {
+    commit((prev) => prev.map((n) => (n.read ? n : { ...n, read: true })));
+  }, [commit]);
 
-          setUnreadCount(unreadCount)
+  const deleteNotification = useCallback(
+    (id: string) => {
+      commit((prev) => prev.filter((n) => n.id !== id));
+    },
+    [commit],
+  );
 
-          // Save to localStorage for persistence across refreshes
-          saveLocalNotifications(formattedNotifications)
+  const clearAll = useCallback(() => {
+    commit(() => []);
+  }, [commit]);
 
-          return formattedNotifications
-        })
-      }
-    } catch (error) {
-      // console.error("Failed to fetch notifications from server:", error)
-    }
-  }
+  const resolveRequest = useCallback(
+    (id: string, status: "approved" | "denied") => {
+      commit((prev) =>
+        prev.map((n) =>
+          n.id === id && n.request
+            ? { ...n, read: true, request: { ...n.request, status } }
+            : n,
+        ),
+      );
+    },
+    [commit],
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Add and announce                                                   */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Records a new notification and hands it to the delivery ladder.
+   *
+   * Shared by the WebSocket handler and the local emitter so the duplicate check
+   * and the delivery hand-off cannot drift apart between the two ways a
+   * notification arrives.
+   *
+   * The duplicate check runs twice, against two different sources, and both are
+   * needed:
+   *
+   *   listRef  — read synchronously, so we know *now* whether to fire a chime
+   *              and an OS toast. A setState updater cannot answer this: it runs
+   *              during the next render pass, long after this function has
+   *              returned, so a flag it sets is still false here.
+   *   commit   — authoritative. It sees the real previous state, so the stored
+   *              list can never gain a duplicate row.
+   *
+   * listRef trails by one commit inside a single tick, so two identical signals
+   * in the same microtask can both pass the first check. The second catches the
+   * row; the cost is one redundant toast in a narrow window, against a
+   * guaranteed double chime the other way round.
+   */
+  const commitAndDeliver = useCallback(
+    (incoming: Notification, announce: boolean) => {
+      const isSame = (n: Notification) =>
+        n.id === incoming.id ||
+        (n.title === incoming.title && n.body === incoming.body);
+
+      if (listRef.current.some(isSame)) return;
+
+      commit((prev) =>
+        prev.some(isSame) ? prev : [incoming, ...prev].slice(0, MAX_STORED),
+      );
+
+      /*
+       * Delivery is a side effect, so it stays out of the updater. The original
+       * called playNotificationSound() and setUnreadCount() *inside*
+       * setNotifications, which meant both ran twice under StrictMode — a double
+       * chime for one event. A reducer must be pure.
+       */
+      if (!announce) return;
+      deliver({
+        id: incoming.id,
+        title: incoming.title,
+        body: incoming.body,
+        level: incoming.level,
+        category: incoming.category,
+        actionable: incoming.request?.status === "pending",
+      });
+    },
+    [commit],
+  );
+
+  const notifyLocal = useCallback(
+    (n: LocalNotification) => {
+      commitAndDeliver(
+        {
+          id: uuidv4(),
+          title: n.title,
+          body: n.body,
+          level: n.level,
+          timestamp: Date.now(),
+          read: false,
+          category: categorise(n.actionType),
+          actionType: n.actionType,
+          origin: "local",
+        },
+        n.quiet !== true,
+      );
+    },
+    [commitAndDeliver],
+  );
+
+  /*
+   * The slot in emit.ts, which is what non-component callers use. Registering it
+   * here also flushes anything raised before this effect ran — see the pending
+   * queue there.
+   */
+  useEffect(() => {
+    setNotificationEmitter(notifyLocal);
+    return () => setNotificationEmitter(null);
+  }, [notifyLocal]);
+
+  /* ------------------------------------------------------------------ */
+  /* Click targets: OS notification and service worker                  */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * A clicked notification has to reach the panel from three places: an in-page
+   * Notification's onclick, a service-worker postMessage, and a cold open with
+   * ?notif=<id> in the URL. All three land here.
+   */
+  useEffect(() => {
+    setOpenHandler((id) => {
+      openPanel(id);
+      markAsRead(id);
+    });
+    return () => setOpenHandler(null);
+  }, [openPanel, markAsRead]);
 
   useEffect(() => {
-    // Track cleanup intervals
-    let syncIntervalId: NodeJS.Timeout | null = null
-
-    // Get user address from localStorage (faster than waiting for wallet connection)
-    const getUserAddress = () => {
-      try {
-        const kaleidoAddress = localStorage.getItem("kaleidoAddress")
-        if (kaleidoAddress) {
-          // console.log("Using kaleidoAddress from localStorage:", kaleidoAddress)
-          // Also set it in window object for WebSocket filtering consistency
-          ;(window as any).kaleido_current_user_address = kaleidoAddress
-          return kaleidoAddress
-        }
-
-        // console.log("No kaleidoAddress found - wallet not connected")
-        return null
-      } catch (error) {
-        // console.error("Error getting user address:", error)
-        return null
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+      return;
+    }
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "kaleido:open-notification") {
+        const id = event.data.id as string | undefined;
+        openPanel(id);
+        if (id) markAsRead(id);
       }
-    }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () =>
+      navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [openPanel, markAsRead]);
 
-    // Check if wallet is connected
-    const currentUserAddress = getUserAddress()
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = new URLSearchParams(window.location.search).get("notif");
+    if (!id) return;
+    openPanel(id);
+    markAsRead(id);
+    // Strip the param so a refresh doesn't reopen the panel, and so the URL
+    // isn't shareable in a way that leaks a notification id.
+    const url = new URL(window.location.href);
+    url.searchParams.delete("notif");
+    window.history.replaceState({}, "", url.toString());
+  }, [openPanel, markAsRead]);
 
-    if (currentUserAddress) {
-      // console.log("Wallet connected, loading notifications for:", currentUserAddress)
+  /* ------------------------------------------------------------------ */
+  /* WebSocket signal handling                                          */
+  /* ------------------------------------------------------------------ */
 
-      // Load notifications from localStorage for instant display
-      loadLocalNotifications()
+  /**
+   * Three shapes arrive on /ws/receiver: delete, modify, and "anything with a
+   * title" meaning add. Kept in one place so the socket's onmessage stays a
+   * two-line parse-and-dispatch.
+   */
+  const handleSignal = useCallback(
+    (data: Record<string, any>) => {
+      if (!data) return;
 
-      // Fetch from server with user filter
-      fetchNotificationsFromServer(false, currentUserAddress)
-
-      // Set up periodic sync with user filter
-      syncIntervalId = setInterval(() => {
-        // Re-check address in case wallet disconnected
-        const userAddress = getUserAddress()
-        if (userAddress) {
-          // console.log("Performing periodic notification sync for user:", userAddress)
-          fetchNotificationsFromServer(true, userAddress)
-        } else {
-          // console.log("Wallet disconnected during sync, clearing notifications")
-          setNotifications([])
-          setUnreadCount(0)
-          // Clear localStorage notifications since wallet is disconnected
-          saveLocalNotifications([])
-        }
-      }, 60000) // Sync every minute
-
-      // Connect to WebSocket immediately
-      connectWebSocket()
-    } else {
-      // console.log("No wallet connected, not loading notifications")
-      // Clear any existing notifications since wallet is not connected
-      setNotifications([])
-      setUnreadCount(0)
-      // Clear localStorage notifications
-      saveLocalNotifications([])
-    }
-
-    // Connect to WebSocket for real-time notifications
-    function connectWebSocket() {
-      const backendHost =
-        process.env.NEXT_PUBLIC_API_BASE ||
-        (typeof window !== "undefined" ? window.location.origin : "http://localhost:8000")
-
-      // Load notifications from localStorage first for instant display
-      const localNotifications = loadLocalNotifications()
-
-      // Get current user address from window object (set by Header)
-      const currentUserAddress = (window as any).kaleido_current_user_address
-
-      // Then fetch from server to get any new notifications (filtered by user if available)
-      fetchNotificationsFromServer(false, currentUserAddress)
-
-      // Set up periodic sync to catch any missed notifications
-      const syncInterval = setInterval(() => {
-        // console.log("Performing periodic notification sync...")
-        const userAddress = (window as any).kaleido_current_user_address
-        fetchNotificationsFromServer(true, userAddress)
-      }, 60000) // Sync every minute
-
-      // Connect to WebSocket for real-time notifications
-      const connectWebSocket = () => {
-        const backendHost =
-          process.env.NEXT_PUBLIC_API_BASE ||
-          (typeof window !== "undefined" ? window.location.origin : "http://localhost:8000")
-
-        // Convert HTTP to WebSocket protocol - use wss for https
-        let wsHost = backendHost.replace(/^https:/, "wss:").replace(/^http:/, "ws:")
-        const ws = new WebSocket(wsHost + "/ws/receiver")
-
-        // console.log("Attempting WebSocket connection to:", wsHost + "/ws/receiver")
-
-        ws.onopen = () => {
-          // console.log("WebSocket connected for notifications")
-        }
-
-        ws.onmessage = (e) => {
-          try {
-            const data = JSON.parse(e.data)
-
-            // Handle different notification actions
-            if (data.action === "delete") {
-              // console.log("Delete command received:", data)
-              // console.log("Looking for notification with target_id:", data.target_id)
-              // Delete notification by ID - now we can use direct ID matching
-              setNotifications((prev) => {
-                // console.log(
-                //   "Current notification IDs:",
-                //   prev.map((n) => ({ id: n.id, title: n.title })),
-                // )
-                const updatedNotifications = prev.filter((n) => {
-                  // Try direct ID matching first (now that IDs are synchronized)
-                  if (data.target_id && n.id === data.target_id) {
-                    // console.log("Deleting notification by ID match:", { id: n.id, title: n.title })
-                    return false // Remove this notification
-                  }
-
-                  // Fallback to content-based matching for backward compatibility
-                  if (data.target_id) {
-                    const hasMatchingContent =
-                      (n.title && data.original_title && n.title === data.original_title) ||
-                      (n.body && data.original_body && n.body === data.original_body)
-
-                    if (hasMatchingContent) {
-                      // console.log("Deleting notification by content match:", { title: n.title, body: n.body })
-                      return false // Remove this notification
-                    }
-                  }
-
-                  return true // Keep this notification
-                })
-                // Update unread count
-                const deletedCount = prev.length - updatedNotifications.length
-                setUnreadCount((count) => Math.max(0, count - deletedCount))
-                // console.log(`Delete command processed: ${deletedCount} notifications removed`)
-
-                // Save to localStorage
-                saveLocalNotifications(updatedNotifications)
-
-                return updatedNotifications
-              })
-              // console.log("Notification deleted via WebSocket command")
-            } else if (data.action === "modify") {
-              // Modify existing notification with ID-based matching
-              setNotifications((prev) => {
-                let modified = false
-                const updated = prev.map((n) => {
-                  // Try direct ID matching first (now that IDs are synchronized)
-                  if (!modified && data.target_id && n.id === data.target_id && data.modifications) {
-                    // console.log("Modifying notification by ID match:", { id: n.id, title: n.title })
-                    modified = true
-                    return {
-                      ...n,
-                      title: data.modifications.title || n.title,
-                      body: data.modifications.body || n.body,
-                      timestamp: Date.now(), // Update timestamp to show it was modified
-                    }
-                  }
-
-                  // Fallback to content-based matching for backward compatibility
-                  if (!modified && data.modifications) {
-                    const contentMatches =
-                      (data.original_title && n.title === data.original_title) ||
-                      (data.original_body && n.body === data.original_body)
-
-                    if (contentMatches) {
-                      // console.log("Modifying notification by content match:", { title: n.title, body: n.body })
-                      modified = true
-                      return {
-                        ...n,
-                        title: data.modifications.title || n.title,
-                        body: data.modifications.body || n.body,
-                        timestamp: Date.now(), // Update timestamp to show it was modified
-                      }
-                    }
-                  }
-                  return n
-                })
-
-                if (!modified) {
-                  // console.warn("No matching notification found for modification:", data.target_id)
-                } else {
-                  // Save to localStorage only if modification was successful
-                  saveLocalNotifications(updated)
-                }
-
-                return updated
-              })
-              // console.log("Notification modified via WebSocket command")
-            } else if (data && data.title) {
-              // Default: Add new notification (but check for duplicates with server-fetched notifications)
-              // Filter user-specific notifications
-
-              const currentUserAddress = (window as any).kaleido_current_user_address
-
-              // console.log("🔍 Notification filtering debug:", {
-              //   notificationTitle: data.title,
-              //   notificationTargetUser: data.metadata?.target_user || data.target_user,
-              //   currentUserAddress: currentUserAddress,
-              //   metadataUserAddress: data.metadata?.user_address,
-              //   actionType: data.metadata?.action_type || data.action_type,
-              // })
-
-              // Hardened Filter: If this signal has a target_user, it MUST match the current wallet
-              const targetUser = data.metadata?.target_user || data.target_user
-              if (targetUser) {
-                // Block if no wallet is connected OR if it's the wrong wallet
-                if (!currentUserAddress || targetUser.toLowerCase() !== currentUserAddress.toLowerCase()) {
-                  // console.log("🔒 Security block: signal for another user or no auth")
-                  return
-                }
-              } else {
-                // console.log("General notification (no target_user) - showing to all users")
-              }
-
-              const newNotification: Notification = {
-                id: data.id || uuidv4(), // Use provided ID or generate new one
-                title: data.title,
-                body: data.body || "",
-                level: data.level || "info",
-                timestamp: Date.now(),
-                read: false,
-              }
-
-              // Check if this notification already exists (from server fetch)
-              setNotifications((prev) => {
-                const exists = prev.some(
-                  (n) =>
-                    n.id === newNotification.id ||
-                    (n.title === newNotification.title && n.body === newNotification.body),
-                )
-
-                if (exists) {
-                  // console.log("Duplicate notification detected, skipping:", newNotification.title)
-                  return prev
-                }
-
-                // console.log("Adding new real-time notification:", newNotification.title)
-
-                // Play notification sound for new notifications
-                playNotificationSound()
-
-                setUnreadCount((count) => count + 1)
-                const updated = [newNotification, ...prev.slice(0, 49)]
-                saveLocalNotifications(updated)
-                return updated
-              })
-
-              // Show browser notification
-              if (typeof window !== "undefined" && "Notification" in window) {
-                if (Notification.permission === "granted") {
-                  new Notification(data.title, { body: data.body || "" })
-                } else if (Notification.permission !== "denied") {
-                  Notification.requestPermission().then((permission) => {
-                    if (permission === "granted") {
-                      new Notification(data.title, { body: data.body || "" })
-                    }
-                  })
-                }
-              }
+      if (data.action === "delete") {
+        commit((prev) =>
+          prev.filter((n) => {
+            if (data.target_id && n.id === data.target_id) return false;
+            // Content fallback, kept from the original: older backend builds
+            // send a title/body pair rather than an id.
+            if (
+              data.target_id &&
+              ((data.original_title && n.title === data.original_title) ||
+                (data.original_body && n.body === data.original_body))
+            ) {
+              return false;
             }
-          } catch (err) {
-            // console.error("WebSocket parse error:", err)
-          }
-        }
-
-        ws.onerror = (e) => {
-          // console.error("WebSocket error:", e)
-        }
-
-        ws.onclose = () => {
-          // console.log("WebSocket disconnected, attempting to reconnect...")
-          setTimeout(connectWebSocket, 5000)
-        }
-
-        wsRef.current = ws
+            return true;
+          }),
+        );
+        return;
       }
 
-      connectWebSocket()
-
-      return () => {
-        if (wsRef.current) {
-          wsRef.current.close()
-        }
-        if (syncIntervalId) {
-          clearInterval(syncIntervalId)
-        }
-      }
-    }
-  }, [])
-
-  const addNotification = (notification: Notification | Omit<Notification, "id" | "timestamp" | "read">) => {
-    setNotifications((prev) => {
-      // Handle both full Notification objects and partial ones
-      const fullNotification: Notification =
-        "id" in notification
-          ? notification
-          : {
-              ...notification,
-              id: uuidv4(),
+      if (data.action === "modify") {
+        commit((prev) => {
+          let done = false;
+          return prev.map((n) => {
+            if (done || !data.modifications) return n;
+            const byId = data.target_id && n.id === data.target_id;
+            const byContent =
+              (data.original_title && n.title === data.original_title) ||
+              (data.original_body && n.body === data.original_body);
+            if (!byId && !byContent) return n;
+            done = true;
+            return {
+              ...n,
+              title: data.modifications.title || n.title,
+              body: data.modifications.body || n.body,
               timestamp: Date.now(),
-              read: false,
-            }
-
-      // Check for duplicates by ID or content
-      if (
-        prev.some(
-          (n) =>
-            n.id === fullNotification.id ||
-            (n.title === fullNotification.title &&
-              n.body === fullNotification.body &&
-              n.level === fullNotification.level &&
-              !n.read),
-        )
-      ) {
-        return prev // Don't add duplicate
+            };
+          });
+        });
+        return;
       }
 
-      setUnreadCount((count) => count + 1)
-      const updated = [fullNotification, ...prev.slice(0, 49)]
-      saveLocalNotifications(updated)
-      return updated
-    })
-  }
+      if (!data.title) return;
 
-  const markAsRead = (id: string) => {
-    setNotifications((prev) => {
-      const updated = prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-      saveLocalNotifications(updated)
-      return updated
-    })
-    setUnreadCount((prev) => Math.max(0, prev - 1))
-  }
-
-  const markAllAsRead = () => {
-    setNotifications((prev) => {
-      const updated = prev.map((n) => ({ ...n, read: true }))
-      saveLocalNotifications(updated)
-      return updated
-    })
-    setUnreadCount(0)
-  }
-
-  const deleteNotification = (id: string) => {
-    setNotifications((prev) => {
-      const notification = prev.find((n) => n.id === id)
-      if (notification && !notification.read) {
-        setUnreadCount((count) => Math.max(0, count - 1))
+      /*
+       * Security filter, preserved from the original with its behaviour intact:
+       * a signal carrying `target_user` must match the connected wallet or it is
+       * dropped. A signal *without* `target_user` is shown to everyone, which is
+       * intended — that is the broadcast channel for maintenance and protocol
+       * notices. Anything user-specific must carry the field. Notifications
+       * raised in this browser never reach here; they go through notifyLocal,
+       * where the wallet is already the one the store is keyed to.
+       */
+      const targetUser = data.metadata?.target_user || data.target_user;
+      const current = addressRef.current;
+      if (targetUser) {
+        if (!current || targetUser.toLowerCase() !== current.toLowerCase()) {
+          return;
+        }
       }
-      const updated = prev.filter((n) => n.id !== id)
-      saveLocalNotifications(updated)
-      return updated
-    })
-  }
 
-  const clearAll = () => {
-    setNotifications([])
-    setUnreadCount(0)
-    saveLocalNotifications([])
-  }
+      const actionType = readActionType(data);
+      const incoming: Notification = {
+        id: data.id || uuidv4(),
+        title: data.title,
+        body: data.body || "",
+        level: data.level || "info",
+        timestamp: Date.now(),
+        read: false,
+        category: categorise(actionType),
+        actionType,
+        request: parseRequest(data),
+        origin: "remote",
+      };
 
-  const value: NotificationsContextType = {
-    notifications,
-    unreadCount,
-    markAsRead,
-    markAllAsRead,
-    deleteNotification,
-    clearAll,
-    addNotification,
-  }
+      commitAndDeliver(incoming, true);
+    },
+    [commitAndDeliver, commit],
+  );
 
-  return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>
+  /* ------------------------------------------------------------------ */
+  /* Transport: history fetch, 60s sync, WebSocket                      */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * One effect, one socket, one interval, and a cleanup that is actually
+   * returned from the effect. Compare the original, which nested two
+   * `connectWebSocket` functions, ran the history fetch and the sync interval
+   * twice, and returned its teardown from the inner function where React never
+   * saw it.
+   *
+   * Keyed on `address`: changing wallets tears the old subscription down and
+   * starts a new one, which is also what makes a mid-session connect work.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (!address) {
+      // No wallet, no identity to filter on. Clear rather than show another
+      // user's history from a previous session.
+      setNotifications([]);
+      saveStored([]);
+      return;
+    }
+
+    // Mirrored for the WebSocket's own target_user check, which the backend
+    // contract expects to find on `window`.
+    (
+      window as unknown as { kaleido_current_user_address?: string }
+    ).kaleido_current_user_address = address;
+
+    let cancelled = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | undefined;
+    let attempt = 0;
+
+    setNotifications(loadStored());
+
+    /*
+     * Fixture inbox.
+     *
+     * Placed after the wallet guard, so no wallet still means no inbox, and after
+     * the stored load so the two merge by timestamp rather than one replacing the
+     * other. Seeded with `setNotifications` and not `commit`, which is the whole
+     * point: commit persists, and these must not — `loadStored` above drops
+     * `mock-` ids for the same reason. Nothing is handed to `deliver` either, so
+     * ten rows do not arrive as ten OS toasts on every mount.
+     *
+     * Returning here skips the transport, which under this flag would return two
+     * lines below anyway (no engine is configured in any env file). Deleting
+     * ./mock deletes the block and the transport resumes unchanged.
+     */
+    if (MOCK_DATA) {
+      setNotifications((prev) =>
+        [
+          ...mockNotifications(address).map((n) => ({
+            ...n,
+            category: categorise(n.actionType),
+          })),
+          ...prev,
+        ]
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, MAX_STORED),
+      );
+      return;
+    }
+
+    /*
+     * No configured engine, no transport.
+     *
+     * This used to fall back to `window.location.origin`, which is the Next app
+     * — and Next serves neither `/ws/receiver` nor `/notifications/history`. So
+     * in every environment that hasn't configured an engine, which is all of them
+     * (the variable appears in no env file), every user paid a WebSocket that
+     * failed and reconnected on a capped backoff forever, plus a 404 fetch every
+     * 60 seconds. Locally-raised notifications work either way; this is purely
+     * the inbound half, and the seam stays for when the engine is wired.
+     */
+    const host = process.env.NEXT_PUBLIC_API_BASE;
+    if (!host) return;
+
+    const fetchHistory = async (isSync: boolean) => {
+      try {
+        const res = await fetch(
+          `${host}/notifications/history?user_address=${encodeURIComponent(address)}`,
+        );
+        if (!res.ok || cancelled) return;
+        const json = await res.json();
+        const rows: unknown[] = json?.notifications ?? [];
+
+        commit((prev) => {
+          const mapped: Notification[] = rows.map((raw) => {
+            const r = raw as Record<string, any>;
+            const id = r.id || r.uuid || uuidv4();
+            const existing = prev.find((p) => p.id === id);
+            const actionType = readActionType(r);
+            return {
+              id,
+              title: r.title || "",
+              body: r.body || "",
+              level: r.level || "info",
+              timestamp: r.timestamp || Date.now(),
+              // Read state is local — the server does not track it — so a sync
+              // must never resurrect something already dismissed.
+              read: existing ? existing.read : false,
+              category: categorise(actionType),
+              actionType,
+              request: existing?.request ?? parseRequest(r),
+              origin: "remote",
+            };
+          });
+
+          /*
+           * Server history is authoritative only over rows the server has. A
+           * health-factor warning raised in this browser was never sent
+           * anywhere, so a sync that returned `mapped` alone deleted it — which
+           * is exactly what happened to every locally-raised notification within
+           * 60 seconds of arriving.
+           */
+          const locals = prev.filter((p) => p.origin === "local");
+          const merged = [...locals, ...mapped].sort(
+            (a, b) => b.timestamp - a.timestamp,
+          );
+
+          if (isSync) {
+            const added = mapped.some((m) => !prev.some((p) => p.id === m.id));
+            const removed = prev.some(
+              (p) => p.origin !== "local" && !mapped.some((m) => m.id === p.id),
+            );
+            if (!added && !removed) return prev;
+          }
+          return merged.slice(0, MAX_STORED);
+        });
+      } catch {
+        /* offline or backend down — the local list is still shown */
+      }
+    };
+
+    fetchHistory(false);
+    const syncId = window.setInterval(() => fetchHistory(true), 60_000);
+
+    const connect = () => {
+      if (cancelled) return;
+      const wsHost = host.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(`${wsHost}/ws/receiver`);
+      } catch {
+        return;
+      }
+      socket = ws;
+
+      ws.onopen = () => {
+        attempt = 0;
+      };
+
+      ws.onmessage = (e) => {
+        if (cancelled) return;
+        try {
+          handleSignal(JSON.parse(e.data));
+        } catch {
+          /* not JSON, or a shape we don't handle */
+        }
+      };
+
+      ws.onclose = () => {
+        if (cancelled) return;
+        // Backoff, capped. The original reconnected on a flat 5s timer and
+        // never cancelled, so a backend outage produced a growing pile of
+        // sockets all retrying at once.
+        attempt += 1;
+        const delay = Math.min(30_000, 1_000 * 2 ** Math.min(attempt, 5));
+        reconnectTimer = window.setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(syncId);
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (socket) {
+        // Drop onclose first, or closing here schedules a reconnect for a
+        // subscription that is being torn down.
+        socket.onclose = null;
+        socket.close();
+      }
+    };
+    // handleSignal is defined below and closes only over stable callbacks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, commit]);
+
+  /* ------------------------------------------------------------------ */
+  /* Context value                                                      */
+  /* ------------------------------------------------------------------ */
+
+  const value = useMemo<NotificationsContextType>(
+    () => ({
+      notifications,
+      unreadCount,
+      markAsRead,
+      markAllAsRead,
+      deleteNotification,
+      clearAll,
+      resolveRequest,
+      notifyLocal,
+      panelOpen,
+      focusedId,
+      openPanel,
+      closePanel,
+    }),
+    [
+      notifications,
+      unreadCount,
+      markAsRead,
+      markAllAsRead,
+      deleteNotification,
+      clearAll,
+      resolveRequest,
+      notifyLocal,
+      panelOpen,
+      focusedId,
+      openPanel,
+      closePanel,
+    ],
+  );
+
+  return (
+    <NotificationsContext.Provider value={value}>
+      {children}
+    </NotificationsContext.Provider>
+  );
 }
 
-export function useNotifications() {
-  const context = useContext(NotificationsContext)
-  if (context === undefined) {
-    throw new Error("useNotifications must be used within a NotificationsProvider")
+/**
+ * Throws outside a provider rather than returning a null-object default.
+ *
+ * A silent default here would mean the bell renders a permanent zero and every
+ * Approve button does nothing, with no error anywhere — the failure mode is a
+ * feature that looks fine and silently drops permission asks.
+ */
+export function useNotifications(): NotificationsContextType {
+  const ctx = useContext(NotificationsContext);
+  if (!ctx) {
+    // Diagnostic aid: print a stack to help locate the caller in the browser
+    // when an Invalid Hook Call occurs. Keep this lightweight for dev only.
+    // eslint-disable-next-line no-console
+    console.error(
+      "useNotifications called outside NotificationsProvider",
+      new Error().stack,
+    );
+    throw new Error(
+      "useNotifications must be used within a NotificationsProvider",
+    );
   }
-  return context
+  return ctx;
 }

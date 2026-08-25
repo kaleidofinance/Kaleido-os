@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useCallback, useState } from "react"
-import { isAddress } from "ethers"
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
+import { useCallback, useState } from "react";
+import { isAddress } from "ethers";
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 
 /**
  * Registers the connected address under an upliner.
@@ -13,47 +13,53 @@ import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
  * visitor in the JS bundle.
  */
 export const useRegisterReferral = () => {
-  const activeAccount = useActiveAccount()
-  const activeChain = useActiveWalletChain()
-  const address = activeAccount?.address
+  const activeAccount = useActiveAccount();
+  const activeChain = useActiveWalletChain();
+  const address = activeAccount?.address;
 
-  const [isRegistering, setIsRegistering] = useState(false)
+  const [isRegistering, setIsRegistering] = useState(false);
 
   const registerUpliner = useCallback(
     async (upliner: string) => {
-      if (!activeChain || !address) return
-      if (!isAddress(upliner)) return
-      if (upliner.toLowerCase() === address.toLowerCase()) return
+      if (!activeChain || !address) return;
+      if (!isAddress(upliner)) return;
+      if (upliner.toLowerCase() === address.toLowerCase()) return;
 
-      setIsRegistering(true)
+      setIsRegistering(true);
       try {
         const response = await fetch("/api/referral", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ upliner, downliner: address }),
-        })
+        });
 
-        const result = await response.json().catch(() => null)
+        const result = await response.json().catch(() => null);
 
         if (!response.ok) {
           // Referral registration is a background courtesy triggered by a URL
           // param — a failure shouldn't interrupt the user with a toast.
-          console.error("Referral registration failed:", result?.error ?? response.status)
-          return
+          console.error(
+            "Referral registration failed:",
+            result?.error ?? response.status,
+          );
+          return;
         }
 
-        return result?.status as "registered" | "already_registered" | undefined
+        return result?.status as
+          | "registered"
+          | "already_registered"
+          | undefined;
       } catch (error) {
-        console.error("Referral registration failed:", error)
+        console.error("Referral registration failed:", error);
       } finally {
-        setIsRegistering(false)
+        setIsRegistering(false);
       }
     },
     [activeChain, address],
-  )
+  );
 
   return {
     registerUpliner,
     isRegistering,
-  }
-}
+  };
+};

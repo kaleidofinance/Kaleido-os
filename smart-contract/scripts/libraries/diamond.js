@@ -2,19 +2,30 @@ const FacetCutAction = { Add: 0, Replace: 1, Remove: 2 }
 
 
 
-// get function selectors from ABI
+/**
+ * Every function selector in a contract's ABI, for a diamond cut.
+ *
+ * Reads `.selector` off each FunctionFragment rather than re-resolving by name
+ * through `interface.getFunction(f.name)`. The name lookup is ambiguous for
+ * overloaded functions and ethers v6 throws on it — "ambiguous function
+ * description (i.e. matches foo(uint256), foo(address))" — which would abort the
+ * deploy on the first facet that overloads anything. None of the five current
+ * facets does, so this was latent rather than broken, but the fragment already
+ * carries the selector and cannot be ambiguous about which overload it means.
+ *
+ * Does not log: the caller names the facet it is deploying, and this function
+ * only ever saw `contract.name`, which is undefined on an ethers v6 Contract —
+ * so the line it used to print read "✅ undefined selectors:" directly above the
+ * caller's correct one.
+ */
 function getSelectors(contract) {
   if (!contract.interface || !contract.interface.fragments) {
-    console.error(`❌ Error: ${contract.name} contract.interface.fragments is undefined!`);
     return [];
   }
 
-  const selectors = contract.interface.fragments
-    .filter(f => f.type === "function") // Only process functions
-    .map(f => contract.interface.getFunction(f.name).selector); // Use getFunction() to retrieve the function selector
-
-  console.log(`✅ ${contract.name} selectors:`, selectors);
-  return selectors;
+  return contract.interface.fragments
+    .filter((f) => f.type === "function")
+    .map((f) => f.selector);
 }
 
 

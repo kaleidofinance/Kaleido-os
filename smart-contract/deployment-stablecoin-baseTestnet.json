@@ -1,0 +1,16 @@
+{
+  "network": "baseTestnet",
+  "chainId": "84532",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "USDT": "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
+    "USDe": "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9",
+    "kfUSD": "0xAE330a471E09733F66b0423352D61A2B6228dBD1",
+    "kafUSD": "0xb4b8fF43BC177C7cB1180c2f6010ab979A7Ee336",
+    "YieldTreasury": "0xC4d4B493039c3957A7fcF24d78dc169b44E08372",
+    "USDC": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+  },
+  "timestamps": {
+    "deployed": "2026-08-21T16:03:10.051Z"
+  }
+}

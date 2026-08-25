@@ -1,0 +1,1061 @@
+/* ------------------------------------------------------------------
+ * The landing page.
+ *
+ * Written entirely against the --k-* tokens from (app)/tokens.css, which
+ * is the point of shipping this as a route group: the front door and the
+ * product share one palette, one radius scale and one type ramp, so they
+ * cannot drift apart. There is no colour, radius or font size below that
+ * is not already in the app.
+ *
+ * Two token rules are easy to break here and worth restating:
+ *   - the two greens do not swap roles. --k-brand (#00b383) is fill and
+ *     chrome; --k-pos (#4cc46a) is text and numbers. A brand-green
+ *     paragraph would fail contrast and a --k-pos button fill would look
+ *     washed out.
+ *   - every panel is glass, because every panel in the app is. This file
+ *     first drew content cards as flat --k-card on a theory that glass
+ *     belongs only to things that float; the app disagrees — portfolio,
+ *     leaderboard, pool, stable, stake, notifications, the lending shell
+ *     and StatStrip all compose k-glass for panels that sit still. A flat
+ *     card here read as grey next to them, which is the drift this route
+ *     group exists to prevent. Adopt it with `composes: k-glass from
+ *     global`, keep radius and padding local (the utility sets neither on
+ *     purpose), and use --k-row-hover for hover — an opaque --k-well2
+ *     stamps a solid slab through the blur.
+ * ------------------------------------------------------------------ */
+
+/* 1200px, up from 1080px, and the hero is the reason that survived. It was
+   widened for the capability grid too — the claim being that 1200px would fit
+   four 280px columns where 1080px fit three, turning 3+3+2 into a clean 4+4.
+   That arithmetic was wrong: the content box is 1200 less 40px of padding, so
+   1160px, and four columns need 4 × 280 + 3 × 16 = 1168px. The grid stayed at
+   three the whole time and the eight cards kept landing 3+3+2, which is part of
+   why `#can` is a tab set now — see CapabilityTabs.tsx.
+
+   What the extra 120px earns is a hero that composes: 500px for the planner and
+   626px of copy beside it, where at 1080px the copy column would be 506px and a
+   52px headline would wrap to four lines. The product rail spends it the same
+   way — 340px of names and about 800px of panel, which is where the price chart
+   stops being a strip.
+
+   The screenshot section deliberately breaks out of this box on wide screens.
+   `.preview` has the arithmetic; it does it in px rather than `vw`, because
+   `100vw` includes the scrollbar. */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--k-s5) 90px;
+}
+
+/* ------------------------------------------------------------------
+ * Header.
+ *
+ * Sticky and glass unconditionally, unlike Nav.module.css, which earns
+ * its blur only once something is behind it. The difference is real: this
+ * page is long, marketing-shaped and scrolls under the strip from the
+ * first pixel, so there is never the "blurring an empty backdrop" state
+ * that made a permanent blur wrong in the app.
+ * ------------------------------------------------------------------ */
+.header {
+  composes: k-glass from global;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--k-s6);
+  padding: 12px var(--k-s5);
+  border-width: 0 0 1px;
+  border-radius: 0;
+}
+
+/* The wordmark used to live here, as `.brand` / `.brandFi` / `.mark`. It moved to
+   _components/Brand.module.css when the docs site landed and needed the same three
+   rules — see Brand.tsx. Nothing in this stylesheet styles the wordmark now, so
+   the header and footer positioning below must not reach for `.brand`: a rule here
+   with that name would compile to a different hashed class and silently match
+   nothing. */
+
+.anchors {
+  display: flex;
+  gap: var(--k-s5);
+  margin-right: auto;
+}
+
+.anchor {
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  text-decoration: none;
+}
+
+.anchor:hover {
+  color: var(--k-t1);
+}
+
+/* The docs link. Visually an anchor — same size, same muted colour, same hover —
+   but not inside the `.anchors` nav, because it leaves the page and the four in
+   there scroll within it. Composing `.anchor` rather than repeating it is safe:
+   this build carries a *local* compose down a chain and only drops a *global*
+   one, which is the failure the `.panel` note below documents. */
+.headerDocs {
+  composes: anchor;
+  white-space: nowrap;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  flex: none;
+}
+
+/* The only brand-green fill on the page above the fold, and it is a fill
+   — which is what --k-brand is for. One primary action in the header, per
+   the app's own convention of never showing two. */
+.launch {
+  border-radius: var(--k-r-pill);
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 9px var(--k-s4);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.launch:hover {
+  background: var(--k-brand-hover);
+}
+
+/* ------------------------------------------------------------------
+ * Hero.
+ *
+ * TWO COLUMNS: copy on the left, the planner on the right. It was a single
+ * left-aligned stack — headline, lede, buttons, then the planner underneath —
+ * and that vertical stacking is the largest single reason the page read as
+ * generated. Nothing sat beside anything, so there was no composition, and the
+ * one real artefact on the page was below the buttons instead of level with the
+ * headline.
+ *
+ * 500px for the planner is a measurement. `LivePlanner`'s plan rows print full
+ * 42-character addresses, and its own stylesheet handles the squeeze properly —
+ * `min-width: 0` on the flex children, `word-break: break-all` on the address,
+ * ellipsis on the summary line, and a `96px 1fr` row grid that folds at 720px.
+ * At 500px none of that is triggered; below about 420px the rows start breaking
+ * addresses across two lines, which is why the fold is at 980px rather than
+ * lower. The copy column takes the remainder — 1160px of content box less 500
+ * less the 34px gap is 626px, which wraps the 52px headline to two lines and
+ * leaves the lede comfortably inside its own 60ch measure.
+ *
+ * `align-items: start`, NOT center, and this one is behavioural rather than
+ * aesthetic. The planner grows when a visitor types — plan rows appear under the
+ * input. Centred, the copy column would slide up by half that growth on every
+ * keystroke that changes the plan's length, so the headline moves while someone
+ * is reading it. Top-aligned, the copy never moves and only the panel extends.
+ *
+ * `position: relative` and `isolation: isolate` are for the dotted dome — see
+ * _components/HeroArc.module.css, which positions itself against this box and
+ * spans both columns. Isolation is the load-bearing half: without it a negative
+ * z-index does not stop at this element — it escapes to the nearest ancestor that
+ * established a stacking context and vanishes behind the page background. One
+ * property here is the alternative to putting `position: relative; z-index: 1` on
+ * the eyebrow, the h1, the lede, the CTAs, the stat row and the planner. It is
+ * also why the arc must stay a child of this section: moved anywhere else it
+ * loses both its containing block and its stacking context in one go.
+ * ------------------------------------------------------------------ */
+.hero {
+  padding: 72px 0 var(--k-s7);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
+  gap: var(--k-s7);
+  align-items: start;
+  position: relative;
+  isolation: isolate;
+}
+
+.heroCopy {
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------
+ * Section eyebrows.
+ *
+ * One class for all six, at --k-t3 — the same muted-label treatment as
+ * `.footHead`, `.stage` and `.chainNote`, because that is already this page's
+ * vocabulary for a label above content and a seventh variation would be a new
+ * one for no reason.
+ *
+ * What they are for is orientation, not decoration. Every section used to open
+ * with a bare h2, so a reader landing mid-page had a sentence and no idea which
+ * part of the page they were in. Two words above the heading answer that before
+ * the heading is read. The hero's is the product name, which is the one place a
+ * page is allowed to simply say what it is.
+ * ------------------------------------------------------------------ */
+.eyebrow {
+  margin: 0 0 var(--k-s3);
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Weight, letter-spacing and family all come from the global .k-display
+   class on the element. Only the scale is set here — 52px is the token
+   ceiling (--k-fs-hero) and a landing headline is the one place in the
+   app that has a use for it.
+
+   margin-top is 0 because `.eyebrow` above it sets the gap with its own
+   bottom margin. It used to be --k-s5, spacing it off a pre-launch pill; the
+   pill is gone (see page.tsx, copy rule 3). */
+.h1 {
+  margin: 0;
+  font-size: var(--k-fs-hero);
+  line-height: 1.08;
+}
+
+.lede {
+  margin: var(--k-s5) 0 0;
+  color: var(--k-t2);
+  font-size: var(--k-fs-lg);
+  line-height: 1.55;
+  max-width: 60ch;
+}
+
+.ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-s3);
+  margin-top: var(--k-s6);
+}
+
+/* Solid white-on-dark (inverted in light theme), the app's primary. It
+   outranks the header's green pill by being larger and by sitting in
+   reading flow, so the two do not compete for the same click.
+
+   `inline-block` is load-bearing for the closing section, not styling for its
+   own sake: an inline <a> ignores vertical padding when the line box is
+   measured, so a centred button outside a flex container would overlap the
+   paragraph above it. Inside `.ctas` it changes nothing — a flex item is
+   blockified regardless. */
+.primary {
+  display: inline-block;
+  border-radius: var(--k-r-pill);
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+  padding: var(--k-s3) var(--k-s6);
+  text-decoration: none;
+}
+
+.primary:hover {
+  background: var(--k-btn-solid-hover);
+}
+
+.secondary {
+  display: inline-block;
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-pill);
+  color: var(--k-t1);
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+  padding: var(--k-s3) var(--k-s6);
+  text-decoration: none;
+}
+
+.secondary:hover {
+  background: var(--k-row-hover);
+}
+
+/* ------------------------------------------------------------------
+ * The hero's three figures.
+ *
+ * WHY THERE IS A ROW OF NUMBERS HERE AT ALL, given that a four-tile protocol
+ * strip was deleted from a slot 200px below this one. page.tsx's docblock has
+ * the long version; the short one is that the strip published protocol state,
+ * two of its four figures were zero on real data, and NEXT_PUBLIC_MOCK_DATA was
+ * the only reason that was not obvious. These three are not protocol state.
+ * They are the size of the surface — counted from `capabilities.ts` and
+ * `products.ts` at build time — so they cannot be zero, cannot be stale, and
+ * cannot be wrong without `capabilities.test.ts` failing in the gate.
+ *
+ * A hairline above them rather than a card around each. Three glass tiles here
+ * would be a third panel shape in the first screen, competing with the planner
+ * beside them; a rule and a row of figures is the same vocabulary as
+ * `.chainList` and the footer.
+ * ------------------------------------------------------------------ */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-s6);
+  margin: var(--k-s7) 0 0;
+  padding-top: var(--k-s5);
+  border-top: 1px solid var(--k-line);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Tabular, for the reason `.stepNum` is: 21, 27 and 5 in proportional figures
+   sit at different widths, and three of them on one line is where that shows. */
+.statValue {
+  composes: tabular from global;
+  font-size: var(--k-fs-2xl);
+  font-weight: var(--k-fw-med);
+  line-height: 1.1;
+}
+
+/* margin: 0 is not tidying — <dd> carries a 40px UA inline-start margin, which
+   would indent every label out from under its own figure. */
+.statLabel {
+  margin: 0;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  line-height: 1.4;
+}
+
+/* ------------------------------------------------------------------
+ * The planner slot in the hero.
+ *
+ * `min-width: 0` and nothing else. `LivePlanner.module.css` owns everything
+ * about how that component looks, and it is the app's own component on the app's
+ * own tokens — the point of putting it here is that it is identical to what a
+ * visitor finds after clicking Launch app, so this file gets to set where it
+ * sits and nothing more. No padding, no border, no background: a wrapper that
+ * restyled it would be reintroducing the drift the route group exists to
+ * prevent.
+ *
+ * NO CHROME AROUND IT, DELIBERATELY, and it is the one decision that makes the
+ * top of this page work. The planner already composes `k-glass`, which is the
+ * app's own panel material, so it reads as a live surface. The screenshot
+ * directly below gets a window frame instead. A frame means "picture of the
+ * app"; no frame means "the app" — and without that distinction the two panels
+ * in a row read as the same thing twice.
+ *
+ * The margin-top is gone because this is a grid column now, not the fourth block
+ * in a vertical stack; `.hero`'s `gap` sets the distance. The 720px rule still
+ * closes the gap once the columns fold.
+ *
+ * What it replaced was a `.pillars` grid — three short claims under a hairline,
+ * one per column. It was the honest version of a landing page with nothing to
+ * show, and the reason the page did not read as a product: the whole fold was
+ * four blocks of prose.
+ * ------------------------------------------------------------------ */
+.planner {
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------
+ * Sections.
+ * ------------------------------------------------------------------ */
+.section {
+  padding-top: 80px;
+  /* Anchored from the header links, so the heading must not land under the
+     sticky strip. scroll-margin rather than padding: it moves where the
+     browser stops, not where the content sits. */
+  scroll-margin-top: 76px;
+}
+
+.head {
+  max-width: 68ch;
+  margin-bottom: var(--k-s6);
+}
+
+.h2 {
+  margin: 0;
+  font-size: var(--k-fs-2xl);
+  line-height: 1.2;
+}
+
+.sub {
+  margin: var(--k-s4) 0 0;
+  color: var(--k-t2);
+  font-size: var(--k-fs-base);
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------------
+ * Cards.
+ *
+ * One consumer: the six architecture cards at §6. There were three. The eight
+ * capability groups went first, because a grid is the wrong container for
+ * equal-height rows against groups holding 1 to 9 tools — they are a tab set
+ * now, and _components/CapabilityTabs.tsx has the reasoning. The roadmap went
+ * second, to `.road` below, which is what stopped §6 and §7 being two card
+ * grids in a row.
+ *
+ * auto-fit stays with one consumer left, because it is what keeps six cards off
+ * a breakpoint of their own. Do the arithmetic before assuming a column count,
+ * because it is not the one the `minmax` minimum suggests: the content box is
+ * the 1200px page less 40px of padding, so 1160px, and four columns need
+ * 4 × 280 + 3 × 16 = 1168px. Eight pixels short, so auto-fit settles on
+ * **three**, and six cards land 3 + 3.
+ * ------------------------------------------------------------------ */
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--k-s4);
+}
+
+/* One base class the panel shapes adopt, rather than
+   `composes: k-glass from global` on a selector list — css-loader rejects
+   composition on anything but a single class name, so the list form is a
+   build error, not a style choice. `.panel` is never named in page.tsx; it
+   reaches the DOM through the two rules below.
+ *
+ * THE GLASS COMPOSE IS REPEATED ON BOTH, AND THAT IS NOT REDUNDANT.
+ * It used to sit on `.panel` alone, one line up from here, and every card on
+ * this page rendered as a flat grey slab because of it: this build carries a
+ * *local* compose down a chain but drops a *global* one. `.card` composing
+ * `.panel` reached the DOM as
+ *
+ *   class="marketing-module__…__card marketing-module__…__panel"
+ *
+ * with no `k-glass` anywhere on it, so the shapes got `.panel`'s radius
+ * and padding and none of the fill, hairline, blur or top highlight. A
+ * transparent card over the ambient gradient in tokens.css reads as exactly
+ * the grey that was reported. Composing the global directly — which is what
+ * `.header`, `.chainList`, `.chainSide` and LivePlanner's `.wrap` already do,
+ * and why those four were the only glass on the page — puts the class back.
+ *
+ * How to check it, rather than trusting this note: `curl -s localhost:3000/ |
+ * grep -o 'class="[^"]*k-glass[^"]*"' | sort -u` must list every panel shape
+ * on the page. If a shape is missing, its glass is missing.
+ *
+ * ONE FALSE NEGATIVE IN THAT SWEEP, so it does not get "fixed" twice: the price
+ * panel inside the product rail's Trade tab never appears in it.
+ * `PriceChart.module.css`'s `.panel` does not compose the utility — it writes
+ * the same material out longhand, the opaque `--k-card` fallback plus an
+ * `@supports` block with
+ * `--k-glass-strong`, `--k-glass-line`, the blur/saturate pair and the
+ * highlight-and-shadow. Deliberate, and a step brighter than `k-glass` because
+ * that panel is a peer of the trade card. So it is glass without carrying the
+ * class name, and the sweep only proves things about the classes it can see.
+ *
+ * Do not "tidy" this by hoisting the compose back onto `.panel`. Radius and
+ * padding still belong there — they travel fine, and one place to tune them
+ * is worth keeping. Only the global cannot make the trip. */
+.panel {
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s5);
+}
+
+.card {
+  composes: panel;
+  composes: k-glass from global;
+}
+
+.stepCard {
+  composes: panel;
+  composes: k-glass from global;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+}
+
+/* Second and later titles inside one card (the chains sidebar has two)
+   need air above them; the first must not shift. */
+.cardBody + .cardTitle {
+  margin-top: var(--k-s5);
+}
+
+.cardBody {
+  margin: var(--k-s3) 0 0;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  line-height: 1.6;
+}
+
+.inline {
+  color: var(--k-pos);
+  text-decoration: none;
+}
+
+.inline:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------
+ * The products section has no rules here.
+ *
+ * It used to: a `.stackWrap` two-column grid with the live price panel on one
+ * side and `.stackList` / `.stackRow` / `.stackName` / `.stackNote` / `.arrow`
+ * on the other — the five products as a flat row list. All of it is deleted.
+ * The section is `<ProductRail />` now and owns its own stylesheet, because a
+ * rail with a selected state, a detail panel and a chart slot is a component
+ * rather than a layout. ProductRail.module.css states why the chart moved
+ * inside the Trade entry and why the panel carries no height floor.
+ *
+ * Do not rebuild a `.stack*` family here. If the section needs a change it
+ * belongs in `_components/ProductRail.module.css`.
+ * ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------
+ * The three getting-started steps.
+ * ------------------------------------------------------------------ */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--k-s4);
+}
+
+/* Tabular, because 01/02/03 in proportional figures sit at different
+   widths and a stepped sequence is exactly where that shows. */
+.stepNum {
+  composes: tabular from global;
+  display: block;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  letter-spacing: 0.08em;
+  margin-bottom: var(--k-s3);
+}
+
+/* ------------------------------------------------------------------
+ * Chains.
+ *
+ * The list is the content — an ordered rollout — so it gets the wider
+ * column, and the two caveats sit beside it rather than under it where
+ * they would read as footnotes.
+ * ------------------------------------------------------------------ */
+.chainWrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--k-s4);
+  align-items: start;
+}
+
+.chainList {
+  composes: k-glass from global;
+  list-style: none;
+  margin: 0;
+  padding: var(--k-s2) 0;
+  border-radius: var(--k-r-lg);
+}
+
+.chainRow {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: var(--k-s3) var(--k-s5);
+}
+
+.chainRow + .chainRow {
+  border-top: 1px solid var(--k-line);
+}
+
+.chainIdx {
+  composes: tabular from global;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  width: 14px;
+  flex: none;
+}
+
+/* The chain's real vector mark, via <ChainIcon> — the same component the nav and
+   the network list draw, keyed on `ChainMeta.iconId` so constants/chains.ts stays
+   the one place a chain is described. 20px sits between the nav's 16 and the
+   network list's 22; page.tsx has the note on why the hand-typed brand dot this
+   replaced was the wrong call. */
+.chainIcon {
+  flex: none;
+  border-radius: 50%;
+}
+
+/* ChainIcon's `fallback`, for a chain added to ROLLOUT before its icon is added
+   to ChainIcon.tsx. Neutral rather than branded on purpose: a grey dot reads as
+   art that has not been wired up, where a coloured one reads as a deliberate
+   choice about that chain. */
+.chainMark {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  /* 20px of ChainIcon's box, so a fallback row does not sit 12px narrower than
+     the four beside it. */
+  margin: 0 6px;
+  background: var(--k-alt);
+}
+
+.chainName {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+}
+
+.chainNote {
+  margin-left: auto;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  text-align: right;
+}
+
+.chainSide {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s5);
+}
+
+/* ------------------------------------------------------------------
+ * Roadmap — four dated columns under one horizontal rail.
+ *
+ * A GRID, AND THE RAIL RUNS ACROSS IT. This section has been three things. It
+ * started as three cards headed Live / Next / Later, which was a backlog with
+ * the tickets sorted by how soon they land. It became a vertical spine, one
+ * milestone per row, which fixed the content but read as a changelog and stood
+ * about 900px tall for four short phases. This is the shape a project roadmap is
+ * normally drawn in: the phases side by side, left to right, so the sequence is
+ * a direction a reader takes in at once rather than a scroll.
+ *
+ * STILL NOT CARDS, which is the one decision that has survived all three
+ * versions. §6 directly above is `.grid3` + `.card`, so a glass panel around
+ * each milestone would make §7 the second card grid in a row — the exact
+ * repetition rule 5 in page.tsx admits to. Four columns joined by a rail is a
+ * different shape from four panels in a grid, and a border around each phase
+ * would cut the rail three times anyway.
+ *
+ * The two numbered lists above this one (`.steps` at §4, `.chainList` at §5)
+ * both badge their index. This one does not, deliberately: the date IS the
+ * ordinal, a third numbered column would be the page's third counter, and
+ * "September 2026" tells a reader something "03" does not.
+ * ------------------------------------------------------------------ */
+
+/* `repeat(4, 1fr)` and NOT the `auto-fit` used by `.grid3` above, which would be
+   wrong here in a way worth spelling out: `minmax(280px, 1fr)` needs 1168px for
+   four columns and the content box is 1160px, so auto-fit settles on three and
+   drops phase four onto a second row alone. A four-phase roadmap that renders
+   3 + 1 has lost the thing it is for. Fixed columns, explicit breakpoints below.
+
+   Row gap is s7 against a s5 column gap, for the 2 × 2 breakpoint: equal gaps in
+   both directions read as a 4-up grid that has come apart rather than as two
+   rows of two. */
+.road {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  column-gap: var(--k-s5);
+  row-gap: var(--k-s7);
+}
+
+/* 20px of rail band above the date. The dot is absolutely positioned and so
+   contributes no height — this padding is the only thing holding the band open,
+   so changing either means checking the other. */
+.mile {
+  position: relative;
+  padding-top: var(--k-s5);
+}
+
+/* The rail, one segment per milestone rather than one line drawn under the whole
+   row, because the last phase must not have one: a line running past the final
+   node into empty space reads as a fifth milestone that failed to render.
+
+   `top: 5px` centres a 1px line on an 11px dot. `left: 15px` starts it 4px clear
+   of its own dot, and `right: -16px` carries it 16px into the 20px gutter, which
+   leaves the same 4px before the next one. So the dots sit in the line rather
+   than on top of it, and phase four's hollow ring does not arrive crossed out. */
+.mile:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  right: -16px;
+  top: 5px;
+  height: 1px;
+  background: var(--k-line2);
+}
+
+.mileDot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+
+.mileWhen {
+  margin: 0 0 var(--k-s1);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mileTitle {
+  margin: 0 0 var(--k-s2);
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+}
+
+.mileLead {
+  margin: 0 0 var(--k-s3);
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+
+/* ---- tones ----
+ * The tone class sits on the <li>, so every rule here is scoped to a child. A
+ * bare `.done { color: … }` would tint the milestone's whole subtree, headline
+ * and bullets included — which is what these three used to be, back when they
+ * were applied to a single <h3> and could afford it.
+ *
+ * Shipped is --k-pos, the September window is --k-alt, and later is a hollow
+ * ring: a filled dot for something that has not happened is the one thing a
+ * timeline can say wrongly. The ring is `inset box-shadow` and not `border`,
+ * because a border on one of four dots is 2px of size difference along a rail
+ * that exists to look straight. */
+.done .mileWhen {
+  color: var(--k-pos);
+}
+.done .mileDot {
+  background: var(--k-pos);
+}
+
+.now .mileWhen {
+  color: var(--k-alt);
+}
+.now .mileDot {
+  background: var(--k-alt);
+}
+
+.next .mileWhen {
+  color: var(--k-t3);
+}
+.next .mileDot {
+  box-shadow: inset 0 0 0 1.5px var(--k-t3);
+}
+
+.bullets {
+  margin: 0;
+  padding-left: var(--k-s4);
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+
+.bullets li::marker {
+  color: var(--k-t3);
+}
+
+/* 4 → 2. Below this, four columns are under 220px and the longest bullet wraps
+   to five lines. 980px is the breakpoint the hero, the chain split and the footer
+   already use, so this reflows with them rather than adding a fifth width where
+   the page changes shape.
+
+   The extra rule is the rail: phase two now ends a row, so its segment would run
+   off into the gutter and stop. Phase three keeps its one — that is what joins
+   the second row. Specificity is why this is written `:nth-child(2)::before` and
+   not `.mile:nth-child(2)` something: the base rail rule is (0,2,1) and a plain
+   `.mile::before` at (0,1,1) would silently lose to it. Matching the count and
+   coming later in the file is what wins. Four milestones, so a fifth means
+   redoing this arithmetic. */
+@media (max-width: 980px) {
+  .road {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .mile:nth-child(2)::before {
+    display: none;
+  }
+}
+
+/* 1-up, and the rail goes entirely rather than being re-hung vertically. A
+   horizontal segment has nothing to point at once the next milestone is below
+   instead of beside, and turning it vertical would need a left indent the column
+   does not have — the dot sits at `left: 0`, flush with the text under it. One
+   column already reads top to bottom, the dates are still in order, and each dot
+   keeps its colour, so nothing is actually lost.
+
+   Same specificity note as above: `:not(:last-child)` is repeated to tie the
+   base rule at (0,2,1). */
+@media (max-width: 720px) {
+  .road {
+    grid-template-columns: 1fr;
+  }
+
+  .mile:not(:last-child)::before {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * Closing.
+ *
+ * THE ONLY CENTRED BLOCK ON THE PAGE, and that is the point of it. Every other
+ * section opens with a left-aligned eyebrow and heading, so centring this one is
+ * what makes it read as an ending rather than as a tenth section — the same
+ * rhythm argument as the wider frame under the hero, applied at the other end.
+ *
+ * The page had no closing section at all, which was the plainest thing wrong
+ * with it: it finished on a roadmap and then a column of footer links, so the
+ * last thing a convinced reader saw was a list of what is not built yet. One
+ * button, not two: a closing CTA offering a choice is a closing CTA that could
+ * not decide.
+ *
+ * ONE GLASS PANEL AROUND THE WHOLE THING. This was bare page before — a heading,
+ * a line and a button floating on the background grid, which read as the page
+ * having run out rather than as an ending. A box gives the last thing on the page
+ * an edge to stop at. It is the only full-width single panel here, so it still
+ * does not repeat a shape: §6 is a grid of six cards, §5's panel is one half of a
+ * pair, and §7's columns are deliberately unpanelled.
+ *
+ * --k-r-xl rather than the --k-r-lg every other card on this page uses. The token
+ * comments call lg "cards, table containers" and xl "the swap/agent card,
+ * modals"; this box is 1160px wide and around 330px tall, and 20px on something
+ * that size reads as a rectangle somebody forgot to round. The radius has to grow
+ * with the box or it stops looking deliberate.
+ *
+ * `margin-top` where this was `padding-top: 100px`, and the distinction now
+ * matters: 100px is the gap *to* the box and 72px is the air *inside* it. Two
+ * independent numbers — do not collapse them back into one.
+ *
+ * 100px rather than `.section`'s 80px, because this is the one boundary on the
+ * page that a reader should feel.
+ *
+ * No `display: flex` here. `.primary` is `inline-block`, so `text-align: center`
+ * centres it and its vertical padding is honoured — where a flex column would
+ * also inherit the 720px `flex: 1` rule and stretch the button across the full
+ * width, which is right in the hero's button row and wrong for a single one.
+ * ------------------------------------------------------------------ */
+.closing {
+  composes: k-glass from global;
+  margin-top: 100px;
+  border-radius: var(--k-r-xl);
+  padding: 72px var(--k-s7);
+  text-align: center;
+}
+
+.closeH {
+  margin: 0;
+  font-size: var(--k-fs-2xl);
+  line-height: 1.2;
+}
+
+/* `auto` inline margins, because the 46ch measure would otherwise sit hard
+   against the left edge of a centred block. */
+.closeSub {
+  margin: var(--k-s4) auto var(--k-s6);
+  max-width: 46ch;
+  color: var(--k-t2);
+  font-size: var(--k-fs-lg);
+  line-height: 1.55;
+}
+
+/* ------------------------------------------------------------------
+ * Footer.
+ * ------------------------------------------------------------------ */
+.footer {
+  margin-top: 90px;
+  padding-top: var(--k-s6);
+  border-top: 1px solid var(--k-line);
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr);
+  gap: var(--k-s6);
+}
+
+.footBrand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s3);
+}
+
+.footLine {
+  margin: 0;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  line-height: 1.6;
+  max-width: 34ch;
+}
+
+.footCols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--k-s5);
+}
+
+.footCols div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+
+.footCols a {
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  text-decoration: none;
+}
+
+.footCols a:hover {
+  color: var(--k-t1);
+}
+
+.footHead {
+  margin: 0 0 var(--k-s2);
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ------------------------------------------------------------------
+ * Narrow.
+ *
+ * 980px folds the three two-column blocks — the hero, the chains grid and the
+ * footer. Each half of each holds a panel, a paragraph or a form rather than a
+ * label, so they become unreadable well before the card grids do. The product
+ * rail folds at the same width from its own stylesheet.
+ *
+ * The hero fold is the load-bearing one. Below this the planner's column is
+ * about 420px, which is where its plan rows start breaking 42-character
+ * addresses across two lines and its `96px 1fr` row grid starts to crowd — and
+ * the copy column drops under 500px, which is a 52px headline on four lines.
+ * Stacked, both get the full width back.
+ * ------------------------------------------------------------------ */
+@media (max-width: 980px) {
+  .hero,
+  .chainWrap,
+  .footer {
+    grid-template-columns: 1fr;
+  }
+
+  /* --k-s7 between the copy and the planner once they are stacked, rather than
+     the 34px that separated them side by side; a vertical gap that size reads
+     as a gap, where the same number horizontally read as a column. */
+  .hero {
+    gap: var(--k-s7);
+  }
+}
+
+/* ------------------------------------------------------------------
+ * Mobile.
+ *
+ * The anchor row goes first: four section links cannot share a 360px
+ * strip with a wordmark, a theme toggle and a button, and the button is
+ * the one thing that must survive. Dropping the anchors loses nothing —
+ * the sections are directly below, and scrolling reaches all of them.
+ * The Docs link goes with them for the same reason: the hero's second button
+ * and the footer's Build column both point at the same tree.
+ * ------------------------------------------------------------------ */
+@media (max-width: 720px) {
+  .page {
+    padding: 0 var(--k-s4) 70px;
+  }
+
+  .header {
+    gap: var(--k-s3);
+    padding: 10px var(--k-s4);
+  }
+
+  .anchors,
+  .headerDocs {
+    display: none;
+  }
+
+  /* `.anchors` carried `margin-right: auto` and is the element that pushed the
+     right-hand cluster to the far edge; hidden, it pushes nothing, and the header
+     would collapse to a wordmark and a Launch button huddled on the left.
+
+     This used to be `.brand { margin-right: auto }` and had to move, because the
+     wordmark is now <Brand> with its own stylesheet — a `.brand` rule here would
+     compile to a class nothing on the page carries and match nothing at all. Same
+     free space, claimed from the other side. */
+  .headerRight {
+    margin-left: auto;
+  }
+
+  .hero {
+    padding: var(--k-s7) 0 var(--k-s6);
+    gap: var(--k-s6);
+  }
+
+  /* 52px hero type wraps to five or six lines on a phone. 34px keeps it
+     to three and stays above --k-fs-2xl, so it still reads as the largest
+     thing on the page. */
+  .h1 {
+    font-size: 34px;
+  }
+
+  .lede {
+    font-size: var(--k-fs-base);
+  }
+
+  .primary,
+  .secondary {
+    flex: 1;
+    text-align: center;
+    padding: var(--k-s3) var(--k-s4);
+  }
+
+  /* --k-s6 and a tighter rule above them: three figures at --k-fs-2xl wrap to
+     two rows on a phone, and `gap` is doing double duty as the row gap once
+     they do. */
+  .stats {
+    gap: var(--k-s5);
+    margin-top: var(--k-s6);
+  }
+
+  .statValue {
+    font-size: var(--k-fs-xl);
+  }
+
+  .section {
+    padding-top: var(--k-s7);
+    scroll-margin-top: 64px;
+  }
+
+  .h2 {
+    font-size: var(--k-fs-xl);
+  }
+
+  .card,
+  .stepCard,
+  .chainSide {
+    padding: var(--k-s4);
+  }
+
+  .chainRow {
+    padding: var(--k-s3) var(--k-s4);
+  }
+
+  /* Both numbers, not just the gap: 34px of margin outside the box and 34px of
+     padding inside it. Leaving the desktop 72px here would spend a fifth of a
+     phone screen on the air above one heading. */
+  .closing {
+    margin-top: var(--k-s7);
+    padding: var(--k-s7) var(--k-s5);
+  }
+
+  .closeH {
+    font-size: var(--k-fs-xl);
+  }
+
+  .closeSub {
+    font-size: var(--k-fs-base);
+  }
+
+  .footCols {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--k-s4);
+  }
+
+  .footer {
+    margin-top: var(--k-s7);
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-21T23:46:25.985Z",
+  "oracleKind": "pyth",
+  "contracts": {
+    "priceOracle": "0x0262aff2a0D8E56048e408D5fE875EA051dED65c",
+    "pythContract": "0x2880aB155794e7179c9eE2e38200202908C17B43"
+  },
+  "feeds": [
+    {
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "id": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "pythSymbol": "Crypto.ETH/USD",
+      "provider": "pyth",
+      "maxAge": 600,
+      "maxAgeBasis": "Same feed id as ETH — WETH is redeemable 1:1 by contract, not by market."
+    },
+    {
+      "symbols": [
+        "USDC",
+        "WUSDC"
+      ],
+      "id": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "pythSymbol": "Crypto.USDC/USD",
+      "provider": "pyth",
+      "maxAge": 90000,
+      "maxAgeBasis": "Same Crypto.USDC/USD feed as native USDC, so the same observation and the same ceiling bound. See the USDC entry above for why 90,000 is defensible for a pegged asset and must not be copied onto a volatile one."
+    },
+    {
+      "symbols": [
+        "BTC"
+      ],
+      "id": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "pythSymbol": "Crypto.BTC/USD",
+      "provider": "pyth",
+      "maxAge": 600,
+      "maxAgeBasis": "Same relayer cadence as ETH/USD on this chain, measured in the same run."
+    }
+  ],
+  "unboundable": [
+    {
+      "symbol": "USDT",
+      "observedAgeSeconds": 8375146,
+      "basis": "8,375,146s (97 days) is 93x MAX_FEED_PRICE_AGE, so no legal bound exists — setFeedMaxAge reverts Protocol__InvalidPriceBounds for any value that would cover it. deploy-stablecoin.js still mints USDT here; it simply stays unregistered as a lending asset, the same outcome as on Sepolia and Base Sepolia and for the same kind of reason. Do NOT close the gap by pointing USDT's id at USDC/USD: verifyFeed asks Hermes what the id actually names and refuses the mismatch, correctly."
+    },
+    {
+      "symbol": "USDE",
+      "observedAgeSeconds": 8375146,
+      "basis": "Identical to USDT on this chain, to the second — the same dead relayer."
+    },
+    {
+      "symbol": "WBTC",
+      "observedAgeSeconds": null,
+      "basis": "Not served by Pyth on this chain at all: getPriceUnsafe reverts PriceFeedNotFound. verifyFeed already refuses this on its own, so the entry is here to answer 'was it forgotten or is it absent' without another probe run."
+    }
+  ]
+}

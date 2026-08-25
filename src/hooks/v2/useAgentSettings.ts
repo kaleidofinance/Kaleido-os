@@ -37,6 +37,16 @@ export interface AgentSettings {
   allowedActions: Record<AgentAction, boolean>;
   /** Require an explicit signature per step (always true in the shared-wallet model). */
   confirmEachStep: boolean;
+  /**
+   * Preferred model id, or undefined to let the server choose.
+   *
+   * A preference, not an instruction: the server re-checks it against its own
+   * allow-list, so a stale id left here by a catalogue change is ignored rather
+   * than forwarded. Undefined is the honest default — the browser cannot know
+   * which keys are configured, and naming a model it has no entitlement for
+   * would spend a metered request to find out.
+   */
+  model?: string;
 }
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
@@ -54,10 +64,16 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   confirmEachStep: true,
 };
 
-const key = (address?: string) => `kaleido.v2.agentSettings.${address ?? "anon"}`;
+/** Clears the stored preference back to "let the server choose". */
+export const DEFAULT_MODEL = "";
+
+const key = (address?: string) =>
+  `kaleido.v2.agentSettings.${address ?? "anon"}`;
 
 export function useAgentSettings(address?: string) {
-  const [settings, setSettings] = useState<AgentSettings>(DEFAULT_AGENT_SETTINGS);
+  const [settings, setSettings] = useState<AgentSettings>(
+    DEFAULT_AGENT_SETTINGS,
+  );
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {

@@ -13,7 +13,10 @@ import type {
  */
 const registry = new Map<IntentKind, IntentDef<IntentKind>>();
 
-export function register<K extends IntentKind>(kind: K, def: IntentDef<K>): void {
+export function register<K extends IntentKind>(
+  kind: K,
+  def: IntentDef<K>,
+): void {
   registry.set(kind, def as unknown as IntentDef<IntentKind>);
 }
 

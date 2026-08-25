@@ -1,0 +1,233 @@
+/* Luca's prose, as markdown.
+
+   This is a transcript inside a 520px card, not an article: every value here is
+   sized so a paragraph, a list and a table read as the same object at the same
+   scale. Nothing sets a font-size on the root — `.said` in agent.module.css owns
+   that (16px/1.55), so a turn stays one typographic object whether it is a
+   sentence, a list, or both. */
+.md {
+  min-width: 0;
+}
+/* The turn's outer rhythm belongs to `.thread`'s gap, so the first and last
+   blocks give up their outer margins. Without this every answer arrives with a
+   paragraph's worth of air above it and the name line floats away from its
+   own words. */
+.md > *:first-child {
+  margin-top: 0;
+}
+.md > *:last-child {
+  margin-bottom: 0;
+}
+
+/* `pre-wrap`, and only on these two.
+
+   It has to be here at all because our own first-party replies are written with
+   real newlines and no markdown markers: COMMAND_HELP is 18 bare command strings
+   joined by "\n", and plain markdown treats a single newline as a space — so
+   without this the help reply collapses into one run-together line of 18
+   commands. `remark-breaks` would be the other way to buy that, and it would
+   also rewrite every soft wrap in a model's answer into a hard break.
+
+   The scope is narrow because of how mdast-util-to-hast formats its output: it
+   inserts literal "\n" text nodes between block-level siblings, and inside
+   `blockquote` and any loose `li` it adds them at the start and end as well.
+   Those are invisible under normal white-space and become a blank line each
+   under `pre-wrap` — so the container-level rule this obviously wants to be
+   would double the gap between every pair of paragraphs, and adding `li` or
+   `blockquote` here would open every quote and every loose list item with an
+   empty line. `p` and the headings are the two that hold nothing but phrasing
+   content, so they are the two that can take it. */
+.md p,
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  white-space: pre-wrap;
+}
+
+.md p {
+  margin: 0 0 11px;
+}
+
+/* Capped hard. A model writing to a chat card will happily emit `# Heading`, and
+   a 30px hero line inside a turn reads as the page retitling itself. Two steps
+   only — 19px for h1/h2 and body size for the rest — because a six-level scale
+   is for a document, and this is one speaker's answer. */
+.md h1,
+.md h2 {
+  font-size: var(--k-fs-lg);
+}
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-size: var(--k-fs-base);
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  /* 600, not --k-fw-med. The two body tokens are 485 and 535 — 50 units apart,
+     which is enough to separate a label from its value on the same line and not
+     enough to mark a heading above a paragraph of the same size. */
+  font-weight: 600;
+  color: var(--k-t1);
+  line-height: 1.35;
+  margin: 15px 0 7px;
+}
+
+/* 1.2em of indent rather than the UA's 40px: at 16px that is ~19px, which puts
+   the marker inside the transcript's own padding instead of hanging the text a
+   third of an inch off everything above it. */
+.md ul,
+.md ol {
+  margin: 0 0 11px;
+  padding-left: 1.2em;
+}
+.md li {
+  margin: 3px 0;
+}
+/* Nested lists sit tight against their parent item — the indent already says
+   they belong to it, so the margins would only add drift. */
+.md li > ul,
+.md li > ol {
+  margin: 3px 0;
+}
+/* GFM task lists: remark-gfm puts a disabled checkbox inside the item, and a
+   bullet beside a checkbox is two markers for one thing. The negative margin
+   pulls the row back onto the list's left edge, since the box replaces the
+   marker rather than sitting after it.
+
+   Two selectors because the checkbox sits at a different depth depending on the
+   list: a tight item's paragraph is unwrapped into the `li`, so the input is a
+   direct child, while a loose one keeps its `<p>` and the input is a grandchild.
+
+   No @supports guard: a browser without `:has` drops these rules alone and shows
+   a bullet next to the checkbox, which is untidy and not broken. */
+.md li:has(> input[type="checkbox"]),
+.md li:has(> p > input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.2em;
+}
+/* Unqualified by tag ancestry on purpose — the sanitizer pins every `input` that
+   can reach this component to `type="checkbox" disabled`, so there is no other
+   kind of input to hit. */
+.md input[type="checkbox"] {
+  margin-right: 7px;
+  accent-color: var(--k-brand);
+}
+
+/* A dent, matching the recessed chips around it. The transcript well behind this
+   is already glass, so it darkens rather than filling — an opaque fill would land
+   on the card as a patch of another material. */
+.md code {
+  background: var(--k-glass-deep);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 0.92em;
+}
+/* A fenced block scrolls sideways; it does not re-wrap. Wrapped code is code with
+   invented line breaks in it, which is worse than code you have to drag — the
+   indentation is the structure. The inner `code` gives up the dent because the
+   `pre` is the surface now. */
+.md pre {
+  margin: 0 0 11px;
+  padding: 11px 13px;
+  border-radius: var(--k-r-sm);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  overflow-x: auto;
+  white-space: pre;
+  font-size: 0.92em;
+  line-height: 1.5;
+  scrollbar-width: none;
+}
+.md pre::-webkit-scrollbar {
+  display: none;
+}
+.md pre code {
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* /api/chat composes an answer and its build notes as `answer\n\n---\n\nnotes`,
+   so this rule is the only thing standing between those two halves. Full-bleed
+   would be wrong — it is a break inside one speaker's turn, not between turns —
+   so it keeps the paragraph's own measure. */
+.md hr {
+  border: 0;
+  height: 1px;
+  background: var(--k-line);
+  margin: 14px 0;
+}
+
+.md blockquote {
+  margin: 0 0 11px;
+  padding-left: 11px;
+  border-left: 2px solid var(--k-line);
+  color: var(--k-t2);
+}
+
+.md strong,
+.md b {
+  /* Same reasoning as the headings: 535 against 485 body does not read as bold
+     mid-sentence, which is the one place emphasis has to be unmistakable. */
+  font-weight: 600;
+  color: var(--k-t1);
+}
+
+/* Underlined, not brand-coloured. A link inside a model's answer is text the
+   model wrote, and colouring it brand borrows the app's own accent to vouch for
+   a destination nothing here has checked. The underline says "this is a link"
+   without saying "this is ours". */
+.md a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--k-t3);
+}
+.md a:hover {
+  text-decoration-color: var(--k-t1);
+}
+
+/* A GFM table of four columns of numbers does not fit 488px of content width, so
+   the table gets its own scroll box rather than pushing the card wider — see the
+   `table` override in Answer.tsx, which is what supplies this wrapper.
+   `max-width: 100%` is the pair to it: without a definite cap the scroller
+   grows to its content and takes the card with it. */
+.tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 11px;
+  scrollbar-width: none;
+}
+.tableWrap::-webkit-scrollbar {
+  display: none;
+}
+.md table {
+  border-collapse: collapse;
+  font-size: var(--k-fs-sm);
+}
+.md th,
+.md td {
+  text-align: left;
+  padding: 6px 11px 6px 0;
+  border-bottom: 1px solid var(--k-line);
+  /* The cells are the reason the table needed a scroller: wrapping them instead
+     would turn three columns of numbers into three columns of stacked words. */
+  white-space: nowrap;
+}
+.md th {
+  color: var(--k-t2);
+  font-weight: var(--k-fw-med);
+}
+.md tr:last-child td {
+  border-bottom: 0;
+}

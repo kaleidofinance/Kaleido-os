@@ -24,7 +24,6 @@ Luca is the OS's reasoning layer — provider-agnostic (Claude or OpenAI, whiche
 *   **kfUSD Stablecoin:** Multi-collateral (USDC/USDT/USDe), minted and redeemed 1:1, backed by the kafUSD yield vault.
 *   **Liquid Staking ($stKLD):** Stake KLD for a liquid, appreciating staking derivative.
 *   **Buy / Sell:** Fiat on/off-ramp via MoonPay.
-*   **Agent-to-Agent Payments (x402):** A machine-payable pricing API (`/api/x402`) so other agents can call Kaleido directly, not just humans through the UI.
 
 ### 3. The Point Economy — being rebuilt, not shipped
 The original points system (referrals/marketplace/LP/AI/staking/swaps) turned out to be farmable in half its inputs and is now write-locked at the database level. The replacement — server-computed, receipt-verified, time-weighted accrual — is specified in [`docs/points-system.md`](docs/points-system.md) but **not yet implemented**. Treat any point total shown today as Season 0 participation evidence, not a balance.
@@ -68,7 +67,6 @@ Addresses below are the ones the app is currently wired to — see [`.env.exampl
 - [x] V3 DEX, P2P lending, kfUSD/kafUSD, liquid staking — shipped, live on the Trade/Pool/Borrow/Stable/Stake surfaces
 - [x] Luca: provider-agnostic agent layer with real read tools
 - [x] Local-first command routing — trading works even when the model is unreachable or a wallet's quota is exhausted
-- [x] x402 machine-payable API surface (services/verify)
 - [ ] Server-verified, time-weighted points system (spec written, not implemented — see `docs/points-system.md`)
 - [ ] Cross-Chain Liquidity Bridges
 - [ ] Agentic Mobile Interface

@@ -1,0 +1,15 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "timestamp": "2026-08-22T00:25:06.553Z",
+  "contracts": {
+    "factory": "0x8A6BbC81d9678c92aa33A3eD0580389B82B18579",
+    "router": "0x65149395E67867Db4Ef74b4151Ca0A2c1C014c80",
+    "positionManager": "0xAc1a10df0a742f107517f1944e0a37da74932c06",
+    "positionDescriptor": "0x248Cf3951Fdb6469B49ded78e310322CbA5651A1",
+    "nftDescriptor": "0xB939f0eEA9EF2F27985A3091D82c1621ef739c66",
+    "quoter": "0x2b882149eBfC79710E6E0c93661CE2718866705b",
+    "weth": "0x911b4000D3422F482F4062a913885f7b035382Df",
+    "poolInitCodeHash": "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938"
+  }
+}

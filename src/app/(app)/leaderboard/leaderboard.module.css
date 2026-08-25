@@ -1,0 +1,242 @@
+.wrap {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 22px 20px 70px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s5);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s4);
+  flex-wrap: wrap;
+}
+/* The serif, at 400 and negative tracking, comes from .k-display — hence no
+   font-weight or letter-spacing here; setting either would fight it. */
+.h1 {
+  composes: k-display from global;
+  font-size: var(--k-fs-2xl);
+  margin: 0;
+}
+.spacer {
+  flex: 1;
+}
+
+/* ---------- season header ---------- */
+/* The tier chip is not decoration: it is the only thing on the page that
+   explains why a column is missing, so it sits beside the title rather than in a
+   footnote. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  padding: 5px 11px;
+  border-radius: var(--k-r-pill);
+}
+/* A dot rather than a coloured chip: the state is Live or Frozen and both are
+   normal, so neither should read as a warning. */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--k-t3);
+  flex: none;
+}
+.dotLive {
+  background: var(--k-pos);
+}
+
+.seasonPick {
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 8px 12px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+/* The native menu is drawn by the OS and inherits nothing, so the options need
+   an explicit fill or they render as black-on-black in dark mode. */
+.seasonPick option {
+  background: var(--k-card);
+  color: var(--k-t1);
+}
+
+/* ---------- your standing ---------- */
+.you {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s4) var(--k-s5);
+  display: flex;
+  align-items: center;
+  gap: var(--k-s5);
+  flex-wrap: wrap;
+}
+.youMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s1);
+  min-width: 150px;
+}
+.youLabel {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.youVal {
+  font-size: var(--k-fs-xl);
+  letter-spacing: -0.02em;
+}
+.youNote {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  line-height: 1.4;
+  max-width: 46ch;
+  flex: 1;
+}
+
+/* ---------- board ---------- */
+.table {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s2);
+}
+.thead {
+  display: grid;
+  padding: 10px 14px 6px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.row {
+  display: grid;
+  gap: var(--k-s3);
+  align-items: center;
+  padding: 13px 14px;
+  border-radius: var(--k-r-md);
+}
+/* Translucent, not --k-well2: an opaque fill on a glass table punches an opaque
+   hole in it and the blur stops dead at the row edge. */
+.row:hover {
+  background: var(--k-row-hover);
+}
+/* The connected wallet's own row, marked so it is findable in a scroll rather
+   than by reading addresses. A brand wash and no border — a border would move
+   the row's contents by a pixel relative to its neighbours. */
+.rowYou {
+  background: var(--k-brand-dim);
+}
+.rowYou:hover {
+  background: var(--k-brand-dim);
+}
+.right {
+  text-align: right;
+  justify-self: end;
+}
+
+/* Grid templates keyed off the disclosure tier, because the columns the season
+   permits are the columns that exist. A blank column is worse than a missing
+   one: it looks like data that failed to load. */
+.t2 .thead,
+.t2 .row {
+  grid-template-columns: 0.7fr 2fr 1fr;
+}
+.t5 .thead,
+.t5 .row {
+  grid-template-columns: 0.7fr 1.8fr 1fr 1fr 1fr 1fr;
+}
+
+.rank {
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+}
+/* Exact ranks and percentiles sit in one column, so they must not compete: the
+   top of the board is the number, the tail is the band. */
+.rankTop {
+  color: var(--k-t1);
+  font-size: var(--k-fs-base);
+}
+.addr {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.youTag {
+  margin-left: 8px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-brand);
+}
+
+.tEmpty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  line-height: 1.5;
+}
+.tEmpty b {
+  display: block;
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  margin-bottom: 6px;
+}
+.rowSkeleton {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: 14px;
+}
+/* Recessed, not opaque: placeholders inside a glass table, and an opaque fill
+   makes the loading state the only part the blur stops at — which then visibly
+   changes material once the real rows arrive. */
+.skLine {
+  height: 14px;
+  border-radius: 8px;
+  background: var(--k-glass-deep);
+  flex: 1;
+}
+
+/* ---------- footnotes ---------- */
+/* Where the page explains itself: which figures the tier withholds, what the
+   table was cut off at, and which reads failed. Not optional chrome — a masked
+   column with no explanation reads as a bug. */
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  line-height: 1.5;
+  max-width: 78ch;
+}
+.notes b {
+  color: var(--k-t2);
+  font-weight: var(--k-fw-body);
+}
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .wrap {
+    padding: 16px 14px 60px;
+  }
+  /* Six columns inside a phone width crushes every cell. Scroll the table in its
+     own container instead, so the page body never scrolls sideways. */
+  .table {
+    overflow-x: auto;
+  }
+  .t5 .thead,
+  .t5 .row {
+    min-width: 620px;
+  }
+  .you {
+    padding: var(--k-s3) var(--k-s4);
+    gap: var(--k-s4);
+  }
+}

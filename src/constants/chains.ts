@@ -4,9 +4,13 @@
  * dependency) and each chain's own docs, not invented.
  *
  * NOTHING IS DEPLOYED ANYWHERE TODAY. The contracts were rewritten and are
- * being redeployed from scratch, testnet first, in priority order: Arc, Base,
- * Robinhood, BNB Smart Chain, Ethereum. Abstract is no longer the home chain —
- * it stays registered for balance reading only.
+ * being redeployed from scratch, testnet first. `TESTNET_WAVE` in registry.ts is
+ * the order and the single source for it — do not restate it here, because a
+ * second copy is what went stale: this header used to name a five-chain order
+ * (Arc first, Ethereum last) that is now close to the reverse of the real one,
+ * which is ordered by how much has to be built before a chain is exercisable.
+ * Abstract is no longer the home chain — it stays registered for balance reading
+ * only.
  *
  * So every chain here is currently wired for wallet network-switching and the
  * omni-chain balance indexer (portfolio viewing), and none is tradable. Do not
@@ -41,33 +45,19 @@ export interface ChainMeta {
   comingSoon?: boolean;
 }
 
+/*
+ * Order is the display order. NetworkSelector and TokenSelector both partition
+ * this array by `network` and otherwise preserve it, so the sequence here is
+ * what a user reads top to bottom — which makes it a product decision, not a
+ * filing convention.
+ *
+ * Priority order first (Arc, Base, Robinhood, BNB, Ethereum are where the
+ * Diamond is going), then the read-only chains, then Abstract last. Abstract
+ * used to lead this list from when it was the home chain; leaving it there
+ * pointed every user at the one mainnet entry that says "Balances only" before
+ * they reached a single tradable chain.
+ */
 export const CHAINS: ChainMeta[] = [
-  // ---- Abstract (deprioritised: balance reading only, never tradable) ----
-  {
-    id: 2741,
-    name: "Abstract",
-    shortName: "Abstract",
-    network: "mainnet",
-    pairChainId: 11124,
-    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-    rpcUrls: ["https://api.mainnet.abs.xyz"],
-    blockExplorer: { name: "Abscan", url: "https://abscan.org" },
-    iconId: "abstract",
-    color: "#00b383",
-  },
-  {
-    id: 11124,
-    name: "Abstract Testnet",
-    shortName: "Abstract",
-    network: "testnet",
-    pairChainId: 2741,
-    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-    rpcUrls: ["https://api.testnet.abs.xyz"],
-    blockExplorer: { name: "Abscan", url: "https://explorer.testnet.abs.xyz" },
-    iconId: "abstract-sepolia",
-    color: "#00b383",
-  },
-
   // ---- Ethereum ----
   {
     id: 1,
@@ -89,7 +79,15 @@ export const CHAINS: ChainMeta[] = [
     network: "testnet",
     pairChainId: 1,
     nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: ["https://11155111.rpc.thirdweb.com", "https://rpc.sepolia.org"],
+    rpcUrls: [
+      "https://11155111.rpc.thirdweb.com",
+      /* Was https://rpc.sepolia.org, which serves an Apache 404 to a JSON-RPC
+         POST rather than failing as a node — measured 2026-08-25. A fallback that
+         answers HTML is worse than no fallback: ethers reports a parse error, not
+         an unreachable endpoint. publicnode agreed with thirdweb on both chain id
+         and height when the two were compared. */
+      "https://ethereum-sepolia-rpc.publicnode.com",
+    ],
     blockExplorer: { name: "Etherscan", url: "https://sepolia.etherscan.io" },
     iconId: "sepolia",
     color: "#627eea",
@@ -161,7 +159,10 @@ export const CHAINS: ChainMeta[] = [
     pairChainId: 46630,
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
-    blockExplorer: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" },
+    blockExplorer: {
+      name: "Blockscout",
+      url: "https://robinhoodchain.blockscout.com",
+    },
     iconId: "robinhood",
     color: "#00c805",
     tradable: true,
@@ -174,7 +175,10 @@ export const CHAINS: ChainMeta[] = [
     pairChainId: 4663,
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: ["https://rpc.testnet.chain.robinhood.com"],
-    blockExplorer: { name: "Blockscout", url: "https://explorer.testnet.chain.robinhood.com" },
+    blockExplorer: {
+      name: "Blockscout",
+      url: "https://explorer.testnet.chain.robinhood.com",
+    },
     iconId: "robinhood",
     color: "#00c805",
     tradable: true,
@@ -228,9 +232,38 @@ export const CHAINS: ChainMeta[] = [
     network: "mainnet",
     nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
     rpcUrls: ["https://rpc.hyperliquid.xyz/evm"],
-    blockExplorer: { name: "Hyperliquid Explorer", url: "https://hyperliquid.cloud.blockscout.com" },
+    blockExplorer: {
+      name: "Hyperliquid Explorer",
+      url: "https://hyperliquid.cloud.blockscout.com",
+    },
     iconId: "hyperliquid",
     color: "#97fce4",
+  },
+
+  // ---- Abstract, last (deprioritised: balance reading only, never tradable) --
+  {
+    id: 2741,
+    name: "Abstract",
+    shortName: "Abstract",
+    network: "mainnet",
+    pairChainId: 11124,
+    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+    rpcUrls: ["https://api.mainnet.abs.xyz"],
+    blockExplorer: { name: "Abscan", url: "https://abscan.org" },
+    iconId: "abstract",
+    color: "#00b383",
+  },
+  {
+    id: 11124,
+    name: "Abstract Testnet",
+    shortName: "Abstract",
+    network: "testnet",
+    pairChainId: 2741,
+    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+    rpcUrls: ["https://api.testnet.abs.xyz"],
+    blockExplorer: { name: "Abscan", url: "https://explorer.testnet.abs.xyz" },
+    iconId: "abstract-sepolia",
+    color: "#00b383",
   },
 ];
 
@@ -251,6 +284,13 @@ export const CHAINS_BY_ID: Record<number, ChainMeta> = Object.fromEntries(
  * Callers should use the wallet's connected chain and handle "not connected"
  * or "not deployed here" explicitly. `isDeployed()` in registry.ts is the check
  * for the latter.
+ *
+ * The one exception is `READ_ONLY_CHAIN_ID` in config/provider.ts, and it is an
+ * exception because it is not a fallback: the read-only provider has no wallet
+ * to ask, so configuration is the only thing that can name its chain. It is
+ * configured via `NEXT_PUBLIC_READ_CHAIN_ID`, and its own default is private to
+ * that module precisely so it cannot be borrowed as the constant this comment
+ * refuses.
  */
 
 /** Chains where the Diamond is *intended* to live. Not a deployment check —
@@ -260,7 +300,9 @@ export const INTENDED_TRADABLE_CHAIN_IDS = CHAINS.filter((c) => c.tradable).map(
   (c) => c.id,
 );
 
-export const getChainMeta = (chainId: number | undefined): ChainMeta | undefined =>
+export const getChainMeta = (
+  chainId: number | undefined,
+): ChainMeta | undefined =>
   chainId === undefined ? undefined : CHAINS_BY_ID[chainId];
 
 /** Builds a thirdweb Chain object from the registry, for wallet network switching. */
@@ -270,7 +312,9 @@ export function toThirdwebChainOptions(meta: ChainMeta) {
     name: meta.name,
     rpc: meta.rpcUrls[0],
     nativeCurrency: meta.nativeCurrency,
-    blockExplorers: [{ name: meta.blockExplorer.name, url: meta.blockExplorer.url }],
+    blockExplorers: [
+      { name: meta.blockExplorer.name, url: meta.blockExplorer.url },
+    ],
     testnet: meta.network === "testnet" ? (true as const) : undefined,
   };
 }

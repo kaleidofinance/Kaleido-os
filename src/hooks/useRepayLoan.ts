@@ -1,174 +1,174 @@
-"use client"
+"use client";
 
-import { useCallback } from "react"
-import { toast } from "sonner"
-import { isSupportedChain } from "@/config/chain"
-import { getProvider } from "@/config/provider"
-import { getERC20Contract, getKaleidoContract } from "@/config/contracts"
-import { ErrorWithReason } from "@/constants/types"
-import useCheckAllowance from "./useCheckAllowance"
-import { ADDRESS_1, USDC_ADDRESS, USDR } from "@/constants/utils/addresses"
-import { ethers, MaxUint256 } from "ethers"
-import { getContractAddressesByChainId, getContractByChainId } from "@/config/getContractByChain"
-import { getUsdcAddressByChainId } from "@/constants/utils/getUsdcBalance"
-import { SUPPORTED_CHAIN_ID } from "@/context/web3Modal"
-import { ErrorDecoder } from "ethers-decode-error"
-import lendbitAbi from "@/abi/ProtocolFacet.json"
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
-import { ethers6Adapter } from "thirdweb/adapters/ethers6"
-import { client } from "@/config/client"
+import { useCallback } from "react";
+import { toast } from "sonner";
+import { isSupportedChain } from "@/config/chain";
+import { getKaleidoContract } from "@/config/contracts";
+import { isNativeSentinel } from "@/constants/registry";
+import { getContractAddressesByChainId } from "@/config/getContractByChain";
+import { ErrorDecoder } from "ethers-decode-error";
+import lendbitAbi from "@/abi/ProtocolFacet.json";
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { client } from "@/config/client";
+import { ensureAllowance } from "@/lib/lending/approve";
 
-const errorDecoder = ErrorDecoder.create([lendbitAbi])
+const errorDecoder = ErrorDecoder.create([lendbitAbi]);
+
+/**
+ * Repay an open loan. `_amount` is RAW base units — see ActiveLoan.totalRepaymentRaw.
+ *
+ * No `LendingAsset` here, and no decimals: the caller already holds the exact
+ * repayment figure in the token's own units, so re-deriving a scale would only
+ * create a second place for it to be wrong. The token address is the one the
+ * request was denominated in, straight off the loan row.
+ *
+ * Three defects removed, all in the ERC20 leg:
+ *
+ *   - Approval was only attempted for two Abstract-testnet literals
+ *     (`USDC_ADDRESS`, `USDR`). On every deployed chain neither matched, so
+ *     `currency` stayed `undefined`, `getERC20Contract(signer, undefined)` threw,
+ *     and no ERC20 repayment could be made at all.
+ *   - The amount approved was `ethers.parseUnits(_amount, 6)` over an amount
+ *     already in base units, i.e. the true figure times 1e6 — so a repayment that
+ *     did get past the address check asked the user to approve a million times
+ *     what it needed.
+ *   - The allowance it compared against was `val < Number(_amount)`, raw units on
+ *     one side and… also raw on the other here, but read from useCheckAllowance's
+ *     effect state, which is a render behind the wallet and reads the wrong
+ *     chain's allowance after a network switch.
+ *
+ * `ensureAllowance` replaces all three: live read, base units both sides, exactly
+ * the amount needed, any token.
+ */
 const useRepayLoan = () => {
-  const activeAccount = useActiveAccount()
-  const activeChain = useActiveWalletChain()
-  const chainId = activeChain?.id
-  // console.log("chainId:", chainId)
-  const address = activeAccount?.address
-
-  const { val, usdrVal } = useCheckAllowance()
+  const activeAccount = useActiveAccount();
+  const activeChain = useActiveWalletChain();
+  const chainId = activeChain?.id;
 
   return useCallback(
     async (_requestId: number, _tokenAddress: string, _amount: string) => {
-      // if (chainId === undefined) return
-      if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK")
+      if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK");
 
       if (!activeChain) {
-        toast.error("Chain not connected")
-        return
+        toast.error("Chain not connected");
+        return;
       }
 
       if (!activeAccount) {
-        toast.error("invalid account")
-        return
+        toast.error("invalid account");
+        return;
       }
       const signer = ethers6Adapter.signer.toEthers({
         client,
         chain: activeChain,
         account: activeAccount,
-      })
+      });
       if (!signer) {
-        toast.error("Signer not available")
-        return
+        toast.error("Signer not available");
+        return;
       }
 
-      let currency: any
-      if (_tokenAddress === USDC_ADDRESS) {
-        currency = USDC_ADDRESS
-      } else if (_tokenAddress === USDR) {
-        currency = USDR
-      }
+      const contract = getKaleidoContract(signer, chainId);
 
-      const contract = getKaleidoContract(signer)
-      const destination = getContractAddressesByChainId(chainId)
-
-      // const _amount = ethers.parseEther(_amount);
-      // console.log(_requestId, _tokenAddress,_amount, _amount);
-
-      let loadingToastId: string | number | undefined
+      let loadingToastId: string | number | undefined;
 
       try {
-        loadingToastId = toast.loading("Please wait!... Processing repayments")
+        loadingToastId = toast.loading("Please wait!... Processing repayments");
 
-        // If the token address is ADDRESS_1, directly call repayLoan for native token (like ETH)
-        if (_tokenAddress === ADDRESS_1) {
+        // Native value is addressed by the lending sentinel, so repayLoan is
+        // called directly with `value` rather than approving an ERC20 first.
+        if (isNativeSentinel(_tokenAddress, "lending")) {
           await contract.repayLoan.staticCall(_requestId, _amount, {
             value: _amount,
-          })
+          });
 
           const transaction = await contract.repayLoan(_requestId, _amount, {
             value: _amount,
-          })
+          });
 
-          const receipt = await transaction.wait()
-
-          if (receipt.status) {
-            return toast.success("Outstanding payed!", {
-              id: loadingToastId,
-            })
-          }
-
-          return toast.error("Repayment failed!", {
-            id: loadingToastId,
-          })
-        }
-
-        // If the token is a different ERC-20 token (e.g., USDC), check allowance first
-        if (_tokenAddress !== ADDRESS_1) {
-          const erc20Contract = getERC20Contract(signer, currency)
-
-          // Check if allowance is sufficient
-          if (_tokenAddress === USDC_ADDRESS) {
-            if (val === 0 || val < Number(_amount)) {
-              const approvalAmount = ethers.parseUnits(_amount, 6);
-              const approvalTx = await erc20Contract.approve(destination, approvalAmount)
-              const approvalReceipt = await approvalTx.wait()
-
-              if (!approvalReceipt.status) {
-                return toast.error("Approval failed!", {
-                  id: loadingToastId,
-                })
-              }
-            }
-          } else if (_tokenAddress === USDR) {
-            if (usdrVal === 0 || usdrVal < Number(_amount)) {
-              const approvalAmount = ethers.parseUnits(_amount, 18);
-              const approvalTx = await erc20Contract.approve(destination, approvalAmount)
-              const approvalReceipt = await approvalTx.wait()
-
-              if (!approvalReceipt.status) {
-                return toast.error("Approval failed!", {
-                  id: loadingToastId,
-                })
-              }
-            }
-          }
-          await contract.repayLoan.staticCall(_requestId, _amount)
-          const transaction = await contract.repayLoan(_requestId, _amount)
-
-          const receipt = await transaction.wait()
+          const receipt = await transaction.wait();
 
           if (receipt.status) {
             return toast.success("Outstanding payed!", {
               id: loadingToastId,
-            })
+            });
           }
 
           return toast.error("Repayment failed!", {
             id: loadingToastId,
-          })
+          });
         }
+
+        const destination = getContractAddressesByChainId(chainId);
+        if (!destination) {
+          return toast.error("No lending contract on this chain", {
+            id: loadingToastId,
+          });
+        }
+
+        await ensureAllowance(
+          signer,
+          _tokenAddress,
+          activeAccount.address,
+          destination,
+          BigInt(_amount),
+        );
+
+        await contract.repayLoan.staticCall(_requestId, _amount);
+        const transaction = await contract.repayLoan(_requestId, _amount);
+
+        const receipt = await transaction.wait();
+
+        if (receipt.status) {
+          return toast.success("Outstanding payed!", {
+            id: loadingToastId,
+          });
+        }
+
+        return toast.error("Repayment failed!", {
+          id: loadingToastId,
+        });
       } catch (error: unknown) {
-        const err = await errorDecoder.decode(error)
-        console.log("Error rapaying loan:", err)
-        let errorText: string
+        /* ensureAllowance throws plain Errors, which the decoder passes through
+           unchanged — so they have to be recognised before the switch, or the one
+           message explaining a refused allowance change becomes "Trying to resolve
+           error!". */
+        const approvalMessage = (error as Error)?.message;
+        if (approvalMessage?.startsWith("Token approval")) {
+          return toast.error(approvalMessage, { id: loadingToastId });
+        }
+
+        const err = await errorDecoder.decode(error);
+        console.log("Error rapaying loan:", err);
+        let errorText: string;
 
         // Handle different error reasons from the protocol
         switch (err?.reason) {
           case "Protocol__RequestNotServiced":
-            errorText = "Repayment action failed!"
-            break
+            errorText = "Repayment action failed!";
+            break;
           case "Protocol__InvalidToken":
           case "Protocol__InsufficientBalance":
-            errorText = "Insufficient balance!"
-            break
+            errorText = "Insufficient balance!";
+            break;
           case "Protocol__InsufficientAllowance":
-            errorText = "Insufficient allowance!"
-            break
+            errorText = "Insufficient allowance!";
+            break;
           case "Protocol__MustBeMoreThanZero":
-            errorText = "No outstanding to repay!"
-            break
+            errorText = "No outstanding to repay!";
+            break;
           default:
-            errorText = "Trying to resolve error!"
+            errorText = "Trying to resolve error!";
         }
 
         toast.warning(`Error: ${errorText}`, {
           id: loadingToastId,
-        })
+        });
       }
     },
-    [val, usdrVal],
-  )
-}
+    [activeAccount, activeChain, chainId],
+  );
+};
 
-export default useRepayLoan
+export default useRepayLoan;

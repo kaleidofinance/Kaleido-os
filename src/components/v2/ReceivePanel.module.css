@@ -1,0 +1,189 @@
+/* Receive panel — renders inside the agent card's `.raised` well, so every
+   surface here sits on glass. Same rule as the rest of the trade card: fills
+   are the translucent --k-glass-deep wash with an inset groove, never an opaque
+   --k-well/--k-well2, which would ignore the blur and land as a patch of a
+   different material. See `.qk` in trade.module.css for the full argument.
+
+   The QR plate is the deliberate exception, and the reason is physical rather
+   than stylistic — see `.qrFrame`. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-s3);
+}
+
+/* Back sits in the flow rather than floating in a corner, because this panel is
+   not a modal — there is no scrim to click through and no Escape to press, so
+   the return path has to be a visible control in a predictable place. Every
+   panel that lands in this slot should put it here. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  width: 100%;
+}
+.back {
+  width: 28px;
+  height: 28px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  font-size: var(--k-fs-base);
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.back:hover {
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  color: var(--k-t1);
+}
+.title {
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+}
+
+/* The chain, in the largest type on the panel after the title.
+   Its prominence is the safety mechanism — see the comment in ReceivePanel.tsx.
+   Given weight rather than tucked in a corner because the address below is
+   identical everywhere and therefore says nothing about where funds land. */
+.chainRow {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  padding: 8px 14px 8px 10px;
+  border-radius: var(--k-r-pill);
+}
+.chainIcon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.chainIcon i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: block;
+}
+.chainName {
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+}
+.testnet {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--k-alt);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-pill);
+  padding: 1px 6px;
+}
+
+/* A real white plate, in both themes, and the one place in the app that ignores
+   the palette entirely.
+
+   A QR is read by a camera measuring luminance, not by a person reading a UI.
+   Dropping the code onto the glass — even at full --k-t1 on --k-card — costs
+   contrast that a phone at an angle in bad light cannot recover, and a QR that
+   scans on your monitor but not across a desk is worse than none, because it
+   fails at the moment someone is trying to send money. Pure black on pure
+   white, always, with a quiet zone. */
+.qrFrame {
+  background: #ffffff;
+  padding: 14px;
+  border-radius: var(--k-r-md);
+  line-height: 0;
+  box-shadow: var(--k-shadow-glass);
+}
+/* Sized here rather than trusting the component's `size` prop alone, so the
+   short-viewport rule below can shrink it. The prop still sets the SVG's
+   viewBox, which is what keeps the modules crisp at any rendered size. */
+.qrFrame svg {
+  display: block;
+  width: 168px;
+  height: 168px;
+}
+
+/* The address, in full and wrapping. Never ellipsised — a truncated address is
+   exactly what an address-poisoning attack is designed to satisfy. */
+.addr {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 0;
+  font: inherit;
+  color: var(--k-t1);
+  text-align: left;
+  padding: 11px 14px;
+  border-radius: var(--k-r-md);
+  cursor: pointer;
+}
+.addr:hover {
+  background: var(--k-brand-dim);
+}
+.addrText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--k-fs-sm);
+  line-height: 1.45;
+  /* `anywhere`, not `break-all`: it keeps the string on one line while it fits
+     and only breaks when it must, so short viewports get two tidy rows rather
+     than a ragged block. */
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.copyHint {
+  flex: none;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+
+.warn {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  line-height: 1.5;
+  text-align: center;
+  margin: 0;
+}
+.warn b {
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+}
+
+.empty {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  line-height: 1.55;
+  margin: 0;
+  text-align: center;
+}
+
+/* Short viewports: /trade is a 100dvh shell and this panel sits under a live
+   prompt well, so the QR is the first thing that has to give. It stays square
+   and scannable, just smaller. */
+@media (max-height: 760px) {
+  .qrFrame {
+    padding: 10px;
+  }
+  .qrFrame svg {
+    width: 128px;
+    height: 128px;
+  }
+  .wrap {
+    gap: var(--k-s2);
+  }
+}

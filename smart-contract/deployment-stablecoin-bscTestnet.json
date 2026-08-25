@@ -1,0 +1,16 @@
+{
+  "network": "bscTestnet",
+  "chainId": "97",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "USDT": "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2",
+    "USDe": "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6",
+    "kfUSD": "0xCF59972d09Dbf9b37c1e3CDa55c47d0253038D76",
+    "kafUSD": "0xf36ef8273ed6223Cd71B775929036505cCdF4976",
+    "YieldTreasury": "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A",
+    "USDC": "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F"
+  },
+  "timestamps": {
+    "deployed": "2026-08-23T02:54:52.948Z"
+  }
+}

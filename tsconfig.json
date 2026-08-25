@@ -1,5 +1,22 @@
 {
   "compilerOptions": {
+    /*
+     * ES2020 for BigInt literals (`0n`).
+     *
+     * There was no `target` here at all, so tsc fell back to ES5 and raised
+     * TS2737 on every BigInt literal in the tree — poolCurve.ts (8),
+     * usePoolTransactions.ts, lib/lending/approve.ts. `npm run typecheck`
+     * therefore exited non-zero on a clean checkout, which makes it useless as a
+     * gate: real errors arrive mixed into a fixed set of ten false ones.
+     *
+     * Nothing about emit changes. `noEmit` is set, and Next transpiles with SWC
+     * off its own browserslist targets, so this only tells tsc which syntax the
+     * runtime already supports. ethers v6 requires native BigInt at runtime, so
+     * the target was simply behind the code it was checking. `lib` already
+     * declared esnext, i.e. the BigInt *type* was in scope while the *literal*
+     * was rejected.
+     */
+    "target": "ES2020",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
@@ -10,6 +27,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "jsx": "preserve",
     "incremental": true,
     "plugins": [
@@ -21,7 +39,12 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
   "exclude": [
     "node_modules",
     "aborean-contracts-main",

@@ -27,7 +27,12 @@ contract KaleidoVault is Ownable(msg.sender), ReentrancyGuard {
 
     address public constant NATIVE_TOKEN = address(1);
 
-    bool private paused;
+    /// @dev Public so the state is readable on-chain. It was `private`, and with
+    ///      `receive()` no longer guarded (see below) the flag's only remaining
+    ///      effect is to make the owner's own calls revert — so the operator
+    ///      needs to be able to check it before sending one, and reconstructing
+    ///      it from the Paused/Unpaused event log is a poor substitute.
+    bool public paused;
 
 
 
@@ -79,14 +84,31 @@ contract KaleidoVault is Ownable(msg.sender), ReentrancyGuard {
         emit Deposit(msg.sender, token, amount);
     }
 
+    /* `validToken` was on this function and is deliberately gone.
+     *
+     * Nothing that actually reaches this vault goes through `depositFees`:
+     * ProtocolFacet pays native fees with a bare value-call into `receive()`
+     * and ERC20 fees with a plain `transfer`, and neither touches
+     * `isAcceptedToken`. So the allowlist never described the vault's holdings —
+     * but it still governed their withdrawal, which made it a one-way door. Any
+     * fee in a token the owner had not pre-registered was stuck here
+     * permanently, and native fees always were: `NATIVE_TOKEN` is `address(1)`,
+     * not a token anyone would think to pass to `addTokens`.
+     *
+     * It also protected nothing. This function is `onlyOwner`, and an owner
+     * sweeping an unexpected token out of the fee vault is the contract's
+     * purpose rather than an attack on it. The allowlist stays on `depositFees`,
+     * where declaring what the vault accepts is the point, and `whenNotPaused`
+     * stays here, where freezing outflows is what pause should mean.
+     */
     function withdrawFees(address token, uint256 amount, address payable to)
         external
         onlyOwner
         nonReentrant
-        validToken(token)
         amountNotZero(amount)
         whenNotPaused
     {
+        if (token == address(0)) revert InvalidTokenAddress();
         if (to == address(0)) revert InvalidRecipient();
 
         if (token == NATIVE_TOKEN) {
@@ -117,8 +139,29 @@ contract KaleidoVault is Ownable(msg.sender), ReentrancyGuard {
         emit Unpaused(msg.sender);
     }
 
-    receive() external payable whenNotPaused {
-   
+    /* No `whenNotPaused`, deliberately.
+     *
+     * This is the protocol's fee sink, and ProtocolFacet pays native fees into
+     * it with a bare `call{value: protocolFee}("")` whose success is `require`d
+     * (_repayLoan, ~line 1047). A reverting `receive()` therefore does not
+     * "refuse a deposit" — it reverts the *caller's* transaction, and the caller
+     * is a borrower repaying a native loan.
+     *
+     * Pausing the vault used to brick native repayment outright: the borrower
+     * could not repay at any price, interest kept accruing on the outstanding
+     * balance, and the position drifted toward liquidation for a reason that had
+     * nothing to do with the borrower or their collateral. An admin action on a
+     * fee account must not be able to do that. The ERC20 branch was never
+     * exposed, because a plain `transfer` to a contract runs none of its code —
+     * so the pause flag silently applied to one asset class and not the other.
+     *
+     * Pause is meaningful on outflows and on the allowlist, where it stops the
+     * owner acting. It is not meaningful on inflows, where the only thing it can
+     * stop is someone paying the protocol what it is owed. Treasury contracts
+     * take money unconditionally for this reason; OpenZeppelin's Escrow and
+     * PaymentSplitter both expose an unguarded payable entry point.
+     */
+    receive() external payable {
         emit Deposit(msg.sender, NATIVE_TOKEN, msg.value);
     }
 }

@@ -1,0 +1,53 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-21T18:02:59.220Z",
+  "oracleKind": "aggregator-v3",
+  "contracts": {
+    "priceOracle": "0x126C64a2d48F40EeAEcD534387902f5da74c9dbb",
+    "pythContract": null
+  },
+  "feeds": [
+    {
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "aggregator": "0x694AA1769357215DE4FAC081bf1f309aDC325306",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 5400,
+      "maxAgeBasis": "Chainlink's Sepolia ETH/USD heartbeat is 1 hour (3600s) with a 1% deviation trigger; 5400 is that plus 30 minutes of slack for a testnet publisher that is not SLA-backed. This is LOOSE for a volatile asset and is a testnet-only figure: a 90-minute-old ETH price is a bad basis for a liquidation. The alternative on this chain is no lending at all. Base Sepolia's ETH/USD is on a 1200s heartbeat and bounded at 1800 — compare against that, not against this.",
+      "priceAtDeploy": 2405.89,
+      "ageSecondsAtDeploy": 3480
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "aggregator": "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 90000,
+      "maxAgeBasis": "Observed 13438s (3h44m), which already exceeds the 3600s ceiling on the GLOBAL bound — this feed is the reason Constants.MAX_FEED_PRICE_AGE exists. Chainlink's documented heartbeat for it is 86400s, and this was 86400 to match; raised to 90000 because a bound equal to the heartbeat leaves no room for a late publish, and Base Sepolia's identically configured USDT/USD was caught at 70,702s, proving these 24h feeds do run close to their limit. 90000 is MAX_FEED_PRICE_AGE, the ceiling. Defensible here and on the other pegged feeds only: USDC is pegged, so a day-old answer is wrong by basis points rather than by percent. Do not copy this number onto a volatile feed to stop it reverting.",
+      "priceAtDeploy": 0.99993782,
+      "ageSecondsAtDeploy": 75120
+    },
+    {
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "symbols": [
+        "BTC"
+      ],
+      "aggregator": "0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 5400,
+      "maxAgeBasis": "Same publisher policy as Sepolia ETH/USD. Age not measured; assumed equal.",
+      "priceAtDeploy": 77470.29130395,
+      "ageSecondsAtDeploy": 3372
+    }
+  ]
+}

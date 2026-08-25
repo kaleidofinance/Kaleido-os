@@ -7,6 +7,8 @@ cache/
 cache-dex/
 cache-dex-zk/
 cache-zk/
+# EDR's forked-RPC response cache — 200+ files, regenerated on demand.
+edr-cache/
 out/
 typechain/
 typechain-types/
@@ -17,3 +19,8 @@ node_modules/
 # Deployment / run logs
 *.log
 DEPLOY_LOG_ISOLATED.txt
+
+# One-off operational scratch scripts (bridge claims, state probes). Named
+# *.tmp.js by convention so they never reach a commit.
+*.tmp.js
+*.tmp.json

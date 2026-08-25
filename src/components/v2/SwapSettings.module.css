@@ -2,16 +2,21 @@
   position: relative;
 }
 
+/* Sized to match the quick-amount chips it now sits beside in the swap card's
+   top-right corner (`.qk` in trade.module.css): same padding, same type scale,
+   same line-height, so the group measures as one row of pills instead of a
+   taller button on the end of four smaller ones. */
 .trigger {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   background: var(--k-well2);
   border: 0;
   font: inherit;
-  font-size: var(--k-fs-sm);
+  font-size: var(--k-fs-xs);
+  line-height: 1.4;
   color: var(--k-t2);
-  padding: 6px 12px;
+  padding: 4px 10px;
   border-radius: var(--k-r-pill);
   cursor: pointer;
 }
@@ -19,7 +24,7 @@
   color: var(--k-t1);
 }
 .gear {
-  font-size: 13px;
+  font-size: 12px;
 }
 .triggerLabel {
   font-variant-numeric: tabular-nums;
@@ -31,10 +36,40 @@
   right: 0;
   width: 280px;
   background: var(--k-card);
+  border: 1px solid var(--k-line);
   border-radius: var(--k-r-lg);
   box-shadow: var(--k-shadow-pop);
   padding: 16px;
   z-index: 40;
+}
+
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .pop {
+    background: var(--k-glass-strong);
+    border-color: var(--k-glass-line);
+    -webkit-backdrop-filter: blur(24px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(24px) saturate(var(--k-glass-sat));
+    box-shadow:
+      inset 0 1px 0 var(--k-glass-highlight),
+      var(--k-shadow-pop);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pop {
+    animation: pop var(--k-dur-med) var(--k-ease-out);
+    /* Grows from the gear it belongs to rather than from its own middle. */
+    transform-origin: top right;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
 }
 
 .row {
@@ -62,8 +97,8 @@
   color: var(--k-t1);
 }
 .presetOn {
-  background: #fff;
-  color: #0d0d0d;
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
   font-weight: var(--k-fw-med);
 }
 

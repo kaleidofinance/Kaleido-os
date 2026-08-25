@@ -1,0 +1,25 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-23T00:28:31.705Z",
+  "note": "Mock counterparty tokens. NOT read by gen-registry (no 'deployment-' prefix). Copy the addresses below into smart-contract/.env (WRAPPED_NATIVE / USDC_ADDRESS) and into TOKENS[chainId] in src/constants/registry.ts.",
+  "wrappedNative": {
+    "address": "0x7943e237c7F95DA44E0301572D358911207852Fa",
+    "symbol": "WETH",
+    "decimals": 18,
+    "kind": "canonical",
+    "canonical": true,
+    "supersededWeth9": "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F",
+    "note": "USE THIS canonical aeWETH. An earlier run of this script deployed a WETH9 at supersededWeth9 on a stale 'nothing canonical' assumption; that token is now abandoned. Canonical aeWETH is an EIP-1967 proxy (impl 0xf40600e58a560a988D7B60D61F22F7AB18106ED6) whose deposit()/withdraw() were confirmed dispatched on-chain 2026-08-23 and which already holds ~1930 WETH. WRAPPED_NATIVE / COLLATERAL_TOKENS / LOANABLE_TOKENS in .env now point here; NATIVE_LABEL=ETH. Fund WETH liquidity by deposit()ing native into this address."
+  },
+  "tokens": {
+    "USDC": {
+      "address": "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B",
+      "symbol": "USDC",
+      "decimals": 6,
+      "minted": "1000000",
+      "mintedTo": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    }
+  }
+}

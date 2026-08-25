@@ -1,0 +1,41 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-23T01:51:10.351Z",
+  "contracts": {
+    "diamond": "0x3565904975AE169c0a48af085b9f786660875874",
+    "priceOracle": "0x7Ee07e9eb94B6b21589539a491E37804886AB201"
+  },
+  "facets": {
+    "DiamondCutFacet": "0x2f6c25Aa5B32D685505681B5F07aA8ec59367681",
+    "DiamondInit": "0x5B8Ce8F0a44ED4F73CFD9b6E7DC1E15Ebe7F6e8e",
+    "DiamondLoupeFacet": "0x17FD4cEA2f47C9983Ff2B167f81a53DC861ea42E",
+    "OwnershipFacet": "0x92922a92C19007598Ff98817B72C19be37C6d09e",
+    "ProtocolFacet": "0x8860638BF5803D597cD970c252365320f9053d47",
+    "AgentPermissionFacet": "0x6EfeC378d8bB73487D8c015A62a33B97b9D781E5"
+  },
+  "config": {
+    "feeVault": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+    "swapRouter": null,
+    "protocolFeeBps": 1000,
+    "liquidationPenaltyBps": 640,
+    "priceMaxAgeSeconds": 300,
+    "priceMaxConfBps": 100
+  },
+  "stillRequired": [
+    "register-tokens.js — addCollateralToken / addLoanableToken, or no asset is usable",
+    "transfer ownership to a multisig"
+  ],
+  "upgrades": [
+    {
+      "facet": "ProtocolFacet",
+      "from": "0xB4Cf72fDf26E5f1906013C5d2eb3aaF64d9E90Ad",
+      "to": "0x8860638BF5803D597cD970c252365320f9053d47",
+      "txHash": "0x83b8169e5f5f4c856ddd2d9d0c104971e827ab0f83939f70b8746b617f681d2c",
+      "block": 106639018,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    }
+  ]
+}

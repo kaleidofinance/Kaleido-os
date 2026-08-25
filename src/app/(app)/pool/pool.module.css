@@ -12,10 +12,11 @@
   align-items: center;
   gap: var(--k-s4);
 }
+/* The serif, at 400 and negative tracking, comes from .k-display — hence no
+   font-weight or letter-spacing here; setting either would fight it. */
 .h1 {
+  composes: k-display from global;
   font-size: var(--k-fs-2xl);
-  font-weight: var(--k-fw-med);
-  letter-spacing: -0.025em;
   margin: 0;
 }
 .bt {
@@ -32,20 +33,161 @@
   white-space: nowrap;
 }
 .bt:hover {
-  background: var(--k-well2);
+  background: var(--k-hover);
+}
+/* 14px rather than --k-glass-blur, matching the Trade tab pills: a 20px radius
+   at pill size samples mostly the pill's own edges and reads as mush. */
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .bt {
+    background: var(--k-glass-strong);
+    -webkit-backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+  }
+  .bt:hover {
+    background: var(--k-row-hover);
+  }
 }
 .btWhite {
-  background: #fff;
-  color: #0d0d0d;
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
   font-weight: var(--k-fw-med);
 }
 .btWhite:hover {
-  background: #e6e6e6;
+  background: var(--k-btn-solid-hover);
+}
+
+/* ---------- stat strip ---------- */
+/* The strip itself lives in components/v2/StatStrip.module.css — this block was
+   byte-identical in three stylesheets. `.stats` / `.stat` further down are
+   unrelated and stay: those are the per-position card figures, a different size
+   and inside a card rather than divided by rules. */
+
+/* ---------- tabs ---------- */
+.tabs {
+  display: flex;
+  gap: 7px;
+}
+/* Links, not buttons — the tabs navigate. `font: inherit` still matters: an <a>
+   inherits the font but browsers colour and underline it. */
+.tab {
+  background: var(--k-card);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  text-decoration: none;
+  padding: 9px 17px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--k-t1);
+}
+/* 14px rather than --k-glass-blur, matching the Trade tab pills and `.bt` above:
+   at pill size a 20px radius samples mostly the pill's own edges and reads as
+   mush. `.tabOn` stays a solid button — the selected tab sits above the glass,
+   not in it. */
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .tab {
+    background: var(--k-glass-strong);
+    -webkit-backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+  }
+}
+.tabOn {
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
+  font-weight: var(--k-fw-med);
+}
+.tabOn:hover {
+  color: var(--k-btn-solid-fg);
+}
+
+/* ---------- pools table ---------- */
+.table {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s2);
+}
+.thead {
+  display: grid;
+  padding: 10px 14px 6px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+/* Five columns in the 900px `.wrap` this section already uses, rather than the
+   1200px the table had on /explore. Widening the shell would also stretch the
+   position cards and is a change to two other pages; 1.8fr leaves the pair cell
+   ~280px, which fits `WETH / USDC` and the fee line under it. */
+.pools .thead,
+.pools .row {
+  grid-template-columns: 1.8fr 1fr 1fr 1fr 0.8fr;
+}
+.row {
+  display: grid;
+  gap: var(--k-s3);
+  align-items: center;
+  padding: 14px;
+  border-radius: var(--k-r-md);
+}
+/* Translucent, not --k-well2: an opaque fill on a glass table punches an opaque
+   hole in it and the blur stops dead at the row edge. */
+.row:hover {
+  background: var(--k-row-hover);
+}
+.right {
+  text-align: right;
+  justify-self: end;
+}
+/* The whole cell is the link to the pool contract, so it carries no link colour
+   of its own — the underline on hover is what says it is one. */
+.pairCell {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.pairCell:hover .pairName {
+  text-decoration: underline;
+}
+.tEmpty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+}
+.rowSkeleton {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: 14px;
+}
+/* Recessed, not opaque: these are placeholders inside the glass table, and an
+   opaque fill makes the loading state the only part of the table the blur stops
+   at — which then visibly changes material once the real rows arrive. */
+.skCircle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--k-glass-deep);
+  flex: none;
+}
+.skLine {
+  height: 14px;
+  border-radius: 8px;
+  background: var(--k-glass-deep);
+  flex: 1;
 }
 
 /* ---------- positions list ---------- */
 .empty {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-lg);
   padding: 48px 24px;
   text-align: center;
@@ -58,14 +200,27 @@
   color: var(--k-t2);
   margin-top: 4px;
 }
+/* An empty state with no way out of it is a dead end, so this one links to the
+   two things that fix it. Underlined rather than only coloured — inside a
+   paragraph of --k-t2 body copy, a colour shift alone is easy to miss. */
+.emptyLink {
+  color: var(--k-t1);
+  text-decoration: underline;
+}
+.emptyLink:hover {
+  color: var(--k-brand);
+}
 
 .cards {
   display: flex;
   flex-direction: column;
   gap: var(--k-s3);
 }
+/* Glass, like the empty state above it and the trade card — not the flat
+   --k-card these were. --k-card survives as the no-backdrop-filter fallback
+   inside `.k-glass`. */
 .card {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-lg);
   padding: 16px 18px;
 }
@@ -86,9 +241,24 @@
   place-items: center;
   font-size: 10px;
   font-weight: 600;
-  background: #333;
+  /* The plate is for letters, and `.tkiArt` drops it. The 2px ring is not a
+     plate — these two discs overlap, and it is what separates the front mark
+     from the one behind it, so it stays opaque on both paths. */
+  background: var(--k-glass-deep);
   color: var(--k-t2);
   border: 2px solid var(--k-card);
+}
+/* Carrying real artwork. Unlike the single discs elsewhere, the 2px ring stays:
+   these two overlap, and the ring is what separates the front mark from the one
+   behind it. Only the grey plate goes — see `.tkiArt` in
+   TokenSelector.module.css. box-sizing is border-box, so the 28px box leaves
+   24px of content for the icon to fill. */
+.tkiArt {
+  background: none;
+}
+.tkiArt > svg {
+  display: block;
+  border-radius: 50%;
 }
 .tki + .tki {
   margin-left: -10px;
@@ -117,10 +287,12 @@
 .range {
   margin-top: 12px;
 }
+/* The track a range sits in — recessed, not an opaque bar laid on the glass. */
 .rangeBar {
   height: 6px;
   border-radius: 999px;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   position: relative;
 }
 .rangeBand {
@@ -173,8 +345,11 @@
   gap: var(--k-s2);
   margin-top: 14px;
 }
+/* Recessed, like `.qk` on the trade card: these now sit inside a glass card, and
+   an opaque --k-well2 reads as a solid tablet floating in the blur. */
 .actBtn {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
   font-size: var(--k-fs-sm);
@@ -184,7 +359,8 @@
   cursor: pointer;
 }
 .actBtn:hover:not(:disabled) {
-  background: var(--k-hover);
+  background: var(--k-brand-dim);
+  box-shadow: none;
 }
 .actBtn:disabled {
   color: var(--k-t3);
@@ -205,9 +381,11 @@
   flex-direction: column;
   gap: 4px;
   max-width: 520px;
+  margin: 0 auto;
+  align-self: center;
 }
 .box {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-xl);
   padding: 17px 18px;
 }
@@ -226,7 +404,8 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
   font-size: var(--k-fs-base);
@@ -236,8 +415,11 @@
   border-radius: var(--k-r-md);
   cursor: pointer;
 }
+/* A brand wash, not `filter: brightness()` — brightening a translucent fill
+   mostly brightens whatever is behind it, which barely registers. */
 .pairPick:hover {
-  filter: brightness(1.15);
+  background: var(--k-brand-dim);
+  box-shadow: none;
 }
 
 .feeRow {
@@ -247,7 +429,8 @@
 }
 .feeOpt {
   flex: 1;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
   padding: 9px 8px;
@@ -256,11 +439,13 @@
   text-align: center;
 }
 .feeOpt:hover {
-  background: var(--k-hover);
+  background: var(--k-brand-dim);
+  box-shadow: none;
 }
 .feeOptOn {
-  background: #fff;
-  color: #0d0d0d;
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
+  box-shadow: none;
 }
 .feePct {
   font-size: var(--k-fs-sm);
@@ -273,7 +458,7 @@
   margin-top: 2px;
 }
 .feeOptOn .feeDesc {
-  color: rgba(13, 13, 13, 0.6);
+  color: var(--k-btn-solid-fg-dim);
 }
 
 .rangePresets {
@@ -281,8 +466,11 @@
   gap: 7px;
   margin-top: 4px;
 }
+/* Recessed chips, same as `.feeOpt` above and `.qk` on the trade card. `.presetOn`
+   stays a solid button — the selected preset sits above the glass, not in it. */
 .preset {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
   font-size: var(--k-fs-sm);
@@ -292,12 +480,15 @@
   cursor: pointer;
 }
 .preset:hover {
+  background: var(--k-brand-dim);
   color: var(--k-t1);
+  box-shadow: none;
 }
 .presetOn {
-  background: #fff;
-  color: #0d0d0d;
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
   font-weight: var(--k-fw-med);
+  box-shadow: none;
 }
 
 .priceRow {
@@ -305,9 +496,12 @@
   gap: 10px;
   margin-top: 12px;
 }
+/* The two price fields are wells sunk into the glass box, so they take the same
+   recess as every other input surface here rather than an opaque --k-well. */
 .priceBox {
   flex: 1;
-  background: var(--k-well);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border-radius: var(--k-r-sm);
   padding: 10px 12px;
 }
@@ -360,11 +554,14 @@
 .inp::placeholder {
   color: var(--k-t3);
 }
+/* Not a button — it names the deposit asset, which the pair picker above already
+   chose. Recessed like the pills it sits beside, without a hover state. */
 .tkPill {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   padding: 6px 13px 6px 6px;
   border-radius: var(--k-r-pill);
   font-size: var(--k-fs-base);
@@ -388,15 +585,399 @@
 .cta:hover:not(:disabled) {
   background: var(--k-brand-hover);
 }
+/* Recessed rather than an opaque grey slab — see `.cta:disabled` in
+   trade.module.css. This form opens disabled, so it is the state on screen most. */
 .cta:disabled {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t3);
   cursor: not-allowed;
+}
+
+/* ---------- pool detail ---------- */
+/* The section's tab bar and stat strip are suppressed on this route, so the page
+   owns its own header — see layout.tsx. */
+.detailHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s3);
+}
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.crumb {
+  color: var(--k-t2);
+  text-decoration: none;
+}
+.crumb:hover {
+  color: var(--k-t1);
+  text-decoration: underline;
+}
+.crumbSep {
+  color: var(--k-t3);
+}
+.detailTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  flex-wrap: wrap;
+}
+.detailH1 {
+  composes: k-display from global;
+  font-size: var(--k-fs-2xl);
+  margin: 0;
+}
+/* `.badge` and `.bt` both carry `margin-left: auto` for the layouts they were
+   written in — a card top and a page head, where each is the only pushed item.
+   Here there are three of them in one row, and auto margins on all three split
+   the free space between them instead of grouping the actions at the end. */
+.detailTitle .badge {
+  margin-left: 0;
+}
+.detailFee {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.detailActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.detailActions .bt {
+  margin-left: 0;
+}
+
+/* Recessed like every other inline chip here. Two controls in one shell: the
+   address links out, the button copies — see AddressChip. */
+.addrChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border-radius: var(--k-r-pill);
+  padding: 4px 6px 4px 12px;
+  font-size: var(--k-fs-xs);
+}
+.addrLink {
+  color: var(--k-t2);
+  text-decoration: none;
+}
+a.addrLink:hover {
+  color: var(--k-t1);
+  text-decoration: underline;
+}
+.addrCopy {
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  padding: 2px 8px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.addrCopy:hover {
+  color: var(--k-t1);
+  background: var(--k-hover);
+}
+
+/* Chart and transactions on the left, stats on the right — the arrangement
+   Uniswap's pool page uses, and for the same reason: the two panels that grow
+   with the data go in the column that has room to grow. */
+.detailGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--k-s4);
+  align-items: start;
+}
+.detailMain,
+.detailSide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s4);
+  min-width: 0;
+}
+
+/* Same shell as a position card, stated rather than restated: three identical
+   declarations in one stylesheet is the duplication the stat-strip note above
+   describes removing. */
+.panel {
+  composes: card;
+}
+.panelHead {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  margin-bottom: 12px;
+}
+
+.statList {
+  display: flex;
+  flex-direction: column;
+}
+.sideStat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  padding: 9px 0;
+}
+/* Between rows only. A rule above the first would double the panel head's own
+   separation from the list. */
+.sideStat + .sideStat {
+  border-top: 1px solid var(--k-line);
+}
+.sideStatLabel {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.sideStatValue {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+}
+
+/* ---------- pool balances ---------- */
+.bal {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--k-line);
+}
+.balHead {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  margin-bottom: 10px;
+}
+/* A recessed track with two fills, not two bars laid on the glass. `overflow:
+   hidden` is what rounds the fills' outer ends to the track. */
+.balBar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+}
+/* The system's two accents rather than pos/neg — neither leg of a pair is the
+   good one. Both are theme-tuned in tokens.css, so neither needs a light-mode
+   override here. */
+.balFill0 {
+  background: var(--k-brand);
+}
+.balFill1 {
+  background: var(--k-alt);
+}
+.balRows {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 12px;
+}
+.balRow {
+  display: grid;
+  grid-template-columns: 8px 1fr auto auto;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--k-fs-sm);
+}
+.balDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.balDot0 {
+  background: var(--k-brand);
+}
+.balDot1 {
+  background: var(--k-alt);
+}
+.balSym {
+  color: var(--k-t1);
+}
+.balAmt {
+  color: var(--k-t2);
+}
+.balUsd {
+  color: var(--k-t1);
+  min-width: 62px;
+  text-align: right;
+}
+
+/* ---------- depth chart ---------- */
+/* Sized by width, height from the viewBox's own ratio — see the note on the svg
+   about why it is not scaled non-uniformly. */
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chartGrid {
+  stroke: var(--k-line);
+  stroke-width: 1;
+}
+.chartYLabel {
+  fill: var(--k-t3);
+  font-size: 9px;
+  text-anchor: end;
+  dominant-baseline: middle;
+}
+.chartXLabel {
+  fill: var(--k-t3);
+  font-size: 9px;
+  text-anchor: middle;
+}
+.chartLine0,
+.chartLine1 {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chartLine0 {
+  stroke: var(--k-brand);
+}
+.chartLine1 {
+  stroke: var(--k-alt);
+}
+.chartFoot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: var(--k-fs-xs);
+}
+.chartKey {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--k-t2);
+}
+.chartAxis {
+  margin-left: auto;
+  color: var(--k-t3);
+}
+.chartEmpty {
+  padding: 28px 0;
+  text-align: center;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+
+.refTable {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--k-line);
+}
+.refHead,
+.refRow {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: var(--k-s3);
+  align-items: start;
+}
+.refHead {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  padding-bottom: 7px;
+}
+.refRow {
+  font-size: var(--k-fs-sm);
+  padding: 8px 0;
+}
+.refRow + .refRow {
+  border-top: 1px solid var(--k-line);
+}
+.refCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.refQty {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+
+/* ---------- transactions ---------- */
+.txHead,
+.txRow {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr 1fr 0.7fr;
+  gap: var(--k-s3);
+  align-items: center;
+}
+.txHead {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--k-line);
+}
+.txRow {
+  font-size: var(--k-fs-sm);
+  padding: 10px 0;
+}
+.txRow + .txRow {
+  border-top: 1px solid var(--k-line);
+}
+.txAction {
+  color: var(--k-t1);
+  text-decoration: none;
+  min-width: 0;
+}
+a.txAction:hover {
+  text-decoration: underline;
+}
+.txTime {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+/* The truncation, stated. See PoolTxnTable. */
+.txMore {
+  padding-top: 12px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  text-align: center;
 }
 
 /* ---------- mobile ---------- */
 @media (max-width: 720px) {
   .wrap {
     padding: 16px 14px 60px;
+  }
+  /* Five columns inside 280px crushes every cell. Scroll the table in its own
+     container instead, so the columns stay legible and the page body never
+     scrolls sideways. */
+  .table {
+    overflow-x: auto;
+  }
+  .pools .thead,
+  .pools .row {
+    min-width: 560px;
+  }
+  /* One column: a 300px sidebar beside a chart inside 280px leaves neither
+     readable. Stats go under the chart rather than above it, because the chart
+     is what the page is for. */
+  .detailGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* The actions stop being an end-aligned group once the title wraps — auto
+     margin against a wrapped line just indents them. */
+  .detailActions {
+    margin-left: 0;
+  }
+  /* Four columns of transaction crush at this width for the same reason the
+     pools table does, and take the same fix. */
+  .txns {
+    overflow-x: auto;
+  }
+  .txHead,
+  .txRow {
+    min-width: 420px;
   }
 }

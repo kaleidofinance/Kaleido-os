@@ -1,0 +1,15 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "timestamp": "2026-08-23T00:50:47.201Z",
+  "contracts": {
+    "factory": "0xAc1a10df0a742f107517f1944e0a37da74932c06",
+    "router": "0x2b882149eBfC79710E6E0c93661CE2718866705b",
+    "positionManager": "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6",
+    "positionDescriptor": "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2",
+    "nftDescriptor": "0x5900dDe9b1583e5Fc1783D41152235725cbC867d",
+    "quoter": "0xCF59972d09Dbf9b37c1e3CDa55c47d0253038D76",
+    "weth": "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F",
+    "poolInitCodeHash": "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938"
+  }
+}

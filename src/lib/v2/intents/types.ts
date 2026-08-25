@@ -35,6 +35,16 @@ export type Intent =
       decimalsOut: number;
       symbolIn: string;
       symbolOut: string;
+      /**
+       * The V3 router this swap routes through — `getContracts(chainId).v3Router`,
+       * resolved per chain. Named to match the paired `approve` step's `spender`
+       * because the two must be the same address: the approve authorises exactly
+       * the router the swap then calls. Required, so a swap intent can never reach
+       * the resolver without naming the router it will hit — the resolver used to
+       * hardcode one Abstract-testnet router for every chain, which is the bug this
+       * removes.
+       */
+      spender: string;
       /** Transaction deadline in minutes. Defaults to 20 if omitted. */
       deadlineMin?: number;
     }
@@ -46,6 +56,31 @@ export type Intent =
       stToken: string;
       amount: string;
       symbol: string;
+    }
+  /* --------------------------------------------------------- transfer -- */
+  /*
+   * A plain wallet-to-wallet send — the only intent in this union that calls no
+   * Kaleido contract. An ERC20 goes straight to the token's own `transfer`; the
+   * native currency goes out as a bare value transaction with no calldata.
+   *
+   * That is why it carries no `diamond` field, and it has a consequence worth
+   * stating here rather than discovering later: the agent mandate in
+   * AgentPermissionFacet cannot scope a send. LibAgentPermission.enforce() runs
+   * *inside* diamond calls, and this transaction never enters the diamond. A
+   * send is bounded before signing or not at all, which is what the auditor
+   * rule for this kind exists to do.
+   */
+  | {
+      kind: "transfer";
+      /** Token contract. Unused when `isNative` — see the resolver. */
+      token: string;
+      /** Recipient. Checksum-validated in build.ts, not trusted from here. */
+      to: string;
+      amount: string;
+      decimals: number;
+      symbol: string;
+      /** True for the chain's native currency: sent as value, no calldata. */
+      isNative?: boolean;
     }
   /* ---------------------------------------------------------- lending -- */
   /*
@@ -206,13 +241,66 @@ export type Intent =
     }
   /* ------------------------------------------------------------- pool -- */
   /*
-   * Deliberately narrow: only actions on an EXISTING position. Opening one
-   * (mint) needs a tick range, which is why the app built a visual range
-   * picker for it (pool/new) — a chat-typed range is a worse UX and a real
-   * correctness risk (wrong ticks silently opens the position out of range,
-   * earning nothing), not a data gap like the marketplace reads were. Minting
-   * stays a manual, on-page action; only remove/collect are commands.
+   * This section used to carry only actions on an EXISTING position, and the
+   * reason it gave was a real one rather than a shrug: opening a position needs a
+   * tick range, a wrong range silently opens it out of the market where it earns
+   * nothing, and no revert tells anyone. A tick a model emits is unauditable —
+   * there is no way to look at -73200 and know whether it is near the price.
+   *
+   * `mintPoolPosition` exists because that argument was against carrying a raw
+   * tick pair, not against minting. What this kind carries is a range that was
+   * *derived* from the pool's own live price by `lib/dex/liquidity.ts`: the
+   * caller asks for full range, a ±band, or explicit prices, and the band's
+   * centre is read from slot0 rather than proposed. The human bounds ride along
+   * so the confirmation row states the two prices the position will sit between,
+   * and `mintMinimums` sets a real slippage floor from the ratio the range
+   * actually consumes at.
+   *
+   * Two things it deliberately does not do. It never opens a *narrow* first
+   * position on a pool that does not exist yet — with no market to centre on, the
+   * two amounts set the opening price, so a band would put the pool wherever the
+   * amounts happened to land; that case is full-range or nothing. And it takes no
+   * native currency: `NonfungiblePositionManager` reverts when native value
+   * arrives beside a WETH leg, which is why the Pool page wraps first and why
+   * this refuses ETH by name instead of half-supporting it.
    */
+  | {
+      kind: "mintPoolPosition";
+      positionManager: string;
+      /**
+       * The pair in the CALLER's order, which is the order every other field
+       * here is in too. The resolver crosses into the pool's address-sorted
+       * frame once, via `sortMintParams`, moving ticks and amounts together.
+       */
+      token0: string;
+      token1: string;
+      decimals0: number;
+      decimals1: number;
+      symbol0: string;
+      symbol1: string;
+      fee: number;
+      /** Caller-frame ticks, snapped to the tier's spacing before they got here. */
+      tickLower: number;
+      tickUpper: number;
+      /** Human amounts, caller order. */
+      amount0: string;
+      amount1: string;
+      /** Slippage floor, from `mintMinimums` — never zero, never the raw inputs. */
+      amount0Min: string;
+      amount1Min: string;
+      /** The snapped range in prices, token1 per token0. Display only. */
+      lowerPrice: number;
+      upperPrice: number;
+      /**
+       * True when no pool exists at this pair and tier yet, so the transaction
+       * initialises one at the ratio of the two amounts before minting. Display
+       * only — the resolver re-checks the factory, because a pool created between
+       * planning and signing would make this stale in the direction that matters.
+       */
+      createsPool: boolean;
+      /** Transaction deadline in minutes. Defaults to 20 if omitted. */
+      deadlineMin?: number;
+    }
   | {
       kind: "collectPoolFees";
       positionManager: string;
@@ -242,6 +330,68 @@ export type Intent =
       /** Bitmask of ACTION_* flags. */
       allowedActions: number;
       tokens: string[];
+    }
+  /* ----------------------------------------------------------- faucet -- */
+  | {
+      /**
+       * Claim one asset's drip from KaleidoTokenFaucet.
+       *
+       * The only intent in this union that moves value *toward* the wallet
+       * without a prior deposit, which is why it carries no allowance step and
+       * no slippage floor: the faucet pays out of its own balance.
+       */
+      kind: "claimTestTokens";
+      faucet: string;
+      /** The mock ERC20 being claimed. */
+      token: string;
+      /**
+       * The drip, human-readable, as the faucet reports it.
+       *
+       * Display only, and safely so: `claim(address)` takes no amount, so this
+       * string cannot make the transaction pay out differently. It exists
+       * because a review row reading "Claim USDT" tells the user nothing about
+       * what they are about to receive.
+       */
+      amount: string;
+      symbol: string;
+    }
+  | {
+      /**
+       * Claim every asset the faucet will currently pay this wallet, in one
+       * transaction.
+       *
+       * A separate kind rather than the above with an array, because almost
+       * nothing about it is the same: it calls `claimMany`, its summary counts
+       * assets instead of naming one, and it can succeed having paid only some of
+       * what it asked for. Folding the two together would mean a `token` field
+       * holding a list and a `symbol` field holding the word "assets", which is
+       * two fields lying about what they are.
+       *
+       * The single-asset kind above is NOT a batch of one. `claim` reverts with
+       * the specific reason it could not pay — paused, on cooldown, out of
+       * stock — where `claimMany` reverts with NothingClaimable, and with one
+       * asset that distinction is the whole message. See Faucet.sol.
+       */
+      kind: "claimAllTestTokens";
+      faucet: string;
+      /**
+       * The assets to attempt, in the order the faucet lists them.
+       *
+       * Every one is an address the faucet itself reported (see build.ts), never a
+       * symbol resolved through the registry — most of these assets are in no
+       * chain's token table.
+       */
+      tokens: readonly string[];
+      /**
+       * What each asset pays, human-readable, for the review row. Same length and
+       * order as `tokens`.
+       *
+       * Display only, like `amount` above: `claimMany(address[])` carries no
+       * amounts, so nothing here can change what is paid out. The transaction may
+       * legitimately pay fewer than these — an asset that goes on cooldown between
+       * the plan and the block is skipped rather than reverting the batch.
+       */
+      payouts: readonly string[];
     };
 
 /** AgentPermissionFacet action bitmask (mirrors LibAgentPermission). */

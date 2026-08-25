@@ -1,0 +1,15 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-22T07:33:43.113Z",
+  "contracts": {
+    "v2Factory": "0x5900dDe9b1583e5Fc1783D41152235725cbC867d",
+    "v2Router": "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2",
+    "wrappedNative": "0x911b4000D3422F482F4062a913885f7b035382Df"
+  },
+  "notes": {
+    "feeToSetter": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+    "pairResolution": "factory.getPair — no init code hash to keep in sync"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": "2026-08-21T19:07:25.063Z",
+  "contracts": {
+    "factory": "0x57440671f8F67A56C4D56665553Bf7d8c2C73794",
+    "router": "0x482555B9232A5BEE6034cdfa91dBcF4F19633c59",
+    "positionManager": "0xCda76853D991184EB273bC493e43f92Caaa31E77",
+    "positionDescriptor": "0xc376Add659cbE5a32421Ac3B932Ea51740222B8d",
+    "nftDescriptor": "0xF221752074C90eBdBAEB3E7599e2129CA93aD6dA",
+    "quoter": "0x6653B81FEE8CECf0AB5ce2863A63D9D3C28C1DE7",
+    "weth": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+    "poolInitCodeHash": "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938"
+  }
+}

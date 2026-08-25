@@ -1,5 +1,11 @@
 /**
- * Server-side USD valuation for the points system.
+ * Server-side USD valuation.
+ *
+ * Written for the points system and still its primary consumer, but not
+ * exclusive to it: `lib/ai/auditor.ts` values positions through `valueOf`, and
+ * `api/market/overview/route.ts` values the lending book for /leaderboard's stat
+ * strip. Deliberately shared — a headline TVL and a points balance disagreeing
+ * about the price of ETH would be worse than either being wrong.
  *
  * Deliberately does NOT call the protocol's own `getUsdValue`. Two reasons:
  *
@@ -59,9 +65,23 @@ const UNPRICED = new Set(["KLD", "stKLD"]);
 
 const HERMES = "https://hermes.pyth.network/api/latest_price_feeds";
 
-/** Prices move slowly relative to a snapshot interval; one fetch serves a whole run. */
+/**
+ * Prices move slowly relative to a snapshot interval; one fetch serves a whole
+ * run.
+ *
+ * Keyed per symbol, which matters now that there is more than one caller. This
+ * used to cache the whole result map of the last fetch under a single global
+ * slot, so a caller asking for ["USDC"] populated the cache, and a caller
+ * asking for ["ETH", "USDC"] within the TTL got that same map back, found no
+ * ETH entry in it, and was told ETH is `unpriced`. Nothing errored — the
+ * lending book would simply have valued its ETH positions at nothing depending
+ * on which caller warmed the cache first.
+ *
+ * `usd: null` is cached too, so a feed that is genuinely missing is not
+ * re-fetched on every call.
+ */
 const TTL_MS = 60_000;
-let cache: { at: number; prices: Map<string, number> } | null = null;
+const cache = new Map<string, { at: number; usd: number | null }>();
 
 export interface PriceResult {
   /** USD price, or null when the asset has no meaningful USD price. */
@@ -100,7 +120,8 @@ async function fetchPyth(symbols: string[]): Promise<Map<string, number>> {
     // Pyth reports price as an integer with a signed exponent:
     // real = price × 10^expo. expo is normally -8.
     const value = Number(f.price.price) * Math.pow(10, f.price.expo);
-    if (Number.isFinite(value) && value > 0) byId.set(f.id.toLowerCase(), value);
+    if (Number.isFinite(value) && value > 0)
+      byId.set(f.id.toLowerCase(), value);
   }
 
   const out = new Map<string, number>();
@@ -119,7 +140,9 @@ async function fetchPyth(symbols: string[]): Promise<Map<string, number>> {
  * unreachable, because silently scoring a whole run at zero would be worse
  * than failing the run.
  */
-export async function getPrices(symbols: string[]): Promise<Map<string, PriceResult>> {
+export async function getPrices(
+  symbols: string[],
+): Promise<Map<string, PriceResult>> {
   const out = new Map<string, PriceResult>();
   const needPyth: string[] = [];
 
@@ -137,17 +160,28 @@ export async function getPrices(symbols: string[]): Promise<Map<string, PriceRes
   }
 
   if (needPyth.length > 0) {
-    const fresh = cache && Date.now() - cache.at < TTL_MS ? cache.prices : null;
-    const prices = fresh ?? (await fetchPyth(needPyth));
-    if (!fresh) cache = { at: Date.now(), prices };
+    const now = Date.now();
+    /* Fetch only what is missing or expired, then read every requested symbol
+     * back out of the cache. A symbol the fetch did not return is cached as
+     * null, so it reports `unpriced` without being re-requested each call. */
+    const stale = needPyth.filter((s) => {
+      const hit = cache.get(s);
+      return !hit || now - hit.at >= TTL_MS;
+    });
+
+    if (stale.length > 0) {
+      const fresh = await fetchPyth(stale);
+      for (const s of stale)
+        cache.set(s, { at: now, usd: fresh.get(s) ?? null });
+    }
 
     for (const s of needPyth) {
-      const v = prices.get(s);
+      const usd = cache.get(s)?.usd ?? null;
       out.set(
         s,
-        v === undefined
+        usd === null
           ? { usd: null, source: "unpriced" }
-          : { usd: v, source: "pyth" },
+          : { usd, source: "pyth" },
       );
     }
   }
@@ -180,4 +214,7 @@ export async function valueOf(
 }
 
 /** Symbols the valuation layer can price without falling back to raw units. */
-export const PRICEABLE = [...Object.keys(PYTH_FEEDS), ...Object.keys(ASSUMED_PAR)];
+export const PRICEABLE = [
+  ...Object.keys(PYTH_FEEDS),
+  ...Object.keys(ASSUMED_PAR),
+];

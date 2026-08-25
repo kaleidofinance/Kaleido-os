@@ -45,7 +45,6 @@ error Protocol__OrderNotServiced();
 error Protocol__ListingNotOpen();
 error Protocol__OwnerCreatedListing();
 error Protocol__InsufficientAmount();
-error Protocol__OnlyBotCanAccess();
 error Protocol__NoCollateralDeposited();
 error Protocol__InvalidFeeBps();
 error Protocol__InvalidFeeVault();
@@ -61,6 +60,22 @@ error Protocol__InvalidRequestId();
 error Protocol__RequestNotFound();
 error Protocol__InsufficientCollateralBalance();
 error Protocol__LoanAmountTooLow();
+
+/// oracle ///
+/// @notice The registered Pyth feed has not published inside priceMaxAge.
+/// @param age How old the price is, in seconds.
+/// @param maxAge The configured bound.
+error Protocol__StalePrice(uint256 age, uint256 maxAge);
+/// @notice The feed's confidence interval is wider than priceMaxConfBps.
+/// @param confBps The interval as basis points of the price.
+/// @param maxConfBps The configured bound.
+error Protocol__PriceConfidenceTooWide(uint256 confBps, uint256 maxConfBps);
+/// @notice priceMaxAge or priceMaxConfBps is still zero. Never treated as
+///         "no limit": an unconfigured bound must not silently disable the
+///         check that decides whether a position can be liquidated.
+error Protocol__PriceBoundsNotConfigured();
+/// @notice setPriceBounds was given a zero or an out-of-range bound.
+error Protocol__InvalidPriceBounds();
 
 /// interest ///
 error Protocol__InterestTooSmall();

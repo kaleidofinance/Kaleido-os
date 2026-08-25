@@ -40,7 +40,13 @@ interface IKaleidoEvents {
         uint256 indexed amount,
         uint8 adStatus
     );
-    event LoanRepayment(address indexed sender, uint96 id, uint256 amount);
+    event LoanRepayment(
+        address indexed sender,
+        address indexed lender,
+        uint96 id,
+        uint256 amount,
+        uint256 outstanding
+    );
     event UpdateLoanableToken(
         address indexed _token,
         bytes32 _priceFeed,
@@ -103,4 +109,24 @@ interface IKaleidoEvents {
         uint256 amount,
         address indexed awarder
     );
+
+    /// @notice The price freshness / confidence policy changed.
+    /// @dev Emitted so a change to the bounds is auditable from logs. These two
+    ///      values decide when the protocol refuses to price collateral, so
+    ///      widening them is the quiet way to make liquidations possible that
+    ///      the previous policy would have rejected.
+    /// @param maxAge Oldest accepted Pyth publishTime, in seconds.
+    /// @param maxConfBps Widest accepted confidence interval, in bps of price.
+    event PriceBoundsUpdated(uint256 maxAge, uint256 maxConfBps);
+
+    /// @notice One feed's freshness bound was overridden, or the override cleared.
+    /// @dev Separate from PriceBoundsUpdated because the risk is different in
+    ///      kind, not degree. The global bound is capped at one hour; a per-feed
+    ///      override may reach 25, which is only defensible on a pegged asset.
+    ///      Emitting it makes "which feed was allowed to go stale, and by how
+    ///      much" answerable from logs alone, without reading storage per feed.
+    /// @param priceFeed The feed id the override applies to.
+    /// @param maxAge Oldest accepted publishTime for this feed, in seconds.
+    ///        Zero means the override was cleared and the global bound applies.
+    event FeedMaxAgeUpdated(bytes32 indexed priceFeed, uint256 maxAge);
 }

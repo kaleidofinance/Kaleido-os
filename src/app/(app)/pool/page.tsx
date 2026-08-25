@@ -1,242 +1,115 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import { useV3Positions, type V3Position } from "@/hooks/dex/useV3Positions";
-import { usePoolV3 } from "@/hooks/v2/usePoolV3";
-import { decimalsForAddress, symbolForAddress } from "@/constants/tokens";
-import { useWalletV2 } from "@/hooks/v2/useWalletV2";
-import { tickToPrice } from "@/constants/utils/v3Math";
+import { useMemo } from "react";
+import Link from "next/link";
+import { usePoolData } from "@/hooks/dex/usePoolData";
+import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
+import { READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { DASH, usd, pct } from "@/lib/format/figures";
+import PairIcon from "./_components/PairIcon";
+import { feeLabel, volumeTitle } from "./format";
 import s from "./pool.module.css";
 
 /**
- * Display-only decimals for a position's token.
+ * All pools — the Liquidity section's landing page.
  *
- * The `?? 18` is a deliberate, visible guess and only safe because these feed
- * tickToPrice for a rendered price label. Never reuse this shape to size a
- * transfer: an unregistered 6-decimal token read as 18 is off by 10^12.
+ * Moved here from /explore, where a table of every pool sat two clicks away
+ * from the page that mints into them. Its own positions list moved down to
+ * /pool/positions.
+ *
+ * V2, and the `· V2` badge on each row is load-bearing.
+ *
+ * The obvious objection is that this table sits above a New position button
+ * that mints V3, so it ought to list V3 pools. It doesn't yet, and the reason is
+ * enumeration cost, not missing data: V3 has no `allPairs`, so listing its pools
+ * means either scanning `PoolCreated` from a deployment block nobody recorded, or
+ * sweeping `getPool(a, b, tier)` over a token list for every fee tier. V2's
+ * `allPairs(i)` needs neither — usePoolData reads any unknown token's metadata off
+ * the chain — so V2 is the enumeration that works today. V3 joins this table once
+ * one of those two sweeps is wired up.
+ *
+ * Every figure here is protocol-wide on READ_ONLY_CHAIN_ID, never the wallet's
+ * chain: the V2 factory this enumerates — `getContracts(READ_ONLY_CHAIN_ID)
+ * .v2Factory` — is one address on one chain, and a discovery table that changed
+ * contents when you switched networks would be reporting on whatever happens to
+ * sit at that address elsewhere.
  */
-const decimalsFor = (chainId: number | undefined, address: string) =>
-  decimalsForAddress(chainId, address) ?? 18;
 
-/** Current-tick lookups, keyed by position — fetched once per position on mount. */
-function useCurrentTicks(positions: V3Position[], chainId: number | undefined) {
-  const { getCurrentTick } = usePoolV3();
-  const [ticks, setTicks] = useState<Record<string, number | null>>({});
+export default function PoolsPage() {
+  const { pools, loading } = usePoolData();
 
-  useEffect(() => {
-    let cancelled = false;
-    positions.forEach((p) => {
-      if (p.tokenId in ticks) return;
-      getCurrentTick(
-        p.token0,
-        p.token1,
-        p.fee,
-        decimalsFor(chainId, p.token0),
-        decimalsFor(chainId, p.token1),
-      ).then((r) => {
-        if (!cancelled) setTicks((prev) => ({ ...prev, [p.tokenId]: r?.tick ?? null }));
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positions.map((p) => p.tokenId).join(",")]);
+  /* Gated on the read chain, not the wallet's, for the reason in the header
+     above: the factory this enumerates lives at one address on one chain. A
+     wallet-chain gate here would blank a public discovery table because of
+     where the visitor's wallet happens to be pointed, and the read chain is not
+     something they can switch — which is why the gate is told so. */
+  const gate = useChainGate(READ_ONLY_CHAIN_ID);
 
-  return ticks;
-}
-
-function RangeBar({
-  tickLower,
-  tickUpper,
-  currentTick,
-  decimals0,
-  decimals1,
-}: {
-  tickLower: number;
-  tickUpper: number;
-  currentTick: number | null;
-  decimals0: number;
-  decimals1: number;
-}) {
-  const lo = tickToPrice(tickLower, decimals0, decimals1);
-  const hi = tickToPrice(tickUpper, decimals0, decimals1);
-  const cur = currentTick !== null ? tickToPrice(currentTick, decimals0, decimals1) : null;
-
-  // Position the marker within a padded window around [lo, hi] on a log scale
-  // — V3 ranges are naturally log-spaced, and this keeps a tight range from
-  // collapsing to a single pixel.
-  const logLo = Math.log(lo);
-  const logHi = Math.log(hi);
-  const pad = Math.max((logHi - logLo) * 0.4, 0.05);
-  const windowLo = logLo - pad;
-  const windowHi = logHi + pad;
-  const pct = (v: number) =>
-    Math.max(0, Math.min(100, ((Math.log(v) - windowLo) / (windowHi - windowLo)) * 100));
-
-  const bandLeft = pct(lo);
-  const bandRight = 100 - pct(hi);
-  const markerPct = cur !== null ? pct(cur) : null;
-  const inRange = cur !== null && cur >= lo && cur <= hi;
-
-  const fmt = (v: number) => (v >= 1000 ? v.toFixed(0) : v >= 1 ? v.toFixed(4) : v.toFixed(6));
-
-  return (
-    <div className={s.range}>
-      <div className={s.rangeBar}>
-        <div
-          className={s.rangeBand}
-          style={{ left: `${bandLeft}%`, right: `${bandRight}%` }}
-        />
-        {markerPct !== null && (
-          <div
-            className={`${s.rangeMark} ${inRange ? "" : s.out}`}
-            style={{ left: `${markerPct}%` }}
-          />
-        )}
-      </div>
-      <div className={s.rangeLabels}>
-        <span>{fmt(lo)}</span>
-        <span className={inRange ? "" : s.out}>
-          {cur !== null ? (inRange ? "in range" : "out of range") : "…"}
-        </span>
-        <span>{fmt(hi)}</span>
-      </div>
-    </div>
+  /* Descending by TVL, unmeasurable last. `?? -1` rather than `?? 0`: a pool
+     whose legs have no price is not a pool with no liquidity, and sorting it
+     among the genuinely empty ones would say it was. */
+  const sortedPools = useMemo(
+    () => [...pools].sort((a, b) => (b.liquidity ?? -1) - (a.liquidity ?? -1)),
+    [pools],
   );
-}
 
-export default function PoolPage() {
-  const { positions, loading, collectFees, removeLiquidity, refresh } = useV3Positions();
-  const { chainId } = useWalletV2();
-  const currentTicks = useCurrentTicks(positions, chainId);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  // Bound to this chain so a position's raw addresses resolve against the right
-  // registry — the same address means a different token on a different chain.
-  const symbolFor = (address: string) => symbolForAddress(chainId, address);
-
-  const withActive = positions.filter((p) => Number(p.liquidity) > 0);
-
-  const onCollect = async (tokenId: string) => {
-    setBusy(`collect-${tokenId}`);
-    try {
-      await collectFees(tokenId);
-      toast.success("Fees collected");
-      refresh();
-    } catch (err) {
-      console.error("[v2/pool] collect failed", err);
-      toast.error("Couldn't collect fees");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onRemove = async (p: V3Position) => {
-    setBusy(`remove-${p.tokenId}`);
-    try {
-      await removeLiquidity(p.tokenId, p.liquidity);
-      toast.success("Liquidity removed");
-      refresh();
-    } catch (err) {
-      console.error("[v2/pool] remove failed", err);
-      toast.error("Couldn't remove liquidity");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  if (loading && positions.length === 0) {
-    return (
-      <div className={s.cards}>
-        {[0, 1].map((i) => (
-          <div key={i} className={s.card} style={{ opacity: 0.5 }}>
-            <div className={s.cardTop}>
-              <div className={s.pair}>
-                <span className={s.tki} />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (withActive.length === 0) {
-    return (
-      <div className={s.empty}>
-        <div className={s.emptyTitle}>No liquidity positions yet.</div>
-        <div className={s.emptySub}>
-          Provide liquidity to a pool to start earning trading fees.
-        </div>
-      </div>
-    );
-  }
+  /* After both hooks, never between them. */
+  if (!gate.ready) return <ChainGate product="pool list" state={gate} />;
 
   return (
-    <div className={s.cards}>
-      {withActive.map((p) => {
-        const owedTotal = Number(p.tokensOwed0) + Number(p.tokensOwed1);
-        return (
-          <div key={p.tokenId} className={s.card}>
-            <div className={s.cardTop}>
+    <div className={`${s.table} ${s.pools}`}>
+      <div className={s.thead}>
+        <span>Pool</span>
+        <span className={s.right}>Price</span>
+        <span className={s.right}>24h volume</span>
+        <span className={s.right}>TVL</span>
+        <span className={s.right}>APR</span>
+      </div>
+      {loading && sortedPools.length === 0 ? (
+        [0, 1, 2].map((i) => (
+          <div key={i} className={s.rowSkeleton}>
+            <span className={s.skCircle} />
+            <span className={s.skLine} />
+          </div>
+        ))
+      ) : sortedPools.length === 0 ? (
+        <div className={s.tEmpty}>No pools indexed yet.</div>
+      ) : (
+        sortedPools.map((p) => (
+          <div key={p.address} className={s.row}>
+            {/* The pair cell now goes to /pool/[address] rather than out to the
+                block explorer. The explorer link did not disappear — it moved to
+                the copyable address chip on that page, beside the fee, the
+                balances and the depth curve, which is more than a row can carry.
+                Still not /pool/new: that form mints V3 at 500/3000/10000, so
+                prefilling it from a V2 pair and its bps-of-10000 fee would carry
+                over a tier that does not exist on the other side. */}
+            <Link className={s.pairCell} href={`/pool/${p.address}`}>
               <div className={s.pair}>
-                <span className={s.tki}>{symbolFor(p.token0).slice(0, 3)}</span>
-                <span className={s.tki}>{symbolFor(p.token1).slice(0, 3)}</span>
+                <PairIcon symbol={p.token0.symbol} />
+                <PairIcon symbol={p.token1.symbol} />
               </div>
               <div>
                 <div className={s.pairName}>
-                  {symbolFor(p.token0)} / {symbolFor(p.token1)}
+                  {p.token0.symbol} / {p.token1.symbol}
                 </div>
-                <div className={s.pairFee}>V3 · {(p.fee / 10000).toFixed(2)}% fee · #{p.tokenId}</div>
+                <div className={s.pairFee}>{feeLabel(p.feeBps)} · V2</div>
               </div>
-              <span className={`${s.badge} ${p.inRange ? "" : s.out}`}>
-                {p.inRange ? "In range" : "Out of range"}
-              </span>
-            </div>
-
-            <RangeBar
-              tickLower={p.tickLower}
-              tickUpper={p.tickUpper}
-              currentTick={currentTicks[p.tokenId] ?? null}
-              decimals0={decimalsFor(chainId, p.token0)}
-              decimals1={decimalsFor(chainId, p.token1)}
-            />
-
-            <div className={s.stats}>
-              <div className={s.stat}>
-                <span className={s.statLabel}>Liquidity</span>
-                <span className={`${s.statValue} tabular`}>{p.liquidity}</span>
-              </div>
-              <div className={s.stat}>
-                <span className={s.statLabel}>Unclaimed fees</span>
-                <span className={`${s.statValue} tabular`}>
-                  {p.tokensOwed0} {symbolFor(p.token0)} + {p.tokensOwed1}{" "}
-                  {symbolFor(p.token1)}
-                </span>
-              </div>
-            </div>
-
-            <div className={s.actions}>
-              <button
-                className={`${s.actBtn} ${s.primary}`}
-                disabled={owedTotal === 0 || busy === `collect-${p.tokenId}`}
-                onClick={() => onCollect(p.tokenId)}
-              >
-                {busy === `collect-${p.tokenId}` ? "Collecting…" : "Collect fees"}
-              </button>
-              <button
-                className={s.actBtn}
-                disabled={busy === `remove-${p.tokenId}`}
-                onClick={() => onRemove(p)}
-              >
-                {busy === `remove-${p.tokenId}` ? "Removing…" : "Remove liquidity"}
-              </button>
-            </div>
+            </Link>
+            <span className={`${s.right} tabular`}>
+              {p.price !== null ? p.price.toFixed(p.price < 1 ? 6 : 4) : DASH}
+            </span>
+            <span
+              className={`${s.right} tabular`}
+              title={volumeTitle(p.volumeWindowSec)}
+            >
+              {usd(p.volume24h)}
+            </span>
+            <span className={`${s.right} tabular`}>{usd(p.liquidity)}</span>
+            <span className={`${s.right} tabular`}>{pct(p.apr)}</span>
           </div>
-        );
-      })}
+        ))
+      )}
     </div>
   );
 }

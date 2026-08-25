@@ -1,0 +1,374 @@
+/* ------------------------------------------------------------------
+ * The live planner.
+ *
+ * One glass card holding an input, example chips, and whatever the parser
+ * made of the sentence. It sits in the hero, so it is the first glass on
+ * the page and the thing the ambient lens layer is there to be blurred
+ * through — hence .k-glass rather than a flat --k-card panel.
+ *
+ * The internal structure is a stack of small wells inside that card: the
+ * reading, then the plan or the question or the stop. Each one is
+ * recessed (--k-glass-deep + --k-shadow-inset) rather than raised,
+ * because they are content the card contains, not things floating above
+ * it. Raised-inside-raised is the fastest way to make glass look cheap.
+ * ------------------------------------------------------------------ */
+
+.wrap {
+  composes: k-glass from global;
+  border-radius: var(--k-r-xl);
+  padding: var(--k-s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s4);
+}
+
+/* ------------------------------------------------------------------
+ * The command bar.
+ *
+ * A single well containing the field and the button, so the two read as
+ * one control rather than an input next to a button. The well takes the
+ * focus ring on behalf of the field and the field's own outline is
+ * removed — the pair described in tokens.css:577. Doing only half of that
+ * is what leaves keyboard users with a caret and nothing else.
+ * ------------------------------------------------------------------ */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  padding: var(--k-s2) var(--k-s2) var(--k-s2) var(--k-s4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-pill);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+}
+
+.bar:has(.field:focus-visible) {
+  border-color: var(--k-brand);
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-lg);
+  padding: var(--k-s2) 0;
+}
+
+.field:focus-visible {
+  outline: none;
+}
+
+/* The placeholder carries a real example, so it is doing more work than a
+   placeholder usually does — but it is still not content, and at --k-t2 it
+   competes with a typed command. Ellipsis rather than wrap: the longest
+   example is an address, and a two-line placeholder resizes the card. */
+.field::placeholder {
+  color: var(--k-t3);
+  text-overflow: ellipsis;
+}
+
+/* The one solid button in the section. White-on-dark (inverted in light
+   theme) rather than brand green, matching every primary action in the
+   app: green is chrome, and a green submit here would compete with the
+   Launch App button in the header. */
+.go {
+  flex: none;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
+  font: inherit;
+  font-weight: var(--k-fw-med);
+  font-size: var(--k-fs-sm);
+  padding: var(--k-s3) var(--k-s5);
+  cursor: pointer;
+}
+
+.go:hover:not(:disabled) {
+  background: var(--k-btn-solid-hover);
+}
+
+.go:disabled {
+  opacity: 0.45;
+}
+
+/* ------------------------------------------------------------------
+ * Example chips.
+ *
+ * Wrapping rather than a horizontal scroller: a scroller hides the last
+ * examples, and the last two are the interesting ones (a panel, and the
+ * one case that needs a model).
+ * ------------------------------------------------------------------ */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-s2);
+}
+
+.chip {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-pill);
+  background: transparent;
+  color: var(--k-t2);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  padding: 6px var(--k-s3);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --k-row-hover, not --k-hover: the parent is glass, and an opaque hover
+   fill on a translucent surface punches a hole in it. */
+.chip:hover {
+  background: var(--k-row-hover);
+  border-color: var(--k-line2);
+  color: var(--k-t1);
+}
+
+/* ------------------------------------------------------------------
+ * Output.
+ *
+ * No min-height and no reserved space. The card growing when a plan
+ * appears is honest — it means something happened — and a tall empty
+ * well above the fold is worse than a small jump below it.
+ * ------------------------------------------------------------------ */
+.out {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s3);
+}
+
+.hint,
+.foot {
+  margin: 0;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  line-height: 1.5;
+}
+
+.foot {
+  margin-top: var(--k-s3);
+}
+
+/* The timing line. --k-pos rather than --k-brand because it is a number
+   being reported, and per tokens.css the two greens do not swap roles:
+   #4cc46a is text, #00b383 is fill. */
+.stat {
+  color: var(--k-t2);
+  font-size: var(--k-fs-xs);
+}
+
+/* The span here is the millisecond figure, which carries the global
+   .tabular class. Targeted as a bare element rather than by that class,
+   because a class name written in a CSS module is hashed — `.tabular`
+   would compile to a local name that nothing on the page has. */
+.stat span {
+  color: var(--k-pos);
+  font-weight: var(--k-fw-med);
+}
+
+.note {
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+}
+
+/* ------------------------------------------------------------------
+ * The reading — what the parser understood.
+ * ------------------------------------------------------------------ */
+.reading,
+.plan,
+.ask,
+.stop {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-lg);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  padding: var(--k-s4);
+}
+
+.readHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--k-s3);
+}
+
+.readLabel {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.verb {
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+}
+
+.rows {
+  margin: var(--k-s3) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: var(--k-s3);
+  align-items: baseline;
+}
+
+.rowKey {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+}
+
+.rowVal {
+  composes: tabular from global;
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-s2);
+}
+
+/* The recipient, printed whole. break-all rather than a truncation,
+   because address poisoning defeats every abbreviation: an attacker seeds
+   an address matching the first and last four characters, so the only
+   defence is showing all forty. Wrapping mid-address is ugly and
+   correct. */
+.rowWhole {
+  word-break: break-all;
+  font-size: var(--k-fs-xs);
+}
+
+.rowNote {
+  color: var(--k-t3);
+  font-weight: var(--k-fw-body);
+  font-size: var(--k-fs-xs);
+}
+
+/* ------------------------------------------------------------------
+ * The plan.
+ * ------------------------------------------------------------------ */
+.summary {
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+}
+
+.steps {
+  list-style: none;
+  margin: var(--k-s3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s3);
+}
+
+.step {
+  display: flex;
+  gap: var(--k-s3);
+  align-items: flex-start;
+}
+
+/* Numbered, not ticked. A tick would claim the step had happened; these
+   have not, and cannot on this page. --k-brand-dim is the one place brand
+   green belongs here: a fill behind a marker. */
+.marker {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--k-r-pill);
+  background: var(--k-brand-dim);
+  color: var(--k-pos);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  display: grid;
+  place-items: center;
+}
+
+.stepTitle {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+}
+
+.stepDetail {
+  margin-top: 2px;
+  color: var(--k-t2);
+  font-size: var(--k-fs-xs);
+  line-height: 1.5;
+  /* The transfer renderer puts the full recipient in here. Same reason as
+     .rowWhole: it must not be shortened, so it has to be allowed to
+     wrap. */
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------------------
+ * Questions and stops.
+ *
+ * A question is the parser working, so it is neutral. A stop is the chain
+ * not being ready, which is also not an error — the accent orange marks
+ * it as a state rather than a failure. Nothing here is --k-danger: no
+ * outcome on this page is a fault of the visitor's.
+ * ------------------------------------------------------------------ */
+.askQ {
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+}
+
+.stop {
+  border-color: var(--k-alt-dim);
+}
+
+.stopWhy {
+  color: var(--k-alt);
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+}
+
+/* ------------------------------------------------------------------
+ * Mobile.
+ *
+ * The bar unstacks into two rows — a pill containing a 40-character
+ * address and a button cannot fit at 360px, and shrinking the field to
+ * make room is what produces an input you cannot read your own typing
+ * in. The 96px label column also collapses, since a label and a value
+ * side by side leave ~140px for the value.
+ * ------------------------------------------------------------------ */
+@media (max-width: 720px) {
+  .wrap {
+    padding: var(--k-s4);
+    border-radius: var(--k-r-lg);
+  }
+
+  .bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--k-s3);
+    padding: var(--k-s3);
+    border-radius: var(--k-r-lg);
+  }
+
+  .field {
+    font-size: var(--k-fs-base);
+    padding: var(--k-s1) var(--k-s2);
+  }
+
+  .go {
+    width: 100%;
+    padding: var(--k-s3);
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

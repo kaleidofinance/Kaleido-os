@@ -1,167 +1,163 @@
-"use client"
-import { useCallback } from "react"
-import { toast } from "sonner"
-import { isSupportedChain } from "@/config/chain"
-import { getProvider } from "@/config/provider"
-import { getERC20Contract, getKaleidoContract } from "@/config/contracts"
-import { useRouter } from "next/navigation"
-import { ErrorWithReason } from "@/constants/types"
-import { ethers, MaxUint256 } from "ethers"
-import useCheckAllowance from "./useCheckAllowance"
-import { getContractAddressesByChainId, getContractByChainId } from "@/config/getContractByChain"
-import { getUsdcAddressByChainId } from "@/constants/utils/getUsdcBalance"
-import { SUPPORTED_CHAIN_ID } from "@/context/web3Modal"
-import { ErrorDecoder } from "ethers-decode-error"
-import lendbitAbi from "@/abi/ProtocolFacet.json"
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
-import { ethers6Adapter } from "thirdweb/adapters/ethers6"
-import { client } from "@/config/client"
-import { USDC_ADDRESS, USDR, USDT_ADDRESS, kfUSD_ADDRESS } from "@/constants/utils/addresses"
+"use client";
+import { useCallback } from "react";
+import { toast } from "sonner";
+import { isSupportedChain } from "@/config/chain";
+import { getKaleidoContract } from "@/config/contracts";
+import { ethers } from "ethers";
+import { getContractAddressesByChainId } from "@/config/getContractByChain";
+import { ErrorDecoder } from "ethers-decode-error";
+import lendbitAbi from "@/abi/ProtocolFacet.json";
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { client } from "@/config/client";
+import { ensureAllowance } from "@/lib/lending/approve";
+import type { LendingAsset } from "@/lib/lending/assets";
 
-const errorDecoder = ErrorDecoder.create([lendbitAbi])
+const errorDecoder = ErrorDecoder.create([lendbitAbi]);
 
+/**
+ * Deposit an ERC20 as collateral. The native branch is useDepositNativeColateral.
+ *
+ * Takes the resolved `LendingAsset` — address and declared decimals together —
+ * rather than a bare address. It used to take an address and rediscover both from
+ * a four-way if-chain over Abstract-testnet literals (`USDC_ADDRESS`, `USDR`,
+ * `kfUSD_ADDRESS`, `USDT_ADDRESS`), which meant that on all five deployed chains
+ * no branch matched: `currency` stayed `undefined`, `getERC20Contract(signer,
+ * undefined)` threw, and every ERC20 collateral deposit failed before a
+ * transaction was built. `decimals` also defaulted to 18, so had a branch
+ * matched, a USDC deposit would have been scaled by 1e12.
+ *
+ * Allowance goes through `ensureAllowance`, which reads the live allowance and
+ * compares base units to base units. The old check compared the raw allowance
+ * against the human amount (`val < Number("5")`, so `5000000 < 5`) off a stale
+ * `useCheckAllowance` effect, and only for four hardcoded addresses — anything
+ * else skipped approval entirely.
+ */
 const useDepositCollateral = () => {
-  const activeAccount = useActiveAccount()
-  const activeChain = useActiveWalletChain()
-  const chainId = activeChain?.id
-  const address = activeAccount?.address
-  const router = useRouter()
-  const { val, usdrVal, kfusdVal, usdtVal } = useCheckAllowance()
+  const activeAccount = useActiveAccount();
+  const activeChain = useActiveWalletChain();
+  const chainId = activeChain?.id;
 
   return useCallback(
-    async (_amountOfCollateral: string, tokenAddress: string, onSuccess?: () => void) => {
-      if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK")
+    async (
+      _amountOfCollateral: string,
+      asset: LendingAsset,
+      onSuccess?: () => void,
+    ) => {
+      if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK");
 
       if (!activeChain) {
-        toast.error("Chain not connected")
-        return
+        toast.error("Chain not connected");
+        return;
       }
 
       if (!activeAccount) {
-        toast.error("invalid account")
-        return
+        toast.error("invalid account");
+        return;
       }
+
+      if (asset.isNative) {
+        toast.error("Use the native deposit path for this asset");
+        return;
+      }
+
       const signer = ethers6Adapter.signer.toEthers({
         client,
         chain: activeChain,
         account: activeAccount,
-      })
+      });
       if (!signer) {
-        toast.error("Signer not available")
-        return
+        toast.error("Signer not available");
+        return;
       }
 
-      const contract = getKaleidoContract(signer)
-      let currency: any
-      let decimals = 18
-
-      if (tokenAddress === USDC_ADDRESS) {
-        currency = USDC_ADDRESS
-        decimals = 6
-      } else if (tokenAddress === USDR) {
-        currency = USDR
-        decimals = 18
-      } else if (tokenAddress === kfUSD_ADDRESS) {
-        currency = kfUSD_ADDRESS
-        decimals = 18
-      } else if (tokenAddress === USDT_ADDRESS) {
-        currency = USDT_ADDRESS
-        decimals = 6
+      const contract = getKaleidoContract(signer, chainId);
+      const destination = getContractAddressesByChainId(chainId);
+      if (!destination) {
+        toast.error("No lending contract on this chain");
+        return;
       }
 
-      const destination = getContractAddressesByChainId(chainId)
-
-      const erc20contract = getERC20Contract(signer, currency)
-      const _weiAmount = ethers.parseUnits(_amountOfCollateral, decimals)
-      let toastId: string | number | undefined
-
-      // console.log("val", val);
+      const _weiAmount = ethers.parseUnits(
+        _amountOfCollateral,
+        asset.decimals,
+      );
+      let toastId: string | number | undefined;
 
       try {
-        toastId = toast.loading(`Processing deposit transaction...`)
+        toastId = toast.loading(`Processing deposit transaction...`);
 
-        // Check allowance before proceeding
-        if (tokenAddress === USDC_ADDRESS) {
-          if (val == 0 || val < Number(_amountOfCollateral)) {
-            // console.log("destination", destination);
+        await ensureAllowance(
+          signer,
+          asset.address,
+          activeAccount.address,
+          destination,
+          _weiAmount,
+        );
 
-            const allowance = await erc20contract.approve(destination, _weiAmount)
-            const allReceipt = await allowance.wait()
+        await contract.depositCollateral.staticCall(asset.address, _weiAmount);
+        const transaction = await contract.depositCollateral(
+          asset.address,
+          _weiAmount,
+        );
 
-            if (!allReceipt.status) {
-              return toast.error("Approval failed!", { id: toastId })
-            }
-          }
-        } else if (tokenAddress === USDR) {
-          if (usdrVal == 0 || usdrVal < Number(_amountOfCollateral)) {
-            const allowance = await erc20contract.approve(destination, _weiAmount)
-            const allReceipt = await allowance.wait()
-
-            if (!allReceipt.status) {
-              return toast.error("Approval failed!", { id: toastId })
-            }
-          }
-        } else if (tokenAddress === kfUSD_ADDRESS) {
-          if (kfusdVal == 0 || kfusdVal < Number(_amountOfCollateral)) {
-            const allowance = await erc20contract.approve(destination, _weiAmount)
-            const allReceipt = await allowance.wait()
-
-            if (!allReceipt.status) {
-              return toast.error("Approval failed!", { id: toastId })
-            }
-          }
-        } else if (tokenAddress === USDT_ADDRESS) {
-          if (usdtVal == 0 || usdtVal < Number(_amountOfCollateral)) {
-            const allowance = await erc20contract.approve(destination, _weiAmount)
-            const allReceipt = await allowance.wait()
-
-            if (!allReceipt.status) {
-              return toast.error("Approval failed!", { id: toastId })
-            }
-          }
-        }
-
-        await contract.depositCollateral.staticCall(currency, _weiAmount)
-        let transaction
-        transaction = await contract.depositCollateral(currency, _weiAmount)
-
-        const receipt = await transaction.wait()
+        const receipt = await transaction.wait();
 
         if (receipt.status) {
-          toast.success(`${_amountOfCollateral} successfully deposited as collateral!`, {
-            id: toastId,
-          })
-          if (chainId !== SUPPORTED_CHAIN_ID[0]) {
-            toast.message(
-              `Kindly wait for few minutes for your deposited ${_amountOfCollateral} to go cross-chain!`,
-            )
-          }
+          toast.success(
+            `${_amountOfCollateral} ${asset.symbol} successfully deposited as collateral!`,
+            {
+              id: toastId,
+            },
+          );
+          /* Removed here: a second toast saying "Kindly wait for a few minutes
+           * for your deposit to go cross-chain", shown whenever
+           * chainId !== 11124 — see the same removal in
+           * useDepositNativeColateral. Each chain has its own Diamond, so the
+           * deposit is already settled on the connected chain by the receipt
+           * checked above. */
           // Callers handle their own navigation — this used to redirect to a
-
           // legacy route that no longer exists.
-          onSuccess?.()
+          onSuccess?.();
         } else {
           toast.error("Transaction failed!", {
             id: toastId,
-          })
+          });
         }
       } catch (error: unknown) {
-        console.error(error)
+        console.error(error);
 
-        const err = await errorDecoder.decode(error)
-        // console.log("Error while creating request", err)
-        let errorText: string =
-          err?.fragment?.name === "Protocol__TransferFailed" ? "Deposit action failed!" : "Action canceled or failed!"
+        const err = await errorDecoder.decode(error);
+        /* SafeERC20FailedOperation, not Protocol__TransferFailed: the facet now
+         * transfers through SafeERC20, and depositCollateral's native branch
+         * only reads msg.value rather than transferring, so the old name is
+         * unreachable from this path and matching it caught nothing. The new
+         * error carries the token that failed, which is why the message can
+         * name a cause — a failed pull here is almost always allowance.
+         *
+         * `Protocol__TokenNotAllowed` is the one this surface should now never
+         * produce: the picker reads getAllCollateralToken() from the diamond, so
+         * an asset it offers is one the diamond registered. Seeing it means the
+         * registered set changed under an open modal. */
+        const errorText: string =
+          err?.fragment?.name === "SafeERC20FailedOperation"
+            ? "Deposit failed — check your token allowance and balance."
+            : err?.fragment?.name === "Protocol__TokenNotAllowed"
+              ? `${asset.symbol} is no longer accepted as collateral — reload and try again.`
+              : ((error as Error)?.message?.startsWith("Token approval") ??
+                  false)
+                ? (error as Error).message
+                : "Action canceled or failed!";
 
         if (toastId) {
-          toast.error(`Error: ${errorText}`, { id: toastId })
+          toast.error(`Error: ${errorText}`, { id: toastId });
         } else {
-          toast.warning(`Error: ${errorText}`)
+          toast.warning(`Error: ${errorText}`);
         }
       }
     },
-    [chainId, router, val, usdrVal, kfusdVal, usdtVal],
-  )
-}
+    [activeAccount, activeChain, chainId],
+  );
+};
 
-export default useDepositCollateral
+export default useDepositCollateral;

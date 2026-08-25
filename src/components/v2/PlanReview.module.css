@@ -9,32 +9,39 @@
   font-weight: var(--k-fw-med);
 }
 
+/* Hairlines, not a filled list.
+ *
+ * This used to draw its separators by stacking two opaque fills: a --k-well
+ * container showing through a 2px gap between --k-card rows. It works on a flat
+ * page and it is wrong everywhere this component actually renders — inside the
+ * agent card's plan well and inside the settings modal, both of which are glass.
+ * Two opaque fills on a blurred surface make the whole step list a slab, and
+ * since this is the permission surface, that slab is the largest thing on the
+ * card at the one moment the user is deciding whether to sign.
+ *
+ * A border does the same job with nothing to fill, and it is what the identical
+ * step list in agent.module.css already uses — so the plan you read and the plan
+ * you sign now look like the same list, which they are. */
 .steps {
   list-style: none;
   margin: 0;
   padding: 0;
-  background: var(--k-well);
-  border-radius: var(--k-r-md);
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 .step {
   display: flex;
   align-items: flex-start;
   gap: var(--k-s3);
-  padding: 14px 16px;
-  background: var(--k-card);
+  padding: 13px 0;
 }
-.step:first-child {
-  border-top-left-radius: var(--k-r-md);
-  border-top-right-radius: var(--k-r-md);
-}
-.step:last-child {
-  border-bottom-left-radius: var(--k-r-md);
-  border-bottom-right-radius: var(--k-r-md);
+.step + .step {
+  border-top: 1px solid var(--k-line);
 }
 
+/* Recessed rather than an opaque grey disc — see `.qk` in trade.module.css.
+   The done and failed states are already translucent tints, so this brings the
+   neutral states onto the same footing instead of leaving two of five opaque. */
 .marker {
   width: 24px;
   height: 24px;
@@ -43,24 +50,23 @@
   display: grid;
   place-items: center;
   font-size: 12px;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t2);
   margin-top: 1px;
 }
 .st_done .marker {
   background: var(--k-brand-dim);
+  box-shadow: none;
   color: var(--k-brand);
 }
 .st_skipped .marker {
-  background: var(--k-well2);
   color: var(--k-t3);
 }
 .st_failed .marker {
   background: var(--k-danger-dim);
+  box-shadow: none;
   color: var(--k-danger);
-}
-.st_pending .marker {
-  background: var(--k-well2);
 }
 
 .body {
@@ -84,7 +90,8 @@
 .chain {
   font-size: var(--k-fs-xs);
   color: var(--k-t2);
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   padding: 3px 9px;
   border-radius: var(--k-r-pill);
   flex: none;
@@ -94,7 +101,7 @@
   width: 13px;
   height: 13px;
   border-radius: 50%;
-  border: 2px solid var(--k-well2);
+  border: 2px solid var(--k-glass-deep);
   border-top-color: var(--k-brand);
   animation: spin 0.8s linear infinite;
   display: inline-block;
@@ -133,8 +140,11 @@
   opacity: 0.7;
   cursor: default;
 }
+/* Cancel button — recessed, but hover stays neutral at --k-hover rather than
+   going brand-tinted. Green on Cancel would read as "go", which is backwards. */
 .ghost {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t1);
   border: 0;
   font: inherit;

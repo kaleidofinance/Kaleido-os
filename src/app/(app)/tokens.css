@@ -1,45 +1,85 @@
 /* ============================================================
  * Kaleido v2 — design tokens
  * ============================================================
- * The system derived from the mockups: Uniswap's app craft
- * (rounded cards, pill buttons, generous type, no monospace,
- * invisible borders) in Kaleido's palette (green + orange, not
- * magenta).
+ * Uniswap's app craft (rounded cards, pill buttons, generous
+ * type, no monospace) in Kaleido's palette (green + orange, not
+ * magenta), on glass surfaces.
  *
- * This file is intentionally separate from src/app/tokens.css.
- * That one is the interim skin the current dashboard still uses;
- * its token names (--surface, --accent, --text-primary) differ.
- * The two coexist during migration — the old one is removed when
- * the last legacy page is replaced.
+ * Three rules the palette enforces:
  *
- * Two rules the palette enforces, because they were the whole
- * point of the design review:
+ *   1. TWO GREENS, never confused. --k-brand (emerald, teal-
+ *      leaning) is a FILL and appears only on chrome: the logo
+ *      and the one primary action per view. --k-pos (grass,
+ *      yellow-leaning) is TEXT and appears only in numeric
+ *      columns. They are ~23° of hue apart and never share a
+ *      zone, so a green button and a green P&L figure never read
+ *      as the same thing.
  *
- *   1. TWO GREENS, never confused. --brand (emerald, teal-leaning)
- *      is a FILL and appears only on chrome: the logo and the one
- *      primary action per view. --pos (grass, yellow-leaning) is
- *      TEXT and appears only in numeric columns. They are ~23° of
- *      hue apart and never share a zone, so a green button and a
- *      green P&L figure never read as the same thing.
+ *   2. THE ACCENT IS RARE. Brand green shows up two or three
+ *      times on a page, like Uniswap's pink. Status labels are
+ *      neutral; only genuine problems earn orange or red.
  *
- *   2. THE ACCENT IS RARE. Brand green shows up two or three times
- *      on a page, like Uniswap's pink. Status labels are neutral;
- *      only genuine problems earn orange or red.
+ *   3. GLASS IS FOR THINGS THAT FLOAT OR FRAME. Nav, modals,
+ *      dropdowns, stat cards, the swap shell. Never behind dense
+ *      tables or body copy — blur under small text destroys
+ *      legibility, and stacking translucent layers turns to mud
+ *      within two levels. See the glass section below.
  * ============================================================ */
 
 .kaleido-v2 {
-  /* --- neutrals: warm-black ground, not pure #000 --- */
-  --k-bg: #0d0d0d;
-  --k-card: #1b1b1b;
-  --k-well: #141414;
-  --k-well2: #242424;
-  --k-hover: #2e2e2e;
-  --k-line: rgba(255, 255, 255, 0.07);
-  --k-line2: rgba(255, 255, 255, 0.12);
+  /* --- neutrals: pure-black ground, warm ink above it ---
+     The ground is #000. It was #141413 (Anthropic's own ground), matched to
+     Robinhood Chain's, which is flat black with no lift at all.
 
+     The ramp *above* the ground did not change and is still built on Claude's
+     scale at a constant ~5-10% relative warmth (R > G > B, delta 1-6).
+     Two things follow from the ground going pure black:
+
+     - Cards read more clearly, not less. --k-card is (29, 28, 26) — against
+       #141413 that was a delta of ~9 and only just findable; against #000 it
+       is ~29. Every surface that was fighting to separate now separates.
+     - The ramp is the only warm thing left. It used to sit on a ground that
+       shared its hue, and pure black shares nothing, so #1d1c1a reads a shade
+       warmer by contrast than it did. At ~10% relative warmth it is still
+       inside the budget below, so it is left alone — but this is the first
+       place to look if the app starts reading brown.
+
+     That ceiling is the important part and it is easy to breach. Claude's
+     neutrals are warm *because* they are tuned to sit beside terracotta;
+     our accent is green, and warm grey next to green is how you get an
+     olive cast. A first draft of this ramp used #1d1c19 for --k-card —
+     14% relative warmth, nearly 3x Claude's — and that is precisely the
+     value that would have muddied. Keep R > G > B (a yellow hue) and keep
+     the delta small: G above both neighbours is what actually reads green.
+
+     If the app ever does drift olive, pull these toward neutral. Do not
+     desaturate the brand — the greens are the identity. --- */
+  --k-bg: #000000;
+  --k-card: #1d1c1a;
+  --k-well: #191817;
+  --k-well2: #252420;
+  --k-hover: #302e29;
+  /* Up a hair from 0.07/0.12: the ground and cards both lifted, so a
+     white hairline at the old alpha has less to push against. */
+  --k-line: rgba(255, 255, 255, 0.075);
+  --k-line2: rgba(255, 255, 255, 0.13);
+
+  /* Row hover *on a glass surface*. --k-hover and --k-well2 are opaque, so
+     using them inside a translucent container stamps a solid slab through it
+     and undoes the glass exactly where the pointer is. This is a tint instead:
+     it composites onto whatever the surface already shows. Lightens on dark,
+     darkens on light, so the direction of the hover matches every opaque
+     control in the app. */
+  --k-row-hover: rgba(255, 255, 255, 0.05);
+
+  /* --k-t1 stays pure white — Claude sets near-white on ink, and #faf9f5
+     as body text on a dark ground reads dingy rather than warm.
+     --k-t2 is one step below Claude's mid grey #b0aea5, which is too
+     light for secondary text at weight 485. Measured 6.85:1 on --k-card,
+     up from 5.9:1 before this change. */
   --k-t1: #ffffff;
-  --k-t2: #9b9b9b;
-  --k-t3: #5e5e5e;
+  --k-t2: #a8a49b;
+  --k-t3: #6b6760;
 
   /* --- brand green: FILL, chrome only (hue ~164) --- */
   --k-brand: #00b383;
@@ -59,14 +99,82 @@
   --k-danger: #ff5f52;
   --k-danger-dim: rgba(255, 95, 82, 0.14);
 
-  /* --- per-chain identity. Used for the badge on token icons and
-     the network selector. Neutral metadata — never a semantic. --- */
-  --k-chain-abstract: #00b383;
-  --k-chain-base: #0052ff;
-  --k-chain-arbitrum: #12aaff;
-  --k-chain-polygon: #8247e5;
-  --k-chain-bsc: #f0b90b;
-  --k-chain-ethereum: #627eea;
+  /* --- solid button: the high-contrast CTA. Was `#fff` / `#0d0d0d`
+     hardcoded at 11 sites, which inverts to white-on-white the moment
+     a light theme exists.
+
+     The dark half used to track --k-bg and no longer does: --k-bg went to
+     #000 and this stayed #141413. Deliberate — this is ink on a white pill,
+     not a ground, so it has no seam to match, and warm-black vs pure-black
+     glyphs on white differ by about 1.5% luminance, which is not a visible
+     difference at text size. Keeping it warm is the one place the ink
+     survives the ground going achromatic. --- */
+  --k-btn-solid: #ffffff;
+  --k-btn-solid-hover: #e6e6e6;
+  --k-btn-solid-fg: #141413;
+  --k-btn-solid-fg-dim: rgba(20, 20, 19, 0.6);
+
+  /* --- modal scrim --- */
+  --k-scrim: rgba(0, 0, 0, 0.6);
+
+  /* Six `--k-chain-*` colours lived here, described as backing "the badge on
+     token icons and the network selector". Neither ever read them: both take
+     their colour from `ChainMeta.color` in constants/chains.ts, which is where a
+     chain's identity belongs — the list of chains is data, and a CSS custom
+     property per chain means adding a chain touches a stylesheet. They also only
+     covered six of thirteen chains, so the four that shipped since would have had
+     no colour at all. Deleted rather than wired up. */
+
+  /* ----------------------------------------------------------
+   * GLASS
+   * ----------------------------------------------------------
+   * Two things are load-bearing and easy to get wrong:
+   *
+   * saturate() is not decoration. A large blur averages colour
+   * toward grey, so glass over a tinted ground goes flat and
+   * dead. Pushing saturation back up is what keeps it looking
+   * like glass rather than fog.
+   *
+   * The fill alpha is deliberately low (0.045). Glass reads as
+   * premium when the blur does the work and the fill barely
+   * exists; raising the alpha to "make it visible" is what
+   * produces the grey-plastic look people mean by bad
+   * glassmorphism. If it is not visible, the problem is the
+   * ambient layer behind it, not this number.
+   *
+   * The highlight is bone (#faf9f5), not white. It is the one
+   * hairline the eye actually reads as a lit glass edge, and on
+   * a warm ground a pure-white edge is the detail that gives away
+   * a generic glass kit. Alpha runs a touch higher than the white
+   * it replaced because bone is dimmer at equal opacity.
+   * ---------------------------------------------------------- */
+  --k-glass: rgba(255, 255, 255, 0.045);
+  --k-glass-strong: rgba(255, 255, 255, 0.075);
+  --k-glass-line: rgba(255, 255, 255, 0.1);
+  --k-glass-highlight: rgba(250, 249, 245, 0.1);
+  --k-glass-blur: 20px;
+  --k-glass-sat: 140%;
+
+  /* The third glass step, and the only one that goes *down*. --k-glass and
+     --k-glass-strong are 0.045 and 0.075 white — three points of alpha apart,
+     which is a real difference on a paired surface and no difference at all on
+     a ground this dark. To sit a well visibly below its neighbour the wash has
+     to invert: black over the ground rather than less white over it. Paired
+     with --k-shadow-inset, which drops the lit top edge a raised surface
+     carries and replaces it with the groove a recessed one does.
+
+     Alpha went 0.16 -> 0.45 when the ground went #141413 -> #000, and it had
+     to. Every one of these wells sits inside a glass container, not on the raw
+     ground, so the backdrop is ~0.045 white over the ambient layer — which was
+     about 30/255 on warm ink and is about 11/255 on black. Subtracting 16% of
+     11 moves the surface two points; it moved five before. The well was still
+     a well, just no longer findable. 0.45 of 11 puts it back about five points
+     under its neighbour, which is the relationship the step was tuned to and
+     not a new, darker look. Eyeball this one on a real page: the arithmetic
+     assumes a region outside the ambient lenses, and inside them the glass
+     samples more, so the true depth varies across the viewport. */
+  --k-glass-deep: rgba(0, 0, 0, 0.45);
+  --k-shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.3);
 
   /* --- radii: Uniswap's generous scale --- */
   --k-r-sm: 12px; /* inputs, small controls */
@@ -75,8 +183,9 @@
   --k-r-xl: 24px; /* the swap/agent card, modals */
   --k-r-pill: 999px; /* nav pills, chips, primary buttons */
 
-  /* --- type scale: 6 sizes, nothing between. Weight 485 is the
-     Uniswap-like soft body weight; 535 is its "medium". --- */
+  /* --- type scale: 6 sizes, nothing between. 485 is the soft body
+     weight, 535 its "medium". Both are off-step on purpose and need a
+     variable font — see src/lib/font.ts. --- */
   --k-fs-xs: 13px;
   --k-fs-sm: 14px;
   --k-fs-base: 16px;
@@ -96,34 +205,91 @@
   --k-s6: 26px;
   --k-s7: 34px;
 
-  /* --- elevation. Cards sit on the ground by contrast, not shadow;
-     shadow is reserved for things that float (modals, toasts). --- */
-  --k-shadow-pop: 0 12px 30px rgba(0, 0, 0, 0.45);
-  --k-shadow-modal: 0 20px 50px rgba(0, 0, 0, 0.5);
+  /* --- elevation ---
+     --k-shadow-sm is for surfaces smaller than the blur radius of the steps
+     under it. A 34px tab pill given `0 8px 32px` casts a shadow wider than the
+     element itself, which reads as a halo rather than a lift.
 
-  --k-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+     The dark theme's ground is #000, and a black shadow over #000 composites to
+     black — so a drop shadow here is not "subtle", it is *nothing*. The first
+     pass at these was a black shadow in both themes and it was invisible on
+     dark, which is the same mistake --k-glass-deep made.
 
-  /* Neutralise the global html{zoom:0.85} hack for the v2 subtree
-     without touching the legacy app. 1 / 0.85 ≈ 1.176. Removed once
-     the global bug is deleted (when legacy pages are gone). */
-  --k-unzoom: 1.17647;
+     So the lifting layer on dark is a 1px light ring, not a shadow: on black,
+     depth has to be drawn with light. The black layer stays behind it because
+     the ground is not uniformly #000 — the ambient lenses in `.kaleido-v2::before`
+     sit a few points above it, and the shadow is visible there.
+
+     --k-shadow-pop deliberately has NO ring. It is worn by `.deep` in
+     trade.module.css, the *recessed* half of the two-tone swap wells, and a lit
+     outer ring around a recess says the opposite of what that rule means. On
+     dark, pop's wells are lifted by their fill and their inset top edge instead;
+     the shadow only does work over the lenses. --- */
+  --k-shadow-sm:
+    0 0 0 1px rgba(255, 255, 255, 0.05), 0 2px 6px rgba(0, 0, 0, 0.6);
+  --k-shadow-pop: 0 12px 30px rgba(0, 0, 0, 0.7);
+  --k-shadow-modal:
+    0 0 0 1px rgba(255, 255, 255, 0.07), 0 20px 48px rgba(0, 0, 0, 0.9);
+  --k-shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.28);
+
+  /* --- motion. One easing for almost everything: decelerating,
+     no overshoot. Springy easing on a financial app reads as toy-
+     like. --k-ease-out is for things entering. --- */
+  --k-dur-fast: 120ms; /* press, hover, colour */
+  --k-dur-med: 200ms; /* reveals, dropdowns */
+  --k-dur-slow: 320ms; /* modals, route-level */
+  --k-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --k-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --k-font:
+    var(--font-geist), "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+
+  /* --- display face: a serif for titles only, never for data.
+     Lora, because Claude's own faces (Copernicus, Tiempos Headline,
+     Styrene B) are commercially licensed and cannot be vendored —
+     Anthropic's public brand guidelines substitute Lora for exactly this
+     reason, so it is their own stand-in rather than our guess.
+
+     -0.02em is the load-bearing half of the effect. Claude's display
+     rule is negative tracking (-0.3 to -1.5px) at weight 400 and never
+     bold; a serif set at default tracking reads as a word processor,
+     not as a brand. em rather than px so it scales with the step. --- */
+  --k-font-display: var(--font-lora), Georgia, "Times New Roman", serif;
+  --k-ls-display: -0.02em;
 }
 
-/* Light theme. The mockups commit to dark, but a stablecoin app
-   ships light eventually; defining it now keeps the door open and
-   forces the brand green to a value with contrast on white. */
-.kaleido-v2[data-theme="light"] {
-  --k-bg: #ffffff;
+/* ------------------------------------------------------------------
+ * Light theme.
+ *
+ * Keyed off <html data-theme>, which the inline script in
+ * src/app/layout.tsx sets before first paint. Doing it on the element
+ * rather than in an effect is what avoids a dark flash on load.
+ *
+ * Glass inverts here: a white translucent fill over a light ground is
+ * invisible, so light mode uses a near-opaque white fill and leans on
+ * the hairline and shadow to separate the surface instead.
+ * ------------------------------------------------------------------ */
+:root[data-theme="light"] .kaleido-v2 {
+  /* Claude's bone paper. Same warmth discipline as the dark ramp: R > G > B
+     with a small delta, so the page reads as paper rather than as cream. */
+  --k-bg: #faf9f5;
   --k-card: #ffffff;
-  --k-well: #f9f9f9;
-  --k-well2: #f0f0f0;
-  --k-hover: #ebebeb;
-  --k-line: rgba(19, 19, 19, 0.08);
-  --k-line2: rgba(19, 19, 19, 0.14);
+  --k-well: #f4f3ee;
+  --k-well2: #ebe9e2;
+  --k-hover: #e3e0d8;
+  --k-line: rgba(20, 20, 19, 0.08);
+  --k-line2: rgba(20, 20, 19, 0.14);
+  --k-row-hover: rgba(20, 20, 19, 0.045);
 
-  --k-t1: #131313;
-  --k-t2: #6d7873;
-  --k-t3: #9aa39e;
+  /* --k-t2 and --k-t3 were green-tinted (#6d7873, #9aa39e — G above both
+     neighbours). Against a bone ground that tint is visible as a cast on
+     every label in the app, and it competed with the brand green for the
+     same signal. They are warm greys now, which is the single most
+     noticeable change in light mode. */
+  --k-t1: #141413;
+  --k-t2: #6d6b63;
+  --k-t3: #9c988e;
 
   --k-brand: #12a866; /* #00b383 has no contrast on white */
   --k-brand-hover: #0e8f57;
@@ -137,15 +303,59 @@
   --k-danger: #e01a2b;
   --k-danger-dim: rgba(224, 26, 43, 0.08);
 
-  --k-shadow-pop: 0 12px 30px rgba(19, 19, 19, 0.1);
-  --k-shadow-modal: 0 20px 50px rgba(19, 19, 19, 0.12);
+  /* Inverted: a white CTA on a light ground would vanish. */
+  --k-btn-solid: #141413;
+  --k-btn-solid-hover: #302e29;
+  --k-btn-solid-fg: #ffffff;
+  --k-btn-solid-fg-dim: rgba(255, 255, 255, 0.7);
+
+  --k-scrim: rgba(20, 20, 19, 0.32);
+
+  --k-glass: rgba(255, 255, 255, 0.72);
+  --k-glass-strong: rgba(255, 255, 255, 0.85);
+  --k-glass-line: rgba(20, 20, 19, 0.08);
+  --k-glass-highlight: rgba(250, 249, 245, 0.92);
+
+  /* Ink, not black, and an eighth of the dark side's alpha. The dark ramp can
+     take a heavy wash because it is washing near-black over near-black; the
+     same number on bone paper reads as a dirty smudge rather than a recess. */
+  --k-glass-deep: rgba(20, 20, 19, 0.055);
+  --k-shadow-inset: inset 0 1px 2px rgba(20, 20, 19, 0.06);
+
+  /* Layered, and the tight layer is the one that does the work. A single
+     `0 20px 50px` at 12% — which is what these were — spreads all of its ink
+     over 50px, so nothing is dark anywhere and the surface reads as sitting in
+     fog rather than above the page. What the eye actually reads as contact is a
+     1-4px layer right at the boundary; the wide layer only supplies the ambient
+     falloff behind it.
+
+     The negative spreads pull each wide layer back in by a third of its blur.
+     That is what allows a higher alpha without the shadow bleeding out sideways
+     into a grey cloud around the card — it concentrates the same ink under and
+     just below the element, where a shadow belongs.
+
+     No light ring on this side, unlike the dark block: a white ring on bone
+     paper is invisible, and a dark one would be a border rather than a shadow.
+     Light mode has a real ground to cast onto, so it uses shadows for all of
+     it. --- */
+  --k-shadow-sm:
+    0 1px 2px rgba(20, 20, 19, 0.07), 0 2px 6px -1px rgba(20, 20, 19, 0.07);
+  --k-shadow-pop:
+    0 2px 4px -1px rgba(20, 20, 19, 0.07),
+    0 10px 20px -4px rgba(20, 20, 19, 0.13);
+  --k-shadow-modal:
+    0 2px 4px -1px rgba(20, 20, 19, 0.08),
+    0 12px 24px -6px rgba(20, 20, 19, 0.13),
+    0 24px 48px -14px rgba(20, 20, 19, 0.16);
+  --k-shadow-glass: 0 8px 32px rgba(20, 20, 19, 0.08);
 }
 
 /* ------------------------------------------------------------------
- * Base element styling for the v2 subtree. Scoped to .kaleido-v2 so
- * none of it leaks into the legacy app.
+ * Base element styling for the v2 subtree.
  * ------------------------------------------------------------------ */
 .kaleido-v2 {
+  position: relative;
+  z-index: 0; /* stacking context for the ambient layer below */
   background: var(--k-bg);
   color: var(--k-t1);
   font-family: var(--k-font);
@@ -153,15 +363,343 @@
   font-weight: var(--k-fw-body);
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  /* dvh with a vh fallback: on mobile Safari `vh` is the *largest* viewport
+     height, so `min-height: 100vh` leaves the document taller than what is
+     actually visible — enough to reintroduce a scrollbar on Trade, which is
+     height-locked to 100dvh. */
   min-height: 100vh;
+  min-height: 100dvh;
+  transition:
+    background-color var(--k-dur-med) var(--k-ease),
+    color var(--k-dur-med) var(--k-ease);
 }
 
-@media screen and (min-width: 1024px) {
-  .kaleido-v2 {
-    zoom: var(--k-unzoom);
+/* ------------------------------------------------------------------
+ * Ambient layer — soft overlapping lenses.
+ *
+ * This exists so the glass has something to blur. backdrop-filter over
+ * a flat ground produces no visible effect at all — there is nothing
+ * behind the surface to sample.
+ *
+ * Five large circles, deliberately overlapping. The overlaps are the
+ * whole point: where two soft-edged circles cross, their alphas add and
+ * a faint lens-shaped seam appears. That seam is a curve the eye can
+ * follow, so the blur has structure to smear rather than a flat wash,
+ * and a glass panel moving over it reads as glass. Three isolated pools
+ * (what this replaced) gave the blur nothing to catch between them.
+ *
+ * `circle at` rather than an ellipse pair, so they stay circular at any
+ * aspect ratio — an ellipse sized in vw turns into a stripe on a phone.
+ * Radii are in rem so they scale with type, not with the viewport.
+ *
+ * The palette is near-monochrome: a deep green-black (#04211a, not the
+ * #00b383 brand green) and one much fainter lens standing in for a well.
+ * Saturated ambient colour is what makes a dark UI read as a gamer skin
+ * instead of a finance app — the lenses should be felt as depth, not seen
+ * as colour. The green is pushed almost all the way to black, and that
+ * residual hue is all the blur needs to sample.
+ *
+ * That third lens WAS rgba(0, 0, 0, 0.78) — an actual black well, which
+ * worked while the ground was #141413 because black is darker than warm
+ * ink. The ground is #000 now, so black over black composites to black and
+ * the lens vanished outright: five lenses became four, and the one that
+ * vanished sits at 82% 14% — top right, under the nav's wallet chrome,
+ * which is glass. It is now rgba(2, 14, 11, 0.6), which lands at about
+ * (1, 8, 7) against the ground. On a black ground nothing can recede, so
+ * the well is expressed as the *least* lifted of the five rather than the
+ * most sunken: the other four land between (2, 17, 13) and (3, 28, 22), so
+ * the composition keeps its dark corner and the blur keeps its structure.
+ *
+ * Fixed, so it does not scroll and costs nothing to repaint. Held at
+ * z-index -1 inside the stacking context .kaleido-v2 opens above.
+ * pointer-events: none so it can never eat a click.
+ *
+ * This is also why the old html{zoom:0.85; -moz-transform:scale(.85)}
+ * had to go: a transform on an ancestor makes `fixed` resolve against
+ * that element instead of the viewport, and it breaks backdrop-filter
+ * sampling outright.
+ * ------------------------------------------------------------------ */
+.kaleido-v2::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle 34rem at 18% 6%,
+      rgba(4, 33, 26, 0.85),
+      transparent 64%
+    ),
+    radial-gradient(
+      circle 30rem at 46% -6%,
+      rgba(3, 26, 20, 0.7),
+      transparent 64%
+    ),
+    radial-gradient(
+      circle 32rem at 82% 14%,
+      rgba(2, 14, 11, 0.6),
+      transparent 64%
+    ),
+    radial-gradient(
+      circle 38rem at 68% 88%,
+      rgba(4, 33, 26, 0.6),
+      transparent 62%
+    ),
+    radial-gradient(
+      circle 34rem at 24% 96%,
+      rgba(3, 26, 20, 0.66),
+      transparent 62%
+    );
+}
+
+/* Light theme keeps the same hues and the same five positions, but a dark
+   lens on a light ground has to be a wash rather than a well — at dark-theme
+   alpha it would read as dirt on the page. */
+:root[data-theme="light"] .kaleido-v2::before {
+  background:
+    radial-gradient(
+      circle 34rem at 18% 6%,
+      rgba(4, 33, 26, 0.07),
+      transparent 64%
+    ),
+    radial-gradient(
+      circle 30rem at 46% -6%,
+      rgba(3, 26, 20, 0.05),
+      transparent 64%
+    ),
+    radial-gradient(
+      circle 32rem at 82% 14%,
+      rgba(0, 0, 0, 0.05),
+      transparent 64%
+    ),
+    radial-gradient(
+      circle 38rem at 68% 88%,
+      rgba(4, 33, 26, 0.05),
+      transparent 62%
+    ),
+    radial-gradient(
+      circle 34rem at 24% 96%,
+      rgba(3, 26, 20, 0.045),
+      transparent 62%
+    );
+}
+
+/* Texture: a faint line grid.
+ *
+ * This replaced a dual dot matrix (23px against 88px), and the reason is
+ * blur. Nav.module.css documents the failure: frosting a strip over a
+ * 23px dot field smears the dots into a soft rectangle exactly the size
+ * of the nav, so the blur that was supposed to make glass read as glass
+ * instead produced the seam we had removed. A 64px grid survives a 20px
+ * blur — the lines are far enough apart that they stay lines.
+ *
+ * One grid, not two. The dot version needed a second offset pitch to
+ * stop the eye locking onto a regular pattern, but a line grid at this
+ * alpha (0.03) is already below the threshold where it reads as
+ * wallpaper, and a second grid would only add moiré risk.
+ *
+ * 64px and 1px hairlines, both in px rather than scaled: a grid whose
+ * pitch lands on a fractional device pixel is what aliases into visible
+ * moiré, and a coarse pitch keeps the beat frequency far from anything
+ * the display can resolve.
+ *
+ * Masked out toward the bottom, as the dots were, because a grid running
+ * edge to edge reads as a backdrop the content sits on top of, rather
+ * than as depth the content emerges from.
+ *
+ * The old dot layer was also doing de-banding work on the wide radial
+ * lenses above, which lines cannot do — the alphas are low enough that
+ * banding should stay below the threshold, but this is the first thing to
+ * look at if wide flat areas start to show steps.
+ */
+.kaleido-v2::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      rgba(250, 249, 245, 0.03) 0 1px,
+      transparent 1px 64px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(250, 249, 245, 0.03) 0 1px,
+      transparent 1px 64px
+    );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 45%,
+    transparent 92%
+  );
+  mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 92%);
+}
+
+/* On a light ground a bone grid is invisible, so it inverts to the warm
+   ink. Same alpha here — at 64px pitch the hairline is thin enough that
+   dark-on-light does not overpower the way a dot field did. */
+:root[data-theme="light"] .kaleido-v2::after {
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      rgba(20, 20, 19, 0.03) 0 1px,
+      transparent 1px 64px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(20, 20, 19, 0.03) 0 1px,
+      transparent 1px 64px
+    );
+}
+
+.kaleido-v2 .tabular,
+.kaleido-v2 input[type="number"],
+.kaleido-v2 input[inputmode="decimal"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------
+ * Display type.
+ *
+ * The serif goes on titles and empty-state headlines. That is the whole
+ * list, and the exclusions matter more than the inclusions: never on a
+ * label, a button, a chip, a table cell, an input, or a number.
+ *
+ * Numbers are the hard rule. Every figure in this app runs through
+ * .tabular above, and tabular-nums in a serif fights itself — the
+ * monospaced advance forces gaps a proportional serif was drawn to
+ * close. /leaderboard is a table; it stays sans, entirely.
+ *
+ * Weight 400, always. Claude's display type is never bold, and this is
+ * the detail people get wrong when they copy the look: a serif headline
+ * at 600 reads as a newspaper, at 400 as a book. Set explicitly rather
+ * than inherited, because .kaleido-v2 sets --k-fw-body: 485 on the
+ * subtree and 485 in Lora rounds to something between the two masters.
+ * ------------------------------------------------------------------ */
+.kaleido-v2 .k-display {
+  font-family: var(--k-font-display);
+  font-weight: 400;
+  letter-spacing: var(--k-ls-display);
+}
+
+/* ------------------------------------------------------------------
+ * Glass surfaces.
+ *
+ * Exposed as utility classes rather than baked into each module so
+ * there is one place to tune blur cost. Use .k-glass for framing
+ * surfaces (nav, cards) and .k-glass-raised for things that float
+ * above them (modals, dropdowns).
+ *
+ * Adopted from a module with `composes: k-glass from global`, which
+ * appends the class rather than copying the rules — so there is still
+ * exactly one blur declaration in the stylesheet.
+ *
+ * Deliberately sets no border-radius. These selectors carry two
+ * classes and so outrank any single-class module rule; a radius here
+ * would silently flatten every pill and every --k-r-xl card that
+ * adopts glass. Radius stays the module's business.
+ *
+ * @supports guards the whole thing: without backdrop-filter the fill
+ * alone is a barely-tinted transparent box with unreadable text over
+ * whatever is behind it, so unsupported browsers get an opaque card.
+ * ------------------------------------------------------------------ */
+.kaleido-v2 .k-glass,
+.kaleido-v2 .k-glass-raised {
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+}
+
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .kaleido-v2 .k-glass,
+  .kaleido-v2 .k-glass-raised {
+    background: var(--k-glass);
+    border-color: var(--k-glass-line);
+    -webkit-backdrop-filter: blur(var(--k-glass-blur))
+      saturate(var(--k-glass-sat));
+    backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));
+    /* The inset top hairline is the detail that sells it: a light
+       catching the top edge of a pane of glass. Without it the surface
+       reads as flat tinted plastic. */
+    box-shadow:
+      inset 0 1px 0 var(--k-glass-highlight),
+      var(--k-shadow-glass);
+  }
+
+  .kaleido-v2 .k-glass-raised {
+    background: var(--k-glass-strong);
+    box-shadow:
+      inset 0 1px 0 var(--k-glass-highlight),
+      var(--k-shadow-modal);
   }
 }
 
-.kaleido-v2 .tabular {
-  font-variant-numeric: tabular-nums;
+/* ------------------------------------------------------------------
+ * Interaction.
+ *
+ * There were zero :focus-visible and zero :active rules in ~3,900
+ * lines of CSS before this. Keyboard users got no focus indication at
+ * all, and nothing on the page acknowledged a press.
+ * ------------------------------------------------------------------ */
+.kaleido-v2 :focus-visible {
+  outline: 2px solid var(--k-brand);
+  outline-offset: 2px;
+  border-radius: var(--k-r-sm);
+}
+
+/* :focus-visible only — never a ring for mouse users. */
+.kaleido-v2 :focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* One caveat on the rule above, worth knowing before you fight it.
+ *
+ * `:focus:not(:focus-visible)` keeps the ring off buttons and links that were
+ * clicked rather than tabbed to, but it does nothing for text fields: a UA
+ * always matches :focus-visible on an input regardless of how focus arrived,
+ * because typing is keyboard interaction by definition. So a button flashes a
+ * ring and an input *holds* one for as long as you are in it — which on the
+ * swap card is a 2px green rectangle around the amount for the whole session.
+ *
+ * A surface may take that over by ringing itself when the field inside it is
+ * focus-visible and turning the inner outline off, which is what the trade
+ * wells do — see `.box:has(.inp:focus-visible)` in trade.module.css. Do it as a
+ * pair or not at all: dropping the outline without putting the indication
+ * somewhere else leaves keyboard users with a caret and nothing more, which is
+ * the state this whole block was added to fix.
+ */
+
+@media (prefers-reduced-motion: no-preference) {
+  .kaleido-v2 button,
+  .kaleido-v2 a,
+  .kaleido-v2 [role="button"],
+  .kaleido-v2 input,
+  .kaleido-v2 select {
+    transition:
+      background-color var(--k-dur-fast) var(--k-ease),
+      border-color var(--k-dur-fast) var(--k-ease),
+      color var(--k-dur-fast) var(--k-ease),
+      opacity var(--k-dur-fast) var(--k-ease),
+      transform var(--k-dur-fast) var(--k-ease);
+  }
+
+  /* Scale, not translate: a pressed control should compress in place.
+     0.97 is small enough to feel like haptic feedback rather than
+     animation. Anchors are excluded — nav links scaling on click
+     looks broken. */
+  .kaleido-v2 button:active:not(:disabled),
+  .kaleido-v2 [role="button"]:active {
+    transform: scale(0.97);
+  }
+}
+
+.kaleido-v2 button:disabled {
+  cursor: not-allowed;
 }

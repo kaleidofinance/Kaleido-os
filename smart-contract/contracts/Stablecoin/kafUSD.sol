@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -19,6 +20,15 @@ contract kafUSD is
     AccessControl,
     ReentrancyGuard
 {
+    /* See the note in kfUSD.sol. The same two failure modes applied here, and
+     * `lockAssets` makes one of them reachable without any role: it is external
+     * and open to anyone, so against a supported asset whose `transferFrom`
+     * returns false rather than reverting, the caller received kafUSD 1:1 for
+     * assets that never left their wallet. `completeWithdrawal` failed the other
+     * way, burning the caller's kafUSD and clearing their lock balance before a
+     * transfer that could quietly not happen. Both are the same one-word fix. */
+    using SafeERC20 for IERC20;
+
     bytes32 public constant VAULT_ROLE = keccak256("VAULT_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
@@ -95,7 +105,7 @@ contract kafUSD is
         require(_asset != address(this), "kafUSD: Cannot lock kafUSD");
 
         // Transfer asset from user
-        IERC20(_asset).transferFrom(msg.sender, address(this), _amount);
+        IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
 
         // Calculate kafUSD to mint (1:1 for kfUSD, adjusted for other assets)
         uint256 kafusdToMint = _amount;
@@ -195,7 +205,7 @@ contract kafUSD is
         // Transfer assets to user
         // Note: Yield is now handled by YieldTreasury contract
         // Users should claim yield separately from YieldTreasury
-        IERC20(_asset).transfer(msg.sender, assetsToUnlock);
+        IERC20(_asset).safeTransfer(msg.sender, assetsToUnlock);
 
         emit AssetsUnlocked(msg.sender, _asset, assetsToUnlock);
         emit WithdrawalCompleted(msg.sender, amountToUnlock);

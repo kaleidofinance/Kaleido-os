@@ -1,0 +1,78 @@
+{
+  "network": "baseTestnet",
+  "chainId": 84532,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-24T16:46:32.524Z",
+  "contracts": {
+    "faucet": "0x038fcCCfd000b301523EE6dfc3AAC1883f8A95C6"
+  },
+  "config": {
+    "cooldownSeconds": 3600,
+    "assets": [
+      {
+        "key": "USDC",
+        "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "symbol": "USDC",
+        "decimals": 6,
+        "dripHuman": "10000.0",
+        "drip": "10000000000",
+        "source": "stablecoin",
+        "funding": {
+          "method": "unfunded",
+          "amount": "0.0",
+          "target": "1000000.0",
+          "short": "1000000.0"
+        }
+      },
+      {
+        "key": "USDT",
+        "address": "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
+        "symbol": "USDT",
+        "decimals": 6,
+        "dripHuman": "10000.0",
+        "drip": "10000000000",
+        "source": "stablecoin",
+        "funding": {
+          "method": "mint",
+          "amount": "1000000.0",
+          "target": "1000000.0",
+          "short": null
+        }
+      },
+      {
+        "key": "USDe",
+        "address": "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9",
+        "symbol": "USDe",
+        "decimals": 18,
+        "dripHuman": "10000.0",
+        "drip": "10000000000000000000000",
+        "source": "stablecoin",
+        "funding": {
+          "method": "mint",
+          "amount": "1000000.0",
+          "target": "1000000.0",
+          "short": null
+        }
+      },
+      {
+        "key": "WETH",
+        "address": "0x4200000000000000000000000000000000000006",
+        "symbol": "WETH",
+        "decimals": 18,
+        "dripHuman": "1.0",
+        "drip": "1000000000000000000",
+        "source": "dex",
+        "funding": {
+          "method": "wrap",
+          "amount": "0.006982867511464347",
+          "target": "10.0",
+          "short": "9.993017132488535653"
+        }
+      }
+    ]
+  },
+  "sources": {
+    "stablecoin": "deployment-stablecoin-baseTestnet.json",
+    "dex": "deployment-dex-baseTestnet.json"
+  }
+}

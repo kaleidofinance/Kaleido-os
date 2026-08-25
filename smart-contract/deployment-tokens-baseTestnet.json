@@ -1,0 +1,86 @@
+{
+  "network": "baseTestnet",
+  "chainId": 84532,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-24T10:17:08.557Z",
+  "diamond": "0x1e2BeA8a1958088b50eC9410F7870a2C254e43E4",
+  "oracle": "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A",
+  "oracleKind": "aggregator-v3",
+  "pyth": null,
+  "nativeFeedSymbol": "ETH",
+  "hermesVerified": true,
+  "registered": [
+    {
+      "kind": "loanable",
+      "symbol": "WETH",
+      "address": "0x4200000000000000000000000000000000000006",
+      "onChainSymbol": "WETH",
+      "decimals": 18,
+      "feedSymbol": "Crypto.ETH/USD",
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "feedSource": "repo",
+      "priceAgeSeconds": 32,
+      "feedMaxAge": 1800,
+      "maxAgeBasis": "Same contract as ETH — WETH is redeemable 1:1 by contract, not by market.",
+      "effectiveMaxAge": 1800,
+      "txHash": "0xd0be15f783d42f369039310b53865df79afc149fd80fdbe3c7a6c1eccb9d0ce2",
+      "skipped": false
+    }
+  ],
+  "feedBounds": [
+    {
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "maxAge": 1800,
+      "basis": "Same contract as ETH — WETH is redeemable 1:1 by contract, not by market.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "maxAge": 90000,
+      "basis": "Documented heartbeat is exactly 86400s. 90000 rather than 86400 because a bound equal to the heartbeat has zero tolerance for a late publish, and these feeds demonstrably do run to the full heartbeat: the sibling USDT/USD on this chain measured 70,702s (19h39m) in the same block. A bound of 86400 would price USDC correctly almost always and revert every deposit and health-factor read for the minutes around a late round, which is the intermittent failure that is hardest to diagnose. 90000 equals Constants.MAX_FEED_PRICE_AGE — this is the ceiling, there is no more slack available, and it is only defensible because USDC is pegged.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "symbols": [
+        "USDT"
+      ],
+      "maxAge": 90000,
+      "basis": "Same 86400s heartbeat and same reasoning as USDC on this chain. This is the feed that measured 70,702s old and so supplied the evidence for both bounds. Registering the USDT that deploy-stablecoin.js mints needs this entry; Sepolia has no USDT/USD feed, so USDT is registerable here and not there.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "symbols": [
+        "BTC"
+      ],
+      "maxAge": 1800,
+      "basis": "1200s heartbeat and 0.1% deviation trigger, measured 98s old. Same derivation as ETH on this chain. No token is registered against it yet; it is installed so a WBTC market does not need an oracle change.",
+      "txHash": null,
+      "skipped": true
+    }
+  ],
+  "onChain": {
+    "collateral": [
+      "0x0000000000000000000000000000000000000001",
+      "0x4200000000000000000000000000000000000006",
+      "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B"
+    ],
+    "loanable": [
+      "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
+      "0x4200000000000000000000000000000000000006"
+    ]
+  }
+}

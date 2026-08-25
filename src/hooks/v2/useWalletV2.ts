@@ -14,7 +14,17 @@ export interface WalletV2 {
   address?: string;
   shortAddress?: string;
   chainId?: number;
-  chainName: string;
+  /**
+   * Undefined when no wallet is connected, because there is no chain to name.
+   *
+   * This used to fall back to "Abstract", from when Abstract was the home
+   * chain. It read as a claim: the nav rendered "Abstract" beside a Connect
+   * button, so a disconnected user was told they were on the one chain we had
+   * just deprioritised to balance-reading only. Each call site now says what it
+   * wants to show instead, because a nav button that opens a picker and a
+   * portfolio subtitle want different words.
+   */
+  chainName?: string;
   isConnected: boolean;
 }
 
@@ -30,7 +40,11 @@ export const useWalletV2 = (): WalletV2 => {
     address,
     shortAddress: short(address),
     chainId: chain?.id,
-    chainName: chain?.id ? (CHAINS_BY_ID[chain.id]?.shortName ?? "Unknown") : "Abstract",
+    /* "Unknown" only when a wallet really is on a chain we do not carry — that
+       is a fact worth showing, and distinct from having no chain at all. */
+    chainName: chain?.id
+      ? (CHAINS_BY_ID[chain.id]?.shortName ?? "Unknown")
+      : undefined,
     isConnected: Boolean(address),
   };
 };

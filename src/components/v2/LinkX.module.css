@@ -1,0 +1,53 @@
+/* Transparent with a hairline, matching `.net` in Nav.module.css rather than
+   `.connect`. Connecting a wallet is the one thing the header asks for, so it is
+   the only brand-filled control up there; a second filled pill beside it would
+   read as two equally weighted calls to action. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-s2);
+  background: transparent;
+  border: 1px solid var(--k-line);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  text-decoration: none;
+  padding: 7px 13px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover {
+  background: var(--k-row-hover);
+  border-color: var(--k-line2);
+}
+
+/* Linked reads quieter than unlinked. Unlinked is an invitation and wants the
+   full text colour; once it is done the pill is a status, and a handle in
+   secondary type stops it competing with the wallet pill next to it. */
+.linked {
+  color: var(--k-t2);
+}
+.linked:hover {
+  color: var(--k-t1);
+}
+
+.mark {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  /* Mark only. The header already drops the wordmark and the search button at
+     this width; a handle of unknown length beside the network and wallet pills
+     is what pushes the row into wrapping. The mark still says what it is, and
+     the title attribute still carries the handle. */
+  .label {
+    display: none;
+  }
+  .btn {
+    padding: 8px 10px;
+  }
+}

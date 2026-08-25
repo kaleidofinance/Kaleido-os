@@ -52,29 +52,38 @@ export async function runAgent(
   let seededPortfolio = false;
 
   for (let round = 0; round < MAX_READ_ROUNDS; round++) {
-    // A plan means it had what it needed — stop.
-    if (result.plan.length > 0) break;
+    // Execute verbs mean it had what it needed — stop.
+    if (result.executes.length > 0) break;
 
     let contextBlock: string | null = null;
 
     if (result.reads.length > 0) {
-      // Run exactly what the model asked for, whatever mix of tools that is.
+      // Run exactly what the model asked for, whatever mix of tools that is,
+      // all against the chain the user is actually connected to.
       const resolved = await Promise.all(
         result.reads.map(async (r) => ({
           tool: r.name,
           args: r.args,
-          result: await runReadTool(r.name, r.args),
+          result: await runReadTool(r.name, r.args, input.chainId),
         })),
       );
       contextBlock = JSON.stringify(resolved, null, 2);
     } else if (!seededPortfolio && input.address) {
       // Default seed: only once, only when the model asked for nothing.
       seededPortfolio = true;
-      const portfolio = await runReadTool("getPortfolio", {
-        address: input.address,
-      });
+      const portfolio = await runReadTool(
+        "getPortfolio",
+        { address: input.address },
+        input.chainId,
+      );
       contextBlock = JSON.stringify(
-        [{ tool: "getPortfolio", args: { address: input.address }, result: portfolio }],
+        [
+          {
+            tool: "getPortfolio",
+            args: { address: input.address },
+            result: portfolio,
+          },
+        ],
         null,
         2,
       );
@@ -83,7 +92,10 @@ export async function runAgent(
       break;
     }
 
-    messages.push({ role: "assistant", content: result.text || "(tool calls only)" });
+    messages.push({
+      role: "assistant",
+      content: result.text || "(tool calls only)",
+    });
     messages.push({
       role: "user",
       content:

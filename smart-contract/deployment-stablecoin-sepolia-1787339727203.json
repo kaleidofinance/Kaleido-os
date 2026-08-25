@@ -1,0 +1,16 @@
+{
+  "network": "sepolia",
+  "chainId": "11155111",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "USDT": "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55",
+    "USDe": "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b",
+    "kfUSD": "0x6A6D4dA719b5275C1a927DBc2177614f61a49289",
+    "kafUSD": "0xb56439976066BBb2a2084916c5fd53403D87F289",
+    "YieldTreasury": "0x2488216dF30680f96078E3B303D6Aa0391f3f79F",
+    "USDC": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+  },
+  "timestamps": {
+    "deployed": "2026-08-21T19:15:27.203Z"
+  }
+}

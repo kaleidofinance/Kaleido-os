@@ -1,0 +1,91 @@
+/*
+ * ChainGate — the panel a protocol surface shows when there is nothing to read.
+ *
+ * Deliberately NOT styled as an error. Nothing has gone wrong when a chain has
+ * no deployment, and red would say otherwise: it would push users to retry, or
+ * to report a bug that isn't one. So this is the same glass card the rest of the
+ * app uses for real content, just quieter — --k-glass over --k-glass-strong,
+ * secondary text for the body, --k-danger nowhere.
+ *
+ * It replaces page content rather than sitting above it, so it carries the
+ * vertical presence a section would: --k-s7 padding and a min-height, which stops
+ * a one-line message from reading as a collapsed layout.
+ *
+ * The body is width-capped at 46ch. Full-bleed prose across a desktop card runs
+ * past the ~75-character line the type ramp is set for, and this text exists to
+ * be read — it is the only thing on the screen.
+ */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-s3);
+  min-height: 260px;
+  padding: var(--k-s7) var(--k-s5);
+  text-align: center;
+
+  background: var(--k-glass);
+  border: 1px solid var(--k-glass-line);
+  border-radius: var(--k-r-lg);
+  backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));
+  -webkit-backdrop-filter: blur(var(--k-glass-blur))
+    saturate(var(--k-glass-sat));
+}
+
+.title {
+  font-family: var(--k-font-display);
+  font-weight: 400;
+  font-size: var(--k-fs-xl);
+  line-height: 1.25;
+  color: var(--k-t1);
+}
+
+.body {
+  max-width: 46ch;
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  line-height: 1.55;
+  color: var(--k-t2);
+}
+
+.cta {
+  margin-top: var(--k-s2);
+  padding: var(--k-s3) var(--k-s6);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: 560;
+  color: var(--k-brand-fg);
+  background: var(--k-brand);
+  border: none;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.cta:hover {
+  background: var(--k-brand-hover);
+}
+
+.cta:active {
+  transform: translateY(1px);
+}
+
+.cta:focus-visible {
+  outline: 2px solid var(--k-brand);
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .wrap {
+    min-height: 200px;
+    padding: var(--k-s6) var(--k-s4);
+  }
+
+  .title {
+    font-size: var(--k-fs-lg);
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-21T19:04:49.352Z",
+  "contracts": {
+    "diamond": "0x32a9971381C969d15205AC9e509C204D31341080",
+    "priceOracle": "0x126C64a2d48F40EeAEcD534387902f5da74c9dbb"
+  },
+  "facets": {
+    "DiamondCutFacet": "0x0B7D46C80f2FB087AfB952D17bfC13892b2c04b9",
+    "DiamondLoupeFacet": "0xf341BFb02404485FD360Ca864f49e2F7F1172951",
+    "OwnershipFacet": "0xA44b63033BD3bc7F240ccD88EC3E9BB669E99c82",
+    "ProtocolFacet": "0x7A59C0a3B25c06A31D897242055A8c1D7da3f32d",
+    "AgentPermissionFacet": "0x56b722645e4d42493A0ec1Dd0ca479aA92d909aE"
+  },
+  "config": {
+    "feeVault": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+    "swapRouter": null,
+    "protocolFeeBps": 1000,
+    "liquidationPenaltyBps": 640,
+    "priceMaxAgeSeconds": 300,
+    "priceMaxConfBps": 100
+  },
+  "stillRequired": [
+    "register-tokens.js — addCollateralToken / addLoanableToken, or no asset is usable",
+    "transfer ownership to a multisig"
+  ],
+  "resumedFrom": "RESUME_DIAMOND",
+  "facetsProvenance": "read back from DiamondLoupeFacet.facets() and matched to artifacts by selector set — this run did not deploy them",
+  "upgrades": [
+    {
+      "facet": "ProtocolFacet",
+      "from": "0x6CcbE07d03AEa8d6483A6c021De3AaaA7C323850",
+      "to": "0x7A59C0a3B25c06A31D897242055A8c1D7da3f32d",
+      "txHash": "0x2f08c84fb1c86d257aef5129ba8a4712616e8bfefccfadf7bf1a52fe1f402412",
+      "block": 11557894,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    }
+  ]
+}

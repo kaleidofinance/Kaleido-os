@@ -5,8 +5,11 @@
   flex-direction: column;
   gap: 4px;
 }
+/* The Sell/Buy-style wells. Glass for the same reason the swap card's are:
+   each holds one big figure and a token pill, not dense copy, so blur behind
+   them costs nothing in legibility. */
 .box {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-xl);
   padding: 17px 18px;
 }
@@ -40,11 +43,14 @@
   color: var(--k-t1);
 }
 
+/* Recessed into the well, matching `.pill` in trade.module.css — the two are the
+   same control and should not be made of different material. */
 .pill {
   display: flex;
   align-items: center;
   gap: var(--k-s2);
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
   font-size: var(--k-fs-base);
@@ -55,8 +61,11 @@
   cursor: pointer;
   flex: none;
 }
+/* A brand wash, not `filter: brightness()` — see `.pill:hover` in
+   trade.module.css. */
 .pill:hover {
-  filter: brightness(1.18);
+  background: var(--k-brand-dim);
+  box-shadow: none;
 }
 .tki {
   width: 28px;
@@ -67,8 +76,22 @@
   place-items: center;
   font-size: 9px;
   font-weight: 600;
-  background: #333;
+  /* Scaffolding for three letters inside a translucent pill — darkens, not fills. */
+  background: var(--k-glass-deep);
   color: var(--k-t2);
+}
+/* Carrying a real logo instead of three letters — see `.tkiArt` in
+   TokenSelector.module.css. kfUSD and kafUSD are ours, so their marks come from
+   files we ship rather than from @web3icons; see RASTER in TokenIcon.tsx. */
+.tkiArt {
+  background: none;
+}
+/* Both shapes, because both appear in these pills: the three collateral stables
+   are @web3icons vectors, kfUSD and kafUSD are files we ship. */
+.tkiArt > svg,
+.tkiArt > img {
+  display: block;
+  border-radius: 50%;
 }
 .cv {
   font-size: 12px;
@@ -141,7 +164,11 @@
   background: var(--k-brand-hover);
 }
 .cta:disabled {
-  background: var(--k-well2);
+  /* Recessed rather than an opaque grey slab — see `.cta:disabled` in
+     trade.module.css. These forms open enabled, so this is only the moment
+     after a submit, but the two should still agree. */
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t3);
   cursor: not-allowed;
 }
@@ -152,30 +179,53 @@
   gap: 7px;
   margin-bottom: 10px;
 }
+/* Recessed chips inside the glass box, and the selected one is a raised thumb in
+   that recess — the same pair as `.tg` / `.tg.on` on /borrow. No backdrop-filter
+   on either: the box behind them is already blurred, and blurs do not compose. */
 .assetChip {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
-  padding: 7px 14px;
+  /* Tighter on the left, where the mark sits, so the chip stays optically
+     centred — the same trick `.pill` plays above. A collateral with no mark
+     renders text only: TokenIcon's empty fallback emits no node at all, so the
+     gap collapses and only that 5px of asymmetry is left behind. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px 7px 9px;
   border-radius: var(--k-r-pill);
   cursor: pointer;
 }
+/* No plate under these: at 16px a disc behind a disc is just a ring in the wrong
+   colour, and unlike `.tki` there is no monogram here needing something to sit
+   on — the symbol beside it does that job. */
+.assetChip > svg {
+  display: block;
+  border-radius: 50%;
+}
 .assetChip:hover {
+  background: var(--k-brand-dim);
   color: var(--k-t1);
+  box-shadow: none;
 }
 .assetChipOn {
-  background: var(--k-hover);
+  background: var(--k-glass-strong);
   color: var(--k-t1);
   font-weight: var(--k-fw-med);
+  box-shadow: inset 0 1px 0 var(--k-glass-highlight);
 }
 
 /* deposit / withdraw switch */
+/* Sits on the page ground rather than inside a box, so it is the /borrow
+   `.toggle` verbatim: glass track, translucent thumb, one blur between them. */
 .seg {
   display: flex;
   gap: 4px;
-  background: var(--k-well);
+  composes: k-glass from global;
   border-radius: var(--k-r-pill);
   padding: 3px;
   margin-bottom: 4px;
@@ -195,9 +245,10 @@
   color: var(--k-t1);
 }
 .segOn {
-  background: var(--k-well2);
+  background: var(--k-glass-strong);
   color: var(--k-t1);
   font-weight: var(--k-fw-med);
+  box-shadow: inset 0 1px 0 var(--k-glass-highlight);
 }
 
 /* secondary lifecycle actions under the main CTA */
@@ -224,29 +275,4 @@
 .subBtn:disabled {
   color: var(--k-t3);
   cursor: not-allowed;
-}
-
-/* payout token picker */
-.tokenRow {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-}
-.tokenOpt {
-  background: var(--k-well2);
-  border: 0;
-  font: inherit;
-  font-size: var(--k-fs-xs);
-  color: var(--k-t2);
-  padding: 6px 13px;
-  border-radius: var(--k-r-pill);
-  cursor: pointer;
-}
-.tokenOpt:hover {
-  color: var(--k-t1);
-}
-.tokenOn {
-  background: #fff;
-  color: #0d0d0d;
-  font-weight: var(--k-fw-med);
 }

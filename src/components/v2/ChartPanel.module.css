@@ -1,0 +1,72 @@
+/* The chart toggle and the slot the panel sits in.
+
+   Both live here rather than in trade.module.css because they share one number —
+   the width below which there is no chart — and splitting that across two files
+   is how a control ends up toggling something that cannot appear. */
+
+/* Sized against the two things it sits beside: `.qk` chips and the SwapSettings
+   trigger on the swap card (both pills on the same 4px/10px rhythm), and the
+   30px round `.gear` on the agent card. Neutral by default and filled when on,
+   so "chart is showing" is legible without reading the icon. */
+.toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: none;
+  color: var(--k-t2);
+  cursor: pointer;
+}
+.toggle svg {
+  width: 15px;
+  height: 15px;
+}
+.toggle:hover {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
+}
+/* Translucent, matching the settings gear it sits beside: these live in a label
+   row on a glass card, where an opaque fill reads as a stray tile. */
+.toggleOn {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
+}
+
+/* The agent card's variant: its header carries a 30px circular gear, and a 28x24
+   pill beside it reads as a different kind of control. */
+.toggleRound {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+/* Takes the space the card leaves, up to a width where the plot is still worth
+   reading. `min-width: 0` is what allows the shrink — a flex item's floor is its
+   content, and an SVG's content width would otherwise stop it and push the card
+   off-centre. */
+.slot {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 560px;
+  display: flex;
+  min-height: 0;
+}
+
+/* Below this the card alone fills the width, and a chart squeezed beside it is
+   neither readable nor affordable — the trade shell is height-locked to the
+   viewport and has no room to stack one above the other.
+
+   The toggle goes with it. A control that opens a panel the viewport refuses to
+   show is worse than no control: it reports a state the user cannot see. */
+@media (max-width: 1000px) {
+  .slot {
+    display: none;
+  }
+  .toggle {
+    display: none;
+  }
+}

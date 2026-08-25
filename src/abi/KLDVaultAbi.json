@@ -1,5 +1,43 @@
 [
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_yieldTreasury",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "target",
+        "type": "address"
+      }
+    ],
+    "name": "AddressEmptyCode",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "AddressInsufficientBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CooldownNotPassed",
+    "type": "error"
+  },
+  {
     "inputs": [],
     "name": "EnforcedPause",
     "type": "error"
@@ -11,42 +49,22 @@
   },
   {
     "inputs": [],
-    "name": "KLDVault_AlreadyRequestedWithdrawal",
+    "name": "FailedInnerCall",
     "type": "error"
   },
   {
     "inputs": [],
-    "name": "KLDVault_ContractInsufficientBalance",
+    "name": "InsufficientBalance",
     "type": "error"
   },
   {
     "inputs": [],
-    "name": "KLDVault_InvalidDepositAmount",
+    "name": "InvalidAmount",
     "type": "error"
   },
   {
     "inputs": [],
-    "name": "KLDVault_InvalidWithdrawAmount",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "KLDVault_SameTokenNotAllowed",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "KLDVault_TokenNotSupported",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "KLDVault_WithdrawalNotRequested",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "KLD_VaultWithdrawalWaitingPeriodNotPassed",
+    "name": "NoWithdrawalRequest",
     "type": "error"
   },
   {
@@ -88,6 +106,61 @@
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "TokenNotSupported",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "shares",
+        "type": "uint256"
+      }
+    ],
+    "name": "Deposited",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "Harvested",
+    "type": "event"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
@@ -123,112 +196,6 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "rewardAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "newTotalPooled",
-        "type": "uint256"
-      }
-    ],
-    "name": "RewardsCompounded",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "user",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "totalSharesMinted",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "time",
-        "type": "uint256"
-      }
-    ],
-    "name": "TokenDeposited",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      }
-    ],
-    "name": "TokenSupported",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "user",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "time",
-        "type": "uint256"
-      }
-    ],
-    "name": "TokenWithdrawn",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
         "indexed": false,
         "internalType": "address",
         "name": "account",
@@ -257,13 +224,13 @@
       {
         "indexed": true,
         "internalType": "address",
-        "name": "from",
+        "name": "user",
         "type": "address"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "time",
+        "name": "unlocksAt",
         "type": "uint256"
       }
     ],
@@ -271,17 +238,29 @@
     "type": "event"
   },
   {
-    "inputs": [],
-    "name": "IstKLDToken",
-    "outputs": [
+    "anonymous": false,
+    "inputs": [
       {
-        "internalType": "contract IstKLD",
-        "name": "",
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
         "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "name": "Withdrawn",
+    "type": "event"
   },
   {
     "inputs": [],
@@ -291,19 +270,6 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "admin",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
       }
     ],
     "stateMutability": "view",
@@ -325,30 +291,7 @@
       },
       {
         "internalType": "uint256",
-        "name": "rewardAmount",
-        "type": "uint256"
-      }
-    ],
-    "name": "compoundRewards",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_token",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_stKLDToken",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_depositAmount",
+        "name": "_amount",
         "type": "uint256"
       }
     ],
@@ -377,51 +320,8 @@
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_stKLDToken",
-        "type": "address"
-      }
-    ],
-    "name": "getTotalShares",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [],
     "name": "getTotalStakers",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_user",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_stKLDToken",
-        "type": "address"
-      }
-    ],
-    "name": "getUserDeposit",
     "outputs": [
       {
         "internalType": "uint256",
@@ -452,13 +352,32 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "kldToken",
-    "outputs": [
+    "inputs": [
       {
         "internalType": "address",
-        "name": "",
+        "name": "_asset",
         "type": "address"
+      }
+    ],
+    "name": "harvestYield",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_user",
+        "type": "address"
+      }
+    ],
+    "name": "hasWithdrawalRequest",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",
@@ -475,13 +394,6 @@
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "pause",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -505,14 +417,21 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "requestWithdrawal",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
-        "name": "_stKLDToken",
+        "name": "_stKLD",
         "type": "address"
       }
     ],
-    "name": "requestWithdrawal",
+    "name": "setStKLD",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -523,11 +442,29 @@
         "internalType": "address",
         "name": "_token",
         "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "_status",
+        "type": "bool"
       }
     ],
-    "name": "setSupportedToken",
+    "name": "setSupport",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "stKLD",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -538,7 +475,7 @@
         "type": "address"
       }
     ],
-    "name": "supportedToken",
+    "name": "supportedTokens",
     "outputs": [
       {
         "internalType": "bool",
@@ -558,25 +495,6 @@
       }
     ],
     "name": "totalPooledKLD",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "name": "totalShares",
     "outputs": [
       {
         "internalType": "uint256",
@@ -614,56 +532,15 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "unpause",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
         "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "name": "userinfo",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "totalKldDeposit",
-        "type": "uint256"
-      },
-      {
-        "internalType": "bool",
-        "name": "hasStaked",
-        "type": "bool"
-      },
-      {
-        "internalType": "bool",
-        "name": "hasRequestedWithdrawal",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_kldtoken",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_stKLDToken",
+        "name": "_token",
         "type": "address"
       },
       {
         "internalType": "uint256",
-        "name": "_kldAmount",
+        "name": "_amount",
         "type": "uint256"
       }
     ],
@@ -686,6 +563,19 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "yieldTreasury",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
       }
     ],
     "stateMutability": "view",

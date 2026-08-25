@@ -1,0 +1,96 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-24T10:25:59.454Z",
+  "diamond": "0x2E7dd52073d6653F610607dA9B947ba59B585bf8",
+  "oracle": "0xf9928C816b75Bb3EA081Fc0d1C0172E475957C48",
+  "oracleKind": "aggregator-v3",
+  "pyth": null,
+  "nativeFeedSymbol": "BNB",
+  "hermesVerified": true,
+  "registered": [
+    {
+      "kind": "loanable",
+      "symbol": "BNB",
+      "address": "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
+      "onChainSymbol": "WBNB",
+      "decimals": 18,
+      "feedSymbol": "Crypto.BNB/USD",
+      "feedId": "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 1310,
+      "feedMaxAge": 1800,
+      "maxAgeBasis": "BNB/USD is the chain's native-currency feed and the most actively published on BSC Testnet. 1800 is the sibling ETH/USD observation (355s) with 5x slack; not derived from a documented heartbeat.",
+      "effectiveMaxAge": 1800,
+      "txHash": "0xb9a0fd7241c53ee440ffec0676c570014a745b9c8cec88cf9d8c75aeafcf32fc",
+      "skipped": false
+    }
+  ],
+  "feedBounds": [
+    {
+      "feedId": "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
+      "symbols": [
+        "BNB"
+      ],
+      "maxAge": 1800,
+      "basis": "BNB/USD is the chain's native-currency feed and the most actively published on BSC Testnet. 1800 is the sibling ETH/USD observation (355s) with 5x slack; not derived from a documented heartbeat.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "maxAge": 1800,
+      "basis": "Observed 355s, x5 slack. Not a documented heartbeat.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "symbols": [
+        "BTC"
+      ],
+      "maxAge": 1800,
+      "basis": "Same publisher policy as BSC Testnet ETH/USD.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "maxAge": 90000,
+      "basis": "Probed 2026-08-23, not the file's 2026-08-21 sweep: getCode 9571 bytes, decimals() 8, description() \"USDC / USD\", price $1.00, answer 55,684s (15h28m) old. That is ~40x the crypto feeds on this chain (BNB/ETH/BTC all ~1,000-1,300s in the same block) — the same pegged/volatile split every testnet in this file shows — so the stablecoin needs the ceiling bound while the crypto feeds keep 1800. 90000 is Constants.MAX_FEED_PRICE_AGE and is only defensible because USDC is pegged: a day-old answer is wrong by basis points, not percent. Same number and same argument as USDC on Sepolia and Base Sepolia. Registering the mock USDC that deploy-mock-tokens.js/deploy-stablecoin.js mint needs this entry.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "symbols": [
+        "USDT"
+      ],
+      "maxAge": 90000,
+      "basis": "Probed 2026-08-23 alongside USDC: 9571 bytes, decimals() 8, description() \"USDT / USD\", price $0.9999, answer 54,558s (15h9m) old. Same 24h-class heartbeat and same pegged-stable reasoning as USDC on this chain. 90000 is the ceiling — see the USDC basis above. deploy-stablecoin.js mints a USDT and this is the feed that lets it be registered.",
+      "txHash": null,
+      "skipped": true
+    }
+  ],
+  "onChain": {
+    "collateral": [
+      "0x0000000000000000000000000000000000000001",
+      "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
+      "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F",
+      "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2"
+    ],
+    "loanable": [
+      "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F",
+      "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2",
+      "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd"
+    ]
+  }
+}

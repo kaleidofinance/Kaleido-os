@@ -109,7 +109,8 @@ contract ProtocolTest is Test, IDiamondCut {
         diamond.initialize(tokens, priceFeed);
 
         protocolFacet = ProtocolFacet(address(diamond));
-        protocolFacet.setBotAddress(botAddress);
+        // No setBotAddress: liquidation is permissionless, so switchSigner(botAddress)
+        // further down is just an arbitrary caller rather than an authorised one.
         protocolFacet.setSwapRouter(swapRouterAddress);
 
         // protocolFacet.approveUserToSpendTokens(DIA_CONTRACT_ADDRESS, B, type(uint).max);

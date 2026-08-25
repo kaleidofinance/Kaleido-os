@@ -1,14 +1,62 @@
 /* Shared styling for Trade modes whose UI is built but whose execution is
    deferred (Limit, Buy, Sell) — the preset pills and the honest note. */
 
+/* Limit's head — "When 1 [KLD] is worth" on one line, the way Uniswap sets it.
+
+   It was breaking to three lines, and `.pill` is the reason: a pill is
+   display:flex, and a flex-level box in an inline formatting context is
+   blockified. So the token claimed the well's full width and shoved the words
+   on either side of it onto lines of their own — about 70px of head for a
+   five-word sentence, on the one surface whose whole job is fitting the
+   viewport. A sentence with a control set into it has to be a flex row; it
+   cannot be inline text.
+
+   The words are wrapped in explicit spans rather than left as bare text.
+   Anonymous flex items would work, but whitespace-only runs between them are
+   dropped, so the spacing would come from `gap` for some pairs and from a
+   surviving space for others. Spans make every gap the same gap. */
+.head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  cursor: default;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  margin-bottom: 9px;
+}
+
+/* Smaller than the pill in the amount row below, because it is doing less: this
+   one names the unit the sentence is about, that one is the token being priced.
+   The 22px icon is what sets the head's height, so it belongs in the stylesheet
+   next to `.head` rather than inline on the element.
+
+   Descendant selectors, not bare classes: `.pill` and `.tki` live in
+   trade.module.css and set the same two properties, and at equal specificity
+   the winner would be decided by which module's stylesheet Next happened to
+   emit second. One extra class removes the question. */
+.head .headPill {
+  padding: 3px 9px 3px 3px;
+  font-size: 15px;
+}
+.head .headIcon {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+
 .presets {
   display: flex;
   gap: 7px;
   flex-wrap: wrap;
   margin-top: 12px;
 }
+/* Recessed rather than filled with an opaque grey, matching the quick chips on
+   Swap and the suggestions on Agent — see `.qk` in trade.module.css for why the
+   wash has to be translucent to sit on glass at all. */
 .preset {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
   font-size: var(--k-fs-sm);
@@ -16,13 +64,26 @@
   padding: 7px 13px;
   border-radius: var(--k-r-pill);
   cursor: pointer;
+  /* One pill, one line. A flex item's default `min-width: auto` floors it at its
+     content width, but that floor is the *longest word*, not the whole label —
+     so "USDC · Ethereum" in a row too narrow for four of them did not overflow,
+     it broke after "USDC ·" and made every chip two lines tall. `nowrap` moves
+     the pressure back out to the row, which now wraps instead. */
+  white-space: nowrap;
 }
-.preset:hover {
+/* `:not(.presetOn)` is load-bearing, not tidiness. A pseudo-class counts toward
+   specificity, so a bare `.preset:hover` is (0,2,0) and outranks `.presetOn` at
+   (0,1,0) — pointing at the chip you had already selected would strip its solid
+   fill and hand it the hover treatment instead. Excluding the selected state
+   fixes that and the colour it was already stealing before this change. */
+.preset:not(.presetOn):hover {
+  background: var(--k-brand-dim);
   color: var(--k-t1);
 }
 .presetOn {
-  background: #fff;
-  color: #0d0d0d;
+  background: var(--k-btn-solid);
+  box-shadow: none;
+  color: var(--k-btn-solid-fg);
   font-weight: var(--k-fw-med);
 }
 
@@ -49,6 +110,28 @@
   display: flex;
   gap: 7px;
   justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* The asset picker: the same pills, but on a fixed 2x2 grid.
+
+   Four labels of "USDC · Ethereum" length do not fit one line inside a 520px
+   card — roughly 125px each against 484px of usable width — so this occupies two
+   rows whatever it does, and the only real question is how the four are
+   distributed across them. `flex-wrap` answered that badly: it packs greedily,
+   so three pills took the first row and the fourth sat alone beneath a visible
+   hole. Equal grid tracks give four pills of matching width in a clean block,
+   which is what a set of four mutually exclusive choices should look like.
+
+   Two explicit columns rather than `auto-fit`/`minmax`, because the count is
+   fixed at four by ASSETS and a 2x2 block is the shape that reads as two tokens
+   across two networks. `1fr` also makes every track wider than its label, so the
+   `nowrap` on `.preset` never comes under pressure in this row at all. */
+.assetPresets {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
   margin-top: 4px;
 }
 .assetRow {

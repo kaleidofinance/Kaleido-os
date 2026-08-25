@@ -3,5 +3,5 @@ export interface IUseCloseListingAd {
 }
 
 export interface IUseCloseRequest {
-  closeRequest: (listingId: number) => Promise<void>;   
+  closeRequest: (listingId: number) => Promise<void>;
 }

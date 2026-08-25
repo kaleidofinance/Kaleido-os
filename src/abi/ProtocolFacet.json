@@ -6,6 +6,11 @@
   },
   {
     "inputs": [],
+    "name": "Protocol__BreaksHealthFactor",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "Protocol__CannotBorrowCollateralAsset",
     "type": "error"
   },
@@ -66,6 +71,11 @@
   },
   {
     "inputs": [],
+    "name": "Protocol__InterestTooSmall",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "Protocol__InvalidAddress",
     "type": "error"
   },
@@ -82,6 +92,11 @@
   {
     "inputs": [],
     "name": "Protocol__InvalidFeeVault",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "Protocol__InvalidPriceBounds",
     "type": "error"
   },
   {
@@ -121,11 +136,6 @@
   },
   {
     "inputs": [],
-    "name": "Protocol__OnlyBotCanAccess",
-    "type": "error"
-  },
-  {
-    "inputs": [],
     "name": "Protocol__OrderNotOpen",
     "type": "error"
   },
@@ -146,6 +156,27 @@
   },
   {
     "inputs": [],
+    "name": "Protocol__PriceBoundsNotConfigured",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "confBps",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "maxConfBps",
+        "type": "uint256"
+      }
+    ],
+    "name": "Protocol__PriceConfidenceTooWide",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "Protocol__RequestExpired",
     "type": "error"
   },
@@ -157,6 +188,27 @@
   {
     "inputs": [],
     "name": "Protocol__RequestNotServiced",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "age",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "maxAge",
+        "type": "uint256"
+      }
+    ],
+    "name": "Protocol__StalePrice",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "Protocol__TermTooShort",
     "type": "error"
   },
   {
@@ -181,6 +233,11 @@
   },
   {
     "inputs": [],
+    "name": "Protocol__Unauthorized",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "Protocol__UplinerCannotBeDownliner",
     "type": "error"
   },
@@ -193,6 +250,48 @@
     "inputs": [],
     "name": "ReentrancyGuardReentrantCall",
     "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "SafeERC20FailedOperation",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint96",
+        "name": "id",
+        "type": "uint96"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "adStatus",
+        "type": "uint8"
+      }
+    ],
+    "name": "AcceptedListedAds",
+    "type": "event"
   },
   {
     "anonymous": false,
@@ -242,6 +341,50 @@
       }
     ],
     "name": "CollateralWithdrawn",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "priceFeed",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "maxAge",
+        "type": "uint256"
+      }
+    ],
+    "name": "FeedMaxAgeUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "awarder",
+        "type": "address"
+      }
+    ],
+    "name": "GatewayPointsAwarded",
     "type": "event"
   },
   {
@@ -315,6 +458,12 @@
         "type": "address"
       },
       {
+        "indexed": true,
+        "internalType": "address",
+        "name": "lender",
+        "type": "address"
+      },
+      {
         "indexed": false,
         "internalType": "uint96",
         "name": "id",
@@ -325,9 +474,84 @@
         "internalType": "uint256",
         "name": "amount",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "outstanding",
+        "type": "uint256"
       }
     ],
     "name": "LoanRepayment",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "_lender",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "indexed_tokenAddress",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "_amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint96",
+        "name": "_requestId",
+        "type": "uint96"
+      }
+    ],
+    "name": "OrderCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "awarder",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "approved",
+        "type": "bool"
+      }
+    ],
+    "name": "PointAwarderUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "maxAge",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "maxConfBps",
+        "type": "uint256"
+      }
+    ],
+    "name": "PriceBoundsUpdated",
     "type": "event"
   },
   {
@@ -353,6 +577,25 @@
       }
     ],
     "name": "ReferralPointsAwarded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "newPoints",
+        "type": "uint256"
+      }
+    ],
+    "name": "ReferralPointsUpdated",
     "type": "event"
   },
   {
@@ -458,6 +701,37 @@
       }
     ],
     "name": "RequestServiced",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "_offerId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "_status",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "_offerStatus",
+        "type": "uint8"
+      }
+    ],
+    "name": "RespondToLendingOffer",
     "type": "event"
   },
   {
@@ -627,6 +901,184 @@
       }
     ],
     "name": "addLoanableToken",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint96",
+            "name": "listingId",
+            "type": "uint96"
+          },
+          {
+            "internalType": "uint96",
+            "name": "requestId",
+            "type": "uint96"
+          },
+          {
+            "internalType": "address",
+            "name": "author",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "amount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint16",
+            "name": "interest",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "totalRepayment",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "returnDate",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "lender",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "loanRequestAddr",
+            "type": "address"
+          },
+          {
+            "internalType": "address[]",
+            "name": "collateralTokens",
+            "type": "address[]"
+          },
+          {
+            "internalType": "enum Status",
+            "name": "status",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "interestAccrued",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct Request",
+        "name": "request",
+        "type": "tuple"
+      }
+    ],
+    "name": "addUserActiveRequest",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_user",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "awardPoints",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint96",
+            "name": "listingId",
+            "type": "uint96"
+          },
+          {
+            "internalType": "uint96",
+            "name": "requestId",
+            "type": "uint96"
+          },
+          {
+            "internalType": "address",
+            "name": "author",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "amount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint16",
+            "name": "interest",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "totalRepayment",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "returnDate",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "lender",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "loanRequestAddr",
+            "type": "address"
+          },
+          {
+            "internalType": "address[]",
+            "name": "collateralTokens",
+            "type": "address[]"
+          },
+          {
+            "internalType": "enum Status",
+            "name": "status",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "interestAccrued",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct Request[]",
+        "name": "requests",
+        "type": "tuple[]"
+      }
+    ],
+    "name": "batchAddUserRequests",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -863,11 +1315,29 @@
             "internalType": "enum Status",
             "name": "status",
             "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "interestAccrued",
+            "type": "uint256"
           }
         ],
         "internalType": "struct Request[]",
         "name": "",
         "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getBPS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -948,6 +1418,25 @@
   {
     "inputs": [
       {
+        "internalType": "bytes32",
+        "name": "_priceFeed",
+        "type": "bytes32"
+      }
+    ],
+    "name": "getFeedMaxAge",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "_user",
         "type": "address"
@@ -985,6 +1474,45 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint96",
+        "name": "_listingId",
+        "type": "uint96"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "getListingQuote",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "totalRepayment",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "interestAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "durationSeconds",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint16",
+        "name": "aprBps",
+        "type": "uint16"
       }
     ],
     "stateMutability": "view",
@@ -1065,6 +1593,11 @@
             "internalType": "enum ListingStatus",
             "name": "listingStatus",
             "type": "uint8"
+          },
+          {
+            "internalType": "bool",
+            "name": "isFeatured",
+            "type": "bool"
           }
         ],
         "internalType": "struct LoanListing",
@@ -1090,12 +1623,77 @@
   },
   {
     "inputs": [],
+    "name": "getPriceMaxAge",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getPriceMaxConfBps",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "getPythPriceOracle",
     "outputs": [
       {
         "internalType": "address",
         "name": "",
         "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint16",
+        "name": "_interest",
+        "type": "uint16"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_returnDate",
+        "type": "uint256"
+      }
+    ],
+    "name": "getQuote",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "totalRepayment",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "interestAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "durationSeconds",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -1114,6 +1712,35 @@
       {
         "internalType": "uint256",
         "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint96",
+        "name": "_requestId",
+        "type": "uint96"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "getRepaymentFee",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "fee",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "toLender",
         "type": "uint256"
       }
     ],
@@ -1186,11 +1813,29 @@
             "internalType": "enum Status",
             "name": "status",
             "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "interestAccrued",
+            "type": "uint256"
           }
         ],
         "internalType": "struct Request",
         "name": "",
         "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getRequestId",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -1286,6 +1931,11 @@
             "internalType": "enum Status",
             "name": "status",
             "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "interestAccrued",
+            "type": "uint256"
           }
         ],
         "internalType": "struct Request[]",
@@ -1356,6 +2006,11 @@
             "internalType": "enum Status",
             "name": "status",
             "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "interestAccrued",
+            "type": "uint256"
           }
         ],
         "internalType": "struct Request[]",
@@ -1509,6 +2164,11 @@
             "internalType": "enum Status",
             "name": "status",
             "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "interestAccrued",
+            "type": "uint256"
           }
         ],
         "internalType": "struct Request[]",
@@ -1594,6 +2254,11 @@
             "internalType": "enum ListingStatus",
             "name": "listingStatus",
             "type": "uint8"
+          },
+          {
+            "internalType": "bool",
+            "name": "isFeatured",
+            "type": "bool"
           }
         ],
         "internalType": "struct LoanListing",
@@ -1675,6 +2340,11 @@
             "internalType": "enum Status",
             "name": "status",
             "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "interestAccrued",
+            "type": "uint256"
           }
         ],
         "internalType": "struct Request",
@@ -1825,6 +2495,24 @@
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "internalType": "uint96",
+        "name": "requestId",
+        "type": "uint96"
+      }
+    ],
+    "name": "removeUserActiveRequest",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint96",
         "name": "_requestId",
         "type": "uint96"
@@ -1879,12 +2567,17 @@
   {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "_bps",
-        "type": "uint256"
+        "internalType": "address",
+        "name": "_awarder",
+        "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "_approved",
+        "type": "bool"
       }
     ],
-    "name": "setBPS",
+    "name": "setApprovedPointAwarder",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1892,12 +2585,12 @@
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "_botAddress",
-        "type": "address"
+        "internalType": "uint256",
+        "name": "_bps",
+        "type": "uint256"
       }
     ],
-    "name": "setBotAddress",
+    "name": "setBPS",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1918,12 +2611,66 @@
   {
     "inputs": [
       {
+        "internalType": "bytes32",
+        "name": "_priceFeed",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_maxAge",
+        "type": "uint256"
+      }
+    ],
+    "name": "setFeedMaxAge",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "_bps",
         "type": "uint256"
       }
     ],
     "name": "setLiquidityBps",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint96",
+        "name": "_listingId",
+        "type": "uint96"
+      },
+      {
+        "internalType": "bool",
+        "name": "_featured",
+        "type": "bool"
+      }
+    ],
+    "name": "setListingFeatured",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_maxAge",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_maxConfBps",
+        "type": "uint256"
+      }
+    ],
+    "name": "setPriceBounds",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1988,45 +2735,6 @@
     "name": "withdrawCollateral",
     "outputs": [],
     "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "_amount",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint16",
-        "name": "_interest",
-        "type": "uint16"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_returnDate",
-        "type": "uint256"
-      }
-    ],
-    "name": "getQuote",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "totalRepayment",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "interestAmount",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "durationSeconds",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
     "type": "function"
   }
 ]

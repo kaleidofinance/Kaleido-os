@@ -40,7 +40,8 @@ export default function SwapSettings({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDoc);
@@ -53,7 +54,9 @@ export default function SwapSettings({
 
   const isPreset = PRESETS.some((p) => p.bps === slippageBps);
   const label =
-    slippageBps === AUTO_SLIPPAGE_BPS ? "Auto" : `${(slippageBps / 100).toFixed(2)}%`;
+    slippageBps === AUTO_SLIPPAGE_BPS
+      ? "Auto"
+      : `${(slippageBps / 100).toFixed(2)}%`;
   const highSlippage = slippageBps > 500;
 
   const applyCustom = (v: string) => {
@@ -92,13 +95,17 @@ export default function SwapSettings({
                 {p.label}
               </button>
             ))}
-            <div className={`${s.customBox} ${!isPreset || custom ? s.customOn : ""}`}>
+            <div
+              className={`${s.customBox} ${!isPreset || custom ? s.customOn : ""}`}
+            >
               <input
                 className={s.customInput}
                 inputMode="decimal"
                 placeholder="0.0"
                 value={custom}
-                onChange={(e) => applyCustom(e.target.value.replace(/[^0-9.]/g, ""))}
+                onChange={(e) =>
+                  applyCustom(e.target.value.replace(/[^0-9.]/g, ""))
+                }
                 aria-label="Custom slippage percent"
               />
               <span className={s.pct}>%</span>

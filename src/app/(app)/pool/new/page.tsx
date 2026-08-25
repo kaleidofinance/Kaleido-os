@@ -8,19 +8,20 @@ import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers6Adapter } from "thirdweb/adapters/ethers6";
 import { client } from "@/config/client";
 import TokenSelector from "@/components/v2/TokenSelector";
+import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3PositionManager } from "@/hooks/dex/useV3PositionManager";
-import { usePoolV3 } from "@/hooks/v2/usePoolV3";
+import { readPoolState } from "@/lib/dex/pool";
+import { providerForChain } from "@/config/provider";
+import {
+  FEE_TIERS as TRADED_TIERS,
+  mintMinimums,
+  ticksForRange,
+} from "@/lib/dex/liquidity";
 import { chainTokens } from "@/constants/tokens";
 import { getChainMeta } from "@/constants/chains";
 import type { IToken } from "@/constants/types/dex";
-import {
-  TICK_SPACINGS,
-  priceToTick,
-  nearestUsableTick,
-} from "@/constants/utils/v3Math";
-import { KALEIDOSWAP_V3_POSITION_MANAGER } from "@/constants/utils/addresses";
 import s from "../pool.module.css";
 
 const ERC20_ABI = [
@@ -28,13 +29,36 @@ const ERC20_ABI = [
   "function allowance(address owner, address spender) external view returns (uint256)",
 ];
 
-const FEE_TIERS = [
-  { fee: 500, label: "0.05%", desc: "Best for stable pairs" },
-  { fee: 3000, label: "0.30%", desc: "Most pairs" },
-  { fee: 10000, label: "1.00%", desc: "Exotic pairs" },
-];
+/**
+ * The tiers, with the copy that says what each one is for.
+ *
+ * Derived from the shared `FEE_TIERS` rather than listed again, because this page
+ * is where a tier the factory does not have would be offered as a button. The
+ * Record is exhaustive over that tuple, so adding a fourth tier there is a
+ * compile error here until someone writes its label — which is the point: the
+ * numbers are shared, and only the wording is local.
+ */
+const TIER_COPY: Record<
+  (typeof TRADED_TIERS)[number],
+  { label: string; desc: string }
+> = {
+  500: { label: "0.05%", desc: "Best for stable pairs" },
+  3000: { label: "0.30%", desc: "Most pairs" },
+  10000: { label: "1.00%", desc: "Exotic pairs" },
+};
+
+const FEE_TIERS = TRADED_TIERS.map((fee) => ({ fee, ...TIER_COPY[fee] }));
 
 const RANGE_PRESETS = ["Full range", "±5%", "±10%", "Custom"] as const;
+
+/**
+ * Slippage tolerance applied to the mint's minimum amounts. Same 0.5% as
+ * SwapSettings' "Auto" (AUTO_SLIPPAGE_BPS), kept as a local constant rather than
+ * imported so a page does not pull in the swap gear popover for one integer.
+ * There is no control for it here yet; unlike a swap, the number that would
+ * change is not on screen.
+ */
+const SLIPPAGE_BPS = 50;
 
 /**
  * mintPosition already handles token sorting, pool-init-if-needed and the
@@ -42,14 +66,22 @@ const RANGE_PRESETS = ["Full range", "±5%", "±10%", "Custom"] as const;
  * reimplementing inside an intent resolver. So this page calls it directly
  * with sequential approve → approve → mint, the same shape useStake.ts
  * already uses for approve → deposit.
+ *
+ * The range and the slippage floor come from `lib/dex/liquidity`, which is where
+ * both used to live inline here. They were lifted out for the agent's
+ * `provideLiquidity` and then this page was pointed at them, in that order and
+ * deliberately: a second copy of either would be a second chance to reintroduce
+ * the two defects they carry regression notes for — the missing tick inversion
+ * and the zero slippage floor — on whichever path nobody was looking at.
  */
 export default function NewPositionPage() {
   const router = useRouter();
   const { isConnected, address, chainId } = useWalletV2();
   const account = useActiveAccount();
   const chain = useActiveWalletChain();
-  const { getCurrentTick } = usePoolV3();
-  const { mintPosition } = useV3PositionManager();
+  const { mintPosition, POSITION_MANAGER_ADDRESS: positionManager } =
+    useV3PositionManager();
+  const gate = useChainGate();
 
   // Seeded from the connected chain's registry, never from a compiled-in list:
   // a KLD address is only meaningful together with the chain it lives on.
@@ -65,65 +97,176 @@ export default function NewPositionPage() {
   const [amount1, setAmount1] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Re-seed on chain change. Carrying a token across chains would pair two
-  // addresses that never shared a pool, and the decimals may differ too.
+  /*
+   * Fills whichever side is not a token on this chain.
+   *
+   * It reset both sides on every `available` change until TokenSelector started
+   * switching the wallet's network as part of returning a token — the chain
+   * update and the selection then land together in an order nothing here
+   * controls, and an unconditional reset threw the pick away whenever the reset
+   * went last. Checking validity settles it without depending on the order. See
+   * the same effect in trade/swap/page.tsx.
+   *
+   * A genuine chain switch still reseeds both sides: identity is
+   * (chainId, address), and `available` only ever holds one chain's tokens, so
+   * nothing from the previous chain can survive the test.
+   */
   useEffect(() => {
-    const pick = (sym: string) => available.find((t) => t.symbol === sym);
-    setToken0(pick("KLD") ?? available[0] ?? null);
-    setToken1(pick("USDC") ?? available[1] ?? null);
-  }, [available]);
+    const validHere = (t: IToken | null) =>
+      t &&
+      available.some((a) => a.chainId === t.chainId && a.address === t.address)
+        ? t
+        : null;
+
+    const ok0 = validHere(token0);
+    const ok1 = validHere(token1);
+    if (ok0 && ok1) return;
+
+    const pick = (sym: string, not?: IToken | null) =>
+      available.find((t) => t.symbol === sym && t.address !== not?.address);
+
+    /* Each side now avoids the other's address. `available[1]` was the previous
+       fallback for the second slot and it is only "the other token" by accident
+       of ordering — on a chain whose USDC sits at index 0 with nothing before it,
+       both slots resolved to the same asset, and a pool of one token against
+       itself cannot be created. */
+    const first =
+      ok0 ??
+      pick("KLD", ok1) ??
+      available.find((t) => t.address !== ok1?.address) ??
+      null;
+    const second =
+      ok1 ??
+      pick("USDC", first) ??
+      available.find((t) => t.address !== first?.address) ??
+      null;
+
+    if (!ok0) setToken0(first);
+    if (!ok1) setToken1(second);
+  }, [available, token0, token1]);
 
   const { balance: balance0 } = useTokenBalance(token0);
   const { balance: balance1 } = useTokenBalance(token1);
+
+  /**
+   * Where this pair's market sits at a tier, on the chain the wallet is on.
+   *
+   * `usePoolV3.getCurrentTick`, which this replaces, resolved its factory from
+   * `READ_ONLY_CHAIN_ID` while the mint below goes through the connected wallet's
+   * chain. A wallet anywhere other than the read chain therefore centred its ±10%
+   * band on Sepolia's price and then opened the position on its own chain at a
+   * range derived from a different market. Nothing reverts when that happens; the
+   * position simply opens out of range and earns nothing.
+   */
+  const poolAt = (tier: number) =>
+    token0 && token1
+      ? readPoolState(
+          providerForChain(chainId),
+          chainId,
+          token0.address,
+          token1.address,
+          tier,
+          token0.decimals,
+          token1.decimals,
+        )
+      : Promise.resolve(null);
 
   const applyPreset = async (p: (typeof RANGE_PRESETS)[number]) => {
     if (!token0 || !token1) return;
     setPreset(p);
     if (p === "Custom") return;
-    const tick = await getCurrentTick(
-      token0.address,
-      token1.address,
-      fee,
-      token0.decimals,
-      token1.decimals,
-    );
-    if (!tick) {
-      toast.error("This pool doesn't exist yet — enter a starting price manually.");
-      setPreset("Custom");
-      return;
-    }
+    /*
+     * Full range needs no price read, and asking for one before this check is
+     * what stopped anyone opening a new pool: the fetch returns null for a pool
+     * that doesn't exist yet, which bounced the preset to Custom and demanded a
+     * starting price for the one range that doesn't depend on the market. The
+     * displayed bounds stay 0/∞ — `ticks` ignores them under this preset.
+     */
     if (p === "Full range") {
       setMinPrice("0");
       setMaxPrice("∞");
       return;
     }
+    const state = await poolAt(fee);
+    if (!state) {
+      toast.error(
+        "This pool doesn't exist yet — enter a starting price manually.",
+      );
+      setPreset("Custom");
+      return;
+    }
     const pct = p === "±5%" ? 0.05 : 0.1;
-    setMinPrice((tick.price * (1 - pct)).toPrecision(6));
-    setMaxPrice((tick.price * (1 + pct)).toPrecision(6));
+    setMinPrice((state.price * (1 - pct)).toPrecision(6));
+    setMaxPrice((state.price * (1 + pct)).toPrecision(6));
   };
 
-  const spacing = TICK_SPACINGS[fee] ?? 60;
-
-  const ticks = useMemo(() => {
-    if (preset === "Full range") {
-      return { tickLower: -887272, tickUpper: 887272 };
-    }
+  /**
+   * The tick range, resolved by the shared function rather than here.
+   *
+   * It returns either a range or a sentence, and the sentence is now shown. The
+   * bad range this form can produce without anything looking wrong is a band that
+   * snaps onto a single tick: the 1% tier's spacing is 200 ticks, about 2% of
+   * price, so any band under ±1% on that tier collapses and the mint reverts with
+   * nothing a user could act on. Previously that arrived as a disabled button
+   * reading "Enter an amount and range", with an amount and a range both entered.
+   *
+   * `spot` is null because neither branch here needs one — explicit prices are the
+   * bounds, and full range has none. The band case, which does need a price, is
+   * resolved in `applyPreset` above and written into these two inputs so the user
+   * sees the numbers before signing.
+   */
+  const resolved = useMemo(() => {
     if (!token0 || !token1) return null;
+    if (preset === "Full range")
+      return ticksForRange(
+        { kind: "full" },
+        null,
+        fee,
+        token0.decimals,
+        token1.decimals,
+      );
     const lo = parseFloat(minPrice);
     const hi = parseFloat(maxPrice);
-    if (!lo || !hi || hi <= lo) return null;
-    const rawLower = priceToTick(lo, token0.decimals, token1.decimals);
-    const rawUpper = priceToTick(hi, token0.decimals, token1.decimals);
-    return {
-      tickLower: nearestUsableTick(Math.min(rawLower, rawUpper), spacing),
-      tickUpper: nearestUsableTick(Math.max(rawLower, rawUpper), spacing),
-    };
-  }, [minPrice, maxPrice, preset, spacing, token0, token1]);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+    return ticksForRange(
+      { kind: "prices", minPrice: lo, maxPrice: hi },
+      null,
+      fee,
+      token0.decimals,
+      token1.decimals,
+    );
+  }, [minPrice, maxPrice, preset, fee, token0, token1]);
 
-  const ready = isConnected && token0 && token1 && amount0 && amount1 && ticks !== null;
+  const ticks = resolved && !("error" in resolved) ? resolved : null;
+  const rangeError = resolved && "error" in resolved ? resolved.error : null;
+
+  /* Both amounts must be positive numbers, not merely non-empty strings.
+   * `amount0 && amount1` passed for "0" — a truthy string — which let the form
+   * submit a deposit with a zero leg, and a zero leg makes the slippage floor
+   * below zero as well. */
+  const positive = (v: string) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0;
+  };
+  const ready =
+    isConnected &&
+    token0 &&
+    token1 &&
+    positive(amount0) &&
+    positive(amount1) &&
+    ticks !== null;
 
   const submit = async () => {
-    if (!ready || !account || !chain || !token0 || !token1) return;
+    if (
+      !ready ||
+      !account ||
+      !chain ||
+      !token0 ||
+      !token1 ||
+      !positionManager ||
+      !ticks
+    )
+      return;
     setBusy(true);
     try {
       const signer = ethers6Adapter.signer.toEthers({ client, chain, account });
@@ -136,32 +279,64 @@ export default function NewPositionPage() {
         if (token.isNative) continue;
         const erc20 = new ethers.Contract(token.address, ERC20_ABI, signer);
         const needed = ethers.parseUnits(amount, decimals);
-        const current: bigint = await erc20.allowance(
-          address,
-          KALEIDOSWAP_V3_POSITION_MANAGER,
-        );
+        const current: bigint = await erc20.allowance(address, positionManager);
         if (current < needed) {
-          const tx = await erc20.approve(KALEIDOSWAP_V3_POSITION_MANAGER, needed);
+          const tx = await erc20.approve(positionManager, needed);
           await tx.wait();
         }
+      }
+
+      /*
+       * Slippage floor for the mint, from the shared `mintMinimums`.
+       *
+       * The derivation used to be inline here, and its long note is now that
+       * function's docblock — including the reason the obvious version is wrong:
+       * the floor cannot come from the typed amounts, because the pool takes
+       * `min(L(amount0), L(amount1))` and leaves the over-supplied side alone.
+       *
+       * `spot` is read here rather than at range time because it is read again on
+       * purpose: the preset that wrote these bounds may have run minutes ago, and
+       * the floor should be derived from the price the mint is about to meet. A
+       * null answer means the pool does not exist yet, and the two amounts below
+       * will set its opening price — the floor still matters there, as protection
+       * against someone front-running the initialize with a different one.
+       */
+      const state = await poolAt(fee);
+      const floors = mintMinimums({
+        amount0,
+        amount1,
+        decimals0: token0.decimals,
+        decimals1: token1.decimals,
+        tickLower: ticks.tickLower,
+        tickUpper: ticks.tickUpper,
+        spot: state ? state.price : null,
+        slippageBps: SLIPPAGE_BPS,
+      });
+      if ("error" in floors) {
+        toast.error(floors.error);
+        return;
       }
 
       await mintPosition(
         token0.address,
         token1.address,
         fee,
-        ticks!.tickLower,
-        ticks!.tickUpper,
+        ticks.tickLower,
+        ticks.tickUpper,
         amount0,
         amount1,
         address!,
         deadline,
         token0.decimals,
         token1.decimals,
+        floors.amount0Min,
+        floors.amount1Min,
       );
 
       toast.success("Position created");
-      router.push("/pool");
+      /* The positions tab, not /pool — landing on a table of every pool after
+         minting one hides the thing that was just created. */
+      router.push("/pool/positions");
     } catch (err) {
       console.error("[v2/pool/new] mint failed", err);
       toast.error("Couldn't create the position");
@@ -171,10 +346,19 @@ export default function NewPositionPage() {
   };
 
   /*
-   * Every hook has run, so returning here is safe. Without a pair there is
-   * nothing to render: no pool exists to add liquidity to, and the form below
-   * dereferences both tokens on every line.
+   * Every hook has run, so returning here is safe.
+   *
+   * Two returns, because there are two distinct facts. No deployment is the
+   * general case and belongs to ChainGate — which derives the deploy order from
+   * the registry, where this used to name the five chains in prose that nothing
+   * would have updated. A deployed chain that still has no pairable token is a
+   * narrower thing, and keeps its own message: the form below dereferences both
+   * tokens on every line, so it cannot render either way.
    */
+  if (!gate.ready) {
+    return <ChainGate product="liquidity position" state={gate} />;
+  }
+
   if (!token0 || !token1) {
     const here = getChainMeta(chainId)?.name;
     return (
@@ -182,11 +366,9 @@ export default function NewPositionPage() {
         <div className={s.box}>
           <div className={s.bl}>No pools here yet</div>
           <p className={s.priceHint}>
-            Kaleido&apos;s contracts aren&apos;t deployed
-            {here ? ` on ${here}` : " on any network"} yet, so there are no
-            tokens to pair. They&apos;re being redeployed from scratch — testnet
-            first — starting with Arc, Base, Robinhood, BNB Smart Chain and
-            Ethereum.
+            Nothing pairable is registered
+            {here ? ` on ${here}` : ""} yet, so there is no pool to add
+            liquidity to.
           </p>
         </div>
       </div>
@@ -268,6 +450,11 @@ export default function NewPositionPage() {
               </div>
             </div>
           </div>
+          {rangeError ? (
+            <div className={s.priceHint} style={{ marginTop: 8 }} role="alert">
+              {rangeError}
+            </div>
+          ) : null}
         </div>
 
         <div className={s.box} style={{ marginTop: 4 }}>
@@ -276,14 +463,19 @@ export default function NewPositionPage() {
             <input
               className={`${s.inp} tabular`}
               value={amount0}
-              onChange={(e) => setAmount0(e.target.value.replace(/[^0-9.]/g, ""))}
+              onChange={(e) =>
+                setAmount0(e.target.value.replace(/[^0-9.]/g, ""))
+              }
               placeholder="0"
               aria-label={`Amount of ${token0.symbol}`}
             />
             <span className={s.tkPill}>{token0.symbol}</span>
           </div>
           <div className={s.priceHint}>
-            Balance {Number(balance0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+            Balance{" "}
+            {Number(balance0).toLocaleString(undefined, {
+              maximumFractionDigits: 4,
+            })}
           </div>
         </div>
 
@@ -293,14 +485,19 @@ export default function NewPositionPage() {
             <input
               className={`${s.inp} tabular`}
               value={amount1}
-              onChange={(e) => setAmount1(e.target.value.replace(/[^0-9.]/g, ""))}
+              onChange={(e) =>
+                setAmount1(e.target.value.replace(/[^0-9.]/g, ""))
+              }
               placeholder="0"
               aria-label={`Amount of ${token1.symbol}`}
             />
             <span className={s.tkPill}>{token1.symbol}</span>
           </div>
           <div className={s.priceHint}>
-            Balance {Number(balance1).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+            Balance{" "}
+            {Number(balance1).toLocaleString(undefined, {
+              maximumFractionDigits: 4,
+            })}
           </div>
         </div>
 
@@ -318,7 +515,7 @@ export default function NewPositionPage() {
       <TokenSelector
         open={pickerFor !== null}
         onClose={() => setPickerFor(null)}
-        exclude={pickerFor === "0" ? token1.symbol : token0.symbol}
+        exclude={pickerFor === "0" ? token1 : token0}
         onSelect={(t) => {
           if (pickerFor === "0") setToken0(t);
           else setToken1(t);

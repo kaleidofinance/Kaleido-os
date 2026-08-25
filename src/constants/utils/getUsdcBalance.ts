@@ -1,77 +1,55 @@
-import { readOnlyProvider } from "@/config/provider"
-import { SUPPORTED_CHAIN_ID } from "@/context/web3Modal"
-import { ethers } from "ethers"
-import { kfUSD_ADDRESS, USDC_ADDRESS, USDC_ADDRESS_AB, USDR, USDT_ADDRESS } from "./addresses"
+import { providerForChain } from "@/config/provider";
+import { findTokenBySymbol, getContracts } from "@/constants/registry";
 
-export const getProviderByChainId = (chainId: any) => {
-  const id = Number(chainId);
-  switch (id) {
-    case 11124: // Abstract Testnet
-      return readOnlyProvider;
-    case 8453: // Base
-      return new ethers.JsonRpcProvider("https://mainnet.base.org", { chainId: 8453, name: 'base' }, { staticNetwork: true });
-    case 42161: // Arbitrum
-      return new ethers.JsonRpcProvider("https://arb1.arbitrum.io/rpc", { chainId: 42161, name: 'arbitrum' }, { staticNetwork: true });
-    case 137: // Polygon
-      return new ethers.JsonRpcProvider("https://polygon-rpc.com", { chainId: 137, name: 'polygon' }, { staticNetwork: true });
-    case 1: // Mainnet
-      return new ethers.JsonRpcProvider("https://cloudflare-eth.com", { chainId: 1, name: 'mainnet' }, { staticNetwork: true });
-    case 999: // Hyperliquid EVM
-      return new ethers.JsonRpcProvider("https://rpc.hyperliquid.xyz/evm", { chainId: 999, name: 'hyperliquid' }, { staticNetwork: true });
-    default:
-      return readOnlyProvider;
-  }
-}
+/**
+ * Read provider for a chain, or null if the registry has no RPC for it.
+ *
+ * Was a six-case switch that restated URLs already in chains.ts (Base, Arbitrum,
+ * Polygon, Mainnet, Hyperliquid — all of them duplicated), mapped `case 11124` to
+ * the app's read provider, and ended in `default: return readOnlyProvider`. That
+ * default is the defect: an unlisted chain did not fail, it silently answered
+ * from the read chain, so an allowance read for Base Sepolia came back as
+ * whatever the read chain said. It only looked harmless while the read chain WAS
+ * 11124, which made the explicit case and the default agree with each other.
+ *
+ * Callers must handle null. See providerForChain in config/provider.ts.
+ */
+export const getProviderByChainId = providerForChain;
 
-// Function to get USDC address based on chain ID
-export const getUsdcAddressByChainId = (chainId: any) => {
-  switch (chainId) {
-    case SUPPORTED_CHAIN_ID[0]: // Abstract Testnet
-      return USDC_ADDRESS
-    case SUPPORTED_CHAIN_ID[1]: // Sepolia
-      return USDC_ADDRESS_AB
-    default:
-      return USDC_ADDRESS
-  }
-}
+/**
+ * Which USDC to use on a chain, or undefined if there is none there.
+ *
+ * The deploy record wins over the canonical token list, because the two answer
+ * different questions. `getContracts(chainId).usdc` is the USDC the protocol was
+ * actually wired against on that chain — the address kfUSD mints against and the
+ * one `deploy-stablecoin.js` was given. `findTokenBySymbol` is the canonical
+ * third-party USDC, which is the right answer on Sepolia and Base Sepolia and does
+ * not exist at all on BSC Testnet, Robinhood Testnet or Arc Testnet, where we mint
+ * a mock. Preferring the record means the allowance we read is the allowance the
+ * protocol will check.
+ *
+ * Was a switch over `SUPPORTED_CHAIN_ID` returning an Abstract literal from
+ * either branch — and its second case indexed `[1]` of a one-element array, so it
+ * matched only an undefined chainId. Returns undefined rather than a default now:
+ * an allowance read against the wrong token silently reports zero, which reads as
+ * "needs approval" and sends an approval for a token the user does not hold.
+ */
+export const getUsdcAddressByChainId = (
+  chainId: number | undefined,
+): string | undefined =>
+  getContracts(chainId).usdc ?? findTokenBySymbol(chainId, "USDC")?.address;
 
-export const getUsdcBalance = async (address: string, chainId: any) => {
-  const provider = getProviderByChainId(chainId)
-  const usdcAddress = getUsdcAddressByChainId(chainId) // Get the correct USDC address
-
-  const usdcontract = new ethers.Contract(
-    usdcAddress,
-    ["function balanceOf(address owner) view returns (uint256)"],
-    provider,
-  )
-
-  const balance = await usdcontract.balanceOf(address)
-  return ethers.formatUnits(balance, 6) // USDC typically has 6 decimals
-}
-
-export const getUsdRBalance = async (address: string, chainId: any) => {
-  const provider = getProviderByChainId(chainId)
-
-  const usdrcontract = new ethers.Contract(USDR, ["function balanceOf(address owner) view returns (uint256)"], provider)
-
-  const balance = await usdrcontract.balanceOf(address)
-  return ethers.formatUnits(balance, 18) // USDR has 18 decimals
-}
-
-export const getKfUSDBalance = async (address: string, chainId: any) => {
-  const provider = getProviderByChainId(chainId)
-
-  const kfusdcontract = new ethers.Contract(kfUSD_ADDRESS, ["function balanceOf(address owner) view returns (uint256)"], provider)
-
-  const balance = await kfusdcontract.balanceOf(address)
-  return ethers.formatUnits(balance, 18) // kfUSD has 18 decimals
-}
-
-export const getUSDTBalance = async (address: string, chainId: any) => {
-  const provider = getProviderByChainId(chainId)
-
-  const usdtcontract = new ethers.Contract(USDT_ADDRESS, ["function balanceOf(address owner) view returns (uint256)"], provider)
-
-  const balance = await usdtcontract.balanceOf(address)
-  return ethers.formatUnits(balance, 6) // USDT has 6 decimals
-}
+/*
+ * Deleted: getUsdcBalance, getUsdRBalance, getKfUSDBalance, getUSDTBalance.
+ *
+ * All four had zero callers — the file is imported only for the two functions
+ * above — and each read a hardcoded Abstract token address through whatever
+ * provider the switch returned, so none could have produced a correct figure on
+ * any chain in this wave. `fetchOmniAssetBalance`
+ * (constants/utils/omniChainBalances.ts) is the live version of the same job and
+ * is chain-keyed.
+ *
+ * getUsdRBalance carried the note that USDR is 6 decimals rather than 18; that
+ * finding is recorded where it still applies, on BORROW_CURRENCIES in
+ * constants/registry.ts.
+ */

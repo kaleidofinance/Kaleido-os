@@ -1,0 +1,284 @@
+.wrap {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 22px 20px 70px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s5);
+}
+
+/* ---------- header ---------- */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+/* The serif, at 400 and negative tracking, comes from .k-display — hence no
+   font-weight or letter-spacing here. Same as /leaderboard's .h1. */
+.h1 {
+  composes: k-display from global;
+  font-size: var(--k-fs-2xl);
+  margin: 0;
+}
+.lede {
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  line-height: 1.55;
+  max-width: 62ch;
+}
+
+/* ---------- stat strip ---------- */
+/* Divider-separated rather than four cards, matching /stake's strip: these are
+   four readings of one contract, not four things. */
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+}
+.stat {
+  padding: 0 24px;
+  border-left: 1px solid var(--k-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s1);
+  flex: 1;
+  min-width: 140px;
+}
+.stat:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+.sl {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.sv {
+  font-size: var(--k-fs-xl);
+  letter-spacing: -0.02em;
+}
+/* The faucet's own address. A link, so the reader can check the stock and the
+   claim history themselves — which is the whole reason to print an address on a
+   page rather than hide it. */
+.link {
+  color: var(--k-t1);
+  text-decoration: none;
+  border-bottom: 1px solid var(--k-line2);
+  width: fit-content;
+}
+.link:hover {
+  border-bottom-color: var(--k-t3);
+}
+
+/* ---------- asset table ---------- */
+.card {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s2);
+}
+.row {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1.2fr 140px;
+  gap: var(--k-s3);
+  align-items: center;
+  padding: 13px 14px;
+  border-radius: var(--k-r-md);
+}
+/* Translucent, not --k-well2: an opaque fill on a glass table punches an opaque
+   hole in it and the blur stops dead at the row edge. */
+.row:hover:not(.thead) {
+  background: var(--k-row-hover);
+}
+.thead {
+  padding: 10px 14px 6px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+
+.asset {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  min-width: 0;
+}
+.assetText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.assetText b {
+  font-weight: var(--k-fw-med);
+}
+/* The decimals, under the symbol. Not trivia here: these are the mock stables,
+   USDC is 6 places and the other two are 18, and a claim of "10,000" means a
+   different number of base units in each. */
+.assetText em {
+  font-style: normal;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+
+.tki {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 600;
+  /* Scaffolding for three letters — the plate only shows through when the token
+     has no mark, which is why .tkiArt below takes it away again. */
+  background: var(--k-glass-deep);
+  color: var(--k-t2);
+}
+.tkiArt {
+  background: none;
+}
+.tkiArt > img,
+.tkiArt > svg {
+  display: block;
+  border-radius: 50%;
+}
+
+.num {
+  text-align: right;
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.dim {
+  color: var(--k-t2);
+}
+/* How many more claims the stock covers. Under the balance because it is the
+   same fact at a different scale, and it is the one that says whether the next
+   person to arrive gets anything. */
+.left {
+  font-style: normal;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+
+.act {
+  justify-self: end;
+}
+.claim {
+  min-width: 132px;
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 10px 14px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.claim:hover:not(:disabled) {
+  background: var(--k-brand-hover);
+}
+/* Recessed rather than an opaque grey slab — see .cta:disabled in
+   trade.module.css. Most rows open in this state, because a cooldown that has
+   not elapsed is the normal case for a returning claimer. */
+.claim:disabled {
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  color: var(--k-t3);
+  cursor: not-allowed;
+}
+
+/* Sits in the header row's action column, directly above the per-row Claim
+   buttons, so the batch reads as the column's heading rather than as a sixth
+   control competing with them. Outlined instead of filled: five brand-coloured
+   pills in one column would give the header the most emphasis on the page. */
+.claimAll {
+  min-width: 132px;
+  background: transparent;
+  color: var(--k-t1);
+  border: 1px solid var(--k-line);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 8px 14px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.claimAll:hover:not(:disabled) {
+  background: var(--k-row-hover);
+  border-color: var(--k-brand);
+}
+.claimAll:disabled {
+  color: var(--k-t3);
+  cursor: not-allowed;
+}
+
+.note {
+  padding: 34px 16px;
+  text-align: center;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  line-height: 1.5;
+}
+.retry {
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--k-t1);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ---------- no faucet on this chain ---------- */
+.panel {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: 44px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-s3);
+  text-align: center;
+}
+.panelTitle {
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+}
+.panelBody {
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  line-height: 1.55;
+  max-width: 46ch;
+}
+.panelCta {
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 11px 20px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.panelCta:hover {
+  background: var(--k-brand-hover);
+}
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  .wrap {
+    padding: 16px 14px 60px;
+  }
+  /* Five columns inside a phone width crushes every cell. Scroll the table in
+     its own container so the page body never scrolls sideways — the same fix
+     /leaderboard's six-column tier uses. */
+  .card {
+    overflow-x: auto;
+  }
+  .row {
+    min-width: 640px;
+  }
+}

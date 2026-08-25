@@ -75,7 +75,12 @@ export default function SellPage() {
 
   return (
     <div className={s.card}>
-      <div className={s.box} style={{ padding: "26px 18px 22px" }}>
+      {/* Top well recessed, bottom well raised — the swap card's rule, so the
+          two-tone treatment means the same thing on every trade tab. */}
+      <div
+        className={`${s.box} ${s.deep}`}
+        style={{ padding: "26px 18px 22px" }}
+      >
         <div className={s.bl}>You&apos;re selling</div>
         <div className={`${d.bigZero} ${amount ? d.filled : ""} tabular`}>
           {amount ? `$${amount.toLocaleString()}` : "$0"}
@@ -93,9 +98,9 @@ export default function SellPage() {
         </div>
       </div>
 
-      <div className={s.box} style={{ marginTop: 4 }}>
+      <div className={`${s.box} ${s.raised}`} style={{ marginTop: 4 }}>
         <div className={s.bl}>Sell from your wallet</div>
-        <div className={d.centerPresets} style={{ justifyContent: "flex-start" }}>
+        <div className={d.assetPresets}>
           {ASSETS.map((a) => (
             <button
               key={a.code}
@@ -108,15 +113,14 @@ export default function SellPage() {
         </div>
       </div>
 
-      <div className={s.box} style={{ marginTop: 4 }}>
-        <button className={s.cta} disabled={busy || !isConnected} onClick={start}>
-          {cta}
-        </button>
-        <p className={d.note}>
-          MoonPay settles the sale to your bank account. Holding something other
-          than these? Swap to USDC first, then sell.
-        </p>
-      </div>
+      {/* Button and note out of the third well, matching Buy and Swap. */}
+      <button className={s.cta} disabled={busy || !isConnected} onClick={start}>
+        {cta}
+      </button>
+      <p className={d.note}>
+        MoonPay settles the sale to your bank account. Holding something other
+        than these? Swap to USDC first, then sell.
+      </p>
     </div>
   );
 }
