@@ -12,18 +12,16 @@ import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3PositionManager } from "@/hooks/dex/useV3PositionManager";
-import { usePoolV3 } from "@/hooks/v2/usePoolV3";
+import { readPoolState } from "@/lib/dex/pool";
+import { providerForChain } from "@/config/provider";
+import {
+  FEE_TIERS as TRADED_TIERS,
+  mintMinimums,
+  ticksForRange,
+} from "@/lib/dex/liquidity";
 import { chainTokens } from "@/constants/tokens";
 import { getChainMeta } from "@/constants/chains";
 import type { IToken } from "@/constants/types/dex";
-import {
-  TICK_SPACINGS,
-  priceToTick,
-  tickToPrice,
-  nearestUsableTick,
-  fullRangeTicks,
-  getV3AmountRatio,
-} from "@/constants/utils/v3Math";
 import s from "../pool.module.css";
 
 const ERC20_ABI = [
@@ -31,11 +29,25 @@ const ERC20_ABI = [
   "function allowance(address owner, address spender) external view returns (uint256)",
 ];
 
-const FEE_TIERS = [
-  { fee: 500, label: "0.05%", desc: "Best for stable pairs" },
-  { fee: 3000, label: "0.30%", desc: "Most pairs" },
-  { fee: 10000, label: "1.00%", desc: "Exotic pairs" },
-];
+/**
+ * The tiers, with the copy that says what each one is for.
+ *
+ * Derived from the shared `FEE_TIERS` rather than listed again, because this page
+ * is where a tier the factory does not have would be offered as a button. The
+ * Record is exhaustive over that tuple, so adding a fourth tier there is a
+ * compile error here until someone writes its label — which is the point: the
+ * numbers are shared, and only the wording is local.
+ */
+const TIER_COPY: Record<
+  (typeof TRADED_TIERS)[number],
+  { label: string; desc: string }
+> = {
+  500: { label: "0.05%", desc: "Best for stable pairs" },
+  3000: { label: "0.30%", desc: "Most pairs" },
+  10000: { label: "1.00%", desc: "Exotic pairs" },
+};
+
+const FEE_TIERS = TRADED_TIERS.map((fee) => ({ fee, ...TIER_COPY[fee] }));
 
 const RANGE_PRESETS = ["Full range", "±5%", "±10%", "Custom"] as const;
 
@@ -54,13 +66,19 @@ const SLIPPAGE_BPS = 50;
  * reimplementing inside an intent resolver. So this page calls it directly
  * with sequential approve → approve → mint, the same shape useStake.ts
  * already uses for approve → deposit.
+ *
+ * The range and the slippage floor come from `lib/dex/liquidity`, which is where
+ * both used to live inline here. They were lifted out for the agent's
+ * `provideLiquidity` and then this page was pointed at them, in that order and
+ * deliberately: a second copy of either would be a second chance to reintroduce
+ * the two defects they carry regression notes for — the missing tick inversion
+ * and the zero slippage floor — on whichever path nobody was looking at.
  */
 export default function NewPositionPage() {
   const router = useRouter();
   const { isConnected, address, chainId } = useWalletV2();
   const account = useActiveAccount();
   const chain = useActiveWalletChain();
-  const { getCurrentTick } = usePoolV3();
   const { mintPosition, POSITION_MANAGER_ADDRESS: positionManager } =
     useV3PositionManager();
   const gate = useChainGate();
@@ -130,6 +148,29 @@ export default function NewPositionPage() {
   const { balance: balance0 } = useTokenBalance(token0);
   const { balance: balance1 } = useTokenBalance(token1);
 
+  /**
+   * Where this pair's market sits at a tier, on the chain the wallet is on.
+   *
+   * `usePoolV3.getCurrentTick`, which this replaces, resolved its factory from
+   * `READ_ONLY_CHAIN_ID` while the mint below goes through the connected wallet's
+   * chain. A wallet anywhere other than the read chain therefore centred its ±10%
+   * band on Sepolia's price and then opened the position on its own chain at a
+   * range derived from a different market. Nothing reverts when that happens; the
+   * position simply opens out of range and earns nothing.
+   */
+  const poolAt = (tier: number) =>
+    token0 && token1
+      ? readPoolState(
+          providerForChain(chainId),
+          chainId,
+          token0.address,
+          token1.address,
+          tier,
+          token0.decimals,
+          token1.decimals,
+        )
+      : Promise.resolve(null);
+
   const applyPreset = async (p: (typeof RANGE_PRESETS)[number]) => {
     if (!token0 || !token1) return;
     setPreset(p);
@@ -146,14 +187,8 @@ export default function NewPositionPage() {
       setMaxPrice("∞");
       return;
     }
-    const tick = await getCurrentTick(
-      token0.address,
-      token1.address,
-      fee,
-      token0.decimals,
-      token1.decimals,
-    );
-    if (!tick) {
+    const state = await poolAt(fee);
+    if (!state) {
       toast.error(
         "This pool doesn't exist yet — enter a starting price manually.",
       );
@@ -161,27 +196,49 @@ export default function NewPositionPage() {
       return;
     }
     const pct = p === "±5%" ? 0.05 : 0.1;
-    setMinPrice((tick.price * (1 - pct)).toPrecision(6));
-    setMaxPrice((tick.price * (1 + pct)).toPrecision(6));
+    setMinPrice((state.price * (1 - pct)).toPrecision(6));
+    setMaxPrice((state.price * (1 + pct)).toPrecision(6));
   };
 
-  const spacing = TICK_SPACINGS[fee] ?? 60;
-
-  const ticks = useMemo(() => {
-    // Aligned to the fee tier's spacing, not the raw ±887272 bounds: those are
-    // multiples of no spacing and flipTick rejects them without a message.
-    if (preset === "Full range") return fullRangeTicks(spacing);
+  /**
+   * The tick range, resolved by the shared function rather than here.
+   *
+   * It returns either a range or a sentence, and the sentence is now shown. The
+   * bad range this form can produce without anything looking wrong is a band that
+   * snaps onto a single tick: the 1% tier's spacing is 200 ticks, about 2% of
+   * price, so any band under ±1% on that tier collapses and the mint reverts with
+   * nothing a user could act on. Previously that arrived as a disabled button
+   * reading "Enter an amount and range", with an amount and a range both entered.
+   *
+   * `spot` is null because neither branch here needs one — explicit prices are the
+   * bounds, and full range has none. The band case, which does need a price, is
+   * resolved in `applyPreset` above and written into these two inputs so the user
+   * sees the numbers before signing.
+   */
+  const resolved = useMemo(() => {
     if (!token0 || !token1) return null;
+    if (preset === "Full range")
+      return ticksForRange(
+        { kind: "full" },
+        null,
+        fee,
+        token0.decimals,
+        token1.decimals,
+      );
     const lo = parseFloat(minPrice);
     const hi = parseFloat(maxPrice);
-    if (!lo || !hi || hi <= lo) return null;
-    const rawLower = priceToTick(lo, token0.decimals, token1.decimals);
-    const rawUpper = priceToTick(hi, token0.decimals, token1.decimals);
-    return {
-      tickLower: nearestUsableTick(Math.min(rawLower, rawUpper), spacing),
-      tickUpper: nearestUsableTick(Math.max(rawLower, rawUpper), spacing),
-    };
-  }, [minPrice, maxPrice, preset, spacing, token0, token1]);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+    return ticksForRange(
+      { kind: "prices", minPrice: lo, maxPrice: hi },
+      null,
+      fee,
+      token0.decimals,
+      token1.decimals,
+    );
+  }, [minPrice, maxPrice, preset, fee, token0, token1]);
+
+  const ticks = resolved && !("error" in resolved) ? resolved : null;
+  const rangeError = resolved && "error" in resolved ? resolved.error : null;
 
   /* Both amounts must be positive numbers, not merely non-empty strings.
    * `amount0 && amount1` passed for "0" — a truthy string — which let the form
@@ -200,7 +257,15 @@ export default function NewPositionPage() {
     ticks !== null;
 
   const submit = async () => {
-    if (!ready || !account || !chain || !token0 || !token1 || !positionManager)
+    if (
+      !ready ||
+      !account ||
+      !chain ||
+      !token0 ||
+      !token1 ||
+      !positionManager ||
+      !ticks
+    )
       return;
     setBusy(true);
     try {
@@ -222,111 +287,50 @@ export default function NewPositionPage() {
       }
 
       /*
-       * Slippage floor for the mint.
+       * Slippage floor for the mint, from the shared `mintMinimums`.
        *
-       * Both minimums were left at the hook's `"0"` default, so every position
-       * opened from this page accepted any execution at all: a sandwich could
-       * move the pool's price, have the mint consume the deposit at whatever
-       * ratio that price implied, and the transaction would still succeed.
-       * `NonfungiblePositionManager` has the check — `amount0 >= amount0Min &&
-       * amount1 >= amount1Min` — and it was being handed a floor of nothing.
+       * The derivation used to be inline here, and its long note is now that
+       * function's docblock — including the reason the obvious version is wrong:
+       * the floor cannot come from the typed amounts, because the pool takes
+       * `min(L(amount0), L(amount1))` and leaves the over-supplied side alone.
        *
-       * The floor cannot come from the typed amounts directly. This form takes
-       * two independent numbers, and the pool takes `min(L(amount0),
-       * L(amount1))` worth: one side is consumed in full and the other only as
-       * far as the range needs it. Flooring both at 99.5% of what was typed
-       * would therefore revert nearly every deposit, including honest ones. So
-       * the ratio the range actually consumes at is computed first, the expected
-       * consumption derived from it, and the tolerance applied to that.
-       *
-       * `spot` for a pool that doesn't exist yet is the price this mint is about
-       * to initialize it at — mintPosition derives sqrtPriceX96 from the same two
-       * amounts. The floor still matters there: it is what protects against
-       * someone front-running the initialize with a different price.
+       * `spot` is read here rather than at range time because it is read again on
+       * purpose: the preset that wrote these bounds may have run minutes ago, and
+       * the floor should be derived from the price the mint is about to meet. A
+       * null answer means the pool does not exist yet, and the two amounts below
+       * will set its opening price — the floor still matters there, as protection
+       * against someone front-running the initialize with a different one.
        */
-      const lowerPrice = tickToPrice(
-        ticks!.tickLower,
-        token0.decimals,
-        token1.decimals,
-      );
-      const upperPrice = tickToPrice(
-        ticks!.tickUpper,
-        token0.decimals,
-        token1.decimals,
-      );
-      const existing = await getCurrentTick(
-        token0.address,
-        token1.address,
-        fee,
-        token0.decimals,
-        token1.decimals,
-      );
-      const h0 = Number(amount0);
-      const h1 = Number(amount1);
-      const spot = existing ? existing.price : h1 / h0;
-      const ratio = getV3AmountRatio(
-        spot,
-        lowerPrice,
-        upperPrice,
-        token0.decimals,
-        token1.decimals,
-      );
-      if (Number.isNaN(ratio)) {
-        toast.error("Couldn't price this range — check the min and max.");
+      const state = await poolAt(fee);
+      const floors = mintMinimums({
+        amount0,
+        amount1,
+        decimals0: token0.decimals,
+        decimals1: token1.decimals,
+        tickLower: ticks.tickLower,
+        tickUpper: ticks.tickUpper,
+        spot: state ? state.price : null,
+        slippageBps: SLIPPAGE_BPS,
+      });
+      if ("error" in floors) {
+        toast.error(floors.error);
         return;
       }
-
-      const desired0 = ethers.parseUnits(amount0, token0.decimals);
-      const desired1 = ethers.parseUnits(amount1, token1.decimals);
-      /* Rounded to the token's own decimals before parsing, because the ratio is
-       * a float and `parseUnits` rejects a fractional part longer than the token
-       * supports. Only ever used for the non-binding side, and clamped by the
-       * desired amount below, so float error cannot push a floor above what the
-       * pool can actually take. */
-      const toBase = (human: number, decimals: number) =>
-        Number.isFinite(human) && human > 0 && human < 1e21
-          ? ethers.parseUnits(human.toFixed(decimals), decimals)
-          : BigInt(0);
-      const smaller = (a: bigint, b: bigint) => (a < b ? a : b);
-
-      let expected0 = desired0;
-      let expected1 = desired1;
-      if (ratio === 0) {
-        expected1 = BigInt(0); // price at or below the range — all token0
-      } else if (!Number.isFinite(ratio)) {
-        expected0 = BigInt(0); // price at or above the range — all token1
-      } else if (h1 / h0 >= ratio) {
-        // token0 binds; token1 is over-supplied and only partly consumed
-        expected1 = smaller(desired1, toBase(h0 * ratio, token1.decimals));
-      } else {
-        expected0 = smaller(desired0, toBase(h1 / ratio, token0.decimals));
-      }
-
-      const withTolerance = (v: bigint) =>
-        (v * BigInt(10_000 - SLIPPAGE_BPS)) / BigInt(10_000);
-      const amount0Min = ethers.formatUnits(
-        withTolerance(expected0),
-        token0.decimals,
-      );
-      const amount1Min = ethers.formatUnits(
-        withTolerance(expected1),
-        token1.decimals,
-      );
 
       await mintPosition(
         token0.address,
         token1.address,
         fee,
-        ticks!.tickLower,
-        ticks!.tickUpper,
+        ticks.tickLower,
+        ticks.tickUpper,
         amount0,
         amount1,
         address!,
         deadline,
         token0.decimals,
         token1.decimals,
-        amount0Min,
-        amount1Min,
+        floors.amount0Min,
+        floors.amount1Min,
       );
 
       toast.success("Position created");
@@ -446,6 +450,11 @@ export default function NewPositionPage() {
               </div>
             </div>
           </div>
+          {rangeError ? (
+            <div className={s.priceHint} style={{ marginTop: 8 }} role="alert">
+              {rangeError}
+            </div>
+          ) : null}
         </div>
 
         <div className={s.box} style={{ marginTop: 4 }}>

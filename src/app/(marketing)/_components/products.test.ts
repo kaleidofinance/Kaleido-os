@@ -20,7 +20,10 @@
  *   - The three fee-tier labels are RESTATED from /pool/new rather than imported,
  *     because that module is `"use client"` with the whole wallet stack above it.
  *     A restated constant is a constant that can drift, and the drift would be a
- *     landing page confidently advertising a tier the pool UI does not offer.
+ *     landing page confidently advertising a tier the pool UI does not offer. The
+ *     tier NUMBERS are no longer restated anywhere — they are imported below from
+ *     lib/dex/liquidity, which is where the pool page now gets them too — so what
+ *     section 4 checks is the wording, which is the part still written twice.
  *   - The borrow and lend figures are the `example` objects in capabilities.ts,
  *     which the section directly above types into its composer. Two different sets
  *     of numbers for the same fixture, one section apart, is worse than one set.
@@ -50,6 +53,7 @@ import { join } from "node:path";
 import { PRODUCTS, type ArtKind } from "./products";
 import { GROUPS } from "./capabilities";
 import { TICK_SPACINGS } from "../../../constants/utils/v3Math";
+import { FEE_TIERS as TRADED_TIERS } from "../../../lib/dex/liquidity";
 
 let pass = 0;
 let fail = 0;
@@ -374,8 +378,21 @@ function main() {
    * 4. The fee tiers have not drifted from /pool/new.
    *
    * This is the check the restatement is worth: ProductArt.tsx says in a comment
-   * that its labels are that page's FEE_TIERS, and this is the only thing making
+   * that its labels are that page's fee tiers, and this is the only thing making
    * that true tomorrow.
+   *
+   * The numbers are imported now rather than parsed. /pool/new used to declare the
+   * three tiers as a literal array and that array is what this read; it derives
+   * them from `FEE_TIERS` in lib/dex/liquidity today — the same tuple the intent
+   * builder and the auditor read — and only the wording stayed on the page, in
+   * `TIER_COPY`. So the number half of this check anchors on the shared tuple and
+   * the label half is parsed, which is the half that can still drift.
+   *
+   * Both parses are asserted to have found three entries before anything is
+   * compared. Without that, a renamed or reshaped table yields an empty list on
+   * each side of a length comparison and passes — which is how this section read
+   * when the page's array became a `.map`: it reported the drift it was built for,
+   * against a page that had none.
    * ------------------------------------------------------------------ */
   const tierPairs = (src: string, name: string) =>
     [
@@ -383,9 +400,29 @@ function main() {
     ].map((m) => `${m[1]}=${m[2]}`);
 
   const mine = tierPairs(artCode, "TIERS");
-  const theirs = tierPairs(stripComments(poolSrc), "FEE_TIERS");
+  /* `TIER_COPY` is keyed by the fee, so its entries come out in source order with
+     the number attached — the same `fee=label` shape the art's array gives, and
+     the page never has to repeat the fee inside the value. */
+  const poolCode = stripComments(poolSrc);
+  const theirs = [
+    ...objectBody(poolCode, "TIER_COPY").matchAll(
+      /^\s*(\d+):\s*\{\s*label:\s*"([^"]+)"/gm,
+    ),
+  ].map((m) => `${m[1]}=${m[2]}`);
+
   check("parsed ProductArt's TIERS", mine.length === 3, mine.join(" "));
-  check("parsed /pool/new's FEE_TIERS", theirs.length === 3, theirs.join(" "));
+  check("parsed /pool/new's TIER_COPY", theirs.length === 3, theirs.join(" "));
+  check(
+    "/pool/new builds its tier buttons from the shared FEE_TIERS",
+    /TRADED_TIERS\.map\(/.test(poolCode),
+    "the page no longer maps over the shared tuple, so its buttons can offer a tier the factory has no pool for",
+  );
+  check(
+    "/pool/new's tier numbers are the shared tuple's, in order",
+    theirs.length === TRADED_TIERS.length &&
+      theirs.every((v, i) => Number(v.split("=")[0]) === TRADED_TIERS[i]),
+    `page=[${theirs.join(" ")}] shared=[${TRADED_TIERS.join(" ")}]`,
+  );
   check(
     "ProductArt's fee tiers match /pool/new's, in order",
     mine.length === theirs.length && mine.every((v, i) => v === theirs[i]),

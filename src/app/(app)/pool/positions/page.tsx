@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useV3Positions, type V3Position } from "@/hooks/dex/useV3Positions";
-import { usePoolV3 } from "@/hooks/v2/usePoolV3";
+import { readPoolState } from "@/lib/dex/pool";
+import { providerForChain } from "@/config/provider";
 import { decimalsForAddress, symbolForAddress } from "@/constants/tokens";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
@@ -36,16 +37,25 @@ import s from "../pool.module.css";
 const decimalsFor = (chainId: number | undefined, address: string) =>
   decimalsForAddress(chainId, address) ?? 18;
 
-/** Current-tick lookups, keyed by position — fetched once per position on mount. */
+/**
+ * Current-tick lookups, keyed by position — fetched once per position on mount.
+ *
+ * Reads through `readPoolState`, the same reader /pool/new and both planners use.
+ * The hook this replaced pinned its factory to `READ_ONLY_CHAIN_ID` while the
+ * positions on screen are the connected wallet's, so a wallet on any other chain
+ * had every marker on this page placed from Sepolia's price — or, more often, no
+ * marker at all, because that chain's factory has no pool for the pair.
+ */
 function useCurrentTicks(positions: V3Position[], chainId: number | undefined) {
-  const { getCurrentTick } = usePoolV3();
   const [ticks, setTicks] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
     let cancelled = false;
     positions.forEach((p) => {
       if (p.tokenId in ticks) return;
-      getCurrentTick(
+      readPoolState(
+        providerForChain(chainId),
+        chainId,
         p.token0,
         p.token1,
         p.fee,
@@ -60,7 +70,7 @@ function useCurrentTicks(positions: V3Position[], chainId: number | undefined) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positions.map((p) => p.tokenId).join(",")]);
+  }, [positions.map((p) => p.tokenId).join(","), chainId]);
 
   return ticks;
 }

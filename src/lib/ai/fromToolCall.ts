@@ -323,8 +323,10 @@ function toCommand(
       /* Absent is a valid answer, not a mistake to report: the builder reads all
          three tiers and picks the one with a pool, and asks for a tier only when
          there is no pool at all — where the choice is permanent and genuinely the
-         user's. A tier this app does not trade is left for `ticksForRange` to
-         refuse by name. */
+         user's. A tier this DEX does not have is left for the builder to refuse by
+         name, against `isTradedTier` rather than against a tick spacing — the
+         0.01% tier has a spacing in the Uniswap library and no pool on this
+         factory. */
       const feeBps = numOf(a.fee);
       return {
         kind: "provideLiquidity",

@@ -12,8 +12,8 @@ import { poolOrderInverted, tickToPrice } from "@/constants/utils/v3Math";
  * because the two disagree about where the money goes.
  *
  * `chainId` is a parameter, and that is a fix rather than a tidy-up. The hook
- * this replaces (`usePoolV3.getCurrentTick`) resolved its factory from
- * `READ_ONLY_CHAIN_ID` while the page that consumed it minted through
+ * this replaced (`usePoolV3.getCurrentTick`, now deleted) resolved its factory
+ * from `READ_ONLY_CHAIN_ID` while the page that consumed it minted through
  * `useActiveWalletChain()` — so a wallet on BSC picked its ±10% band off
  * Sepolia's price and then opened the position on BSC at a range derived from
  * another chain's market. Nothing reverts when that happens; the position simply

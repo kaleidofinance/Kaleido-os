@@ -39,6 +39,7 @@ import { runReadTool } from "@/lib/ai/readTools";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { planFromToolCalls, type ToolCall } from "@/lib/ai/fromToolCall";
 import { auditPlan } from "@/lib/ai/auditor";
+import { FEE_TIERS } from "@/lib/dex/liquidity";
 import { EXECUTE_TOOLS } from "@/lib/ai/toolCatalog";
 import { isReadTool } from "@/lib/ai/readTools";
 
@@ -179,8 +180,14 @@ async function main() {
    * 9.95e18 liquidity. So "swap ETH → USDT" being refused is the CORRECT outcome
    * here, and asserting a plan for it would have been asserting a pool into
    * existence.
+   *
+   * `FEE_TIERS` is imported rather than declared. It used to be a fourth copy of
+   * the same three numbers, which is the specific way this harness could go wrong
+   * without failing: if the builder gained a tier and this list did not, the
+   * discovery below would miss that tier's pools and every expectation derived
+   * from `hasPool` would flip to the wrong answer — quietly, and in the direction
+   * that reports a pass.
    */
-  const FEE_TIERS = [500, 3000, 10000];
   const factory = new ethers.Contract(
     contracts.v3Factory ?? ethers.ZeroAddress,
     ["function getPool(address,address,uint24) view returns (address)"],
@@ -190,6 +197,8 @@ async function main() {
   const tokens = chainTokens(CHAIN);
   /** Lower-cased "SYMA|SYMB" keys, both orders, for every pair with a pool. */
   const pooledPairs = new Set<string>();
+  /** The same pairs keyed with the tier, for the mint cases, which name one. */
+  const pooledTiers = new Set<string>();
   if (contracts.v3Factory) {
     for (let i = 0; i < tokens.length; i += 1) {
       for (let j = i + 1; j < tokens.length; j += 1) {
@@ -204,6 +213,8 @@ async function main() {
           const b = tokens[j].symbol.toUpperCase();
           pooledPairs.add(`${a}|${b}`);
           pooledPairs.add(`${b}|${a}`);
+          pooledTiers.add(`${a}|${b}|${fee}`);
+          pooledTiers.add(`${b}|${a}|${fee}`);
           console.log(`  pool ${a}/${b} @${fee / 10_000}%  ${addr}`);
         }
       }
@@ -216,6 +227,13 @@ async function main() {
     const norm = (s: string) => (s.toUpperCase() === "ETH" ? "WETH" : s.toUpperCase());
     return pooledPairs.has(`${norm(a)}|${norm(b)}`);
   };
+  /* No ETH normalisation here, deliberately: a mint refuses native by name
+     rather than wrapping, so for this question ETH and WETH are not the same
+     thing. A tier is part of the key because a mint that names one reads only
+     that tier — and whether a band can be centred depends on that pool alone,
+     not on the pair having a pool somewhere. */
+  const hasPoolAt = (a: string, b: string, fee: number) =>
+    pooledTiers.has(`${a.toUpperCase()}|${b.toUpperCase()}|${fee}`);
 
   // ─────────────────────────────────────────────────────────────────────────
   section(1, "The catalog: every declared tool is dispatchable");
@@ -505,6 +523,98 @@ async function main() {
       calls: [{ name: "collectFees", args: { positionId: 999999 } }],
       expect: "refusal",
       because: "999999",
+    },
+
+    /*
+     * Opening a position. Five cases, and the reason there are five rather than
+     * one is that this is the only verb whose correctness depends on a chain read
+     * the harness can also make: where the pool's price is, and whether the pool
+     * is there at all. Every expectation below is derived from the factory sweep
+     * above, so seeding a pool later flips them without an edit here.
+     */
+    {
+      /* The pair that has a pool. No tier named, so the builder reads all three
+         and takes the deepest — which is the branch that would silently look
+         correct if it defaulted to 0.3% instead of reading, because a refusal and
+         a wrong-tier plan are both "one line of output". The address check below
+         is what catches the second one: a 0.3% mint on this chain would carry the
+         position manager and both tokens and still be a pool that isn't there. */
+      label: `provideLiquidity 5 USDT + 5 USDe, ±10% band, tier resolved${hasPool("USDT", "USDe") ? " (pool exists)" : " (no pool)"}`,
+      calls: [
+        {
+          name: "provideLiquidity",
+          args: { token0: "USDT", amount0: "5", token1: "USDe", amount1: "5", bandPct: 10 },
+        },
+      ],
+      expect: hasPool("USDT", "USDe") ? "plan" : "refusal",
+      because: hasPool("USDT", "USDe") ? undefined : "sets the fee it charges permanently",
+    },
+    {
+      /* Full range on a pair with no pool is the create path, and it is a plan
+         rather than a refusal on purpose: full range needs no price, so it is the
+         one choice that is valid on a pool that does not exist. Expected to build
+         either way — if this pair has been seeded since, it mints into it. */
+      label: `provideLiquidity full range at 0.3%, WETH/USDT${hasPoolAt("WETH", "USDT", 3000) ? " (mints into the pool)" : " (creates the pool)"}`,
+      calls: [
+        {
+          name: "provideLiquidity",
+          args: { token0: "WETH", amount0: "0.001", token1: "USDT", amount1: "3", fee: 3000 },
+        },
+      ],
+      expect: "plan",
+    },
+    {
+      /* The same pair and tier with a band instead. This is the case the null
+         spot exists for: with no pool there is no market to centre ±10% on, and
+         centring it on the typed amounts would invent a price and then mint a
+         narrow position around it. Refused, and the refusal names full range so
+         the retry can succeed. */
+      label: `provideLiquidity ±10% band at 0.3%, WETH/USDT${hasPoolAt("WETH", "USDT", 3000) ? " (pool exists)" : " (no pool at that tier)"}`,
+      calls: [
+        {
+          name: "provideLiquidity",
+          args: {
+            token0: "WETH",
+            amount0: "0.001",
+            token1: "USDT",
+            amount1: "3",
+            fee: 3000,
+            bandPct: 10,
+          },
+        },
+      ],
+      expect: hasPoolAt("WETH", "USDT", 3000) ? "plan" : "refusal",
+      because: hasPoolAt("WETH", "USDT", 3000) ? undefined : "full range",
+    },
+    {
+      /* 0.01%. It has a tick spacing in the Uniswap library and no pool on this
+         factory, so the gate that matters is the tier list and not the spacing —
+         checked live because the failure it prevents is on-chain and late: the
+         create call reverts inside the factory, after both approves have been
+         signed. */
+      label: "provideLiquidity on the 0.01% tier, which this factory does not have",
+      calls: [
+        {
+          name: "provideLiquidity",
+          args: { token0: "USDT", amount0: "5", token1: "USDe", amount1: "5", fee: 100 },
+        },
+      ],
+      expect: "refusal",
+      because: "0.01%",
+    },
+    {
+      /* Native, refused by name rather than wrapped. The position manager reverts
+         when native value arrives beside a wrapped leg, and inserting a wrap would
+         be a transaction the user never asked for. */
+      label: "provideLiquidity with native ETH on one side",
+      calls: [
+        {
+          name: "provideLiquidity",
+          args: { token0: "ETH", amount0: "0.001", token1: "USDT", amount1: "3", fee: 3000 },
+        },
+      ],
+      expect: "refusal",
+      because: "native",
     },
     {
       label: "claimTestTokens, asset resolved from the faucet",

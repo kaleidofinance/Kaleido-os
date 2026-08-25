@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers } from "ethers";
 import { getContracts } from "@/constants/registry";
-import { poolOrderInverted, invertTickRange } from "@/constants/utils/v3Math";
+import { initialSqrtPriceX96, sortMintParams } from "@/lib/dex/liquidity";
 
 const POSITION_MANAGER_ABI = [
   "function mint((address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, address recipient, uint256 deadline)) external payable returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
@@ -34,9 +34,12 @@ export const useV3PositionManager = () => {
    *
    * `token0`/`token1` are whatever order the caller holds them in, and
    * `tickLower`/`tickUpper` must be in that same frame — a tick derived from a
-   * price the UI presented as "token1 per token0". Both are converted to the
-   * pool's sorted frame here, together, and the amounts, decimals and minimums
-   * ride along with them.
+   * price the UI presented as "token1 per token0". `sortMintParams` converts all
+   * of it to the pool's sorted frame in one step, ticks included; the inversion
+   * used to be written out here with the six amount and decimal swaps around it,
+   * and it was once missing while they were present, which minted the mirror
+   * image of the range asked for. It is one function now so a reordering cannot
+   * be made without the ticks coming along.
    *
    * If the pool doesn't exist yet it is created at the ratio of the two
    * deposited amounts, since nothing else on the way in carries a price. That
@@ -72,84 +75,41 @@ export const useV3PositionManager = () => {
       );
       const factory = new ethers.Contract(v3Factory, FACTORY_ABI, signer);
 
-      // Sort tokens if necessary (Uniswap V3 expects token0 < token1)
-      let t0 = token0;
-      let t1 = token1;
-      let a0 = amount0Desired;
-      let a1 = amount1Desired;
-      let d0 = decimals0;
-      let d1 = decimals1;
-      let min0 = amount0Min;
-      let min1 = amount1Min;
-      // Rounded before any inversion so the negation acts on whole ticks.
-      let tl = Math.round(tickLower);
-      let tu = Math.round(tickUpper);
+      /* Into the pool's frame — `token0 < token1`, with the ticks negated and
+         swapped and every paired value moved with them. Everything below this
+         line is in the pool's order. */
+      const p = sortMintParams({
+        token0,
+        token1,
+        fee,
+        tickLower,
+        tickUpper,
+        amount0: amount0Desired,
+        amount1: amount1Desired,
+        amount0Min,
+        amount1Min,
+        decimals0,
+        decimals1,
+      });
 
-      if (poolOrderInverted(token0, token1)) {
-        t0 = token1;
-        t1 = token0;
-        a0 = amount1Desired;
-        a1 = amount0Desired;
-        d0 = decimals1;
-        d1 = decimals0;
-        min0 = amount1Min;
-        min1 = amount0Min;
-        /*
-         * The range has to turn over with the pair. Ticks arrive in the
-         * caller's frame — derived from a price the UI labelled "token1 per
-         * token0" in *its* order — and the pool only understands its own. This
-         * line used to be missing while the six above it were present, so a
-         * pair the caller happened to name in reverse address order minted a
-         * range that was the mirror image of the one asked for: the mint
-         * succeeds, the position is simply in the wrong place, usually
-         * one-sided and earning nothing.
-         */
-        ({ tickLower: tl, tickUpper: tu } = invertTickRange(tl, tu));
-      }
+      const desired0 = ethers.parseUnits(p.amount0, p.decimals0);
+      const desired1 = ethers.parseUnits(p.amount1, p.decimals1);
 
       // Check if pool exists
-      const poolAddress = await factory.getPool(t0, t1, fee);
+      const poolAddress = await factory.getPool(p.token0, p.token1, fee);
       if (poolAddress === ethers.ZeroAddress) {
-        // Calculate initial sqrtPriceX96 from amounts
-        // Formula: sqrt(amount1 / amount0) * 2^96
-        const amount0Wei = ethers.parseUnits(a0, d0);
-        const amount1Wei = ethers.parseUnits(a1, d1);
-
-        if (amount0Wei === BigInt(0) || amount1Wei === BigInt(0)) {
-          throw new Error("Initial amounts required to initialize pool.");
-        }
-
-        // sqrtPriceX96 = sqrt((amount1 << 192) / amount0)
-        const shiftedAmount1 = amount1Wei << BigInt(192);
-        const ratio = shiftedAmount1 / amount0Wei;
-
-        // Simple BigInt sqrt
-        const sqrt = (value: bigint) => {
-          if (value < BigInt(0)) throw new Error("Negative sqrt");
-          if (value < BigInt(2)) return value;
-          let x = value / BigInt(2) + BigInt(1);
-          let y = (x + value / x) / BigInt(2);
-          while (y < x) {
-            x = y;
-            y = (x + value / x) / BigInt(2);
-          }
-          return x;
-        };
-
-        const sqrtPriceX96 = sqrt(ratio);
-
-        console.log("🚀 Initializing new V3 pool...");
-        console.log("   Price Ratio:", a1, "/", a0);
-        console.log("   sqrtPriceX96:", sqrtPriceX96.toString());
+        /* sqrt((amount1 << 192) / amount0), in integer math throughout — the
+           value exceeds 2^96 and a float would lose the low bits that decide the
+           opening tick. Amounts are already in the pool's order. */
+        const sqrtPriceX96 = initialSqrtPriceX96(desired0, desired1);
 
         const initTx = await posManager.createAndInitializePoolIfNecessary(
-          t0,
-          t1,
+          p.token0,
+          p.token1,
           fee,
           sqrtPriceX96,
         );
         await initTx.wait();
-        console.log("✅ Pool Initialized.");
       }
 
       // Determine if we need to send value (Native ETH)
@@ -167,25 +127,19 @@ export const useV3PositionManager = () => {
        * bad quote. Both are decimal strings in the token's own units now.
        */
       const mintParams = [
-        t0,
-        t1,
+        p.token0,
+        p.token1,
         fee,
-        tl,
-        tu,
-        ethers.parseUnits(a0, d0),
-        ethers.parseUnits(a1, d1),
-        ethers.parseUnits(min0, d0),
-        ethers.parseUnits(min1, d1),
+        p.tickLower,
+        p.tickUpper,
+        desired0,
+        desired1,
+        ethers.parseUnits(p.amount0Min, p.decimals0),
+        ethers.parseUnits(p.amount1Min, p.decimals1),
         recipient,
         BigInt(deadline),
       ];
 
-      console.log(
-        "Minting V3 Position (Strict Array):",
-        mintParams,
-        "Value:",
-        value.toString(),
-      );
       return await posManager.mint(mintParams, { value });
     },
     [getSigner, v3PositionManager, v3Factory],
