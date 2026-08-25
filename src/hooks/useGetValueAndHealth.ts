@@ -324,8 +324,16 @@ const useGetValueAndHealth = () => {
          */
         let ethAmount: number | null = null;
         let usdcAmount: number | null = null;
+        /* Default 0, not null: a chain without USDT/kfUSD cannot hold it, so it
+         * contributes nothing to the total rather than suppressing it (the USDR
+         * lesson further down). A token that IS on the chain but whose balance
+         * read throws is set back to null, which correctly declines to publish. */
+        let usdtAmount: number | null = 0;
+        let kfusdAmount: number | null = 0;
         let ethPriceUsd: number | null = null;
         let usdcPriceUsd: number | null = null;
+        let usdtPriceUsd: number | null = null;
+        let kfusdPriceUsd: number | null = null;
 
         try {
           /*
@@ -504,27 +512,39 @@ const useGetValueAndHealth = () => {
 
         // Fetch kfUSD collateral
         try {
-          if (!LENDING.kfUSD) throw new Error("no kfUSD on the read chain");
-          const res6 = await contract.gets_addressToCollateralDeposited(
-            address,
-            LENDING.kfUSD,
-          );
-          const kfUSDCollateral = ethers.formatUnits(res6, 18);
-          setAVA4(Number(kfUSDCollateral));
+          if (LENDING.kfUSD) {
+            const res6 = await contract.gets_addressToCollateralDeposited(
+              address,
+              LENDING.kfUSD,
+            );
+            kfusdAmount = Number(ethers.formatUnits(res6, 18));
+            setAVA4(kfusdAmount);
+          } else {
+            // Not on this chain: kfusdAmount keeps its 0 default (contributes
+            // nothing), atom reads "not read".
+            kfusdAmount = 0;
+            setAVA4(null);
+          }
         } catch (error) {
+          kfusdAmount = null;
           setAVA4(null);
         }
 
         // Fetch USDT collateral
         try {
-          if (!LENDING.usdt) throw new Error("no USDT on the read chain");
-          const res7 = await contract.gets_addressToCollateralDeposited(
-            address,
-            LENDING.usdt,
-          );
-          const usdtCollateral = ethers.formatUnits(res7, 6);
-          setAVA5(Number(usdtCollateral));
+          if (LENDING.usdt) {
+            const res7 = await contract.gets_addressToCollateralDeposited(
+              address,
+              LENDING.usdt,
+            );
+            usdtAmount = Number(ethers.formatUnits(res7, 6));
+            setAVA5(usdtAmount);
+          } else {
+            usdtAmount = 0;
+            setAVA5(null);
+          }
         } catch (error) {
+          usdtAmount = null;
           setAVA5(null);
         }
 
@@ -574,6 +594,33 @@ const useGetValueAndHealth = () => {
           setUSDCPrice(null);
         }
 
+        /*
+         * USDT and kfUSD spot prices, for the collateral total below. Unlike ETH
+         * and USDC these have no dedicated atom — nothing renders a USDT or kfUSD
+         * price on its own — so the value stays a local. Same discipline as the
+         * two above: a read that reverts (no feed registered on the read chain)
+         * or returns <= 0 leaves the price null, and the total then declines to
+         * publish for any account that actually holds the token, rather than
+         * pricing real collateral wrong.
+         */
+        try {
+          if (!LENDING.usdt) throw new Error("no USDT on the read chain");
+          const res = await contract.getUsdValue(LENDING.usdt, 1, 0);
+          const spot = Number(res.toString()) / USD_SCALE;
+          if (Number.isFinite(spot) && spot > 0) usdtPriceUsd = spot;
+        } catch (error) {
+          usdtPriceUsd = null;
+        }
+
+        try {
+          if (!LENDING.kfUSD) throw new Error("no kfUSD on the read chain");
+          const res = await contract.getUsdValue(LENDING.kfUSD, 1, 0);
+          const spot = Number(res.toString()) / USD_SCALE;
+          if (Number.isFinite(spot) && spot > 0) kfusdPriceUsd = spot;
+        } catch (error) {
+          kfusdPriceUsd = null;
+        }
+
         try {
           const contract = getKaleidoContract(
             readOnlyProvider,
@@ -620,41 +667,60 @@ const useGetValueAndHealth = () => {
          */
 
         /*
-         * Total collateral value, computed from the reads above rather than
-         * re-fetching them.
+         * Total collateral value across every token the protocol accepts as
+         * collateral — ETH, USDC, USDT and kfUSD — computed from the reads above
+         * rather than re-fetching them.
          *
-         * This block used to repeat all five calls — the three collateral
-         * balances and both prices — completely unguarded. That was the second
-         * half of the cascade: with the diamond codeless, the first `await` here
-         * threw and landed in the catch below just as line 256 did, so removing
-         * only the earlier call would have fixed nothing. It also doubled the
-         * RPC traffic of this effect for values it had already read.
+         * This block used to repeat all the calls completely unguarded. That was
+         * the second half of the dead-diamond cascade: with the diamond codeless
+         * the first `await` here threw and landed in the catch below, so removing
+         * only the earlier call would have fixed nothing. It also doubled this
+         * effect's RPC traffic for values it had already read.
          *
-         * It publishes only when all four remaining inputs are known — ETH and
-         * USDC collateral, and a price for each. (Five, until the USDR read above
-         * was removed.) A partial sum renders as a confident dollar figure that is
-         * quietly missing a position, or prices real collateral at zero — worse
-         * than "—", and the reason collateralValAtom defaults to null.
+         * Each token contributes only when its value is *known*: the balance read
+         * succeeded, and either the balance is zero (no price needed) or the token
+         * priced. A token the account holds but which did not price makes the
+         * whole total unknowable — publishing a sum that silently drops it is the
+         * exact failure this atom defaults to null to avoid (a confident dollar
+         * figure quietly missing a position, worse than "—"). A token the account
+         * does not hold — or that is not on this chain, hence the 0 defaults on
+         * usdtAmount/kfusdAmount — contributes 0 regardless of whether its feed is
+         * registered, so a missing USDT/kfUSD feed cannot blank an ETH-only
+         * account. (USDR used to sit here too and suppressed the total for
+         * everyone because it resolved on no chain; it was removed — see above.)
          *
-         * NOT INCLUDED, and this predates the fix: kfUSD (AVA4) and USDT (AVA5)
-         * are accepted as collateral and read above, but neither is in this
-         * total, so a position held entirely in USDT still totals $0.00. Adding
-         * them needs a price for each — reusing usdcPriceUsd as a stand-in would
-         * be the same fabrication removed above — so it is left flagged, not
-         * silently patched.
+         * kfUSD and USDT were read but excluded until 2026-08-25: the exclusion
+         * predated the per-chain oracle work and was left flagged rather than
+         * patched with a fabricated price. Both now price through the same
+         * getUsdValue path as ETH/USDC.
          */
-        /* Inlined rather than hoisted into a `const totalIsKnown = …`: TypeScript
-         * only propagates an aliased condition when every operand is `const`, and
-         * these are `let` assigned inside the try blocks above, so the alias form
-         * left them `possibly null` at the multiplications. */
-        if (
-          ethAmount !== null &&
-          usdcAmount !== null &&
-          ethPriceUsd !== null &&
-          usdcPriceUsd !== null
-        ) {
-          const totalCollateralValue =
-            ethAmount * ethPriceUsd + usdcAmount * usdcPriceUsd;
+        /* Inlined arrow, not a hoisted helper, for the reason the guard was
+         * inlined before: `amount`/`price` are `let`s assigned in the try blocks
+         * above, and TypeScript narrows them through this conditional expression
+         * but not through an aliased predicate. */
+        const contribution = (
+          amount: number | null,
+          price: number | null,
+        ): number | null =>
+          amount === null
+            ? null
+            : amount === 0
+              ? 0
+              : price === null
+                ? null
+                : amount * price;
+
+        const parts = [
+          contribution(ethAmount, ethPriceUsd),
+          contribution(usdcAmount, usdcPriceUsd),
+          contribution(usdtAmount, usdtPriceUsd),
+          contribution(kfusdAmount, kfusdPriceUsd),
+        ];
+        if (parts.every((p) => p !== null)) {
+          const totalCollateralValue = parts.reduce<number>(
+            (sum, p) => sum + (p ?? 0),
+            0,
+          );
           setCollateralVal(totalCollateralValue.toFixed(2));
         } else {
           setCollateralVal(null);
