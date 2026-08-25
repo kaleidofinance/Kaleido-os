@@ -9,6 +9,10 @@ const config: Config = {
   ],
 
   theme: {
+    // `sm: 1px` is deliberate-by-accident: it makes `sm:` mean "always"
+    // rather than "≥640px". Hundreds of call sites now depend on that
+    // reading, so correcting it would silently change every one of them.
+    // Left as-is; treat `sm:` as unconditional when writing new markup.
     screens: {
       sm: "1px",
       md: "768px",
@@ -17,70 +21,24 @@ const config: Config = {
       "2xl": "1536px",
       "3xl": "1920px",
     },
-    keyframes: {
-      marquee: {
-        "0%": { transform: "translateX(0%)" },
-        "100%": { transform: "translateX(-50%)" },
-      },
-    },
-    animation: {
-      marquee: "marquee 30s linear infinite",
-    },
+
     extend: {
-      colors: {
-        // --- Legacy palette. Kept so existing markup keeps working;
-        // migrate off these onto the semantic tokens below. ---
-        background: "#111714",
-        sidebarBg: "#1a211d",
-        borderColor: "#29382f",
-        board: "#000000",
-        price: "#9eb7a8",
-        inputPanel: "#0a0f0a",
-        borderline: "#22C55E1A",
-        tokenSelector: "#38e07b",
-        modal: "#000000",
-
-        // --- Semantic tokens. Defined in src/app/tokens.css. ---
-        surface: {
-          DEFAULT: "var(--surface)",
-          base: "var(--surface-base)",
-          sunken: "var(--surface-sunken)",
-          raised: "var(--surface-raised)",
-          hover: "var(--surface-hover)",
+      // keyframes/animation belong under `extend`. At `theme` root they
+      // REPLACE Tailwind's built-ins, which is why `animate-spin` and
+      // `animate-pulse` did not exist in this project.
+      keyframes: {
+        marquee: {
+          "0%": { transform: "translateX(0%)" },
+          "100%": { transform: "translateX(-50%)" },
         },
-        edge: {
-          DEFAULT: "var(--border-subtle)",
-          strong: "var(--border-strong)",
-          accent: "var(--border-accent)",
+        shimmer: {
+          "100%": { transform: "translateX(100%)" },
         },
-        content: {
-          DEFAULT: "var(--text-primary)",
-          secondary: "var(--text-secondary)",
-          muted: "var(--text-muted)",
-          onAccent: "var(--text-on-accent)",
-        },
-        accent: {
-          DEFAULT: "var(--accent)",
-          hover: "var(--accent-hover)",
-          pressed: "var(--accent-pressed)",
-          subtle: "var(--accent-subtle)",
-          alt: "var(--accent-alt)",
-          altHover: "var(--accent-alt-hover)",
-          altSubtle: "var(--accent-alt-subtle)",
-        },
-        positive: {
-          DEFAULT: "var(--positive)",
-          subtle: "var(--positive-subtle)",
-        },
-        negative: {
-          DEFAULT: "var(--negative)",
-          subtle: "var(--negative-subtle)",
-        },
-        warning: "var(--warning)",
-        danger: "var(--danger)",
       },
-
-      fontFamily: {},
+      animation: {
+        marquee: "marquee 30s linear infinite",
+        shimmer: "shimmer 1.6s infinite",
+      },
     },
   },
   plugins: [],

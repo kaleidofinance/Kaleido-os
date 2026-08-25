@@ -1,0 +1,66 @@
+{
+  "network": "baseTestnet",
+  "chainId": 84532,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-21T14:02:12.626Z",
+  "oracleKind": "aggregator-v3",
+  "contracts": {
+    "priceOracle": "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A",
+    "pythContract": null
+  },
+  "feeds": [
+    {
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "aggregator": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 1800,
+      "maxAgeBasis": "Chainlink publishes this feed on a documented 1200s heartbeat with a 0.15% deviation trigger, and it measured 42s old — so the deviation trigger, not the heartbeat, is what fires in practice. 1800 is the heartbeat plus 50%. Tighter than Sepolia's 5400 because the heartbeat here is 1200s rather than 3600s, which makes this the best ETH bound in the wave and the one to compare the others against.",
+      "priceAtDeploy": 2383.61167861,
+      "ageSecondsAtDeploy": 24
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "aggregator": "0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 90000,
+      "maxAgeBasis": "Documented heartbeat is exactly 86400s. 90000 rather than 86400 because a bound equal to the heartbeat has zero tolerance for a late publish, and these feeds demonstrably do run to the full heartbeat: the sibling USDT/USD on this chain measured 70,702s (19h39m) in the same block. A bound of 86400 would price USDC correctly almost always and revert every deposit and health-factor read for the minutes around a late round, which is the intermittent failure that is hardest to diagnose. 90000 equals Constants.MAX_FEED_PRICE_AGE — this is the ceiling, there is no more slack available, and it is only defensible because USDC is pegged.",
+      "priceAtDeploy": 1,
+      "ageSecondsAtDeploy": 28070
+    },
+    {
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "symbols": [
+        "USDT"
+      ],
+      "aggregator": "0x3ec8593F930EA45ea58c968260e6e9FF53FC934f",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 90000,
+      "maxAgeBasis": "Same 86400s heartbeat and same reasoning as USDC on this chain. This is the feed that measured 70,702s old and so supplied the evidence for both bounds. Registering the USDT that deploy-stablecoin.js mints needs this entry; Sepolia has no USDT/USD feed, so USDT is registerable here and not there.",
+      "priceAtDeploy": 0.99968926,
+      "ageSecondsAtDeploy": 73246
+    },
+    {
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "symbols": [
+        "BTC"
+      ],
+      "aggregator": "0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 1800,
+      "maxAgeBasis": "1200s heartbeat and 0.1% deviation trigger, measured 98s old. Same derivation as ETH on this chain. No token is registered against it yet; it is installed so a WBTC market does not need an oracle change.",
+      "priceAtDeploy": 77070.19199449,
+      "ageSecondsAtDeploy": 14
+    }
+  ]
+}

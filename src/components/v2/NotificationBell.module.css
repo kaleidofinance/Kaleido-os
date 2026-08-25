@@ -1,0 +1,50 @@
+/* Matches Nav.module.css .icon so the bell sits in the right-hand cluster
+   without looking bolted on: same 34px circle, same transparent-at-rest
+   treatment, same hover fill. */
+
+.bell {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+/* Translucent, matching `.icon` in Nav.module.css — this sits in the same nav
+   cluster, and an opaque fill there reads as a stray box on the gradient. */
+.bell:hover {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
+}
+.bell.on {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
+}
+
+/* Overlaps the glyph's top-right rather than sitting beside it: a badge that
+   reserves its own width shifts every control to its left the moment the first
+   notification lands. */
+.badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: var(--k-r-pill);
+  background: var(--k-danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: var(--k-fw-med);
+  line-height: 15px;
+  text-align: center;
+  /* Ring in the page ground, so the badge reads as detached from the glyph
+     underneath it at any nav opacity. */
+  box-shadow: 0 0 0 2px var(--k-bg);
+  pointer-events: none;
+}

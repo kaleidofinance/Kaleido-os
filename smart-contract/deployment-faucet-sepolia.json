@@ -1,0 +1,78 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-24T16:44:01.599Z",
+  "contracts": {
+    "faucet": "0xc0aC5e858C05970331e03Ed528BBCF6b05AAe7eE"
+  },
+  "config": {
+    "cooldownSeconds": 3600,
+    "assets": [
+      {
+        "key": "USDC",
+        "address": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+        "symbol": "USDC",
+        "decimals": 6,
+        "dripHuman": "10000.0",
+        "drip": "10000000000",
+        "source": "stablecoin",
+        "funding": {
+          "method": "unfunded",
+          "amount": "0.0",
+          "target": "1000000.0",
+          "short": "1000000.0"
+        }
+      },
+      {
+        "key": "USDT",
+        "address": "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55",
+        "symbol": "USDT",
+        "decimals": 6,
+        "dripHuman": "10000.0",
+        "drip": "10000000000",
+        "source": "stablecoin",
+        "funding": {
+          "method": "mint",
+          "amount": "1000000.0",
+          "target": "1000000.0",
+          "short": null
+        }
+      },
+      {
+        "key": "USDe",
+        "address": "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b",
+        "symbol": "USDe",
+        "decimals": 18,
+        "dripHuman": "10000.0",
+        "drip": "10000000000000000000000",
+        "source": "stablecoin",
+        "funding": {
+          "method": "mint",
+          "amount": "1000000.0",
+          "target": "1000000.0",
+          "short": null
+        }
+      },
+      {
+        "key": "WETH",
+        "address": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+        "symbol": "WETH",
+        "decimals": 18,
+        "dripHuman": "1.0",
+        "drip": "1000000000000000000",
+        "source": "dex",
+        "funding": {
+          "method": "wrap",
+          "amount": "1.949228853206382639",
+          "target": "10.0",
+          "short": "8.050771146793617361"
+        }
+      }
+    ]
+  },
+  "sources": {
+    "stablecoin": "deployment-stablecoin-sepolia.json",
+    "dex": "deployment-dex-sepolia.json"
+  }
+}

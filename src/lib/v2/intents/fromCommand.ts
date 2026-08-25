@@ -1,4 +1,7 @@
 import type { IToken } from "@/constants/types/dex";
+/* Type-only, so this module keeps the zero runtime dependencies its header
+   claims — liquidity.ts imports ethers, and an erased import brings none of it. */
+import type { RangeChoice } from "@/lib/dex/liquidity";
 
 /**
  * Local command parser — the deterministic half of Luca.
@@ -41,8 +44,37 @@ export interface ApproveCommand {
   amount: string;
   token: IToken;
 }
+/**
+ * A plain wallet-to-wallet send — the counterpart to ReceiveCommand below, and
+ * the only command in this grammar that ends in a call to no Kaleido contract.
+ *
+ * `to` keeps the case the user typed, which is not incidental. EIP-55 encodes an
+ * address's checksum in the *case* of its hex digits, and normalise() lowercases
+ * everything it touches. A lowercased address is a valid address with no
+ * checksum left to verify — ethers.getAddress() accepts it without complaint —
+ * so one mistyped digit would reach the signer unflagged and burn the funds.
+ * See detectRecipient for how the case survives the parser.
+ */
+export interface SendCommand {
+  kind: "send";
+  amount: string;
+  token: IToken;
+  /** Recipient, `0x`-prefixed, case exactly as typed. */
+  to: string;
+}
 export interface HelpCommand {
   kind: "help";
+}
+/**
+ * Show the user their own deposit address.
+ *
+ * Sits beside `help` rather than in the VERBS table because it resolves to a
+ * *panel*, not an Intent: there is no transaction, nothing to sign, and nothing
+ * for the planner to build. It is the one command in this grammar that works
+ * with no contract deployed anywhere.
+ */
+export interface ReceiveCommand {
+  kind: "receive";
 }
 
 /* The P2P family. Borrow and lend carry a rate and a term as well as an
@@ -140,10 +172,56 @@ export interface RemovePositionCommand {
   positionId: number;
 }
 
+/**
+ * Open a new liquidity position.
+ *
+ * `range` is a *choice*, not a tick pair, and that distinction is what makes this
+ * command safe to accept at all: a band's centre is read from the pool's own
+ * slot0 by `lib/dex/liquidity.ts`, so nothing upstream of the builder ever names
+ * a tick. See the pool section of intents/types.ts for the whole argument.
+ *
+ * `fee` is optional. Omitted means "whichever tier has a pool for this pair",
+ * which the builder resolves by reading all three — the same shape as
+ * RepayCommand's optional `loanId`, and for the same reason: a chain read is more
+ * reliable than a caller recalling which tier exists.
+ */
+export interface ProvideLiquidityCommand {
+  kind: "provideLiquidity";
+  amount0: string;
+  token0: IToken;
+  amount1: string;
+  token1: IToken;
+  fee?: number;
+  range: RangeChoice;
+}
+
+/**
+ * Claim a drip from the testnet faucet.
+ *
+ * `symbol` is a bare word, not an `IToken`, and that is the one thing about this
+ * command worth reading twice. Every other token-carrying command here resolves
+ * against the registry the caller passes in; the faucet's assets are not in it —
+ * the mock USDT and USDe are in no chain's TOKENS list, and the mock USDC is
+ * missing from two of the five. Resolving through the registry would therefore
+ * refuse, by name, exactly the assets the faucet exists to hand out. The faucet
+ * is its own authority on what it lists, so the word travels untouched and
+ * buildIntents matches it against the faucet's own asset list.
+ *
+ * Omitted entirely when the user just said "faucet": the planner resolves it
+ * when the faucet lists one asset and asks which otherwise, the same bargain
+ * RepayCommand's optional `loanId` makes.
+ */
+export interface ClaimTestTokensCommand {
+  kind: "claimTestTokens";
+  /** Lowercased, as typed. Never a registry match — see above. */
+  symbol?: string;
+}
+
 export type Command =
   | SwapCommand
   | StakeCommand
   | ApproveCommand
+  | SendCommand
   | BorrowCommand
   | LendCommand
   | DepositCommand
@@ -161,19 +239,44 @@ export type Command =
   | CompoundYieldCommand
   | CollectFeesCommand
   | RemovePositionCommand
-  | HelpCommand;
+  | ProvideLiquidityCommand
+  | ClaimTestTokensCommand
+  | HelpCommand
+  | ReceiveCommand;
 
 /** Kinds resolved immediately, with no slot to ever ask about. */
 type ZeroSlotKind = "claimYield" | "compoundYield";
 
+/**
+ * Kinds that only ever arrive already complete, from a tool call.
+ *
+ * One member, and it is not a gap left for later. Opening a position needs two
+ * tokens, two amounts, a fee tier and a range — six values against a `Slot` union
+ * whose token slots are `tokenIn`/`tokenOut`/`token` and whose only amount is
+ * `amount`, so the draft machinery cannot hold it half-specified without growing
+ * a second amount and a second token that no other verb would use.
+ *
+ * Falling through to the model is the better path rather than the fallback one.
+ * "add some liquidity to the USDT/USDe pool" reaches `provideLiquidity` in the
+ * tool catalog, where the model collects both sides conversationally and calls
+ * once with everything; a `VERBS` entry would instead take "provide 100 usdt"
+ * into a Draft that can never be completed. Excluded here rather than given an
+ * empty verb list so the omission is stated, not silent.
+ */
+type ToolOnlyKind = "provideLiquidity";
+
 /** Kinds that carry slots, i.e. everything that can be half-specified. */
-export type ActionKind = Exclude<Command["kind"], "help" | ZeroSlotKind>;
+export type ActionKind = Exclude<
+  Command["kind"],
+  "help" | "receive" | ZeroSlotKind | ToolOnlyKind
+>;
 
 export type Slot =
   | "amount"
   | "tokenIn"
   | "tokenOut"
   | "token"
+  | "recipient"
   | "rate"
   | "days"
   | "ref";
@@ -185,6 +288,8 @@ export interface Draft {
   tokenIn?: IToken;
   tokenOut?: IToken;
   token?: IToken;
+  /** Send recipient. Case-sensitive — see SendCommand. */
+  to?: string;
   interestPct?: number;
   days?: number;
   loanId?: number;
@@ -211,6 +316,11 @@ const VERBS: Record<ActionKind, string[]> = {
   swap: ["swap", "trade", "convert", "exchange", "sell"],
   stake: ["stake"],
   approve: ["approve", "allow"],
+  /* No "pay". "pay back my loan" and "pay off my loan" are repayments, and a
+     money verb with two readings is precisely what the note above says should
+     fall through to the model rather than resolve to the closer guess. "send"
+     and "transfer" have one reading each. */
+  send: ["send", "transfer"],
   borrow: ["borrow"],
   lend: ["lend", "supply", "offer"],
   deposit: ["deposit", "collateralise", "collateralize"],
@@ -226,6 +336,11 @@ const VERBS: Record<ActionKind, string[]> = {
   completeWithdrawal: ["complete"],
   collectFees: ["collect"],
   removePosition: ["remove"],
+  /* One word, and a noun rather than a verb, because there is no verb anyone
+     uses for this — "faucet", "faucet usdt" and "use the faucet" all read the
+     same way. It carries one optional slot but never becomes a Draft: see the
+     branch in parseCommand. */
+  claimTestTokens: ["faucet"],
 };
 
 /** Verbs with no slots at all — resolved without touching the draft machinery. */
@@ -234,7 +349,51 @@ const ZERO_SLOT_VERBS: Record<ZeroSlotKind, string[]> = {
   compoundYield: ["compound"],
 };
 
+/**
+ * Words that follow "faucet" without naming an asset.
+ *
+ * Ticker-shaped, so the pattern alone lets them through, and each one would
+ * otherwise produce "the faucet doesn't list please" — a refusal about a word
+ * the user never meant as a token. Deliberately short: this is not an attempt at
+ * English, only at the handful of fillers that actually trail the noun.
+ */
+const FAUCET_FILLERS = new Set([
+  "me",
+  "us",
+  "please",
+  "now",
+  "token",
+  "tokens",
+  "drip",
+]);
+
 const HELP_WORDS = ["help", "commands", "what can you do", "how do i use"];
+
+/**
+ * Phrases that open the receive panel. Matched as a *leading* phrase only, the
+ * same way HELP_WORDS is, and that restriction is the whole design.
+ *
+ * "receive" is ordinary trading English — "how much KLD will I receive", "the
+ * token you receive" — so the `words.some(...)` scan that ZERO_SLOT_VERBS uses
+ * would hijack genuine questions before they ever reached the FAQ or the model.
+ * A command has to be *stated*, and a stated command leads with its verb.
+ *
+ * "deposit address" earns its place here despite `deposit` being a lending verb
+ * (see VERBS below), because this list is checked ahead of verb detection.
+ * Without it, asking for a deposit address parses as collateral and Luca
+ * replies "how much?". "deposit 500 USDC" is unaffected: it does not lead with
+ * the phrase.
+ */
+const RECEIVE_PHRASES = [
+  "receive",
+  "deposit address",
+  "my address",
+  "my wallet address",
+  "wallet address",
+  "show my address",
+  "qr",
+  "qr code",
+];
 
 /** Words separating the two sides of a swap. */
 const SEPARATORS = ["to", "for", "into", "->", "→", ">"];
@@ -244,21 +403,46 @@ const SEPARATORS = ["to", "for", "into", "->", "→", ">"];
 /**
  * Accepts 500, 1,000, 0.5, 1k, 2.5m. Returns a canonical decimal string so the
  * value handed to ethers.parseUnits never carries a separator or suffix.
+ *
+ * Deliberately string arithmetic, with no `Number` anywhere in it. Money typed
+ * as text is exact and a double is not: `Number("0.1").toFixed(18)` is
+ * "0.100000000000000006" and `Number("0.3").toFixed(18)` is
+ * "0.299999999999999989", so routing through a float turns "send 0.1 USDC" into
+ * a quantity USDC cannot express — refused by the builder's precision check with
+ * a message about a number the user never typed — and every 18-decimal amount
+ * into one that is a few wei off what was asked for and reads as noise on the
+ * confirmation row.
+ *
+ * So the k/m suffix moves the decimal point by three or six places rather than
+ * multiplying, which is also why the exponent-notation hazard the previous
+ * implementation's comment named is gone rather than merely deferred: a value at
+ * or above 1e21 is where `toFixed` starts returning "1e+21", and there is no
+ * float here to hand one back.
  */
 function parseAmount(raw: string): string | null {
   const m = raw.match(/^([\d,]*\.?\d+)\s*([km])?$/i);
   if (!m) return null;
 
-  const base = Number(m[1].replace(/,/g, ""));
-  if (!Number.isFinite(base) || base <= 0) return null;
+  const digits = m[1].replace(/,/g, "");
+  const dot = digits.indexOf(".");
+  let whole = dot === -1 ? digits : digits.slice(0, dot);
+  let frac = dot === -1 ? "" : digits.slice(dot + 1);
 
-  const scale = m[2]?.toLowerCase() === "k" ? 1e3 : m[2]?.toLowerCase() === "m" ? 1e6 : 1;
-  const value = base * scale;
-  if (!Number.isFinite(value) || value <= 0) return null;
+  const shift =
+    m[2]?.toLowerCase() === "k" ? 3 : m[2]?.toLowerCase() === "m" ? 6 : 0;
+  if (shift) {
+    /* Pad first: "2.5m" has one fractional digit and needs six, and borrowing
+       from a fraction that has run out is what a multiply would have hidden. */
+    const padded = frac.padEnd(shift, "0");
+    whole += padded.slice(0, shift);
+    frac = padded.slice(shift);
+  }
 
-  // toFixed(18) then trim, rather than String(value), so large k/m products
-  // can't reach ethers as exponent notation ("1e+21" fails parseUnits).
-  return value.toFixed(18).replace(/\.?0+$/, "");
+  whole = whole.replace(/^0+/, "");
+  frac = frac.replace(/0+$/, "");
+  // Zero in any spelling — "0", "0.0", "0.000k" — is not an amount.
+  if (!whole && !frac) return null;
+  return frac ? `${whole || "0"}.${frac}` : whole;
 }
 
 /* ----------------------------------------------------------------- tokens -- */
@@ -290,7 +474,11 @@ function findTokenMentions(words: string[], tokens: IToken[]): Mention[] {
   while (i < words.length) {
     let hit: { token: IToken; length: number } | null = null;
 
-    for (let len = Math.min(MAX_NAME_WORDS, words.length - i); len >= 1; len--) {
+    for (
+      let len = Math.min(MAX_NAME_WORDS, words.length - i);
+      len >= 1;
+      len--
+    ) {
       const token = findToken(words.slice(i, i + len).join(" "), tokens);
       if (token) {
         hit = { token, length: len };
@@ -315,6 +503,7 @@ const PROMPTS: Record<Slot, string> = {
   tokenIn: "Which token do you want to spend?",
   tokenOut: "Which token do you want to receive?",
   token: "Which token?",
+  recipient: "Which address should it go to? (0x…)",
   rate: "What interest rate? (e.g. 8%)",
   days: "Over what term? (e.g. 30 days)",
   ref: "Which one? For example: listing 3, request 7, or position 42.",
@@ -362,8 +551,61 @@ function detectAmount(
   return null;
 }
 
+/* -------------------------------------------------------------- recipient -- */
+
+/*
+ * A 40-hex-digit address at the start of a word.
+ *
+ * Not anchored at the end, because normalise() keeps `.` and `,` — they belong
+ * to amounts like "1,000.50" — so a trailing comma or full stop stays glued to
+ * the address. The lookahead is what makes that safe to allow: a *longer* hex
+ * run matches nothing at all rather than being truncated to its first 40 digits,
+ * which would send to a different address than the one typed.
+ */
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/;
+
+/**
+ * The same pattern for reading the address out of the raw text.
+ *
+ * The prefix is case-insensitive here where the word-side pattern's is not: the
+ * word has already been lowercased, the raw text has not, and some tools emit
+ * `0X`. Only the prefix is folded, and only to `0x`, which is checksum-neutral —
+ * EIP-55 hashes the 40 hex digits alone, and ethers requires the prefix in
+ * lowercase. Do not extend this to the digits; their case *is* the checksum.
+ */
+const ADDRESS_IN_TEXT = /0[xX][0-9a-fA-F]{40}(?![0-9a-fA-F])/;
+
+/** How many addresses were typed. Two is an ambiguity, not a recipient list. */
+function countAddresses(words: string[]): number {
+  return words.filter((w) => ADDRESS_RE.test(w)).length;
+}
+
+/**
+ * The recipient of a send, with its case intact.
+ *
+ * The lowercased word array locates it; the value comes back out of the raw
+ * text. That split is the entire point — see SendCommand: reading the recipient
+ * off `words` would hand downstream an address whose checksum has already been
+ * erased, and there is no later stage that can recover it.
+ *
+ * Taking the first match from each side stays aligned because normalise()
+ * neither reorders nor merges words, and every character of an address is a word
+ * character, so an address in the text is always exactly one word.
+ */
+function detectRecipient(
+  words: string[],
+  text: string,
+): { to: string; index: number } | null {
+  const index = words.findIndex((w) => ADDRESS_RE.test(w));
+  if (index === -1) return null;
+  const cased = text.match(ADDRESS_IN_TEXT);
+  return cased ? { to: `0x${cased[0].slice(2)}`, index } : null;
+}
+
 /** Percent-suffixed ("8%") or introduced by "at"/"apr"/"interest". */
-function detectRate(words: string[]): { pct: number; claimed: number[] } | null {
+function detectRate(
+  words: string[],
+): { pct: number; claimed: number[] } | null {
   for (let i = 0; i < words.length; i++) {
     const pctMatch = words[i].match(/^(\d+(?:\.\d+)?)%$/);
     if (pctMatch) return { pct: Number(pctMatch[1]), claimed: [i] };
@@ -384,9 +626,11 @@ function detectRate(words: string[]): { pct: number; claimed: number[] } | null 
  * "remove" and "collect" stay unambiguous too — "remove 42" alone could be
  * almost anything, but "remove position 42" cannot.
  */
-function detectRef(
-  words: string[],
-): { target: "listing" | "request" | "position"; id: number; claimed: number[] } | null {
+function detectRef(words: string[]): {
+  target: "listing" | "request" | "position";
+  id: number;
+  claimed: number[];
+} | null {
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     const target =
@@ -421,7 +665,9 @@ const DAY_UNITS: Record<string, number> = {
 };
 
 /** "30 days", "2 weeks", "1 month". Normalised to whole days. */
-function detectDuration(words: string[]): { days: number; claimed: number[] } | null {
+function detectDuration(
+  words: string[],
+): { days: number; claimed: number[] } | null {
   for (let i = 0; i < words.length; i++) {
     const unit = DAY_UNITS[words[i]];
     if (!unit) continue;
@@ -437,11 +683,58 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   const raw = text.trim();
   if (!raw) return { status: "unknown" };
 
-  if (HELP_WORDS.some((h) => raw.toLowerCase() === h || raw.toLowerCase().startsWith(h))) {
+  if (
+    HELP_WORDS.some(
+      (h) => raw.toLowerCase() === h || raw.toLowerCase().startsWith(h),
+    )
+  ) {
     return { status: "ok", command: { kind: "help" } };
   }
 
+  /*
+   * Receive, checked ahead of verb detection so "deposit address" lands here and
+   * not on the lending `deposit` verb.
+   *
+   * The boundary test is deliberate rather than HELP_WORDS' bare `startsWith`:
+   * requiring the phrase to end the string or be followed by a space keeps
+   * "received 500 USDC from Alice" out, which a prefix match would have claimed.
+   */
+  const lower = raw.toLowerCase();
+  if (
+    RECEIVE_PHRASES.some(
+      (p) => lower === p || lower.startsWith(`${p} `) || lower === `${p}?`,
+    )
+  ) {
+    return { status: "ok", command: { kind: "receive" } };
+  }
+
   const words = normalise(raw);
+
+  /*
+   * The faucet, checked ahead of the zero-slot verbs for one specific reason:
+   * "claim usdt from the faucet" contains "claim", and ZERO_SLOT_VERBS scans the
+   * whole sentence, so without this it would resolve to claimYield and plan a
+   * kfUSD yield claim — the wrong product, from a sentence that names this one.
+   *
+   * Scanning the whole sentence is safe here where it would not be for
+   * "receive": "faucet" is not ordinary trading English, and no other command in
+   * this grammar has any reason to mention one.
+   */
+  const faucetAt = words.findIndex((w) => VERBS.claimTestTokens.includes(w));
+  if (faucetAt !== -1) {
+    /*
+     * The word immediately after it, and only that word. Loose phrasings
+     * ("get me some usdt from the faucet") are left to the model, which has a
+     * `token` parameter for exactly this and no positional guessing to do —
+     * the same bargain the note on VERBS makes about near misses.
+     */
+    const next = words[faucetAt + 1];
+    const symbol =
+      next && /^[a-z][a-z0-9]{1,11}$/.test(next) && !FAUCET_FILLERS.has(next)
+        ? next
+        : undefined;
+    return { status: "ok", command: { kind: "claimTestTokens", symbol } };
+  }
 
   // Checked ahead of the slotted verbs: these take no argument at all, so
   // there's nothing for the draft machinery to do.
@@ -455,14 +748,18 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   if (!verb) return { status: "unknown" };
 
   // Rate and term claim their numbers first so the amount can't be read off
-  // either of them.
+  // either of them. An address can't be read as an amount (the "0x" stops
+  // parseAmount cold), but it claims its position anyway so that stays true by
+  // construction rather than by coincidence.
   const rate = detectRate(words);
   const duration = detectDuration(words);
   const ref = detectRef(words);
+  const recipient = detectRecipient(words, raw);
   const claimed = new Set([
     ...(rate?.claimed ?? []),
     ...(duration?.claimed ?? []),
     ...(ref?.claimed ?? []),
+    ...(recipient ? [recipient.index] : []),
   ]);
 
   const amount = detectAmount(words, claimed);
@@ -499,7 +796,8 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
             : "takeListing",
       amount: amount?.amount,
       refTarget: marketRef?.target,
-      refId: marketRef && Number.isFinite(marketRef.id) ? marketRef.id : undefined,
+      refId:
+        marketRef && Number.isFinite(marketRef.id) ? marketRef.id : undefined,
     };
 
     // "cancel" with no noun can't be resolved: cancelling the wrong side of the
@@ -512,6 +810,23 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
 
   if (verb.kind === "swap") {
     return parseSwap(words, amount, mentions);
+  }
+
+  if (verb.kind === "send") {
+    /*
+     * Two addresses is contradictory, not under-specified: there is no such
+     * thing as one send with two destinations. So it gets the same answer as a
+     * swap between identical tokens — start over, rather than ask for a slot
+     * that is already filled with the wrong thing.
+     */
+    if (countAddresses(words) > 1) return { status: "unknown" };
+
+    return completeDraft({
+      kind: "send",
+      amount: amount?.amount,
+      token: mentions[0]?.token,
+      to: recipient?.to,
+    });
   }
 
   if (verb.kind === "stake") {
@@ -547,13 +862,22 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     // Amount only: the app locks only kfUSD and unlocks only kafUSD, so there's
     // no token to disambiguate.
     if (!amount) return incomplete({ kind: verb.kind }, "amount");
-    return { status: "ok", command: { kind: verb.kind, amount: amount.amount } };
+    return {
+      status: "ok",
+      command: { kind: verb.kind, amount: amount.amount },
+    };
   }
 
   if (verb.kind === "completeWithdrawal") {
-    // Token only: the contract call takes no amount, it pays out whatever
-    // cooldown finished.
-    const token = mentions[0]?.token;
+    /*
+     * No amount: the call pays out whatever the finished cooldown recorded.
+     * And no real choice of token either — the vault releases what was locked,
+     * and only kfUSD is lockable — so an unnamed token resolves to kfUSD
+     * rather than asking a question whose only correct answer is forced. Any
+     * other token still parses; buildIntents refuses it there, with an
+     * explanation of what to do instead, rather than here with a bare re-ask.
+     */
+    const token = mentions[0]?.token ?? findToken("kfusd", tokens);
     if (!token) return incomplete({ kind: "completeWithdrawal" }, "token");
     return { status: "ok", command: { kind: "completeWithdrawal", token } };
   }
@@ -589,7 +913,12 @@ function parseSwap(
     tokenIn = mentions[0].token;
   }
 
-  const draft: Draft = { kind: "swap", amount: amount?.amount, tokenIn, tokenOut };
+  const draft: Draft = {
+    kind: "swap",
+    amount: amount?.amount,
+    tokenIn,
+    tokenOut,
+  };
 
   if (!tokenIn) return incomplete(draft, "tokenIn");
   if (!tokenOut) return incomplete(draft, "tokenOut");
@@ -651,6 +980,15 @@ export function fillSlot(
       next.refId = Number(bare[1]);
     }
     if (next.refId === undefined) return incomplete(next, "ref");
+  } else if (missing === "recipient") {
+    // Read from `reply`, not `words`: the answer to "which address?" is the one
+    // bare reply that carries a checksum, and normalise() has already dropped
+    // the case that encodes it.
+    const answered = detectRecipient(words, reply);
+    if (!answered || countAddresses(words) > 1) {
+      return incomplete(draft, "recipient");
+    }
+    next.to = answered.to;
   } else {
     const token = findTokenMentions(words, tokens)[0]?.token;
     if (!token) return incomplete(draft, missing);
@@ -667,7 +1005,10 @@ export function completeDraft(draft: Draft): ParseResult {
   if (draft.kind === "swap") {
     if (!draft.tokenIn) return incomplete(draft, "tokenIn");
     if (!draft.tokenOut) return incomplete(draft, "tokenOut");
-    if (draft.tokenIn.address.toLowerCase() === draft.tokenOut.address.toLowerCase()) {
+    if (
+      draft.tokenIn.address.toLowerCase() ===
+      draft.tokenOut.address.toLowerCase()
+    ) {
       return { status: "unknown" };
     }
     if (!draft.amount) return incomplete(draft, "amount");
@@ -697,7 +1038,10 @@ export function completeDraft(draft: Draft): ParseResult {
     // parse site. Positions are removed, not cancelled; treat it the same as
     // no answer rather than let it through to an invalid CancelCommand.
     if (!draft.refTarget || draft.refTarget === "position") {
-      return incomplete({ ...draft, refTarget: undefined, refId: undefined }, "ref");
+      return incomplete(
+        { ...draft, refTarget: undefined, refId: undefined },
+        "ref",
+      );
     }
     if (draft.refId === undefined) return incomplete(draft, "ref");
     return {
@@ -711,13 +1055,20 @@ export function completeDraft(draft: Draft): ParseResult {
     if (!draft.amount) return incomplete(draft, "amount");
     return {
       status: "ok",
-      command: { kind: "takeListing", listingId: draft.refId, amount: draft.amount },
+      command: {
+        kind: "takeListing",
+        listingId: draft.refId,
+        amount: draft.amount,
+      },
     };
   }
 
   if (draft.kind === "collectFees" || draft.kind === "removePosition") {
     if (draft.refId === undefined) return incomplete(draft, "ref");
-    return { status: "ok", command: { kind: draft.kind, positionId: draft.refId } };
+    return {
+      status: "ok",
+      command: { kind: draft.kind, positionId: draft.refId },
+    };
   }
 
   if (draft.kind === "fillRequest") {
@@ -747,12 +1098,44 @@ export function completeDraft(draft: Draft): ParseResult {
 
   if (draft.kind === "lock" || draft.kind === "unlock") {
     if (!draft.amount) return incomplete(draft, "amount");
-    return { status: "ok", command: { kind: draft.kind, amount: draft.amount } };
+    return {
+      status: "ok",
+      command: { kind: draft.kind, amount: draft.amount },
+    };
   }
 
   if (draft.kind === "completeWithdrawal") {
     if (!draft.token) return incomplete(draft, "token");
-    return { status: "ok", command: { kind: "completeWithdrawal", token: draft.token } };
+    return {
+      status: "ok",
+      command: { kind: "completeWithdrawal", token: draft.token },
+    };
+  }
+
+  if (draft.kind === "send") {
+    if (!draft.token) return incomplete(draft, "token");
+    if (!draft.amount) return incomplete(draft, "amount");
+    /* Asked last on purpose. The address is the one slot with no forgiving
+       failure mode, so it gets answered against a question that already names
+       the exact amount and token it will move. */
+    if (!draft.to) return incomplete(draft, "recipient");
+    return {
+      status: "ok",
+      command: {
+        kind: "send",
+        amount: draft.amount,
+        token: draft.token,
+        to: draft.to,
+      },
+    };
+  }
+
+  if (draft.kind === "claimTestTokens") {
+    /* Unreachable through parseCommand, which returns this kind directly and
+       never builds a draft for it. It exists so that if one is ever constructed
+       — fillSlot and completeDraft are both exported — it cannot fall through to
+       the amount-plus-token tail below and ask for an amount the faucet ignores. */
+    return { status: "ok", command: { kind: "claimTestTokens" } };
   }
 
   // approve, deposit, withdraw, mint, redeem
@@ -766,6 +1149,11 @@ export function completeDraft(draft: Draft): ParseResult {
 
 /** Shown when the parser is the only thing available, or on `help`. */
 export const COMMAND_HELP = [
+  "receive",
+  // Deliberately elided rather than shown as a plausible full address: this
+  // list is copy-pasteable, and a made-up 40-hex recipient that someone pastes
+  // is an unrecoverable loss.
+  "send 50 USDC to 0x…",
   "swap 500 USDC to KLD",
   "stake 100",
   "deposit 500 USDC",

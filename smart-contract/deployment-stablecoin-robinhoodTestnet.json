@@ -1,0 +1,16 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": "46630",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "USDT": "0xcB8A20e5d3eD3940678Cc00E70F6CF307f5750Df",
+    "USDe": "0x5C95260eBD1dD21547528E73dc601d74B2793e0D",
+    "kfUSD": "0x1e2BeA8a1958088b50eC9410F7870a2C254e43E4",
+    "kafUSD": "0xdAFf6E1941CA376A5cA711EF2D6762BC545D5d89",
+    "YieldTreasury": "0x387d687B9574E93aCCEF1c272ce0D77381305eC3",
+    "USDC": "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B"
+  },
+  "timestamps": {
+    "deployed": "2026-08-23T01:03:50.493Z"
+  }
+}

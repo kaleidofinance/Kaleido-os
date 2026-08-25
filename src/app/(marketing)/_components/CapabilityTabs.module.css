@@ -1,0 +1,346 @@
+/**
+ * The capability browser: one animated turn on the left, the whole inventory as
+ * cards on the right.
+ *
+ * Glass on the player card, composed directly from the global utility. Do not
+ * route it through a local base class first: this build carries a *local* compose
+ * down a chain but drops a *global* one, and the landing page has already shipped a
+ * whole grid of flat grey slabs once because of it. The long version of that story
+ * is above `.panel` in marketing.module.css.
+ *
+ * The file is still named CapabilityTabs because the component is, and the
+ * component still keeps its name because `.git/index.lock` makes a rename
+ * unavailable. "Tabs" is no longer literally true — there is no strip and no rail.
+ * What survives of the tab pattern is the ARIA: each group's cards are a tablist
+ * and the player is their panel, which is what the roles in the .tsx say.
+ *
+ * No width cap on the wrap any more. The earlier version capped the whole section
+ * at 752px to stop a 520px chat being stretched across 1200px, which fixed the
+ * stretch by making the section a narrow column. The cards now spend that width
+ * instead, and the chat is held to its own measure by the grid column below.
+ */
+.wrap {
+  width: 100%;
+}
+
+/* ------------------------------------------------------------------
+ * The two columns.
+ *
+ * 430px is arithmetic, not a round number: 40px of card padding plus the 390px the
+ * player occupies — which is itself the app's 520px card at the 75% `zoom`
+ * TracePlayer.module.css explains. So the left column is exactly wide enough for a
+ * real-proportioned chat and has no slack for one to be stretched into. Everything
+ * left over goes to the cards, which is what makes this section wide without
+ * making the mock wide.
+ *
+ * THIS NUMBER TRACKS THE ZOOM. It was 456px at `zoom: 0.8` (40 + 416). If the zoom
+ * moves again, this moves with it — the player has `margin-inline: auto`, so a track
+ * that is too wide does not break anything visibly, it just centres the mock and
+ * leaves uneven air inside a card whose padding is supposed to be the only air in
+ * it. That is the failure mode to watch for, because nothing errors.
+ *
+ * `align-items: start` so the player card takes its content height rather than
+ * stretching to the cards' — and so `position: sticky` below has room to work in.
+ * ------------------------------------------------------------------ */
+.cols {
+  display: grid;
+  grid-template-columns: 430px minmax(0, 1fr);
+  gap: var(--k-s6);
+  align-items: start;
+}
+
+/* Sticky, though the two columns are now within about 20px of each other and it
+   will rarely engage — which is the point of keeping it rather than deleting it.
+   Before the compaction the card column was ~550px taller, so the player scrolled
+   away while somebody was still picking from it and a click near the bottom started
+   an animation off screen. If either column grows again that returns, and a
+   declaration that costs nothing is cheaper than rediscovering the bug. 92px clears
+   the header; `.section`'s own `scroll-margin-top: 76px` in marketing.module.css is
+   where that number comes from. */
+.playerCol {
+  position: sticky;
+  top: 92px;
+  min-width: 0;
+}
+
+.playerCard {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s4);
+}
+
+/* Carries the selected tool's *group*, not the tool: the tool's own name is on the
+   card that was just clicked and its signature is in the player's caption, so
+   repeating it here would say the same word three times. The group and its link
+   are the things the player cannot say for itself. */
+.playerHead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-s4);
+  padding-bottom: var(--k-s4);
+  border-bottom: 1px solid var(--k-line);
+}
+
+.playerTitle {
+  margin: 0;
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+}
+
+.playerNote {
+  margin: var(--k-s1) 0 0;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  line-height: 1.55;
+}
+
+.open {
+  margin-left: auto;
+  flex: none;
+  color: var(--k-pos);
+  font-size: var(--k-fs-xs);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.open:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------
+ * The inventory.
+ *
+ * NO MIN-HEIGHT ANYWHERE IN HERE. The panel used to carry a 296px floor so a click
+ * between a 1-tool group and an 8-tool one would not resize it — which reserved
+ * eight rows of space for `Send` and left a visibly empty box. Splitting the
+ * selector from the player dissolved that problem rather than tuning it: the cards
+ * are all on screen at once and never change, so nothing about picking a tool
+ * changes this column's height at all.
+ *
+ * The player's own height still varies with the plan — two steps for a swap, one
+ * for a send — and it holds that steady *during* playback by stacking a hidden copy
+ * of the finished turn behind the live one; see `.stage` in TracePlayer.module.css.
+ * That is measured from the content that is about to be there, so it cannot reserve
+ * a row that never arrives.
+ *
+ * WHY THIS IS BANDS AND NOT A CARD GRID, AND WHY THE CARDS ARE ONE LINE. The first
+ * build of this column was ~1009px tall, which made the section about 1250px — a
+ * screen and a half, cut off mid-plan on any laptop. The height was measured before
+ * it was changed, and almost none of it was the cards:
+ *
+ *     11 card rows at ~57px (two-line cards)     627px   62%
+ *     8 group headers, each in its own row       224px   22%
+ *     7 inter-group gaps at --k-s5, + 3 intra    158px   16%
+ *
+ * So 38% of the column was chrome around the cards. Two changes take it out and
+ * neither drops a single tool or a single fact:
+ *
+ *   1. The group label moves into a left gutter, so a group costs 0 rows instead of
+ *      one 28px row. Bands are separated by a hairline and 7px of padding rather
+ *      than a 20px gap — the same treatment as `.chainList` and the product rail's
+ *      facts, so it is a shape this page already has.
+ *   2. The card goes from name-over-cost to name-and-cost on one line: ~57px to
+ *      ~29px. The cost is kept, not dropped — inlining it costs about 30px of width
+ *      and zero height, and "what does this action take" is the whole point of the
+ *      card.
+ *
+ * The row count does NOT change: 11 either way, because Borrow & lend (8),
+ * Stablecoin (7) and Reads (6) each need two rows in the 576px the chips get — the
+ * 1160px content box, less the 430px player track and the --k-s6 gap, less the
+ * 116px label gutter and its --k-s3 — no matter how they are packed. Chasing a 12th
+ * column was the wrong lever: 11 rows at 29px is 319px, and the column lands near
+ * 460px, which is within ~40px of the player beside it. Two columns of about the
+ * same height is also why the section now has no dead space in either one.
+ * ------------------------------------------------------------------ */
+.cardsCol {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The gutter is 116px because "BORROW & LEND" is the widest of the eight labels at
+   13 characters, and at --k-fs-xs with 0.06em tracking that is about 107px. It is
+   allowed to wrap to two lines rather than being widened past that: the only band
+   where it would is one that is already two rows tall, so the label still fits
+   inside the band it names. */
+.group {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr);
+  gap: var(--k-s3);
+  align-items: start;
+  padding: 7px 0;
+}
+
+/* A hairline instead of a gap. --k-s5 between eight bands was 140px of the old
+   height; a rule is 1px and separates them better, because the eye reads a band as
+   a row rather than as a floating cluster. */
+.group + .group {
+  border-top: 1px solid var(--k-line);
+}
+
+/* The same uppercase micro-label as `.toolCallLabel` in the player, on purpose:
+   these are both captions naming what the thing under them is, and giving them
+   two treatments would read as two kinds of heading.
+
+   The 6px of top padding is optical, not structural: the label is 13px and the chip
+   text beside it is 14px inside 5px of chip padding, so without it the label sits a
+   couple of pixels high of the first chip's baseline. */
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--k-s2);
+  margin: 0;
+  padding-top: 6px;
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-alt);
+}
+
+/* The tool count. It is the one number this section can put on screen with no API
+   behind it, and together the eight of them are the shape of the inventory:
+   1, 1, 8, 7, 2, 1, 1, 6. */
+.groupCount {
+  font-size: var(--k-fs-xs);
+  letter-spacing: 0;
+  color: var(--k-t3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Flex wrap, not a grid of equal columns. Uniform 150px tracks made every chip as
+   wide as the widest one needed: `mint` took the same cell as `grantAgentPermission`
+   at 20 characters, so short names paid for a long one four rows away. Content-sized
+   chips fit `mint` in about 78px and give the one 20-character name the ~195px it
+   actually needs — and that name is the only tool in Delegation, so it costs nobody
+   else anything. Same reason a fixed column count was wrong before: `Trade` is one
+   card, and it should not sit in a four-wide row with three empty cells. */
+.cardGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+/* The app's recessed chip, same as the strip it replaces: --k-glass-deep with an
+   inset shadow, never an opaque fill, which would stamp a solid slab through the
+   glass behind it.
+
+   One line, baseline-aligned: the name and what it costs read as a single phrase
+   ("swap 2 tx") rather than as a label with a caption under it. That is the whole
+   height saving in this section — 29px instead of 57px, times 11 rows.
+
+   `nowrap` is what makes the chip content-sized. It is safe *because* the chip is
+   content-sized: there is no fixed cell for the text to overflow, so the widest name
+   simply makes the widest chip. It also removes the need for `overflow-wrap` on the
+   name, which existed only to stop `grantAgentPermission` breaking a 150px cell. */
+.card {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  /* The chip is a flex item now, so `flex: none` is what actually holds it at its
+     content width — the default `flex-shrink: 1` would let a full line squeeze the
+     chips in it, and with `nowrap` above that means a name spilling its own
+     background rather than the line wrapping. */
+  flex: none;
+  white-space: nowrap;
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--k-t2);
+  padding: 5px 9px;
+  border-radius: var(--k-r-sm);
+  cursor: pointer;
+  transition:
+    background var(--k-dur-fast) var(--k-ease),
+    color var(--k-dur-fast) var(--k-ease);
+}
+
+/* Names are identifiers and must not be broken mid-word. The chip no longer has a
+   cell narrower than its content, so nothing here can break one. */
+.cardName {
+  font-size: var(--k-fs-sm);
+  line-height: 1.35;
+}
+
+/* What the action costs — the most useful thing a card can carry, because it is
+   what a reader is actually asking when they ask what an action takes. Reading
+   across the bands, the whole surface is 1s and 2s. */
+.cardCost {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One step quieter, because a read is the one card here that sends nothing. Said
+   in the same slot as the cost rather than as a badge or a colour — a colour on
+   this page would read as a status. */
+.cardRead {
+  font-size: var(--k-fs-xs);
+  color: var(--k-alt);
+}
+
+.card:hover {
+  background: var(--k-brand-dim);
+  color: var(--k-t1);
+}
+
+/* `:hover` listed with it, as the app's `.rgOn` does, because `.card:hover`
+   outranks a single class and would otherwise repaint the selected card on
+   pointer-over. */
+.cardOn,
+.cardOn:hover {
+  background: var(--k-brand-dim);
+  color: var(--k-t1);
+  box-shadow: none;
+}
+
+.cardOn .cardName {
+  font-weight: var(--k-fw-med);
+}
+
+.cardOn .cardCost,
+.cardOn .cardRead {
+  color: var(--k-t2);
+}
+
+@media (max-width: 1000px) {
+  /* Stacks before the gutter starts crowding the chips. The player goes on top
+     because it is what the section is about; it centres itself inside the wider
+     card — see `margin-inline` on `.host`. Sticky comes off with the columns: a
+     pinned block above a list it now sits in front of would cover it. */
+  .cols {
+    grid-template-columns: 1fr;
+    gap: var(--k-s5);
+  }
+
+  .playerCol {
+    position: static;
+    top: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .playerCard {
+    padding: var(--k-s4);
+  }
+
+  /* The label goes back above its chips. A 116px gutter out of a ~320px column
+     leaves about 190px for the chips, which puts `grantAgentPermission` on a row of
+     its own and pushes the two big bands to four rows each — taller than the header
+     rows this layout removed. Above 720px the gutter is the cheaper of the two. */
+  .group {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--k-s2);
+  }
+
+  .groupHead {
+    padding-top: 0;
+  }
+}

@@ -29,8 +29,9 @@ contract ProtocolLiquidationTest is Test {
         USDT = address(new MockERC20("USDT", "USDT", 6));
         ETH = address(1); // Use address(1) as native ETH in your protocol
 
-        // Set up protocol as needed (e.g., set bot, set price feeds, etc.)
-        protocol.setBotAddress(bot);
+        // Set up protocol as needed (e.g., set price feeds, etc.)
+        // Liquidation is permissionless, so there is no bot to authorise; the
+        // vm.prank(bot) calls below simply pick an arbitrary caller.
         // ... any other setup required
 
         // Mint and approve collateral for borrower

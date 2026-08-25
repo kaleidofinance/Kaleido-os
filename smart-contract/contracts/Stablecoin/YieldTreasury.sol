@@ -41,9 +41,74 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
     
     // totalYieldPerAsset[asset] = total yield accumulated in this asset
     mapping(address => uint256) public totalYieldPerAsset;
-    
+
     // Yield balance per asset (actual tokens in contract)
     mapping(address => uint256) public yieldBalancePerAsset;
+
+    /**
+     * @notice When this asset first delivered yield. Zero until it has.
+     * @dev Exists so a *measured* yield rate can be quoted. totalYieldPerAsset is
+     *      a cumulative amount, and an amount with no window is not a rate — a
+     *      consumer holding only that number cannot annualise it, which is how the
+     *      earn page ended up advertising a hardcoded floor instead. With this,
+     *      the trailing rate is
+     *          (totalYieldPerAsset / kafUSD supply) * (365 days / elapsed)
+     *      Set once, on the first receipt, and never updated: it marks the start of
+     *      the accrual window, so moving it would silently rebase the denominator
+     *      of every rate computed from it.
+     */
+    mapping(address => uint256) public firstYieldTimestamp;
+
+    /**
+     * @notice Protocol's cut of yield, in basis points, taken as it arrives.
+     * @dev 1000 = 10%, which is exactly Lido's fee on staking rewards and sits
+     *      inside Aave's 10-20% reserve factor on borrower interest. This is the
+     *      protocol's revenue from the stablecoin, and it replaces the 30 bps
+     *      mint and redeem tolls kfUSD used to charge (now 5 bps each).
+     *
+     *      A fee on yield is the shape every major protocol converged on, for a
+     *      reason that is not aesthetic: it can only ever charge a user who has
+     *      already been paid. An entry toll is charged against principal, so it
+     *      is a guaranteed loss the depositor must out-earn before breaking even;
+     *      a performance fee is a share of a gain that has already happened, so
+     *      the protocol cannot make money while its depositors lose it. That
+     *      alignment is the point.
+     *
+     *      Taken off the top in `receiveYield`, before `accYieldPerShare` moves,
+     *      so users' index is only ever credited with net yield. Charging it on
+     *      the way out instead would mean every claim path had to remember to
+     *      apply it — `claimYield`, `claimAllYield` and `claimAndCompound` are
+     *      three separate withdrawal routes, and a fee that has to be repeated
+     *      three times is a fee that will eventually be missed in one of them.
+     *      `receiveYield` is the single chokepoint through which all yield
+     *      enters, whatever the source.
+     */
+    uint256 public performanceFeeBps = 1000;
+
+    /**
+     * @notice Ceiling on performanceFeeBps: 20%.
+     * @dev Above Lido's 10% and Aave's usual 10-20%, below Morpho Blue's 25%
+     *      MAX_FEE. The cap matters because this fee is applied to yield in
+     *      flight, before depositors have any claim on it, so an unbounded value
+     *      would let the owner divert the entire yield stream in one transaction
+     *      and leave the index flat while `totalYieldPerAsset` still climbed.
+     */
+    uint256 public constant MAX_PERFORMANCE_FEE_BPS = 2000;
+
+    /**
+     * @notice Where the performance fee is sent. Zero disables the fee.
+     * @dev Zero means "distribute everything to depositors", not "revert" and
+     *      not "send to address(0)". The direction of that default is deliberate:
+     *      an unconfigured recipient must never be able to destroy yield that
+     *      depositors have already earned, and it must never be able to block
+     *      distribution either. Erring toward the depositors is the only choice
+     *      here that cannot lose someone else's money.
+     *
+     *      This contrasts with the lending fee, where an unset vault reverts —
+     *      there the loan is already outstanding and silently waiving the fee
+     *      would be the wrong failure. Here nothing is owed yet.
+     */
+    address public protocolFeeRecipient;
 
     // Yield sources tracking
     struct YieldSource {
@@ -80,6 +145,16 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
         bool enabled
     );
     event KafUSDContractUpdated(address indexed kafUSDContract);
+    /// @dev `gross` and `fee` are both emitted so the effective rate is
+    ///      auditable from logs alone, without replaying storage.
+    event PerformanceFeeCharged(
+        address indexed asset,
+        uint256 gross,
+        uint256 fee,
+        address indexed recipient
+    );
+    event PerformanceFeeUpdated(uint256 bps);
+    event ProtocolFeeRecipientUpdated(address indexed recipient);
 
     constructor(address _kafUSDContract) {
         require(_kafUSDContract != address(0), "YieldTreasury: Invalid kafUSD address");
@@ -95,6 +170,11 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
      * @param _asset Asset address (kfUSD, USDC, USDT, KLD, etc.)
      * @param _amount Amount of yield
      * @param _sourceName Human-readable source name (e.g., "kfUSD Fees", "Farming Rewards", "KLD Rewards")
+     *
+     * @dev The protocol's performance fee is taken here, off the gross amount,
+     *      before any of it reaches `accYieldPerShare`. This is the only place
+     *      yield enters the contract, which is why the fee belongs here rather
+     *      than on the three separate claim paths.
      */
     function receiveYield(
         address _asset,
@@ -118,14 +198,67 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
         // Transfer tokens from caller
         IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
 
+        /*
+         * Protocol fee, computed here but not paid until the end.
+         *
+         * Only the arithmetic happens at this point; the transfer is the last
+         * thing the function does, after every storage write. Checks-effects-
+         * interactions: `protocolFeeRecipient` is an address an admin chose, so
+         * it can be a contract with a hook, and a transfer placed here would hand
+         * control to it while `accYieldPerShare` still held its pre-receipt value
+         * and the tokens were already in the contract. `nonReentrant` blocks the
+         * obvious re-entry, but ordering the writes first means the window does
+         * not exist to begin with rather than being closed by a modifier.
+         *
+         * Gross is pulled in once and the fee pushed out once, rather than two
+         * safeTransferFrom calls: a source that approved exactly `_amount` would
+         * have nothing left for a second pull. kfUSD happens to grant unlimited
+         * approval, but any future yield source approving the exact figure is the
+         * normal, careful pattern and must keep working.
+         *
+         * Everything below accounts `net`, never `_amount`. That keeps
+         * yieldBalancePerAsset equal to the tokens actually held for depositors —
+         * if it counted the gross, claimAllYield would compute a per-user
+         * entitlement the contract could not pay, and the last claimant in the
+         * loop would be the one whose transfer reverted.
+         *
+         * Integer division rounds the fee down, so the remainder goes to
+         * depositors. With the fee capped at 20%, net is non-zero for every
+         * _amount that got past the require above.
+         */
+        uint256 fee = 0;
+        if (protocolFeeRecipient != address(0) && performanceFeeBps > 0) {
+            fee = (_amount * performanceFeeBps) / 10000;
+        }
+        uint256 net = _amount - fee;
+
         // Update AYPS Index (SCONE Protection: Order-Independent Distribution)
-        accYieldPerShare[_asset] += (_amount * PRECISION) / totalKafUSDSupply;
+        accYieldPerShare[_asset] += (net * PRECISION) / totalKafUSDSupply;
 
         // Update yield tracking
-        totalYieldPerAsset[_asset] += _amount;
-        yieldBalancePerAsset[_asset] += _amount;
+        //
+        // Net, deliberately. `totalYieldPerAsset` is the numerator the frontend
+        // annualises — useStablecoin.ts reads it together with
+        // firstYieldTimestamp and computes
+        //     (cumulative / kafUSD supply) * (1 year / elapsed)
+        // so if it carried the gross figure the earn page would advertise a rate
+        // no depositor could ever realise, overstated by exactly the protocol's
+        // own fee. Net here means that number is the rate that is actually paid,
+        // with no adjustment needed on the client.
+        totalYieldPerAsset[_asset] += net;
+        yieldBalancePerAsset[_asset] += net;
 
-        // Track yield source
+        // Opens the accrual window this asset's yield rate is measured over.
+        if (firstYieldTimestamp[_asset] == 0) {
+            firstYieldTimestamp[_asset] = block.timestamp;
+        }
+
+        /*
+         * Source attribution stays gross. `totalContributed` answers "how much
+         * did this source produce", which is a question about the source, not
+         * about what depositors received — netting it would understate every
+         * strategy's performance by exactly the protocol's own fee.
+         */
         if (yieldSources[msg.sender].sourceAddress == address(0)) {
             yieldSources[msg.sender] = YieldSource({
                 sourceAddress: msg.sender,
@@ -138,7 +271,17 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
             yieldSources[msg.sender].totalContributed += _amount;
         }
 
-        emit YieldReceived(_asset, _amount, msg.sender, _sourceName);
+        /* Net, not gross: this is what depositors can actually claim. A consumer
+         * reconstructing balances from logs alone must agree with storage, and
+         * PerformanceFeeCharged carries the gross and the fee separately for
+         * anyone who needs to audit the split. */
+        emit YieldReceived(_asset, net, msg.sender, _sourceName);
+
+        /* The only external call after the writes. See the fee comment above. */
+        if (fee > 0) {
+            IERC20(_asset).safeTransfer(protocolFeeRecipient, fee);
+            emit PerformanceFeeCharged(_asset, _amount, fee, protocolFeeRecipient);
+        }
     }
 
     /**
@@ -340,6 +483,45 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
         require(_kafUSDContract != address(0), "YieldTreasury: Invalid address");
         kafUSDContract = _kafUSDContract;
         emit KafUSDContractUpdated(_kafUSDContract);
+    }
+
+    /**
+     * @dev Set the protocol's cut of incoming yield
+     * @param _bps Fee in basis points; 1000 is 10% of yield
+     * @dev Zero is permitted here, unlike the lending fee — it means "waive the
+     *      fee", and waiving a share of a gain nobody has claimed yet harms no
+     *      one. Bounded by MAX_PERFORMANCE_FEE_BPS because the fee is applied to
+     *      yield in flight; without a bound the owner could route the entire
+     *      yield stream to the fee recipient and leave depositors' index flat.
+     *
+     *      Only affects yield received after this call. Past receipts have
+     *      already moved accYieldPerShare and are not recomputed, so a fee
+     *      change can never retroactively claw back or top up a claim.
+     */
+    function setPerformanceFee(uint256 _bps) external onlyRole(ADMIN_ROLE) {
+        require(
+            _bps <= MAX_PERFORMANCE_FEE_BPS,
+            "YieldTreasury: Fee exceeds maximum"
+        );
+        performanceFeeBps = _bps;
+        emit PerformanceFeeUpdated(_bps);
+    }
+
+    /**
+     * @dev Set where the performance fee is sent
+     * @param _recipient Fee recipient; the zero address disables the fee
+     * @dev Zero is deliberately accepted as the off switch rather than rejected.
+     *      `receiveYield` skips the fee entirely when this is unset, so an
+     *      unconfigured treasury distributes 100% to depositors instead of
+     *      burning their yield to address(0) or blocking distribution outright.
+     *      Should be the same multisig as the lending fee vault
+     *      (KALEIDO_FEE_VAULT) so protocol revenue lands in one place.
+     */
+    function setProtocolFeeRecipient(
+        address _recipient
+    ) external onlyRole(ADMIN_ROLE) {
+        protocolFeeRecipient = _recipient;
+        emit ProtocolFeeRecipientUpdated(_recipient);
     }
 
     /**

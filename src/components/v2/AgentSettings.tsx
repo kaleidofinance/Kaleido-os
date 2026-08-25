@@ -11,6 +11,7 @@ import { AGENT_ACTIONS, type Intent } from "@/lib/v2/intents";
 import { envVars } from "@/constants/envVars";
 import { chainTokens } from "@/constants/tokens";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import Portal from "./Portal";
 import s from "./AgentSettings.module.css";
 
 /** Maps the settings' action toggles onto the facet's on-chain bitmask. */
@@ -46,11 +47,34 @@ const ACTION_LABELS: Record<AgentAction, string> = {
   provideLiquidity: "Provide liquidity",
 };
 
-export default function AgentSettings({ address, open, onClose }: AgentSettingsProps) {
+export default function AgentSettings({
+  address,
+  open,
+  onClose,
+}: AgentSettingsProps) {
   const { settings, update, toggleAction } = useAgentSettings(address);
   const { chainId } = useWalletV2();
   const [agentAddr, setAgentAddr] = useState("");
   const [grant, setGrant] = useState<Intent[] | null>(null);
+  /**
+   * The selectable models, from the server rather than a constant here.
+   *
+   * The browser cannot know which provider keys are configured, so a hardcoded
+   * list would eventually offer a model the server has no entitlement for and
+   * spend a metered request discovering it. An empty array is the correct
+   * answer when no router key is set, and hides the section entirely.
+   */
+  const [models, setModels] = useState<{ id: string; label: string }[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    const ac = new AbortController();
+    fetch("/api/chat", { signal: ac.signal })
+      .then((r) => r.json())
+      .then((d) => setModels(Array.isArray(d?.models) ? d.models : []))
+      .catch(() => {});
+    return () => ac.abort();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -98,128 +122,170 @@ export default function AgentSettings({ address, open, onClose }: AgentSettingsP
   };
 
   return (
-    <div className={s.overlay} onClick={onClose} role="presentation">
-      <div
-        className={s.modal}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Agent settings"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className={s.head}>
-          <span className={s.title}>Agent settings</span>
-          <button className={s.x} onClick={onClose} aria-label="Close">
-            ✕
-          </button>
-        </div>
+    <Portal>
+      <div className={s.overlay} onClick={onClose} role="presentation">
+        <div
+          className={s.modal}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Agent settings"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className={s.head}>
+            <span className={s.title}>Agent settings</span>
+            <button className={s.x} onClick={onClose} aria-label="Close">
+              ✕
+            </button>
+          </div>
 
-        <div className={s.body}>
-          <p className={s.lede}>
-            Limits Luca works within. It won&apos;t propose anything past these,
-            and the protocol enforces them on the actions it drafts.
-          </p>
+          <div className={s.body}>
+            <p className={s.lede}>
+              Limits Luca works within. It won&apos;t propose anything past
+              these, and the protocol enforces them on the actions it drafts.
+            </p>
 
-          <section className={s.section}>
-            <div className={s.sectionTitle}>Spending limits</div>
-            <Field
-              label="Max per action"
-              suffix="USD"
-              value={settings.maxPerAction}
-              onChange={(v) => update({ maxPerAction: num(v) })}
-            />
-            <Field
-              label="Max per day"
-              suffix="USD"
-              value={settings.maxPerDay}
-              onChange={(v) => update({ maxPerDay: num(v) })}
-            />
-          </section>
+            <section className={s.section}>
+              <div className={s.sectionTitle}>Spending limits</div>
+              <Field
+                label="Max per action"
+                suffix="USD"
+                value={settings.maxPerAction}
+                onChange={(v) => update({ maxPerAction: num(v) })}
+              />
+              <Field
+                label="Max per day"
+                suffix="USD"
+                value={settings.maxPerDay}
+                onChange={(v) => update({ maxPerDay: num(v) })}
+              />
+            </section>
 
-          <section className={s.section}>
-            <div className={s.sectionTitle}>Risk</div>
-            <Field
-              label="Never drop health factor below"
-              value={settings.minHealthFactor}
-              step="0.05"
-              onChange={(v) => update({ minHealthFactor: num(v) })}
-            />
-            <Field
-              label="Default max slippage"
-              suffix="%"
-              value={settings.slippageBps / 100}
-              step="0.1"
-              onChange={(v) => update({ slippageBps: Math.round(num(v) * 100) })}
-            />
-          </section>
+            <section className={s.section}>
+              <div className={s.sectionTitle}>Risk</div>
+              <Field
+                label="Never drop health factor below"
+                value={settings.minHealthFactor}
+                step="0.05"
+                onChange={(v) => update({ minHealthFactor: num(v) })}
+              />
+              <Field
+                label="Default max slippage"
+                suffix="%"
+                value={settings.slippageBps / 100}
+                step="0.1"
+                onChange={(v) =>
+                  update({ slippageBps: Math.round(num(v) * 100) })
+                }
+              />
+            </section>
 
-          <section className={s.section}>
-            <div className={s.sectionTitle}>Allowed actions</div>
-            {(Object.keys(ACTION_LABELS) as AgentAction[]).map((a) => (
-              <div key={a} className={s.toggleRow}>
-                <span>{ACTION_LABELS[a]}</span>
-                <button
-                  className={`${s.toggle} ${settings.allowedActions[a] ? s.toggleOn : ""}`}
-                  onClick={() => toggleAction(a)}
-                  role="switch"
-                  aria-checked={settings.allowedActions[a]}
-                  aria-label={ACTION_LABELS[a]}
-                >
-                  <i />
-                </button>
-              </div>
-            ))}
-          </section>
-
-          <section className={s.section}>
-            <div className={s.sectionTitle}>Delegate to an external agent</div>
-            <div className={s.delegate}>
-              {grant ? (
-                <PlanReview
-                  intents={grant}
-                  submitLabel="Grant permission"
-                  onComplete={() => setGrant(null)}
-                  onCancel={() => setGrant(null)}
-                />
-              ) : (
-                <>
-                  <p className={s.delegateBody}>
-                    Grant a bounded, revocable on-chain permission so an SDK- or
-                    MCP-connected agent acts within the limits above — without you
-                    signing each step. Uses your spending caps, health floor and
-                    allowed actions.
-                  </p>
-                  <input
-                    className={s.delegateInput}
-                    placeholder="Agent wallet address (0x…)"
-                    value={agentAddr}
-                    onChange={(e) => setAgentAddr(e.target.value.trim())}
-                    aria-label="Agent address"
-                  />
+            <section className={s.section}>
+              <div className={s.sectionTitle}>Allowed actions</div>
+              {(Object.keys(ACTION_LABELS) as AgentAction[]).map((a) => (
+                <div key={a} className={s.toggleRow}>
+                  <span>{ACTION_LABELS[a]}</span>
                   <button
-                    className={s.delegateBtn}
-                    disabled={!validAgent || !diamond || grantable.length === 0}
-                    onClick={buildGrant}
+                    className={`${s.toggle} ${settings.allowedActions[a] ? s.toggleOn : ""}`}
+                    onClick={() => toggleAction(a)}
+                    role="switch"
+                    aria-checked={settings.allowedActions[a]}
+                    aria-label={ACTION_LABELS[a]}
                   >
-                    Review delegation
+                    <i />
                   </button>
-                  <p className={s.delegateNote}>
-                    {grantable.length === 0
-                      ? "No tokens are deployed on this network yet, so there's nothing to delegate authority over."
-                      : "Enforced on-chain by the agent-permission facet. Revoke any time; the budget resets per day."}
-                  </p>
-                </>
-              )}
-            </div>
-          </section>
-        </div>
+                </div>
+              ))}
+            </section>
 
-        <div className={s.footer}>
-          <button className={s.done} onClick={onClose}>
-            Done
-          </button>
+            {/* Hidden entirely when the server offers nothing — an empty picker
+                would imply a choice exists where none does. */}
+            {models.length > 0 && (
+              <section className={s.section}>
+                <div className={s.sectionTitle}>Model</div>
+                <div className={s.models}>
+                  <button
+                    className={`${s.model} ${!settings.model ? s.modelOn : ""}`}
+                    onClick={() => update({ model: undefined })}
+                    aria-pressed={!settings.model}
+                  >
+                    <span className={s.modelName}>Automatic</span>
+                    <span className={s.modelMeta}>Server default</span>
+                  </button>
+                  {models.map((m) => (
+                    <button
+                      key={m.id}
+                      className={`${s.model} ${settings.model === m.id ? s.modelOn : ""}`}
+                      onClick={() => update({ model: m.id })}
+                      aria-pressed={settings.model === m.id}
+                    >
+                      <span className={s.modelName}>{m.label}</span>
+                      <span className={s.modelMeta}>{m.id}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className={s.modelNote}>
+                  Applies to reasoning turns only. Direct commands like{" "}
+                  <code>swap 500 USDC to KLD</code> are parsed on this device,
+                  cost nothing and don&apos;t use a model.
+                </p>
+              </section>
+            )}
+
+            <section className={s.section}>
+              <div className={s.sectionTitle}>
+                Delegate to an external agent
+              </div>
+              <div className={s.delegate}>
+                {grant ? (
+                  <PlanReview
+                    intents={grant}
+                    submitLabel="Grant permission"
+                    onComplete={() => setGrant(null)}
+                    onCancel={() => setGrant(null)}
+                  />
+                ) : (
+                  <>
+                    <p className={s.delegateBody}>
+                      Grant a bounded, revocable on-chain permission so an SDK-
+                      or MCP-connected agent acts within the limits above —
+                      without you signing each step. Uses your spending caps,
+                      health floor and allowed actions.
+                    </p>
+                    <input
+                      className={s.delegateInput}
+                      placeholder="Agent wallet address (0x…)"
+                      value={agentAddr}
+                      onChange={(e) => setAgentAddr(e.target.value.trim())}
+                      aria-label="Agent address"
+                    />
+                    <button
+                      className={s.delegateBtn}
+                      disabled={
+                        !validAgent || !diamond || grantable.length === 0
+                      }
+                      onClick={buildGrant}
+                    >
+                      Review delegation
+                    </button>
+                    <p className={s.delegateNote}>
+                      {grantable.length === 0
+                        ? "Kaleido carries no tokens on this network, so there's nothing to delegate authority over."
+                        : "Enforced on-chain by the agent-permission facet. Revoke any time; the budget resets per day."}
+                    </p>
+                  </>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <div className={s.footer}>
+            <button className={s.done} onClick={onClose}>
+              Done
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 

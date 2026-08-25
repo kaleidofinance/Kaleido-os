@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -29,6 +30,29 @@ contract kfUSD is
     AccessControl,
     ReentrancyGuard
 {
+    /* Every collateral movement below goes through SafeERC20, which YieldTreasury
+     * in this same directory already used while this contract did not.
+     *
+     * The calls here were plain high-level ones with their return values
+     * discarded, and that breaks in two directions against the exact three
+     * tokens deploy-stablecoin.js registers as collateral:
+     *
+     *  - Tokens that return nothing. Ethereum's USDT declares `transfer` and
+     *    `transferFrom` with no return value at all. solc must decode a bool from
+     *    a zero-length returndata and reverts, so mint and redeem against real
+     *    USDT did not merely skip a check — they could not execute.
+     *  - Tokens that return false instead of reverting. The older convention, and
+     *    one an admin can add via setCollateralSupport, which validates nothing
+     *    beyond a non-zero address. `mint` would credit collateralBalances and
+     *    mint kfUSD for collateral that never arrived; `redeem` would burn the
+     *    user's kfUSD and pay out nothing. Both leave the peg claiming backing
+     *    the contract does not hold.
+     *
+     * SafeERC20 handles both: it requires the call to succeed and accepts either
+     * empty returndata or an explicit true, treating false as a revert.
+     */
+    using SafeERC20 for IERC20;
+
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
@@ -37,8 +61,29 @@ contract kfUSD is
     address[] public collateralList;
 
     // Mint and redemption fee (in basis points, 100 = 1%)
-    uint256 public mintFee = 30; // 0.3%
-    uint256 public redeemFee = 30; // 0.3%
+    //
+    // 5 bps each, a 0.1% round trip. These were 30 bps each — 0.6% to enter and
+    // leave, which is where the design went wrong: it charged for *access* to a
+    // dollar-pegged token rather than for the yield the protocol actually
+    // produces. No major stablecoin prices entry that way. Circle mints and
+    // redeems USDC at par; DAI has no mint fee at all; Ethena's USDe mints at
+    // par and takes its cut from the basis trade; Liquity charges a one-off
+    // borrowing fee but pays 75% of interest back to depositors. A 0.6% round
+    // trip is roughly a year of yield on a low-rate stablecoin, so a user who
+    // minted and redeemed inside twelve months lost money by holding it — which
+    // makes the toll a deterrent to the deposits the yield engine needs.
+    //
+    // Not zero: at zero, mint and redeem is a free round trip, and anything free
+    // and unbounded is a griefing vector — an attacker can churn supply to move
+    // accYieldPerShare's denominator, or simply burn the protocol's gas
+    // subsidies. 5 bps is small enough to be noise against real usage and large
+    // enough that a loop costs the looper something.
+    //
+    // Revenue now comes from YieldTreasury's performance fee on yield, which
+    // only charges when the protocol has actually earned something. See
+    // YieldTreasury.performanceFeeBps.
+    uint256 public mintFee = 5; // 0.05%
+    uint256 public redeemFee = 5; // 0.05%
     uint256 public constant BASIS_POINTS = 10000;
 
     // Total minted and redeemed amounts
@@ -126,7 +171,7 @@ contract kfUSD is
         );
 
         // Transfer collateral from caller
-        IERC20(_collateralToken).transferFrom(
+        IERC20(_collateralToken).safeTransferFrom(
             msg.sender,
             address(this),
             _collateralAmount
@@ -151,9 +196,13 @@ contract kfUSD is
         if (
             autoDeploymentEnabled && vaultAddress != address(0) && toDeploy > 0
         ) {
-            IERC20(_collateralToken).approve(vaultAddress, toDeploy);
-            // Transfer to vault for automatic deployment
-            IERC20(_collateralToken).transfer(vaultAddress, toDeploy);
+            /* Pushed, not pulled. The approve that used to sit here granted the
+             * vault an allowance for the same amount transferred on the next
+             * line, so nothing ever consumed it and every mint left a standing
+             * allowance behind. It was also the third way this function could
+             * revert on a token like USDT, whose `approve` returns no value
+             * either. */
+            IERC20(_collateralToken).safeTransfer(vaultAddress, toDeploy);
         }
 
         // Track fees for yield distribution
@@ -281,7 +330,7 @@ contract kfUSD is
         totalRedeemed += _amount;
 
         // Transfer collateral to user
-        IERC20(_outputToken).transfer(msg.sender, collateralToReturn);
+        IERC20(_outputToken).safeTransfer(msg.sender, collateralToReturn);
 
         emit Redeemed(msg.sender, _amount, _outputToken, collateralToReturn);
         emit CollateralRemoved(_outputToken, collateralToReturn);
@@ -438,7 +487,7 @@ contract kfUSD is
 
         deployedBalances[_token] -= _amount;
         // Transfer to external yield source (implemented by strategy contract)
-        IERC20(_token).transfer(msg.sender, _amount);
+        IERC20(_token).safeTransfer(msg.sender, _amount);
     }
 
     /**
@@ -454,7 +503,7 @@ contract kfUSD is
         require(_amount > 0, "kfUSD: Amount must be greater than zero");
 
         // Transfer from external yield source
-        IERC20(_token).transferFrom(msg.sender, address(this), _amount);
+        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
 
         // Can go to either idle or deployed depending on strategy
         idleBalances[_token] += _amount;
@@ -529,7 +578,7 @@ contract kfUSD is
         deployedBalances[_token] += _amount;
 
         // Transfer to vault
-        IERC20(_token).transfer(_vault, _amount);
+        IERC20(_token).safeTransfer(_vault, _amount);
     }
 
     function _update(

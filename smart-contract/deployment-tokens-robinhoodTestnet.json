@@ -1,0 +1,128 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-23T01:57:07.403Z",
+  "diamond": "0x3565904975AE169c0a48af085b9f786660875874",
+  "oracle": "0x7Ee07e9eb94B6b21589539a491E37804886AB201",
+  "oracleKind": "aggregator-v3",
+  "pyth": null,
+  "nativeFeedSymbol": "ETH",
+  "hermesVerified": true,
+  "registered": [
+    {
+      "kind": "collateral",
+      "symbol": "ETH",
+      "address": "0x0000000000000000000000000000000000000001",
+      "onChainSymbol": null,
+      "decimals": 18,
+      "feedSymbol": "Crypto.ETH/USD",
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "feedSource": "repo",
+      "priceAgeSeconds": 4750,
+      "feedMaxAge": 3600,
+      "maxAgeBasis": "NOT an observation — it is a commitment. Nothing publishes ETH/USD on this chain, so the age of the feed is whatever our keeper last made it, and this number is the promise scripts/push-aggregator.js has to keep. One hour on a volatile asset, against the 90000s (25h) the API3 alternative would have forced because 24h is its only heartbeat option. That 25x tightening is the main technical gain of publishing ourselves, and it is worth nothing if the keeper is not scheduled: at 3600s the market fails closed one hour after the last push. Tighten it and the keeper must run more often; loosen it and liquidations price off a staler ETH. Do not carry this entry to mainnet at all — Chainlink publishes ETH/USD on chain 4663 and a self-published price has no place there.",
+      "effectiveMaxAge": 3600,
+      "txHash": "0x004d4b58a94c5d9de03d7c07e5ecc75cb69e019e86d27fd70192a2d6873fb307",
+      "skipped": false
+    },
+    {
+      "kind": "collateral",
+      "symbol": "WETH",
+      "address": "0x7943e237c7F95DA44E0301572D358911207852Fa",
+      "onChainSymbol": "WETH",
+      "decimals": 18,
+      "feedSymbol": "Crypto.ETH/USD",
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "feedSource": "repo",
+      "priceAgeSeconds": 4750,
+      "feedMaxAge": 3600,
+      "maxAgeBasis": "Same feed contract as ETH — one Pyth id, one aggregator.",
+      "effectiveMaxAge": 3600,
+      "txHash": "0xfce3ab7d23c90a35d270c8fe6b6b7892a6238ecce6fcf606a07d5117cf96cd9b",
+      "skipped": false
+    },
+    {
+      "kind": "collateral",
+      "symbol": "USDC",
+      "address": "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 4750,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Looser than ETH on the same chain, pushed by the same keeper, and that asymmetry is deliberate rather than an oversight. A keeper that misses its window should take the volatile asset offline before the pegged one: a day-old dollar is wrong by basis points, a day-old ether by percent. So USDC survives an outage that stops ETH pricing, which keeps the stablecoin path alive while /borrow fails closed. 90000 is Constants.MAX_FEED_PRICE_AGE, the ceiling, and is only defensible because the asset is pegged — the same argument every other 90000 in this file rests on. The USDC being priced here is a mock we mint: Robinhood's canonical dollar is USDG and it exists on MAINNET ONLY.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0x536fe783bf100682bd653b2c360f3cf9fd66463a2b0f3b41d35cce3a4c37b0bf",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "WETH",
+      "address": "0x7943e237c7F95DA44E0301572D358911207852Fa",
+      "onChainSymbol": "WETH",
+      "decimals": 18,
+      "feedSymbol": "Crypto.ETH/USD",
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "feedSource": "repo",
+      "priceAgeSeconds": 4750,
+      "feedMaxAge": 3600,
+      "maxAgeBasis": "Same feed contract as ETH — one Pyth id, one aggregator.",
+      "effectiveMaxAge": 3600,
+      "txHash": "0x83061f2579a296200a254ffc21e20c0183803d401fbad4f92bb3570efc26861b",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDC",
+      "address": "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 4750,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Looser than ETH on the same chain, pushed by the same keeper, and that asymmetry is deliberate rather than an oversight. A keeper that misses its window should take the volatile asset offline before the pegged one: a day-old dollar is wrong by basis points, a day-old ether by percent. So USDC survives an outage that stops ETH pricing, which keeps the stablecoin path alive while /borrow fails closed. 90000 is Constants.MAX_FEED_PRICE_AGE, the ceiling, and is only defensible because the asset is pegged — the same argument every other 90000 in this file rests on. The USDC being priced here is a mock we mint: Robinhood's canonical dollar is USDG and it exists on MAINNET ONLY.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0x4df1d5cedff05226b4e3376eb2ca43fdfbf68f6d1035fe99644b0894c38e913e",
+      "skipped": false
+    }
+  ],
+  "feedBounds": [
+    {
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "maxAge": 3600,
+      "basis": "Same feed contract as ETH — one Pyth id, one aggregator.",
+      "txHash": "0x9f3364268e020bf3e6b7523fd997b4ae9e076711a795184e5589618c71aee238",
+      "skipped": false
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "maxAge": 90000,
+      "basis": "Looser than ETH on the same chain, pushed by the same keeper, and that asymmetry is deliberate rather than an oversight. A keeper that misses its window should take the volatile asset offline before the pegged one: a day-old dollar is wrong by basis points, a day-old ether by percent. So USDC survives an outage that stops ETH pricing, which keeps the stablecoin path alive while /borrow fails closed. 90000 is Constants.MAX_FEED_PRICE_AGE, the ceiling, and is only defensible because the asset is pegged — the same argument every other 90000 in this file rests on. The USDC being priced here is a mock we mint: Robinhood's canonical dollar is USDG and it exists on MAINNET ONLY.",
+      "txHash": "0x7af4d8b3c5551a8f8a7356de815625fefed4ff2ecc3327221be0668c62f4bd8b",
+      "skipped": false
+    }
+  ],
+  "onChain": {
+    "collateral": [
+      "0x0000000000000000000000000000000000000001",
+      "0x7943e237c7F95DA44E0301572D358911207852Fa",
+      "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B"
+    ],
+    "loanable": [
+      "0x7943e237c7F95DA44E0301572D358911207852Fa",
+      "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B"
+    ]
+  }
+}

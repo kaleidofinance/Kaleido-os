@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--k-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14,6 +14,7 @@
   max-width: 440px;
   max-height: 86vh;
   background: var(--k-card);
+  border: 1px solid var(--k-line);
   border-radius: var(--k-r-xl);
   box-shadow: var(--k-shadow-modal);
   display: flex;
@@ -45,7 +46,8 @@
   place-items: center;
 }
 .x:hover {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t1);
 }
 
@@ -85,11 +87,20 @@
   font-size: var(--k-fs-sm);
   color: var(--k-t1);
 }
+/* Recessed rather than filled with an opaque grey — see `.qk` in
+   trade.module.css. The panel behind these is glass (the @supports block at the
+   foot of this file), and an opaque fill on a blurred surface ignores the blur
+   and lands as a patch of a different material. Translucent, the panel shows
+   through and each field reads as a dent in it.
+
+   None of them take a backdrop-filter of their own: blurs do not compose, and a
+   blurred box inside a blurred box samples its parent's flat fill as mud. */
 .fieldInput {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: var(--k-well);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border-radius: var(--k-r-sm);
   padding: 8px 12px;
   flex: none;
@@ -119,7 +130,8 @@
   width: 42px;
   height: 24px;
   border-radius: 999px;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   position: relative;
   cursor: pointer;
   border: 0;
@@ -149,7 +161,8 @@
 }
 
 .delegate {
-  background: var(--k-well);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border-radius: var(--k-r-md);
   padding: 14px 16px;
 }
@@ -159,9 +172,13 @@
   margin: 0 0 12px;
   line-height: 1.5;
 }
+/* Keeps its border where `.fieldInput` above does not: the border is this
+   field's focus indicator (`:focus` tints it brand), so it has a job beyond
+   drawing an edge. The wash and groove are the same recess either way. */
 .delegateInput {
   width: 100%;
-  background: var(--k-bg);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 1px solid var(--k-line2);
   border-radius: var(--k-r-sm);
   color: var(--k-t1);
@@ -192,7 +209,8 @@
   background: var(--k-brand-hover);
 }
 .delegateBtn:disabled {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t3);
   cursor: not-allowed;
 }
@@ -201,6 +219,79 @@
   color: var(--k-t3);
   margin: 10px 0 0;
   line-height: 1.45;
+}
+
+/* Model picker.
+
+   A list of recessed rows rather than a <select>: the id is worth showing under
+   the label, because the ids are near-identical in a dropdown ("claude-opus-5"
+   vs "claude-opus-4-8") and picking the wrong one is a silent change in what
+   answers you. Same translucent fill as .fieldInput — see the note there for
+   why nothing here takes a backdrop-filter of its own. */
+.models {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.model {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  width: 100%;
+  text-align: left;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: var(--k-r-sm);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  color: var(--k-t1);
+}
+.model:hover {
+  background: var(--k-row-hover);
+}
+.modelName {
+  font-size: var(--k-fs-sm);
+}
+/* The id, not a description. It is what gets sent, so it is what disambiguates. */
+.modelMeta {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  font-variant-numeric: tabular-nums;
+}
+/* Selection carries brand fill AND a check, not colour alone — the two Claude
+   rows differ by one character, so a user who cannot separate the fills has
+   nothing else to go on. */
+.modelOn {
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  box-shadow: none;
+}
+.modelOn:hover {
+  background: var(--k-brand-hover);
+}
+.modelOn .modelMeta {
+  color: var(--k-brand-fg);
+  opacity: 0.75;
+}
+.modelOn .modelName::after {
+  content: " ✓";
+}
+.modelNote {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+/* Not monospaced — tokens.css sets "no monospace" as a palette rule, and one
+   inline code span is not the place to break it. The command reads as quoted
+   by weight and colour instead. */
+.modelNote code {
+  font-family: inherit;
+  font-weight: var(--k-fw-med);
+  color: var(--k-t2);
 }
 
 .footer {
@@ -221,4 +312,46 @@
 }
 .done:hover {
   background: var(--k-brand-hover);
+}
+
+/* Frosted panel. The panel is blurred and the overlay is not: nested
+   backdrop-filters do not compose and the GPU cost multiplies. The scrim sits
+   behind the blur, so the sampled backdrop arrives darkened — which is what
+   keeps the small text inside the panel legible. */
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .modal {
+    background: var(--k-glass-strong);
+    border-color: var(--k-glass-line);
+    -webkit-backdrop-filter: blur(28px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(28px) saturate(var(--k-glass-sat));
+    box-shadow:
+      inset 0 1px 0 var(--k-glass-highlight),
+      var(--k-shadow-modal);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .overlay {
+    animation: fade var(--k-dur-med) var(--k-ease-out);
+  }
+  /* 8px, not 40: enough to read as "arrived from below" without the panel
+     appearing to fly in. */
+  .modal {
+    animation: rise var(--k-dur-slow) var(--k-ease-out);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
 }

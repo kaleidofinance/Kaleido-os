@@ -1,0 +1,228 @@
+/* The frames Luca renders data into.
+
+   Every surface here is a dent, not a raised card: --k-glass-deep plus
+   --k-shadow-inset, the same recess the suggestion chips and the step markers
+   use. That is a deliberate limit on how loud a card may be. These sit *inside*
+   the transcript well, which is already glass, and a raised card inside a
+   blurred surface reads as app chrome — a panel the app is showing you — rather
+   than as part of what Luca just said. A recess reads as content in the well it
+   is in, which is exactly what it is.
+
+   No backdrop-filter anywhere in this file, for the reason spelled out in
+   agent.module.css: blurs do not compose. A blurred surface inside a blurred
+   surface samples its parent's flat fill and renders as mud. The well behind
+   these is already blurred; darkening plus an inset top edge is the whole cue. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+  /* The prose above is the sentence; the cards are what it points at. Matches
+     `.steps`, which sits in the same slot for the same reason. */
+  margin-top: 8px;
+}
+
+.card {
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border-radius: var(--k-r-md);
+  padding: 12px 13px;
+}
+
+/* Card heading. Quieter and smaller than the values under it — it says what the
+   figures are, and then gets out of the way. */
+.title {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  letter-spacing: 0.02em;
+  margin-bottom: 8px;
+}
+
+/* ---------- metric ---------- */
+
+/* One figure, at the size the swap card gives an amount. The label sits above
+   it rather than beside it: a label to the left competes with the number for the
+   first thing you read, and the number is the answer. */
+.mLabel {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.mValue {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 24px;
+  font-weight: var(--k-fw-med);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--k-t1);
+}
+/* Unit rides the baseline at body size. "1.62 HF" — the unit is not part of the
+   figure and should not be read at the figure's weight. */
+.mUnit {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-body);
+  color: var(--k-t2);
+}
+.mDelta {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-body);
+}
+.mNote {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  line-height: 1.45;
+  margin-top: 5px;
+}
+
+/* ---------- stats and balance rows ---------- */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+/* Label left, value right, and the value wins the space contest — a long label
+   ellipsises, a truncated number is a wrong number. */
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  padding: 7px 0;
+  font-size: var(--k-fs-sm);
+}
+/* Hairlines between rows, not around them. Same treatment as `.step + .step`,
+   so a stats card and a plan read as the same kind of list. */
+.row + .row {
+  border-top: 1px solid var(--k-line);
+}
+.rLabel {
+  color: var(--k-t2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rValue {
+  flex: none;
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+}
+
+/* Balance rows carry a symbol where stats carry a label, and the symbol is the
+   row's identity — so it takes --k-t1 and the amount sits beside it, rather than
+   the label/value weighting above. */
+.bSymbol {
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+}
+.bNote {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  margin-left: 6px;
+  font-weight: var(--k-fw-body);
+}
+
+/* ---------- notice ---------- */
+
+/* A left rule rather than a tinted fill. A filled panel at this width is a slab
+   of colour inside a glass well; a 2px edge states the tone and leaves the
+   surface alone. */
+.notice {
+  border-left: 2px solid var(--k-line);
+  padding-left: 11px;
+}
+.nTitle {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  line-height: 1.4;
+}
+.nBody {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  line-height: 1.45;
+  margin-top: 3px;
+}
+
+/* ---------- actions ---------- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-s2);
+}
+/* The suggestion chips from the empty state, reused verbatim — and the reuse is
+   the argument. These do exactly what those do: put a sentence in the prompt
+   box. A control that behaves identically should not look different. */
+/* The same recessed chip as `.qk` in trade.module.css and `.rg` on the price
+   panel, so a card's follow-up actions and the trade card's chips are one
+   vocabulary. --k-card here would be an opaque grey tablet sitting on a
+   translucent card. */
+.chip {
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  padding: 6px 12px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.chip:hover {
+  background: var(--k-brand-dim);
+  color: var(--k-t1);
+  box-shadow: none;
+}
+
+/* ---------- tone ---------- */
+
+/* Tone tints text and the notice rule, never a fill. --k-t1 for neutral so a
+   toneless row is indistinguishable from a row that asked for neutral.
+
+   --k-pos / --k-alt / --k-neg rather than --k-brand / --k-danger: these tint
+   *readings*, and the value pair is what every other number on the surface uses.
+   --k-brand is the primary action colour and would make a healthy figure look
+   like something to click; --k-danger is for destructive controls, and a card
+   stating a bad number is not a button that destroys anything. --k-alt is
+   already documented in tokens.css as "attention without alarm", which is
+   exactly what warn means here. */
+.neutral {
+  color: var(--k-t1);
+}
+.good {
+  color: var(--k-pos);
+}
+.warn {
+  color: var(--k-alt);
+}
+.bad {
+  color: var(--k-neg);
+}
+.notice.good {
+  border-left-color: var(--k-pos);
+}
+.notice.warn {
+  border-left-color: var(--k-alt);
+}
+.notice.bad {
+  border-left-color: var(--k-neg);
+}
+/* The rule is toned; the words are not. A whole sentence in brand green reads as
+   decoration and is harder to read than the same sentence in --k-t1. */
+.notice.good .nTitle,
+.notice.warn .nTitle,
+.notice.bad .nTitle {
+  color: var(--k-t1);
+}
+
+@media (max-width: 720px) {
+  .card {
+    padding: 11px 12px;
+  }
+  .mValue {
+    font-size: 21px;
+  }
+}

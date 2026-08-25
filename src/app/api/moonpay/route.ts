@@ -23,13 +23,15 @@ import { ethers } from "ethers";
  * going live.
  */
 
-const BUY_BASE = process.env.MOONPAY_ENV === "live"
-  ? "https://buy.moonpay.com"
-  : "https://buy-sandbox.moonpay.com";
+const BUY_BASE =
+  process.env.MOONPAY_ENV === "live"
+    ? "https://buy.moonpay.com"
+    : "https://buy-sandbox.moonpay.com";
 
-const SELL_BASE = process.env.MOONPAY_ENV === "live"
-  ? "https://sell.moonpay.com"
-  : "https://sell-sandbox.moonpay.com";
+const SELL_BASE =
+  process.env.MOONPAY_ENV === "live"
+    ? "https://sell.moonpay.com"
+    : "https://sell-sandbox.moonpay.com";
 
 /**
  * Currency codes we will sign for, keyed by MoonPay's own identifiers.
@@ -51,7 +53,10 @@ const ALLOWED_BUY = new Set([
 const ALLOWED_SELL = new Set(["eth", "eth_base", "usdc", "usdc_base", "usdt"]);
 
 function sign(url: string, secret: string): string {
-  return crypto.createHmac("sha256", secret).update(new URL(url).search).digest("base64");
+  return crypto
+    .createHmac("sha256", secret)
+    .update(new URL(url).search)
+    .digest("base64");
 }
 
 export async function POST(req: Request) {
@@ -88,14 +93,19 @@ export async function POST(req: Request) {
 
   if (!allowed.has(currencyCode)) {
     return NextResponse.json(
-      { error: `Unsupported currency for ${mode}: ${currencyCode || "(none)"}` },
+      {
+        error: `Unsupported currency for ${mode}: ${currencyCode || "(none)"}`,
+      },
       { status: 400 },
     );
   }
 
   const walletAddress = String(body.walletAddress ?? "");
   if (!ethers.isAddress(walletAddress)) {
-    return NextResponse.json({ error: "A valid wallet address is required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "A valid wallet address is required" },
+      { status: 400 },
+    );
   }
 
   const params = new URLSearchParams({ apiKey });
@@ -123,7 +133,8 @@ export async function POST(req: Request) {
     try {
       const origin = new URL(req.url).origin;
       const target = new URL(body.redirectURL, origin);
-      if (target.origin === origin) params.set("redirectURL", target.toString());
+      if (target.origin === origin)
+        params.set("redirectURL", target.toString());
     } catch {
       // Malformed redirect is simply dropped.
     }

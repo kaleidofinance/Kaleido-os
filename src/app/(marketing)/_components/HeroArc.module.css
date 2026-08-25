@@ -1,0 +1,117 @@
+/**
+ * The dotted dome across the foot of the landing page hero.
+ *
+ * ---------------------------------------------------------------------------
+ * TWO LAYERS, AND ONLY EVER ONE OF THEM VISIBLE
+ * ---------------------------------------------------------------------------
+ * `.still` is public/hero-arc.svg used as a mask. `.live` is a canvas drawing the
+ * same dots from the same geometry module, one alpha per dot per frame.
+ *
+ * The still layer is not a fallback in the apologetic sense — it is what is on
+ * screen for the first frame of every visit, because a canvas cannot paint until
+ * the component hydrates and a hero that arrives without its artwork and then
+ * gains it half a second later is worse than one that never animates. It is also
+ * the whole of the picture with JavaScript off and for a visitor who asked for
+ * reduced motion.
+ *
+ * THE SWAP IS A SNAP, NOT A CROSS-FADE, and that is deliberate. Two half-opaque
+ * copies of the same field overlapping composite brighter than either one, so a
+ * cross-fade would pulse the arc up and back down at the exact moment the page
+ * finished loading — the one moment nothing should move. Both layers draw the
+ * identical dots at the identical resting alphas, and the canvas eases its
+ * twinkle in from zero over its first second, so its first frame is the SVG.
+ * Nothing to fade between.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE MASK IS ON `.still` AND NOT ON THE WRAPPER
+ * ---------------------------------------------------------------------------
+ * An earlier version masked the wrapper, which meant the canvas inside inherited
+ * the dot mask — masking applies to an element's whole rendered subtree. The
+ * canvas's own dots would then have been intersected with the mask's dots, which
+ * is not a no-op even though they are the same dots: it multiplies each dot's
+ * alpha by itself. The mask belongs to the one layer that needs it.
+ *
+ * ---------------------------------------------------------------------------
+ * LEVELS
+ * ---------------------------------------------------------------------------
+ * `opacity: 0.5` on each layer, not baked into the asset or the canvas, so the
+ * field's strength is one number in one place. The narrow-viewport rule dims the
+ * wrapper rather than the layers: 0.5 x 0.68 is the 0.34 the first version used,
+ * and putting it on the parent means the canvas's brighter moments scale down
+ * with the rest instead of blowing past it.
+ *
+ * ---------------------------------------------------------------------------
+ * POSITIONING IS HERE, THE ANCHOR IS IN marketing.module.css
+ * ---------------------------------------------------------------------------
+ * `.hero` carries `position: relative; isolation: isolate`. The isolation is the
+ * load-bearing half: without it the negative z-index below does not stop at the
+ * hero — it escapes to the nearest ancestor that established a stacking context
+ * and the arc vanishes behind the page background. One property there is the
+ * alternative to putting `position: relative; z-index: 1` on the eyebrow, the h1,
+ * the lede, the CTAs, the stat row and the planner.
+ *
+ * TWO THINGS TO CHECK ON A SCREENSHOT. tokens.css:405 records a 23px dot matrix
+ * that was deleted from this design because under the frosted sticky nav it
+ * smeared into a soft rectangle exactly the size of the nav — the seam the glass
+ * was meant to remove. This field clears the header at rest and only passes under
+ * it on scroll, which is why it survives where that one did not. And the planner
+ * panel is `k-glass`: `backdrop-filter` samples whatever is painted behind it
+ * regardless of z-index, so if the arc reads as a band across the panel the fix
+ * is a shorter field or an opaque backing on the panel, not a z-index.
+ */
+
+.arc {
+  position: absolute;
+  z-index: -1;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  /* Locks the box to the generator's units, so one uniform scale factor maps dot
+     coordinates to device pixels on both axes. */
+  aspect-ratio: 1400 / 362;
+  pointer-events: none;
+}
+
+.still {
+  position: absolute;
+  inset: 0;
+  background-color: var(--k-t1);
+  opacity: 0.5;
+
+  /* The asset is an alpha channel, not a picture: every dot in it is #fff and the
+     colour above comes from a token, which is what lets one file serve both
+     themes. As an <img> or a background-image it could not — an externally
+     referenced SVG is its own document, inherits nothing, and would be frozen
+     white and invisible on the light theme. */
+  -webkit-mask-image: url("/hero-arc.svg");
+  mask-image: url("/hero-arc.svg");
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.live {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0.5;
+}
+
+/* Set by the component on its first painted frame. Until then the canvas is
+   present but empty, so it must not be shown over the still layer. */
+.arc:not([data-live="true"]) .live {
+  visibility: hidden;
+}
+
+.arc[data-live="true"] .still {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .arc {
+    opacity: 0.68;
+  }
+}

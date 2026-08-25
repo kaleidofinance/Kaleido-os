@@ -1,0 +1,15 @@
+{
+  "network": "baseTestnet",
+  "chainId": 84532,
+  "timestamp": "2026-08-21T15:46:07.519Z",
+  "contracts": {
+    "factory": "0x76B9aF77B7e8323E30b6d933B0A0ea41bE466D9A",
+    "router": "0xfEC12073E7b833508734052Cf72b53428d2e478b",
+    "positionManager": "0xa6e6219937921102d95370F5fE2DD35a89b41278",
+    "positionDescriptor": "0x6A86c768C4cABca7ddaEbB6D47b21105fF22F323",
+    "nftDescriptor": "0xbb472c8225f9495Ec6922a4f91d8706ceDa85141",
+    "quoter": "0x36E323fFA93c724ae7EC5b28f4cbac9121dB4945",
+    "weth": "0x4200000000000000000000000000000000000006",
+    "poolInitCodeHash": "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938"
+  }
+}

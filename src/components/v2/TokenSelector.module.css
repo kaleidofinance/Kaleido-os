@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--k-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14,11 +14,54 @@
   max-width: 420px;
   max-height: 78vh;
   background: var(--k-card);
+  border: 1px solid var(--k-line);
   border-radius: var(--k-r-xl);
   box-shadow: var(--k-shadow-modal);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Frosted panel. The panel is blurred and the overlay is not: nested
+   backdrop-filters do not compose and the GPU cost multiplies. The scrim sits
+   behind the blur, so the sampled backdrop arrives darkened — which is what
+   keeps the small text inside the panel legible. */
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .modal {
+    background: var(--k-glass-strong);
+    border-color: var(--k-glass-line);
+    -webkit-backdrop-filter: blur(28px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(28px) saturate(var(--k-glass-sat));
+    box-shadow:
+      inset 0 1px 0 var(--k-glass-highlight),
+      var(--k-shadow-modal);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .overlay {
+    animation: fade var(--k-dur-med) var(--k-ease-out);
+  }
+  /* 8px, not 40: enough to read as "arrived from below" without the panel
+     appearing to fly in. */
+  .modal {
+    animation: rise var(--k-dur-slow) var(--k-ease-out);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
 }
 
 .mh {
@@ -84,6 +127,162 @@
   color: var(--k-t3);
 }
 
+/* Network filter — docked inside the search bar, the way Uniswap docks theirs,
+   so filtering by network reads as part of finding a token rather than as a
+   separate mode. `position: relative` is what the panel below anchors to. */
+.nf {
+  position: relative;
+  flex: none;
+}
+.nfBtn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 5px 4px 6px;
+  border-radius: var(--k-r-pill);
+  border: 1px solid var(--k-line);
+  background: var(--k-well2);
+  color: var(--k-t1);
+  cursor: pointer;
+  font: inherit;
+  line-height: 0;
+}
+.nfBtn:hover {
+  border-color: var(--k-line2);
+}
+.nfCaret {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--k-t2);
+}
+
+/* The "all networks" glyph: four chain colours in a 2×2. The default state
+   still says *which* networks it spans instead of showing an empty slot. */
+.nfAll {
+  display: grid;
+  grid-template-columns: repeat(2, 7px);
+  gap: 2px;
+  width: 16px;
+  flex: none;
+}
+.nfAll i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+/* Click-away layer. Fixed, not absolute: an absolute inset:0 would only cover
+   the 26px button it is anchored to. Where backdrop-filter is supported the
+   blurred .modal is this element's containing block so it covers the dialog;
+   without blur support it covers the viewport. Either way the first click
+   closes the panel, which is the whole job. */
+.nfScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+/* Opaque on purpose. .modal is already a blurred surface and blurs do not
+   compose — a second backdrop-filter nested inside would cost twice and look
+   muddier, which is the trap the glass pass is written to avoid. */
+.nfPanel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 2;
+  width: 264px;
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-md);
+  box-shadow: var(--k-shadow-pop);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nfPanel {
+    animation: rise var(--k-dur-med) var(--k-ease-out);
+  }
+}
+
+.nfSearch {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--k-line);
+  color: var(--k-t2);
+  flex: none;
+}
+.nfSearch input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  outline: none;
+}
+.nfSearch input::placeholder {
+  color: var(--k-t3);
+}
+
+.nfList {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 1px;
+  max-height: 296px;
+  overflow-y: auto;
+}
+.nfRow {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--k-r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  flex: none;
+}
+.nfRow:hover {
+  background: var(--k-well2);
+}
+.nfName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--k-fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Marks a chain we can read balances on but not trade on — the same
+   distinction NetworkSelector spells out as "Balances only". */
+.nfTag {
+  flex: none;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  background: var(--k-well2);
+  border-radius: var(--k-r-pill);
+  padding: 2px 7px;
+}
+.nfTick {
+  flex: none;
+  color: var(--k-brand);
+  font-size: var(--k-fs-sm);
+}
+.nfDot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex: none;
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -107,6 +306,33 @@
 .row:hover {
   background: var(--k-well2);
 }
+/* While a network switch is in flight. Every row goes down, not just the one
+   clicked: the wallet is mid-prompt and a second pick would queue a second
+   switch behind the first, landing the user on a chain they picked two clicks
+   ago. No spinner — the wallet's own prompt is the thing to look at. */
+.row:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.row:disabled:hover {
+  background: none;
+}
+/* "Switches network", on rows whose chain is not the connected one. Same shape
+   as `.nfTag` in the network list and for the same reason — a short muted pill
+   is a note about the row, where anything stronger would read as a second
+   button inside a button. */
+.tag {
+  flex: none;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  background: var(--k-well2);
+  border-radius: var(--k-r-pill);
+  padding: 2px 7px;
+}
+/* The row's own hover fill is `--k-well2`, so the pill would vanish into it. */
+.row:hover .tag {
+  background: var(--k-card);
+}
 
 .tki {
   width: 34px;
@@ -121,15 +347,21 @@
   color: var(--k-t2);
   position: relative;
 }
-.cb {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 14px;
-  height: 14px;
-  border-radius: 5px;
-  border: 2px solid var(--k-card);
+/* Carrying a real logo rather than a monogram. The grey plate exists to give
+   three letters something to sit on; a branded mark is its own disc, and
+   leaving the fill behind it rings every logo in a colour that is not the
+   token's. The chain badge still positions against this box either way. */
+.tkiArt {
+  background: none;
 }
+.tkiArt > svg {
+  display: block;
+  border-radius: 50%;
+}
+/* The chain badge that used to live here is now TokenIcon's own `.badge` — the
+   copy in trade.module.css had drifted into an empty ring with no ChainIcon in
+   it. `.tki` keeps `position: relative` because the badge still positions
+   against this box; that is the one thing TokenIcon needs from its caller. */
 
 .rb {
   flex: 1;

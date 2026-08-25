@@ -76,7 +76,8 @@ export function accrueInterval(
     throw new Error("accrueInterval: snapshots describe different series");
   }
 
-  const elapsed = (current.takenAt.getTime() - previous.takenAt.getTime()) / 1000;
+  const elapsed =
+    (current.takenAt.getTime() - previous.takenAt.getTime()) / 1000;
   if (!Number.isFinite(elapsed) || elapsed <= 0) return null;
 
   // An asset with no USD price still accrues, denominated in its own units —
@@ -150,7 +151,10 @@ export function accrueSeries(
  * earn ten times the daily allowance. Epochs are trimmed in chronological
  * order, so the earliest activity in a day is what survives the ceiling.
  */
-export function applyDailyCap(epochs: Epoch[], dailyCapPts: number | null): Epoch[] {
+export function applyDailyCap(
+  epochs: Epoch[],
+  dailyCapPts: number | null,
+): Epoch[] {
   if (dailyCapPts === null || !(dailyCapPts > 0)) return epochs;
 
   const dayKey = (e: Epoch) =>

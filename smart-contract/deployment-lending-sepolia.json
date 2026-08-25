@@ -1,0 +1,41 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": "2026-08-24T22:50:03.633Z",
+  "diamond": "0x32a9971381C969d15205AC9e509C204D31341080",
+  "lender": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "borrower": "0xa5b1A2872Ce2E10FE0dc41f62a869604943a962b",
+  "borrowerSource": "keccak256('kaleido-testnet-counterparty-v1:' + DEPLOYER_PRIVATE_KEY)",
+  "currency": {
+    "key": "wrappedNative",
+    "address": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+    "symbol": "WETH",
+    "decimals": 18
+  },
+  "sizing": {
+    "collateralUsd": "400000000000000000000",
+    "listingUsd": "300000000000000000000",
+    "loanUsd": "60000000000000000000",
+    "nativeUsdPerWhole": "2478792900000000000000",
+    "currencyUsdPerWhole": "2478792900000000000000"
+  },
+  "listing": {
+    "id": 1,
+    "remaining": "96821319764148106",
+    "status": 0
+  },
+  "requests": {
+    "fromListing": 1,
+    "serviced": 2,
+    "open": 3
+  },
+  "targets": {
+    "takeListing": 1,
+    "fillRequest": 3,
+    "repay": [
+      1,
+      2
+    ],
+    "cancel": 3
+  }
+}

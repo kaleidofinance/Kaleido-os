@@ -1,92 +1,109 @@
-"use client"
+"use client";
 
-import { useCallback } from "react"
-import { toast } from "sonner"
-import { ErrorDecoder } from "ethers-decode-error"
-import { ethers6Adapter } from "thirdweb/adapters/ethers6"
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
-import { IUseCloseListingAd } from "@/constants/interfaces/ProtocolInterfaces"
-import { client } from "@/config/client"
-import { getKaleidoContract } from "@/config/contracts"
-import lendbitAbi from "@/abi/ProtocolFacet.json"
-import { ethers } from "ethers"
+import { useCallback } from "react";
+import { toast } from "sonner";
+import { ErrorDecoder } from "ethers-decode-error";
+import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { IUseCloseListingAd } from "@/constants/interfaces/ProtocolInterfaces";
+import { client } from "@/config/client";
+import { getKaleidoContract } from "@/config/contracts";
+import lendbitAbi from "@/abi/ProtocolFacet.json";
+import { ethers } from "ethers";
 
-const errorDecoder = ErrorDecoder.create([lendbitAbi])
+const errorDecoder = ErrorDecoder.create([lendbitAbi]);
 
 export default function useCloseListingAd(): IUseCloseListingAd {
-  const activeAccount = useActiveAccount()
-  const activeChain = useActiveWalletChain()
-  const chainId = activeChain?.id
-  const address = activeAccount?.address
+  const activeAccount = useActiveAccount();
+  const activeChain = useActiveWalletChain();
+  const chainId = activeChain?.id;
+  const address = activeAccount?.address;
 
-  const handleError = async (error: unknown, loadingToastId: string | number | undefined) => {
-    const err = await errorDecoder.decode(error)
-    let errorText = "Trying to resolve error!"
+  const handleError = async (
+    error: unknown,
+    loadingToastId: string | number | undefined,
+  ) => {
+    const err = await errorDecoder.decode(error);
+    let errorText = "Trying to resolve error!";
 
     switch (err?.fragment?.name) {
       case "Protocol__MustBeMoreThanZero":
-        errorText = "Invalid borrow amount!"
-        break
+        errorText = "Invalid borrow amount!";
+        break;
       case "Protocol__OrderNotOpen":
-        errorText = "Ad Closed!"
-        break
+        errorText = "Ad Closed!";
+        break;
       case "Protocol__OwnerCreatedOrder":
-        errorText = "only owner can close ad!"
-        break
+        errorText = "only owner can close ad!";
+        break;
+      /* Closing an ad refunds its unlent balance, so it can fail on the way out:
+       * natively with Protocol__TransferFailed, or through SafeERC20 with its
+       * own error. Neither was handled, and the default below reads as a UI
+       * glitch rather than a refund that did not happen. */
+      case "SafeERC20FailedOperation":
+      case "Protocol__TransferFailed":
+        errorText = "Refund transfer failed. Your ad is still open.";
+        break;
     }
 
-    toast.warning(`Error: ${errorText}`, { id: loadingToastId })
+    toast.warning(`Error: ${errorText}`, { id: loadingToastId });
     // console.error("ERROR", err)
-  }
+  };
 
-  const handleTransactionResult = async (transaction: ethers.Contract, loadingToastId: string | number | undefined) => {
-    const receipt = await transaction.wait()
-    toast[receipt.status ? "success" : "error"](receipt.status ? "Ad Successfully closed!" : "Transaction failed!", {
-      id: loadingToastId,
-    })
-  }
+  const handleTransactionResult = async (
+    transaction: ethers.Contract,
+    loadingToastId: string | number | undefined,
+  ) => {
+    const receipt = await transaction.wait();
+    toast[receipt.status ? "success" : "error"](
+      receipt.status ? "Ad Successfully closed!" : "Transaction failed!",
+      {
+        id: loadingToastId,
+      },
+    );
+  };
 
   const closeListingAd = useCallback(
     async (listingId: number): Promise<void> => {
       if (!activeAccount || !chainId || !address) {
-        toast.warning("Wallet not connected or missing required context.")
-        return
+        toast.warning("Wallet not connected or missing required context.");
+        return;
       }
 
       if (!activeChain) {
-        toast.error("Chain not connected")
-        return
+        toast.error("Chain not connected");
+        return;
       }
 
-      const loadingToastId = toast.loading("Closing the listing Ad...")
+      const loadingToastId = toast.loading("Closing the listing Ad...");
 
       try {
         const signer = ethers6Adapter.signer.toEthers({
           client,
           chain: activeChain,
           account: activeAccount,
-        })
+        });
 
         if (!signer) {
-          toast.error("Signer not available")
-          return
+          toast.error("Signer not available");
+          return;
         }
 
-        const contract = getKaleidoContract(signer)
-        await contract.closeListingAd.staticCall(listingId)
-        const tx = await contract.closeListingAd(listingId)
-        handleTransactionResult(tx, loadingToastId)
+        const contract = getKaleidoContract(signer, chainId);
+        await contract.closeListingAd.staticCall(listingId);
+        const tx = await contract.closeListingAd(listingId);
+        handleTransactionResult(tx, loadingToastId);
 
-        const receipt = await tx.wait()
+        const receipt = await tx.wait();
         // console.log("Transaction confirmed:", receipt)
       } catch (err: any) {
-        handleError(err, loadingToastId)
-        console.error("Error closing listing ad:", errorDecoder.decode(err))
+        handleError(err, loadingToastId);
+        console.error("Error closing listing ad:", errorDecoder.decode(err));
         // console.error("Error closing listing ad:", err?.message || err)
       }
     },
     [chainId, address],
-  )
+  );
 
-  return { closeListingAd }
+  return { closeListingAd };
 }

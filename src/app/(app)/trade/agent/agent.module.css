@@ -1,26 +1,205 @@
+/* Agent is a conversation, and it is now shaped like one: a single well holding
+   a header, a transcript that owns the leftover height, and a composer docked at
+   the bottom.
+
+   It used to wear the swap card's shape — a prompt well, a ↓ connector and a
+   result well — on the argument that asking Luca and filling the swap form are
+   the same act with a different input method. The argument was sound; the result
+   was not. A form's proportions put five stacked things in the top well (label,
+   26px textarea, subline, full-width CTA, footnote) and none of them shrink, so
+   the transcript got whatever was left over — roughly a hundred pixels, about
+   one turn — and every answer arrived into a slot too small to read it in. A
+   chat surface has to hand the conversation the height and dock the input. That
+   is not a style preference; it is which element is the content.
+
+   Still no bubbles. The speaker's name sits above its own words, full width: a
+   bubble column spends a third of a 520px card on alignment, and this well also
+   has to hold numbered steps and a signing panel, neither of which sits inside a
+   speech bubble convincingly. */
 .card {
   width: 100%;
-  max-width: 560px;
-  background: var(--k-card);
-  border-radius: var(--k-r-xl);
+  max-width: 520px;
+  /* Height comes from `.stage`'s `align-items: stretch` over in
+     trade.module.css, so this fills the hero and the transcript has a definite
+     box to scroll inside. `flex: 0 1 auto` is about WIDTH here — `.stage` is a
+     flex row, and basis/shrink apply to the main axis.
+
+     Exactly one thing on this card scrolls, and it is the transcript. Two nested
+     scrollers meant the composer could be scrolled out of reach while the thread
+     still had room, and the wheel landed on whichever one the pointer happened
+     to be over. */
+  flex: 0 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 460px;
 }
 
-.head {
+/* The settings gear, at the right end of the card's header.
+
+   The negative margins are the point: a 30px button in a 20px row would push the
+   header taller, which is exactly the height a one-row header exists to save.
+   Pulling it flush lets the text keep setting the row's height while the button
+   overhangs the padding it was going to eat anyway. */
+.gear {
+  width: 30px;
+  height: 30px;
+  /* Vertical only. The `auto` that pushes this group right and the negative
+     right margin that lets it overhang the header's padding both live on
+     `.headMeta`, which is the group — two buttons each claiming the free space
+     would split it and leave the toggle floating mid-row. */
+  margin: -5px 0;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+/* Translucent, matching the chart toggle beside it — this sits in the header's
+   corner, where an opaque fill would punch a hole in the blur on hover. */
+.gear:hover {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
+}
+/* Live indicator. Paired with a text label because a bare green dot states
+   nothing on its own. Applied to the footnote under the composer, where the
+   claim qualifies the button it sits beside. */
+.live {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 15px 18px;
-  border-bottom: 1px solid var(--k-line);
+  gap: 6px;
 }
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--k-brand);
+  flex: none;
+}
+
+.box {
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-xl);
+  padding: 17px 18px;
+}
+
+/* Same glass as the swap wells, for the same reason: these hold large type and
+   step rows, not dense copy, so blur behind them costs no legibility. Never
+   nest another blurred surface inside — blurs do not compose. */
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .box {
+    background: var(--k-glass);
+    border-color: var(--k-glass-line);
+    -webkit-backdrop-filter: blur(var(--k-glass-blur))
+      saturate(var(--k-glass-sat));
+    backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));
+    /* --k-shadow-modal, which is what the global `.k-glass-raised` utility in
+       tokens.css already pairs with --k-glass-strong — and this card is a local
+       copy of that utility, so it should have had the utility's shadow all along.
+       It was on --k-shadow-glass, whose 8px offset under a 32px blur keeps nearly
+       the whole shadow behind the card, so a 520px panel sat flat on the page.
+
+       Agent can take the heaviest step where the swap wells cannot: there is
+       exactly one `.box` on this route and nothing beneath it, so a 20px offset
+       falls on the page rather than onto a sibling 4px below. See `.box` in
+       trade.module.css for the other half of that trade-off. */
+    box-shadow:
+      inset 0 1px 0 var(--k-glass-highlight),
+      var(--k-shadow-modal);
+  }
+}
+
+/* The card takes the raised treatment, matching the lower of the swap card's two
+   wells — see `.deep`/`.raised` in trade.module.css for why raised is a lit top
+   edge and a drop shadow rather than one more step of white.
+
+   `.deep` is gone along with the prompt well it filled. That rule was positional
+   (top well recessed, bottom well raised) and there is only one well now, so
+   there is no position left for it to encode. The recess moved to `.sendRow`,
+   which is the surface you actually type into.
+
+   Duplicated rather than shared because these are separate CSS modules, and
+   `composes` across files would drag the whole `.box` definition along with
+   it. */
+.raised {
+  background: var(--k-card);
+}
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .raised {
+    background: var(--k-glass-strong);
+  }
+}
+
+/* The composer's field rings itself instead of the textarea inside it — same
+   pair as the swap card, and see `.box:has(.inp:focus-visible)` in
+   trade.module.css for the whole argument, including why it is :has and not
+   :focus-within and why both rules sit behind the same @supports.
+
+   It matters more here than there: the prompt is a textarea you sit in and
+   compose in, so the outline it would otherwise carry is on screen for the whole
+   time you are using the page.
+
+   `.sendRow`, not `.box`. On the old two-well card the textarea had a well to
+   itself, so tinting the well's border was proportionate. The well is now the
+   entire card, and lighting its whole perimeter to say "the caret is in the box
+   at the bottom" points at the wrong thing at four times the size. The ring is
+   drawn as an inset shadow rather than a border because a border would add a
+   pixel to the field's box and shift the textarea by one on focus. */
+@supports selector(:has(*)) {
+  .sendRow:has(.inp:focus-visible) {
+    box-shadow:
+      var(--k-shadow-inset),
+      inset 0 0 0 1px var(--k-brand);
+  }
+  .sendRow .inp:focus-visible {
+    outline: none;
+  }
+}
+
+/* "Clear", in the header beside the credit count. It used to sit at the right
+   end of the transcript well's own label row; that row is now the card's header,
+   and this travels with it.
+
+   Its `margin-right: -6px` is gone with the move — it was the last thing in that
+   row and overhung the well's padding, but the chart toggle and the gear now
+   follow it, and the negative margin would eat their gap instead. `.headMeta`
+   owns the overhang for the group.
+
+   Quiet by default and only brand-warm on hover: it deletes a conversation, so
+   it should be findable without advertising itself above the conversation it
+   would delete. No `--k-danger` — this is local state on this device, not a
+   position being closed. */
+.clear {
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 2px 6px;
+  border-radius: var(--k-r-sm);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  cursor: pointer;
+}
+.clear:hover {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
+}
+
 /* Kaleido mark. The source art carries its own dark backdrop, so the circle is
-   zoomed onto the centred glyph and the leftover edges read as the card. */
+   zoomed onto the centred glyph and the leftover edges read as the well. */
 .avatar {
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   flex: none;
   border-radius: 50%;
   background-color: var(--k-well2);
@@ -29,162 +208,602 @@
   background-position: center;
   background-repeat: no-repeat;
 }
-.name {
-  font-size: var(--k-fs-base);
-}
-.sub {
-  font-size: var(--k-fs-xs);
-  color: var(--k-t2);
-}
-.gear {
-  margin-left: auto;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: none;
+
+/* What you type reads at the same size as what comes back — `--k-fs-base`, the
+   transcript's own size. It was 26px, matched to a swap amount because the prompt
+   stood in the amount slot of the swap card's shape. In a composer that is a very
+   large font in a very small box, and the field is no longer standing in for the
+   number you are trading.
+
+   A textarea, not an input: a sentence wraps where a number does not. It starts
+   one row tall and `autoGrow` in page.tsx sets the height from `scrollHeight` on
+   every keystroke, so it grows with the sentence and this `max-height` is the
+   cap — CSS wins over the inline value, and past the cap `overflow-y` takes over.
+   The old `rows={2}` was doing that job badly: two rows whether you had typed one
+   word or six lines.
+
+   `padding: 5px 0` is alignment, not air. 16px at 1.45 is a 23px line, so a
+   single-line field is 33px with the padding — a pixel under the send button's
+   34px — and `.sendRow`'s `align-items: flex-end` then lands the first line's
+   text centred against the button instead of 11px below its middle.
+
+   16px also happens to be the floor below which iOS Safari zooms the page on
+   focus. The old 26px cleared it by accident; this clears it on purpose. */
+.inp {
+  display: block;
+  width: 100%;
   border: 0;
+  background: none;
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-body);
+  /* No negative tracking. -0.02em was tightening 26px display type; at 16px it
+     only closes the letters up. */
+  line-height: 1.45;
+  outline: none;
+  padding: 5px 0;
+  resize: none;
+  overflow-y: auto;
+  /* Four lines plus the padding. Past that the composer would start taking the
+     height the transcript exists to keep. */
+  max-height: 103px;
+}
+.inp::placeholder {
+  color: var(--k-t3);
+}
+
+/* The spinner, in the transcript's in-flight turn. It has moved twice with the
+   thing that reports the wait — first the ↓ connector between the wells, then the
+   full-width CTA's label, and now the placeholder turn where the answer will
+   land, which is the only one of the three that is not a control. Inline so it
+   sits on the text baseline, and `1em` so it tracks its own line's font-size
+   rather than needing a second value kept in sync. */
+.spin {
+  display: inline-block;
+  width: 1em;
+  margin-right: 7px;
+  vertical-align: -0.05em;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .spin {
+    animation: agentSpin 900ms linear infinite;
+  }
+}
+@keyframes agentSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- plan well ---------- */
+
+/* Numbered steps. `ol` for the semantics, with the markers drawn by hand
+   because the mockup's circled numbers double as status: the same slot shows
+   1/2/3 before signing and ✓/✕ after, which a list-style marker cannot do.
+
+   Nested in a turn now rather than owning the well, so it carries its own top
+   margin — the plan is a continuation of the sentence above it, not a separate
+   section. */
+.steps {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 10px 0;
+}
+.step + .step {
+  border-top: 1px solid var(--k-line);
+}
+/* Recessed, matching `.marker` in PlanReview.module.css exactly — the same well
+   shows this list before signing and that one during, so a fill difference
+   between them would read as two different lists of the same steps. */
+.marker {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t2);
-  cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
   display: grid;
   place-items: center;
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  /* Aligns the circle's centre with the first line of the title rather than
+     the top of the text box. */
+  margin-top: 1px;
 }
-.gear:hover {
-  background: var(--k-well2);
-  color: var(--k-t1);
+.stepBody {
+  flex: 1;
+  min-width: 0;
 }
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--k-brand);
+.stepTitle {
+  font-size: var(--k-fs-base);
+  line-height: 1.35;
 }
+.stepDetail {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+/* Right column: the chain a leg runs on, or an em dash. Kept narrow and quiet
+   — it qualifies the step, it is not the step. */
+.stepMeta {
+  flex: none;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  padding-top: 1px;
+}
+
+/* Luca's prose is not styled here. It renders through <Answer>, which parses the
+   markdown the model is writing in, so its blocks — paragraphs, lists, tables,
+   code, the `---` /api/chat puts between an answer and its notes — live in
+   Answer.module.css beside the parser that produces them.
+
+   What stays in `.said` is the frame: the measure, the size and the line-height a
+   turn is set at. The answer inherits all three, so it is one typographic object
+   with the name line above it whether it holds a sentence, a plan, or both. */
 
 /* Marks a turn the local parser answered, so the no-cost path is visible
    rather than silent. Deliberately quiet: it's provenance, not a feature. */
 .viaTag {
-  align-self: flex-start;
-  margin-top: 4px;
-  padding: 1px 6px;
-  border-radius: 999px;
+  display: inline-block;
+  margin-top: 10px;
+  padding: 1px 7px;
+  border-radius: var(--k-r-pill);
   border: 1px solid var(--k-line);
   color: var(--k-t2);
   font-size: 10px;
   letter-spacing: 0.02em;
 }
 
-.body {
-  flex: 1;
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
-}
+/* Empty state. Tappable examples and nothing else — the paragraph that used to
+   introduce them is gone, because a card that explains itself at length is a
+   card that does not fit the screen it is explaining.
 
-.intro {
-  margin: auto 0;
-  text-align: center;
-  padding: 20px 8px;
-}
-.introTitle {
-  font-size: var(--k-fs-lg);
-  font-weight: var(--k-fw-med);
-  margin-bottom: 8px;
-}
-.introBody {
-  font-size: var(--k-fs-sm);
-  color: var(--k-t2);
-  line-height: 1.55;
-  max-width: 40ch;
-  margin: 0 auto;
-}
+   One row, scrolled sideways. This replaced a two-row wrap clamped to
+   `calc(--chip-h * 2 + gap)`, and the clamp was solving the right problem the
+   wrong way round.
 
-.turn {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.plan {
-  background: var(--k-well);
-  border-radius: var(--k-r-lg);
-  padding: 14px;
-}
-.msg {
-  max-width: 82%;
-  font-size: var(--k-fs-base);
-  line-height: 1.5;
-  padding: 11px 14px;
-  border-radius: var(--k-r-md);
-}
-.me {
-  background: var(--k-well2);
-  align-self: flex-end;
-  border-bottom-right-radius: 6px;
-}
-.ai {
-  background: var(--k-well);
-  align-self: flex-start;
-  border-bottom-left-radius: 6px;
-}
-.typing {
-  color: var(--k-t2);
-}
+   Wrapping is what produced the ragged hole. These pills are prompts, so their
+   widths are unrelated — "stake 100 KLD" beside "lend 1,000 USDC at 10% for 60
+   days" — and a flex line breaks at the last chip that fits, leaving whatever is
+   left over as dead space at the end of the row. On a 520px card that hole ran
+   to a third of the width, and the eye reads a gap that size as a layout fault
+   rather than as the end of a list. No amount of clamping fixes it: the height
+   was the symptom, the unequal widths are the cause, and with wrap the only
+   ways out are stretching pills to justify each line (which makes a prompt look
+   like a button sized by accident) or accepting the hole.
 
+   A single line has no leftover to show. It also makes the row's height a
+   constant 33px instead of a function of the card's width and the chips' text —
+   which is what the two-row clamp actually wanted — and hands the height back to
+   the transcript, on a surface that is already height-locked to the viewport.
+
+   Overflow goes to the right, where a partly-visible chip at the edge is its own
+   affordance that more follow. Reached by wheel, trackpad, drag or Tab (focus
+   scrolls its own container into view). `.chip` sets `flex: none` to make this
+   work at all: in a `nowrap` line, items shrink instead, which is exactly the
+   bug `.preset` had in deferred.module.css — a squashed pill breaks its label
+   internally and the row turns two lines tall anyway.
+
+   No fade mask over the trailing edge, though one was tried: a mask paints
+   whether or not the content overflows, and CSS cannot ask "is this element
+   scrolling". On `.predict`, which often holds one short chip, it would have
+   dimmed a row that fits perfectly well — inventing the exact "cut off"
+   impression this rule exists to remove. */
 .suggest {
   display: flex;
   gap: var(--k-s2);
-  flex-wrap: wrap;
-  padding: 0 18px 14px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  /* Swiping past the last chip should not start scrolling the page behind it. */
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
 }
+.suggest::-webkit-scrollbar {
+  display: none;
+}
+
+/* The same row, in the composer above the field, holding predictions instead of
+   the product tour. It inherits the single-line strip, which it wants for the
+   same reason: `nextSuggestions` caps itself at three chips, but they are the
+   user's own phrasings, so their length is not something this file gets to
+   decide.
+
+   In the composer rather than at the foot of the transcript, which is where it
+   was. Tapping one of these fills the prompt, so it belongs beside the prompt: at
+   the bottom of a scroll box they scrolled away from the field they were feeding,
+   and a shortcut you have to scroll back down to find is not one. `.composer`'s
+   own gap is the separation now, so the 27px top margin that existed to cancel
+   the transcript's negative bottom margin goes with it.
+
+   `flex: none` is load-bearing: `.composer` is a flex column, and without this
+   the chips would be what shrinks as the textarea grows — the row would silently
+   squash to nothing exactly when there is enough history to predict from. */
+.predict {
+  composes: suggest;
+  flex: none;
+}
+/* Recessed into the well, using the same wash and groove as `.deep` above
+   rather than the flat grey these carried. --k-well2 is an opaque colour, so it
+   ignored the glass entirely and sat on top of the card as a patch of a
+   different material; the wash is translucent, so the well's own fill and blur
+   show through it and the chip reads as a dent in that surface instead.
+
+   No backdrop-filter of its own, deliberately: a blurred surface inside a
+   blurred surface samples its parent's flat fill and renders as mud. It does
+   not need one — the well behind it is already blurred, and darkening plus an
+   inset top edge is the whole optical cue. */
 .chip {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
-  padding: 8px 14px;
+  /* Neither shrink nor grow. In the `nowrap` strip above, the default
+     `flex-shrink: 1` is what a too-narrow row would use first — squashing every
+     pill below its content width, which breaks the label inside the pill and
+     costs the second row the strip exists to avoid. Overflow has to leave via
+     the scroll axis, so the items must refuse to give. */
+  flex: none;
+  /* 19 + 7 + 7 = 33px, the row's whole height. Stated in pixels rather than a
+     ratio so the strip is the same height on every platform: a unitless
+     line-height resolves against the font's own metrics, which differ per OS,
+     and this row sits in a card that is height-locked to the viewport. */
+  line-height: 19px;
+  padding: 7px 13px;
   border-radius: var(--k-r-pill);
   cursor: pointer;
+  /* A chip is one prompt, so it is one line. */
+  white-space: nowrap;
 }
+/* Hover goes brand-tinted, the same as every other chip on the trade surface —
+   see `.qk` in trade.module.css for why the label stays --k-t1 instead of
+   going brand along with the fill. */
 .chip:hover {
-  background: var(--k-hover);
+  background: var(--k-brand-dim);
   color: var(--k-t1);
 }
 
-.inputRow {
+/* ---------- the chat well ---------- */
+
+/* One well, three regions: a header naming who you are talking to, the
+   transcript, and the composer. Header and composer are `flex: none`; the
+   transcript takes everything else. That is the whole reshape — the conversation
+   gets the height by default rather than by leftovers.
+
+   `padding: 0` overrides `.box` deliberately. Each region pads itself so the
+   hairlines between them can run the well's full width; a shared 18px inset
+   would leave every rule floating short of both edges. */
+.chat {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* Names the counterparty, and carries the turn's cost plus the two panel
+   toggles. One row, because everything in it qualifies the conversation rather
+   than participating in it.
+
+   `cursor: default`, because this row is chrome and not text you can type in.
+   Plain text in a document gets the I-beam, and an I-beam over a name that is not
+   a field reads as somewhere the caret could go. It cannot; a div is not editable.
+   The pointer was lying about what it was over. Content keeps its I-beam — Luca's
+   answers and the step text are things people select and copy — so this is the
+   line between a card's chrome and a card's contents, not a blanket ban. The
+   buttons in here set their own `cursor: pointer`, and an element's own value
+   beats an inherited one, so they are unaffected. */
+.head {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 13px 18px;
-  border-top: 1px solid var(--k-line);
+  gap: 9px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--k-line);
+  cursor: default;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
 }
-.input {
-  flex: 1;
-  border: 0;
-  background: none;
+.headName {
   color: var(--k-t1);
-  font: inherit;
-  font-size: var(--k-fs-base);
-  outline: none;
+  font-weight: var(--k-fw-med);
 }
-.input::placeholder {
+/* The credit count, Clear, and the two round toggles, pushed right by `auto`
+   rather than by a spacer — the same placement idiom `.gear` and `.clear` used in
+   the label rows this header replaced. The negative right margin belongs to the
+   group rather than to its last child, so the 30px gear's own visual air lines up
+   with the header's 16px inset instead of adding to it. */
+.headMeta {
+  margin-left: auto;
+  margin-right: -6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--k-fs-xs);
   color: var(--k-t3);
 }
+
+/* The transcript. It scrolls, and it is the only thing on this card that does.
+
+   No negative margins and no fade mask, both of which the old version needed and
+   this one does not. The margins existed to cancel the well's padding so turns
+   could reach its true edge; with the header as a real sibling carrying a border,
+   the scroll box simply ends at that border and the cut is a drawn line instead
+   of a word sliced in half under a floating label. That half-sliced turn was the
+   worst thing about the old card, and it was structural rather than a spacing
+   value someone had got wrong.
+
+   A mask was considered and rejected for the reason `.suggest` documents above:
+   it paints whether or not the content overflows, so a two-turn conversation
+   would have its first line dimmed for nothing. */
+.thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+  padding: 17px 16px;
+}
+.thread::-webkit-scrollbar {
+  display: none;
+}
+
+/* The plan review and the receive panel take the transcript's box rather than
+   appearing below it. They are modes of the conversation, not additions to it —
+   you are reviewing what Luca proposed, and going back returns you to the words
+   that proposed it.
+
+   It has to scroll for the same reason the transcript does, and more urgently: a
+   six-step plan is taller than a short viewport, and this is the surface where
+   signatures happen, so "clipped and unreachable" is the one outcome it cannot
+   have. Slightly less top padding than `.thread` because PlanReview opens with a
+   heading of its own, and two stacked insets read as a gap. */
+.panelScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 14px 16px 16px;
+}
+.panelScroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Empty state, centred in the transcript's box by `margin: auto 0` — the thread
+   is a flex column, so auto block margins split the free space above and below.
+   Centred rather than top-aligned because with the composer docked there is a
+   lot of free height here, and a menu pinned to the top of it reads as content
+   that failed to load. */
+.empty {
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+.emptyTitle {
+  font-size: var(--k-fs-base);
+  color: var(--k-t2);
+}
+
+/* One turn: the speaker's name on its own line, then the words, full width.
+
+   This replaced a flex row with a fixed 30px gutter holding "You" or "Luca" at
+   11px, baseline-aligned against 13px prose. It fit, and it read as a log file —
+   two columns of very unequal weight, the narrow one repeating itself down the
+   page. Stacking costs one short line per turn and buys the prose the entire
+   width, which is what makes a wrapped answer look composed rather than
+   squeezed. */
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--k-t1);
+  text-align: left;
+  padding: 0;
+}
+/* Only the user's own turns are buttons, so only they take the affordance. The
+   negative margin pair gives the hover fill some body around the text without
+   the text shifting when it appears — the same idiom as `.gear`. */
+.turnUser {
+  cursor: pointer;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: var(--k-r-sm);
+}
+.turnUser:hover {
+  /* --k-row-hover, not --k-well: this surface is glass, and an opaque row fill
+     ignores the blur and lands as a patch of another material. */
+  background: var(--k-row-hover);
+}
+.who {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  letter-spacing: 0.02em;
+}
+/* Luca's name carries slightly more weight than yours. Telling the two speakers
+   apart is the job the gutter was doing with position; with both names on the
+   same left edge it falls to the type, and a medium weight does it without
+   spending a colour on a label. */
+.whoAgent {
+  color: var(--k-t2);
+  font-weight: var(--k-fw-med);
+}
+.said {
+  min-width: 0;
+  /* Up from --k-fs-sm. The transcript is the card's content now, not a summary
+     strip beneath a form, and 13px was sized for the strip. */
+  font-size: var(--k-fs-base);
+  line-height: 1.55;
+  /* Wraps rather than ellipsising — a truncated answer from Luca is just a lost
+     answer. */
+  overflow-wrap: anywhere;
+}
+/* Your own words, quieter than Luca's. You already know what you said; the reply
+   is what you came back to read. */
+.turnUser .said {
+  color: var(--k-t2);
+}
+/* The in-flight turn, standing where its answer will appear. Placed and sized
+   exactly like a real turn — same name line, same left edge, same measure — so
+   the reply does not jump when it replaces this. Only the colour differs, because
+   it is a status and not something Luca said. */
+.thinking {
+  color: var(--k-t3);
+}
+
+/* ---------- the composer ---------- */
+
+/* Docked at the bottom and `flex: none`, so it stays exactly where you left it
+   however long the conversation runs. That is the half of the reshape the
+   transcript's height depends on: if this could grow, the thread would shrink to
+   pay for it, which is the failure the old top well embodied. */
+.composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--k-line);
+}
+/* The recessed field, holding the textarea and the send button. Hand-rolled
+   rather than reusing `.deep`, because that class also brings a glass background
+   and this sits inside a well that is already glass — a blurred surface inside a
+   blurred surface samples its parent's flat fill and renders as mud. Darkening
+   plus an inset edge is the whole cue, exactly as `.chip` argues.
+
+   `align-items: flex-end` keeps the button on the last line as the textarea
+   grows, rather than centred against a three-line prompt. */
+.sendRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  padding: 9px 9px 9px 13px;
+  border-radius: var(--k-r-lg);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+}
+/* Round and brand-filled at 34px, agreeing with the gear and the chart toggle so
+   the card's round controls are one size. An icon button rather than the old
+   full-width block: that block spent 17px of padding and a 17px label across the
+   whole card on an action almost always taken with the Enter key, and it stood
+   where this composer now is. */
 .send {
-  width: 32px;
-  height: 32px;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 0;
   border-radius: 50%;
   background: var(--k-brand);
   color: var(--k-brand-fg);
-  border: 0;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  line-height: 1;
   cursor: pointer;
-  font-size: 15px;
-  flex: none;
 }
+.send:hover:not(:disabled) {
+  background: var(--k-brand-hover);
+}
+/* Recessed rather than filled with an opaque grey. --k-well2 and friends are
+   solid colours, so they ignore the glass behind them and sit on the surface as a
+   slab of another material; the wash is translucent, so the field's own fill
+   shows through and the button reads as a control that is not currently raised
+   toward you — which is what disabled means. */
 .send:disabled {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t3);
   cursor: not-allowed;
+}
+/* While a turn is in flight this same button is the stop control, and there is no
+   variant class for it: it simply is not disabled, so it keeps the brand fill and
+   swaps its glyph to ■. Greying it out is what the old CTA did, and that is
+   precisely the state that left a running request with no way to cancel it.
+   `aria-label` swaps with the glyph, so what assistive tech announces matches
+   what the button now does. */
+
+/* ---------- the plan handoff ---------- */
+
+/* "Review 3 steps", in the composer while a plan is waiting. Full width, and the
+   one place on this card that still gets a block button: a plan is the one moment
+   in the conversation with a single obvious next action, and it leads to
+   signatures.
+
+   It takes the slot `.predict` uses, and the two are mutually exclusive in the
+   markup — predictions are for continuing a conversation, and this is for
+   finishing one. No `margin-top`: the block CTA it replaces carried 12px to
+   separate itself from the subline above, and `.composer`'s gap does that now.
+
+   Nothing here is ever disabled. The old CTA in this position was the send
+   control, the stop control and the plan handoff at once, which is why it needed a
+   disabled state, a hover-swap label and a busy variant; the send button owns the
+   first two now and this owns nothing but the handoff. */
+.ctaPlan {
+  width: 100%;
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+  padding: 12px;
+  border-radius: var(--k-r-lg);
+  cursor: pointer;
+}
+.ctaPlan:hover {
+  background: var(--k-brand-hover);
+}
+
+/* The footnote under the field. `margin: 0 2px` rather than the old `10px 2px 0`
+   — the composer's gap is the vertical separation, and a margin on top of it
+   would be 20px of it. */
+.foot {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  line-height: 1.5;
+  margin: 0 2px;
+}
+
+/* ---------- mobile ---------- */
+@media (max-width: 720px) {
+  /* Tightened per region, because the well has no padding of its own to shrink —
+     `.chat` sets it to 0 so the hairlines can run edge to edge, and each region
+     pads itself.
+
+     The `.box { padding: 15px }` rule that used to be here had to go for a second
+     reason as well: `.box` and `.chat` are both single classes, and this block is
+     declared after `.chat`, so at equal specificity it would have won and put
+     15px back around the whole well — undoing the full-width hairlines on exactly
+     the screens where they matter most. */
+  .head {
+    padding: 12px 14px;
+  }
+  .thread {
+    padding: 14px;
+  }
+  .panelScroll {
+    padding: 12px 14px 14px;
+  }
+  .composer {
+    padding: 10px 14px 12px;
+  }
 }

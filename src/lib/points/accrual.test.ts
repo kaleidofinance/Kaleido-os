@@ -41,7 +41,11 @@ console.log("\n— honest holding —");
 {
   // $1000 held for 24h at 1 pt/USD/day = 1000 points.
   const e = accrueInterval(snap(1000, 0), snap(1000, 24), RATE, 1);
-  check("24h at $1000 → 1000 pts", Math.abs(e.points - 1000) < 1e-6, `got ${e?.points}`);
+  check(
+    "24h at $1000 → 1000 pts",
+    Math.abs(e.points - 1000) < 1e-6,
+    `got ${e?.points}`,
+  );
 }
 
 console.log("\n— the flash-deposit farm —");
@@ -58,19 +62,19 @@ console.log("\n— the flash-deposit farm —");
 }
 {
   // Compare against the naive alternatives to show why min() was chosen.
-  const prevValue = 1_000_000 * (12 * 3600) / 86400; // would-be payout using opening value
-  check(
-    "min() strictly cheaper than opening-value accrual",
-    0 < prevValue,
-    "",
-  );
+  const prevValue = (1_000_000 * (12 * 3600)) / 86400; // would-be payout using opening value
+  check("min() strictly cheaper than opening-value accrual", 0 < prevValue, "");
 }
 
 console.log("\n— withdraw right after a snapshot —");
 {
   // Held $1000 at t0, withdrew to $10 immediately after. Credited on $10.
   const e = accrueInterval(snap(1000, 0), snap(10, 24), RATE, 1);
-  check("credited on the lower endpoint", Math.abs(e.points - 10) < 1e-6, `got ${e.points}`);
+  check(
+    "credited on the lower endpoint",
+    Math.abs(e.points - 10) < 1e-6,
+    `got ${e.points}`,
+  );
 }
 
 console.log("\n— growth is credited conservatively —");
@@ -78,14 +82,27 @@ console.log("\n— growth is credited conservatively —");
   // Grew $100 → $1000. Credited on $100, not $1000: the larger balance has
   // only existed for an instant at the closing snapshot.
   const e = accrueInterval(snap(100, 0), snap(1000, 24), RATE, 1);
-  check("credited on the smaller endpoint", Math.abs(e.points - 100) < 1e-6, `got ${e.points}`);
+  check(
+    "credited on the smaller endpoint",
+    Math.abs(e.points - 100) < 1e-6,
+    `got ${e.points}`,
+  );
 }
 
 console.log("\n— degenerate intervals —");
 {
-  check("zero-length interval → null", accrueInterval(snap(500, 5), snap(500, 5), RATE, 1) === null);
-  check("reversed interval → null", accrueInterval(snap(500, 10), snap(500, 5), RATE, 1) === null);
-  check("zero balance → null", accrueInterval(snap(0, 0), snap(0, 24), RATE, 1) === null);
+  check(
+    "zero-length interval → null",
+    accrueInterval(snap(500, 5), snap(500, 5), RATE, 1) === null,
+  );
+  check(
+    "reversed interval → null",
+    accrueInterval(snap(500, 10), snap(500, 5), RATE, 1) === null,
+  );
+  check(
+    "zero balance → null",
+    accrueInterval(snap(0, 0), snap(0, 24), RATE, 1) === null,
+  );
   let threw = false;
   try {
     accrueInterval(snap(1, 0), { ...snap(1, 24), wallet: "0xdef" }, RATE, 1);
@@ -98,8 +115,14 @@ console.log("\n— degenerate intervals —");
 console.log("\n— dust floor —");
 {
   const withFloor = { ...RATE, minUsd: 25 };
-  check("below floor earns nothing", accrueInterval(snap(5, 0), snap(5, 24), withFloor, 1) === null);
-  check("above floor earns", accrueInterval(snap(50, 0), snap(50, 24), withFloor, 1) !== null);
+  check(
+    "below floor earns nothing",
+    accrueInterval(snap(5, 0), snap(5, 24), withFloor, 1) === null,
+  );
+  check(
+    "above floor earns",
+    accrueInterval(snap(50, 0), snap(50, 24), withFloor, 1) !== null,
+  );
 }
 
 console.log("\n— unpriced assets (KLD before TGE) —");
@@ -107,8 +130,16 @@ console.log("\n— unpriced assets (KLD before TGE) —");
   const kld = (amt, h) =>
     snap(null, h, { sourceSlug: "stake", rawAmount: amt, rawSymbol: "KLD" });
   const e = accrueInterval(kld(500, 0), kld(500, 24), RATE, 1);
-  check("accrues in raw units when unpriced", e !== null && Math.abs(e.points - 500) < 1e-6, `got ${e?.points}`);
-  const spiked = accrueSeries([kld(0, 0), kld(9_999_999, 12), kld(0, 24)], RATE, 1);
+  check(
+    "accrues in raw units when unpriced",
+    e !== null && Math.abs(e.points - 500) < 1e-6,
+    `got ${e?.points}`,
+  );
+  const spiked = accrueSeries(
+    [kld(0, 0), kld(9_999_999, 12), kld(0, 24)],
+    RATE,
+    1,
+  );
   check(
     "unpriced spike also refused",
     spiked.reduce((s, e) => s + e.points, 0) === 0,
@@ -133,7 +164,11 @@ console.log("\n— daily cap —");
   }
   const capped = applyDailyCap(many, 2500);
   const total = capped.reduce((s, e) => s + e.points, 0);
-  check("splitting across intervals cannot beat the cap", Math.abs(total - 2500) < 1e-9, `got ${total}`);
+  check(
+    "splitting across intervals cannot beat the cap",
+    Math.abs(total - 2500) < 1e-9,
+    `got ${total}`,
+  );
 
   // The same wallet on the next day gets a fresh allowance.
   const nextDay = many.map((e) => ({
@@ -158,10 +193,16 @@ console.log("\n— agent multiplier decay —");
     multiplierActionLimit: 20,
   };
   const first = actionPoints(1000, agent, 0);
-  check("bonus applies early", first.multiplierApplied === 1.2 && Math.abs(first.points - 1200) < 1e-9);
+  check(
+    "bonus applies early",
+    first.multiplierApplied === 1.2 && Math.abs(first.points - 1200) < 1e-9,
+  );
 
   const later = actionPoints(1000, agent, 20);
-  check("bonus gone at the limit", later.multiplierApplied === 1 && Math.abs(later.points - 1000) < 1e-9);
+  check(
+    "bonus gone at the limit",
+    later.multiplierApplied === 1 && Math.abs(later.points - 1000) < 1e-9,
+  );
 
   const dust = actionPoints(5, agent, 0);
   check("dust action earns nothing", dust.points === 0);
@@ -175,7 +216,11 @@ console.log("\n— agent multiplier decay —");
 console.log("\n— chain multiplier —");
 {
   const e = accrueInterval(snap(1000, 0), snap(1000, 24), RATE, 1, 2);
-  check("2x chain multiplier doubles", Math.abs(e.points - 2000) < 1e-6, `got ${e.points}`);
+  check(
+    "2x chain multiplier doubles",
+    Math.abs(e.points - 2000) < 1e-6,
+    `got ${e.points}`,
+  );
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

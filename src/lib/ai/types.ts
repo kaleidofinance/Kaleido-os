@@ -43,11 +43,27 @@ export interface ReadCall {
   args: Record<string, unknown>;
 }
 
+/**
+ * An EXECUTE verb the model asked for — awaiting server-side building.
+ *
+ * Deliberately not a PlanStep. A provider used to spread a tool call's
+ * arguments straight into `{kind: toolName, ...input}` and call the result a
+ * plan, which made tool name and intent kind the same thing and forced every
+ * field of an Intent to be something the model typed — including contract
+ * addresses it was never shown. The call and the intent are now separate
+ * shapes, and `fromToolCall.planFromToolCalls` is what turns one into the
+ * other, in one place rather than once per provider.
+ */
+export interface ExecuteCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
 export interface ChatResult {
   /** The model's natural-language reply. */
   text: string;
-  /** Signable steps; empty when the model only conversed. */
-  plan: PlanStep[];
+  /** Execute verbs the model chose; empty when it only conversed. */
+  executes: ExecuteCall[];
   /**
    * READ tools the model requested this turn. Every tool in the catalog is
    * reachable through this array — the agent loop executes each and feeds

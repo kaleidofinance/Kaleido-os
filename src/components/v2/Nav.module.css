@@ -1,3 +1,16 @@
+/* The nav sits on the page's own background with no seam and no rule under it,
+   so the header reads as part of the page rather than as a bar bolted to it.
+
+   The glass is conditional rather than permanent, and that is the whole trick.
+   A tint-free blur is not free here: the ambient layer is a 23px dot matrix, and
+   blurring it smears those dots into a soft rectangle exactly the size of the
+   nav — trading the border for a worse, fuzzier edge. So at rest there is no
+   blur and no border at all. Once content is actually behind the strip, the
+   glass comes in and the smear no longer reads as a seam because there is
+   genuinely something being occluded.
+
+   Dropping the blur outright was the other option and it is wrong on /pool and
+   /leaderboard, the routes long enough to scroll a table under the labels. */
 .nav {
   display: flex;
   align-items: center;
@@ -5,8 +18,34 @@
   padding: 14px 20px;
   position: sticky;
   top: 0;
-  background: var(--k-bg);
   z-index: 30;
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nav {
+    transition: background var(--k-dur-med) var(--k-ease);
+  }
+}
+
+/* Opaque fallback. Without backdrop-filter the labels would otherwise sit
+   directly on scrolling table rows. No border even here — the ask was to lose
+   the line, and --k-bg against the ambient layer is already a soft edge. */
+.scrolled {
+  background: var(--k-bg);
+}
+
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .scrolled {
+    background: var(--k-glass);
+    /* Not transitioned: none → blur() has no sensible interpolation, and the
+       hard switch is invisible because the page is mid-scroll when it fires. */
+    -webkit-backdrop-filter: blur(var(--k-glass-blur))
+      saturate(var(--k-glass-sat));
+    backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));
+  }
 }
 
 .logo {
@@ -17,6 +56,22 @@
   font-size: var(--k-fs-lg);
   font-weight: var(--k-fw-med);
   text-decoration: none;
+}
+
+/* The "fi" — white, a size down, so the wordmark reads as "Kaleido" with the
+   domain's suffix attached rather than as one nine-letter green word. Identical
+   to marketing.module.css's .brandFi, which carries the long version.
+
+   `em` and not `--k-fs-sm`, and here it is load-bearing rather than tidy: the
+   mobile rule below hides this wordmark with `font-size: 0` on `.logo`, and a
+   child pinned to an absolute size would survive that and leave a lone white
+   "fi" floating beside the mark. 0.75em of 0 is 0.
+
+   `--k-t1` and not `#fff`, because it is #fff in dark and #141413 in light, and
+   the theme toggle that swaps them is in this same nav. */
+.logoFi {
+  color: var(--k-t1);
+  font-size: 0.75em;
 }
 /* Kaleido mark. The source art carries its own dark backdrop, so the circle is
    zoomed onto the centred glyph and the leftover edges read as the bar. */
@@ -79,16 +134,21 @@
   font-size: var(--k-fs-base);
 }
 .icon:hover {
-  background: var(--k-card);
+  background: var(--k-row-hover);
   color: var(--k-t1);
 }
 
+/* Transparent at rest, filling only on hover. Against a nav that no longer has
+   its own background, a permanent opaque fill reads as a stray box floating in
+   the gradient; a hairline holds the shape without claiming a surface. The
+   hover is translucent for the same reason — --k-card would drop an opaque grey
+   pill onto the gradient the moment the pointer crossed it. */
 .net {
   display: flex;
   align-items: center;
   gap: var(--k-s2);
-  background: var(--k-card);
-  border: 0;
+  background: transparent;
+  border: 1px solid var(--k-line);
   font: inherit;
   font-size: var(--k-fs-sm);
   color: var(--k-t1);
@@ -97,7 +157,8 @@
   cursor: pointer;
 }
 .net:hover {
-  background: var(--k-well2);
+  background: var(--k-row-hover);
+  border-color: var(--k-line2);
 }
 .netIcon {
   width: 16px;
@@ -118,28 +179,8 @@
   color: var(--k-t2);
 }
 
-.addr {
-  display: flex;
-  align-items: center;
-  gap: var(--k-s2);
-  background: var(--k-card);
-  border: 0;
-  font: inherit;
-  font-size: var(--k-fs-sm);
-  color: var(--k-t1);
-  padding: 7px 14px 7px 8px;
-  border-radius: var(--k-r-pill);
-  cursor: pointer;
-}
-.addr:hover {
-  background: var(--k-well2);
-}
-.avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--k-well2);
-}
+/* .addr / .avatar moved to WalletMenu.module.css — the pill is the menu's
+   trigger now, and the two only make sense read together. */
 
 .connect {
   background: var(--k-brand);
@@ -183,6 +224,10 @@
     padding: 6px 11px 6px 6px;
     font-size: var(--k-fs-xs);
   }
+  .addr {
+    padding: 6px 11px 6px 6px;
+    font-size: var(--k-fs-xs);
+  }
   .connect {
     padding: 9px 15px;
   }
@@ -191,6 +236,26 @@
 /* ---------- bottom tab bar (phones) ---------- */
 .tabbar {
   display: none;
+}
+
+/* Outside the media query below on purpose. The bar is `display: none` above
+   720px, so an unsized <svg> in here would never be visible either way — but a
+   component that depends on a breakpoint to have dimensions is a component that
+   renders at 300×150 the first time somebody reuses it. <SectionIcon> carries no
+   width or height attribute; this is what gives it one.
+
+   20px against the 10px label under it. `display: block` because an inline <svg>
+   sits on the text baseline, which would push the icon 3px off the centre of a
+   column whose whole job is centring. The stroke is `currentColor`, so `.tab`'s
+   --k-t2 and `.tabOn`'s --k-brand below tint it with no rule of its own. */
+.tabIcon {
+  display: flex;
+}
+
+.tabIcon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
 }
 
 @media (max-width: 720px) {
@@ -205,6 +270,20 @@
     border-top: 1px solid var(--k-line);
     /* Clears the home indicator on notched phones. */
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Same treatment as the top strip. `position: fixed` here is exactly what
+     the old `-moz-transform: scale(.85)` on <html> was breaking. */
+  @supports (
+    (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+  ) {
+    .tabbar {
+      background: var(--k-glass-strong);
+      border-top-color: var(--k-glass-line);
+      -webkit-backdrop-filter: blur(var(--k-glass-blur))
+        saturate(var(--k-glass-sat));
+      backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));
+    }
   }
   .tab {
     flex: 1;
@@ -222,9 +301,5 @@
   }
   .tabOn {
     color: var(--k-brand);
-  }
-  .tabIcon {
-    font-size: 16px;
-    line-height: 1;
   }
 }

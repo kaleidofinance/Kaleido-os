@@ -1,0 +1,25 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-23T02:41:32.553Z",
+  "note": "Mock counterparty tokens. NOT read by gen-registry (no 'deployment-' prefix). Copy the addresses below into smart-contract/.env (WRAPPED_NATIVE / USDC_ADDRESS) and into TOKENS[chainId] in src/constants/registry.ts.",
+  "wrappedNative": {
+    "address": "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
+    "symbol": "WBNB",
+    "decimals": 18,
+    "kind": "canonical",
+    "canonical": true,
+    "deployed": false,
+    "note": "Set WRAPPED_NATIVE to this canonical address; NATIVE_LABEL=BNB."
+  },
+  "tokens": {
+    "USDC": {
+      "address": "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F",
+      "symbol": "USDC",
+      "decimals": 6,
+      "minted": "1000000",
+      "mintedTo": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    }
+  }
+}

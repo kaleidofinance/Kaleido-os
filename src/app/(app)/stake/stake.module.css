@@ -65,6 +65,18 @@
   color: var(--k-t1);
   font-weight: var(--k-fw-med);
 }
+/* Matches the Trade tab row. A lighter blur than --k-glass-blur on purpose:
+   at pill size a 20px radius samples mostly the pill's own edges and reads
+   as mush rather than as glass. */
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .tb.on {
+    background: var(--k-glass-strong);
+    -webkit-backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+  }
+}
 
 .card {
   width: 100%;
@@ -73,7 +85,7 @@
   gap: 4px;
 }
 .box {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-xl);
   padding: 17px 18px;
 }
@@ -103,11 +115,14 @@
 .inp::placeholder {
   color: var(--k-t3);
 }
+/* Not a button here — KLD/stKLD is fixed, there is nothing to pick. Recessed to
+   match `.pill` in trade.module.css, minus the hover. */
 .pill {
   display: flex;
   align-items: center;
   gap: var(--k-s2);
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   font-size: var(--k-fs-base);
   font-weight: var(--k-fw-med);
   color: var(--k-t1);
@@ -124,8 +139,27 @@
   place-items: center;
   font-size: 9px;
   font-weight: 600;
-  background: #333;
+  /* Scaffolding for three letters — the plate only shows through when the token
+     has no mark, which is why `.tkiArt` below takes it away again. */
+  background: var(--k-glass-deep);
   color: var(--k-t2);
+}
+/* Carrying a real logo instead of three letters — same pair as `.tkiArt` in
+   stable/form.module.css. KLD's mark is its own disc, and leaving the fill
+   behind it rings the logo in a colour that is not the token's. stKLD borrows
+   KLD's mark; see ALIASES in TokenIcon.tsx for why that is the right call and
+   not a missing asset. */
+.tkiArt {
+  background: none;
+}
+/* `> img` and not `> svg`: this page only ever draws KLD and stKLD, and both
+   resolve to a file rather than to a @web3icons vector. The declarations are the
+   same two `.mark` already sets in TokenIcon.module.css, so this is belt and
+   braces — but a plate that names the shape it holds is worth more than the one
+   duplicated rule costs, and `> svg` here would have matched nothing at all. */
+.tkiArt > img {
+  display: block;
+  border-radius: 50%;
 }
 .sub {
   display: flex;
@@ -192,8 +226,12 @@
 .ctaBtn:hover:not(:disabled) {
   background: var(--k-brand-hover);
 }
+/* Recessed rather than an opaque grey slab — see `.cta:disabled` in
+   trade.module.css. Disabled until an amount is entered, so it opens in this
+   state. */
 .ctaBtn:disabled {
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
   color: var(--k-t3);
   cursor: not-allowed;
 }

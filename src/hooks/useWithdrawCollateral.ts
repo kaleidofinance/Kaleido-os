@@ -1,118 +1,126 @@
-"use client"
-import { useCallback } from "react"
-import { toast } from "sonner"
-import { isSupportedChain } from "@/config/chain"
-import { getProvider } from "@/config/provider"
-import { useRouter } from "next/navigation"
-import { ErrorWithReason } from "@/constants/types"
-import { ethers } from "ethers"
-import { getContractByChainId } from "@/config/getContractByChain"
-import { ADDRESS_1, USDC_ADDRESS, USDR, USDT_ADDRESS, kfUSD_ADDRESS } from "@/constants/utils/addresses"
-import { SUPPORTED_CHAIN_ID } from "@/context/web3Modal"
-import { ErrorDecoder } from "ethers-decode-error"
-import lendbitAbi from "@/abi/ProtocolFacet.json"
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react"
-import { ethers6Adapter } from "thirdweb/adapters/ethers6"
-import { client } from "@/config/client"
-import { getKaleidoContract } from "@/config/contracts"
+"use client";
+import { useCallback } from "react";
+import { toast } from "sonner";
+import { isSupportedChain } from "@/config/chain";
+import { ethers } from "ethers";
+import { ErrorDecoder } from "ethers-decode-error";
+import lendbitAbi from "@/abi/ProtocolFacet.json";
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { client } from "@/config/client";
+import { getKaleidoContract } from "@/config/contracts";
+import type { LendingAsset } from "@/lib/lending/assets";
 
-const errorDecoder = ErrorDecoder.create([lendbitAbi])
+const errorDecoder = ErrorDecoder.create([lendbitAbi]);
 
+/**
+ * Withdraw deposited collateral, native or ERC20.
+ *
+ * Takes the resolved `LendingAsset` so the amount is scaled by the asset's own
+ * declared decimals. It used to take an address and pick the scale from a
+ * five-way if-chain over the native sentinel plus four Abstract-testnet literals,
+ * with **no else branch**: on every deployed chain an ERC20 address matched
+ * nothing, `_weiAmount` stayed `undefined`, and `withdrawCollateral(addr,
+ * undefined)` threw inside ethers before a transaction existed. Every ERC20
+ * withdrawal on all five chains failed that way.
+ */
 const useWithdrawCollateral = () => {
-  const activeAccount = useActiveAccount()
-  const activeChain = useActiveWalletChain()
-  const chainId = activeChain?.id
-  const address = activeAccount?.address
-  const router = useRouter()
+  const activeAccount = useActiveAccount();
+  const activeChain = useActiveWalletChain();
+  const chainId = activeChain?.id;
 
   return useCallback(
-    async (_tokenCollateralAddress: string, _amountOfCollateral: string, onSuccess?: () => void) => {
-      if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK")
+    async (
+      asset: LendingAsset,
+      _amountOfCollateral: string,
+      onSuccess?: () => void,
+    ) => {
+      if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK");
 
       if (!activeChain) {
-        toast.error("Chain not connected")
-        return
+        toast.error("Chain not connected");
+        return;
       }
       if (!activeAccount) {
-        toast.error("invalid account")
-        return
+        toast.error("invalid account");
+        return;
       }
       const signer = ethers6Adapter.signer.toEthers({
         client,
         chain: activeChain,
         account: activeAccount,
-      })
+      });
       if (!signer) {
-        toast.error("Signer not available")
-        return
+        toast.error("Signer not available");
+        return;
       }
 
-      const contract = getKaleidoContract(signer)
+      const contract = getKaleidoContract(signer, chainId);
 
-      let toastId: string | number | undefined
+      let toastId: string | number | undefined;
 
       try {
-        let _weiAmount
-        // Ensure _amountOfCollateral is treated as a string
-        const amountStr = String(_amountOfCollateral)
-
-        if (_tokenCollateralAddress === ADDRESS_1) {
-          _weiAmount = ethers.parseUnits(amountStr, 18) // 18 decimals for ETH
-        } else if (_tokenCollateralAddress === USDC_ADDRESS) {
-          _weiAmount = ethers.parseUnits(amountStr, 6) // 6 decimals for USDC
-        } else if (_tokenCollateralAddress === USDR) {
-          _weiAmount = ethers.parseUnits(amountStr, 18)
-        } else if (_tokenCollateralAddress === kfUSD_ADDRESS) {
-          _weiAmount = ethers.parseUnits(amountStr, 18)
-        } else if (_tokenCollateralAddress === USDT_ADDRESS) {
-          _weiAmount = ethers.parseUnits(amountStr, 6)
-        }
+        const _weiAmount = ethers.parseUnits(
+          String(_amountOfCollateral),
+          asset.decimals,
+        );
 
         // Show loading toast when the withdraw transaction is initiated
-        toastId = toast.loading(`Signing tx... Withdrawing collateral...`)
+        toastId = toast.loading(`Signing tx... Withdrawing collateral...`);
 
-        await contract.withdrawCollateral.staticCall(_tokenCollateralAddress, _weiAmount)
-        const transaction = await contract.withdrawCollateral(_tokenCollateralAddress, _weiAmount)
+        await contract.withdrawCollateral.staticCall(asset.address, _weiAmount);
+        const transaction = await contract.withdrawCollateral(
+          asset.address,
+          _weiAmount,
+        );
 
-        const receipt = await transaction.wait()
+        const receipt = await transaction.wait();
 
         if (receipt.status) {
-          toast.success(`${_amountOfCollateral} successfully withdrawn!`, {
-            id: toastId,
-          })
+          toast.success(
+            `${_amountOfCollateral} ${asset.symbol} successfully withdrawn!`,
+            {
+              id: toastId,
+            },
+          );
           // Callers handle their own navigation — this used to redirect to a
-
           // legacy route that no longer exists.
-          return onSuccess?.()
+          return onSuccess?.();
         } else {
           toast.error("Failed to withdraw collateral.", {
             id: toastId,
-          })
+          });
         }
       } catch (error: unknown) {
         // console.error(error)
         // console.error("Error withdrawing:", await errorDecoder.decode(error))
-        const err = await errorDecoder.decode(error)
-        let errorText: string
+        const err = await errorDecoder.decode(error);
+        let errorText: string;
 
         if (err?.reason === "Protocol__InsufficientCollateralDeposited") {
-          errorText = "Insufficient collateral!"
+          errorText = "Insufficient collateral!";
+        } else if (err?.reason === "SafeERC20FailedOperation") {
+          /* withdrawCollateral is the case where both names are live: the ERC20
+           * leg goes through SafeERC20 and reverts with this, while the native
+           * leg still reverts with Protocol__TransferFailed below. Matching
+           * only one of them would leave half the withdrawals unexplained. */
+          errorText = "Token transfer failed. Please try again.";
         } else if (err?.reason === "Protocol__TransferFailed") {
-          errorText = "Transaction failed!"
+          errorText = "Transaction failed!";
         } else {
-          errorText = "Action canceled or failed!"
+          errorText = "Action canceled or failed!";
         }
 
         if (toastId) {
-          toast.error(`Error: ${errorText}`, { id: toastId })
+          toast.error(`Error: ${errorText}`, { id: toastId });
         } else {
           // Fallback toast if no loading toast was created
-          toast.error(`Error: ${errorText}`)
+          toast.error(`Error: ${errorText}`);
         }
       }
     },
-    [chainId, router],
-  )
-}
+    [activeAccount, activeChain, chainId],
+  );
+};
 
-export default useWithdrawCollateral
+export default useWithdrawCollateral;

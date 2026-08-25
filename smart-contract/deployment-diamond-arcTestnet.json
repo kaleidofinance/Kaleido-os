@@ -1,0 +1,41 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-22T00:09:45.502Z",
+  "contracts": {
+    "diamond": "0x90a1620578CE419242F806e7387Db7e70c8cfa96",
+    "priceOracle": "0x0262aff2a0D8E56048e408D5fE875EA051dED65c"
+  },
+  "facets": {
+    "DiamondCutFacet": "0x2E7dd52073d6653F610607dA9B947ba59B585bf8",
+    "DiamondInit": "0x7Ee07e9eb94B6b21589539a491E37804886AB201",
+    "DiamondLoupeFacet": "0xA9006fA582F859536AE04C9808AE75C7c3EBE110",
+    "OwnershipFacet": "0x52b38b95ccF2d29794deb567BA7935235ff9E4d1",
+    "ProtocolFacet": "0x629C8Af0230466558953ea305a6319E5e938d7f0",
+    "AgentPermissionFacet": "0xe8a9eb6026D7f755aaC92a4B68C902Ee32334e3a"
+  },
+  "config": {
+    "feeVault": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+    "swapRouter": null,
+    "protocolFeeBps": 1000,
+    "liquidationPenaltyBps": 640,
+    "priceMaxAgeSeconds": 300,
+    "priceMaxConfBps": 100
+  },
+  "stillRequired": [
+    "register-tokens.js — addCollateralToken / addLoanableToken, or no asset is usable",
+    "transfer ownership to a multisig"
+  ],
+  "upgrades": [
+    {
+      "facet": "ProtocolFacet",
+      "from": "0xF4cAd894479e1BbD9356b683403101AABC1c7BFa",
+      "to": "0x629C8Af0230466558953ea305a6319E5e938d7f0",
+      "txHash": "0xa53e2131e83069a154473a30a794abbc34f668ae5c3aabbad9c4170cd1a1c819",
+      "block": 58655347,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+/* The Kaleidofi wordmark — see Brand.tsx for why it is shared.
+
+   These three rules are moved verbatim from marketing.module.css's `.brand`,
+   `.brandFi` and `.mark`, so the landing header and footer render byte-identically
+   to before the extraction. */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  color: var(--k-brand);
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  text-decoration: none;
+  flex: none;
+}
+
+/* The "fi" — white, a size down, so the wordmark reads as "Kaleido" with the
+   domain's suffix attached rather than as one nine-letter green word. `em` and not
+   a token, because it has to track whatever size the wordmark is set at: the
+   header and the footer set it differently and the ratio is the design. */
+.fi {
+  color: var(--k-t1);
+  font-size: 0.75em;
+}
+
+/* Identical to Nav.module.css's .mark, on purpose: the source art carries its own
+   dark backdrop, so the circle is zoomed onto the centred glyph and the leftover
+   edges read as the bar. */
+.mark {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  background-color: var(--k-brand);
+  background-image: url("/newklogo2.png");
+  background-size: 240%;
+  background-position: center;
+  background-repeat: no-repeat;
+}

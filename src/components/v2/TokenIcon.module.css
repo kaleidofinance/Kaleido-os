@@ -1,0 +1,64 @@
+/* The one rule the raster marks need — see RASTER in TokenIcon.tsx.
+
+   Size comes from the img's own width/height attributes rather than from here,
+   on purpose: a caller whose plate is a different size to the `size` it passes
+   can then override it from its own stylesheet. Nothing in this file sets a
+   dimension for that reason. */
+.mark {
+  display: block;
+  flex: none;
+  border-radius: 50%;
+  /* The three files are square and their subject is the whole frame, so contain
+     is a no-op today. It is here for the next one that isn't: letterboxed inside
+     the circle is a recognisable logo, whereas cover would crop the rim off and
+     look like a rendering bug rather than a bad asset. */
+  object-fit: contain;
+}
+
+/* The chain badge — see ChainBadge in TokenIcon.tsx for why it is a sibling of
+   the token mark rather than a wrapper around it.
+
+   It positions against the CALLER's plate, which must therefore be
+   `position: relative`. Both plates that use it already are.
+
+   The ring is what makes it readable: a network mark dropped straight onto a
+   token logo is two overlapping circles of similar weight, and the 2px cut in the
+   panel colour reads as the badge sitting in front. `--tki-ring` exists because
+   that only works when the ring matches whatever is behind it — the default is
+   the card colour, and a caller drawing icons on a well or inside a popover
+   overrides it there rather than forking this rule.
+
+   The ring is a border and not a box-shadow so `overflow: hidden` clips the mark
+   to the inside of it; a spread shadow would leave the mark's own square corners
+   poking through. `box-sizing` is declared rather than inherited from preflight
+   because the size arithmetic in ChainBadge (inner = outer − 4) depends on it. */
+.badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  box-sizing: border-box;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--tki-ring, var(--k-card));
+  background: var(--tki-ring, var(--k-card));
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+/* web3icons renders inline SVG, which is inline-level and so picks up the
+   line-height leading of whatever text context it lands in — a few stray pixels
+   that show up as the mark sitting low in its ring. */
+.badge > svg {
+  display: block;
+}
+
+/* The no-asset-yet case: ChainMeta.color as a flat disc filling the ring. Sized
+   from the parent rather than from JS so it lands at exactly the diameter the
+   real mark would have. */
+.badgeDot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}

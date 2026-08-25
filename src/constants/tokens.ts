@@ -1,8 +1,11 @@
 import type { IToken } from "./types/dex";
+import { getChainMeta } from "./chains";
 import {
-  getToken,
-  getTokens,
-  findTokenBySymbol,
+  isNativeSentinel,
+  nativeTokenOf,
+  registeredTokens,
+  resolveUserToken,
+  type Protocol,
   type TokenEntry,
 } from "./registry";
 
@@ -25,11 +28,26 @@ import {
  * chain's data instead of admitting it does not know.
  *
  * Everything here is a thin adapter over `registry.ts`, which holds the real
- * per-chain data and is currently EMPTY BY DESIGN. So these functions return
- * empty arrays and undefined today. That is correct: nothing is deployed, so
- * there are no tokens, and callers should render an empty state rather than a
- * list of addresses that will revert on contact. As each chain deploys,
- * populate `TOKENS` in registry.ts and every call site here fills in at once.
+ * per-chain data. That data is now populated with canonical third-party tokens
+ * (WETH/USDC/USDT/DAI/WBTC and each chain's native asset), which are real
+ * deployed contracts today and have nothing to do with whether Kaleido's own
+ * Diamond is live. Conflating those two was a mistake worth naming: `TOKENS`
+ * was left empty on the reasoning that "nothing is deployed", and every token
+ * picker in the app consequently rendered an empty state on every chain, which
+ * made the UI unbuildable and told the user something untrue.
+ *
+ * Kaleido's own tokens (KLD, kfUSD, kafUSD, stKLD) come from `OWN_TOKENS`, and
+ * the stablecoins each chain records (USDC, USDT, USDe) from `DEPLOYED_TOKENS`.
+ * Both appear here through `registeredTokens()`. They are described
+ * independently of any chain because their identity is known while their
+ * addresses are not, and each one's address is read from `DEPLOYMENTS` at call
+ * time. So a chain gains them the moment its contracts are recorded, with no
+ * second list to remember to update — kfUSD, kafUSD, USDT and USDe are on all
+ * five deployed testnets today, and USDC on all five as well.
+ *
+ * That is still separate from whether an action can be *sent*, which stays
+ * `DEPLOYMENTS`' job: read a token list to render, read `isDeployed()` to decide
+ * whether a button submits.
  *
  * Consumers must pass the connected chain id. If you find yourself without one,
  * that is the bug — resolve it at the component boundary from `useWalletV2()`,
@@ -58,9 +76,54 @@ export function toIToken(t: TokenEntry): IToken {
   };
 }
 
-/** Every known token on one chain. Empty until that chain deploys. */
-export function chainTokens(chainId: number | undefined): IToken[] {
-  return getTokens(chainId).map(toIToken);
+/**
+ * Every known token on one chain: the native asset, then the ERC20s, then ours.
+ *
+ * The native asset is derived from chains.ts, not from the registry, so it is
+ * present on every registered chain whether or not anything is deployed there —
+ * a chain always has a gas token. That is what stops a chain with no ERC20
+ * entries (Arc, Robinhood, Abstract) from rendering as "no tokens at all",
+ * which was never true.
+ *
+ * The ERC20s come from `registeredTokens`, which is the union of the declared
+ * third-party table, the stablecoins recorded for the chain, and ours — in that
+ * order, because the third-party entries are contracts that already exist and are
+ * liquid, so they are what a picker should offer first. This function used to
+ * concatenate that union itself, which is exactly how it came apart from
+ * `findTokenBySymbol`: the pickers offered kfUSD and kafUSD while the resolver
+ * behind the swap box and the AI path could not resolve either.
+ *
+ * `protocol` picks which native sentinel the entry carries, and the caller must
+ * choose it, because the correct magic value depends on the contract about to
+ * be called: the V3 router expects 0xEeee…, the lending facet expects
+ * ADDRESS_1. Defaulting to "dex" matches the swap/picker path that most callers
+ * are on; borrow and collateral screens pass "lending". Getting this wrong does
+ * not fail loudly — it sends value to a contract that reads the field as an
+ * ordinary ERC20 address — so it is a required argument in spirit even though
+ * it has a default.
+ */
+export function chainTokens(
+  chainId: number | undefined,
+  protocol: Protocol = "dex",
+): IToken[] {
+  const native = nativeTokenOf(getChainMeta(chainId), protocol);
+  const erc20s = registeredTokens(chainId);
+  return (native ? [native, ...erc20s] : erc20s).map(toIToken);
+}
+
+/**
+ * Every known token across several chains, for the multichain token picker.
+ *
+ * A flat list is only safe here because `IToken` carries its own `chainId` and
+ * the picker hands the whole object back to its caller, so a selected token
+ * never loses the chain it came from. Do not collapse the result to symbols or
+ * addresses: nine registered chains call their native asset "ETH", and those
+ * are not the same asset. That collapse is exactly what ABSTRACT_TOKENS did.
+ *
+ * Order follows the chain list passed in, so the caller controls grouping.
+ */
+export function tokensAcrossChains(chainIds: number[]): IToken[] {
+  return chainIds.flatMap((id) => chainTokens(id));
 }
 
 /**
@@ -72,18 +135,49 @@ export function chainTokens(chainId: number | undefined): IToken[] {
 export function chainTokenBySymbol(
   chainId: number | undefined,
   symbol: string,
+  protocol: Protocol = "dex",
 ): IToken | undefined {
-  const entry = findTokenBySymbol(chainId, symbol);
+  /* resolveUserToken, not findTokenBySymbol, so the chain's own native asset
+     answers first. On Arc "usdc" is the native 18-decimal asset, not the
+     6-decimal ERC20 shape that symbol has everywhere else, and the ERC20 list
+     would happily hand back the wrong one. */
+  const entry = resolveUserToken(getChainMeta(chainId), symbol, protocol);
   return entry ? toIToken(entry) : undefined;
 }
 
-/** Exact (chainId, address) lookup. The only safe way to resolve an address. */
+/**
+ * Exact (chainId, address) lookup. The only safe way to resolve an address.
+ *
+ * Searches `registeredTokens` — the declared third-party table, the stablecoins
+ * this chain records, then ours — and not the TOKENS index alone. `getToken` is
+ * that index, and reading it here was a measured hole rather than a style
+ * choice: the auditor's `knownToken` calls this to decide whether a plan may
+ * touch an address, so on 2026-08-24 it blocked `swap USDC to USDT` on all five
+ * deployed chains with "unrecognised output token" against a contract we deployed
+ * ourselves, and `symbolForAddress` rendered kfUSD as a truncated hex string.
+ *
+ * Checks both native sentinels after the ERC20s. A sentinel is not in any token
+ * table — it is not a contract — but it does flow back through here from any
+ * component that was handed a native token and later asks what it is holding,
+ * so returning undefined would make native value display as an unknown address.
+ */
 export function chainTokenByAddress(
   chainId: number | undefined,
   address: string | undefined,
 ): IToken | undefined {
-  const entry = getToken(chainId, address);
-  return entry ? toIToken(entry) : undefined;
+  if (!address) return undefined;
+  const a = address.toLowerCase();
+  const entry = registeredTokens(chainId).find(
+    (t) => t.address.toLowerCase() === a,
+  );
+  if (entry) return toIToken(entry);
+  for (const protocol of ["dex", "lending"] as Protocol[]) {
+    if (isNativeSentinel(address, protocol)) {
+      const native = nativeTokenOf(getChainMeta(chainId), protocol);
+      if (native) return toIToken(native);
+    }
+  }
+  return undefined;
 }
 
 /**

@@ -1,0 +1,15 @@
+{
+  "network": "baseTestnet",
+  "chainId": 84532,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-21T15:48:55.681Z",
+  "contracts": {
+    "v2Factory": "0x750b10d92bE67Ba86593169B5E8442CefEcBF708",
+    "v2Router": "0x629C8Af0230466558953ea305a6319E5e938d7f0",
+    "wrappedNative": "0x4200000000000000000000000000000000000006"
+  },
+  "notes": {
+    "feeToSetter": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+    "pairResolution": "factory.getPair — no init code hash to keep in sync"
+  }
+}

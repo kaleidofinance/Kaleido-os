@@ -1,0 +1,15 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "timestamp": "2026-08-23T02:48:40.757Z",
+  "contracts": {
+    "factory": "0x23E4236D1bB3f9944faa8d01b7e3e4a5521a2E1A",
+    "router": "0x8A6BbC81d9678c92aa33A3eD0580389B82B18579",
+    "positionManager": "0x248Cf3951Fdb6469B49ded78e310322CbA5651A1",
+    "positionDescriptor": "0xB939f0eEA9EF2F27985A3091D82c1621ef739c66",
+    "nftDescriptor": "0x65149395E67867Db4Ef74b4151Ca0A2c1C014c80",
+    "quoter": "0xAc1a10df0a742f107517f1944e0a37da74932c06",
+    "weth": "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
+    "poolInitCodeHash": "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938"
+  }
+}

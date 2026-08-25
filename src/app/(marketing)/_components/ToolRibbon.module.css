@@ -1,0 +1,105 @@
+/**
+ * The tool ribbon.
+ *
+ * Full-bleed inside the page's content box: no glass, no panel, no border. It is
+ * a texture rather than a surface, and wrapping it in a card would make it the
+ * fourth panel in a section that already has a strip and a panel.
+ */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Clears the panel above it by the same step the section uses internally. */
+  margin-top: var(--k-s5);
+}
+
+/* ------------------------------------------------------------------
+ * One row.
+ *
+ * `overflow: hidden` is what makes the track's overhang invisible, and the mask
+ * is what stops the pills hard-cutting at the two edges — without it the row
+ * reads as a clipped list rather than something passing through. Both the
+ * standard and the -webkit- form are set: Safari still needs the prefix for
+ * mask-image, and this is a marketing page where Safari is a large share.
+ * ------------------------------------------------------------------ */
+.viewport {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 7%,
+    #000 93%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 7%,
+    #000 93%,
+    transparent
+  );
+}
+
+/*
+ * The track holds two identical copies of the row and slides by exactly half its
+ * own width, which is one full copy — so at the end of a cycle copy two is
+ * sitting precisely where copy one began and the reset is invisible. Any other
+ * distance snaps.
+ *
+ * `width: max-content` so the track is as wide as its contents rather than the
+ * viewport, which is what makes -50% mean "one copy" instead of "half a screen".
+ */
+.track {
+  display: flex;
+  width: max-content;
+  animation: drift 46s linear infinite;
+}
+
+/* The second row runs the other way, so the two do not read as one block
+   sliding. `animation-direction` rather than a second keyframe set: the
+   reversal is the only difference. */
+.reverse {
+  animation-direction: reverse;
+}
+
+@keyframes drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Motion is decoration here — the names are the content and they are all still
+   on screen at rest. So it stops completely rather than slowing down, and the
+   track sits at translateX(0), which is copy one aligned to the left edge. */
+@media (prefers-reduced-motion: reduce) {
+  .track {
+    animation: none;
+  }
+}
+
+.row {
+  list-style: none;
+  margin: 0;
+  padding: 0 3px;
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+/* Same recessed pill as the tab chips and as `.chip` on the leaderboard —
+   --k-glass-deep over the ground with an inset groove, never an opaque fill,
+   which would punch a solid slab through the blur behind it. */
+.pill {
+  flex: none;
+  border-radius: var(--k-r-pill);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  line-height: 1.5;
+  padding: 4px 11px;
+  white-space: nowrap;
+}

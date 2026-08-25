@@ -48,7 +48,10 @@ const KNOWN_KINDS: IntentKind[] = [
   "compoundStableYield",
   "collectPoolFees",
   "decreasePoolLiquidity",
+  "mintPoolPosition",
   "grantAgentPermission",
+  "claimTestTokens",
+  "claimAllTestTokens",
 ];
 
 function looksLikeIntent(x: unknown): x is Intent {

@@ -19,6 +19,22 @@ struct Request {
     address loanRequestAddr;
     address[] collateralTokens; // Addresses of collateral tokens
     Status status;
+    /// @dev Interest priced at origination, in loan-token units. Never mutated.
+    ///
+    ///      The protocol fee is a share of interest, not of principal, so it
+    ///      needs the interest figure to charge against. `totalRepayment` cannot
+    ///      supply it: `repayLoan` decrements that field on every partial
+    ///      payment, so after the first one the split between principal and
+    ///      interest is gone. Principal (`amount`) is never mutated either, so
+    ///      the original total is recoverable as `amount + interestAccrued` and
+    ///      each payment's interest share can be pro-rated exactly.
+    ///
+    ///      DELIBERATELY APPENDED AFTER `status`. Two consumers read this struct
+    ///      positionally — useGetActiveRequest.ts reads req[5]/req[8] and
+    ///      lib/ai/planDeps.ts documents requestId 1, totalRepayment 5,
+    ///      tokenAddress 8, status 10 — so inserting a field anywhere earlier
+    ///      would silently shift every one of those indices. Append only.
+    uint256 interestAccrued;
 }
 
 struct Order {

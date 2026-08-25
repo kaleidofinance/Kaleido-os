@@ -1,0 +1,148 @@
+/* The layout supplies the column width and page padding, so this file only
+   handles the stack inside it. Everything is on --k-* tokens: the previous
+   version hardcoded bg-black / #18181b / #232323 / text-gray-*, which renders as
+   a black slab the moment the theme is light. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s5);
+  padding-top: var(--k-s4);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s4);
+  flex-wrap: wrap;
+}
+/* .k-display carries the serif at 400 with negative tracking — setting
+   font-weight or letter-spacing here would fight it. */
+.h1 {
+  composes: k-display from global;
+  font-size: var(--k-fs-2xl);
+  margin: 0;
+}
+.sub {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  margin: 4px 0 0;
+}
+
+.headActions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--k-s2);
+}
+.ghost {
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  background: transparent;
+  border: 1px solid var(--k-line);
+  color: var(--k-t1);
+  padding: 7px 14px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.ghost:hover:not(:disabled) {
+  background: var(--k-row-hover);
+}
+.ghost:disabled {
+  color: var(--k-t3);
+  cursor: default;
+}
+
+/* Same segmented control as /borrow: glass track, translucent thumb, one blur.
+   Only the track blurs — a second backdrop-filter on the thumb is what the
+   "two levels turns to mud" note in tokens.css warns about. */
+.toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  composes: k-glass from global;
+  border-radius: var(--k-r-pill);
+  padding: 3px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.toggle::-webkit-scrollbar {
+  display: none;
+}
+.tg {
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  padding: 7px 16px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tg:hover {
+  color: var(--k-t1);
+}
+.tg.on {
+  background: var(--k-glass-strong);
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  box-shadow: inset 0 1px 0 var(--k-glass-highlight);
+}
+
+.filters {
+  display: flex;
+  gap: var(--k-s4);
+  flex-wrap: wrap;
+}
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-s2);
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+.select {
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  background: var(--k-well);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-sm);
+  padding: 7px 10px;
+  cursor: pointer;
+  /* Native select options are painted by the OS, so they take the system
+     scheme rather than ours. Declaring both keeps the dropdown legible in
+     whichever theme is active instead of white-on-white. */
+  color-scheme: light dark;
+}
+
+.card {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  overflow: hidden;
+}
+
+.empty {
+  padding: 48px 20px;
+  text-align: center;
+}
+.emptyTitle {
+  font-size: var(--k-fs-lg);
+  color: var(--k-t1);
+  margin: 0 0 6px;
+}
+
+.back {
+  align-self: flex-start;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  padding: 4px 0;
+}
+.back:hover {
+  color: var(--k-t1);
+}

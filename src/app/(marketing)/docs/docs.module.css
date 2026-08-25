@@ -1,0 +1,909 @@
+/* ------------------------------------------------------------------
+ * The docs site: shell, navigation, and prose.
+ *
+ * Every colour, radius, space and font here is a --k-* token, because
+ * (marketing)/layout.tsx wraps this route in .kaleido-v2 and imports
+ * (app)/tokens.css — so /docs inherits the app's design language, both
+ * themes and the glass utilities rather than maintaining a second set
+ * that drifts from them.
+ *
+ * WHY THE PROSE RULES ARE NOT Answer.module.css's. That file styles the
+ * same markdown pipeline and was the obvious thing to reuse, but three
+ * of its decisions are wrong for a document and right for a chat card:
+ *
+ *   - It caps headings at two steps (19px for h1/h2, body size for the
+ *     rest) with the comment "a six-level scale is for a document, and
+ *     this is one speaker's answer". This IS a document. These files run
+ *     four levels deep — h1, then `## Complete Flow`, then `### Step 1`,
+ *     then bold run-in labels — and a reader navigating 9,000 characters
+ *     needs the levels to be distinguishable at a glance.
+ *   - It sets `white-space: pre-wrap` on paragraphs and headings, which
+ *     exists solely because COMMAND_HELP is 18 bare newline-joined
+ *     command strings. Nothing here is written that way, and pre-wrap
+ *     would turn every soft wrap in these files into a hard one.
+ *   - It sets `white-space: nowrap` on table cells because its tables
+ *     are columns of numbers in a 520px card. These tables have a
+ *     `notes` column of sentences; nowrap would make every one of them
+ *     scroll sideways for the whole width of a paragraph.
+ * ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------
+ * Header.
+ *
+ * Its own, not the landing page's. The landing header carries in-page
+ * anchors (#capabilities, #products) which mean nothing on a docs URL,
+ * and this one needs a filter field and a nav toggle that the landing
+ * page has no use for. Shared between them: <Brand>.
+ * ------------------------------------------------------------------ */
+.header {
+  composes: k-glass from global;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--k-s5);
+  padding: 12px var(--k-s5);
+  border-width: 0 0 1px;
+  border-radius: 0;
+}
+
+/* "Docs" beside the wordmark, in the same weight as a breadcrumb rather than as a
+   second logo — it says which surface you are on, and the wordmark already said
+   whose. The slash is a separator, so it takes the dimmest of the three text
+   tokens and is hidden from the accessibility tree. */
+.headerCrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  color: var(--k-t2);
+  font-size: var(--k-fs-base);
+  text-decoration: none;
+}
+.headerSlash {
+  color: var(--k-t3);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  margin-left: auto;
+  flex: none;
+}
+
+.headerLink {
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.headerLink:hover {
+  color: var(--k-t1);
+}
+
+/* One primary action, matching the landing header's convention of never showing
+   two. Reading the docs and opening the app are the only two things to do here. */
+.launch {
+  border-radius: var(--k-r-pill);
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 9px var(--k-s4);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.launch:hover {
+  background: var(--k-brand-hover);
+}
+
+/* ------------------------------------------------------------------
+ * The three-column shell.
+ *
+ * Sidebar, prose, contents. The middle column is `minmax(0, 1fr)` and
+ * not `1fr`: a grid item's automatic minimum size is its content, so a
+ * wide table or a long line in a code fence would otherwise push the
+ * column past its track and take the two sticky rails with it. The
+ * scroll boxes inside the prose only contain their content once the
+ * column is allowed to be narrower than it.
+ * ------------------------------------------------------------------ */
+.shell {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr) 208px;
+  gap: var(--k-s7);
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--k-s6) var(--k-s5) 96px;
+  align-items: start;
+}
+
+/* Both rails stick under the header and scroll independently of the page. `top`
+   is the header's height (12px + 24px mark + 12px + 1px border = 49px) plus a
+   gap; `max-height` is the rest of the viewport so a rail longer than the screen
+   scrolls itself instead of being cut off. */
+.rail {
+  position: sticky;
+  top: 73px;
+  max-height: calc(100vh - 97px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  /* The gutter keeps a focus ring from being clipped by the scroll box. */
+  padding: 2px;
+  margin: -2px;
+}
+
+/* Two named rails rather than one shared class used twice, so each can be
+   addressed on its own in the media queries below — the contents rail is removed
+   at 1180px and the sidebar survives to 900px. */
+.sidebar {
+  composes: rail;
+}
+.toc {
+  composes: rail;
+}
+
+/* ------------------------------------------------------------------
+ * Sidebar.
+ * ------------------------------------------------------------------ */
+
+/* The filter field. Deliberately labelled "Filter", never "Search":
+   it matches page titles and heading text from the manifest, client
+   side, and nothing else. Calling it search would promise full text —
+   a reader who searched "cooldown", got nothing, and concluded the docs
+   do not mention it would have been misled by the placeholder. */
+.filter {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--k-well);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-sm);
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  padding: 8px var(--k-s3);
+  margin-bottom: var(--k-s4);
+}
+.filter::placeholder {
+  color: var(--k-t3);
+}
+.filter:focus {
+  outline: none;
+  border-color: var(--k-brand-dim);
+}
+
+.group {
+  margin-bottom: var(--k-s4);
+}
+
+/* A group heading, not a link — the group name is never a URL. Uppercase and
+   tracked out because it is a label above a list rather than an item in it, and
+   at 13px that reads as a category without needing to be a different colour from
+   the items it introduces. */
+.groupLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0 0 var(--k-s2);
+  color: var(--k-t3);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.groupLabel:hover {
+  color: var(--k-t2);
+}
+
+/* The disclosure caret, rotated rather than swapped for a second glyph so the
+   transition has something to animate. */
+.caret {
+  flex: none;
+  transition: transform var(--k-dur-fast) var(--k-ease-out);
+}
+.caretClosed {
+  transform: rotate(-90deg);
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.item {
+  display: block;
+  padding: 6px var(--k-s3);
+  margin-left: calc(var(--k-s3) * -1);
+  border-radius: var(--k-r-sm);
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  text-decoration: none;
+  line-height: 1.4;
+}
+.item:hover {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
+}
+
+/* The current page. Brand text plus a recessed fill, which is the app's own
+   selected-row treatment — an accent bar on the left would be a third pattern
+   for the same state. */
+.itemActive {
+  composes: item;
+  background: var(--k-glass-deep);
+  color: var(--k-brand);
+  font-weight: var(--k-fw-med);
+}
+
+/* Shown when the filter matches nothing, in place of an empty rail. An empty
+   sidebar reads as a broken page. */
+.empty {
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+  padding: var(--k-s2) 0;
+}
+
+/* Matched headings under a matched page, so a filter hit lands on the section
+   rather than the top of the document. Only rendered while filtering — as
+   permanent nav this would be a 27-entry rail for one page. */
+.subItems {
+  list-style: none;
+  margin: 2px 0 var(--k-s2);
+  padding: 0 0 0 var(--k-s3);
+  border-left: 1px solid var(--k-line);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.subItem {
+  display: block;
+  padding: 3px var(--k-s2);
+  border-radius: var(--k-r-sm);
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  text-decoration: none;
+}
+.subItem:hover {
+  background: var(--k-row-hover);
+  color: var(--k-t2);
+}
+
+/* The mobile disclosure. `display: none` here and a bar below the breakpoint —
+   the button is in the sidebar component rather than the header so the whole
+   open/closed state lives in one client component and the layout stays a server
+   component.
+
+   `composes` is here and not in the @media block with the rest of the button's
+   look, because CSS Modules rejects `composes` inside a nested rule outright —
+   Turbopack fails the route with "The `composes` property cannot be used within
+   nested rules" and every /docs URL 500s. It costs nothing to hoist: the glass
+   only ever paints when the media query flips `display` to flex. */
+.navToggle {
+  composes: k-glass from global;
+  display: none;
+}
+
+/* ------------------------------------------------------------------
+ * "On this page".
+ * ------------------------------------------------------------------ */
+.tocLabel {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 var(--k-s3);
+}
+
+.tocList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 1px solid var(--k-line);
+}
+
+.tocLink {
+  display: block;
+  padding: 3px var(--k-s3);
+  margin-left: -1px;
+  border-left: 1px solid transparent;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  line-height: 1.45;
+  text-decoration: none;
+}
+.tocLink:hover {
+  color: var(--k-t1);
+  border-left-color: var(--k-t3);
+}
+.tocSub {
+  composes: tocLink;
+  padding-left: var(--k-s5);
+}
+
+/* ------------------------------------------------------------------
+ * Article.
+ * ------------------------------------------------------------------ */
+.article {
+  min-width: 0;
+}
+
+/* The index has no contents rail, so it takes the middle and right tracks both —
+   otherwise the card grid is squeezed into a 700px column with 208px of nothing
+   beside it. Reset to the single column below the 900px breakpoint, where
+   `grid-column: 2` would otherwise create an implicit second track. */
+.wide {
+  grid-column: 2 / -1;
+  min-width: 0;
+}
+
+/* 68ch. The measure is set in characters and not pixels because that is what
+   controls how many words land on a line, which is the thing that makes long
+   technical prose readable — at 16px this is about 690px, and it stays right if
+   the body size ever changes. */
+.body {
+  max-width: 68ch;
+}
+
+.eyebrow {
+  color: var(--k-brand);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 var(--k-s2);
+}
+
+/* The display face, matching the landing page's headings. Lora is pinned to 400
+   in tokens.css, so weight comes from size and letter-spacing rather than from a
+   bolder cut that does not exist. */
+.title {
+  font-family: var(--k-font-display);
+  font-weight: 400;
+  letter-spacing: var(--k-ls-display);
+  font-size: var(--k-fs-2xl);
+  line-height: 1.15;
+  color: var(--k-t1);
+  margin: 0 0 var(--k-s3);
+}
+
+.lede {
+  color: var(--k-t2);
+  font-size: var(--k-fs-base);
+  line-height: 1.6;
+  margin: 0 0 var(--k-s4);
+  max-width: 62ch;
+}
+
+/* The source line. A docs page built from a file in the repository should say
+   which file, both because it is the honest provenance and because it is the
+   fastest route for anyone who wants to correct it. */
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  flex-wrap: wrap;
+  padding-bottom: var(--k-s5);
+  border-bottom: 1px solid var(--k-line);
+  margin-bottom: var(--k-s6);
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+}
+.metaLink {
+  color: var(--k-t2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--k-line2);
+}
+.metaLink:hover {
+  color: var(--k-t1);
+  text-decoration-color: var(--k-t2);
+}
+
+/* Previous / next, so a reader who finishes a page has somewhere to go. Ordered
+   by the manifest, which is the order the sidebar shows. */
+.pager {
+  display: flex;
+  gap: var(--k-s3);
+  margin-top: 56px;
+  padding-top: var(--k-s5);
+  border-top: 1px solid var(--k-line);
+}
+.pagerItem {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s3) var(--k-s4);
+  flex: 1 1 0;
+  min-width: 0;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pagerItem:hover {
+  border-color: var(--k-line2);
+}
+.pagerNext {
+  composes: pagerItem;
+  align-items: flex-end;
+  text-align: right;
+}
+.pagerDir {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+}
+.pagerTitle {
+  color: var(--k-t1);
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+}
+
+/* ------------------------------------------------------------------
+ * Index page.
+ * ------------------------------------------------------------------ */
+.indexHead {
+  max-width: 62ch;
+  margin-bottom: var(--k-s7);
+}
+.indexTitle {
+  composes: title;
+  font-size: var(--k-fs-hero);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  gap: var(--k-s4);
+}
+
+.card {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s5);
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+  transition: border-color var(--k-dur-fast) var(--k-ease-out);
+}
+.card:hover {
+  border-color: var(--k-line2);
+}
+.cardGroup {
+  color: var(--k-brand);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cardTitle {
+  color: var(--k-t1);
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  line-height: 1.25;
+}
+.cardBlurb {
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  line-height: 1.5;
+  margin: 0;
+}
+/* The section count, which is the one honest signal of a page's depth available
+   without opening it — it is read off the rendered headings, not estimated. */
+.cardMeta {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  margin-top: auto;
+  padding-top: var(--k-s2);
+}
+
+.indexSection {
+  margin-top: 56px;
+}
+.indexSectionTitle {
+  color: var(--k-t1);
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  margin: 0 0 var(--k-s2);
+}
+.indexSectionBody {
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  line-height: 1.6;
+  max-width: 62ch;
+  margin: 0 0 var(--k-s4);
+}
+
+/* A row of onward links, for the things that are not docs pages: the repository,
+   the app. Flat text with a rule between, not cards — cards above and cards here
+   would give equal weight to "read the stablecoin reference" and "open GitHub". */
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-s2) var(--k-s5);
+}
+.linkOut {
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--k-line2);
+}
+.linkOut:hover {
+  color: var(--k-t1);
+  text-decoration-color: var(--k-t2);
+}
+
+/* ------------------------------------------------------------------
+ * Prose.
+ *
+ * A six-level scale, wrapping table cells, and anchored headings —
+ * the three things a document needs that a chat card does not.
+ * ------------------------------------------------------------------ */
+.md {
+  color: var(--k-t2);
+  font-size: var(--k-fs-base);
+  line-height: 1.65;
+}
+.md > *:first-child {
+  margin-top: 0;
+}
+.md > *:last-child {
+  margin-bottom: 0;
+}
+
+.md p {
+  margin: 0 0 var(--k-s4);
+}
+
+/* h2 gets a rule above it and h3 does not, which is the whole of the visual
+   hierarchy between them — at 22px against 19px the sizes alone are too close to
+   separate a section from a subsection when both are scrolling past. */
+.md h2 {
+  font-size: var(--k-fs-xl);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  line-height: 1.25;
+  margin: 44px 0 var(--k-s4);
+  padding-top: var(--k-s5);
+  border-top: 1px solid var(--k-line);
+}
+.md h3 {
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  line-height: 1.3;
+  margin: var(--k-s6) 0 var(--k-s3);
+}
+.md h4,
+.md h5,
+.md h6 {
+  font-size: var(--k-fs-base);
+  font-weight: 600;
+  color: var(--k-t1);
+  line-height: 1.4;
+  margin: var(--k-s5) 0 var(--k-s2);
+}
+
+/* `scroll-margin-top` on every heading, and it is the difference between the TOC
+   working and appearing broken. The header is sticky, so a fragment jump puts the
+   target at the very top of the viewport — underneath it. Without this, clicking
+   a contents entry lands with the heading hidden and the reader looking at the
+   paragraph after it. */
+.md h2,
+.md h3,
+.md h4 {
+  scroll-margin-top: 88px;
+}
+
+/* The heading's own anchor. `#` shown on hover, and always reachable by keyboard:
+   `opacity: 0` (not `visibility: hidden`) keeps it in the tab order, and the
+   focus rule brings it back for anyone who gets there without a pointer. */
+.hAnchor {
+  color: var(--k-t3);
+  text-decoration: none;
+  margin-left: var(--k-s2);
+  font-weight: var(--k-fw-body);
+  opacity: 0;
+  transition: opacity var(--k-dur-fast) var(--k-ease-out);
+}
+.md h2:hover .hAnchor,
+.md h3:hover .hAnchor,
+.md h4:hover .hAnchor,
+.hAnchor:focus-visible {
+  opacity: 1;
+}
+.hAnchor:hover {
+  color: var(--k-brand);
+}
+
+.md ul,
+.md ol {
+  margin: 0 0 var(--k-s4);
+  padding-left: 1.35em;
+}
+.md li {
+  margin: var(--k-s1) 0;
+}
+.md li > ul,
+.md li > ol {
+  margin: var(--k-s1) 0;
+}
+.md li::marker {
+  color: var(--k-t3);
+}
+
+.md strong,
+.md b {
+  font-weight: 600;
+  color: var(--k-t1);
+}
+
+/* A dent, matching the recessed chips through the rest of the app. `0.9em` rather
+   than a token so it tracks whatever it sits inside — inline code appears in
+   headings and table cells as well as in body text. */
+.md code {
+  background: var(--k-glass-deep);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 0.9em;
+  color: var(--k-t1);
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------------------
+ * Code blocks.
+ *
+ * No syntax highlighting. Nothing is installed, and shiki or
+ * highlight.js is a substantial dependency to add for 170 fences —
+ * better to add one later on purpose than to smuggle one in with a
+ * layout change. What the blocks DO get is the language they are
+ * written in, as a label, because 36 of these fences are Solidity and
+ * 19 are shell and telling them apart at a glance is most of what
+ * highlighting was going to buy.
+ * ------------------------------------------------------------------ */
+.code {
+  position: relative;
+  margin: 0 0 var(--k-s4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-md);
+  background: var(--k-well);
+  overflow: hidden;
+}
+
+.codeLang {
+  display: block;
+  padding: 6px var(--k-s4);
+  border-bottom: 1px solid var(--k-line);
+  background: var(--k-glass-deep);
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Scrolls sideways; never re-wraps. Wrapped code is code with invented line
+   breaks in it — the indentation is the structure, and several of these blocks
+   are ASCII flow diagrams where a wrap destroys the diagram outright. */
+.code pre {
+  margin: 0;
+  padding: var(--k-s4);
+  overflow-x: auto;
+  white-space: pre;
+  font-size: var(--k-fs-xs);
+  line-height: 1.6;
+  color: var(--k-t1);
+  scrollbar-width: thin;
+}
+.code pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  color: inherit;
+  word-break: normal;
+}
+
+/* ------------------------------------------------------------------
+ * Tables.
+ *
+ * These documents lean on tables hard — the deployment map is almost
+ * entirely tables — and their last column is usually a sentence. So
+ * cells WRAP, unlike the app's data tables where a cell is a number,
+ * and the whole thing still gets a scroll box for the cases where four
+ * columns will not fit regardless.
+ * ------------------------------------------------------------------ */
+.tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 var(--k-s4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-md);
+  scrollbar-width: thin;
+}
+.md table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--k-fs-sm);
+}
+.md th,
+.md td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--k-s3) var(--k-s4);
+  border-bottom: 1px solid var(--k-line);
+  white-space: normal;
+  line-height: 1.5;
+}
+.md th {
+  background: var(--k-glass-deep);
+  color: var(--k-t2);
+  font-weight: var(--k-fw-med);
+  white-space: nowrap;
+}
+.md tr:last-child td {
+  border-bottom: 0;
+}
+
+.md blockquote {
+  margin: 0 0 var(--k-s4);
+  padding: var(--k-s1) 0 var(--k-s1) var(--k-s4);
+  border-left: 2px solid var(--k-brand-dim);
+  color: var(--k-t2);
+}
+.md blockquote > *:last-child {
+  margin-bottom: 0;
+}
+
+.md hr {
+  border: 0;
+  height: 1px;
+  background: var(--k-line);
+  margin: var(--k-s6) 0;
+}
+
+/* Brand-coloured and underlined. The opposite call from Answer.module.css, which
+   deliberately refuses to colour a link because the destination came out of a
+   language model and the accent would be the app vouching for it. These
+   destinations are ours. */
+.md a {
+  color: var(--k-brand);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--k-brand-dim);
+}
+.md a:hover {
+  text-decoration-color: var(--k-brand);
+}
+
+.md img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--k-r-sm);
+}
+
+/* GFM task lists — the checkbox replaces the bullet rather than sitting after it.
+   Two selectors because a tight item unwraps its paragraph into the `li` and a
+   loose one keeps it, so the input is a child in one case and a grandchild in the
+   other. */
+.md li:has(> input[type="checkbox"]),
+.md li:has(> p > input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.35em;
+}
+.md input[type="checkbox"] {
+  margin-right: 7px;
+  accent-color: var(--k-brand);
+}
+
+/* ------------------------------------------------------------------
+ * Responsive.
+ *
+ * Two steps, each dropping one rail:
+ *   ≤1180px  the contents rail goes. It is the most redundant of the
+ *            three — every heading it lists is on the page below it.
+ *   ≤900px   the sidebar becomes a disclosure above the article.
+ * ------------------------------------------------------------------ */
+@media (max-width: 1180px) {
+  .shell {
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: var(--k-s6);
+  }
+  .toc {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--k-s5);
+    padding: var(--k-s5) var(--k-s4) 72px;
+  }
+
+  /* The rail stops being a rail: no sticky, no independent scroll, no viewport
+     height cap — it is a block above the article now, and a max-height would
+     clip the open menu. */
+  .sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .wide {
+    grid-column: 1;
+  }
+
+  /* The glass is composed at the top-level rule — see the note there. */
+  .navToggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--k-s3);
+    width: 100%;
+    border-radius: var(--k-r-md);
+    padding: 10px var(--k-s4);
+    color: var(--k-t1);
+    font: inherit;
+    font-size: var(--k-fs-sm);
+    font-weight: var(--k-fw-med);
+    cursor: pointer;
+  }
+
+  /* Collapsed by default on a phone, so the article starts at the top of the
+     screen rather than after a list of every page on the site. */
+  .navBody {
+    display: none;
+    padding-top: var(--k-s4);
+  }
+  .navBodyOpen {
+    display: block;
+  }
+
+  .header {
+    gap: var(--k-s3);
+    padding: 10px var(--k-s4);
+  }
+  /* The wordmark and Launch stay; the breadcrumb and the secondary links go,
+     because at 380px the header is only wide enough for identity and the one
+     action. */
+  .headerCrumb,
+  .headerLink {
+    display: none;
+  }
+
+  .title {
+    font-size: var(--k-fs-xl);
+  }
+  .indexTitle {
+    font-size: var(--k-fs-2xl);
+  }
+  .pager {
+    flex-direction: column;
+  }
+  .pagerNext {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+/* The sidebar is always expanded above the breakpoint — the toggle only exists
+   below it, so its state must not be able to hide the desktop nav. */
+@media (min-width: 901px) {
+  .navBody {
+    display: block;
+  }
+}

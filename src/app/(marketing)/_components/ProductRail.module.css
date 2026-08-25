@@ -1,0 +1,426 @@
+/* ------------------------------------------------------------------
+ * The product rail — five names in a column, one panel of detail beside them.
+ *
+ * Written against the --k-* tokens like the rest of this route group, and the
+ * material is the app's: `composes: k-glass from global` on the rail and on the
+ * panel, --k-row-hover for the selected row, hairlines in --k-line.
+ *
+ * THE GLASS COMPOSE IS ON EACH SHAPE DIRECTLY, not on a shared base that they
+ * compose in turn. This build carries a *local* compose down a chain and drops a
+ * *global* one, which is how this page once shipped a grid of flat grey slabs —
+ * marketing.module.css states the failure at length on its `.panel`. Two lines
+ * repeated beats a base class that silently loses the fill.
+ * ------------------------------------------------------------------ */
+
+/* 340px is the rail, and it is a measurement rather than a round number: the
+   widest note in PRODUCTS is "kfUSD and the kafUSD vault" at 26 characters, and
+   at --k-fs-xs it needs about 190px, which leaves the name and the indicator
+   room to sit above it without either wrapping. The row spends 340 less 40 of
+   padding, less the 2px indicator, the 32px icon tile and two --k-s3 gaps — 242px
+   for the text, so there is about 50px of slack. The tile is what eats into it; a
+   36px tile would still fit and a note longer than 26 characters would not. The
+   panel takes the rest — 1160px of content box less 340 less the 16px gap is about
+   800px, which is one line per fact for all fifteen of them. */
+.wrap {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: var(--k-s4);
+  align-items: start;
+}
+
+/* ------------------------------------------------------------------
+ * The rail.
+ * ------------------------------------------------------------------ */
+.rail {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s2) 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: var(--k-s3) var(--k-s5);
+  min-width: 0;
+}
+
+.tab + .tab {
+  border-top: 1px solid var(--k-line);
+}
+
+/* --k-row-hover rather than --k-well2, and this is the rule the whole page
+   follows: the rail is glass, so an opaque fill stamps a solid slab through the
+   blur exactly where the pointer is. */
+.tab:hover {
+  background: var(--k-row-hover);
+}
+
+.tabOn {
+  background: var(--k-row-hover);
+}
+
+/* The selected marker. An element rather than a border-left so it can sit inside
+   the rail's radius — a border on the first or last row would square off the
+   corner the glass just rounded. Zero-width when unselected instead of hidden, so
+   the label never shifts by 2px as the selection moves. */
+.bar {
+  flex: none;
+  width: 2px;
+  height: 18px;
+  border-radius: 1px;
+  background: var(--k-brand);
+  opacity: 0;
+}
+
+.tabOn .bar {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------
+ * The row's icon tile.
+ *
+ * One drawn line icon per product, from <SectionIcon>, keyed on the same `art`
+ * field the panel's figure uses. This slot used to hold the product's real token
+ * logos — 16px <TokenIcon> discs — and the problem was not the art but the subject:
+ * ETH/USDC names a market, so Trade and Liquidity drew the identical pair and the
+ * row's one job is to distinguish five products. components/v2/SectionIcon.tsx has
+ * the argument, and Nav's mobile tab bar draws the same set at 20px.
+ *
+ * 32px, and it costs the row nothing: `.tabText` above is a --k-fs-sm name over a
+ * --k-fs-xs note at 1.4, which measures about 36px, so the tile sits inside the
+ * height the text already sets. The old mark box was 26px wide, so the rail's names
+ * move 6px right and no row changes height.
+ *
+ * 10px of radius rather than --k-r-sm's 12. The radius scale is written for inputs
+ * and cards at 40px and up, where 12px is about 30% of the side; on a 32px tile it
+ * is 37% and reads as a squircle rather than a rounded square. 10px holds the same
+ * proportion the scale intends.
+ *
+ * OUTLINE UNSELECTED, BRAND FILL SELECTED, and both are translucent on purpose.
+ * The rail is glass — the top of this file has the long version — so an opaque
+ * --k-well fill would stamp a solid chip through the blur five times over.
+ * --k-line is a white/ink alpha and --k-brand-dim is a 13% brand alpha, so both
+ * composite onto whatever is behind the rail instead of replacing it.
+ * ------------------------------------------------------------------ */
+.tabIcon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--k-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--k-t2);
+}
+
+/* The icon carries no width or height attribute — this is what sizes it, and 18px
+   in a 32px tile leaves 6px of air on each side. `display: block` because an inline
+   <svg> sits on the text baseline and would drop the tile's centring by 3px. */
+.tabIcon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+/* The border goes transparent rather than to a colour: a 1px --k-line hairline over
+   --k-brand-dim reads as a grey rim on a green chip. It stays in the box model, so
+   the tile does not shift by 1px as the selection moves. */
+.tabOn .tabIcon {
+  background: var(--k-brand-dim);
+  border-color: transparent;
+  color: var(--k-brand);
+}
+
+/* Hover brightens the outlined tiles. `:not(.tabOn)` rather than a second rule that
+   puts the selected state back: the selected tile is already filled, and
+   `.tab:hover .tabIcon` outweighs `.tabOn .tabIcon` on specificity, so without the
+   exclusion hovering the selected row would grey out its own green. */
+.tab:hover:not(.tabOn) .tabIcon {
+  border-color: var(--k-line2);
+  color: var(--k-t1);
+}
+
+.tabText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tabName {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+}
+
+.tabNote {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  line-height: 1.4;
+}
+
+.tabOn .tabNote {
+  color: var(--k-t2);
+}
+
+/* ------------------------------------------------------------------
+ * The detail panel.
+ *
+ * NO min-height, and no chart slot — ProductRail.tsx's docblock has the long
+ * version of why the embedded price chart was cut. Short version: it made the
+ * panel about 300px taller on one tab of five, and with the mock flag on it was
+ * printing a 19% ETH day on the front door. The panel is whatever the selected
+ * product needs; the capability selector that once carried a 296px floor is the
+ * precedent for not flooring it.
+ * ------------------------------------------------------------------ */
+.panel {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s5);
+  min-width: 0;
+}
+
+/* Not a flex row any more. It held the heading in one column and an "Open →" link
+   in the other; the ways in are a row at the foot of the panel now, so this is
+   just the two text blocks in normal flow. ProductRail.tsx says why they moved. */
+.panelHead {
+  min-width: 0;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  line-height: 1.3;
+}
+
+.panelBody {
+  margin: var(--k-s3) 0 0;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  line-height: 1.6;
+  max-width: 60ch;
+}
+
+/* ------------------------------------------------------------------
+ * The panel body — three facts and the ways in, with one figure beside them.
+ *
+ * 300px for the figure out of the panel's ~760px inner measure (1160px content box,
+ * less the 340px rail and the --k-s4 gap, less --k-s5 of padding each side), which
+ * leaves about 440px for the facts. That is a real trade: at the panel's old full
+ * width every fact was one line, and at 440px the longest of them — Trade's "A swap
+ * is an approve and then the swap — two transactions, shown as two", 71 characters —
+ * takes two.
+ *
+ * TWO ROWS, AND THE FIGURE SPANS BOTH. This is a height fix, not an arrangement.
+ * The figure is the TALLER column on the tabs whose figure carries a legend —
+ * Liquidity's runs about 208px against 130px of facts — so a ways row placed under
+ * the whole grid sat 20px below the *figure*, stranding up to 110px of dead space
+ * beneath the last fact and pushing the panel about 30px past the bottom of the
+ * five-row rail beside it. In column one, row two, the row lands in space the panel
+ * already had: the body is now max(facts + gap + ways, figure) instead of
+ * max(facts, figure) + gap + ways. On the tabs where the facts were already the
+ * taller column it costs exactly what it did before, so nothing regresses.
+ *
+ * `auto 1fr` rather than `auto auto` so the slack from the figure's span lands in
+ * row two, under the buttons, rather than between them and the facts they follow.
+ *
+ * DO NOT give this a min-height to stop the panel moving between tabs. Same rule as
+ * `.panel` above and the capability selector before it: height following content is
+ * legible, a permanent empty box is not.
+ * ------------------------------------------------------------------ */
+.body {
+  margin: var(--k-s5) 0 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-rows: auto 1fr;
+  gap: var(--k-s5);
+  align-items: start;
+}
+
+.figure {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------
+ * The three facts.
+ *
+ * Hairline-separated rows rather than bullets, so they read as a short spec
+ * sheet — which is what they are — and match `.chainList` and the rail above
+ * rather than introducing a third list style to this page.
+ *
+ * The top hairline lands at the same y as the figure's own top edge beside it, so
+ * the two columns start on one line across the panel. `.body` owns the margin above
+ * it now; this keeps the border.
+ * ------------------------------------------------------------------ */
+.points {
+  grid-column: 1;
+  grid-row: 1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--k-line);
+}
+
+.points li {
+  padding: var(--k-s3) 0;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  line-height: 1.55;
+}
+
+.points li + li {
+  border-top: 1px solid var(--k-line);
+}
+
+/* ------------------------------------------------------------------
+ * The ways in.
+ *
+ * The row is a 40px pill, and on the three tabs whose figure is the taller column
+ * it costs the panel nothing at all — `.body` above has the placement argument.
+ * There is no hairline over it, which was there for one revision: a rule plus the
+ * --k-s4 of padding it needs underneath spent 17px of panel height on separation
+ * the pills already provide themselves, being the only bordered, filled things in
+ * a panel that is otherwise prose and one figure.
+ *
+ * PILLS, MATCHING marketing.module.css's `.primary` AND `.secondary` RATHER THAN
+ * A THIRD BUTTON STYLE. Same --k-btn-solid fill, same --k-line2 outline, same
+ * --k-r-pill radius, one step down in size: --k-fs-sm and --k-s2/--k-s5 padding
+ * against the hero's --k-fs-base and --k-s3/--k-s6. A panel button that outshouts
+ * the hero's own CTA is a page with two front doors.
+ *
+ * `flex-wrap` because Trade has three and the panel is 340px narrower than the
+ * section — three pills at --k-fs-sm are about 260px, which fits in the ~440px
+ * facts column at every width this page has, but the wrap costs nothing and a
+ * fourth destination should not have to be a layout decision. It also means a wrap
+ * adds 52px rather than clipping, which is the failure worth having.
+ * ------------------------------------------------------------------ */
+/* No margin: it is a grid item now, and `.body`'s own --k-s5 gap is the space above
+   it. A margin here would be added to that gap rather than replacing it, which is
+   how the 110px of dead space got there in the first place. */
+.ways {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-s3);
+}
+
+/* --k-s2 of vertical padding, not less. It puts the pill at about 40px, and this
+   is the row's whole height budget — the next 8px would come off the tap target,
+   which at 720px is the full width of the panel and the only way in on a phone. */
+.way,
+.wayPrimary {
+  border-radius: var(--k-r-pill);
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: var(--k-s2) var(--k-s5);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* The transparent border is a height match, not decoration: the outlined pills
+   carry 1px and this one would otherwise render 2px shorter beside them. */
+.wayPrimary {
+  border: 1px solid transparent;
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
+}
+
+.wayPrimary:hover {
+  background: var(--k-btn-solid-hover);
+}
+
+.way {
+  border: 1px solid var(--k-line2);
+  color: var(--k-t1);
+}
+
+.way:hover {
+  background: var(--k-row-hover);
+}
+
+/* ------------------------------------------------------------------
+ * Narrow.
+ *
+ * 980px, the same width at which the stack grid, the chains grid and the footer
+ * fold in marketing.module.css. Below it the rail's notes start wrapping in a
+ * 340px column that no longer has 800px of content beside it to justify the
+ * space.
+ *
+ * The rail stays a full-width list above the panel rather than becoming a row of
+ * chips: five names in a horizontal strip either scroll — hiding two of the five
+ * products behind a gesture — or drop the notes, which are the only thing
+ * distinguishing "Stable" from "Stake" at a glance.
+ * ------------------------------------------------------------------ */
+@media (max-width: 980px) {
+  .wrap {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The figure column survives past 980px on purpose. The fold above is about the
+   *rail* — a 340px column of names stops earning its width when there is no longer
+   800px beside it — and the panel that inherits the full width has more room for a
+   300px figure, not less. What actually forces the figure under the facts is the
+   facts themselves: at 720px the panel's inner measure is about 650px, and 300px of
+   that leaves 350px for a 71-character line. */
+@media (max-width: 720px) {
+  .tab {
+    padding: var(--k-s3) var(--k-s4);
+  }
+
+  .panel {
+    padding: var(--k-s4);
+  }
+
+  /* The heading is a normal block here, so nothing needs unstacking any more —
+     what the old rules did at this width, the layout now does at every width. */
+
+  /* Three explicit rows in one column, and the order matters: facts, figure,
+     buttons. Without restating them the two-column placement above survives the
+     fold — both `.points` and `.ways` are pinned to column one, so the buttons
+     would sit in row two directly under the facts with the figure stranded in a
+     column that no longer exists. Buttons last is also what keeps them "at the
+     bottom" on a phone, which is where they were asked to be. */
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    gap: var(--k-s4);
+  }
+
+  .figure {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .ways {
+    grid-row: 3;
+  }
+
+  /* The pills stretch to the panel's width and stack, rather than sitting as
+     three small targets in a row on a phone. `flex-wrap` above would already
+     break them across lines; this makes each line a full-width tap target
+     instead of a pill with dead space beside it. */
+  .ways {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .way,
+  .wayPrimary {
+    text-align: center;
+  }
+}

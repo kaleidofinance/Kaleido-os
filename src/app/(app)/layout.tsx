@@ -15,5 +15,20 @@ import type { ReactNode } from "react";
  * doing on its own rather than in the middle of a route migration.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
-  return <div className="kaleido-v2">{children}</div>;
+  return (
+    <div className="kaleido-v2">
+      {children}
+      {/* Portal host for modals. See src/components/v2/Portal.tsx: a
+          backdrop-filter ancestor becomes the containing block for
+          `position: fixed` descendants, so every glass surface silently
+          traps any modal rendered inside it. Modals mount here instead.
+
+          Inside .kaleido-v2, not on <body>, because the design tokens are
+          scoped to that class — a modal portalled to the body would lose
+          every --k-* variable and render unstyled. Last child, so it stacks
+          above the page without needing a z-index arms race, and a direct
+          child so it can never sit under a glass surface. */}
+      <div id="k-portal" />
+    </div>
+  );
 }

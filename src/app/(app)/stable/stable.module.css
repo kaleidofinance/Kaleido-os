@@ -18,12 +18,19 @@
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  background: var(--k-well2);
+  /* Recessed rather than an opaque disc, matching every other plate in the app.
+     Only shows through when there is no mark to draw. */
+  background: var(--k-glass-deep);
   display: grid;
   place-items: center;
   font-size: 13px;
   font-weight: 600;
   color: var(--k-t2);
+}
+/* kfUSD's mark is its own disc — see `.tkiArt` in form.module.css for why the
+   plate comes off rather than staying behind it. */
+.pegIconArt {
+  background: none;
 }
 .pegName {
   font-size: var(--k-fs-xl);
@@ -115,6 +122,18 @@
   color: var(--k-t1);
   font-weight: var(--k-fw-med);
 }
+/* Matches the Trade tab row. A lighter blur than --k-glass-blur on purpose:
+   at pill size a 20px radius samples mostly the pill's own edges and reads
+   as mush rather than as glass. */
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .tb.on {
+    background: var(--k-glass-strong);
+    -webkit-backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+  }
+}
 
 /* sidebar */
 .side {
@@ -127,7 +146,7 @@
   font-weight: var(--k-fw-med);
 }
 .card {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-md);
   padding: 15px 16px;
 }
@@ -145,7 +164,7 @@
 }
 
 .pending {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-md);
   padding: 14px 16px;
 }

@@ -1,8 +1,20 @@
 {
   "name": "hardhat-project",
+  "scripts": {
+    "compile": "hardhat compile",
+    "sizes": "hardhat run scripts/check-contract-sizes.js",
+    "pool-hash": "hardhat run scripts/verify-pool-init-hash.js",
+    "deploy:oracle": "hardhat run scripts/deploy-oracle.js",
+    "deploy:diamond": "hardhat run scripts/deploy.js",
+    "deploy:v3": "hardhat run scripts/deploy-v3.js",
+    "deploy:v2": "hardhat run scripts/deploy-dex.js",
+    "deploy:stablecoin": "hardhat run scripts/deploy-stablecoin.js",
+    "deploy:faucet": "hardhat run scripts/deploy-faucet.js",
+    "register-tokens": "hardhat run scripts/register-tokens.js",
+    "probe:pyth": "hardhat run scripts/probe-pyth.js"
+  },
   "dependencies": {
     "@aragon/os": "^4.4.0",
-    "@matterlabs/hardhat-zksync-upgradable": "^1.9.0",
     "@openzeppelin/contracts": "^5.2.0",
     "@pythnetwork/hermes-client": "^2.0.0",
     "@pythnetwork/pyth-sdk-solidity": "^4.0.0",
@@ -17,8 +29,6 @@
     "viem": "^2.26.2"
   },
   "devDependencies": {
-    "@matterlabs/hardhat-zksync": "^1.5.0",
-    "@matterlabs/zksync-contracts": "^0.6.1",
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
     "@nomicfoundation/hardhat-ignition": "^0.15.10",

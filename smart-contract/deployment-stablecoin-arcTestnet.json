@@ -1,0 +1,16 @@
+{
+  "network": "arcTestnet",
+  "chainId": "5042002",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "USDT": "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6",
+    "USDe": "0xCF59972d09Dbf9b37c1e3CDa55c47d0253038D76",
+    "kfUSD": "0xf36ef8273ed6223Cd71B775929036505cCdF4976",
+    "kafUSD": "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A",
+    "YieldTreasury": "0xcB8A20e5d3eD3940678Cc00E70F6CF307f5750Df",
+    "USDC": "0x3600000000000000000000000000000000000000"
+  },
+  "timestamps": {
+    "deployed": "2026-08-22T07:46:30.044Z"
+  }
+}

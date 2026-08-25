@@ -14,11 +14,13 @@
   gap: var(--k-s3);
   flex-wrap: wrap;
 }
+/* Placeholder for the wallet's identicon. Recessed like every other avatar plate
+   rather than an opaque grey disc on the page ground. */
 .pav {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
 }
 .paddr {
   font-size: var(--k-fs-xl);
@@ -44,15 +46,29 @@
   cursor: pointer;
 }
 .bt:hover {
-  background: var(--k-well2);
+  background: var(--k-hover);
+}
+/* The lighter 14px blur the Trade tab pills use, not --k-glass-blur: at pill
+   size a 20px radius samples mostly the pill's own edges and reads as mush. */
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .bt {
+    background: var(--k-glass-strong);
+    -webkit-backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(14px) saturate(var(--k-glass-sat));
+  }
+  .bt:hover {
+    background: var(--k-row-hover);
+  }
 }
 .btWhite {
-  background: #fff;
-  color: #0d0d0d;
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
   font-weight: var(--k-fw-med);
 }
 .btWhite:hover {
-  background: #e6e6e6;
+  background: var(--k-btn-solid-hover);
 }
 
 /* hero value */
@@ -124,8 +140,12 @@
   font-weight: var(--k-fw-med);
   letter-spacing: -0.02em;
 }
+/* The two position tables. Glass rather than the flat --k-card these were, so
+   they read as the same material as the trade card and the /borrow surfaces —
+   --k-card stays as the no-backdrop-filter fallback, which is the whole point of
+   the @supports guard below. */
 .table {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-lg);
   padding: var(--k-s2);
 }
@@ -137,8 +157,10 @@
   padding: 15px 14px;
   border-radius: var(--k-r-md);
 }
+/* Translucent, not --k-well2: an opaque fill on a glass table punches an opaque
+   hole in it and the blur stops at the row edge. */
 .row:hover {
-  background: var(--k-well2);
+  background: var(--k-row-hover);
 }
 .asset {
   display: flex;
@@ -155,8 +177,20 @@
   place-items: center;
   font-size: 11px;
   font-weight: 600;
-  background: var(--k-well2);
+  /* Recessed: the monogram plate sits inside a glass table now, and --k-well2 was
+     an opaque disc punching through the blur. */
+  background: var(--k-glass-deep);
   color: var(--k-t2);
+}
+/* Real artwork rather than three letters — see `.tkiArt` in
+   TokenSelector.module.css. Pair rows ("KLD / USDC") never match, and shouldn't:
+   one logo cannot stand for two assets. */
+.iconArt {
+  background: none;
+}
+.iconArt > svg {
+  display: block;
+  border-radius: 50%;
 }
 .aName {
   font-size: var(--k-fs-base);
@@ -182,12 +216,14 @@
   color: var(--k-pos);
   font-size: var(--k-fs-base);
 }
+/* Neutral variant of the toned badges below, which are all *-dim washes — so
+   this takes a wash too rather than being the one opaque chip in the row. */
 .badge {
   justify-self: end;
   font-size: var(--k-fs-sm);
   padding: 5px 11px;
   border-radius: var(--k-r-pill);
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
   color: var(--k-t2);
   white-space: nowrap;
 }
@@ -212,17 +248,19 @@
   gap: var(--k-s3);
   padding: 15px 14px;
 }
+/* Recessed for the same reason as `.icon`: these stand in for rows inside the
+   glass table, so they have to be made of the same material the rows will be. */
 .skCircle {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
   flex: none;
 }
 .skLine {
   height: 14px;
   border-radius: 8px;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
   flex: 1;
 }
 
@@ -238,14 +276,14 @@
   margin-bottom: 2px;
 }
 .calm {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-md);
   padding: 16px;
   color: var(--k-t2);
   font-size: var(--k-fs-sm);
 }
 .alert {
-  background: var(--k-card);
+  composes: k-glass from global;
   border-radius: var(--k-r-md);
   padding: 14px 16px;
   display: flex;
@@ -255,13 +293,15 @@
   color: inherit;
 }
 .alert:hover {
-  background: var(--k-well2);
+  background: var(--k-row-hover);
 }
+/* Neutral variant of `.aWarn` / `.aBad` below, which are both *-dim washes — and
+   it sits inside the glass `.alert`, where an opaque tile reads as pasted on. */
 .aIcon {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: var(--k-well2);
+  background: var(--k-glass-deep);
   color: var(--k-t2);
   display: grid;
   place-items: center;

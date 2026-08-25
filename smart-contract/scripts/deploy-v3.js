@@ -10,8 +10,10 @@
  *
  *   WRAPPED_NATIVE=0x... npx hardhat run scripts/deploy-v3.js --network baseTestnet
  *
- * Writes deployment-v3-<network>-<timestamp>.json. Copy the addresses into
- * DEPLOYMENTS in src/constants/registry.ts, including poolInitCodeHash.
+ * Writes deployment-v3-<network>-<timestamp>.json. Run `npm run gen:registry`
+ * from the repo root afterwards to fold it into DEPLOYMENTS — including
+ * poolInitCodeHash, which the generator refuses to omit when a v3Factory is
+ * present.
  */
 
 const hre = require("hardhat");
@@ -179,10 +181,13 @@ async function main() {
   console.log("Wrapped native:   ", WETH_ADDRESS);
   console.log("Pool init hash:   ", poolInitCodeHash);
   console.log(
-    `\n⚠️  Add these to DEPLOYMENTS[${deployment.chainId}] in ` +
-      "src/constants/registry.ts.\n" +
-      "    The app reads addresses only from there — nothing is picked up from\n" +
-      "    this JSON file, and isDeployed() stays false until `diamond` is set.",
+    `\n⚠️  Run \`npm run gen:registry\` from the repo root to fold these into ` +
+      `DEPLOYMENTS[${deployment.chainId}].\n` +
+      "    The app resolves addresses from src/constants/registry.ts, not from\n" +
+      "    this file, and isDeployed() stays false until `diamond` is set.\n" +
+      "    Note this script writes a NEW timestamped file every run; the\n" +
+      "    generator takes the newest per chain, so re-running it after a\n" +
+      "    redeploy is what makes the redeploy take effect.",
   );
   console.log("📋 Full addresses saved to:", outFile);
   console.log("============================================================");

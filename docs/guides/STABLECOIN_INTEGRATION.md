@@ -9,7 +9,9 @@
 
 ### 2. Component Integration
 - ✅ MintRedeem: Connected to `mintKfUSD` and `redeemKfUSD` functions
-- ✅ YieldVaults: Connected to `lockAssets` and `withdrawFromVault` functions  
+- ✅ YieldVaults: Connected to `lockAssets`, and to the two-step exit
+  `requestWithdrawal` → `completeWithdrawal` (kafUSD.sol has no immediate
+  withdraw; a `withdrawFromVault` wrapper that pretended otherwise was removed)
 - ✅ StableStats: Connected to real stats from hook
 
 ### 3. Transaction Flow

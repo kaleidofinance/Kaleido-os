@@ -1,31 +1,38 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
-import { useActiveAccount } from "thirdweb/react"
-import { Request, LoanListing } from "@/constants/types"
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
+import { useActiveAccount } from "thirdweb/react";
+import { Request, LoanListing } from "@/constants/types";
+import { MOCK_DATA, mockListings, mockRequests } from "@/lib/mock";
 
 interface FetchParams {
-  status?: string
-  tokenAddress?: string
-  author?: string
-  lender?: string
-  sender?: string // Added sender parameter for listings
-  sortBy?: string
-  sortOrder?: "asc" | "desc"
-  search?: string
-  searchId?: string
+  status?: string;
+  tokenAddress?: string;
+  author?: string;
+  lender?: string;
+  sender?: string; // Added sender parameter for listings
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+  search?: string;
+  searchId?: string;
 }
 
 interface CursorPaginationState<T> {
-  data: T[]
-  nextCursor: string | null
-  hasMore: boolean
-  isLoading: boolean
-  isLoadingMore: boolean
-  total: number
-  error: string | null
+  data: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  isLoading: boolean;
+  isLoadingMore: boolean;
+  total: number;
+  error: string | null;
 }
 
 // Request tracking with WeakMap for better cleanup
-const activeRequestControllers = new Map<string, AbortController>()
+const activeRequestControllers = new Map<string, AbortController>();
 
 // Generic cursor-based fetch function with improved request management
 const fetchWithCursor = async <T>(
@@ -35,39 +42,43 @@ const fetchWithCursor = async <T>(
   limit: number = 100,
   loadAll: boolean = false,
 ): Promise<{
-  data: T[]
-  nextCursor: string | null
-  hasMore: boolean
-  total: number
+  data: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  total: number;
 }> => {
   const queryParams = new URLSearchParams({
     limit: limit.toString(),
     loadAll: loadAll.toString(),
-    ...Object.fromEntries(Object.entries(params).filter(([_, value]) => value !== undefined && value !== "")),
-  })
+    ...Object.fromEntries(
+      Object.entries(params).filter(
+        ([_, value]) => value !== undefined && value !== "",
+      ),
+    ),
+  });
 
   if (cursor) {
-    queryParams.set("cursor", cursor)
+    queryParams.set("cursor", cursor);
   }
 
-  const url = `${endpoint}?${queryParams.toString()}`
+  const url = `${endpoint}?${queryParams.toString()}`;
 
   // Cancel any existing request for this URL
-  const existingController = activeRequestControllers.get(url)
+  const existingController = activeRequestControllers.get(url);
   if (existingController && !existingController.signal.aborted) {
-    existingController.abort()
+    existingController.abort();
   }
 
   // Create new controller for this request
-  const controller = new AbortController()
-  activeRequestControllers.set(url, controller)
+  const controller = new AbortController();
+  activeRequestControllers.set(url, controller);
 
   // Set up timeout
   const timeoutId = setTimeout(() => {
     if (!controller.signal.aborted) {
-      controller.abort()
+      controller.abort();
     }
-  }, 30000) // 30 second timeout
+  }, 30000); // 30 second timeout
 
   try {
     const response = await fetch(url, {
@@ -75,17 +86,17 @@ const fetchWithCursor = async <T>(
       headers: {
         "Content-Type": "application/json",
       },
-    })
+    });
 
-    clearTimeout(timeoutId)
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json()
+    const data = await response.json();
     if (!data.success) {
-      throw new Error(data.error || "Failed to fetch data")
+      throw new Error(data.error || "Failed to fetch data");
     }
 
     return {
@@ -93,34 +104,37 @@ const fetchWithCursor = async <T>(
       nextCursor: data.nextCursor || null,
       hasMore: data.hasMore || false,
       total: data.total || 0,
-    }
+    };
   } catch (error: any) {
     if (error.name === "AbortError") {
-      throw new Error("Request cancelled or timeout")
+      throw new Error("Request cancelled or timeout");
     }
-    throw error
+    throw error;
   } finally {
-    clearTimeout(timeoutId)
-    activeRequestControllers.delete(url)
+    clearTimeout(timeoutId);
+    activeRequestControllers.delete(url);
   }
-}
+};
 
 // Enhanced interface for cursor hooks with search ID support
 interface CursorHookParams extends FetchParams {
-  searchId?: string
+  searchId?: string;
 }
 
 // Create a unique key for request identification
-const createRequestKey = (params: FetchParams | null, endpoint: string): string => {
-  if (!params) return `${endpoint}-empty`
-  return `${endpoint}-${JSON.stringify(params)}`
-}
+const createRequestKey = (
+  params: FetchParams | null,
+  endpoint: string,
+): string => {
+  if (!params) return `${endpoint}-empty`;
+  return `${endpoint}-${JSON.stringify(params)}`;
+};
 
 // Requests Hook with Cursor Pagination and Search ID
 export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
-  const activeAccount = useActiveAccount()
-  const address = activeAccount?.address
-  const currentRequestRef = useRef<string | null>(null)
+  const activeAccount = useActiveAccount();
+  const address = activeAccount?.address;
+  const currentRequestRef = useRef<string | null>(null);
 
   const [state, setState] = useState<CursorPaginationState<Request>>({
     data: [],
@@ -130,31 +144,61 @@ export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
     isLoadingMore: false,
     total: 0,
     error: null,
-  })
+  });
 
   // Memoize fetch params to prevent unnecessary re-renders
   const fetchParams = useMemo(() => {
-    if (!params) return null
+    if (!params) return null;
 
-    const cleanParams: FetchParams = {}
+    const cleanParams: FetchParams = {};
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== "") {
-        cleanParams[key as keyof FetchParams] = value
+        cleanParams[key as keyof FetchParams] = value;
       }
-    })
-    return cleanParams
-  }, [params])
+    });
+    return cleanParams;
+  }, [params]);
 
   // Create stable request key
-  const requestKey = useMemo(() => createRequestKey(fetchParams, "/api/requests"), [fetchParams])
+  const requestKey = useMemo(
+    () => createRequestKey(fetchParams, "/api/requests"),
+    [fetchParams],
+  );
 
   // Fetch data function
   const fetchData = useCallback(
     async (isLoadMore = false, loadMoreAmount = 100) => {
-      if (!fetchParams) return
+      if (!fetchParams) return;
 
-      const thisRequestKey = `${requestKey}-${Date.now()}-${Math.random()}`
-      currentRequestRef.current = thisRequestKey
+      /*
+       * Demo mode. `mockRequests` is handed the same params the endpoint would
+       * have received and applies the endpoint's own selection rules — the
+       * OPEN+SERVICED default, the owner match, the id search — so /borrow and
+       * /myloans differ here exactly as they will against the live API rather
+       * than both showing the whole fixture book.
+       *
+       * Pagination is off: the book is one page, so `hasMore` false keeps
+       * loadMore from re-delivering the same rows. Placed before the loading
+       * flags are set so no spinner flashes, and it is still an async function,
+       * so the rows land after mount and never during the server pass. Delete
+       * with src/lib/mock.
+       */
+      if (MOCK_DATA) {
+        const rows = mockRequests(address, fetchParams);
+        setState({
+          data: rows,
+          nextCursor: null,
+          hasMore: false,
+          isLoading: false,
+          isLoadingMore: false,
+          total: rows.length,
+          error: null,
+        });
+        return;
+      }
+
+      const thisRequestKey = `${requestKey}-${Date.now()}-${Math.random()}`;
+      currentRequestRef.current = thisRequestKey;
 
       // Set loading state
       setState((prev) => ({
@@ -162,11 +206,11 @@ export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
         isLoading: !isLoadMore,
         isLoadingMore: isLoadMore,
         error: null,
-      }))
+      }));
 
       try {
-        const searchLimit = fetchParams.searchId ? 100 : loadMoreAmount
-        const cursor = isLoadMore ? state.nextCursor : null
+        const searchLimit = fetchParams.searchId ? 100 : loadMoreAmount;
+        const cursor = isLoadMore ? state.nextCursor : null;
 
         const result = await fetchWithCursor<Request>(
           "/api/requests",
@@ -174,11 +218,11 @@ export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
           cursor,
           searchLimit,
           loadMoreAmount === -1,
-        )
+        );
 
         // Check if this request is still current
         if (currentRequestRef.current !== thisRequestKey) {
-          return // Ignore outdated requests
+          return; // Ignore outdated requests
         }
 
         setState((prev) => ({
@@ -190,7 +234,7 @@ export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
           isLoadingMore: false,
           total: result.total,
           error: null,
-        }))
+        }));
       } catch (error) {
         // Only update state if this is still the current request
         if (currentRequestRef.current === thisRequestKey) {
@@ -198,28 +242,36 @@ export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
             ...prev,
             isLoading: false,
             isLoadingMore: false,
-            error: error instanceof Error ? error.message : "Failed to load requests",
-          }))
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to load requests",
+          }));
         }
       }
     },
     [fetchParams, requestKey, state.nextCursor],
-  )
+  );
 
   // Load more data
   const loadMore = useCallback(
     async (amount: number) => {
-      if (!fetchParams || fetchParams.searchId || !state.hasMore || state.isLoadingMore) {
-        return
+      if (
+        !fetchParams ||
+        fetchParams.searchId ||
+        !state.hasMore ||
+        state.isLoadingMore
+      ) {
+        return;
       }
-      await fetchData(true, amount === -1 ? 0 : amount)
+      await fetchData(true, amount === -1 ? 0 : amount);
     },
     [fetchParams, state.hasMore, state.isLoadingMore, fetchData],
-  )
+  );
 
   // Refresh all data
   const refresh = useCallback(() => {
-    if (!fetchParams) return
+    if (!fetchParams) return;
 
     setState((prev) => ({
       ...prev,
@@ -228,15 +280,15 @@ export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
       hasMore: true,
       total: 0,
       error: null,
-    }))
+    }));
 
-    fetchData(false, 100)
-  }, [fetchParams, fetchData])
+    fetchData(false, 100);
+  }, [fetchParams, fetchData]);
 
   // Initialize and re-fetch when params change
   useEffect(() => {
     if (fetchParams) {
-      fetchData(false, 100)
+      fetchData(false, 100);
     } else {
       // Reset state when no params
       setState({
@@ -247,19 +299,23 @@ export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
         isLoadingMore: false,
         total: 0,
         error: null,
-      })
+      });
     }
-  }, [fetchParams, requestKey]) // Include requestKey to trigger re-fetch when it changes
+  }, [fetchParams, requestKey]); // Include requestKey to trigger re-fetch when it changes
 
   // Derived data
   const myRequests = useMemo(() => {
-    if (!address || !state.data.length) return []
-    return state.data.filter((request) => request.author?.toLowerCase() === address.toLowerCase())
-  }, [state.data, address])
+    if (!address || !state.data.length) return [];
+    return state.data.filter(
+      (request) => request.author?.toLowerCase() === address.toLowerCase(),
+    );
+  }, [state.data, address]);
 
   const activeRequests = useMemo(() => {
-    return state.data.filter((request) => request.status === "OPEN" || request.status === "SERVICED")
-  }, [state.data])
+    return state.data.filter(
+      (request) => request.status === "OPEN" || request.status === "SERVICED",
+    );
+  }, [state.data]);
 
   return {
     // Data
@@ -281,14 +337,14 @@ export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
     loadMore,
     refresh,
     refreshRequests: refresh,
-  }
-}
+  };
+};
 
 // Listings Hook with Cursor Pagination and Search ID
 export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
-  const activeAccount = useActiveAccount()
-  const address = activeAccount?.address
-  const currentRequestRef = useRef<string | null>(null)
+  const activeAccount = useActiveAccount();
+  const address = activeAccount?.address;
+  const currentRequestRef = useRef<string | null>(null);
 
   const [state, setState] = useState<CursorPaginationState<LoanListing>>({
     data: [],
@@ -298,31 +354,52 @@ export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
     isLoadingMore: false,
     total: 0,
     error: null,
-  })
+  });
 
   // Memoize fetch params to prevent unnecessary re-renders
   const fetchParams = useMemo(() => {
-    if (!params) return null
+    if (!params) return null;
 
-    const cleanParams: FetchParams = {}
+    const cleanParams: FetchParams = {};
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== "") {
-        cleanParams[key as keyof FetchParams] = value
+        cleanParams[key as keyof FetchParams] = value;
       }
-    })
-    return cleanParams
-  }, [params])
+    });
+    return cleanParams;
+  }, [params]);
 
   // Create stable request key
-  const requestKey = useMemo(() => createRequestKey(fetchParams, "/api/listings"), [fetchParams])
+  const requestKey = useMemo(
+    () => createRequestKey(fetchParams, "/api/listings"),
+    [fetchParams],
+  );
 
   // Fetch data function
   const fetchData = useCallback(
     async (isLoadMore = false, loadMoreAmount = 100) => {
-      if (!fetchParams) return
+      if (!fetchParams) return;
 
-      const thisRequestKey = `${requestKey}-${Date.now()}-${Math.random()}`
-      currentRequestRef.current = thisRequestKey
+      /* Demo mode, as in useFetchRequestsWithCursor above — same reasoning, and
+       * `mockListings` applies the listings endpoint's own rules, which are not
+       * the requests endpoint's: one case-sensitive status, one owner field.
+       * Delete with src/lib/mock. */
+      if (MOCK_DATA) {
+        const rows = mockListings(address, fetchParams);
+        setState({
+          data: rows,
+          nextCursor: null,
+          hasMore: false,
+          isLoading: false,
+          isLoadingMore: false,
+          total: rows.length,
+          error: null,
+        });
+        return;
+      }
+
+      const thisRequestKey = `${requestKey}-${Date.now()}-${Math.random()}`;
+      currentRequestRef.current = thisRequestKey;
 
       // Set loading state
       setState((prev) => ({
@@ -330,11 +407,11 @@ export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
         isLoading: !isLoadMore,
         isLoadingMore: isLoadMore,
         error: null,
-      }))
+      }));
 
       try {
-        const searchLimit = fetchParams.searchId ? 100 : loadMoreAmount
-        const cursor = isLoadMore ? state.nextCursor : null
+        const searchLimit = fetchParams.searchId ? 100 : loadMoreAmount;
+        const cursor = isLoadMore ? state.nextCursor : null;
 
         const result = await fetchWithCursor<LoanListing>(
           "/api/listings",
@@ -342,11 +419,11 @@ export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
           cursor,
           searchLimit,
           loadMoreAmount === -1,
-        )
+        );
 
         // Check if this request is still current
         if (currentRequestRef.current !== thisRequestKey) {
-          return // Ignore outdated requests
+          return; // Ignore outdated requests
         }
 
         setState((prev) => ({
@@ -358,7 +435,7 @@ export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
           isLoadingMore: false,
           total: result.total,
           error: null,
-        }))
+        }));
       } catch (error) {
         // Only update state if this is still the current request
         if (currentRequestRef.current === thisRequestKey) {
@@ -366,28 +443,36 @@ export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
             ...prev,
             isLoading: false,
             isLoadingMore: false,
-            error: error instanceof Error ? error.message : "Failed to load listings",
-          }))
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to load listings",
+          }));
         }
       }
     },
     [fetchParams, requestKey, state.nextCursor],
-  )
+  );
 
   // Load more data
   const loadMore = useCallback(
     async (amount: number) => {
-      if (!fetchParams || fetchParams.searchId || !state.hasMore || state.isLoadingMore) {
-        return
+      if (
+        !fetchParams ||
+        fetchParams.searchId ||
+        !state.hasMore ||
+        state.isLoadingMore
+      ) {
+        return;
       }
-      await fetchData(true, amount === -1 ? 0 : amount)
+      await fetchData(true, amount === -1 ? 0 : amount);
     },
     [fetchParams, state.hasMore, state.isLoadingMore, fetchData],
-  )
+  );
 
   // Refresh all data
   const refresh = useCallback(() => {
-    if (!fetchParams) return
+    if (!fetchParams) return;
 
     setState((prev) => ({
       ...prev,
@@ -396,15 +481,15 @@ export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
       hasMore: true,
       total: 0,
       error: null,
-    }))
+    }));
 
-    fetchData(false, 100)
-  }, [fetchParams, fetchData])
+    fetchData(false, 100);
+  }, [fetchParams, fetchData]);
 
   // Initialize and re-fetch when params change
   useEffect(() => {
     if (fetchParams) {
-      fetchData(false, 100)
+      fetchData(false, 100);
     } else {
       // Reset state when no params
       setState({
@@ -415,19 +500,21 @@ export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
         isLoadingMore: false,
         total: 0,
         error: null,
-      })
+      });
     }
-  }, [fetchParams, requestKey]) // Include requestKey to trigger re-fetch when it changes
+  }, [fetchParams, requestKey]); // Include requestKey to trigger re-fetch when it changes
 
   // Derived data
   const myListings = useMemo(() => {
-    if (!address || !state.data.length) return []
-    return state.data.filter((listing) => listing.sender?.toLowerCase() === address.toLowerCase())
-  }, [state.data, address])
+    if (!address || !state.data.length) return [];
+    return state.data.filter(
+      (listing) => listing.sender?.toLowerCase() === address.toLowerCase(),
+    );
+  }, [state.data, address]);
 
   const openListings = useMemo(() => {
-    return state.data.filter((listing) => listing.status === "OPEN")
-  }, [state.data])
+    return state.data.filter((listing) => listing.status === "OPEN");
+  }, [state.data]);
 
   return {
     // Data
@@ -454,10 +541,10 @@ export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
       loadings: state.isLoading,
       data: myListings,
     },
-  }
-}
+  };
+};
 
 // Backward compatibility exports
-export const useFetchAllRequests = useFetchRequestsWithCursor
-export const useFetchAllListings = useFetchListingsWithCursor
-export default useFetchRequestsWithCursor
+export const useFetchAllRequests = useFetchRequestsWithCursor;
+export const useFetchAllListings = useFetchListingsWithCursor;
+export default useFetchRequestsWithCursor;

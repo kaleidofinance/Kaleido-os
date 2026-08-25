@@ -1,0 +1,44 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": "2026-08-24T22:25:27.493Z",
+  "pool": "0x8c832F0Ef9F7d2EF89769D1e9bd97cCC4a2218eB",
+  "fee": 500,
+  "token0": {
+    "address": "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55",
+    "symbol": "USDT",
+    "decimals": 6
+  },
+  "token1": {
+    "address": "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b",
+    "symbol": "USDe",
+    "decimals": 18
+  },
+  "openedAt": {
+    "sqrtPriceX96": "79228644722927455312949049869459652",
+    "tick": 276324,
+    "liveTick": 276324
+  },
+  "oracle": {
+    "usd0": "999791110000000000",
+    "usd1": "999778940000000000",
+    "source0": "hermes Crypto.USDT/USD (2s old)",
+    "source1": "hermes Crypto.USDE/USD (3s old)"
+  },
+  "positions": [
+    {
+      "label": "full range",
+      "tickLower": -887270,
+      "tickUpper": 887270,
+      "tokenId": "(unknown)",
+      "tx": "0x76dfa960c116be1c22fa56069c6b9d96c99c1c013b636cc9995cd4bdd508a327"
+    },
+    {
+      "label": "±2%",
+      "tickLower": 276120,
+      "tickUpper": 276520,
+      "tokenId": "(unknown)",
+      "tx": "0x0ec5f038899b1e84f549ccf1507cbc043d8a10e8f2bd55b1cd84c51e8b967e35"
+    }
+  ]
+}

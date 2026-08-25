@@ -1,0 +1,376 @@
+/* ------------------------------------------------------------------
+ * The product figures.
+ *
+ * Five small diagrams that share one grammar: token discs, a direction, and the
+ * transaction shape. Written against the --k-* tokens like the rest of this route
+ * group, and the material is the app's — a recessed well in --k-glass-deep with
+ * --k-shadow-inset, exactly the treatment `.returns` in TracePlayer.module.css and
+ * `.card` in CapabilityTabs.module.css use. Never an opaque fill: the panel behind
+ * this is glass, and a solid slab stamps a hole through the blur.
+ *
+ * NO `composes: k-glass from global` IN HERE, and that is on purpose rather than an
+ * oversight. This is a well *inside* a glass panel, not a pane of its own — a
+ * second blur layer over the first reads as a smudge, and marketing.module.css says
+ * the same thing above its own `.panel`.
+ *
+ * The captions reuse the page's one caption treatment (13px, uppercase, 0.06em,
+ * --k-alt), which `.groupHead`, `.toolCallLabel` and `.returnsLabel` all already
+ * share. A sixth micro-label style would read as a sixth kind of heading.
+ *
+ * HEIGHT IS THE BUDGET. These sit in the panel's right column beside three facts
+ * that come to about 150px, so a figure taller than that grows the section — which
+ * is the thing the last three commits went to reduce. Every figure here lands
+ * between 120 and 170px. If one needs more room, take something out of it.
+ * ------------------------------------------------------------------ */
+.art {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s3);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border-radius: var(--k-r-md);
+  padding: var(--k-s4);
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------
+ * Shared parts.
+ * ------------------------------------------------------------------ */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.asset {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  min-width: 0;
+}
+
+/* Applied to <TokenIcon>'s className, which lands on the <svg> for a vector mark
+   and alongside `.mark` on the <img> for one of the three raster ones. Both want
+   the same two declarations, and TokenIcon.module.css already sets object-fit for
+   the raster case. */
+.disc {
+  flex: none;
+  border-radius: 50%;
+}
+
+.sym {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  white-space: nowrap;
+}
+
+/* Overlapped discs, for a pair or the three collateral assets. */
+.stack {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+/* The rim, and it is --k-bg rather than the well's own --k-glass-deep on purpose.
+   --k-glass-deep is rgba(0, 0, 0, 0.45) in dark and rgba(20, 20, 19, 0.055) in
+   light — translucent both ways, so a ring in it would tint the disc behind rather
+   than cut it, which is the opposite of what a stack needs. --k-bg is the one opaque
+   surface token. Both themes define it, so this tracks the theme; a hard-coded
+   colour would not.
+
+   The margin here narrowed when --k-bg went #141413 -> #000. The claim used to be
+   that the two layers between the ground and here (glass at 4.5% white, then the
+   well) move it by a handful of points, so the ring only showed at the seam between
+   two overlapping discs. On black the ring is 0 and the well composites to about 6,
+   so the outer edge now carries a real if small step — roughly 2-4% luminance. Still
+   subtle, and there is no opaque token nearer the well than this one, so it stands;
+   but if the discs read as black-outlined rather than cleanly overlapped, this rule
+   is the reason and an opaque mid token is the fix. */
+.stacked {
+  box-shadow: 0 0 0 2px var(--k-bg);
+}
+
+.stacked + .stacked {
+  margin-left: -7px;
+}
+
+.arrow {
+  flex: none;
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+}
+
+.cap {
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-alt);
+}
+
+/* The quiet label at the far end of a row — "Stake" in `wrap`, "Mint" in `mint`.
+   `margin-left: auto` is what right-aligns it, so every row it appears in must be
+   flex; `.step`, `.flowRow` and `.row` all are. Shared rather than per-figure
+   because two figures use it and a second copy would drift. */
+.rowLabel {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------
+ * The stacked rows, for `swap` and `wrap`.
+ *
+ * Hairline-separated rows in a list. `swap` numbers them with `.marker` below,
+ * because a swap really is a two-step plan — approve, then swap — and the numbers
+ * are the claim. `wrap` uses the same rows with no markers: stake and unstake are
+ * two independent one-transaction actions, so numbering them 1-2 would say you sign
+ * both to stake. Which is also why `wrap` is a <ul> and `swap` an <ol>.
+ * ------------------------------------------------------------------ */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--k-line);
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: var(--k-s2) 0;
+  font-size: var(--k-fs-sm);
+  line-height: 1.35;
+  color: var(--k-t2);
+}
+
+.step + .step {
+  border-top: 1px solid var(--k-line);
+}
+
+.marker {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  /* Against the well rather than in it: the well is already --k-glass-deep, so a
+     second deep fill would be invisible. --k-brand-dim is what CapabilityTabs uses
+     for a selected chip on the same material. */
+  background: var(--k-brand-dim);
+  color: var(--k-t1);
+  display: grid;
+  place-items: center;
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------
+ * `range` — the position, with no depth in it.
+ *
+ * A price axis, the band you chose, and a tick at each edge. Deliberately NOT a
+ * liquidity histogram: ProductArt.tsx states at length why bars here would be a
+ * fabricated market figure. The 30% insets are a layout constant and mean nothing
+ * numerically, which is exactly why nothing in the figure is labelled with a price.
+ * ------------------------------------------------------------------ */
+.range {
+  position: relative;
+  height: 36px;
+}
+
+.axis {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--k-line);
+}
+
+/* The in-range band. --k-brand-dim rather than --k-brand: it is a region, and a
+   solid brand fill at this size reads as a button. */
+.band {
+  position: absolute;
+  left: 30%;
+  right: 30%;
+  top: 7px;
+  bottom: 7px;
+  background: var(--k-brand-dim);
+  border-radius: var(--k-r-sm);
+}
+
+.edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--k-brand);
+}
+
+.edgeLo {
+  left: 30%;
+}
+
+.edgeHi {
+  right: 30%;
+}
+
+/* Three labels, space-between, so the middle one centres under the band without a
+   second grid. */
+.rangeLabels {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--k-s2);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--k-alt);
+}
+
+.pair {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  white-space: nowrap;
+}
+
+.tiers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+  padding-top: var(--k-s2);
+  border-top: 1px solid var(--k-line);
+}
+
+.tierChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+/* A pill outline rather than a filled chip, because the well is already the filled
+   surface — the same reason `.viaTag` in TracePlayer is an outline. */
+.tier {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--k-r-pill);
+  border: 1px solid var(--k-line);
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The tick spacing, one step quieter than the fee it belongs to. */
+.tierSpacing {
+  font-size: 11px;
+  color: var(--k-alt);
+}
+
+/* ------------------------------------------------------------------
+ * `book` — the two sides.
+ *
+ * Two equal columns with a hairline between them, which is the figure's whole
+ * argument: neither side is the default. `minmax(0, 1fr)` twice so a long amount
+ * wraps inside its own column instead of pushing the divider off centre.
+ *
+ * THE TIGHT CASE IS DESKTOP, not mobile, which is why there is no media query
+ * relaxing this. The well is a fixed 300px column in the panel at every width down
+ * to 720px, and below that it goes full width — so the book is *widest* on a phone
+ * and narrowest on a desktop. A max-width query loosening it would fire exactly
+ * where it is already loose. The desktop measure: 300px, less --k-s4 of padding
+ * each side, is 268px; less the --k-s3 gap and the divider's --k-s3 of padding is
+ * 244px, so each column gets 122px. "10,000 USDC" with a 16px disc comes to about
+ * 105px at --k-fs-sm, and both amounts are literals in ProductArt.tsx rather than
+ * data, so they cannot grow without somebody editing the file that says this.
+ * ------------------------------------------------------------------ */
+.book {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--k-s3);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.side + .side {
+  padding-left: var(--k-s3);
+  border-left: 1px solid var(--k-line);
+}
+
+.bookAmt {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bookTerms {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------
+ * `mint` — three into one, then into the vault.
+ * ------------------------------------------------------------------ */
+.flow {
+  display: flex;
+  flex-direction: column;
+  /* No gap: `.down` carries its own vertical rhythm, and a gap on top of it would
+     make the two arrows sit further from the rows they point between than from the
+     ones they point away from. */
+  gap: 0;
+}
+
+.flowRow {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  min-width: 0;
+}
+
+/* Indented to sit under the centre of a 20px disc, so the arrows and the discs read
+   as one vertical line. */
+.down {
+  padding: 3px 0 3px 7px;
+  line-height: 1;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t3);
+}
+
+/* ------------------------------------------------------------------
+ * Narrow.
+ *
+ * At 720px the panel drops its side column and the figure goes full width under the
+ * three facts — see ProductRail.module.css, which is where that fold lives. The cap
+ * is the only thing needed here: a 640px-wide well holding one 36px range bar is a
+ * thin letterbox, and every figure was drawn for a column. Left-aligned rather than
+ * centred, so it lines up with the facts above it.
+ *
+ * Nothing else changes. The book keeps its two columns, which have more room here
+ * than at desktop — the note above `.book` has the measurements.
+ * ------------------------------------------------------------------ */
+@media (max-width: 720px) {
+  .art {
+    max-width: 420px;
+  }
+}

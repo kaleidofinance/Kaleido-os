@@ -1,0 +1,15 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-23T01:55:04.571Z",
+  "contracts": {
+    "v2Factory": "0x0abf6Dc7f20A05E4c731FFa66c09B6688EfcCF93",
+    "v2Router": "0x1632F2d350291e8ab9Dec9F14B518c6076fE3500",
+    "wrappedNative": "0x7943e237c7F95DA44E0301572D358911207852Fa"
+  },
+  "notes": {
+    "feeToSetter": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+    "pairResolution": "factory.getPair — no init code hash to keep in sync"
+  }
+}

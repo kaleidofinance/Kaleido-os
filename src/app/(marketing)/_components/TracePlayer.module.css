@@ -1,0 +1,554 @@
+/**
+ * The trace player — the same chat turn /trade/agent renders, on a clock.
+ *
+ * EVERY VALUE IN THE TRANSCRIPT BLOCK IS LIFTED FROM
+ * src/app/(app)/trade/agent/agent.module.css, not approximated from a screenshot.
+ * The 17px thread gap, the 3px turn gap, the 22px marker, the 1.55 line-height on
+ * `.said`, the 10px `.viaTag`, the 34px send button, the 9px 9px 9px 13px on the
+ * composer row: all of it. The section's claim is "this is what the product does",
+ * and a visitor tests that by opening the app — so a mock that is nearly right is
+ * worse than no mock, because it is the version they see first.
+ *
+ * THE WHOLE THING THEN RENDERS AT 75% via one `zoom` on `.host`, because this is a
+ * picture of the chat rather than the chat: at the app's own scale it is body copy
+ * sitting beside body copy and reads as oversized. Scaling at the root instead of
+ * picking thirty smaller numbers is what lets the sentence above stay true — the
+ * proportions are not close to the app's, they are the app's. The reasoning, and
+ * why not `transform: scale()`, is on `.host`.
+ *
+ * IF THIS PANEL HAS TO GET SHORTER AGAIN, MOVE THE ZOOM. Do not shave the 17px
+ * thread gap or the 10px step padding: the first sentence of this file is the whole
+ * reason the mock is believable, and hand-tuning individual numbers is how it stops
+ * being true one commit at a time. The zoom is the scale control and there is
+ * exactly one of it. The only other honest lever is removing a *block* — which is
+ * what happened to the app's line under the plan; TracePlayer.tsx says why.
+ *
+ * Where a value is deliberately different from the app's, there is a comment
+ * saying so at the rule. There are four such places and no others: the thread's
+ * horizontal padding, the missing scroll container, `.turnUser`'s hover, and the
+ * step's right-hand column.
+ *
+ * ALL MOTION IS INSIDE `@media (prefers-reduced-motion: no-preference)`, which is
+ * the app's own pattern — agent.module.css wraps `.spin`'s rotation exactly this
+ * way rather than wrapping a `reduce` override around it. Written as an opt-in
+ * like that, a browser reporting nothing gets stillness, and TracePlayer.tsx also
+ * jumps to the finished turn so the transcript is complete rather than frozen
+ * mid-sentence.
+ */
+
+/*
+ * 520px and 0.75, and both are measurements rather than taste.
+ *
+ * agent.module.css:21 caps `.card` at 520px, and its docblock is explicit that the
+ * whole surface is proportioned around that number. Lifting the type sizes without
+ * lifting the cap put 16px text and a full-width CTA across this panel's whole
+ * width — about 950px — which is 1.8× the measure every one of those values was
+ * tuned for. So the cap comes across with the rest of it.
+ *
+ * The cap alone was not enough, and the reason is worth writing down: 16px is body
+ * copy. Inside the app that is right, because the chat *is* the surface you are
+ * working in. Here it is a picture of that surface sitting next to page text at the
+ * same size, so it reads as oversized no matter how narrow the column gets. An
+ * illustration of a UI has to be smaller than the UI.
+ *
+ * Hence `zoom` rather than a second set of smaller numbers. Every value in this
+ * file stays exactly what agent.module.css says — the 17px gap, the 22px marker,
+ * the 34px send button — and the whole thing renders at 75%, so the proportions are
+ * not merely close to the app's, they are the app's. A parallel small scale would
+ * have meant thirty hand-picked numbers and a standing invitation to drift.
+ *
+ * 0.8 BEFORE 0.75. The section it sits in was about 1250px tall, and this panel set
+ * the floor for the half of it that is not cards. The turn is roughly 480px before
+ * the zoom, so one notch is about 24 rendered px — that part is exact whatever the
+ * unzoomed measure turns out to be, since it is 5% of it — and it costs one thing:
+ * body text renders at 12px instead of 12.8px. That is legible for a picture of a UI
+ * with the real one a click away, and it is the last notch — at 0.72 the step details
+ * land under 10.5px and stop being readable, which is worse than a taller section.
+ *
+ * `zoom` and not `transform: scale()` because zoom scales the layout box: the
+ * element occupies 390px (520 × 0.75) in the grid, which is what CapabilityTabs
+ * sizes the column to — `.cols` there is 430px, that 390 plus `.playerCard`'s 40px
+ * of padding, and the two numbers have to move together. A transform would leave a
+ * 520px hole with a 75% picture in it.
+ * Where zoom is unsupported this renders at 100% — larger than intended, not
+ * broken.
+ *
+ * `margin-inline: auto` does nothing at desktop, where the column is exactly the
+ * 390px this occupies. It earns its place on a narrow viewport, where the player is
+ * handed the full width and the mock centres instead of sitting against the left
+ * edge.
+ */
+.host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s3);
+  width: 100%;
+  max-width: 520px;
+  zoom: 0.75;
+  margin-inline: auto;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------
+ * The caption above the turn.
+ * ------------------------------------------------------------------ */
+.head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--k-s2) var(--k-s4);
+}
+
+/* The declared signature, which is the falsifiable half of this section: it is
+ * the tool's `required` list in the catalog's order, with the properties the
+ * catalog declares but does not require marked `?`. capabilities.test.ts asserts
+ * both halves against toolCatalog.ts, so this chip is checkable rather than
+ * decorative.
+ *
+ * NOT MONOSPACED, even though it is a `code` element and genuinely is code.
+ * tokens.css:5 makes that a palette rule and AgentSettings.module.css already
+ * declined to break it for an inline command span. The recessed chip does the
+ * quoting instead; the one mono face the app loads is deliberately not exposed as
+ * a variable, which is the same decision said twice. */
+.sig {
+  font-family: inherit;
+  font-size: var(--k-fs-xs);
+  line-height: 1.5;
+  color: var(--k-t2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border-radius: var(--k-r-sm);
+  padding: 5px 9px;
+  overflow-wrap: anywhere;
+}
+
+/* What the action costs. The single most useful line in the section — it is what
+   a reader is actually asking when they ask what an action takes — so it stays in
+   the caption rather than being inferred from counting rows. */
+.cost {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  white-space: nowrap;
+}
+
+.replay {
+  margin-left: auto;
+  flex: none;
+  appearance: none;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  padding: 2px 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.replay:hover {
+  color: var(--k-t1);
+}
+
+/* ------------------------------------------------------------------
+ * The stage.
+ *
+ * Two copies of the turn in one grid cell. The hidden one is finished and so sets
+ * the height; the visible one plays inside it. This is the whole reason the panel
+ * does not grow four rows while somebody is reading the paragraph below it.
+ *
+ * The alternative was a pixel `min-height`, which this section already had once
+ * and lost: a floor tall enough for the 8-tool group reserved eight empty rows
+ * under `Send`. A height derived from the real finished content cannot be wrong
+ * about any tool, including one added later.
+ * ------------------------------------------------------------------ */
+.stage {
+  display: grid;
+  min-width: 0;
+}
+
+.live,
+.sizer {
+  grid-area: 1 / 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Geometry only. `visibility: hidden` rather than `opacity: 0` so it is out of
+   the accessibility tree and out of the tab order as well as off the screen — the
+   visible copy holds the readable text. */
+.sizer {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------
+ * The transcript.
+ * ------------------------------------------------------------------ */
+.thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+  /* The app has `padding: 17px 16px` because its thread is the full width of a
+     card. This one is already inside the panel's padding, so only the gap below
+     the last turn is kept — and it is the composer's rule that needs it. */
+  padding: 0 0 var(--k-s4);
+}
+
+/* No `overflow-y: auto`, unlike the app's. The app scrolls because its transcript
+   grows without bound; this one is a single turn whose height is already reserved
+   by `.sizer`, so a scroll container would only clip a step animating in. */
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  color: var(--k-t1);
+}
+
+/* The app's version is a button — clicking it puts the sentence back in the
+   prompt — so it carries a pointer cursor and a `--k-row-hover` fill. Neither is
+   here, because nothing on this page can be clicked back into anything. The
+   padding and radius stay so the row sits on the same rhythm. */
+.turnUser {
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: var(--k-r-sm);
+}
+
+.who {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  letter-spacing: 0.02em;
+}
+
+.whoAgent {
+  color: var(--k-t2);
+  font-weight: var(--k-fw-med);
+}
+
+.said {
+  min-width: 0;
+  font-size: var(--k-fs-base);
+  line-height: 1.55;
+  /* Wraps rather than ellipsising, for the app's reason: a truncated answer from
+     Luca is just a lost answer. The send prompt carries a full 42-character
+     address, which is the case that tests it. */
+  overflow-wrap: anywhere;
+}
+
+.turnUser .said {
+  color: var(--k-t2);
+}
+
+.line {
+  margin: 0;
+}
+
+.thinking {
+  color: var(--k-t3);
+}
+
+.spin {
+  display: inline-block;
+  width: 1em;
+  margin-right: 7px;
+  vertical-align: -0.05em;
+}
+
+/* ------------------------------------------------------------------
+ * The tool call, on the turns that make one.
+ *
+ * Only the one execute tool with no typed form and the six reads. Its absence on
+ * the other 20 is the point: those turns never called a model, so there is no
+ * call to show, and the arguments are visible in the sentence the user typed.
+ * ------------------------------------------------------------------ */
+.toolCall {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  margin-bottom: 11px;
+}
+
+.toolCallLabel {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-alt);
+}
+
+.call {
+  font-family: inherit;
+  font-size: var(--k-fs-xs);
+  line-height: 1.5;
+  color: var(--k-t2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border-radius: var(--k-r-sm);
+  padding: 5px 9px;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------
+ * The plan.
+ * ------------------------------------------------------------------ */
+.steps {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 10px 0;
+}
+
+.step + .step {
+  border-top: 1px solid var(--k-line);
+}
+
+.marker {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  color: var(--k-t2);
+  display: grid;
+  place-items: center;
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  font-variant-numeric: tabular-nums;
+  /* Centres the circle on the first line of the title rather than on the top of
+     the text box. */
+  margin-top: 1px;
+}
+
+.stepBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.stepTitle {
+  font-size: var(--k-fs-base);
+  line-height: 1.35;
+}
+
+.stepDetail {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+/* The app puts `v.chain ?? "—"` in this slot. None of these plans is cross-chain,
+   so every row would print an em-dash — eight of them under `Borrow and lend`, a
+   column of nothing. The Intent kind goes here instead: it is real, it is what
+   the previous version of this panel showed, and it is the string a reader can
+   grep definitions.ts for. Sans, per the rule noted on `.sig`; the tracking is
+   what marks it as an identifier. */
+.stepMeta {
+  flex: none;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--k-alt);
+  white-space: nowrap;
+  padding-top: 5px;
+}
+
+.viaTag {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 1px 7px;
+  border-radius: var(--k-r-pill);
+  border: 1px solid var(--k-line);
+  color: var(--k-t2);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+/* ------------------------------------------------------------------
+ * Reads.
+ *
+ * A different shape from a step list, deliberately. A read produces no
+ * transaction, and giving it a numbered step would invent one — the numbered list
+ * is this section's whole claim. The catalog's own sentence, presented as what
+ * the call hands back, and nothing under it.
+ * ------------------------------------------------------------------ */
+.returns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border-radius: var(--k-r-md);
+  padding: var(--k-s4);
+  margin-top: 6px;
+}
+
+.returnsLabel {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-alt);
+}
+
+.returnsText {
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  line-height: 1.6;
+  color: var(--k-t2);
+}
+
+/* ------------------------------------------------------------------
+ * The composer, which is scenery.
+ * ------------------------------------------------------------------ */
+.composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Horizontal padding dropped for the same reason as `.thread`'s. */
+  padding: var(--k-s4) 0 0;
+  border-top: 1px solid var(--k-line);
+}
+
+.sendRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  padding: 9px 9px 9px 13px;
+  border-radius: var(--k-r-lg);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+}
+
+/* A span standing in for the app's textarea, so the typography is set rather than
+   inherited from the control's own defaults. `pre-wrap` keeps a mid-word space
+   visible while the line is still being typed. */
+.inp {
+  flex: 1;
+  min-width: 0;
+  color: var(--k-t1);
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-body);
+  line-height: 1.45;
+  padding: 5px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The app's real placeholder string. It shows before the first keystroke and
+   again after the send, which is exactly when the app's shows. */
+.ph {
+  color: var(--k-t3);
+}
+
+.caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: -0.17em;
+  background: var(--k-t1);
+}
+
+.send {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* The app disables send on an empty field, and this mirrors the disabled fill
+   rather than leaving a live-looking button over an empty composer. */
+.sendOff {
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  color: var(--k-t3);
+}
+
+.ctaPlan {
+  width: 100%;
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+  padding: 12px;
+  border-radius: var(--k-r-lg);
+  text-align: center;
+}
+
+/* ------------------------------------------------------------------
+ * Motion.
+ *
+ * One entrance, reused. Everything that arrives does the same 4px rise, on
+ * --k-ease-out, which tokens.css:186 reserves for exactly this — "things
+ * entering". Nothing here animates a layout property, so no step reveal can
+ * reflow the rows above it.
+ * ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  .turn,
+  .step,
+  .toolCall,
+  .returns,
+  .viaTag,
+  .ctaPlan {
+    animation: traceIn var(--k-dur-med) var(--k-ease-out) both;
+  }
+
+  /* The app's own spinner, at the app's own 900ms. */
+  .spin {
+    animation: traceSpin 900ms linear infinite;
+  }
+
+  /* `steps(1)` so it snaps rather than pulses — a fading caret reads as a
+     rendering artefact, a blinking one reads as a cursor. */
+  .caret {
+    animation: traceCaret 1050ms steps(1, end) infinite;
+  }
+}
+
+@keyframes traceIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes traceSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes traceCaret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  /* The kind tag goes rather than squeezing the title into a column beside it. It
+     is the least important thing in the row, and the app drops the same slot at
+     the same width. */
+  .stepMeta {
+    display: none;
+  }
+}

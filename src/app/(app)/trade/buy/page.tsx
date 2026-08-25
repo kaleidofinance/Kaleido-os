@@ -35,7 +35,9 @@ export default function BuyPage() {
 
   const start = async () => {
     if (!isConnected || !address) {
-      toast.error("Connect a wallet first — MoonPay delivers the crypto to it.");
+      toast.error(
+        "Connect a wallet first — MoonPay delivers the crypto to it.",
+      );
       return;
     }
     setBusy(true);
@@ -74,7 +76,12 @@ export default function BuyPage() {
 
   return (
     <div className={s.card}>
-      <div className={s.box} style={{ padding: "26px 18px 22px" }}>
+      {/* Top well recessed, bottom well raised — the swap card's rule, so the
+          two-tone treatment means the same thing on every trade tab. */}
+      <div
+        className={`${s.box} ${s.deep}`}
+        style={{ padding: "26px 18px 22px" }}
+      >
         <div className={s.bl}>You&apos;re buying</div>
         <div className={`${d.bigZero} ${amount ? d.filled : ""} tabular`}>
           {amount ? `$${amount.toLocaleString()}` : "$0"}
@@ -92,9 +99,9 @@ export default function BuyPage() {
         </div>
       </div>
 
-      <div className={s.box} style={{ marginTop: 4 }}>
+      <div className={`${s.box} ${s.raised}`} style={{ marginTop: 4 }}>
         <div className={s.bl}>Deliver to your wallet as</div>
-        <div className={d.centerPresets} style={{ justifyContent: "flex-start" }}>
+        <div className={d.assetPresets}>
           {ASSETS.map((a) => (
             <button
               key={a.code}
@@ -107,16 +114,18 @@ export default function BuyPage() {
         </div>
       </div>
 
-      <div className={s.box} style={{ marginTop: 4 }}>
-        <button className={s.cta} disabled={busy || !isConnected} onClick={start}>
-          {cta}
-        </button>
-        <p className={d.note}>
-          Card and bank payments are handled by MoonPay, who verify your
-          identity and deliver the crypto straight to your wallet. Leave the
-          amount blank to choose it on their side.
-        </p>
-      </div>
+      {/* The button and its note stand on their own. They used to sit in a
+          third bordered, blurred well that framed no controls of its own — 34px
+          of padding and a border spent on a button that was already full-width.
+          Same treatment as the swap card. */}
+      <button className={s.cta} disabled={busy || !isConnected} onClick={start}>
+        {cta}
+      </button>
+      <p className={d.note}>
+        Card and bank payments are handled by MoonPay, who verify your identity
+        and deliver the crypto straight to your wallet. Leave the amount blank
+        to choose it on their side.
+      </p>
     </div>
   );
 }

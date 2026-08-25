@@ -15,23 +15,34 @@ require("@nomicfoundation/hardhat-toolbox");
 /**
  * zkSync plugins are needed only for Abstract — every other target is plain
  * EVM and compiles with solc. They are loaded optionally because they pull
- * git-hosted dependencies (@matterlabs/zksync-telemetry-js, and transitively
- * @zksync/contracts over git+ssh) that locked-down CI and sandboxed
- * environments refuse to fetch.
+ * git-hosted dependencies (@matterlabs/zksync-telemetry-js over git+ssh) that
+ * locked-down CI and sandboxed environments refuse to fetch. As of 2026-08-20
+ * they are no longer declared in package.json at all, for that reason: dropping
+ * them (together with @chainlink/contracts, which pulled era-contracts the same
+ * way) left the install with zero git dependencies and no SSH requirement.
  *
  * Loading them optionally means someone deploying to Base or BNB does not need
- * the zkSync toolchain installed at all. If they are missing, the Abstract
- * networks below will fail at deploy time with a clear plugin error rather than
- * taking down the whole config at require time.
+ * the zkSync toolchain installed. If they are missing, the Abstract networks
+ * below fail at deploy time with a clear plugin error rather than taking down
+ * the whole config at require time.
+ *
+ * The warning is gated on actually asking for an Abstract network. Ungated it
+ * fired on every single command — twice, because Hardhat loads the config more
+ * than once per run — which is pure noise now that absence is the normal state.
  */
+const wantsZkSync = process.argv.some((a) => /^abstract/i.test(a));
 try {
   require("@matterlabs/hardhat-zksync");
   require("@matterlabs/hardhat-zksync-upgradable");
 } catch {
-  console.warn(
-    "[hardhat] zkSync plugins unavailable — EVM targets still work; " +
-      "Abstract (abstractMainnet/abstractTestnet) requires them.",
-  );
+  if (wantsZkSync) {
+    console.warn(
+      "[hardhat] zkSync plugins are not installed, and Abstract needs them.\n" +
+        "          npm i -D @matterlabs/hardhat-zksync " +
+        "@matterlabs/hardhat-zksync-upgradable\n" +
+        "          (requires GitHub SSH access for a transitive git dependency)",
+    );
+  }
 }
 
 /**
@@ -69,7 +80,24 @@ module.exports = {
       zksync: false,
       allowUnlimitedContractSize: true,
       blockGasLimit: 30000000,
-      gas: 30000000,
+      /**
+       * 16,777,216 (2^24) and not the 30,000,000 this used to be, which is the
+       * block limit above rather than a per-transaction one. EIP-7825 caps a
+       * single transaction at 2^24 gas, the EDR provider Hardhat now ships
+       * enforces it, and a `gas` override is applied to every transaction the
+       * test signer sends — so every deploy in every test failed with
+       * "Transaction gas limit is 30000000 and exceeds transaction gas cap of
+       * 16777216" before the contract under test was even constructed. It broke
+       * 31 of the 37 cases in StablecoinSecurity.test.js alone, and it fails in
+       * `beforeEach`, so the output blames a hook rather than naming a gas cap.
+       *
+       * Nothing here needs more: the largest deployment in the repo is
+       * KaleidoSwapV3Factory at 24,116 bytes, and code deposit is 200 gas per
+       * byte, so even with constructor execution it is a small fraction of the
+       * cap. The block limit stays at 30,000,000 — a block may hold several
+       * transactions, and lowering it would change how many fit.
+       */
+      gas: 16777216,
       initialBaseFeePerGas: 0,
     },
 
@@ -168,6 +196,17 @@ module.exports = {
       base: process.env.BASESCAN_API_KEY || "",
       bscTestnet: process.env.BSCSCAN_API_KEY || "",
       bsc: process.env.BSCSCAN_API_KEY || "",
+      /**
+       * These three had customChains entries below but no key here, so
+       * `hardhat verify` failed on them with "unrecognized network" before the
+       * request was ever made. Both explorers are Blockscout, which does not
+       * require a key — but hardhat-verify still needs the entry to exist, and
+       * it rejects an empty string for a custom chain. The placeholder is what
+       * Blockscout instances conventionally accept.
+       */
+      robinhoodTestnet: process.env.ROBINHOOD_EXPLORER_API_KEY || "blockscout",
+      robinhood: process.env.ROBINHOOD_EXPLORER_API_KEY || "blockscout",
+      arcTestnet: process.env.ARCSCAN_API_KEY || "blockscout",
     },
     customChains: [
       {
@@ -222,25 +261,89 @@ module.exports = {
   },
 
   solidity: {
+    /**
+     * evmVersion is pinned on every 0.8.x entry below. Left unset, solc picks a
+     * default that tracks the compiler version rather than our deploy targets:
+     * 0.8.20+ defaults to `shanghai` and emits PUSH0, and 0.8.24 defaults to
+     * `cancun` and emits MCOPY/TSTORE. A chain that has not enabled those forks
+     * rejects the bytecode outright, and we deploy to two young chains (Robinhood
+     * Orbit, Arc) whose fork status we do not control. `paris` predates all three
+     * opcodes and runs everywhere, at the cost of two bytes per zero push — see
+     * the ProtocolFacet override, which is the only place that cost is close to
+     * mattering.
+     *
+     * The four pre-0.8 compilers need nothing: `paris` did not exist before
+     * 0.8.18, and none of them can emit PUSH0 in the first place. Do not add
+     * evmVersion to 0.7.6 — any settings change there moves poolInitCodeHash.
+     */
     compilers: [
-      { version: "0.8.9", settings: { optimizer: { enabled: true, runs: 200 } } },
-      { version: "0.8.20", settings: { optimizer: { enabled: true, runs: 200 } } },
-      { version: "0.8.24", settings: { optimizer: { enabled: true, runs: 200 } } },
+      {
+        version: "0.8.9",
+        settings: {
+          optimizer: { enabled: true, runs: 200 },
+          // `paris` is not a valid value for this compiler (added in 0.8.18).
+          // `london` is its own default and is equally pre-PUSH0.
+          evmVersion: "london",
+        },
+      },
+      {
+        version: "0.8.20",
+        settings: {
+          optimizer: { enabled: true, runs: 200 },
+          evmVersion: "paris",
+        },
+      },
+      {
+        version: "0.8.24",
+        settings: {
+          optimizer: { enabled: true, runs: 200 },
+          evmVersion: "paris",
+        },
+      },
       /**
        * The V3 fork. 73 files under contracts/dex-v3 pin `=0.7.6` exactly, so
        * without this entry `compile` fails on every one of them with "No
-       * compiler version matched" — nothing in dex-v3 has ever been built in
-       * this checkout.
+       * compiler version matched" — nothing in dex-v3 had ever been built in
+       * this checkout before 2026-08-20.
        *
-       * runs is 1,000,000 to match upstream Uniswap V3. This is not cosmetic:
-       * poolInitCodeHash in src/constants/registry.ts is the keccak of the
-       * compiled pool bytecode, so changing the optimizer settings changes the
-       * hash, and a stale hash does not fail at deploy — it fails at the first
-       * swap, when the callback authenticates against a derived address that
-       * holds no code. Change these settings and you must re-run
-       * scripts/verify-pool-init-hash.js and update the registry.
+       * runs is 200, NOT the 1,000,000 upstream Uniswap V3 uses. That is
+       * measured, not preference. At 1,000,000 this fork compiles to bytecode
+       * that cannot be deployed to any EVM chain:
+       *
+       *              runs=1,000,000   runs=200    upstream v3-core @1.0.1
+       *   Pool           30,514 ✗      21,797         22,142
+       *   Factory        33,419 ✗      24,116         24,535
+       *   NFTDescriptor  29,781 ✗      23,336              —
+       *
+       * against the EIP-170 ceiling of 24,576. Upstream fits at 1,000,000 and we
+       * do not, because this fork was mechanically rewritten for solc 0.8's
+       * stricter conversion rules and then pinned back to 0.7.6 — TickBitmap
+       * carries `int24(int256(uint256(bitPos)))` where upstream has
+       * `int24(bitPos)`. Those casts are semantic no-ops here, but at a high run
+       * count they inline into ~8KB of redundant codegen. The ABI is identical to
+       * upstream's (26 functions, no additions), so there is no extra surface to
+       * remove — the run count is the only lever.
+       *
+       * The cost is real: a lower run count means more gas per swap than
+       * upstream. A deployable DEX at higher swap gas beats an undeployable one,
+       * and the Factory has only 460 bytes of headroom at runs=200 (it embeds
+       * the pool's entire creation code, so it grows whenever the pool does).
+       * Do not raise this value without re-running check-contract-sizes.js.
+       *
+       * metadata.bytecodeHash is "none" to match upstream: it drops the IPFS
+       * source hash, which makes the bytecode reproducible across machines and
+       * checkout paths. Full-source verification on Etherscan/Blockscout is
+       * unaffected.
+       *
+       * Any change here moves poolInitCodeHash — the keccak of the compiled pool
+       * bytecode, hardcoded in PoolAddress.sol and used by the periphery to
+       * derive pool addresses via CREATE2. A stale hash does not fail at deploy;
+       * it fails at the first swap, when the callback authenticates against a
+       * derived address that holds no code. After changing these settings you
+       * must re-run scripts/verify-pool-init-hash.js and update both
+       * PoolAddress.sol and the registry.
        */
-      { version: "0.7.6", settings: { optimizer: { enabled: true, runs: 1000000 } } },
+      { version: "0.7.6", settings: { optimizer: { enabled: true, runs: 200 }, metadata: { bytecodeHash: "none" } } },
       { version: "0.5.16", settings: { optimizer: { enabled: true, runs: 200 } } },
       { version: "0.6.6", settings: { optimizer: { enabled: true, runs: 200 } } },
       { version: "0.6.12", settings: { optimizer: { enabled: true, runs: 200 } } },
@@ -250,27 +353,79 @@ module.exports = {
         version: "0.4.24",
         settings: { optimizer: { enabled: false } },
       },
-      "contracts/KLDStake/Token/stKLD.sol": {
-        version: "0.8.9",
-        settings: { optimizer: { enabled: true, runs: 200 } },
-      },
+      /**
+       * Pinned to 0.6.12 — the V2 DEX's own compiler — not 0.5.16. This file
+       * declares `pragma solidity >=0.5.0`, so the previous 0.5.16 override was
+       * accepted by the pragma and then failed to parse: `receive()` and
+       * `fallback()` did not exist before 0.6.0, and the whole compile aborted
+       * with "ParserError: Expected identifier but got '('" at line 17. This was
+       * the only error in the first compile this checkout has ever run.
+       *
+       * Not left to default to 0.8.24: nothing here needs checked arithmetic
+       * (every mutation is already require-guarded), and keeping WETH9 in the
+       * 0.6.x family matches the router and factory it exists to serve.
+       */
       "contracts/dex/test/WETH9.sol": {
-        version: "0.5.16",
+        version: "0.6.12",
         settings: { optimizer: { enabled: true, runs: 200 } },
       },
       /**
-       * These two exceed the 24,576-byte contract size limit at runs=1,000,000.
-       * Upstream Uniswap periphery compiles them at a low run count for exactly
-       * this reason. Neither is the pool, so lowering runs here does not affect
-       * poolInitCodeHash.
+       * NonfungiblePositionManager and NonfungibleTokenPositionDescriptor used to
+       * be overridden here to runs=2000, because at the old base of 1,000,000
+       * they were over the size limit. With the base now at 200 those overrides
+       * were inverted — they *raised* the run count above the compiler entry —
+       * and at runs=2000 PositionManager measured 24,434 bytes, 142 from the
+       * ceiling. Both now inherit runs=200 like the rest of the 0.7.6 family,
+       * which brings PositionManager down to 22,933 bytes (1,643 of headroom),
+       * measured from artifacts/ rather than carried over from the old override.
+       * The largest 0.7.6 artifact is KaleidoSwapV3Factory at 24,116 (460 spare),
+       * so that is the one to re-measure after any change to this family.
        */
-      "contracts/dex-v3/periphery/NonfungiblePositionManager.sol": {
-        version: "0.7.6",
-        settings: { optimizer: { enabled: true, runs: 2000 } },
-      },
-      "contracts/dex-v3/periphery/NonfungibleTokenPositionDescriptor.sol": {
-        version: "0.7.6",
-        settings: { optimizer: { enabled: true, runs: 2000 } },
+      /**
+       * ProtocolFacet does not compile without viaIR. It is not close to the
+       * line and it is not a new problem: with the settings above, solc 0.8.24
+       * aborts codegen with "Stack too deep" inside createLoanListing, which
+       * takes six parameters through four modifiers and has not been edited in
+       * this repo's history. liquidateUserRequest hit the same wall at three
+       * separate points before it was split into
+       * _seizeCollateralForLiquidation / _liquidationPenaltySplitUsd /
+       * _settleLiquidationProceeds. Chasing the rest of them by hand means
+       * rewriting untouched, working code to accommodate a limitation of the
+       * legacy code generator, which is the thing viaIR exists to remove.
+       *
+       * Scoped to this one file rather than added to the 0.8.24 compiler entry
+       * so that the stablecoin, staking and DEX contracts keep the codegen
+       * their bytecode was last checked under, and so the (substantial) viaIR
+       * compile-time cost is paid once rather than on every contract.
+       *
+       * Size check under these settings: 24,207 bytes against the EIP-170 limit
+       * of 24,576 — 369 bytes of headroom, measured from artifacts/ after
+       * `setFeedMaxAge`/`getFeedMaxAge` and the per-feed staleness lookup were
+       * added. It was 23,935 (641 spare) before those, and 23,453 before
+       * evmVersion was pinned; the 482-byte step there is the expected price of
+       * `paris`, which turns every PUSH0 into a two-byte PUSH1 0x00.
+       *
+       * 369 bytes is the real constraint on this facet now — one more external
+       * function of any substance will not fit. The config comment previously
+       * prescribed moving new surface into a separate facet, and that is still
+       * right for anything that does not touch `_appStorage`. Note the trap
+       * before trying it for something that does: this facet reads the app
+       * storage struct as a *sequential* state variable starting at slot 1
+       * (ReentrancyGuard takes slot 0), not through
+       * `LibAppStorage.layout()`'s keccak slot. A new facet declaring the same
+       * struct without an identical preceding layout would place every field
+       * one slot low and read garbage. See the note on `getPythPriceOracle`.
+       *
+       * NOT applied to 0.7.6: viaIR changes the compiled pool bytecode and
+       * therefore poolInitCodeHash. See the note on that compiler entry.
+       */
+      "contracts/facets/ProtocolFacet.sol": {
+        version: "0.8.24",
+        settings: {
+          optimizer: { enabled: true, runs: 200 },
+          viaIR: true,
+          evmVersion: "paris",
+        },
       },
     },
   },

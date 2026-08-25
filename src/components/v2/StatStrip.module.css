@@ -1,0 +1,57 @@
+/* The stat strip, lifted out of the pages that had grown byte-identical copies
+   of it. See StatStrip.tsx for why. */
+
+.strip {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s4) var(--k-s5);
+  display: flex;
+  flex-wrap: wrap;
+}
+/* Dividers drawn on the left edge of each tile and suppressed on the first, so
+   the count of tiles is free — every strip that uses this carries four today,
+   and none of them needs a rule of its own to do so. */
+.tile {
+  padding: 0 24px;
+  border-left: 1px solid var(--k-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s1);
+  flex: 1;
+  min-width: 150px;
+}
+/* The rule is a divider, not a left edge. With `flex-wrap` on the strip a tile
+   that wraps to a second line is no longer `:first-child`, so it keeps its rule
+   and reads as continuing the row above — which it is. */
+.tile:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+.label {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.value {
+  font-size: var(--k-fs-xl);
+  letter-spacing: -0.02em;
+}
+/* Provenance line under a figure: what a total excludes, or why it is missing.
+   Sized below .label so it reads as an annotation on the number rather than a
+   second number, and allowed to wrap — the alternative to a truncated caveat is
+   a headline the reader has no reason to distrust. */
+.note {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  line-height: 1.35;
+  max-width: 22ch;
+}
+
+@media (max-width: 720px) {
+  .strip {
+    padding: var(--k-s3) var(--k-s4);
+  }
+  .tile {
+    padding: 0 14px;
+    min-width: 120px;
+  }
+}

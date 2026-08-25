@@ -1,0 +1,24 @@
+/* Matches Nav's .icon geometry so the right-hand cluster stays on one rhythm.
+   Kept in its own module rather than reaching into Nav.module.css, so the
+   toggle can be dropped anywhere without importing nav styles. */
+.btn {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: var(--k-fs-base);
+  /* The glyph swaps between ☾ and ☀, which have different advance widths.
+     Tabular spacing plus a fixed box stops the cluster shifting on toggle. */
+  line-height: 1;
+}
+
+.btn:hover {
+  background: var(--k-glass-strong);
+  color: var(--k-t1);
+}

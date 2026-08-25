@@ -28,7 +28,8 @@ const DECIMALS: Record<string, number> = {
   WETH: 18,
   USDC: 6,
   USDT: 6,
-  USDR: 18,
+  // 6, per USDR's own decimals() — see BORROW_CURRENCIES in constants/registry.ts.
+  USDR: 6,
   kfUSD: 18,
   BNB: 18,
 };
@@ -69,7 +70,7 @@ function toBaseUnits(amount: string, asset: string): string | null {
   // the whole part is exact for 18-decimal amounts where floats are not.
   const [whole, frac = ""] = String(n).split(".");
   const padded = (frac + "0".repeat(decimals)).slice(0, decimals);
-  return (BigInt(whole + padded)).toString();
+  return BigInt(whole + padded).toString();
 }
 
 async function relayQuote(
@@ -111,7 +112,10 @@ async function relayQuote(
     toChainId: to.id,
     asset,
     amount,
-    feeUsd: feeRaw !== undefined && Number.isFinite(Number(feeRaw)) ? Number(feeRaw) : null,
+    feeUsd:
+      feeRaw !== undefined && Number.isFinite(Number(feeRaw))
+        ? Number(feeRaw)
+        : null,
     etaSeconds: typeof eta === "number" ? eta : null,
     note: "Quote from Relay. Kaleido does not execute the bridge — the user completes it with the provider.",
   };
@@ -180,7 +184,8 @@ export async function getBridgeQuote(args: {
 
   if (!from) return { error: `Unknown source chain: ${args.fromChain}` };
   if (!to) return { error: `Unknown destination chain: ${args.toChain}` };
-  if (from.id === to.id) return { error: "Source and destination are the same chain" };
+  if (from.id === to.id)
+    return { error: "Source and destination are the same chain" };
 
   const asset = args.asset.trim().toUpperCase();
   const units = toBaseUnits(args.amount, asset);

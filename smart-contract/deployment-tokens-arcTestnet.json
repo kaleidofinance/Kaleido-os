@@ -1,0 +1,105 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-22T07:58:13.050Z",
+  "diamond": "0x90a1620578CE419242F806e7387Db7e70c8cfa96",
+  "oracle": "0x0262aff2a0D8E56048e408D5fE875EA051dED65c",
+  "oracleKind": "pyth",
+  "pyth": "0x2880aB155794e7179c9eE2e38200202908C17B43",
+  "nativeFeedSymbol": "USDC",
+  "hermesVerified": true,
+  "registered": [
+    {
+      "kind": "collateral",
+      "symbol": "USDC",
+      "address": "0x0000000000000000000000000000000000000001",
+      "onChainSymbol": null,
+      "decimals": 18,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 102608,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Observed 58,510s (16h 15m), which is 195x the global 300s bound, so without an override native USDC prices nothing on this chain and /borrow is dead here. 90,000 is Constants.MAX_FEED_PRICE_AGE, the ceiling, leaving 31,490s (8h 45m) of headroom over the observation. Defensible because USDC is pegged — a day-old answer is wrong by basis points, not by percent — and this is the same number Sepolia's Chainlink USDC/USD carries for the same reason. Do not copy it onto a volatile feed to stop it reverting.\nStated plainly: 58,510s is ONE observation of an AGE, not a measurement of the publish INTERVAL. The interval is unknown and may exceed 90,000, in which case this feed will intermittently fail closed. That is now recoverable by any participant — PythPriceOracle.updatePrice is permissionless, so a borrower's own transaction can carry the update it needs — which is the reason a ceiling bound is acceptable here rather than a reason the staleness does not matter.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0x92a810daf19ad818b8a34801413dfee90c81a3f7f58f3e7e5f59b46ba157d120",
+      "skipped": false
+    },
+    {
+      "kind": "collateral",
+      "symbol": "WUSDC",
+      "address": "0x911b4000D3422F482F4062a913885f7b035382Df",
+      "onChainSymbol": "WUSDC",
+      "decimals": 18,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 102608,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Same Crypto.USDC/USD feed as native USDC, so the same observation and the same ceiling bound. See the USDC entry above for why 90,000 is defensible for a pegged asset and must not be copied onto a volatile one.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0x7b2ddc3980366628eda0963649f7d9ddd99ad076e1ca97fac9c975e886986f04",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "WUSDC",
+      "address": "0x911b4000D3422F482F4062a913885f7b035382Df",
+      "onChainSymbol": "WUSDC",
+      "decimals": 18,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 102608,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Same Crypto.USDC/USD feed as native USDC, so the same observation and the same ceiling bound. See the USDC entry above for why 90,000 is defensible for a pegged asset and must not be copied onto a volatile one.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0x0e9aea7de670b76cc282bf470f3910d68ef84f5f1bbf99712b636f640a9a3bb5",
+      "skipped": false
+    }
+  ],
+  "feedBounds": [
+    {
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "maxAge": 600,
+      "basis": "Same feed id as ETH — WETH is redeemable 1:1 by contract, not by market.",
+      "txHash": "0xc7cecb869c26fbe05c20fb54352bf35b183ff528f4abf4e5e96cdae7090319b0",
+      "skipped": false
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC",
+        "WUSDC"
+      ],
+      "maxAge": 90000,
+      "basis": "Same Crypto.USDC/USD feed as native USDC, so the same observation and the same ceiling bound. See the USDC entry above for why 90,000 is defensible for a pegged asset and must not be copied onto a volatile one.",
+      "txHash": "0x1fa8299f93a9522493ddd38bd3783a74f453f6df6ad2d48a134e0fa054a602fb",
+      "skipped": false
+    },
+    {
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "symbols": [
+        "BTC"
+      ],
+      "maxAge": 600,
+      "basis": "Same relayer cadence as ETH/USD on this chain, measured in the same run.",
+      "txHash": "0x7ad76c099ceb2f1eaacbcffaeb5cfc9fdfd5eb149339be5dd5f1540422ad6724",
+      "skipped": false
+    }
+  ],
+  "onChain": {
+    "collateral": [
+      "0x0000000000000000000000000000000000000001",
+      "0x911b4000D3422F482F4062a913885f7b035382Df"
+    ],
+    "loanable": [
+      "0x911b4000D3422F482F4062a913885f7b035382Df"
+    ]
+  }
+}

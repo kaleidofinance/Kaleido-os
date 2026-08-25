@@ -1,0 +1,36 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-23T00:38:01.636Z",
+  "hermes": "https://hermes.pyth.network",
+  "feeds": [
+    {
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "aggregator": "0xD520B8C9778f49050F7172ebb80d52f54a212eD1",
+      "description": "ETH / USD",
+      "decimals": 8,
+      "maxAge": 3600,
+      "maxDeviationBps": 5000,
+      "seededPrice": "242591000000",
+      "seededAt": 1787445409
+    },
+    {
+      "symbols": [
+        "USDC"
+      ],
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "aggregator": "0x2E7dd52073d6653F610607dA9B947ba59B585bf8",
+      "description": "USDC / USD",
+      "decimals": 8,
+      "maxAge": 90000,
+      "maxDeviationBps": 5000,
+      "seededPrice": "99995548",
+      "seededAt": 1787445409
+    }
+  ]
+}
