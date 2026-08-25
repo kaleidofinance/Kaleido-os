@@ -139,6 +139,11 @@
   display: flex;
   align-items: baseline;
   gap: var(--k-s3);
+  /* The search box is pushed to the far end with margin-left:auto; wrap lets it
+     drop under the title on a narrow column rather than shoving the count off
+     the row. row-gap keeps a gutter once it wraps. */
+  flex-wrap: wrap;
+  row-gap: var(--k-s2);
   margin-bottom: var(--k-s3);
 }
 .gTitle {
@@ -153,6 +158,55 @@
 .gCount {
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
+}
+
+/* Order-book ID search. Pushed to the trailing edge of the section header, glass
+   like every other control on this surface so it doesn't read as an opaque chip
+   beside the cards. The clear button sits inside the field's right padding. */
+.search {
+  margin-left: auto;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  /* Baseline-aligned siblings would hang the box by its text baseline; align it
+     to the row's centre line instead, independent of .gHead's baseline. */
+  align-self: center;
+}
+.searchInput {
+  composes: k-glass from global;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 7px 30px 7px 14px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  width: 160px;
+  outline: none;
+}
+.searchInput::placeholder {
+  color: var(--k-t3);
+}
+.searchInput:focus {
+  background: var(--k-glass-strong);
+  box-shadow: inset 0 0 0 1px var(--k-line2);
+}
+.searchClear {
+  position: absolute;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  font-size: var(--k-fs-base);
+  line-height: 1;
+  cursor: pointer;
+}
+.searchClear:hover {
+  color: var(--k-t1);
 }
 
 /* Glass, not opaque --k-card. The two .card panes in the sidebar compose

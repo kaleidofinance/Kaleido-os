@@ -21,6 +21,7 @@ import {
   interestAtom,
   selectedVolumeRangesAtom,
   filterByOwnerAtom,
+  searchByIdAtom,
   filterByOverdue,
 } from "@/constants/atom";
 import { useEnhancedCardData } from "@/components/market/EnhancedCardlayout";
@@ -64,6 +65,11 @@ export default function useDataFiltersPanel() {
   );
   const [filterByOwner, setFilterByOwner] = useAtom(filterByOwnerAtom);
   const [filterbyOverdue, setFilterByOverdue] = useAtom(filterByOverdue);
+  // The order-book search term. Read by useEnhancedCardData off the same atom,
+  // where it becomes the `searchId` cursor param — this hook only owns the
+  // writer, which nothing had before, so the search box below is the first thing
+  // that can set it.
+  const [searchById, setSearchById] = useAtom(searchByIdAtom);
 
   // Backward compatibility - create paginated data structure that matches old hook
   const paginatedBorrowData = useMemo(() => {
@@ -179,6 +185,7 @@ export default function useDataFiltersPanel() {
     setSelectedVolumeRanges([]);
     setFilterByOwner(false);
     setFilterByOverdue(false);
+    setSearchById("");
     setCurrentPage(1);
   }, [
     setSelectedToken,
@@ -187,6 +194,7 @@ export default function useDataFiltersPanel() {
     setSelectedVolumeRanges,
     setFilterByOwner,
     setFilterByOverdue,
+    setSearchById,
     setCurrentPage,
   ]);
 
@@ -253,6 +261,7 @@ export default function useDataFiltersPanel() {
     interestRate: enhancedData.filterOptions.interestRate,
     selectedVolumeRanges: enhancedData.filterOptions.volumeRanges,
     filterByOwner: enhancedData.filterOptions.ownerFilter,
+    searchById,
     // filterbyOverdue: enhancedData.filterOptions.overdueFilter,
 
     // Actions - mix of enhanced data and local setters
@@ -267,6 +276,7 @@ export default function useDataFiltersPanel() {
     setInterestRate,
     setFilterByOwner,
     setFilterByOverdue,
+    setSearchById,
     handleToggleDropdown,
     setOrderToggleDropDown,
     setOrderSelection,

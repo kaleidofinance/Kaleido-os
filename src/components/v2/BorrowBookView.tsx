@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ethers } from "ethers";
 import { toast } from "sonner";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
@@ -64,6 +64,78 @@ function untilShort(ts: number, nowSec: number): string {
   const hours = Math.floor(diff / 3600);
   if (hours >= 1) return `${hours}h`;
   return `${Math.max(1, Math.floor(diff / 60))}m`;
+}
+
+/**
+ * The order book's ID search.
+ *
+ * `searchByIdAtom` has been read by useEnhancedCardData all along — it becomes the
+ * `searchId` cursor param, which /api/listings and /api/requests resolve to an
+ * exact match on the bigint listing/request id (parseBookIdSearch). Nothing ever
+ * wrote it, so this field is the first writer; the setter now lives on the shared
+ * filter panel beside filterByOwner.
+ *
+ * It debounces into the atom rather than writing on every keystroke — each write
+ * re-runs the cursor fetch, and an id is typed a digit at a time. Local state
+ * keeps the field responsive; `committed` lets an external reset (Clear, or
+ * clearAllFilters) win without clobbering a keystroke mid-debounce.
+ */
+function SearchBox({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  const [text, setText] = useState(value);
+  const committed = useRef(value);
+
+  useEffect(() => {
+    if (value !== committed.current) {
+      committed.current = value;
+      setText(value);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    const next = text.trim();
+    if (next === committed.current) return;
+    const t = setTimeout(() => {
+      committed.current = next;
+      onChange(next);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [text, onChange]);
+
+  return (
+    <div className={s.search}>
+      <input
+        className={s.searchInput}
+        type="text"
+        inputMode="numeric"
+        value={text}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        onChange={(e) => setText(e.target.value)}
+      />
+      {text && (
+        <button
+          type="button"
+          className={s.searchClear}
+          aria-label="Clear search"
+          onClick={() => {
+            setText("");
+            committed.current = "";
+            onChange("");
+          }}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -411,6 +483,18 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     setSortDir(defaultDir("interest", mode === "borrow"));
   }, [mode]);
 
+  /*
+   * Each tab is its own book, so the shared search atom is reset on every tab
+   * change. The box renders only on /borrow and /lend; without this an id typed
+   * on one would persist to the other — and to /mylends, which has no box to
+   * clear it and would silently collapse to the one matching row (or none).
+   * `setSearchById` is a Jotai setter, so its identity is stable and this fires
+   * on `mode` alone, never on a keystroke.
+   */
+  useEffect(() => {
+    filters?.setSearchById?.("");
+  }, [mode, filters?.setSearchById]);
+
   const nowSec = Math.floor(Date.now() / 1000);
   const overdueCount = borrow.loans.filter((l) => l.overdue).length;
   const upcomingDue = borrow.loans
@@ -663,6 +747,18 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
               <span className={s.gCount}>
                 {sorted.length} {copy.count}
               </span>
+              {/* Not on /mylends: that tab filters the borrow cursor to the
+                  user's own offers client-side, so an id search would hunt the
+                  whole book while the view only shows a slice of it. Borrow and
+                  lend are the cursor-backed books the searchId param actually
+                  narrows. */}
+              {!isMyLends && (
+                <SearchBox
+                  value={filters?.searchById ?? ""}
+                  onChange={(v) => filters?.setSearchById?.(v)}
+                  placeholder={isListingShape ? "Offer ID" : "Request ID"}
+                />
+              )}
             </div>
 
             <div className={s.table}>
