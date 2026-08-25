@@ -420,6 +420,30 @@ async function main() {
   console.log(`t0 left ${ethers.formatUnits(await t0.balanceOf(me), d0)} ${s0}`);
   console.log(`t1 left ${ethers.formatUnits(await t1.balanceOf(me), d1)} ${s1}`);
 
+  /* Protocol fee on this pool, off unless asked for. slot0.feeProtocol starts at
+     0 and the pool keeps none of the LP fee until setFeeProtocol is called by the
+     factory owner. V3_FEE_PROTOCOL turns it on for a freshly-seeded pool — 0 (off)
+     or 4..10, where the pool keeps 1/n of the fee (4 = 25%, 10 = 10%). Left off by
+     default: the fee is a multisig-era decision, not a property of seeding a pool.
+     For pools that already exist, use set-dex-fees.js. */
+  let feeProtocolSet = null;
+  if (process.env.V3_FEE_PROTOCOL !== undefined) {
+    const n = Number(process.env.V3_FEE_PROTOCOL);
+    if (!Number.isInteger(n) || !(n === 0 || (n >= 4 && n <= 10)))
+      throw new Error(`V3_FEE_PROTOCOL must be 0 or an integer 4..10 — got "${process.env.V3_FEE_PROTOCOL}"`);
+    const factoryOwner = await new ethers.Contract(
+      reg.v3Factory,
+      ["function owner() view returns (address)"],
+      ethers.provider,
+    ).owner();
+    if (factoryOwner.toLowerCase() !== me.toLowerCase())
+      throw new Error(`V3_FEE_PROTOCOL set but signer ${me} is not the factory owner ${factoryOwner}`);
+    console.log(`\nsetting feeProtocol ${n}/${n} on the pool`);
+    const poolWrite = new ethers.Contract(pool, ["function setFeeProtocol(uint8,uint8)"], signer);
+    await (await poolWrite.setFeeProtocol(n, n)).wait();
+    feeProtocolSet = n;
+  }
+
   const out = {
     network: hre.network.name,
     chainId,
@@ -436,6 +460,7 @@ async function main() {
       source1: p1.source,
     },
     positions: minted,
+    feeProtocol: feeProtocolSet,
   };
   const file = `deployment-pool-${hre.network.name}-${s0}-${s1}-${fee}.json`;
   fs.writeFileSync(path.join(__dirname, "..", file), JSON.stringify(out, null, 2));
