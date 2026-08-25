@@ -11,7 +11,7 @@
     "DiamondCutFacet": "0x0B7D46C80f2FB087AfB952D17bfC13892b2c04b9",
     "DiamondLoupeFacet": "0xf341BFb02404485FD360Ca864f49e2F7F1172951",
     "OwnershipFacet": "0xA44b63033BD3bc7F240ccD88EC3E9BB669E99c82",
-    "ProtocolFacet": "0x7A59C0a3B25c06A31D897242055A8c1D7da3f32d",
+    "ProtocolFacet": "0x380522a0C8ADed2fc0f2b812dDd1b91fdAbFB8d6",
     "AgentPermissionFacet": "0x56b722645e4d42493A0ec1Dd0ca479aA92d909aE"
   },
   "config": {
@@ -35,6 +35,24 @@
       "to": "0x7A59C0a3B25c06A31D897242055A8c1D7da3f32d",
       "txHash": "0x2f08c84fb1c86d257aef5129ba8a4712616e8bfefccfadf7bf1a52fe1f402412",
       "block": 11557894,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0x7A59C0a3B25c06A31D897242055A8c1D7da3f32d",
+      "to": "0xF314f93defDCB9650F07ABfFbbA15bE7437dF699",
+      "txHash": "0x786f2a1ce56396cc094f14db8c2821ca23a57ebf910e7e10b1951e7c04f0bf7d",
+      "block": 11563606,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0xF314f93defDCB9650F07ABfFbbA15bE7437dF699",
+      "to": "0x380522a0C8ADed2fc0f2b812dDd1b91fdAbFB8d6",
+      "txHash": "0x2d3080203193e21f0bc25f0646f22e993d8a00d83ad79fe19b76c99075bd58b7",
+      "block": 11563940,
       "selectorsReplaced": 68,
       "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
     }

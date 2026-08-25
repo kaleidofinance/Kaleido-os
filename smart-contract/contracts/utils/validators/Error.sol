@@ -61,6 +61,18 @@ error Protocol__RequestNotFound();
 error Protocol__InsufficientCollateralBalance();
 error Protocol__LoanAmountTooLow();
 
+/// @notice ETH was attached to a call operating on an ERC20.
+/// @dev Every entry point that can move either the native token or an ERC20 is
+///      `payable`, because the native branch needs `msg.value`. That made the
+///      ERC20 branches silently absorbing: the value arrived, no branch read it,
+///      no accounting credited it, and it sat in the diamond belonging to nobody.
+///      Rejecting is deliberate rather than refunding — the caller has confused
+///      two currencies, and the same reasoning `repayLoan` already applies to a
+///      failed refund holds here: a caller is better served by the transaction
+///      failing and being retried correctly than by the protocol guessing.
+/// @param sent The wei that was attached and would have been stranded.
+error Protocol__UnexpectedNativeValue(uint256 sent);
+
 /// oracle ///
 /// @notice The registered Pyth feed has not published inside priceMaxAge.
 /// @param age How old the price is, in seconds.

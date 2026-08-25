@@ -237,6 +237,17 @@
     "type": "error"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "sent",
+        "type": "uint256"
+      }
+    ],
+    "name": "Protocol__UnexpectedNativeValue",
+    "type": "error"
+  },
+  {
     "inputs": [],
     "name": "Protocol__UplinerCannotBeDownliner",
     "type": "error"
