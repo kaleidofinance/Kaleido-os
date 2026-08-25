@@ -181,6 +181,32 @@ function toCommand(
       return { kind: "send", amount, token, to };
     }
 
+    case "bridge": {
+      const amount = amountOf(a.amount);
+      if (!amount) return "bridge: no amount given";
+      const sym = str(a.asset || a.token);
+      /*
+       * dexToken, not symbolToken — the same reasoning as send. A bridge's asset
+       * is used exactly as returned (native currency only in the MVP, enforced
+       * in the builder), so symbolToken's `decimals ?? 18` fallback would be
+       * deciding how much leaves the wallet, and its empty-string address would
+       * reach the native-sentinel test as a non-match. An unknown symbol fails
+       * by name here.
+       */
+      const token = dexToken(chainId, sym);
+      if (!token)
+        return `bridge: I don't know a token called ${sym || "(none)"} on this chain`;
+      /*
+       * The destination travels as text, exactly as it does from the typed path:
+       * the builder's resolver matches it against the real chain registry, so a
+       * chain this deployment doesn't know is refused there by name rather than
+       * guessed at here.
+       */
+      const toChain = str(a.toChain || a.destinationChain).trim();
+      if (!toChain) return "bridge: no destination chain given";
+      return { kind: "bridge", amount, token, toChain };
+    }
+
     case "deposit":
     case "withdraw":
     case "mint":

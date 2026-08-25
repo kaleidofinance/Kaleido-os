@@ -10,7 +10,7 @@
  *
  * `ALL_TOOLS` is the flat version, and its only consumer today is `ToolRibbon`,
  * which is no longer on the page — the card grid in `CapabilityTabs` became the
- * inventory, so the ribbon was saying all 28 names a second time. The component is
+ * inventory, so the ribbon was saying all 29 names a second time. The component is
  * still on disk and this export is still gate-checked, so putting it back is one
  * line in page.tsx.
  *
@@ -26,7 +26,7 @@
  * How to re-verify after a catalog change, rather than trusting this comment:
  * `npx tsx src/app/(marketing)/_components/capabilities.test.ts` asserts every
  * name, every `required` list and every `optional` split against the catalog
- * itself, and builds all 22 examples through the real planner. It runs in the
+ * itself, and builds all 23 examples through the real planner. It runs in the
  * gate, so a catalog change that invalidates this file fails there.
  */
 
@@ -112,7 +112,7 @@ export interface Group {
 }
 
 /**
- * The seven execute groups — 22 tools, which is the number in the section
+ * The seven execute groups — 23 tools, which is the number in the section
  * heading. Keep that true: the heading is a count, and a count is the one kind
  * of copy that a reader can falsify by scrolling.
  *
@@ -150,9 +150,13 @@ export const GROUPS: readonly Group[] = [
   {
     title: "Move funds",
     tab: "Send",
-    /* The one group whose plan builds end to end with nothing deployed, because
-       it touches no Kaleido contract — see the OFFLINE deps in LivePlanner. */
-    note: "Wallet to wallet. No Kaleido contract touched.",
+    /* Neither tool here touches a Kaleido contract: a send goes wallet to
+       wallet, a bridge to a canonical portal or an aggregator router. A send
+       builds end to end with nothing deployed — see the OFFLINE deps in
+       LivePlanner — while a bridge resolves its route through PlanDeps the way a
+       swap resolves a price, so with no provider reachable its offline form is an
+       honest stop rather than a plan. */
+    note: "Wallet to wallet, or across chains — no Kaleido contract touched.",
     href: "/portfolio",
     tools: [
       {
@@ -167,6 +171,18 @@ export const GROUPS: readonly Group[] = [
           token: "USDC",
           to: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
         },
+      },
+      /* Native currency only for now, and the example is a real canonical
+         corridor: Sepolia → Base Sepolia deposits through the L1StandardBridge,
+         which the trace fixture resolves with no network call. A non-native
+         asset would need an approve to the router the auditor's approve rule
+         rejects, so the builder refuses it by name — see the bridge Intent's
+         native-only note in intents/types.ts. */
+      {
+        name: "bridge",
+        params: ["amount", "asset", "toChain"],
+        prompt: "bridge 0.05 ETH to Base Sepolia",
+        example: { amount: "0.05", asset: "ETH", toChain: "Base Sepolia" },
       },
     ],
   },
@@ -555,11 +571,11 @@ export const ALL_GROUPS: readonly Group[] = [...GROUPS, READS];
  */
 export const INTERNAL_TOOLS: readonly string[] = ["claimTestTokens"];
 
-/** 21. Derived, so the heading's number cannot drift from the data. */
+/** 23. Derived, so the heading's number cannot drift from the data. */
 export const EXECUTE_COUNT = GROUPS.reduce((n, g) => n + g.tools.length, 0);
 
 /**
- * All 27 names in one flat list.
+ * All 29 names in one flat list.
  *
  * Order is the groups' order rather than alphabetical, so it reads as the same
  * inventory the card grid walks through. `ToolRibbon` is its only reader and is

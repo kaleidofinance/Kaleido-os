@@ -2,7 +2,7 @@ import { ALL_TOOLS } from "./capabilities";
 import s from "./ToolRibbon.module.css";
 
 /**
- * All 27 tool names, drifting past in two rows.
+ * All 29 tool names, drifting past in two rows.
  *
  * The closer to the capability section, and it is doing a different job from the
  * tabs above it. The tabs are for a reader who wants to check one product; this
@@ -21,7 +21,7 @@ import s from "./ToolRibbon.module.css";
  * `aria-hidden` on the whole thing, deliberately. Every name is already reachable
  * above — the tab set puts one group in the DOM at a time and a screen reader
  * walks the strip to reach the rest — so without it the page would announce 54
- * identifiers (27 names, rendered twice per row for the seamless loop) that carry
+ * identifiers (29 names, rendered twice per row for the seamless loop) that carry
  * no information the tabs did not already give. This row is the *visual* summary
  * of a list that is already stated accessibly.
  */

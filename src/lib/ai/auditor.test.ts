@@ -886,6 +886,210 @@ async function main() {
     }
   }
 
+  /* -------------------------------------------------------------- bridge -- *
+   * A cross-chain move. Send's sibling, and audited like one: the transaction
+   * goes to a portal, never the diamond, so LibAgentPermission cannot bound it
+   * and the per-action cap plus the bridge rule are the only line. The fixture
+   * is the canonical Sepolia -> Base Sepolia corridor, which route.ts encodes
+   * with no network call, so every assertion here is deterministic and offline.
+   * ---------------------------------------------------------------------- */
+
+  {
+    /* The L1 standard-bridge portal for 11155111 -> 84532, the address route.ts
+       builds a canonical deposit against. Pasted rather than derived because
+       there is no "canonical target for this corridor" export to read — but a
+       wrong paste cannot pass silently: the well-formed case below asserts the
+       auditor RECOGNISES it, so a stale address fails that check loudly. */
+    const PORTAL = "0xfd0Bf71F60660E2f608ed56e1659C450eB113120";
+    const bridgeNative = tokens.find(
+      (t) => t.address.toLowerCase() === NATIVE_SENTINEL.dex.toLowerCase(),
+    );
+
+    if (!bridgeNative) {
+      console.log("\n  SKIP bridge cases: no native token registered.\n");
+    } else {
+      const bridge: Step = {
+        kind: "bridge",
+        token: bridgeNative.address,
+        amount: "0.05",
+        decimals: bridgeNative.decimals,
+        symbol: bridgeNative.symbol,
+        isNative: true,
+        to: PORTAL,
+        data: "0x",
+        value: "50000000000000000", // 0.05e18 wei; matches amount to the wei
+        fromChainId: CHAIN,
+        toChainId: 84532,
+        toChainName: "Base Sepolia",
+        provider: "canonical",
+      };
+
+      {
+        const v = await audit([bridge]);
+        check(
+          `a well-formed native ${bridgeNative.symbol} bridge passes and flags the unbounded hop`,
+          v.ok &&
+            v.notes.some((n) => n.includes("no on-chain permission bounds it")),
+          JSON.stringify({ blocked: v.blocked, notes: v.notes }),
+        );
+      }
+
+      {
+        /* Ungated, and pinned like the send case above: ACTION_OF.bridge is ""
+           because there is no wallet-level switch for it, so every product being
+           off must not read as a bridge being off. */
+        const v = await audit([bridge], {
+          allowedActions: {
+            swap: false,
+            borrow: false,
+            lend: false,
+            stake: false,
+            provideLiquidity: false,
+          },
+        });
+        check(
+          "a bridge is not gated by any product toggle",
+          v.ok,
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        /* 1 ETH is $3000 at the stub price, over the $1000 per-action cap. The
+           value rides the amount so both move together — this is the cap doing
+           its job on a transaction no on-chain permission can. */
+        const v = await audit([
+          { ...bridge, amount: "1", value: "1000000000000000000" },
+        ]);
+        check(
+          "a bridge over the per-action cap is rejected",
+          !v.ok && v.blocked.some((b) => b.includes("per-action limit")),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        /* The flag that picks a bare value transaction over a token call, unset.
+           Same refusal the native send has, for the same reason. */
+        const { isNative: _drop, ...noFlag } = bridge;
+        const v = await audit([noFlag]);
+        check(
+          "a native bridge with no isNative flag is rejected",
+          !v.ok &&
+            v.blocked.some((b) =>
+              b.includes("isNative is not set on a native-currency bridge"),
+            ),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        const v = await audit([{ ...bridge, provider: "wormhole" }]);
+        check(
+          "an unrecognised bridge provider is rejected",
+          !v.ok &&
+            v.blocked.some((b) =>
+              b.includes('unrecognised bridge provider "wormhole"'),
+            ),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        /* A well-formed address that is not the corridor's portal. provider is
+           still canonical, so the rule re-checks `to` against the very table
+           route.ts built it from and finds it absent — the check that a
+           canonical `to` actually came from the resolver. */
+        const v = await audit([{ ...bridge, to: RECIPIENT }]);
+        check(
+          "a canonical bridge to an address outside the table is rejected",
+          !v.ok &&
+            v.blocked.some((b) =>
+              b.includes("canonical bridge address is not one recognised"),
+            ),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        /* Built for a chain the wallet is not on. The plan is signed on CHAIN; a
+           source that is not CHAIN means the route was resolved elsewhere. */
+        const v = await audit([{ ...bridge, fromChainId: 84532 }]);
+        check(
+          "a bridge whose source chain is not the connected chain is rejected",
+          !v.ok &&
+            v.blocked.some((b) =>
+              b.includes("source chain is not the connected chain"),
+            ),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        const v = await audit([{ ...bridge, toChainId: CHAIN }]);
+        check(
+          "a bridge whose destination equals its source is rejected",
+          !v.ok &&
+            v.blocked.some((b) =>
+              b.includes("source and destination chains are the same"),
+            ),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        const { toChainId: _drop, ...noDest } = bridge;
+        const v = await audit([noDest]);
+        check(
+          "a bridge with no destination chain is rejected",
+          !v.ok &&
+            v.blocked.some((b) => b.includes("missing its destination chain")),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        /* value and amount derive from one number in the resolver, so a gap past
+           rounding means the row misstates what actually leaves the wallet —
+           here the value is ten times the amount shown. */
+        const v = await audit([{ ...bridge, value: "500000000000000000" }]);
+        check(
+          "a bridge whose value disagrees with its amount is rejected",
+          !v.ok &&
+            v.blocked.some(
+              (b) => b.includes("the row shows") && b.includes("is being sent"),
+            ),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      if (usdc) {
+        /* An ERC20 bridge, refused: it would need an approve to the router that
+           the approve rule rejects, so the auditor refuses it here too rather
+           than leave it looking auditable. Native base units for the value so
+           the amount/value cross-check is not what trips — the native gate is. */
+        const v = await audit([
+          {
+            ...bridge,
+            token: usdc.address,
+            symbol: usdc.symbol,
+            decimals: usdc.decimals,
+            isNative: false,
+            value: "50000", // 0.05 USDC at 6 decimals, consistent with amount
+          },
+        ]);
+        check(
+          "an ERC20 bridge is rejected as native-only",
+          !v.ok &&
+            v.blocked.some((b) =>
+              b.includes("only native currency can be bridged"),
+            ),
+          JSON.stringify(v.blocked),
+        );
+      }
+    }
+  }
+
   /* ------------------------------------------------------------ unpriced -- */
 
   /* The pre-TGE case, in the only form this repo can currently express it.
@@ -1010,6 +1214,7 @@ async function main() {
       "swap",
       "stake",
       "transfer",
+      "bridge",
       "depositCollateral",
       "withdrawCollateral",
       "repayLoan",

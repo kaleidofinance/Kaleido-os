@@ -137,6 +137,45 @@ export interface QuoteRequest {
 }
 
 /**
+ * A corridor to resolve into a signable bridge transaction.
+ *
+ * What buildIntents knows from the command: the destination, the asset, the
+ * amount, and whether it is the source chain's native currency. The source
+ * chain id and the user's address are injected by the deps closure — the same
+ * shape the read deps follow — so this request stays free of wallet state.
+ */
+export interface BridgeRouteRequest {
+  /** Destination as the user named it — a chain name, shortName or id. */
+  toChain: string;
+  /** Symbol of the asset leaving the wallet, e.g. "ETH". */
+  asset: string;
+  /** Human amount. */
+  amount: string;
+  decimals: number;
+  /** True for the source chain's native currency; the MVP requires it. */
+  isNative: boolean;
+}
+
+/**
+ * A resolved bridge, as the resolver returns it — the trusted origin of the
+ * `bridge` Intent's `to`/`data`/`value`. Either a canonical portal call encoded
+ * from a constant, or an aggregator's own calldata. See lib/bridge/route.ts.
+ */
+export interface BridgeRoute {
+  to: string;
+  data: string;
+  /** Wei to attach, as a decimal string. */
+  value: string;
+  toChainId: number;
+  toChainName: string;
+  /** "canonical" | "lifi" — how the auditor decides what to re-check. */
+  provider: string;
+  etaSeconds: number | null;
+  /** Set for a canonical deposit, which underruns estimateGas. */
+  gasLimit?: string;
+}
+
+/**
  * One asset the faucet lists, as the faucet itself reports it.
  *
  * Deliberately not an `IToken`. The faucet's assets are not in the token
@@ -169,9 +208,11 @@ const ALL_WORDS = new Set(["all", "everything", "every"]);
 /**
  * The chain and network reads a plan may need, injected by the caller.
  *
- * All six are lazy. A swap must not trigger a position enumeration, and a
+ * All seven are lazy. A swap must not trigger a position enumeration, and a
  * fee collection must not trigger a quote — on the server each of those is a
- * real RPC round trip.
+ * real RPC round trip. `bridgeRoute` is the one that may leave the chain's own
+ * RPC for an external provider, and only for a non-canonical corridor; a
+ * canonical one resolves with no call at all.
  */
 export interface PlanDeps {
   chainId?: number;
@@ -209,6 +250,14 @@ export interface PlanDeps {
     decimalsA: number,
     decimalsB: number,
   ): Promise<PoolState | null>;
+  /**
+   * Resolve a cross-chain corridor to a signable source-chain transaction, or
+   * an error to refuse with. The one dep that may reach an external provider
+   * (for a non-canonical corridor) rather than the chain's own RPC; a canonical
+   * corridor is pure and makes no call. Native currency only in the MVP — see
+   * the `bridge` branch below and lib/bridge/route.ts.
+   */
+  bridgeRoute(req: BridgeRouteRequest): Promise<BridgeRoute | { error: string }>;
 }
 
 /**
@@ -672,6 +721,95 @@ export async function buildIntents(
             decimals: token.decimals,
             symbol: token.symbol,
             isNative,
+          },
+        ],
+      },
+    };
+  }
+
+  /* -------------------------------------------------------------- bridge -- */
+  /*
+   * Directly below send because it is the second command that leaves Kaleido's
+   * contracts entirely, and for the same reasons: no diamond, no currency
+   * re-resolution, and — in the native-only MVP — no approve. The wallet signs
+   * one source-chain transaction to a portal or an aggregator router.
+   *
+   * Native only. An ERC20 leg would need an approve to that router, and the
+   * approve auditor pins spenders to Kaleido contracts, so it would be audited
+   * down to a refusal. There is nothing to gain by resolving a route we could
+   * not sign, so this refuses non-native by name and without a network call —
+   * ahead of the resolver, which refuses it again as defence in depth.
+   *
+   * `to`/`data`/`value` come from deps.bridgeRoute and never from here or the
+   * model: that is the whole security posture of a transaction the diamond
+   * cannot scope with LibAgentPermission. The auditor re-checks a canonical `to`
+   * against the same table it was built from and prices the notional against the
+   * per-action cap.
+   */
+  if (command.kind === "bridge") {
+    const { amount, token, toChain } = command;
+
+    // A bridge is defined by the chain it leaves. Without one there is no
+    // corridor to resolve and no `fromChainId` for the Intent, so refuse here
+    // rather than resolve against an undefined source.
+    if (chainId === undefined) {
+      return {
+        ok: false,
+        error: "Connect a wallet on the chain you want to bridge from first.",
+      };
+    }
+
+    if (!isParsableAmount(amount, token.decimals)) {
+      return {
+        ok: false,
+        error: `${amount} is more precision than ${token.symbol} has — it holds ${token.decimals} decimal places.`,
+      };
+    }
+
+    // Same either-sentinel test as send: native is a wallet fact here, not a
+    // protocol convention, so both the DEX and lending sentinels count.
+    const isNative =
+      isNativeSentinel(token.address, "dex") ||
+      isNativeSentinel(token.address, "lending");
+    if (!isNative) {
+      return {
+        ok: false,
+        error: `Bridging ${token.symbol} isn't available yet — only a chain's native currency can be bridged for now.`,
+      };
+    }
+
+    const route = await deps.bridgeRoute({
+      toChain,
+      asset: token.symbol,
+      amount,
+      decimals: token.decimals,
+      isNative,
+    });
+    if ("error" in route) {
+      return { ok: false, error: route.error };
+    }
+
+    return {
+      ok: true,
+      build: {
+        summary: `Bridge ${amount} ${token.symbol} to ${route.toChainName}.`,
+        intents: [
+          {
+            kind: "bridge",
+            to: route.to,
+            data: route.data,
+            value: route.value,
+            token: token.address,
+            amount,
+            decimals: token.decimals,
+            symbol: token.symbol,
+            fromChainId: chainId,
+            toChainId: route.toChainId,
+            toChainName: route.toChainName,
+            provider: route.provider,
+            etaSeconds: route.etaSeconds,
+            isNative,
+            ...(route.gasLimit ? { gasLimit: route.gasLimit } : {}),
           },
         ],
       },

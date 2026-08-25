@@ -6,6 +6,7 @@ import { TOOL_CATALOG } from "@/lib/ai/toolCatalog";
 import { renderIntent } from "@/lib/v2/intents";
 import { buildIntents, type PlanDeps } from "@/lib/v2/intents/build";
 import { parseCommand } from "@/lib/v2/intents/fromCommand";
+import { resolveBridgeRoute } from "@/lib/bridge/route";
 import { ALL_GROUPS, type Group, type Tool } from "./capabilities";
 
 /**
@@ -141,6 +142,16 @@ const LENDING_USDC = stableContracts(TRACE_CHAIN).USDC ?? DEX_USDC;
 const ETH_USD = 1834.61;
 
 /**
+ * The wallet the bridge fixture credits on the destination chain.
+ *
+ * A canonical deposit encodes the recipient into its calldata, so the resolver
+ * needs a real, checksummed address or it refuses before building. This is a
+ * fixture, not a live wallet — the same throwaway address the send and grant
+ * examples use in capabilities.ts — and it never signs anything here.
+ */
+const TRACE_USER = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984";
+
+/**
  * The six chain reads, answered from fixtures.
  *
  * Every value is in the units its real caller returns: `marketRow.amount` and
@@ -218,6 +229,21 @@ export const TRACE_DEPS: PlanDeps = {
       liquidity: "8891240998877665544",
     };
   },
+  /*
+   * The only dep that runs the real resolver rather than a fixture, and it can:
+   * the one bridge example is the canonical Sepolia → Base Sepolia corridor,
+   * which route.ts encodes from a constant with no network call — so the trace
+   * shows the exact depositETHTo transaction the app would sign, not a stand-in.
+   * A non-canonical corridor would reach an aggregator over the network; none is
+   * asked for here, and capabilities.test.ts would surface it as a refusal if one
+   * were rather than let the render hang on a fetch.
+   */
+  bridgeRoute: (req) =>
+    resolveBridgeRoute({
+      ...req,
+      fromChainId: TRACE_CHAIN,
+      userAddress: TRACE_USER,
+    }),
 };
 
 export interface TraceStep {
@@ -226,13 +252,12 @@ export interface TraceStep {
   title: string;
   detail?: string;
   /**
-   * `renderIntent`'s chain label, carried through and currently rendered by
-   * nothing. None of these plans is cross-chain, so it is undefined on every step
-   * — and the app's row prints `v.chain ?? "—"`, which would put a column of
-   * em-dashes down the panel. TracePlayer shows the `kind` in that slot instead
-   * and says so at the rule. Kept rather than dropped because it is real output
-   * from the shared renderer: the day a builder emits a cross-chain step, the
-   * label is already at the boundary.
+   * `renderIntent`'s chain label. The bridge step sets it (`→ Base Sepolia`) —
+   * the cross-chain case this field was added for, and the day the comment here
+   * used to anticipate — while every other step leaves it undefined. The app's
+   * row prints `v.chain ?? "—"`, so TracePlayer shows the step's `kind` in that
+   * slot rather than a column of em-dashes and says so at the rule; the label
+   * rides through the shared renderer without needing a column of its own yet.
    */
   chain?: string;
 }
@@ -372,7 +397,7 @@ async function typedTurn(
  * Builds every trace once.
  *
  * Sequential, matching `planFromToolCalls`' own contract — the builders may
- * issue reads and the fixtures above are shared — and 27 pure turns over static
+ * issue reads and the fixtures above are shared — and 29 pure turns over static
  * fixtures is not work worth parallelising.
  */
 export async function getCapabilityTraces(): Promise<readonly GroupTrace[]> {

@@ -88,6 +88,15 @@ const OFFLINE: PlanDeps = {
      has no typed form, and this component only ever plans what parseCommand
      returned. */
   poolState: async () => null,
+  /* A bridge route resolves against a live provider — a canonical portal for the
+     exact corridor, or an aggregator quote otherwise — which is a network round
+     trip the app makes and this page will not. So it answers as the app does on
+     a corridor it cannot reach: a named stop, not a fabricated route. A send, by
+     contrast, needs nothing external and still builds in full right here. */
+  bridgeRoute: async () => ({
+    error:
+      "A bridge route resolves against a live provider, which this page does not call.",
+  }),
 };
 
 /**
@@ -102,6 +111,7 @@ const VERB: Record<Command["kind"], string> = {
   stake: "Stake",
   approve: "Approve",
   send: "Send",
+  bridge: "Bridge",
   borrow: "Borrow",
   lend: "Lend",
   deposit: "Deposit collateral",
@@ -162,6 +172,7 @@ const FIELDS: ReadonlyArray<{ key: string; label: string }> = [
   { key: "tokenIn", label: "From" },
   { key: "tokenOut", label: "To" },
   { key: "to", label: "Recipient" },
+  { key: "toChain", label: "To chain" },
   { key: "interestPct", label: "Rate" },
   { key: "days", label: "Term" },
   { key: "loanId", label: "Loan" },

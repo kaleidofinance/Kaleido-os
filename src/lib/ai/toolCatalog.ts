@@ -148,6 +148,34 @@ export const TOOL_CATALOG: ToolSpec[] = [
       required: ["amount", "token", "to"],
     },
   },
+  {
+    name: "bridge",
+    kind: "execute",
+    /*
+     * Send's cross-chain sibling, and the second execute tool that touches no
+     * Kaleido contract — the transaction goes to a canonical portal or an
+     * aggregator router, so no on-chain agent permission bounds it and the
+     * auditor's USD cap is the only limit. `toChain` travels as text: the server
+     * resolves it against the real chain registry and takes `to`/`data`/`value`
+     * from a trusted source, never from the model. Native only for now; the
+     * builder refuses any other asset by name.
+     */
+    description:
+      "Bridge the source chain's native currency to another chain — one transaction, signed on the chain the user is on now. Native currency only for now (e.g. ETH on an Ethereum chain); for any other asset, use getBridgeRoute to quote a route the user completes with the provider. `toChain` is a chain name or id; the server resolves the route from a trusted source and refuses a corridor it cannot build.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        amount,
+        asset: symbol,
+        toChain: {
+          type: "string",
+          description: 'Destination chain name or id, e.g. "Base Sepolia" or "84532"',
+        },
+      },
+      required: ["amount", "asset", "toChain"],
+    },
+  },
 
   /* ---- EXECUTE: lending collateral ----------------------------------- */
   {
@@ -552,7 +580,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getBridgeRoute",
     kind: "read",
     description:
-      "Cost and time to bridge an asset between two chains, quoted from Relay and LI.FI. Use when the user's funds are on the wrong chain for what they want to do. Kaleido does not execute bridges — report the quote and say the user completes it with the provider. If fee or time come back null they are genuinely unknown; say so rather than estimating.",
+      "Cost and time to bridge an asset between two chains, quoted from Relay and LI.FI. Use when the user's funds are on the wrong chain for what they want to do, or to preview a bridge before running one. Kaleido can execute a native-currency bridge itself with the bridge tool; for any other asset, report the quote and say the user completes it with the provider. If fee or time come back null they are genuinely unknown; say so rather than estimating.",
     parameters: {
       type: "object",
       additionalProperties: false,

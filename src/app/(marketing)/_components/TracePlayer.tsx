@@ -11,7 +11,7 @@ import s from "./TracePlayer.module.css";
  * dressed up as a transcript. Every string it types and every string Luca says
  * back was built on the server by the product's own code — see traces.ts, which
  * parses the sentence with `parseCommand` and plans it with `buildIntents`, so on
- * 20 of the 21 execute tools the reply is literally `built.build.summary`, the
+ * 21 of the 23 execute tools the reply is literally `built.build.summary`, the
  * same expression agent/page.tsx:271 hands to `say()`. What is animated is the
  * *clock*: the keystrokes, the wait, and the order things land in. The content is
  * fixed before this component mounts.

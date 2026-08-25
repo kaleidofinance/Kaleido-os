@@ -13,6 +13,7 @@ import {
 } from "@/constants/registry";
 import { envVars } from "@/constants/envVars";
 import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
+import { isKnownBridgeAddress } from "@/lib/bridge/route";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
 import type { PlanStep } from "./types";
@@ -155,6 +156,21 @@ const ACTION_OF: Record<IntentKind, string> = {
    * borrowing "swap" and calling it covered.
    */
   transfer: "",
+
+  /*
+   * A bridge is a send that crosses a chain, and it is ungated for the same
+   * reason: useAgentSettings ships no "wallet" switch, and none of the five it
+   * does ship names moving funds off-chain. Borrowing a product toggle here
+   * would gate a cross-chain move on, say, "swap" — a setting the user was
+   * never shown for this — so it is left ungated and bounded by the caps and by
+   * the bridge rule in AUDITORS instead.
+   *
+   * Its risk is send's, sharpened: the transaction goes to a portal or an
+   * aggregator router rather than the diamond, so LibAgentPermission.enforce()
+   * never runs and there is no on-chain bound at all — the same place `transfer`
+   * lands, reached by a different route.
+   */
+  bridge: "",
 
   /* Lending. Collateral is gated with borrowing because that is what it is
      for, and because withdrawing it is the one exit that can move a position
@@ -1006,6 +1022,115 @@ const AUDITORS: Record<IntentKind, Auditor> = {
       reasons.length === 0
         ? [
             "a send cannot be reversed and no on-chain permission bounds it, so the address is worth reading character by character",
+          ]
+        : [];
+
+    return { reasons, notes, ...priceIf(tok.symbol, amount) };
+  },
+
+  /* -------------------------------------------------------------- bridge -- */
+  /**
+   * A cross-chain move, and send's sibling here for the reason it is one in
+   * ACTION_OF: the transaction goes to a portal or an aggregator router, never
+   * the diamond, so LibAgentPermission.enforce() cannot bound it and the caps
+   * plus this rule are the only line.
+   *
+   * `to`/`data`/`value` come from a trusted resolver rather than the model — but
+   * auditPlan takes a PlanStep[], not a builder result, so that trust is a fact
+   * about the current wiring, not something provable here (the caveat `pinned`
+   * and `recipientReasons` also carry). So this re-checks what it can: a
+   * canonical `to` against the very table the resolver built it from, the value
+   * riding the transaction against the amount shown on the row, and the notional
+   * against the cap. `to` is a router, not a recipient, so recipientReasons —
+   * which would refuse a legitimate contract target — is deliberately not used.
+   *
+   * Native only, matching the builder and the resolver. An ERC20 bridge would
+   * need an approve to the router that the approve rule rejects, so it is
+   * refused here too rather than left looking auditable.
+   */
+  bridge: (s, chainId) => {
+    const reasons: string[] = [];
+    const token = str(s.token);
+    const tok = knownToken(chainId, token);
+    if (!tok.ok) reasons.push(`unrecognised token ${token || "(none)"}`);
+
+    const amount = positive(s.amount);
+    if (amount === null)
+      reasons.push("bridge amount is missing or not positive");
+
+    const decimals = num(s.decimals);
+    if (decimals === null) reasons.push("token decimals are missing");
+    else if (tok.ok && decimals !== tok.decimals)
+      reasons.push(
+        `decimals say ${decimals} but ${tok.symbol} has ${tok.decimals}`,
+      );
+
+    /* Native only, and strict about it for send's reason: an unset flag on a
+       native token would send calldata to a sentinel address. Either sentinel
+       counts — a bridge is not a protocol call. */
+    const wantsNative =
+      isNativeSentinel(token, "dex") || isNativeSentinel(token, "lending");
+    if (!wantsNative)
+      reasons.push(
+        "only native currency can be bridged for now — an ERC20 bridge needs an approve this does not yet cover",
+      );
+    if (Boolean(s.isNative) !== wantsNative)
+      reasons.push(
+        wantsNative
+          ? "isNative is not set on a native-currency bridge"
+          : "isNative is set on a token that is not the native currency",
+      );
+
+    /* Source must be the chain the plan is signed on; destination a different,
+       real chain. A source mismatch means the route was built for a chain the
+       wallet is not connected to. */
+    const fromChainId = num(s.fromChainId);
+    const toChainId = num(s.toChainId);
+    if (fromChainId === null)
+      reasons.push("the bridge is missing its source chain");
+    else if (chainId !== undefined && fromChainId !== chainId)
+      reasons.push("the bridge's source chain is not the connected chain");
+    if (toChainId === null || toChainId <= 0)
+      reasons.push("the bridge is missing its destination chain");
+    else if (fromChainId !== null && toChainId === fromChainId)
+      reasons.push("the source and destination chains are the same");
+
+    /* `to` must be a real address always; how it is trusted turns on provider. */
+    reasons.push(...requireAddresses(s, "to"));
+    const provider = str(s.provider);
+    if (provider === "canonical") {
+      /* Re-checked against the same constant table route.ts built it from — the
+         one provider whose target is fixed and therefore allow-listable. A miss
+         means the `to` did not come from the resolver. */
+      if (fromChainId !== null && !isKnownBridgeAddress(fromChainId, str(s.to)))
+        reasons.push(
+          "the canonical bridge address is not one recognised on the source chain",
+        );
+    } else if (provider !== "lifi" && provider !== "relay") {
+      /* Fail closed: a canonical target is allow-listed and an aggregator's is
+         bounded by the cap, so anything else is neither and is refused. */
+      reasons.push(`unrecognised bridge provider "${provider || "(none)"}"`);
+    }
+
+    /* The value that actually leaves the wallet, against the amount on the row.
+       The resolver derives both from one number — identically for a canonical
+       deposit — so a gap past rounding means the row misstates what is sent.
+       Priced by the human amount below, which this ties to the value. */
+    const value = rawUnits(s.value);
+    if (value === null)
+      reasons.push("the amount to send is not a positive base-unit figure");
+    else if (amount !== null && decimals !== null && decimals >= 0) {
+      const sending = Number(ethers.formatUnits(value, decimals));
+      if (sending > 0 && Math.abs(sending - amount) / sending > 0.01)
+        reasons.push(`the row shows ${amount} but ${sending} is being sent`);
+    }
+
+    /* Like send, the check nothing here can make: that this is the chain and
+       asset the user meant, on a transaction no on-chain permission bounds. */
+    const notes =
+      reasons.length === 0
+        ? [
+            "a bridge leaves this chain and no on-chain permission bounds it, so the destination chain and amount are worth confirming",
           ]
         : [];
 

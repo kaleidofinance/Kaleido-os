@@ -188,6 +188,47 @@ register("transfer", {
   },
 });
 
+/* ----------------------------------------------------------------- bridge -- */
+/*
+ * The other resolver that calls nothing of ours — a raw transaction to a portal
+ * or aggregator router, whose `to`/`data`/`value` came from a trusted resolver
+ * and are sent here untouched. Native only in the MVP, so `value` carries the
+ * amount and there is no approve to pair it with.
+ *
+ * Fire-and-forget on the fast direction: this signs and confirms the
+ * source-chain deposit and reports the ETA. The async withdrawal/claim leg for
+ * the slow direction is deferred, and nothing here forecloses adding it.
+ */
+register("bridge", {
+  render: (i) => ({
+    title: `Bridge ${i.amount} ${i.symbol} to ${i.toChainName}`,
+    /*
+     * An ETA only when the resolver returned one. A canonical deposit has no
+     * honest estimate, so it states the direction rather than inventing a
+     * number — the sourcing rule this whole path is built under.
+     */
+    detail:
+      i.etaSeconds != null
+        ? `Arrives on ${i.toChainName} in about ${Math.round(
+            i.etaSeconds / 60,
+          )} min. Signed on this chain; irreversible once sent.`
+        : `Signed on this chain and delivered to ${i.toChainName}. Irreversible once sent.`,
+    chain: `→ ${i.toChainName}`,
+  }),
+  resolve: async (ctx, i) => {
+    /* The gas floor is set only for a canonical deposit, whose portal burns gas
+       in a gasleft() loop that makes estimateGas underrun. */
+    const tx = await ctx.signer.sendTransaction({
+      to: i.to,
+      data: i.data,
+      value: BigInt(i.value),
+      ...(i.gasLimit ? { gasLimit: BigInt(i.gasLimit) } : {}),
+    });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
 /* ------------------------------------------------------------- lending -- */
 
 const pct = (n: number) => `${n}%`;

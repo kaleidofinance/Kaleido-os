@@ -82,6 +82,58 @@ export type Intent =
       /** True for the chain's native currency: sent as value, no calldata. */
       isNative?: boolean;
     }
+  /* ----------------------------------------------------------- bridge -- */
+  /*
+   * A cross-chain move, and the second intent — after `transfer` — that calls
+   * no Kaleido contract. The wallet signs one source-chain transaction: a bare
+   * `value` send to a canonical portal, or an aggregator router's own calldata.
+   * Because it never enters the diamond, LibAgentPermission.enforce() cannot
+   * scope it and the auditor's per-action USD cap is the only bound — the same
+   * shape as `transfer`, and the reason both share that rule's design.
+   *
+   * So `to`/`data`/`value` come from a TRUSTED resolver (a canonical constant or
+   * a provider quote), never from the model, and the auditor re-checks `to`
+   * against a known-bridge allowlist before it prices the notional.
+   *
+   * MVP is native-currency only. A native deposit sends `value` with no prior
+   * approve, which is what lets it sidestep the approve auditor's spender pin —
+   * that rule only trusts Kaleido contracts as spenders, and a bridge router is
+   * not one. An ERC20 bridge would need an approve to the resolver's router and
+   * a spine change teaching that pin about known routers; `spender` is the seam
+   * left for it, and is unset here.
+   */
+  | {
+      kind: "bridge";
+      /** Portal or aggregator router on the SOURCE chain. From the resolver, never the model. */
+      to: string;
+      /** Calldata for `to`; "0x" for a bare-value deposit. */
+      data: string;
+      /** Wei to send with the transaction, as a decimal string. */
+      value: string;
+      /** The asset leaving the wallet — the native sentinel in the MVP. */
+      token: string;
+      /** Human amount, for the rendered row and the auditor's pricing. */
+      amount: string;
+      decimals: number;
+      symbol: string;
+      fromChainId: number;
+      toChainId: number;
+      /** Destination chain's display name, for the rendered row. */
+      toChainName: string;
+      /** "canonical" | "relay" | "lifi" — the trusted origin of `to`/`data`. */
+      provider: string;
+      /** Seconds, or null when genuinely unknown — never a fabricated ETA. */
+      etaSeconds: number | null;
+      /** True for the chain's native currency: sent as `value`, no approve. */
+      isNative?: boolean;
+      /**
+       * Forward seam for the deferred ERC20 leg: the router an approve would
+       * authorise. Unset in the native-only MVP, so no approve step is emitted.
+       */
+      spender?: string;
+      /** Gas floor for a canonical deposit, which underruns estimateGas. */
+      gasLimit?: string;
+    }
   /* ---------------------------------------------------------- lending -- */
   /*
    * The P2P family. Each mirrors one ProtocolFacet call that previously only
