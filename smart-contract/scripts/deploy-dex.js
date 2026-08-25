@@ -95,6 +95,23 @@ async function main() {
   const routerAddress = await router.getAddress();
   console.log("KaleidoSwapRouter deployed to:", routerAddress);
 
+  // 3. Protocol fee, off unless asked for. feeTo starts at the zero address and
+  //    the pair's _mintFee is a no-op until it is set, so a plain deploy ships
+  //    the fee off — as it should during the testnet phase, where feeToSetter is
+  //    still the deployer rather than the multisig. V2_FEE_TO turns it on at
+  //    deploy time for the chains that want it; the deployer is feeToSetter here,
+  //    so it is authorised. For already-deployed chains, use set-dex-fees.js.
+  let feeTo = ethers.ZeroAddress;
+  if (process.env.V2_FEE_TO) {
+    feeTo = process.env.V2_FEE_TO;
+    if (!ethers.isAddress(feeTo)) {
+      throw new Error(`V2_FEE_TO is not a valid address: ${feeTo}`);
+    }
+    console.log("\nSetting V2 protocol fee recipient (feeTo)...");
+    await (await factory.setFeeTo(feeTo)).wait();
+    console.log("  feeTo:", feeTo);
+  }
+
   const deploymentInfo = {
     network: hre.network.name,
     chainId,
@@ -107,6 +124,7 @@ async function main() {
     },
     notes: {
       feeToSetter,
+      feeTo,
       pairResolution: "factory.getPair — no init code hash to keep in sync",
     },
   };

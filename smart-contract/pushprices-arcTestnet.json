@@ -2,51 +2,26 @@
   "network": "arcTestnet",
   "chainId": 5042002,
   "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
-  "timestamp": 1787387551675,
+  "timestamp": 1787664668183,
   "oracle": "0x0262aff2a0D8E56048e408D5fE875EA051dED65c",
   "pyth": "0x2880aB155794e7179c9eE2e38200202908C17B43",
   "hermes": "https://hermes.pyth.network",
-  "txHash": "0x21171480c37194f610a11c1d39e9a4c04b099b306c03126b3cd57dfd3964651f",
-  "blockNumber": 58274081,
-  "gasUsed": "302953",
-  "feeWei": "3",
+  "txHash": "0xad0a03c06a45e9d74128003e170711e54c5023e946973f9c0f10d2144ad9a08e",
+  "blockNumber": 58787125,
+  "gasUsed": "215367",
+  "feeWei": "1",
   "pushed": [
     {
       "symbols": [
-        "WBTC"
+        "USDC",
+        "WUSDC"
       ],
-      "feedId": "0xc9d8b075a5c69303365ae23633d4e085199bf5c520a3b90fed1322a0342ffc33",
-      "bound": null,
-      "probeOnly": true,
-      "ageBefore": null,
-      "servedBefore": false,
-      "ageAfter": 15,
-      "served": true,
-      "withinBound": true
-    },
-    {
-      "symbols": [
-        "USDT"
-      ],
-      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
-      "bound": null,
-      "probeOnly": true,
-      "ageBefore": 8421322,
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "bound": 90000,
+      "probeOnly": false,
+      "ageBefore": 75178,
       "servedBefore": true,
-      "ageAfter": 15,
-      "served": true,
-      "withinBound": true
-    },
-    {
-      "symbols": [
-        "USDE"
-      ],
-      "feedId": "0x6ec879b1e9963de5ee97e9c8710b742d6228252a5e2ca12d4ae81d7fe5ee8c5d",
-      "bound": null,
-      "probeOnly": true,
-      "ageBefore": 8421322,
-      "servedBefore": true,
-      "ageAfter": 15,
+      "ageAfter": 5,
       "served": true,
       "withinBound": true
     }

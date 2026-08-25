@@ -1,0 +1,79 @@
+# Browser-closed push — the server-side trigger.
+#
+# The notification centre can already deliver a push to a closed browser
+# (public/sw.js renders it, /api/push/send encrypts and sends it, and
+# src/lib/notifications/push.ts is what a browser calls to subscribe). What it
+# could not do was *fire* one without a tab open: useProtocolEvents.ts watches the
+# chain from the browser and dies with the page. This workflow is the server-side
+# job the send route's header names as its caller.
+#
+# scripts/push-watcher.mjs scans three ProtocolFacet events across every deployed
+# chain and POSTs /api/push/send for the counterparty each is news to:
+#   RequestServiced   → the borrower (their request was funded)
+#   LoanRepayment     → the lender   (a loan they funded was repaid)
+#   RequestLiquidated → both parties
+# The last block processed per chain lives in public.push_watch_state
+# (20260825000000_push_watch_state.sql), so each event is delivered exactly once
+# and a dropped run is caught up by the next — cadence is latency, not correctness.
+#
+# Cadence: every 5 minutes, the tightest GitHub allows. A liquidation is the alert
+# that most wants to be prompt. GitHub's scheduled runs are delayed and sometimes
+# dropped under load; that only delays a push, because the checkpoint guarantees
+# the next run still finds it.
+#
+# ── Activation (inert until all of these are true) ───────────────────────────
+#   1. Merged to the DEFAULT branch. GitHub runs `schedule` only from there.
+#   2. Repo secrets APP_URL + PUSH_SEND_SECRET set. Without both the watcher runs
+#      as a dry run: it reads chains, logs the pushes it would send, and sends
+#      none. (PUSH_SEND_SECRET must equal the value the deployed app was given, or
+#      /api/push/send returns 401.)
+#   3. Supabase secrets set, or the run has no checkpoint store and re-scans a
+#      recent window each time (fine for a dry run, wrong for broadcasting — set
+#      them before turning sending on).
+#   4. Actions enabled for the repo.
+#
+# TESTNET NOTE. Unlike price-keeper, this holds no chain key: it only reads logs
+# and calls an authenticated HTTP endpoint. PUSH_SEND_SECRET is the only secret
+# that can send, and the same guard applies on mainnet — it never falls open.
+
+name: push-watcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+# Skip rather than queue: a slow run must not overlap the next and re-scan a range
+# the first has not yet checkpointed.
+concurrency:
+  group: push-watcher
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Watch loan events and push to closed browsers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Scan and push
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          PUSH_SEND_SECRET: ${{ secrets.PUSH_SEND_SECRET }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Optional per-chain RPC overrides for the public endpoints in chains.ts,
+          # which rate-limit. Named RPC_URL_<chainId>: 11155111 Sepolia, 84532 Base
+          # Sepolia, 5042002 Arc, 46630 Robinhood, 97 BSC.
+          RPC_URL_11155111: ${{ secrets.RPC_URL_11155111 }}
+          RPC_URL_84532: ${{ secrets.RPC_URL_84532 }}
+          RPC_URL_5042002: ${{ secrets.RPC_URL_5042002 }}
+          RPC_URL_46630: ${{ secrets.RPC_URL_46630 }}
+          RPC_URL_97: ${{ secrets.RPC_URL_97 }}
+        run: node --import tsx scripts/push-watcher.mjs

@@ -7,6 +7,7 @@ import { borrowCurrencies, getContracts } from "@/constants/registry";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import { readMarketRow } from "@/lib/lending/book";
 import { readPoolState } from "@/lib/dex/pool";
+import { resolveBridgeRoute } from "@/lib/bridge/route";
 import type {
   FaucetAssetRef,
   LoanRef,
@@ -357,5 +358,20 @@ export function serverPlanDeps(
         decimalsA,
         decimalsB,
       ),
+    /* The one dep that can leave this chain's own RPC for an external provider,
+       and only for a non-canonical corridor — a canonical one is encoded with no
+       call at all. build.ts refuses a bridge before it reaches here when the
+       chain is unknown, so this guard is the type-level echo of that, degrading
+       to a named refusal rather than calling the resolver with no source chain. */
+    bridgeRoute: (req) =>
+      chainId === undefined
+        ? Promise.resolve({
+            error: "Connect a wallet to a supported chain to bridge.",
+          })
+        : resolveBridgeRoute({
+            ...req,
+            fromChainId: chainId,
+            userAddress: address ?? "",
+          }),
   };
 }

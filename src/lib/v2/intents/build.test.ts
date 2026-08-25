@@ -28,7 +28,12 @@ import type { IToken } from "../../../constants/types/dex";
 import type { LendingSide } from "../../../constants/registry";
 import type { Command } from "./fromCommand";
 import type { IntentKind } from "./types";
-import type { PlanDeps, PlanResult, QuoteRequest } from "./build";
+import type {
+  BridgeRouteRequest,
+  PlanDeps,
+  PlanResult,
+  QuoteRequest,
+} from "./build";
 
 /*
  * Addresses fixed before the builder loads.
@@ -89,6 +94,11 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
        this is how the tier-resolution cases tell those two apart — a branch that
        silently defaulted to 0.3% instead of reading would still return a plan. */
     pools: [] as number[],
+    /* The corridors asked to resolve. build.ts refuses a bridge for its own
+       reasons — no chain, over-precise amount, non-native — BEFORE it reaches
+       the resolver, so this is how the ordering cases prove the refusal came
+       first: a recorded call means a guard that should have fired did not. */
+    bridge: [] as BridgeRouteRequest[],
   };
   const deps: PlanDeps = {
     chainId: over.chainId ?? CHAIN,
@@ -120,6 +130,17 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
       calls.pools.push(fee);
       return over.poolState ? over.poolState(a, b, fee, da, db) : null;
     },
+    /* An error by default, not a silent success. A bridge route is the one dep
+       that can leave the chain for an external provider, so a fixture that
+       forgot to stub it must refuse rather than resolve to nothing. The
+       canonical-corridor cases below override this with the real resolver,
+       which needs no network for the Sepolia→Base Sepolia leg. */
+    bridgeRoute: async (req) => {
+      calls.bridge.push(req);
+      return over.bridgeRoute
+        ? over.bridgeRoute(req)
+        : { error: "no bridge route in this fixture" };
+    },
   };
   return { deps, calls };
 }
@@ -132,6 +153,14 @@ async function load() {
   const registry = await import("../../../constants/registry");
   const { envVars } = await import("../../../constants/envVars");
   const { chainTokens } = await import("../../../constants/tokens");
+  /* The bridge resolver, loaded here with the rest so the env pins above have
+     already run — it reads none of them, but the file's whole discipline is
+     that every runtime import is dynamic. It is the real resolveBridgeRoute the
+     browser and the route handler call, network-free on the canonical corridor
+     the bridge cases exercise. */
+  const { resolveBridgeRoute, isKnownBridgeAddress } = await import(
+    "../../bridge/route"
+  );
   /* The pool fixtures below carry a tick, and deriving it beats writing one
      down: a hand-typed tick is a second statement of the same price, free to
      disagree with it. */
@@ -144,6 +173,8 @@ async function load() {
     envVars,
     chainTokens,
     priceToTick,
+    resolveBridgeRoute,
+    isKnownBridgeAddress,
   };
 }
 async function main() {
@@ -155,6 +186,8 @@ async function main() {
     envVars,
     chainTokens,
     priceToTick,
+    resolveBridgeRoute,
+    isKnownBridgeAddress,
   } = await load();
   const { NATIVE_SENTINEL, STAKING_CONTRACTS } = registry;
 
@@ -251,7 +284,8 @@ async function main() {
       c.positions +
       c.loans +
       c.faucet +
-      c.pools.length ===
+      c.pools.length +
+      c.bridge.length ===
     0;
 
   console.log("\n— commands with no transaction —");
@@ -662,6 +696,225 @@ async function main() {
       "the lending sentinel is native too, not an ERC20 at ADDRESS_1",
       r.ok && at(r, 0).isNative === true,
       JSON.stringify(at(r, 0)),
+    );
+  }
+
+  console.log("\n— bridge —");
+  /*
+   * Send's cross-chain sibling, and the second command that ends in a call to
+   * no Kaleido contract — so, like send, the builder is the only line of defence
+   * and each case asserts the specific refusal rather than merely that nothing
+   * crashed. It has one more thing to hold in place than send does: a bridge
+   * goes to a portal or an aggregator router, the diamond never scopes it, and
+   * so the `to`/`data`/`value` MUST originate in the resolver and never in the
+   * model. The happy-path cases below run the REAL resolveBridgeRoute over the
+   * canonical Sepolia→Base Sepolia corridor, which encodes with no network call,
+   * so this stays an offline suite while exercising the exact bytes the wallet
+   * would sign.
+   *
+   * The refusal cases turn on ORDER: build.ts refuses a bridge for its own
+   * reasons — no chain, over-precise amount, non-native — before it reaches the
+   * resolver, so each asserts `calls.bridge` stayed empty. A recorded call there
+   * would mean a guard that should have fired first did not, and a route was
+   * resolved for a plan that was going to be refused anyway.
+   */
+  const BRIDGE_USER = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984";
+  const realBridge: Partial<PlanDeps> = {
+    bridgeRoute: (req) =>
+      resolveBridgeRoute({
+        ...req,
+        fromChainId: CHAIN,
+        userAddress: BRIDGE_USER,
+      }),
+  };
+  {
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "0.05",
+        token: DEX_ETH,
+        toChain: "Base Sepolia",
+      },
+      deps,
+    );
+    check(
+      "a native bridge is one step — value rides along, so there is nothing to approve",
+      kinds(r) === "bridge",
+      kinds(r),
+    );
+    check("and emits no approve", !kinds(r).includes("approve"), kinds(r));
+    const b = at(r, 0);
+    check(
+      "the corridor was resolved once, with the command's own asset and destination",
+      calls.bridge.length === 1 &&
+        calls.bridge[0].asset === "ETH" &&
+        calls.bridge[0].toChain === "Base Sepolia" &&
+        calls.bridge[0].isNative === true,
+      JSON.stringify(calls.bridge),
+    );
+    /* The `to` is a portal, and the auditor allow-lists a canonical one by
+       re-checking it against the same table it was built from. Asserting both
+       here is the seam that keeps builder and auditor reading one source: a `to`
+       the builder emits but `isKnownBridgeAddress` rejects would pass this file
+       and be refused at audit time, which is the disagreement this catches. */
+    check(
+      "the `to` is the canonical portal from the resolver, and the auditor's table agrees",
+      same(b.to, "0xfd0Bf71F60660E2f608ed56e1659C450eB113120") &&
+        isKnownBridgeAddress(CHAIN, String(b.to)),
+      String(b.to),
+    );
+    check(
+      "it is tagged canonical and carries the gas floor the OP portal underruns",
+      b.provider === "canonical" && b.gasLimit === "1000000",
+      JSON.stringify({ provider: b.provider, gasLimit: b.gasLimit }),
+    );
+    /* The one number the auditor prices against the per-action cap, and the one
+       the model is never asked for. 0.05 ETH is 5·10^16 wei; a value that did
+       not match the typed amount would move a different sum than the summary
+       promises, unseen by any on-chain bound. */
+    check(
+      "value is the typed amount in wei at the asset's own decimals",
+      b.value === "50000000000000000",
+      String(b.value),
+    );
+    check(
+      "the chain fields are the source it leaves and the destination it resolved",
+      b.fromChainId === CHAIN &&
+        b.toChainId === 84532 &&
+        b.toChainName === "Base Sepolia" &&
+        b.isNative === true,
+      JSON.stringify(b),
+    );
+    /* depositETHTo credits an L2 recipient, and it must be the caller's own
+       address. A deposit crediting anyone else is a theft the auditor's `to`
+       check cannot see — `to` is the portal, not the recipient, which lives in
+       the calldata. So the recipient is checked where it actually is: the user's
+       address, encoded into `data`, with nothing of the model's standing in. */
+    check(
+      "the calldata credits the caller's own address on the far side",
+      typeof b.data === "string" &&
+        String(b.data)
+          .toLowerCase()
+          .includes(BRIDGE_USER.slice(2).toLowerCase()),
+      String(b.data),
+    );
+    check(
+      "the summary names the amount, the asset and where it lands",
+      summaryOf(r) === "Bridge 0.05 ETH to Base Sepolia.",
+      summaryOf(r),
+    );
+  }
+  {
+    /* Non-native, and the ordering claim: the MVP bridges native currency only,
+       because an ERC20 leg needs an approve to the router and the approve
+       auditor pins spenders to Kaleido contracts. build.ts refuses it by name
+       BEFORE the resolver — which would refuse it again — so no route is
+       resolved for a plan that cannot be signed. */
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "100",
+        token: DEX_USDC,
+        toChain: "Base Sepolia",
+      },
+      deps,
+    );
+    check(
+      "an ERC20 bridge is refused by name",
+      !r.ok && errorOf(r).includes("only a chain's native currency can be bridged"),
+      errorOf(r),
+    );
+    check(
+      "and refused before any corridor is resolved",
+      calls.bridge.length === 0,
+      JSON.stringify(calls.bridge),
+    );
+  }
+  {
+    /* An amount finer than the token's decimals. Refused ahead of the resolver
+       too, so a corridor is never resolved for an amount that could not be
+       parsed into a value — same order as send's precision check. */
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "0.0000000000000000001",
+        token: DEX_ETH,
+        toChain: "Base Sepolia",
+      },
+      deps,
+    );
+    check(
+      "an amount more precise than the token is refused, with the decimals named",
+      !r.ok &&
+        errorOf(r).includes("more precision than ETH") &&
+        errorOf(r).includes("18 decimal"),
+      errorOf(r),
+    );
+    check(
+      "and refused before any corridor is resolved",
+      calls.bridge.length === 0,
+      JSON.stringify(calls.bridge),
+    );
+  }
+  {
+    /* No wallet chain. A bridge is defined by the chain it leaves; with none
+       there is no `fromChainId` to resolve against, so this refuses first of
+       all — even before the amount and native checks — and reads nothing. */
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "0.05",
+        token: DEX_ETH,
+        toChain: "Base Sepolia",
+      },
+      { ...deps, chainId: undefined },
+    );
+    check(
+      "with no connected chain, a bridge refuses and says to connect one",
+      !r.ok && errorOf(r).includes("Connect a wallet on the chain you want to bridge from"),
+      errorOf(r),
+    );
+    check(
+      "and refuses before resolving a corridor",
+      calls.bridge.length === 0,
+      JSON.stringify(calls.bridge),
+    );
+  }
+  {
+    /* The resolver's own error becomes the plan's refusal, verbatim — build.ts
+       does not paraphrase it. A stub stands in for the resolver here rather than
+       the real one: the offline way to make resolveBridgeRoute return `{ error }`
+       is a corridor with no canonical portal, which falls through to the
+       aggregator's live HTTP call, and this suite makes none. The propagation is
+       what is under test, not the resolver's routing — that is route.check.ts's
+       job — so a fixed error string is the honest fixture. */
+    const { deps, calls } = fakeDeps({
+      bridgeRoute: async () => ({
+        error: "No executable route for ETH to Sepolia right now.",
+      }),
+    });
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "0.05",
+        token: DEX_ETH,
+        toChain: "Sepolia",
+      },
+      deps,
+    );
+    check(
+      "a resolver that can't route the corridor refuses with its own words",
+      !r.ok && errorOf(r) === "No executable route for ETH to Sepolia right now.",
+      errorOf(r),
+    );
+    check(
+      "the resolver was reached — this refusal came from it, not an earlier guard",
+      calls.bridge.length === 1,
+      JSON.stringify(calls.bridge),
     );
   }
 

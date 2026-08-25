@@ -62,6 +62,27 @@ export interface SendCommand {
   /** Recipient, `0x`-prefixed, case exactly as typed. */
   to: string;
 }
+/**
+ * A cross-chain move — send's sibling, and the second command in this grammar
+ * that ends in a call to no Kaleido contract.
+ *
+ * `toChain` is a free-text chain name, not an `IToken` and not resolved here.
+ * Every token-carrying command matches against the `tokens` registry the caller
+ * passes in; a chain has no such parameter, and resolving one would make this
+ * module import a chain list and assume it — the exact coupling the header keeps
+ * `tokens` a parameter to avoid. So the name travels untouched and the bridge
+ * resolver (lib/bridge/route.ts) matches it against the real registry, refusing
+ * an unknown one by name — the same contract the tool-call path's `toChain`
+ * follows. Case is not load-bearing the way a recipient's is: the registry match
+ * is case-insensitive, so unlike `to` above this need not survive normalise().
+ */
+export interface BridgeCommand {
+  kind: "bridge";
+  amount: string;
+  token: IToken;
+  /** Destination chain name, as typed (case-folded). Resolved downstream. */
+  toChain: string;
+}
 export interface HelpCommand {
   kind: "help";
 }
@@ -222,6 +243,7 @@ export type Command =
   | StakeCommand
   | ApproveCommand
   | SendCommand
+  | BridgeCommand
   | BorrowCommand
   | LendCommand
   | DepositCommand
@@ -277,6 +299,7 @@ export type Slot =
   | "tokenOut"
   | "token"
   | "recipient"
+  | "toChain"
   | "rate"
   | "days"
   | "ref";
@@ -290,6 +313,8 @@ export interface Draft {
   token?: IToken;
   /** Send recipient. Case-sensitive — see SendCommand. */
   to?: string;
+  /** Bridge destination chain name, as typed. Resolved downstream. */
+  toChain?: string;
   interestPct?: number;
   days?: number;
   loanId?: number;
@@ -321,6 +346,10 @@ const VERBS: Record<ActionKind, string[]> = {
      fall through to the model rather than resolve to the closer guess. "send"
      and "transfer" have one reading each. */
   send: ["send", "transfer"],
+  /* One reading, like send. "bridge" as a money verb means exactly one thing —
+     move value to another chain — so it resolves locally rather than falling
+     through to the model the way a two-reading verb would. */
+  bridge: ["bridge"],
   borrow: ["borrow"],
   lend: ["lend", "supply", "offer"],
   deposit: ["deposit", "collateralise", "collateralize"],
@@ -504,6 +533,7 @@ const PROMPTS: Record<Slot, string> = {
   tokenOut: "Which token do you want to receive?",
   token: "Which token?",
   recipient: "Which address should it go to? (0x…)",
+  toChain: "Which chain should it go to? (e.g. Base Sepolia)",
   rate: "What interest rate? (e.g. 8%)",
   days: "Over what term? (e.g. 30 days)",
   ref: "Which one? For example: listing 3, request 7, or position 42.",
@@ -812,6 +842,10 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     return parseSwap(words, amount, mentions);
   }
 
+  if (verb.kind === "bridge") {
+    return parseBridge(words, amount, mentions);
+  }
+
   if (verb.kind === "send") {
     /*
      * Two addresses is contradictory, not under-specified: there is no such
@@ -935,6 +969,40 @@ function parseSwap(
   };
 }
 
+/**
+ * "bridge 0.05 ETH to Base Sepolia" — send's cross-chain sibling.
+ *
+ * Structurally a swap with a chain where the second token would be: the
+ * separator splits the asset from the destination, and the asset is taken from
+ * before it so a token name inside the destination phrase can't be mistaken for
+ * the thing being moved (the same guard parseSwap uses for tokenIn/tokenOut).
+ *
+ * The destination is the free text after the separator, taken as a string — not
+ * matched against anything here. See BridgeCommand: resolving a chain name is
+ * the resolver's job, so this captures the phrase and lets buildIntents refuse
+ * an unknown one by name. Without a separator it still collects the asset and
+ * asks for the chain, rather than guessing a destination out of trailing words.
+ */
+function parseBridge(
+  words: string[],
+  amount: { amount: string; index: number } | null,
+  mentions: Mention[],
+): ParseResult {
+  const sepAt = words.findIndex((w) => SEPARATORS.includes(w));
+  const dest = sepAt >= 0 ? words.slice(sepAt + 1).join(" ").trim() : "";
+  const token =
+    sepAt >= 0
+      ? mentions.find((m) => m.index < sepAt)?.token
+      : mentions[0]?.token;
+
+  return completeDraft({
+    kind: "bridge",
+    amount: amount?.amount,
+    token,
+    toChain: dest || undefined,
+  });
+}
+
 /* --------------------------------------------------------- slot filling -- */
 
 /**
@@ -989,6 +1057,15 @@ export function fillSlot(
       return incomplete(draft, "recipient");
     }
     next.to = answered.to;
+  } else if (missing === "toChain") {
+    // A chain name, not a token or a number: take the whole reply. The resolver
+    // matches it against the registry, so a wrong name comes back as a named
+    // refusal rather than being guessed here. `reply`, not `words`: no need to
+    // strip punctuation from "Base Sepolia", and the raw form reads better if
+    // it has to be echoed back.
+    const answer = reply.trim();
+    if (!answer) return incomplete(draft, "toChain");
+    next.toChain = answer;
   } else {
     const token = findTokenMentions(words, tokens)[0]?.token;
     if (!token) return incomplete(draft, missing);
@@ -1130,6 +1207,24 @@ export function completeDraft(draft: Draft): ParseResult {
     };
   }
 
+  if (draft.kind === "bridge") {
+    if (!draft.token) return incomplete(draft, "token");
+    if (!draft.amount) return incomplete(draft, "amount");
+    /* Destination last, mirroring send's recipient: it is the slot the resolver
+       can still reject, so it is answered against a question that already names
+       the amount and asset. */
+    if (!draft.toChain) return incomplete(draft, "toChain");
+    return {
+      status: "ok",
+      command: {
+        kind: "bridge",
+        amount: draft.amount,
+        token: draft.token,
+        toChain: draft.toChain,
+      },
+    };
+  }
+
   if (draft.kind === "claimTestTokens") {
     /* Unreachable through parseCommand, which returns this kind directly and
        never builds a draft for it. It exists so that if one is ever constructed
@@ -1154,6 +1249,7 @@ export const COMMAND_HELP = [
   // list is copy-pasteable, and a made-up 40-hex recipient that someone pastes
   // is an unrecoverable loss.
   "send 50 USDC to 0x…",
+  "bridge 0.05 ETH to Base Sepolia",
   "swap 500 USDC to KLD",
   "stake 100",
   "deposit 500 USDC",

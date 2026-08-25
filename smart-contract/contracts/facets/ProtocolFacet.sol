@@ -83,8 +83,18 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
      * @param _token The address of the token to be validated
      */
     modifier _nativeMoreThanZero(address _token) {
-        if (_token == Constants.NATIVE_TOKEN && msg.value <= 0) {
-            revert Protocol__MustBeMoreThanZero();
+        if (_token == Constants.NATIVE_TOKEN) {
+            if (msg.value <= 0) revert Protocol__MustBeMoreThanZero();
+        } else if (msg.value != 0) {
+            /* The ERC20 side of the same question.
+             *
+             * This modifier already knew which currency the call operates on and
+             * only asserted the native case, so ETH attached to an ERC20 call
+             * passed straight through: nothing downstream reads msg.value on that
+             * branch, so it was credited to no ledger and left sitting in the
+             * diamond, recoverable only by an owner sweep. Checking both
+             * directions of the branch it is already testing costs nothing. */
+            revert Protocol__UnexpectedNativeValue(msg.value);
         }
         _;
     }
@@ -98,8 +108,11 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
         if (_amount <= 0) {
             revert Protocol__MustBeMoreThanZero();
         }
-        if (_token == Constants.NATIVE_TOKEN && msg.value <= 0) {
-            revert Protocol__MustBeMoreThanZero();
+        if (_token == Constants.NATIVE_TOKEN) {
+            if (msg.value <= 0) revert Protocol__MustBeMoreThanZero();
+        } else if (msg.value != 0) {
+            /* See _nativeMoreThanZero — same stranding, same fix. */
+            revert Protocol__UnexpectedNativeValue(msg.value);
         }
         _;
     }
@@ -1139,6 +1152,17 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
         if (_isNative) {
             _amount = msg.value;
             require(_amount > 0, "Protocol__MustBeMoreThanZero");
+        } else if (msg.value != 0) {
+            /* The ERC20 branch below pulls the repayment with transferFrom and
+             * never reads msg.value, and _nativeRefund is only ever set on the
+             * native path — so ETH attached here was neither used, refunded nor
+             * credited to any ledger. It stayed in the diamond as an unowned
+             * balance.
+             *
+             * This cannot use the modifiers the other three payable entry points
+             * share: the currency is _request.loanRequestAddr, which is not known
+             * until the request has been read out of storage. */
+            revert Protocol__UnexpectedNativeValue(msg.value);
         }
 
         /* Clamp before anything moves. The borrower owes at most

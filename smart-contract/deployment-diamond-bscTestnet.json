@@ -12,7 +12,7 @@
     "DiamondInit": "0x90a1620578CE419242F806e7387Db7e70c8cfa96",
     "DiamondLoupeFacet": "0x7Ee07e9eb94B6b21589539a491E37804886AB201",
     "OwnershipFacet": "0xA9006fA582F859536AE04C9808AE75C7c3EBE110",
-    "ProtocolFacet": "0x2f6c25Aa5B32D685505681B5F07aA8ec59367681",
+    "ProtocolFacet": "0xC0f8D36ec1D96477F26228A629a31248c584f477",
     "AgentPermissionFacet": "0xF4cAd894479e1BbD9356b683403101AABC1c7BFa"
   },
   "config": {
@@ -34,6 +34,33 @@
       "to": "0x2f6c25Aa5B32D685505681B5F07aA8ec59367681",
       "txHash": "0x1dc1e369fc0b68e7d979cddf47d2ec39a95c634ee602a4f865d5880e0089ce82",
       "block": 126975328,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0x2f6c25Aa5B32D685505681B5F07aA8ec59367681",
+      "to": "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9",
+      "txHash": "0x305a15cdb1df4a9dabaebfd13c716e17ead3451cab1b81452f2c095489a581c6",
+      "block": 127133148,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9",
+      "to": "0xb4b8fF43BC177C7cB1180c2f6010ab979A7Ee336",
+      "txHash": "0x94e386d10f0d270105fdd41a02b481dc361a014c91f143c00c06c0c59f7cf32e",
+      "block": 127133951,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0xb4b8fF43BC177C7cB1180c2f6010ab979A7Ee336",
+      "to": "0xC0f8D36ec1D96477F26228A629a31248c584f477",
+      "txHash": "0xb89aebc1e9cd96f1456dfaca73af2943e7b488472a6a8fcdf44283fad2b1f4e3",
+      "block": 127140813,
       "selectorsReplaced": 68,
       "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
     }

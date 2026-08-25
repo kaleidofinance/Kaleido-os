@@ -7,6 +7,7 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { readFaucetAssets } from "@/hooks/v2/useFaucet";
 import { readMarketRow } from "@/lib/lending/book";
 import { readPoolState } from "@/lib/dex/pool";
+import { resolveBridgeRoute } from "@/lib/bridge/route";
 import { providerForChain } from "@/config/provider";
 import { getContracts } from "@/constants/registry";
 import {
@@ -137,6 +138,20 @@ export function useLocalPlanner() {
               decimalsA,
               decimalsB,
             ),
+          /* Same resolver the server uses — route.ts is isomorphic on purpose,
+             so a bridge planned in the chat and one planned on the page produce
+             the identical source-chain transaction. The chain guard mirrors
+             build.ts's own refusal when no wallet chain is connected. */
+          bridgeRoute: (req) =>
+            chainId === undefined
+              ? Promise.resolve({
+                  error: "Connect a wallet to a supported chain to bridge.",
+                })
+              : resolveBridgeRoute({
+                  ...req,
+                  fromChainId: chainId,
+                  userAddress: address ?? "",
+                }),
         },
       ),
     [getV3AmountOut, chainId, address],

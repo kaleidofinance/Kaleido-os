@@ -14,7 +14,7 @@ import s from "./CapabilityTabs.module.css";
  * replays the chat turn the product would actually run: the sentence being typed,
  * Luca answering, and the plan arriving step by step. None of it is authored.
  * `traces.ts` runs each prompt through `parseCommand` and `buildIntents` — the
- * app's own local path — so on 20 of the 21 execute tools the line Luca says is
+ * app's own local path — so on 21 of the 23 execute tools the line Luca says is
  * `built.build.summary`, the identical expression agent/page.tsx:271 passes to
  * `say()`, and the steps are labelled by `renderIntent`, the same renderer the
  * in-app plan panel uses. Change a step's title in definitions.ts and this section
@@ -35,15 +35,15 @@ import s from "./CapabilityTabs.module.css";
  * Two reasons, and the first is the one that mattered:
  *
  *   1. A strip plus a rail showed one group's tools at a time, so the size of the
- *      surface — 27 tools — was something a reader had to assemble by clicking
+ *      surface — 29 tools — was something a reader had to assemble by clicking
  *      through eight tabs. The count in the heading was the only evidence of it.
- *      All 27 on screen at once *is* the claim, and it needs no copy.
+ *      All 29 on screen at once *is* the claim, and it needs no copy.
  *   2. It ends the height problem for good. Groups holding 1 to 8 tools cannot
  *      share a selector that resizes with them, which is what forced the 296px
  *      floor this panel used to carry and the empty box under `Send` that came
  *      with it. A static card grid does not resize at all.
  *
- * The trade the cards make is that they are 27 identical small things, which is
+ * The trade the cards make is that they are 29 identical small things, which is
  * exactly what an earlier version of this section was rejected for. The difference
  * is what they are next to: on their own they were the content, and here they are
  * an index into one animated turn that carries all the detail.
@@ -63,7 +63,7 @@ import s from "./CapabilityTabs.module.css";
  * The traces are the third option and the better one: real output from the real
  * builders, computed on the server, structurally incapable of rendering empty.
  *
- * IT ROTATES BY ITSELF, THROUGH ALL 27, IN CARD ORDER. Without that this section
+ * IT ROTATES BY ITSELF, THROUGH ALL 29, IN CARD ORDER. Without that this section
  * only ever showed one turn — `swap`, group 0 tool 0 — and the other 26 cards were
  * captions for an animation a visitor had to go looking for. Nothing on the page
  * asked them to click, so most never did, and the section's whole argument (this
@@ -84,16 +84,16 @@ import s from "./CapabilityTabs.module.css";
  *   2. **Reduced motion means no rotation at all**, and it costs nothing to
  *      honour: the player only fires `onFinished` when a clock actually ran, so
  *      `prefers-reduced-motion` leaves this at the static finished transcript of
- *      group 0 tool 0 with all 27 cards still there to click.
+ *      group 0 tool 0 with all 29 cards still there to click.
  *   3. **Off-screen it stops advancing.** The player's own observer arms once and
  *      stays armed, which is right for one turn and wrong for an endless loop —
- *      unwatched, it would cycle 27 turns forever in a background tab. A finished
+ *      unwatched, it would cycle 29 turns forever in a background tab. A finished
  *      turn parks in `pending` instead, and the next advance happens when the
  *      section is back on screen.
  *   4. **It never moves focus.** `move()` focuses because an arrow key should; a
  *      timer must not, or the page steals the caret every eight seconds.
  *
- * The one thing it does *not* have is a visible pause control. Every one of the 27
+ * The one thing it does *not* have is a visible pause control. Every one of the 29
  * cards is one — clicking any of them stops the rotation for good — and reduced
  * motion switches it off outright, which is the escape hatch that matters. A
  * "Pause" chip in the player head is the alternative if this ever feels like it
@@ -279,9 +279,9 @@ export default function CapabilityTabs({ groups }: Props) {
           {groups.map((g, gi) => (
             <div key={g.title} className={s.group}>
               {/*
-               * One tablist per group rather than one for all 27, because the
+               * One tablist per group rather than one for all 29, because the
                * groups are the only structure in the inventory and a single flat
-               * tablist would announce "1 of 27" with no mention of which part of
+               * tablist would announce "1 of 29" with no mention of which part of
                * the product a tool belongs to. The heading is the label, so it is
                * `aria-labelledby` rather than a duplicated `aria-label` string.
                */}
@@ -310,7 +310,7 @@ export default function CapabilityTabs({ groups }: Props) {
                       aria-controls="cap-trace"
                       /*
                        * Arrow keys move within a tablist, so only one card per
-                       * group is a tab stop — 27 of them each taking a Tab press
+                       * group is a tab stop — 29 of them each taking a Tab press
                        * is the thing this role exists to avoid. In the group
                        * holding the selection that card is the selected one;
                        * elsewhere it is the first, because a tablist whose every

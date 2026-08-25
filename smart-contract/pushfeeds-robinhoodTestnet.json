@@ -1,0 +1,33 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-08-25T13:30:03.201Z",
+  "oracle": "0x7Ee07e9eb94B6b21589539a491E37804886AB201",
+  "hermes": "https://hermes.pyth.network",
+  "pushed": [
+    {
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "aggregator": "0xD520B8C9778f49050F7172ebb80d52f54a212eD1",
+      "answer": "245838000000",
+      "observedAt": 1787664572,
+      "bound": 3600,
+      "txHash": "0xd057296b82cf2e456b5ef8642523724f3b5cfceeac8f92f7b35cfc07678df848"
+    },
+    {
+      "symbols": [
+        "USDC"
+      ],
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "aggregator": "0x2E7dd52073d6653F610607dA9B947ba59B585bf8",
+      "answer": "100003255",
+      "observedAt": 1787664572,
+      "bound": 90000,
+      "txHash": "0xaa4c193ca99e8478395041ade4eac9e4369a001814e4c74ae5a3181c096dbdb9"
+    }
+  ]
+}

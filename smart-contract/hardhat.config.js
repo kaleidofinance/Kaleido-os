@@ -123,7 +123,15 @@ module.exports = {
 
     // --- Ethereum ---
     sepolia: {
-      url: rpc("SEPOLIA_RPC", "https://rpc.sepolia.org"),
+      /*
+       * publicnode, not rpc.sepolia.org — that host serves a 404 HTML page to
+       * eth_chainId (measured 2026-08-25) and has for some time. Nothing in .env
+       * overrides SEPOLIA_RPC, so the fallback IS the endpoint every
+       * `--network sepolia` run uses, and a dead default means the whole Sepolia
+       * deploy path fails at connect. The other four testnet defaults were probed
+       * in the same pass and all answer with the right chainId.
+       */
+      url: rpc("SEPOLIA_RPC", "https://ethereum-sepolia-rpc.publicnode.com"),
       chainId: 11155111,
       accounts: accounts(),
       timeout: 120000,
@@ -398,23 +406,25 @@ module.exports = {
        * their bytecode was last checked under, and so the (substantial) viaIR
        * compile-time cost is paid once rather than on every contract.
        *
-       * Size check under these settings: 24,207 bytes against the EIP-170 limit
-       * of 24,576 — 369 bytes of headroom, measured from artifacts/ after
-       * `setFeedMaxAge`/`getFeedMaxAge` and the per-feed staleness lookup were
-       * added. It was 23,935 (641 spare) before those, and 23,453 before
-       * evmVersion was pinned; the 482-byte step there is the expected price of
-       * `paris`, which turns every PUSH0 into a two-byte PUSH1 0x00.
+       * Size check under these settings: 23,676 bytes against the EIP-170 limit
+       * of 24,576 — 900 bytes of headroom, measured from artifacts/ on
+       * 2026-08-25 after the four `Protocol__UnexpectedNativeValue` guards,
+       * which cost 107 bytes (23,569 without them). The figure recorded here
+       * before that was 24,207/369, which had drifted: the facet has since been
+       * refactored — `liquidateUserRequest` split into three internals and
+       * `repayLoan` reworked — and nothing re-measured. Re-measure rather than
+       * carry a number forward; the drift ran in the safe direction this time,
+       * but a stale figure is what would let an over-limit facet ship.
        *
-       * 369 bytes is the real constraint on this facet now — one more external
-       * function of any substance will not fit. The config comment previously
-       * prescribed moving new surface into a separate facet, and that is still
-       * right for anything that does not touch `_appStorage`. Note the trap
-       * before trying it for something that does: this facet reads the app
+       * 900 bytes is still the real constraint on this facet. The config comment
+       * previously prescribed moving new surface into a separate facet, and that
+       * is still right for anything that does not touch `_appStorage`. Note the
+       * trap before trying it for something that does: this facet reads the app
        * storage struct as a *sequential* state variable starting at slot 1
-       * (ReentrancyGuard takes slot 0), not through
-       * `LibAppStorage.layout()`'s keccak slot. A new facet declaring the same
-       * struct without an identical preceding layout would place every field
-       * one slot low and read garbage. See the note on `getPythPriceOracle`.
+       * (ReentrancyGuard takes slot 0), not through `LibAppStorage.layout()`'s
+       * keccak slot. A new facet declaring the same struct without an identical
+       * preceding layout would place every field one slot low and read garbage.
+       * See the note on `getPythPriceOracle`.
        *
        * NOT applied to 0.7.6: viaIR changes the compiled pool bytecode and
        * therefore poolInitCodeHash. See the note on that compiler entry.

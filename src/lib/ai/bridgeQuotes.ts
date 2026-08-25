@@ -12,9 +12,20 @@
  *   - it mapped "abstract" to 11124, the testnet, and silently defaulted
  *     unknown chain names to Base → Abstract rather than failing
  *
- * Quoting only. Kaleido does not execute the bridge, so no transaction is
- * built or returned — the user is pointed at the provider. Making this an
- * EXECUTE tool would need a resolver and a much harder look at approvals.
+ * Two callers, two depths. `getBridgeQuote` is quote-only — it answers "what
+ * would this cost" for the read tool and points the user at the provider, and
+ * that framing still holds for it. `getBridgeExecution`, added below, is the
+ * aggregator half of the execute path: it pulls a provider's OWN executable
+ * calldata out of a quote so the resolver in lib/bridge/route.ts can hand it to
+ * the wallet. It builds no transaction of its own — it extracts a real one or
+ * returns null.
+ *
+ * Native currency only, on both the aggregator here and the canonical portal in
+ * route.ts. An ERC20 bridge needs an approve to the router, and that is the
+ * "much harder look at approvals" this header used to defer wholesale: the
+ * approve auditor pins spenders to Kaleido contracts, so a router spender would
+ * be refused until that pin learns about bridges. Native sends `value` with no
+ * approve and sidesteps it, which is why the MVP stops there.
  */
 
 import { CHAINS, type ChainMeta } from "@/constants/chains";
@@ -50,7 +61,7 @@ export interface BridgeQuote {
 }
 
 /** Resolve a chain by name, shortName or id, against the real registry. */
-function resolveChain(input: string | number): ChainMeta | undefined {
+export function resolveChain(input: string | number): ChainMeta | undefined {
   if (typeof input === "number") return CHAINS.find((c) => c.id === input);
   const q = String(input).trim().toLowerCase();
   if (/^\d+$/.test(q)) return CHAINS.find((c) => c.id === Number(q));
@@ -214,4 +225,75 @@ export async function getBridgeQuote(args: {
   return {
     error: `No route found for ${args.amount} ${asset} from ${from.name} to ${to.name}. Say so plainly rather than estimating a cost.`,
   };
+}
+
+/**
+ * The executable transaction for a NATIVE bridge, from LI.FI's quote.
+ *
+ * Where getBridgeQuote answers "what would this cost" for the read tool, this
+ * answers "what do I sign" for the resolver in lib/bridge/route.ts. It is the
+ * aggregator half of that resolver; the canonical-portal half needs no provider
+ * at all, being a fixed contract call route.ts encodes itself.
+ *
+ * LI.FI only, and native only. Its /quote returns a `transactionRequest` with
+ * the exact { to, data, value } to send — the same response object `lifiQuote`
+ * above already reads its fee and duration from — so this extracts a real
+ * transaction or returns null; it assembles nothing. Relay stays quote-only
+ * here: its executable step sits nested under steps[].items[] in a shape not
+ * worth guessing at while no mainnet deployment exercises it.
+ *
+ * Returns null on a dead provider, a testnet the aggregators do not index
+ * (measured: all five testnets return 4xx), or a response carrying no usable
+ * transactionRequest. The resolver turns null into an honest refusal rather
+ * than a fabricated route — the units are pre-scaled by the caller, because
+ * route.ts has already parsed the amount at the asset's real decimals.
+ */
+export async function getBridgeExecution(args: {
+  fromChainId: number;
+  toChainId: number;
+  asset: string;
+  /** Smallest-unit amount, already scaled by the caller. */
+  units: string;
+  address: string;
+}): Promise<{
+  to: string;
+  data: string;
+  /** Decimal wei, converted from LI.FI's hex quantity. */
+  value: string;
+  etaSeconds: number | null;
+} | null> {
+  try {
+    const qs = new URLSearchParams({
+      fromChain: String(args.fromChainId),
+      toChain: String(args.toChainId),
+      fromToken: args.asset,
+      toToken: args.asset,
+      fromAmount: args.units,
+      fromAddress: args.address,
+    });
+    const res = await fetch(`${LIFI_API}/quote?${qs}`);
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as {
+      estimate?: { executionDuration?: number };
+      transactionRequest?: { to?: string; data?: string; value?: string };
+    };
+
+    const tx = data.transactionRequest;
+    if (!tx?.to || !tx.data) return null;
+
+    // LI.FI returns value as a hex quantity; the Intent carries decimal wei.
+    // A malformed value throws in BigInt and is caught as "no route".
+    const value = BigInt(tx.value ?? "0").toString();
+    const dur = data.estimate?.executionDuration;
+
+    return {
+      to: tx.to,
+      data: tx.data,
+      value,
+      etaSeconds: typeof dur === "number" ? dur : null,
+    };
+  } catch {
+    return null;
+  }
 }

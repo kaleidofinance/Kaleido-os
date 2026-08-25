@@ -12,7 +12,7 @@
     "DiamondInit": "0x5B8Ce8F0a44ED4F73CFD9b6E7DC1E15Ebe7F6e8e",
     "DiamondLoupeFacet": "0x17FD4cEA2f47C9983Ff2B167f81a53DC861ea42E",
     "OwnershipFacet": "0x92922a92C19007598Ff98817B72C19be37C6d09e",
-    "ProtocolFacet": "0x8860638BF5803D597cD970c252365320f9053d47",
+    "ProtocolFacet": "0x534B4341239B90604723b6c20D6A95D39F85E917",
     "AgentPermissionFacet": "0x6EfeC378d8bB73487D8c015A62a33B97b9D781E5"
   },
   "config": {
@@ -34,6 +34,42 @@
       "to": "0x8860638BF5803D597cD970c252365320f9053d47",
       "txHash": "0x83b8169e5f5f4c856ddd2d9d0c104971e827ab0f83939f70b8746b617f681d2c",
       "block": 106639018,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0x8860638BF5803D597cD970c252365320f9053d47",
+      "to": "0x40ABaDfCDD24159069859f756cf6B68C79027cB8",
+      "txHash": "0x91e0627031cf4a4330f611aef9fca81ea8d452b3e3a5c8e2dac6bdb4a65c21cf",
+      "block": 107095304,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0x40ABaDfCDD24159069859f756cf6B68C79027cB8",
+      "to": "0x15a77B4D4B7321B78db818e528cfdc8F8B1C7c62",
+      "txHash": "0x39363b371f199438725b527e4e2b148dc31fd20dc651aefa9078fff992745168",
+      "block": 107097509,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0x15a77B4D4B7321B78db818e528cfdc8F8B1C7c62",
+      "to": "0x9e3f9A7AbFb97134c2aDEf2EFf7E4B6834772E5D",
+      "txHash": "0x05eaa910f3fa0bf59bd7952002516a0fb07df20ebdad0ad78c8431567ccfa068",
+      "block": 107099101,
+      "selectorsReplaced": 68,
+      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0x9e3f9A7AbFb97134c2aDEf2EFf7E4B6834772E5D",
+      "to": "0x534B4341239B90604723b6c20D6A95D39F85E917",
+      "txHash": "0x144a6ad92c250366bfce9af598cb26d78ef2cef6ddb09db63d135ca990cd9530",
+      "block": 107117951,
       "selectorsReplaced": 68,
       "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
     }

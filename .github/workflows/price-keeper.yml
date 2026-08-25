@@ -1,0 +1,102 @@
+# Price-feed keeper for the two chains nothing else refreshes.
+#
+# Arc (5042002) and Robinhood (46630) both enforce a staleness bound on every
+# priced call in ProtocolFacet — deposit, borrow, health-factor read, liquidation.
+# Miss the window and those operations revert until a fresh price lands. On the
+# other three chains a provider (Chainlink / API3) or Pyth's own network relays
+# the feeds; on these two, this workflow is what keeps them warm.
+#
+#   Arc       — Pyth is a PULL oracle. ETH/BTC (600s bound) ARE relayed by Pyth's
+#               network continuously, so this keeper leaves them alone; it cannot
+#               cover a 600s bound at a 20-minute cadence anyway. It relays only
+#               USDC/WUSDC (90000s bound), which nothing else pushes — Arc's own
+#               gas token, and the feed that was found dead and growing.
+#               → scripts/push-prices.js, PUSH_FEEDS=USDC
+#   Robinhood — self-hosted PushablePriceFeed contracts behind an
+#               AggregatorPriceOracle. Nothing but us pushes them. Both feeds
+#               (ETH 3600s, USDC 90000s).
+#               → scripts/push-aggregator.js
+#
+# Cadence: the tightest bound this keeper owns is Robinhood ETH at 3600s (1h).
+# GitHub's scheduled runs are delayed — and sometimes dropped entirely — under
+# load, so every-30-minutes leaves no margin for a skipped run. Every 20 minutes
+# gives three windows inside the bound: two consecutive drops still stay fresh.
+#
+# ── Activation (this workflow is inert until all three are true) ──────────────
+#   1. Merged to the DEFAULT branch. GitHub runs `schedule` triggers only from the
+#      default branch — on a feature branch this never fires on its own.
+#   2. Repo secret DEPLOYER_PRIVATE_KEY set. Without it hardhat's account list is
+#      empty, the push scripts find no signer and fail fast (a red run, by design).
+#   3. Actions enabled for the repo.
+# Optional secrets ARC_TESTNET_RPC / ROBINHOOD_TESTNET_RPC / HERMES_ENDPOINT
+# override the public endpoints the scripts fall back to when they are unset.
+#
+# TESTNET ONLY. DEPLOYER_PRIVATE_KEY here is the burned testnet deployer. A
+# mainnet keeper must run a dedicated keeper key whose only power is pushing
+# prices, with feed/oracle ownership on a multisig — never this key.
+
+name: price-keeper
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}
+
+# Never let a slow run overlap the next scheduled one; skip rather than queue.
+concurrency:
+  group: price-keeper
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: smart-contract
+
+jobs:
+  # Two independent jobs on purpose: an Arc RPC outage must not stop the Robinhood
+  # push, and vice versa. Each is a full, self-contained keeper for its chain.
+  arc:
+    name: Arc — relay USDC/WUSDC Pyth update
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: smart-contract/package-lock.json
+      - run: npm ci
+      - name: Push Arc USDC/WUSDC
+        env:
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          ARC_TESTNET_RPC: ${{ secrets.ARC_TESTNET_RPC }}
+          HERMES_ENDPOINT: ${{ secrets.HERMES_ENDPOINT }}
+          # PUSH_ALL forces the push even though USDC is nominally still inside its
+          # 25h bound — resetting the clock every run is the point. PUSH_FEEDS
+          # scopes it to USDC so we never spend a fee re-pushing the Pyth-relayed
+          # ETH/BTC feeds.
+          PUSH_ALL: "1"
+          PUSH_FEEDS: "USDC"
+        run: npx hardhat run scripts/push-prices.js --network arcTestnet
+
+  robinhood:
+    name: Robinhood — push ETH + USDC self-hosted feeds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: smart-contract/package-lock.json
+      - run: npm ci
+      - name: Push Robinhood feeds
+        env:
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          ROBINHOOD_TESTNET_RPC: ${{ secrets.ROBINHOOD_TESTNET_RPC }}
+          HERMES_ENDPOINT: ${{ secrets.HERMES_ENDPOINT }}
+          # Both feeds every run — the tightest bound (ETH 3600s) is the whole
+          # reason the cadence is 20 minutes.
+          PUSH_ALL: "1"
+        run: npx hardhat run scripts/push-aggregator.js --network robinhoodTestnet

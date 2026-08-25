@@ -30,6 +30,7 @@
     "verify:quota": "node scripts/verify_supabase_quota.cjs",
     "gen:registry": "node --import tsx scripts/gen-registry.mjs",
     "gen:arc": "node --import tsx scripts/gen-hero-arc.mjs",
+    "watch:push": "node --import tsx scripts/push-watcher.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },
