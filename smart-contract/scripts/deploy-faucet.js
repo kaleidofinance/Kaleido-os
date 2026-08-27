@@ -40,6 +40,17 @@
  *   from: "literal"     third-party contracts in no record of ours (Arc's EURC
  *                       and cirBTC). These carry expectSymbol/expectDecimals and
  *                       are verified on-chain before listing — see below.
+ *   from: "native"      the chain's own gas token, listed under the sentinel
+ *                       address(1). No record and no decimals()/symbol() to read
+ *                       — address(1) is the ecrecover precompile — so its address,
+ *                       18 decimals and symbol come from the plan, not a call. It
+ *                       is the FIRST asset on every chain because a wallet with no
+ *                       gas cannot pay for the transaction that claims any of the
+ *                       others; see the note on the native funding strategy.
+ *
+ * The native sentinel is distinct from the wrapped native above it: WETH/WBNB/
+ * WUSDC are ERC20s a tester lends and LPs with, address(1) is raw gas. Both are
+ * listed, and a fresh wallet claims the native first to afford the rest.
  *
  * The first two are the same files gen-registry.mjs folds into the registry, so
  * the faucet cannot hand out a USDC the app does not know about. That is precisely
@@ -71,7 +82,7 @@
  *
  * ── Funding ─────────────────────────────────────────────────────────────────
  *
- * The faucet pays out of its own balance, so it needs stock. Four strategies,
+ * The faucet pays out of its own balance, so it needs stock. Five strategies,
  * chosen per asset rather than attempted blindly:
  *
  *   mint      MockERC20 (public mint) and USDT.sol / USDe.sol (onlyOwner, and the
@@ -91,6 +102,14 @@
  *             18.53251241577010882 — it is ONE balance viewed at 6 decimals
  *             instead of 18. So funding USDC on Arc spends the gas budget, and it
  *             shares the same reserve as wrapping for the same reason.
+ *   native    The gas token itself (the address(1) sentinel). Stocked by a plain
+ *             value transfer to the faucet, which its receive() accepts. Like wrap
+ *             and alias it is paid out of the native balance and so draws on the
+ *             same reserve-bounded budget, split evenly with them — the faucet
+ *             cannot hand out gas it needs to keep for its own remaining
+ *             transactions. On the chains whose deployer is nearly empty this
+ *             funds to zero and is reported short, which is not broken: the asset
+ *             is listed and reads empty on /faucet until someone sends it native.
  *
  * Funding is never a reason to abort a deploy. The address has to reach the
  * registry either way, topping up is a plain transfer anyone can do later, and an
@@ -132,6 +151,7 @@ const FAUCET_PLANS = {
     label: "Sepolia",
     nativeReserve: 0.03, // 3.6x the measured 0.0083 floor
     assets: [
+      { key: "NATIVE", from: "native", symbol: "ETH", drip: 0.05, stockDrips: 20 },
       { key: "USDC", from: "stablecoin", drip: 10_000 },
       { key: "USDT", from: "stablecoin", drip: 10_000 },
       { key: "USDe", from: "stablecoin", drip: 10_000 },
@@ -143,6 +163,7 @@ const FAUCET_PLANS = {
     label: "Base Sepolia",
     nativeReserve: 0.0005, // 10x the measured 0.000048 floor
     assets: [
+      { key: "NATIVE", from: "native", symbol: "ETH", drip: 0.02, stockDrips: 20 },
       { key: "USDC", from: "stablecoin", drip: 10_000 },
       { key: "USDT", from: "stablecoin", drip: 10_000 },
       { key: "USDe", from: "stablecoin", drip: 10_000 },
@@ -154,6 +175,7 @@ const FAUCET_PLANS = {
     label: "BSC Testnet",
     nativeReserve: 0.005, // 6x the measured 0.0008 floor
     assets: [
+      { key: "NATIVE", from: "native", symbol: "BNB", drip: 0.02, stockDrips: 20 },
       { key: "USDC", from: "stablecoin", drip: 10_000 },
       { key: "USDT", from: "stablecoin", drip: 10_000 },
       { key: "USDe", from: "stablecoin", drip: 10_000 },
@@ -165,6 +187,7 @@ const FAUCET_PLANS = {
     label: "Robinhood Chain Testnet",
     nativeReserve: 0.002, // 25x the measured 0.00008 floor
     assets: [
+      { key: "NATIVE", from: "native", symbol: "ETH", drip: 0.01, stockDrips: 20 },
       { key: "USDC", from: "stablecoin", drip: 10_000 },
       { key: "USDT", from: "stablecoin", drip: 10_000 },
       { key: "USDe", from: "stablecoin", drip: 10_000 },
@@ -185,6 +208,20 @@ const FAUCET_PLANS = {
      */
     nativeReserve: 1,
     assets: [
+      /*
+       * Native gas on Arc IS USDC (18dp underneath, the same balance the aliased
+       * ERC20 below views at 6dp). Its key stays "NATIVE", not "USDC", so it does
+       * not collide with the aliased-USDC entry in the per-asset funding map; only
+       * its display symbol is USDC. It draws on the same balance as that entry and
+       * the WUSDC wrap, so all three split the reserve-bounded budget three ways.
+       */
+      {
+        key: "NATIVE",
+        from: "native",
+        symbol: "USDC",
+        drip: 0.5,
+        stockDrips: 20,
+      },
       /*
        * 10 claims' worth rather than the default 100, for the two that come out of
        * the gas balance. Not because asking for more would starve the deploy — the
@@ -233,6 +270,17 @@ const FAUCET_PLANS = {
 /** Claims' worth to stock when an asset does not override it. */
 const DEFAULT_STOCK_DRIPS = 100;
 const DEFAULT_COOLDOWN_SECONDS = 60 * 60;
+
+/**
+ * The native gas token's sentinel. MUST equal KaleidoTokenFaucet.NATIVE_TOKEN,
+ * Constants.NATIVE_TOKEN and the frontend's NATIVE_SENTINEL.lending, so a wallet
+ * that claims native here names the same asset it deposits as collateral there.
+ * Deliberately NOT the DEX's 0xEeee… convention. Every native asset in the wave
+ * is 18 decimals — the balance underneath, even where an ERC20 alias views it at
+ * 6 (Arc's USDC).
+ */
+const NATIVE_SENTINEL = "0x0000000000000000000000000000000000000001";
+const NATIVE_DECIMALS = 18;
 
 const ERC20_ABI = [
   "function decimals() view returns (uint8)",
@@ -303,13 +351,14 @@ function gasFloor(feeData) {
  * How much native the script may spend, and how much of it each asset that draws
  * on it gets.
  *
- * Wrapping and Arc's aliased USDC come out of the SAME balance — the ERC20 at
- * 0x3600…0000 is a 6-decimal view of the native one, and deposit() spends native
- * directly. A single running budget would therefore be first-come-first-served,
- * and on Arc that is not hypothetical: USDC is listed before WUSDC, its target is
- * larger than the whole budget, and it would take all of it and leave the wrapped
- * native at zero. Which asset wins would depend on the order of the array, which
- * is a presentation detail.
+ * Wrapping, Arc's aliased USDC and the native drip come out of the SAME balance
+ * — the ERC20 at 0x3600…0000 is a 6-decimal view of the native one, deposit()
+ * spends native directly, and the native drip is a plain send of it. A single
+ * running budget would therefore be first-come-first-served, and on Arc that is
+ * not hypothetical: USDC is listed before WUSDC, its target is larger than the
+ * whole budget, and it would take all of it and leave the wrapped native at zero.
+ * Which asset wins would depend on the order of the array, which is a
+ * presentation detail.
  *
  * An equal share per drawer is order-independent and predictable. A share that
  * goes unspent is not redistributed — that would reintroduce the ordering
@@ -322,7 +371,7 @@ function nativeBudget(listed, plan, nativeBalance, floor) {
   const reserve = stated > floor ? stated : floor;
   const spendable = nativeBalance > reserve ? nativeBalance - reserve : 0n;
   const drawers = listed.filter(
-    (a) => a.fund === "wrap" || a.fund === "alias"
+    (a) => a.fund === "wrap" || a.fund === "alias" || a.fund === "native"
   ).length;
   return {
     reserve,
@@ -364,6 +413,25 @@ async function planFunding(listed, { deployer, recipient, share, reserve }) {
 
     if (a.target === 0n) {
       push("none", 0n, "nothing requested");
+      continue;
+    }
+
+    /* -- the native gas token: a plain send, capped by the shared budget ---- */
+    if (a.fund === "native") {
+      /* Both the target and the share are native wei (18dp), and the share is
+       * already `(nativeBalance - reserve) / drawers`, so a send capped at it can
+       * never dip into the reserve or overspend — no balanceOf check needed, the
+       * budget IS the balance. */
+      const send = a.target < share ? a.target : share;
+      if (send === 0n) {
+        push(
+          "unfunded",
+          0n,
+          `no native above the ${ethers.formatEther(reserve)} reserve left to send`
+        );
+        continue;
+      }
+      push("native", send);
       continue;
     }
 
@@ -510,6 +578,33 @@ async function main() {
   const assets = [];
 
   for (const spec of plan.assets) {
+    /*
+     * Native is the sentinel address(1), which is the ecrecover precompile: a
+     * decimals()/symbol()/balanceOf() staticcall against it does not revert, it
+     * returns decodable garbage. So it is resolved from the plan — fixed address,
+     * 18 decimals, the plan's symbol — and never touches the ERC20 path below.
+     */
+    if (spec.from === "native") {
+      const drip = ethers.parseUnits(String(spec.drip), NATIVE_DECIMALS);
+      const stockDrips = BigInt(spec.stockDrips ?? DEFAULT_STOCK_DRIPS);
+      assets.push({
+        ...spec,
+        address: NATIVE_SENTINEL,
+        symbol: spec.symbol ?? "NATIVE",
+        decimals: NATIVE_DECIMALS,
+        drip,
+        target: drip * stockDrips,
+        token: null,
+        fund: "native",
+      });
+      console.log(
+        `   ${spec.key.padEnd(7)} ${NATIVE_SENTINEL}  (native gas, ` +
+          `${spec.symbol}, ${NATIVE_DECIMALS} dp) — drip ${spec.drip}, ` +
+          `stock ${stockDrips} ×  [native]`
+      );
+      continue;
+    }
+
     let address;
     if (spec.from === "stablecoin") {
       address = stable.contracts?.[spec.key];
@@ -772,6 +867,12 @@ async function main() {
       await (await a.token.transfer(faucetAddress, d.amount)).wait();
     } else if (d.method === "mint") {
       await (await a.token.mint(faucetAddress, d.amount)).wait();
+    } else if (d.method === "native") {
+      /* A plain value transfer the faucet's receive() accepts — the native token
+       * has no contract to call, it IS the value. */
+      await (
+        await deployer.sendTransaction({ to: faucetAddress, value: d.amount })
+      ).wait();
     } else {
       /* alias and transfer are both a plain transfer from the deployer; they
        * differ only in which balance they drain, which planFunding accounted for. */

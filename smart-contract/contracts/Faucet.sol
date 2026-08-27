@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * Testnet faucet: hands out a fixed drip of any listed ERC20, once per cooldown
@@ -49,6 +50,22 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * in here needs to know that: to the faucet it is an ERC20 with a balance, like
  * every other asset.
  *
+ * ── The native gas token, handed out like any other asset ───────────────────
+ *
+ * A tester whose wallet is empty cannot pay for the transaction that claims the
+ * ERC20s in the first place, so the faucet also hands out the chain's native gas
+ * token. It is listed under the sentinel NATIVE_TOKEN (address(1)) and goes
+ * through the same `claim`/`claimMany`, cooldown and stock machinery as every
+ * ERC20; the only differences are that its stock is `address(this).balance` and
+ * its payout is a value-bearing call rather than `safeTransfer`. It is funded by
+ * a plain native send, which `receive()` accepts, and recovered with
+ * `withdraw(NATIVE_TOKEN, …)`.
+ *
+ * address(1) is the ecrecover precompile, which answers a `balanceOf` staticcall
+ * with decodable garbage instead of reverting — so every balance and transfer
+ * path branches on the sentinel BEFORE it would reach IERC20. An unguarded native
+ * entry would silently misreport its stock, not fail loudly.
+ *
  * ── Claiming one asset or several ──────────────────────────────────────────
  *
  * `claim` pays one asset and reverts with the specific reason it could not.
@@ -57,8 +74,18 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * The rules are shared — see _eligibility — so the two cannot drift about what
  * "claimable" means.
  */
-contract KaleidoTokenFaucet is Ownable {
+contract KaleidoTokenFaucet is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    /**
+     * Sentinel for the native gas token, listed and claimed exactly like an ERC20.
+     *
+     * MUST equal Constants.NATIVE_TOKEN — the protocol's lending sentinel — and
+     * the frontend's NATIVE_SENTINEL.lending, so a wallet that claims native here
+     * and deposits it as collateral there names one asset. It is deliberately NOT
+     * the DEX's 0xEeee… convention; the two must never be interchanged.
+     */
+    address public constant NATIVE_TOKEN = address(1);
 
     /**
      * A listed asset's payout.
@@ -114,6 +141,13 @@ contract KaleidoTokenFaucet is Ownable {
     error KaleidoTokenFaucet_BadConfig();
 
     /**
+     * A native payout or withdrawal's low-level call returned false — the
+     * recipient rejected the value or exhausted the gas forwarded to its receive
+     * hook. The ERC20 path cannot reach this; SafeERC20 carries its own revert.
+     */
+    error KaleidoTokenFaucet_NativeTransferFailed();
+
+    /**
      * `claimMany` paid nothing at all.
      *
      * Distinct from the three single-asset errors because it is not any one of
@@ -162,9 +196,18 @@ contract KaleidoTokenFaucet is Ownable {
         }
     }
 
+    /**
+     * Accepts native funding. The faucet pays the native token out of its own
+     * balance just as it pays an ERC20 (see NATIVE_TOKEN), so it must be able to
+     * hold it; refilling is a plain send and `withdraw(NATIVE_TOKEN, …)` is the
+     * matching recovery. Deliberately empty of claim logic — funding and claiming
+     * are separate, and a payable claim path would let value ride in on a claim.
+     */
+    receive() external payable {}
+
     /* ------------------------------------------------------------- claiming -- */
 
-    function claim(address token) external {
+    function claim(address token) external nonReentrant {
         uint8 code = _eligibility(token, msg.sender);
         if (code == _NOT_LISTED) revert KaleidoTokenFaucet_AssetNotListed();
         if (code == _ON_COOLDOWN) revert KaleidoTokenFaucet_CooldownNotOver();
@@ -214,7 +257,7 @@ contract KaleidoTokenFaucet is Ownable {
      */
     function claimMany(
         address[] calldata tokens
-    ) external returns (uint256 paid) {
+    ) external nonReentrant returns (uint256 paid) {
         for (uint256 i; i < tokens.length; ++i) {
             address token = tokens[i];
             if (_eligibility(token, msg.sender) != _OK) continue;
@@ -282,7 +325,9 @@ contract KaleidoTokenFaucet is Ownable {
             address token = assets[i];
             tokens[i] = token;
             amounts[i] = drips[token].amount;
-            balances[i] = IERC20(token).balanceOf(address(this));
+            balances[i] = token == NATIVE_TOKEN
+                ? address(this).balance
+                : IERC20(token).balanceOf(address(this));
             nextClaimAt[i] = claimableAt(token, user);
         }
     }
@@ -336,6 +381,15 @@ contract KaleidoTokenFaucet is Ownable {
         uint256 amount
     ) external onlyOwner {
         if (to == address(0)) revert KaleidoTokenFaucet_BadConfig();
+
+        if (token == NATIVE_TOKEN) {
+            uint256 nativeValue = amount == 0 ? address(this).balance : amount;
+            (bool ok, ) = payable(to).call{value: nativeValue}("");
+            if (!ok) revert KaleidoTokenFaucet_NativeTransferFailed();
+            emit Withdrawn(token, to, nativeValue);
+            return;
+        }
+
         uint256 value = amount == 0
             ? IERC20(token).balanceOf(address(this))
             : amount;
@@ -381,7 +435,10 @@ contract KaleidoTokenFaucet is Ownable {
         uint256 last = lastClaimed[token][claimer];
         if (last != 0 && block.timestamp - last < cooldown) return _ON_COOLDOWN;
 
-        if (IERC20(token).balanceOf(address(this)) < drip.amount) {
+        uint256 stock = token == NATIVE_TOKEN
+            ? address(this).balance
+            : IERC20(token).balanceOf(address(this));
+        if (stock < drip.amount) {
             return _NO_STOCK;
         }
         return _OK;
@@ -397,7 +454,12 @@ contract KaleidoTokenFaucet is Ownable {
             hasClaimedBefore[msg.sender] = true;
         }
 
-        IERC20(token).safeTransfer(msg.sender, amount);
+        if (token == NATIVE_TOKEN) {
+            (bool ok, ) = payable(msg.sender).call{value: amount}("");
+            if (!ok) revert KaleidoTokenFaucet_NativeTransferFailed();
+        } else {
+            IERC20(token).safeTransfer(msg.sender, amount);
+        }
         emit Claimed(token, msg.sender, amount, block.timestamp);
     }
 

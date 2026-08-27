@@ -2,27 +2,42 @@
   "network": "sepolia",
   "chainId": 11155111,
   "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
-  "timestamp": "2026-08-24T16:44:01.599Z",
+  "timestamp": "2026-08-26T23:27:25.438Z",
   "contracts": {
-    "faucet": "0xc0aC5e858C05970331e03Ed528BBCF6b05AAe7eE"
+    "faucet": "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB"
   },
   "config": {
     "cooldownSeconds": 3600,
     "assets": [
       {
-        "key": "USDC",
+        "key": "NATIVE",
+        "address": "0x0000000000000000000000000000000000000001",
+        "symbol": "ETH",
+        "decimals": 18,
+        "dripHuman": "0.02",
+        "drip": "20000000000000000",
+        "source": "native",
+        "funding": {
+          "method": "topup",
+          "stocked": "40.0",
+          "claimsLeft": 2000
+        }
+      },
+      {
+        "key": "USDC_CIRCLE_LEGACY",
         "address": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
         "symbol": "USDC",
         "decimals": 6,
-        "dripHuman": "10000.0",
-        "drip": "10000000000",
+        "dripHuman": "0",
+        "drip": "0",
         "source": "stablecoin",
         "funding": {
-          "method": "unfunded",
-          "amount": "0.0",
-          "target": "1000000.0",
-          "short": "1000000.0"
-        }
+          "method": "topup",
+          "stocked": "0.0",
+          "claimsLeft": 0
+        },
+        "paused": true,
+        "note": "Circle's real USDC — paused when USDC switched to a mintable mock. The faucet has no remove, so the slot lingers; the /faucet UI hides it."
       },
       {
         "key": "USDT",
@@ -33,10 +48,9 @@
         "drip": "10000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -48,10 +62,9 @@
         "drip": "10000000000000000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -59,14 +72,27 @@
         "address": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
         "symbol": "WETH",
         "decimals": 18,
-        "dripHuman": "1.0",
-        "drip": "1000000000000000000",
+        "dripHuman": "0.02",
+        "drip": "20000000000000000",
         "source": "dex",
         "funding": {
-          "method": "wrap",
-          "amount": "1.949228853206382639",
-          "target": "10.0",
-          "short": "8.050771146793617361"
+          "method": "topup",
+          "stocked": "15.0",
+          "claimsLeft": 750
+        }
+      },
+      {
+        "key": "USDC",
+        "address": "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70",
+        "symbol": "USDC",
+        "decimals": 6,
+        "dripHuman": "10000.0",
+        "drip": "10000000000",
+        "source": "stablecoin",
+        "funding": {
+          "method": "switch-mock",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       }
     ]
@@ -74,5 +100,7 @@
   "sources": {
     "stablecoin": "deployment-stablecoin-sepolia.json",
     "dex": "deployment-dex-sepolia.json"
-  }
+  },
+  "lastTopup": "2026-08-27T00:28:26.682Z",
+  "lastUsdcSwitch": "2026-08-27T01:40:25.709Z"
 }
