@@ -600,11 +600,12 @@ export default function AgentPage() {
             a <label> for a textarea that is now three regions away. */}
         <div className={s.head}>
           <span className={s.avatar} aria-hidden />
-          <span className={s.headName}>Luca</span>
+          <span className={s.headName}>Talk to Luca Agent</span>
           <span className={s.headMeta}>
             {credits && (
               <span className="tabular" title="Reasoning requests left today">
-                {credits.remaining}/{credits.quota} left
+                {credits.remaining}/{credits.quota}
+                <span className={s.creditsWord}> left</span>
               </span>
             )}
             {/* A persisted thread needs a way out, and it is a safety control
