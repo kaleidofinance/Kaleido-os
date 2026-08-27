@@ -17,6 +17,7 @@ import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import chart from "@/components/v2/ChartPanel.module.css";
 import TxHistory from "@/components/v2/TxHistory";
 import hist from "@/components/v2/TxHistory.module.css";
+import Headline from "./Headline";
 import { getChainMeta } from "@/constants/chains";
 import { intentsFromChat } from "@/lib/v2/intents/fromChat";
 import { renderIntent } from "@/lib/v2/intents";
@@ -600,7 +601,12 @@ export default function AgentPage() {
             a <label> for a textarea that is now three regions away. */}
         <div className={s.head}>
           <span className={s.avatar} aria-hidden />
-          <span className={s.headName}>Talk to Luca Agent</span>
+          {/* Rotates through what Luca can do while the thread is empty, and is a
+              fixed label the moment there is one — the header must not advertise
+              over the answer you are reading. Headline.tsx carries the rest. */}
+          <span className={s.headName}>
+            <Headline rotate={messages.length === 0} />
+          </span>
           <span className={s.headMeta}>
             {credits && (
               <span className="tabular" title="Reasoning requests left today">
