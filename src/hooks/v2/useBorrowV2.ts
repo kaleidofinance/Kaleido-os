@@ -342,8 +342,16 @@ export const useBorrowV2 = (): BorrowV2 => {
     // No open loans means nothing can be liquidated, so there is no health
     // factor worth showing — the card renders "—" rather than the contract's
     // no-debt sentinel. Mirrors usePortfolio's Infinity guard.
+    //
+    // `Number.isFinite` is what actually enforces that second half. `data2 > 0`
+    // does not: the sentinel arrives as Infinity (useGetValueAndHealth catches
+    // `type(uint256).max` on the bigint) and Infinity is greater than zero, so it
+    // passed straight through this test. It is reachable with `loans.length > 0`
+    // too — a wallet whose requests are all OPEN has loans in this list and zero
+    // *serviced* debt, which is precisely the branch the facet answers with the
+    // sentinel.
     healthFactor:
-      loans.length > 0 && Number(data2) > 0
+      loans.length > 0 && Number(data2) > 0 && Number.isFinite(Number(data2))
         ? Number(data2) * HEALTH_SCALE
         : null,
     postOffer,

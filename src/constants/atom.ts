@@ -25,6 +25,11 @@ export const searchByIdAtom = atom<string>("");
 
 // Protocol Data Atoms
 export const dataAtom = atom<bigint | null>(null);
+/* The raw 1e18-scaled health factor, with two non-numeric readings: `undefined`
+   is "the read has not landed or failed", and `Infinity` is the contract's no-debt
+   sentinel, normalised from `type(uint256).max` by its only writer. Consumers must
+   check finiteness before showing it — see NO_DEBT_SENTINEL in
+   useGetValueAndHealth.ts. */
 export const data2Atom = atom<number | undefined>(undefined);
 export const data3Atom = atom<number | undefined>(undefined);
 export const data4Atom = atom<number | undefined>(undefined);

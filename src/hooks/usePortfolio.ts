@@ -208,6 +208,13 @@ export const usePortfolio = (): Portfolio => {
     // No open requests means nothing can be liquidated.
     if (Array.isArray(data) && data.length === 0) return Infinity;
     if (data2 === undefined || data2 === null) return null;
+    /* Infinity is the contract's "no debt" sentinel, already recognised on the
+       bigint by useGetValueAndHealth — pass it through rather than letting the
+       finiteness guard below turn it into "—". It reaches here for a wallet that
+       holds collateral but has borrowed nothing: `data` is non-empty, so the
+       short-circuit above does not catch that case, and before the sentinel was
+       handled at all this line rendered 1.157920892373162e+59 — 2^256 / 1e18. */
+    if (data2 === Infinity) return Infinity;
     const h = Number(data2) * HEALTH_SCALE;
     return Number.isFinite(h) ? h : null;
   }, [address, data, data2]);
