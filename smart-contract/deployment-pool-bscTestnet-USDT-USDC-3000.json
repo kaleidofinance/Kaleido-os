@@ -1,0 +1,45 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "timestamp": "2026-08-27T13:58:10.867Z",
+  "pool": "0x82A907fe860886d01FF8E13D74af2b990829B832",
+  "fee": 3000,
+  "token0": {
+    "address": "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2",
+    "symbol": "USDT",
+    "decimals": 6
+  },
+  "token1": {
+    "address": "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F",
+    "symbol": "USDC",
+    "decimals": 6
+  },
+  "openedAt": {
+    "sqrtPriceX96": "79228162514264337593543950336",
+    "tick": 0,
+    "liveTick": 0
+  },
+  "oracle": {
+    "usd0": "1000000000000000000",
+    "usd1": "1000000000000000000",
+    "source0": "operator override $1.0",
+    "source1": "operator override $1.0"
+  },
+  "positions": [
+    {
+      "label": "full range",
+      "tickLower": -887220,
+      "tickUpper": 887220,
+      "tokenId": "1",
+      "tx": "0x3c481caefe917f5305bfae28ce313b0d9a11025a29272cddf3d3784b158c1451"
+    },
+    {
+      "label": "±2%",
+      "tickLower": -180,
+      "tickUpper": 180,
+      "tokenId": "2",
+      "tx": "0x49c085b73207bebe8532952994e076ee41aae42466751737194d132d8b2016af"
+    }
+  ],
+  "feeProtocol": null
+}

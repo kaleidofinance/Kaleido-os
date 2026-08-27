@@ -23,6 +23,14 @@
  * "these are both stablecoins so call it a dollar" is exactly the assumption that
  * makes a depegged or misconfigured feed invisible.
  *
+ * The one sanctioned exception is a price the operator types explicitly
+ * (STABLE_USD, see parsePriceOverrides) — a number the run logs as an override
+ * on every line it prints, not one the script chose for you. It exists because
+ * both fallbacks are now unavailable for our mock stablecoins at once: each
+ * diamond prices only one $1 stable (Sepolia USDC, Base USDT) and Pyth's public
+ * Hermes endpoint began returning 401. That is still not "call it a dollar" —
+ * the script invents nothing; a pair with one un-named side refuses as before.
+ *
  * ── Two positions, not one ────────────────────────────────────────────────
  *
  * A full-range position and a tight one around the current tick:
@@ -181,6 +189,44 @@ const num = (v, dflt) => {
 };
 
 /**
+ * Operator-supplied USD prices, keyed by lowercased symbol, parsed from
+ * STABLE_USD once at load:
+ *
+ *   STABLE_USD="usdc=1,usdt=1,usde=1"
+ *
+ * This is the only way to price a token the diamond has no feed for and Hermes
+ * will not serve, and it is intentionally awkward: the operator names every
+ * symbol and its price on the command line, priceOf logs each one as an
+ * override, and a symbol that is not named here is not priced here — a pair with
+ * one un-named side still refuses. It is a fixed number, not a feed, so it is
+ * only ever correct for an asset whose price is pinned by construction (a
+ * $1-pegged mock stablecoin on a testnet). Never point it at a volatile asset.
+ */
+function parsePriceOverrides(spec) {
+  const out = new Map();
+  if (!spec) return out;
+  for (const raw of spec.split(",")) {
+    const part = raw.trim();
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    if (eq < 0) throw new Error(`STABLE_USD entry "${part}" is not symbol=price`);
+    const sym = part.slice(0, eq).trim().toLowerCase();
+    const val = part.slice(eq + 1).trim();
+    if (!sym) throw new Error(`STABLE_USD entry "${part}" has no symbol`);
+    let usd;
+    try {
+      usd = ethers.parseUnits(val, 18);
+    } catch {
+      throw new Error(`STABLE_USD ${sym}: price "${val}" is not a number`);
+    }
+    if (usd <= 0n) throw new Error(`STABLE_USD ${sym}: price must be > 0`);
+    out.set(sym, usd);
+  }
+  return out;
+}
+const PRICE_OVERRIDES = parsePriceOverrides(process.env.STABLE_USD);
+
+/**
  * One whole token's worth of USD, at 18 decimals, with its provenance.
  *
  * The diamond's oracle answers first, because that is the price the protocol
@@ -202,6 +248,14 @@ const num = (v, dflt) => {
  * who reads the quote before they arrive.
  */
 async function priceOf(protocol, address, symbol, decimals) {
+  /* An explicit operator price wins over both feeds. This is the assertion the
+     script will not make on its own — see parsePriceOverrides — so when the
+     operator has made it, it is authoritative, and taking it first also gives a
+     pegged pair a clean exact ratio instead of the oracle's $0.9999 dust. */
+  const override = PRICE_OVERRIDES.get(symbol.toLowerCase());
+  if (override !== undefined)
+    return { usd: override, source: `operator override $${ethers.formatUnits(override, 18)}` };
+
   try {
     const usd = await protocol.getUsdValue(address, 10n ** BigInt(decimals), decimals);
     if (usd > 0n) return { usd, source: "diamond oracle" };
@@ -234,20 +288,32 @@ async function ensureBalance(token, me, need, label) {
   const have = await token.balanceOf(me);
   if (have >= need) return have;
   const short = need - have;
-  let owner;
+  /* Two mint shapes live behind this list. The Ownable stablecoin mocks
+     (USDT/USDe) expose owner() and gate mint() on it; the plain-ERC20 mock USDC
+     (contracts/test/MockERC20.sol) has a PUBLIC mint() and no owner() at all.
+     So an owner() that reverts is not "no mint" — it is the second shape, whose
+     mint we can still call. Only when owner() names someone else is the mint
+     genuinely out of reach, and checking that first avoids spending gas on a
+     mint() we know will revert. WETH9 lands here too: no owner(), no mint(), so
+     the direct attempt reverts and we report it as unfundable. */
+  let owner = null;
   try {
     owner = await token.owner();
   } catch {
-    throw new Error(
-      `${label}: short by ${short} raw units and the token has no mint we control`,
-    );
+    /* No owner() — the public-mint mock, or a token with no mint at all. */
   }
-  if (owner.toLowerCase() !== me.toLowerCase())
+  if (owner !== null && owner.toLowerCase() !== me.toLowerCase())
     throw new Error(
       `${label}: short by ${short} raw units and mint is owned by ${owner}`,
     );
   console.log(`  minting ${short} raw ${label}`);
-  await (await token.mint(me, short)).wait();
+  try {
+    await (await token.mint(me, short)).wait();
+  } catch (e) {
+    throw new Error(
+      `${label}: short by ${short} raw units and the token has no mint we control (${e.shortMessage ?? e.message})`,
+    );
+  }
   return token.balanceOf(me);
 }
 

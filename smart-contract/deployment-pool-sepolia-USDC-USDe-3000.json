@@ -1,0 +1,45 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": "2026-08-27T09:39:01.596Z",
+  "pool": "0xbA88dF1A2353e2d0141F0756c4e91D62EF0BF20F",
+  "fee": 3000,
+  "token0": {
+    "address": "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70",
+    "symbol": "USDC",
+    "decimals": 6
+  },
+  "token1": {
+    "address": "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b",
+    "symbol": "USDe",
+    "decimals": 18
+  },
+  "openedAt": {
+    "sqrtPriceX96": "79228162514264337593543950336000000",
+    "tick": 276324,
+    "liveTick": 276324
+  },
+  "oracle": {
+    "usd0": "1000000000000000000",
+    "usd1": "1000000000000000000",
+    "source0": "operator override $1.0",
+    "source1": "operator override $1.0"
+  },
+  "positions": [
+    {
+      "label": "full range",
+      "tickLower": -887220,
+      "tickUpper": 887220,
+      "tokenId": "5",
+      "tx": "0xadd12ab4da711db52312a3d8eaee5f977ee70b05a293ac9c8a532d861970637c"
+    },
+    {
+      "label": "±2%",
+      "tickLower": 276120,
+      "tickUpper": 276480,
+      "tokenId": "6",
+      "tx": "0xd38ec2bbac6c45cae9fe193e2b7d72e9f5fe39d55fb4841f6b8c33417a184e85"
+    }
+  ],
+  "feeProtocol": null
+}
