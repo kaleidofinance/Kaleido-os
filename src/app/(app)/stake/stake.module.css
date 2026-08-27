@@ -265,6 +265,23 @@
 /* ---------- mobile ---------- */
 @media (max-width: 720px) {
   .wrap {
-    padding: 16px 14px 60px;
+    /* env() adds the home-indicator inset the fixed tab bar itself reserves — a
+       flat 60px hid the primary stake CTA under the bar on notched phones.
+       Cf. trade.module.css and Nav.module.css, the only two files that had it. */
+    padding: 16px 14px calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+  /* Stat strip -> 2-col grid on mobile. Its dividers are each tile's border-left,
+     which can't survive the 2x2 wrap (the third tile hangs a stray line at the
+     row's left edge), so separate by gaps instead and hand the 24px side padding
+     back to the figure. Full note in components/v2/StatStrip.module.css. */
+  .strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--k-s3) var(--k-s4);
+  }
+  .stat {
+    padding: 0;
+    border-left: 0;
+    min-width: 0;
   }
 }
