@@ -10,6 +10,13 @@
 .strip {
   display: flex;
   flex-wrap: wrap;
+  /* The four read as one centred group rather than as a row stretched across the
+     full 1160px of `.wrap`. Everything else on this page is the 520px centred
+     column below — `.center`, which holds the tabs and the staking form — so a
+     strip four times that wide put "Total staked" out under the nav's logo with
+     several hundred pixels of gap before the card it describes. Centred, the
+     numbers sit over their own form. */
+  justify-content: center;
 }
 .stat {
   padding: 0 24px;
@@ -17,12 +24,23 @@
   display: flex;
   flex-direction: column;
   gap: var(--k-s1);
-  flex: 1;
+  /* Was `flex: 1`, and that is what `justify-content` above had to undo: items
+     which absorb every spare pixel leave nothing to distribute, so the row filled
+     the container whatever its alignment said. `0 1 auto` takes each tile's own
+     width and lets `min-width` hold the columns apart. */
+  flex: 0 1 auto;
   min-width: 140px;
+  /* Label over figure, both centred in the column. A left-aligned label inside a
+     centred group still reads as leaning, because the eye takes the ragged left
+     edge of four different-width tiles as the alignment. */
+  align-items: center;
 }
+/* The rule goes on the first tile, the padding stays. It used to lose its
+   `padding-left` so the leftmost figure sat flush with the page gutter — which was
+   right for a full-width strip and is wrong for a centred one, where it would make
+   the group hang 24px left of true centre. */
 .stat:first-child {
   border-left: 0;
-  padding-left: 0;
 }
 .sl {
   font-size: var(--k-fs-sm);

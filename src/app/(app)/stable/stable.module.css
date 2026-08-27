@@ -81,9 +81,20 @@
 }
 
 /* two-column body */
+/* The left track is the form's own width, not "everything that is left over".
+   `1fr` gave it whatever the 300px sidebar did not want — 840px on a 1200px wrap —
+   while `.left` capped its contents at 520px, so the Mint card ended at x=520 and
+   the "Your position" cards began at x=860. Three hundred pixels of nothing
+   between two panels that describe the same position, and the sidebar read as
+   belonging to some other page. `minmax(0, 520px)` moves that cap onto the track
+   itself, so the two columns abut with one `--k-s5` gutter between them.
+
+   `minmax(0, …)` rather than a bare `520px`: a fixed track cannot shrink, so
+   between 860px (where the media query below stacks them) and 840px of content the
+   grid would overflow the viewport instead of narrowing. */
 .cols {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: minmax(0, 520px) 300px;
   gap: var(--k-s5);
   align-items: start;
 }
@@ -96,7 +107,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--k-s4);
-  max-width: 520px;
 }
 
 .tabs {
@@ -136,14 +146,28 @@
 }
 
 /* sidebar */
+/* `--k-s4`, matching `.left` above rather than sitting one step tighter, because
+   the two columns' first cards have to start on the same line — see .sideTitle. */
 .side {
   display: flex;
   flex-direction: column;
-  gap: var(--k-s3);
+  gap: var(--k-s4);
 }
+/* Occupies exactly the height of the `.tabs` row it sits beside, so "Your position"
+   and the Mint/Redeem/Earn pills share a baseline and the first card in each column
+   starts at the same y. Both columns are then 36px of header plus a --k-s4 gap.
+
+   36px is `.tb`'s box, not a round number picked to look right: --k-fs-sm (14px) at
+   the 1.4 line-height set in tokens.css is a 20px line, plus its 8px padding top
+   and bottom. Without this the title's own 27px line box (--k-fs-lg at 1.4) left the
+   sidebar's first card 13px above the Mint card — close enough to look like a
+   mistake rather than a different rhythm. */
 .sideTitle {
   font-size: var(--k-fs-lg);
   font-weight: var(--k-fw-med);
+  min-height: 36px;
+  display: flex;
+  align-items: center;
 }
 .card {
   composes: k-glass from global;
