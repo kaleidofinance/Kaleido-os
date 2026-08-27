@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [],
+  "files": [
+    "next-env.d.ts",
+    "src/global.d.ts",
+    "src/components/v2/Nav.tsx",
+    "src/app/(app)/leaderboard/page.tsx"
+  ]
+}

@@ -198,6 +198,14 @@
 }
 
 /* ---------- mobile ---------- */
+/* The strip has to fit six controls plus a wordmark in 375px, and it did not:
+   `.menu` is the only flex item that can shrink (min-width: 0), so it collapsed
+   to literally 0px — measured — and the right-hand cluster still overran the
+   viewport, clipping the Connect button in half. Widening the nav is not an
+   option, so the cluster gets narrower instead: the five primary links leave
+   (they are the tab bar), and a known chain shows its mark without its name.
+   That returns ~140px, which is what makes Connect land inside the edge and
+   gives Stake/Stable — the two links with no tab — room to be reachable again. */
 @media (max-width: 720px) {
   .nav {
     gap: var(--k-s3);
@@ -216,13 +224,32 @@
   .menu {
     gap: var(--k-s4);
   }
+  /* The bottom tab bar carries these five, so the strip was spending its width
+     on a second copy. Stake and Stable have no tab and stay: with the primaries
+     gone the menu holds only those two, so what was a 0px-wide scroller nobody
+     could open is now a short row that mostly fits. */
+  .itemPrimary {
+    display: none;
+  }
+  .right {
+    gap: var(--k-s2);
+  }
   .net {
     padding: 7px 10px;
     font-size: var(--k-fs-xs);
   }
-  .addr {
-    padding: 6px 11px 6px 6px;
-    font-size: var(--k-fs-xs);
+  /* Icon-only once a chain is known. "Base Sepolia" is twelve characters of the
+     scarcest space on the screen, and the mark already says which chain it is —
+     `aria-label="Network: Base Sepolia"` keeps the name for a screen reader, and
+     the caret goes too because a 36px circle reads as a button without it.
+     Disconnected there is no mark, so `.netHasIcon` is absent and "Network"
+     stays visible rather than leaving an empty pill. */
+  .netHasIcon {
+    padding: 7px;
+  }
+  .netHasIcon .netName,
+  .netHasIcon .caret {
+    display: none;
   }
   .addr {
     padding: 6px 11px 6px 6px;

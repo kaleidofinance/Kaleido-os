@@ -165,7 +165,10 @@ export default function Nav() {
               <Link
                 key={l.href}
                 href={l.href}
-                className={`${styles.item} ${active ? styles.on : ""}`}
+                /* `itemPrimary` exists only so mobile can drop these five: they
+                   are the tab bar's contents, so the strip repeats them there,
+                   and their width is what pushed Connect off the right edge. */
+                className={`${styles.item} ${l.primary ? styles.itemPrimary : ""} ${active ? styles.on : ""}`}
               >
                 {l.label}
               </Link>
@@ -184,7 +187,7 @@ export default function Nav() {
               used to fall back to Abstract, which told a user with no wallet
               that they were on a chain we read balances from and nothing else. */}
           <button
-            className={styles.net}
+            className={`${styles.net} ${chainMeta ? styles.netHasIcon : ""}`}
             onClick={() => setNetworkOpen(true)}
             aria-label={
               chainName ? `Network: ${chainName}` : "Select a network"
@@ -200,7 +203,12 @@ export default function Nav() {
                 />
               </span>
             )}
-            {chainName ?? "Network"}
+            {/* Wrapped so mobile can hide the name and keep the mark — a bare
+                text node is unaddressable from CSS. `netHasIcon` gates that:
+                with no chain there is no mark, so the word has to stay or the
+                button would be an empty circle. The aria-label above carries
+                the full name either way. */}
+            <span className={styles.netName}>{chainName ?? "Network"}</span>
             <span className={styles.caret}>▾</span>
           </button>
           <NetworkSelector
