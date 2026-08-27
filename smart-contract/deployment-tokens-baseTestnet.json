@@ -2,7 +2,7 @@
   "network": "baseTestnet",
   "chainId": 84532,
   "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
-  "timestamp": "2026-08-24T10:17:08.557Z",
+  "timestamp": "2026-08-27T07:23:49.934Z",
   "diamond": "0x1e2BeA8a1958088b50eC9410F7870a2C254e43E4",
   "oracle": "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A",
   "oracleKind": "aggregator-v3",
@@ -11,19 +11,35 @@
   "hermesVerified": true,
   "registered": [
     {
-      "kind": "loanable",
-      "symbol": "WETH",
-      "address": "0x4200000000000000000000000000000000000006",
-      "onChainSymbol": "WETH",
-      "decimals": 18,
-      "feedSymbol": "Crypto.ETH/USD",
-      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "kind": "collateral",
+      "symbol": "USDC",
+      "address": "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
       "feedSource": "repo",
-      "priceAgeSeconds": 32,
-      "feedMaxAge": 1800,
-      "maxAgeBasis": "Same contract as ETH — WETH is redeemable 1:1 by contract, not by market.",
-      "effectiveMaxAge": 1800,
-      "txHash": "0xd0be15f783d42f369039310b53865df79afc149fd80fdbe3c7a6c1eccb9d0ce2",
+      "priceAgeSeconds": 176900,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Documented heartbeat is exactly 86400s. 90000 rather than 86400 because a bound equal to the heartbeat has zero tolerance for a late publish, and these feeds demonstrably do run to the full heartbeat: the sibling USDT/USD on this chain measured 70,702s (19h39m) in the same block. A bound of 86400 would price USDC correctly almost always and revert every deposit and health-factor read for the minutes around a late round, which is the intermittent failure that is hardest to diagnose. 90000 equals Constants.MAX_FEED_PRICE_AGE — this is the ceiling, there is no more slack available, and it is only defensible because USDC is pegged.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0xf4865677feac8d43e2d30614187e05f890696eedc8e038a6b1ca8c80d4fef4b4",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDC",
+      "address": "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 176900,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Documented heartbeat is exactly 86400s. 90000 rather than 86400 because a bound equal to the heartbeat has zero tolerance for a late publish, and these feeds demonstrably do run to the full heartbeat: the sibling USDT/USD on this chain measured 70,702s (19h39m) in the same block. A bound of 86400 would price USDC correctly almost always and revert every deposit and health-factor read for the minutes around a late round, which is the intermittent failure that is hardest to diagnose. 90000 equals Constants.MAX_FEED_PRICE_AGE — this is the ceiling, there is no more slack available, and it is only defensible because USDC is pegged.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0xb96807c6a933b1679f33e340be3c6cd62970b7625f5dde1adfb58457ef70262e",
       "skipped": false
     }
   ],
@@ -35,7 +51,7 @@
         "WETH"
       ],
       "maxAge": 1800,
-      "basis": "Same contract as ETH — WETH is redeemable 1:1 by contract, not by market.",
+      "basis": "Chainlink publishes this feed on a documented 1200s heartbeat with a 0.15% deviation trigger, and it measured 42s old — so the deviation trigger, not the heartbeat, is what fires in practice. 1800 is the heartbeat plus 50%. Tighter than Sepolia's 5400 because the heartbeat here is 1200s rather than 3600s, which makes this the best ETH bound in the wave and the one to compare the others against.",
       "txHash": null,
       "skipped": true
     },
@@ -75,12 +91,14 @@
       "0x0000000000000000000000000000000000000001",
       "0x4200000000000000000000000000000000000006",
       "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B"
+      "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
+      "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9"
     ],
     "loanable": [
       "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
-      "0x4200000000000000000000000000000000000006"
+      "0x4200000000000000000000000000000000000006",
+      "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9"
     ]
   }
 }

@@ -19,11 +19,13 @@ import s from "./faucet.module.css";
  * configured here, which is what makes the page correct on a chain whose faucet
  * lists two assets and on one that lists five.
  *
- * There is no "get gas" section. Every testnet needs native gas before a claim
- * can be sent and pointing at each chain's native faucet would genuinely help —
- * but `chains.ts` carries no such field, and only one of the five URLs is known.
- * Four invented links is worse than none, since a dead faucet link costs the
- * reader a round trip to find out.
+ * The faucet now lists the chain's native gas as its first asset, so a wallet
+ * with a little gas can top the rest up here. It cannot bootstrap a wallet with
+ * exactly zero — the claim transaction itself costs gas — and pointing at each
+ * chain's own native faucet for that first drop would genuinely help, but
+ * `chains.ts` carries no such field and only one of the five URLs is known. Four
+ * invented links is worse than none, since a dead faucet link costs the reader a
+ * round trip to find out.
  */
 
 const fmt = (v: string | null, dp = 2) => {

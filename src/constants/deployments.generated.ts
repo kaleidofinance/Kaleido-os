@@ -69,16 +69,16 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
   },
   84532: {
     diamond: "0x1e2BeA8a1958088b50eC9410F7870a2C254e43E4", // deployment-diamond-baseTestnet.json
-    faucet: "0x038fcCCfd000b301523EE6dfc3AAC1883f8A95C6", // deployment-faucet-baseTestnet.json
-    kafUSD: "0xb4b8fF43BC177C7cB1180c2f6010ab979A7Ee336", // deployment-stablecoin-baseTestnet-1787328190052.json
-    kfUSD: "0xAE330a471E09733F66b0423352D61A2B6228dBD1", // deployment-stablecoin-baseTestnet-1787328190052.json
+    faucet: "0x459fA03715EbE0B2914273720Ad687d4Ff3Ed888", // deployment-faucet-baseTestnet.json
+    kafUSD: "0xb4b8fF43BC177C7cB1180c2f6010ab979A7Ee336", // deployment-stablecoin-baseTestnet.json
+    kfUSD: "0xAE330a471E09733F66b0423352D61A2B6228dBD1", // deployment-stablecoin-baseTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-baseTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-baseTestnet-1787327167156.json
     priceOracle: "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A", // deployment-diamond-baseTestnet.json
-    usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // deployment-stablecoin-baseTestnet-1787328190052.json
-    usde: "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9", // deployment-stablecoin-baseTestnet-1787328190052.json
-    usdt: "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B", // deployment-stablecoin-baseTestnet-1787328190052.json
+    usdc: "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9", // deployment-stablecoin-baseTestnet.json
+    usde: "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9", // deployment-stablecoin-baseTestnet.json
+    usdt: "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B", // deployment-stablecoin-baseTestnet.json
     v2Factory: "0x750b10d92bE67Ba86593169B5E8442CefEcBF708", // deployment-dex-baseTestnet.json
     v2Router: "0x629C8Af0230466558953ea305a6319E5e938d7f0", // deployment-dex-baseTestnet.json
     v3Factory: "0x76B9aF77B7e8323E30b6d933B0A0ea41bE466D9A", // deployment-v3-baseTestnet-1787327167156.json
@@ -87,7 +87,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0x36E323fFA93c724ae7EC5b28f4cbac9121dB4945", // deployment-v3-baseTestnet-1787327167156.json
     v3Router: "0xfEC12073E7b833508734052Cf72b53428d2e478b", // deployment-v3-baseTestnet-1787327167156.json
     wrappedNative: "0x4200000000000000000000000000000000000006", // deployment-dex-baseTestnet.json
-    yieldTreasury: "0xC4d4B493039c3957A7fcF24d78dc169b44E08372", // deployment-stablecoin-baseTestnet-1787328190052.json
+    yieldTreasury: "0xC4d4B493039c3957A7fcF24d78dc169b44E08372", // deployment-stablecoin-baseTestnet.json
   },
   5042002: {
     diamond: "0x90a1620578CE419242F806e7387Db7e70c8cfa96", // deployment-diamond-arcTestnet.json
@@ -114,16 +114,16 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
   },
   11155111: {
     diamond: "0x32a9971381C969d15205AC9e509C204D31341080", // deployment-diamond-sepolia.json
-    faucet: "0xc0aC5e858C05970331e03Ed528BBCF6b05AAe7eE", // deployment-faucet-sepolia.json
-    kafUSD: "0xb56439976066BBb2a2084916c5fd53403D87F289", // deployment-stablecoin-sepolia-1787339727203.json
-    kfUSD: "0x6A6D4dA719b5275C1a927DBc2177614f61a49289", // deployment-stablecoin-sepolia-1787339727203.json
+    faucet: "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB", // deployment-faucet-sepolia.json
+    kafUSD: "0xb56439976066BBb2a2084916c5fd53403D87F289", // deployment-stablecoin-sepolia.json
+    kfUSD: "0x6A6D4dA719b5275C1a927DBc2177614f61a49289", // deployment-stablecoin-sepolia.json
     oracleKind: "aggregator-v3", // deployment-oracle-sepolia.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-sepolia-1787339244721.json
     priceOracle: "0x126C64a2d48F40EeAEcD534387902f5da74c9dbb", // deployment-diamond-sepolia.json
-    usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", // deployment-stablecoin-sepolia-1787339727203.json
-    usde: "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b", // deployment-stablecoin-sepolia-1787339727203.json
-    usdt: "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55", // deployment-stablecoin-sepolia-1787339727203.json
+    usdc: "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70", // deployment-stablecoin-sepolia.json
+    usde: "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b", // deployment-stablecoin-sepolia.json
+    usdt: "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55", // deployment-stablecoin-sepolia.json
     v2Factory: "0xc6e96bcb53bf9f5235Df8c4018717DEA3d9d7fb6", // deployment-dex-sepolia.json
     v2Router: "0xe049B8d1E31510BE156B9230169aC2199989D93A", // deployment-dex-sepolia.json
     v3Factory: "0x57440671f8F67A56C4D56665553Bf7d8c2C73794", // deployment-v3-sepolia-1787339244721.json
@@ -132,7 +132,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0x6653B81FEE8CECf0AB5ce2863A63D9D3C28C1DE7", // deployment-v3-sepolia-1787339244721.json
     v3Router: "0x482555B9232A5BEE6034cdfa91dBcF4F19633c59", // deployment-v3-sepolia-1787339244721.json
     wrappedNative: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14", // deployment-dex-sepolia.json
-    yieldTreasury: "0x2488216dF30680f96078E3B303D6Aa0391f3f79F", // deployment-stablecoin-sepolia-1787339727203.json
+    yieldTreasury: "0x2488216dF30680f96078E3B303D6Aa0391f3f79F", // deployment-stablecoin-sepolia.json
   },
 };
 
@@ -195,11 +195,13 @@ export const GENERATED_LENDING_REGISTRATION: Record<
       "0x4200000000000000000000000000000000000006",
       "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
+      "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9",
     ],
     loanable: [
       "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
       "0x4200000000000000000000000000000000000006",
+      "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9",
     ],
   },
   5042002: {
@@ -216,10 +218,12 @@ export const GENERATED_LENDING_REGISTRATION: Record<
       "0x0000000000000000000000000000000000000001",
       "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
       "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+      "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70",
     ],
     loanable: [
       "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
       "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+      "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70",
     ],
   },
 };
@@ -231,7 +235,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-08-24T16:51:27.453Z",
+  generatedAt: "2026-08-27T07:25:23.349Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -254,10 +258,10 @@ export const GENERATED_META: {
     "deployment-oracle-robinhoodTestnet.json",
     "deployment-oracle-sepolia.json",
     "deployment-stablecoin-arcTestnet-1787384790044.json",
-    "deployment-stablecoin-baseTestnet-1787328190052.json",
+    "deployment-stablecoin-baseTestnet.json",
     "deployment-stablecoin-bscTestnet-1787453692948.json",
     "deployment-stablecoin-robinhoodTestnet-1787447030493.json",
-    "deployment-stablecoin-sepolia-1787339727203.json",
+    "deployment-stablecoin-sepolia.json",
     "deployment-tokens-arcTestnet.json",
     "deployment-tokens-baseTestnet.json",
     "deployment-tokens-bscTestnet.json",

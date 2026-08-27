@@ -198,10 +198,21 @@
 }
 
 /* ---------- mobile ---------- */
+/* The strip has to fit six controls plus a wordmark in 375px, and it did not:
+   `.menu` is the only flex item that can shrink (min-width: 0), so it collapsed
+   to literally 0px — measured — and the right-hand cluster still overran the
+   viewport, clipping the Connect button in half. Widening the nav is not an
+   option, so the cluster gets narrower instead: the five primary links leave
+   (they are the tab bar), and a known chain shows its mark without its name.
+   That returns ~140px, which is what makes Connect land inside the edge and
+   gives Stake/Stable — the two links with no tab — room to be reachable again. */
 @media (max-width: 720px) {
   .nav {
     gap: var(--k-s3);
-    padding: 12px 14px;
+    /* 10px rather than 14px: the strip is width-bound on a phone and the two
+       outer gutters are 8px of the budget the wallet cluster needs. Both end
+       controls are round, so they still read as inset at 10px. */
+    padding: 12px 10px;
   }
   /* The logo wordmark costs width the nav links need; the mark alone still
      identifies and still links home. */
@@ -213,16 +224,58 @@
   .icon {
     display: none;
   }
+  /* The link row leaves the strip entirely on a phone, and a measurement decided
+     that rather than taste. `.menu` is the only flex item that can shrink
+     (min-width: 0 above), so it surrenders every pixel before the cluster to its
+     right gives up one: at 390px it measures clientWidth 0 against a scrollWidth
+     of 514 — a horizontal scroller with no visible area, which no touch can open.
+     Hiding only the five primaries was not enough, because Stake + Stable still
+     want ~90px and what the wallet cluster leaves is ~20px.
+
+     Hiding the box also reclaims the two nav gaps that sat either side of it —
+     the dead space between the mark and the bell, and the reason `.connect` was
+     clipped at the right edge.
+
+     Stake and Stable have no tab, so on a phone they are now reachable only by
+     URL. That wants a home in the tab bar or the wallet menu; do NOT undo this
+     rule to fix it, because what it renders is a 0px scroller, not a link row. */
   .menu {
-    gap: var(--k-s4);
+    display: none;
+  }
+  /* Kept even though `.menu` is hidden: this is what `styles.itemPrimary` in
+     Nav.tsx resolves against, and a CSS-module class that appears in no rule
+     comes back `undefined` and lands in the DOM as a literal "undefined". */
+  .itemPrimary {
+    display: none;
+  }
+  .right {
+    /* 6px, deliberately under the s2 token: four round controls still read as one
+       group at 6px and begin colliding below it. Tokens set rhythm; this row is
+       width-bound instead. */
+    gap: 6px;
   }
   .net {
     padding: 7px 10px;
     font-size: var(--k-fs-xs);
   }
-  .addr {
-    padding: 6px 11px 6px 6px;
-    font-size: var(--k-fs-xs);
+  /* Icon-only once a chain is known. "Base Sepolia" is twelve characters of the
+     scarcest space on the screen, and the mark already says which chain it is —
+     `aria-label="Network: Base Sepolia"` keeps the name for a screen reader, and
+     the caret goes too because a 36px circle reads as a button without it.
+     Disconnected there is no mark, so `.netHasIcon` is absent and "Network"
+     stays visible rather than leaving an empty pill. */
+  .netHasIcon {
+    padding: 7px;
+  }
+  /* The caret goes on every phone, connected or not: ~11px of glyph plus its 8px
+     gap, all decoration, and a pill that opens a sheet reads as a button without
+     it. Only the *name* stays conditional — with no chain there is no mark, so
+     "Network" is the only thing identifying the pill and it has to survive. */
+  .caret {
+    display: none;
+  }
+  .netHasIcon .netName {
+    display: none;
   }
   .addr {
     padding: 6px 11px 6px 6px;

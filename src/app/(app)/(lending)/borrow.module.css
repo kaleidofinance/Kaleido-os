@@ -94,8 +94,13 @@
   background: var(--k-btn-solid-hover);
 }
 
-/* My loans has fewer columns than the order book */
-.mineRow {
+/* My loans has fewer columns than the order book. `.tr.mineRow`, not a bare
+   `.mineRow`: the rows carry both classes (BorrowBookView renders
+   `${s.tr} ${s.mineRow}`), and a single-class `.mineRow` ties `.tr` on specificity
+   but loses on source order — `.tr` is defined later — so its six-column template
+   and 720px min-width won through, leaving My-loans with a stray empty sixth column
+   scrolling 160px wider than intended. The compound selector outranks it. */
+.tr.mineRow {
   grid-template-columns: 1.7fr 1fr 0.7fr 1fr 0.9fr;
   min-width: 560px;
 }
@@ -540,14 +545,47 @@
 /* ---------- mobile ---------- */
 @media (max-width: 720px) {
   .wrap {
-    padding: 16px 14px 60px;
+    /* env() adds the home-indicator inset the fixed tab bar itself reserves — a
+       flat 60px hid the last sidebar card (the fee note) under the bar on notched
+       phones. Cf. trade.module.css and Nav.module.css. */
+    padding: 16px 14px calc(60px + env(safe-area-inset-bottom, 0px));
   }
-  /* Same reasoning as /leaderboard: let the order book scroll rather than crushing
-     six columns into a phone width. */
-  .table {
+  /* The header is three groups — title, the tab control, and the action buttons —
+     that only share one line at desktop widths. On a phone each takes its own row:
+     title, then tabs, then actions. Without these explicit full-width breaks the
+     scrollable toggle (flex-shrink:1) collapsed to a ~150px sliver crammed beside
+     the buttons on the Borrow/Lend tabs, and its four tabs scrolled inside that
+     sliver instead of laying out across the row. `margin-left:auto` is dropped
+     because it only means "push right" on a shared line; on its own row it fought
+     the width:100% for no gain. Actions stay right-aligned to match desktop. */
+  .h1 {
+    width: 100%;
+  }
+  .headActions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+  /* On its own row now, the four tabs fit un-scrolled at most phone widths; below
+     ~333px they scroll like the Nav link strip rather than wrapping to a ragged
+     second line. nowrap + tightened padding keep each tab on one line. */
+  .toggle {
+    max-width: 100%;
     overflow-x: auto;
+    scrollbar-width: none;
   }
-  .tw {
-    min-width: 620px;
+  .toggle::-webkit-scrollbar {
+    display: none;
   }
+  .tg {
+    padding: 7px 12px;
+    white-space: nowrap;
+  }
+  /* No table overrides here on purpose. `.tw` already scrolls the 720px `.tr` at
+     every width, with `.pager` sitting outside it so it stays pinned (see the
+     `.pager` note above). The /leaderboard-style `.table{overflow-x:auto}` +
+     `.tw{min-width:620px}` that used to live here nested a SECOND horizontal
+     scroller inside the first — and 620px < the row's 720px, so it couldn't even
+     hold one row — while stretching the pager to 620px and pushing Load-more off
+     the right edge. Deleting it restores the single-scroller, pinned-pager design. */
 }

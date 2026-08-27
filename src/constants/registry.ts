@@ -326,14 +326,14 @@ export const TOKENS: Record<number, TokenEntry[]> = {
       decimals: 18,
       tags: ["wrapped-native"],
     },
-    {
-      chainId: 11155111,
-      address: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-      symbol: "USDC",
-      name: "USD Coin",
-      decimals: 6,
-      tags: ["stablecoin"],
-    },
+    /* USDC is intentionally not declared here. It was Circle's real testnet USDC
+     * until 2026-08-27, when scripts/switch-usdc-to-mock.js replaced it with a
+     * mintable MockERC20 we deployed — so the faucet can drip it and USDC pools can
+     * be seeded. Our USDC now comes from getContracts().usdc through
+     * DEPLOYED_TOKENS, exactly like USDT/USDe here and like the mock USDC on BSC and
+     * Robinhood. Re-declaring Circle's dead address would put a second USDC row in
+     * every picker, because deployedTokens dedupes against TOKENS by address, and
+     * the mock's address differs from Circle's. */
   ],
   /* -- Base -------------------------------------------------------------- */
   [8453]: [
@@ -380,14 +380,10 @@ export const TOKENS: Record<number, TokenEntry[]> = {
       decimals: 18,
       tags: ["wrapped-native"],
     },
-    {
-      chainId: 84532,
-      address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      symbol: "USDC",
-      name: "USD Coin",
-      decimals: 6,
-      tags: ["stablecoin"],
-    },
+    /* USDC is intentionally not declared here — see the Sepolia [11155111] note
+     * above. Circle's real Base-Sepolia USDC was replaced by a mintable MockERC20
+     * on 2026-08-27 (scripts/switch-usdc-to-mock.js); it now comes from
+     * getContracts().usdc via DEPLOYED_TOKENS. */
   ],
   /* -- BNB Smart Chain. 18-decimal USDC/USDT — see the note above. ------- */
   [56]: [
@@ -860,8 +856,11 @@ export function ownTokens(chainId: number | undefined): TokenEntry[] {
  *
  * Same indirection as OWN_TOKENS and for the same reason — the identity is fixed,
  * the address is per chain and comes from a deployment record — but a different
- * claim about provenance. `usdc` is Circle's contract on Sepolia and Base and a
- * predeploy on Arc; `usdt` and `usde` are ours everywhere, deployed by
+ * claim about provenance. `usdc` is a mintable MockERC20 we deployed on Sepolia,
+ * Base, BSC and Robinhood — scripts/switch-usdc-to-mock.js swapped Circle's real
+ * token for the mock on the first two on 2026-08-27, deploy-mock-tokens.js
+ * deployed it on the other two — plus the 0x3600 predeploy on Arc, whose native
+ * currency is USDC; `usdt` and `usde` are ours everywhere, deployed by
  * scripts/deploy-stablecoin.js as kfUSD's backing assets. The field being set is
  * not a claim about which, so this table declares only what is true of all of
  * them: the symbol, the name, and the decimals.
@@ -882,7 +881,9 @@ export function ownTokens(chainId: number | undefined): TokenEntry[] {
  * every chain, `decimals()` returns 6 for USDC and USDT on all five and 18 for
  * USDe on all five. USDe at 18 is the value the old code could not supply at all
  * — `declaredDecimals` returned undefined for it, so getTokenDecimals fell
- * through to its `?? 6` and every USDe figure rendered 1e12 too large.
+ * through to its `?? 6` and every USDe figure rendered 1e12 too large. (The
+ * Sepolia and Base USDC addresses changed on 2026-08-27 when Circle's token was
+ * swapped for a mintable mock; the mock is 6dp too, so the values above hold.)
  */
 export type DeployedTokenField = "usdc" | "usdt" | "usde";
 
@@ -925,12 +926,18 @@ export const DEPLOYED_TOKENS: readonly DeployedTokenSpec[] = [
  * The stablecoins recorded for one chain, as registry entries.
  *
  * Deduplicated against TOKENS by address, which is the whole reason this is a
- * projection rather than a second table: Circle's USDC on Sepolia and Base and
- * Arc's 0x3600 predeploy are already declared there, and the same address
- * appearing twice would put a duplicate row in every picker and make
- * `findTokenBySymbol` answer from whichever came first. TOKENS wins, because an
- * entry written by hand there carries a logoURI and a name chosen for it, while
- * this table only knows the generic ones.
+ * projection rather than a second table: Arc's 0x3600 USDC predeploy is declared
+ * there (and Circle's USDC on Sepolia and Base was, until switch-usdc-to-mock.js
+ * swapped it for a mintable mock on 2026-08-27 and removed those TOKENS entries),
+ * and the same address appearing twice would put a duplicate row in every picker
+ * and make `findTokenBySymbol` answer from whichever came first. TOKENS wins,
+ * because an entry written by hand there carries a logoURI and a name chosen for
+ * it, while this table only knows the generic ones.
+ *
+ * The dedupe is BY ADDRESS, so it only suppresses a duplicate when a TOKENS entry
+ * and the recorded address match exactly. That is why the switch also deleted the
+ * Circle TOKENS entries: the mock has a new address, so leaving Circle's in TOKENS
+ * would have shown two USDC rows — the dead Circle one and the live mock.
  */
 export function deployedTokens(chainId: number | undefined): TokenEntry[] {
   if (chainId === undefined) return [];
@@ -1478,16 +1485,16 @@ export const TESTNET_WAVE: readonly DeployTarget[] = [
   {
     chainId: 11155111,
     step: 1,
-    counterparties: ["WETH", "USDC"],
-    mocks: ["USDT", "USDe"],
-    note: "Widest tooling and the most faucet options, so failures here are ours rather than the chain's. USDT and USDe are mocked because the stable pages offer all three collaterals and Sepolia has canonical issuance for none of them.",
+    counterparties: ["WETH"],
+    mocks: ["USDC", "USDT", "USDe"],
+    note: "Widest tooling and the most faucet options, so failures here are ours rather than the chain's. USDC, USDT and USDe are all mocked: the stable pages offer all three collaterals and Sepolia has no mintable canonical issuance for any of them. USDC was Circle's real testnet token until 2026-08-27, when switch-usdc-to-mock.js moved it to a mintable MockERC20 — Circle's cannot be minted, so the faucet could not stock it and USDC pools/collateral could not be seeded. The mock is 6 decimals, matching Circle's, so decimals stay declared and correct.",
   },
   {
     chainId: 84532,
     step: 2,
-    counterparties: ["WETH", "USDC"],
-    mocks: ["USDT", "USDe"],
-    note: "Circle issues real testnet USDC here, so the mint path runs against a genuine 6-decimal token — the case that broke repay when decimals were inferred.",
+    counterparties: ["WETH"],
+    mocks: ["USDC", "USDT", "USDe"],
+    note: "Circle issued real testnet USDC here, but it cannot be minted, so the faucet could not stock it and USDC was unusable in-app. Switched to a mintable 6-decimal MockERC20 on 2026-08-27 (switch-usdc-to-mock.js) — same decimals as Circle's, so the mint/repay path still runs against a genuine 6-decimal token (the case that broke repay when decimals were inferred), now one we can seed. USDT and USDe are mocked for the same reason as on Sepolia.",
   },
   {
     chainId: 97,

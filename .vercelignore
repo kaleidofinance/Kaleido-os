@@ -1,0 +1,33 @@
+# Vercel deploy ignore — keep the uploaded payload to what the Next.js build needs.
+#
+# The Hardhat sub-project is NOT imported by the frontend: contract addresses come
+# from src/constants/deployments.generated.ts and ABIs from src/abi/. Verified no
+# build-time import reaches into smart-contract/ (only comments, tests, and a
+# GitHub href string reference the path). Excluding it removes smart-contract/
+# node_modules, artifacts/, and cache/ from the upload.
+smart-contract
+
+# Dependencies and build output are rebuilt on Vercel — never upload them.
+node_modules
+.next
+out
+
+# VCS / local / logs
+.git
+coverage
+*.log
+npm-debug.log*
+
+# Secrets — never upload local env files. Both build-time and runtime environment
+# variables come from the Vercel project settings, which deliberately omit
+# PRIVATE_KEY (the Diamond owner key — it can call diamondCut). Uploading .env
+# would place that key in the build container even though nothing needs it to
+# build or serve the app: /api/referral reads PRIVATE_KEY from the runtime
+# environment, where it stays unset and the route degrades to a 503 by design.
+.env
+.env.*
+
+# Test & story files are not needed to build or serve the app.
+**/*.test.ts
+**/*.test.tsx
+**/*.stories.tsx

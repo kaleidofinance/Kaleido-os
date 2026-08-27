@@ -224,7 +224,10 @@
 /* ---------- mobile ---------- */
 @media (max-width: 720px) {
   .wrap {
-    padding: 16px 14px 60px;
+    /* env() adds the home-indicator inset the fixed tab bar itself reserves — a
+       flat 60px hid the last rows/footnotes under the bar on notched phones.
+       Cf. trade.module.css and Nav.module.css, the only two files that had it. */
+    padding: 16px 14px calc(60px + env(safe-area-inset-bottom, 0px));
   }
   /* Six columns inside a phone width crushes every cell. Scroll the table in its
      own container instead, so the page body never scrolls sideways. */

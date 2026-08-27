@@ -8,7 +8,13 @@ import { ethers6Adapter } from "thirdweb/adapters/ethers6";
 import { client } from "@/config/client";
 import { getTokenFaucetContract } from "@/config/contracts";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
-import { getContracts, getToken } from "@/constants/registry";
+import {
+  getContracts,
+  getToken,
+  isNativeSentinel,
+  nativeTokenOf,
+} from "@/constants/registry";
+import { getChainMeta } from "@/constants/chains";
 import useTxFactory from "@/components/factory/TxFactory";
 import erc20Abi from "@/abi/ERC20Abi.json";
 import type { FaucetAssetRef } from "@/lib/v2/intents/build";
@@ -21,10 +27,12 @@ import type { FaucetAssetRef } from "@/lib/v2/intents/build";
  * The obvious move is to resolve each asset through `getToken(chainId, address)`
  * and take its symbol, decimals and logo from the registry. Measured against
  * `TOKENS` it does not work: the mock USDT and USDe are in no chain's token list
- * at all, and the mock USDC is missing on 97 and 46630 — only Circle's real USDC
- * is listed, on the three chains that carry it. So `getToken` misses most of what
- * the faucet hands out, and a missing decimals is not a blank field but a payout
- * displayed off by twelve orders of magnitude.
+ * at all, and USDC is now a mintable mock on every deployed chain too — listed in
+ * `TOKENS` only as Arc's 0x3600 predeploy and absent on Sepolia, Base, BSC and
+ * Robinhood (switch-usdc-to-mock.js removed the last two TOKENS entries when it
+ * replaced Circle's real USDC with the mock on Sepolia and Base). So `getToken`
+ * misses most of what the faucet hands out, and a missing decimals is not a blank
+ * field but a payout displayed off by twelve orders of magnitude.
  *
  * `symbol()` and `decimals()` are therefore read from each token, and the
  * registry is consulted only to *enrich* — a logo when it happens to know one.
@@ -52,9 +60,9 @@ export interface FaucetAsset {
    *
    * Here rather than left to /portfolio because for most of these assets there is
    * nowhere else: the mock USDT and USDe are in no chain's `TOKENS` list, and the
-   * mock USDC is missing from two of them, so every balance surface that walks
-   * the registry skips them. Without this a successful claim is invisible
-   * everywhere in the app except its own toast.
+   * mock USDC is in none either except Arc's predeploy, so every balance surface
+   * that walks the registry skips them. Without this a successful claim is
+   * invisible everywhere in the app except its own toast.
    */
   balance: string | null;
   /** Whole drips the remaining stock can cover. */
@@ -116,6 +124,13 @@ const metaKey = (chainId: number, token: string) =>
  * which means the address is not an ERC20 — a misconfigured `setDrip`. The row
  * still renders, because a faucet listing something unreadable is worth seeing
  * rather than silently omitting.
+ *
+ * The native gas token is the exception: it is listed under the sentinel
+ * address(1), which is the ecrecover precompile, so `symbol()`/`decimals()`
+ * staticcalls against it do not revert — they return decodable garbage. It is
+ * resolved from chain metadata instead, where its symbol and 18-decimal scaling
+ * are fixed rather than read. Eighteen holds even on Arc, whose gas token is
+ * USDC: the balance underneath is 18dp and only the ERC20 alias views it at 6.
  */
 async function tokenMeta(
   provider: ethers.Provider,
@@ -125,6 +140,16 @@ async function tokenMeta(
   const key = metaKey(chainId, token);
   const hit = metaCache.get(key);
   if (hit) return hit;
+
+  if (isNativeSentinel(token, "lending")) {
+    const native = nativeTokenOf(getChainMeta(chainId), "lending");
+    const meta = {
+      symbol: native?.symbol ?? "NATIVE",
+      decimals: native?.decimals ?? 18,
+    };
+    metaCache.set(key, meta);
+    return meta;
+  }
 
   const erc20 = new ethers.Contract(token, erc20Abi, provider);
   const [symbol, decimals] = await Promise.all([
@@ -241,12 +266,18 @@ export const useFaucet = (): FaucetState => {
             const { decimals } = a;
             const drip = BigInt(a.amountRaw);
             const stock = BigInt(a.stockRaw);
+            /* The native gas token has no ERC20 to query — its balance is the
+               account's own, read straight off the provider. balanceOf against
+               the address(1) precompile would not revert, it would return
+               garbage. */
             const held =
               claimer === ethers.ZeroAddress
                 ? null
-                : await new ethers.Contract(a.address, erc20Abi, provider)
-                    .balanceOf(claimer)
-                    .catch(() => null);
+                : isNativeSentinel(a.address, "lending")
+                  ? await provider.getBalance(claimer).catch(() => null)
+                  : await new ethers.Contract(a.address, erc20Abi, provider)
+                      .balanceOf(claimer)
+                      .catch(() => null);
             return {
               address: a.address,
               symbol: a.symbol,
@@ -264,8 +295,23 @@ export const useFaucet = (): FaucetState => {
           }),
         );
 
+        /* Hide a retired duplicate. setDrip has no "remove" — pausing a token
+           (drip 0) is how an asset is retired, and its row lingers in assetInfo
+           forever. After switch-usdc-to-mock.js the Sepolia and Base faucets each
+           list USDC twice: Circle's real token, now paused at drip 0, and the
+           mintable mock that replaced it. Both read symbol() === "USDC" on-chain,
+           so without this the faucet shows two USDC rows, one of them dead. Drop a
+           paused row only when a live one of the same symbol exists; a symbol
+           paused with nothing to replace it stays visible. */
+        const liveSymbols = new Set(
+          rows.filter((r) => !r.paused).map((r) => r.symbol),
+        );
+        const deduped = rows.filter(
+          (r) => !(r.paused && liveSymbols.has(r.symbol)),
+        );
+
         if (cancelled) return;
-        setAssets(rows);
+        setAssets(deduped);
         setCooldown(cooldown);
         setTotalUsers(users);
         setError(null);

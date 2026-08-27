@@ -46,12 +46,26 @@
   max-width: 22ch;
 }
 
+/* On a phone the four tiles can only wrap to a 2x2, and a divider drawn as each
+   tile's `border-left` cannot survive that: the third tile — first on the second
+   row — keeps its rule and hangs a stray vertical line at the row's left edge, and
+   CSS has no `:first-in-row` selector to suppress it. So on mobile the strip
+   becomes an explicit 2-col grid separated by gaps rather than rules — no stray
+   divider, a real row gutter, and the side padding the rules needed is handed back
+   to the 22px figure, which at 320px was clipping. This supersedes the note above
+   at line ~23 for the wrapped case: that "reads as continuing the row above" holds
+   for a one-line strip that soft-wraps, not for a deliberate 2x2. The byte-identical
+   page-local copies (portfolio/faucet/stake/stable) carry the same block. */
 @media (max-width: 720px) {
   .strip {
     padding: var(--k-s3) var(--k-s4);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--k-s3) var(--k-s4);
   }
   .tile {
-    padding: 0 14px;
-    min-width: 120px;
+    padding: 0;
+    border-left: 0;
+    min-width: 0;
   }
 }

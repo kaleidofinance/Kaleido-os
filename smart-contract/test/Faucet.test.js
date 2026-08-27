@@ -527,4 +527,232 @@ describe("KaleidoTokenFaucet", function () {
     await (await faucet.setDrip(await usdc.getAddress(), USDC_DRIP)).wait();
     expect(await faucet.assetCount()).to.equal(1n);
   });
+
+  /* ------------------------------------------------- native gas token -- */
+
+  describe("the native gas token (sentinel address(1))", function () {
+    /*
+     * The faucet hands out the chain's native gas token under the sentinel
+     * address(1), through the same claim/cooldown/stock machinery as an ERC20 —
+     * because a wallet with no gas cannot pay for the transaction that would
+     * claim the ERC20s.
+     *
+     * The hazard every one of these guards against: address(1) is the ecrecover
+     * precompile, so a `balanceOf` staticcall against it returns decodable
+     * garbage instead of reverting. Every balance and payout path has to branch
+     * on the sentinel BEFORE it reaches IERC20, and one that forgot to would
+     * MISREPORT its native stock, not fail loudly. So stock is asserted against
+     * the contract's real ether balance throughout, and payouts against the
+     * faucet's own balance delta (it is never the tx sender, so that delta is
+     * exact and free of gas) — a path that read the precompile would not match
+     * either.
+     */
+    const NATIVE = "0x0000000000000000000000000000000000000001";
+    const ETH_DRIP = ethers.parseEther("0.05");
+
+    /**
+     * A faucet listing USDC and the native sentinel (native second), funded with
+     * `refills` drips of each. Native is funded by a plain send, which is the
+     * path receive() exists to accept.
+     */
+    async function deployNativeFaucet({ cooldown = HOUR, refills = 10n } = {}) {
+      const Faucet = await ethers.getContractFactory("KaleidoTokenFaucet");
+      const faucet = await Faucet.deploy(
+        [await usdc.getAddress(), NATIVE],
+        [USDC_DRIP, ETH_DRIP],
+        cooldown
+      );
+      await faucet.waitForDeployment();
+      const addr = await faucet.getAddress();
+      if (refills > 0n) {
+        await (await usdc.mint(addr, USDC_DRIP * refills)).wait();
+        await (
+          await owner.sendTransaction({ to: addr, value: ETH_DRIP * refills })
+        ).wait();
+      }
+      return faucet;
+    }
+
+    it("is listed and priced like any other asset", async function () {
+      const faucet = await deployNativeFaucet({ refills: 0n });
+
+      expect(await faucet.assetCount()).to.equal(2n);
+      expect(await faucet.assets(1)).to.equal(NATIVE);
+      const drip = await faucet.drips(NATIVE);
+      expect(drip.amount).to.equal(ETH_DRIP);
+      expect(drip.listed).to.equal(true);
+    });
+
+    it("receive() takes native funding and assetInfo reports it as stock", async function () {
+      const faucet = await deployNativeFaucet({ refills: 3n });
+      const addr = await faucet.getAddress();
+
+      expect(await ethers.provider.getBalance(addr)).to.equal(ETH_DRIP * 3n);
+
+      const info = await faucet.assetInfo(alice.address);
+      // native is listed second; its stock is address(this).balance, not a
+      // balanceOf against the precompile.
+      expect(info.tokens[1]).to.equal(NATIVE);
+      expect(info.amounts[1]).to.equal(ETH_DRIP);
+      expect(info.balances[1]).to.equal(ETH_DRIP * 3n);
+    });
+
+    it("pays the native drip out of the faucet's own balance", async function () {
+      const faucet = await deployNativeFaucet();
+      const addr = await faucet.getAddress();
+
+      const before = await ethers.provider.getBalance(addr);
+      await (await faucet.connect(alice).claim(NATIVE)).wait();
+      const after = await ethers.provider.getBalance(addr);
+
+      expect(before - after).to.equal(ETH_DRIP);
+      expect(await faucet.totalClaimed(NATIVE)).to.equal(ETH_DRIP);
+    });
+
+    it("delivers spendable gas to the claimer, net of the claim's own gas", async function () {
+      const faucet = await deployNativeFaucet();
+
+      const balBefore = await ethers.provider.getBalance(alice.address);
+      const receipt = await (await faucet.connect(alice).claim(NATIVE)).wait();
+      const gas = receipt.gasUsed * receipt.gasPrice;
+      const balAfter = await ethers.provider.getBalance(alice.address);
+
+      // The claimer is the tx sender, so their credit is the drip less the gas
+      // they burned claiming it. Holds whether or not the network charges a fee.
+      expect(balAfter - balBefore + gas).to.equal(ETH_DRIP);
+    });
+
+    it("decrements native stock after a claim", async function () {
+      const faucet = await deployNativeFaucet({ refills: 3n });
+
+      await (await faucet.connect(alice).claim(NATIVE)).wait();
+
+      const info = await faucet.assetInfo(alice.address);
+      expect(info.balances[1]).to.equal(ETH_DRIP * 2n);
+    });
+
+    it("claimMany pays native alongside an ERC20 in one transaction", async function () {
+      const faucet = await deployNativeFaucet();
+      const addr = await faucet.getAddress();
+      const list = [await usdc.getAddress(), NATIVE];
+
+      expect(await faucet.connect(alice).claimMany.staticCall(list)).to.equal(
+        2n
+      );
+
+      const before = await ethers.provider.getBalance(addr);
+      await (await faucet.connect(alice).claimMany(list)).wait();
+      const after = await ethers.provider.getBalance(addr);
+
+      expect(await usdc.balanceOf(alice.address)).to.equal(USDC_DRIP);
+      expect(before - after).to.equal(ETH_DRIP);
+    });
+
+    it("enforces the native cooldown without locking the ERC20", async function () {
+      const faucet = await deployNativeFaucet();
+
+      await (await faucet.connect(alice).claim(NATIVE)).wait();
+      await expect(
+        faucet.connect(alice).claim(NATIVE)
+      ).to.be.revertedWithCustomError(
+        faucet,
+        "KaleidoTokenFaucet_CooldownNotOver"
+      );
+
+      // The ERC20's own cooldown is untouched by the native claim.
+      await expect(faucet.connect(alice).claim(await usdc.getAddress())).to.not
+        .be.reverted;
+    });
+
+    it("reverts InsufficientContractBalance when native stock is short", async function () {
+      // USDC funded, native deliberately not — assertInfo would read the
+      // precompile here if the branch were missing.
+      const Faucet = await ethers.getContractFactory("KaleidoTokenFaucet");
+      const faucet = await Faucet.deploy(
+        [await usdc.getAddress(), NATIVE],
+        [USDC_DRIP, ETH_DRIP],
+        HOUR
+      );
+      await faucet.waitForDeployment();
+      await (await usdc.mint(await faucet.getAddress(), USDC_DRIP)).wait();
+
+      await expect(
+        faucet.connect(alice).claim(NATIVE)
+      ).to.be.revertedWithCustomError(
+        faucet,
+        "KaleidoTokenFaucet_InsufficientContractBalance"
+      );
+
+      // Control: the batch skips the empty native and still pays the funded USDC.
+      const list = [await usdc.getAddress(), NATIVE];
+      expect(await faucet.connect(alice).claimMany.staticCall(list)).to.equal(
+        1n
+      );
+    });
+
+    it("withdraw sweeps the whole native balance with amount 0", async function () {
+      const faucet = await deployNativeFaucet({ refills: 5n });
+      const addr = await faucet.getAddress();
+
+      // bob is the recipient, not the sender, so his credit is exact and gas-free.
+      const before = await ethers.provider.getBalance(bob.address);
+      await (await faucet.withdraw(NATIVE, bob.address, 0)).wait();
+      const after = await ethers.provider.getBalance(bob.address);
+
+      expect(after - before).to.equal(ETH_DRIP * 5n);
+      expect(await ethers.provider.getBalance(addr)).to.equal(0n);
+    });
+
+    it("withdraw sends a partial native amount", async function () {
+      const faucet = await deployNativeFaucet({ refills: 5n });
+      const addr = await faucet.getAddress();
+
+      await (await faucet.withdraw(NATIVE, bob.address, ETH_DRIP)).wait();
+      expect(await ethers.provider.getBalance(addr)).to.equal(ETH_DRIP * 4n);
+    });
+
+    it("reverts NativeTransferFailed when the recipient rejects value", async function () {
+      const faucet = await deployNativeFaucet({ refills: 5n });
+      // MockERC20 has no receive or payable fallback, so it rejects a plain
+      // send — the same low-level call and revert the native claim path uses.
+      const rejecter = await usdc.getAddress();
+
+      await expect(
+        faucet.withdraw(NATIVE, rejecter, ETH_DRIP)
+      ).to.be.revertedWithCustomError(
+        faucet,
+        "KaleidoTokenFaucet_NativeTransferFailed"
+      );
+    });
+
+    it("the reentrancy guard stops a native claim from re-entering", async function () {
+      /*
+       * cooldown 0 is essential: at any positive cooldown the second entry is
+       * refused by lastClaimed alone (set before the payout, CEI), so the guard
+       * would look load-bearing when it was not. At 0 only nonReentrant stops the
+       * re-entry — a guardless faucet would pay this contract twice.
+       */
+      const Faucet = await ethers.getContractFactory("KaleidoTokenFaucet");
+      const faucet = await Faucet.deploy([NATIVE], [ETH_DRIP], 0);
+      await faucet.waitForDeployment();
+      const addr = await faucet.getAddress();
+      await (
+        await owner.sendTransaction({ to: addr, value: ETH_DRIP * 5n })
+      ).wait();
+
+      const Attacker = await ethers.getContractFactory("FaucetReentrant");
+      const attacker = await Attacker.deploy(addr);
+      await attacker.waitForDeployment();
+
+      await (await attacker.attack()).wait();
+
+      expect(await attacker.received()).to.equal(1n); // paid once, not drained
+      expect(await attacker.reentryReverted()).to.equal(true);
+      expect(await faucet.totalClaimed(NATIVE)).to.equal(ETH_DRIP);
+      expect(await ethers.provider.getBalance(addr)).to.equal(ETH_DRIP * 4n);
+      expect(
+        await ethers.provider.getBalance(await attacker.getAddress())
+      ).to.equal(ETH_DRIP);
+    });
+  });
 });

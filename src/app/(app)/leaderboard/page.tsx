@@ -39,11 +39,7 @@ import { useActiveAccount } from "thirdweb/react";
 
 import Nav from "@/components/v2/Nav";
 import { Stat, StatStrip } from "@/components/v2/StatStrip";
-import {
-  coverageNote,
-  degradedNote,
-  useMarketStats,
-} from "@/hooks/market/useMarketStats";
+import { useMarketStats } from "@/hooks/market/useMarketStats";
 import { useLeaderboard, useStanding } from "@/hooks/points/useLeaderboard";
 import { DASH, qty, usd } from "@/lib/format/figures";
 import type {
@@ -193,37 +189,20 @@ export default function LeaderboardPage() {
         {/* Wallets ranked is season-scoped; the other three are protocol-wide and
             carried over from /explore, which had nothing else left on it. Every
             label names its own scope. KLD is counted in KLD, never dollars — it
-            has no market price before TGE (lib/points/prices.ts:53-58). */}
+            has no market price before TGE (lib/points/prices.ts:53-58).
+
+            No `note` on any of the four. They carried one — "No positions indexed
+            yet", "Unavailable", a coverage caveat — and on a phone the strip is a
+            2×2 grid where those sentences wrapped to three and four lines each,
+            making a tile mostly explanation and pushing the figures apart. The
+            figure already says it: a dash reads as no data and $0 reads as zero.
+            The degraded/coverage state is still on `market` if a tile ever needs
+            to show it again. */}
         <StatStrip>
-          <Stat
-            label="Wallets ranked"
-            value={qty(payload?.participants)}
-            note={
-              payload?.degraded.includes("participants")
-                ? "Unavailable"
-                : payload?.participants === 0
-                  ? "No wallet has earned a point in this season yet"
-                  : null
-            }
-          />
-          <Stat
-            label="Lending TVL"
-            value={usd(stats?.lendingTvlUsd)}
-            note={
-              degradedNote(market, "lendingTvlUsd") ??
-              coverageNote(stats?.coverage)
-            }
-          />
-          <Stat
-            label="kfUSD supply"
-            value={qty(stats?.kfUsdSupply)}
-            note={degradedNote(market, "kfUsdSupply")}
-          />
-          <Stat
-            label="KLD staked"
-            value={qty(stats?.kldStaked)}
-            note={degradedNote(market, "kldStaked")}
-          />
+          <Stat label="Wallets ranked" value={qty(payload?.participants)} />
+          <Stat label="Lending TVL" value={usd(stats?.lendingTvlUsd)} />
+          <Stat label="kfUSD supply" value={qty(stats?.kfUsdSupply)} />
+          <Stat label="KLD staked" value={qty(stats?.kldStaked)} />
         </StatStrip>
 
         <YourStanding
@@ -231,7 +210,6 @@ export default function LeaderboardPage() {
           loading={standing.loading}
           error={standing.error}
           row={standing.standing?.row ?? null}
-          seasonLabel={payload?.season.label ?? null}
           tierWithholdsTotal={payload?.season.disclosure === "rank_only"}
         />
 
@@ -345,14 +323,12 @@ function YourStanding({
   loading,
   error,
   row,
-  seasonLabel,
   tierWithholdsTotal,
 }: {
   connected: boolean;
   loading: boolean;
   error: string | null;
   row: LeaderboardRow | null;
-  seasonLabel: string | null;
   tierWithholdsTotal: boolean;
 }) {
   if (!connected) {
@@ -362,11 +338,12 @@ function YourStanding({
           <span className={s.youLabel}>Your standing</span>
           <span className={s.youVal}>{DASH}</span>
         </div>
-        <span className={s.youNote}>
-          Connect a wallet to see where it ranks. Nothing is written when you do
-          — points are credited server-side from verified on-chain activity,
-          never by the browser.
-        </span>
+        {/* One clause. This was three sentences explaining that points are
+            credited server-side and never by the browser — true, and a
+            reassurance nobody had asked for yet, which on a phone rendered as a
+            six-line wall next to a dash. What the card has to do here is say why
+            it is empty and how to fill it. */}
+        <span className={s.youNote}>Connect a wallet to see its rank.</span>
       </div>
     );
   }
@@ -379,18 +356,25 @@ function YourStanding({
         ? rankText(row)
         : "Unranked";
 
-  /* Four states, four sentences. The one that matters is the last: a wallet with
-     no row cannot be told which of the two reasons applies, because one of them
-     is a sybil flag and saying so would turn the lookup into a flag detector. */
-  const note = loading
-    ? "Looking up this wallet…"
-    : error
-      ? `Your standing could not be read: ${error}`
+  /* Terse, and only where the figure cannot speak for itself. An error has to be
+     said out loud. The two ordinary cases say nothing at all, because the card
+     already shows them — the rank is the value and the total is its own row —
+     and the sentences that used to restate them ("Ranked in Season 1 with 1,240
+     points", plus a paragraph on where points come from) were the bulk of the
+     card's height on a phone. The withheld case keeps one clause: its total row
+     is suppressed below, so without it a reader sees a rank and a missing number
+     with no reason given. The no-row case stays deliberately vague about why —
+     one of the two reasons is a sybil flag, and naming it would turn this lookup
+     into a flag detector. */
+  const note = error
+    ? `Your standing could not be read: ${error}`
+    : loading
+      ? null
       : row
         ? tierWithholdsTotal
-          ? `Ranked in ${seasonLabel ?? "this season"}. Point totals are private while the season runs, including your own — an exact figure needs proof that you control the address.`
-          : `Ranked in ${seasonLabel ?? "this season"} with ${points(row.total)} points.`
-        : `This wallet has no points in ${seasonLabel ?? "this season"} yet. Points come from lending, borrowing, staking, providing liquidity and swapping — held over time, not on a snapshot.`;
+          ? "Point totals are private while the season runs."
+          : null
+        : "No points in this season yet.";
 
   return (
     <div className={s.you}>
@@ -404,7 +388,7 @@ function YourStanding({
           <span className={`${s.youVal} tabular`}>{points(row.total)}</span>
         </div>
       ) : null}
-      <span className={s.youNote}>{note}</span>
+      {note ? <span className={s.youNote}>{note}</span> : null}
     </div>
   );
 }

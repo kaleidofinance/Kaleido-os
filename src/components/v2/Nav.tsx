@@ -24,9 +24,14 @@ import styles from "./Nav.module.css";
 /**
  * Trade leads: it is the front door and the reason most people arrive.
  *
- * `primary` marks the five that earn a slot in the mobile tab bar. Seven tabs
- * do not fit a phone without becoming unreadable, so Stake and Stable stay in
- * the top strip on mobile and appear in full on desktop.
+ * `primary` marks the five that earn a slot in the mobile tab bar. Seven tabs do
+ * not fit a phone without becoming unreadable, so Stake and Stable get none —
+ * and as of 2026-08-27 that leaves them reachable on a phone by URL alone, since
+ * the top strip that used to carry them is `display: none` under 720px. That is
+ * a known hole rather than the intended end state, and the strip is not the way
+ * back: at 390px it measured 0px wide against a 514px scrollWidth, so what it
+ * rendered was a scroller no touch could open, not a link row (the measurement
+ * is in Nav.module.css). They need a home the tab bar or a sheet can give them.
  *
  * `icon` IS A DRAWN SVG NOW, NOT A CHARACTER. These were Unicode glyphs — `⇄ ◎ ⇢
  * ▲ $ ◈ ◍` — and a glyph is whatever the device's font stack decides it is. `◍`
@@ -165,7 +170,10 @@ export default function Nav() {
               <Link
                 key={l.href}
                 href={l.href}
-                className={`${styles.item} ${active ? styles.on : ""}`}
+                /* `itemPrimary` exists only so mobile can drop these five: they
+                   are the tab bar's contents, so the strip repeats them there,
+                   and their width is what pushed Connect off the right edge. */
+                className={`${styles.item} ${l.primary ? styles.itemPrimary : ""} ${active ? styles.on : ""}`}
               >
                 {l.label}
               </Link>
@@ -184,7 +192,7 @@ export default function Nav() {
               used to fall back to Abstract, which told a user with no wallet
               that they were on a chain we read balances from and nothing else. */}
           <button
-            className={styles.net}
+            className={`${styles.net} ${chainMeta ? styles.netHasIcon : ""}`}
             onClick={() => setNetworkOpen(true)}
             aria-label={
               chainName ? `Network: ${chainName}` : "Select a network"
@@ -200,7 +208,12 @@ export default function Nav() {
                 />
               </span>
             )}
-            {chainName ?? "Network"}
+            {/* Wrapped so mobile can hide the name and keep the mark — a bare
+                text node is unaddressable from CSS. `netHasIcon` gates that:
+                with no chain there is no mark, so the word has to stay or the
+                button would be an empty circle. The aria-label above carries
+                the full name either way. */}
+            <span className={styles.netName}>{chainName ?? "Network"}</span>
             <span className={styles.caret}>▾</span>
           </button>
           <NetworkSelector

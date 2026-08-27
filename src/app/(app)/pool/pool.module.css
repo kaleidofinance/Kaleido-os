@@ -463,6 +463,10 @@
 
 .rangePresets {
   display: flex;
+  /* Wrap rather than overflow: the four presets ("Full range" is the wide one)
+     don't fit one line on a narrow phone card, and a non-wrapping row clipped the
+     trailing chip. Matches .chartFoot / .stats, which already wrap. */
+  flex-wrap: wrap;
   gap: 7px;
   margin-top: 4px;
 }
@@ -948,7 +952,10 @@ a.txAction:hover {
 /* ---------- mobile ---------- */
 @media (max-width: 720px) {
   .wrap {
-    padding: 16px 14px 60px;
+    /* env() adds the home-indicator inset the fixed tab bar itself reserves — a
+       flat 60px hid the last pool row / positions actions under the bar on
+       notched phones. Cf. trade.module.css and Nav.module.css. */
+    padding: 16px 14px calc(60px + env(safe-area-inset-bottom, 0px));
   }
   /* Five columns inside 280px crushes every cell. Scroll the table in its own
      container instead, so the columns stay legible and the page body never

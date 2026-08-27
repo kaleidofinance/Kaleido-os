@@ -517,9 +517,27 @@
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
 }
+/* One line, and the one thing in this row allowed to give.
+
+   Both halves are load-bearing now that the label is a sentence ("Talk to Luca
+   Agent", ~123px at 14px medium) rather than a four-letter name. Without
+   `nowrap` a flex item's automatic minimum size is its *min-content* width, so
+   the span happily shrinks to its longest word and wraps to three lines — which
+   does not clip anything, it just triples the height of a header that exists to
+   be one row, out of the transcript's budget. With `nowrap` alone the row would
+   instead overrun `.chat`'s `overflow: hidden` and cut the gear off the right
+   edge. Ellipsis and `min-width: 0` together make this the shrink victim, so the
+   controls are always reachable and the sentence is what degrades.
+
+   The mobile block below reclaims enough width that the ellipsis is a floor for
+   ~320px phones, not the normal rendering. */
 .headName {
   color: var(--k-t1);
   font-weight: var(--k-fw-med);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* The credit count, Clear, and the two round toggles, pushed right by `auto`
    rather than by a spacer — the same placement idiom `.gear` and `.clear` used in
@@ -534,6 +552,18 @@
   gap: 8px;
   font-size: var(--k-fs-xs);
   color: var(--k-t3);
+  /* The counterpart to `.headName`'s ellipsis: the name shrinks, this group
+     never does. Its children each set `flex: none`, but the group itself is a
+     flex item too, and without this the credit count would be the thing that
+     compressed first. */
+  flex: none;
+}
+/* "left" qualifies the count on a desktop header that has room for the word, and
+   is the cheapest ~24px to give back on a phone. The count keeps its
+   `title="Reasoning requests left today"`, and "40/50" beside a name still reads
+   as a counter. */
+.creditsWord {
+  white-space: nowrap;
 }
 
 /* The transcript. It scrolls, and it is the only thing on this card that does.
@@ -794,8 +824,21 @@
      declared after `.chat`, so at equal specificity it would have won and put
      15px back around the whole well — undoing the full-width hairlines on exactly
      the screens where they matter most. */
+  /* Measured, not tuned by eye. At 375px the head has 317px of content box plus
+     `.headMeta`'s 6px overhang; the avatar and its gap take 29 and the control
+     group takes ~185, which left the name ~109px against the ~123px "Talk to
+     Luca Agent" needs. The three tightenings here (4px of padding, 2px of head
+     gap, 6px across the group's three gaps) plus hiding "left" give back ~36px,
+     which clears the sentence on a 360px phone with room to spare. */
   .head {
-    padding: 12px 14px;
+    padding: 12px;
+    gap: 7px;
+  }
+  .headMeta {
+    gap: 6px;
+  }
+  .creditsWord {
+    display: none;
   }
   .thread {
     padding: 14px;
