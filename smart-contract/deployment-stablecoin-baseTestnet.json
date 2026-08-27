@@ -8,9 +8,10 @@
     "kfUSD": "0xAE330a471E09733F66b0423352D61A2B6228dBD1",
     "kafUSD": "0xb4b8fF43BC177C7cB1180c2f6010ab979A7Ee336",
     "YieldTreasury": "0xC4d4B493039c3957A7fcF24d78dc169b44E08372",
-    "USDC": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    "USDC": "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9"
   },
   "timestamps": {
-    "deployed": "2026-08-21T16:03:10.051Z"
-  }
+    "deployed": "2026-08-27T01:42:01.256Z"
+  },
+  "usdcNote": "USDC switched from Circle's real token to a mintable MockERC20 (0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9) — see scripts/switch-usdc-to-mock.js. Circle was 0x036CbD53842c5426634e7929541eC2318f3dCF7e."
 }

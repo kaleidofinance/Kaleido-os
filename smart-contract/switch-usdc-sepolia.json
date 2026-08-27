@@ -1,0 +1,9 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "mock": "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70",
+  "replaced": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+  "symbol": "USDC",
+  "decimals": 6,
+  "switchedAt": "2026-08-27T01:40:25.711Z"
+}

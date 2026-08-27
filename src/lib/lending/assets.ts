@@ -180,6 +180,45 @@ function uniqueAddresses(addresses: string[]): string[] {
 }
 
 /**
+ * Collapse assets a user could not tell apart — same symbol AND decimals —
+ * keeping the registry-named one over one read off its own contract.
+ *
+ * This is the mock-vs-Circle USDC case on Sepolia and Base. The app switched its
+ * USDC to a mintable mock so the faucet can drip it and its pools can be seeded;
+ * but `addLoanableToken` has no inverse in ProtocolFacet, so Circle's USDC stays
+ * registered on the diamond forever. Both read as "USDC"/6 — the mock from the
+ * registry (`describeLendingAsset`), Circle off its own `symbol()`/`decimals()`
+ * — and offering both would present a second USDC the faucet cannot dispense and
+ * the app's own flows (which target `getContracts().usdc`) never touch. That is a
+ * dead option a user could deposit into and not get back out through the app.
+ *
+ * Keyed on symbol AND decimals, not symbol alone, so a chain stays free to list a
+ * 6- and an 18-decimal token of the same name — the Arc hazard the decimals rule
+ * above guards — and only a genuinely indistinguishable pair is merged. Order is
+ * the first sighting's slot; the winner is swapped in without moving it.
+ */
+function preferRegistryNamed(
+  entries: Array<{ asset: LendingAsset; fromRegistry: boolean }>,
+): LendingAsset[] {
+  const byKey = new Map<
+    string,
+    { asset: LendingAsset; fromRegistry: boolean }
+  >();
+  const order: string[] = [];
+  for (const entry of entries) {
+    const key = `${entry.asset.symbol} ${entry.asset.decimals}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, entry);
+      order.push(key);
+    } else if (!existing.fromRegistry && entry.fromRegistry) {
+      byKey.set(key, entry); // upgrade to the registry-named token, same slot
+    }
+  }
+  return order.map((k) => byKey.get(k)!.asset);
+}
+
+/**
  * The two registered sets on one chain, named.
  *
  * `chainId` must be the chain of `provider` — the same pairing rule
@@ -223,21 +262,29 @@ export async function readLendingAssets(
   );
 
   const unnamed: string[] = [];
-  const describe = (address: string): LendingAsset | undefined => {
-    const asset =
-      describeLendingAsset(chainId, address) ??
-      fetched.get(address.toLowerCase());
-    if (!asset) unnamed.push(address);
-    return asset;
+  const resolve = (
+    address: string,
+  ): { asset: LendingAsset; fromRegistry: boolean } | undefined => {
+    const named = describeLendingAsset(chainId, address);
+    if (named) return { asset: named, fromRegistry: true };
+    const read = fetched.get(address.toLowerCase());
+    if (read) return { asset: read, fromRegistry: false };
+    unnamed.push(address);
+    return undefined;
   };
+  const nameList = (addresses: string[]): LendingAsset[] =>
+    preferRegistryNamed(
+      addresses
+        .map(resolve)
+        .filter(
+          (e): e is { asset: LendingAsset; fromRegistry: boolean } =>
+            e !== undefined,
+        ),
+    );
 
   return {
-    collateral: collateralAddrs
-      .map(describe)
-      .filter((a): a is LendingAsset => a !== undefined),
-    loanable: loanableAddrs
-      .map(describe)
-      .filter((a): a is LendingAsset => a !== undefined),
+    collateral: nameList(collateralAddrs),
+    loanable: nameList(loanableAddrs),
     unnamed: uniqueAddresses(unnamed),
   };
 }

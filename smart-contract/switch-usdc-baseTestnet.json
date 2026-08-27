@@ -1,0 +1,9 @@
+{
+  "network": "baseTestnet",
+  "chainId": 84532,
+  "mock": "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9",
+  "replaced": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "symbol": "USDC",
+  "decimals": 6,
+  "switchedAt": "2026-08-27T01:42:01.263Z"
+}

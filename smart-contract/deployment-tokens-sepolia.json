@@ -2,28 +2,44 @@
   "network": "sepolia",
   "chainId": 11155111,
   "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
-  "timestamp": "2026-08-24T10:15:00.648Z",
+  "timestamp": "2026-08-27T07:21:50.041Z",
   "diamond": "0x32a9971381C969d15205AC9e509C204D31341080",
   "oracle": "0x126C64a2d48F40EeAEcD534387902f5da74c9dbb",
   "oracleKind": "aggregator-v3",
   "pyth": null,
-  "nativeFeedSymbol": "ETH",
+  "nativeFeedSymbol": "BNB",
   "hermesVerified": true,
   "registered": [
     {
-      "kind": "loanable",
-      "symbol": "WETH",
-      "address": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
-      "onChainSymbol": "WETH",
-      "decimals": 18,
-      "feedSymbol": "Crypto.ETH/USD",
-      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "kind": "collateral",
+      "symbol": "USDC",
+      "address": "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
       "feedSource": "repo",
-      "priceAgeSeconds": 3192,
-      "feedMaxAge": 5400,
-      "maxAgeBasis": "Same contract as ETH — WETH is redeemable 1:1 by contract, not by market.",
-      "effectiveMaxAge": 5400,
-      "txHash": "0xbeeaa64d8e276aeb74235264902fbb3bab4152bba49d654aae1a763ed69711c1",
+      "priceAgeSeconds": 36432,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Observed 13438s (3h44m), which already exceeds the 3600s ceiling on the GLOBAL bound — this feed is the reason Constants.MAX_FEED_PRICE_AGE exists. Chainlink's documented heartbeat for it is 86400s, and this was 86400 to match; raised to 90000 because a bound equal to the heartbeat leaves no room for a late publish, and Base Sepolia's identically configured USDT/USD was caught at 70,702s, proving these 24h feeds do run close to their limit. 90000 is MAX_FEED_PRICE_AGE, the ceiling. Defensible here and on the other pegged feeds only: USDC is pegged, so a day-old answer is wrong by basis points rather than by percent. Do not copy this number onto a volatile feed to stop it reverting.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0x17a8a33586180d4d60abb9b408032f3b07612158e9a94edcc4f4c3f2cbfa1ff0",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDC",
+      "address": "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 36432,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Observed 13438s (3h44m), which already exceeds the 3600s ceiling on the GLOBAL bound — this feed is the reason Constants.MAX_FEED_PRICE_AGE exists. Chainlink's documented heartbeat for it is 86400s, and this was 86400 to match; raised to 90000 because a bound equal to the heartbeat leaves no room for a late publish, and Base Sepolia's identically configured USDT/USD was caught at 70,702s, proving these 24h feeds do run close to their limit. 90000 is MAX_FEED_PRICE_AGE, the ceiling. Defensible here and on the other pegged feeds only: USDC is pegged, so a day-old answer is wrong by basis points rather than by percent. Do not copy this number onto a volatile feed to stop it reverting.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0xb542b86dbddd763a0307a86062450215ca1ecaf2bd5d467af49745e3b5d83a1b",
       "skipped": false
     }
   ],
@@ -35,7 +51,7 @@
         "WETH"
       ],
       "maxAge": 5400,
-      "basis": "Same contract as ETH — WETH is redeemable 1:1 by contract, not by market.",
+      "basis": "Chainlink's Sepolia ETH/USD heartbeat is 1 hour (3600s) with a 1% deviation trigger; 5400 is that plus 30 minutes of slack for a testnet publisher that is not SLA-backed. This is LOOSE for a volatile asset and is a testnet-only figure: a 90-minute-old ETH price is a bad basis for a liquidation. The alternative on this chain is no lending at all. Base Sepolia's ETH/USD is on a 1200s heartbeat and bounded at 1800 — compare against that, not against this.",
       "txHash": null,
       "skipped": true
     },
@@ -64,11 +80,13 @@
     "collateral": [
       "0x0000000000000000000000000000000000000001",
       "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
-      "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+      "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+      "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70"
     ],
     "loanable": [
       "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-      "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14"
+      "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+      "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70"
     ]
   }
 }

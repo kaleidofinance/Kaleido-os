@@ -1311,12 +1311,23 @@ async function main() {
          alone would refuse one the facet accepts. */
       const loanable = registry.registeredLendingAssets(CHAIN, "loanable")
         .assets[0];
+      // `assets[0]` is WETH here: the array's old first entry (Circle USDC) is
+      // still registered on the diamond but is no longer a named token — the app
+      // ships a mintable mock USDC in its place — so it drops out of the named
+      // set and WETH leads. 100 units of a $3000 asset would trip the $1000
+      // per-action cap, and that is a spend-limit refusal, not the "not
+      // collateral" refusal this test is about. Deposit a fixed ~$300 of
+      // whatever the first loanable asset is so the collateral check is the only
+      // thing that can fail; `.toFixed(4)` keeps the amount parseable at both 6-
+      // and 18-decimal precision.
+      const loanableAmount = (300 / (PRICES[loanable.symbol] ?? 1)).toFixed(4);
       const v = await audit([
         {
           ...deposit,
           token: loanable.address,
           decimals: loanable.decimals,
           symbol: loanable.symbol,
+          amount: loanableAmount,
         },
       ]);
       check(
