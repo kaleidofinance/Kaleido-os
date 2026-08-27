@@ -101,22 +101,38 @@ import s from "./CapabilityTabs.module.css";
  */
 
 /**
- * The tallest finished turn in the inventory, for `TracePlayer`'s `floor`.
+ * The tallest *ordinary* finished turn in the inventory, for `TracePlayer`'s
+ * `floor`.
  *
  * A rotation that swaps the turn every few seconds resizes the card every few
- * seconds unless something holds it, so the player reserves room for this one as
- * well as for whatever is playing. Ranked by step count first because a step is a
- * whole row — title, detail, tag — and then by rendered text, which is what wraps
- * to a second line.
+ * seconds unless something holds it, so the player reserves room for a tall turn
+ * as well as for whatever is playing. Ranked by step count first because a step is
+ * a whole row — title, detail, tag — and then by rendered text, which is what
+ * wraps to a second line.
+ *
+ * THE TWO MODEL-COMPOSED EXECUTE TURNS ARE EXCLUDED, and that is the whole reason
+ * this is `tallest ordinary` rather than `tallest`. `provideLiquidity` (three
+ * steps) and the delegation grant (one step) each carry an authored reply *and* a
+ * tool-call block on top of their plan — see capabilities.ts — which makes them a
+ * good ~200px taller than any of the 21 typed turns or the six reads. Reserving
+ * *their* height for all 29 turns is what left an ordinary turn — a swap, a send —
+ * sitting in ~200px of empty glass, with the card overshooting the catalog beside
+ * it. So they are left out of the floor: the reserved height now tracks the
+ * tallest ordinary turn, which lands within a hair of the catalog's own height,
+ * and the two showpieces grow the card only when the rotation reaches them — where
+ * the extra height is full of plan rather than empty. Identified as a model turn
+ * that has a plan; a read is also `via: "model"` but has no steps, so `> 0` keeps
+ * the six of them in the floor (they never win the step-count ranking regardless).
  *
  * A PROXY, AND SAFE BECAUSE IT IS ONLY A FLOOR. Real height also depends on where
  * each string wraps at the current width, which is not knowable here. If this
- * picks wrong the current turn's own sizer is still in the grid cell, so the card
- * grows on one transition instead of clipping. Reads are included: a `returns`
- * block stands where the plan would, and `getBridgeRoute`'s is long.
+ * picks wrong — or a showpiece turn plays — the current turn's own sizer is still
+ * in the grid cell, so the card grows on one transition instead of clipping.
  */
 function tallest(groups: readonly GroupTrace[]): ToolTrace | undefined {
-  const all = groups.flatMap((g) => g.tools);
+  const all = groups
+    .flatMap((g) => g.tools)
+    .filter((t) => !(t.via === "model" && t.steps.length > 0));
   const text = (t: ToolTrace) =>
     t.prompt.length +
     (t.say?.length ?? 0) +
