@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { toast } from "sonner";
 import Nav from "@/components/v2/Nav";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { usePortfolio, type Position } from "@/hooks/usePortfolio";
@@ -60,6 +62,59 @@ export default function PortfolioPage() {
   const p = usePortfolio();
   const gate = useChainGate();
 
+  /*
+   * Share and Deposit were markup with no handler — chrome from the first pass
+   * at this header. Wiring them meant deciding what each one is for, and both
+   * answers ruled out the obvious implementation:
+   *
+   * Share shares a SENTENCE, not this URL. /portfolio renders whichever wallet
+   * is connected in the reader's own browser, so the bare link tells a recipient
+   * nothing about the sender — it shows them their own empty portfolio. The
+   * figures have to travel in the text, and the link points at the app entry.
+   *
+   * Deposit goes to /borrow because "deposit" already means one thing in this
+   * app: the Deposit/Withdraw control in the lending Collateral modal. Opening
+   * that modal here would need a second useBorrowV2 instance (usePortfolio does
+   * not use it) plus the LendingDataProvider it reads from — a page of contract
+   * calls for one button. The other candidates all have their own verb and their
+   * own tab: add liquidity, mint, stake.
+   *
+   * Both are hidden until a wallet is connected, the way WalletMenu gates
+   * /faucet: a control whose target is empty is worse than one that is absent.
+   */
+  const share = async () => {
+    const url = window.location.origin;
+    /* Figures only when they are real — usd(null) is an em dash, and "— net
+       position" reads worse than an invitation with no numbers in it. */
+    const text =
+      p.netValue === null
+        ? "My Kaleido portfolio — lending, swaps and kfUSD in one place."
+        : `My Kaleido portfolio: ${usd(p.netValue)} net position, health factor ${healthText(p.health)}.`;
+
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: "Kaleido portfolio", text, url });
+        return;
+      } catch (err) {
+        /* AbortError is the user closing the share sheet — an intentional no,
+           and copying to the clipboard behind their back is not the answer to
+           it. Any other rejection is the API failing (no transient activation,
+           no share target), which is what the fallback below exists for. */
+        if (err instanceof Error && err.name === "AbortError") return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      toast.success("Portfolio summary copied");
+    } catch {
+      /* Clipboard is permission-gated and throws on insecure origins. */
+      toast.error(
+        "Couldn't copy — the figures are on screen to share by hand.",
+      );
+    }
+  };
+
   return (
     <>
       <Nav />
@@ -72,10 +127,16 @@ export default function PortfolioPage() {
             </div>
             <div className={s.pnet}>{chainName ?? "No network"}</div>
           </div>
-          <div className={s.hActions}>
-            <button className={s.bt}>Share</button>
-            <button className={`${s.bt} ${s.btWhite}`}>Deposit</button>
-          </div>
+          {isConnected && (
+            <div className={s.hActions}>
+              <button className={s.bt} onClick={share}>
+                Share
+              </button>
+              <Link href="/borrow" className={`${s.bt} ${s.btWhite}`}>
+                Deposit
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* The header stays above the gate on purpose — the address and network
