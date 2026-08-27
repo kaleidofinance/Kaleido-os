@@ -52,6 +52,33 @@ const nextConfig = {
       // and the URL's replacement both live; a visitor after the pool tables
       // has one click from there.
       { source: "/explore", destination: "/leaderboard", permanent: true },
+
+      // /trade's default mode is Agent. src/app/(app)/trade/page.tsx expresses
+      // that with a page-level redirect() — but a statically prerendered
+      // redirect() ships the hop in the HTML body with no Location header (see
+      // the note above), so curl, crawlers and link previews of /trade never
+      // reach /trade/agent, and app.kaleidofi.xyz/ (which lands on /trade)
+      // inherits that dead end. Emitting it here makes it a real 307 every
+      // client follows. Exact source, so it matches only the bare /trade — the
+      // /trade/agent, /trade/swap and other modes are real pages and keep
+      // serving themselves. Temporary, because which mode is default is a
+      // product choice that may change.
+      { source: "/trade", destination: "/trade/agent", permanent: false },
+
+      // app.kaleidofi.xyz is the app's own front door: its root lands on /trade
+      // rather than the marketing page, while kaleidofi.xyz/ keeps serving the
+      // landing page. The `has` host condition scopes this to that one
+      // subdomain, so the apex and every *.vercel.app preview URL are
+      // untouched. Only `/` is rewritten, so every other path still resolves
+      // normally on the subdomain (app.kaleidofi.xyz/pool serves /pool).
+      // Temporary (307) not permanent: this is a routing convenience for a
+      // subdomain we may repoint later, and a cached 308 would fight that.
+      {
+        source: "/",
+        has: [{ type: "host", value: "app.kaleidofi.xyz" }],
+        destination: "/trade",
+        permanent: false,
+      },
     ]
   },
 
