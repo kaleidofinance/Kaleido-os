@@ -15,11 +15,7 @@ import {
   useLendingData,
 } from "@/components/v2/LendingDataContext";
 import { Stat, StatStrip } from "@/components/v2/StatStrip";
-import {
-  coverageNote,
-  degradedNote,
-  useMarketStats,
-} from "@/hooks/market/useMarketStats";
+import { useMarketStats } from "@/hooks/market/useMarketStats";
 import { qty, usd } from "@/lib/format/figures";
 import s from "./borrow.module.css";
 
@@ -57,8 +53,10 @@ function LendingShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const mode = modeFromPath(pathname);
   const { filters, borrow } = useLendingData();
-  const market = useMarketStats();
-  const { stats } = market;
+  /* Only `stats` now. The whole state object was held as `market` so the strip's
+     notes could ask it about `loading` and `degraded` — those notes are gone (see
+     StatStrip), and with them the last reader of anything but the figures. */
+  const { stats } = useMarketStats();
   const [offerOpen, setOfferOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [collateralOpen, setCollateralOpen] = useState(false);
@@ -137,40 +135,17 @@ function LendingShell({ children }: { children: ReactNode }) {
           answer to the same question.
         */}
         <StatStrip>
-          <Stat
-            label="Open offers"
-            value={qty(stats?.openOffers)}
-            /* No chain named. The mirror tables carry no chainId column, so the
-               indexed book is one chain's (see the decimals note in
-               api/market/overview) — but this tile used to name that chain and
-               the name is now wrong: addresses are chain-keyed through
-               getContracts(chainId) and the old single-chain table is gone. A
-               figure attributed to the wrong network is worse than one with no
-               attribution, so the note says only what it can defend. */
-            note={degradedNote(market, "openOffers") ?? "Fillable now"}
-          />
-          <Stat
-            label="Open requests"
-            value={qty(stats?.openRequests)}
-            note={degradedNote(market, "openRequests")}
-          />
+          <Stat label="Open offers" value={qty(stats?.openOffers)} />
+          <Stat label="Open requests" value={qty(stats?.openRequests)} />
           {/* "Open book" rather than "Lending TVL", which is what /leaderboard
               calls the same field. On a page whose reader is about to take one of
               these rows, the useful thing to say is that the figure is the
               unfilled book — not capital deposited in a pool, which is what TVL
               means everywhere else in DeFi. */}
-          <Stat
-            label="Open book"
-            value={usd(stats?.lendingTvlUsd)}
-            note={
-              degradedNote(market, "lendingTvlUsd") ??
-              coverageNote(stats?.coverage)
-            }
-          />
+          <Stat label="Open book" value={usd(stats?.lendingTvlUsd)} />
           <Stat
             label="Loans outstanding"
             value={qty(stats?.loansOutstanding)}
-            note={degradedNote(market, "loansOutstanding")}
           />
         </StatStrip>
 

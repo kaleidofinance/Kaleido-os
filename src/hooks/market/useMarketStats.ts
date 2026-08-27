@@ -127,47 +127,17 @@ export const useMarketStats = () => {
 /* ------------------------------------------------ describing what is missing -- */
 
 /*
- * Both helpers below annotate a tile that rendered an em dash, and they live here
- * rather than in each strip because they describe *this* payload. Two strips
- * reading one response and footnoting it differently would be two accounts of the
- * same gap, and the footnote is the part that says whether a headline can be
- * trusted — it is not cosmetic.
- */
-
-/**
- * What a headline total leaves out.
+ * `coverageNote` and `degradedNote` were here, and both are gone.
  *
- * Rows whose token has no USD price, is not in the lending currency list, or
- * whose amount is not a readable base-unit integer are excluded from the total
- * rather than guessed at. Saying so is the difference between a figure that is
- * incomplete and a figure that is wrong: the reader can see the total covers 14
- * of 17 positions instead of assuming it covers all of them.
- */
-export const coverageNote = (c: MarketCoverage | undefined) => {
-  if (!c) return null;
-  /* An empty book genuinely is $0, and the route returns 0 rather than null for
-   * exactly that reason — but a bare "$0" reads the same as a broken feed to
-   * anyone who does not know the indexer has never run. Saying which it is costs
-   * a line. */
-  if (c.rows === 0) return "No positions indexed yet";
-  const parts: string[] = [];
-  if (c.unpriced) parts.push(`${c.unpriced} unpriced`);
-  if (c.unknownToken) parts.push(`${c.unknownToken} unknown token`);
-  if (c.malformedAmount) parts.push(`${c.malformedAmount} unreadable`);
-  if (parts.length === 0) return null;
-  return `Excludes ${parts.join(", ")} of ${c.rows} positions`;
-};
-
-/**
- * "Unavailable", for a null figure that is a failed measurement rather than a
- * pending one.
+ * They turned this payload's `coverage` block and its `degraded` list into a
+ * sub-line for a stat tile: "No positions indexed yet", "Excludes 3 unpriced of 17
+ * positions", "Unavailable". Nothing renders a sub-line under a stat any more — see
+ * the note in components/v2/StatStrip.tsx for why the 2×2 phone grid could not
+ * carry a sentence per tile — so both helpers lost their only callers.
  *
- * Those two must not read the same. An em dash with no explanation invites a
- * reload; an em dash labelled unavailable does not.
+ * `degraded` and `coverage` are still on the payload and still worth reading. What
+ * they no longer have is a *presentation* here, and that is the deliberate part: a
+ * caveat wants the width of a table row, not a quarter of a phone screen. Anything
+ * new that needs to say "this figure is incomplete" should format it at the surface
+ * that has room, rather than reviving a shared one-liner that only fit one shape.
  */
-export const degradedNote = (state: MarketStatsState, key: string) =>
-  state.loading
-    ? null
-    : state.stats?.degraded.includes(key)
-      ? "Unavailable"
-      : null;
