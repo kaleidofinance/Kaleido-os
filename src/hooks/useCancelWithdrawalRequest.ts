@@ -7,7 +7,7 @@ import { getKLDVaultContract } from "@/config/contracts";
 import { ErrorDecoder } from "ethers-decode-error";
 import { ethers, MaxUint256 } from "ethers";
 import KLDVaultAbi from "@/abi/KLDVaultAbi.json";
-
+import { stakingContracts } from "@/constants/registry";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers6Adapter } from "thirdweb/adapters/ethers6";
 import { client } from "@/config/client";
@@ -40,7 +40,18 @@ const useCancelWithdrawalRequest = () => {
       return;
     }
 
-    const contract = getKLDVaultContract(signer);
+    /* Same gate as the request it cancels — see useRequestWithdrawal. A chain
+     * with no staking set recorded has no cooldown to clear, so this would be a
+     * `cancelWithdrawalRequest` sent to a codeless address. */
+    const staking = stakingContracts(activeChain.id);
+    if (!staking.supported) {
+      toast.error(
+        `Staking is not available on ${activeChain.name ?? `chain ${activeChain.id}`}`,
+      );
+      return;
+    }
+
+    const contract = getKLDVaultContract(signer, activeChain.id);
     let loadingToastId = toast.loading(`Cancelling your withdrawal Request`);
 
     try {

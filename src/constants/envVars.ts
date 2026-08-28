@@ -16,7 +16,23 @@ export const envVars = {
 
   faucetAddress: process.env.NEXT_PUBLIC_TOKENFAUCET_ADDRESS,
 
-  vaultAddress: process.env.NEXT_PUBLIC_KLD_VAULT_ADDRESS,
+  /*
+   * `vaultAddress: process.env.NEXT_PUBLIC_KLD_VAULT_ADDRESS` stood here and is
+   * deleted, not emptied.
+   *
+   * It was never set, so `getKLDVaultContract` threw "Missing contract address
+   * for KLD Vault" on every call and /stake was unreachable on every chain.
+   * There was nothing to set it to — KLD had no ERC20 in the repository, so no
+   * vault deployment existed. It also could not have been right for more than
+   * one chain at a time: the vault is deployed per chain, like the diamond and
+   * the faucet before it, both of which moved off their env vars for the same
+   * reason.
+   *
+   * `kldVault` now comes from DEPLOYMENTS via `stakingContracts(chainId)`,
+   * alongside the token and the receipt. Removing the variable rather than
+   * leaving it unread is deliberate: a second source for an address that is
+   * already generated is the drift registry.ts's header warns about.
+   */
 
   /**
    * No fallback, unlike every other address here once did.
@@ -31,9 +47,9 @@ export const envVars = {
    * as a send to the MasterChef contract.
    *
    * Undefined now, which getKaleidoMasterChefContract turns into "Missing
-   * contract address for Kaleido MasterChef" at the call. Nothing deploys
-   * MasterChef this wave anyway — it takes a KLD address and no KLD ERC20 exists
-   * in smart-contract/contracts.
+   * contract address for Kaleido MasterChef" at the call. MasterChef is still
+   * undeployed: KLD exists and is deployed now, so the blocker is no longer the
+   * token — nothing this wave deploys the farm.
    */
   masterChefAddress: process.env.NEXT_PUBLIC_MASTER_CHEF_ADDRESS,
 

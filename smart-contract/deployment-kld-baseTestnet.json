@@ -1,0 +1,34 @@
+{
+  "network": "baseTestnet",
+  "chainId": "84532",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "status": "complete",
+  "contracts": {
+    "KLD": "0x6140Da1f66fCafa0b5197065ae91A00208F3Cd86",
+    "KLDVault": "0x32E24AAdb0e346A3b334D29C9A334390aE022BE1",
+    "stKLD": "0xdFbF7276dd0ed0DaBb40EFD4Afc99f811484bD2c"
+  },
+  "config": {
+    "maxSupply": "1000000000000000000000000000",
+    "maxSupplyHuman": "1000000000.0",
+    "homeChainId": 84532,
+    "isHomeChain": true,
+    "mintedToDeployer": "1000000000000000000000000000",
+    "yieldTreasury": "0xC4d4B493039c3957A7fcF24d78dc169b44E08372"
+  },
+  "faucet": {
+    "address": "0x459fA03715EbE0B2914273720Ad687d4Ff3Ed888",
+    "funded": "5000000000000000000000000",
+    "fundedHuman": "5000000.0",
+    "drip": "1000000000000000000000",
+    "dripHuman": "1000.0"
+  },
+  "timestamps": {
+    "started": "2026-08-27T23:36:32.345Z",
+    "deployed": "2026-08-27T23:36:32.345Z"
+  },
+  "sources": {
+    "stablecoin": "deployment-stablecoin-baseTestnet.json"
+  },
+  "note": "Testnet topology: this chain is its own KLD home, so it issues its own supply. Mainnet uses a single home chain with every other chain holding bridged supply only — see the script header."
+}

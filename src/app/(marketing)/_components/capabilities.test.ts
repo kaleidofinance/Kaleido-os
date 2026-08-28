@@ -50,12 +50,16 @@ import type { GroupTrace, ToolTrace } from "./traces";
  *
  * So every runtime import lives inside `load()` — a static import is evaluated
  * before any statement in the module body, which would freeze `undefined` into
- * envVars before these two lines ran. Type imports stay static; they erase.
+ * envVars before the line below ran. Type imports stay static; they erase.
+ *
+ * There were two lines here. NEXT_PUBLIC_KLD_VAULT_ADDRESS was the second, and
+ * it is gone with the env var itself — the vault is resolved per chain from
+ * DEPLOYMENTS now, so nothing in process.env can seed it. Removing it changes
+ * nothing here in any case: this file asserts over the capability copy and the
+ * lending examples, and never builds a stake, so the seed was already inert.
  */
 process.env.NEXT_PUBLIC_KALEIDO_DIAMOND_ADDRESS =
   "0xd1a3000000000000000000000000000000000001";
-process.env.NEXT_PUBLIC_KLD_VAULT_ADDRESS =
-  "0x7a17000000000000000000000000000000000002";
 
 let pass = 0;
 let fail = 0;

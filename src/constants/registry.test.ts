@@ -404,10 +404,32 @@ console.log("\n— the testnet wave is checked against what exists —");
     problems.join("; "),
   );
 
-  // KLD is the one gap the plan cannot close on its own: nothing in
-  // smart-contract/contracts mints it, so staking is untestable on every chain
-  // until that exists. The audit must keep saying so rather than going quiet.
-  check("KLD's missing contract is reported", has("KLD"), problems.join("; "));
+  /* KLD used to be the one gap the plan could not close on its own: nothing in
+   * smart-contract/contracts minted it, so staking was untestable everywhere and
+   * the audit had to keep saying so. contracts/Token/KLD.sol exists now and
+   * deploy-kld.js recorded KLD, KLDVaultV2 and StKLD on all five wave chains, so
+   * the assertion is inverted — a closed gap must not keep being reported, or the
+   * audit's output stops meaning anything.
+   *
+   * Inverting alone would pass if the audit went silent for the wrong reason (an
+   * OWN_TOKENS entry deleted, say), so the real deployment is the control: every
+   * wave chain must resolve both KLD and its receipt through ownTokens. */
+  check(
+    "KLD's contract gap is no longer reported, because it is closed",
+    !has("KLD"),
+    problems.join("; "),
+  );
+  {
+    const missing = TESTNET_WAVE.map((t) => t.chainId).filter((id) => {
+      const symbols = ownTokens(id).map((t) => t.symbol);
+      return !symbols.includes("KLD") || !symbols.includes("stKLD");
+    });
+    check(
+      "and every wave chain really resolves KLD and stKLD",
+      missing.length === 0,
+      `chains missing one or both: ${missing.join(", ")}`,
+    );
+  }
 
   const wave = TESTNET_WAVE.map((t) => t.chainId);
   check(

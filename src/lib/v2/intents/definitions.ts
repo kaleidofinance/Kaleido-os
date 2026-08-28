@@ -22,18 +22,35 @@ const V3_ROUTER_ABI = [
   "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)",
 ];
 
-const VAULT_ABI = [
-  "function deposit(address token, address stToken, uint256 amount) external",
-];
+/*
+ * Two arguments, not three. `KLDVaultV2.deposit` is `(address _token, uint256
+ * _amount)` — the vault derives the receipt token from its own `stKLD` storage
+ * slot and never takes it from the caller. A three-argument declaration here is
+ * not a cosmetic difference: the signature is what ethers hashes into the
+ * selector, so `deposit(address,address,uint256)` sent 0x8340f549 at a vault
+ * that only answers to 0x47e7ef24, and every agent-driven stake reverted with
+ * no matching function. `useStake.ts:86` had it right all along, because it
+ * reads the generated ABI rather than restating the signature.
+ */
+const VAULT_ABI = ["function deposit(address token, uint256 amount) external"];
 
-// Minimal ProtocolFacet surface. Written out rather than imported from the full
-// ABI JSON so a resolver's calldata is readable next to the intent that builds
-// it, matching how the router and vault ABIs above are handled.
+/*
+ * Minimal ProtocolFacet surface. Written out rather than imported from the full
+ * ABI JSON so a resolver's calldata is readable next to the intent that builds
+ * it, matching how the router and vault ABIs above are handled.
+ *
+ * The widths are load-bearing for the same reason as the vault above: two of
+ * these take a `uint128` on the facet, and restating them as `uint256` encodes
+ * the identical 32-byte word behind a different selector, which a diamond
+ * rejects outright with FunctionNotFound. Checked against
+ * artifacts/contracts/facets/ProtocolFacet.sol/ProtocolFacet.json — change a
+ * width here only when the facet's own signature changes.
+ */
 const PROTOCOL_ABI = [
   "function depositCollateral(address token, uint256 amount) external payable",
-  "function withdrawCollateral(address token, uint256 amount) external",
+  "function withdrawCollateral(address token, uint128 amount) external",
   "function repayLoan(uint96 requestId, uint256 amount) external payable",
-  "function createLendingRequest(uint256 amount, uint16 interest, uint256 returnDate, address token) external",
+  "function createLendingRequest(uint128 amount, uint16 interest, uint256 returnDate, address token) external",
   "function createLoanListing(uint256 amount, uint256 minAmount, uint256 maxAmount, uint256 returnDate, uint16 interest, address token) external payable",
   "function requestLoanFromListing(uint96 listingId, uint256 amount) external",
   "function serviceRequest(uint96 requestId, address token) external payable",
@@ -140,7 +157,7 @@ register("stake", {
   resolve: async (ctx, i) => {
     const vault = new ethers.Contract(i.vault, VAULT_ABI, ctx.signer);
     const amount = ethers.parseUnits(i.amount, 18);
-    const tx = await vault.deposit(i.token, i.stToken, amount);
+    const tx = await vault.deposit(i.token, amount);
     await tx.wait();
     return { hash: tx.hash };
   },

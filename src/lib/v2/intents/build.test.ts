@@ -48,9 +48,12 @@ import type {
  * envVars before these two lines ran. Type imports stay static — they erase.
  */
 const DIAMOND = "0xd1a3000000000000000000000000000000000001";
-const VAULT = "0x7a17000000000000000000000000000000000002";
 process.env.NEXT_PUBLIC_KALEIDO_DIAMOND_ADDRESS = DIAMOND;
-process.env.NEXT_PUBLIC_KLD_VAULT_ADDRESS = VAULT;
+/* NEXT_PUBLIC_KLD_VAULT_ADDRESS was set here too. It is gone from envVars: the
+   vault is deployed per chain and comes from the deployment records like the
+   diamond, so there is no env var left to seed. The diamond's stays because
+   `envVars.lendbitDiamondAddress` is still the fallback the registry's value is
+   asserted to beat, further down. */
 
 let pass = 0;
 let fail = 0;
@@ -192,21 +195,23 @@ async function main() {
     isKnownBridgeAddress,
     isKnownBridgeSpender,
   } = await load();
-  const { NATIVE_SENTINEL, STAKING_CONTRACTS } = registry;
+  const { NATIVE_SENTINEL } = registry;
 
   /* The three flat tables these assertions used to read — BORROW_CURRENCIES,
      STABLE_CONTRACTS and LEGACY_CONTRACTS — were Abstract-testnet only and are
      gone. Their replacements are chain-scoped functions, so they are resolved
      once here against CHAIN and the assertions below are otherwise untouched.
-     LEGACY_CONTRACTS split in two: its DEX fields come from getContracts, its
-     staking fields stayed a constant because KLD has no ERC20 pre-TGE. */
+     LEGACY_CONTRACTS is whole again: its staking fields were a chain-blind
+     constant while KLD had no ERC20, and now come from the same records as the
+     DEX fields. */
   const DEPLOYED = registry.getContracts(CHAIN);
   const STABLE_CONTRACTS = registry.stableContracts(CHAIN);
+  const STAKING = registry.stakingContracts(CHAIN);
   const LEGACY_CONTRACTS = {
     v3Router: DEPLOYED.v3Router,
     v3PositionManager: DEPLOYED.v3PositionManager,
-    kld: STAKING_CONTRACTS.kld,
-    stKLD: STAKING_CONTRACTS.stKLD,
+    kld: STAKING.kld,
+    stKLD: STAKING.stKLD,
   };
 
   /* Read from the registry rather than pasted in, so the day the market
@@ -486,9 +491,10 @@ async function main() {
       kinds(r),
     );
     check(
-      "the approve targets the configured vault",
-      same(at(r, 0).spender, VAULT) && same(at(r, 1).vault, VAULT),
-      `${String(at(r, 0).spender)} / ${String(at(r, 1).vault)}`,
+      "the approve targets this chain's recorded vault",
+      same(at(r, 0).spender, STAKING.kldVault) &&
+        same(at(r, 1).vault, STAKING.kldVault),
+      `${String(at(r, 0).spender)} / ${String(at(r, 1).vault)} (registry ${String(STAKING.kldVault)})`,
     );
     check(
       "staking is KLD for stKLD, from the registry",
@@ -2165,14 +2171,33 @@ async function main() {
     );
   }
   {
-    envVars.vaultAddress = undefined;
+    /* The refusal used to be driven by clearing `envVars.vaultAddress`, one env
+       var for every chain. Staking now resolves all three addresses from the
+       chain's deployment record, so the case that has to refuse is a chain KLD
+       was never deployed to — and Ethereum mainnet is one, permanently, which is
+       a stronger fixture than an env var a later edit could set. */
+    const { deps } = fakeDeps({ chainId: 1 });
+    const r = await build({ kind: "stake", amount: "1" }, deps);
+    check(
+      "on a chain with no KLD deployment, staking refuses",
+      !r.ok && errorOf(r) === "Staking isn't available on this chain yet.",
+      errorOf(r),
+    );
+  }
+  {
+    /* And the three it does resolve must be the same chain's. A vault from one
+       deployment with a token from another is not a type error and does not
+       revert on the client — it is a `deposit` the vault refuses with
+       TokenNotSupported, after the approve has already been signed. */
     const { deps } = fakeDeps();
     const r = await build({ kind: "stake", amount: "1" }, deps);
-    envVars.vaultAddress = VAULT;
     check(
-      "with no vault, staking refuses",
-      !r.ok && errorOf(r) === "The staking vault address isn't configured.",
-      errorOf(r),
+      "all three staking addresses come from one chain's record",
+      r.ok &&
+        same(at(r, 1).vault, DEPLOYED.kldVault) &&
+        same(at(r, 1).token, DEPLOYED.kld) &&
+        same(at(r, 1).stToken, DEPLOYED.stKLD),
+      JSON.stringify(at(r, 1)),
     );
   }
   {

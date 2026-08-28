@@ -50,7 +50,7 @@ export type Intent =
     }
   | {
       kind: "stake";
-      /** Vault contract address (envVars.vaultAddress). */
+      /** Vault contract address (stakingContracts(chainId).kldVault). */
       vault: string;
       token: string;
       stToken: string;

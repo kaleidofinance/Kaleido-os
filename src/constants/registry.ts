@@ -781,6 +781,13 @@ export interface OwnTokenSpec {
   /**
    * Set when this repository contains no contract that mints the token, so a
    * deploy plan cannot silently assume one exists. Checked by auditDeployPlan.
+   *
+   * Nothing sets it right now. KLD carried it for months — Faucet.sol,
+   * KLDVaultV2 and MasterChef all take a KLD address in their constructor while
+   * nothing minted one — and it is cleared because contracts/Token/KLD.sol now
+   * exists and is deployed on all five testnets. The field stays because it is
+   * the mechanism that made that gap visible, and the next own-token added
+   * ahead of its contract needs it.
    */
   noContract?: string;
 }
@@ -792,10 +799,6 @@ export const OWN_TOKENS: readonly OwnTokenSpec[] = [
     name: "Kaleido",
     decimals: 18,
     tags: ["governance"],
-    // Faucet.sol:18, KLDVaultV2 and MasterChef all take a KLD address as a
-    // constructor argument; no contract in smart-contract/contracts mints it.
-    // Staking cannot be tested on any chain until this exists.
-    noContract: "no KLD ERC20 in smart-contract/contracts — only consumers",
   },
   {
     field: "stKLD",
@@ -823,11 +826,15 @@ export const OWN_TOKENS: readonly OwnTokenSpec[] = [
 /**
  * Our own tokens on one chain, as registry entries.
  *
- * Sourced from DEPLOYMENTS, so it answers per chain rather than globally: the
- * five deployed testnets each return kfUSD and kafUSD, and none returns KLD or
- * stKLD, because no KLD ERC20 exists pre-TGE. Populate a chain's ChainContracts
- * and its tokens appear in every picker at once, because chainTokens() in
- * tokens.ts concatenates this.
+ * Sourced from DEPLOYMENTS, so it answers per chain rather than globally. All
+ * four now resolve on the five deployed testnets: kfUSD and kafUSD from the
+ * stablecoin records, KLD and stKLD from the ones deploy-kld.js writes. This
+ * used to note that KLD and stKLD never resolved anywhere because no KLD ERC20
+ * existed — that gap is closed, and closing it is what put KLD in the token
+ * pickers and gave `stake` an address to spend.
+ *
+ * Populate a chain's ChainContracts and its tokens appear in every picker at
+ * once, because chainTokens() in tokens.ts concatenates this.
  */
 export function ownTokens(chainId: number | undefined): TokenEntry[] {
   const c = getContracts(chainId);
@@ -1392,27 +1399,45 @@ export function declaredSymbol(
 }
 
 /**
- * Staking addresses (Abstract testnet), kept flat and explicit.
+ * Staking addresses on one chain: the token, the receipt and the vault.
  *
- * Unlike the DEX periphery — which moved into getContracts() now that it is
- * deployed per chain — these stay hardcoded because there is nothing to move
- * to: KLD has no ERC20 in smart-contract/contracts (OWN_TOKENS records
- * `noContract`), so kld/stKLD/kldVault are absent from every chain in
- * DEPLOYMENTS and will be until the token ships at TGE. Left here so the
- * staking UI keeps compiling; revisit when KLD deploys. See OWN_TOKENS above.
+ * Was a flat three-literal object holding Abstract-testnet addresses, with a
+ * header explaining that there was nothing to move to — KLD had no ERC20 in
+ * smart-contract/contracts, so `kld`/`stKLD`/`kldVault` were absent from every
+ * chain in DEPLOYMENTS. `contracts/Token/KLD.sol` now exists and
+ * scripts/deploy-kld.js has deployed the three-contract set on all five
+ * testnets, so this resolves from DEPLOYMENTS like every other address.
  *
- * SOLE SOURCE for these three, as of the address cutover. `constants/utils/
- * addresses.ts` declared the same three values verbatim alongside ten dead
- * Abstract token literals; the four staking consumers now read them from here
- * and that file is deleted. Two tables holding one address is the drift this
- * file's header warns about — and the ten dead literals were a live foot-gun,
- * since the next hook needing "the USDC address" would have imported one.
+ * Returns a partial rather than throwing, because the three arrive together or
+ * not at all and "not on this chain" is a normal answer: `deposit` needs the
+ * token address as an argument, the vault needs its own, and a caller with two
+ * of the three has nothing it can safely do. Callers gate on `supported`.
+ *
+ * The chainId argument is the point. The old flat object made every staking call
+ * single-chain by construction: a wallet on Base sent `deposit` with Abstract's
+ * KLD address, which is not a type error and not a revert the UI can explain —
+ * it is a transaction against a codeless address on a chain nobody deployed to.
  */
-export const STAKING_CONTRACTS = {
-  kld: "0x0c61dbCF1e8DdFF0E237a256257260fDF6934505",
-  stKLD: "0x4BC3d728c466bF0e919b57d6B3a6f7594858187B",
-  kldVault: "0xf77AA35D04F36372cA7af18532A23eaB7e68380E",
-} as const;
+export interface StakingContracts {
+  kld?: string;
+  stKLD?: string;
+  kldVault?: string;
+  /** True when all three are present, so staking is possible here. */
+  supported: boolean;
+}
+
+export function stakingContracts(
+  chainId: number | undefined,
+): StakingContracts {
+  const c = getContracts(chainId);
+  const { kld, stKLD, kldVault } = c;
+  return {
+    kld,
+    stKLD,
+    kldVault,
+    supported: Boolean(kld && stKLD && kldVault),
+  };
+}
 
 /**
  * Resolve a user-typed symbol against one chain's lending currency list.

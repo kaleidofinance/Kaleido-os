@@ -1250,14 +1250,17 @@ async function main() {
 
   /* ------------------------------------------------------------ unpriced -- */
 
-  /* The pre-TGE case, in the only form this repo can currently express it.
-     KLD is the real motivation — no market before TGE, so points/prices returns
-     null for it by design — but DEPLOYMENTS is empty, so KLD has no address on
-     any chain and cannot appear in a plan at all yet. cbBTC stands in: a
-     registered, real token that the stub has no price for, which is the same
-     code path. Swap it for KLD once a deployment lands. */
+  /* The pre-TGE case, now in its real form. KLD has no market before TGE, so
+     points/prices returns null for it by design — and since deploy-kld.js
+     recorded KLD on all five testnets, `ownTokens` resolves an address for it on
+     CHAIN and it can appear in a plan. This block used to stand in cbBTC (a
+     registered token the stub simply has no price for, the same code path) and
+     said to swap it once a deployment landed; that has happened, so KLD is used
+     directly and cbBTC is only the fallback if the registry ever loses KLD. */
   {
-    const unpriced = tokens.find((t) => t.symbol === "cbBTC");
+    const unpriced =
+      tokens.find((t) => t.symbol === "KLD") ??
+      tokens.find((t) => t.symbol === "cbBTC");
     if (!unpriced) {
       console.log("\n  SKIP unpriced case: no unpriced token registered.\n");
     } else {

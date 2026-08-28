@@ -1,0 +1,34 @@
+{
+  "network": "sepolia",
+  "chainId": "11155111",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "status": "complete",
+  "contracts": {
+    "KLD": "0x79C14246120369A98c4226a01158645a7A501F35",
+    "KLDVault": "0x3305F04C7DDb32C23F250620CBa50C8DE61f67B5",
+    "stKLD": "0xb13744e75aA50B6204b445673341A1fE03b02dFd"
+  },
+  "config": {
+    "maxSupply": "1000000000000000000000000000",
+    "maxSupplyHuman": "1000000000.0",
+    "homeChainId": 11155111,
+    "isHomeChain": true,
+    "mintedToDeployer": "1000000000000000000000000000",
+    "yieldTreasury": "0x2488216dF30680f96078E3B303D6Aa0391f3f79F"
+  },
+  "faucet": {
+    "address": "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB",
+    "funded": "5000000000000000000000000",
+    "fundedHuman": "5000000.0",
+    "drip": "1000000000000000000000",
+    "dripHuman": "1000.0"
+  },
+  "timestamps": {
+    "started": "2026-08-27T23:35:14.256Z",
+    "deployed": "2026-08-27T23:35:14.256Z"
+  },
+  "sources": {
+    "stablecoin": "deployment-stablecoin-sepolia.json"
+  },
+  "note": "Testnet topology: this chain is its own KLD home, so it issues its own supply. Mainnet uses a single home chain with every other chain holding bridged supply only — see the script header."
+}

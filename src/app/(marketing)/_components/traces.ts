@@ -98,10 +98,11 @@ export const TRACE_OPTS = { slippageBps: 50, deadlineMin: 20 };
  * The parser's vocabulary — the same call the agent page makes.
  *
  * `chainTokens(11155111)` is ETH, WETH and USDC out of the chain's token table,
- * plus kfUSD and kafUSD out of `ownTokens`, which projects them from the
- * deployment record. KLD and stKLD are still absent, and that is a fact about the
- * token rather than about this chain: no KLD ERC20 exists in the contracts at all
- * pre-TGE, so `ownTokens` finds no address for it anywhere.
+ * plus kfUSD, kafUSD, KLD and stKLD out of `ownTokens`, which projects them from
+ * the deployment record. KLD and stKLD used to be absent from every chain — a
+ * fact about the token rather than about this chain, since no KLD ERC20 existed
+ * in the contracts at all. They resolve now: contracts/Token/KLD.sol is deployed
+ * on all five testnets, so `ownTokens` finds an address for both.
  *
  * kfUSD being in here is what moved `completeWithdrawal` onto the typed path. Its
  * payout token resolves as `findToken("kfusd", tokens)` (fromCommand.ts:763),

@@ -2,7 +2,6 @@ import { ethers } from "ethers";
 import { envVars } from "@/constants/envVars";
 import {
   NATIVE_SENTINEL,
-  STAKING_CONTRACTS,
   declaredDecimals,
   declaredSymbol,
   findRegisteredLendingAsset,
@@ -10,6 +9,7 @@ import {
   isNativeSentinel,
   registeredLendingAssets,
   stableContracts,
+  stakingContracts,
   type LendingSide,
 } from "@/constants/registry";
 import { symbolForAddress } from "@/constants/tokens";
@@ -490,8 +490,7 @@ export async function buildIntents(
   /* This chain's addresses, resolved once. Every field is `string | undefined`
      — a chain that has not deployed a contract returns undefined rather than a
      stale address from some other chain — so each branch below guards the ones
-     it needs and returns a plan error naming what is missing, the way the
-     staking branch already did for envVars.vaultAddress. That guard is the
+     it needs and returns a plan error naming what is missing. That guard is the
      whole point of the chain-scoped registry: the alternative is passing
      `undefined` into ethers as an address, which fails much later and much
      less legibly. */
@@ -615,11 +614,15 @@ export async function buildIntents(
   }
 
   if (command.kind === "stake") {
-    const vault = envVars.vaultAddress;
-    if (!vault) {
+    /* All three addresses come from the plan's chain, together. The vault used
+       to come from `envVars.vaultAddress` — one env var for every chain, and
+       unset — while the token and receipt were Abstract-testnet literals, so a
+       stake plan on any chain named contracts from another one. */
+    const staking = stakingContracts(chainId);
+    if (!staking.supported) {
       return {
         ok: false,
-        error: "The staking vault address isn't configured.",
+        error: "Staking isn't available on this chain yet.",
       };
     }
     return {
@@ -629,17 +632,17 @@ export async function buildIntents(
         intents: [
           {
             kind: "approve",
-            token: STAKING_CONTRACTS.kld,
-            spender: vault,
+            token: staking.kld!,
+            spender: staking.kldVault!,
             amount: command.amount,
             decimals: 18,
             symbol: "KLD",
           },
           {
             kind: "stake",
-            vault,
-            token: STAKING_CONTRACTS.kld,
-            stToken: STAKING_CONTRACTS.stKLD,
+            vault: staking.kldVault!,
+            token: staking.kld!,
+            stToken: staking.stKLD!,
             amount: command.amount,
             symbol: "KLD",
           },

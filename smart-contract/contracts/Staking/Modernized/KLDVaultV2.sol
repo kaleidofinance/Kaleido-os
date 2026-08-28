@@ -13,6 +13,8 @@ interface IStKLD {
     function getTotalShares() external view returns (uint256);
     function sharesOf(address account) external view returns (uint256);
     function getPooledKldByShares(uint256 shareAmount) external view returns (uint256);
+    /** The one token stKLD prices its shares against. See setSupport. */
+    function kldToken() external view returns (address);
 }
 
 interface IYieldTreasury {
@@ -70,10 +72,32 @@ contract KLDVaultV2 is ReentrancyGuard, Pausable, Ownable {
 
     function setStKLD(address _stKLD) external onlyOwner {
         require(stKLD == address(0), "stKLD already set");
+        require(_stKLD != address(0), "Invalid stKLD");
         stKLD = _stKLD;
     }
 
+    /**
+     * @notice Enable or disable a stakeable token.
+     * @dev Enabling is confined to the single token stKLD prices its shares
+     *      against, and that is a correctness guard rather than a policy choice.
+     *
+     *      `totalPooledKLD` is keyed per token, but StKLD._getTotalPooledKLD()
+     *      reads exactly one key — `getTotalPooledKld(kldToken)`. So a second
+     *      supported token would mint shares in `deposit` against its own pool
+     *      while every `balanceOf` in stKLD valued those shares against KLD's.
+     *      Nothing reverts; every staker's balance is simply mispriced, by a
+     *      ratio between two unrelated pools. There is no correct second asset
+     *      for this vault, so it refuses one.
+     *
+     *      Enabling therefore also requires stKLD to be wired first, otherwise
+     *      the check has nothing to compare against and a token enabled during
+     *      that window would survive it. Disabling is unconditional.
+     */
     function setSupport(address _token, bool _status) external onlyOwner {
+        if (_status) {
+            require(stKLD != address(0), "Set stKLD first");
+            require(_token == IStKLD(stKLD).kldToken(), "Only stKLD's own token");
+        }
         supportedTokens[_token] = _status;
     }
 
@@ -178,6 +202,31 @@ contract KLDVaultV2 is ReentrancyGuard, Pausable, Ownable {
             totalPooledKLD[_asset] += harvested;
             emit Harvested(_asset, harvested);
         }
+    }
+
+    // --- Emergency stop ---
+
+    /**
+     * @notice Halts deposits, withdrawal requests and withdrawals.
+     * @dev These two functions were missing. The contract has always inherited
+     *      Pausable and always carried `whenNotPaused` on deposit, withdraw,
+     *      requestWithdrawal and cancelWithdrawalRequest — with no path to
+     *      _pause() anywhere, so the modifiers could never fire and the vault
+     *      could not be stopped under any circumstances. An emergency brake with
+     *      no lever reads in an audit as a brake.
+     *
+     *      Note what stays reachable while paused: `harvestYield` carries no
+     *      `whenNotPaused`, so yield can still be pulled in and stakers keep
+     *      rebasing during a halt. That is deliberate and worth stating — a pause
+     *      here freezes movement of principal, not accrual.
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /// @notice Resumes deposits and withdrawals.
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     // --- Viewers ---
