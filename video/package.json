@@ -1,0 +1,26 @@
+{
+  "name": "kaleido-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion compositions for Kaleido launch and announcement videos. Kept out of the Next app's dependency tree on purpose — see README.md.",
+  "scripts": {
+    "audio": "node scripts/gen-audio.mjs",
+    "studio": "npm run audio && remotion studio",
+    "render": "npm run audio && remotion render LaunchWide out/kaleido-private-beta-16x9.mp4",
+    "render:square": "npm run audio && remotion render LaunchSquare out/kaleido-private-beta-1x1.mp4",
+    "render:vertical": "npm run audio && remotion render LaunchVertical out/kaleido-private-beta-9x16.mp4",
+    "still": "remotion still LaunchWide out/poster.png --frame=870"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.518",
+    "@remotion/fonts": "4.0.518",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.518"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "typescript": "5.6.3"
+  }
+}
