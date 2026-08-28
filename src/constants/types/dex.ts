@@ -28,7 +28,13 @@ export interface ITokenPrice {
 }
 
 /**
- * A KaleidoSwap V2 pair, as `usePoolData` reads it.
+ * One pool, on one chain, at either venue.
+ *
+ * Named for a V2 pair because that is all it described when `usePoolData` was the
+ * only producer. It now carries a V3 pool as well (`version`) and says which chain
+ * it was read from (`chainId`), because both enumerators sweep every deployment —
+ * so two rows in one table can be the same pair on two chains, and nothing but
+ * these two fields tells them apart.
  *
  * Every derived figure is nullable, and null means "not measurable", never
  * zero. A pool whose legs have no USD price is not an empty pool, and a chain
@@ -40,21 +46,63 @@ export interface ITokenPrice {
  */
 export interface ITradingPair {
   address: string;
+  /**
+   * Which chain this pool is on.
+   *
+   * Required, and required for the same reason `version` is: both enumerators now
+   * sweep every chain the protocol is deployed to, so a list of pools is a list
+   * drawn from several chains and an address on its own no longer identifies one.
+   * Three consumers cannot work without it — the chain tag under each row, the
+   * provider the transactions table reads the pool's own logs through, and the
+   * explorer link on the detail page — and every one of them would otherwise
+   * default to the read chain, which is the bug this field exists to remove: a
+   * Base pool's logs read on Sepolia come back empty, and its explorer link lands
+   * on a page for an address that holds nothing.
+   */
+  chainId: number;
+  /**
+   * Which venue this pool belongs to.
+   *
+   * Load-bearing rather than decorative, and required rather than optional: the
+   * two enumerators behind this type read pools whose *shapes* differ, and three
+   * consumers have to branch on it — the `· V2` badge on a row, the depth curve
+   * (constant product, so V3 has no such curve to draw), and the event ABI the
+   * transactions table decodes with. A producer that forgot to set it would
+   * silently render a V3 pool as V2 in all three places, which is why there is
+   * no default.
+   */
+  version: "v2" | "v3";
   token0: IToken;
   token1: IToken;
+  /**
+   * What the pool holds right now, in base units.
+   *
+   * On V2 these are the pair's own `getReserves()`, and the whole curve follows
+   * from them. On V3 they are the pool contract's token balances, which is the
+   * same fact about custody but *not* a curve: V3 liquidity is spread across
+   * ticks, so nothing about execution can be derived from these two numbers
+   * alone. Anything computing a price impact from them must check `version`.
+   */
   reserves: {
     reserve0: string | number;
     reserve1: string | number;
   };
-  /** token1 per token0, straight from the reserves. Null when reserve0 is 0. */
+  /**
+   * token1 per token0, in human units — the pool's own quote, not a market
+   * price. From the reserves on V2 and from `slot0`'s tick on V3. Null when the
+   * pool has no quote at all: an unfunded V2 pair, or a V3 pool that was created
+   * but never initialised.
+   */
   price: number | null;
   /**
-   * LP token supply in base units.
+   * LP token supply in base units, or null where the concept does not exist.
    *
    * A string, like `reserves`, because an 18-decimal supply runs past float64's
-   * exact range — the same reason the mirror tables store amounts as text.
+   * exact range — the same reason the mirror tables store amounts as text. Null
+   * on V3, where a position is an NFT with its own range and there is no fungible
+   * supply to report; a zero here would read as "nobody has provided liquidity".
    */
-  totalSupply: string;
+  totalSupply: string | null;
   /** USD, extrapolated from a real sampled block window. */
   volume24h: number | null;
   /**
@@ -68,20 +116,24 @@ export interface ITradingPair {
   /** USD value of both reserves. */
   liquidity: number | null;
   /**
-   * Each leg's USD value on its own, null where that token has no price.
+   * Each leg's USD value on its own, null where that leg could not be priced.
    *
    * These are what `liquidity` is built from rather than a second measurement of
    * it, and they exist so a consumer can see the shape of the pool instead of
    * only its total. Two things become visible that the sum hides:
    *
-   *  - Whether `liquidity` is exact or extrapolated. Both non-null means it is
-   *    the sum of what the pool holds; one non-null means the other leg was
-   *    doubled, which is sound on a constant-product curve but is an inference.
-   *  - How far the pool sits off the external price. Measured at the pool's own
-   *    ratio the two legs are *always* equal — that is what the ratio means — so
-   *    a split drawn from the pool price alone would be 50/50 for every pool
-   *    ever. These are priced from the shared spot table instead, and the gap
-   *    between them is the pool's drift against it.
+   *  - Whether `liquidity` is exact or inferred. Both legs priced from the spot
+   *    table means it is the sum of what the pool holds. On V2, one priced leg
+   *    means the other was doubled, which is sound on a constant-product curve
+   *    but is an inference. On V3 doubling would be wrong — a concentrated
+   *    position is not 50/50 at any price — so the unpriced leg is valued through
+   *    the pool's own quote instead, which is exact arithmetic on an input the
+   *    pool itself sets. That is how a pool whose only price is its own gets a
+   *    TVL at all, and it is also why such a pool cannot show drift against spot.
+   *  - How far the pool sits off the external price, when both legs came from the
+   *    spot table. Measured at the pool's own ratio the two legs are *always*
+   *    equal — that is what the ratio means — so a split drawn from the pool
+   *    price alone would be 50/50 for every pool ever.
    */
   value0: number | null;
   value1: number | null;
@@ -90,11 +142,13 @@ export interface ITradingPair {
   /** fees24h annualised against liquidity, in percent. */
   apr: number | null;
   /**
-   * The pair's own `swapFee()`, in basis points of 10000.
+   * The pool's own fee, in basis points of 10000.
    *
-   * Read from the contract, not inferred. `createPair` takes the fee as an
-   * argument and is permissionless, so 30 bps is a router default rather than a
-   * property of the pool.
+   * Read from the contract, not inferred. On V2 it is the pair's `swapFee()`,
+   * which `createPair` takes as an argument and is permissionless — so 30 bps is
+   * a router default rather than a property of the pool. On V3 it is the tier the
+   * pool was created at, whose denominator is 1e6, converted here so that one
+   * column formats both: 3000 hundredths-of-a-bip is 0.3%, which is 30 bps.
    */
   feeBps: number | null;
 }

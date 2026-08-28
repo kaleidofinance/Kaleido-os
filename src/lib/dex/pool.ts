@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { getContracts } from "@/constants/registry";
 import { poolOrderInverted, tickToPrice } from "@/constants/utils/v3Math";
+import { retryRpc } from "@/lib/dex/rpcRetry";
 
 /**
  * Where a V3 pool's market currently sits, read from the factory that holds it.
@@ -53,6 +54,13 @@ export interface PoolState {
  * no pool at this tier, and a failed read — because every caller does the same
  * thing with all three: it cannot price a range, so it either falls back to full
  * range or refuses. What no caller may do is treat it as a price of zero.
+ *
+ * That conflation is why the reads below are wrapped in `retryRpc`. Collapsing
+ * "refused" into "absent" is fine for a caller choosing a range and wrong for the
+ * all-pools sweep, which calls this 84 times per chain and would publish a
+ * throttled chain as a chain with no pools — measured on two of five endpoints, see
+ * `rpcRetry.ts`. Retrying inside the `try` keeps the null contract exactly as it
+ * was while making it much rarer for throttling to reach it.
  */
 export async function readPoolState(
   provider: ethers.Provider | ethers.Signer | null | undefined,
@@ -72,14 +80,15 @@ export async function readPoolState(
 
     const factory = new ethers.Contract(v3Factory, FACTORY_ABI, provider);
     // getPool sorts internally, so either order finds the same pool.
-    const address: string = await factory.getPool(tokenA, tokenB, fee);
+    const address: string = await retryRpc(() =>
+      factory.getPool(tokenA, tokenB, fee),
+    );
     if (!address || address === ethers.ZeroAddress) return null;
 
     const pool = new ethers.Contract(address, POOL_ABI, provider);
-    const [slot0, liquidity] = await Promise.all([
-      pool.slot0(),
-      pool.liquidity(),
-    ]);
+    const [slot0, liquidity] = await retryRpc(() =>
+      Promise.all([pool.slot0(), pool.liquidity()]),
+    );
 
     const inverted = poolOrderInverted(tokenA, tokenB);
     const tick = inverted ? -Number(slot0.tick) : Number(slot0.tick);

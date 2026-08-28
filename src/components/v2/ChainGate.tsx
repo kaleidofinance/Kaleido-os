@@ -68,12 +68,12 @@ export type ChainGateState =
  * message per cause without re-deriving the cause itself.
  *
  * @param readChainId Pass this for a **protocol-wide discovery** surface that
- *   reads one canonical chain rather than the wallet's — the all-pools table is
- *   the case (`pool/page.tsx:32-35`: "Every figure here is protocol-wide on
- *   READ_ONLY_CHAIN_ID, never the wallet's chain"). Doing so skips the connect
- *   check entirely, because such a page genuinely needs no wallet, and asking
- *   for one would misdescribe the page. Omit it for anything showing a user
- *   their own position.
+ *   reads chains of its own choosing rather than the wallet's — the all-pools
+ *   table is the case, and it passes the first chain of its cross-chain sweep
+ *   (`pool/page.tsx`), because any one deployed chain means there is something to
+ *   enumerate. Doing so skips the connect check entirely, because such a page
+ *   genuinely needs no wallet, and asking for one would misdescribe the page. Omit
+ *   it for anything showing a user their own position.
  *
  * DEMO MODE opens exactly one of these gates: "undeployed". The fixtures in
  * `src/lib/mock` exist to answer "does this page render and is it wired", and a

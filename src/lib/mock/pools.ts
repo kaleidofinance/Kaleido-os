@@ -1,5 +1,6 @@
 import { formatUnits, parseUnits } from "ethers";
 
+import { READ_ONLY_CHAIN_ID } from "@/config/provider";
 import type { IToken, ITradingPair } from "@/constants/types/dex";
 import type { PoolTxn, PoolTxnKind } from "@/hooks/dex/usePoolTransactions";
 
@@ -99,7 +100,24 @@ const raw = (amount: string, decimals: number) =>
 /** Every pool shares one sampled window — 2h 36m, well over the 600s floor. */
 const WINDOW_SEC = 9_413;
 
-export const MOCK_POOLS: ITradingPair[] = [
+/**
+ * Every fixture is a V2 pair on the read chain, so `version` and `chainId` are
+ * stamped once at the bottom rather than repeated eight times.
+ *
+ * `version` is not V2 because V3 is unrepresentable — because these eight *are* V2
+ * pairs: each one carries `reserves` that a curve is computed from and a
+ * `totalSupply` of fungible LP tokens, and neither of those exists on V3.
+ * Relabelling any of them would make a fixture that claims a shape its own fields
+ * contradict. A V3 fixture would need its own numbers, which is the note in
+ * `useV3Pools` about why demo mode returns an empty list for that venue instead.
+ *
+ * `chainId` is one chain for a different reason: the fixtures exist to make the UI
+ * legible without a network, and eight pools spread over five chains would make the
+ * chain tag the thing under test rather than the pools. The read chain is the
+ * honest single answer — it is the chain a fixture-mode reader would otherwise be
+ * looking at.
+ */
+const V2_MOCK_POOLS: Omit<ITradingPair, "version" | "chainId">[] = [
   {
     // 615 WETH ⇄ 2,091,000 USDC — the deepest book, both legs priced.
     address: pairAddress(1),
@@ -246,6 +264,12 @@ export const MOCK_POOLS: ITradingPair[] = [
     feeBps: null,
   },
 ];
+
+export const MOCK_POOLS: ITradingPair[] = V2_MOCK_POOLS.map((p) => ({
+  ...p,
+  chainId: READ_ONLY_CHAIN_ID,
+  version: "v2" as const,
+}));
 
 /**
  * Recent activity for the detail page's transactions table.

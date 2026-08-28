@@ -9,17 +9,25 @@ import type { PoolTxn } from "@/hooks/dex/usePoolTransactions";
 import s from "../pool.module.css";
 
 /**
- * The pair's recent swaps, mints and burns.
+ * The pool's recent swaps, mints and burns.
  *
  * Reads a window of blocks, not a history — so the empty state names the window
  * rather than saying the pool is quiet. `usePoolTransactions` explains why that
  * distinction is the whole design of the hook.
+ *
+ * The window is named in *hours* wherever the hook could measure them, and in
+ * blocks only as a fallback. A block count is not a duration: the widest range
+ * the read chain's node will serve is 1000 blocks, which is 3.3h on Sepolia at
+ * 12s and would be 33 minutes on a two-second chain — so "no transactions in
+ * 1000 blocks" left the reader to know their chain's block time before the
+ * sentence meant anything.
  */
 export default function PoolTxnTable({
   txns,
   loading,
   error,
   scannedBlocks,
+  scannedSec,
   hasMore,
   chainId,
   symbol0,
@@ -29,6 +37,7 @@ export default function PoolTxnTable({
   loading: boolean;
   error: string | null;
   scannedBlocks: number | null;
+  scannedSec: number | null;
   hasMore: boolean;
   chainId: number;
   symbol0: string;
@@ -61,11 +70,7 @@ export default function PoolTxnTable({
           </div>
         ))
       ) : txns.length === 0 ? (
-        <div className={s.tEmpty}>
-          {scannedBlocks === null
-            ? "Transactions not read."
-            : `No transactions in the last ${qty(scannedBlocks)} blocks.`}
-        </div>
+        <div className={s.tEmpty}>{emptyLabel(scannedSec, scannedBlocks)}</div>
       ) : (
         txns.map((t) => (
           <TxnRow
@@ -89,6 +94,30 @@ export default function PoolTxnTable({
       )}
     </div>
   );
+}
+
+/**
+ * What an empty table says.
+ *
+ * Three answers, and they are genuinely different: the scan did not run, it ran
+ * and covered a measured stretch of time, or it ran and the timestamps behind
+ * that measurement could not be read. Only the middle one is a statement about
+ * the pool, and it is the one worth phrasing well — hours, because that is the
+ * unit the reader has an intuition for.
+ */
+function emptyLabel(scannedSec: number | null, scannedBlocks: number | null) {
+  if (scannedSec !== null && scannedSec > 0) {
+    const hours = scannedSec / 3600;
+    const span =
+      hours >= 1.5
+        ? `${hours.toFixed(hours >= 10 ? 0 : 1)} hours`
+        : `${Math.round(scannedSec / 60)} minutes`;
+    return `No transactions in the last ${span}.`;
+  }
+  if (scannedBlocks !== null) {
+    return `No transactions in the last ${qty(scannedBlocks)} blocks.`;
+  }
+  return "Transactions not read.";
 }
 
 function TxnRow({
