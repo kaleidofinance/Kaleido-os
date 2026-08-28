@@ -95,9 +95,11 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
        silently defaulted to 0.3% instead of reading would still return a plan. */
     pools: [] as number[],
     /* The corridors asked to resolve. build.ts refuses a bridge for its own
-       reasons — no chain, over-precise amount, non-native — BEFORE it reaches
-       the resolver, so this is how the ordering cases prove the refusal came
-       first: a recorded call means a guard that should have fired did not. */
+       reasons — no chain, over-precise amount — BEFORE it reaches the resolver,
+       so this is how the ordering cases prove the refusal came first: a recorded
+       call means a guard that should have fired did not. It is also where the
+       ERC20 case reads back `tokenAddress`, the field the resolver cross-checks
+       against the provider's own idea of what the symbol resolves to. */
     bridge: [] as BridgeRouteRequest[],
   };
   const deps: PlanDeps = {
@@ -158,9 +160,8 @@ async function load() {
      that every runtime import is dynamic. It is the real resolveBridgeRoute the
      browser and the route handler call, network-free on the canonical corridor
      the bridge cases exercise. */
-  const { resolveBridgeRoute, isKnownBridgeAddress } = await import(
-    "../../bridge/route"
-  );
+  const { resolveBridgeRoute, isKnownBridgeAddress, isKnownBridgeSpender } =
+    await import("../../bridge/route");
   /* The pool fixtures below carry a tick, and deriving it beats writing one
      down: a hand-typed tick is a second statement of the same price, free to
      disagree with it. */
@@ -175,6 +176,7 @@ async function load() {
     priceToTick,
     resolveBridgeRoute,
     isKnownBridgeAddress,
+    isKnownBridgeSpender,
   };
 }
 async function main() {
@@ -188,6 +190,7 @@ async function main() {
     priceToTick,
     resolveBridgeRoute,
     isKnownBridgeAddress,
+    isKnownBridgeSpender,
   } = await load();
   const { NATIVE_SENTINEL, STAKING_CONTRACTS } = registry;
 
@@ -343,7 +346,11 @@ async function main() {
        to assert a flat 3000, which was one hardcoded tier — measured on
        2026-08-25 against Sepolia, whose only pool is USDT/USDe at 500, so the
        agent could not price the one pair the chain has. */
-    check("a tie routes through the cheapest tier", s.fee === 500, String(s.fee));
+    check(
+      "a tie routes through the cheapest tier",
+      s.fee === 500,
+      String(s.fee),
+    );
     check(
       "the swap carries the caller's deadline",
       s.deadlineMin === 20,
@@ -401,7 +408,8 @@ async function main() {
        quote is discarded, so a pool that exists but returns nothing does not
        become the route. */
     const { deps } = fakeDeps({
-      quote: async (req) => (req.fee === 3000 ? "0" : req.fee === 500 ? "" : "700"),
+      quote: async (req) =>
+        req.fee === 3000 ? "0" : req.fee === 500 ? "" : "700",
     });
     const r = await build(
       { kind: "swap", amount: "500", tokenIn: DEX_USDC, tokenOut: DEX_KLD },
@@ -707,16 +715,19 @@ async function main() {
    * crashed. It has one more thing to hold in place than send does: a bridge
    * goes to a portal or an aggregator router, the diamond never scopes it, and
    * so the `to`/`data`/`value` MUST originate in the resolver and never in the
-   * model. The happy-path cases below run the REAL resolveBridgeRoute over the
+   * model. The NATIVE happy path below runs the REAL resolveBridgeRoute over the
    * canonical Sepolia→Base Sepolia corridor, which encodes with no network call,
    * so this stays an offline suite while exercising the exact bytes the wallet
-   * would sign.
+   * would sign. The ERC20 one cannot: every token corridor is an aggregator
+   * corridor, and an aggregator route comes from a live quote. So it is stubbed,
+   * and what it asserts is the builder's half — that an approve is paired with
+   * the router the bridge calls. The route's own vetting lives in route.check.ts.
    *
    * The refusal cases turn on ORDER: build.ts refuses a bridge for its own
-   * reasons — no chain, over-precise amount, non-native — before it reaches the
-   * resolver, so each asserts `calls.bridge` stayed empty. A recorded call there
-   * would mean a guard that should have fired first did not, and a route was
-   * resolved for a plan that was going to be refused anyway.
+   * reasons — no chain, over-precise amount — before it reaches the resolver, so
+   * each asserts `calls.bridge` stayed empty. A recorded call there would mean a
+   * guard that should have fired first did not, and a route was resolved for a
+   * plan that was going to be refused anyway.
    */
   const BRIDGE_USER = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984";
   const realBridge: Partial<PlanDeps> = {
@@ -806,12 +817,34 @@ async function main() {
     );
   }
   {
-    /* Non-native, and the ordering claim: the MVP bridges native currency only,
-       because an ERC20 leg needs an approve to the router and the approve
-       auditor pins spenders to Kaleido contracts. build.ts refuses it by name
-       BEFORE the resolver — which would refuse it again — so no route is
-       resolved for a plan that cannot be signed. */
-    const { deps, calls } = fakeDeps(realBridge);
+    /* An ERC20 leg, which is two signatures rather than one: the router needs an
+       allowance before its calldata can pull the token. The pairing is the whole
+       point of the case — an approve whose spender is not the contract the bridge
+       step calls would grant an allowance to one address and hand calldata to
+       another, and because an allowance is a storage write on the token that
+       never consults the spender, that wrong grant SUCCEEDS and persists.
+
+       A stub stands in for the resolver: the only ERC20 corridor that resolves is
+       an aggregator one, and aggregator routes come from a live HTTP quote this
+       suite makes none of. What is under test here is what the builder does with
+       a route it was handed — the vetting of that route's own spender is
+       route.check.ts's job. So the stub names the real LI.FI diamond, and the
+       assertion below runs it back through `isKnownBridgeSpender` rather than
+       comparing it to a literal: the builder and the auditor must be reading one
+       table, or a plan this file passes is refused at audit time. */
+    const ROUTER = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
+    const { deps, calls } = fakeDeps({
+      bridgeRoute: async () => ({
+        to: ROUTER,
+        data: "0xdeadbeef",
+        value: "0",
+        spender: ROUTER,
+        toChainId: 84532,
+        toChainName: "Base Sepolia",
+        provider: "lifi",
+        etaSeconds: 120,
+      }),
+    });
     const r = await build(
       {
         kind: "bridge",
@@ -822,14 +855,90 @@ async function main() {
       deps,
     );
     check(
-      "an ERC20 bridge is refused by name",
-      !r.ok && errorOf(r).includes("only a chain's native currency can be bridged"),
-      errorOf(r),
+      "an ERC20 bridge is two steps — the allowance the router needs, then the route",
+      kinds(r) === "approve,bridge",
+      kinds(r),
+    );
+    const a = at(r, 0);
+    const b = at(r, 1);
+    check(
+      "the approve names the token the command asked for, at its own decimals",
+      same(a.token, DEX_USDC.address) &&
+        a.amount === "100" &&
+        a.decimals === 6 &&
+        a.symbol === "USDC",
+      JSON.stringify(a),
+    );
+    /* The invariant that makes an allowance to a contract we do not own
+       auditable: one address, in three places, all from the resolver. */
+    check(
+      "the allowance goes to the router the bridge itself calls, and the table knows it",
+      same(a.spender, ROUTER) &&
+        same(b.to, ROUTER) &&
+        same(b.spender, ROUTER) &&
+        isKnownBridgeSpender(String(a.spender)),
+      JSON.stringify({
+        spender: a.spender,
+        to: b.to,
+        bridgeSpender: b.spender,
+      }),
+    );
+    /* A token bridge moves the token, so it attaches no native value. A non-zero
+       one here would be an unpriced second transfer riding beside the amount the
+       summary names — the auditor refuses it, and so should nothing produce it. */
+    check(
+      "the bridge step sends no native value — the token is what moves",
+      b.value === "0" && b.isNative === false,
+      JSON.stringify({ value: b.value, isNative: b.isNative }),
+    );
+    /* The resolver cross-checks the provider's own symbol resolution against
+       this address, because LI.FI resolves `USDC` against its own per-chain list
+       and Sepolia lending runs a mock. It can only do that if the builder passes
+       the contract it is about to approve, so assert it was passed. */
+    check(
+      "the corridor was resolved with the exact contract the approve authorises",
+      calls.bridge.length === 1 &&
+        calls.bridge[0].isNative === false &&
+        same(calls.bridge[0].tokenAddress, DEX_USDC.address),
+      JSON.stringify(calls.bridge),
     );
     check(
-      "and refused before any corridor is resolved",
-      calls.bridge.length === 0,
-      JSON.stringify(calls.bridge),
+      "the summary names the amount, the asset and where it lands",
+      summaryOf(r) === "Bridge 100 USDC to Base Sepolia.",
+      summaryOf(r),
+    );
+  }
+  {
+    /* A token route that came back with no router to approve. The resolver never
+       returns this shape — it refuses first — so this is the seam between the two
+       files rather than a case anyone expects to hit: were the resolver's spender
+       vetting ever relaxed into silence, the builder would emit a bridge step
+       whose calldata pulls a token it never got an allowance for. That reverts
+       on-chain, which is the good outcome; refusing before signing is better. */
+    const { deps } = fakeDeps({
+      bridgeRoute: async () => ({
+        to: "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE",
+        data: "0xdeadbeef",
+        value: "0",
+        toChainId: 84532,
+        toChainName: "Base Sepolia",
+        provider: "lifi",
+        etaSeconds: 120,
+      }),
+    });
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "100",
+        token: DEX_USDC,
+        toChain: "Base Sepolia",
+      },
+      deps,
+    );
+    check(
+      "a token route with no router to approve is refused rather than half-signed",
+      !r.ok && errorOf(r).includes("without a router to approve"),
+      errorOf(r),
     );
   }
   {
@@ -875,7 +984,10 @@ async function main() {
     );
     check(
       "with no connected chain, a bridge refuses and says to connect one",
-      !r.ok && errorOf(r).includes("Connect a wallet on the chain you want to bridge from"),
+      !r.ok &&
+        errorOf(r).includes(
+          "Connect a wallet on the chain you want to bridge from",
+        ),
       errorOf(r),
     );
     check(
@@ -908,7 +1020,8 @@ async function main() {
     );
     check(
       "a resolver that can't route the corridor refuses with its own words",
-      !r.ok && errorOf(r) === "No executable route for ETH to Sepolia right now.",
+      !r.ok &&
+        errorOf(r) === "No executable route for ETH to Sepolia right now.",
       errorOf(r),
     );
     check(
@@ -1793,10 +1906,7 @@ async function main() {
        the create-and-initialise path, and reverts inside the factory with two
        approvals already signed. */
     const { deps, calls } = fakeDeps({ poolState: async () => pool("9000") });
-    const r = await build(
-      { ...MINT, fee: 100, range: { kind: "full" } },
-      deps,
-    );
+    const r = await build({ ...MINT, fee: 100, range: { kind: "full" } }, deps);
     check(
       "a tier this DEX hasn't got is refused, and no pool is read for it",
       !r.ok &&
@@ -2015,10 +2125,13 @@ async function main() {
      */
     envVars.lendbitDiamondAddress = undefined;
     const { deps, calls } = fakeDeps();
-    const r = await build({ kind: "deposit", amount: "1", token: DEX_USDC }, {
-      ...deps,
-      chainId: 1,
-    });
+    const r = await build(
+      { kind: "deposit", amount: "1", token: DEX_USDC },
+      {
+        ...deps,
+        chainId: 1,
+      },
+    );
     envVars.lendbitDiamondAddress = DIAMOND;
     check(
       "with no Diamond, lending refuses instead of building an undefined address",
@@ -2151,7 +2264,10 @@ async function main() {
          that hasn't got one yet" no longer exists to test with. Refusing by name
          is the correct behaviour, and it must not depend on a chain read. */
       const { deps, calls } = faucetDeps([usdt]);
-      const r = await build({ kind: "claimTestTokens" }, { ...deps, chainId: 1 });
+      const r = await build(
+        { kind: "claimTestTokens" },
+        { ...deps, chainId: 1 },
+      );
       check(
         "on a chain with no faucet recorded, it refuses instead of claiming at undefined",
         !r.ok && errorOf(r) === "There's no test-token faucet on this chain.",

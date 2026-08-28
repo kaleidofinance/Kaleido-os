@@ -192,8 +192,11 @@ register("transfer", {
 /*
  * The other resolver that calls nothing of ours — a raw transaction to a portal
  * or aggregator router, whose `to`/`data`/`value` came from a trusted resolver
- * and are sent here untouched. Native only in the MVP, so `value` carries the
- * amount and there is no approve to pair it with.
+ * and are sent here untouched. For native currency `value` carries the amount
+ * and this step stands alone; for a token `value` is zero, the amount moves by
+ * the allowance the paired approve step granted, and that step has already been
+ * mined by the time this runs — plans execute in sequence, each awaiting its
+ * receipt.
  *
  * Fire-and-forget on the fast direction: this signs and confirms the
  * source-chain deposit and reports the ETA. The async withdrawal/claim leg for
@@ -630,8 +633,7 @@ register("mintPoolPosition", {
       }
     }
 
-    const deadline =
-      Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
+    const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
     /* Positional array rather than an object, matching useV3PositionManager:
        ethers v6 resolves a single-tuple parameter more reliably from one. */
     const tx = await posManager.mint([

@@ -13,7 +13,7 @@ import {
 } from "@/constants/registry";
 import { envVars } from "@/constants/envVars";
 import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
-import { isKnownBridgeAddress } from "@/lib/bridge/route";
+import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
 import type { PlanStep } from "./types";
@@ -698,7 +698,8 @@ function routerReasons(step: PlanStep, chainId: number | undefined): string[] {
 }
 
 /**
- * The spender an `approve` authorises — any of THIS chain's own contracts.
+ * The spender an `approve` authorises — any of THIS chain's own contracts, plus
+ * the one vetted bridge router.
  *
  * Pinned to a set rather than to one address, and that breadth is measured
  * rather than conceded. `approve` precedes four different products: a swap
@@ -721,24 +722,54 @@ function routerReasons(step: PlanStep, chainId: number | undefined): string[] {
  * diamond, so a BSC plan approving it would pass while granting an allowance to
  * an address holding no code on the user's chain.
  *
+ * THE ONE ADDRESS HERE THAT IS NOT OURS is the bridge router, and it is the
+ * loosening an ERC20 bridge needed: a token leg has to approve the provider's
+ * router, which no Kaleido deployment contains. It is admitted through
+ * `isKnownBridgeSpender` — one fixed address, the same table the resolver built
+ * the step from, read by both for the reason the canonical `to` check exists.
+ * What that gives up is stated rather than buried: the address is chain-blind
+ * (LI.FI deploys the same one everywhere, so there is no per-chain fact to
+ * check), and it is admitted for ANY approve rather than only one paired with a
+ * bridge, because these rules see one step at a time. The residual is an
+ * allowance to one widely-used contract, bounded by the per-action cap — and the
+ * `bridge` rule holds the part this cannot: that the router being approved is
+ * the router the transaction actually calls.
+ *
+ * Returns a note when it admits one, because an approve to a third party is not
+ * the same thing as an approve to our own diamond and must not read as one.
+ *
  * Fails closed on an empty set. A chain with no contracts recorded cannot have a
  * legitimate spender, and "cannot be checked" is the honest reason rather than
  * silently approving.
  */
-function spenderReasons(step: PlanStep, chainId: number | undefined): string[] {
+function spenderReasons(
+  step: PlanStep,
+  chainId: number | undefined,
+): { reasons: string[]; note?: string } {
   const reasons = requireAddresses(step, "spender");
-  if (reasons.length > 0) return reasons;
+  if (reasons.length > 0) return { reasons };
 
+  const spender = str(step.spender);
   const ours = ownContracts(chainId);
   if (ours.size === 0)
-    return [
-      `spender cannot be verified: no Kaleido contracts are recorded on chain ${chainId ?? "(none)"}`,
-    ];
+    return {
+      reasons: [
+        `spender cannot be verified: no Kaleido contracts are recorded on chain ${chainId ?? "(none)"}`,
+      ],
+    };
 
-  const label = ours.get(str(step.spender).toLowerCase());
-  return label
-    ? []
-    : ["spender is not a Kaleido contract on the chain this plan targets"];
+  if (ours.get(spender.toLowerCase())) return { reasons: [] };
+  if (isKnownBridgeSpender(spender))
+    return {
+      reasons: [],
+      note: "this approves a bridge provider's router, not a Kaleido contract — it is the one outside address this app authorises, and only a bridge step should be pairing it",
+    };
+
+  return {
+    reasons: [
+      "spender is not a Kaleido contract on the chain this plan targets",
+    ],
+  };
 }
 
 /** Spread-ready `priced`, so the rules below stay one expression each. */
@@ -915,13 +946,15 @@ const AUDITORS: Record<IntentKind, Auditor> = {
        Pinned to the set and not to `v3Router`: an approve precedes four
        different products, so a single-address pin here blocked `deposit` on four
        chains and `mint` on all five against our own diamond. The paired step
-       still pins its own address narrowly — a swap must name the router — so
-       nothing is loosened about what the allowance is then used for.
+       still pins its own address narrowly — a swap must name the router, a
+       bridge must name the router it calls — so nothing is loosened about what
+       the allowance is then used for.
 
        An approve is the step where a wrong spender does lasting damage, because
        it succeeds regardless: the allowance is written to the token, which never
        calls the spender to find out if it exists. */
-    reasons.push(...spenderReasons(s, chainId));
+    const spender = spenderReasons(s, chainId);
+    reasons.push(...spender.reasons);
 
     const amount = num(s.amount);
     if (amount === null || amount <= 0)
@@ -930,6 +963,7 @@ const AUDITORS: Record<IntentKind, Auditor> = {
 
     return {
       reasons,
+      ...(spender.note ? { notes: [spender.note] } : {}),
       ...(tok.ok && amount !== null && amount > 0
         ? { priced: { symbol: tok.symbol!, amount: String(amount) } }
         : {}),
@@ -1044,9 +1078,12 @@ const AUDITORS: Record<IntentKind, Auditor> = {
    * against the cap. `to` is a router, not a recipient, so recipientReasons —
    * which would refuse a legitimate contract target — is deliberately not used.
    *
-   * Native only, matching the builder and the resolver. An ERC20 bridge would
-   * need an approve to the router that the approve rule rejects, so it is
-   * refused here too rather than left looking auditable.
+   * Native and ERC20, and they are audited differently on purpose. A native
+   * bridge's `value` IS the amount, so the two can be tied together. A token
+   * bridge's amount rides in the provider's calldata, which this rule does not
+   * parse — so what bounds it is the paired approve, and what this rule can hold
+   * is that the allowance goes to the contract the transaction calls. Both facts
+   * are said out loud in `notes` rather than implied by a pass.
    */
   bridge: (s, chainId) => {
     const reasons: string[] = [];
@@ -1065,15 +1102,12 @@ const AUDITORS: Record<IntentKind, Auditor> = {
         `decimals say ${decimals} but ${tok.symbol} has ${tok.decimals}`,
       );
 
-    /* Native only, and strict about it for send's reason: an unset flag on a
-       native token would send calldata to a sentinel address. Either sentinel
-       counts — a bridge is not a protocol call. */
+    /* Strict about the flag for send's reason: an unset flag on a native token
+       would send calldata to a sentinel address, and a set one on an ERC20 would
+       attach the amount as value to a router expecting an allowance. Either
+       sentinel counts — a bridge is not a protocol call. */
     const wantsNative =
       isNativeSentinel(token, "dex") || isNativeSentinel(token, "lending");
-    if (!wantsNative)
-      reasons.push(
-        "only native currency can be bridged for now — an ERC20 bridge needs an approve this does not yet cover",
-      );
     if (Boolean(s.isNative) !== wantsNative)
       reasons.push(
         wantsNative
@@ -1106,6 +1140,15 @@ const AUDITORS: Record<IntentKind, Auditor> = {
         reasons.push(
           "the canonical bridge address is not one recognised on the source chain",
         );
+      /* The canonical corridors are ETH deposits through an L1StandardBridge.
+         `depositERC20To` needs the destination token to be the mintable
+         representation the factory paired with the L1 token, which none of our
+         deployments are — so a canonical token deposit is not a policy refusal
+         but an unrecoverable one, and the resolver never builds it. */
+      if (!wantsNative)
+        reasons.push(
+          "a canonical portal deposit is native-currency only — this corridor cannot carry a token",
+        );
     } else if (provider !== "lifi" && provider !== "relay") {
       /* Fail closed: a canonical target is allow-listed and an aggregator's is
          bounded by the cap, so anything else is neither and is refused. */
@@ -1113,11 +1156,21 @@ const AUDITORS: Record<IntentKind, Auditor> = {
     }
 
     /* The value that actually leaves the wallet, against the amount on the row.
-       The resolver derives both from one number — identically for a canonical
-       deposit — so a gap past rounding means the row misstates what is sent.
-       Priced by the human amount below, which this ties to the value. */
+       For a native bridge the resolver derives both from one number —
+       identically for a canonical deposit — so a gap past rounding means the row
+       misstates what is sent. Priced by the human amount below, which this ties
+       to the value.
+
+       A token bridge must attach nothing: its amount moves by allowance, and a
+       native fee riding alongside would be a second charge in a row shaped to
+       show one. The resolver refuses such a route; this refuses it again. */
     const value = rawUnits(s.value);
-    if (value === null)
+    if (!wantsNative) {
+      if (str(s.value) !== "0")
+        reasons.push(
+          "a token bridge must attach no native value, and this one does",
+        );
+    } else if (value === null)
       reasons.push("the amount to send is not a positive base-unit figure");
     else if (amount !== null && decimals !== null && decimals >= 0) {
       const sending = Number(ethers.formatUnits(value, decimals));
@@ -1125,14 +1178,43 @@ const AUDITORS: Record<IntentKind, Auditor> = {
         reasons.push(`the row shows ${amount} but ${sending} is being sent`);
     }
 
-    /* Like send, the check nothing here can make: that this is the chain and
-       asset the user meant, on a transaction no on-chain permission bounds. */
-    const notes =
-      reasons.length === 0
-        ? [
-            "a bridge leaves this chain and no on-chain permission bounds it, so the destination chain and amount are worth confirming",
-          ]
-        : [];
+    /* The ERC20 leg's allowance target.
+       Two checks, and the second is the one that matters. `isKnownBridgeSpender`
+       is the same allowlist the approve rule admits this address through, read
+       here as well so builder and auditor cannot drift. Then: it must be the
+       address this transaction CALLS. That is what the approve rule structurally
+       cannot know — it sees one step — and without it a plan could grant an
+       allowance to the vetted router while sending its calldata somewhere else,
+       or the reverse. */
+    if (!wantsNative) {
+      const spender = str(s.spender);
+      if (!spender)
+        reasons.push("a token bridge is missing its router to approve");
+      else if (!isKnownBridgeSpender(spender))
+        reasons.push(
+          "the bridge router being approved is not one this app recognises",
+        );
+      else if (spender.toLowerCase() !== str(s.to).toLowerCase())
+        reasons.push(
+          "the router being approved is not the contract this bridge calls",
+        );
+    }
+
+    /* Like send, the checks nothing here can make: that this is the chain and
+       asset the user meant, on a transaction no on-chain permission bounds — and
+       for a token, that the amount inside the provider's calldata is the amount
+       on the row. The approve caps it at the row's amount, which is a real bound
+       and not the same as having read the number. */
+    const notes: string[] = [];
+    if (reasons.length === 0) {
+      notes.push(
+        "a bridge leaves this chain and no on-chain permission bounds it, so the destination chain and amount are worth confirming",
+      );
+      if (!wantsNative)
+        notes.push(
+          `the amount is inside the provider's calldata, which this check does not read — the paired approval is what limits it to ${amount} ${tok.symbol ?? str(s.symbol)}`,
+        );
+    }
 
     return { reasons, notes, ...priceIf(tok.symbol, amount) };
   },
@@ -1591,7 +1673,9 @@ const AUDITORS: Record<IntentKind, Auditor> = {
     if (amount1 === null || amount1 <= 0)
       reasons.push("the second token's amount is missing or not positive");
     if (num(s.decimals0) === null || num(s.decimals1) === null)
-      reasons.push("token decimals are missing, so the amounts cannot be parsed");
+      reasons.push(
+        "token decimals are missing, so the amounts cannot be parsed",
+      );
 
     const fee = num(s.fee);
     /* Two questions, not one. `spacingFor` answers "does the library know a
@@ -1646,7 +1730,12 @@ const AUDITORS: Record<IntentKind, Auditor> = {
       ...(tok0.ok && amount0 !== null && amount0 > 0
         ? { priced: { symbol: tok0.symbol!, amount: String(amount0) } }
         : {}),
-      ...(tok0.ok && amount0 !== null && amount0 > 0 && tok1.ok && amount1 !== null && amount1 > 0
+      ...(tok0.ok &&
+      amount0 !== null &&
+      amount0 > 0 &&
+      tok1.ok &&
+      amount1 !== null &&
+      amount1 > 0
         ? { pricedAlso: [{ symbol: tok1.symbol!, amount: String(amount1) }] }
         : {}),
     };
@@ -1903,7 +1992,10 @@ export async function auditPlan(opts: {
          wallet in the same transaction. */
       const legs = [shape.priced, ...(shape.pricedAlso ?? [])];
       const valued = await Promise.all(
-        legs.map(async (leg) => ({ leg, ...(await priceOf(leg.symbol, leg.amount)) })),
+        legs.map(async (leg) => ({
+          leg,
+          ...(await priceOf(leg.symbol, leg.amount)),
+        })),
       );
 
       let stepUsd: number | null = null;
