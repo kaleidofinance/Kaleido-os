@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 228" role="img" aria-label="A swap in four steps: the quote is a read with no signature, then an approve transaction, then the swap transaction, then settlement.">
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .m{fill:#a8a49b;font-size:11px}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .g{fill:#00b383;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .box{fill:#ffffff;fill-opacity:.04;stroke:#ffffff;stroke-opacity:.1}
+    .acc{fill:#00b383;fill-opacity:.1;stroke:#00b383;stroke-opacity:.45}
+    .ln,.mk{stroke:#6b6760;fill:none}
+    .brk{stroke:#6b6760;stroke-opacity:.6;fill:none}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .m{fill:#6d6b63}
+      .e{fill:#9c988e}
+      .g{fill:#12a866}
+      .box{fill:#141413;fill-opacity:.03;stroke:#141413;stroke-opacity:.1}
+      .acc{fill:#12a866;fill-opacity:.08;stroke:#12a866;stroke-opacity:.4}
+      .ln,.mk,.brk{stroke:#9c988e}
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="mk" d="M0 0.5 L7 4 L0 7.5" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="720" height="228"/>
+
+  <g transform="translate(0,4)">
+    <text class="e" x="24" y="26">1 · NOTHING SIGNED</text>
+    <rect class="box" x="24" y="36" width="150" height="66" rx="10"/>
+    <text class="h" x="40" y="60">Quote</text>
+    <text class="m" x="40" y="78">Read from the</text>
+    <text class="m" x="40" y="92">pool&#8217;s quoter</text>
+    <path class="ln" d="M178 69 L194 69" marker-end="url(#a)"/>
+
+    <text class="g" x="198" y="26">2 · TRANSACTION</text>
+    <rect class="acc" x="198" y="36" width="150" height="66" rx="10"/>
+    <text class="h" x="214" y="60">Approve</text>
+    <text class="m" x="214" y="78">Lets the router</text>
+    <text class="m" x="214" y="92">move the input</text>
+    <path class="ln" d="M352 69 L368 69" marker-end="url(#a)"/>
+
+    <text class="g" x="372" y="26">3 · TRANSACTION</text>
+    <rect class="acc" x="372" y="36" width="150" height="66" rx="10"/>
+    <text class="h" x="388" y="60">Swap</text>
+    <text class="m" x="388" y="78">Crosses ticks in</text>
+    <text class="m" x="388" y="92">the chosen pool</text>
+    <path class="ln" d="M526 69 L542 69" marker-end="url(#a)"/>
+
+    <text class="e" x="546" y="26">4 · DONE</text>
+    <rect class="box" x="546" y="36" width="150" height="66" rx="10"/>
+    <text class="h" x="562" y="60">Settled</text>
+    <text class="m" x="562" y="78">Output in your</text>
+    <text class="m" x="562" y="92">wallet, no escrow</text>
+
+    <path class="brk" d="M24 118 L24 128 L174 128 L174 118"/>
+    <text class="m" x="99" y="146" text-anchor="middle">no transaction</text>
+    <path class="brk" d="M198 118 L198 128 L522 128 L522 118"/>
+    <text class="m" x="360" y="146" text-anchor="middle">two signatures, shown as two</text>
+
+    <text class="m" x="24" y="184">The two transactions are never merged into one prompt. An approve that is</text>
+    <text class="m" x="24" y="200">already in place is skipped, so a second swap on the same pair is one signature.</text>
+  </g>
+</svg>

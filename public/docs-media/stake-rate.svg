@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 306" role="img" aria-label="Depositing KLD mints stKLD one for one. The underlying share of the pool never changes, while the stKLD balance those shares are worth steps upward every time protocol yield is harvested.">
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .m{fill:#a8a49b;font-size:11px}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .g{fill:#00b383;font-size:11px;font-weight:600}
+    .num{fill:#ffffff;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .box{fill:#ffffff;fill-opacity:.04;stroke:#ffffff;stroke-opacity:.1}
+    .acc{fill:#00b383;fill-opacity:.1;stroke:#00b383;stroke-opacity:.45}
+    .ln,.mk,.ax{stroke:#6b6760;fill:none}
+    .curve{stroke:#00b383;stroke-width:1.75;fill:none}
+    .dot{fill:#00b383}
+    .rule{stroke:#ffffff;stroke-opacity:.1;fill:none}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .m{fill:#6d6b63}
+      .num{fill:#141413}
+      .e{fill:#9c988e}
+      .g{fill:#12a866}
+      .box{fill:#141413;fill-opacity:.03;stroke:#141413;stroke-opacity:.1}
+      .acc{fill:#12a866;fill-opacity:.08;stroke:#12a866;stroke-opacity:.4}
+      .ln,.mk,.ax{stroke:#9c988e}
+      .curve{stroke:#12a866}
+      .dot{fill:#12a866}
+      .rule{stroke:#141413;stroke-opacity:.1}
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="mk" d="M0 0.5 L7 4 L0 7.5" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="720" height="306"/>
+
+  <g transform="translate(0,10)">
+    <text class="e" x="24" y="18">WHAT YOU HOLD</text>
+    <rect class="box" x="24" y="28" width="280" height="56" rx="12"/>
+    <text class="m" x="40" y="50">You deposit</text>
+    <text class="num" x="40" y="72">1,200 KLD</text>
+
+    <path class="ln" d="M164 88 L164 114" marker-end="url(#a)"/>
+
+    <rect class="acc" x="24" y="120" width="280" height="56" rx="12"/>
+    <text class="m" x="40" y="142">You receive</text>
+    <text class="num" x="40" y="164">1,200 stKLD</text>
+
+    <text class="m" x="24" y="200">Your share of the pool is fixed. The balance you see is that share in KLD.</text>
+
+    <text class="e" x="356" y="18">YOUR stKLD BALANCE</text>
+    <line class="ax" x1="380" y1="36" x2="380" y2="176"/>
+    <line class="ax" x1="380" y1="176" x2="690" y2="176"/>
+    <text class="m" x="374" y="170" text-anchor="end">1,200</text>
+
+    <path class="curve" d="M380 160 L430 160 L430 138 L492 138 L492 116 L558 116 L558 90 L624 90 L624 64 L684 64"/>
+    <circle class="dot" cx="430" cy="138" r="2.6"/>
+    <circle class="dot" cx="492" cy="116" r="2.6"/>
+    <circle class="dot" cx="558" cy="90" r="2.6"/>
+    <circle class="dot" cx="624" cy="64" r="2.6"/>
+    <text class="g" x="690" y="56" text-anchor="end">each step is a harvest</text>
+    <text class="m" x="535" y="196" text-anchor="middle">time</text>
+
+    <line class="rule" x1="24" y1="220" x2="696" y2="220"/>
+    <text class="h" x="24" y="244">Leaving takes three moves</text>
+    <text class="m" x="24" y="264">Request the withdrawal, wait seven days, then withdraw. Withdrawing spends the</text>
+    <text class="m" x="24" y="280">request, so the next exit waits another seven.</text>
+  </g>
+</svg>

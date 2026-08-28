@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 336" role="img" aria-label="One billion KLD split across eight buckets: Community Ecosystem two hundred million, Seed Round Liquidity and Treasury a hundred and fifty million each, Team Grants and Advisors a hundred million each, and Public Sale fifty million. Two hundred and five million of that total is unlocked at the token generation event.">
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .m{fill:#a8a49b;font-size:11px}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .g{fill:#00b383;font-size:11px;font-weight:600}
+    .num{fill:#ffffff;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .pct{fill:#a8a49b;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .seg{fill:#00b383}
+    .sep{stroke:#111110;stroke-width:1.5}
+    .lock{fill:#ffffff;fill-opacity:.06;stroke:#ffffff;stroke-opacity:.1}
+    .ln,.mk{stroke:#6b6760;fill:none}
+    .rule{stroke:#ffffff;stroke-opacity:.1;fill:none}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .m{fill:#6d6b63}
+      .num{fill:#141413}
+      .pct{fill:#6d6b63}
+      .e{fill:#9c988e}
+      .g{fill:#12a866}
+      .seg{fill:#12a866}
+      .sep{stroke:#ffffff}
+      .lock{fill:#141413;fill-opacity:.05;stroke:#141413;stroke-opacity:.1}
+      .ln,.mk{stroke:#9c988e}
+      .rule{stroke:#141413;stroke-opacity:.1}
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="mk" d="M0 0.5 L7 4 L0 7.5" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="720" height="336"/>
+
+  <text class="e" x="24" y="26">ONE BILLION KLD, FIXED AT DEPLOY</text>
+
+  <!-- Allocation bar. 672px spans 1,000M, so 0.672px per million. -->
+  <g>
+    <rect class="seg" x="24"    y="40" width="33.6"  height="30" fill-opacity=".95"/>
+    <rect class="seg" x="57.6"  y="40" width="100.8" height="30" fill-opacity=".82"/>
+    <rect class="seg" x="158.4" y="40" width="134.4" height="30" fill-opacity=".69"/>
+    <rect class="seg" x="292.8" y="40" width="100.8" height="30" fill-opacity=".56"/>
+    <rect class="seg" x="393.6" y="40" width="67.2"  height="30" fill-opacity=".44"/>
+    <rect class="seg" x="460.8" y="40" width="67.2"  height="30" fill-opacity=".33"/>
+    <rect class="seg" x="528"   y="40" width="100.8" height="30" fill-opacity=".24"/>
+    <rect class="seg" x="628.8" y="40" width="67.2"  height="30" fill-opacity=".16"/>
+    <line class="sep" x1="57.6"  y1="40" x2="57.6"  y2="70"/>
+    <line class="sep" x1="158.4" y1="40" x2="158.4" y2="70"/>
+    <line class="sep" x1="292.8" y1="40" x2="292.8" y2="70"/>
+    <line class="sep" x1="393.6" y1="40" x2="393.6" y2="70"/>
+    <line class="sep" x1="460.8" y1="40" x2="460.8" y2="70"/>
+    <line class="sep" x1="528"   y1="40" x2="528"   y2="70"/>
+    <line class="sep" x1="628.8" y1="40" x2="628.8" y2="70"/>
+  </g>
+
+  <!-- The TGE cut, at 205M of 1,000M. -->
+  <path class="ln" d="M161.8 96 L161.8 76" marker-end="url(#a)"/>
+  <text class="g" x="170" y="100">205,000,000 KLD circulating at TGE — 20.5%</text>
+
+  <line class="rule" x1="24" y1="118" x2="696" y2="118"/>
+
+  <!-- Legend. Two columns of four, ordered by size. -->
+  <g transform="translate(24,140)">
+    <rect class="seg" x="0" y="0" width="10" height="10" rx="2" fill-opacity=".69"/>
+    <text class="h" x="20" y="9">Community Ecosystem</text>
+    <text class="num" x="248" y="9" text-anchor="end">200,000,000</text>
+    <text class="pct" x="300" y="9" text-anchor="end">20%</text>
+    <text class="m" x="20" y="26">25% at TGE, then six months linear</text>
+
+    <rect class="seg" x="0" y="48" width="10" height="10" rx="2" fill-opacity=".82"/>
+    <text class="h" x="20" y="57">Seed Round</text>
+    <text class="num" x="248" y="57" text-anchor="end">150,000,000</text>
+    <text class="pct" x="300" y="57" text-anchor="end">15%</text>
+    <text class="m" x="20" y="74">20% at TGE, 20% step at month 3, 60% over ten months</text>
+
+    <rect class="seg" x="0" y="96" width="10" height="10" rx="2" fill-opacity=".56"/>
+    <text class="h" x="20" y="105">Liquidity</text>
+    <text class="num" x="248" y="105" text-anchor="end">150,000,000</text>
+    <text class="pct" x="300" y="105" text-anchor="end">15%</text>
+    <text class="m" x="20" y="122">50% at TGE, then twenty-four months linear</text>
+
+    <rect class="seg" x="0" y="144" width="10" height="10" rx="2" fill-opacity=".24"/>
+    <text class="h" x="20" y="153">Treasury</text>
+    <text class="num" x="248" y="153" text-anchor="end">150,000,000</text>
+    <text class="pct" x="300" y="153" text-anchor="end">15%</text>
+    <text class="m" x="20" y="170">Twelve-month cliff, thirty-six months linear</text>
+  </g>
+
+  <g transform="translate(388,140)">
+    <rect class="seg" x="0" y="0" width="10" height="10" rx="2" fill-opacity=".44"/>
+    <text class="h" x="20" y="9">Team</text>
+    <text class="num" x="256" y="9" text-anchor="end">100,000,000</text>
+    <text class="pct" x="308" y="9" text-anchor="end">10%</text>
+    <text class="m" x="20" y="26">Twelve-month cliff, thirty-six months linear</text>
+
+    <rect class="seg" x="0" y="48" width="10" height="10" rx="2" fill-opacity=".33"/>
+    <text class="h" x="20" y="57">Grants &amp; Contributors</text>
+    <text class="num" x="256" y="57" text-anchor="end">100,000,000</text>
+    <text class="pct" x="308" y="57" text-anchor="end">10%</text>
+    <text class="m" x="20" y="74">Three-month cliff, then twelve months linear</text>
+
+    <rect class="seg" x="0" y="96" width="10" height="10" rx="2" fill-opacity=".16"/>
+    <text class="h" x="20" y="105">Advisors and Partners</text>
+    <text class="num" x="256" y="105" text-anchor="end">100,000,000</text>
+    <text class="pct" x="308" y="105" text-anchor="end">10%</text>
+    <text class="m" x="20" y="122">Six-month cliff, then twenty-four months linear</text>
+
+    <rect class="seg" x="0" y="144" width="10" height="10" rx="2" fill-opacity=".95"/>
+    <text class="h" x="20" y="153">Public Sale</text>
+    <text class="num" x="256" y="153" text-anchor="end">50,000,000</text>
+    <text class="pct" x="308" y="153" text-anchor="end">5%</text>
+    <text class="m" x="20" y="170">Unlocked in full at TGE</text>
+  </g>
+</svg>

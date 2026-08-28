@@ -9,9 +9,9 @@ import s from "./docs.module.css";
  *
  * AUTHORED, NOT `docs/README.md`. That file is the obvious candidate and it is the
  * wrong one: it is a GitHub file-browser index — emoji section headings, a link
- * farm covering all twenty files including the ones deliberately not published, a
- * "Contributing / submit a pull request" section and a "Document Conventions"
- * table. Rendered as a web page it would advertise twelve documents that are not
+ * farm across nineteen files including the ones deliberately not published,
+ * a "Contributing / submit a pull request" section and a "Document Conventions"
+ * table. Rendered as a web page it would advertise eighteen documents that are not
  * on this site and describe how to edit markdown.
  *
  * So this page is written, and everything it claims comes from the manifest — the
@@ -34,11 +34,14 @@ export default function DocsIndex() {
         <p className={s.eyebrow}>Documentation</p>
         <h1 className={s.indexTitle}>How Kaleido works</h1>
         <p className={s.lede}>
-          Reference for the protocol underneath the app: the two stablecoins and
-          what backs them, where deposited collateral goes, how lending pools
-          are formed from it, and what has to exist on a chain before Kaleido
-          can run there. Every page is generated from a document in the protocol
-          repository, and each one links to its source.
+          Every product in one place, described by what it actually does:
+          swapping and providing liquidity, a peer-to-peer lending book, a
+          yield-bearing stablecoin, staking, and the agent that can drive all of
+          it from a sentence. Then the parts underneath — the contracts, the
+          oracle, every fee, and what has to exist on a chain before Kaleido can
+          run there. Then KLD itself: one billion tokens, eight buckets, and the
+          dates the rest of it is measured against. Each page is a document in
+          the protocol repository and links to its source.
         </p>
       </header>
 

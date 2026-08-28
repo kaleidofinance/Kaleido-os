@@ -14,7 +14,7 @@ import s from "../docs.module.css";
  * ---------------------------------------------------------------------------
  * STATIC AT BUILD TIME, WHICH IS WHAT MAKES READING `docs/` SAFE
  * ---------------------------------------------------------------------------
- * `generateStaticParams` enumerates the manifest, so all four pages are HTML in
+ * `generateStaticParams` enumerates the manifest, so all fifteen pages are HTML in
  * `.next` before anything is served. That is not an optimisation — it is the
  * reason this route can read markdown from `docs/`, a directory outside `src/`
  * that Next's file tracing has no reason to include in a deployment bundle. A

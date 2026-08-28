@@ -795,6 +795,50 @@
   border-radius: var(--k-r-sm);
 }
 
+/* ------------------------------------------------------------------
+ * Figures.
+ *
+ * Same surface treatment as a code block — bordered, rounded, one shade
+ * off the page — so a diagram reads as an inserted artefact rather than
+ * as decoration bleeding into the prose.
+ *
+ * The SVGs paint their own opaque background rect under a
+ * `prefers-color-scheme` query, because the page's theme comes from
+ * `localStorage` via layout.tsx and can disagree with the OS. So the
+ * container must not assume the artwork is transparent: `overflow:
+ * hidden` plus the radius on the wrapper is what keeps the SVG's square
+ * corners from poking out of the rounded frame, and it is why the
+ * inherited radius is reset off the image itself.
+ * ------------------------------------------------------------------ */
+.figure {
+  margin: 0 0 var(--k-s5);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-md);
+  background: var(--k-well);
+  overflow: hidden;
+}
+
+.figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Reset — the frame owns the corners now. */
+  border-radius: 0;
+}
+
+/* Reads as a caption, not as body copy: smaller, dimmer, and separated by a
+   rule so it cannot be mistaken for the paragraph that follows. Left-aligned
+   rather than centred, because these captions are sentences and a centred
+   sentence that wraps to two lines has a ragged left edge. */
+.figure figcaption {
+  padding: var(--k-s3) var(--k-s4);
+  border-top: 1px solid var(--k-line);
+  background: var(--k-glass-deep);
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+  line-height: 1.5;
+}
+
 /* GFM task lists — the checkbox replaces the bullet rather than sitting after it.
    Two selectors because a tight item unwraps its paragraph into the `li` and a
    loose one keeps it, so the input is a child in one case and a grandchild in the

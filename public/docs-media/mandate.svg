@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 364" role="img" aria-label="A delegation mandate is one transaction carrying eight bounds: a per-action cap, a per-epoch cap, the epoch length, an expiry, a health-factor floor, an action bitmask and a token allowlist, plus an optional interest ceiling.">
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .m{fill:#a8a49b;font-size:11px}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .k{fill:#a8a49b;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .v{fill:#00b383;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .box{fill:#ffffff;fill-opacity:.04;stroke:#ffffff;stroke-opacity:.1}
+    .row{fill:#ffffff;fill-opacity:.045;stroke:none}
+    .tag{fill:none;stroke:#ffffff;stroke-opacity:.13}
+    .rule{stroke:#ffffff;stroke-opacity:.1;fill:none}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .m,.k{fill:#6d6b63}
+      .e{fill:#9c988e}
+      .v{fill:#12a866}
+      .box{fill:#141413;fill-opacity:.03;stroke:#141413;stroke-opacity:.1}
+      .row{fill:#141413;fill-opacity:.04}
+      .tag{stroke:#141413;stroke-opacity:.14}
+      .rule{stroke:#141413;stroke-opacity:.1}
+    }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="720" height="364"/>
+
+  <g transform="translate(0,10)">
+    <text class="e" x="24" y="18">ONE TRANSACTION, EIGHT BOUNDS</text>
+
+    <rect class="box" x="24" y="28" width="672" height="228" rx="12"/>
+
+    <rect class="row" x="36" y="40" width="648" height="22" rx="5"/>
+    <text class="k" x="48" y="56">maxNotionalPerAction</text>
+    <text class="m" x="250" y="56">Ceiling on any single action</text>
+    <text class="v" x="672" y="56" text-anchor="end">$5,000</text>
+
+    <rect class="row" x="36" y="66" width="648" height="22" rx="5"/>
+    <text class="k" x="48" y="82">maxNotionalPerEpoch</text>
+    <text class="m" x="250" y="82">Ceiling on everything inside one window</text>
+    <text class="v" x="672" y="82" text-anchor="end">$25,000</text>
+
+    <rect class="row" x="36" y="92" width="648" height="22" rx="5"/>
+    <text class="k" x="48" y="108">epochDurationSec</text>
+    <text class="m" x="250" y="108">How long that window lasts</text>
+    <text class="v" x="672" y="108" text-anchor="end">86,400 · one day</text>
+
+    <rect class="row" x="36" y="118" width="648" height="22" rx="5"/>
+    <text class="k" x="48" y="134">expiryUnix</text>
+    <text class="m" x="250" y="134">When the mandate dies on its own</text>
+    <text class="v" x="672" y="134" text-anchor="end">a timestamp</text>
+
+    <rect class="row" x="36" y="144" width="648" height="22" rx="5"/>
+    <text class="k" x="48" y="160">minHealthFactorBps</text>
+    <text class="m" x="250" y="160">Floor it may never push you under</text>
+    <text class="v" x="672" y="160" text-anchor="end">1.50</text>
+
+    <rect class="row" x="36" y="170" width="648" height="22" rx="5"/>
+    <text class="k" x="48" y="186">allowedActions</text>
+    <text class="m" x="250" y="186">A bitmask — which actions at all</text>
+    <text class="v" x="672" y="186" text-anchor="end">two bits set</text>
+
+    <rect class="row" x="36" y="196" width="648" height="22" rx="5"/>
+    <text class="k" x="48" y="212">tokens</text>
+    <text class="m" x="250" y="212">The only tokens it may touch</text>
+    <text class="v" x="672" y="212" text-anchor="end">USDC</text>
+
+    <rect class="row" x="36" y="222" width="648" height="22" rx="5"/>
+    <text class="k" x="48" y="238">maxInterestBps</text>
+    <rect class="tag" x="164" y="226" width="52" height="15" rx="7"/>
+    <text class="m" x="190" y="238" text-anchor="middle">optional</text>
+    <text class="m" x="250" y="238">Highest rate it may accept for you</text>
+    <text class="v" x="672" y="238" text-anchor="end">9.00%</text>
+
+    <line class="rule" x1="24" y1="276" x2="696" y2="276"/>
+    <text class="h" x="24" y="300">The contract holds these, not the interface</text>
+    <text class="m" x="24" y="320">Bypass the app and they still apply. A mandate scopes protocol actions — never a</text>
+    <text class="m" x="24" y="336">plain transfer — and you can revoke it whenever you like.</text>
+  </g>
+</svg>

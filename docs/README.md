@@ -12,6 +12,11 @@ Welcome to the Kaleido Finance documentation. This directory contains all guides
 - [Security Testing Status](./security/SECURITY_TESTING_STATUS.md) - Testing status and results
 - [Security Testing](./security/SECURITY_TESTING.md) - Security testing procedures
 
+### Multichain
+
+- [Multichain Deployment Map](./MULTICHAIN_DEPLOYMENT_MAP.md) - What has to exist on each chain, per chain
+- [KLD Multichain Plan](./KLD_MULTICHAIN_PLAN.md) - Bridging one KLD supply across chains
+
 ### User Guides
 
 - [Stablecoin Integration](./guides/STABLECOIN_INTEGRATION.md) - kfUSD/kafUSD integration guide
@@ -66,6 +71,10 @@ All smart contracts have been audited for:
 - [Testnet Deployment Guide](./guides/TESTNET_DEPLOYMENT_GUIDE.md)
 - [Run Tests](./guides/RUN_TESTS.md)
 - [Smart Contracts README](../smart-contract/README.md)
+
+### Multichain
+- [Multichain Deployment Map](./MULTICHAIN_DEPLOYMENT_MAP.md) - what must exist on each chain before the app can point at it
+- [KLD Multichain Plan](./KLD_MULTICHAIN_PLAN.md) - how one KLD supply moves between chains: Wormhole NTT in burning mode, one home and N satellites, and the two chains that get the protocol without the token
 
 ### Security
 - [Security Audit Complete](./security/SECURITY_AUDIT_COMPLETE.md)

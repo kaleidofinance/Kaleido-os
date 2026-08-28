@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 336" role="img" aria-label="Three ways in — the app, the agent, and direct contract calls — all reach the same set of Kaleido contracts, deployed once per chain on five testnets.">
+  <!-- Palette mirrors src/app/(app)/tokens.css. The background is painted here,
+       under the same media query as the text, so the figure is always internally
+       consistent even when the reader has overridden the page theme by hand. -->
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .l{fill:#a8a49b;font-size:12px}
+    .m{fill:#a8a49b;font-size:11px}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .g{fill:#00b383;font-size:11px;font-weight:600}
+    .box{fill:#ffffff;fill-opacity:.04;stroke:#ffffff;stroke-opacity:.1}
+    .chip{fill:#ffffff;fill-opacity:.05;stroke:#ffffff;stroke-opacity:.09}
+    .acc{fill:#00b383;fill-opacity:.1;stroke:#00b383;stroke-opacity:.45}
+    .ln,.mk{stroke:#6b6760;fill:none}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .l,.m{fill:#6d6b63}
+      .e{fill:#9c988e}
+      .g{fill:#12a866}
+      .box{fill:#141413;fill-opacity:.03;stroke:#141413;stroke-opacity:.1}
+      .chip{fill:#141413;fill-opacity:.04;stroke:#141413;stroke-opacity:.09}
+      .acc{fill:#12a866;fill-opacity:.08;stroke:#12a866;stroke-opacity:.4}
+      .ln,.mk{stroke:#9c988e}
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="mk" d="M0 0.5 L7 4 L0 7.5" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="720" height="336"/>
+
+  <g transform="translate(0,10)">
+    <!-- ways in -->
+    <text class="e" x="40" y="14">WAYS IN</text>
+    <rect class="box" x="40" y="24" width="196" height="52" rx="10"/>
+    <text class="h" x="56" y="46">The app</text>
+    <text class="m" x="56" y="64">A page per product</text>
+
+    <rect class="box" x="262" y="24" width="196" height="52" rx="10"/>
+    <text class="h" x="278" y="46">Luca, the agent</text>
+    <text class="m" x="278" y="64">Say it in a sentence</text>
+
+    <rect class="box" x="484" y="24" width="196" height="52" rx="10"/>
+    <text class="h" x="500" y="46">The contracts</text>
+    <text class="m" x="500" y="64">Call them yourself</text>
+
+    <path class="ln" d="M138 76 L138 106" marker-end="url(#a)"/>
+    <path class="ln" d="M360 76 L360 106" marker-end="url(#a)"/>
+    <path class="ln" d="M582 76 L582 106" marker-end="url(#a)"/>
+
+    <!-- the diamond -->
+    <rect class="acc" x="40" y="112" width="640" height="104" rx="14"/>
+    <text class="h" x="56" y="136">One deployment per chain</text>
+    <text class="m" x="56" y="154">Lending and delegation live in the diamond; the DEX, the stablecoin and the staking vault sit beside it</text>
+    <rect class="chip" x="56" y="166" width="112" height="32" rx="8"/>
+    <text class="l" x="112" y="186" text-anchor="middle">Swap</text>
+    <rect class="chip" x="178" y="166" width="112" height="32" rx="8"/>
+    <text class="l" x="234" y="186" text-anchor="middle">Liquidity</text>
+    <rect class="chip" x="300" y="166" width="112" height="32" rx="8"/>
+    <text class="l" x="356" y="186" text-anchor="middle">Lending</text>
+    <rect class="chip" x="422" y="166" width="112" height="32" rx="8"/>
+    <text class="l" x="478" y="186" text-anchor="middle">Staking</text>
+    <rect class="chip" x="544" y="166" width="112" height="32" rx="8"/>
+    <text class="l" x="600" y="186" text-anchor="middle">Stablecoin</text>
+
+    <path class="ln" d="M360 216 L360 248" marker-end="url(#a)"/>
+    <text class="g" x="372" y="238">deployed on</text>
+
+    <!-- chains -->
+    <text class="e" x="40" y="270">NETWORKS</text>
+    <rect class="chip" x="56" y="278" width="112" height="30" rx="8"/>
+    <text class="l" x="112" y="297" text-anchor="middle">Sepolia</text>
+    <rect class="chip" x="178" y="278" width="112" height="30" rx="8"/>
+    <text class="l" x="234" y="297" text-anchor="middle">Base Sepolia</text>
+    <rect class="chip" x="300" y="278" width="112" height="30" rx="8"/>
+    <text class="l" x="356" y="297" text-anchor="middle">BNB Testnet</text>
+    <rect class="chip" x="422" y="278" width="112" height="30" rx="8"/>
+    <text class="l" x="478" y="297" text-anchor="middle">Robinhood</text>
+    <rect class="chip" x="544" y="278" width="112" height="30" rx="8"/>
+    <text class="l" x="600" y="297" text-anchor="middle">Arc</text>
+  </g>
+</svg>
