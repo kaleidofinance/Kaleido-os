@@ -143,7 +143,31 @@ export const CHAINS: ChainMeta[] = [
     network: "testnet",
     pairChainId: 56,
     nativeCurrency: { name: "BNB", symbol: "tBNB", decimals: 18 },
-    rpcUrls: ["https://data-seed-prebsc-1-s1.bnbchain.org:8545"],
+    rpcUrls: [
+      /* Only [0] is ever used. `providerForChain` (config/provider.ts:170) and
+         push-watcher.mjs:184 both read `rpcUrls[0]` and nothing rotates, so the
+         two below are measured-good alternates for a human to promote — not a
+         fallback that covers a failing primary. Ordering is the whole mechanism.
+
+         The bnbchain data-seed node was [0] and refuses eth_getLogs outright —
+         measured 2026-08-27, both -1-s1 and -2-s1, returning `-32005 limit
+         exceeded` for a span of ONE block as readily as for 5,000. A blanket
+         refusal of the method, not a range cap, so no amount of chunking reaches
+         it; the push-watcher failed every scheduled run on this.
+
+         It is demoted rather than dropped because it is not broken for the app:
+         measured 2026-08-28, all three serve eth_chainId, eth_blockNumber,
+         eth_getBalance and eth_call, and the seed node was the fastest of the
+         three on the last two. That is what makes this reorder safe beyond the
+         watcher — [0] is also every app read on chain 97 via
+         `providerForChain(97)`, and thirdweb answers all four. publicnode threw
+         `fetch failed` twice on first measurement and 8/8 clean on re-measure,
+         so it is transient, which is the second reason it sits at [1] and not
+         [0]. */
+      "https://97.rpc.thirdweb.com",
+      "https://bsc-testnet-rpc.publicnode.com",
+      "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
+    ],
     blockExplorer: { name: "BscScan", url: "https://testnet.bscscan.com" },
     iconId: "binance-smart-chain-testnet",
     color: "#f0b90b",
