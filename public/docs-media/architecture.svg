@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 362" role="img" aria-label="One diamond address receives every call and delegates it to a facet. The facets hold the code, the diamond holds the storage, and outside it sit the price oracle, the swap router and the tokens.">
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .l{fill:#a8a49b;font-size:12px}
+    .m{fill:#a8a49b;font-size:11px}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .g{fill:#00b383;font-size:11px;font-weight:600}
+    .box{fill:#ffffff;fill-opacity:.04;stroke:#ffffff;stroke-opacity:.1}
+    .acc{fill:#00b383;fill-opacity:.1;stroke:#00b383;stroke-opacity:.45}
+    .ln,.mk{stroke:#6b6760;fill:none}
+    .dash{stroke:#6b6760;stroke-opacity:.7;fill:none}
+    .rule{stroke:#ffffff;stroke-opacity:.1;fill:none}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .l,.m{fill:#6d6b63}
+      .e{fill:#9c988e}
+      .g{fill:#12a866}
+      .box{fill:#141413;fill-opacity:.03;stroke:#141413;stroke-opacity:.1}
+      .acc{fill:#12a866;fill-opacity:.08;stroke:#12a866;stroke-opacity:.4}
+      .ln,.mk,.dash{stroke:#9c988e}
+      .rule{stroke:#141413;stroke-opacity:.1}
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="mk" d="M0 0.5 L7 4 L0 7.5" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="720" height="362"/>
+
+  <g transform="translate(0,10)">
+    <text class="e" x="24" y="18">YOUR CALL LANDS HERE</text>
+    <rect class="acc" x="24" y="28" width="230" height="60" rx="12"/>
+    <text class="h" x="40" y="52">The diamond</text>
+    <text class="m" x="40" y="70">One address per chain</text>
+
+    <path class="ln" d="M258 58 L296 58" marker-end="url(#a)"/>
+    <text class="g" x="277" y="46" text-anchor="middle">delegatecall</text>
+
+    <text class="e" x="300" y="18">CODE LIVES IN FACETS</text>
+    <rect class="box" x="300" y="28" width="192" height="28" rx="6"/>
+    <text class="l" x="314" y="47">ProtocolFacet</text>
+    <rect class="box" x="300" y="62" width="192" height="28" rx="6"/>
+    <text class="l" x="314" y="81">AgentPermissionFacet</text>
+    <rect class="box" x="300" y="96" width="192" height="28" rx="6"/>
+    <text class="l" x="314" y="115">OwnershipFacet</text>
+    <rect class="box" x="300" y="130" width="192" height="28" rx="6"/>
+    <text class="l" x="314" y="149">DiamondCut · DiamondLoupe</text>
+
+    <path class="dash" d="M496 44 L528 44" marker-end="url(#a)"/>
+    <path class="dash" d="M496 78 L528 78" marker-end="url(#a)"/>
+    <path class="dash" d="M496 112 L528 112" marker-end="url(#a)"/>
+    <path class="dash" d="M496 146 L528 146" marker-end="url(#a)"/>
+
+    <rect class="acc" x="532" y="28" width="164" height="130" rx="12"/>
+    <text class="h" x="548" y="52">Shared storage</text>
+    <text class="m" x="548" y="72">Every facet reads and</text>
+    <text class="m" x="548" y="87">writes the same slots,</text>
+    <text class="m" x="548" y="102">held by the diamond,</text>
+    <text class="m" x="548" y="117">not by the facet.</text>
+    <text class="g" x="548" y="142">Upgrades keep it</text>
+
+    <text class="m" x="24" y="116">Swapping a facet swaps</text>
+    <text class="m" x="24" y="131">a function&#8217;s code. The</text>
+    <text class="m" x="24" y="146">address you integrated</text>
+    <text class="m" x="24" y="161">against never changes.</text>
+
+    <line class="rule" x1="24" y1="188" x2="696" y2="188"/>
+    <text class="e" x="24" y="212">WHAT IT DEPENDS ON, AND DOES NOT OWN</text>
+
+    <rect class="box" x="24" y="224" width="216" height="66" rx="12"/>
+    <text class="h" x="40" y="248">Price feeds</text>
+    <text class="m" x="40" y="266">An AggregatorV3 feed on</text>
+    <text class="m" x="40" y="281">four chains, Pyth on Arc</text>
+
+    <rect class="box" x="252" y="224" width="216" height="66" rx="12"/>
+    <text class="h" x="268" y="248">Swap router</text>
+    <text class="m" x="268" y="266">The V3 factory, router,</text>
+    <text class="m" x="268" y="281">quoter and position manager</text>
+
+    <rect class="box" x="480" y="224" width="216" height="66" rx="12"/>
+    <text class="h" x="496" y="248">Tokens</text>
+    <text class="m" x="496" y="266">Collateral, loanables and</text>
+    <text class="m" x="496" y="281">the wrapped native</text>
+
+    <text class="m" x="24" y="318">Each of these is registered after deploy, per chain. That is why the same code</text>
+    <text class="m" x="24" y="334">can run on a chain whose native currency is USDC.</text>
+  </g>
+</svg>

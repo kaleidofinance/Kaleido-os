@@ -11,7 +11,7 @@ import s from "./docs.module.css";
 export const metadata: Metadata = {
   title: { default: "Documentation", template: "%s · Kaleidofi docs" },
   description:
-    "How Kaleido's stablecoin, lending and multichain deployment work, built from the protocol's own repository.",
+    "How Kaleido works: swaps, concentrated liquidity, peer-to-peer lending, the kfUSD stablecoin, staking, the KLD token and its unlock schedule, and the agent that can drive all of it — built from the protocol's own repository.",
 };
 
 /**
@@ -22,18 +22,20 @@ export const metadata: Metadata = {
  * ---------------------------------------------------------------------------
  * The sidebar's filter reaches section level, so it needs every page's headings —
  * not just the current one's. Those live in the markdown, so somebody has to read
- * all four files, and the only two places that could happen are here or in the
+ * all fifteen files, and the only two places that could happen are here or in the
  * client.
  *
  * It happens here. `loadDoc` is `readFileSync`, this is a server component, and
- * every page under it is statically generated — so the four reads happen once
+ * every page under it is statically generated — so the fifteen reads happen once
  * during `next build` and produce the heading index as part of the HTML. The
  * alternative, fetching an index at runtime, would mean a request, a loading state
  * and a spinner on a static documentation site.
  *
- * The layout is shared across all five routes, so React renders it once per page
- * and Next dedupes nothing here — four small `readFileSync` calls per page at
- * build time is 20 reads total. Not worth a cache.
+ * The layout is shared across all sixteen routes, so React renders it once per
+ * page and Next dedupes nothing here — fifteen small `readFileSync` calls per page
+ * at build time is 240 reads of about 5 KB each. Still not worth a cache; if the
+ * set grows by another order of magnitude, memoising `loadDoc` is the fix rather
+ * than moving the index into the client.
  *
  * ---------------------------------------------------------------------------
  * THE HEADER IS THIS ROUTE'S OWN
