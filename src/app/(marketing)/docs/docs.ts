@@ -9,13 +9,18 @@
  * to the public site until somebody adds a line here.
  *
  * That is the whole safety property, and it is worth stating why it has to be
- * structural rather than a rule someone remembers. `docs/` is an engineering
- * folder: it holds an attack-vector checklist against our own contracts, an
- * inventory of which screens are wired and which are not, three files whose
- * titles end in STATUS, and a table of three conflicting addresses for the same
- * token. None of that is documentation — it is working notes that happen to be
- * markdown, and a glob over the folder would publish every one of them the
- * moment it was written. An allow-list fails closed.
+ * structural rather than a rule someone remembers. `docs/` is two folders in one.
+ * `docs/product/` is written for this site and every file in it is published.
+ * Everything around it is an engineering folder: it holds an attack-vector
+ * checklist against our own contracts, an inventory of which screens are wired
+ * and which are not, three files whose titles end in STATUS, and a table of three
+ * conflicting addresses for the same token. None of that is documentation — it is
+ * working notes that happen to be markdown, and a glob over the folder would
+ * publish every one of them the moment it was written. An allow-list fails closed.
+ *
+ * The `docs/product/` split is a convenience, not the boundary. The boundary is
+ * this file, and a new page there is as invisible as a new status note until it
+ * is listed below.
  *
  * ---------------------------------------------------------------------------
  * `omit`, AND WHY SECTION-LEVEL GRANULARITY IS NEEDED AT ALL
@@ -37,15 +42,37 @@
  * reworded heading then fails a test run instead of silently publishing the
  * section it was meant to remove.
  *
+ * Only one entry still needs it. That is the point of `docs/product/`: a page
+ * written for the site has nothing in it to omit, and a page that needs three
+ * omissions to be publishable was probably never a page.
+ *
  * ---------------------------------------------------------------------------
  * NO FRONTMATTER, SO TITLES AND ORDER LIVE HERE
  * ---------------------------------------------------------------------------
- * Not one of the twenty files in `docs/` has frontmatter, and adding it to all of
- * them would be a change to twenty engineering documents in service of a website.
- * `title` here is the sidebar and browser-tab label; the page's own H1 still
- * comes from the markdown, so the two can differ where the file's H1 is written
- * for a repo reader ("Kaleido Stablecoin System") and the sidebar wants the short
- * form ("Stablecoin system").
+ * Not one file in `docs/` has frontmatter, and adding it to the twenty-one
+ * engineering documents would be a change to twenty-one engineering documents in
+ * service of a website. `title` here is the sidebar and browser-tab label; the
+ * page's own H1 still comes from the markdown, so the two differ on purpose —
+ * the sidebar wants the short noun ("Fees") and the page wants a sentence
+ * ("Every charge, and who takes it"). `docs.test.ts` asserts they are never
+ * equal, so a title copied from an H1 fails rather than producing a page that
+ * says the same thing twice.
+ *
+ * ---------------------------------------------------------------------------
+ * IMAGES
+ * ---------------------------------------------------------------------------
+ * Figures are SVGs under `public/docs-media/`, referenced root-relative
+ * (`/docs-media/x.svg`) so the path Next serves them from is the path in the
+ * markdown. Each carries alt text and a markdown title, which `DocBody` renders
+ * as a caption. `docs.test.ts` walks them separately from links, because
+ * `![a](b)` contains `[a](b)` and a link checker that does not know the
+ * difference will try to resolve an image src as a relative document path.
+ *
+ * App routes are written as inline code (`` `/trade/swap` ``) rather than as
+ * links, for the same class of reason: a root-relative link is correct in the
+ * browser but is neither a document path nor an absolute URL, so it sits in the
+ * one gap between the link checker's two branches. Code spans read correctly and
+ * are checkable.
  *
  * ---------------------------------------------------------------------------
  * THIS FILE MUST STAY CLIENT-SAFE
@@ -94,63 +121,117 @@ export interface DocGroup {
 /**
  * The published set.
  *
- * Four pages out of twenty files, and the ratio is the finding rather than a
- * shortfall: `docs/` is mostly working notes. Each omission below is recorded in
- * `UNPUBLISHED` with its reason, so the decision is reviewable and reversible
- * one line at a time rather than re-argued from scratch.
+ * Fifteen pages out of thirty-five files. Fourteen of the fifteen were written for
+ * this site and live in `docs/product/`; the fifteenth is an engineering document
+ * that happens to be publishable with two sections removed. Everything else is
+ * recorded in `UNPUBLISHED` with its reason, so the decision is reviewable and
+ * reversible one line at a time rather than re-argued from scratch.
+ *
+ * Order is the reading order, not the alphabet. Someone who has never used the
+ * protocol should be able to start at the top of the sidebar and work down: what
+ * it is, how to begin, then one page per product, then the agent, then the parts
+ * you only want once you are already using it.
  */
 export const DOC_GROUPS: DocGroup[] = [
   {
-    label: "Stablecoin",
+    label: "Get started",
     entries: [
       {
-        slug: "stablecoin",
-        file: "docs/guides/README.md",
-        title: "Stablecoin system",
+        slug: "overview",
+        file: "docs/product/overview.md",
+        title: "What Kaleido is",
         blurb:
-          "kfUSD and kafUSD — the two tokens, their collateral, the fee structure and the mint, redeem and stake calls.",
-        omit: [
-          /* A hardhat command against our own deploy script. */
-          "## Deployment",
-          /* Owner-only setters — an operator runbook, not reference. */
-          "## Configuration",
-          "## Testing",
-          /* Says the contracts are configured for Abstract testnet and mainnet
-             only. That was true before the registry became chain-scoped and
-             Abstract was deprioritised, and publishing it now would state
-             something false about which chains the system runs on. */
-          "## Network Configuration",
-        ],
+          "Five products behind one wallet connection: swaps, concentrated liquidity, peer-to-peer lending, a yield-bearing stablecoin and staking — on five chains, with an agent that can drive all of it.",
       },
       {
-        slug: "collateral-flow",
-        file: "docs/guides/COLLATERAL_TO_POOLS_FLOW.md",
-        title: "Collateral flow",
+        slug: "getting-started",
+        file: "docs/product/getting-started.md",
+        title: "Getting started",
         blurb:
-          "What happens to USDC, USDT and USDe between the deposit that mints kfUSD and the lending pool the collateral ends up in.",
+          "Connect, get testnet funds from the faucet, and make your first swap — then the three things worth knowing before you borrow against anything.",
       },
     ],
   },
   {
-    label: "Lending",
+    label: "Products",
     entries: [
       {
-        slug: "lending-pools",
-        file: "docs/guides/FEATURED_POOL_INTEGRATION.md",
-        title: "Featured pools",
+        slug: "trade",
+        file: "docs/product/trade.md",
+        title: "Swap",
         blurb:
-          "How kfUSD collateral becomes a pool anyone can borrow from, and how that differs from the peer-to-peer listings beside it.",
-        omit: [
-          /* An unsourced wish list. */
-          "## Future Enhancements",
-          /* A changelog of source paths — the git history's job. */
-          "## Files Changed",
-        ],
+          "How a quote is built, what slippage and price impact actually mean here, and which of the three fee tiers a pair should trade in.",
+      },
+      {
+        slug: "liquidity",
+        file: "docs/product/liquidity.md",
+        title: "Liquidity",
+        blurb:
+          "Concentrated liquidity in plain terms: choosing a range, what happens when price leaves it, and the trade you are making when you narrow one.",
+      },
+      {
+        slug: "borrow",
+        file: "docs/product/borrow.md",
+        title: "Borrow and lend",
+        blurb:
+          "A peer-to-peer book with no utilisation curve: requests, listings, fixed-at-origination interest, the health factor, and how liquidation pays out.",
+      },
+      {
+        slug: "stake",
+        file: "docs/product/stake.md",
+        title: "Staking",
+        blurb:
+          "Deposit KLD, hold rebasing stKLD, and leave in three moves across a seven-day wait — with no fee anywhere on the path.",
+      },
+      {
+        slug: "stable",
+        file: "docs/product/stable.md",
+        title: "Stablecoin",
+        blurb:
+          "kfUSD is the dollar and kafUSD is the yield-bearing claim on it: minting, redeeming, locking, and exactly how the yield reaches a holder.",
       },
     ],
   },
   {
-    label: "Chains",
+    label: "The agent",
+    entries: [
+      {
+        slug: "agent",
+        file: "docs/product/agent.md",
+        title: "The agent",
+        blurb:
+          "Twenty-three actions and six reads driven from a sentence, with a second model auditing the plan before anything reaches your wallet to sign.",
+      },
+      {
+        slug: "delegation",
+        file: "docs/product/delegation.md",
+        title: "Delegation",
+        blurb:
+          "One transaction granting an agent bounded authority over your lending positions — nine parameters, enforced by the contract rather than by the app.",
+      },
+    ],
+  },
+  {
+    label: "Under the hood",
+    entries: [
+      {
+        slug: "architecture",
+        file: "docs/product/architecture.md",
+        title: "Architecture",
+        blurb:
+          "One diamond address per chain, five facets behind it, a generated registry holding every address, and one oracle interface over two backends.",
+      },
+      {
+        slug: "fees",
+        file: "docs/product/fees.md",
+        title: "Fees",
+        blurb:
+          "Every charge in the protocol in one table each: the rate, who receives it, and the ceiling the contract will not let it past.",
+      },
+    ],
+  },
+  {
+    label: "Networks",
     entries: [
       {
         slug: "deployments",
@@ -175,6 +256,37 @@ export const DOC_GROUPS: DocGroup[] = [
         strip: [
           ' rather than the previous docs (which\ndisagree with each other — see "Known drift" below)',
         ],
+      },
+    ],
+  },
+  {
+    label: "Token economy",
+    entries: [
+      {
+        slug: "token",
+        file: "docs/product/token.md",
+        title: "KLD and its supply",
+        blurb:
+          "One billion KLD across eight buckets, the unlock curve those buckets produce, and the two invariants that keep the ceiling global rather than per chain.",
+      },
+    ],
+  },
+  {
+    label: "The project",
+    entries: [
+      {
+        slug: "roadmap",
+        file: "docs/product/roadmap.md",
+        title: "Roadmap",
+        blurb:
+          "What has shipped, what lands at mainnet and at the token generation event, and the three things deliberately left off the list.",
+      },
+      {
+        slug: "brand",
+        file: "docs/product/brand.md",
+        title: "Brand and links",
+        blurb:
+          "The wordmark, the palette read out of the stylesheet the product uses, the type scale, and the only domains and repository that are ours.",
       },
     ],
   },
@@ -204,6 +316,8 @@ export function docBySlug(slug: string): DocEntry | undefined {
 export const UNPUBLISHED: Record<string, string> = {
   "docs/README.md":
     "A GitHub file-browser index: emoji headings, a Contributing section, Document Conventions. The /docs index replaces its job.",
+  "docs/KLD_MULTICHAIN_PLAN.md":
+    "A build plan for a bridge that does not exist yet — a numbered sequence with blocked-by columns, rate-limit figures still to be set against real float, and a rejected custodial option written down so nobody re-proposes it. Publishing it would advertise which chains KLD cannot reach and which invariant is enforced only by a keeper. The deployment map beside it is the publishable half.",
   "docs/points-system.md":
     "An internal engineering spec. Opens by recording that the runtime is not built, cross-references its own implementation plan throughout, and carries a database schema and a disclosure policy.",
   "docs/interface-inventory.md":
@@ -212,6 +326,12 @@ export const UNPUBLISHED: Record<string, string> = {
     "An AI tooling artifact, not a document.",
   "docs/guides/STABLECOIN_INTEGRATION.md":
     "A build-state tracker end to end — the H1 says Status and the two top sections are Completed and Pending Implementation. No publishable slice.",
+  "docs/guides/README.md":
+    "Integration notes for engineers: Solidity signatures, owner-only setters, a hardhat command against our own deploy script. Two things in it are now false — the mint and redeem fees are quoted at 0.3% each where the deployed value is 0.05%, and Network Configuration says the system runs on Abstract only, which stopped being true when the registry became chain-scoped. Published as four sections with the rest omitted until 2026-08-27; docs/product/stable.md now covers the same ground written for a reader rather than a caller.",
+  "docs/guides/COLLATERAL_TO_POOLS_FLOW.md":
+    "A contract-level walk-through of the deposit path, function call by function call, for someone changing that path rather than using it. The publishable half is now docs/product/stable.md, which states where the collateral sits without the call sequence.",
+  "docs/guides/FEATURED_POOL_INTEGRATION.md":
+    "Describes a design that is half built. The isFeatured listing flag and its setter are in ProtocolFacet, but VaultFeaturedPool.sol — the contract every step of the document depends on — was never written, so the flow it walks through cannot be performed. It also carries a Files Changed changelog, a Future Enhancements wish list, and a 12% APY quoted as configuration. Republish it if the pool contract lands.",
   "docs/guides/REDEMPTION_GUIDE.md":
     "Not a redemption guide: a troubleshooting note explaining why redemption currently fails because no collateral has been deposited yet.",
   "docs/guides/FEATURED_POOL_RATES.md":
@@ -240,9 +360,10 @@ export const UNPUBLISHED: Record<string, string> = {
 /**
  * Collapse CRLF to LF before anything tries to parse a line.
  *
- * ALL FOUR PUBLISHED FILES ARE CRLF — every line of every one of them. That is
- * not a detail, it is the bug this function exists to have already fixed, and it
- * is worth writing down exactly how it bites, because it is invisible:
+ * `MULTICHAIN_DEPLOYMENT_MAP.md` IS CRLF ON EVERY ONE OF ITS 134 LINES, and it is
+ * the one published file that still needs `omit`. That coincidence is not lucky,
+ * it is the bug this function exists to have already fixed, and it is worth
+ * writing down exactly how it bites, because it is invisible:
  *
  *   In JavaScript regular expressions, `.` does not match a line terminator, and
  *   CR is a line terminator. So `/^(#{1,6})\s+.+$/` — an entirely reasonable
@@ -252,8 +373,13 @@ export const UNPUBLISHED: Record<string, string> = {
  *
  * The consequence was that `omitSections` recognised no headings at all and
  * returned every document unchanged. It did not throw, log, or render oddly. It
- * published all four internal sections while reporting success, and the only
- * thing that caught it was the test asserting the omitted text was gone.
+ * published every internal section while reporting success, and the only thing
+ * that caught it was the test asserting the omitted text was gone.
+ *
+ * The pages in `docs/product/` are LF, which is exactly why this must not be
+ * relaxed to suit them: the file that would break is the one nobody is editing,
+ * and it would break silently. `docs.test.ts` asserts a published source still
+ * contains CRLF for that reason — so the normalisation keeps being exercised.
  *
  * So the parsers normalise first rather than each pattern being written to
  * tolerate CR. Patterns written that way are correct once and then copied by the
@@ -455,12 +581,13 @@ export interface ResolvedLink {
 /**
  * Where a link in a markdown document should actually point.
  *
- * These files cross-reference each other 33 times with paths like
- * `./guides/README.md` and `../smart-contract/README.md`, written for GitHub's
- * file browser. Rendered as-is on a web page every one of them 404s, and a docs
- * site whose internal links are dead is the specific failure this function
- * exists to prevent — it is also the failure that looks fine in a screenshot,
- * which is why `docs.test.ts` walks every one of them.
+ * The published set links out 59 times, with paths like `./fees.md` and
+ * `../../smart-contract/contracts/facets/ProtocolFacet.sol` — the first kind
+ * written for this site, the second written the way GitHub's file browser reads
+ * them. Rendered as-is on a web page every one of them 404s, and a docs site whose
+ * internal links are dead is the specific failure this function exists to prevent
+ * — it is also the failure that looks fine in a screenshot, which is why
+ * `docs.test.ts` walks every one of them.
  *
  * Four outcomes:
  *

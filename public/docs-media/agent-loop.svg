@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 308" role="img" aria-label="What happens between a sentence and a transaction: the agent builds a named plan, an independent second pass checks it and can only narrow it, you sign each step, and the contract checks its own limits again.">
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .m{fill:#a8a49b;font-size:11px}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .g{fill:#00b383;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .box{fill:#ffffff;fill-opacity:.04;stroke:#ffffff;stroke-opacity:.1}
+    .acc{fill:#00b383;fill-opacity:.1;stroke:#00b383;stroke-opacity:.45}
+    .ln,.mk{stroke:#6b6760;fill:none}
+    .rule{stroke:#ffffff;stroke-opacity:.1;fill:none}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .m{fill:#6d6b63}
+      .e{fill:#9c988e}
+      .g{fill:#12a866}
+      .box{fill:#141413;fill-opacity:.03;stroke:#141413;stroke-opacity:.1}
+      .acc{fill:#12a866;fill-opacity:.08;stroke:#12a866;stroke-opacity:.4}
+      .ln,.mk{stroke:#9c988e}
+      .rule{stroke:#141413;stroke-opacity:.1}
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="mk" d="M0 0.5 L7 4 L0 7.5" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="720" height="308"/>
+
+  <g transform="translate(0,4)">
+    <text class="e" x="24" y="26">1 · YOU</text>
+    <rect class="box" x="24" y="36" width="150" height="66" rx="10"/>
+    <text class="h" x="40" y="60">A sentence</text>
+    <text class="m" x="40" y="78">Said in the agent</text>
+    <text class="m" x="40" y="92">panel, in English</text>
+    <path class="ln" d="M178 69 L194 69" marker-end="url(#a)"/>
+
+    <text class="e" x="198" y="26">2 · SERVER</text>
+    <rect class="box" x="198" y="36" width="150" height="66" rx="10"/>
+    <text class="h" x="214" y="60">A plan</text>
+    <text class="m" x="214" y="78">Named steps, each</text>
+    <text class="m" x="214" y="92">priced and costed</text>
+    <path class="ln" d="M352 69 L368 69" marker-end="url(#a)"/>
+
+    <text class="e" x="372" y="26">3 · SERVER</text>
+    <rect class="box" x="372" y="36" width="150" height="66" rx="10"/>
+    <text class="h" x="388" y="60">A second pass</text>
+    <text class="m" x="388" y="78">An independent</text>
+    <text class="m" x="388" y="92">check, fails closed</text>
+    <path class="ln" d="M526 69 L542 69" marker-end="url(#a)"/>
+
+    <text class="g" x="546" y="26">4 · YOU AGAIN</text>
+    <rect class="acc" x="546" y="36" width="150" height="66" rx="10"/>
+    <text class="h" x="562" y="60">Your signature</text>
+    <text class="m" x="562" y="78">Every step, in</text>
+    <text class="m" x="562" y="92">your own wallet</text>
+
+    <path class="ln" d="M621 106 L621 132" marker-end="url(#a)"/>
+
+    <rect class="acc" x="24" y="138" width="672" height="60" rx="12"/>
+    <text class="h" x="40" y="162">5 · and then the contract checks it again</text>
+    <text class="m" x="40" y="182">Your caps live on chain, so the last word belongs to the contract and not to any of the four steps above.</text>
+
+    <line class="rule" x1="24" y1="226" x2="696" y2="226"/>
+    <text class="e" x="24" y="250">WHAT STEP 3 CAN AND CANNOT DO</text>
+    <text class="m" x="24" y="272">It can refuse a plan, or tighten one — a smaller size, a stricter limit. It can never widen what</text>
+    <text class="m" x="24" y="288">you asked for, and it is not what keeps you safe: your signature and the on-chain caps are.</text>
+  </g>
+</svg>

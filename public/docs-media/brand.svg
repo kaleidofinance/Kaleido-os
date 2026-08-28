@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 356" role="img" aria-label="The Kaleido wordmark set beside its palette and its two faces: a twenty-four pixel brand-green circle carrying the mark, the word Kaleido with a smaller fi, eight colour swatches with their hex values — brand green, the orange accent, positive green, negative red, and the four surface and text greys — and a serif display sample beside a sans body sample.">
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .m{fill:#a8a49b;font-size:11px}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .word{fill:#00b383;font-size:26px;font-weight:535}
+    .fi{fill:#ffffff}
+    .hex{fill:#a8a49b;font-size:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .tok{fill:#ffffff;font-size:11px;font-weight:600}
+    .sw{stroke:#ffffff;stroke-opacity:.12}
+    .rule{stroke:#ffffff;stroke-opacity:.1;fill:none}
+    .serif{fill:#ffffff;font-size:22px;font-family:Georgia,"Times New Roman",serif;letter-spacing:-.02em}
+    .sans{fill:#ffffff;font-size:19px;font-weight:500}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .m{fill:#6d6b63}
+      .e{fill:#9c988e}
+      .word{fill:#12a866}
+      .fi{fill:#141413}
+      .serif{fill:#141413}
+      .sans{fill:#141413}
+      .hex{fill:#6d6b63}
+      .tok{fill:#141413}
+      .sw{stroke:#141413;stroke-opacity:.14}
+      .rule{stroke:#141413;stroke-opacity:.1}
+    }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="720" height="356"/>
+
+  <text class="e" x="24" y="26">THE MARK AND THE WORDMARK</text>
+
+  <!-- The mark: a 24px circle filled with brand green. In the product the logo
+       art sits on top of this fill at 240% zoom, so the green is what shows at
+       the edges and the glyph reads as centred. -->
+  <circle cx="36" cy="60" r="12" fill="#00b383"/>
+  <text class="word" x="58" y="70">Kaleido<tspan class="fi" font-size="19.5">fi</tspan></text>
+  <text class="m" x="24" y="96">The mark is 24px and always circular. &#8220;Kaleido&#8221; is brand green, &#8220;fi&#8221; is 0.75em in</text>
+  <text class="m" x="24" y="112">body ink &#8212; the two halves never separate, never take a space, never share a size.</text>
+
+  <line class="rule" x1="24" y1="130" x2="696" y2="130"/>
+
+  <text class="e" x="24" y="154">PALETTE — DARK, WITH THE LIGHT VALUE WHERE IT DIFFERS</text>
+
+  <g transform="translate(24,166)">
+    <rect class="sw" x="0" y="0" width="44" height="30" rx="8" fill="#00b383"/>
+    <text class="tok" x="0" y="48">Brand</text>
+    <text class="hex" x="0" y="64">#00b383</text>
+    <text class="hex" x="0" y="78">#12a866</text>
+
+    <rect class="sw" x="84" y="0" width="44" height="30" rx="8" fill="#f0803c"/>
+    <text class="tok" x="84" y="48">Accent</text>
+    <text class="hex" x="84" y="64">#f0803c</text>
+
+    <rect class="sw" x="168" y="0" width="44" height="30" rx="8" fill="#4cc46a"/>
+    <text class="tok" x="168" y="48">Positive</text>
+    <text class="hex" x="168" y="64">#4cc46a</text>
+
+    <rect class="sw" x="252" y="0" width="44" height="30" rx="8" fill="#ff5f52"/>
+    <text class="tok" x="252" y="48">Negative</text>
+    <text class="hex" x="252" y="64">#ff5f52</text>
+
+    <rect class="sw" x="336" y="0" width="44" height="30" rx="8" fill="#000000"/>
+    <text class="tok" x="336" y="48">Page</text>
+    <text class="hex" x="336" y="64">#000000</text>
+
+    <rect class="sw" x="420" y="0" width="44" height="30" rx="8" fill="#1d1c1a"/>
+    <text class="tok" x="420" y="48">Card</text>
+    <text class="hex" x="420" y="64">#1d1c1a</text>
+
+    <rect class="sw" x="504" y="0" width="44" height="30" rx="8" fill="#a8a49b"/>
+    <text class="tok" x="504" y="48">Text 2</text>
+    <text class="hex" x="504" y="64">#a8a49b</text>
+
+    <rect class="sw" x="588" y="0" width="44" height="30" rx="8" fill="#6b6760"/>
+    <text class="tok" x="588" y="48">Text 3</text>
+    <text class="hex" x="588" y="64">#6b6760</text>
+  </g>
+
+  <line class="rule" x1="24" y1="262" x2="696" y2="262"/>
+
+  <text class="e" x="24" y="286">TYPE — TWO FACES, AND ONE OF THEM NEVER TOUCHES A NUMBER</text>
+
+  <!-- Georgia stands in for Lora here, because an SVG on a static page cannot
+       assume the page's webfont has loaded. The tracking is the real value. -->
+  <text class="serif" x="24" y="320">One place to trade</text>
+  <text class="hex" x="24" y="338">Lora 400 · −0.02em · display titles only</text>
+
+  <text class="sans" x="380" y="320">Rates, sizes and health</text>
+  <text class="hex" x="380" y="338">Geist · 13 14 16 19 22 30 52</text>
+</svg>

@@ -3,18 +3,29 @@
  * link on it resolves. Run with
  * `npx tsx "src/app/(marketing)/docs/docs.test.ts"`, or `npm run test:docs`.
  *
- * WHY THIS SUITE EXISTS. A docs site has two failure modes and neither one is
- * visible in a screenshot of it.
+ * WHY THIS SUITE EXISTS. A docs site has three failure modes and not one of them
+ * is visible in a screenshot of it.
  *
- *   - DEAD LINKS. These twenty files cross-reference each other with paths
- *     written for GitHub's file browser — `./guides/README.md`,
- *     `../smart-contract/README.md`. Rendered on a web page every one of those
+ *   - DEAD LINKS. The engineering half of `docs/` cross-references itself with
+ *     paths written for GitHub's file browser — `./guides/README.md`,
+ *     `../smart-contract/README.md` — and the pages written for this site link out
+ *     to contract source the same way. Rendered on a web page every one of those
  *     404s unless it is rewritten, and the page around it still looks finished.
  *     `resolveDocLink` does the rewriting; section 3 walks every link in every
  *     published document and proves the rewrite lands somewhere real. One dead
  *     link already exists in the source: docs/README.md points at
  *     `../YIELD_TESTING_STATUS.md`, and the file is at
  *     `docs/guides/YIELD_TESTING_STATUS.md`. That link is broken on GitHub today.
+ *
+ *   - A MISSING FIGURE. Section 3b is separate from the link walk for a reason
+ *     that cost an afternoon: `![alt](src)` contains `[alt](src)`, so a link
+ *     checker matches an image and then tries to resolve its `src` as a document
+ *     path relative to the markdown file. `/docs-media/x.svg` is served from
+ *     `public/`, not from `docs/product/`, so every figure looked like a broken
+ *     link. `linksIn` now refuses images and `imagesIn` checks them against
+ *     `public/` instead — and a figure whose file is missing renders as alt text
+ *     on a page that otherwise looks finished, which is the same failure mode as
+ *     a dead link.
  *
  *   - A LEAK. The manifest is an allow-list precisely so that publishing is a
  *     decision somebody makes, but `omit` weakens that at the section level: it
@@ -94,8 +105,18 @@ function walkDocs(dir = "docs"): string[] {
  * calls, not links, and a link checker that treats `tokens[i](x)` as a broken
  * reference reports failures nobody can fix.
  *
- * Reference-style links (`[label][ref]`) are not matched. None of the twenty
- * files uses one — section 3 asserts that separately rather than leaving it as an
+ * IMAGES ARE EXCLUDED, by the `(?<!!)` in front of the `[`. An image is a link
+ * with a `!` on the front, so without that lookbehind every `![alt](src)` matches
+ * here as well as in `imagesIn`, and section 3 then resolves the `src` as though
+ * it were a document path relative to the markdown file. For a figure that is
+ * exactly wrong: the src is root-relative and served from `public/`, so it
+ * resolves to `docs/product/docs-media/x.svg`, which has never existed. The two
+ * scans are deliberately not one scan with a flag, because the two checks are
+ * genuinely different — a link is checked against the repository, an image
+ * against the public directory.
+ *
+ * Reference-style links (`[label][ref]`) are not matched. No file in `docs/` uses
+ * one — section 3 asserts that separately rather than leaving it as an
  * assumption, since a reference link would slip past this scan entirely.
  */
 function linksIn(md: string): string[] {
@@ -111,8 +132,44 @@ function linksIn(md: string): string[] {
 
     /* Skip inline code spans for the same reason as fences. */
     const bare = line.replace(/`[^`]*`/g, "");
-    for (const m of bare.matchAll(/\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) {
+    for (const m of bare.matchAll(
+      /(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,
+    )) {
       out.push(m[1]);
+    }
+  }
+  return out;
+}
+
+interface DocImage {
+  src: string;
+  alt: string;
+  /** The markdown title, which `DocBody` renders as the caption. */
+  title: string;
+}
+
+/**
+ * Every image in a document, with its alt text and its caption.
+ *
+ * Fences are skipped for the same reason as in `linksIn`. Inline code spans are
+ * *not* stripped here: an image is never written inside one, and stripping them
+ * first would silently eat an alt text containing backticks.
+ */
+function imagesIn(md: string): DocImage[] {
+  const out: DocImage[] = [];
+  let fenced = false;
+
+  for (const line of md.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced) continue;
+
+    for (const m of line.matchAll(
+      /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
+    )) {
+      out.push({ src: m[2], alt: m[1], title: m[3] ?? "" });
     }
   }
   return out;
@@ -258,6 +315,111 @@ function main() {
       stillRelative.join(","),
     );
   }
+
+  /* -------------------------------------------------------------- 3b. figures */
+
+  /* `MEDIA_DIR` is the one directory a figure may live in. Not a policy for its
+     own sake: `DocBody` renders these with a plain `<img>` and no loader, so the
+     src has to be a path Next serves statically, and confining them to one folder
+     is what makes the orphan check below possible. */
+  const MEDIA_DIR = "public/docs-media";
+  const referenced = new Set<string>();
+
+  for (const d of ALL_DOCS) {
+    const imgs = imagesIn(read(d.file));
+
+    for (const img of imgs) {
+      check(
+        `${d.slug}: figure "${img.src}" is root-relative under /docs-media/`,
+        img.src.startsWith("/docs-media/"),
+        "a relative src resolves against docs/, which is not what Next serves",
+      );
+
+      const onDiskPath = `public${img.src}`;
+      referenced.add(onDiskPath);
+      check(
+        `${d.slug}: figure "${img.src}" exists`,
+        existsSync(join(ROOT, onDiskPath)),
+        `-> ${onDiskPath}`,
+      );
+
+      /* Alt text is the figure for anyone who cannot see it, and for anyone whose
+         image failed to load. A filename or a two-word label is not that, so the
+         bar is a sentence's worth of description. */
+      check(
+        `${d.slug}: figure "${img.src}" has descriptive alt text`,
+        img.alt.trim().length > 25,
+        `alt="${img.alt}"`,
+      );
+      /* The markdown title becomes the caption. A figure with no caption is a
+         picture the surrounding prose has to carry on its own. */
+      check(
+        `${d.slug}: figure "${img.src}" has a caption`,
+        img.title.trim().length > 15,
+        `title="${img.title}"`,
+      );
+      check(
+        `${d.slug}: figure "${img.src}" caption is not the alt text again`,
+        img.title.trim() !== img.alt.trim(),
+      );
+    }
+
+    /* A figure sits alone in its paragraph, because that is what `DocBody`'s `p`
+       override keys on when deciding to emit a `<figure>` with a `<figcaption>`.
+       An image with prose beside it stays inline and loses its caption — silently,
+       and only in the rendered output. */
+    const lines = normalizeEol(read(d.file)).split("\n");
+    for (const line of lines) {
+      if (!/^\s*!\[/.test(line)) continue;
+      const rest = line.replace(/!\[[^\]]*\]\([^)]*\)/g, "").trim();
+      check(
+        `${d.slug}: the figure on its own line has nothing else on it`,
+        rest === "",
+        `left over: "${rest}"`,
+      );
+    }
+  }
+
+  /* The regression the `(?<!!)` lookbehind exists for. Without it every figure
+     src arrives in `linksIn`'s output and section 3 fails ten times over. */
+  const imageSrcsSeenAsLinks = ALL_DOCS.flatMap((d) =>
+    linksIn(read(d.file)).filter((h) => h.startsWith("/docs-media/")),
+  );
+  check(
+    "linksIn does not report images as links",
+    imageSrcsSeenAsLinks.length === 0,
+    imageSrcsSeenAsLinks.join(","),
+  );
+  check(
+    "linksIn: the lookbehind keeps a real link on the same line as an image",
+    linksIn('![a](/docs-media/x.svg) and [b](./y.md)').join(",") === "./y.md",
+  );
+
+  /* Nothing in the media folder is unused. An orphan is not a rendering bug, it
+     is a figure somebody drew for a page that no longer references it, and the
+     next person cannot tell it apart from one that is live. */
+  if (existsSync(join(ROOT, MEDIA_DIR))) {
+    for (const name of readdirSync(join(ROOT, MEDIA_DIR))) {
+      check(
+        `${MEDIA_DIR}/${name} is referenced by a published page`,
+        referenced.has(`${MEDIA_DIR}/${name}`),
+        "delete it, or reference it",
+      );
+    }
+  }
+
+  /* Every product page carries a figure. The one exception is the fee page, whose
+     content is five tables — a diagram of a table is a worse table. Asserted as a
+     count rather than per page so that adding a page does not quietly add a page
+     with no illustration on it. */
+  const illustrated = ALL_DOCS.filter(
+    (d) => imagesIn(read(d.file)).length > 0,
+  ).length;
+  check(
+    "at least ten published pages carry a figure",
+    illustrated >= 10,
+    `${illustrated} of ${ALL_DOCS.length}`,
+  );
 
   /* -------------------------------------------------------------- 4. omissions */
 
@@ -462,9 +624,9 @@ function main() {
   check(
     "resolveDocLink: fragment survives the rewrite",
     resolveDocLink(
-      "./COLLATERAL_TO_POOLS_FLOW.md#summary",
-      "docs/guides/README.md",
-    ).href === "/docs/collateral-flow#summary",
+      "./fees.md#what-you-pay-when-you-trade",
+      "docs/product/trade.md",
+    ).href === "/docs/fees#what-you-pay-when-you-trade",
   );
   check(
     "resolveDocLink: a bare directory goes to the tree view",
@@ -505,12 +667,17 @@ function main() {
   );
 
   /* CRLF. THE REGRESSION THIS SUITE ACTUALLY CAUGHT, so it gets explicit cases
-     rather than relying on the four real documents to keep being CRLF.
+     rather than relying on a real document to keep being CRLF.
 
-     All four published files are CRLF on every line. `.` does not match CR in a
-     JavaScript regex, so a heading pattern ending `.+$` matches nothing in them —
-     which made omitSections a silent no-op and published all four internal
-     sections while every other assertion passed. */
+     `MULTICHAIN_DEPLOYMENT_MAP.md` is CRLF on every one of its lines, and it is
+     also the only published file that still uses `omit`. `.` does not match CR in
+     a JavaScript regex, so a heading pattern ending `.+$` matches nothing in it —
+     which made omitSections a silent no-op and published both internal sections
+     while every other assertion passed.
+
+     The pages under `docs/product/` are LF, which is the reason the assertion
+     below is `some` and not `every`: if the last CRLF source were ever converted,
+     nothing would exercise the normalisation on real content again. */
   check(
     "omitSections: works on CRLF input",
     omitSections("## A\r\n\r\nx\r\n\r\n## B\r\n\r\nkeep\r\n", [
@@ -529,9 +696,9 @@ function main() {
     "normalizeEol: collapses CRLF and a lone CR",
     normalizeEol("a\r\nb\rc\nd") === "a\nb\nc\nd",
   );
-  /* And the documents really are CRLF, so the cases above are not hypothetical. */
+  /* And one real document is still CRLF, so the cases above are not hypothetical. */
   check(
-    "the published sources are still CRLF (the reason normalizeEol exists)",
+    "a published source is still CRLF (the reason normalizeEol exists)",
     ALL_DOCS.some((d) => read(d.file).includes("\r\n")),
   );
 

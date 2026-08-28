@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 274" role="img" aria-label="Four phases on one rail: the shipped stack, mainnet in September 2026, the token generation event in late September, and centralised exchange listings in the fourth quarter. The first node is filled as complete, the two September nodes are highlighted as current, and the fourth is drawn as an outline.">
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .m{fill:#a8a49b;font-size:10.5px}
+    .lead{fill:#a8a49b;font-size:10.5px;font-style:italic}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .now{fill:#00b383;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .rail{stroke:#ffffff;stroke-opacity:.14;fill:none}
+    .railNow{stroke:#00b383;stroke-opacity:.5;fill:none}
+    .nDone{fill:#6b6760}
+    .nNow{fill:#00b383}
+    .nNext{fill:#111110;stroke:#6b6760}
+    .tick{fill:#6b6760}
+    .rule{stroke:#ffffff;stroke-opacity:.1;fill:none}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .m,.lead{fill:#6d6b63}
+      .e{fill:#9c988e}
+      .now{fill:#12a866}
+      .rail{stroke:#141413;stroke-opacity:.14}
+      .railNow{stroke:#12a866;stroke-opacity:.5}
+      .nDone{fill:#9c988e}
+      .nNow{fill:#12a866}
+      .nNext{fill:#ffffff;stroke:#9c988e}
+      .tick{fill:#9c988e}
+      .rule{stroke:#141413;stroke-opacity:.1}
+    }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="720" height="274"/>
+
+  <text class="e" x="24" y="26">WHAT IS DONE, WHAT IS DATED</text>
+
+  <!-- The rail. The September segment is brand-coloured; the tail is not. -->
+  <line class="rail"    x1="32"  y1="54" x2="208" y2="54"/>
+  <line class="railNow" x1="208" y1="54" x2="384" y2="54" stroke-width="1.5"/>
+  <line class="rail"    x1="384" y1="54" x2="688" y2="54"/>
+
+  <circle class="nDone" cx="32"  cy="54" r="5"/>
+  <circle class="nNow"  cx="208" cy="54" r="5"/>
+  <circle class="nNow"  cx="384" cy="54" r="5"/>
+  <circle class="nNext" cx="552" cy="54" r="4.5"/>
+
+  <g transform="translate(24,0)">
+    <text class="e" x="0" y="82">SHIPPED</text>
+    <text class="h" x="0" y="102">The full stack</text>
+    <text class="lead" x="0" y="120">Four markets, and an</text>
+    <text class="lead" x="0" y="134">agent that can act.</text>
+    <text class="m" x="0" y="158">V3 DEX, peer-to-peer</text>
+    <text class="m" x="0" y="172">lending, kfUSD, staking</text>
+    <text class="m" x="0" y="192">Luca — read tools and</text>
+    <text class="m" x="0" y="206">a local-first grammar</text>
+    <text class="m" x="0" y="226">Bounded on-chain</text>
+    <text class="m" x="0" y="240">agent mandates</text>
+    <text class="m" x="0" y="260">Season 0 settled</text>
+  </g>
+
+  <g transform="translate(200,0)">
+    <text class="now" x="0" y="82">SEPTEMBER 2026</text>
+    <text class="h" x="0" y="102">Mainnet</text>
+    <text class="lead" x="0" y="120">Every market opens</text>
+    <text class="lead" x="0" y="134">for real money.</text>
+    <text class="m" x="0" y="158">Third-party audit</text>
+    <text class="m" x="0" y="178">Deployed across the</text>
+    <text class="m" x="0" y="192">five rollout chains</text>
+    <text class="m" x="0" y="212">Signed bridging</text>
+    <text class="m" x="0" y="232">Points Season 1 —</text>
+    <text class="m" x="0" y="246">server-computed and</text>
+    <text class="m" x="0" y="260">receipt-verified</text>
+  </g>
+
+  <g transform="translate(376,0)">
+    <text class="now" x="0" y="82">LATE SEPTEMBER 2026</text>
+    <text class="h" x="0" y="102">TGE</text>
+    <text class="lead" x="0" y="120">KLD ships, and points</text>
+    <text class="lead" x="0" y="134">become an allocation.</text>
+    <text class="m" x="0" y="158">KLD token generation</text>
+    <text class="m" x="0" y="172">event</text>
+    <text class="m" x="0" y="192">Accrual frozen, the full</text>
+    <text class="m" x="0" y="206">point table published</text>
+    <text class="m" x="0" y="226">Pro-rata on point share,</text>
+    <text class="m" x="0" y="240">after a dispute window</text>
+    <text class="m" x="0" y="260">KLD in our own V3 pools</text>
+  </g>
+
+  <g transform="translate(544,0)">
+    <text class="e" x="0" y="82">Q4 2026</text>
+    <text class="h" x="0" y="102">Listings</text>
+    <text class="lead" x="0" y="120">KLD where the volume</text>
+    <text class="lead" x="0" y="134">already is.</text>
+    <text class="m" x="0" y="158">Centralised exchange</text>
+    <text class="m" x="0" y="172">listings</text>
+    <text class="m" x="0" y="192">Season 2 opens — points</text>
+    <text class="m" x="0" y="206">continue past TGE</text>
+    <text class="m" x="0" y="226">The agentic mobile</text>
+    <text class="m" x="0" y="240">interface</text>
+  </g>
+</svg>

@@ -16,9 +16,9 @@ import s from "../docs.module.css";
  * reader's IP. This content is markdown in our own repository, reviewed in pull
  * requests, so that threat is absent and an image in a document should render.
  *
- * (None of the four published files contains one today. `img` is allowed anyway,
- * because the alternative is that the first architecture diagram somebody adds
- * renders as nothing and the reason why is three files away.)
+ * (Thirteen of the fifteen published pages carry a figure, and they are SVGs from
+ * `public/docs-media/`. The `p` override below turns each one into a `<figure>`
+ * with a caption; sanitize still has to allow the `img` it starts as.)
  *
  * `input` is kept for the same reason Answer keeps it: the default schema pins
  * every `input` to `type="checkbox" disabled`, which is exactly what remark-gfm
@@ -161,6 +161,52 @@ export default function DocBody({
                 {children}
               </a>
             );
+          },
+
+          /* A figure, from a paragraph containing nothing but an image.
+             ------------------------------------------------------------------
+             THE OVERRIDE IS ON `p`, NOT ON `img`, and that is not a style
+             preference. Markdown wraps a lone image in a paragraph, so a
+             `<figure>` emitted from an `img` override lands inside a `<p>` — and
+             `<p>` cannot contain flow content, so the browser closes the
+             paragraph before it, leaving the figure as a sibling and an empty
+             `<p>` behind. The DOM ends up different from the tree React rendered,
+             which is a hydration mismatch waiting for the first client render.
+
+             So the paragraph itself becomes the figure when it holds one image
+             and nothing else. An image with prose beside it is inline and stays
+             inline — a caption under a sentence fragment is worse than no
+             caption. `docs.test.ts` asserts every figure in the published set is
+             alone on its line, so this branch is the one that runs.
+
+             The markdown title becomes the `<figcaption>` rather than a `title`
+             attribute, which is a tooltip on hover and therefore invisible on a
+             touch device and to a screen reader that does not announce it. Alt
+             text stays alt text: the caption says what the figure means, the alt
+             says what it shows, and a reader who cannot see it needs both. */
+          p({ node, children }) {
+            const kids = (node?.children ?? []).filter(
+              (c) => !(c.type === "text" && c.value.trim() === ""),
+            );
+            const only = kids.length === 1 ? kids[0] : undefined;
+
+            if (only?.type === "element" && only.tagName === "img") {
+              const src = String(only.properties.src ?? "");
+              const alt = String(only.properties.alt ?? "");
+              const caption = String(only.properties.title ?? "");
+              return (
+                <figure className={s.figure}>
+                  {/* next/image wants an intrinsic size and a loader for what is
+                      a static SVG in `public/`; it would optimise nothing and add
+                      a build-time dependency on knowing each diagram's
+                      dimensions. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt={alt} />
+                  {caption !== "" && <figcaption>{caption}</figcaption>}
+                </figure>
+              );
+            }
+            return <p>{children}</p>;
           },
 
           /* A fenced block, with its language as a label. react-markdown hands

@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 312" role="img" aria-label="Circulating KLD rising from two hundred and five million at the token generation event to the full billion at month forty-eight. The curve steps at month three when the seed round's second tranche unlocks in one move, climbs steeply through the first year as the community and liquidity tails accrue, then flattens into a long approach as the team and treasury schedules run to completion.">
+  <style>
+    text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .bg{fill:#111110}
+    .h{fill:#ffffff;font-size:13px;font-weight:600}
+    .m{fill:#a8a49b;font-size:11px}
+    .e{fill:#6b6760;font-size:10px;font-weight:600;letter-spacing:.08em}
+    .g{fill:#00b383;font-size:11px;font-weight:600}
+    .num{fill:#ffffff;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .curve{stroke:#00b383;stroke-width:1.75;fill:none}
+    .area{fill:#00b383;fill-opacity:.09}
+    .dot{fill:#00b383}
+    .ax{stroke:#6b6760;fill:none}
+    .grid{stroke:#ffffff;stroke-opacity:.07;fill:none}
+    .ln,.mk{stroke:#6b6760;fill:none}
+    .rule{stroke:#ffffff;stroke-opacity:.1;fill:none}
+    @media (prefers-color-scheme:light){
+      .bg{fill:#ffffff}
+      .h{fill:#141413}
+      .m{fill:#6d6b63}
+      .num{fill:#141413}
+      .e{fill:#9c988e}
+      .g{fill:#12a866}
+      .curve{stroke:#12a866}
+      .area{fill:#12a866;fill-opacity:.08}
+      .dot{fill:#12a866}
+      .ax{stroke:#9c988e}
+      .grid{stroke:#141413;stroke-opacity:.08}
+      .ln,.mk{stroke:#9c988e}
+      .rule{stroke:#141413;stroke-opacity:.1}
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="mk" d="M0 0.5 L7 4 L0 7.5" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="720" height="312"/>
+
+  <text class="e" x="24" y="26">CIRCULATING SUPPLY, MONTH 0 TO MONTH 48</text>
+
+  <!-- Chart frame. Months 0-48 span x 64 to 690; 0-1,000M spans y 210 to 48. -->
+  <line class="grid" x1="64" y1="48"  x2="690" y2="48"/>
+  <line class="grid" x1="64" y1="129" x2="690" y2="129"/>
+  <text class="m" x="58" y="52"  text-anchor="end">1,000M</text>
+  <text class="m" x="58" y="133" text-anchor="end">500M</text>
+  <line class="ax" x1="64" y1="42" x2="64" y2="210"/>
+  <line class="ax" x1="64" y1="210" x2="690" y2="210"/>
+
+  <path class="area" d="M64 176.8 L103.1 163.1 L103.1 158.3 L142.2 136.2 L220.5 112.2 L259.6 99.8 L377 79.1 L455.2 68.3 L533.4 61.5 L690 48 L690 210 L64 210 Z"/>
+  <path class="curve" d="M64 176.8 L103.1 163.1 L103.1 158.3 L142.2 136.2 L220.5 112.2 L259.6 99.8 L377 79.1 L455.2 68.3 L533.4 61.5 L690 48"/>
+
+  <circle class="dot" cx="64"   cy="176.8" r="2.8"/>
+  <circle class="dot" cx="220.5" cy="112.2" r="2.8"/>
+  <circle class="dot" cx="377"  cy="79.1"  r="2.8"/>
+  <circle class="dot" cx="690"  cy="48"    r="2.8"/>
+
+  <!-- Month ticks. -->
+  <text class="m" x="64"   y="226" text-anchor="middle">TGE</text>
+  <text class="m" x="220.5" y="226" text-anchor="middle">12</text>
+  <text class="m" x="377"  y="226" text-anchor="middle">24</text>
+  <text class="m" x="533.4" y="226" text-anchor="middle">36</text>
+  <text class="m" x="690"  y="226" text-anchor="middle">48</text>
+  <text class="e" x="377"  y="244" text-anchor="middle">MONTHS AFTER TGE — A MONTH IS 30 DAYS</text>
+
+  <!-- Callouts on the three readings worth naming. -->
+  <text class="num" x="72"  y="170">20.5%</text>
+  <path class="ln" d="M113 152 L108 161" marker-end="url(#a)"/>
+  <text class="g"  x="118" y="150">seed's second tranche is a step, not a ramp</text>
+  <text class="num" x="228" y="107">60%</text>
+  <text class="num" x="384" y="74">81%</text>
+  <text class="num" x="690" y="40" text-anchor="end">100%</text>
+
+  <line class="rule" x1="24" y1="260" x2="696" y2="260"/>
+  <text class="m" x="24" y="278">Every KLD the vesting contract still holds is unreleased, so circulating supply is</text>
+  <text class="m" x="24" y="294"><tspan class="num">totalSupply() - balanceOf(vesting)</tspan> — readable, not reported.</text>
+</svg>
