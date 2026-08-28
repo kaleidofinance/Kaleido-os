@@ -182,8 +182,25 @@ npx hardhat run scripts/deploy.js            --network <net>   # EIP-2535 Diamon
 npx hardhat run scripts/deploy-dex.js        --network <net>   # V2 factory + router
 npx hardhat run scripts/deploy-stablecoin.js --network <net>   # kfUSD / kafUSD / YieldTreasury
 npx hardhat run scripts/deploy-masterchef.js --network <net>   # farm emissions
-scripts/KLDVault/deployment/                                   # KLDVault + stKLD
+npx hardhat run scripts/deploy-kld.js        --network <net>   # KLD + KLDVaultV2 + stKLD, wired
 ```
+
+`deploy-kld.js` replaced `scripts/KLDVault/deployment/` (`KLDVault.js`,
+`STkLD.js`, `uupsKLDVault.js`), which is deleted rather than kept for reference.
+All three were unrunnable, not merely stale: two called
+`getContractFactory("KLDVault")` for a contract that does not exist — the
+contract is `KLDVaultV2` — the third went through `hre.zkUpgrades`, which only
+loads on the retired Abstract network, and `STkLD.js` passed two dead Abstract
+literals as the vault and token it wires to. A script that cannot run is worse
+than none: it reads as a supported path.
+
+The replacement is one script for all three contracts because their wiring order
+is load-bearing (KLD → vault → stKLD → `setStKLD` → `setSupport`), and it is
+resumable: every address is written to `deployment-kld-<net>.json` as
+`status: "partial"` the moment it deploys, each wiring step re-reads its own
+precondition before sending, and a rerun adopts what is already live after
+checking its identity on chain. `gen-registry.mjs` skips `partial` records, so a
+half-wired set cannot reach the app.
 
 `genSelectors.js` and `libraries/diamond.js` compute the facet selector arrays
 that `deploy.js` cuts into the Diamond.
@@ -255,10 +272,13 @@ Parameterise as you reach them:
 | Script                         | Literal                       |
 | ------------------------------ | ----------------------------- |
 | `deploy-masterchef.js`         | `KLD_ADDRESS`                 |
-| `KLDVault/deployment/STkLD.js` | vault and KLD token addresses |
 
-Both are on the staking path, which is out of scope for this wave — there is no
-KLD ERC20 in `contracts/` at all, only consumers of one.
+MasterChef is the last one. It is on the staking path, which used to be out of
+scope for a reason that no longer holds — there was no KLD ERC20 in `contracts/`
+at all, only consumers of one. `contracts/Token/KLD.sol` exists now and
+`deploy-kld.js` has recorded it on all five testnets, so the fix is mechanical:
+read `kld` out of `deployment-kld-<net>.json` instead of the literal. Nothing in
+this wave deploys the farm, so it is still unrun.
 
 Four are already fixed, all in the same shape: read the address from the
 environment and refuse to start without it.

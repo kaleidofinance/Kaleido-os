@@ -1,0 +1,34 @@
+{
+  "network": "arcTestnet",
+  "chainId": "5042002",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "status": "complete",
+  "contracts": {
+    "KLD": "0xC0f8D36ec1D96477F26228A629a31248c584f477",
+    "KLDVault": "0x2987378eeB3E61bC8F9D2A80bFd0b1628771AC68",
+    "stKLD": "0xD78c79129410883fD818498e18f0D4f1d3B5DF9f"
+  },
+  "config": {
+    "maxSupply": "1000000000000000000000000000",
+    "maxSupplyHuman": "1000000000.0",
+    "homeChainId": 5042002,
+    "isHomeChain": true,
+    "mintedToDeployer": "1000000000000000000000000000",
+    "yieldTreasury": "0xcB8A20e5d3eD3940678Cc00E70F6CF307f5750Df"
+  },
+  "faucet": {
+    "address": "0x41D38A5b47887B98957cD2Bbe53528c2be0a3238",
+    "funded": "5000000000000000000000000",
+    "fundedHuman": "5000000.0",
+    "drip": "1000000000000000000000",
+    "dripHuman": "1000.0"
+  },
+  "timestamps": {
+    "started": "2026-08-27T23:42:13.048Z",
+    "deployed": "2026-08-27T23:42:13.048Z"
+  },
+  "sources": {
+    "stablecoin": "deployment-stablecoin-arcTestnet.json"
+  },
+  "note": "Testnet topology: this chain is its own KLD home, so it issues its own supply. Mainnet uses a single home chain with every other chain holding bridged supply only — see the script header."
+}

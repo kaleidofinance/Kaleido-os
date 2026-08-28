@@ -117,6 +117,19 @@ const FIELD_MAP = {
   faucet: {
     faucet: "faucet",
   },
+  /* deploy-kld.js. The protocol token and the staking pair that has been waiting
+   * for it. `stKLD` maps through unchanged; the other two are renamed to the
+   * ChainContracts fields that have existed — and been empty on every chain —
+   * since before a KLD ERC20 did: `kld` and `kldVault` at registry.ts:124.
+   *
+   * The record also carries `config` (max supply, home chain id, cooldown) and a
+   * `faucet` block. None of that is mapped: the registry is an address map, and
+   * every one of those is answerable on chain from the addresses below. */
+  kld: {
+    KLD: "kld",
+    KLDVault: "kldVault",
+    stKLD: "stKLD",
+  },
   /* register-tokens.js writes a record of which tokens were registered as
    * collateral and loanable. It carries no address that belongs in
    * ChainContracts — the diamond and oracle in it are copies of what deploy.js
@@ -241,6 +254,31 @@ function discover() {
     }
 
     const time = recordTime(record, parsed.epochMs, absPath);
+
+    /*
+     * A record a deploy script is still working through, or gave up on.
+     *
+     * Scripts that write their record progressively (deploy-kld.js does, because
+     * the public RPCs drop mid-run) mark it `status: "partial"` until the last
+     * wiring call lands. Those addresses are real and deployed, but the set is
+     * not yet known to work — a vault with no stKLD wired, say. Threading that
+     * into the registry gives the app a /stake page that reverts on contact.
+     *
+     * Skipped rather than fatal: unlike a missing chainId, this is a normal and
+     * temporary state, and the fix is to rerun the deploy script, which resumes.
+     * Anything without a `status` field predates the convention and is treated
+     * as complete.
+     */
+    if (record?.status === "partial") {
+      found.push({
+        ...parsed,
+        name,
+        absPath,
+        skip: 'status is "partial" — rerun the deploy script to finish it',
+      });
+      continue;
+    }
+
     found.push({ ...parsed, name, absPath, record, chainId, time });
   }
   return found;

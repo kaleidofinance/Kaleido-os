@@ -3,11 +3,11 @@ import { chainTokenByAddress } from "@/constants/tokens";
 import {
   findRegisteredLendingAsset,
   getContracts,
+  DEPLOYMENTS,
   isNativeSentinel,
   registeredLendingAssetAt,
   registeredLendingAssets,
   stableContracts,
-  STAKING_CONTRACTS,
   type LendingSide,
   type Protocol,
 } from "@/constants/registry";
@@ -441,9 +441,14 @@ function requireAddresses(step: PlanStep, ...fields: string[]): string[] {
  *    because nobody wants to do that either.
  *
  * Non-address fields the registry carries (oracleKind, poolInitCodeHash) drop out
- * on the isAddress guard rather than being added as junk keys. STAKING_CONTRACTS
- * is folded in because KLD has no ERC20 pre-TGE, so kld/stKLD/kldVault are absent
- * from DEPLOYMENTS and would otherwise be unrecognisable as ours.
+ * on the isAddress guard rather than being added as junk keys.
+ *
+ * `STAKING_CONTRACTS` used to be folded in on top of this, because KLD had no
+ * ERC20 and so kld/stKLD/kldVault were absent from DEPLOYMENTS and would not
+ * have been recognisable as ours. They are recorded per chain now, so the loop
+ * below already carries them — and the fold was the over-broad case the `approve`
+ * rule above exists to prevent, since those three literals belonged to one chain
+ * and were added to every chain's set.
  */
 function ownContracts(chainId: number | undefined): Map<string, string> {
   const out = new Map<string, string>();
@@ -452,8 +457,6 @@ function ownContracts(chainId: number | undefined): Map<string, string> {
       out.set(address.toLowerCase(), label);
   };
   for (const [label, address] of Object.entries(getContracts(chainId)))
-    add(`the ${label} contract`, address);
-  for (const [label, address] of Object.entries(STAKING_CONTRACTS))
     add(`the ${label} contract`, address);
   return out;
 }
@@ -477,6 +480,14 @@ function ownContracts(chainId: number | undefined): Map<string, string> {
  * because this set is used to refuse. Do not reuse it to authorise anything —
  * `ownContracts` is the per-chain set for that.
  *
+ * The staking contracts of EVERY chain are folded in for the same reason, and
+ * they replace an `envVars.vaultAddress` entry that was never set — so until now
+ * a plain send into a KLD vault was not refused at all. Over-broad is the point:
+ * a user on Sepolia has no reason to transfer into Base Sepolia's vault either,
+ * and each of the three is a contract with no rescue path. `kldVault` and `kld`
+ * hold real balances (staked principal and the faucet's float), which makes an
+ * accidental send there exactly as unrecoverable as one into the diamond.
+ *
  * Built per call rather than at import. The cost is twenty string compares on a
  * step that is about to make a price call anyway, and it buys independence from
  * import order: auditor.test.ts sets its env vars before dynamically importing
@@ -490,10 +501,16 @@ function protocolAddresses(chainId: number | undefined): Map<string, string> {
   };
 
   add("the Kaleido diamond", envVars.lendbitDiamondAddress);
-  add("the KLD vault", envVars.vaultAddress);
   add("the token faucet", envVars.faucetAddress);
   add("the MasterChef contract", envVars.masterChefAddress);
   add("the protocol contract", envVars.protocolAddress);
+
+  for (const [id, contracts] of Object.entries(DEPLOYMENTS)) {
+    const suffix = Number(id) === chainId ? "" : ` on chain ${id}`;
+    add(`the KLD staking vault${suffix}`, contracts.kldVault);
+    add(`the stKLD token${suffix}`, contracts.stKLD);
+    add(`the KLD token${suffix}`, contracts.kld);
+  }
 
   return out;
 }

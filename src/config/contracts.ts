@@ -14,7 +14,7 @@ const validateAddress = (
 ): string => {
   if (!address || address.trim() === "") {
     throw new Error(
-      `Missing contract address for ${contractName}. Please set the required environment variable (e.g., NEXT_PUBLIC_KLD_VAULT_ADDRESS) in your .env file.`,
+      `Missing contract address for ${contractName}. Please set the required environment variable (e.g., NEXT_PUBLIC_MASTER_CHEF_ADDRESS) in your .env file.`,
     );
   }
   if (!ethers.isAddress(address)) {
@@ -97,10 +97,36 @@ export const getTokenFaucetContract = (
   return new ethers.Contract(address, tokenFaucetAbi, providerOrSigner);
 };
 
+/**
+ * The KLD staking vault on one chain.
+ *
+ * Same chain-paired contract as the two above, and it is the third address to
+ * move off a single env var for the same reason. This one read
+ * `NEXT_PUBLIC_KLD_VAULT_ADDRESS`, which was never set — so every call here
+ * threw `Missing contract address for KLD Vault`, and /stake could not be
+ * exercised on any chain. There was nothing better to point it at: KLD had no
+ * ERC20 in the repository, so there was no vault deployment to record.
+ *
+ * `scripts/deploy-kld.js` has now deployed KLD, KLDVaultV2 and StKLD on all five
+ * testnets and `kldVault` comes from DEPLOYMENTS. Callers gate on
+ * `stakingContracts(chainId).supported`, which is true only when all three
+ * addresses are present — a vault without its token is useless, since `deposit`
+ * takes the token address as an argument.
+ */
 export const getKLDVaultContract = (
   providerOrSigner: ethers.Provider | ethers.Signer,
+  chainId: number | undefined,
 ) => {
-  const address = validateAddress(envVars.vaultAddress, "KLD Vault");
+  const address = getContracts(chainId).kldVault;
+  if (!address || !ethers.isAddress(address)) {
+    throw new Error(
+      `No KLD vault recorded for chain ${chainId ?? "(none connected)"}. ` +
+        `Vault addresses come from DEPLOYMENTS in src/constants/registry.ts, ` +
+        `written by scripts/gen-registry.mjs from smart-contract/deployment-kld-*.json ` +
+        `— check stakingContracts(chainId).supported before building a contract ` +
+        `for this chain.`,
+    );
+  }
   return new ethers.Contract(address, KLDVaultAbi, providerOrSigner);
 };
 

@@ -1,0 +1,34 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": "46630",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "status": "complete",
+  "contracts": {
+    "KLD": "0x6F57844d0C6DCB7eB906d21C99195a3FC446E81D",
+    "KLDVault": "0x46351a88bf64DFd0Cb8e88D6F88fd84d70ABe50e",
+    "stKLD": "0x99d6c3d9C2f00BD5da74C9A78035DD5790d17F50"
+  },
+  "config": {
+    "maxSupply": "1000000000000000000000000000",
+    "maxSupplyHuman": "1000000000.0",
+    "homeChainId": 46630,
+    "isHomeChain": true,
+    "mintedToDeployer": "1000000000000000000000000000",
+    "yieldTreasury": "0x387d687B9574E93aCCEF1c272ce0D77381305eC3"
+  },
+  "faucet": {
+    "address": "0xB22E458D277a55f535873a02Ef77c569cC4F7d51",
+    "funded": "5000000000000000000000000",
+    "fundedHuman": "5000000.0",
+    "drip": "1000000000000000000000",
+    "dripHuman": "1000.0"
+  },
+  "timestamps": {
+    "started": "2026-08-27T23:40:34.502Z",
+    "deployed": "2026-08-27T23:40:34.502Z"
+  },
+  "sources": {
+    "stablecoin": "deployment-stablecoin-robinhoodTestnet.json"
+  },
+  "note": "Testnet topology: this chain is its own KLD home, so it issues its own supply. Mainnet uses a single home chain with every other chain holding bridged supply only — see the script header."
+}

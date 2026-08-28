@@ -7,7 +7,7 @@ import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import {
   getContracts,
   NATIVE_SENTINEL,
-  STAKING_CONTRACTS,
+  stakingContracts,
 } from "@/constants/registry";
 import { ethers } from "ethers";
 import { useCallback, useEffect, useState } from "react";
@@ -121,28 +121,43 @@ const USD_SCALE = 1e18;
 const LENDING = getContracts(READ_ONLY_CHAIN_ID);
 
 /**
+ * Staking addresses on the read chain.
+ *
+ * Module-level for the same reason as LENDING above, and pinned to the same
+ * chain: every staking read in this file goes through `readOnlyProvider`, so
+ * READ_ONLY_CHAIN_ID is the chain those reads are actually on. Taking the
+ * wallet's chain here would pair a Base Sepolia token address with a Sepolia
+ * read — the exact failure the LENDING note above describes.
+ *
+ * These were three flat Abstract-testnet literals until KLD deployed, so
+ * `getTotalPooledKld` was asked about a token the vault had never heard of and
+ * returned 0 without reverting: /stake showed an empty vault and the read looked
+ * successful.
+ */
+const STAKING = stakingContracts(READ_ONLY_CHAIN_ID);
+
+/**
  * The stKLD token this vault actually issues.
  *
- * Read off the vault rather than taken from STAKING_CONTRACTS.stKLD. The
- * vault comes from NEXT_PUBLIC_KLD_VAULT_ADDRESS, so a hardcoded token that
- * disagreed with whatever vault that env var points at would silently report a
- * different pool's balances — the same drift that left this file calling
- * functions the vault never had. Falls back to the constant when the vault has
- * no token set, since setStKLD is a post-deploy step.
+ * Read off the vault rather than taken from the registry, and kept that way now
+ * that both come from the same deployment record. `setStKLD` is a separate
+ * post-deploy transaction, so a vault whose wiring did not land is a real state
+ * — asking the vault is the only way to tell it apart from one that did. Falls
+ * back to the registry when the vault has no token set.
  *
  * Module-level because both effects below need it: the protocol-wide one for
  * `getTotalShares`, the account-scoped one for `balanceOf`.
  */
 async function resolveStKldAddress(
   vaultContract: ethers.Contract,
-): Promise<string> {
+): Promise<string | undefined> {
   try {
     const fromVault = await vaultContract.stKLD();
     if (fromVault && fromVault !== ethers.ZeroAddress) return fromVault;
   } catch (error) {
-    // Vault unreachable or not yet configured — keep the constant.
+    // Vault unreachable or not yet configured — keep the registry value.
   }
-  return STAKING_CONTRACTS.stKLD;
+  return STAKING.stKLD;
 }
 
 const useGetValueAndHealth = () => {
@@ -201,11 +216,12 @@ const useGetValueAndHealth = () => {
     let cancelled = false;
 
     const fetchProtocolStaking = async () => {
-      /* getKLDVaultContract throws when NEXT_PUBLIC_KLD_VAULT_ADDRESS is unset,
-       * which is the normal state until the vault is deployed. */
+      /* getKLDVaultContract throws when no vault is recorded for the read chain,
+       * which is the normal state on a chain KLD has not been deployed to. */
       const vaultContract = (() => {
+        if (!STAKING.supported) return null;
         try {
-          return getKLDVaultContract(readOnlyProvider);
+          return getKLDVaultContract(readOnlyProvider, READ_ONLY_CHAIN_ID);
         } catch (error) {
           return null;
         }
@@ -213,9 +229,7 @@ const useGetValueAndHealth = () => {
       if (!vaultContract) return;
 
       try {
-        const totalPooled = await vaultContract.getTotalPooledKld(
-          STAKING_CONTRACTS.kld,
-        );
+        const totalPooled = await vaultContract.getTotalPooledKld(STAKING.kld);
         const formatted = ethers.formatUnits(totalPooled, 18);
         if (!cancelled) {
           setTotalPooledKLD(Number(formatted) > 0 ? formatted : "0");
@@ -227,10 +241,9 @@ const useGetValueAndHealth = () => {
       try {
         // getTotalShares lives on stKLD and takes no argument. It was being
         // called on the vault with a token address, where it does not exist.
-        const stKldContract = getStKLDContract(
-          readOnlyProvider,
-          await resolveStKldAddress(vaultContract),
-        );
+        const stKldAddress = await resolveStKldAddress(vaultContract);
+        if (!stKldAddress) throw new Error("no stKLD address");
+        const stKldContract = getStKLDContract(readOnlyProvider, stKldAddress);
         const shares = await stKldContract.getTotalShares();
         const formatted = ethers.formatUnits(shares, 18);
         if (!cancelled) {
@@ -289,16 +302,27 @@ const useGetValueAndHealth = () => {
           readOnlyProvider,
           READ_ONLY_CHAIN_ID,
         );
-        const vaultContract = getKLDVaultContract(readOnlyProvider);
         /*
          * The vault exposes no per-user view, so the caller's stake comes from
          * the stKLD token itself. Protocol-wide totals are read in the effect
          * above, which needs no wallet.
+         *
+         * Both are nullable and every use below is guarded, because a chain with
+         * no KLD deployment is a normal state and this scope must survive it —
+         * see the note that follows. `getKLDVaultContract` used to be called
+         * here unguarded while NEXT_PUBLIC_KLD_VAULT_ADDRESS was unset, which
+         * threw on the second line of the try and blanked every per-user figure
+         * in the app, exactly as the dead reads described below did.
          */
-        const stKldContract = getStKLDContract(
-          readOnlyProvider,
-          await resolveStKldAddress(vaultContract),
-        );
+        const vaultContract = STAKING.supported
+          ? getKLDVaultContract(readOnlyProvider, READ_ONLY_CHAIN_ID)
+          : null;
+        const stKldAddress = vaultContract
+          ? await resolveStKldAddress(vaultContract)
+          : undefined;
+        const stKldContract = stKldAddress
+          ? getStKLDContract(readOnlyProvider, stKldAddress)
+          : null;
         /*
          * Two dead reads used to sit here, and one of them broke this whole
          * effect for every connected wallet.
@@ -369,6 +393,7 @@ const useGetValueAndHealth = () => {
            * "stKLD held" are the same number. userstKldBalance had no writer at
            * all besides the reset below, which is why every staker saw 0.
            */
+          if (!stKldContract) throw new Error("no stKLD on the read chain");
           const stKldBalance = await stKldContract.balanceOf(address);
           const formatted = ethers.formatUnits(stKldBalance, 18);
           stakedKld = Number(formatted) > 0 ? formatted : "0";
@@ -383,17 +408,20 @@ const useGetValueAndHealth = () => {
          * blocks rather than one.
          *
          * They were sequential awaits inside a single try, and the second one
-         * reverts on the currently-deployed vault: `hasWithdrawalRequest` is not
-         * in that build's selector set at all (verified by eth_call —
-         * `getWithdrawalTimeLeft` answers, `hasWithdrawalRequest`,
-         * `supportedTokens` and `stKLD` revert with no data). So the flag was
-         * never written, and on an account switch it kept the previous wallet's
-         * value. Split, each atom now clears itself on its own failure.
+         * reverted on the vault that was deployed when this was written:
+         * `hasWithdrawalRequest` was not in that build's selector set at all
+         * (verified by eth_call — `getWithdrawalTimeLeft` answered, while
+         * `hasWithdrawalRequest`, `supportedTokens` and `stKLD` reverted with no
+         * data). That vault was an Abstract-era `KLDVault`; the deployed contract
+         * is now `KLDVaultV2`, which has all four. The split stays regardless,
+         * because it is what makes each atom clear itself on its own failure
+         * rather than one read stranding the other's value on an account switch.
          *
          * getWithdrawalTimeLeft returns 0 both for "never requested" and for
          * "cooldown elapsed", which is why the flag is read at all.
          */
         try {
+          if (!vaultContract) throw new Error("no vault on the read chain");
           const timeleftforwithdrawal =
             await vaultContract.getWithdrawalTimeLeft(address);
           setTimeLeft(Number(timeleftforwithdrawal));
@@ -402,6 +430,7 @@ const useGetValueAndHealth = () => {
         }
 
         try {
+          if (!vaultContract) throw new Error("no vault on the read chain");
           const requested = await vaultContract.hasWithdrawalRequest(address);
           setHasWithdrawalRequest(Boolean(requested));
         } catch (error) {

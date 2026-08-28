@@ -121,6 +121,29 @@ contract StKLD is IERC20, AccessControl, Pausable, ReentrancyGuard {
         return totalShares;
     }
 
+    // --- Emergency stop ---
+
+    /**
+     * @notice Halts stKLD transfers. Staking and unstaking are unaffected.
+     * @dev Missing until now, exactly as on the vault: this contract has always
+     *      inherited Pausable and gated `transfer` and `transferFrom` on
+     *      `whenNotPaused`, with nothing anywhere able to call _pause().
+     *
+     *      Deliberately narrow. `mintShares` and `burnShares` carry no
+     *      `whenNotPaused`, so pausing transfers does not trap anyone's principal
+     *      — a staker can still exit through the vault while the receipt is
+     *      frozen in secondary hands. Pausing this and the vault together is what
+     *      stops everything.
+     */
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    /// @notice Resumes stKLD transfers.
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
+    }
+
     // --- Internal ---
 
     function _getTotalPooledKLD() internal view returns (uint256) {

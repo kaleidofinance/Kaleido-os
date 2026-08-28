@@ -6,7 +6,7 @@ import { getProvider } from "@/config/provider";
 import { getKLDVaultContract } from "@/config/contracts";
 import { ErrorDecoder } from "ethers-decode-error";
 import KLDVaultAbi from "@/abi/KLDVaultAbi.json";
-
+import { stakingContracts } from "@/constants/registry";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers6Adapter } from "thirdweb/adapters/ethers6";
 import { client } from "@/config/client";
@@ -47,7 +47,20 @@ const useRequestWithdrawal = () => {
       return;
     }
 
-    const contract = getKLDVaultContract(signer);
+    /* Gated on the whole set rather than just `kldVault`, even though this call
+     * needs no token address: the cooldown this starts is only useful if the
+     * later withdraw() — which does take the token — can run on the same chain.
+     * Letting a request through where the withdrawal cannot follow would lock
+     * the account into a timer it can never spend. */
+    const staking = stakingContracts(activeChain.id);
+    if (!staking.supported) {
+      toast.error(
+        `Staking is not available on ${activeChain.name ?? `chain ${activeChain.id}`}`,
+      );
+      return;
+    }
+
+    const contract = getKLDVaultContract(signer, activeChain.id);
     let loadingToastId = toast.loading("Requesting withdrawal...");
 
     try {

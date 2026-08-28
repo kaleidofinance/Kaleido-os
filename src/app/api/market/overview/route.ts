@@ -34,7 +34,7 @@ import { supabase } from "@/lib/supabase/supabaseClient";
 import {
   borrowCurrencies,
   getContracts,
-  STAKING_CONTRACTS,
+  stakingContracts,
 } from "@/constants/registry";
 import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { getERC20Contract, getKLDVaultContract } from "@/config/contracts";
@@ -235,9 +235,11 @@ async function kfUsdSupplyLeg(): Promise<number | null> {
  */
 async function kldStakedLeg(): Promise<number | null> {
   try {
-    const vault = getKLDVaultContract(readOnlyProvider);
+    const staking = stakingContracts(READ_ONLY_CHAIN_ID);
+    if (!staking.supported) return null;
+    const vault = getKLDVaultContract(readOnlyProvider, READ_ONLY_CHAIN_ID);
     const pooled = await withTimeout<bigint>(
-      vault.getTotalPooledKld(STAKING_CONTRACTS.kld),
+      vault.getTotalPooledKld(staking.kld),
       "vault.getTotalPooledKld",
     );
     return parseFloat(toWholeUnits(pooled, 18));

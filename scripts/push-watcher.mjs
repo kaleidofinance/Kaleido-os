@@ -87,9 +87,21 @@ const SUPABASE_URL =
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 const CONFIRMATIONS = Number(process.env.CONFIRMATIONS || "5");
-/* eth_getLogs is range-capped on most public endpoints; 5k is comfortably under
- * the usual 10k limit and keeps each request cheap. */
-const RANGE = 5000;
+/* eth_getLogs is range-capped on most public endpoints, and 1,000 is the tightest
+ * cap across the five configured RPCs — measured 2026-08-27, not assumed. Sepolia's
+ * thirdweb endpoint answers a 1,000-block span and rejects 2,000 with `-32005 Log
+ * response size exceeded. Maximum allowed number of requested blocks is 1000`; Base
+ * Sepolia, Robinhood and Arc all served 5,000. The previous value was 5,000, chosen
+ * against "the usual 10k limit", which meant every scheduled run failed on Sepolia
+ * before reading a single log.
+ *
+ * Two traps this walked into, worth keeping in mind before raising it again. Ethers
+ * reports the rejection as `could not coalesce error` and `retry` only prints
+ * `shortMessage`, so the real `-32005` text was invisible in CI — read `e.error`
+ * when diagnosing. And a range cap is deterministic, so `retry`'s five attempts
+ * could never clear it; five identical failures is the signature of a request that
+ * is malformed for the endpoint rather than an endpoint under load. */
+const RANGE = 1000;
 /* A backstop on catch-up per run: if a chain fell far behind (a long outage),
  * process at most this many blocks now and continue from the new checkpoint next
  * run, rather than issue hundreds of getLogs in one invocation. This advances the

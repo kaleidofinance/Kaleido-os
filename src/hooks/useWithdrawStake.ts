@@ -8,7 +8,7 @@ import { ErrorDecoder } from "ethers-decode-error";
 import { ethers, MaxUint256 } from "ethers";
 import KLDVaultAbi from "@/abi/KLDVaultAbi.json";
 
-import { STAKING_CONTRACTS } from "@/constants/registry";
+import { stakingContracts } from "@/constants/registry";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers6Adapter } from "thirdweb/adapters/ethers6";
 import { client } from "@/config/client";
@@ -47,7 +47,15 @@ const useWithdrawStake = () => {
         return;
       }
 
-      const contract = getKLDVaultContract(signer);
+      const staking = stakingContracts(activeChain.id);
+      if (!staking.supported) {
+        toast.error(
+          `Staking is not available on ${activeChain.name ?? `chain ${activeChain.id}`}`,
+        );
+        return;
+      }
+
+      const contract = getKLDVaultContract(signer, activeChain.id);
       let loadingToastId = toast.loading(
         `Unstaking ${_amount.toString()} $KLD...`,
       );
@@ -58,11 +66,8 @@ const useWithdrawStake = () => {
         // because stKLD rebases (balanceOf returns the pooled-KLD claim, not a
         // share count) the amount shown in a stKLD-denominated input is already
         // the right figure to send. Do not convert it.
-        await contract.withdraw.staticCall(STAKING_CONTRACTS.kld, amountinWei);
-        const transaction = await contract.withdraw(
-          STAKING_CONTRACTS.kld,
-          amountinWei,
-        );
+        await contract.withdraw.staticCall(staking.kld!, amountinWei);
+        const transaction = await contract.withdraw(staking.kld!, amountinWei);
         const receipt = transaction.wait();
         await StakeTransactionResult(transaction, loadingToastId, "withdraw");
       } catch (error) {
