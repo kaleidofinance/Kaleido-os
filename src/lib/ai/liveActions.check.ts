@@ -3,6 +3,7 @@
  * on-chain state, on a chain where the protocol is actually deployed.
  *
  *   node --import tsx --env-file=.env src/lib/ai/liveActions.check.ts
+ *   CHAIN=84532 node --import tsx --env-file=.env src/lib/ai/liveActions.check.ts
  *
  * NOT part of `npm test`, and it must not become part of it. Every other suite
  * in this repo is offline by construction — build.test.ts injects a fake
@@ -13,10 +14,11 @@
  * wrong contract, mis-scales a uint, or asks a chain for an id that is not on it
  * passes every one of them.
  *
- * This file exists because the state to check against now exists. Sepolia
- * carries a real V3 pool, real swaps, a real lending listing and three real
- * loan requests, so "would the agent actually build this transaction" is a
- * question with a measurable answer rather than a mocked one.
+ * This file exists because the state to check against now exists. Sepolia and
+ * Base Sepolia each carry a real V3 pool, real swaps, a real lending listing and
+ * real loan requests, so "would the agent actually build this transaction" is a
+ * question with a measurable answer rather than a mocked one — and it is a
+ * separate question per chain, which is why CHAIN is selectable.
  *
  * What it does NOT do: sign, send, or hold a key. Every execute verb is taken
  * as far as a plan and a verdict and then dropped. The point is the plan's
@@ -34,6 +36,7 @@
 import { ethers } from "ethers";
 import { providerForChain } from "@/config/provider";
 import { getContracts } from "@/constants/registry";
+import { getChainMeta } from "@/constants/chains";
 import protocolAbi from "@/abi/ProtocolFacet.json";
 import { runReadTool } from "@/lib/ai/readTools";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
@@ -43,11 +46,24 @@ import { FEE_TIERS } from "@/lib/dex/liquidity";
 import { EXECUTE_TOOLS } from "@/lib/ai/toolCatalog";
 import { isReadTool } from "@/lib/ai/readTools";
 
-const CHAIN = 11155111;
+/**
+ * Which chain to run against. Sepolia by default, because that is the chain
+ * whose book this harness was first written for and a bare run should keep
+ * meaning what it meant.
+ *
+ * It is an env var rather than a constant because the protocol is deployed on
+ * five chains and the state they carry is not the same state. Base Sepolia has
+ * its own listing, its own requests and its own pools, so "the agent builds a
+ * correct plan" is a claim that has to be made per chain — and pinning the
+ * constant meant four of the five could never be asked. Every expectation below
+ * is already derived from live reads, so nothing else has to change to move.
+ */
+const CHAIN = Number(process.env.CHAIN ?? 11155111);
 const OPTS = { slippageBps: 50, deadlineMin: 20 };
 
 let pass = 0;
 let fail = 0;
+let skipped = 0;
 const check = (name: string, cond: boolean, detail = "") => {
   if (cond) {
     pass += 1;
@@ -56,6 +72,21 @@ const check = (name: string, cond: boolean, detail = "") => {
     fail += 1;
     console.log(`   FAIL  ${name}${detail ? ` — ${detail}` : ""}`);
   }
+};
+
+/**
+ * Untested, and said so — for the case where the thing that did not answer is
+ * not the thing under test.
+ *
+ * Distinct from a pass because a skipped check has asserted nothing, and a run
+ * that quietly counted it as green would be a run whose number goes up when an
+ * upstream goes down. Distinct from a fail because a third-party timeout is not
+ * a defect in this repo, and a harness that reports one as a defect gets ignored
+ * on the day it is right.
+ */
+const skip = (name: string, why: string) => {
+  skipped += 1;
+  console.log(`   SKIP  ${name} — ${why}`);
 };
 
 const section = (n: number, title: string) => {
@@ -129,7 +160,9 @@ async function main() {
   const p = new ethers.Contract(contracts.diamond, protocolAbi, provider);
 
   console.log(`\n${"═".repeat(78)}`);
-  console.log(`  Sepolia @ block ${head}   diamond ${contracts.diamond}`);
+  console.log(
+    `  ${getChainMeta(CHAIN)?.name ?? `chain ${CHAIN}`} (${CHAIN}) @ block ${head}   diamond ${contracts.diamond}`,
+  );
   console.log(`${"═".repeat(78)}`);
 
   /* ── the real state, read rather than assumed ───────────────────────────── */
@@ -177,9 +210,12 @@ async function main() {
    * expectation from the answer.
    *
    * Measured 2026-08-25: exactly one pool on Sepolia, USDT/USDe at 500 with
-   * 9.95e18 liquidity. So "swap ETH → USDT" being refused is the CORRECT outcome
-   * here, and asserting a plan for it would have been asserting a pool into
-   * existence.
+   * 9.95e18 liquidity, so "swap ETH → USDT" being refused was the CORRECT
+   * outcome and asserting a plan for it would have been asserting a pool into
+   * existence. Re-measured 2026-08-28 after the KLD pools were seeded: Sepolia
+   * and Base Sepolia now each carry a second pool, KLD/USDC at 3000. Both
+   * figures are here as history — the code reads the factory, so the sweep
+   * follows the chain rather than either measurement.
    *
    * `FEE_TIERS` is imported rather than declared. It used to be a fourth copy of
    * the same three numbers, which is the specific way this harness could go wrong
@@ -395,7 +431,27 @@ async function main() {
 
   const price = await runReadTool("getPrice", { asset: "ETH" }, CHAIN);
   console.log(`   getPrice ETH  priced=${price.priced} usd=${price.usd} ${price.asOfSecondsAgo}s old`);
-  check("getPrice returns a live ETH number", price.priced === true && typeof price.usd === "number" && (price.usd as number) > 0, `$${price.usd}`);
+  /* An upstream that did not answer is not the agent getting this wrong, and the
+     two must not report the same way. `getPrice` aborts CoinGecko at 6 seconds by
+     design — short because a user is watching a spinner — and measured
+     2026-08-28 that budget is marginal from this machine: CoinGecko answers in
+     1.4–3.9s by curl, node's fetch overhead sometimes pushes past 6, and the
+     stale-cache path needs a prior success in-process so a cold run has nothing
+     to fall back on. The tool then returns its `error` shape, which is the
+     CORRECT product behaviour — it tells the model to say it could not get the
+     price rather than inventing one. Failing the run on that would be asserting
+     an external API's latency, so it is reported as untested instead. A `priced:
+     false` for ETH is a different matter and still fails: that is the agent
+     claiming it has no feed for an asset it does have one for. */
+  if (typeof price.error === "string") {
+    skip("getPrice returns a live ETH number", `upstream did not answer: ${price.error}`);
+  } else {
+    check(
+      "getPrice returns a live ETH number",
+      price.priced === true && typeof price.usd === "number" && (price.usd as number) > 0,
+      `$${price.usd}`,
+    );
+  }
 
   const kld = await runReadTool("getPrice", { asset: "KLD" }, CHAIN);
   check(
@@ -801,7 +857,9 @@ async function main() {
   );
 
   console.log(`\n${"─".repeat(78)}`);
-  console.log(`  ${pass} passed, ${fail} failed`);
+  console.log(
+    `  ${pass} passed, ${fail} failed${skipped ? `, ${skipped} skipped` : ""}`,
+  );
   console.log(`${"─".repeat(78)}\n`);
   if (fail > 0) process.exitCode = 1;
 }
