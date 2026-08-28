@@ -173,6 +173,31 @@ const REPO = "https://github.com/kaleidofinance/Kaleido-os";
 const DOCS = "/docs";
 
 /**
+ * Where "Launch app" goes. The app's own front door, not this deployment's
+ * `/trade` route.
+ *
+ * The two resolve to the same screen today — next.config.mjs rewrites
+ * `app.kaleidofi.xyz/` to `/trade`, which then 307s to `/trade/agent` — so this
+ * is not a behaviour change for a visitor. It is a change of address: the
+ * marketing site says kaleidofi.xyz and the product says app.kaleidofi.xyz, and
+ * the button that crosses between them should name the destination rather than
+ * leave the reader on the marketing origin with an app rendered under it. That
+ * also means the app can be served from somewhere else later without touching
+ * three call sites here.
+ *
+ * The bare origin rather than the deeper `/trade/agent`, deliberately: the hop
+ * chain in next.config.mjs exists precisely so the front door is one URL anyone
+ * can type, and hardcoding today's default mode here would fork that decision
+ * across two files.
+ *
+ * Rendered with a plain `<a>` at each of the three call sites, not `next/link`.
+ * `Link` prefetches and hands the navigation to the client router, neither of
+ * which applies across an origin — it would fall back to a full page load
+ * anyway, having imported the router for nothing.
+ */
+const APP = "https://app.kaleidofi.xyz";
+
+/**
  * Header anchors.
  *
  * Four, out of the six sections that carry an eyebrow. `#start` and the roadmap
@@ -506,9 +531,9 @@ export default async function LandingPage() {
             Docs
           </Link>
           <ThemeToggle />
-          <Link href="/trade" className={s.launch}>
+          <a href={APP} className={s.launch}>
             Launch app
-          </Link>
+          </a>
         </div>
       </header>
 
@@ -632,9 +657,9 @@ export default async function LandingPage() {
             </p>
 
             <div className={s.ctas}>
-              <Link href="/trade" className={s.primary}>
+              <a href={APP} className={s.primary}>
                 Launch app
-              </Link>
+              </a>
               {/* "See the stack" pointed at #stack, one screen down. A docs
                   link is the second thing a reader of a DeFi front door
                   actually wants, and it is the pairing the production page
@@ -897,9 +922,9 @@ export default async function LandingPage() {
             Swaps, loans, liquidity, staking and stablecoins, from a single
             instruction.
           </p>
-          <Link href="/trade" className={s.primary}>
+          <a href={APP} className={s.primary}>
             Launch app
-          </Link>
+          </a>
         </section>
 
         {/* ---- 9. Footer --------------------------------------------- */}
