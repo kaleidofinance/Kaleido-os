@@ -14,20 +14,33 @@ import type { BridgeRoute, BridgeRouteRequest } from "@/lib/v2/intents/build";
  * the auditor re-check a canonical `to` against the same table it was built
  * from.
  *
- * Two kinds of route, one refusal:
+ * Two kinds of route:
  *
  *   CANONICAL — a fixed L1StandardBridge deposit, encoded here with no network
  *   call at all. Deterministic, so both the browser and the server produce the
- *   same bytes, and the landing page's static trace can build a real one.
+ *   same bytes, and the landing page's static trace can build a real one. Native
+ *   currency only, and that is a fact about the corridor rather than a policy of
+ *   ours: `depositERC20To` credits the OptimismMintableERC20 that the factory
+ *   paired with the L1 token, and our testnet mocks are independent deployments
+ *   with no such pairing — a deposit would burn tokens into a representation
+ *   nobody can mint. So an ERC20 skips this branch entirely and asks the
+ *   aggregator, which refuses an unrouted corridor by name instead of routing
+ *   it into a hole.
  *
  *   AGGREGATOR — LI.FI's own executable calldata, for corridors with no
- *   canonical portal. The aggregators do not index the testnets (measured: all
- *   five 4xx), so this path is effectively mainnet-only and lights up when a
- *   mainnet deployment lands.
+ *   canonical portal. Native and ERC20 both. The aggregators do not index the
+ *   testnets (measured: all five 4xx), so this path is effectively mainnet-only
+ *   and lights up when a mainnet deployment lands.
  *
- *   NON-NATIVE — refused by name. See the native-only note on the `bridge`
- *   Intent in intents/types.ts: an ERC20 leg needs an approve to the router,
- *   which the approve auditor pins to Kaleido contracts and would reject.
+ * AN ERC20 LEG IS TWO SIGNATURES: an approve to the provider's router, then the
+ * router's own calldata. That router is not one of ours, so the approve auditor
+ * — which otherwise trusts only Kaleido contracts as spenders — had to be taught
+ * about it. `isKnownBridgeSpender` below is that seam, and it is deliberately
+ * ONE FIXED ADDRESS rather than "whatever the provider names": a spender is the
+ * one field where being wrong survives the transaction, because an allowance is
+ * a storage write that never consults the address it empowers. Everything the
+ * provider says about the ERC20 leg is cross-checked before it can become a
+ * plan — see the four checks in the aggregator branch.
  *
  * Isomorphic on purpose: useLocalPlanner (browser) and serverPlanDeps (route
  * handler) both call it, so it imports nothing server-only — ethers, the chain
@@ -86,6 +99,40 @@ export function isKnownBridgeAddress(
 }
 
 /**
+ * The LI.FI diamond — the contract its quotes name as `estimate.approvalAddress`
+ * and call as `transactionRequest.to`.
+ *
+ * Measured rather than looked up: quotes for 1→10 DAI, 1→137 USDC, 137→1 USDC
+ * and 42161→8453 USDC, routed by four different underlying bridges (across,
+ * mayanFastMCTP, polymerStandard), all returned this one address for BOTH
+ * fields. LI.FI deploys its diamond deterministically at the same address on
+ * every EVM chain it supports, which is why this is a flat constant and not a
+ * per-chain table — inventing per-chain entries would be recording a guess as
+ * data, and a wrong entry here fails closed anyway.
+ */
+const LIFI_DIAMOND = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
+
+/**
+ * Whether an address is a bridge router this resolver would itself authorise an
+ * approve to. The approve auditor calls this, exactly as it calls
+ * `isKnownBridgeAddress` for a canonical `to`: one table, read by both the
+ * builder that emits the step and the rule that admits it.
+ *
+ * Chain-blind on purpose, and worth being plain about what that costs. The
+ * address is the same on every EVM chain, so there is no per-chain fact to
+ * check; the honest consequence is that an approve naming it would be admitted
+ * on a chain LI.FI does not index. Nothing can be *built* there — the resolver
+ * refuses the corridor before an approve exists — so the residual exposure is a
+ * hand-assembled plan granting an allowance to one fixed, widely-used contract,
+ * bounded by the per-action USD cap like every other step.
+ */
+export function isKnownBridgeSpender(address: string): boolean {
+  return (
+    Boolean(address) && address.toLowerCase() === LIFI_DIAMOND.toLowerCase()
+  );
+}
+
+/**
  * Resolve a corridor to a signable transaction, or an error the user can read.
  *
  * Returns `{ error }` rather than throwing so a bad corridor degrades the plan
@@ -95,37 +142,39 @@ export function isKnownBridgeAddress(
 export async function resolveBridgeRoute(
   params: BridgeRouteRequest & { fromChainId: number; userAddress: string },
 ): Promise<BridgeRoute | { error: string }> {
-  const { fromChainId, toChain, asset, amount, decimals, isNative, userAddress } =
-    params;
-
-  // Native only for the MVP. An ERC20 bridge would emit an approve to the
-  // router, and the approve auditor only trusts Kaleido contracts as spenders —
-  // so it would be audited down to a refusal. Refuse by name here instead, and
-  // leave this branch as the seam the ERC20 leg slots into.
-  if (!isNative) {
-    return {
-      error: `Bridging ${asset} isn't wired for execution yet — only a chain's native currency is. Kaleido can still quote an ERC20 route for you to complete with the provider.`,
-    };
-  }
+  const {
+    fromChainId,
+    toChain,
+    asset,
+    amount,
+    decimals,
+    isNative,
+    tokenAddress,
+    userAddress,
+  } = params;
 
   const dest = resolveChain(toChain);
   if (!dest) return { error: `I don't recognise the chain "${toChain}".` };
   if (dest.id === fromChainId)
     return { error: "That's the chain you're already on — nothing to bridge." };
 
-  // Amount → wei at the asset's decimals, refused here so a bad value never
-  // reaches a portal call or an aggregator.
-  let value: string;
+  // Amount → base units at the asset's decimals, refused here so a bad value
+  // never reaches a portal call or an aggregator.
+  let units: string;
   try {
-    value = ethers.parseUnits(amount, decimals).toString();
+    units = ethers.parseUnits(amount, decimals).toString();
   } catch {
     return { error: `${amount} isn't a valid ${asset} amount.` };
   }
-  if (BigInt(value) <= 0n)
+  if (BigInt(units) <= 0n)
     return { error: `A bridge needs a positive amount, not ${amount}.` };
 
   // 1) Canonical corridor — a fixed portal deposit, encoded here, no network.
-  const canonical = CANONICAL_CORRIDORS[fromChainId]?.[dest.id];
+  //    Native only; see the CANONICAL note in the header for why an ERC20 must
+  //    not take this branch rather than merely does not.
+  const canonical = isNative
+    ? CANONICAL_CORRIDORS[fromChainId]?.[dest.id]
+    : undefined;
   if (canonical) {
     if (!ethers.isAddress(userAddress))
       return {
@@ -142,7 +191,7 @@ export async function resolveBridgeRoute(
     return {
       to: canonical.l1Bridge,
       data,
-      value,
+      value: units,
       toChainId: dest.id,
       toChainName: dest.shortName,
       provider: "canonical",
@@ -163,17 +212,86 @@ export async function resolveBridgeRoute(
     fromChainId,
     toChainId: dest.id,
     asset,
-    units: value,
+    units,
     address: userAddress,
   });
   if (!exec)
     return {
       error: `No executable route for ${asset} to ${dest.shortName} right now. Kaleido can quote one via Relay or LI.FI for you to complete with the provider.`,
     };
+
+  /* The quote is for the corridor we asked about, or it is not usable. LI.FI
+     echoes the source chain in its transactionRequest; a mismatch would be a
+     transaction signed on the wrong chain, which the auditor's own source-chain
+     check would then refuse anyway — better to never build it. */
+  if (exec.txChainId !== null && exec.txChainId !== fromChainId)
+    return {
+      error: `The provider quoted a transaction for chain ${exec.txChainId}, not the chain you're on. Not signing that.`,
+    };
+
+  if (isNative) {
+    return {
+      to: exec.to,
+      data: exec.data,
+      value: exec.value,
+      toChainId: dest.id,
+      toChainName: dest.shortName,
+      provider: "lifi",
+      etaSeconds: exec.etaSeconds,
+    };
+  }
+
+  /*
+   * The ERC20 leg's four cross-checks, all fail-closed.
+   *
+   * Between us and the provider sit two independent resolutions of the same
+   * asset: we resolved `asset` to an address in our registry, and LI.FI resolved
+   * the SAME SYMBOL against its own token list for this chain. Nothing
+   * guarantees they landed on the same contract — Sepolia lending runs a mintable
+   * mock USDC while LI.FI would name Circle's — and if they differ we would
+   * approve one token and hand the router calldata pulling another. The
+   * transaction reverts in the good case; in the bad one the allowance is left
+   * standing on a token the user never meant to expose. So: the spender must be
+   * the router we know, it must be the same address the transaction calls, the
+   * token must be the one we are about to approve, and the decimals must be the
+   * ones `units` was scaled at.
+   */
+  if (!exec.spender || !isKnownBridgeSpender(exec.spender))
+    return {
+      error: `The provider wants to be approved as ${exec.spender ?? "an unnamed address"}, which isn't the bridge router Kaleido recognises. Refusing rather than granting an allowance to it.`,
+    };
+  if (exec.spender.toLowerCase() !== exec.to.toLowerCase())
+    return {
+      error:
+        "The provider's approval address isn't the contract its transaction calls. Refusing a bridge that would split the allowance from the call.",
+    };
+  if (
+    tokenAddress &&
+    exec.fromToken.address &&
+    exec.fromToken.address.toLowerCase() !== tokenAddress.toLowerCase()
+  )
+    return {
+      error: `The provider's ${asset} on this chain is ${exec.fromToken.address}, not the ${asset} Kaleido would approve (${tokenAddress}). Refusing rather than bridging a different token than the one shown.`,
+    };
+  if (exec.fromToken.decimals !== null && exec.fromToken.decimals !== decimals)
+    return {
+      error: `The provider says ${asset} has ${exec.fromToken.decimals} decimals and Kaleido scaled the amount at ${decimals}. Refusing rather than sending the wrong size.`,
+    };
+  /* An ERC20 bridge that also wants native value alongside it — a relayer fee
+     some corridors charge — is refused, not silently signed. The bridge row
+     states one amount in one asset, the auditor ties `value` to it for a native
+     bridge, and there is no honest way to show a second charge in a shape that
+     carries one. Measured: every ERC20 quote sampled attached zero. */
+  if (BigInt(exec.value) !== 0n)
+    return {
+      error: `That route also asks for ${ethers.formatEther(exec.value)} of native currency as a fee, which Kaleido doesn't sign alongside a token bridge yet.`,
+    };
+
   return {
     to: exec.to,
     data: exec.data,
-    value: exec.value,
+    value: "0",
+    spender: exec.spender,
     toChainId: dest.id,
     toChainName: dest.shortName,
     provider: "lifi",

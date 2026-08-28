@@ -50,28 +50,28 @@ const shellFor = (pathname: string): "list" | "new" | "detail" => {
 };
 
 /**
- * What a headline total leaves out.
+ * The strip is four figures and four labels, with no sub-lines under them.
  *
- * A sum over pools silently drops the ones it cannot measure — no price for
- * either leg, or no usable block window to sample volume from — and the
- * difference between an incomplete figure and a wrong one is whether the reader
- * can see the gap. Same reasoning as the coverage note on the lending TVL tile.
+ * It had them: a scope note on Pools ("Every KaleidoSwap V2 pair, not just
+ * yours") and, under each of the three sums, an `excludeNote` naming how many
+ * pools the total could not measure. Both are true and both are gone, because of
+ * where they landed rather than what they said — StatStrip is a 2×2 grid on a
+ * phone, so a sentence under a number wraps to three or four lines and each tile
+ * becomes mostly prose with a figure on top. Four of those stacked is a screen of
+ * caveats before the first pool row.
+ *
+ * What replaces them is the em dash the sums already render: `sumOf` returns null
+ * rather than 0 when nothing was measurable, so an unmeasured total reads as "—"
+ * and not as a confident zero. That is the part of the caveat that mattered.
+ * `Number.isFinite`-style precision about *how many* pools were excluded belongs
+ * in the table, next to the rows it is about.
  */
-const excludeNote = (total: number, counted: number, missing: string) => {
-  /* Nothing to exclude from a total there are no pools for. That case is
-     annotated once, on the Pools tile, rather than repeated under all three
-     sums. */
-  if (total === 0 || counted >= total) return null;
-  return `Excludes ${total - counted} ${missing} of ${total} pools`;
-};
-
 /** Sum of a nullable column, or null when nothing in it was measurable. Never 0:
-    a column of em dashes does not add up to zero. */
+    a column of em dashes does not add up to zero. It also used to return the
+    count of measurable values, which only `excludeNote` above ever read. */
 const sumOf = (values: (number | null)[]) => {
   const known = values.filter((v): v is number => v !== null);
-  return known.length === 0
-    ? { total: null, counted: 0 }
-    : { total: known.reduce((a, b) => a + b, 0), counted: known.length };
+  return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
 };
 
 export default function PoolLayout({ children }: { children: ReactNode }) {
@@ -124,37 +124,10 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
         {shell === "list" && (
           <>
             <StatStrip>
-              <Stat
-                label="Pools"
-                value={qty(poolCount)}
-                /* The one tile that names the strip's scope for all four. It
-                   matters most next to the Your positions tab, which lists V3
-                   NFTs from the wallet's chain — without this line a reader has
-                   no way to tell that "Pools: 3" is not counting theirs. Scope,
-                   not chain: naming the read chain would put its network label
-                   in front of the reader for no gain, and would go stale the
-                   moment READ_ONLY_CHAIN_ID becomes an env value (#18). */
-                note={
-                  poolCount === 0
-                    ? "The factory has no pairs — the three sums beside this one have nothing to measure"
-                    : "Every KaleidoSwap V2 pair, not just yours"
-                }
-              />
-              <Stat
-                label="Liquidity"
-                value={usd(liquidity.total)}
-                note={excludeNote(pools.length, liquidity.counted, "unpriced")}
-              />
-              <Stat
-                label="24h volume"
-                value={usd(volume.total)}
-                note={excludeNote(pools.length, volume.counted, "unsampled")}
-              />
-              <Stat
-                label="24h fees"
-                value={usd(fees.total, 2)}
-                note={excludeNote(pools.length, fees.counted, "unsampled")}
-              />
+              <Stat label="Pools" value={qty(poolCount)} />
+              <Stat label="Liquidity" value={usd(liquidity)} />
+              <Stat label="24h volume" value={usd(volume)} />
+              <Stat label="24h fees" value={usd(fees, 2)} />
             </StatStrip>
 
             <div className={s.tabs}>

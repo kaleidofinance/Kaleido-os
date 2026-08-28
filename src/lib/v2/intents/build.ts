@@ -152,8 +152,19 @@ export interface BridgeRouteRequest {
   /** Human amount. */
   amount: string;
   decimals: number;
-  /** True for the source chain's native currency; the MVP requires it. */
+  /** True for the source chain's native currency, which needs no approve. */
   isNative: boolean;
+  /**
+   * The token contract this plan would approve, for the resolver's cross-check.
+   *
+   * Only meaningful for an ERC20 leg, and the reason it is here at all: the
+   * provider resolves `asset` as a SYMBOL against its own list, which is a
+   * second, independent resolution that can name a different contract than our
+   * registry did (Sepolia's mintable mock USDC against Circle's, say). The
+   * resolver refuses a route whose token is not the one we are about to
+   * authorise, and it cannot make that comparison without this.
+   */
+  tokenAddress?: string;
 }
 
 /**
@@ -164,13 +175,19 @@ export interface BridgeRouteRequest {
 export interface BridgeRoute {
   to: string;
   data: string;
-  /** Wei to attach, as a decimal string. */
+  /** Wei to attach, as a decimal string. "0" for an ERC20 leg. */
   value: string;
   toChainId: number;
   toChainName: string;
   /** "canonical" | "lifi" — how the auditor decides what to re-check. */
   provider: string;
   etaSeconds: number | null;
+  /**
+   * The router to approve, on an ERC20 leg only. Vetted by the resolver against
+   * `isKnownBridgeSpender` and against `to`, so the builder can pair an approve
+   * with it without re-deciding anything.
+   */
+  spender?: string;
   /** Set for a canonical deposit, which underruns estimateGas. */
   gasLimit?: string;
 }
@@ -257,7 +274,9 @@ export interface PlanDeps {
    * corridor is pure and makes no call. Native currency only in the MVP — see
    * the `bridge` branch below and lib/bridge/route.ts.
    */
-  bridgeRoute(req: BridgeRouteRequest): Promise<BridgeRoute | { error: string }>;
+  bridgeRoute(
+    req: BridgeRouteRequest,
+  ): Promise<BridgeRoute | { error: string }>;
 }
 
 /**
@@ -730,21 +749,25 @@ export async function buildIntents(
   /* -------------------------------------------------------------- bridge -- */
   /*
    * Directly below send because it is the second command that leaves Kaleido's
-   * contracts entirely, and for the same reasons: no diamond, no currency
-   * re-resolution, and — in the native-only MVP — no approve. The wallet signs
-   * one source-chain transaction to a portal or an aggregator router.
+   * contracts entirely, and for the same reasons: no diamond and no currency
+   * re-resolution. The wallet signs a source-chain transaction to a portal or an
+   * aggregator router.
    *
-   * Native only. An ERC20 leg would need an approve to that router, and the
-   * approve auditor pins spenders to Kaleido contracts, so it would be audited
-   * down to a refusal. There is nothing to gain by resolving a route we could
-   * not sign, so this refuses non-native by name and without a network call —
-   * ahead of the resolver, which refuses it again as defence in depth.
+   * One step for native currency, two for a token. A native bridge carries the
+   * amount as `value` and has nothing to pre-authorise; an ERC20 has to approve
+   * the router first, which is the pair this used to refuse outright — the
+   * approve auditor trusted only Kaleido contracts as spenders, and a bridge
+   * router is not one. It now recognises one vetted router
+   * (`isKnownBridgeSpender`), so the pair is auditable and the refusal is gone.
    *
-   * `to`/`data`/`value` come from deps.bridgeRoute and never from here or the
-   * model: that is the whole security posture of a transaction the diamond
-   * cannot scope with LibAgentPermission. The auditor re-checks a canonical `to`
-   * against the same table it was built from and prices the notional against the
-   * per-action cap.
+   * The spender is NOT chosen here. It arrives on the route, having been checked
+   * by the resolver against that same allowlist AND against the address the
+   * transaction calls — so this pairs an approve with a router it did not pick,
+   * exactly as `to`/`data`/`value` are used and never decided here. That is the
+   * whole security posture of a transaction the diamond cannot scope with
+   * LibAgentPermission: the auditor re-checks a canonical `to` against the table
+   * it was built from, re-checks the spender against the same allowlist, and
+   * prices the notional against the per-action cap.
    */
   if (command.kind === "bridge") {
     const { amount, token, toChain } = command;
@@ -771,12 +794,6 @@ export async function buildIntents(
     const isNative =
       isNativeSentinel(token.address, "dex") ||
       isNativeSentinel(token.address, "lending");
-    if (!isNative) {
-      return {
-        ok: false,
-        error: `Bridging ${token.symbol} isn't available yet — only a chain's native currency can be bridged for now.`,
-      };
-    }
 
     const route = await deps.bridgeRoute({
       toChain,
@@ -784,9 +801,21 @@ export async function buildIntents(
       amount,
       decimals: token.decimals,
       isNative,
+      tokenAddress: token.address,
     });
     if ("error" in route) {
       return { ok: false, error: route.error };
+    }
+
+    /* A token leg with no spender cannot be signed: the router would have no
+       allowance and the transaction would revert. The resolver only omits it for
+       a native route, so this is the shape check that keeps the two in step
+       rather than a case anyone expects to hit. */
+    if (!isNative && !route.spender) {
+      return {
+        ok: false,
+        error: `That ${token.symbol} route came back without a router to approve, so there's nothing safe to sign. Nothing was sent.`,
+      };
     }
 
     return {
@@ -794,6 +823,18 @@ export async function buildIntents(
       build: {
         summary: `Bridge ${amount} ${token.symbol} to ${route.toChainName}.`,
         intents: [
+          ...(isNative
+            ? []
+            : ([
+                {
+                  kind: "approve",
+                  token: token.address,
+                  spender: route.spender!,
+                  amount,
+                  decimals: token.decimals,
+                  symbol: token.symbol,
+                },
+              ] as Intent[])),
           {
             kind: "bridge",
             to: route.to,
@@ -809,6 +850,7 @@ export async function buildIntents(
             provider: route.provider,
             etaSeconds: route.etaSeconds,
             isNative,
+            ...(route.spender ? { spender: route.spender } : {}),
             ...(route.gasLimit ? { gasLimit: route.gasLimit } : {}),
           },
         ],
@@ -1027,7 +1069,8 @@ export async function buildIntents(
 
      The env-var fallback is kept for a chain absent from DEPLOYMENTS, where a
      single configured address is strictly better than refusing outright. */
-  const diamond = getContracts(chainId).diamond ?? envVars.lendbitDiamondAddress;
+  const diamond =
+    getContracts(chainId).diamond ?? envVars.lendbitDiamondAddress;
   if (!diamond) {
     return { ok: false, error: "The protocol address isn't configured." };
   }

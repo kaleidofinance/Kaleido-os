@@ -20,12 +20,12 @@
  * the wallet. It builds no transaction of its own — it extracts a real one or
  * returns null.
  *
- * Native currency only, on both the aggregator here and the canonical portal in
- * route.ts. An ERC20 bridge needs an approve to the router, and that is the
- * "much harder look at approvals" this header used to defer wholesale: the
- * approve auditor pins spenders to Kaleido contracts, so a router spender would
- * be refused until that pin learns about bridges. Native sends `value` with no
- * approve and sidesteps it, which is why the MVP stops there.
+ * ERC20 as well as native, since the approve pin that used to block a token leg
+ * has learned about bridge routers — `isKnownBridgeSpender` in lib/bridge/route.ts
+ * is the one address it learned, and the resolver cross-checks four separate
+ * things the provider says before an approve can carry it. What stays native-only
+ * is the CANONICAL portal, for a reason about OP's token pairing rather than about
+ * approvals; the header of route.ts has it.
  */
 
 import { CHAINS, type ChainMeta } from "@/constants/chains";
@@ -228,25 +228,44 @@ export async function getBridgeQuote(args: {
 }
 
 /**
- * The executable transaction for a NATIVE bridge, from LI.FI's quote.
+ * The executable transaction for a bridge, from LI.FI's quote.
  *
  * Where getBridgeQuote answers "what would this cost" for the read tool, this
  * answers "what do I sign" for the resolver in lib/bridge/route.ts. It is the
  * aggregator half of that resolver; the canonical-portal half needs no provider
  * at all, being a fixed contract call route.ts encodes itself.
  *
- * LI.FI only, and native only. Its /quote returns a `transactionRequest` with
- * the exact { to, data, value } to send — the same response object `lifiQuote`
- * above already reads its fee and duration from — so this extracts a real
- * transaction or returns null; it assembles nothing. Relay stays quote-only
- * here: its executable step sits nested under steps[].items[] in a shape not
- * worth guessing at while no mainnet deployment exercises it.
+ * LI.FI only. Its /quote returns a `transactionRequest` with the exact
+ * { to, data, value } to send — the same response object `lifiQuote` above
+ * already reads its fee and duration from — so this extracts a real transaction
+ * or returns null; it assembles nothing. Relay stays quote-only here: its
+ * executable step sits nested under steps[].items[] in a shape not worth
+ * guessing at while no mainnet deployment exercises it.
+ *
+ * Native AND ERC20, which is what the extra fields are for. Everything past
+ * { to, data, value } is reported so the resolver can cross-check the provider
+ * rather than trust it — read the four checks there for what each one stops.
+ * Two measurements shaped this:
+ *
+ *  - `estimate.approvalAddress` is the LI.FI diamond, and equals
+ *    `transactionRequest.to`, on every corridor sampled (1→10, 1→137, 137→1,
+ *    42161→8453) across four different underlying bridges. The resolver pins
+ *    both facts rather than assuming either.
+ *  - It is ALSO present on a native quote, where nothing needs approving. So it
+ *    is not a signal that an approve is required — `isNative` decides that, and
+ *    this field only says which address to name if one is.
+ *
+ * `action.fromToken` is LI.FI's own resolution of the SYMBOL we sent, on its own
+ * token list for that chain, which is a different resolution from ours and can
+ * legitimately disagree. It is reported for exactly that reason.
  *
  * Returns null on a dead provider, a testnet the aggregators do not index
- * (measured: all five testnets return 4xx), or a response carrying no usable
- * transactionRequest. The resolver turns null into an honest refusal rather
- * than a fabricated route — the units are pre-scaled by the caller, because
- * route.ts has already parsed the amount at the asset's real decimals.
+ * (measured: all five testnets return 4xx), a symbol its list does not carry on
+ * one side of the corridor (measured: `USDT` on 42161 is a 404, code 1003), or a
+ * response carrying no usable transactionRequest. The resolver turns null into
+ * an honest refusal rather than a fabricated route — the units are pre-scaled by
+ * the caller, because route.ts has already parsed the amount at the asset's real
+ * decimals.
  */
 export async function getBridgeExecution(args: {
   fromChainId: number;
@@ -261,6 +280,16 @@ export async function getBridgeExecution(args: {
   /** Decimal wei, converted from LI.FI's hex quantity. */
   value: string;
   etaSeconds: number | null;
+  /**
+   * `estimate.approvalAddress` — the contract that would pull an ERC20. Null
+   * when the quote does not name one, which the resolver treats as a refusal
+   * for a token leg and ignores for a native one.
+   */
+  spender: string | null;
+  /** `transactionRequest.chainId`, for the source-chain cross-check. */
+  txChainId: number | null;
+  /** How LI.FI resolved the symbol on the source chain. Nulls where absent. */
+  fromToken: { address: string | null; decimals: number | null };
 } | null> {
   try {
     const qs = new URLSearchParams({
@@ -275,8 +304,14 @@ export async function getBridgeExecution(args: {
     if (!res.ok) return null;
 
     const data = (await res.json()) as {
-      estimate?: { executionDuration?: number };
-      transactionRequest?: { to?: string; data?: string; value?: string };
+      estimate?: { executionDuration?: number; approvalAddress?: string };
+      action?: { fromToken?: { address?: string; decimals?: number } };
+      transactionRequest?: {
+        to?: string;
+        data?: string;
+        value?: string;
+        chainId?: number;
+      };
     };
 
     const tx = data.transactionRequest;
@@ -286,12 +321,19 @@ export async function getBridgeExecution(args: {
     // A malformed value throws in BigInt and is caught as "no route".
     const value = BigInt(tx.value ?? "0").toString();
     const dur = data.estimate?.executionDuration;
+    const from = data.action?.fromToken;
 
     return {
       to: tx.to,
       data: tx.data,
       value,
       etaSeconds: typeof dur === "number" ? dur : null,
+      spender: data.estimate?.approvalAddress ?? null,
+      txChainId: typeof tx.chainId === "number" ? tx.chainId : null,
+      fromToken: {
+        address: from?.address ?? null,
+        decimals: typeof from?.decimals === "number" ? from.decimals : null,
+      },
     };
   } catch {
     return null;

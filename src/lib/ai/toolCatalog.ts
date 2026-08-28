@@ -157,11 +157,12 @@ export const TOOL_CATALOG: ToolSpec[] = [
      * aggregator router, so no on-chain agent permission bounds it and the
      * auditor's USD cap is the only limit. `toChain` travels as text: the server
      * resolves it against the real chain registry and takes `to`/`data`/`value`
-     * from a trusted source, never from the model. Native only for now; the
-     * builder refuses any other asset by name.
+     * from a trusted source, never from the model. A token asset costs one extra
+     * signature (an approve to the provider's router, also from that source);
+     * native currency is a single transaction.
      */
     description:
-      "Bridge the source chain's native currency to another chain — one transaction, signed on the chain the user is on now. Native currency only for now (e.g. ETH on an Ethereum chain); for any other asset, use getBridgeRoute to quote a route the user completes with the provider. `toChain` is a chain name or id; the server resolves the route from a trusted source and refuses a corridor it cannot build.",
+      "Bridge an asset to another chain, signed on the chain the user is on now. Native currency is one transaction; a token is two, an approval and the bridge. `toChain` is a chain name or id; the server resolves the route from a trusted source and refuses, by name, any corridor it cannot build — bridge providers do not index every chain, so a refusal here is normal and getBridgeRoute can still quote a route the user completes with the provider.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -170,7 +171,8 @@ export const TOOL_CATALOG: ToolSpec[] = [
         asset: symbol,
         toChain: {
           type: "string",
-          description: 'Destination chain name or id, e.g. "Base Sepolia" or "84532"',
+          description:
+            'Destination chain name or id, e.g. "Base Sepolia" or "84532"',
         },
       },
       required: ["amount", "asset", "toChain"],

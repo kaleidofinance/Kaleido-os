@@ -126,12 +126,18 @@ async function load() {
   const registry = await import("../../constants/registry");
   const { NATIVE_SENTINEL } = registry;
   const { auditPlan, HARD_MAX_NOTIONAL_USD } = await import("./auditor");
+  /* The bridge allowlists, read here for the same reason the registry is read
+     rather than pasted: these are the tables the auditor itself consults, so an
+     assertion against a hand-copied address would stop testing the pin the day
+     the table moved. */
+  const { isKnownBridgeSpender } = await import("../bridge/route");
   return {
     chainTokens,
     registry,
     NATIVE_SENTINEL,
     auditPlan,
     HARD_MAX_NOTIONAL_USD,
+    isKnownBridgeSpender,
   };
 }
 
@@ -142,6 +148,7 @@ async function main() {
     NATIVE_SENTINEL,
     auditPlan,
     HARD_MAX_NOTIONAL_USD,
+    isKnownBridgeSpender,
   } = await load();
 
   /* Read from the registry rather than pasted in. A pasted address passes the
@@ -888,10 +895,12 @@ async function main() {
 
   /* -------------------------------------------------------------- bridge -- *
    * A cross-chain move. Send's sibling, and audited like one: the transaction
-   * goes to a portal, never the diamond, so LibAgentPermission cannot bound it
-   * and the per-action cap plus the bridge rule are the only line. The fixture
-   * is the canonical Sepolia -> Base Sepolia corridor, which route.ts encodes
-   * with no network call, so every assertion here is deterministic and offline.
+   * goes to a portal or an aggregator router, never the diamond, so
+   * LibAgentPermission cannot bound it and the per-action cap plus the bridge
+   * rule are the only line. The native fixture is the canonical Sepolia ->
+   * Base Sepolia corridor, which route.ts encodes with no network call; the ERC20
+   * one is hand-shaped, since an aggregator route would need a live quote. Every
+   * assertion here is deterministic and offline either way.
    * ---------------------------------------------------------------------- */
 
   {
@@ -1064,28 +1073,177 @@ async function main() {
       }
 
       if (usdc) {
-        /* An ERC20 bridge, refused: it would need an approve to the router that
-           the approve rule rejects, so the auditor refuses it here too rather
-           than leave it looking auditable. Native base units for the value so
-           the amount/value cross-check is not what trips — the native gate is. */
-        const v = await audit([
-          {
-            ...bridge,
-            token: usdc.address,
-            symbol: usdc.symbol,
-            decimals: usdc.decimals,
-            isNative: false,
-            value: "50000", // 0.05 USDC at 6 decimals, consistent with amount
-          },
-        ]);
-        check(
-          "an ERC20 bridge is rejected as native-only",
-          !v.ok &&
-            v.blocked.some((b) =>
-              b.includes("only native currency can be bridged"),
+        /* ------------------------------------------------ the ERC20 leg -- *
+         * A token bridge, which the auditor now admits. It is the one plan in
+         * this file that grants an allowance to a contract Kaleido did not
+         * deploy, so the cases below are about exactly that: the router must be
+         * the one address the allowlist holds, AND it must be the contract this
+         * transaction calls. The second is the check the approve rule cannot
+         * make — rules see one step at a time — so it is asserted here, where
+         * `spender` and `to` sit side by side.
+         *
+         * The router is pasted, like PORTAL above, because there is no per-chain
+         * export to read; and like PORTAL, a stale paste cannot pass quietly —
+         * the first case runs it back through `isKnownBridgeSpender`, and the
+         * unrecognised-router case below proves the allowlist rejects something.
+         *
+         * `value: "0"` and no amount/value tie: a token moves by allowance, so
+         * there is no native figure to cross-check the row against. What stands
+         * in for it is a note, asserted here rather than assumed.
+         * ------------------------------------------------------------------ */
+        const ROUTER = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
+        const erc20Bridge: Step = {
+          ...bridge,
+          token: usdc.address,
+          symbol: usdc.symbol,
+          decimals: usdc.decimals,
+          isNative: false,
+          provider: "lifi",
+          to: ROUTER,
+          spender: ROUTER,
+          data: "0xdeadbeef",
+          value: "0",
+        };
+
+        {
+          const v = await audit([erc20Bridge]);
+          check(
+            `a well-formed ${usdc.symbol} bridge passes, with its router on the allowlist`,
+            v.ok && isKnownBridgeSpender(ROUTER),
+            JSON.stringify({ blocked: v.blocked, notes: v.notes }),
+          );
+          /* The honesty requirement the Shape.notes doctrine exists for: this
+             rule prices the row's amount but never reads the figure inside the
+             provider's calldata, and the plan must say so rather than let an
+             unchecked amount read as a checked one. */
+          check(
+            "and says plainly that the amount inside the calldata was not read",
+            v.notes.some(
+              (n) =>
+                n.includes("inside the provider's calldata") &&
+                n.includes("the paired approval is what limits it"),
             ),
-          JSON.stringify(v.blocked),
-        );
+            JSON.stringify(v.notes),
+          );
+        }
+
+        {
+          /* No router at all. The bridge step's calldata would pull a token it
+             holds no allowance for, so there is nothing safe to sign. */
+          const { spender: _drop, ...noRouter } = erc20Bridge;
+          const v = await audit([noRouter]);
+          check(
+            "a token bridge with no router to approve is rejected",
+            !v.ok &&
+              v.blocked.some((b) =>
+                b.includes("missing its router to approve"),
+              ),
+            JSON.stringify(v.blocked),
+          );
+        }
+
+        {
+          /* A well-formed address that is not the allow-listed router, named as
+             BOTH the spender and the call target so the pairing check cannot be
+             what trips. This is the allowlist itself doing the work: an approve
+             is the one step whose mistake survives the transaction, because the
+             allowance is a storage write the token makes without ever consulting
+             the address it empowers. */
+          const v = await audit([
+            { ...erc20Bridge, to: RECIPIENT, spender: RECIPIENT },
+          ]);
+          check(
+            "a token bridge through an unrecognised router is rejected",
+            !v.ok &&
+              v.blocked.some((b) =>
+                b.includes(
+                  "router being approved is not one this app recognises",
+                ),
+              ),
+            JSON.stringify(v.blocked),
+          );
+        }
+
+        {
+          /* Both addresses allow-listed-shaped, and the allowance split off the
+             call: `spender` is the router, `to` is somewhere else. Neither the
+             approve rule nor the allowlist can see this — only this rule can,
+             and it is the reason the resolver's equality check is re-made here. */
+          const v = await audit([{ ...erc20Bridge, to: PORTAL }]);
+          check(
+            "a token bridge whose allowance goes somewhere other than what it calls is rejected",
+            !v.ok &&
+              v.blocked.some((b) =>
+                b.includes(
+                  "router being approved is not the contract this bridge calls",
+                ),
+              ),
+            JSON.stringify(v.blocked),
+          );
+        }
+
+        {
+          /* Native value riding beside a token bridge: a second charge in a row
+             shaped to show one, and outside the amount the summary names. */
+          const v = await audit([
+            { ...erc20Bridge, value: "50000000000000000" },
+          ]);
+          check(
+            "a token bridge that also attaches native value is rejected",
+            !v.ok &&
+              v.blocked.some((b) => b.includes("must attach no native value")),
+            JSON.stringify(v.blocked),
+          );
+        }
+
+        {
+          /* A token through the canonical portal. Not a policy refusal: an
+             L1StandardBridge ERC20 deposit needs the destination token to be the
+             mintable representation the factory paired with the L1 one, and our
+             testnet mocks are independent deployments — so the tokens would land
+             in a representation nobody can mint. */
+          const v = await audit([
+            {
+              ...erc20Bridge,
+              provider: "canonical",
+              to: PORTAL,
+              spender: PORTAL,
+            },
+          ]);
+          check(
+            "a token through the canonical portal is rejected as native-only",
+            !v.ok &&
+              v.blocked.some((b) =>
+                b.includes("canonical portal deposit is native-currency only"),
+              ),
+            JSON.stringify(v.blocked),
+          );
+        }
+
+        {
+          /* The paired approve, audited alone — which is how the rules see it.
+             It passes, because the router is the one outside address this app
+             authorises, and it carries a note saying so: an allowance to a
+             third party must never read like an allowance to our own diamond. */
+          const v = await audit([
+            {
+              kind: "approve",
+              token: usdc.address,
+              spender: ROUTER,
+              amount: "100",
+              decimals: usdc.decimals,
+              symbol: usdc.symbol,
+            },
+          ]);
+          check(
+            "an approve to the bridge router passes, and is flagged as an outside address",
+            v.ok &&
+              v.notes.some((n) =>
+                n.includes("approves a bridge provider's router"),
+              ),
+            JSON.stringify({ blocked: v.blocked, notes: v.notes }),
+          );
+        }
       }
     }
   }
@@ -2143,7 +2301,10 @@ async function main() {
 
     {
       const v = await audit([
-        { ...mint, positionManager: "0xbad0000000000000000000000000000000000005" },
+        {
+          ...mint,
+          positionManager: "0xbad0000000000000000000000000000000000005",
+        },
       ]);
       check(
         "a mint against an unknown position manager is rejected",
@@ -2162,7 +2323,9 @@ async function main() {
       check(
         "a fee tier this DEX has no pool for is rejected",
         !v.ok &&
-          v.blocked.some((b) => b.includes("isn't one this DEX has a pool for")),
+          v.blocked.some((b) =>
+            b.includes("isn't one this DEX has a pool for"),
+          ),
         JSON.stringify(v.blocked),
       );
     }
@@ -2207,9 +2370,7 @@ async function main() {
       check(
         "a mint is blocked when provideLiquidity is switched off",
         !v.ok &&
-          v.blocked.some((b) =>
-            b.includes("provideLiquidity is switched off"),
-          ),
+          v.blocked.some((b) => b.includes("provideLiquidity is switched off")),
         JSON.stringify(v.blocked),
       );
       const exits = await audit([collect, remove], {

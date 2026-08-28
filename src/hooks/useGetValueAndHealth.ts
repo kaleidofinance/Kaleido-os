@@ -57,6 +57,30 @@ declare global {
 const HEALTH_SCALE = 1e-18;
 
 /**
+ * `_healthFactor`'s "no debt" answer, as ProtocolFacet returns it.
+ *
+ * The facet short-circuits to `type(uint256).max` when a user's borrowed value is
+ * zero — "nothing to divide by means unboundedly healthy", in its own comment —
+ * so this is a sentinel and not a ratio. It has to be recognised HERE, on the
+ * bigint, before the `Number()` below: `Number(2^256-1)` is 1.16e77, times
+ * HEALTH_SCALE that is 1.16e59, and `Number.isFinite(1.16e59)` is `true`. So
+ * every downstream finiteness guard — the ones in usePortfolio and useBorrowV2
+ * written to catch exactly this — passed it straight through, and /portfolio
+ * printed a sixty-digit health factor to anyone who had never borrowed.
+ *
+ * `Infinity` is what goes into the atom for it, deliberately, rather than the raw
+ * figure or `undefined`: `undefined` means "the read failed" here and would show
+ * a connected wallet the same "—" as a broken RPC, while any finite number is a
+ * solvency ratio somebody could act on. Infinity survives `× HEALTH_SCALE`
+ * unchanged, so consumers scale it as usual and only have to answer one new
+ * question — is this finite — which is the question they were already asking.
+ *
+ * src/lib/ai/readTools.ts holds the same guard for the agent's read path, where
+ * the bigint never reaches this hook. Its note carries the measurement.
+ */
+const NO_DEBT_SENTINEL = (1n << 256n) - 1n;
+
+/**
  * `getUsdValue(token, 1, 0)` prices one whole token, at 18 decimals.
  *
  * The four call sites below divided by a bare 1e16, which matched the old
@@ -438,13 +462,17 @@ const useGetValueAndHealth = () => {
 
         try {
           const healthFactor = await contract.getHealthFactor(address);
-          // console.log("Health Factor:", healthFactor)
-          setdata2(Number(healthFactor.toString()));
+          /* Sentinel first, on the bigint, then scale — see NO_DEBT_SENTINEL for
+             why the order is the whole fix and not a tidiness point. */
+          const noDebt = BigInt(healthFactor) === NO_DEBT_SENTINEL;
+          setdata2(noDebt ? Infinity : Number(healthFactor.toString()));
           // Notify if health factor is close to 1 (e.g., <= 1.05) and not already notified recently
           // Scaled to real units before comparing. The raw value is ~1e18, so
           // the `<= 1.05` test below could never be true and this warning has
           // never once fired; sendHealthFactorWarning also prints the figure.
-          const hf = Number(healthFactor.toString()) * HEALTH_SCALE;
+          const hf = noDebt
+            ? Infinity
+            : Number(healthFactor.toString()) * HEALTH_SCALE;
           const now = Date.now();
           const lastWarning = window.__kaleido_last_health_warning || 0;
           const warningCooldown = 5 * 60 * 1000; // 5 minutes cooldown

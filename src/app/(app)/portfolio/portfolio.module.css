@@ -44,6 +44,10 @@
   padding: 10px 18px;
   border-radius: var(--k-r-pill);
   cursor: pointer;
+  /* Deposit is an <a> to /borrow, Share is a <button>. Tailwind's preflight
+     already unsets the underline, but this class is what makes the two boxes
+     identical, so it says so itself rather than depending on preflight. */
+  text-decoration: none;
 }
 .bt:hover {
   background: var(--k-hover);

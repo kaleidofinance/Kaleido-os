@@ -278,10 +278,39 @@
   font-weight: var(--k-fw-med);
 }
 
-/* Frosted panel. The panel is blurred and the overlay is not: nested
-   backdrop-filters do not compose and the GPU cost multiplies. The scrim sits
-   behind the blur, so the sampled backdrop arrives darkened — which is what
-   keeps the small text inside the panel legible. */
+/* Frosted panel, and everything on it.
+ *
+ * The panel is blurred and the overlay is not: nested backdrop-filters do not
+ * compose and the GPU cost multiplies. The scrim sits behind the blur, so the
+ * sampled backdrop arrives darkened — which is what keeps the small text inside
+ * the panel legible.
+ *
+ * The rules after `.modal` are the ones that were missing, and the symptom was
+ * visible rather than theoretical: `.modal` went glass while the wells, chips and
+ * plates inside it kept the opaque `--k-well` / `--k-well2` fills they had from
+ * when the panel was `--k-card`. An opaque fill on a translucent surface does not
+ * read as a step in the same material — it reads as a patch of a different one,
+ * which is exactly what the Collateral modal looked like: a frosted card with four
+ * flat grey plates sitting on top of it.
+ *
+ * The substitutions are not ad hoc. Two steps, both already tokens, both used this
+ * way by trade.module.css's `.deep`/`.raised` pair and by Answer/AgentSettings:
+ *
+ *   recessed — `--k-glass-deep` + `--k-shadow-inset`. A black wash, because on a
+ *   ground this dark "less white" is not a step the eye can find; the inset groove
+ *   does most of the work and the fill backs it up. Wells, chips, the disabled CTA.
+ *
+ *   raised — `--k-glass-strong` + the lit top edge. Only `.segOn`, which has to sit
+ *   *above* the `.seg` track it lives in, so the pair reads as one control with a
+ *   thumb in it rather than as two fills.
+ *
+ * The opaque values stay as the declarations outside this block, which is what a
+ * browser with no backdrop-filter gets: there the panel really is `--k-card`, and
+ * `--k-well` over it is the correct step.
+ *
+ * `--k-btn-solid` on `.ccyOn`/`.termOn` is deliberately untouched. A selected pill
+ * is meant to be the one opaque thing in the panel — that is how it reads as
+ * selected — and washing it into the glass would flatten it into its neighbours. */
 @supports (
   (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
 ) {
@@ -293,6 +322,47 @@
     box-shadow:
       inset 0 1px 0 var(--k-glass-highlight),
       var(--k-shadow-modal);
+  }
+
+  /* The two wells: the amount field's container and the summary block. */
+  .box,
+  .summary {
+    background: var(--k-glass-deep);
+    box-shadow: var(--k-shadow-inset);
+  }
+
+  /* Chips and small controls. `.tki` is the monogram plate behind a token with no
+     artwork — same treatment as trade.module.css's, and `.tkiArt` still clears it
+     entirely when a real logo is present. */
+  .ccyOpt,
+  .term,
+  .tki,
+  .mx:hover {
+    background: var(--k-glass-deep);
+    box-shadow: var(--k-shadow-inset);
+  }
+  /* Except the plate, which is 18px and inside another chip — a groove at that
+     size is one dark pixel row, and it collides with the border-radius. */
+  .tki {
+    box-shadow: none;
+  }
+
+  /* Segmented control: recessed track, raised thumb. Reversing these is what makes
+     a segmented control look like two buttons. */
+  .seg {
+    background: var(--k-glass-deep);
+    box-shadow: var(--k-shadow-inset);
+  }
+  .segOn {
+    background: var(--k-glass-strong);
+    box-shadow: inset 0 1px 0 var(--k-glass-highlight);
+  }
+
+  /* On screen more than the enabled state is, on a form that opens with an empty
+     amount — so "Enter an amount" was the largest grey plate in the panel. */
+  .cta:disabled {
+    background: var(--k-glass-deep);
+    box-shadow: var(--k-shadow-inset);
   }
 }
 

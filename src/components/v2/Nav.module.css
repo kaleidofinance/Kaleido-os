@@ -351,8 +351,155 @@
     /* Comfortable thumb target even though the label is small. */
     min-height: 48px;
     justify-content: center;
+    /* The pair to `.tabLabel`'s ellipsis below: a flex item defaults to
+       min-width:auto and would refuse to shrink under its own label, so the bar
+       would overflow the viewport instead of the label truncating. */
+    min-width: 0;
+  }
+  /* Only the resets a <button> needs to pass for one of the five <a>s beside it.
+     No geometry — that stays in `.tab`, so the six columns cannot drift apart. */
+  .tabBtn {
+    background: none;
+    border: 0;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  /* Six columns instead of five, so the widest label is the constraint: at 375px
+     each column has ~58px of content box and "Leaderboard" needs ~54px at 10px.
+     It fits down to 360px and truncates below roughly 340px, which is the trade
+     for giving Stake and Stable a home. Without this the label would wrap to two
+     lines and leave one column taller than the other five. */
+  .tabLabel {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .tabOn {
     color: var(--k-brand);
+  }
+}
+
+/* ---------- the More sheet ---------- */
+/* Opened by the tab bar's sixth tab, and the reason Stake and Stable are reachable
+   on a phone at all — see the note on LINKS in Nav.tsx.
+
+   Bottom-anchored where NetworkSelector's dialog is centred, which is the only
+   deliberate difference between them: this one is opened by a thumb that is already
+   at the bottom edge, so the panel travels to the thumb rather than the reverse.
+   Scrim, z-index, glass, and the Escape/click-outside behaviour are that
+   component's, unchanged — two dialogs that behave differently are two things to
+   learn.
+
+   z-index 100 is the modal tier, matching NetworkSelector rather than clearing
+   `.tabbar`'s 40 by one. It sits over the bar it was opened from, which is correct:
+   the bar's other five tabs must not be clickable through a scrim.
+
+   No `display: none` above 720px, even though the trigger only exists below it. A
+   resize with the sheet open would then leave `moreOpen` true with the dialog gone
+   from the accessibility tree and no scrim left to dismiss it by — visible and
+   closable is the better of the two odd states. */
+.sheetOverlay {
+  position: fixed;
+  inset: 0;
+  background: var(--k-scrim);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+}
+
+.sheet {
+  width: 100%;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--k-card);
+  border-top: 1px solid var(--k-line);
+  /* Top corners only. The bottom two would draw a gap between the sheet and the
+     edge of the screen it is anchored to. */
+  border-radius: var(--k-r-xl) var(--k-r-xl) 0 0;
+  box-shadow: var(--k-shadow-modal);
+  /* Same home-indicator clearance the tab bar under it reserves — without it the
+     last row's thumb target ends under the indicator on a notched phone. env() is
+     0 where there is no inset, so this is just 8px everywhere else. */
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .sheet {
+    background: var(--k-glass-strong);
+    border-top-color: var(--k-glass-line);
+    -webkit-backdrop-filter: blur(28px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(28px) saturate(var(--k-glass-sat));
+    box-shadow:
+      inset 0 1px 0 var(--k-glass-highlight),
+      var(--k-shadow-modal);
+  }
+}
+
+.sheetHead {
+  padding: 14px 18px 6px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sheetRow {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: 13px 18px;
+  /* 48px, the same thumb target the tabs use. A sheet reached by thumb whose rows
+     are 36px tall is a sheet that gets mis-tapped. */
+  min-height: 48px;
+  font-size: var(--k-fs-base);
+  color: var(--k-t1);
+  text-decoration: none;
+}
+.sheetRow:hover {
+  background: var(--k-well2);
+}
+.sheetRowOn {
+  color: var(--k-brand);
+}
+.sheetIcon {
+  display: flex;
+  color: var(--k-t2);
+}
+/* <SectionIcon> carries no width or height attribute, for the reason `.tabIcon`
+   documents above: this is what gives it one. */
+.sheetIcon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.sheetRowOn .sheetIcon {
+  color: var(--k-brand);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheetOverlay {
+    animation: navSheetFade var(--k-dur-med) var(--k-ease-out);
+  }
+  /* A full slide rather than NetworkSelector's 8px rise. That panel appears in the
+     middle of the screen, where travel would read as flying in; this one is
+     anchored to the edge it comes from, so the motion is what says where it came
+     from and where dismissing it sends it back to. */
+  .sheet {
+    animation: navSheetUp var(--k-dur-slow) var(--k-ease-out);
+  }
+}
+
+@keyframes navSheetFade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes navSheetUp {
+  from {
+    transform: translateY(100%);
   }
 }

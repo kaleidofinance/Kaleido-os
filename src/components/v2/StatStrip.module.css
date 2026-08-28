@@ -35,16 +35,11 @@
   font-size: var(--k-fs-xl);
   letter-spacing: -0.02em;
 }
-/* Provenance line under a figure: what a total excludes, or why it is missing.
-   Sized below .label so it reads as an annotation on the number rather than a
-   second number, and allowed to wrap — the alternative to a truncated caveat is
-   a headline the reader has no reason to distrust. */
-.note {
-  font-size: var(--k-fs-xs);
-  color: var(--k-t3);
-  line-height: 1.35;
-  max-width: 22ch;
-}
+/* `.note` was here — a wrapping provenance line under the figure, `--k-fs-xs` and
+   capped at 22ch. It is gone with the prop that fed it, and the mobile block below
+   is the reason: a 2×2 grid gives each tile about half a phone's width, so 22ch of
+   annotation wrapped to three or four lines and the strip became taller than the
+   numbers it was annotating. StatStrip.tsx carries the full account. */
 
 /* On a phone the four tiles can only wrap to a 2x2, and a divider drawn as each
    tile's `border-left` cannot survive that: the third tile — first on the second

@@ -95,12 +95,14 @@ export type Intent =
    * a provider quote), never from the model, and the auditor re-checks `to`
    * against a known-bridge allowlist before it prices the notional.
    *
-   * MVP is native-currency only. A native deposit sends `value` with no prior
-   * approve, which is what lets it sidestep the approve auditor's spender pin —
-   * that rule only trusts Kaleido contracts as spenders, and a bridge router is
-   * not one. An ERC20 bridge would need an approve to the resolver's router and
-   * a spine change teaching that pin about known routers; `spender` is the seam
-   * left for it, and is unset here.
+   * Native currency is one signature; an ERC20 is two. A native deposit carries
+   * the amount as `value` with nothing to pre-authorise, which is what used to
+   * let it sidestep the approve auditor's spender pin — that rule trusted only
+   * Kaleido contracts, and a bridge router is not one. It now recognises one
+   * vetted router as well, so a token leg emits an approve to `spender` ahead of
+   * this step. `spender` is the resolver's, checked there against that same
+   * allowlist AND against `to`; the bridge rule re-checks both, which is what
+   * makes an allowance to a contract we do not own auditable rather than trusted.
    */
   | {
       kind: "bridge";
@@ -110,7 +112,7 @@ export type Intent =
       data: string;
       /** Wei to send with the transaction, as a decimal string. */
       value: string;
-      /** The asset leaving the wallet — the native sentinel in the MVP. */
+      /** The asset leaving the wallet — a native sentinel, or a token contract. */
       token: string;
       /** Human amount, for the rendered row and the auditor's pricing. */
       amount: string;
@@ -127,8 +129,11 @@ export type Intent =
       /** True for the chain's native currency: sent as `value`, no approve. */
       isNative?: boolean;
       /**
-       * Forward seam for the deferred ERC20 leg: the router an approve would
-       * authorise. Unset in the native-only MVP, so no approve step is emitted.
+       * The router the paired `approve` authorises, on an ERC20 leg. Unset for a
+       * native one, which has no approve. Equal to `to` by construction — the
+       * resolver refuses a quote whose approval address is not the contract its
+       * own transaction calls — and the auditor re-checks that equality, so an
+       * allowance can never be split off to an address this step does not call.
        */
       spender?: string;
       /** Gas floor for a canonical deposit, which underruns estimateGas. */
