@@ -1,0 +1,201 @@
+/*
+ * The private-testnet gate, and the blur it sits on.
+ *
+ * Both live in one stylesheet because they are one feature: `.shell` is imported
+ * by `(app)/layout.tsx` (which wraps the app in it) and everything else by
+ * BetaGate.tsx. Splitting them would put the two halves of the same visual state
+ * in two files that have to agree about an attribute.
+ *
+ * That attribute is the whole mechanism. `html[data-beta="open"]` is written by a
+ * blocking inline script before first paint and again by the component on a
+ * successful unlock, and every rule below keys off it — so the first frame a
+ * returning visitor sees is already correct, with no flash of a blurred app and
+ * no flash of the card. See the header comments in BetaGate.tsx and src/lib/beta.ts.
+ */
+
+/* ------------------------------------------------------------------
+ * The app, behind the card.
+ * ------------------------------------------------------------------ */
+
+.shell {
+  /* Scaled a touch past the viewport because a blur is soft at its own edges:
+     at 10px the page background bleeds through a pale rim down all four sides,
+     which reads as a rendering fault rather than as depth. 1.02 pushes that rim
+     off screen. Both properties go to none when unlocked — a non-none `filter`
+     or `transform` makes this element the containing block for `position: fixed`
+     descendants, which would trap every modal in the app (the reason
+     components/v2/Portal.tsx exists). While locked nothing is interactive, so it
+     costs nothing; unlocked, it must not persist. */
+  filter: blur(10px);
+  transform: scale(1.02);
+  transform-origin: center top;
+  /* The keyboard is handled separately: the gate sets `inert` on this element,
+     which is the only thing that also takes it out of the tab order. */
+  pointer-events: none;
+  user-select: none;
+  transition:
+    filter 0.5s ease,
+    transform 0.5s ease;
+}
+
+:global(html[data-beta="open"]) .shell {
+  filter: none;
+  transform: none;
+  pointer-events: auto;
+  user-select: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * The card.
+ * ------------------------------------------------------------------ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300; /* above the modal layer, which sits at 100 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--k-scrim);
+}
+
+/* Hidden rather than unmounted, for the one render before hydration: React drops
+   this component once it has read storage, but the markup is on the page until
+   then and an already-unlocked visitor must never see it. */
+:global(html[data-beta="open"]) .overlay {
+  display: none;
+}
+
+.card {
+  width: 100%;
+  max-width: 430px;
+  border-radius: var(--k-r-xl);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.eyebrow {
+  font-size: var(--k-fs-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--k-brand);
+  font-weight: var(--k-fw-med);
+}
+
+.title {
+  margin: 10px 0 0;
+  font-size: var(--k-fs-2xl);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  line-height: 1.2;
+}
+
+.body {
+  margin: 10px 0 0;
+  font-size: var(--k-fs-sm);
+  line-height: 1.55;
+  color: var(--k-t2);
+}
+
+/* ------------------------------------------------------------------
+ * Six boxes.
+ * ------------------------------------------------------------------ */
+
+.boxes {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 22px 0 0;
+}
+
+.box {
+  /* Flexible rather than fixed at 46px: six fixed boxes plus gaps plus the
+     card's padding overflow a 320px phone, and a code input that clips is
+     unusable on exactly the device most invitations get opened on. The basis is
+     the comfortable size and the max stops it stretching on a wide card. */
+  flex: 1 1 46px;
+  min-width: 0;
+  max-width: 54px;
+  height: 56px;
+  border-radius: var(--k-r-sm);
+  border: 1px solid var(--k-line);
+  background: var(--k-well);
+  color: var(--k-t1);
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+  text-align: center;
+  text-transform: uppercase;
+  /* Letters and digits share a column width, so the character does not shift as
+     it is typed. */
+  font-variant-numeric: tabular-nums;
+  outline-offset: 2px;
+}
+
+.box:focus {
+  border-color: var(--k-brand);
+  background: var(--k-well2);
+}
+
+.box[aria-invalid="true"] {
+  border-color: var(--k-neg);
+}
+
+.box:disabled {
+  opacity: 0.6;
+}
+
+/* ------------------------------------------------------------------
+ * Message, action, waitlist.
+ * ------------------------------------------------------------------ */
+
+/* Fixed height whether or not it holds text, so the button does not jump down
+   the card the moment a code comes back wrong. */
+.msg {
+  min-height: 20px;
+  margin: 12px 0 0;
+  font-size: var(--k-fs-xs);
+  line-height: 1.4;
+  color: var(--k-neg);
+}
+
+.cta {
+  margin: 6px 0 0;
+  height: 48px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+  cursor: pointer;
+}
+
+.cta:hover:not(:disabled) {
+  background: var(--k-brand-hover);
+}
+
+.cta:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.waitlist {
+  margin: 16px 0 0;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  text-decoration: none;
+}
+
+.waitlist:hover {
+  color: var(--k-t1);
+  text-decoration: underline;
+}
