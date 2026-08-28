@@ -11,6 +11,18 @@
       "name": "kaleido-attach",
       "url": "http://localhost:3000",
       "port": 3000
+    },
+    {
+      "name": "kaleido-dev-3010",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "--turbo", "-p", "3010"],
+      "port": 3010
+    },
+    {
+      "name": "kaleido-start-3010",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "start", "-p", "3010"],
+      "port": 3010
     }
   ]
 }
