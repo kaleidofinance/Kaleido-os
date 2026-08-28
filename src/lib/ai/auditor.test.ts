@@ -2532,6 +2532,81 @@ async function main() {
        the deployed one, so there is nothing to restore. */
   }
 
+  console.log("\n— when the price source itself is down —");
+  {
+    /*
+     * Not hypothetical, and not a network flake. Measured 2026-08-28:
+     * `hermes.pyth.network` answers every request with `401 unauthorized`, so
+     * `getPrices` — which throws by design when its upstream is unreachable,
+     * because a points run scored at zero is worse than a failed one — threw
+     * straight out of `auditPlan` and out of /api/chat. The agent did not
+     * degrade, it blanked: no plan, no verdict, no prose, on every product,
+     * including the verbs that need no price at all.
+     *
+     * Two properties are asserted, and the second is the one that makes the
+     * first safe. An outage must not throw, AND it must not be silently
+     * absorbed into the same "no USD price" note that KLD legitimately gets —
+     * because that note lets the step through, which would turn a dead feed
+     * into a per-action cap that stops applying while still looking like it
+     * held. The KLD side of that split is asserted separately, by the
+     * unpriced-asset case above.
+     */
+    const deadPricer: Pricer = async () => {
+      throw new Error("Hermes 401");
+    };
+
+    /* The same shape as the unpriced-asset case above, and deliberately so: that
+       one holds every field the auditor accepts and varies only the token, which
+       is what makes its result attributable to pricing rather than to structure.
+       Here the token is USDC — a token the stub prices — so a null price can only
+       have come from the pricer failing. */
+    const step = {
+      kind: "approve",
+      token: usdc!.address,
+      spender: ROUTER,
+      amount: "10",
+      decimals: usdc!.decimals,
+      symbol: "USDC",
+    } as Step;
+
+    {
+      const control = await audit([step]);
+      check(
+        "control: the same step passes when the pricer works",
+        control.ok,
+        JSON.stringify({ blocked: control.blocked, notes: control.notes }),
+      );
+    }
+
+    {
+      let threw = "";
+      const v = await audit([step], { pricer: deadPricer }).catch((e) => {
+        threw = (e as Error).message;
+        return null;
+      });
+      check(
+        "a dead price source does not throw out of auditPlan",
+        threw === "" && v !== null,
+        threw || "returned a verdict",
+      );
+      check(
+        "the step is blocked, because a cap that cannot be checked is not a cap that held",
+        !!v && !v.ok && v.blocked.some((b) => b.includes("price feed is unavailable")),
+        JSON.stringify(v?.blocked ?? []),
+      );
+      check(
+        "and the reason carries the upstream's own message, so the outage is diagnosable",
+        !!v && v.blocked.some((b) => b.includes("Hermes 401")),
+        JSON.stringify(v?.blocked ?? []),
+      );
+      check(
+        "an outage is not absorbed into the 'no USD price' note that lets a step through",
+        !!v && !v.notes.some((n) => n.includes("has no USD price")),
+        JSON.stringify(v?.notes ?? []),
+      );
+    }
+  }
+
   console.log(
     `\n${pass} passed, ${fail} failed${skipped ? `, ${skipped} skipped` : ""}\n`,
   );
