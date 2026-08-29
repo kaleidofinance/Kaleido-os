@@ -710,15 +710,25 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                           </div>
                         </div>
                       </div>
-                      <span className={`${s.cellNum} tabular`}>
+                      {/* `data-label` is what the stacked phone layout prints
+                          beside each figure once the columns collapse and this
+                          table's header row is hidden — see the stacked block at
+                          the foot of borrow.module.css. Kept in step with the
+                          header spans above by hand, because the header is markup
+                          and not a column model. */}
+                      <span
+                        data-label="Owed"
+                        className={`${s.cellNum} tabular`}
+                      >
                         {Number(loan.totalRepayment).toLocaleString(undefined, {
                           maximumFractionDigits: 6,
                         })}
                       </span>
-                      <span className={`${s.cellNum} tabular`}>
+                      <span data-label="APR" className={`${s.cellNum} tabular`}>
                         {convertbasisPointsToPercentage(loan.interestBps)}%
                       </span>
                       <span
+                        data-label="Due"
                         className={`${s.cellNum} tabular ${loan.overdue ? s.rateBad : s.term}`}
                       >
                         {loan.overdue
@@ -763,7 +773,14 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
 
             <div className={s.table}>
               <div className={s.tw}>
-                <div className={`${s.tr} ${s.thead}`}>
+                {/* Three tabs share this table — Borrow, Lend and My lends. The
+                      books stay a true table, read down columns and scrolled in
+                      `.tw`'s own box; only My lends carries `mineList`, which the
+                      phone block in borrow.module.css turns into the sort strip
+                      above a stack of the reader's own rows. */}
+                <div
+                  className={`${s.tr} ${isMyLends ? s.mineList : ""} ${s.thead}`}
+                >
                   <span>{copy.party}</span>
                   <button
                     className={s.sortable}
@@ -796,13 +813,6 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                       </div>
                     </div>
                   ))}
-
-                {!loading && sorted.length === 0 && (
-                  <div className={s.empty}>
-                    <div className={s.emptyTitle}>{copy.emptyTitle}</div>
-                    <div className={s.emptySub}>{copy.emptySub}</div>
-                  </div>
-                )}
 
                 {!loading &&
                   pageRows.map((row, i) => {
@@ -884,7 +894,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                     return (
                       <div
                         key={row.listingId ?? row.requestId ?? i}
-                        className={s.tr}
+                        className={`${s.tr} ${isMyLends ? s.mineList : ""}`}
                       >
                         <div className={s.asset}>
                           <TokenIcon
@@ -904,8 +914,20 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                             </div>
                           </div>
                         </div>
-                        <span className={`${s.cellNum} tabular`}>{amount}</span>
+                        {/* `data-label` mirrors the sort control above it, and on
+                            My lends is what the stacked phone layout prints beside
+                            each figure once the columns collapse — see the stacked
+                            block at the foot of borrow.module.css. Inert on Borrow
+                            and Lend, where the table keeps its columns and just
+                            scrolls sideways in `.tw`. */}
                         <span
+                          data-label="Amount"
+                          className={`${s.cellNum} tabular`}
+                        >
+                          {amount}
+                        </span>
+                        <span
+                          data-label="APR"
                           className={`${s.cellNum} ${s.cellStack} tabular ${rateClass(Number(row.interest))}`}
                         >
                           <span>{apr}%</span>
@@ -915,13 +937,16 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                             </span>
                           )}
                         </span>
-                        <span className={`${s.cellNum} ${s.term} tabular`}>
+                        <span
+                          data-label="Term"
+                          className={`${s.cellNum} ${s.term} tabular`}
+                        >
                           {getTimeUntil(Number(row.returnDate)).replace(
                             / left$/,
                             "",
                           )}
                         </span>
-                        <span className={s.center}>
+                        <span data-label="Status" className={s.center}>
                           <span
                             className={`${s.badge} ${
                               isOverdue
@@ -968,6 +993,21 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                     );
                   })}
               </div>
+
+              {/* Outside `.tw`, like the /myloans empty state above and unlike
+                  where this used to sit. Inside the scroller it was a block in a
+                  720px-wide content box, so `text-align: center` centred it on
+                  the row width rather than on the page: on a phone "No offers"
+                  landed against the right edge and its second line was cut off,
+                  reachable only by scrolling the table sideways. The header row
+                  stays in the scroller — it is a `.tr`, it has to keep aligning
+                  with rows. */}
+              {!loading && sorted.length === 0 && (
+                <div className={s.empty}>
+                  <div className={s.emptyTitle}>{copy.emptyTitle}</div>
+                  <div className={s.emptySub}>{copy.emptySub}</div>
+                </div>
+              )}
 
               {!loading && sorted.length > 0 && (pageCount > 1 || hasMore) && (
                 <div className={s.pager}>

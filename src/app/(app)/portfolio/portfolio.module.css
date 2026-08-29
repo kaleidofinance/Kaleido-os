@@ -122,6 +122,19 @@
   gap: var(--k-s5);
   align-items: start;
 }
+/* A grid item's `min-width` is `auto`, so neither child will size below its own
+   min-content width — and the min-content width of `.main` is the `min-width: 460px`
+   on `.row` in the phone block at the foot of this file. Measured on a 390px
+   viewport: the `1fr` track resolved to 478px, `.main` and `.side` were both 478
+   wide, the document went to 492, and `body { overflow-x: hidden }` in globals.css
+   clipped the 102px past the screen edge with nothing to scroll to it. With the
+   automatic minimum removed the track is the container's width, and `.table`'s
+   `overflow-x: auto` gets something narrower than its rows to scroll inside —
+   which is what the phone block intended all along. Same fix, same reason, as
+   `.cols > *` in borrow.module.css. */
+.cols > * {
+  min-width: 0;
+}
 @media (max-width: 960px) {
   .cols {
     grid-template-columns: 1fr;
@@ -332,20 +345,63 @@
        Cf. trade.module.css and Nav.module.css, the only two files that had it. */
     padding: 16px 14px calc(60px + env(safe-area-inset-bottom, 0px));
   }
-  /* The two position tables are a fixed 4-column grid that can't shrink below its
-     content (a currency figure plus a nowrap status badge). Every other table in
-     the app scrolls its columns rather than crushing them — /leaderboard, /pool,
-     the order book — and body{overflow-x:hidden} was clipping the badge column off
-     the right edge here instead of letting it scroll. Same fix as the rest. */
-  .table {
-    overflow-x: auto;
-  }
+  /* ---------- positions: stacked instead of scrolled ---------- */
+  /* These two tables are the reader's own positions — nobody reads their stKLD row
+     against their USDC row — so the column alignment a table preserves is worth
+     less here than not having to swipe sideways for the status. Below 720px, the
+     width every page in this app already treats as a phone, each row becomes a
+     block: asset, then one labelled line per figure, then the status chip.
+
+     What was here instead was `.table { overflow-x: auto }` + `.row { min-width:
+     460px }`, which was the right fix for the wrong problem. The 4-column grid
+     could not shrink below its content and `body { overflow-x: hidden }` in
+     globals.css was clipping the badge column off the right edge, so a scroller at
+     least made it reachable. Stacking removes the need for a scroller here at all;
+     both rules would now be dead, and the fixed 460px would actively fight the
+     single-column template below.
+
+     These tables have no header row at any width — on desktop the columns are read
+     by position — so the labels come only from `data-label` in page.tsx. Without
+     those attributes the stack would be bare numbers. Same shape and same reasoning
+     as `.tr` / `.tr.mineRow` in borrow.module.css. */
   .row {
-    min-width: 460px;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 7px;
+    align-items: stretch;
+  }
+  /* A two-column grid rather than a flex row, because the Value cell carries a
+     second line (the token amount) under its figure: the label takes column 1 and
+     both lines stack in column 2, which a flex row would have laid side by side. */
+  .cell {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--k-s3);
+    align-items: baseline;
+    text-align: right;
+  }
+  .cell::before {
+    content: attr(data-label);
+    grid-column: 1;
+    grid-row: 1;
+    text-align: left;
+    font-size: var(--k-fs-xs);
+    /* Set, not inherited: a positive APY is tinted with --k-pos and the word
+       "APY" is not itself the good news. */
+    color: var(--k-t2);
+  }
+  .cell > * {
+    grid-column: 2;
+  }
+  /* `justify-self: end` put the status chip in the right corner of its own line,
+     reading as detached from the row it belongs to. */
+  .badge {
+    justify-self: start;
   }
   /* The net-position headline is the one number the page is built around; at a
-     flat 52px a seven-figure balance overran the viewport (and clipped, per
-     above). Scale it with the viewport on phones, capped at the desktop size. */
+     flat 52px a seven-figure balance overran the viewport (and clipped, because
+     of the same `body { overflow-x: hidden }`). Scale it with the viewport on
+     phones, capped at the desktop size. */
   .value {
     font-size: clamp(30px, 10vw, var(--k-fs-hero));
   }
