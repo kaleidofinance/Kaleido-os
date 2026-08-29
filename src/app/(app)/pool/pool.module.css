@@ -266,9 +266,48 @@
 .pairName {
   font-size: var(--k-fs-base);
 }
+/* The identity line under a pair name: fee, venue and now the chain tag. A flex
+   row rather than plain text because the tag carries a 14px logo that has to sit
+   on the text's centre line, and it wraps so a long chain name on a narrow row
+   drops below the fee instead of pushing the numbers off the right edge. Shared
+   with the positions list, where the content is still one text run and flex is
+   visually inert. */
 .pairFee {
   font-size: var(--k-fs-xs);
   color: var(--k-t2);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* Its own baseline alignment, so the logo centres on the label rather than
+   sitting on it. `min-width: 0` lets the name ellipsize inside a wrapped row
+   instead of forcing the line wider. */
+.chainTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  /* The tag wraps as a unit or not at all. Measured at 390px: without this,
+     "Base Sepolia" broke between its two words and the logo sat beside a
+     two-line label, so a row's height depended on which chain it was on.
+     `.pairFee` carries flex-wrap, which is what still lets the whole tag drop
+     to its own line in a narrow Pool column. */
+  white-space: nowrap;
+}
+.chainTag > svg {
+  flex: none;
+  display: block;
+  border-radius: 50%;
+}
+/* Shown for a chain web3icons has no artwork for — see ChainTag. Sized to the
+   icon it stands in for so the row's height does not change with the chain. */
+.chainDot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--k-glass-deep);
 }
 .badge {
   margin-left: auto;
@@ -380,6 +419,18 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* `width: 100%` is what keeps this on the screen, and `max-width` alone was not
+     enough. As a non-stretched item in a column flex container this box was sized
+     from its own max-content width rather than from the column it sits in, so
+     `max-width` was the only thing bounding it: measured on a 390px viewport it
+     rendered 520 wide inside a 362px column, the document went to 534, and
+     `body { overflow-x: hidden }` clipped the 144px past the screen edge — taking
+     the right end of every field and the fixed tab bar's last two tabs with it.
+     Neither `align-self: stretch` nor dropping the auto margins moved it (both
+     measured 520), and nothing inside has a floor: forced to 300px, all 47
+     descendants fit with no spill. A definite width does move it, and above 520 +
+     padding the cap still decides, so the desktop form is unchanged. */
+  width: 100%;
   max-width: 520px;
   margin: 0 auto;
   align-self: center;
@@ -643,6 +694,13 @@
   margin-left: 0;
 }
 .detailFee {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+/* The chain tag is a row-scale element by default — it was written for `.pairFee`
+   — so here it takes the same size and weight as the fee beside it. Both are
+   secondary facts about the pool sitting on the title's line. */
+.detailTitle .chainTag {
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
 }

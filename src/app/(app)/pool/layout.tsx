@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import Nav from "@/components/v2/Nav";
 import { Stat, StatStrip } from "@/components/v2/StatStrip";
 import { usePoolData } from "@/hooks/dex/usePoolData";
+import { useV3Pools } from "@/hooks/dex/useV3Pools";
 import { qty, usd } from "@/lib/format/figures";
 import s from "./pool.module.css";
 
@@ -79,13 +80,24 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
   const shell = shellFor(pathname);
   const onNew = shell === "new";
 
-  /* The same hook the pools table below mounts. Not lifted into a context on
-     purpose: usePoolData caches at module scope and collapses concurrent calls
-     into one `activeFetchPromise`, so a second consumer costs no extra RPC — and
-     a provider here would mean the strip and the table could no longer be read
-     as two views of one fetch. The detail page is a third consumer of the same
-     fetch for the same reason. */
-  const { pools, loading } = usePoolData();
+  /* The same two hooks the pools table below mounts. Not lifted into a context on
+     purpose: both share one module-scope store that collapses concurrent calls
+     into a single sweep, so a second consumer costs no extra RPC — and a provider
+     here would mean the strip and the table could no longer be read as two views
+     of one fetch. The detail page is a third consumer for the same reason. The
+     store also publishes chain by chain, and both hooks subscribe to it for as
+     long as they are mounted, so these totals climb as each chain lands rather
+     than describing one chain until the slowest node answers.
+
+     Both venues, because the table below lists both. A strip that summed V2 only
+     would put "Pools 9" directly above thirteen rows, and its Liquidity total
+     would be short by every V3 pool in the list — which is the exact failure the
+     Liquidity section's `format.ts` is written to avoid: a total that disagrees
+     with the column it sums reads as a bug in the numbers. */
+  const v2 = usePoolData();
+  const v3 = useV3Pools();
+  const pools = [...v2.pools, ...v3.pools];
+  const loading = v2.loading || v3.loading;
 
   const liquidity = sumOf(pools.map((p) => p.liquidity));
   const volume = sumOf(pools.map((p) => p.volume24h));
@@ -116,11 +128,12 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        {/* Protocol-wide across every V2 pool on READ_ONLY_CHAIN_ID, so no tile
-            is wallet-scoped: the section's one wallet-scoped figure lives on the
-            Your positions tab, and mixing it in here would make a strip whose
-            fourth number changed meaning depending on whether you had connected.
-            Every label names its own scope for the same reason. */}
+        {/* Protocol-wide across every V2 pair and V3 pool on every chain we have
+            deployed to, so no tile is wallet-scoped: the section's one
+            wallet-scoped figure lives on the Your positions tab, and mixing it in
+            here would make a strip whose fourth number changed meaning depending
+            on whether you had connected. Every label names its own scope for the
+            same reason. */}
         {shell === "list" && (
           <>
             <StatStrip>

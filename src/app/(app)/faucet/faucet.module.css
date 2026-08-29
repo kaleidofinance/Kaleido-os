@@ -267,6 +267,122 @@
   background: var(--k-brand-hover);
 }
 
+/* ---------- the zeroth transaction ---------- */
+/* Bordered rather than another .k-glass card: stacked directly under the asset
+   table, a second glass panel of the same weight reads as a second table and the
+   eye keeps looking for rows in it. */
+.gas {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s3);
+}
+/* Only when the wallet's native balance is 0 — i.e. when this is the reader's
+   actual problem and not background reading. The brand edge is deliberately not
+   a filled panel: the primary action on this page is still Claim, and a filled
+   block here would outweigh the column of Claim buttons above it. */
+.gasLoud {
+  border-color: var(--k-brand);
+  background: var(--k-row-hover);
+}
+.gasText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s1);
+}
+.gasTitle {
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+}
+.gasBody {
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  line-height: 1.55;
+  max-width: 68ch;
+}
+
+.gasActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--k-s2);
+}
+/* The panel's primary action. A <button> where we can send the gas ourselves and
+   an <a> on the two chains where only the chain's own faucet can — same class
+   deliberately, because "the one thing to do here" should not change weight
+   depending on which of the two it happens to be. The flex centring and
+   text-decoration below are what make the anchor sit like the button: an inline
+   <a> with vertical padding would overlap the line above it and keep its
+   underline. */
+.gasCta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 10px 18px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.gasCta:hover:not(:disabled) {
+  background: var(--k-brand-hover);
+}
+.gasCta:disabled {
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  color: var(--k-t3);
+  cursor: not-allowed;
+}
+
+/* Each link names its operator above what it hands out, because the operator is
+   what decides whether someone follows a link off the app at all — and one of
+   these (Google's) wants a sign-in, which belongs on the link and not in a
+   footnote nobody reaches. */
+.gasLink {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 14px;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-md);
+  text-decoration: none;
+  color: var(--k-t1);
+  font-size: var(--k-fs-sm);
+}
+.gasLink:hover {
+  border-color: var(--k-brand);
+  background: var(--k-row-hover);
+}
+.gasLink b {
+  font-weight: var(--k-fw-med);
+}
+.gasLink em {
+  font-style: normal;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+
+.gasMsg {
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  line-height: 1.5;
+}
+/* tokens.css carries --k-danger per theme (#ff5f52 dark, #e01a2b light), so no
+   literal here — a hardcoded red would be a third one that ignores the theme. */
+.gasMsgBad {
+  color: var(--k-danger);
+}
+
 /* ---------- mobile ---------- */
 @media (max-width: 720px) {
   .wrap {
@@ -297,5 +413,21 @@
     padding: 0;
     border-left: 0;
     min-width: 0;
+  }
+  /* Full-width and stacked. Wrapped inline these become two ragged rows of
+     different-width pills, and the sponsored button — the one control that acts
+     rather than navigates — stops being distinguishable from the links beside
+     it. */
+  .gasActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .gasCta,
+  .gasLink {
+    width: 100%;
+    text-align: center;
+  }
+  .gasLink {
+    align-items: center;
   }
 }

@@ -1,11 +1,17 @@
 import { ethers } from "ethers";
 import { ErrorDecoder } from "ethers-decode-error";
 import { toast } from "sonner";
+import {
+  describeFailure,
+  isRejection,
+  namedRevert,
+} from "@/lib/v2/txErrors";
 import tokenFaucetAbi from "@/abi/TokenFaucet.json";
 import kldVaultAbi from "@/abi/KLDVaultAbi.json";
 
 const errorDecoder = ErrorDecoder.create([tokenFaucetAbi]);
 const KLDvaultErrordecoder = ErrorDecoder.create([kldVaultAbi]);
+
 const useTxFactory = () => {
   /**
    * The faucet's success toast. Takes what was actually paid out.
@@ -68,7 +74,6 @@ const useTxFactory = () => {
     error: unknown,
     loadingToastId: string | number | undefined,
   ) => {
-    const err = await errorDecoder.decode(error);
     const vaultErr = await KLDvaultErrordecoder.decode(error);
     let errorText: string;
 
@@ -84,8 +89,19 @@ const useTxFactory = () => {
      * The faucet cases that used to sit in this switch are gone: it reads
      * `vaultErr`, so a KaleidoTokenFaucet_* fragment could never appear here.
      * handleError below is the faucet's decoder.
+     *
+     * Keyed on `namedRevert` rather than `vaultErr.fragment.name` because the
+     * decoder misses revert data that a provider nests one level deeper than it
+     * looks; see src/lib/v2/txErrors.ts. Everything that is not one of these —
+     * a declined signature, an empty gas tank, the wrong network — is
+     * `describeFailure`'s job, where it used to be one generic sentence.
      */
-    switch (vaultErr?.fragment?.name) {
+    const named = namedRevert(
+      vaultErr,
+      error,
+      kldVaultAbi as ethers.InterfaceAbi,
+    );
+    switch (named) {
       case "TokenNotSupported":
         errorText = "The token you are trying to use is not supported.";
         break;
@@ -111,14 +127,31 @@ const useTxFactory = () => {
         errorText = "Staking is paused. Please try again later.";
         break;
       default:
-        errorText = "An unexpected error occurred. Please try again later.";
+        errorText = describeFailure(
+          vaultErr,
+          error,
+          kldVaultAbi as ethers.InterfaceAbi,
+        );
     }
 
+    if (!named && isRejection(vaultErr)) {
+      toast.message(errorText, { id: loadingToastId });
+      return;
+    }
     toast.error(`Error: ${errorText}`, { id: loadingToastId });
     // console.log("vault error:", vaultErr)
-    // console.error("ERROR", err)
   };
 
+  /**
+   * The faucet's failure toast.
+   *
+   * The switch covers the errors Faucet.sol declares. Everything else goes to
+   * `describeFailure`, which is the fix for the report that every failed claim
+   * said "An unexpected error occurred. Please try again later" — a sentence that
+   * was covering a declined signature, a wallet with no gas to pay with, and a
+   * genuine cooldown revert whose data the decoder could not find. See
+   * src/lib/v2/txErrors.ts, and txErrors.test.ts for the measured shapes.
+   */
   const handleError = async (
     error: unknown,
     loadingToastId: string | number | undefined,
@@ -126,7 +159,8 @@ const useTxFactory = () => {
     const err = await errorDecoder.decode(error);
     let errorText: string;
 
-    switch (err?.fragment?.name) {
+    const named = namedRevert(err, error, tokenFaucetAbi as ethers.InterfaceAbi);
+    switch (named) {
       case "KaleidoTokenFaucet_InsufficientContractBalance":
         errorText = "The faucet is out of this token. Try another, or tell us.";
         break;
@@ -160,9 +194,17 @@ const useTxFactory = () => {
           "Nothing is claimable right now — every asset is either on cooldown, paused, or out of stock";
         break;
       default:
-        errorText = "An unexpected error occurred. Please try again later";
+        errorText = describeFailure(
+          err,
+          error,
+          tokenFaucetAbi as ethers.InterfaceAbi,
+        );
     }
 
+    if (!named && isRejection(err)) {
+      toast.message(errorText, { id: loadingToastId });
+      return;
+    }
     toast.error(`Error: ${errorText}`, { id: loadingToastId });
     // console.error("ERROR", err)
   };

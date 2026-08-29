@@ -25,6 +25,8 @@
  * browser.
  */
 
+import { feedFor } from "@/lib/v2/prices/feeds";
+
 if (typeof window !== "undefined") {
   throw new Error(
     "[points/prices] server-only module imported in the browser. Points " +
@@ -64,7 +66,7 @@ const ASSUMED_PAR: Record<string, number> = {
 const UNPRICED = new Set(["KLD", "stKLD"]);
 
 const HERMES = "https://hermes.pyth.network/api/latest_price_feeds";
-
+const COINGECKO = "https://api.coingecko.com/api/v3/simple/price";
 /**
  * Prices move slowly relative to a snapshot interval; one fetch serves a whole
  * run.
@@ -81,13 +83,19 @@ const HERMES = "https://hermes.pyth.network/api/latest_price_feeds";
  * re-fetched on every call.
  */
 const TTL_MS = 60_000;
-const cache = new Map<string, { at: number; usd: number | null }>();
+/* `via` is cached alongside the number so a fallback price is still reported as
+   a fallback price for the whole TTL, rather than being read back as `pyth`
+   because that is which branch the read-back happens to sit in. */
+const cache = new Map<
+  string,
+  { at: number; usd: number | null; via: "pyth" | "coingecko" }
+>();
 
 export interface PriceResult {
   /** USD price, or null when the asset has no meaningful USD price. */
   usd: number | null;
   /** Where the number came from, so a snapshot can record its own provenance. */
-  source: "pyth" | "assumed-par" | "unpriced";
+  source: "pyth" | "coingecko" | "assumed-par" | "unpriced";
 }
 
 interface HermesFeed {
@@ -110,6 +118,12 @@ async function fetchPyth(symbols: string[]): Promise<Map<string, number>> {
   const res = await fetch(`${HERMES}?${qs}`, {
     headers: { accept: "application/json" },
     cache: "no-store",
+    /* Bounded so a dead primary cannot hold every caller open before the
+       fallback is reached. This had no timeout, which was survivable while Pyth
+       was the only source and a stall was indistinguishable from a slow answer;
+       with a fallback behind it, an unbounded wait is pure added latency on
+       every cache miss on every surface. */
+    signal: AbortSignal.timeout(8_000),
   });
   if (!res.ok) throw new Error(`Hermes ${res.status}`);
 
@@ -133,12 +147,106 @@ async function fetchPyth(symbols: string[]): Promise<Map<string, number>> {
 }
 
 /**
+ * The same five symbols from CoinGecko, for when Hermes will not serve them.
+ *
+ * Not a second opinion and not a blend — strictly a fallback, reached only after
+ * Pyth has failed, so a healthy run's provenance is unchanged and still reads
+ * `pyth`.
+ *
+ * It exists because the primary went away. Measured 2026-08-28:
+ * `hermes.pyth.network` answers every request with `401 unauthorized` — both the
+ * deprecated `/api/latest_price_feeds` this file calls and the current
+ * `/v2/updates/price/latest`, answered from Pyth's own app tier rather than a
+ * Cloudflare edge block, so it is an auth requirement rather than an outage and
+ * it will not simply pass. With one source and no fallback that took down every
+ * USD figure this module feeds: the agent's spend caps, /api/market/overview,
+ * /api/prices/spot, the leaderboard and points accrual.
+ *
+ * `feedFor` is reused rather than a second symbol table written here, so nothing
+ * a caller writes ever reaches an outbound URL — the same rule the chart route
+ * and `getSpotPrice` follow. What is NOT reused is `getSpotPrice` itself, and
+ * that is deliberate rather than an oversight: it aborts at 6 seconds because it
+ * runs inside the agent loop with a user watching a spinner, which is the right
+ * call there and the wrong one here. Measured 2026-08-28 from this machine,
+ * CoinGecko answers in 1.4–3.9s and node's own fetch overhead pushes it over
+ * that 6s ceiling often enough to matter — a points run or a TVL figure can
+ * afford to wait, so this carries its own budget instead of failing on a
+ * threshold tuned for a different caller.
+ *
+ * One batched request rather than one per symbol: `simple/price` takes
+ * comma-separated ids, and the fallback is hot exactly when every caller is
+ * retrying at once, which is the worst moment to spend five rate-limit tokens
+ * where one would do.
+ *
+ * Coverage is total rather than partial, which is why this is worth doing: the
+ * CoinGecko allowlist carries ETH, WETH, USDC, USDT and BNB, and those are
+ * exactly the five keys in PYTH_FEEDS. A fallback that covered three of five
+ * would leave the caps half-enforced, which is harder to reason about than
+ * either extreme.
+ */
+async function fetchCoinGecko(symbols: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const ids = new Map<string, string>();
+  for (const s of symbols) {
+    const feed = feedFor(s);
+    if (feed) ids.set(s, feed);
+  }
+  if (ids.size === 0) return out;
+
+  const unique = [...new Set(ids.values())];
+  const apiKey = process.env.COINGECKO_API_KEY;
+  const url = `${COINGECKO}?ids=${encodeURIComponent(unique.join(","))}&vs_currencies=usd`;
+
+  /* Two attempts, because this is the last source there is.
+   *
+   * Not defensive padding: with the fallback in place a single transient is now
+   * the difference between a spend cap that is checked and a step the auditor
+   * refuses outright, and a refusal caused by one dropped connection is a worse
+   * answer than a second attempt. Measured on this machine while wiring it up —
+   * outbound HTTPS from node intermittently fails as `fetch failed` on the first
+   * call and succeeds immediately after. Bounded at two so a genuinely dead
+   * upstream still fails fast rather than doubling every caller's wait
+   * indefinitely. */
+  let json: Record<string, { usd?: unknown }> | null = null;
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= 2 && json === null; attempt += 1) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          accept: "application/json",
+          ...(apiKey ? { "x-cg-demo-api-key": apiKey } : {}),
+        },
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
+      json = (await res.json()) as Record<string, { usd?: unknown }>;
+    } catch (err) {
+      lastErr = err as Error;
+      if (attempt === 2) throw new Error(`CoinGecko: ${lastErr.message}`);
+    }
+  }
+  if (json === null) throw new Error(`CoinGecko: ${lastErr?.message ?? "no response"}`);
+
+  for (const [symbol, feed] of ids) {
+    const usd = json?.[feed]?.usd;
+    /* Same guard as `getSpotPrice`: upstream returns `{}` for an id it does not
+       know, and a zero or a null would pass a truthiness check and then be
+       measured against a spend cap as though it were a price. */
+    if (typeof usd === "number" && Number.isFinite(usd) && usd > 0)
+      out.set(symbol, usd);
+  }
+  return out;
+}
+
+/**
  * USD prices for a set of symbols.
  *
  * Never throws on a single missing asset — an unpriced token is a normal
- * condition, not an error. It does throw if the price source itself is
+ * condition, not an error. It does still throw if the price source itself is
  * unreachable, because silently scoring a whole run at zero would be worse
- * than failing the run.
+ * than failing the run — but "unreachable" now means BOTH sources failed, not
+ * just Pyth.
  */
 export async function getPrices(
   symbols: string[],
@@ -170,18 +278,41 @@ export async function getPrices(
     });
 
     if (stale.length > 0) {
-      const fresh = await fetchPyth(stale);
+      /* Pyth first, CoinGecko only if Pyth fails outright. `fetchPyth` throws on
+         a non-ok status, so the catch is the whole fallback trigger; a Pyth
+         response that simply omits a symbol is left alone, because that is a
+         missing feed id in the table above rather than an outage, and quietly
+         papering over it with a second source would hide the config error. */
+      let fresh: Map<string, number>;
+      let via: "pyth" | "coingecko" = "pyth";
+      try {
+        fresh = await fetchPyth(stale);
+      } catch (pythErr) {
+        via = "coingecko";
+        fresh = await fetchCoinGecko(stale);
+        if (fresh.size === 0)
+          /* Both sources are down. Preserve the documented contract and throw,
+             naming both failures — a caller that sees only the second one will
+             go looking in the wrong place. */
+          throw new Error(
+            `no price source reachable: pyth: ${(pythErr as Error).message}; coingecko returned nothing for ${stale.join(", ")}`,
+          );
+        console.warn(
+          `[points/prices] Pyth unavailable (${(pythErr as Error).message}) — served ${fresh.size}/${stale.length} symbol(s) from CoinGecko`,
+        );
+      }
       for (const s of stale)
-        cache.set(s, { at: now, usd: fresh.get(s) ?? null });
+        cache.set(s, { at: now, usd: fresh.get(s) ?? null, via });
     }
 
     for (const s of needPyth) {
-      const usd = cache.get(s)?.usd ?? null;
+      const hit = cache.get(s);
+      const usd = hit?.usd ?? null;
       out.set(
         s,
         usd === null
           ? { usd: null, source: "unpriced" }
-          : { usd, source: "pyth" },
+          : { usd, source: hit?.via ?? "pyth" },
       );
     }
   }

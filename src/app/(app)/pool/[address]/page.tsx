@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -9,9 +9,11 @@ import { READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { getChainAddressUrl } from "@/constants/utils/getTxUrl";
 import type { ITradingPair } from "@/constants/types/dex";
 import { usePoolData } from "@/hooks/dex/usePoolData";
+import { useV3Pools } from "@/hooks/dex/useV3Pools";
 import { usePoolTransactions } from "@/hooks/dex/usePoolTransactions";
 import { pct, qty, usd } from "@/lib/format/figures";
 
+import ChainTag from "../_components/ChainTag";
 import PairIcon from "../_components/PairIcon";
 import PoolBalanceBar from "../_components/PoolBalanceBar";
 import PoolDepthChart from "../_components/PoolDepthChart";
@@ -21,11 +23,11 @@ import { poolCurves } from "../poolCurve";
 import s from "../pool.module.css";
 
 /**
- * One V2 pair, in detail.
+ * One pool, in detail — a V2 pair or a V3 pool.
  *
  * Reached from a row on /pool. The section's own chrome — the four-tile strip and
  * the tab bar — is suppressed for this route in layout.tsx, because both are
- * protocol-wide and this page is about a single pair; leaving them up would put
+ * protocol-wide and this page is about a single pool; leaving them up would put
  * "Liquidity $4.2M across every pool" directly above "TVL $2.4M" for this one.
  *
  * WHAT IS HERE AND WHAT IS NOT
@@ -40,13 +42,24 @@ import s from "../pool.module.css";
  * the contract's own formula. The three missing tabs are not stubbed: an empty
  * chart frame labelled "Price" is a worse answer than not claiming to have one.
  *
+ * WHICH IS ALSO WHY THE CURVE IS V2-ONLY
+ *
+ * "Follows from the reserves it holds right now" is a property of constant
+ * product, not of pools in general. A V3 pool's two balances say what it holds
+ * and nothing about what a trade costs, because the liquidity behind those
+ * balances is spread across ticks this page never reads — so plotting the same
+ * curve for one would be a fabricated chart rather than a missing one, and the
+ * panel says so instead. Everything else here is venue-agnostic: TVL, volume,
+ * fees, APR, the balance split and the transactions table are all measurements
+ * that mean the same thing on both.
+ *
  * NO NEW FETCH FOR THE POOL ITSELF
  *
- * `usePoolData` caches at module scope and collapses concurrent calls, so
- * reading the whole list and picking one pair out of it costs nothing beyond
- * what the table already paid — and it means this page and that table cannot
- * disagree about a figure. The one extra read is the transactions window, which
- * is per pair and has no other consumer.
+ * Both enumerators cache at module scope and collapse concurrent calls, so
+ * reading their lists and picking one pool out costs nothing beyond what the
+ * table already paid — and it means this page and that table cannot disagree
+ * about a figure. The one extra read is the transactions window, which is per
+ * pool and has no other consumer.
  */
 
 /** Reserves arrive as decimal strings of base units. */
@@ -62,24 +75,60 @@ export default function PoolDetailPage() {
   const params = useParams<{ address: string }>();
   const routeAddress = String(params?.address ?? "");
 
-  const { pools, loading } = usePoolData();
+  /**
+   * `?chain` — which chain's pool this URL means.
+   *
+   * An address stopped identifying a pool on its own once both enumerators went
+   * cross-chain, so /pool's rows link with the chain attached. Read from
+   * `window.location` in an effect rather than through `useSearchParams`, the same
+   * call `trade/swap` makes: that hook forces a Suspense boundary on the route to
+   * prerender, and this value is only ever a narrowing hint.
+   *
+   * Null is a working answer, not a fallback that guesses. A pool address is
+   * CREATE2-derived from a factory address and two token addresses, all three of
+   * which differ per chain, so an address matching pools on two chains at once is
+   * a collision this app has no way to produce — which is what makes a URL from
+   * before this parameter existed, or one pasted by hand, still resolve.
+   */
+  const [chainHint, setChainHint] = useState<number | null>(null);
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("chain");
+    const id = Number(raw);
+    setChainHint(raw && Number.isInteger(id) && id > 0 ? id : null);
+  }, []);
 
-  /* Case-insensitive: the factory returns checksummed addresses while a URL
-     carries whatever case was pasted into it, and `0xABC…` and `0xabc…` are the
-     same pair. */
-  const pool = useMemo(
-    () =>
-      pools.find(
-        (p) => p.address.toLowerCase() === routeAddress.toLowerCase(),
-      ) ?? null,
-    [pools, routeAddress],
-  );
+  const v2 = usePoolData();
+  const v3 = useV3Pools();
+  const loading = v2.loading || v3.loading;
+
+  /* Across both venues, because a row from either links here. Case-insensitive:
+     a factory returns checksummed addresses while a URL carries whatever case
+     was pasted into it, and `0xABC…` and `0xabc…` are the same pool. Nothing to
+     disambiguate between the two lists — a V2 pair and a V3 pool are different
+     contracts at different addresses — so `?chain` is the only tiebreak, and the
+     first match stands when it names a chain that has no pool at this address. */
+  const pool = useMemo(() => {
+    const matches = [...v2.pools, ...v3.pools].filter(
+      (p) => p.address.toLowerCase() === routeAddress.toLowerCase(),
+    );
+    if (matches.length === 0) return null;
+    if (chainHint !== null) {
+      return matches.find((p) => p.chainId === chainHint) ?? matches[0];
+    }
+    return matches[0];
+  }, [v2.pools, v3.pools, routeAddress, chainHint]);
 
   const txns = usePoolTransactions(pool);
-  const gate = useChainGate(READ_ONLY_CHAIN_ID);
 
+  /* This pool's own chain once it is known, and the hint before that so a direct
+     load gates on the chain the URL asked for rather than on the read chain.
+     Neither is the wallet's, for the reason /pool's header gives. */
+  const gate = useChainGate(pool?.chainId ?? chainHint ?? READ_ONLY_CHAIN_ID);
+
+  /* V2 only — see the header. `version` is checked before the fee so that a V3
+     pool takes the venue branch rather than reading as a pool with no fee. */
   const curves = useMemo(() => {
-    if (!pool || pool.feeBps === null) return null;
+    if (!pool || pool.version !== "v2" || pool.feeBps === null) return null;
     const reserve0 = toBig(pool.reserves.reserve0);
     const reserve1 = toBig(pool.reserves.reserve1);
     if (reserve0 === null || reserve1 === null) return null;
@@ -105,7 +154,7 @@ export default function PoolDetailPage() {
     return (
       <div className={s.table}>
         <div className={s.tEmpty}>
-          No V2 pair at this address on the read chain.{" "}
+          No pool at this address on any chain we read.{" "}
           <Link href="/pool" className={s.emptyLink}>
             Back to all pools
           </Link>
@@ -129,6 +178,15 @@ export default function PoolDetailPage() {
                 symbol0={pool.token0.symbol}
                 symbol1={pool.token1.symbol}
               />
+            ) : pool.version === "v3" ? (
+              /* Not a missing chart — a chart that would be wrong. The balances
+                 in the sidebar are what the pool holds; a V3 pool's cost by size
+                 depends on how that is distributed across ticks, which this page
+                 does not read. */
+              <div className={s.chartEmpty}>
+                V3 liquidity is spread across tick ranges, so a single curve
+                cannot describe this pool&apos;s trade cost.
+              </div>
             ) : (
               /* Cost is fee plus curve, so without the fee there is no cost to
                  plot. The curve alone would understate every size by the fee,
@@ -147,8 +205,9 @@ export default function PoolDetailPage() {
               loading={txns.loading}
               error={txns.error}
               scannedBlocks={txns.scannedBlocks}
+              scannedSec={txns.scannedSec}
               hasMore={txns.hasMore}
-              chainId={READ_ONLY_CHAIN_ID}
+              chainId={pool.chainId}
               symbol0={pool.token0.symbol}
               symbol1={pool.token1.symbol}
             />
@@ -176,10 +235,13 @@ export default function PoolDetailPage() {
                         pool.token1.symbol
                       }`
                 }
-                /* The pool's own ratio, not a market price — see ITradingPair.
+                /* The pool's own quote, not a market price — see ITradingPair.
                    Named here because a row labelled "Price" beside four USD
-                   figures would otherwise read as one. */
-                title={`${pool.token1.symbol} per ${pool.token0.symbol}, from the reserves`}
+                   figures would otherwise read as one, and sourced because the
+                   two venues derive it differently. */
+                title={`${pool.token1.symbol} per ${pool.token0.symbol}, from ${
+                  pool.version === "v3" ? "slot0" : "the reserves"
+                }`}
               />
             </div>
 
@@ -207,7 +269,10 @@ function reserveFloat(pool: ITradingPair, leg: 0 | 1): number {
 }
 
 function PoolHeader({ pool }: { pool: ITradingPair }) {
-  const explorer = getChainAddressUrl(READ_ONLY_CHAIN_ID, pool.address);
+  /* This pool's chain, not the read chain. An explorer URL built for the wrong
+     chain resolves — to a page about an address that holds nothing there, which
+     reads as a pool that was never deployed. */
+  const explorer = getChainAddressUrl(pool.chainId, pool.address);
 
   return (
     <div className={s.detailHead}>
@@ -231,22 +296,34 @@ function PoolHeader({ pool }: { pool: ITradingPair }) {
         <h1 className={s.detailH1}>
           {pool.token0.symbol} / {pool.token1.symbol}
         </h1>
-        <span className={s.badge}>V2</span>
+        <span className={s.badge}>{pool.version.toUpperCase()}</span>
         <span className={s.detailFee}>{feeLabel(pool.feeBps)}</span>
+        {/* Beside the venue and the fee, because it is the same kind of fact and
+            the same kind of mistake to get wrong: the address chip below, the
+            explorer link on it and the transactions table all describe this pool
+            on this chain, and nothing else on the page says which one that is. */}
+        <ChainTag chainId={pool.chainId} />
         <AddressChip address={pool.address} explorer={explorer} />
 
         <div className={s.detailActions}>
-          {/* Prefills the swap form from this pair. Both tokens are on the read
-              chain by construction — they came from its factory — and the form
-              validates them against that chain's token list before selecting. */}
+          {/* Prefills the swap form from this pair. The two addresses are this
+              pool's chain's, which the form validates against the wallet's chain
+              before selecting either — so a pool on a chain the wallet is not on
+              leaves the form on its own defaults rather than selecting whatever
+              those 20 bytes happen to be there. No chain is passed because the
+              form has no chain parameter: switching networks is the wallet's, and
+              a link cannot do it. */}
           <Link
             href={`/trade/swap?in=${pool.token0.address}&out=${pool.token1.address}`}
             className={`${s.bt} ${s.btWhite}`}
           >
             Swap
           </Link>
-          {/* Not prefilled. /pool/new mints V3 at 500/3000/10000 bps-of-1e6
-              tiers, so carrying a V2 pair's fee across would name a tier that
+          {/* Not prefilled, even from a V3 pool: /pool/new picks a pair *and* a
+              tier, and pre-selecting this pool's would point the form at a pool
+              the reader is already looking at rather than at the one they came to
+              open. From a V2 pair it would be wrong as well as unhelpful — its
+              fee is bps-of-10000, so carrying it across would name a tier that
               does not exist on the other side. */}
           <Link href="/pool/new" className={s.bt}>
             + Add liquidity

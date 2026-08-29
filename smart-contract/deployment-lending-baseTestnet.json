@@ -1,0 +1,41 @@
+{
+  "network": "baseTestnet",
+  "chainId": 84532,
+  "timestamp": "2026-08-28T12:33:59.625Z",
+  "diamond": "0x1e2BeA8a1958088b50eC9410F7870a2C254e43E4",
+  "lender": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "borrower": "0xa5b1A2872Ce2E10FE0dc41f62a869604943a962b",
+  "borrowerSource": "keccak256('kaleido-testnet-counterparty-v1:' + DEPLOYER_PRIVATE_KEY)",
+  "currency": {
+    "key": "usdt",
+    "address": "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
+    "symbol": "USDT",
+    "decimals": 6
+  },
+  "sizing": {
+    "collateralUsd": "400000000000000000000",
+    "listingUsd": "300000000000000000000",
+    "loanUsd": "60000000000000000000",
+    "nativeUsdPerWhole": "2500623009870000000000",
+    "currencyUsdPerWhole": "1000110010000000000"
+  },
+  "listing": {
+    "id": 2,
+    "remaining": "239973600",
+    "status": 0
+  },
+  "requests": {
+    "fromListing": 4,
+    "serviced": 5,
+    "open": 6
+  },
+  "targets": {
+    "takeListing": 2,
+    "fillRequest": 6,
+    "repay": [
+      4,
+      5
+    ],
+    "cancel": 6
+  }
+}

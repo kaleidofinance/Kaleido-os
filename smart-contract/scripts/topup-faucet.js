@@ -3,6 +3,7 @@
  *
  *   npx hardhat run scripts/topup-faucet.js --network sepolia
  *   npx hardhat run scripts/topup-faucet.js --network baseTestnet
+ *   npx hardhat run scripts/topup-faucet.js --network robinhoodTestnet
  *
  * Rehearse first — prints every drip change, every top-up and the native budget,
  * and moves nothing:
@@ -63,8 +64,9 @@ const fs = require("fs");
  * Per-chain beta cohort targets, keyed by the asset `key` in the deployment
  * record. `drip` is human units per claim; `claims` is how many claims' worth to
  * stock, so the target stock is `drip × claims`. Only the assets listed here are
- * touched — USDC is deliberately absent on both chains (Circle's real token, which
- * we cannot mint; testers obtain it by swapping USDT→USDC on the DEX).
+ * touched — USDC is deliberately absent on Sepolia and Base, where it is Circle's
+ * real token and unmintable (testers obtain it by swapping USDT→USDC on the DEX),
+ * but present on Robinhood, where it is our own mock.
  *
  * `nativeReserve` is human native the run will not spend on gas stock or wrapping:
  * an operational float left in the deployer for later top-ups, floored by this
@@ -95,6 +97,38 @@ const TOPUP_PLANS = {
       USDT: { drip: 10_000, claims: 3000 }, // 30M — mint, was 1M
       USDe: { drip: 10_000, claims: 3000 }, // 30M — mint, was 1M
       WETH: { drip: 0.02, claims: 1000 }, //  20 WETH — was 1 drip / 10 WETH
+    },
+  },
+
+  /*
+   * Robinhood joined the native-gas chains on 2026-08-29. Its original faucet
+   * (deployed 2026-08-24) predates receive() — a 1 wei value send to it reverts,
+   * while the same probe against Sepolia's faucet succeeds — so it could never
+   * hold gas and had to be replaced rather than extended. The deployer was funded
+   * by an Orbit deposit from Sepolia, see the bridge notes.
+   *
+   * Two things differ from the chains above, both for reasons specific to this
+   * chain rather than by preference:
+   *
+   *   nativeReserve is 1, not 8. Orbit gas here is so cheap that
+   *   deploy-faucet.js floats on 0.002 — 25x its measured 0.00008 full-run floor
+   *   — so 1 native is already ~12,500x a run's cost. Holding back 8 would be
+   *   cargo-culting Sepolia's number onto a chain where it means nothing.
+   *
+   *   USDC IS listed. It is absent above because there it is Circle's real token
+   *   and unmintable; on Robinhood it is our own mock and mint() staticcalls
+   *   clean, so leaving it out would strand a third of the stable surface at its
+   *   20-claim deploy stock for no reason.
+   */
+  46630: {
+    label: "Robinhood Chain Testnet",
+    nativeReserve: 1,
+    assets: {
+      NATIVE: { drip: 0.005, claims: 2000 }, // 10 ETH — was 0.01 drip / 0.2 ETH
+      USDC: { drip: 10_000, claims: 3000 }, // 30M — mint (our mock, not Circle's)
+      USDT: { drip: 10_000, claims: 3000 }, // 30M — mint, was 1M
+      USDe: { drip: 10_000, claims: 3000 }, // 30M — mint, was 1M
+      WETH: { drip: 0.02, claims: 750 }, //  15 WETH — was 1 drip / 0.5 WETH
     },
   },
 };
@@ -147,9 +181,11 @@ async function main() {
   const plan = TOPUP_PLANS[chainId];
   if (!plan) {
     throw new Error(
-      `Chain ${chainId} (${net}) has no top-up plan. Only the two chains with a ` +
-        "native-gas faucet (Sepolia 11155111, Base Sepolia 84532) are provisioned " +
-        "for the beta; the other three need their deployers funded first."
+      `Chain ${chainId} (${net}) has no top-up plan. Only the chains whose ` +
+        "faucet can hold native gas (Sepolia 11155111, Base Sepolia 84532, " +
+        "Robinhood 46630) are provisioned for the beta; BSC and Arc still run " +
+        "the pre-receive() faucet bytecode and need a redeploy plus a funded " +
+        "deployer first."
     );
   }
 

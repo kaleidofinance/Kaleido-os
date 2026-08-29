@@ -1930,11 +1930,46 @@ export async function auditPlan(opts: {
   pricer?: Pricer;
 }): Promise<AuditVerdict> {
   const { plan, chainId } = opts;
-  const priceOf = opts.pricer ?? defaultPricer;
   const limits = opts.limits ?? {};
   const steps: AuditedStep[] = [];
   const blocked: string[] = [];
   const notes: string[] = [];
+
+  /**
+   * The pricer, wrapped so a dead price source degrades instead of throwing.
+   *
+   * `getPrices` throws when the upstream itself is unreachable, and that is the
+   * right call for the points run it was written for: scoring a whole day at
+   * zero is worse than failing the job. It is the wrong call here. This throw
+   * propagated out of `auditPlan` and out of /api/chat, so a Pyth outage did not
+   * degrade the agent, it blanked it — no plan, no verdict, no prose, for every
+   * turn on every product, including the verbs that need no price at all.
+   *
+   * Measured 2026-08-28: `hermes.pyth.network` began answering every request
+   * with `401 unauthorized` (both the deprecated `/api/latest_price_feeds` and
+   * `/v2/updates/price/latest`, from its own app tier rather than Cloudflare, so
+   * it is an auth requirement and not an outage). That took the entire agent
+   * down at the first priced step.
+   *
+   * `UNAVAILABLE` rather than reusing `unpriced`, because the two must not lead
+   * to the same outcome. An asset with no market — KLD before TGE — can never be
+   * measured against a USD cap, so the cap is noted as inapplicable and the step
+   * proceeds. A source outage means the cap *does* apply and we cannot check it,
+   * which is not a satisfied cap; those steps are blocked and say why, so the
+   * ceiling never goes quiet while looking like it held.
+   */
+  const rawPricer = opts.pricer ?? defaultPricer;
+  const UNAVAILABLE = "price-source-unavailable";
+  const priceOf: Pricer = async (symbol, amount) => {
+    try {
+      return await rawPricer(symbol, amount);
+    } catch (err) {
+      return {
+        usd: null,
+        source: `${UNAVAILABLE}: ${(err as Error).message}`,
+      };
+    }
+  };
 
   /* The effective cap is the tighter of what the user asked for and what this
      server permits. `Math.min` and not `??`: a client that omits the field, or
@@ -2016,8 +2051,16 @@ export async function auditPlan(opts: {
       );
 
       let stepUsd: number | null = null;
+      let unavailable: string | null = null;
       for (const { leg, usd, source } of valued) {
         if (usd === null) {
+          if (source.startsWith(UNAVAILABLE)) {
+            /* The cap applies to this leg and could not be checked. Blocked
+               below rather than here, so every leg is reported before the step
+               is dropped. */
+            unavailable = `${leg.amount} ${leg.symbol} could not be priced — ${source.slice(UNAVAILABLE.length + 2)}`;
+            continue;
+          }
           /* An asset with no USD price cannot be measured against a USD cap, and
              this is a real condition rather than an error: KLD has no market
              before TGE, which is the point of a pre-TGE token. Blocking it would
@@ -2032,6 +2075,13 @@ export async function auditPlan(opts: {
         }
       }
       audited.usd = stepUsd;
+
+      if (unavailable) {
+        audited.blocked = `the USD price feed is unavailable, so your $${perAction} per-action limit cannot be checked (${unavailable})`;
+        blocked.push(`${kind}: ${audited.blocked}`);
+        steps.push(audited);
+        continue;
+      }
 
       if (stepUsd !== null) {
         totalUsd += stepUsd;
@@ -2067,7 +2117,17 @@ export async function auditPlan(opts: {
       ]);
 
       if (inSide.usd === null || outSide.usd === null) {
+        const bad = inSide.usd === null ? inSide : outSide;
         const which = inSide.usd === null ? inSymbol : outSymbol;
+        if (bad.source.startsWith(UNAVAILABLE)) {
+          /* Same split as the cap above. A swap whose slippage floor cannot be
+             verified because the feed is down is the case where `amountOutMin`
+             is least trustworthy, so it is refused rather than noted. */
+          audited.blocked = `slippage cannot be verified — the USD price feed is unavailable (${bad.source.slice(UNAVAILABLE.length + 2)})`;
+          blocked.push(`${kind}: ${audited.blocked}`);
+          steps.push(audited);
+          continue;
+        }
         const note = `slippage could not be verified — ${which} has no USD price`;
         audited.note = audited.note ? `${audited.note}; ${note}` : note;
         notes.push(`${kind}: ${note}`);

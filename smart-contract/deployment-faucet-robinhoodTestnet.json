@@ -2,13 +2,27 @@
   "network": "robinhoodTestnet",
   "chainId": 46630,
   "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
-  "timestamp": "2026-08-24T16:49:36.171Z",
+  "timestamp": "2026-08-29T04:01:47.220Z",
   "contracts": {
-    "faucet": "0xB22E458D277a55f535873a02Ef77c569cC4F7d51"
+    "faucet": "0xD65927aF66B52E5a43C9C4Fb405D6F0823B65441"
   },
   "config": {
     "cooldownSeconds": 3600,
     "assets": [
+      {
+        "key": "NATIVE",
+        "address": "0x0000000000000000000000000000000000000001",
+        "symbol": "ETH",
+        "decimals": 18,
+        "dripHuman": "0.005",
+        "drip": "5000000000000000",
+        "source": "native",
+        "funding": {
+          "method": "topup",
+          "stocked": "10.0",
+          "claimsLeft": 2000
+        }
+      },
       {
         "key": "USDC",
         "address": "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B",
@@ -18,10 +32,9 @@
         "drip": "10000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -33,10 +46,9 @@
         "drip": "10000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -48,10 +60,9 @@
         "drip": "10000000000000000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -59,14 +70,13 @@
         "address": "0x7943e237c7F95DA44E0301572D358911207852Fa",
         "symbol": "WETH",
         "decimals": 18,
-        "dripHuman": "1.0",
-        "drip": "1000000000000000000",
+        "dripHuman": "0.02",
+        "drip": "20000000000000000",
         "source": "dex",
         "funding": {
-          "method": "wrap",
-          "amount": "0.4969756465407448",
-          "target": "10.0",
-          "short": "9.5030243534592552"
+          "method": "topup",
+          "stocked": "15.0",
+          "claimsLeft": 750
         }
       }
     ]
@@ -74,5 +84,6 @@
   "sources": {
     "stablecoin": "deployment-stablecoin-robinhoodTestnet.json",
     "dex": "deployment-dex-robinhoodTestnet.json"
-  }
+  },
+  "lastTopup": "2026-08-29T04:03:23.369Z"
 }
