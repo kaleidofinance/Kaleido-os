@@ -872,6 +872,104 @@ console.log("\n— stablecoin: complete withdrawal, claim, compound —");
   );
 }
 
+console.log("\n— the testnet faucet —");
+{
+  /* Two ways to name the asset, and the order between them is the point. The
+     word right after "faucet" wins outright, because the faucet's own list is
+     the authority on what it stocks and it may hold assets this registry has
+     never carried — USDC is missing from two of the five chains' registries,
+     which is the whole reason FaucetAssetRef exists. Only when that finds
+     nothing does the rest of the sentence get read, and then only for words the
+     registry resolves or the three batch words. */
+  const adjacent = p("faucet usdc");
+  check(
+    "the word after 'faucet' is the asset",
+    adjacent.status === "ok" &&
+      adjacent.command.kind === "claimTestTokens" &&
+      adjacent.command.symbol === "usdc",
+    JSON.stringify(adjacent),
+  );
+
+  const unlisted = p("faucet zzz");
+  check(
+    "an asset the registry has never heard of still reaches the planner",
+    unlisted.status === "ok" &&
+      unlisted.command.kind === "claimTestTokens" &&
+      unlisted.command.symbol === "zzz",
+    JSON.stringify(unlisted),
+  );
+
+  /* The phrasing people actually type. This used to arrive with no asset named
+     and come back as "the faucet lists USDC, USDT — say which one you want",
+     which is the one refusal in this grammar that reads as the agent not being
+     able to read its own input. */
+  const natural = p("claim USDC from the faucet");
+  check(
+    "a ticker named anywhere in the sentence is found",
+    natural.status === "ok" &&
+      natural.command.kind === "claimTestTokens" &&
+      natural.command.symbol === "USDC",
+    JSON.stringify(natural),
+  );
+
+  const batch = p("claim everything from the faucet");
+  check(
+    "'everything' is carried through for the planner's batch branch",
+    batch.status === "ok" &&
+      batch.command.kind === "claimTestTokens" &&
+      batch.command.symbol === "everything",
+    JSON.stringify(batch),
+  );
+
+  // A registry match beats a batch word, so this claims USDC and not the lot.
+  const both = p("claim all my USDC from the faucet");
+  check(
+    "a named asset outranks 'all' in the same sentence",
+    both.status === "ok" &&
+      both.command.kind === "claimTestTokens" &&
+      both.command.symbol === "USDC",
+    JSON.stringify(both),
+  );
+
+  /* Naming nothing must stay naming nothing. The fallback is allowed to find a
+     ticker or a batch word and nothing else — no stopword list, no positional
+     guess — so these two still reach the planner empty and get asked. */
+  const nothing = p("claim from the faucet");
+  check(
+    "a sentence with no asset in it still names none",
+    nothing.status === "ok" &&
+      nothing.command.kind === "claimTestTokens" &&
+      nothing.command.symbol === undefined,
+    JSON.stringify(nothing),
+  );
+  const filler = p("faucet please");
+  check(
+    "a filler after 'faucet' is not read as a ticker",
+    filler.status === "ok" &&
+      filler.command.kind === "claimTestTokens" &&
+      filler.command.symbol === undefined,
+    JSON.stringify(filler),
+  );
+
+  /* The reason the faucet is checked ahead of the zero-slot verbs: every
+     sentence above contains "claim", and ZERO_SLOT_VERBS scans the whole
+     sentence, so without that ordering each one would have planned a kfUSD
+     yield claim — the wrong product, from a sentence naming this one. */
+  check(
+    "'claim … faucet' is never hijacked by claimYield",
+    [natural, batch, both, nothing].every(
+      (r) => r.status === "ok" && r.command.kind === "claimTestTokens",
+    ),
+  );
+  // And the reverse: a claim that says nothing about a faucet is untouched.
+  const yieldClaim = p("claim");
+  check(
+    "a bare claim is still the kfUSD one",
+    yieldClaim.status === "ok" && yieldClaim.command.kind === "claimYield",
+    JSON.stringify(yieldClaim),
+  );
+}
+
 console.log("\n— pool: collect fees, remove position —");
 {
   const collect = p("collect fees position 42");

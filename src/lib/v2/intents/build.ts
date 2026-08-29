@@ -22,6 +22,11 @@ import {
 import type { PoolState } from "@/lib/dex/pool";
 import type { Intent } from "@/lib/v2/intents";
 import type { Command } from "@/lib/v2/intents/fromCommand";
+/* A value import, unlike the type above, and the only one in this file that
+   costs nothing: fromCommand.ts is deliberately dependency-free. The set is
+   shared rather than restated so the parser and this branch cannot disagree
+   about what "everything" means. */
+import { ALL_WORDS } from "@/lib/v2/intents/fromCommand";
 
 /**
  * Turns a parsed Command into a signable plan. The only place intents are
@@ -212,15 +217,6 @@ export interface FaucetAssetRef {
   /** Unix second before which this caller may not claim again. 0 means now. */
   nextClaimAt: number;
 }
-
-/**
- * Words that mean "every asset that's due" where a faucet ticker would go.
- *
- * Small on purpose. These are checked only after a real symbol match has failed,
- * so the cost of a word missing from here is the existing refusal that names the
- * asset list — not a wrong transaction.
- */
-const ALL_WORDS = new Set(["all", "everything", "every"]);
 
 /**
  * The chain and network reads a plan may need, injected by the caller.
