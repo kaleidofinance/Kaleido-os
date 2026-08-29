@@ -207,6 +207,44 @@ export async function readFaucetAssets(
   );
 }
 
+/**
+ * Why this claim should not be sent, if it should not be — checked before the
+ * wallet is opened.
+ *
+ * Two refusals, in the order they bite. The first is structural: a wallet sitting
+ * on a chain this app has no faucet on. The second is the one that actually
+ * strands people, and the reason this function exists: a claim is a transaction,
+ * so the address pays gas for it, and a brand-new address has none. The faucet
+ * cannot bootstrap that — it is the thing being bootstrapped — so the honest
+ * answer names the token rather than letting the RPC's "insufficient funds for
+ * intrinsic transaction cost" reach the reader as a toast.
+ *
+ * The balance read is best-effort. An RPC that will not answer is not evidence of
+ * an empty wallet, so the claim goes ahead and any real failure comes back from
+ * the chain, where the caller's decoder can speak to it.
+ */
+async function claimRefusal(
+  chainId: number,
+  address: string,
+): Promise<string | null> {
+  const meta = getChainMeta(chainId);
+  const where = meta?.name ?? `chain ${chainId}`;
+
+  const faucet = getContracts(chainId).faucet;
+  if (!faucet || !ethers.isAddress(faucet)) {
+    return `There is no faucet on ${where}. Switch your wallet to a supported testnet and try again.`;
+  }
+
+  const provider = providerForChain(chainId);
+  if (!provider) return null;
+  const gas = await provider.getBalance(address).catch(() => null);
+  if (gas === 0n) {
+    const symbol = meta?.nativeCurrency.symbol ?? "gas";
+    return `This wallet holds no ${symbol}, so it cannot pay for the claim. Send it a little ${symbol} on ${where} first — the tokens are free, the transaction that fetches them is not.`;
+  }
+  return null;
+}
+
 export const useFaucet = (): FaucetState => {
   const account = useActiveAccount();
   const activeChain = useActiveWalletChain();
@@ -381,6 +419,12 @@ export const useFaucet = (): FaucetState => {
         toast.error(`The faucet is out of ${asset.symbol}`);
         return;
       }
+      /* And the two that need a read: wrong chain, and no gas to pay with. */
+      const refusal = await claimRefusal(activeChain.id, account.address);
+      if (refusal) {
+        toast.error(refusal);
+        return;
+      }
 
       const signer = ethers6Adapter.signer.toEthers({
         client,
@@ -448,6 +492,11 @@ export const useFaucet = (): FaucetState => {
     }
     if (claimable.length === 1) {
       await claim(claimable[0].address);
+      return;
+    }
+    const refusal = await claimRefusal(activeChain.id, account.address);
+    if (refusal) {
+      toast.error(refusal);
       return;
     }
 

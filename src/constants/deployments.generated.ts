@@ -50,7 +50,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
   },
   46630: {
     diamond: "0x3565904975AE169c0a48af085b9f786660875874", // deployment-diamond-robinhoodTestnet.json
-    faucet: "0xB22E458D277a55f535873a02Ef77c569cC4F7d51", // deployment-faucet-robinhoodTestnet.json
+    faucet: "0xD65927aF66B52E5a43C9C4Fb405D6F0823B65441", // deployment-faucet-robinhoodTestnet.json
     kafUSD: "0xdAFf6E1941CA376A5cA711EF2D6762BC545D5d89", // deployment-stablecoin-robinhoodTestnet-1787447030493.json
     kfUSD: "0x1e2BeA8a1958088b50eC9410F7870a2C254e43E4", // deployment-stablecoin-robinhoodTestnet-1787447030493.json
     kld: "0x6F57844d0C6DCB7eB906d21C99195a3FC446E81D", // deployment-kld-robinhoodTestnet.json
@@ -250,7 +250,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-08-27T23:43:09.643Z",
+  generatedAt: "2026-08-29T04:04:00.629Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
