@@ -279,9 +279,15 @@
   align-items: flex-start;
 }
 
-/* Numbered, not ticked. A tick would claim the step had happened; these
-   have not, and cannot on this page. --k-brand-dim is the one place brand
-   green belongs here: a fill behind a marker. */
+/* Numbered until the walkthrough reaches it, then a spinner, then a tick —
+   the same three markers PlanReview.tsx draws from real receipts, so a
+   visitor who signs a plan later recognises the shape. The tick is only
+   ever reachable by pressing "Walk it through", and the block it reveals
+   says so: this page holds no key, so a tick here is a walkthrough of a
+   signature rather than a claim that one happened.
+
+   --k-brand-dim is the one place brand green belongs here: a fill behind a
+   marker. */
 .marker {
   flex: none;
   width: 22px;
@@ -309,6 +315,170 @@
      .rowWhole: it must not be shortened, so it has to be allowed to
      wrap. */
   word-break: break-word;
+}
+
+/* The spinner on the step currently signing.
+
+   Copied from PlanReview.module.css:100 rather than shared, because a CSS
+   module cannot export a rule and the app's signing surface must not
+   import from the marketing bundle. Same geometry and the same 0.8s, so
+   the two read as one component.
+
+   The base ring is --k-line2 rather than --k-glass-deep: the marker's fill
+   is --k-brand-dim, and a translucent deep-glass ring over a green tint
+   disappears. */
+.spin {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--k-line2);
+  border-top-color: var(--k-brand);
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduced motion leaves the ring, static. It still marks which step is
+   signing — the position in the list does that, not the rotation — so the
+   information survives and only the spin goes. */
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+/* A signed step recedes rather than greys out. The current step is the one
+   worth reading; the ones behind it have already been read. */
+.stepDone .stepTitle {
+  color: var(--k-t2);
+}
+
+/* The chain badge on a step. Only a bridge carries one, so only then does
+   the row have anything on its right-hand side. */
+.stepChain {
+  flex: none;
+  margin-left: auto;
+  color: var(--k-t2);
+  font-size: var(--k-fs-xs);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  padding: 3px 9px;
+  border-radius: var(--k-r-pill);
+}
+
+/* ------------------------------------------------------------------
+ * The walkthrough.
+ *
+ * The button and the line under the plan, which swap between three
+ * states: an invitation, a running commentary, then nothing — the result
+ * block below takes over. One container for all three, so the card's
+ * height moves by a line rather than by a block.
+ * ------------------------------------------------------------------ */
+.act {
+  margin-top: var(--k-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+  align-items: flex-start;
+}
+
+/* Outlined, not solid. There is already one solid button in this card —
+   "Plan it" — and two would leave a visitor guessing which is the primary
+   action. This is deliberately the quieter of the pair: the plan is the
+   point, and the walkthrough is an optional second look at it. */
+.walk {
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-pill);
+  background: transparent;
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: var(--k-s2) var(--k-s4);
+  cursor: pointer;
+}
+
+.walk:hover {
+  background: var(--k-row-hover);
+  border-color: var(--k-brand);
+}
+
+.actNote {
+  margin: 0;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------
+ * The result.
+ *
+ * What the wallet and the chain look like once every step has been signed.
+ * The one well on this page with a brand-tinted border, because it is the
+ * only one reporting an outcome — everything above it is a plan, a
+ * question, or a stop.
+ *
+ * Nested inside .plan rather than placed as a sibling of it, so it reads as
+ * the end of that plan rather than as a result that might have come from
+ * somewhere else.
+ * ------------------------------------------------------------------ */
+.settled {
+  margin-top: var(--k-s4);
+  border: 1px solid var(--k-brand-dim);
+  border-radius: var(--k-r-lg);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  padding: var(--k-s4);
+}
+
+.settledHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  flex-wrap: wrap;
+}
+
+.settledLabel {
+  color: var(--k-pos);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The honesty tag, and the reason this block is allowed to exist at all.
+   Deliberately in the header rather than buried in the footnote: a reader
+   who takes in only the label and the figures still learns that the clock
+   was compressed and that this was a walkthrough. */
+.settledTag {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+}
+
+/* Text-weight, under the footnote. A third button in this card would be one
+   too many, and "Run it again" is a reset rather than an action. */
+.again {
+  margin-top: var(--k-s3);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--k-t2);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.again:hover {
+  color: var(--k-t1);
 }
 
 /* ------------------------------------------------------------------
