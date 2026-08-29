@@ -108,6 +108,114 @@
 }
 
 /* ---------- pools table ---------- */
+/* The search box and the Filters button, above the card rather than inside it: the
+   table scrolls sideways on a phone (see the mobile block) and a control inside a
+   scroll container either scrolls away with the columns or has to be pinned. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  margin-bottom: var(--k-s2);
+  /* The count in the middle is optional, so it wraps rather than squeezing the box
+     — at 320px the box, a "9 of 13 pools" note and the button do not fit one line. */
+  flex-wrap: wrap;
+}
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  /* Takes the row, so the button sits at the right edge on any width. `min-width`
+     is the flexbox floor: without it an input's default `size` attribute keeps a
+     ~170px content minimum and the row overflows instead of shrinking. */
+  flex: 1;
+  min-width: 140px;
+}
+.searchIcon {
+  position: absolute;
+  left: 12px;
+  width: 15px;
+  height: 15px;
+  color: var(--k-t3);
+  pointer-events: none;
+}
+.searchInput {
+  composes: k-glass from global;
+  width: 100%;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  /* Left pad clears the 15px glass and its 12px offset; right pad clears the
+     clear button, which is only there once something is typed — a fixed inset
+     keeps the text from shifting when it appears. */
+  padding: 10px 34px 10px 34px;
+  outline: none;
+}
+.searchInput::placeholder {
+  color: var(--k-t3);
+}
+.searchInput:focus {
+  box-shadow: 0 0 0 1px var(--k-brand);
+}
+.searchClear {
+  position: absolute;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--k-t2);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.searchClear:hover {
+  background: var(--k-well2);
+  color: var(--k-t1);
+}
+.resultNote {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.filterBt {
+  composes: k-glass from global;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 10px 16px;
+  cursor: pointer;
+  flex: none;
+}
+.filterBt:hover {
+  background: var(--k-brand-dim);
+}
+/* Ringed while something is hidden, so the state is visible without opening the
+   panel — the badge says how many facets, the ring says "this list is not
+   everything", which is the fact a reader misreading the table would need. */
+.filterBtOn {
+  box-shadow: 0 0 0 1px var(--k-brand);
+}
+.filterCount {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--k-r-pill);
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  font-size: 11px;
+  font-weight: var(--k-fw-med);
+  display: grid;
+  place-items: center;
+}
 .table {
   composes: k-glass from global;
   border-radius: var(--k-r-lg);
@@ -115,17 +223,33 @@
 }
 .thead {
   display: grid;
+  /* The same gap `.row` carries, and it has to be the same one. These are two
+     separate grids that align only by sharing a template, and a gap is taken out
+     of the free space the tracks divide: with `.row` at 12px and this at 0 the
+     header divided 48px more, so its tracks came out wider and every
+     right-aligned label drifted right of the figure it titles. Measured at the
+     560px phone minimum: tracks `170.98 95 95 95 76` against the rows'
+     `155.56 86.42 86.44 86.42 69.14`, which put "Price" 12px right of its own
+     price and "24h volume" 8.6px right of its volume. Only the last column ever
+     lined up, because the gaps net out by the final edge. `.txHead`/`.txRow`
+     never had the bug — they are one rule, so the gap could not go to one and
+     not the other. */
+  gap: var(--k-s3);
   padding: 10px 14px 6px;
   font-size: var(--k-fs-xs);
   color: var(--k-t3);
 }
-/* Five columns in the 900px `.wrap` this section already uses, rather than the
+/* Six columns in the 900px `.wrap` this section already uses, rather than the
    1200px the table had on /explore. Widening the shell would also stretch the
    position cards and is a change to two other pages; 1.8fr leaves the pair cell
-   ~280px, which fits `WETH / USDC` and the fee line under it. */
+   ~250px, which fits `WETH / USDC` and the fee line under it.
+   The last track is fixed rather than a fr share because it holds one button whose
+   width is set by the word in it — a fr track would size it from the free space
+   and leave "Deposit" floating in the middle of a 120px cell. 96px is the button's
+   own width (13px text in 15px of horizontal padding) with nothing spare. */
 .pools .thead,
 .pools .row {
-  grid-template-columns: 1.8fr 1fr 1fr 1fr 0.8fr;
+  grid-template-columns: 1.8fr 1fr 1fr 1fr 0.8fr 96px;
 }
 .row {
   display: grid;
@@ -156,11 +280,46 @@
 .pairCell:hover .pairName {
   text-decoration: underline;
 }
+/* The row's own action. Recessed rather than brand-filled: there is one of these
+   per row and a column of solid green buttons reads as the point of the table,
+   which is the figures. It fills on hover, so the row being acted on is the one
+   that looks actionable. */
+.depositBt {
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  padding: 8px 15px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  justify-self: end;
+  white-space: nowrap;
+}
+.depositBt:hover {
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  box-shadow: none;
+}
 .tEmpty {
   padding: 40px 16px;
   text-align: center;
   color: var(--k-t2);
   font-size: var(--k-fs-sm);
+}
+/* Inside the "nothing matches" sentence, so it has to read as part of it rather
+   than as a button parked underneath. */
+.inlineClear {
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--k-brand);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
 }
 .rowSkeleton {
   display: flex;
@@ -544,6 +703,19 @@
   color: var(--k-btn-solid-fg);
   font-weight: var(--k-fw-med);
   box-shadow: none;
+}
+/* A band preset with no market price to centre on, and Reset with nothing to
+   reset. Dimmed rather than hidden: the reason the chip is unavailable is that this
+   pool has no readable price, and a missing chip would look like a range this DEX
+   does not offer. */
+.preset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.preset:disabled:hover {
+  background: var(--k-glass-deep);
+  color: var(--k-t2);
+  box-shadow: var(--k-shadow-inset);
 }
 
 .priceRow {
@@ -1007,6 +1179,152 @@ a.txAction:hover {
   text-align: center;
 }
 
+/* ---------- section modals ---------- */
+/* The deposit form and the filter panel. Same shell as `BorrowModals.module.css`
+   and deliberately a second copy of it rather than an import: that is a lending
+   component's stylesheet, and one section's modal chrome should not be able to
+   move because someone restyled another's. The shell is 40 lines; the coupling
+   would outlast them.
+
+   `.modal`'s fill is `--k-card` rather than glass. A dialog over a scrim wants to
+   be read, not seen through, and every field inside it is already a recess. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--k-scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.modal {
+  width: 100%;
+  max-width: 420px;
+  /* The body scrolls, not the page: `82vh` keeps the header and the CTA on screen
+     while a tall deposit form (range chips, two bounds, two amount boxes) scrolls
+     between them. */
+  max-height: 82vh;
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-xl);
+  box-shadow: var(--k-shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The deposit form only. It carries the same fields as /pool/new, whose own
+   `.form` caps at 520 — 480 keeps two price boxes side by side without the dialog
+   becoming the width of the page it is over. */
+.modalWide {
+  max-width: 480px;
+}
+.mh {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: 16px 18px 12px;
+  flex: none;
+}
+.mt {
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+}
+.mx {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--k-fs-base);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.mx:hover {
+  background: var(--k-well2);
+  color: var(--k-t1);
+}
+.mb {
+  padding: 0 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+/* The panels inside a dialog, opaque where `.box` on the /pool/new page is glass:
+   glass over an opaque card samples the card and comes out as a flat tint anyway,
+   so the blur is cost with no effect. */
+.mBox {
+  background: var(--k-well);
+  border-radius: var(--k-r-md);
+  padding: 14px 15px;
+}
+/* Which pool this is, at the top of the deposit form. Same marks, name and
+   identity line the row carries, because the button was pressed on one row of a
+   table that lists the same pair at several fees on five chains — a dialog headed
+   only "USDC / USDT" would not say which of them. */
+.mPool {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: 0 3px 10px;
+}
+/* A range that cannot be minted, or one that would take only one token. Reads as a
+   note rather than an error colour: both are things the reader can fix by moving a
+   bound, and neither is a failure yet. */
+.mWarn {
+  margin-top: 10px;
+  font-size: var(--k-fs-xs);
+  line-height: 1.45;
+  color: var(--k-t2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border-radius: var(--k-r-sm);
+  padding: 9px 11px;
+}
+
+/* ---------- filter panel ---------- */
+.fRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  cursor: pointer;
+}
+.fRow input {
+  /* The platform checkbox, tinted. A hand-rolled box would have to reimplement
+     focus, indeterminate and the space key for no gain — the control is a
+     checkbox. */
+  accent-color: var(--k-brand);
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.fLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--k-fs-sm);
+}
+/* What the option covers, or how many rows it holds. Not a tooltip: the count is
+   the reason to tick one of these, so it belongs on the line. */
+.fNote {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.fActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 /* ---------- mobile ---------- */
 @media (max-width: 720px) {
   .wrap {
@@ -1015,15 +1333,125 @@ a.txAction:hover {
        notched phones. Cf. trade.module.css and Nav.module.css. */
     padding: 16px 14px calc(60px + env(safe-area-inset-bottom, 0px));
   }
-  /* Five columns inside 280px crushes every cell. Scroll the table in its own
+  /* Six columns inside 280px crushes every cell. Scroll the table in its own
      container instead, so the columns stay legible and the page body never
-     scrolls sideways. */
+     scrolls sideways.
+
+     Deliberately not the stacked treatment the lending tables and /portfolio take
+     below this width. Those are the reader's own positions, where nobody reads
+     their stKLD row against their USDC row, so alignment buys nothing; this table
+     exists to be read down its columns — the deepest pool, the best APR — and a
+     column only compares if it stays a column. Swiping to a figure is a worse
+     trade here than swiping to one there. */
   .table {
     overflow-x: auto;
   }
+  /* The pair cell gets a fixed column here instead of its 1.8fr share, that column
+     is pinned to the left edge, and the row minimum rises to pay for the width.
+
+     WHY A FIXED COLUMN
+
+     1.8fr of a 560px row is 155.6px, and the two 28px marks and their gap take
+     58 of that, leaving the name and its fee line 97.6px. Measured in the app's
+     own Geist at --k-fs-base: "USDC / USDT" is 101.4px, "WETH / USDC" 105.3,
+     "WBNB / USDT" 105.8, "stKLD / kfUSD" 109.6. Five of the six pairs the
+     registries currently list therefore broke after the slash — only
+     "KLD / USDC" (90.7px) fitted, which is why the fault looked intermittent
+     rather than universal. A pair name on two lines reads as two separate assets,
+     and naming one pool is the whole job of this column.
+
+     WHY 240px
+
+     The identity line under the name has to clear the same bar, and it is the
+     wider of the two: `0.30% · V3`, then the chain logo and its shortName.
+     Measured as the real flex row (13px text, 6px gap, 14px logo, 4px gap) it runs
+     109.7px on "Arc", 135 on "Sepolia", 153.9 on "Robinhood", 164.9 on
+     "BSC Testnet" and 168.9 on "Base Sepolia" — the widest of the fourteen labels
+     in chains.ts, and this table lists every chain we deployed to, so that is a
+     row we serve rather than a hypothetical. A 132px text box wrapped four of six
+     rows and 156px still wrapped two; 240px gives 182px, which clears the worst
+     case with 13px left over for the fallback face during the font swap. Wrapping
+     is still the graceful failure — `.pairFee` keeps its flex-wrap — but it should
+     not be the normal case, and on desktop it never was.
+
+     Fixed px rather than a wider fr because a fr track only stays aligned with the
+     header's while neither hits a content minimum: pin the pair column and the
+     header cannot drift no matter what a row holds. The row minimum rises by the
+     same 50px the column gained, so the four figure columns stay exactly where
+     they were at 87.9px each — enough for a 4dp price like `1234.5678` — and the
+     whole cost of both fixes is 90px of scroll distance, not legibility.
+
+     WHY 760 AND NOT 650
+
+     The Deposit button added a sixth track. 650 was 240 + four figure columns +
+     five 12px gaps; the button's 96px and its own gap take the total to 758, so
+     760. Left at 650 the six tracks would have divided the old width and taken
+     22px off each figure column, which is the price column's last two digits — the
+     scroll distance is cheap here and the columns are not. Uniswap's own mobile
+     pool table sits at 760 for the same reason. */
   .pools .thead,
   .pools .row {
-    min-width: 560px;
+    grid-template-columns: 240px 1fr 1fr 1fr 0.8fr 96px;
+    min-width: 760px;
+  }
+  .pools .pairName {
+    white-space: nowrap;
+  }
+  /* A card that scrolls sideways should clip at its own border. The scroll clip is
+     the padding box, so `.table`'s 8px of horizontal padding sits *inside* it and
+     the tail of the Price column stayed visible there — a strip of digit fragments
+     down the left edge, immediately left of the cell pinned below. Vertical padding
+     stays: it is the card's breathing room and nothing scrolls through it. */
+  .table.pools {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  /* Pin the pair to the left edge, so swiping out to APR does not take the name of
+     the pool with it. Six columns do not fit a phone and this table refuses to
+     stack, for the reason above — which means the reader is always looking at a
+     figure some distance from the row it belongs to, and a label that scrolls away
+     makes them swipe back to find out whose 4.12% they just read.
+
+     `align-self: stretch` because `.row` centres its items: left alone the cell is
+     content-height and the scrolled figures pass above and below it.
+
+     `margin-left` out, `padding-left` back in bleeds `.row`'s own 14px of padding
+     into the cell, so the opaque swatch starts at the track origin while the text
+     stays where it was. Without it the pin engages 14px to the left of the cell's
+     resting place and jerks the name sideways as the gesture starts. Measured at
+     390px: the cell's left edge sits at x 15 at rest, at scrollLeft 8 and fully
+     scrolled, the name holds at x 87 through all three, and the last figure travels
+     the full 290px. Both grids still resolve to the same six tracks, so pinning
+     the cell does not disturb the header alignment. */
+  .pools .thead > :first-child,
+  .pools .row > .pairCell {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    align-self: stretch;
+    margin-left: -14px;
+    padding-left: 14px;
+    /* Opaque, because the figures pass behind it — and rebuilt out of the two
+       tokens the card's own fill is made of rather than --k-well2 or a flat grey,
+       so it reads as that surface in either theme instead of a band painted down
+       the table. Two branches because `.k-glass` has two: --k-card where there is
+       no backdrop-filter, the glass fill over the page where there is.
+
+       Exact wherever `.kaleido-v2::before` has fallen off to the page colour, and
+       a few units cooler than the card where those green radials are still strong,
+       because this fill cannot see them. Sampling the real backdrop is not open to
+       it: `backdrop-filter` on a cell the row scrolls under samples the figures
+       going past and smears them across the column. */
+    background: var(--k-card);
+    box-shadow: 1px 0 0 var(--k-line);
+  }
+  @supports (
+    (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+  ) {
+    .pools .thead > :first-child,
+    .pools .row > .pairCell {
+      background: linear-gradient(var(--k-glass), var(--k-glass)), var(--k-bg);
+    }
   }
   /* One column: a 300px sidebar beside a chart inside 280px leaves neither
      readable. Stats go under the chart rather than above it, because the chart
@@ -1037,7 +1465,8 @@ a.txAction:hover {
     margin-left: 0;
   }
   /* Four columns of transaction crush at this width for the same reason the
-     pools table does, and take the same fix. */
+     pools table does, and take the same fix — including the same refusal to
+     stack. A swap list is read down its Time column as much as across a row. */
   .txns {
     overflow-x: auto;
   }
