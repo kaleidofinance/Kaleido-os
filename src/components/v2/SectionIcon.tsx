@@ -3,9 +3,10 @@ import type { ReactNode } from "react";
 /**
  * One line icon per top-level section of the app.
  *
- * TWO CALLERS, ONE SET. The landing page's product rail draws these at 18px beside
- * each product name, and Nav's mobile tab bar draws them at 20px above each label.
- * They were separate before and both were weak: the rail carried the products' real
+ * TWO CALLERS, ONE SET. The landing page's product rail draws five of these at 18px
+ * beside each product name, and Nav's mobile tab bar and More sheet draw all eight
+ * at 20px above or beside each label. They were separate before and both were weak:
+ * the rail carried the products' real
  * token logos, which name a market rather than a product — Trade and Liquidity drew
  * the identical ETH/USDC pair — and the tab bar carried Unicode glyphs, `⇄ ◎ ⇢ ▲ $
  * ◈ ◍`, which are whatever the device's font decides they are. `◍` in particular is
@@ -22,13 +23,24 @@ import type { ReactNode } from "react";
  * a compile error at ProductRail's call site, which is where it should be.
  *
  * `leaderboard` and `portfolio` are named for their pages because they have no
- * mechanism — they are the two sections that show you the result of one.
+ * mechanism — they are the two sections that show you the result of one. `faucet`
+ * is named for its page too, and is the one key with no counterpart in `ArtKind`:
+ * the landing page's product rail has no faucet card and should not have one, so
+ * the two sets overlap in five places rather than being the same list. The test
+ * asserts the direction that matters — every ArtKind is a key here — not equality.
  */
 export type SectionIconKind =
-  "swap" | "range" | "book" | "wrap" | "mint" | "leaderboard" | "portfolio";
+  | "swap"
+  | "range"
+  | "book"
+  | "wrap"
+  | "mint"
+  | "leaderboard"
+  | "portfolio"
+  | "faucet";
 
 /**
- * 24-unit grid, one 1.5 stroke weight, round caps — the seven have to look like a
+ * 24-unit grid, one 1.5 stroke weight, round caps — the eight have to look like a
  * set at 18px, which means no filled shapes and no second weight.
  *
  * Absolute coordinates throughout. Relative shorthand packs tighter and makes an
@@ -94,6 +106,21 @@ const PATHS: Record<SectionIconKind, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="8.5" />
       <path d="M12 3.5V12H20.5" />
+    </>
+  ),
+
+  /* A spout and one drop under it. The only icon in the set drawn as an object
+     rather than a mechanism, because the faucet is not one: it hands out testnet
+     assets, and there is nothing about that worth abstracting into arrows.
+
+     A drop and not a coin — `mint` and `portfolio` are both 8.5-radius circles
+     already, and a third round shape at 18px would read as one of them. The
+     teardrop is stroked like everything else here, so it stays line work at the
+     set's one weight. */
+  faucet: (
+    <>
+      <path d="M6 6.5H14.5V10.5" />
+      <path d="M14.5 13C14.5 13 12.4 15.5 12.4 17A2.1 2.1 0 0 0 16.6 17C16.6 15.5 14.5 13 14.5 13Z" />
     </>
   ),
 };
