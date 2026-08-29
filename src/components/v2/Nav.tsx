@@ -25,12 +25,19 @@ import styles from "./Nav.module.css";
 /**
  * Trade leads: it is the front door and the reason most people arrive.
  *
- * `primary` marks the five that earn a slot in the mobile tab bar. Seven tabs do
- * not fit a phone without becoming unreadable, so Stake and Stable get none —
- * they live behind the bar's sixth tab, "More", which opens a sheet. The sheet's
- * contents are derived from this array (everything not `primary`), so flipping
- * one flag moves a destination between the bar and the sheet and there is no
- * second list to keep in step.
+ * `primary` marks the five that earn a slot in the mobile tab bar. Eight tabs do
+ * not fit a phone without becoming unreadable, so Stake, Stable and Leaderboard
+ * get none — they live behind the bar's sixth tab, "More", which opens a sheet.
+ * The sheet's contents are derived from this array (everything not `primary`), so
+ * flipping one flag moves a destination between the bar and the sheet and there is
+ * no second list to keep in step.
+ *
+ * Which five is a product question rather than a layout one, and it has now been
+ * answered twice. Leaderboard held a tab until the private testnet showed what a
+ * new tester actually reaches for: standings are worth reading once a week, while
+ * an empty wallet blocks every other section on this list. The faucet took the
+ * slot. Nothing in the CSS cares — `.tabbar` is a flex row of `flex: 1` columns,
+ * not a fixed grid, so the count is whatever this array says it is.
  *
  * The top strip is not their route on a phone and must not be made one again. At
  * 390px it measured 0px wide against a 514px scrollWidth, so what it rendered was
@@ -46,9 +53,9 @@ import styles from "./Nav.module.css";
  * outside desktop, and a font with no glyph renders the tofu box. They are also
  * two different weights and two different optical sizes from each other, because
  * they come from whichever fallback family happens to have each one. <SectionIcon>
- * draws all seven on one grid at one stroke weight, and the landing page's product
- * rail draws the same set — so the icon over "Trade" in the tab bar is the icon
- * beside "Trade" on the front door.
+ * draws all eight on one grid at one stroke weight, and the landing page's product
+ * rail draws five of the same set — so the icon over "Trade" in the tab bar is the
+ * icon beside "Trade" on the front door.
  *
  * The type annotation is the point of writing it out: `icon` is a
  * `SectionIconKind`, so a typo fails to compile here at the data rather than
@@ -84,14 +91,34 @@ const LINKS: {
   /* Was Explore, which was a copy of Uniswap's page and named a job it had
      stopped doing: both of its tables moved to /pool, and what a reader arrives
      for now is standings. Named after that. /explore redirects — see
-     next.config.mjs, because the old label shipped and gets bookmarked. */
+     next.config.mjs, because the old label shipped and gets bookmarked.
+
+     Secondary, and the only entry here that lost a tab rather than never having
+     had one. Nothing about the page changed; what changed is the observation that
+     it is the one destination on this list a tester can skip and still use the
+     protocol, which makes it the cheapest thing to move when the bar needs a
+     slot. It reads the same in the sheet — same icon, same active state, and
+     `moreActive` lights the More tab while you are standing on it. */
   {
     href: "/leaderboard",
     label: "Leaderboard",
     icon: "leaderboard",
-    primary: true,
+    primary: false,
   },
   { href: "/portfolio", label: "Portfolio", icon: "portfolio", primary: true },
+  /* Last in the array and first in a tester's day. It is the one destination here
+     that exists because of the phase we are in rather than because of the product
+     — the faucet hands out testnet assets, and on mainnet this entry goes away
+     with the contract it points at — and that is precisely why it holds a tab: a
+     new tester arrives with an empty wallet, and every other section on this list
+     refuses until they have something in it. Reaching the faucet by typing a URL
+     was fine while the only testers were us.
+
+     It was secondary on the argument that a temporary entry should be cheap to
+     remove, and it still is. Last here is last in the desktop strip and the
+     rightmost tab before More, so deleting this line at mainnet moves nothing
+     else: the bar goes back to five columns on its own. */
+  { href: "/faucet", label: "Faucet", icon: "faucet", primary: true },
 ];
 
 /* One reading of "is this the page you are on", asked in four places now — the
@@ -108,10 +135,10 @@ function isActive(l: (typeof LINKS)[number], pathname: string | null): boolean {
  * It copies that module's grid and stroke — 24 units, 1.5 weight, round caps,
  * `currentColor` — because it sits in the same row at the same size and a second
  * weight beside the other five would be visible. What it does not do is join the
- * union, and that is deliberate: `SectionIconKind` is exactly the seven top-level
+ * union, and that is deliberate: `SectionIconKind` is exactly the eight top-level
  * sections, one per LINKS entry, and products.test.ts asserts both halves of that
- * (seven keys parsed from the dispatch table, every one of them used by a LINKS
- * `icon`). "More" is chrome — it names a control, not a section — so an eighth key
+ * (eight keys parsed from the dispatch table, every one of them used by a LINKS
+ * `icon`). "More" is chrome — it names a control, not a section — so a ninth key
  * would either fail that check or force it to be loosened into asserting nothing.
  *
  * Three dots and not a chevron: the sheet holds destinations, and a chevron says
@@ -158,8 +185,8 @@ function MoreIcon() {
  *
  * FOCUS IS HANDLED HERE AND NOWHERE ELSE IN THIS CODEBASE, ON PURPOSE. The other
  * four dialogs (NetworkSelector, NotificationCenter, WalletMenu, the borrow
- * modals) do none of this. This one is the way Stake and Stable are reached on a
- * phone at all — that is the entire reason it exists — so a keyboard or
+ * modals) do none of this. This one is the way every secondary section is reached
+ * on a phone at all — that is the entire reason it exists — so a keyboard or
  * screen-reader user who cannot get into it is back to the hole it was built to
  * close, and "consistent with the others" would mean consistent with a dead end.
  * The three parts:

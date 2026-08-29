@@ -364,11 +364,15 @@
     font-family: inherit;
     cursor: pointer;
   }
-  /* Six columns instead of five, so the widest label is the constraint: at 375px
-     each column has ~58px of content box and "Leaderboard" needs ~54px at 10px.
-     It fits down to 360px and truncates below roughly 340px, which is the trade
-     for giving Stake and Stable a home. Without this the label would wrap to two
-     lines and leave one column taller than the other five. */
+  /* Six columns instead of five, so the widest label is the constraint. It used to
+     be a tight one: at 375px each column has ~58px of content box and
+     "Leaderboard" measured ~54px at 10px, fitting down to 360px and truncating
+     below roughly 340px. Leaderboard moved into the sheet, and the longest label
+     left in the bar — "Liquidity", "Portfolio" — is two characters shorter, so the
+     margin is no longer the thing that decides. Kept anyway, and not as dead
+     insurance: without it a label that does outgrow its column wraps to two lines
+     and leaves that column taller than the other five, which is a broken bar
+     rather than a truncated word. The next label added here gets it for free. */
   .tabLabel {
     max-width: 100%;
     overflow: hidden;
@@ -381,8 +385,8 @@
 }
 
 /* ---------- the More sheet ---------- */
-/* Opened by the tab bar's sixth tab, and the reason Stake and Stable are reachable
-   on a phone at all — see the note on LINKS in Nav.tsx.
+/* Opened by the tab bar's sixth tab, and the reason Stake, Stable and Leaderboard
+   are reachable on a phone at all — see the note on LINKS in Nav.tsx.
 
    Bottom-anchored where NetworkSelector's dialog is centred, which is the only
    deliberate difference between them: this one is opened by a thumb that is already
