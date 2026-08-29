@@ -151,8 +151,12 @@ export default function FaucetPage() {
     ? getChainAddressUrl(faucet.chainId, faucet.address)
     : null;
 
-  /* Public faucets for this chain, and what it calls the thing they hand out. */
-  const gasLinks = gasFaucetsFor(faucet.chainId);
+  /* Public faucets for this chain, and what it calls the thing they hand out.
+     Memoised because `gasFaucetsFor` hands back a fresh sorted copy on every
+     call — deliberately, so a caller cannot reorder the table — which would give
+     `gasRow` below a new dependency identity on every render and stop its memo
+     from memoising anything. */
+  const gasLinks = useMemo(() => gasFaucetsFor(faucet.chainId), [faucet.chainId]);
   const gasName = gasNameFor(faucet.chainId);
 
   /*
@@ -163,11 +167,14 @@ export default function FaucetPage() {
    * A zero balance is the whole condition: it is not "low on gas", it is unable
    * to send the transaction that would fix that.
    *
-   * Only Sepolia, Base and Robinhood register that row, though — BSC testnet and
-   * Arc still run the faucet bytecode from before native support, so they stock
-   * tokens only. That is not a config gap to be filled in: `FAUCET_EXTEND`
-   * cannot add a `receive()`, it takes a redeploy, so on those two chains there
-   * is no in-app route to gas at all and every answer happens elsewhere.
+   * Only Sepolia, Base and Robinhood register that row, though. BSC testnet and
+   * Arc still run the faucet bytecode from before native support, and no
+   * `FAUCET_EXTEND` closes that — it cannot add a `receive()`, it takes a
+   * redeploy. Note the two are not the same shape underneath: BSC stocks tokens
+   * only, while Arc's gas IS one of its tokens (USDC, listed as a 6dp alias of
+   * the native balance) and so appears in the table without appearing here.
+   * `gasRow` below is what reconciles them, by asking whether the gas can be paid
+   * rather than whether the sentinel is present.
    *
    * Read from the live asset list rather than a hardcoded pair of chain ids, so
    * the day either one is redeployed with native support the page follows the
@@ -192,20 +199,6 @@ export default function FaucetPage() {
    * empty list would be wrong on three of the five chains.
    */
   const rowKnown = !faucet.loading && !faucet.error;
-
-  /*
-   * On a chain with no native row, the chain's own faucet IS the primary action.
-   *
-   * `gasFaucetsFor` sorts first-party first, so this is BNB Chain's own faucet on
-   * 97 and Circle's on Arc — in both cases the team that actually issues the gas.
-   * Leading with it rather than listing it beside a sponsored-fee button is the
-   * honest arrangement: the button is off unless an operator key is set, so
-   * offering it as the equal-weight in-app option would send the one reader it
-   * was meant for into a 503 while the thing that works sat next to it looking
-   * like a footnote.
-   */
-  const leadLink = rowKnown && !hasNativeRow ? gasLinks[0] : undefined;
-  const restLinks = leadLink ? gasLinks.slice(1) : gasLinks;
 
   /*
    * "Worth offering."
@@ -252,6 +245,114 @@ export default function FaucetPage() {
     if (faucet.claimingAll) return { label: "Claim", on: false };
     return { label: "Claim", on: true };
   };
+
+  /**
+   * The gas row this chain's faucet cannot actually pay out, as a row that links
+   * out to the faucet that can.
+   *
+   * Two chains need this, for two different reasons, and both were measured on
+   * chain rather than inferred from the deployment records:
+   *
+   *  - **BSC testnet** runs the faucet bytecode from before native support:
+   *    `assetInfo` lists no `address(1)` row at all, while Sepolia's, Base's and
+   *    Robinhood's do. There is nothing to claim.
+   *  - **Arc** does list its gas — its native currency IS USDC and
+   *    `0x3600…0000` is an ERC20 alias of the same balance (the faucet reads
+   *    8.694815 through both `eth_getBalance` and `balanceOf`, the identical
+   *    number). But the row's drip is **100.0** against a stock of **8.694815**,
+   *    i.e. less than one drip, so `claim` reverts `InsufficientContractBalance`
+   *    and `useFaucet` already flags it `empty`. A row whose button says "Out of
+   *    stock" is not a route to gas.
+   *
+   * Both are the same thing to the reader — the gas they need to claim anything
+   * else here has to come from off-site — so both get the link. Note this is not
+   * a stock gap that topping up would close on Arc either: its USDC and WUSDC
+   * share one budget with the deployer's own gas, and the deployer is down to
+   * 0.52 against a 1.0 reserve.
+   *
+   * A row, not just the panel below, because the panel is where someone looks
+   * *after* noticing they are stuck — and the table is where they look first. The
+   * whole point is that "get BNB" is a step in the same list as "get USDT", since
+   * on these chains it is the step that has to happen before any of the others.
+   *
+   * Null where the faucet can genuinely pay gas out (Sepolia, Base, Robinhood),
+   * and null before the asset list has loaded, since an empty list is not evidence
+   * of a missing row — it is the SSR pass, on every chain.
+   */
+  const gasRow = useMemo(() => {
+    if (!rowKnown) return null;
+    const meta = getChainMeta(faucet.chainId);
+    const symbol = meta?.nativeCurrency.symbol;
+    /* No symbol means chains.ts does not carry this chain, which is the same case
+       where gasFaucetsFor returns nothing — there would be nowhere to send them. */
+    if (!symbol || gasLinks.length === 0) return null;
+
+    /*
+     * Can this faucet actually hand out gas right now? Not "does it list it" —
+     * Arc lists it and cannot pay it. The row has to exist, be unpaused and hold
+     * at least one drip, which is exactly what `empty`/`paused` already encode.
+     *
+     * The native row is found either by the address(1) sentinel or by symbol,
+     * because those are two genuinely different ways a chain carries its gas: the
+     * sentinel on the three redeployed faucets, and a 6dp ERC20 alias on Arc.
+     */
+    const gasAsset =
+      nativeAsset ??
+      faucet.assets.find(
+        (a) => a.symbol.toUpperCase() === symbol.toUpperCase(),
+      );
+    if (gasAsset && !gasAsset.empty && !gasAsset.paused) return null;
+
+    return { symbol, link: gasLinks[0], asset: gasAsset };
+  }, [rowKnown, nativeAsset, faucet.chainId, faucet.assets, gasLinks]);
+
+  /*
+   * On a chain with no native row, the chain's own faucet IS the primary action.
+   *
+   * `gasFaucetsFor` sorts first-party first, so this is BNB Chain's own faucet on
+   * 97 and Circle's on Arc — in both cases the team that actually issues the gas.
+   * Leading with it rather than listing it beside a sponsored-fee button is the
+   * honest arrangement: the button is off unless an operator key is set, so
+   * offering it as the equal-weight in-app option would send the one reader it
+   * was meant for into a 503 while the thing that works sat next to it looking
+   * like a footnote.
+   *
+   * Promoted out of the link list — but only when the table is not already
+   * carrying it. `gasRow` renders a Claim-shaped link in the asset table itself,
+   * which is the primary action wherever it exists; leading the panel with the
+   * same URL as a second brand-coloured button would be two controls for one
+   * errand, so this is left undefined in that case and the link stays in the
+   * ordinary list below.
+   *
+   * It still fires where the table cannot show one: no sentinel row to read a
+   * balance from, and a gas asset the faucet *can* pay, so `gasRow` correctly
+   * stands down. On today's five chains that is nobody — both BSC and Arc go
+   * through `gasRow` — but it is precisely the state Arc enters the moment its
+   * USDC is topped up past one drip, and a wallet at literal zero still cannot
+   * pay for the claim call that would fill it. So the panel keeps its lead there
+   * rather than degrading to a list of equal-weight links.
+   *
+   * BELOW `gasRow`, NOT ABOVE IT. These two lines sat before the memo they read,
+   * which is a temporal dead zone: `const` is hoisted but not initialised, so the
+   * page threw "Cannot access 'gasRow' before initialization" on every render —
+   * the whole route, not a branch of it. `tsc` catches it (TS2448/TS2454) and
+   * nothing else would have.
+   */
+  const leadLink =
+    rowKnown && !hasNativeRow && !gasRow ? gasLinks[0] : undefined;
+  const restLinks = leadLink ? gasLinks.slice(1) : gasLinks;
+
+  /**
+   * The address of the listed row that should link out instead of claiming, if
+   * any.
+   *
+   * On Arc the gas row is a real, listed asset (its 6dp USDC alias) that simply
+   * cannot pay — so the link belongs on the button already in that row, not on a
+   * second row describing the same asset. On BSC there is no such row, so
+   * `gasRow` renders one. Same link either way; the difference is only whether
+   * the table already had somewhere to put it.
+   */
+  const linkOutAddress = gasRow?.asset?.address ?? null;
 
   /*
    * Shown only when it saves signatures — two or more assets due at once.
@@ -367,49 +468,124 @@ export default function FaucetPage() {
                   This faucet has no assets listed yet.
                 </div>
               ) : (
-                faucet.assets.map((a) => {
-                  const action = cta(a);
-                  return (
-                    <div className={s.row} key={a.address}>
+                <>
+                  {/*
+                    The gas row, first, where the faucet's own native row sits on
+                    the chains that have one — because it is the step that comes
+                    before the others here, not an afterthought below them.
+
+                    Deliberately dashed and dimmed rather than styled like the
+                    rows under it: nothing in this row is a reading from our
+                    faucet. Every figure is unknown to us — the operator sets
+                    the drip and can change it without telling us — so the cells
+                    say so instead of showing a number that looks measured. Cf.
+                    gasFaucets.ts, which stores no amounts for the same reason.
+                  */}
+                  {/* Only where the table has no row for the gas at all — BSC.
+                      On Arc the gas IS a listed row (its USDC alias) and gets the
+                      link on its own button below, rather than a duplicate row. */}
+                  {gasRow && !gasRow.asset && (
+                    <div className={`${s.row} ${s.rowOut}`} key="gas-external">
                       <span className={s.asset}>
                         <span
-                          className={`${s.tki} ${hasTokenIcon(a.symbol) ? s.tkiArt : ""}`}
+                          className={`${s.tki} ${hasTokenIcon(gasRow.symbol) ? s.tkiArt : ""}`}
                         >
                           <TokenIcon
-                            symbol={a.symbol}
+                            symbol={gasRow.symbol}
                             size={30}
-                            fallback={a.symbol.slice(0, 3)}
+                            fallback={gasRow.symbol.slice(0, 3)}
                           />
                         </span>
                         <span className={s.assetText}>
-                          <b>{a.symbol}</b>
-                          <em>{a.decimals} decimals</em>
+                          <b>{gasRow.symbol}</b>
+                          <em>needed to claim · not stocked here</em>
                         </span>
                       </span>
-                      <span className={`${s.num} tabular`}>
-                        {fmt(a.amount, 4)}
-                      </span>
-                      <span className={`${s.num} ${s.dim} tabular`}>
-                        {isConnected ? fmt(a.balance, 4) : "—"}
-                      </span>
-                      <span className={`${s.num} ${s.dim} tabular`}>
-                        {fmt(a.stock, 0)}
-                        {a.claimsLeft > 0 && (
-                          <em className={s.left}>{a.claimsLeft} claims left</em>
-                        )}
-                      </span>
+                      <span className={`${s.num} ${s.dim} tabular`}>—</span>
+                      <span className={`${s.num} ${s.dim} tabular`}>—</span>
+                      <span className={`${s.num} ${s.dim} tabular`}>—</span>
                       <span className={s.act}>
-                        <button
-                          className={s.claim}
-                          disabled={!action.on}
-                          onClick={() => faucet.claim(a.address)}
+                        {/*
+                          The claim button for this row is a link, because that is
+                          literally where the claim happens. Carries the operator's
+                          name rather than a bare "Claim": the reader is about to
+                          leave the app, and a button that navigates off-site
+                          should say so before it is pressed, not after.
+                        */}
+                        <a
+                          className={s.claimOut}
+                          href={gasRow.link.url}
+                          target="_blank"
+                          rel="noreferrer"
                         >
-                          {action.label}
-                        </button>
+                          Claim at {gasRow.link.operator} ↗
+                        </a>
                       </span>
                     </div>
-                  );
-                })
+                  )}
+                  {faucet.assets.map((a) => {
+                    const action = cta(a);
+                    return (
+                      <div className={s.row} key={a.address}>
+                        <span className={s.asset}>
+                          <span
+                            className={`${s.tki} ${hasTokenIcon(a.symbol) ? s.tkiArt : ""}`}
+                          >
+                            <TokenIcon
+                              symbol={a.symbol}
+                              size={30}
+                              fallback={a.symbol.slice(0, 3)}
+                            />
+                          </span>
+                          <span className={s.assetText}>
+                            <b>{a.symbol}</b>
+                            <em>{a.decimals} decimals</em>
+                          </span>
+                        </span>
+                        <span className={`${s.num} tabular`}>
+                          {fmt(a.amount, 4)}
+                        </span>
+                        <span className={`${s.num} ${s.dim} tabular`}>
+                          {isConnected ? fmt(a.balance, 4) : "—"}
+                        </span>
+                        <span className={`${s.num} ${s.dim} tabular`}>
+                          {fmt(a.stock, 0)}
+                          {a.claimsLeft > 0 && (
+                            <em className={s.left}>
+                              {a.claimsLeft} claims left
+                            </em>
+                          )}
+                        </span>
+                        <span className={s.act}>
+                          {/* The gas row on a chain that cannot pay it out links
+                              to the faucet that can, in place of a disabled
+                              "Out of stock" that offers nothing. Every other row
+                              keeps its real Claim button — the tokens we deployed
+                              on these chains are stocked and claimable, and only
+                              the gas is not. */}
+                          {a.address === linkOutAddress && gasRow ? (
+                            <a
+                              className={s.claimOut}
+                              href={gasRow.link.url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Claim at {gasRow.link.operator} ↗
+                            </a>
+                          ) : (
+                            <button
+                              className={s.claim}
+                              disabled={!action.on}
+                              onClick={() => faucet.claim(a.address)}
+                            >
+                              {action.label}
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </>
               )}
             </div>
 
@@ -428,9 +604,11 @@ export default function FaucetPage() {
               "sponsorship is not enabled" 503 is the one it would have helped —
               and they meet it with the public faucets already on screen beside
               it, rather than as a dead end. Where it cannot — BSC testnet and
-              Arc, on the pre-receive() bytecode — the chain's own faucet leads
-              instead, because it is the only thing on this panel that can
-              actually fund a wallet there.
+              Arc — the lead has already happened in the table above, as that
+              row's Claim button, so this panel deliberately leads with nothing
+              and explains where that button goes instead. Repeating the same URL
+              here as a brand-coloured button would be two controls for one
+              errand; `leadLink` stands down for exactly that reason.
             */}
             {(gasLinks.length > 0 || canAskForFee) && (
               <section className={`${s.gas} ${knownStuck ? s.gasLoud : ""}`}>
@@ -440,19 +618,32 @@ export default function FaucetPage() {
                       ? `You have no ${gasName} to claim with`
                       : `Need ${gasName} first?`}
                   </b>
-                  {/* Two different facts, not one sentence with a variable in
-                      it: where a native row exists the faucet covers you from
-                      the second claim onwards, and where it does not, it never
-                      will. Promising a row that is not in the table above would
-                      be wrong on the two chains that stock tokens only — and
-                      so would the reverse claim, asserted while the list is
-                      still loading. */}
+                  {/* Four different facts, not one sentence with variables in
+                      it. Where the table carries the link, this points at it
+                      rather than repeating it — and it has to distinguish "no
+                      row" (BSC) from "the row is out of stock" (Arc), because a
+                      reader looking at a USDC row while being told there isn't
+                      one stops believing the rest of the page. Where a native row
+                      exists and pays, the faucet covers them from the second
+                      claim onwards; where it does not, it never will. And none of
+                      it is asserted while the list is still loading. */}
                   <p className={s.gasBody}>
                     {!rowKnown ? (
                       <>
                         Claiming is a transaction, so it costs a fee. A wallet at
                         exactly zero has to get its first {gasName} from outside
                         the app before it can claim anything here.
+                      </>
+                    ) : gasRow ? (
+                      <>
+                        Claiming is a transaction, so it costs a fee, and{" "}
+                        {gasRow.asset
+                          ? `the ${gasName} row above is out of stock`
+                          : `this faucet cannot stock ${gasName} — there is no ${gasName} row above`}
+                        . That row&rsquo;s Claim button goes to{" "}
+                        {gasRow.link.operator}&rsquo;s faucet instead; get{" "}
+                        {gasName} there first, then come back and claim the rest
+                        here.
                       </>
                     ) : hasNativeRow ? (
                       <>
@@ -474,12 +665,12 @@ export default function FaucetPage() {
                 </div>
 
                 <div className={s.gasActions}>
-                  {/* The primary action, and on a chain with no gas row it is a
-                      link rather than a button. Styled as the page's brand CTA
-                      because that is what it is here: nothing else on this panel
-                      can put gas in an empty wallet on BSC or Arc, so demoting it
-                      to one of a row of outlined links would hide the only route
-                      that works. */}
+                  {/* The panel's primary action, as a link rather than a button,
+                      for a chain where we can neither read the wallet's native
+                      balance nor pay the gas out ourselves. Styled as the brand
+                      CTA because in that state it is the only route that works.
+                      Undefined wherever the table above already carries the same
+                      link — see the note on `leadLink`. */}
                   {leadLink && (
                     <a
                       className={s.gasCta}
