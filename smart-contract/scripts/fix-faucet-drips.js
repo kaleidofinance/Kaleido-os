@@ -262,9 +262,12 @@ async function main() {
    * WUSDC balances were actually obtained.
    *
    * Only entries the record already carries are updated. An asset listed on chain
-   * but missing from the record (Arc's KLD, added by FAUCET_EXTEND without a
-   * refresh) is reported rather than invented, because a record entry carries `key`,
-   * `source` and `decimals` that `assetInfo` cannot supply.
+   * but missing from the record — KLD on all five faucets, listed and stocked by
+   * `deploy-kld.js` as its last step, which records the fact in the KLD record and
+   * never in the faucet's — is reported rather than invented, because a record
+   * entry carries `key`, `source` and `decimals` that `assetInfo` cannot supply.
+   * `FAUCET_EXTEND=1 deploy-faucet.js` is what fills those in; it reconciles an
+   * already-listed asset without re-listing or re-funding it.
    */
   const after = await faucet.assetInfo(signer.address);
   const liveByAddr = new Map();
