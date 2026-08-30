@@ -78,6 +78,13 @@
 .statValue {
   font-size: var(--k-fs-xl);
   letter-spacing: -0.02em;
+  /* A backstop, not the fix. The fix is `parseFigure` in layout.tsx, which is
+     why no figure reaching here is long any more. But the values are contract
+     reads and the failure mode was severe out of proportion to the mistake: one
+     unformatted `formatUnits` result is twenty-two unbreakable characters, and
+     without this the column silently stops being width-bound and takes the page
+     with it. With it, the same mistake is merely ugly. */
+  overflow-wrap: anywhere;
 }
 
 /* two-column body */
@@ -99,9 +106,26 @@
   align-items: start;
 }
 @media (max-width: 860px) {
+  /* `minmax(0, 1fr)` and not `1fr`, for the same reason the desktop track above
+     is `minmax(0, 520px)` — and here it was the bug rather than a precaution.
+     `1fr` is `minmax(auto, 1fr)`, and that auto floor is the min-content width of
+     whatever is in the track, so the single stacked column could not shrink below
+     the widest thing the form contained. On a phone that is a row of collateral
+     chips or a "1 USDC = 0.99995 kfUSD" rate line — neither of which can wrap,
+     because none of their flex children could shrink either — so the column set
+     the page width and the viewport did not. `body { overflow-x: hidden }` in
+     globals.css then clipped the result instead of scrolling it, which is why the
+     boxes looked like they had simply grown past the screen edge. */
   .cols {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
+}
+/* The pair to the track above: a grid item is min-width:auto too, so zeroing the
+   track alone still leaves each column refusing to shrink. Both, or neither
+   works. */
+.left,
+.side {
+  min-width: 0;
 }
 .left {
   display: flex;
@@ -178,13 +202,24 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* The same pair as `.kv` in form.module.css, and needed here for a reason the
+     phone hides: this column is a fixed 300px track on desktop, so it is the
+     narrower of the two places these rows appear. "In vault (kafUSD)" is already
+     seventeen characters of it. */
+  gap: var(--k-s3);
   font-size: var(--k-fs-sm);
   padding: 7px 0;
   color: var(--k-t2);
 }
+.kv > span:first-child {
+  flex: none;
+}
 .kv b {
   color: var(--k-t1);
   font-weight: var(--k-fw-body);
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .pending {

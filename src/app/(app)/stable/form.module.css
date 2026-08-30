@@ -102,10 +102,26 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* A gap as well as the space-between, because `space-between` distributes
+     leftover room and there is none once the balance line is long — without it
+     the two halves touch instead of the row growing. */
+  gap: var(--k-s3);
   margin-top: 9px;
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
   min-height: 20px;
+}
+/* Both halves shrinkable, and the right one allowed to wrap. A flex child is
+   min-width:auto, so "Balance 253,301.37 · Max" held this row — and therefore
+   `.box`, and therefore the grid column, and therefore the page — at its own
+   min-content width on a phone. `min-width: 0` lets it narrow; without the wrap
+   it would then just clip mid-figure. */
+.sub > * {
+  min-width: 0;
+}
+.sub > *:last-child {
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 .sub b {
   color: var(--k-t1);
@@ -138,13 +154,30 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* Same reason as `.sub` above: space-between has nothing to distribute once the
+     value is long, so the label and the figure need a real gap between them. */
+  gap: var(--k-s3);
   font-size: var(--k-fs-sm);
   padding: 8px 2px;
   color: var(--k-t2);
 }
+/* The label keeps its width — "Minting fee" is two words and reads badly broken
+   across lines — and the value is the half that gives, because it is the half
+   that varies: "0.05% · 0.25 USDC" and "1 USDC = 0.99995 kfUSD" are both this
+   row, and both are longer than the label beside them. */
+.kv > span:first-child {
+  flex: none;
+}
 .kv b {
   color: var(--k-t1);
   font-weight: var(--k-fw-body);
+  min-width: 0;
+  text-align: right;
+  /* `anywhere` rather than `break-word`: the long values here are rate lines with
+     spaces in them, so a normal wrap handles almost every case — but "0.99995"
+     itself has no break opportunity, and this row must never be the thing that
+     decides how wide the page is. */
+  overflow-wrap: anywhere;
 }
 
 .cta {
@@ -176,6 +209,13 @@
 /* collateral selector chips (mint / redeem output) */
 .assets {
   display: flex;
+  /* Wraps rather than scrolls, unlike the market tables. Three chips is the whole
+     set and it is not going to grow much, so a second row of one chip is a worse
+     outcome than it sounds only if you never reach it — whereas a horizontal
+     scroller hides a collateral behind a gesture nobody knows is there. Without
+     this the row simply could not narrow, and it is inside the box that sets the
+     column width. */
+  flex-wrap: wrap;
   gap: 7px;
   margin-bottom: 10px;
 }
@@ -275,4 +315,41 @@
 .subBtn:disabled {
   color: var(--k-t3);
   cursor: not-allowed;
+}
+
+/* ---------- mobile ---------- */
+/* This file had no breakpoint at all, which is why the forms read as a desktop
+   card that happened to be on a phone. Everything above is now width-bound — the
+   rows shrink, the chips wrap, the grid column has a zero floor — so what is left
+   here is only what a 390px screen wants sized differently, not structure.
+   `stable.module.css` stacks the two columns at 860px; these are the phone rules,
+   so they share the 720px breakpoint the app's tab bar and nav use. */
+@media (max-width: 720px) {
+  /* 36px of a 362px content box went to side padding alone, and the box is the
+     thing the amount has to fit inside. 14px each side hands 8px back to the
+     figure while still reading as a well rather than a plain rule. */
+  .box {
+    padding: 15px 14px;
+  }
+  /* 34px was chosen against a 520px column. Beside a pill that cannot shrink, a
+     nine-digit balance pushed into it at that size has to scroll inside the
+     input to be read, which is a strange thing for the field you just typed
+     into. 28px fits the widest amount these forms deal with and is still the
+     largest text on the screen, which is the part that matters. */
+  .inp {
+    font-size: 28px;
+  }
+  /* Two lifecycle buttons side by side at --k-fs-sm ("Request withdrawal",
+     "Claim yield") do not both fit half a phone, and `flex: 1` on each cannot
+     help — it distributes what is left, not what is needed. Wrapping gives each
+     a full-width row of its own. */
+  .subActions {
+    flex-wrap: wrap;
+  }
+  .subBtn {
+    /* Full width once wrapped, rather than two half-rows of ragged widths. The
+       basis is what makes it wrap in the first place: `flex: 1` alone would
+       shrink them to fit and never break the line. */
+    flex: 1 1 100%;
+  }
 }
