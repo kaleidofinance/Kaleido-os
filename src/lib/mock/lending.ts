@@ -42,8 +42,11 @@ import { READ_ONLY_CHAIN_ID } from "@/config/provider";
  * MOCK_LISTINGS and MOCK_REQUESTS stand in for the API, so they follow the first
  * convention. MOCK_LOANS stands in for `useBorrowV2`, which maps the second, so
  * its `totalRepayment` is a decimal string and `totalRepaymentRaw` is that value
- * back through `parseUnits`. The mismatch is not hypothetical — it is exactly
- * what `usePortfolio.ts:247` gets wrong today.
+ * back through `parseUnits`. The mismatch is not hypothetical: `usePortfolio` used
+ * to run this producer's already-formatted `totalRepayment` through `formatUnits`
+ * a second time, which threw `invalid BigNumberish string` and hung the whole page
+ * on a spinner for anyone holding a loan. Its debt pricing now takes the value as
+ * a decimal and says at the call site which of the two conventions it is reading.
  *
  * `interest` IS BASIS POINTS, not a percentage: `convertbasisPointsToPercentage`
  * divides by 100 (FormatInterestRate.ts:6), so 850 renders as 8.50%.

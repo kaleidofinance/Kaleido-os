@@ -30,13 +30,32 @@ import { MOCK_TOKENS } from "./pools";
  * `liquidity`, `tokensOwed0` and `tokensOwed1` are raw base units in each leg's
  * own decimals, which is what the position manager returns.
  *
+ * `sqrtPriceX96` is DERIVED from the tick in that list rather than typed in, by
+ * `sqrtAt` below. It is the field /portfolio values a position from, so a
+ * hand-written one that disagreed with the tick above it would put a dollar
+ * figure on the LP group that contradicts the in-range badge on the same row —
+ * exactly the kind of two-sources-of-truth split ./market's header is about.
+ *
  * The four awkward states a positions table has to handle are each represented
  * once, on purpose: fees owed, nothing owed (Collect must be disabled, not
  * merely a no-op), out of range, and fully-withdrawn liquidity. That last row
- * has `liquidity: "0"` and is the one `usePortfolio.ts:292` skips — a closed
+ * has `liquidity: "0"` and is the one `usePortfolio`'s Staking & LP group skips — a
+ * closed
  * position that still holds uncollected fees is a real state, and the only way
  * to see whether both screens agree about it is to have one in the list.
  */
+
+/**
+ * The pool's `sqrtPriceX96` at a given tick, as slot0 reports it.
+ *
+ * sqrt(1.0001^tick) × 2^96, written with the halved exponent so the intermediate
+ * stays inside double range. Double arithmetic, so the last few digits differ
+ * from the contracts' exact fixed-point ladder — which does not matter for a
+ * fixture whose whole job is to be a plausible price at a stated tick, and is the
+ * same accuracy the consumer (lib/dex/positionValue.ts) works to anyway.
+ */
+const sqrtAt = (tick: number) =>
+  BigInt(Math.round(1.0001 ** (tick / 2) * 2 ** 96)).toString();
 export const MOCK_V3_POSITIONS: V3Position[] = [
   {
     // The main position: wide range, in range, real fees waiting.
@@ -50,6 +69,7 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     tokensOwed0: "41200000000000000", // 0.0412 WETH
     tokensOwed1: "138420000", // 138.42 USDC
     inRange: true,
+    sqrtPriceX96: sqrtAt(-195005),
   },
   {
     // Freshly minted: in range, nothing accrued yet, so Collect is disabled.
@@ -63,6 +83,7 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     tokensOwed0: "0",
     tokensOwed1: "0",
     inRange: true,
+    sqrtPriceX96: sqrtAt(-292071),
   },
   {
     // Price walked below the range. Earning nothing, and says so.
@@ -76,6 +97,9 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     tokensOwed0: "18450", // 0.0001845 WBTC (8 decimals)
     tokensOwed1: "9120000000000000", // 0.00912 WETH
     inRange: false,
+    /* Below the range, so the position is entirely WBTC — the one fixture that
+       exercises positionValue's clamp rather than its in-range branch. */
+    sqrtPriceX96: sqrtAt(259296),
   },
   {
     // Tight stable range on the 5 bps tier: high liquidity, thin fees.
@@ -89,6 +113,7 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     tokensOwed0: "2140000000000000000", // 2.14 kfUSD
     tokensOwed1: "2190000", // 2.19 USDC
     inRange: true,
+    sqrtPriceX96: sqrtAt(-276332),
   },
   {
     // Liquidity fully removed, fees not yet collected. See the header note.
@@ -102,5 +127,6 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     tokensOwed0: "1840000000000000000000", // 1,840 KLD
     tokensOwed1: "112000000000000000", // 0.112 WETH
     inRange: true,
+    sqrtPriceX96: sqrtAt(-74024),
   },
 ];

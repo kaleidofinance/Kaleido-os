@@ -91,5 +91,18 @@ const HOLDINGS: Record<string, string> = {
  * a ticker.
  */
 export function mockBalance(token: IToken): string {
-  return HOLDINGS[token.symbol] ?? "0";
+  return mockBalanceOf(token.symbol);
+}
+
+/**
+ * The same lookup by symbol alone.
+ *
+ * `useWalletBalances` sweeps `registeredTokens()`, which produces `TokenEntry`
+ * rather than `IToken` — two shapes that agree on `symbol` and differ elsewhere.
+ * The symbol is all this map has ever keyed on (see the header), so taking it
+ * directly is honest where casting a TokenEntry to IToken to reach the same field
+ * would not be.
+ */
+export function mockBalanceOf(symbol: string): string {
+  return HOLDINGS[symbol] ?? "0";
 }
