@@ -3,6 +3,7 @@
   "chainId": 11155111,
   "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
   "timestamp": "2026-08-26T23:27:25.438Z",
+  "extendedAt": "2026-08-30T10:13:12.454Z",
   "contracts": {
     "faucet": "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB"
   },
@@ -94,12 +95,28 @@
           "stocked": "30000000.0",
           "claimsLeft": 3000
         }
+      },
+      {
+        "key": "KLD",
+        "address": "0x79C14246120369A98c4226a01158645a7A501F35",
+        "symbol": "KLD",
+        "decimals": 18,
+        "dripHuman": "1000.0",
+        "drip": "1000000000000000000000",
+        "source": "kld",
+        "funding": {
+          "method": "preexisting",
+          "stocked": "4998000.0",
+          "claimsLeft": 4998,
+          "note": "listed and stocked by another script — read back from the chain, not funded by this run"
+        }
       }
     ]
   },
   "sources": {
     "stablecoin": "deployment-stablecoin-sepolia.json",
-    "dex": "deployment-dex-sepolia.json"
+    "dex": "deployment-dex-sepolia.json",
+    "kld": "deployment-kld-sepolia.json"
   },
   "lastTopup": "2026-08-27T00:28:26.682Z",
   "lastUsdcSwitch": "2026-08-27T01:40:25.709Z"
