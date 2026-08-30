@@ -166,6 +166,82 @@ export function gasFaucetsFor(chainId: number | undefined): GasFaucet[] {
 }
 
 /**
+ * ── Tokens we do not issue ───────────────────────────────────────────────────
+ *
+ * The table above answers "where do I get gas". This one answers "where do I get
+ * a token our faucet lists but will never pay", and it exists because a faucet
+ * should only hand out what we deployed ourselves.
+ *
+ * Anything else we cannot mint, so a drip against it is a countdown to an empty
+ * row — and while it lasts it implies we are the place to get the token, when the
+ * issuer gives out more, faster, and without waiting on our stock. Both of Arc's
+ * are Circle's: `source: "literal"` in the faucet's deployment record, meaning
+ * hardcoded addresses we never deployed. They are paused on chain (drip 0) and
+ * their Claim buttons point here instead.
+ *
+ * Keyed by lowercased token address rather than symbol, because a symbol is not
+ * unique per chain — Arc lists both Circle's USDC alias and our own WUSDC, and
+ * Sepolia's faucet has carried two different USDC contracts at once
+ * (`useFaucet.ts:337`). The address is the thing that cannot collide.
+ *
+ * `gives` names the ONE token this entry is for, not everything the faucet
+ * offers, because it is rendered next to that token's row. faucet.circle.com
+ * hands out USDC, EURC and cirBTC with Arc as its default network, one claim per
+ * asset every 2 hours — checked 2026-08-30, which is also why cirBTC and EURC get
+ * separate entries pointing at the same URL rather than one shared line.
+ *
+ * ── Why BSC's WBNB is paused but absent from here ───────────────────────────
+ *
+ * It is paused for the same reason (the canonical BSC testnet wrapper, not ours)
+ * and deliberately gets no entry, because nothing *issues* WBNB. It is a wrapper:
+ * you mint it by depositing tBNB, so the only honest destination is BNB Chain's
+ * tBNB faucet — which chain 97 already shows twice, as the synthetic gas row's
+ * Claim button and in the link panel below the table. A third copy sitting on the
+ * WBNB row would read as though that faucet handed out WBNB, for a route the page
+ * already spells out one row above. Absence here is the decision, not a gap;
+ * `gasFaucets.test.ts` pins it.
+ */
+export const ISSUER_FAUCETS: Record<number, Record<string, GasFaucet>> = {
+  /* Arc testnet. Same URL as its gas entry above, and deliberately not folded
+     into it: there the errand is "afford a transaction", here it is "hold a
+     token", and the two are only the same errand for USDC. */
+  5042002: {
+    /* EURC */
+    "0x89b50855aa3be2f677cd6303cec089b5f319d72a": {
+      operator: "Circle",
+      url: "https://faucet.circle.com",
+      gives: "EURC",
+      firstParty: true,
+      verified: { on: "2026-08-30", status: 200 },
+    },
+    /* cirBTC */
+    "0xf0c4a4ce82a5746abaad9425360ab04fbba432bf": {
+      operator: "Circle",
+      url: "https://faucet.circle.com",
+      gives: "cirBTC",
+      firstParty: true,
+      verified: { on: "2026-08-30", status: 200 },
+    },
+  },
+};
+
+/**
+ * The issuer's faucet for one token, or `undefined` when the token is ours (the
+ * common case — nothing to link, our own row pays it).
+ *
+ * Lowercases the address rather than trusting the caller's casing: the faucet
+ * contract returns EIP-55 checksummed addresses and the deployment records store
+ * them the same way, so a raw lookup against this table would miss every time.
+ */
+export function issuerFaucetFor(
+  chainId: number | undefined,
+  address: string | undefined,
+): GasFaucet | undefined {
+  if (chainId === undefined || !address) return undefined;
+  return ISSUER_FAUCETS[chainId]?.[address.toLowerCase()];
+}
+
+/**
  * "Sepolia ETH" — what the reader is short of, phrased as the chain phrases it.
  *
  * Reads `nativeCurrency.name` rather than the symbol so Arc says USDC and BSC

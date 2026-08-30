@@ -14,14 +14,15 @@
         "address": "0x3600000000000000000000000000000000000000",
         "symbol": "USDC",
         "decimals": 6,
-        "dripHuman": "100.0",
-        "drip": "100000000",
+        "dripHuman": "0.25",
+        "drip": "250000",
         "source": "stablecoin",
         "funding": {
           "method": "alias",
           "amount": "8.694815",
           "target": "1000.0",
-          "short": "991.305185"
+          "short": "991.305185",
+          "claimsLeft": 34
         }
       },
       {
@@ -36,7 +37,8 @@
           "method": "mint",
           "amount": "1000000.0",
           "target": "1000000.0",
-          "short": null
+          "short": null,
+          "claimsLeft": 100
         }
       },
       {
@@ -51,7 +53,8 @@
           "method": "mint",
           "amount": "1000000.0",
           "target": "1000000.0",
-          "short": null
+          "short": null,
+          "claimsLeft": 100
         }
       },
       {
@@ -59,14 +62,15 @@
         "address": "0x911b4000D3422F482F4062a913885f7b035382Df",
         "symbol": "WUSDC",
         "decimals": 18,
-        "dripHuman": "100.0",
-        "drip": "100000000000000000000",
+        "dripHuman": "0.25",
+        "drip": "250000000000000000",
         "source": "dex",
         "funding": {
           "method": "wrap",
           "amount": "8.69481525746505441",
           "target": "1000.0",
-          "short": "991.30518474253494559"
+          "short": "991.30518474253494559",
+          "claimsLeft": 34
         }
       },
       {
@@ -74,14 +78,15 @@
         "address": "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
         "symbol": "EURC",
         "decimals": 6,
-        "dripHuman": "1.0",
-        "drip": "1000000",
+        "dripHuman": "0.0",
+        "drip": "0",
         "source": "literal",
         "funding": {
           "method": "transfer",
           "amount": "10.0",
           "target": "10.0",
-          "short": null
+          "short": null,
+          "claimsLeft": 0
         }
       },
       {
@@ -89,14 +94,15 @@
         "address": "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
         "symbol": "cirBTC",
         "decimals": 8,
-        "dripHuman": "0.001",
-        "drip": "100000",
+        "dripHuman": "0.0",
+        "drip": "0",
         "source": "literal",
         "funding": {
           "method": "transfer",
           "amount": "0.0001",
           "target": "0.01",
-          "short": "0.0099"
+          "short": "0.0099",
+          "claimsLeft": 0
         }
       }
     ]
@@ -104,5 +110,6 @@
   "sources": {
     "stablecoin": "deployment-stablecoin-arcTestnet.json",
     "dex": "deployment-dex-arcTestnet.json"
-  }
+  },
+  "lastDripFix": "2026-08-30T07:47:45.564Z"
 }

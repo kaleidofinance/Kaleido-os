@@ -10,8 +10,10 @@
 import {
   GAS_FAUCETS,
   GAS_FAUCET_CHAIN_IDS,
+  ISSUER_FAUCETS,
   gasFaucetsFor,
   gasNameFor,
+  issuerFaucetFor,
 } from "./gasFaucets.ts";
 import { CHAINS, CHAINS_BY_ID } from "./chains.ts";
 import { faucetChains } from "./registry.ts";
@@ -116,10 +118,13 @@ console.log("\n— the pre-native chains lead with the chain team's own faucet �
    *  - 97 has no gas row, and BNB Chain's own faucet is the ANSWER for it rather
    *    than a stopgap: `claim(address(1))` reverts `AssetNotListed` (0x3ea1becf),
    *    so the page synthesises a row whose Claim button goes to
-   *    bnbchain.org/en/testnet-faucet. Everything else on that chain is ours and is
-   *    stocked for people who already have gas — USDC/USDT/USDe at 3000 claims
-   *    each, KLD 5000, WBNB 14 (capped by the wrap budget, not by choice). So the
-   *    link is load-bearing for exactly one row and nothing else.
+   *    bnbchain.org/en/testnet-faucet. The assets we issue there are stocked for
+   *    people who already have gas — USDC/USDT/USDe at 3000 claims each, KLD 5000.
+   *    WBNB is the one row on that chain that is not ours (the canonical BSC
+   *    wrapper) and is paused at drip 0 by choice, not by budget: a visitor gets it
+   *    by wrapping tBNB, so stocking it would spend the scarcest thing on the chain
+   *    to save a step nobody is stuck on. So the link is load-bearing for exactly
+   *    one row and nothing else.
    *  - 5042002 pays its gas today. Arc's native currency IS USDC and
    *    `0x3600…0000` is a 6dp ERC20 alias of the same balance (measured ratio
    *    exactly 1e12), so that row hands out spendable gas without any native
@@ -210,6 +215,96 @@ console.log("\n— a chain with no first-party faucet gets more than one option 
       `${list.length} option(s), none first-party`,
     );
   }
+}
+
+console.log("\n— the tokens we do not issue point at whoever does —");
+{
+  /*
+   * A faucet is for what we deployed. Arc's EURC and cirBTC are Circle's — they
+   * are `source: "literal"` in the deployment record, i.e. addresses hardcoded
+   * from Circle's docs — so they are paused on chain (drip 0) and their Claim
+   * buttons link to faucet.circle.com, which hands out all three of its assets
+   * with Arc as the default network. Stocking them instead would have meant a
+   * countdown to an empty row against an issuer who never runs out.
+   *
+   * The checks are the same provenance ones as above, plus the two failure modes
+   * specific to an address-keyed table.
+   */
+  const issuerEntries = Object.entries(ISSUER_FAUCETS).flatMap(([id, byAddr]) =>
+    Object.entries(byAddr).map(([address, f]) => ({
+      chainId: Number(id),
+      address,
+      ...f,
+    })),
+  );
+  check("the issuer table is not empty", issuerEntries.length > 0);
+
+  for (const { chainId, address, operator, url, verified } of issuerEntries) {
+    check(`issuer chain ${chainId} is in chains.ts`, CHAINS_BY_ID[chainId] !== undefined);
+    /* The silent one. The faucet contract returns EIP-55 checksummed addresses, so
+       a checksummed KEY here would never match a lookup and the row would quietly
+       keep its dead Claim button — a passing build with a broken page. */
+    check(
+      `${operator}'s ${address.slice(0, 8)}… key is lowercase hex`,
+      /^0x[0-9a-f]{40}$/.test(address),
+      address,
+    );
+    check(`${operator} (${address.slice(0, 8)}…) is https`, url.startsWith("https://"), url);
+    check(
+      `${operator} (${address.slice(0, 8)}…) carries an ISO date`,
+      /^\d{4}-\d{2}-\d{2}$/.test(verified.on),
+      verified.on,
+    );
+    check(
+      `${operator} (${address.slice(0, 8)}…) status means the host answered`,
+      verified.status === 200 || verified.status === 429,
+      String(verified.status),
+    );
+  }
+
+  /* The other silent one: the gas row already has its own link-out path, and
+     /faucet checks it FIRST. An address listed both as the chain's gas and here
+     would leave which link wins decided by branch order rather than by intent. */
+  for (const { chainId, address } of issuerEntries) {
+    check(
+      `${address.slice(0, 8)}… is not also chain ${chainId}'s gas`,
+      address !== "0x0000000000000000000000000000000000000001" &&
+        address !== "0x3600000000000000000000000000000000000000",
+      "the gas row links out through gasRow, not through the issuer table",
+    );
+  }
+
+  /* Arc's two are the point of the table, so name them rather than only counting:
+     a refactor that empties the map would still pass every check above. */
+  for (const [name, address] of [
+    ["EURC", "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a"],
+    ["cirBTC", "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF"],
+  ] as const) {
+    const hit = issuerFaucetFor(5042002, address);
+    check(`Arc's ${name} resolves to Circle`, hit?.operator === "Circle", String(hit?.operator));
+    check(`Arc's ${name} names itself in gives`, hit?.gives === name, String(hit?.gives));
+  }
+
+  /* Checksummed input is the ONLY input this accessor ever gets in practice —
+     useFaucet passes the address straight through from assetInfo. */
+  check(
+    "issuerFaucetFor lowercases checksummed input",
+    issuerFaucetFor(5042002, "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF") !== undefined,
+  );
+  check(
+    "issuerFaucetFor misses a token we do issue",
+    issuerFaucetFor(5042002, "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6") === undefined,
+  );
+  /* Deliberate, not a gap. Nothing ISSUES WBNB — it is a wrapper you mint by
+     depositing tBNB — so the only honest destination is BNB Chain's tBNB faucet,
+     which chain 97 already shows on the synthetic gas row and in the panel below.
+     A third copy on the WBNB row would read as though that faucet paid out WBNB. */
+  check(
+    "BSC's paused WBNB gets no issuer link",
+    issuerFaucetFor(97, "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd") === undefined,
+  );
+  check("issuerFaucetFor tolerates undefined chain", issuerFaucetFor(undefined, "0x00") === undefined);
+  check("issuerFaucetFor tolerates undefined address", issuerFaucetFor(5042002, undefined) === undefined);
 }
 
 console.log("\n— the accessors —");

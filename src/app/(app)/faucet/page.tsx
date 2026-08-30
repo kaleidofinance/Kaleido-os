@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Nav from "@/components/v2/Nav";
 import NetworkSelector from "@/components/v2/NetworkSelector";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
@@ -8,7 +8,12 @@ import { useFaucet, type FaucetAsset } from "@/hooks/v2/useFaucet";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { CHAINS, getChainMeta } from "@/constants/chains";
 import { faucetChains, isNativeSentinel } from "@/constants/registry";
-import { gasFaucetsFor, gasNameFor } from "@/constants/gasFaucets";
+import {
+  gasFaucetsFor,
+  gasNameFor,
+  issuerFaucetFor,
+  type GasFaucet,
+} from "@/constants/gasFaucets";
 import { getChainAddressUrl, getChainTxUrl } from "@/constants/utils/getTxUrl";
 import s from "./faucet.module.css";
 
@@ -343,16 +348,34 @@ export default function FaucetPage() {
   const restLinks = leadLink ? gasLinks.slice(1) : gasLinks;
 
   /**
-   * The address of the listed row that should link out instead of claiming, if
-   * any.
+   * For one listed row: the faucet to send the reader to instead of claiming, or
+   * `undefined` when our own Claim button is the right control.
    *
-   * On Arc the gas row is a real, listed asset (its 6dp USDC alias) that simply
-   * cannot pay — so the link belongs on the button already in that row, not on a
-   * second row describing the same asset. On BSC there is no such row, so
-   * `gasRow` renders one. Same link either way; the difference is only whether
-   * the table already had somewhere to put it.
+   * Two reasons a row links out, and they are the same reason underneath — the
+   * row cannot pay and somebody else can:
+   *
+   *  - It is the gas row on a chain whose faucet cannot pay gas. On Arc that row
+   *    is a real listed asset (its 6dp USDC alias), so the link belongs on the
+   *    button already there rather than on a second row describing the same
+   *    balance. On BSC there is no such row and `gasRow` renders one; same link,
+   *    the difference is only whether the table already had somewhere to put it.
+   *  - It is a token we do not issue. Arc's EURC and cirBTC are Circle's, so they
+   *    are paused on chain and point at Circle's faucet, which hands out more of
+   *    both than we could and does not run dry.
+   *
+   * Gated on `paused || empty` rather than on being in the issuer table at all, so
+   * a third-party token we DO manage to stock keeps its working Claim button — our
+   * row is better than a round trip whenever it can actually pay. That is the same
+   * rule `gasRow` uses, and it is why neither case needs a chain id.
    */
-  const linkOutAddress = gasRow?.asset?.address ?? null;
+  const linkOutFor = useCallback(
+    (a: FaucetAsset): GasFaucet | undefined => {
+      if (gasRow && a.address === gasRow.asset?.address) return gasRow.link;
+      if (!a.paused && !a.empty) return undefined;
+      return issuerFaucetFor(faucet.chainId, a.address);
+    },
+    [gasRow, faucet.chainId],
+  );
 
   /*
    * Shown only when it saves signatures — two or more assets due at once.
@@ -525,6 +548,7 @@ export default function FaucetPage() {
                   )}
                   {faucet.assets.map((a) => {
                     const action = cta(a);
+                    const linkOut = linkOutFor(a);
                     return (
                       <div className={s.row} key={a.address}>
                         <span className={s.asset}>
@@ -557,20 +581,20 @@ export default function FaucetPage() {
                           )}
                         </span>
                         <span className={s.act}>
-                          {/* The gas row on a chain that cannot pay it out links
-                              to the faucet that can, in place of a disabled
-                              "Out of stock" that offers nothing. Every other row
-                              keeps its real Claim button — the tokens we deployed
-                              on these chains are stocked and claimable, and only
-                              the gas is not. */}
-                          {a.address === linkOutAddress && gasRow ? (
+                          {/* A row that cannot pay links to the faucet that can,
+                              in place of a disabled "Out of stock"/"Paused" that
+                              offers nothing: the gas row on a chain whose faucet
+                              holds no gas, and the tokens we did not deploy. Every
+                              row for an asset we issue keeps its real Claim
+                              button — those are stocked. */}
+                          {linkOut ? (
                             <a
                               className={s.claimOut}
-                              href={gasRow.link.url}
+                              href={linkOut.url}
                               target="_blank"
                               rel="noreferrer"
                             >
-                              Claim at {gasRow.link.operator} ↗
+                              Claim at {linkOut.operator} ↗
                             </a>
                           ) : (
                             <button

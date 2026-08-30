@@ -56,13 +56,13 @@
         "address": "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
         "symbol": "WBNB",
         "decimals": 18,
-        "dripHuman": "0.02",
-        "drip": "20000000000000000",
+        "dripHuman": "0.0",
+        "drip": "0",
         "source": "dex",
         "funding": {
           "method": "topup",
           "stocked": "0.281513390235128218",
-          "claimsLeft": 14
+          "claimsLeft": 0
         }
       }
     ]
@@ -71,5 +71,5 @@
     "stablecoin": "deployment-stablecoin-bscTestnet.json",
     "dex": "deployment-dex-bscTestnet.json"
   },
-  "lastTopup": "2026-08-30T06:36:57.945Z"
+  "lastTopup": "2026-08-30T07:18:27.798Z"
 }

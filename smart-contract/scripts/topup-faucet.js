@@ -149,15 +149,25 @@ const TOPUP_PLANS = {
    * which is the answer for this chain rather than a stopgap.
    *
    * So what is left is exactly the assets we deployed ourselves, stocked for the
-   * people who already have gas. Three of the five can be raised:
+   * people who already have gas. Three of the five can be raised, and the other
+   * two are settled rather than pending:
    *
    *   USDC/USDT/USDe  mint() staticcalls clean, and mints are never scaled by the
    *                   native reserve, so the tBNB shortage does not touch them.
    *                   USDC is listed for the same reason it is on Robinhood and
    *                   not on Sepolia/Base: here it is our own mock, not Circle's.
-   *   WBNB            omitted. deposit() draws the tBNB we do not have. Its drip
-   *                   was instead right-sized to 0.02 against the 0.281513390235
-   *                   already stocked (14 claims) by fix-faucet-drips.js.
+   *   WBNB            PAUSED at drip 0, deliberately — not merely unfunded. A
+   *                   faucet is worth running for something a visitor cannot get
+   *                   any other way, and WBNB is not that: anyone holding tBNB
+   *                   wraps it in one call, and the tBNB itself comes from BNB
+   *                   Chain's faucet. Stocking it would spend the scarcest thing
+   *                   we have on this chain (0.00144843797 tBNB) to save a step
+   *                   nobody is stuck on. Drip 0 is the contract's own retirement
+   *                   state — `_eligibility` returns _NOT_LISTED, so `claim`
+   *                   reverts and `useFaucet` flags the row `paused`, which the
+   *                   page draws as "Paused" with the Claim button off. The
+   *                   0.281513390235128218 already in the faucet stays there,
+   *                   withdrawable by the owner if that gas is ever wanted back.
    *   KLD             omitted. mint() reverts 0xf480e285 and it already holds 5M,
    *                   which is 5000 claims at the current drip.
    *
@@ -172,6 +182,7 @@ const TOPUP_PLANS = {
       USDC: { drip: 10_000, claims: 3000 }, // 30M — mint (our mock, not Circle's)
       USDT: { drip: 10_000, claims: 3000 }, // 30M — mint, was 1M
       USDe: { drip: 10_000, claims: 3000 }, // 30M — mint, was 1M
+      WBNB: { drip: 0, claims: 0 }, // paused — wrap your own tBNB, see above
     },
   },
 };
