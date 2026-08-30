@@ -17,11 +17,13 @@
     "yieldTreasury": "0x387d687B9574E93aCCEF1c272ce0D77381305eC3"
   },
   "faucet": {
-    "address": "0xB22E458D277a55f535873a02Ef77c569cC4F7d51",
+    "address": "0xD65927aF66B52E5a43C9C4Fb405D6F0823B65441",
     "funded": "5000000000000000000000000",
     "fundedHuman": "5000000.0",
     "drip": "1000000000000000000000",
-    "dripHuman": "1000.0"
+    "dripHuman": "1000.0",
+    "previousAddress": "0xB22E458D277a55f535873a02Ef77c569cC4F7d51",
+    "note": "Faucet redeployed 2026-08-29T04:01:47.220Z; the 5,000,000 this script had stocked stayed in 0xB22E458D277a55f535873a02Ef77c569cC4F7d51 until it was swept back to the deployer on 2026-08-30T10:36:16.492Z. The same amount and drip were re-listed on 0xD65927aF66B52E5a43C9C4Fb405D6F0823B65441 by FAUCET_EXTEND, so the figures above still describe what the live faucet holds — only the address moved."
   },
   "timestamps": {
     "started": "2026-08-27T23:40:34.502Z",
