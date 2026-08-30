@@ -109,8 +109,37 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  /* A gap as well as the `space-between`, because `space-between` distributes the
+     room that is left over and there is none once the label and the figure
+     together fill the card — without it the two touch rather than the row
+     growing. Same pair as `.kv` in stable's form.module.css. */
+  gap: var(--k-s3);
   font-size: var(--k-fs-sm);
   padding: 3px 0;
+}
+/* The label keeps its width — "Liquidation penalty" reads badly broken across two
+   lines — and the figure is the half that gives, because it is the half that
+   varies. Every one of these rows is exactly two spans (a `.cardBody` label and a
+   `tabular` figure), so first/last reach both.
+
+   Latent rather than a live bug, and worth saying which: every figure on this
+   side is already rounded where it is rendered — `toLocaleString(…, {
+   maximumFractionDigits: 2 })`, `toFixed(2)`, or a bare count — so none of them
+   is long enough today to hold a card open. What this guards is the mistake that
+   is easy to make next. A flex child is `min-width: auto`, so an unrounded figure
+   would set this row's floor, the row would set `.card`'s, and the card would
+   carry its value out past its own right edge — off the screen on a phone, since
+   `body { overflow-x: hidden }` in globals.css clips instead of scrolling. That
+   is not hypothetical: it is what one bare `formatUnits` did to /stable's stat
+   strip, twenty-two digits with no break opportunity anywhere in them. See
+   `.statValue` in stable.module.css. */
+.posRow > *:first-child {
+  flex: none;
+}
+.posRow > *:last-child {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- market strip ---------- */
@@ -124,7 +153,7 @@
 
 .cols {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: var(--k-s5);
   align-items: start;
 }
@@ -142,13 +171,22 @@
    made the cards read as "still desktop" on a phone: they were, and the part
    past the screen edge was simply gone. With the automatic minimum removed the
    track is the container's width again, which is also what finally gives `.tw`
-   something narrower than its rows to scroll inside. */
+   something narrower than its rows to scroll inside.
+
+   The `minmax(0, …)` on both tracks is the second of two independent floors, and
+   this rule is the one doing the work — a track's `auto` minimum is computed from
+   its items' *minimum contribution*, and `min-width: 0` makes that contribution
+   zero, so zeroing the item zeroes the track with it. The track form is written
+   out anyway because the reverse is not true: `minmax(0, 1fr)` alone would leave
+   each item still refusing to shrink and simply overflowing its track. Keeping
+   both means editing either one away cannot silently return the page to 720px.
+   Cf. `.cols` in stable.module.css, where the track was the bug. */
 .cols > * {
   min-width: 0;
 }
 @media (max-width: 960px) {
   .cols {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   /* One column now: the sidebar stacks under the table, so the header-height
      offset above would just be a gap between them. There is no header to clear
