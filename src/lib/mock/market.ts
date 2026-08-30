@@ -8,7 +8,7 @@ import {
 } from "@/lib/market/bookValue";
 
 import { MOCK_LISTINGS, MOCK_REQUESTS } from "./lending";
-import { MOCK_STABLE_STATS } from "./stable";
+import { MOCK_KFUSD_SUPPLY } from "./stable";
 import { MOCK_STAKE } from "./stake";
 import { MOCK_USD } from "./quotes";
 
@@ -97,8 +97,14 @@ const { usd, coverage } = valueBook(
  * `useStablecoin` returns; this field is a number. Parsed back rather than
  * duplicated, so the two cannot drift — a fixture reading its own sibling is a
  * better coupling than the same figure typed twice.
+ *
+ * Read off `MOCK_KFUSD_SUPPLY` rather than `MOCK_STABLE_STATS.kfUSDSupply`: the
+ * latter is `string | null` now, because a failed read of the real supply is
+ * unknown rather than zero, and there is no null guard here that would not
+ * either reintroduce that zero or turn a bad fixture into a build failure. The
+ * object in ./stable reads the same const, so nothing drifts.
  */
-const KFUSD_SUPPLY = Number(MOCK_STABLE_STATS.kfUSDSupply.replace(/,/g, ""));
+const KFUSD_SUPPLY = Number(MOCK_KFUSD_SUPPLY.replace(/,/g, ""));
 
 /** Fixed, never `new Date()`: the lending shell's strip renders server-side. */
 const AS_OF = "2026-08-19T08:00:00.000Z";
