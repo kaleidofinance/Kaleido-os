@@ -42,9 +42,31 @@ export interface TokenBalance {
 }
 
 export interface StableStats {
-  tvl: string;
-  totalStableDeposited: string;
-  kfUSDSupply: string;
+  /**
+   * Total kfUSD minted, as a currency string with its "$" and separators —
+   * "$2,530,118.40".
+   *
+   * Null when unread, for the same reason as the four fields below it: a failed
+   * read is not a measurement of zero. This one and `totalStableDeposited` have
+   * no view consumer today; they are nulled with the rest so that whoever wires
+   * one up inherits the distinction rather than a "0" that reads as fact.
+   */
+  tvl: string | null;
+  /** Collateral summed at par, "$"-prefixed as `tvl` is. Null as for `tvl`. */
+  totalStableDeposited: string | null;
+  /**
+   * kfUSD outstanding, grouped but with **no** "$" — it is a token count, not a
+   * dollar amount, so the prefix belongs to whichever view wants one.
+   *
+   * Null when unread. This was seeded "0" while `backingRatio` beside it was
+   * null, so a failed read put a confident "Supply $0.00" next to "Backing —"
+   * in the same strip, and the reader could not tell "the supply is zero" from
+   * "we could not read the supply" — the exact ambiguity the nullable fields
+   * were introduced to remove. Zero supply is a real and reachable state of
+   * this protocol (it is where it starts), which is precisely why it must not
+   * share a representation with a failure.
+   */
+  kfUSDSupply: string | null;
   /**
    * Collateral as a percent of kfUSD outstanding — "100", never "100%".
    *
@@ -136,10 +158,14 @@ export function useStablecoin() {
     kfUSD: "0",
     kafUSD: "0",
   });
+  /* Every field null, because nothing has been read yet. The three figures used
+     to open at "0", which meant the strip rendered a complete, confident set of
+     zeroes for the whole of the first paint and then replaced them — indist-
+     inguishable, while it lasted, from a protocol with nothing in it. */
   const [stats, setStats] = useState<StableStats>({
-    tvl: "0",
-    totalStableDeposited: "0",
-    kfUSDSupply: "0",
+    tvl: null,
+    totalStableDeposited: null,
+    kfUSDSupply: null,
     backingRatio: null,
     totalYieldAPY: null,
     mintFee: null,
@@ -444,10 +470,7 @@ export function useStablecoin() {
         kafUSDContract.withdrawalRequestTime(activeAccount.address),
         kafUSDContract.cooldownPeriod(),
         kafUSDContract.withdrawalAmount(activeAccount.address),
-        kafUSDContract.getUserAssetBalance(
-          activeAccount.address,
-          a.kfUSD,
-        ),
+        kafUSDContract.getUserAssetBalance(activeAccount.address, a.kfUSD),
       ]);
 
       // Timestamps are small enough to narrow to Number without loss.
@@ -522,11 +545,7 @@ export function useStablecoin() {
 
     try {
       const signer = await getSigner();
-      const kfUSDContract = new ethers.Contract(
-        a.kfUSD,
-        kfUSDAbi.abi,
-        signer,
-      );
+      const kfUSDContract = new ethers.Contract(a.kfUSD, kfUSDAbi.abi, signer);
 
       const [usdcBalances, usdtBalances, usdeBalances] = await Promise.all([
         kfUSDContract.getBalances(a.USDC),
@@ -556,14 +575,17 @@ export function useStablecoin() {
     }
 
     /* Nulls, not zeroes, exactly as the catch below does: on a chain with no
-     * deployment the supply and both fees are unknown, and quoting a 0% mint fee
-     * would tell the user their mint is free when there is no mint at all. */
+     * deployment there is nothing here to measure. Quoting a 0% mint fee would
+     * tell the user their mint is free when there is no mint at all, and a "0"
+     * supply would assert that no kfUSD exists — false, since it exists on the
+     * chains that do have a deployment. This branch said as much already while
+     * still seeding the three figures to "0"; now it means it. */
     const a = stableAddresses();
     if (!a) {
       setStats({
-        tvl: "0",
-        totalStableDeposited: "0",
-        kfUSDSupply: "0",
+        tvl: null,
+        totalStableDeposited: null,
+        kfUSDSupply: null,
         backingRatio: null,
         totalYieldAPY: null,
         mintFee: null,
@@ -575,11 +597,7 @@ export function useStablecoin() {
     try {
       const signer = await getSigner();
 
-      const kfUSDContract = new ethers.Contract(
-        a.kfUSD,
-        kfUSDAbi.abi,
-        signer,
-      );
+      const kfUSDContract = new ethers.Contract(a.kfUSD, kfUSDAbi.abi, signer);
       const kafUSDContract = new ethers.Contract(
         a.kafUSD,
         kafUSDAbi.abi,
@@ -751,13 +769,16 @@ export function useStablecoin() {
       setStats(newStats);
     } catch (error) {
       console.error("Error fetching stats:", error);
-      /* Nulls, not zeroes. A failed read means the fee, the backing ratio and
-       * the yield rate are unknown, and quoting either fee as 0 would have the
-       * mint form tell the user their mint is free when it is not. */
+      /* Nulls, not zeroes — every field, which is what this block used to say
+       * while setting three of them to "0". A failed read leaves the supply, the
+       * two totals, both fees, the backing ratio and the yield rate all unknown.
+       * Quoting either fee as 0 would have the mint form tell the user their mint
+       * is free when it is not, and a "$0.00" supply beside a dashed backing
+       * ratio is a figure the reader has no way to distrust. */
       setStats({
-        tvl: "0",
-        totalStableDeposited: "0",
-        kfUSDSupply: "0",
+        tvl: null,
+        totalStableDeposited: null,
+        kfUSDSupply: null,
         backingRatio: null,
         totalYieldAPY: null,
         mintFee: null,
@@ -793,11 +814,7 @@ export function useStablecoin() {
         erc20Abi,
         signer,
       );
-      const kfUSDContract = new ethers.Contract(
-        a.kfUSD,
-        kfUSDAbi.abi,
-        signer,
-      );
+      const kfUSDContract = new ethers.Contract(a.kfUSD, kfUSDAbi.abi, signer);
 
       // Parse amounts
       const collateralDecimals =
@@ -865,11 +882,7 @@ export function useStablecoin() {
         throw new Error(`Invalid output token: ${outputToken}`);
       }
 
-      const kfUSDContract = new ethers.Contract(
-        a.kfUSD,
-        kfUSDAbi.abi,
-        signer,
-      );
+      const kfUSDContract = new ethers.Contract(a.kfUSD, kfUSDAbi.abi, signer);
       const kfUSDAmount = ethers.parseUnits(amount, 18);
 
       // Approve kfUSD for redemption
@@ -878,10 +891,7 @@ export function useStablecoin() {
         a.kfUSD,
       );
       if (allowance < kfUSDAmount) {
-        const approveTx = await kfUSDContract.approve(
-          a.kfUSD,
-          kfUSDAmount,
-        );
+        const approveTx = await kfUSDContract.approve(a.kfUSD, kfUSDAmount);
         await approveTx.wait();
       }
 
@@ -940,10 +950,7 @@ export function useStablecoin() {
         a.kafUSD,
       );
       if (allowance < assetAmount) {
-        const approveTx = await assetContract.approve(
-          a.kafUSD,
-          assetAmount,
-        );
+        const approveTx = await assetContract.approve(a.kafUSD, assetAmount);
         await approveTx.wait();
       }
 
@@ -1124,9 +1131,7 @@ export function useStablecoin() {
       );
 
       // Claim kfUSD yield (which can then be locked in kafUSD to compound)
-      const claimTx = await yieldTreasuryContract.claimAndCompound(
-        a.kfUSD,
-      );
+      const claimTx = await yieldTreasuryContract.claimAndCompound(a.kfUSD);
       const receipt = await claimTx.wait();
 
       if (receipt.status) {

@@ -27,11 +27,25 @@ import type {
  * `completeWithdrawal` all stay on the real contract path.
  */
 
+/**
+ * The demo supply, as the hook publishes it: grouped, and with no "$" because it
+ * is a token count.
+ *
+ * Its own export so `mock/market.ts` can read the figure without going through
+ * `StableStats`, where the field is `string | null` for the runtime hook's sake —
+ * a failed read is unknown, not zero. A fixture reading through the nullable type
+ * would need a guard, and every available guard lies: `?? "0"` reintroduces the
+ * confident zero the null exists to prevent, and a throw makes a bad fixture a
+ * build failure. A plain `string` const has neither problem, and the two still
+ * cannot drift, because the object below reads it too.
+ */
+export const MOCK_KFUSD_SUPPLY = "2,481,904.55";
+
 export const MOCK_STABLE_STATS: StableStats = {
   tvl: "$2,530,118.40",
   totalStableDeposited: "$2,541,352.71",
   // No "$": the supply is a token count, not a dollar amount.
-  kfUSDSupply: "2,481,904.55",
+  kfUSDSupply: MOCK_KFUSD_SUPPLY,
   backingRatio: "102.40",
   totalYieldAPY: "7.42",
   // 5 bps and 10 bps, as the contract's basis points divided by 100.
