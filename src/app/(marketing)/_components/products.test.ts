@@ -14,9 +14,9 @@
  *     via components/v2/SectionIcon.tsx. A stroke that is not `currentColor`
  *     renders correctly in whichever theme it was authored in and wrong in the
  *     other; an entry left with no geometry renders an empty square. The five
- *     marketing `ArtKind`s and the seven shared `SectionIconKind`s are written out
+ *     marketing `ArtKind`s and the eight shared `SectionIconKind`s are written out
  *     twice — app chrome must not import from a marketing route group — so nothing
- *     but a test proves the five are still among the seven. Section 1.
+ *     but a test proves the five are still among the eight. Section 1.
  *   - The three fee-tier labels are RESTATED from /pool/new rather than imported,
  *     because that module is `"use client"` with the whole wallet stack above it.
  *     A restated constant is a constant that can drift, and the drift would be a
@@ -193,7 +193,7 @@ function main() {
    * the subset assertion below: the marketing `ArtKind` union and the shared
    * `SectionIconKind` union are written out twice on purpose — app chrome must not
    * import from a marketing route group — so something has to prove the five are
-   * still in the seven.
+   * still in the eight.
    *
    * TypeScript covers what it can: both dispatch tables are `Record`s over their
    * union, so a new member cannot ship without a drawing. What it cannot see is
@@ -235,7 +235,7 @@ function main() {
   ].map((m) => m[1]);
   check(
     "parsed SectionIcon's keys",
-    iconKeys.length === 7,
+    iconKeys.length === 8,
     iconKeys.join(",") || "none",
   );
   check(
@@ -302,8 +302,8 @@ function main() {
   );
   const navIcons = [...navCode.matchAll(/icon:\s*"([^"]+)"/g)].map((m) => m[1]);
   check(
-    "parsed Nav's seven icon keys",
-    navIcons.length === 7,
+    "parsed Nav's eight icon keys",
+    navIcons.length === 8,
     navIcons.join(",") || "none",
   );
   check(

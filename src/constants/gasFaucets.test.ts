@@ -105,19 +105,26 @@ console.log("\n— the two near-misses stay caught —");
 console.log("\n— the chains with no in-app route to gas lead with a real faucet —");
 {
   /*
-   * BSC testnet (97) and Arc (5042002) run the faucet bytecode from before it
-   * could hold native gas, measured on chain 2026-08-29: `assetInfo` lists 5 and
-   * 7 assets respectively and neither includes the address(1) sentinel, while
-   * Sepolia, Base and Robinhood all do. `FAUCET_EXTEND` cannot add a `receive()`,
-   * so this is not a funding gap that will close on its own — it takes a
-   * redeploy.
+   * BSC testnet (97) and Arc (5042002) both leave a visitor unable to afford the
+   * claim, for two different measured reasons (on chain, 2026-08-29):
    *
-   * /faucet therefore promotes `gasFaucetsFor(id)[0]` to the panel's primary
-   * button on those two, because it is the only thing there that can fund an
-   * empty wallet. That makes the FIRST entry load-bearing in a way it is not
-   * elsewhere: it has to be the chain's own team, since a third party that closes
-   * or starts gating would leave the page leading with a dead end and no in-app
-   * fallback behind it.
+   *  - 97's faucet runs the bytecode from before it could hold native gas —
+   *    `assetInfo` lists 5 assets and none is the address(1) sentinel, while
+   *    Sepolia's, Base's and Robinhood's all are. Nothing to claim.
+   *  - 5042002 does list its gas, because Arc's native currency IS USDC and
+   *    `0x3600…0000` is a 6dp alias of the same balance. But that row's drip is
+   *    100.0 against a stock of 8.694815 — less than one payout, so `claim`
+   *    reverts `InsufficientContractBalance`. A listed row is not a payable one.
+   *
+   * Neither is a funding gap that closes on its own: `FAUCET_EXTEND` cannot add a
+   * `receive()` to 97, and Arc's USDC shares one budget with the deployer's gas.
+   *
+   * /faucet therefore promotes `gasFaucetsFor(id)[0]` into the asset table itself
+   * on those two, as the Claim button for the gas row, because it is the only
+   * thing on the page that can fund an empty wallet. That makes the FIRST entry
+   * load-bearing in a way it is not elsewhere: it has to be the chain's own team,
+   * since a third party that closes or starts gating would leave the table's
+   * first action a dead end with no in-app fallback behind it.
    *
    * Checked by id rather than by reading the chain, deliberately — a unit test
    * that needs five RPCs to answer fails for reasons that have nothing to do with

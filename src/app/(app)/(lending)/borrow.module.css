@@ -109,8 +109,37 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  /* A gap as well as the `space-between`, because `space-between` distributes the
+     room that is left over and there is none once the label and the figure
+     together fill the card — without it the two touch rather than the row
+     growing. Same pair as `.kv` in stable's form.module.css. */
+  gap: var(--k-s3);
   font-size: var(--k-fs-sm);
   padding: 3px 0;
+}
+/* The label keeps its width — "Liquidation penalty" reads badly broken across two
+   lines — and the figure is the half that gives, because it is the half that
+   varies. Every one of these rows is exactly two spans (a `.cardBody` label and a
+   `tabular` figure), so first/last reach both.
+
+   Latent rather than a live bug, and worth saying which: every figure on this
+   side is already rounded where it is rendered — `toLocaleString(…, {
+   maximumFractionDigits: 2 })`, `toFixed(2)`, or a bare count — so none of them
+   is long enough today to hold a card open. What this guards is the mistake that
+   is easy to make next. A flex child is `min-width: auto`, so an unrounded figure
+   would set this row's floor, the row would set `.card`'s, and the card would
+   carry its value out past its own right edge — off the screen on a phone, since
+   `body { overflow-x: hidden }` in globals.css clips instead of scrolling. That
+   is not hypothetical: it is what one bare `formatUnits` did to /stable's stat
+   strip, twenty-two digits with no break opportunity anywhere in them. See
+   `.statValue` in stable.module.css. */
+.posRow > *:first-child {
+  flex: none;
+}
+.posRow > *:last-child {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- market strip ---------- */
@@ -124,13 +153,40 @@
 
 .cols {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: var(--k-s5);
   align-items: start;
 }
+/* Both children, at every width, and this is the rule the page could not do
+   without. A grid item's `min-width` is `auto`, which means it refuses to be
+   sized below its own min-content width — and the min-content width of the
+   left column is the `min-width: 720px` on `.tr`, because neither `.table`'s
+   `overflow: hidden` nor `.tw`'s `overflow-x: auto` zeroes an *intrinsic* size.
+   (That zeroing only happens to a flex/grid item that is itself the scroll
+   container, and here the scroll container is two levels down.) So the `1fr`
+   track resolved to 720px whenever less than 720px was going — every phone,
+   and every window under ~1090px — the grid overflowed its container, the
+   300px sidebar was dragged along with it, and `body { overflow-x: hidden }`
+   in globals.css clipped the excess with no way to scroll to it. That is what
+   made the cards read as "still desktop" on a phone: they were, and the part
+   past the screen edge was simply gone. With the automatic minimum removed the
+   track is the container's width again, which is also what finally gives `.tw`
+   something narrower than its rows to scroll inside.
+
+   The `minmax(0, …)` on both tracks is the second of two independent floors, and
+   this rule is the one doing the work — a track's `auto` minimum is computed from
+   its items' *minimum contribution*, and `min-width: 0` makes that contribution
+   zero, so zeroing the item zeroes the track with it. The track form is written
+   out anyway because the reverse is not true: `minmax(0, 1fr)` alone would leave
+   each item still refusing to shrink and simply overflowing its track. Keeping
+   both means editing either one away cannot silently return the page to 720px.
+   Cf. `.cols` in stable.module.css, where the track was the bug. */
+.cols > * {
+  min-width: 0;
+}
 @media (max-width: 960px) {
   .cols {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   /* One column now: the sidebar stacks under the table, so the header-height
      offset above would just be a gap between them. There is no header to clear
@@ -581,11 +637,159 @@
     padding: 7px 12px;
     white-space: nowrap;
   }
-  /* No table overrides here on purpose. `.tw` already scrolls the 720px `.tr` at
-     every width, with `.pager` sitting outside it so it stays pinned (see the
-     `.pager` note above). The /leaderboard-style `.table{overflow-x:auto}` +
-     `.tw{min-width:620px}` that used to live here nested a SECOND horizontal
-     scroller inside the first — and 620px < the row's 720px, so it couldn't even
-     hold one row — while stretching the pager to 620px and pushing Load-more off
-     the right edge. Deleting it restores the single-scroller, pinned-pager design. */
+  /* The Borrow and Lend books keep `.tw`'s sideways scroll below 720px — the
+     table is still read down a column, rate against rate, and a rate ladder that
+     scrolls is still a ladder. Only the two own-position tables stack; see the
+     block below. The /leaderboard-style `.table{overflow-x:auto}` +
+     `.tw{min-width:620px}` pair that used to live here was wrong even while the
+     book still scrolled: it nested a SECOND horizontal scroller inside `.tw`,
+     620px < the row's 720px so it could not even hold one row, and it stretched
+     the pager to 620px and pushed Load-more off the right edge. (The comment it
+     carried was wrong too — it claimed `.tw` already scrolled at every width,
+     which it did not, because the grid item above it could not be sized below
+     720px in the first place. See `.cols > *`.)
+
+     What the pager does need is permission to wrap. It sits outside `.tw`, so it
+     has to fit the phone on its own: Prev / Next / the page count / Load-more
+     come to ~300px of content inside 14px page padding and its own 18px, and
+     below ~340px they stop fitting. A second line is the graceful version of
+     that. */
+  .pager {
+    flex-wrap: wrap;
+  }
+
+  /* ---------- the two own-position tables: stacked instead of scrolled ---------- */
+  /* `.tr` is six columns and 720px wide at its narrowest, which is a whole phone
+     screen plus a third. When it is the Borrow or Lend order book that is fine —
+     the table is read down a column, and `.tw` scrolls it in its own box. But
+     when it is the reader's own rows (My lends, My loans) the columns are not
+     doing any comparing at all: nobody reads their USDT offer's amount against
+     their USDC offer's amount. A column that has to be swiped to is not being
+     compared either, so those two stop being tables below 720px — the width
+     every page in this app already treats as a phone — and every row becomes a
+     block, each figure carrying the label its column header used to give it,
+     from `data-label` in BorrowBookView. Those attributes are the only thing
+     naming the numbers once the columns are gone.
+
+     The books' rows keep bare `.tr` and get nothing here; they inherit the
+     desktop template and keep scrolling. My lends carries the `.mineList`
+     modifier that distinguishes it from the book that shares its component and
+     its row markup. `.tr.mineRow` is not redundant beside `.tr.mineList`: a
+     media query adds no specificity, so the desktop `.tr.mineRow { min-width:
+     560px }` two classes up would outrank whichever single-class selector this
+     block used, and My loans alone would keep a scroller. Same trap as the one
+     documented above `.tr.mineRow` itself. */
+  .tr.mineList,
+  .tr.mineRow {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 7px;
+    padding: 14px 16px;
+    align-items: stretch;
+  }
+  /* My lends' header carries the three sort controls, so hiding it would take
+     sorting off the phone entirely. It becomes a sort strip above the stack: the
+     cells that were only ever column titles — the party name, the Status title,
+     the empty cell over the action column — drop out, and what is left is the
+     three controls with a word saying what they are.
+
+     The books' header keeps bare `.thead` and stays where it is, a true header
+     inside the scroller, aligned with the rows it titles.
+
+     My loans' header held five plain labels and nothing else, so it still goes
+     with the columns; two classes beat the one below it. */
+  .thead.mineList {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--k-s2) var(--k-s4);
+    min-width: 0;
+    padding: 11px 16px;
+  }
+  .thead.mineList > span {
+    display: none;
+  }
+  .thead.mineList::before {
+    content: "Sort by";
+    font-size: var(--k-fs-xs);
+    color: var(--k-t3);
+  }
+  .thead.mineList > .sortable {
+    text-align: left;
+  }
+  .thead.mineRow {
+    display: none;
+  }
+  /* Label left, figure right. Without columns that is the only alignment left
+     worth having, and it still puts one row's own figures on a common edge.
+
+     `:not(.thead)` guards the `.center` half because the header row is a `.tr`
+     too, and its Status *title* is a `.center` exactly like the badge cells below
+     it: unguarded, this rule outranked the `display: none` above and "Status"
+     survived into the sort strip as a fourth, unclickable item. The `.cellNum`
+     half needs no guard — the header's Amount, APR and Term cells are `.sortable`
+     buttons, not `.cellNum`. */
+  .tr.mineList > .cellNum,
+  .tr.mineList:not(.thead) > .center,
+  .tr.mineRow > .cellNum {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--k-s3);
+  }
+  /* `.center` carries `text-align: center !important` for its desktop column, and
+     flex is how that gets neutralised without answering an `!important` with
+     another one: justify-content decides the position now, and the declaration
+     it would have fought no longer applies to anything. */
+  .tr.mineList > .cellNum::before,
+  .tr.mineList:not(.thead) > .center::before,
+  .tr.mineRow > .cellNum::before {
+    content: attr(data-label);
+    font-size: var(--k-fs-xs);
+    /* Set, not inherited: Due takes `.rateBad` when a loan is overdue and APR
+       takes `.rateGood`/`.rateBad` from its rate, and `color` would carry that
+       tint onto the label — the word "Due" is not the thing that is overdue. */
+    color: var(--k-t2);
+    text-align: left;
+  }
+  /* The APR cell is `.cellNum.cellStack` on My lends: a gross rate with the
+     net-of-fee rate under it. A flex row would have put those two side by side,
+     so the cell becomes a two-column grid — label in column 1, both lines
+     stacked in column 2 — which is the same shape `.cell` takes in
+     portfolio.module.css and for the same reason. */
+  .tr.mineList > .cellNum.cellStack {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--k-s3);
+    align-items: baseline;
+    text-align: right;
+  }
+  .tr.mineList > .cellNum.cellStack::before {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .tr.mineList > .cellNum.cellStack > * {
+    grid-column: 2;
+  }
+  /* On its own line `text-align: right` just strands a small button in the corner,
+     so the action takes the row's width the way the modals' primary buttons do.
+     Only on the two tables that stack: Repay on My loans, Close on My lends —
+     `isOwnRow` is unconditionally true on that tab, so Close is the only button
+     it can render. The books keep their buttons in the action column inside the
+     scroller, right-aligned as on desktop, so Fund/Borrow is deliberately not
+     here. Both class names are listed against both tables anyway: which of the
+     two a row draws is decided in BorrowBookView, and a layout rule should not
+     be the thing that breaks if that branch is changed. */
+  .tr.mineList > .actionCell,
+  .tr.mineRow > .actionCell {
+    text-align: left;
+    margin-top: 3px;
+  }
+  .tr.mineList .actBtn,
+  .tr.mineList .closeBtn,
+  .tr.mineRow .actBtn,
+  .tr.mineRow .closeBtn {
+    width: 100%;
+    padding: 9px 14px;
+  }
 }

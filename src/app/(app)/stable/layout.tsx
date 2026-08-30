@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import Nav from "@/components/v2/Nav";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
+import { DASH, qty } from "@/lib/format/figures";
 import { StableProvider, useStable } from "./StableContext";
 import s from "./stable.module.css";
 
@@ -139,6 +140,35 @@ function StableChrome({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The one fragile step both readouts below share: turning what `useStablecoin`
+ * hands over into a number.
+ *
+ * It is shared because the two disagreed about the same figure. `balances.kfUSD`
+ * is a bare `ethers.formatUnits(x, 18)` result, so the sidebar's `Row` rounded it
+ * to 1,397.75 while `Stat` printed the string verbatim —
+ * "1397.749624812406203104", twenty-two characters that no line-breaking rule in
+ * any stylesheet here will break, because a run of digits has nowhere to break.
+ * In a two-column strip on a 390px phone that column is about 171px wide, so the
+ * value simply left the box and stopped the strip being width-bound.
+ *
+ * The comma strip is load-bearing, not defensive. The hook emits two shapes:
+ * `kfUSDSupply` arrives already grouped ("2,481,904.55") while `backingRatio`
+ * and `totalYieldAPY` arrive bare ("100.00"), and `Number("2,481,904.55")` is
+ * NaN — which would turn the supply into a dash. `lib/mock/market.ts` reads the
+ * same field the same way.
+ *
+ * Rounding stays with each caller rather than moving in here, and that is a real
+ * distinction rather than drift: the strip is a headline and holds two decimals
+ * whatever the value, while the position card lists quantities and lets a whole
+ * number stay whole.
+ */
+function parseFigure(value: string | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value.replace(/,/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
 function Stat({
   label,
   value,
@@ -155,11 +185,15 @@ function Stat({
   prefix?: string;
   suffix?: string;
 }) {
+  const n = parseFigure(value);
   return (
     <div className={s.stat}>
       <span className={s.statLabel}>{label}</span>
       <span className={`${s.statValue} tabular`}>
-        {value ? `${prefix}${value}${suffix}` : "—"}
+        {/* The affixes go on the figure, never on the dash: "$—" and "—%" both
+            read as a number that failed to render rather than as one nobody
+            claimed. `qty` already answers DASH for a null. */}
+        {n === null ? DASH : `${prefix}${qty(n, 2)}${suffix}`}
       </span>
     </div>
   );
@@ -174,17 +208,18 @@ function Row({
   value?: string;
   raw?: boolean;
 }) {
+  const n = raw ? null : parseFigure(value);
   return (
     <div className={s.kv}>
       <span>{label}</span>
       <b className="tabular">
-        {value
-          ? raw
-            ? value
-            : Number(value).toLocaleString(undefined, {
-                maximumFractionDigits: 2,
-              })
-          : "—"}
+        {/* `raw` means the hook already formatted it — `totalRewards` arrives as
+            "$500.00" — so re-parsing it would drop the currency it came with. */}
+        {raw
+          ? value || DASH
+          : n === null
+            ? DASH
+            : n.toLocaleString(undefined, { maximumFractionDigits: 2 })}
       </b>
     </div>
   );

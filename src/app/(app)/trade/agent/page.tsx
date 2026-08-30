@@ -82,12 +82,23 @@ type Panel = { kind: "idle" } | { kind: "plan" } | { kind: "receive" };
  * kfUSD collateral". "mint 500 USDC" is the phrasing that plans, so that is
  * what both the chip and the box say.
  *
- * Six items, one per surface: swap, stake, stablecoin, lend, borrow, receive.
- * Each completes on a connected wallet — no chip lands at "nothing is deployed
- * yet". Receive closes the list because it is the only one needing no
+ * Seven items, one per surface: faucet, swap, stake, stablecoin, lend, borrow,
+ * receive. Each completes on a connected wallet — no chip lands at "nothing is
+ * deployed yet". Receive closes the list because it is the only one needing no
  * signature at all, and it teaches the word the panel answers to.
+ *
+ * The faucet opens it because on a testnet it is genuinely the first step: a
+ * whitelisted tester arrives with an empty wallet, and every other chip here
+ * needs a balance to spend. "everything" rather than a ticker: it lands in the
+ * planner's batch branch and claims every asset currently due in one
+ * transaction, which is what somebody starting from zero wants, and it needs no
+ * assumption about which assets this chain's faucet stocks. It resolves to
+ * claimTestTokens rather than claimYield because `VERBS.claimTestTokens` is
+ * scanned ahead of the zero-slot verbs, so the "claim" in it cannot hijack the
+ * sentence.
  */
 const SUGGESTIONS = [
+  "claim everything from the faucet",
   "swap 500 USDC to KLD",
   "stake 100 KLD",
   "mint 500 USDC",
@@ -187,7 +198,7 @@ export default function AgentPage() {
           "I can also answer common questions directly — health factor, kfUSD, staking, slippage, agent permissions, which chains are live.",
         {
           via: "local",
-          /* Four of the list above as chips. The list is reference — you read it
+          /* Five of the list above as chips. The list is reference — you read it
              to find out what exists — and these are a way in, which is a
              different job that a line of text cannot do.
 
@@ -198,12 +209,19 @@ export default function AgentPage() {
              and prompt name different tokens: the parser binds mint's token as
              the *collateral*, so "mint 500 kfUSD" resolves to kfUSD-as-
              collateral and the planner rejects it. "mint 500 USDC" is the
-             phrasing that plans. Clicking fills the box; nothing sends. */
+             phrasing that plans. The faucet's prompt asks for everything due
+             rather than a named asset, because which assets a faucet stocks
+             differs per chain and a card cannot know. Clicking fills the box;
+             nothing sends. */
           cards: localCards([
             {
               kind: "actions",
               title: "Try one",
               actions: [
+                {
+                  label: "Claim testnet tokens",
+                  prompt: "claim everything from the faucet",
+                },
                 { label: "Swap USDC to KLD", prompt: "swap 500 USDC to KLD" },
                 { label: "Stake KLD for stKLD", prompt: "stake 100 KLD" },
                 { label: "Mint kfUSD", prompt: "mint 500 USDC" },
@@ -686,8 +704,8 @@ export default function AgentPage() {
               /* Chips only. The paragraph that used to sit above them explained
                  that Luca proposes and you sign — which the numbered steps and
                  the footnote under the composer both say again, in the place
-                 where they matter. Six tappable examples teach the same thing by
-                 being pressed, and cost a third of the height. */
+                 where they matter. Seven tappable examples teach the same thing
+                 by being pressed, and cost a third of the height. */
               <div className={s.empty}>
                 <div className={s.emptyTitle}>Try one</div>
                 <div className={s.suggest}>

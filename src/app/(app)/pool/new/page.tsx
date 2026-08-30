@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ethers } from "ethers";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers6Adapter } from "thirdweb/adapters/ethers6";
 import { client } from "@/config/client";
@@ -15,19 +14,15 @@ import { useV3PositionManager } from "@/hooks/dex/useV3PositionManager";
 import { readPoolState } from "@/lib/dex/pool";
 import { providerForChain } from "@/config/provider";
 import {
-  FEE_TIERS as TRADED_TIERS,
-  mintMinimums,
-  ticksForRange,
-} from "@/lib/dex/liquidity";
+  SLIPPAGE_BPS,
+  depositFailure,
+  depositV3,
+} from "@/lib/dex/deposit";
+import { FEE_TIERS as TRADED_TIERS, ticksForRange } from "@/lib/dex/liquidity";
 import { chainTokens } from "@/constants/tokens";
 import { getChainMeta } from "@/constants/chains";
 import type { IToken } from "@/constants/types/dex";
 import s from "../pool.module.css";
-
-const ERC20_ABI = [
-  "function approve(address spender, uint256 amount) external returns (bool)",
-  "function allowance(address owner, address spender) external view returns (uint256)",
-];
 
 /**
  * The tiers, with the copy that says what each one is for.
@@ -52,27 +47,24 @@ const FEE_TIERS = TRADED_TIERS.map((fee) => ({ fee, ...TIER_COPY[fee] }));
 const RANGE_PRESETS = ["Full range", "±5%", "±10%", "Custom"] as const;
 
 /**
- * Slippage tolerance applied to the mint's minimum amounts. Same 0.5% as
- * SwapSettings' "Auto" (AUTO_SLIPPAGE_BPS), kept as a local constant rather than
- * imported so a page does not pull in the swap gear popover for one integer.
- * There is no control for it here yet; unlike a swap, the number that would
- * change is not on screen.
- */
-const SLIPPAGE_BPS = 50;
-
-/**
  * mintPosition already handles token sorting, pool-init-if-needed and the
  * sqrtPriceX96 math internally — real logic worth trusting rather than
- * reimplementing inside an intent resolver. So this page calls it directly
- * with sequential approve → approve → mint, the same shape useStake.ts
- * already uses for approve → deposit.
+ * reimplementing inside an intent resolver. It is reached through `depositV3`,
+ * which is the approve → approve → floor → mint → wait sequence this page used to
+ * carry inline; it moved to `lib/dex/deposit` when the pools table grew a Deposit
+ * button on every row, so that both paths cannot drift.
  *
  * The range and the slippage floor come from `lib/dex/liquidity`, which is where
  * both used to live inline here. They were lifted out for the agent's
  * `provideLiquidity` and then this page was pointed at them, in that order and
  * deliberately: a second copy of either would be a second chance to reintroduce
  * the two defects they carry regression notes for — the missing tick inversion
- * and the zero slippage floor — on whichever path nobody was looking at.
+ * and the zero slippage floor — on whichever path nobody was looking at. The write
+ * sequence moved for exactly the same reason, one layer up.
+ *
+ * What this page still owns that the modal does not: choosing the pair and the
+ * tier, which is the difference between opening a pool and adding to one that
+ * exists. A row in the table has already answered both.
  */
 export default function NewPositionPage() {
   const router = useRouter();
@@ -270,68 +262,43 @@ export default function NewPositionPage() {
     setBusy(true);
     try {
       const signer = ethers6Adapter.signer.toEthers({ client, chain, account });
-      const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
-
-      for (const [token, amount, decimals] of [
-        [token0, amount0, token0.decimals],
-        [token1, amount1, token1.decimals],
-      ] as const) {
-        if (token.isNative) continue;
-        const erc20 = new ethers.Contract(token.address, ERC20_ABI, signer);
-        const needed = ethers.parseUnits(amount, decimals);
-        const current: bigint = await erc20.allowance(address, positionManager);
-        if (current < needed) {
-          const tx = await erc20.approve(positionManager, needed);
-          await tx.wait();
-        }
-      }
 
       /*
-       * Slippage floor for the mint, from the shared `mintMinimums`.
+       * The whole sequence — approve, approve, read the spot, floor the slippage,
+       * mint, wait — is `depositV3` in `lib/dex/deposit`, shared with the Deposit
+       * button on every row of the pools table. It was inline here, and the reason
+       * it moved is the same one that took the range and the floor into
+       * `lib/dex/liquidity` before it: two copies of a five-step write path is two
+       * chances to reintroduce the defects it carries regression notes for, on
+       * whichever copy nobody is looking at.
        *
-       * The derivation used to be inline here, and its long note is now that
-       * function's docblock — including the reason the obvious version is wrong:
-       * the floor cannot come from the typed amounts, because the pool takes
-       * `min(L(amount0), L(amount1))` and leaves the over-supplied side alone.
-       *
-       * `spot` is read here rather than at range time because it is read again on
-       * purpose: the preset that wrote these bounds may have run minutes ago, and
-       * the floor should be derived from the price the mint is about to meet. A
-       * null answer means the pool does not exist yet, and the two amounts below
-       * will set its opening price — the floor still matters there, as protection
-       * against someone front-running the initialize with a different one.
+       * `readSpot` rather than a price, and read at submission rather than at range
+       * time, for the reason the function documents: the floor belongs to the price
+       * the mint is about to meet, not the one the preset was centred on minutes
+       * ago. A null answer means the pool does not exist yet, where these two
+       * amounts set its opening price — the floor still matters there, as
+       * protection against someone front-running the initialize with a different
+       * one.
        */
-      const state = await poolAt(fee);
-      const floors = mintMinimums({
+      const result = await depositV3({
+        signer,
+        owner: address!,
+        positionManager,
+        token0,
+        token1,
+        fee,
         amount0,
         amount1,
-        decimals0: token0.decimals,
-        decimals1: token1.decimals,
         tickLower: ticks.tickLower,
         tickUpper: ticks.tickUpper,
-        spot: state ? state.price : null,
+        readSpot: () => poolAt(fee).then((state) => state?.price ?? null),
         slippageBps: SLIPPAGE_BPS,
+        mint: mintPosition,
       });
-      if ("error" in floors) {
-        toast.error(floors.error);
+      if (result) {
+        toast.error(result.error);
         return;
       }
-
-      await mintPosition(
-        token0.address,
-        token1.address,
-        fee,
-        ticks.tickLower,
-        ticks.tickUpper,
-        amount0,
-        amount1,
-        address!,
-        deadline,
-        token0.decimals,
-        token1.decimals,
-        floors.amount0Min,
-        floors.amount1Min,
-      );
 
       toast.success("Position created");
       /* The positions tab, not /pool — landing on a table of every pool after
@@ -339,7 +306,11 @@ export default function NewPositionPage() {
       router.push("/pool/positions");
     } catch (err) {
       console.error("[v2/pool/new] mint failed", err);
-      toast.error("Couldn't create the position");
+      /* Was one sentence for everything: a declined signature, an empty gas tank
+         and a genuine revert all read "Couldn't create the position", and the first
+         of those is the common case — where the user knows exactly what happened
+         and is being told the app is broken. */
+      toast.error(await depositFailure(err));
     } finally {
       setBusy(false);
     }

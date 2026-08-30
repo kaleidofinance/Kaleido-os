@@ -396,6 +396,23 @@ const FAUCET_FILLERS = new Set([
   "drip",
 ]);
 
+/**
+ * Words that mean "every asset that's due" where a faucet ticker would go.
+ *
+ * Lives here rather than in build.ts, which is where it used to and where it is
+ * acted on, because the parser now needs it too: it is the one non-ticker word
+ * the faucet branch will accept from anywhere in the sentence, so "claim
+ * everything from the faucet" resolves the same way "faucet all" does. Two
+ * copies of the set would have drifted the first time a fourth word was added,
+ * and the direction of the import is the safe one — build.ts already depends on
+ * this module, and this module has no runtime dependencies for it to acquire.
+ *
+ * Small on purpose. It is only ever consulted after a real symbol match has
+ * failed, so the cost of a missing word is the existing refusal that names the
+ * asset list — never a wrong transaction.
+ */
+export const ALL_WORDS = new Set(["all", "everything", "every"]);
+
 const HELP_WORDS = ["help", "commands", "what can you do", "how do i use"];
 
 /**
@@ -753,17 +770,49 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   const faucetAt = words.findIndex((w) => VERBS.claimTestTokens.includes(w));
   if (faucetAt !== -1) {
     /*
-     * The word immediately after it, and only that word. Loose phrasings
-     * ("get me some usdt from the faucet") are left to the model, which has a
-     * `token` parameter for exactly this and no positional guessing to do —
-     * the same bargain the note on VERBS makes about near misses.
+     * The word immediately after it — the shape the help list teaches, and the
+     * one that works for an asset this chain's registry has never heard of.
+     * Ticker-shaped and not a filler, so "faucet please" doesn't come back as
+     * "the faucet doesn't hand out please".
      */
     const next = words[faucetAt + 1];
-    const symbol =
+    const adjacent =
       next && /^[a-z][a-z0-9]{1,11}$/.test(next) && !FAUCET_FILLERS.has(next)
         ? next
         : undefined;
-    return { status: "ok", command: { kind: "claimTestTokens", symbol } };
+
+    /*
+     * Then, only if that found nothing, the rest of the sentence — but not by
+     * position.
+     *
+     * "claim USDC from the faucet" is what people actually type, and reading
+     * only the word after the noun left it with no asset named, so the planner
+     * answered "the faucet lists USDC, USDT, USDe — say which one you want" to
+     * a sentence that had just said USDC. That is the one refusal here that
+     * makes the agent look like it cannot read.
+     *
+     * The fallback still does no guessing, which is what the note this replaces
+     * was protecting. A word is only taken if it resolves against the token
+     * registry the caller passed in, or is literally one of the three batch
+     * words — so there is no stopword list, no attempt at English, and a
+     * sentence full of prose contributes nothing. A registry match is preferred
+     * over a batch word so "claim all my USDC from the faucet" claims USDC
+     * rather than everything.
+     *
+     * Deliberately narrower than `adjacent`: an asset the faucet lists but this
+     * chain's registry does not carry — which is the reason FaucetAssetRef
+     * exists at all, see build.ts — can only be named the adjacent way. That is
+     * a phrasing gap, not a wrong transaction, and it is the direction to fail
+     * in.
+     */
+    const loose =
+      findTokenMentions(words, tokens)[0]?.token.symbol ??
+      words.find((w) => ALL_WORDS.has(w));
+
+    return {
+      status: "ok",
+      command: { kind: "claimTestTokens", symbol: adjacent ?? loose },
+    };
   }
 
   // Checked ahead of the slotted verbs: these take no argument at all, so
@@ -989,7 +1038,13 @@ function parseBridge(
   mentions: Mention[],
 ): ParseResult {
   const sepAt = words.findIndex((w) => SEPARATORS.includes(w));
-  const dest = sepAt >= 0 ? words.slice(sepAt + 1).join(" ").trim() : "";
+  const dest =
+    sepAt >= 0
+      ? words
+          .slice(sepAt + 1)
+          .join(" ")
+          .trim()
+      : "";
   const token =
     sepAt >= 0
       ? mentions.find((m) => m.index < sepAt)?.token
@@ -1245,6 +1300,14 @@ export function completeDraft(draft: Draft): ParseResult {
 /** Shown when the parser is the only thing available, or on `help`. */
 export const COMMAND_HELP = [
   "receive",
+  /* The faucet, second, because on a testnet it is what makes every line below
+     it possible — an empty wallet cannot swap. Terse forms to match the rest of
+     this list, and both of them, because they are the two shapes: one asset by
+     ticker, or everything that is due. Natural sentences work too — "claim USDC
+     from the faucet" — but this list is reference, and reference is where the
+     shortest form that works belongs. */
+  "faucet USDC",
+  "faucet all",
   // Deliberately elided rather than shown as a plausible full address: this
   // list is copy-pasteable, and a made-up 40-hex recipient that someone pastes
   // is an unrecoverable loss.

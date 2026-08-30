@@ -94,10 +94,24 @@
 .ccy {
   display: flex;
   gap: 4px;
-  /* Keep pills on one line; reduce spacing so they fit without scrolling. */
-  flex-wrap: nowrap;
-  overflow-x: visible;
-  -webkit-overflow-scrolling: touch;
+  /* Wrap rather than crush. This row holds one pill per registered asset, and
+     that set only grows — addLoanableToken/addCollateralToken are irreversible,
+     so no chain ever loses a pill. Measured in the Collateral modal on a 390px
+     viewport (row 282px wide, pills 63–74px): three pills need 218 and fit, but
+     `flex-wrap: nowrap` does not overflow at four or five — the pills are
+     shrinkable flex items, so they squeeze to ~68 then ~53 each, and `.ccyOpt`'s
+     `overflow: hidden; text-overflow: ellipsis` then eats the symbol behind the
+     20px icon with nothing to indicate it. Wrapping keeps every pill full size on
+     a second line: at four the row goes 24px → 52px and the modal 338 → 366,
+     still well inside the viewport. Nothing changes at three or fewer, so the
+     desktop and current-chain rows are untouched.
+
+     The `overflow-x: visible` and `-webkit-overflow-scrolling: touch` that stood
+     here were inert — the first is the initial value and the second needs a
+     scroll container. Worse, the row sits inside `.modal { overflow: hidden }`,
+     so had the pills not been shrinkable the extra ones would have been both
+     invisible and unreachable. */
+  flex-wrap: wrap;
 }
 .ccyOpt {
   background: var(--k-well2);

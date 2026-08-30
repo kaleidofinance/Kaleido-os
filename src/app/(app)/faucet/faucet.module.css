@@ -187,6 +187,33 @@
   cursor: not-allowed;
 }
 
+/* The gas row's "Claim" — an <a>, because the claim genuinely happens elsewhere.
+   Outlined rather than filled: it sits in a column of brand-filled Claim buttons
+   and it is the one that leaves the app, so it should read as the same rank of
+   action without impersonating an in-app transaction. Same min-width as .claim so
+   the column keeps one edge. */
+.claimOut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 132px;
+  box-sizing: border-box;
+  background: transparent;
+  color: var(--k-t1);
+  border: 1px solid var(--k-brand);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  padding: 10px 12px;
+  border-radius: var(--k-r-pill);
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+}
+.claimOut:hover {
+  background: var(--k-row-hover);
+}
+
 /* Sits in the header row's action column, directly above the per-row Claim
    buttons, so the batch reads as the column's heading rather than as a sixth
    control competing with them. Outlined instead of filled: five brand-coloured
@@ -210,6 +237,19 @@
 .claimAll:disabled {
   color: var(--k-t3);
   cursor: not-allowed;
+}
+
+/* The gas row on a chain whose faucet cannot stock it (BSC testnet). Dashed and
+   dimmed because not one cell in it is a reading from our contract — the drip,
+   the stock and the claims left are all the other operator's business and can
+   change without us knowing. A solid row here would put four em-dashes in the
+   same visual register as four measured figures. */
+.rowOut {
+  border: 1px dashed var(--k-line2);
+  opacity: 0.92;
+}
+.rowOut:hover {
+  opacity: 1;
 }
 
 .note {

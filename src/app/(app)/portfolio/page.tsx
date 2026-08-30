@@ -45,11 +45,16 @@ function PositionRow({ p }: { p: Position }) {
           <div className={s.aSub}>{p.sublabel}</div>
         </div>
       </div>
-      <div className={`${s.cell} tabular`}>
+      {/* `data-label` is printed beside each figure by the stacked phone layout
+          (the phone block at the foot of portfolio.module.css). These two tables
+          have no header row at any width — on desktop the columns are read by
+          position — so once the columns collapse these attributes are the only
+          thing that names the numbers. */}
+      <div data-label="Value" className={`${s.cell} tabular`}>
         <span className={s.cVal}>{usd(p.valueUsd)}</span>
         {p.amount && <span className={s.cSub}>{p.amount}</span>}
       </div>
-      <div className={`${s.cell} tabular`}>
+      <div data-label="APY" className={`${s.cell} tabular`}>
         <span className={p.apy !== null && p.apy > 0 ? s.pos : s.cVal}>
           {pct(p.apy)}
         </span>
