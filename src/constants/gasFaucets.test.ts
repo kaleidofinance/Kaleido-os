@@ -102,26 +102,37 @@ console.log("\n— the two near-misses stay caught —");
   );
 }
 
-console.log("\n— the chains with no in-app route to gas lead with a real faucet —");
+console.log("\n— the pre-native chains lead with the chain team's own faucet —");
 {
   /*
-   * BSC testnet (97) and Arc (5042002) both leave a visitor unable to afford the
-   * claim, for two different measured reasons (on chain, 2026-08-29):
+   * BSC testnet (97) and Arc (5042002) are the two chains whose faucet runs the
+   * 4560-byte pre-native bytecode — Sepolia's native-capable build is 5343 and is
+   * the only one carrying `KaleidoTokenFaucet_NativeTransferFailed`. Neither can
+   * be upgraded in place: `FAUCET_EXTEND` adds listings, not a `receive()`.
    *
-   *  - 97's faucet runs the bytecode from before it could hold native gas —
-   *    `assetInfo` lists 5 assets and none is the address(1) sentinel, while
-   *    Sepolia's, Base's and Robinhood's all are. Nothing to claim.
-   *  - 5042002 does list its gas, because Arc's native currency IS USDC and
-   *    `0x3600…0000` is a 6dp alias of the same balance. But that row's drip is
-   *    100.0 against a stock of 8.694815 — less than one payout, so `claim`
-   *    reverts `InsufficientContractBalance`. A listed row is not a payable one.
+   * What that costs them differs, and the difference is worth keeping written
+   * down because it decides how /faucet renders each (measured 2026-08-30):
    *
-   * Neither is a funding gap that closes on its own: `FAUCET_EXTEND` cannot add a
-   * `receive()` to 97, and Arc's USDC shares one budget with the deployer's gas.
+   *  - 97 has no gas row at all. `claim(address(1))` reverts `AssetNotListed`
+   *    (0x3ea1becf), so the page synthesises a row that links out. Redeploying is
+   *    blocked on funding, not on us: the deployer holds 0.00144843797 tBNB
+   *    against a 0.005 reserve, so a fresh faucet would list gas and stock zero.
+   *  - 5042002 pays its gas today. Arc's native currency IS USDC and
+   *    `0x3600…0000` is a 6dp ERC20 alias of the same balance (measured ratio
+   *    exactly 1e12), so that row hands out spendable gas without any native
+   *    branch in `_pay`. It was briefly unpayable — drip 100.0 against a stock of
+   *    8.694815 — until `setDrips` took the drip to 0.25 (34 claims); a claim
+   *    from a fresh address now simulates clean.
    *
-   * /faucet therefore promotes `gasFaucetsFor(id)[0]` into the asset table itself
-   * on those two, as the Claim button for the gas row, because it is the only
-   * thing on the page that can fund an empty wallet. That makes the FIRST entry
+   * Both entries stay, and Arc's is not redundant now that its row pays: a native
+   * row solves the SECOND hop, never the zeroth. `claim` is itself a transaction,
+   * so a wallet at exactly zero still cannot afford to call it, and Circle's
+   * faucet is the only thing on the page that can reach such a wallet.
+   *
+   * /faucet promotes `gasFaucetsFor(id)[0]` into the asset table as the gas row's
+   * Claim button whenever that row cannot pay — keyed on `empty`/`paused`, not on
+   * a chain id, so Arc dropped the link-out on its own when the drip changed and
+   * Sepolia would gain one the day it runs dry. That makes the FIRST entry
    * load-bearing in a way it is not elsewhere: it has to be the chain's own team,
    * since a third party that closes or starts gating would leave the table's
    * first action a dead end with no in-app fallback behind it.
