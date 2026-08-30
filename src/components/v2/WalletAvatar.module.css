@@ -1,0 +1,21 @@
+/* The art is opaque and hue-derived (see WalletAvatar.tsx), so the only thing this
+   file does is round it off and close its edge. */
+.avatar {
+  display: block;
+  flex: none;
+  border-radius: 50%;
+  /* Inset, not a border: a border would grow the box and every caller sizes the
+     avatar to sit beside text at a fixed height. The hairline stops a light-hued
+     avatar from bleeding into a light theme's page ground. */
+  box-shadow: inset 0 0 0 1px var(--k-line2);
+}
+
+/* No wallet, no seed — the neutral plate the header used to show unconditionally.
+   Recessed rather than filled, so it reads as an empty slot and not as an image
+   that failed to load. */
+.plate {
+  display: block;
+  flex: none;
+  border-radius: 50%;
+  background: var(--k-glass-deep);
+}

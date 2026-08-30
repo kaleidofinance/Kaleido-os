@@ -527,9 +527,9 @@ const useGetValueAndHealth = () => {
           }
         } catch (error) {
           /* `undefined`, not 0. data2Atom is `number | undefined` and
-           * usePortfolio:206 already returns null for undefined — a health
-           * factor of *zero* is a maximally-unhealthy position, so writing 0
-           * here told the portfolio the account was liquidatable whenever the
+           * usePortfolio's `health` memo already returns null for undefined — a
+           * health factor of *zero* is a maximally-unhealthy position, so writing
+           * 0 here told the portfolio the account was liquidatable whenever the
            * read merely failed. */
           setdata2(undefined);
         }

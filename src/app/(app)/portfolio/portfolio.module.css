@@ -14,14 +14,10 @@
   gap: var(--k-s3);
   flex-wrap: wrap;
 }
-/* Placeholder for the wallet's identicon. Recessed like every other avatar plate
-   rather than an opaque grey disc on the page ground. */
-.pav {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: var(--k-glass-deep);
-}
+/* The avatar that used to be a grey `.pav` disc here now comes from
+   WalletAvatar.tsx via _components/AvatarPicker — art generated from the address,
+   and it carries its own size and edge. The empty-slot plate moved there too, so
+   the no-wallet case still has something to show. */
 .paddr {
   font-size: var(--k-fs-xl);
   font-weight: var(--k-fw-med);
@@ -122,16 +118,18 @@
   gap: var(--k-s5);
   align-items: start;
 }
-/* A grid item's `min-width` is `auto`, so neither child will size below its own
-   min-content width — and the min-content width of `.main` is the `min-width: 460px`
-   on `.row` in the phone block at the foot of this file. Measured on a 390px
-   viewport: the `1fr` track resolved to 478px, `.main` and `.side` were both 478
-   wide, the document went to 492, and `body { overflow-x: hidden }` in globals.css
-   clipped the 102px past the screen edge with nothing to scroll to it. With the
-   automatic minimum removed the track is the container's width, and `.table`'s
-   `overflow-x: auto` gets something narrower than its rows to scroll inside —
-   which is what the phone block intended all along. Same fix, same reason, as
-   `.cols > *` in borrow.module.css. */
+/* A grid item's `min-width` is `auto`, so neither child would size below its own
+   min-content width — and `.main`'s min-content is whatever the widest position row
+   cannot break. It used to be a flat `min-width: 460px` on `.row`, and the damage
+   was measured on a 390px viewport: the `1fr` track resolved to 478px, `.main` and
+   `.side` were both 478 wide, the document went to 492, and `body { overflow-x:
+   hidden }` in globals.css clipped the 102px past the screen edge with nothing to
+   scroll to it. The 460 is gone (the phone block folds each row into two columns
+   instead), but the automatic minimum still has to go: an unwrappable figure like
+   "$999,584,081.76" beside an icon and a chip is a min-content floor of its own.
+   With it removed the track is the container's width and the row lays out inside
+   whatever the phone actually has. Same fix, same reason, as `.cols > *` in
+   borrow.module.css. */
 .cols > * {
   min-width: 0;
 }
@@ -152,10 +150,33 @@
   flex-direction: column;
   gap: var(--k-s3);
 }
+/* A heading on the left and the group's subtotal on the right. `baseline` rather
+   than `center` so the 20px title and the 20px figure sit on one line even though
+   their line-heights differ. */
 .gHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-s3);
+}
+/* The title is a <Link> to the group's own product page, so it unsets the anchor
+   defaults and takes the typography the plain heading had. */
+.gTitle {
   font-size: var(--k-fs-xl);
   font-weight: var(--k-fw-med);
   letter-spacing: -0.02em;
+  color: inherit;
+  text-decoration: none;
+}
+.gTitle:hover {
+  color: var(--k-t2);
+}
+.gSum {
+  font-size: var(--k-fs-lg);
+  letter-spacing: -0.02em;
+  /* Dimmer than the title: it is the sum of what is below, not a headline of its
+     own, and five equally loud figures compete with the net position above. */
+  color: var(--k-t2);
 }
 /* The two position tables. Glass rather than the flat --k-card these were, so
    they read as the same material as the trade card and the /borrow surfaces —
@@ -233,6 +254,14 @@
   color: var(--k-pos);
   font-size: var(--k-fs-base);
 }
+/* A box on a phone, no box at all here. `display: contents` drops the wrapper out
+   of the layout so its two children auto-place into the row's third and fourth
+   tracks exactly as they did when they were direct children — which is the point:
+   the four columns are a desktop shape worth keeping, and the phone needs the two
+   of them on one line. Order is source order either way. */
+.meta {
+  display: contents;
+}
 /* Neutral variant of the toned badges below, which are all *-dim washes — so
    this takes a wash too rather than being the one opaque chip in the row. */
 .badge {
@@ -253,11 +282,21 @@
   color: var(--k-danger);
 }
 
+/* An <a> now: an empty group points at the surface that fills it, so the sentence
+   is the link rather than sitting beside one. Block, so the whole width of the
+   table is the target and not just the text. */
 .empty {
+  display: block;
   padding: 26px 16px;
   text-align: center;
   color: var(--k-t2);
   font-size: var(--k-fs-sm);
+  text-decoration: none;
+  border-radius: var(--k-r-md);
+}
+.empty:hover {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
 }
 .rowSkeleton {
   display: flex;
@@ -345,58 +384,151 @@
        Cf. trade.module.css and Nav.module.css, the only two files that had it. */
     padding: 16px 14px calc(60px + env(safe-area-inset-bottom, 0px));
   }
-  /* ---------- positions: stacked instead of scrolled ---------- */
-  /* These two tables are the reader's own positions — nobody reads their stKLD row
-     against their USDC row — so the column alignment a table preserves is worth
-     less here than not having to swipe sideways for the status. Below 720px, the
-     width every page in this app already treats as a phone, each row becomes a
-     block: asset, then one labelled line per figure, then the status chip.
+  /* ---------- positions: identity left, money right ---------- */
+  /* Below 720px — the width every page in this app already treats as a phone —
+     each row folds from four columns into two: what the position is on the left,
+     what it is worth on the right, with a second line under each for the detail.
+     Status chip under the identity, rate under the figure — except in the two
+     tables that have no rates at all (Wallet, Staking & LP), where the chip has
+     nothing to share that line with and moves up beside the money instead (see
+     `.rowFold`).
 
-     What was here instead was `.table { overflow-x: auto }` + `.row { min-width:
-     460px }`, which was the right fix for the wrong problem. The 4-column grid
-     could not shrink below its content and `body { overflow-x: hidden }` in
-     globals.css was clipping the badge column off the right edge, so a scroller at
-     least made it reachable. Stacking removes the need for a scroller here at all;
-     both rules would now be dead, and the fixed 460px would actively fight the
-     single-column template below.
+     It stacked one-figure-per-line before this, each number labelled from its
+     `data-label`. That was faithful and it was tall: four text lines plus a chip
+     on a line of its own, about 170px a row, so five groups of positions became
+     something you scroll past rather than read. The labels were also doing less
+     work than they appeared to — a right-aligned currency figure with the token
+     amount under it is the shape every wallet app uses for exactly this, and it
+     names itself. APY does not, so that one label stays, inline (see `.cellApy`).
 
-     These tables have no header row at any width — on desktop the columns are read
-     by position — so the labels come only from `data-label` in page.tsx. Without
-     those attributes the stack would be bare numbers. Same shape and same reasoning
-     as `.tr` / `.tr.mineRow` in borrow.module.css. */
+     What this is NOT is the earlier `.table { overflow-x: auto }` + `.row {
+     min-width: 460px }`, which made the desktop grid reachable by swiping. Two
+     columns fit a phone, so there is nothing to scroll to. */
   .row {
-    grid-template-columns: minmax(0, 1fr);
+    /* Slightly wider left: the identity carries two lines of prose ("Unclaimed ·
+       kafUSD vault") where the right carries two figures. Both tracks are
+       `minmax(0, …)` so neither can push `.main` past the viewport — see the note
+       on `.cols > *` above.
+
+       The one string that outgrows its track is an LP row's amount ("3,407.56 KLD
+       + 352.2899 USDC"), which wraps to a second line and is why `.cellValue`
+       sets `text-align`. Unmeasured: at ~330px and below, a ten-figure balance
+       ("$999,584,081.76") is wider than the right track and will sit tight
+       against the row's padding. */
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "asset value"
+      "meta  apy";
+    /* Tighter than the desktop 15px: two short lines in a ~340px row need less
+       breathing room around them than one wide line does. */
+    padding: 12px 10px;
+    gap: 6px var(--k-s3);
+    /* Top, not centre. The identity block is two lines and so is the figure
+       block; they read as one row only if their first lines start together. */
+    align-items: start;
     min-width: 0;
-    gap: 7px;
-    align-items: stretch;
   }
-  /* A two-column grid rather than a flex row, because the Value cell carries a
-     second line (the token amount) under its figure: the label takes column 1 and
-     both lines stack in column 2, which a flex row would have laid side by side. */
-  .cell {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    column-gap: var(--k-s3);
-    align-items: baseline;
+  .asset {
+    grid-area: asset;
+  }
+  .cellValue {
+    grid-area: value;
+    /* `align-items: flex-end` on `.cell` places the span, not the text inside it
+       once the span is the full width of the track — which is what happens the
+       moment an amount wraps. Without this the wrapped line drifts left, off the
+       figure it belongs to. */
     text-align: right;
   }
-  .cell::before {
+  .cellApy {
+    grid-area: apy;
+    /* A row rather than the desktop column: "APY 4.80%" on one line, hard against
+       the same right edge as the figure above it. */
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .cellApy::before {
     content: attr(data-label);
-    grid-column: 1;
-    grid-row: 1;
-    text-align: left;
     font-size: var(--k-fs-xs);
     /* Set, not inherited: a positive APY is tinted with --k-pos and the word
        "APY" is not itself the good news. */
     color: var(--k-t2);
   }
-  .cell > * {
-    grid-column: 2;
+  .cellNone {
+    display: none;
   }
-  /* `justify-self: end` put the status chip in the right corner of its own line,
-     reading as detached from the row it belongs to. */
+  /* `justify-self: end` put the chip in the far right corner of its own line,
+     reading as detached from the row it belongs to. Under the token's icon it
+     reads as a fact about the position. */
   .badge {
+    grid-area: meta;
     justify-self: start;
+  }
+  /* ---------- the tables that fold the chip up ---------- */
+  /* A loan or an offer has a rate, so its chip and its "APY 8.00%" share the row's
+     second line and neither costs anything extra. A wallet holding and a staking or
+     LP position have no rate at all, and there the chip was sitting alone on a line
+     of its own — a whole line of row height whose entire content was the word
+     "Idle".
+
+     So on those: the identity spans both grid rows, and the chip goes to the tail
+     of the figure stack, right edge shared with the amount above it. Three lines
+     instead of four wherever the sublabel wraps, which at phone widths is most of
+     them.
+
+     Which tables those are is `FOLD_CHIP` in page.tsx — a fixed list of group ids,
+     Wallet and Staking & LP. It is not derived from whether the rows on screen have
+     rates: that read correct and looked broken, because Borrowing and Stable each
+     hold both kinds (collateral and unclaimed yield have no rate, a debt row and a
+     priced vault do), so a table changed shape as the reader's own positions
+     changed. Fixed by group, a table looks the same every time. */
+  .rowFold {
+    grid-template-areas:
+      "asset value"
+      "asset meta";
+    /* No row gap: the chip line is the tail of the figure stack above it, not a
+       second block, so the only space between the amount and the chip is the
+       chip's own padding (plus the -2px below, which tucks it into the amount's
+       half-leading). The column gap is untouched. */
+    gap: 0 var(--k-s3);
+  }
+  /* `display: contents` everywhere else — the wrapper only becomes a box here, to
+     hold the chip in the money column. `.cellApy` inside it is `display: none` on
+     these rows (a folded table has no rates in it), so this flex row has exactly
+     one child. */
+  .rowFold .meta {
+    grid-area: meta;
+    display: flex;
+    justify-content: flex-end;
+    /* Not the flex default: `stretch` would let the pill grow to whatever height
+       the row ends up at, and a chip is a chip. */
+    align-items: flex-start;
+    min-width: 0;
+    /* Into the half-leading under the amount. A 13px line box carries ~2.5px of
+       empty space below its baseline, and the chip reading as part of the stack
+       above it is worth spending that space rather than the row's height. */
+    margin-top: -2px;
+  }
+  /* Sized down to the small print it now sits among: 13px like `.aSub` and the
+     "APY" label, and a pill's worth of padding rather than the desktop 5px/11px.
+     At desktop size it was the tallest thing on a line of small print and read as
+     the row's headline, which it is not — it is the same order of fact as "Wallet
+     balance".
+
+     Scoped to the folded tables, deliberately: a chip that still sits on its own
+     line under the icon ("Repaying", "Outstanding") was not asked to change and
+     does not change. Two sizes across the page, one per table, never two inside
+     one table. */
+  .rowFold .badge {
+    font-size: var(--k-fs-xs);
+    padding: 2px 8px;
+  }
+  /* Rows are two stacked blocks now, and a phone has no hover to tell one from
+     the next, so the boundary has to be drawn. Desktop rows are a single line
+     each and read as a list without it. */
+  .row + .row {
+    border-top: 1px solid var(--k-line);
   }
   /* The net-position headline is the one number the page is built around; at a
      flat 52px a seven-figure balance overran the viewport (and clipped, because

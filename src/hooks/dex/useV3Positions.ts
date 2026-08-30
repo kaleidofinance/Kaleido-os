@@ -23,6 +23,22 @@ export interface V3Position {
   tokensOwed0: string;
   tokensOwed1: string;
   inRange: boolean;
+  /**
+   * The pool's `slot0().sqrtPriceX96` at the time of the read, or null when the
+   * pool could not be read (no pool for the pair on this chain, or the call
+   * failed — the same condition that leaves `inRange` false).
+   *
+   * Carried because the split of a position between its two tokens depends
+   * entirely on where price sits inside its range, so this is the one extra field
+   * that turns "liquidity 1.2e18 over ticks -6000…6000" into "0.4 ETH and 900
+   * USDC" — see lib/dex/positionValue.ts. It costs no extra RPC: the slot0 read
+   * that computes `inRange` already returns it and used to discard it.
+   *
+   * A string, not a number: it is a uint160, and `Number` would silently drop
+   * everything past the 53rd bit at the point of capture rather than at the point
+   * of display where the loss is understood and documented.
+   */
+  sqrtPriceX96: string | null;
 }
 
 export const useV3Positions = () => {
@@ -89,6 +105,7 @@ export const useV3Positions = () => {
 
             // Determine if In Range
             let inRange = false;
+            let sqrtPriceX96: string | null = null;
             try {
               const poolAddr = await factory.getPool(
                 pos.token0,
@@ -103,8 +120,13 @@ export const useV3Positions = () => {
                   ],
                   provider,
                 );
-                const { tick } = await poolContract.slot0();
-                const currentTick = Number(tick);
+                const slot0 = await poolContract.slot0();
+                const currentTick = Number(slot0.tick);
+                /* Kept as a decimal string. It is only useful for valuing the
+                   position (positionValue.ts) and stays null when this read
+                   failed, so a caller can tell "price unknown" from "position
+                   empty" rather than valuing an unread pool at zero. */
+                sqrtPriceX96 = slot0.sqrtPriceX96.toString();
                 inRange =
                   currentTick >= Number(pos.tickLower) &&
                   currentTick < Number(pos.tickUpper);
@@ -128,6 +150,7 @@ export const useV3Positions = () => {
               tokensOwed0: pos.tokensOwed0.toString(),
               tokensOwed1: pos.tokensOwed1.toString(),
               inRange,
+              sqrtPriceX96,
             } as V3Position;
           } catch (e) {
             console.error(`Error fetching position ${i}:`, e);
