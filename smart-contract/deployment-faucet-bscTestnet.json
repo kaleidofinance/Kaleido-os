@@ -18,10 +18,9 @@
         "drip": "10000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -33,10 +32,9 @@
         "drip": "10000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -48,10 +46,9 @@
         "drip": "10000000000000000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -59,14 +56,13 @@
         "address": "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
         "symbol": "WBNB",
         "decimals": 18,
-        "dripHuman": "5.0",
-        "drip": "5000000000000000000",
+        "dripHuman": "0.02",
+        "drip": "20000000000000000",
         "source": "dex",
         "funding": {
-          "method": "wrap",
-          "amount": "0.281513390235128218",
-          "target": "50.0",
-          "short": "49.718486609764871782"
+          "method": "topup",
+          "stocked": "0.281513390235128218",
+          "claimsLeft": 14
         }
       }
     ]
@@ -74,5 +70,6 @@
   "sources": {
     "stablecoin": "deployment-stablecoin-bscTestnet.json",
     "dex": "deployment-dex-bscTestnet.json"
-  }
+  },
+  "lastTopup": "2026-08-30T06:36:57.945Z"
 }

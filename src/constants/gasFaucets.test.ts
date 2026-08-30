@@ -113,10 +113,13 @@ console.log("\n— the pre-native chains lead with the chain team's own faucet �
    * What that costs them differs, and the difference is worth keeping written
    * down because it decides how /faucet renders each (measured 2026-08-30):
    *
-   *  - 97 has no gas row at all. `claim(address(1))` reverts `AssetNotListed`
-   *    (0x3ea1becf), so the page synthesises a row that links out. Redeploying is
-   *    blocked on funding, not on us: the deployer holds 0.00144843797 tBNB
-   *    against a 0.005 reserve, so a fresh faucet would list gas and stock zero.
+   *  - 97 has no gas row, and BNB Chain's own faucet is the ANSWER for it rather
+   *    than a stopgap: `claim(address(1))` reverts `AssetNotListed` (0x3ea1becf),
+   *    so the page synthesises a row whose Claim button goes to
+   *    bnbchain.org/en/testnet-faucet. Everything else on that chain is ours and is
+   *    stocked for people who already have gas — USDC/USDT/USDe at 3000 claims
+   *    each, KLD 5000, WBNB 14 (capped by the wrap budget, not by choice). So the
+   *    link is load-bearing for exactly one row and nothing else.
    *  - 5042002 pays its gas today. Arc's native currency IS USDC and
    *    `0x3600…0000` is a 6dp ERC20 alias of the same balance (measured ratio
    *    exactly 1e12), so that row hands out spendable gas without any native
