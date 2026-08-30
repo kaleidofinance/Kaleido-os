@@ -37,6 +37,12 @@
  *
  *   from: "stablecoin"  deployment-stablecoin-<network>.json — the test stables
  *   from: "dex"         deployment-dex-<network>.json `contracts.wrappedNative`
+ *   from: "kld"         deployment-kld-<network>.json `contracts.KLD` — the
+ *                       protocol token, ours, on its home chain. Kept apart from
+ *                       "stablecoin" because it lives in its own record, and from
+ *                       "literal" because that source means "third-party address
+ *                       we never deployed", which is the signal /faucet uses to
+ *                       decide a row should link out to somebody else's issuer.
  *   from: "literal"     third-party contracts in no record of ours (Arc's EURC
  *                       and cirBTC). These carry expectSymbol/expectDecimals and
  *                       are verified on-chain before listing — see below.
@@ -70,10 +76,14 @@
  * wrong power of ten is a successful transaction that pays out a millionth of what
  * the page says, and `decimals()` costs one eth_call to rule out.
  *
- * KLD is deliberately absent. No contract in smart-contract/contracts mints it
- * (see OWN_TOKENS in src/constants/registry.ts), so there is nothing to list; the
- * faucet takes an asset list precisely so this is an empty slot rather than an
- * undeployable constructor. Add it with setDrips the day the token exists.
+ * KLD used to be deliberately absent, because no contract in smart-contract/
+ * contracts minted it. That changed on 2026-08-27: KLD.sol is deployed on all five
+ * testnets, and on each of them `deploy-kld.js` stocked the faucet and called
+ * setDrip itself as its last step — so the token has been claimable on Arc and BSC
+ * since that run, listed by a script that records the fact in the KLD record's
+ * `faucet` leg and never in the faucet's own. This plan now carries it (`from:
+ * "kld"`) so the two records agree; an extend run reconciles an already-listed
+ * asset into the record rather than listing it twice.
  *
  * kfUSD and kafUSD are absent for a different reason: they are not assets a tester
  * should be given. You obtain kfUSD by depositing collateral and minting it, and
@@ -116,6 +126,36 @@
  * unfunded asset is not broken — it is listed, /faucet shows it as empty, and
  * `claim` reverts with InsufficientContractBalance until someone sends it tokens.
  * The summary prints the exact shortfall per asset so it is obvious what to send.
+ *
+ * ── Extending a live faucet (FAUCET_EXTEND=1) ───────────────────────────────
+ *
+ * The listing on chain is read first and is the authority. A planned asset then
+ * falls into one of three buckets, and the difference between the last two is the
+ * whole reason this path is more than a `setDrips` call:
+ *
+ *   fresh       not listed on chain. Listed and funded, exactly as a deploy would.
+ *   reconciled  listed on chain but absent from the record — because something
+ *               else listed it. `deploy-kld.js` does precisely this, and Arc's and
+ *               BSC's faucets have handed out KLD since 2026-08-27 while their
+ *               records described six assets and four. These are recorded from
+ *               chain state (drip and stock read back through `assetInfo`, never
+ *               from the plan) and NOT funded: re-running the funding for an asset
+ *               that already has stock would silently double it, and re-`setDrips`
+ *               would undo a deliberate pause. The plan's drip is cold-deploy
+ *               sizing; a disagreement with the chain is reported, not applied.
+ *   blocked     listed nowhere and unlistable on this faucet's bytecode. One real
+ *               case: the native sentinel on a faucet deployed before `receive()`
+ *               existed (Arc and BSC). Listing address(1) there would create a row
+ *               whose claim reverts inside `_pay` — it would call
+ *               IERC20(address(1)).safeTransfer, i.e. the ecrecover precompile —
+ *               and the funding send would revert too, for want of a receive().
+ *               Detected from the deployed bytecode rather than from a chain id.
+ *
+ * Everything the record already carried and the plan no longer mentions is carried
+ * forward untouched, as are top-level keys written by the sibling scripts
+ * (`lastTopup`, `lastDripFix`, `lastUsdcSwitch`) and the original deploy
+ * `timestamp` — an extend adds `extendedAt` rather than overwriting when the
+ * faucet was born.
  */
 
 const hre = require("hardhat");
@@ -156,6 +196,9 @@ const FAUCET_PLANS = {
       { key: "USDT", from: "stablecoin", drip: 10_000 },
       { key: "USDe", from: "stablecoin", drip: 10_000 },
       { key: "WETH", from: "dex", drip: 1, fund: "wrap", stockDrips: 10 },
+      /* Already listed and stocked by deploy-kld.js on every chain — see the Arc
+         entry below and the header's note on reconciled assets. */
+      { key: "KLD", from: "kld", drip: 1000, stockDrips: 5000 },
     ],
   },
 
@@ -168,6 +211,7 @@ const FAUCET_PLANS = {
       { key: "USDT", from: "stablecoin", drip: 10_000 },
       { key: "USDe", from: "stablecoin", drip: 10_000 },
       { key: "WETH", from: "dex", drip: 1, fund: "wrap", stockDrips: 10 },
+      { key: "KLD", from: "kld", drip: 1000, stockDrips: 5000 },
     ],
   },
 
@@ -179,7 +223,15 @@ const FAUCET_PLANS = {
       { key: "USDC", from: "stablecoin", drip: 10_000 },
       { key: "USDT", from: "stablecoin", drip: 10_000 },
       { key: "USDe", from: "stablecoin", drip: 10_000 },
-      { key: "WBNB", from: "dex", drip: 5, fund: "wrap", stockDrips: 10 },
+      /*
+       * `0xae13d989…` is the canonical BSC testnet wrapper, not ours, so it is
+       * listed PAUSED at drip 0 and never stocked: a tester gets WBNB by wrapping
+       * tBNB, which is one call they can make themselves, and stocking it would
+       * spend the scarcest thing on this chain to save a step nobody is stuck on.
+       * Same rule and same mechanism as Arc's EURC/cirBTC below.
+       */
+      { key: "WBNB", from: "dex", drip: 0, fund: "wrap", stockDrips: 10 },
+      { key: "KLD", from: "kld", drip: 1000, stockDrips: 5000 },
     ],
   },
 
@@ -192,6 +244,7 @@ const FAUCET_PLANS = {
       { key: "USDT", from: "stablecoin", drip: 10_000 },
       { key: "USDe", from: "stablecoin", drip: 10_000 },
       { key: "WETH", from: "dex", drip: 1, fund: "wrap", stockDrips: 10 },
+      { key: "KLD", from: "kld", drip: 1000, stockDrips: 5000 },
     ],
   },
 
@@ -240,27 +293,46 @@ const FAUCET_PLANS = {
       { key: "USDT", from: "stablecoin", drip: 10_000 },
       { key: "USDe", from: "stablecoin", drip: 10_000 },
       { key: "WUSDC", from: "dex", drip: 100, fund: "wrap", stockDrips: 10 },
+      /*
+       * Ours, and the reason /stake is reachable by a wallet that has only ever
+       * used the faucet. Already listed on chain — `deploy-kld.js` stocked 5M and
+       * called setDrip as its last step on 2026-08-27 — so on this chain the entry
+       * exists to reconcile the record, not to list anything. The numbers are the
+       * live ones so that a cold deploy elsewhere reproduces today's state: 1000
+       * per claim, 5000 claims' worth. KLD's supply is minted in full at deploy, so
+       * `mint` reverts and the stock comes out of what the deployer holds.
+       */
+      { key: "KLD", from: "kld", drip: 1000, stockDrips: 5000 },
       {
+        /*
+         * Circle's, not ours, so it is listed PAUSED and never stocked — drip 0 is
+         * the contract's own retirement state (`_setDrip` still lists it, and
+         * `_eligibility` then returns NOT_LISTED). It stays in the plan because the
+         * app trades it and /faucet routes the paused row to faucet.circle.com via
+         * ISSUER_FAUCETS; it is at 0 here because the standing rule is that we hand
+         * out only what we deployed, and a cold-deploy drip of 1.0 would quietly
+         * re-enable it the next time this chain is deployed from scratch.
+         */
         key: "EURC",
         from: "literal",
         address: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
         expectSymbol: "EURC",
         expectDecimals: 6,
-        drip: 1,
+        drip: 0,
         stockDrips: 10,
       },
       {
         /*
          * 8 decimals, matching WBTC and not the 18 an EVM token is assumed to
          * have. See the header on why expectSymbol alone would not be enough here
-         * and why both are checked.
+         * and why both are checked. Paused for the same reason as EURC above.
          */
         key: "cirBTC",
         from: "literal",
         address: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
         expectSymbol: "cirBTC",
         expectDecimals: 8,
-        drip: 0.001,
+        drip: 0,
         stockDrips: 10,
       },
     ],
@@ -281,6 +353,24 @@ const DEFAULT_COOLDOWN_SECONDS = 60 * 60;
  */
 const NATIVE_SENTINEL = "0x0000000000000000000000000000000000000001";
 const NATIVE_DECIMALS = 18;
+
+/**
+ * The custom error only the native-capable build of the faucet carries.
+ *
+ * `receive()` and the native branch of `_pay` landed on 2026-08-27, after Arc's
+ * and BSC's faucets were deployed, and neither can be upgraded in place —
+ * FAUCET_EXTEND adds listings, not code. On those two, listing the native sentinel
+ * would produce a row that reverts on claim: `_pay` would fall through to
+ * `IERC20(address(1)).safeTransfer`, i.e. a transfer against the ecrecover
+ * precompile. So an extend run asks the deployed bytecode rather than a chain id.
+ *
+ * Measured 2026-08-30: the pre-native runtime is 4560 bytes and the current one
+ * 5343, and only the latter contains this selector. Reading the bytecode is
+ * cheaper than probing with a 1 wei eth_call and it answers the `_pay` question a
+ * `receive()` probe cannot — a contract could accept value and still be unable to
+ * pay it out.
+ */
+const NATIVE_ERROR_SIGNATURE = "KaleidoTokenFaucet_NativeTransferFailed()";
 
 const ERC20_ABI = [
   "function decimals() view returns (uint8)",
@@ -314,6 +404,28 @@ function readRecord(name, chainId, why) {
     );
   }
   return record;
+}
+
+/**
+ * Whether the faucet actually sitting at this address can hand out native gas.
+ *
+ * The artifact's own bytecode is the control: if the selector is missing from the
+ * build this script just compiled, a `false` from the live code would mean nothing
+ * — the error could have been renamed — and the run would silently stop listing
+ * native on every chain. So an absent control throws rather than answering.
+ */
+async function faucetHandlesNative(faucetAddress, artifactBytecode) {
+  const selector = ethers.id(NATIVE_ERROR_SIGNATURE).slice(2, 10);
+  if (!artifactBytecode.includes(selector)) {
+    throw new Error(
+      `The compiled KaleidoTokenFaucet does not carry ${NATIVE_ERROR_SIGNATURE} ` +
+        `(${selector}), so it cannot be used to tell a native-capable deployment ` +
+        "from a pre-native one. Was the error renamed? Fix this probe before " +
+        "extending a live faucet — guessing wrong lists a gas row that reverts."
+    );
+  }
+  const code = await ethers.provider.getCode(faucetAddress);
+  return code.includes(selector);
 }
 
 /*
@@ -555,6 +667,7 @@ async function main() {
 
   const needsStable = plan.assets.some((a) => a.from === "stablecoin");
   const needsDex = plan.assets.some((a) => a.from === "dex");
+  const needsKld = plan.assets.some((a) => a.from === "kld");
 
   const stable = needsStable
     ? readRecord(
@@ -570,6 +683,16 @@ async function main() {
         chainId,
         "The wrapped native is read from the DEX record rather than hardcoded " +
           "here, so deploy-dex.js has to have run on this chain first."
+      )
+    : null;
+  const kldRecord = needsKld
+    ? readRecord(
+        `deployment-kld-${net}.json`,
+        chainId,
+        "KLD is read from its own deployment record, so deploy-kld.js has to " +
+          "have run on this chain first. On a satellite chain the token arrives " +
+          "by bridge and the record is still written, so this file existing is " +
+          "the right precondition either way."
       )
     : null;
 
@@ -610,6 +733,8 @@ async function main() {
       address = stable.contracts?.[spec.key];
     } else if (spec.from === "dex") {
       address = dex.contracts?.wrappedNative;
+    } else if (spec.from === "kld") {
+      address = kldRecord.contracts?.KLD;
     } else if (spec.from === "literal") {
       address = spec.address;
     } else {
@@ -682,24 +807,119 @@ async function main() {
     );
   }
 
+  /* ── 1b. On an extend, ask the live faucet what it already lists ─────────── */
+
+  /*
+   * Read before deciding, and read before the dry run, so that
+   * `FAUCET_EXTEND=1 FAUCET_DRY_RUN=1` rehearses the extend rather than a fresh
+   * deploy. The classification is the whole substance of an extend — see the
+   * header on fresh / reconciled / blocked — and a dry run that reported the
+   * fresh-deploy plan instead would say this run will move tokens it will not
+   * touch, which is the one thing a rehearsal must not do.
+   */
+  const Faucet = await ethers.getContractFactory("KaleidoTokenFaucet");
+  let previous = null;
+  let faucetAddress = null;
+  let faucet = null;
+  let fresh = assets;
+  let reconcile = [];
+  let blocked = [];
+  const live = new Map();
+
+  if (extend) {
+    previous = JSON.parse(fs.readFileSync(outName, "utf8"));
+    faucetAddress = previous.contracts?.faucet;
+    if (!faucetAddress) {
+      throw new Error(`${outName} carries no contracts.faucet address.`);
+    }
+    faucet = Faucet.attach(faucetAddress);
+    console.log(`\n1b. Reading the faucet at ${faucetAddress}`);
+
+    /* assetInfo rather than assets(i) in a loop: one call for the addresses, the
+     * drips AND the stock, which is what a reconciled entry has to be built from. */
+    const info = await faucet.assetInfo(deployer.address);
+    for (let i = 0; i < info.tokens.length; i++) {
+      live.set(info.tokens[i].toLowerCase(), {
+        address: info.tokens[i],
+        drip: info.amounts[i],
+        stock: info.balances[i],
+      });
+    }
+    const recorded = new Set(
+      (previous.config?.assets ?? []).map((a) =>
+        String(a.address).toLowerCase()
+      )
+    );
+    console.log(
+      `   ${live.size} asset(s) listed on chain, ${recorded.size} in ${outName}`
+    );
+
+    const nativeReady = await faucetHandlesNative(faucetAddress, Faucet.bytecode);
+    fresh = [];
+    for (const a of assets) {
+      if (live.has(a.address.toLowerCase())) {
+        if (!recorded.has(a.address.toLowerCase())) reconcile.push(a);
+        continue;
+      }
+      if (a.fund === "native" && !nativeReady) {
+        blocked.push(a);
+        continue;
+      }
+      fresh.push(a);
+    }
+
+    if (blocked.length > 0) {
+      console.log(
+        `\n   ! this faucet predates native support — no receive(), and _pay has ` +
+          `\n     no native branch, so listing the sentinel would create a row ` +
+          `\n     whose claim reverts against the ecrecover precompile. Skipping: ` +
+          `\n     ${blocked.map((a) => `${a.key} (${a.symbol})`).join(", ")}` +
+          `\n     Gas here comes from the chain's own faucet, or from an ERC20 ` +
+          `\n     alias of the native balance where the chain has one (Arc's ` +
+          `\n     0x3600…0000). Only FORCE_REDEPLOY changes the code, and that ` +
+          `\n     strands the stock this faucet already holds.`
+      );
+    }
+    if (reconcile.length > 0) {
+      console.log(
+        `\n   ${reconcile.length} asset(s) listed on chain but absent from the ` +
+          `record: ${reconcile.map((a) => a.key).join(", ")}` +
+          "\n     Recorded from chain state below — not listed again, not funded."
+      );
+      for (const a of reconcile) {
+        const l = live.get(a.address.toLowerCase());
+        if (l.drip !== a.drip) {
+          console.log(
+            `     ${a.key.padEnd(7)} live drip ${ethers.formatUnits(
+              l.drip,
+              a.decimals
+            )} vs plan ${ethers.formatUnits(a.drip, a.decimals)} — recording ` +
+              "the live one (the plan is cold-deploy sizing)"
+          );
+        }
+      }
+    }
+  }
+
   /*
    * Stop here on a dry run.
    *
-   * Everything above is read-only — record lookups, decimals(), symbol() and the
-   * literal checks — and it is where the mistakes live: a renamed key in a
-   * deployment record, a chain whose DEX record has no wrappedNative, or an Arc
-   * literal pointing at one of the several impostor contracts sharing its symbol.
+   * Everything above is read-only — record lookups, decimals(), symbol(), the
+   * literal checks and the live listing — and it is where the mistakes live: a
+   * renamed key in a deployment record, a chain whose DEX record has no
+   * wrappedNative, or an Arc literal pointing at one of the several impostor
+   * contracts sharing its symbol.
    *
    * The funding plan is read-only too, and is reported here for the same reason:
    * it is the half with the arithmetic in it. `mint` vs `transfer` per asset, the
    * native share split, and every shortfall are all decided before anything moves,
    * so a dry run says exactly what the real run will do and what it will be short
-   * of. It assumes a fresh deploy — an extend run funds only what it adds.
+   * of — including, on an extend, that it will move nothing at all.
    */
   if (process.env.FAUCET_DRY_RUN === "1") {
     const floor = gasFloor(await ethers.provider.getFeeData());
-    const budget = nativeBudget(assets, plan, nativeBalance, floor);
-    const decisions = await planFunding(assets, {
+    const budget = nativeBudget(fresh, plan, nativeBalance, floor);
+    const decisions = await planFunding(fresh, {
       deployer: deployer.address,
       recipient: deployer.address,
       share: budget.share,
@@ -707,6 +927,19 @@ async function main() {
     });
 
     console.log("\nDRY RUN — nothing deployed, nothing moved.");
+    if (extend) {
+      console.log(
+        `\n   extend: ${fresh.length} to list and fund, ${reconcile.length} to ` +
+          `record from chain state, ${blocked.length} skipped, ` +
+          `${live.size - reconcile.length} left alone.`
+      );
+      if (fresh.length === 0) {
+        console.log(
+          "   No transaction would be sent — the record is the only thing that " +
+            "\n   would change."
+        );
+      }
+    }
     if (budget.drawers > 0) {
       console.log(
         `\n   reserve ${ethers.formatEther(budget.reserve)} ` +
@@ -720,9 +953,11 @@ async function main() {
       );
     }
 
-    console.log(
-      "\n   asset    would stock            of target            how"
-    );
+    if (decisions.length > 0) {
+      console.log(
+        "\n   asset    would stock            of target            how"
+      );
+    }
     for (const d of decisions) {
       const { asset: a } = d;
       console.log(
@@ -730,6 +965,16 @@ async function main() {
           `${ethers.formatUnits(d.amount, a.decimals).padEnd(20)} ` +
           `${ethers.formatUnits(a.target, a.decimals).padEnd(20)} ` +
           `${d.method}${d.note ? ` — ${d.note}` : ""}`
+      );
+    }
+
+    for (const a of reconcile) {
+      const l = live.get(a.address.toLowerCase());
+      console.log(
+        `   ${a.symbol.padEnd(8)} ${ethers
+          .formatUnits(l.stock, a.decimals)
+          .padEnd(20)} ${"—".padEnd(20)} already stocked, drip ` +
+          `${ethers.formatUnits(l.drip, a.decimals)} — record only`
       );
     }
 
@@ -747,51 +992,39 @@ async function main() {
 
     console.log(
       `\n${assets.length} of ${plan.assets.length} planned asset(s) resolved on ` +
-        `${plan.label}. Re-run without FAUCET_DRY_RUN to deploy.`
+        `${plan.label}. Re-run without FAUCET_DRY_RUN to ` +
+        `${extend ? "extend" : "deploy"}.`
     );
     return;
   }
 
-  /* ── 2. Deploy, or load and extend ──────────────────────────────────────── */
+  /* ── 2. Deploy, or list what the extend found fresh ──────────────────────── */
 
-  const Faucet = await ethers.getContractFactory("KaleidoTokenFaucet");
-  let faucet;
-  let faucetAddress;
-  let previous = null;
-  let listed = assets;
+  let listed = fresh;
 
   if (extend) {
-    previous = JSON.parse(fs.readFileSync(outName, "utf8"));
-    faucetAddress = previous.contracts?.faucet;
-    if (!faucetAddress) {
-      throw new Error(`${outName} carries no contracts.faucet address.`);
-    }
-    faucet = Faucet.attach(faucetAddress);
     console.log(`\n2. Extending the faucet at ${faucetAddress}`);
 
-    const already = new Set();
-    const count = Number(await faucet.assetCount());
-    for (let i = 0; i < count; i++) {
-      already.add((await faucet.assets(i)).toLowerCase());
-    }
-    const fresh = assets.filter((a) => !already.has(a.address.toLowerCase()));
     if (fresh.length === 0) {
-      console.log("   every planned asset is already listed — nothing to add");
+      console.log(
+        "   nothing to list — every planned asset this faucet can pay is " +
+          "already on chain"
+      );
     } else {
       console.log(
         `   listing ${fresh.length} new asset(s): ` +
           fresh.map((a) => a.symbol).join(", ")
       );
-      await (
-        await faucet.setDrips(
-          fresh.map((a) => a.address),
-          fresh.map((a) => a.drip)
-        )
-      ).wait();
+      /* No retry on a timeout. A ConnectTimeout is a client-side event and the
+       * transaction may well have landed; a blind resend is how an asset gets its
+       * drip set twice. If this throws, re-read assetInfo before acting. */
+      const tx = await faucet.setDrips(
+        fresh.map((a) => a.address),
+        fresh.map((a) => a.drip)
+      );
+      console.log(`   tx ${tx.hash}`);
+      await tx.wait();
     }
-    /* Only fund what was just added. The rest already has whatever stock it has,
-     * and re-running the funding would silently double it. */
-    listed = fresh;
   } else {
     console.log(`\n2. Deploying KaleidoTokenFaucet (cooldown ${cooldown}s)`);
     faucet = await Faucet.deploy(
@@ -817,6 +1050,10 @@ async function main() {
 
   /* ── 3. Fund ───────────────────────────────────────────────────────────── */
 
+  /* Only what was just listed. Anything already on chain has whatever stock it
+   * has, and re-running the funding for it would silently double it — which is
+   * exactly what a reconciled asset would suffer, since those are already stocked
+   * by whoever listed them. */
   console.log(`\n3. Funding ${listed.length} asset(s)`);
 
   const floor = gasFloor(await ethers.provider.getFeeData());
@@ -899,11 +1136,66 @@ async function main() {
       )
     : [];
 
+  /*
+   * Listed on chain, absent from the record — recorded from what the chain says
+   * rather than from the plan.
+   *
+   * The plan's drip is cold-deploy sizing and can be years out of date by the time
+   * anyone runs an extend; the live drip is what a claimer gets. Writing the plan's
+   * number here is the exact bug that had Arc's record advertising a 100.0 USDC
+   * drip for six days after the chain moved to 0.25. `funding.method` says
+   * "preexisting" for the same reason: this run did not move the stock and has no
+   * standing to claim how it got there.
+   */
+  const reconciled = reconcile.map((a) => {
+    const l = live.get(a.address.toLowerCase());
+    return {
+      key: a.key,
+      address: a.address,
+      symbol: a.symbol,
+      decimals: a.decimals,
+      dripHuman: ethers.formatUnits(l.drip, a.decimals),
+      drip: l.drip.toString(),
+      source: a.from,
+      funding: {
+        method: "preexisting",
+        stocked: ethers.formatUnits(l.stock, a.decimals),
+        claimsLeft: l.drip > 0n ? Number(l.stock / l.drip) : 0,
+        note: "listed and stocked by another script — read back from the chain, not funded by this run",
+      },
+    };
+  });
+
+  /*
+   * Top-level keys this script owns. Everything else in an existing record was
+   * written by a sibling — topup-faucet.js's `lastTopup`, fix-faucet-drips.js's
+   * `lastDripFix`, switch-usdc-to-mock.js's `lastUsdcSwitch` — and dropping them
+   * would make an extend look like it undid work those scripts did. `timestamp`
+   * is when the faucet was deployed and stays that; an extend adds `extendedAt`.
+   */
+  const OWNED_KEYS = [
+    "network",
+    "chainId",
+    "deployer",
+    "timestamp",
+    "extendedAt",
+    "contracts",
+    "config",
+    "sources",
+  ];
+  const foreignKeys = extend
+    ? Object.fromEntries(
+        Object.entries(previous).filter(([k]) => !OWNED_KEYS.includes(k))
+      )
+    : {};
+  const now = new Date().toISOString();
+
   const record = {
     network: net,
     chainId,
     deployer: deployer.address,
-    timestamp: new Date().toISOString(),
+    timestamp: extend ? previous.timestamp ?? now : now,
+    ...(extend ? { extendedAt: now } : {}),
     contracts: { faucet: faucetAddress },
     config: {
       cooldownSeconds: extend
@@ -911,6 +1203,7 @@ async function main() {
         : cooldown,
       assets: [
         ...carried,
+        ...reconciled,
         ...listed.map((a) => ({
           key: a.key,
           address: a.address,
@@ -926,7 +1219,9 @@ async function main() {
     sources: {
       stablecoin: needsStable ? `deployment-stablecoin-${net}.json` : null,
       dex: needsDex ? `deployment-dex-${net}.json` : null,
+      ...(needsKld ? { kld: `deployment-kld-${net}.json` } : {}),
     },
+    ...foreignKeys,
   };
   fs.writeFileSync(outName, JSON.stringify(record, null, 2));
 
@@ -944,6 +1239,13 @@ async function main() {
     );
     if (f.short) shortfalls.push(`${f.short} ${a.symbol}`);
   }
+  for (const a of reconciled) {
+    console.log(
+      `  ${a.symbol.padEnd(7)} drip ${a.dripHuman}  stocked ${
+        a.funding.stocked
+      } (${a.funding.claimsLeft} claims left, recorded not funded)`
+    );
+  }
   if (shortfalls.length > 0) {
     console.log(
       `\n  Short of target, send to ${faucetAddress} to top up:\n    ` +
@@ -954,11 +1256,27 @@ async function main() {
         "\n  as empty on /faucet until it has stock."
     );
   }
-  console.log(
-    `\nSaved ${outName}. Now run \`npm run gen:registry\` from the repo root so ` +
-      `\nDEPLOYMENTS[${chainId}].faucet carries this address — /faucet and Luca's ` +
-      "\nclaimTestTokens tool both read it from there, not from an env var."
-  );
+  if (blocked.length > 0) {
+    console.log(
+      `\n  Not listed: ${blocked
+        .map((a) => a.symbol)
+        .join(", ")} — this faucet's bytecode cannot pay ` +
+        "\n  native gas (see above). The row would revert on claim, so it is left off."
+    );
+  }
+  if (extend) {
+    console.log(
+      `\nSaved ${outName}. The faucet address is unchanged, so no ` +
+        "`npm run gen:registry` is\nneeded — the registry carries the address, " +
+        "not the asset list, which /faucet\nreads live from the contract."
+    );
+  } else {
+    console.log(
+      `\nSaved ${outName}. Now run \`npm run gen:registry\` from the repo root so ` +
+        `\nDEPLOYMENTS[${chainId}].faucet carries this address — /faucet and Luca's ` +
+        "\nclaimTestTokens tool both read it from there, not from an env var."
+    );
+  }
   console.log("============================================================");
 }
 

@@ -3,6 +3,7 @@
   "chainId": 97,
   "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
   "timestamp": "2026-08-24T16:47:42.206Z",
+  "extendedAt": "2026-08-30T10:14:34.997Z",
   "contracts": {
     "faucet": "0x5B8Ce8F0a44ED4F73CFD9b6E7DC1E15Ebe7F6e8e"
   },
@@ -18,10 +19,9 @@
         "drip": "10000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -33,10 +33,9 @@
         "drip": "10000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -48,10 +47,9 @@
         "drip": "10000000000000000000000",
         "source": "stablecoin",
         "funding": {
-          "method": "mint",
-          "amount": "1000000.0",
-          "target": "1000000.0",
-          "short": null
+          "method": "topup",
+          "stocked": "30000000.0",
+          "claimsLeft": 3000
         }
       },
       {
@@ -59,20 +57,36 @@
         "address": "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
         "symbol": "WBNB",
         "decimals": 18,
-        "dripHuman": "5.0",
-        "drip": "5000000000000000000",
+        "dripHuman": "0.0",
+        "drip": "0",
         "source": "dex",
         "funding": {
-          "method": "wrap",
-          "amount": "0.281513390235128218",
-          "target": "50.0",
-          "short": "49.718486609764871782"
+          "method": "topup",
+          "stocked": "0.281513390235128218",
+          "claimsLeft": 0
+        }
+      },
+      {
+        "key": "KLD",
+        "address": "0x0d6a6F10adeCdc8a8b93aAc0Fa5210653de3511d",
+        "symbol": "KLD",
+        "decimals": 18,
+        "dripHuman": "1000.0",
+        "drip": "1000000000000000000000",
+        "source": "kld",
+        "funding": {
+          "method": "preexisting",
+          "stocked": "5000000.0",
+          "claimsLeft": 5000,
+          "note": "listed and stocked by another script — read back from the chain, not funded by this run"
         }
       }
     ]
   },
   "sources": {
     "stablecoin": "deployment-stablecoin-bscTestnet.json",
-    "dex": "deployment-dex-bscTestnet.json"
-  }
+    "dex": "deployment-dex-bscTestnet.json",
+    "kld": "deployment-kld-bscTestnet.json"
+  },
+  "lastTopup": "2026-08-30T07:18:27.798Z"
 }

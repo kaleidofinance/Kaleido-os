@@ -3,6 +3,7 @@
   "chainId": 46630,
   "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
   "timestamp": "2026-08-29T04:01:47.220Z",
+  "extendedAt": "2026-08-30T10:18:02.333Z",
   "contracts": {
     "faucet": "0xD65927aF66B52E5a43C9C4Fb405D6F0823B65441"
   },
@@ -78,12 +79,46 @@
           "stocked": "15.0",
           "claimsLeft": 750
         }
+      },
+      {
+        "key": "KLD",
+        "address": "0x6F57844d0C6DCB7eB906d21C99195a3FC446E81D",
+        "symbol": "KLD",
+        "decimals": 18,
+        "dripHuman": "1000.0",
+        "drip": "1000000000000000000000",
+        "source": "kld",
+        "funding": {
+          "method": "transfer",
+          "amount": "5000000.0",
+          "target": "5000000.0",
+          "short": null
+        }
       }
     ]
   },
   "sources": {
     "stablecoin": "deployment-stablecoin-robinhoodTestnet.json",
-    "dex": "deployment-dex-robinhoodTestnet.json"
+    "dex": "deployment-dex-robinhoodTestnet.json",
+    "kld": "deployment-kld-robinhoodTestnet.json"
   },
-  "lastTopup": "2026-08-29T04:03:23.369Z"
+  "lastTopup": "2026-08-29T04:03:23.369Z",
+  "retiredFaucets": [
+    {
+      "address": "0xB22E458D277a55f535873a02Ef77c569cC4F7d51",
+      "why": "retired by the 2026-08-29 native-support redeploy, which carried every asset except the KLD deploy-kld.js had listed",
+      "sweptAt": "2026-08-30T10:36:16.492Z",
+      "sweptTo": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+      "assets": [
+        {
+          "symbol": "KLD",
+          "address": "0x6F57844d0C6DCB7eB906d21C99195a3FC446E81D",
+          "amount": "5000000.0",
+          "tx": "0x3b8930b9d3dac75c81b5a5280d8a176904508d5340c3b8a22e806521ae6b12e9"
+        }
+      ],
+      "nativeLeft": "0.0",
+      "nativeNote": "no native branch in this bytecode — any native balance is unreachable"
+    }
+  ]
 }

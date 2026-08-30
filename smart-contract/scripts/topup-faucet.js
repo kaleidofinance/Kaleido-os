@@ -4,6 +4,7 @@
  *   npx hardhat run scripts/topup-faucet.js --network sepolia
  *   npx hardhat run scripts/topup-faucet.js --network baseTestnet
  *   npx hardhat run scripts/topup-faucet.js --network robinhoodTestnet
+ *   npx hardhat run scripts/topup-faucet.js --network bscTestnet
  *
  * Rehearse first — prints every drip change, every top-up and the native budget,
  * and moves nothing:
@@ -66,7 +67,7 @@ const fs = require("fs");
  * stock, so the target stock is `drip × claims`. Only the assets listed here are
  * touched — USDC is deliberately absent on Sepolia and Base, where it is Circle's
  * real token and unmintable (testers obtain it by swapping USDT→USDC on the DEX),
- * but present on Robinhood, where it is our own mock.
+ * but present on Robinhood and BSC, where it is our own mock.
  *
  * `nativeReserve` is human native the run will not spend on gas stock or wrapping:
  * an operational float left in the deployer for later top-ups, floored by this
@@ -131,6 +132,59 @@ const TOPUP_PLANS = {
       WETH: { drip: 0.02, claims: 750 }, //  15 WETH — was 1 drip / 0.5 WETH
     },
   },
+
+  /*
+   * BSC testnet is the one chain whose gas we do NOT try to provision, and the
+   * only plan here with no NATIVE line. That is deliberate on both counts.
+   *
+   * Its faucet runs the 4560-byte pre-native bytecode (the native-capable build is
+   * 5343 and is the only one carrying `KaleidoTokenFaucet_NativeTransferFailed`),
+   * so `claim(address(1))` reverts `AssetNotListed` — 0x3ea1becf, measured. Adding
+   * the row with `setDrip` is not a shortcut: `_pay` has no native branch there and
+   * would call `IERC20(address(1)).safeTransfer`, i.e. the ecrecover precompile.
+   * Only a redeploy could list it, and the deployer holds 0.00144843797 tBNB
+   * against a 0.4 BNB stock target, so a fresh faucet would list gas and stock
+   * zero. **tBNB comes from BNB Chain's own faucet instead** — /faucet promotes
+   * `https://www.bnbchain.org/en/testnet-faucet` onto the gas row's Claim button,
+   * which is the answer for this chain rather than a stopgap.
+   *
+   * So what is left is exactly the assets we deployed ourselves, stocked for the
+   * people who already have gas. Three of the five can be raised, and the other
+   * two are settled rather than pending:
+   *
+   *   USDC/USDT/USDe  mint() staticcalls clean, and mints are never scaled by the
+   *                   native reserve, so the tBNB shortage does not touch them.
+   *                   USDC is listed for the same reason it is on Robinhood and
+   *                   not on Sepolia/Base: here it is our own mock, not Circle's.
+   *   WBNB            PAUSED at drip 0, deliberately — not merely unfunded. A
+   *                   faucet is worth running for something a visitor cannot get
+   *                   any other way, and WBNB is not that: anyone holding tBNB
+   *                   wraps it in one call, and the tBNB itself comes from BNB
+   *                   Chain's faucet. Stocking it would spend the scarcest thing
+   *                   we have on this chain (0.00144843797 tBNB) to save a step
+   *                   nobody is stuck on. Drip 0 is the contract's own retirement
+   *                   state — `_eligibility` returns _NOT_LISTED, so `claim`
+   *                   reverts and `useFaucet` flags the row `paused`, which the
+   *                   page draws as "Paused" with the Claim button off. The
+   *                   0.281513390235128218 already in the faucet stays there,
+   *                   withdrawable by the owner if that gas is ever wanted back.
+   *   KLD             omitted. mint() reverts 0xf480e285 and it already holds 5M,
+   *                   which is 5000 claims at the current drip.
+   *
+   * nativeReserve is the live gas floor rather than deploy-faucet.js's 0.005 float,
+   * because nothing in this plan spends native and 0.005 already exceeds the whole
+   * balance — `max(stated, gasFloor)` makes it self-correcting either way.
+   */
+  97: {
+    label: "BSC Testnet",
+    nativeReserve: 0.0008,
+    assets: {
+      USDC: { drip: 10_000, claims: 3000 }, // 30M — mint (our mock, not Circle's)
+      USDT: { drip: 10_000, claims: 3000 }, // 30M — mint, was 1M
+      USDe: { drip: 10_000, claims: 3000 }, // 30M — mint, was 1M
+      WBNB: { drip: 0, claims: 0 }, // paused — wrap your own tBNB, see above
+    },
+  },
 };
 
 const NATIVE_SENTINEL = "0x0000000000000000000000000000000000000001";
@@ -181,11 +235,11 @@ async function main() {
   const plan = TOPUP_PLANS[chainId];
   if (!plan) {
     throw new Error(
-      `Chain ${chainId} (${net}) has no top-up plan. Only the chains whose ` +
-        "faucet can hold native gas (Sepolia 11155111, Base Sepolia 84532, " +
-        "Robinhood 46630) are provisioned for the beta; BSC and Arc still run " +
-        "the pre-receive() faucet bytecode and need a redeploy plus a funded " +
-        "deployer first."
+      `Chain ${chainId} (${net}) has no top-up plan. Sepolia (11155111), Base ` +
+        "Sepolia (84532), Robinhood (46630) and BSC (97) are provisioned here. " +
+        "Arc (5042002) deliberately is not: every asset it lists draws on the " +
+        "one native USDC balance and none of them can be minted, so the fix " +
+        "there is always a drip resize — use scripts/fix-faucet-drips.js."
     );
   }
 

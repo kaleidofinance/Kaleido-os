@@ -3,6 +3,7 @@
   "chainId": 84532,
   "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
   "timestamp": "2026-08-26T23:22:17.777Z",
+  "extendedAt": "2026-08-30T10:13:56.974Z",
   "contracts": {
     "faucet": "0x459fA03715EbE0B2914273720Ad687d4Ff3Ed888"
   },
@@ -94,12 +95,28 @@
           "stocked": "30000000.0",
           "claimsLeft": 3000
         }
+      },
+      {
+        "key": "KLD",
+        "address": "0x6140Da1f66fCafa0b5197065ae91A00208F3Cd86",
+        "symbol": "KLD",
+        "decimals": 18,
+        "dripHuman": "1000.0",
+        "drip": "1000000000000000000000",
+        "source": "kld",
+        "funding": {
+          "method": "preexisting",
+          "stocked": "4998000.0",
+          "claimsLeft": 4998,
+          "note": "listed and stocked by another script — read back from the chain, not funded by this run"
+        }
       }
     ]
   },
   "sources": {
     "stablecoin": "deployment-stablecoin-baseTestnet.json",
-    "dex": "deployment-dex-baseTestnet.json"
+    "dex": "deployment-dex-baseTestnet.json",
+    "kld": "deployment-kld-baseTestnet.json"
   },
   "lastTopup": "2026-08-27T00:25:45.151Z",
   "lastUsdcSwitch": "2026-08-27T01:42:01.260Z"
