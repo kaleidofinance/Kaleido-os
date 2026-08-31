@@ -142,7 +142,13 @@ const str = (v: unknown): string | undefined =>
  * every real turn and three different reads printed the same sentence.
  */
 const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
-  getPortfolio: () => "Read your balances and positions",
+  /* Named for what each one actually reads, which is not what their names
+     suggest: getPortfolio returns the lending position — collateral value and
+     health factor — and explicitly not wallet balances, because collateral has
+     left the wallet. A label saying "balances" on the one tool that does not read
+     them sat next to getBalances in the same fold. */
+  getPortfolio: () => "Checked your lending position",
+  getBalances: () => "Checked what your wallet holds",
   /* A loan quote, not a swap quote — it takes an APR and a maturity date.
      "Quoted USDC → KLD" here would name an action that did not happen. */
   getQuote: (a) => {
