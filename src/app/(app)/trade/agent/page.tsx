@@ -588,7 +588,8 @@ export default function AgentPage() {
             /* Server-reported and validated on the way in — the names come from
                a reply, so traceFromChat drops anything that isn't one of the
                read tools with a plausible name rather than printing it. */
-            for (const line of traceFromChat({ context: { reads } })) note(line);
+            for (const line of traceFromChat({ context: { reads } }))
+              note(line);
             /* That round's prose was preamble, and it is a line of thought
                process now. The bubble it was going into gets dropped: the answer
                is the round that follows, and the saved reply will not contain
@@ -1220,7 +1221,14 @@ export default function AgentPage() {
             </button>
           </div>
 
-          {plan ? (
+          {/* The signature caveat belongs to whichever surface is asking for the
+              signatures. While the plan sits unopened in the transcript that is
+              this footnote, because the CTA above is the only thing offering to
+              sign. Once the review panel takes the box it prints the same
+              sentence itself (PlanReview.tsx:184), and both were rendering — the
+              identical line twice, a few rows apart, on the one surface where a
+              reader is being asked to trust what it says. */}
+          {plan && panel.kind !== "plan" ? (
             <p className={s.foot}>
               Each step is a separate signature. Nothing runs until you approve
               it, and a failure stops the rest.
