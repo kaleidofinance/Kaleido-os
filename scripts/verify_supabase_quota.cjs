@@ -8,9 +8,9 @@
  * unconfigured deployment looks identical to a working one from the outside —
  * the agent answers either way. This script is what tells the two apart.
  *
- * It calls the same two RPCs the route calls, with the service-role key, and
- * exercises the ceiling for real against a throwaway wallet. Nothing here
- * touches a provider, so it costs no model credits.
+ * It calls the same three RPCs the route calls, with the service-role key, and
+ * exercises the ceiling and the refund for real against a throwaway wallet.
+ * Nothing here touches a provider, so it costs no model credits.
  *
  *   node scripts/verify_supabase_quota.cjs
  *
@@ -82,6 +82,17 @@ async function rpc(name, body) {
 
 /** The RPCs return either a bare row or a single-element array. */
 const row = (j) => (Array.isArray(j) ? j[0] : j);
+
+/** Today's counter row, read straight from the table as the service role. */
+async function usageRow(wallet) {
+  const today = new Date().toISOString().slice(0, 10);
+  const res = await fetch(
+    `${URL_}/rest/v1/agent_usage_daily?wallet=eq.${wallet}&usage_date=eq.${today}&select=requests,throttled_at`,
+    { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } },
+  );
+  const json = await res.json().catch(() => null);
+  return Array.isArray(json) ? (json[0] ?? null) : null;
+}
 
 async function main() {
   console.log("\nSupabase quota wiring\n");
@@ -196,33 +207,163 @@ async function main() {
     ? pass(`5 concurrent calls, exactly ${room} granted`)
     : fail(`5 concurrent calls granted ${granted}, expected ${room}`);
 
-  console.log("\nanon key must NOT be able to spend quota");
+  /*
+   * The refund. consume_agent_request runs immediately before dispatch, so a
+   * request the gateway refuses outright has already been charged — that is what
+   * release_agent_request exists to undo (20260831000000). It is worth checking
+   * end to end rather than by reading the SQL, because both ways it can be wrong
+   * are silent: a release that does nothing quietly costs users a request a day,
+   * and a release that does too much quietly hands out free ones.
+   */
+  console.log("\nrelease_agent_request (hands back what was never served)");
+  const beforeRow = await usageRow(WALLET);
+  const beforeRel = Number(beforeRow?.requests ?? 0);
+  const throttledBefore = beforeRow?.throttled_at ?? null;
+
+  const rel1 = await rpc("release_agent_request", {
+    p_wallet: WALLET,
+    p_limit: LIMIT,
+  });
+  if (rel1.status === 404)
+    return (
+      fail(
+        "function not found — apply supabase/migrations/20260831000000_release_agent_request.sql",
+      ),
+      finish()
+    );
+  if (rel1.status !== 200)
+    return (fail(`HTTP ${rel1.status}: ${rel1.text.slice(0, 200)}`), finish());
+
+  const afterRel = Number((await usageRow(WALLET))?.requests ?? 0);
+  afterRel === beforeRel - 1
+    ? pass(`counter went back ${beforeRel} -> ${afterRel}`)
+    : fail(
+        `release moved the counter ${beforeRel} -> ${afterRel}, expected ${beforeRel - 1}`,
+      );
+
+  /* credits.ts returns this row to the caller so a refused request can still
+     report an accurate remaining count. If the function's own report disagrees
+     with the table, the UI shows a number that is wrong by one. */
+  const relRow = row(rel1.json);
+  Number(relRow?.used) === afterRel
+    ? pass(`reports the corrected count (used=${relRow.used})`)
+    : fail(`reported used=${relRow?.used} but the table says ${afterRel}`);
+  Number(relRow?.quota) === LIMIT
+    ? pass(`echoes the limit (quota=${relRow.quota})`)
+    : fail(`reported quota=${relRow?.quota}, expected ${LIMIT}`);
+
+  /* throttled_at records that this wallet hit its ceiling today, which stays
+     true whether or not a later request was handed back. The migration says it
+     leaves the stamp alone; this is that claim, checked. The verifier has
+     already forced a refusal above, so the stamp should be set. */
+  const throttledAfter = (await usageRow(WALLET))?.throttled_at ?? null;
+  if (!throttledBefore)
+    fail("throttled_at was never stamped — the refusal above should have set it");
+  else
+    throttledAfter === throttledBefore
+      ? pass("throttled_at survived the refund")
+      : fail(
+          `throttled_at changed from ${throttledBefore} to ${throttledAfter}`,
+        );
+
+  /*
+   * The floor, which is the entire safety story. There is no request identity in
+   * agent_usage_daily, so a release is "subtract one" rather than "undo that
+   * consume" — and a bug that releases too often must bottom out at zero rather
+   * than manufacture allowance. Drained deliberately, then pushed once more.
+   */
+  console.log("\nthe refund cannot go below zero");
+  let guard = 0;
+  let current = afterRel;
+  while (current > 0 && guard++ < 60) {
+    await rpc("release_agent_request", { p_wallet: WALLET, p_limit: LIMIT });
+    current = Number((await usageRow(WALLET))?.requests ?? 0);
+  }
+  current === 0
+    ? pass(`drained to 0 in ${guard} releases`)
+    : fail(`could not drain the counter, stuck at ${current}`);
+
+  const past = await rpc("release_agent_request", {
+    p_wallet: WALLET,
+    p_limit: LIMIT,
+  });
+  const floored = Number((await usageRow(WALLET))?.requests ?? 0);
+  floored === 0
+    ? pass("a release against zero stays at zero")
+    : fail(`released past zero to ${floored} — negative allowance is spendable`);
+  Number(row(past.json)?.used) === 0
+    ? pass("and reports zero rather than a negative")
+    : fail(`reported used=${row(past.json)?.used} at the floor`);
+
+  /*
+   * A release for a wallet with no row today must not create one. The migration
+   * is explicit that a release is not a usage event, and it matters beyond
+   * tidiness: a created row is a row with requests = 0 and throttled_at null,
+   * which is indistinguishable from a wallet that used its allowance and got it
+   * all back — so usage data would gain phantom participants.
+   */
+  console.log("\na refund for an unused wallet records nothing");
+  const UNUSED = "0x00000000000000000000000000000000000000c0";
+  const relUnused = await rpc("release_agent_request", {
+    p_wallet: UNUSED,
+    p_limit: LIMIT,
+  });
+  relUnused.status === 200
+    ? pass("accepted without error")
+    : fail(`HTTP ${relUnused.status}: ${relUnused.text.slice(0, 200)}`);
+  (await usageRow(UNUSED)) === null
+    ? pass("no row was created")
+    : fail("a row was created for a wallet that never spent anything");
+  Number(row(relUnused.json)?.used) === 0
+    ? pass("reports used=0")
+    : fail(`reported used=${row(relUnused.json)?.used}, expected 0`);
+
+  console.log("\nanon key must NOT be able to spend or refund quota");
   if (ANON) {
-    const leak = await fetch(`${URL_}/rest/v1/rpc/consume_agent_request`, {
-      method: "POST",
-      headers: {
-        apikey: ANON,
-        Authorization: `Bearer ${ANON}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ p_wallet: WALLET, p_limit: LIMIT }),
-    });
+    const asAnon = (name) =>
+      fetch(`${URL_}/rest/v1/rpc/${name}`, {
+        method: "POST",
+        headers: {
+          apikey: ANON,
+          Authorization: `Bearer ${ANON}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ p_wallet: WALLET, p_limit: LIMIT }),
+      });
+
+    const leak = await asAnon("consume_agent_request");
     leak.status === 200
       ? fail(
           `anon key executed the function (HTTP 200) — the REVOKE in the migration did not take`,
         )
-      : pass(`anon refused (HTTP ${leak.status})`);
+      : pass(`consume refused for anon (HTTP ${leak.status})`);
+
+    /* The sharper of the two. Postgres grants EXECUTE to public by default, so a
+       security-definer refund over a browser-inaccessible table is, without the
+       REVOKE, an unlimited quota reset callable with the key that ships in the
+       bundle — worse than the consume leak, which at most lets a caller spend
+       what it already had. */
+    const refundLeak = await asAnon("release_agent_request");
+    refundLeak.status === 200
+      ? fail(
+          "anon key executed release_agent_request (HTTP 200) — the shipped key can refund itself without limit",
+        )
+      : pass(`release refused for anon (HTTP ${refundLeak.status})`);
   }
 
-  /* Leave no trace: delete the throwaway row so a rerun starts clean and the
-     dead address never shows up in usage data. */
-  await fetch(
-    `${URL_}/rest/v1/agent_usage_daily?wallet=eq.${WALLET}&usage_date=eq.${new Date().toISOString().slice(0, 10)}`,
-    {
-      method: "DELETE",
-      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
-    },
-  ).catch(() => {});
+  /* Leave no trace: delete the throwaway rows so a rerun starts clean and the
+     dead addresses never show up in usage data. UNUSED should have no row at
+     all — deleted anyway, so a failed check above does not poison the next run. */
+  const today = new Date().toISOString().slice(0, 10);
+  for (const w of [WALLET, UNUSED]) {
+    await fetch(
+      `${URL_}/rest/v1/agent_usage_daily?wallet=eq.${w}&usage_date=eq.${today}`,
+      {
+        method: "DELETE",
+        headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
+      },
+    ).catch(() => {});
+  }
 
   finish();
 }
@@ -230,7 +371,7 @@ async function main() {
 function finish() {
   console.log(
     failed === 0
-      ? "\nAll checks passed — the quota is enforced.\n"
+      ? "\nAll checks passed — the quota is enforced and the refund is honest.\n"
       : `\n${failed} check(s) failed — the quota is NOT reliably enforced.\n`,
   );
   process.exit(failed === 0 ? 0 : 1);
