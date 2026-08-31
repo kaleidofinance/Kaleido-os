@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Intent } from "@/lib/v2/intents";
 import type { AgentCard } from "@/lib/v2/cards/types";
+import { MAX_THINKING_LINE } from "@/lib/v2/chatStream";
 
 /**
  * The agent transcript, persisted per wallet and bounded.
@@ -75,6 +76,11 @@ const MAX_TURNS = 40;
  * "Quoted USDC → KLD" describe steps that were taken at the time, and they read
  * as history however long ago they were written. Bounded here rather than
  * trusted, since one entry per tool call is a length the model influences.
+ *
+ * The per-line bound is `MAX_THINKING_LINE`, imported rather than repeated: this
+ * filter *drops* an over-long line instead of trimming it, so if it and the
+ * writer's cap ever disagreed, the longer lines would render correctly right up
+ * until a reload and then be gone.
  */
 const MAX_THINKING = 12;
 
@@ -82,7 +88,7 @@ const reviveThinking = (raw: unknown): string[] | undefined => {
   if (!Array.isArray(raw)) return undefined;
   const lines = raw.filter(
     (l): l is string =>
-      typeof l === "string" && l.length > 0 && l.length <= 160,
+      typeof l === "string" && l.length > 0 && l.length <= MAX_THINKING_LINE,
   );
   return lines.length ? lines.slice(0, MAX_THINKING) : undefined;
 };

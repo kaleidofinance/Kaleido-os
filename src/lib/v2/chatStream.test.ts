@@ -24,7 +24,11 @@
  * Everything runs inside main(): this repo has no `type: module`, so tsx compiles
  * a .ts suite as CJS and top-level await is a transform error, not a runtime one.
  */
-import { readChatStream, condenseNote } from "./chatStream.ts";
+import {
+  readChatStream,
+  condenseNote,
+  MAX_THINKING_LINE,
+} from "./chatStream.ts";
 
 let pass = 0;
 let fail = 0;
@@ -185,7 +189,11 @@ async function main() {
       ]),
       c.handlers,
     );
-    check("no empty text render", c.texts.length === 0, JSON.stringify(c.texts));
+    check(
+      "no empty text render",
+      c.texts.length === 0,
+      JSON.stringify(c.texts),
+    );
     check(
       "the round still reports its reads",
       c.log[0] === "round:-:getPrice",
@@ -241,7 +249,11 @@ async function main() {
       ]),
       c.handlers,
     );
-    check("an unreadable line loses only itself", c.text === "still here", c.text);
+    check(
+      "an unreadable line loses only itself",
+      c.text === "still here",
+      c.text,
+    );
     check(
       "an unknown frame type is ignored",
       !c.log.some((l) => l.includes("ignored")),
@@ -332,14 +344,28 @@ async function main() {
         "Let me check your balances.",
       condenseNote("Let me check\n\n  your balances."),
     );
-    check("short prose is untouched", condenseNote("Checking.") === "Checking.");
+    check(
+      "short prose is untouched",
+      condenseNote("Checking.") === "Checking.",
+    );
     check("empty stays empty", condenseNote("   \n ") === "");
 
-    const long = condenseNote("x".repeat(400));
-    /* 160 is what useChatHistory persists per thinking line, so a longer one
-       would look right until the page was reloaded. */
-    check("capped at 160", long.length === 160, String(long.length));
+    const long = condenseNote("x".repeat(900));
+    /* MAX_THINKING_LINE is what useChatHistory keeps per thinking line, and it
+       drops rather than trims — so a line longer than this would look right
+       until the page was reloaded, then vanish. Asserted against the constant,
+       not the number, because that is the whole point of exporting it. */
+    check(
+      `capped at ${MAX_THINKING_LINE}`,
+      long.length === MAX_THINKING_LINE,
+      String(long.length),
+    );
     check("the cap is marked", long.endsWith("…"), long.slice(-3));
+    check(
+      "a capped line still survives revival",
+      long.length <= MAX_THINKING_LINE,
+      String(long.length),
+    );
 
     /* No dangling space before the ellipsis when the cut lands on one. */
     const onSpace = condenseNote(`${"y".repeat(158)} tail`, 160);
@@ -347,6 +373,71 @@ async function main() {
       "no space before the ellipsis",
       !onSpace.includes(" …"),
       JSON.stringify(onSpace.slice(-6)),
+    );
+  }
+
+  console.log("\n— markdown does not reach the trace line —");
+  {
+    /* The line that prompted this: a real round's preamble, which reached the
+       screen with its bullets and asterisks intact because the trace renders as
+       text and the prose was written to be rendered as an answer. */
+    const real = condenseNote(
+      "On Sepolia (chain 11155111), the portfolio read comes back essentially" +
+        " empty:\n- **Lending collateral:** $0\n- **Debt:** none",
+    );
+    check("no asterisks survive", !real.includes("*"), real);
+    check("no bullet markers survive", !/(?:^|\s)-\s/.test(real), real);
+    check(
+      "the words are all still there",
+      real.includes("Lending collateral: $0") && real.includes("Debt: none"),
+      real,
+    );
+
+    const cases: [string, string, string][] = [
+      ["strong", "**Debt:** none", "Debt: none"],
+      ["emphasis", "that is *not* a balance", "that is not a balance"],
+      ["inline code", "run `swap 500 USDC`", "run swap 500 USDC"],
+      ["heading", "## Your position", "Your position"],
+      ["blockquote", "> nothing came back", "nothing came back"],
+      ["ordered list", "1. read it\n2. priced it", "read it priced it"],
+      ["link keeps its label", "see [the docs](https://x.y/z)", "see the docs"],
+      ["strikethrough", "~~$400~~ now $0", "$400 now $0"],
+      ["underscore emphasis", "_roughly_ $0", "roughly $0"],
+    ];
+    for (const [name, input, want] of cases) {
+      const got = condenseNote(input);
+      check(`${name}: ${JSON.stringify(input)}`, got === want, got);
+    }
+
+    /* An identifier is not emphasis. This one is load-bearing: the system
+       prompt states the user's limits, so a round's prose can quote one back. */
+    check(
+      "an underscored identifier is left alone",
+      condenseNote("kept min_health_factor above 1.5") ===
+        "kept min_health_factor above 1.5",
+      condenseNote("kept min_health_factor above 1.5"),
+    );
+
+    /* A fenced block goes whole. Flattening it would put code in the middle of
+       a sentence, and a trace line is not where anyone reads code. */
+    check(
+      "a fenced block is dropped, not flattened",
+      condenseNote("I would run:\n```\nsome code\n```\nthen check.") ===
+        "I would run: then check.",
+      condenseNote("I would run:\n```\nsome code\n```\nthen check."),
+    );
+
+    /* The cap counts what is visible, so markdown cannot spend it. */
+    const marked = condenseNote(`**${"z".repeat(900)}**`);
+    check(
+      "the cap counts visible characters",
+      marked.length === MAX_THINKING_LINE,
+      String(marked.length),
+    );
+    check(
+      "and the syntax is gone first",
+      !marked.startsWith("*"),
+      marked.slice(0, 4),
     );
   }
 }

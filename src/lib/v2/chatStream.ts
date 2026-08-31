@@ -98,10 +98,7 @@ export async function readChatStream(
          prose that preceded them. */
       case "round":
         flush();
-        handlers.onRound(
-          ev.note,
-          Array.isArray(ev.reads) ? ev.reads : [],
-        );
+        handlers.onRound(ev.note, Array.isArray(ev.reads) ? ev.reads : []);
         break;
       case "done":
         flush();
@@ -146,13 +143,52 @@ export async function readChatStream(
 }
 
 /**
+ * The longest a single line of thought process may be.
+ *
+ * Exported because `useChatHistory.reviveThinking` filters on the same number,
+ * and it *drops* a line that exceeds it rather than trimming it. Two literals
+ * that had to agree, in files that don't reference each other: raise one alone
+ * and the longer lines look right until the page is reloaded, then disappear.
+ *
+ * 320 rather than the original 160 because the fold is opt-in — it is closed
+ * until someone asks for it, and someone who has asked wants the line, not a
+ * peek at the front of it.
+ */
+export const MAX_THINKING_LINE = 320;
+
+/**
  * A round's prose, reduced to one line of thought process.
  *
- * 160 characters because that is what `useChatHistory` persists per thinking
- * line — a longer line would look right until the page was reloaded.
+ * Markdown comes off first. This prose was written to be rendered as an answer,
+ * but a trace line is rendered as text, so `- **Lending collateral:** $0`
+ * reached the screen with its asterisks still in it. Stripping before the cap
+ * also means the cap counts characters a reader can see rather than syntax they
+ * cannot.
+ *
+ * List markers are line-anchored, so they have to go before the newlines
+ * collapse: by the time the prose is one line, a bullet that opened a line is
+ * sitting in the middle of it and no longer looks like a marker.
  */
-export function condenseNote(prose: string, max = 160): string {
-  const flat = prose.replace(/\s+/g, " ").trim();
+export function condenseNote(prose: string, max = MAX_THINKING_LINE): string {
+  const flat = prose
+    /* A fenced block is not a line of thought process — drop it whole rather
+       than flatten code into the sentence around it. */
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`\n]*)`/g, "$1")
+    /* Images and links: keep the label, drop the target. A trace line is not
+       clickable, so a URL in it is 60 characters of the cap spent on nothing. */
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, "")
+    .replace(/(\*\*|__)(.*?)\1/gs, "$2")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    /* Underscores only when the pair brackets a word, so `min_health_factor`
+       keeps the middle it needs and does not become `minhealthfactor`. */
+    .replace(/(^|[\s(])_([^_\n]+)_(?=[\s.,;:!?)]|$)/g, "$1$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
   if (flat.length <= max) return flat;
   return `${flat.slice(0, max - 1).trimEnd()}…`;
 }
