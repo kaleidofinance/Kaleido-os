@@ -17,6 +17,19 @@ import {
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
 
 /**
+ * A turn is not a fast request and never was. Measured against the live
+ * gateway, a two-round answer takes 16–19 seconds wall clock; three rounds with
+ * tool work between them takes longer, and each round's own ceiling is 60s.
+ * The platform default for a serverless function is well under that, which
+ * would kill the function mid-answer — before streaming that surfaced as a
+ * truncated error, and with streaming it would cut the prose off mid-sentence.
+ * 60 is the most the Hobby plan allows; the client survives an overrun anyway
+ * (no terminal frame means it keeps the partial text and says the connection
+ * dropped), but the point is not to need that.
+ */
+export const maxDuration = 60;
+
+/**
  * Reports remaining model quota without spending any, so the UI can show a
  * balance on load. Kept separate from POST because rendering a number must
  * never cost a request.
