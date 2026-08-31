@@ -194,7 +194,10 @@ export interface Guardrails {
  * Length was unbounded until this section existed: "what is my portfolio worth?"
  * against an empty wallet came back as 2,562 characters over 29 renders, most of
  * it enumerating what had not been read. The rules below are the ones that turn
- * outputs of that shape into a sentence.
+ * outputs of that shape into a sentence: the same prompt now answers in 147
+ * characters. That measurement is also what "Showing your steps" is for — the
+ * answer shortened and the narration on the way to it did not, because the model
+ * reads a section about writing as a section about the reply.
  */
 export function buildSystemPrompt(opts: {
   address?: string;
@@ -220,8 +223,27 @@ export function buildSystemPrompt(opts: {
     "- Report what is true, not what you did not find. One line covers an empty result; do not enumerate every position that was absent.",
     "- Never mention your own machinery. No tool names, no 'tool call', 'read', 'round', 'context', 'query', 'indexer', 'client-side', 'reasoning engine', or 'the data I got back'. The user asked about their money, not how you looked it up.",
     "- Never refer to the interface as something the user should go operate — you are the interface.",
+    '- Name a network, never its id: "on Sepolia", not "chain 11155111". Same for a token — its symbol, never its address.',
     "- Plain sentences. No headings, no bold runs, no nested lists. A short list only for genuinely parallel items, one line each.",
     "- Ask at most one question, at the end, and only when you cannot proceed without the answer.",
+    "",
+    /* "How you write" governs the answer, and the model reads it that way — so
+       the lines it writes on the way to the answer came back untouched by it: 316
+       characters of narration that named a chain by its id and pointed the user
+       at "that view", both of which the section above forbids. They sit behind a
+       fold, so the stakes are lower, but a fold the user can open is still the
+       user's screen.
+
+       The frame is what makes the rule obvious rather than arbitrary: page.tsx
+       renders these as an <ol> under an "N steps" summary, so each line is a
+       list-item label. A clause fits that shape; a paragraph does not. The bound
+       asked for here is well under MAX_THINKING_LINE in chatStream.ts so that the
+       cap stays a safety net instead of becoming the editor — it truncates, and a
+       sentence losing its ending is worse than one that was short to begin with. */
+    "Showing your steps:",
+    "- Before each read, write one line naming what you are about to look at. The user sees these as a numbered list of steps under a count they can open, so write the label for a list item, not a paragraph of narration.",
+    "- One clause, under 120 characters. Nothing about what you will do with the result, and no restating the plan.",
+    '- Every rule under "How you write" applies to these lines too, because the user can open them: "checking your Sepolia balances", never "calling getPortfolio for chain 11155111".',
     "",
     /* The channel the frontend renders as chips. Spelled out to the letter
        because a near-miss produces no buttons at all: the block is matched on
