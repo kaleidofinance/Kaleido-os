@@ -86,4 +86,23 @@ export interface ChatProvider {
   readonly id: string;
   readonly model: string;
   chat(input: ChatInput): Promise<ChatResult>;
+  /**
+   * The same call, delivering prose as it is written.
+   *
+   * Resolves to an identical `ChatResult`, which is the point: the agent loop,
+   * the plan builder and the auditor all still see one finished turn, and the
+   * only thing streaming changes is that the text was also handed over in
+   * pieces on the way. A provider that implements this is not on a second code
+   * path — `runAgent` calls whichever exists.
+   *
+   * Optional, so an adapter can be written without it and a caller that wants
+   * deltas falls back to waiting for the whole reply. Tool calls are never
+   * partial to the caller: arguments arrive as fragmented JSON and are parsed
+   * only once their block closes, because half of an amount is not a smaller
+   * amount, it is a different one.
+   */
+  chatStream?(
+    input: ChatInput,
+    onText: (delta: string) => void,
+  ): Promise<ChatResult>;
 }

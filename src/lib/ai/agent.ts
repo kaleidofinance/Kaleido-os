@@ -6,6 +6,7 @@ import {
   type ChatProvider,
   type ChatResult,
   type Guardrails,
+  type ReadCall,
 } from "./index";
 
 /**
@@ -36,10 +37,57 @@ export interface AgentInput {
   limits?: Guardrails;
 }
 
+/**
+ * The reply, plus what was read to reach it.
+ *
+ * `trace` is the loop's own record: every read tool that actually ran, in order,
+ * across every round. It used to be discarded — `result` is only the final
+ * round, so a turn that read a portfolio, then a quote, then answered came back
+ * with `reads: []` and no sign that either call had happened.
+ *
+ * It is the closest thing to the model's reasoning this route can honestly
+ * report. No provider thinking is requested, so there are no reasoning tokens to
+ * show; what there is, is which questions it asked about the outside world before
+ * answering. The frontend turns these into the turn's thought process — see
+ * `traceFromChat` in src/lib/v2/agentTurn.ts.
+ */
+export interface AgentRun extends ChatResult {
+  trace: ReadCall[];
+}
+
+/**
+ * Optional hooks that let a caller watch the turn happen instead of waiting for
+ * it. Passing none is the whole of the old behaviour, unchanged.
+ *
+ * The loop is the only place that knows a turn is several model calls with tool
+ * work between them, so it is the only place that can report progress in the
+ * order it happened. Without this, a caller streaming the provider directly
+ * would emit each round's prose with no way to tell which round was the answer.
+ */
+export interface AgentEvents {
+  /**
+   * Prose as the model writes it. Requesting deltas is what opts the loop into
+   * `provider.chatStream`; a provider that does not implement it silently falls
+   * back to the buffered call and this is simply never called.
+   *
+   * Fires for *every* round, including the ones that turn out to be preamble
+   * ("Let me check your balances") before a tool call. `onReads` marks those
+   * boundaries, so a caller can tell the answer from the thinking out loud.
+   */
+  onText?: (delta: string) => void;
+  /**
+   * One round's reads, fired after they have actually run — the same calls, in
+   * the same order, that land in `trace`. Reaching this at all means the round
+   * just streamed was not the final one.
+   */
+  onReads?: (calls: ReadCall[]) => void;
+}
+
 export async function runAgent(
   provider: ChatProvider,
   input: AgentInput,
-): Promise<ChatResult> {
+  events?: AgentEvents,
+): Promise<AgentRun> {
   const system = buildSystemPrompt({
     address: input.address,
     chainId: input.chainId,
@@ -48,8 +96,20 @@ export async function runAgent(
 
   const messages: ChatMessage[] = [{ role: "user", content: input.message }];
 
-  let result = await provider.chat({ system, messages, tools: TOOL_CATALOG });
+  /* One call site for the model, so every round streams or none does. Streaming
+     is chosen per turn rather than per provider: the caller asking for deltas is
+     what makes them worth the different code path. */
+  const ask = () =>
+    events?.onText && provider.chatStream
+      ? provider.chatStream(
+          { system, messages, tools: TOOL_CATALOG },
+          events.onText,
+        )
+      : provider.chat({ system, messages, tools: TOOL_CATALOG });
+
+  let result = await ask();
   let seededPortfolio = false;
+  const trace: ReadCall[] = [];
 
   for (let round = 0; round < MAX_READ_ROUNDS; round++) {
     // Execute verbs mean it had what it needed — stop.
@@ -67,6 +127,12 @@ export async function runAgent(
           result: await runReadTool(r.name, r.args, input.chainId),
         })),
       );
+      /* Recorded after the await, so the trace lists reads that ran rather than
+         reads that were requested: a tool that throws takes the whole round down
+         with it, and it should not leave a line claiming it was consulted. */
+      const ran = result.reads.map((r) => ({ name: r.name, args: r.args }));
+      trace.push(...ran);
+      events?.onReads?.(ran);
       contextBlock = JSON.stringify(resolved, null, 2);
     } else if (!seededPortfolio && input.address) {
       // Default seed: only once, only when the model asked for nothing.
@@ -76,6 +142,12 @@ export async function runAgent(
         { address: input.address },
         input.chainId,
       );
+      /* Traced like any other read, and deliberately not flagged as ours: it
+         grounded the answer either way, and "your balances were read" is the part
+         the user cares about — not whose idea the call was. */
+      const seed = { name: "getPortfolio", args: { address: input.address } };
+      trace.push(seed);
+      events?.onReads?.([seed]);
       contextBlock = JSON.stringify(
         [
           {
@@ -105,8 +177,8 @@ export async function runAgent(
         "need more information, call another read tool.",
     });
 
-    result = await provider.chat({ system, messages, tools: TOOL_CATALOG });
+    result = await ask();
   }
 
-  return result;
+  return { ...result, trace };
 }

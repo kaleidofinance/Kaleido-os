@@ -6,6 +6,8 @@ import type {
   ReadCall,
 } from "../types";
 import { EXECUTE_TOOLS } from "../toolCatalog";
+import { sseData } from "./sse";
+import { parseToolArgs } from "./toolArgs";
 
 /**
  * Claude provider — Anthropic Messages API.
@@ -67,7 +69,17 @@ export class ClaudeProvider implements ChatProvider {
     this.userAgent = opts.userAgent;
   }
 
-  async chat({ system, messages, tools }: ChatInput): Promise<ChatResult> {
+  /**
+   * The one place the wire request is built, for both the buffered and the
+   * streamed call. `stream` is the only difference between them — everything
+   * that could drift (auth, version, tool translation, the timeout) stays
+   * single-copy, so a fix to the buffered path cannot silently miss the
+   * streaming one.
+   */
+  private async request(
+    { system, messages, tools }: ChatInput,
+    stream: boolean,
+  ): Promise<Response> {
     const res = await fetch(`${this.baseUrl}/v1/messages`, {
       method: "POST",
       headers: {
@@ -93,7 +105,12 @@ export class ClaudeProvider implements ChatProvider {
           description: t.description,
           input_schema: t.parameters,
         })),
+        ...(stream ? { stream: true } : {}),
       }),
+      /* Covers the body too, not just the headers, so this is the ceiling on a
+         whole streamed answer rather than on time-to-first-byte. Left the same
+         for both calls: streaming changes when text is handed over, not how
+         long the model is allowed to take. */
       signal: AbortSignal.timeout(60_000),
     });
 
@@ -102,14 +119,21 @@ export class ClaudeProvider implements ChatProvider {
       throw new Error(`${this.id} ${res.status}: ${detail.slice(0, 200)}`);
     }
 
-    const data = (await res.json()) as {
-      content?: AnthropicBlock[];
-      stop_reason?: string;
-    };
+    return res;
+  }
 
+  /**
+   * Content blocks → the neutral result. Shared, so the streamed turn and the
+   * buffered one are parsed by the same code and cannot disagree about what the
+   * model asked for.
+   */
+  private finish(
+    blocks: AnthropicBlock[],
+    stopReason: string | undefined,
+  ): ChatResult {
     // A safety-classifier decline is a normal 200, not an error — surface it
     // as a plain reply rather than throwing and losing the turn.
-    if (data.stop_reason === "refusal") {
+    if (stopReason === "refusal") {
       return {
         text: "I can't help with that request.",
         executes: [],
@@ -118,8 +142,6 @@ export class ClaudeProvider implements ChatProvider {
         model: this.model,
       };
     }
-
-    const blocks = data.content ?? [];
 
     const text = blocks
       .filter((b) => b.type === "text" && b.text)
@@ -145,5 +167,134 @@ export class ClaudeProvider implements ChatProvider {
       .map((b) => ({ name: b.name as string, args: b.input ?? {} }));
 
     return { text, executes, reads, provider: this.id, model: this.model };
+  }
+
+  async chat(input: ChatInput): Promise<ChatResult> {
+    const res = await this.request(input, false);
+
+    const data = (await res.json()) as {
+      content?: AnthropicBlock[];
+      stop_reason?: string;
+    };
+
+    return this.finish(data.content ?? [], data.stop_reason);
+  }
+
+  async chatStream(
+    input: ChatInput,
+    onText: (delta: string) => void,
+  ): Promise<ChatResult> {
+    const res = await this.request(input, true);
+
+    /* A gateway is free to ignore `stream: true` and answer with plain JSON.
+       Detecting that from the content type costs one header read and keeps the
+       turn alive — the caller simply gets no deltas, which every caller must
+       already tolerate because `chatStream` is optional. */
+    const ct = res.headers.get("content-type") ?? "";
+    if (!res.body || !ct.includes("event-stream")) {
+      const data = (await res.json()) as {
+        content?: AnthropicBlock[];
+        stop_reason?: string;
+      };
+      return this.finish(data.content ?? [], data.stop_reason);
+    }
+
+    /* Blocks in flight, keyed by the wire's index; finished ones move to
+       `closed` as their stop frame arrives, which is index order, so the
+       response's own ordering survives without a sort. */
+    const open = new Map<
+      number,
+      { type: string; name?: string; text: string; json: string }
+    >();
+    const closed: AnthropicBlock[] = [];
+    let stopReason: string | undefined;
+
+    for await (const payload of sseData(res.body)) {
+      let ev: {
+        type?: string;
+        index?: number;
+        content_block?: { type?: string; name?: string };
+        delta?: {
+          type?: string;
+          text?: string;
+          partial_json?: string;
+          stop_reason?: string;
+        };
+        error?: { message?: string; type?: string };
+      };
+      try {
+        ev = JSON.parse(payload);
+      } catch {
+        /* A frame we cannot read is not a reason to lose the whole turn. */
+        continue;
+      }
+
+      switch (ev.type) {
+        case "content_block_start":
+          open.set(ev.index ?? 0, {
+            type: ev.content_block?.type ?? "text",
+            name: ev.content_block?.name,
+            text: "",
+            json: "",
+          });
+          break;
+
+        case "content_block_delta": {
+          const block = open.get(ev.index ?? 0);
+          if (!block) break;
+          if (ev.delta?.type === "text_delta" && ev.delta.text) {
+            block.text += ev.delta.text;
+            onText(ev.delta.text);
+          } else if (ev.delta?.type === "input_json_delta") {
+            block.json += ev.delta.partial_json ?? "";
+          }
+          break;
+        }
+
+        case "content_block_stop": {
+          const block = open.get(ev.index ?? 0);
+          if (!block) break;
+          open.delete(ev.index ?? 0);
+          if (block.type === "tool_use") {
+            /* Arguments arrive as JSON fragments, so they are only trustworthy
+               once the block has closed. */
+            const args = parseToolArgs(
+              block.json,
+              block.name ?? "tool",
+              this.id,
+            );
+            if (args) {
+              closed.push({ type: "tool_use", name: block.name, input: args });
+            }
+          } else if (block.type === "text") {
+            closed.push({ type: "text", text: block.text });
+          }
+          break;
+        }
+
+        case "message_delta":
+          stopReason = ev.delta?.stop_reason ?? stopReason;
+          break;
+
+        case "error":
+          /* The gateway can fail mid-stream (overloaded, quota) after a 200 and
+             a few frames. Throwing puts it on the same footing as an HTTP
+             error, which is the path callers already handle. */
+          throw new Error(
+            `${this.id} stream error: ${ev.error?.message ?? ev.error?.type ?? "unknown"}`,
+          );
+      }
+    }
+
+    /* Anything still open never got its stop frame — a truncated stream. Text
+       is kept because the user already read it; a tool call is not, for the
+       same reason its arguments are parsed late. */
+    for (const block of open.values()) {
+      if (block.type === "text" && block.text) {
+        closed.push({ type: "text", text: block.text });
+      }
+    }
+
+    return this.finish(closed, stopReason);
   }
 }

@@ -1,0 +1,89 @@
+/* The route strip, above a plan's steps.
+ *
+ * Recessed rather than bordered or filled: it renders inside the agent card and
+ * inside PlanReview, both of which are glass, and an opaque fill on a blurred
+ * surface lands as a patch of another material — the argument `.chip` and
+ * `.sendRow` in agent.module.css make at length. No backdrop-filter of its own
+ * for the same reason: a blurred surface inside a blurred surface samples its
+ * parent's flat fill and renders as mud.
+ *
+ * The label sits beside the path rather than above it. This strip exists to cost
+ * as little height as a swap's pool and floor can be stated in, on a card that is
+ * height-locked to the viewport — a heading on its own line would spend a third
+ * of the strip on the word "Route". */
+.wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: 7px;
+  padding: 7px 10px;
+  border-radius: var(--k-r-sm);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+}
+
+.label {
+  flex: none;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Wraps rather than scrolling. A route is two or three tokens, so the worst case
+   is one extra line on a narrow card — where a horizontal scroller would hide
+   the far end of the path, which is the token you are trying to read. */
+.path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--k-fs-sm);
+  line-height: 1.4;
+}
+
+/* One token and the hop that leads to it, kept together so a wrap breaks between
+   hops instead of separating a fee tier from the pool it belongs to. */
+.node {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.token {
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  white-space: nowrap;
+}
+
+/* The pool, between the two tokens it trades. Quiet and small — which pool it is
+   qualifies the hop, the tokens are the hop. */
+.hop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--k-t3);
+  white-space: nowrap;
+}
+.arrow {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t3);
+}
+
+/* The floor under the trade. Also used for the per-leg floor in the unchained
+   case, where it sits at the end of the leg's own row instead of under it. */
+.meta {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  white-space: nowrap;
+}
+.path .meta {
+  margin-left: 3px;
+}

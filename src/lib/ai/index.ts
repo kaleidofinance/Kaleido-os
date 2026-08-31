@@ -11,6 +11,7 @@ export type {
   ChatResult,
   ExecuteCall,
   PlanStep,
+  ReadCall,
   ToolSpec,
 } from "./types";
 
@@ -187,6 +188,13 @@ export interface Guardrails {
  * Luca's system prompt. The user's own limits go in verbatim so the model
  * self-moderates — the on-chain permission facet still enforces them
  * independently, so this is guidance, not the security boundary.
+ *
+ * "How you write" is here because the alternative is trimming prose in the UI,
+ * and a reply cut off at the card's edge is a worse answer than a short one.
+ * Length was unbounded until this section existed: "what is my portfolio worth?"
+ * against an empty wallet came back as 2,562 characters over 29 renders, most of
+ * it enumerating what had not been read. The rules below are the ones that turn
+ * outputs of that shape into a sentence.
  */
 export function buildSystemPrompt(opts: {
   address?: string;
@@ -204,7 +212,31 @@ export function buildSystemPrompt(opts: {
     "- Call EXECUTE tools to build a plan. Each call becomes one signable step the user reviews before anything runs.",
     "- Order steps correctly: an approval must precede any step that spends a token the contract cannot yet move.",
     "- If a tool tells you data is not yet available, say so plainly. Never invent it.",
-    "- Explain the tradeoff, not just the action: what it costs, what it forfeits, what it leaves unused.",
+    "- Name the tradeoff that changes the decision, in a clause, not a paragraph: what it costs or what it forfeits. Skip it when there isn't one.",
+    "",
+    "How you write:",
+    "- Be brief. Two or three sentences is a normal answer. Six is a long one, and needs a reason.",
+    "- Lead with the answer. No preamble, no restating the question, no summary of what you just did.",
+    "- Report what is true, not what you did not find. One line covers an empty result; do not enumerate every position that was absent.",
+    "- Never mention your own machinery. No tool names, no 'tool call', 'read', 'round', 'context', 'query', 'indexer', 'client-side', 'reasoning engine', or 'the data I got back'. The user asked about their money, not how you looked it up.",
+    "- Never refer to the interface as something the user should go operate — you are the interface.",
+    "- Plain sentences. No headings, no bold runs, no nested lists. A short list only for genuinely parallel items, one line each.",
+    "- Ask at most one question, at the end, and only when you cannot proceed without the answer.",
+    "",
+    /* The channel the frontend renders as chips. Spelled out to the letter
+       because a near-miss produces no buttons at all: the block is matched on
+       the literal fence tag, and anything that is not it stays in the prose. The
+       two character bounds are cardsFromChat's, quoted here because it truncates
+       rather than drops — an over-long prompt would prefill a command ending in
+       an ellipsis, which is a wasted click rather than an absent button. See
+       src/lib/ai/actionsBlock.ts for the parser and why it is not a tool call. */
+    "Offering a choice:",
+    "- When your answer leaves the user a choice between 2 to 4 next steps, do not list them as prose and ask which they want. End the reply with this block instead, and write nothing after it:",
+    "```actions",
+    '[{"label": "Claim from the faucet", "prompt": "claim everything from the faucet"}]',
+    "```",
+    "- `label` is what the button says: under 40 characters, no trailing punctuation. `prompt` is what gets typed into the box for them, phrased as the user, under 120 characters, and it must be something you can actually act on.",
+    "- Omit the block entirely when the answer is complete, when there is only one sensible next step, or when what you need is a typed value rather than a choice. Buttons under every reply are noise.",
     "",
     "Safety:",
     "- Never propose a step that breaches the user's limits below.",

@@ -99,9 +99,13 @@ function num(value: number | string | null): number | null {
  * reintroduce exactly what that column exists to prevent. No default season is an
  * operator error, and it should read as one.
  */
-async function resolveSeason(
-  requested: number | null,
-): Promise<{ season: SeasonRecord | null; error: string | null }> {
+async function resolveSeason(requested: number | null): Promise<{
+  season: SeasonRecord | null;
+  error: string | null;
+  /** The query succeeded and matched nothing — the caller named a season that
+      is not there, which is not a fault of this route. */
+  notFound?: true;
+}> {
   const columns =
     "id, label, starts_at, ends_at, frozen_at, converts_to_tokens, disclosure, public_rank_limit, is_default";
 
@@ -117,13 +121,17 @@ async function resolveSeason(
     return { season: null, error: "Could not read the season registry" };
   }
   if (!data) {
-    return {
-      season: null,
-      error:
-        requested === null
-          ? "No season is marked as default"
-          : `Season ${requested} does not exist`,
-    };
+    /* Two quite different faults reach this branch and they get different
+       answers. A season the caller asked for by id and that is not there is the
+       caller's mistake. No default season at all is an operator error — the note
+       above says it should read as one — so it keeps the 500. */
+    if (requested !== null)
+      return {
+        season: null,
+        error: `Season ${requested} does not exist`,
+        notFound: true,
+      };
+    return { season: null, error: "No season is marked as default" };
   }
   return { season: data, error: null };
 }
@@ -131,9 +139,17 @@ async function resolveSeason(
 async function computeBoard(
   seasonId: number | null,
   limit: number,
-): Promise<{ payload: LeaderboardPayload | null; error: string | null }> {
-  const { season, error: seasonError } = await resolveSeason(seasonId);
-  if (!season) return { payload: null, error: seasonError };
+): Promise<{
+  payload: LeaderboardPayload | null;
+  error: string | null;
+  notFound?: true;
+}> {
+  const {
+    season,
+    error: seasonError,
+    notFound,
+  } = await resolveSeason(seasonId);
+  if (!season) return { payload: null, error: seasonError, notFound };
 
   /*
    * Rows past `public_rank_limit` carry a null rank at every tier but `full`, so
@@ -286,6 +302,20 @@ function store(key: string, payload: LeaderboardPayload) {
   cache.set(key, { at: Date.now(), payload });
 }
 
+/**
+ * A season the caller named that is not in the registry.
+ *
+ * Carried as its own type rather than folded into the generic failure because
+ * the difference is not cosmetic. `[leaderboard] failed:` beside a 500 is how a
+ * broken read announces itself, and a schema genuinely missing seven columns hid
+ * behind an error of that shape for the whole life of this route — a client
+ * typing `?season=99` must not be able to write the same line. This one answers
+ * 404 and logs nothing.
+ */
+class SeasonNotFound extends Error {
+  readonly status = 404;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
@@ -327,11 +357,16 @@ export async function GET(request: NextRequest) {
 
   let pending = inflight.get(key);
   if (!pending) {
-    pending = computeBoard(seasonId, limit).then(({ payload, error }) => {
-      if (!payload) throw new Error(error ?? "leaderboard unavailable");
-      store(key, payload);
-      return payload;
-    });
+    pending = computeBoard(seasonId, limit).then(
+      ({ payload, error, notFound }) => {
+        if (!payload) {
+          const message = error ?? "leaderboard unavailable";
+          throw notFound ? new SeasonNotFound(message) : new Error(message);
+        }
+        store(key, payload);
+        return payload;
+      },
+    );
     inflight.set(key, pending);
     void pending.catch(() => {}).finally(() => inflight.delete(key));
   }
@@ -343,6 +378,15 @@ export async function GET(request: NextRequest) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (err) {
+    /* A named season that is not there is answered before the stale fallback is
+       considered: serving another season's cached board under the id the caller
+       asked for would attribute a ranking to a season that does not exist. */
+    if (err instanceof SeasonNotFound) {
+      return NextResponse.json(
+        { success: false, error: err.message },
+        { status: err.status, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     /* Serve the last good board rather than nothing, flagged stale so the page can
        label it. With nothing cached this is a 500 — an empty board is honest, and
        there is no zero to fall back to that would not be a claim about ranking. */

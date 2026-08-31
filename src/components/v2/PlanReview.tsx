@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { renderIntent, resolveIntent, type Intent } from "@/lib/v2/intents";
 import { useResolverContext } from "@/hooks/v2/useResolverContext";
 import { recordTx, txFromError } from "@/lib/v2/txLog";
+import SwapRoute from "./SwapRoute";
 import s from "./PlanReview.module.css";
 
 /**
@@ -137,6 +138,12 @@ export default function PlanReview({
   return (
     <div className={s.wrap}>
       <div className={s.title}>Review and sign</div>
+
+      {/* The pool and the floor, for a plan that swaps. Above the steps rather
+          than inside one, because a route is a property of the plan: with two
+          legs it is the thing neither step can state on its own. Renders nothing
+          when no step is a swap, which is most plans. */}
+      <SwapRoute intents={intents} />
 
       <ol className={s.steps}>
         {views.map((v, i) => (

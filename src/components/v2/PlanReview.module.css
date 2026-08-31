@@ -1,11 +1,26 @@
+/* The signing surface, at two densities.
+ *
+ * Six sizes here are custom properties with today's value as the fallback, and
+ * that is a deliberate seam rather than indirection for its own sake. This
+ * component renders in three places whose room could not be more different: the
+ * settings modal and the swap card, which are as tall as they need to be, and the
+ * agent card's transcript box, which is 520px wide and height-locked to the
+ * viewport. At the roomy default a three-step plan plus its buttons is taller
+ * than that box, so the permission surface — the one screen where reading before
+ * signing matters most — arrives already scrolled.
+ *
+ * A caller tightens by setting these on any ancestor; see `.panelScroll` in
+ * agent.module.css, which sets them and then unsets them again in expanded mode.
+ * Every other caller keeps the roomy default by never mentioning them, so nothing
+ * outside the agent card changes. */
 .wrap {
   display: flex;
   flex-direction: column;
-  gap: var(--k-s3);
+  gap: var(--k-plan-gap, var(--k-s3));
 }
 
 .title {
-  font-size: var(--k-fs-lg);
+  font-size: var(--k-plan-title-fs, var(--k-fs-lg));
   font-weight: var(--k-fw-med);
 }
 
@@ -33,7 +48,7 @@
   display: flex;
   align-items: flex-start;
   gap: var(--k-s3);
-  padding: 13px 0;
+  padding: var(--k-plan-step-pad, 13px) 0;
 }
 .step + .step {
   border-top: 1px solid var(--k-line);
@@ -43,8 +58,8 @@
    The done and failed states are already translucent tints, so this brings the
    neutral states onto the same footing instead of leaving two of five opaque. */
 .marker {
-  width: 24px;
-  height: 24px;
+  width: var(--k-plan-marker, 24px);
+  height: var(--k-plan-marker, 24px);
   border-radius: 50%;
   flex: none;
   display: grid;
@@ -74,7 +89,7 @@
   min-width: 0;
 }
 .stTitle {
-  font-size: var(--k-fs-base);
+  font-size: var(--k-plan-fs, var(--k-fs-base));
 }
 .stDetail {
   font-size: var(--k-fs-xs);
@@ -127,9 +142,9 @@
   color: var(--k-brand-fg);
   border: 0;
   font: inherit;
-  font-size: 16px;
+  font-size: var(--k-plan-btn-fs, 16px);
   font-weight: var(--k-fw-med);
-  padding: 15px;
+  padding: var(--k-plan-btn-pad, 15px);
   border-radius: var(--k-r-md);
   cursor: pointer;
 }
@@ -148,8 +163,11 @@
   color: var(--k-t1);
   border: 0;
   font: inherit;
-  font-size: 16px;
-  padding: 15px 20px;
+  font-size: var(--k-plan-btn-fs, 16px);
+  /* Horizontal padding is not part of the density seam: Cancel is a two-word
+     label whose sides need the same air at either size, and the height is what
+     the tight variant is buying back. */
+  padding: var(--k-plan-btn-pad, 15px) 20px;
   border-radius: var(--k-r-md);
   cursor: pointer;
 }

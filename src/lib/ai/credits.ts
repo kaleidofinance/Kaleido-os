@@ -90,6 +90,45 @@ export async function consumeModelRequest(
   };
 }
 
+/**
+ * Hands back a request that was spent but never served.
+ *
+ * `consumeModelRequest` runs immediately before dispatch, which is what keeps
+ * locally-answered turns free — but it also means a request the provider
+ * refuses outright has already been charged. The gateway screens some user
+ * wording and answers 400 without reaching a model, so nothing was generated
+ * and the day's allowance should not be one shorter for it.
+ *
+ * Only call this for a consume that was actually recorded: pass through
+ * `decision.unmetered` and skip when it is true, or this decrements a counter
+ * that was never incremented. Returns the corrected state so the caller can
+ * report an accurate remaining count, or null when there is nothing to report.
+ */
+export async function releaseModelRequest(
+  wallet: string | undefined,
+  decision: Pick<QuotaDecision, "unmetered">,
+): Promise<QuotaState | null> {
+  if (!wallet || !supabaseAdmin || decision.unmetered) return null;
+
+  const { data, error } = await supabaseAdmin.rpc("release_agent_request", {
+    p_wallet: wallet,
+    p_limit: DAILY_MODEL_REQUESTS,
+  });
+
+  if (error) {
+    /* Logged, not thrown. The caller is already on its error path answering a
+       refused request; failing to hand a credit back is worth knowing about but
+       is not worth replacing that answer with a second failure. */
+    console.error("[credits] release_agent_request failed:", error.message);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const used = Number(row?.used ?? 0);
+  const quota = Number(row?.quota ?? DAILY_MODEL_REQUESTS);
+  return { used, quota, remaining: Math.max(0, quota - used) };
+}
+
 /** Reads today's usage without spending any. Safe to call on page load. */
 export async function peekModelUsage(
   wallet: string | undefined,
