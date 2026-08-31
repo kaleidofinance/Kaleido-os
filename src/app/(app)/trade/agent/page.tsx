@@ -22,6 +22,7 @@ import Headline from "./Headline";
 import { getChainMeta } from "@/constants/chains";
 import { intentsFromChat } from "@/lib/v2/intents/fromChat";
 import { traceFromChat } from "@/lib/v2/agentTurn";
+import { readChatStream } from "@/lib/v2/chatStream";
 import { renderIntent } from "@/lib/v2/intents";
 import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
 import { matchFaq } from "@/lib/ai/faq";
@@ -193,12 +194,13 @@ export default function AgentPage() {
    *
    * Two layers, and both are things this page can actually witness. Live: the
    * stages below, recorded as they happen and rendered in the turn that is
-   * coming. Afterwards: for a model turn, the read tools the server says it ran,
-   * appended from the reply (see traceFromChat). What is deliberately NOT here is
-   * invented reasoning — the reply is one non-streaming call and no provider
-   * thinking is requested, so there are no reasoning tokens to show, and
-   * paraphrasing the model's job into "considering your options…" would be a
-   * caption written by the UI and read as a quote from the agent.
+   * coming — for a model turn that includes each read tool the moment the server
+   * says it ran, and the preamble the model wrote before calling it. Afterwards:
+   * how the turn ended, appended from the reply (see traceFromChat). What is
+   * deliberately NOT here is invented reasoning — no provider thinking is
+   * requested, so there are no reasoning tokens to show, and paraphrasing the
+   * model's job into "considering your options…" would be a caption written by
+   * the UI and read as a quote from the agent.
    *
    * A ref alongside the state because `say` needs to read the turn's record at
    * the moment it appends the message, and every entry is a fresh array so the
@@ -394,6 +396,16 @@ export default function AgentPage() {
     const abort = new AbortController();
     abortRef.current = abort;
 
+    /*
+     * The bubble a streamed answer is being written into, when there is one.
+     *
+     * Declared out here so the catch below can tell a stop that interrupted an
+     * answer already on screen from a stop that interrupted the wait for one —
+     * two different things to leave behind, and only the second one deserves a
+     * turn of its own that says "Stopped."
+     */
+    let live: { text: string; open: boolean } | null = null;
+
     try {
       // Local-first. A stated command is not a reasoning problem, and routing it
       // through a provider costs a credit, adds latency, and introduces the one
@@ -475,8 +487,148 @@ export default function AgentPage() {
             slippageBps: settings.slippageBps,
             allowedActions: settings.allowedActions,
           },
+          /* Ask for frames. The server answers them only on the provider path;
+             a quota refusal, the legacy proxy and anything that fails before
+             dispatch still reply in plain JSON, which is why the content type
+             below decides how to read this and not the flag above. */
+          stream: true,
         }),
       });
+
+      /*
+       * The streamed turn.
+       *
+       * Prose lands in the transcript as the model writes it instead of after
+       * the whole turn — which, with up to three model calls and chain reads
+       * between them, is the difference between the first sentence appearing in
+       * a few seconds and the screen sitting still for most of a minute.
+       *
+       * Wire format and the reader are in src/lib/v2/chatStream.ts. What is left
+       * here is the part only this page can do: deciding where each frame goes
+       * in a transcript.
+       */
+      if (
+        res.body &&
+        (res.headers.get("content-type") ?? "").includes("ndjson")
+      ) {
+        live = { text: "", open: false };
+
+        /* Opens the bubble on the first delta and patches it after. The decision
+           and the mutation both happen out here so the updater stays pure —
+           React may call it twice, and an updater that flipped `open` itself
+           would append a second bubble the second time. */
+        const write = (chunk: string) => {
+          const first = !live!.open;
+          live!.open = true;
+          live!.text += chunk;
+          const text = live!.text;
+          setMessages((m) =>
+            first
+              ? [...m, { role: "assistant", text, via: "model" }]
+              : m.map((msg, i) =>
+                  i === m.length - 1 ? { ...msg, text } : msg,
+                ),
+          );
+        };
+
+        /* The end of the turn, streamed or not: the server's text is what gets
+           saved, so it replaces whatever accumulated — it carries the build
+           notes and any refusal, which the deltas never included. */
+        const finish = (
+          response: string,
+          context: Record<string, unknown> | undefined,
+        ) => {
+          const data = { response, context };
+          const credit = (context as any)?.credits;
+          if (credit && typeof credit.remaining === "number") {
+            setCredits({ remaining: credit.remaining, quota: credit.quota });
+          }
+          const plan = intentsFromChat(data);
+          const cards = cardsFromChat(data);
+          /* The outcome line only. `context.reads` is sent on this path too, but
+             every one of them was already noted as it ran — passing the payload
+             through whole would print the whole trace a second time. */
+          for (const line of traceFromChat({
+            ...data,
+            context: { ...(context ?? {}), reads: [] },
+          })) {
+            note(line);
+          }
+          const extra: Partial<Msg> = {
+            via: "model",
+            ...(plan.length ? { plan } : {}),
+            ...(cards.length ? { cards } : {}),
+          };
+          if (!live?.open) {
+            say(response, extra);
+            return;
+          }
+          /* Patched, not appended — the bubble is already on screen. `thinking`
+             has to be attached here rather than at open time, because most of
+             it happened after the bubble existed. */
+          const thinking = traceRef.current;
+          setMessages((m) =>
+            m.map((msg, i) =>
+              i === m.length - 1
+                ? {
+                    ...msg,
+                    text: response,
+                    ...(thinking.length ? { thinking } : {}),
+                    ...extra,
+                  }
+                : msg,
+            ),
+          );
+        };
+
+        const terminal = await readChatStream(res.body, {
+          onText: write,
+          onRound: (preamble, reads) => {
+            if (preamble) note(preamble);
+            /* Server-reported and validated on the way in — the names come from
+               a reply, so traceFromChat drops anything that isn't one of the
+               read tools with a plausible name rather than printing it. */
+            for (const line of traceFromChat({ context: { reads } })) note(line);
+            /* That round's prose was preamble, and it is a line of thought
+               process now. The bubble it was going into gets dropped: the answer
+               is the round that follows, and the saved reply will not contain
+               what was in there. */
+            if (live!.open) {
+              live!.open = false;
+              live!.text = "";
+              setMessages((m) =>
+                m.length && m[m.length - 1].role === "assistant"
+                  ? m.slice(0, -1)
+                  : m,
+              );
+            } else {
+              live!.text = "";
+            }
+          },
+          onDone: finish,
+          onError: finish,
+        });
+
+        if (!terminal) {
+          /* The body ended with no final frame, so the connection dropped. The
+             text that arrived is real and stays on screen; what is missing is
+             any confirmation that it was the whole answer, and presenting half a
+             sentence as finished would be the one thing worse than saying so. */
+          if (live.open && live.text.trim()) {
+            finish(
+              `${live.text.trim()}\n\n---\n\nThe connection dropped before that answer finished.`,
+              undefined,
+            );
+          } else {
+            say(
+              "The connection dropped before the reasoning engine answered. Try again shortly.",
+              { via: "local" },
+            );
+          }
+        }
+        return;
+      }
+
       const data = await res.json().catch(() => null);
       const reply =
         data?.response ??
@@ -512,6 +664,26 @@ export default function AgentPage() {
        * help nobody asked for. The stopped turn says so itself, once.
        */
       if (err instanceof DOMException && err.name === "AbortError") {
+        /* A stop during a streamed answer already has a bubble on screen with
+           real text in it. A second turn saying "Stopped." would leave that
+           partial answer looking finished, so the note goes on the turn it
+           interrupted instead. */
+        if (live?.open && live.text.trim()) {
+          const text = `${live.text.trim()}\n\n— Stopped.`;
+          const thinking = traceRef.current;
+          setMessages((m) =>
+            m.map((msg, i) =>
+              i === m.length - 1
+                ? {
+                    ...msg,
+                    text,
+                    ...(thinking.length ? { thinking } : {}),
+                  }
+                : msg,
+            ),
+          );
+          return;
+        }
         say("Stopped.", { via: "local" });
         return;
       }

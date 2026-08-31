@@ -6,6 +6,8 @@ import type {
   ReadCall,
 } from "../types";
 import { EXECUTE_TOOLS } from "../toolCatalog";
+import { sseData } from "./sse";
+import { parseToolArgs } from "./toolArgs";
 
 /**
  * OpenAI provider — Chat Completions API, function-calling form.
@@ -71,7 +73,16 @@ export class OpenAIProvider implements ChatProvider {
     this.userAgent = opts.userAgent;
   }
 
-  async chat({ system, messages, tools }: ChatInput): Promise<ChatResult> {
+  /**
+   * The one place the wire request is built, for both the buffered and the
+   * streamed call — see the note on ClaudeProvider.request. `stream_options`
+   * rides along with `stream` because without it several gateways omit the
+   * final usage frame; it is ignored by the ones that don't need telling.
+   */
+  private async request(
+    { system, messages, tools }: ChatInput,
+    stream: boolean,
+  ): Promise<Response> {
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -94,6 +105,9 @@ export class OpenAIProvider implements ChatProvider {
             parameters: t.parameters,
           },
         })),
+        ...(stream
+          ? { stream: true, stream_options: { include_usage: true } }
+          : {}),
       }),
       signal: AbortSignal.timeout(60_000),
     });
@@ -103,47 +117,136 @@ export class OpenAIProvider implements ChatProvider {
       throw new Error(`OpenAI ${res.status}: ${detail.slice(0, 200)}`);
     }
 
+    return res;
+  }
+
+  /**
+   * Text + tool calls → the neutral result. Shared, so the streamed turn and
+   * the buffered one cannot disagree about what the model asked for.
+   */
+  private finish(text: string, calls: OpenAIToolCall[]): ChatResult {
+    const args = (c: OpenAIToolCall) =>
+      parseToolArgs(c.function.arguments, c.function.name, this.id);
+
+    /* Verb + arguments, matching ClaudeProvider. Building intents here would
+       put a second copy of that translation in the tree, and the two copies
+       would drift the first time a verb gained a field. */
+    const executes: ExecuteCall[] = [];
+    // Every non-execute call is a READ request — reachable, not dropped.
+    const reads: ReadCall[] = [];
+
+    for (const c of calls) {
+      const parsed = args(c);
+      if (!parsed) continue;
+      const call = { name: c.function.name, args: parsed };
+      (EXECUTE_TOOLS.has(c.function.name) ? executes : reads).push(call);
+    }
+
+    return {
+      text: text.trim(),
+      executes,
+      reads,
+      provider: this.id,
+      model: this.model,
+    };
+  }
+
+  async chat(input: ChatInput): Promise<ChatResult> {
+    const res = await this.request(input, false);
+
     const data = (await res.json()) as {
       choices?: Array<{
         message?: { content?: string | null; tool_calls?: OpenAIToolCall[] };
       }>;
     };
     const message = data.choices?.[0]?.message;
-    const calls = message?.tool_calls ?? [];
 
-    const parseArgs = (raw: string): Record<string, unknown> => {
+    return this.finish(message?.content ?? "", message?.tool_calls ?? []);
+  }
+
+  async chatStream(
+    input: ChatInput,
+    onText: (delta: string) => void,
+  ): Promise<ChatResult> {
+    const res = await this.request(input, true);
+
+    /* A gateway is free to ignore `stream: true` and answer with plain JSON.
+       Detecting that from the content type keeps the turn alive — the caller
+       simply gets no deltas, which every caller must already tolerate because
+       `chatStream` is optional. */
+    const ct = res.headers.get("content-type") ?? "";
+    if (!res.body || !ct.includes("event-stream")) {
+      const data = (await res.json()) as {
+        choices?: Array<{
+          message?: { content?: string | null; tool_calls?: OpenAIToolCall[] };
+        }>;
+      };
+      const message = data.choices?.[0]?.message;
+      return this.finish(message?.content ?? "", message?.tool_calls ?? []);
+    }
+
+    let text = "";
+    /* Accumulated by `index`, not by array position: a delta names the slot it
+       belongs to and only the first one for a slot carries the function name,
+       so appending in arrival order would splice two calls' arguments together
+       the moment a model asks for more than one tool. */
+    const parts = new Map<number, { name: string; args: string }>();
+
+    for await (const payload of sseData(res.body)) {
+      if (payload === "[DONE]") break;
+
+      let ev: {
+        choices?: Array<{
+          delta?: {
+            content?: string | null;
+            tool_calls?: Array<{
+              index?: number;
+              function?: { name?: string; arguments?: string };
+            }>;
+          };
+        }>;
+        error?: { message?: string; type?: string };
+      };
       try {
-        return JSON.parse(raw);
+        ev = JSON.parse(payload);
       } catch {
-        console.warn("[openai] unparseable tool arguments:", raw);
-        return {};
+        /* A frame we cannot read is not a reason to lose the whole turn. */
+        continue;
       }
-    };
 
-    /* Verb + arguments, matching ClaudeProvider. Building intents here would
-       put a second copy of that translation in the tree, and the two copies
-       would drift the first time a verb gained a field. */
-    const executes: ExecuteCall[] = calls
-      .filter((c) => EXECUTE_TOOLS.has(c.function.name))
-      .map((c) => ({
-        name: c.function.name,
-        args: parseArgs(c.function.arguments),
+      /* Mid-stream failure after a 200 — same footing as an HTTP error, which
+         is the path callers already handle. */
+      if (ev.error) {
+        throw new Error(
+          `OpenAI stream error: ${ev.error.message ?? ev.error.type ?? "unknown"}`,
+        );
+      }
+
+      const delta = ev.choices?.[0]?.delta;
+      if (!delta) continue;
+
+      if (delta.content) {
+        text += delta.content;
+        onText(delta.content);
+      }
+
+      for (const tc of delta.tool_calls ?? []) {
+        const slot = tc.index ?? 0;
+        const part = parts.get(slot) ?? { name: "", args: "" };
+        if (tc.function?.name) part.name = tc.function.name;
+        part.args += tc.function?.arguments ?? "";
+        parts.set(slot, part);
+      }
+    }
+
+    const calls: OpenAIToolCall[] = [...parts.entries()]
+      .sort(([a], [b]) => a - b)
+      .filter(([, p]) => p.name)
+      .map(([slot, p]) => ({
+        id: `stream-${slot}`,
+        function: { name: p.name, arguments: p.args },
       }));
 
-    // Every non-execute call is a READ request — reachable, not dropped.
-    const reads: ReadCall[] = calls
-      .filter((c) => !EXECUTE_TOOLS.has(c.function.name))
-      .map((c) => ({
-        name: c.function.name,
-        args: parseArgs(c.function.arguments),
-      }));
-
-    return {
-      text: (message?.content ?? "").trim(),
-      executes,
-      reads,
-      provider: this.id,
-      model: this.model,
-    };
+    return this.finish(text, calls);
   }
 }

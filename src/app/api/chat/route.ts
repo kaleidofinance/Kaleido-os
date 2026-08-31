@@ -5,7 +5,7 @@ import {
   ROUTER_MODELS,
   ROUTER_MODEL_IDS,
 } from "@/lib/ai";
-import { runAgent } from "@/lib/ai/agent";
+import { runAgent, type AgentRun } from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText } from "@/lib/ai/auditor";
@@ -14,6 +14,7 @@ import {
   peekModelUsage,
   releaseModelRequest,
 } from "@/lib/ai/credits";
+import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
 
 /**
  * Reports remaining model quota without spending any, so the UI can show a
@@ -88,14 +89,32 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      try {
-        const result = await runAgent(provider, {
-          message: String(body.message ?? ""),
-          address: body.address,
-          chainId: body.chainId,
-          limits: body.limits,
-        });
+      /*
+       * `chainId` goes to all three of planFromToolCalls, serverPlanDeps and
+       * auditPlan below, and it has to be the same value in all three or the
+       * plan mixes chains: token symbols resolve in the builder, contract
+       * addresses resolve in the deps, and the pins are checked in the auditor.
+       */
+      const chainId =
+        typeof body.chainId === "number" ? body.chainId : undefined;
 
+      const agentInput = {
+        message: String(body.message ?? ""),
+        address: body.address,
+        chainId: body.chainId,
+        limits: body.limits,
+      };
+
+      /**
+       * Everything that happens after the model stops talking: build, audit,
+       * assemble the reply.
+       *
+       * Factored out because there are now two ways to run a turn and only one
+       * correct way to finish one. A streamed turn that built its own payload
+       * would be a second copy of the auditor call — and a copy that forgot it
+       * would stream a plan nothing had checked.
+       */
+      const settle = async (result: AgentRun) => {
         /*
          * Verbs become intents here, before anything is audited.
          *
@@ -105,14 +124,7 @@ export async function POST(request: NextRequest) {
          * reads, through the same builder the typed-command path uses. Doing
          * it at the route rather than in each provider adapter means one
          * translation, not one per provider.
-         *
-         * `chainId` goes to all three of planFromToolCalls, serverPlanDeps and
-         * auditPlan below, and it has to be the same value in all three or the
-         * plan mixes chains: token symbols resolve here, contract addresses
-         * resolve in the deps, and the pins are checked in the auditor.
          */
-        const chainId =
-          typeof body.chainId === "number" ? body.chainId : undefined;
         const built = await planFromToolCalls(
           result.executes,
           chainId,
@@ -170,7 +182,7 @@ export async function POST(request: NextRequest) {
           ? `\n\n---\n\nI couldn't prepare some of that:\n${built.errors.map((e) => `• ${e}`).join("\n")}`
           : "";
 
-        return NextResponse.json({
+        return {
           response: verdict.ok
             ? `${result.text}${buildNotes}`
             : /* The model's own words, then the refusal. Dropping the prose
@@ -184,9 +196,14 @@ export async function POST(request: NextRequest) {
                Reported so the turn can show its own work: the frontend renders
                these as the thought process under the reply (traceFromChat in
                src/lib/v2/agentTurn.ts), which is the only part of the reasoning
-               this route can state as fact — the reply is one non-streaming
-               call, so there is no chain of thought to forward, but which
-               questions it asked about the chain is a matter of record.
+               this route can state as fact — no provider thinking is requested,
+               so there is no chain of thought to forward, but which questions
+               it asked about the chain is a matter of record.
+
+               Sent on the streaming path too, identically, even though the
+               client was already told about each read as it happened. Keeping
+               one payload shape means one `settle` and one thing to reason
+               about; the client's job is simply not to draw them twice.
 
                Names and arguments, no results. A result is the data the answer
                was built from and it is already in the prose; echoing it here
@@ -209,8 +226,14 @@ export async function POST(request: NextRequest) {
               remaining: quota.remaining,
             },
           },
-        });
-      } catch (aiError: any) {
+        };
+      };
+
+      /**
+       * The turn failed. Works out whether it can ever succeed, hands back the
+       * credit when it cannot, and returns the reply either way.
+       */
+      const recover = async (aiError: any) => {
         console.error("[chat] provider failed:", aiError);
         /*
          * "Try again shortly" is only true of a failure that might pass next
@@ -242,7 +265,7 @@ export async function POST(request: NextRequest) {
         const refunded = blocked
           ? await releaseModelRequest(body.address, quota)
           : null;
-        return NextResponse.json({
+        return {
           response: blocked
             ? "The model gateway refused that wording — it screens messages shaped like a transfer instruction. Say it as a command, like `swap 100 USDC to KLD`, and it runs here without a reasoning request. Questions about your positions or the markets are unaffected."
             : "I couldn't complete that just now — the reasoning service returned an error. Try again shortly.",
@@ -253,19 +276,113 @@ export async function POST(request: NextRequest) {
                as "leave the count alone". */
             ...(refunded ? { credits: refunded } : {}),
           },
+        };
+      };
+
+      /*
+       * The streamed turn.
+       *
+       * NDJSON, one frame per line, shape defined in src/lib/v2/chatStream.ts —
+       * see that file for why a chat stream cannot just be text. It is opt-in
+       * per request rather than the default so the plain JSON reply stays a
+       * working client: the 429 above and the legacy proxy below both still
+       * answer in it, and a caller that does not ask for frames does not get
+       * them.
+       *
+       * The status is 200 the moment the first byte leaves, which is why the
+       * quota check sits above this and not inside — a 429 has to be a real 429,
+       * not an error frame inside a successful stream.
+       */
+      if (body.stream === true) {
+        const encoder = new TextEncoder();
+        let closed = false;
+
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const send = (ev: ChatStreamEvent) => {
+              if (closed) return;
+              try {
+                controller.enqueue(encoder.encode(`${JSON.stringify(ev)}\n`));
+              } catch {
+                /* The client went away mid-turn. Stop writing, but let the run
+                   finish — it is already paid for and its reads are in flight. */
+                closed = true;
+              }
+            };
+
+            /* Prose since the last round boundary. A round that turns out to be
+               preamble hands this over as a line of thought process instead, so
+               nothing the model wrote disappears without being accounted for. */
+            let round = "";
+
+            try {
+              const result = await runAgent(provider, agentInput, {
+                onText: (d) => {
+                  round += d;
+                  send({ t: "text", d });
+                },
+                onReads: (reads) => {
+                  const note = condenseNote(round);
+                  round = "";
+                  send({ t: "round", ...(note ? { note } : {}), reads });
+                },
+              });
+              send({ t: "done", ...(await settle(result)) });
+            } catch (aiError: any) {
+              send({ t: "error", ...(await recover(aiError)) });
+            } finally {
+              if (!closed) {
+                try {
+                  controller.close();
+                } catch {
+                  /* Already closed by a cancel. */
+                }
+              }
+            }
+          },
+          cancel() {
+            /* The reader is gone — a closed tab, a stop button. Nothing more
+               can be enqueued, and enqueueing anyway throws. */
+            closed = true;
+          },
         });
+
+        return new Response(stream, {
+          headers: {
+            "content-type": "application/x-ndjson; charset=utf-8",
+            /* A cached or transformed stream is not a stream. `no-transform`
+               is the one that matters in front of a proxy that would helpfully
+               buffer the body to compress it, and `x-accel-buffering` is the
+               nginx-specific way of saying the same thing. */
+            "cache-control": "no-store, no-transform",
+            "x-accel-buffering": "no",
+          },
+        });
+      }
+
+      try {
+        return NextResponse.json(
+          await settle(await runAgent(provider, agentInput)),
+        );
+      } catch (aiError: any) {
+        return NextResponse.json(await recover(aiError));
       }
     }
 
     // Check if AI Engine API is available
     try {
+      /* `stream` is dropped on the way through: it is a flag about how *this*
+         route answers, and the engine has its own opinion about what the word
+         means. Forwarding it risks asking for a body this branch then tries to
+         read as JSON. */
+      const { stream: _stream, ...engineBody } = body;
       // Forward the request to the AI Engine API
       const response = await fetch(`${AI_ENGINE_API_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(engineBody),
         // Use configurable timeout for AI response generation
         signal: AbortSignal.timeout(AI_ENGINE_TIMEOUT),
       });
