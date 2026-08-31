@@ -145,7 +145,13 @@ export function describeFailure(
   if (isRejection(err)) {
     return "You dismissed the request in your wallet — nothing was sent.";
   }
-  if (code === "INSUFFICIENT_FUNDS" || /insufficient funds/i.test(reason)) {
+  if (
+    code === "INSUFFICIENT_FUNDS" ||
+    /* Arc v0.8.0 / revm 38 renamed these: "insufficient funds for gas * price +
+       value" → "OutOfFunds"; simple-transfer case → "gas required exceeds allowance".
+       Activates on Arc testnet 2026-09-03 and mainnet 2026-09-10. */
+    /insufficient funds|OutOfFunds|gas required exceeds allowance/i.test(reason)
+  ) {
     return "This wallet cannot cover the gas for this transaction. Send it a little of the network's own token first — what the faucet hands out is free, the transaction that fetches it is not.";
   }
   if (
