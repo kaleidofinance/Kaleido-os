@@ -176,6 +176,19 @@ export async function POST(request: NextRequest) {
             plan: verdict.ok ? built.plan : [],
             provider: result.provider,
             model: result.model,
+            /* What the model read before answering, in the order it ran.
+               Reported so the turn can show its own work: the frontend renders
+               these as the thought process under the reply (traceFromChat in
+               src/lib/v2/agentTurn.ts), which is the only part of the reasoning
+               this route can state as fact — the reply is one non-streaming
+               call, so there is no chain of thought to forward, but which
+               questions it asked about the chain is a matter of record.
+
+               Names and arguments, no results. A result is the data the answer
+               was built from and it is already in the prose; echoing it here
+               would send the same portfolio twice and put it in a place the
+               client would have to re-validate. */
+            reads: result.trace,
             /* Reported either way. A caller that sees `plan: []` deserves to
                know whether the model proposed nothing or proposed something
                that was refused — those are different answers, and the old gate

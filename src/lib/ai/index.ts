@@ -11,6 +11,7 @@ export type {
   ChatResult,
   ExecuteCall,
   PlanStep,
+  ReadCall,
   ToolSpec,
 } from "./types";
 

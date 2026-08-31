@@ -66,6 +66,24 @@
   background: var(--k-row-hover);
   color: var(--k-t1);
 }
+
+/* Compact ↔ expanded, beside the gear and the chart toggle.
+
+   `composes` rather than a copy of those twelve declarations: it is the same
+   object as the gear — same 30px circle, same overhang, same hover — and the
+   header's controls being one size is a rule this file states twice already. A
+   second definition is a second thing to keep in step.
+
+   The on state is brand-tinted rather than the hover wash, because it has to
+   read as "currently on" while sitting still. `--k-brand-dim` is translucent, so
+   it tints the blur behind the header instead of punching a hole in it. */
+.expand {
+  composes: gear;
+}
+.expandOn {
+  background: var(--k-brand-dim);
+  color: var(--k-brand);
+}
 /* Live indicator. Paired with a text label because a bare green dot states
    nothing on its own. Applied to the footnote under the composer, where the
    claim qualifies the button it sits beside. */
@@ -295,18 +313,20 @@
 .step {
   display: flex;
   align-items: flex-start;
-  gap: 11px;
-  padding: 10px 0;
+  gap: 9px;
+  padding: 8px 0;
 }
 .step + .step {
   border-top: 1px solid var(--k-line);
 }
 /* Recessed, matching `.marker` in PlanReview.module.css exactly — the same well
    shows this list before signing and that one during, so a fill difference
-   between them would read as two different lists of the same steps. */
+   between them would read as two different lists of the same steps. 20px here
+   and 20px there, via that file's `--k-plan-marker`, which `.panelScroll` sets
+   below for exactly this reason. */
 .marker {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   flex: none;
   border-radius: 50%;
   background: var(--k-glass-deep);
@@ -314,7 +334,7 @@
   color: var(--k-t2);
   display: grid;
   place-items: center;
-  font-size: var(--k-fs-xs);
+  font-size: 11px;
   font-weight: var(--k-fw-med);
   /* Aligns the circle's centre with the first line of the title rather than
      the top of the text box. */
@@ -325,11 +345,11 @@
   min-width: 0;
 }
 .stepTitle {
-  font-size: var(--k-fs-base);
+  font-size: var(--k-fs-sm);
   line-height: 1.35;
 }
 .stepDetail {
-  font-size: var(--k-fs-sm);
+  font-size: var(--k-fs-xs);
   color: var(--k-t2);
   line-height: 1.45;
   margin-top: 2px;
@@ -338,7 +358,7 @@
    — it qualifies the step, it is not the step. */
 .stepMeta {
   flex: none;
-  font-size: var(--k-fs-sm);
+  font-size: var(--k-fs-xs);
   color: var(--k-t2);
   padding-top: 1px;
 }
@@ -384,7 +404,7 @@
    like a button sized by accident) or accepting the hole.
 
    A single line has no leftover to show. It also makes the row's height a
-   constant 33px instead of a function of the card's width and the chips' text —
+   constant 27px instead of a function of the card's width and the chips' text —
    which is what the two-row clamp actually wanted — and hands the height back to
    the transcript, on a surface that is already height-locked to the viewport.
 
@@ -397,8 +417,8 @@
 
    No fade mask over the trailing edge, though one was tried: a mask paints
    whether or not the content overflows, and CSS cannot ask "is this element
-   scrolling". On `.predict`, which often holds one short chip, it would have
-   dimmed a row that fits perfectly well — inventing the exact "cut off"
+   scrolling". The day this list is trimmed to two or three short prompts it
+   would dim a row that fits perfectly well — inventing the exact "cut off"
    impression this rule exists to remove. */
 .suggest {
   display: flex;
@@ -413,26 +433,12 @@
   display: none;
 }
 
-/* The same row, in the composer above the field, holding predictions instead of
-   the product tour. It inherits the single-line strip, which it wants for the
-   same reason: `nextSuggestions` caps itself at three chips, but they are the
-   user's own phrasings, so their length is not something this file gets to
-   decide.
+/* There is no second copy of this row in the composer any more. `.predict` held
+   chips predicted from the thread and composed this rule; both are gone, because
+   suggestions now stop at the empty card — see the comment on the composer slot
+   in page.tsx. Nothing else composed `.suggest`, so it stays a single-use rule
+   rather than becoming a shared base with one user. */
 
-   In the composer rather than at the foot of the transcript, which is where it
-   was. Tapping one of these fills the prompt, so it belongs beside the prompt: at
-   the bottom of a scroll box they scrolled away from the field they were feeding,
-   and a shortcut you have to scroll back down to find is not one. `.composer`'s
-   own gap is the separation now, so the 27px top margin that existed to cancel
-   the transcript's negative bottom margin goes with it.
-
-   `flex: none` is load-bearing: `.composer` is a flex column, and without this
-   the chips would be what shrinks as the textarea grows — the row would silently
-   squash to nothing exactly when there is enough history to predict from. */
-.predict {
-  composes: suggest;
-  flex: none;
-}
 /* Recessed into the well, using the same wash and groove as `.deep` above
    rather than the flat grey these carried. --k-well2 is an opaque colour, so it
    ignored the glass entirely and sat on top of the card as a patch of a
@@ -448,7 +454,10 @@
   box-shadow: var(--k-shadow-inset);
   border: 0;
   font: inherit;
-  font-size: var(--k-fs-sm);
+  /* The small print's size — `.foot` sits a few pixels below these and `.who`
+     labels every turn above them, so the strip is no longer the third type size
+     in one column. A chip is a suggestion, not a heading. */
+  font-size: var(--k-fs-xs);
   color: var(--k-t2);
   /* Neither shrink nor grow. In the `nowrap` strip above, the default
      `flex-shrink: 1` is what a too-narrow row would use first — squashing every
@@ -456,12 +465,13 @@
      costs the second row the strip exists to avoid. Overflow has to leave via
      the scroll axis, so the items must refuse to give. */
   flex: none;
-  /* 19 + 7 + 7 = 33px, the row's whole height. Stated in pixels rather than a
+  /* 17 + 5 + 5 = 27px, the row's whole height. Stated in pixels rather than a
      ratio so the strip is the same height on every platform: a unitless
      line-height resolves against the font's own metrics, which differ per OS,
-     and this row sits in a card that is height-locked to the viewport. */
-  line-height: 19px;
-  padding: 7px 13px;
+     and this row sits in a card that is height-locked to the viewport.
+     Was 19 + 7 + 7 = 33px; the 6px goes back to the transcript. */
+  line-height: 17px;
+  padding: 5px 11px;
   border-radius: var(--k-r-pill);
   cursor: pointer;
   /* A chip is one prompt, so it is one line. */
@@ -624,7 +634,15 @@
 
    A mask was considered and rejected for the reason `.suggest` documents above:
    it paints whether or not the content overflows, so a two-turn conversation
-   would have its first line dimmed for nothing. */
+   would have its first line dimmed for nothing.
+
+   Compact is the default here, and the sizes in this region and the plan region
+   above were set together. The card is 520px and it has to hold a name line, a
+   paragraph, a route strip, numbered steps and a footnote per exchange; at the
+   old 16px/17px the second turn was already off screen, which made the well look
+   like it was quoting one thing at a time. Everything tightened is restored by
+   `.wide` at the bottom of this file — expanded mode is where the roomy values
+   went, not where new ones were invented. */
 .thread {
   flex: 1 1 auto;
   min-height: 0;
@@ -632,8 +650,8 @@
   scrollbar-width: none;
   display: flex;
   flex-direction: column;
-  gap: 17px;
-  padding: 17px 16px;
+  gap: 13px;
+  padding: 14px 15px;
 }
 .thread::-webkit-scrollbar {
   display: none;
@@ -655,6 +673,28 @@
   overflow-y: auto;
   scrollbar-width: none;
   padding: 14px 16px 16px;
+  /* PlanReview at this card's density.
+
+     It is a shared component with three callers — the settings modal, the swap
+     card and this 520px column — and it was drawn for the first two, where a
+     19px heading, 24px markers, 16px rows and two 15px-padded buttons are the
+     right weight for a surface that fills the viewport. Dropped into the chat
+     card they are the biggest type on screen: the thing you are signing shouts
+     over the conversation that proposed it, and the two buttons alone take the
+     height of an exchange.
+
+     Set as variables rather than overridden as descendant selectors, because the
+     component names these seams itself (see the header of
+     PlanReview.module.css). Reaching into `[class*="stTitle"]` from here would
+     couple this file to that one's private class names, and the two are not even
+     in the same directory. Unset again under `.wide`. */
+  --k-plan-gap: var(--k-s2);
+  --k-plan-title-fs: var(--k-fs-base);
+  --k-plan-fs: var(--k-fs-sm);
+  --k-plan-step-pad: 9px;
+  --k-plan-marker: 20px;
+  --k-plan-btn-fs: var(--k-fs-sm);
+  --k-plan-btn-pad: 11px;
 }
 .panelScroll::-webkit-scrollbar {
   display: none;
@@ -669,10 +709,10 @@
   margin: auto 0;
   display: flex;
   flex-direction: column;
-  gap: 13px;
+  gap: 11px;
 }
 .emptyTitle {
-  font-size: var(--k-fs-base);
+  font-size: var(--k-fs-sm);
   color: var(--k-t2);
 }
 
@@ -711,7 +751,10 @@
   background: var(--k-row-hover);
 }
 .who {
-  font-size: var(--k-fs-xs);
+  /* 11px, below the --k-fs-xs floor on purpose: this is a label on a line of its
+     own, so it is competing with the words under it for the eye, and the stacked
+     layout only pays for itself if the name is cheap. */
+  font-size: 11px;
   color: var(--k-t3);
   letter-spacing: 0.02em;
 }
@@ -725,10 +768,15 @@
 }
 .said {
   min-width: 0;
-  /* Up from --k-fs-sm. The transcript is the card's content now, not a summary
-     strip beneath a form, and 13px was sized for the strip. */
-  font-size: var(--k-fs-base);
-  line-height: 1.55;
+  /* 14px, between the 13px this was when the transcript was a summary strip
+     under a form and the 16px it went to when it became the card's content. Both
+     of those were right about their own layout and wrong about this one: a turn
+     is not a strip, but a 520px column set at 16px fits about forty characters a
+     line, so a plan and its reasoning arrive as a very tall narrow ribbon. 14px
+     is the size at which two exchanges are on screen at once, which is what
+     makes it read as a conversation. `.wide` puts 16px back. */
+  font-size: var(--k-fs-sm);
+  line-height: 1.5;
   /* Wraps rather than ellipsising — a truncated answer from Luca is just a lost
      answer. */
   overflow-wrap: anywhere;
@@ -741,9 +789,117 @@
 /* The in-flight turn, standing where its answer will appear. Placed and sized
    exactly like a real turn — same name line, same left edge, same measure — so
    the reply does not jump when it replaces this. Only the colour differs, because
-   it is a status and not something Luca said. */
+   it is a status and not something Luca said.
+
+   A column now rather than one line, because it reports the turn's stages as they
+   happen: parse, chain reads, the request, and the tools the model called. */
 .thinking {
   color: var(--k-t3);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* One stage. Shared by the live column above and the folded record below, so a
+   line does not change size or alignment when the turn finishes and its stages
+   move from one place to the other. */
+.thinkLine {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--k-fs-xs);
+  line-height: 1.45;
+}
+/* `.spin` carries its own 7px for the inline use it was written for; here the
+   row's gap is the spacing, and both would be 13px. */
+.thinkLine .spin {
+  margin-right: 0;
+}
+/* The stage still running. One step up in contrast from the ones above it — they
+   are history, this is what you are waiting on. */
+.thinkNow {
+  color: var(--k-t2);
+}
+/* Finished. Brand-coloured and small: a tick is a claim that something actually
+   happened, and every line above the last one earned it. */
+.thinkDone {
+  flex: none;
+  width: 1em;
+  color: var(--k-brand);
+  font-size: 10px;
+}
+
+/* The finished turn's record, folded away above its own answer.
+
+   `<details>` rather than a state and a button, because that is the element for
+   exactly this and it keeps the whole thing keyboard-reachable and findable by
+   in-page search with no code. Quiet enough to ignore: this is the one part of a
+   turn that answers "how", and the answer is the content. */
+.think {
+  margin-bottom: 7px;
+}
+.thinkHead {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 2px 8px 2px 6px;
+  border-radius: var(--k-r-pill);
+  border: 1px solid var(--k-line);
+  color: var(--k-t3);
+  font-size: 11px;
+  cursor: pointer;
+  /* The default triangle is replaced by the one below, which can be positioned
+     with the text rather than in a marker box of the browser's choosing. */
+  list-style: none;
+}
+.thinkHead::-webkit-details-marker {
+  display: none;
+}
+.thinkHead::before {
+  content: "›";
+  /* inline-block, or the rotation below has nothing to rotate. */
+  display: inline-block;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--k-t3);
+}
+.think[open] .thinkHead::before {
+  transform: rotate(90deg);
+}
+.thinkHead:hover {
+  color: var(--k-t2);
+  background: var(--k-row-hover);
+}
+/* Recessed, and indented past the summary above it. The steps are a subordinate
+   record — the same relationship the plan's own list has to the sentence above
+   it — and a recess says that without a heading saying it. */
+.thinkList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--k-r-sm);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--k-t3);
+  counter-reset: thinkstep;
+}
+/* Numbered by CSS rather than by the browser's list marker, which `list-style:
+   none` above had to remove: the rows are flex, so a marker box would sit outside
+   the line box and wrap text under the number. Ordered because the stages are —
+   this is the sequence the turn actually ran in — and because it makes the count
+   in the summary something you can check. */
+.thinkList .thinkLine::before {
+  counter-increment: thinkstep;
+  content: counter(thinkstep);
+  flex: none;
+  width: 1em;
+  text-align: right;
+  font-size: 10px;
+  opacity: 0.7;
 }
 
 /* ---------- the composer ---------- */
@@ -824,10 +980,12 @@
    in the conversation with a single obvious next action, and it leads to
    signatures.
 
-   It takes the slot `.predict` uses, and the two are mutually exclusive in the
-   markup — predictions are for continuing a conversation, and this is for
-   finishing one. No `margin-top`: the block CTA it replaces carried 12px to
-   separate itself from the subline above, and `.composer`'s gap does that now.
+   It has that slot to itself now. `.predict` used to share it — a row of chips
+   predicted from the thread, mutually exclusive with this in the markup because
+   predictions continue a conversation and this finishes one — and that row is
+   gone, so the slot holds this or nothing. No `margin-top`: the block CTA it
+   replaces carried 12px to separate itself from the subline above, and
+   `.composer`'s gap does that now.
 
    Nothing here is ever disabled. The old CTA in this position was the send
    control, the stop control and the plan handoff at once, which is why it needed a
@@ -894,5 +1052,110 @@
   }
   .composer {
     padding: 10px 14px 12px;
+  }
+  /* Nothing to widen into: the card is already the width of the screen here, so
+     the toggle would be a control that changes nothing. */
+  .expand {
+    display: none;
+  }
+}
+
+/* ---------- expanded ---------- */
+
+/* The same card, wider, on request. Not a second surface and not a route of its
+   own: the transcript, the composer and the scroll position are the ones you were
+   already looking at, so the toggle is a view of the conversation rather than a
+   place you go. That is also why it is a class on `.card` and not a modal — a
+   modal would have to be handed the thread, the plan and the panel state, and
+   would own a scrim, a focus trap and an escape key for a change of width.
+   Reverting is one press of the same button.
+
+   Everything here restores a value the compact default lowered. It is deliberately
+   not a third set of numbers: compact is the working size and this is the reading
+   size, and a value that appears in only one of them is a value that will drift.
+
+   Gated at 721px because below it the card is the screen and the toggle is hidden
+   (see the mobile block above) — a stored `expanded` from a desktop session must
+   not stretch anything on a phone. */
+@media (min-width: 721px) {
+  /* 920px, near enough double the compact column: wide enough that a four-step
+     plan and a two-leg route stop wrapping, narrow enough that it still stands
+     beside the chart rather than replacing it. */
+  .wide {
+    max-width: 920px;
+  }
+  /* Turns keep a measure and sit centred, which is the one place expanded mode
+     changes the layout rather than a size. Prose set the full 920px runs to about
+     140 characters a line and the eye loses its place on the return sweep; a
+     capped column is what makes this read like a document instead of a log. */
+  .wide .thread {
+    gap: 18px;
+    padding: 20px;
+    align-items: center;
+  }
+  .wide .turn,
+  .wide .empty {
+    width: 100%;
+    max-width: 700px;
+  }
+  .wide .said {
+    font-size: var(--k-fs-base);
+    line-height: 1.6;
+  }
+  .wide .who {
+    font-size: var(--k-fs-xs);
+  }
+  .wide .step {
+    gap: 11px;
+    padding: 11px 0;
+  }
+  .wide .marker {
+    width: 22px;
+    height: 22px;
+    font-size: var(--k-fs-xs);
+  }
+  .wide .stepTitle {
+    font-size: var(--k-fs-base);
+  }
+  .wide .stepDetail,
+  .wide .stepMeta,
+  .wide .thinkLine {
+    font-size: var(--k-fs-sm);
+  }
+  .wide .emptyTitle {
+    font-size: var(--k-fs-base);
+  }
+  /* The composer follows the transcript's measure, or the field would be 920px
+     wide under a 700px column and the two would stop looking like one card. */
+  .wide .composer {
+    align-items: center;
+  }
+  .wide .ctaPlan,
+  .wide .sendRow,
+  .wide .foot {
+    width: 100%;
+    max-width: 700px;
+  }
+  /* PlanReview back at its own scale. `initial` on a custom property is the
+     guaranteed-invalid value, so each `var(--k-plan-x, <default>)` in that file
+     falls back to the default it ships with — which is exactly the settings-modal
+     and swap-card weight this card shrank it from. Unsetting the seam is
+     therefore the whole revert, with no second copy of those seven numbers here
+     to keep in step with theirs. */
+  .wide .panelScroll {
+    padding: 20px;
+    --k-plan-gap: initial;
+    --k-plan-title-fs: initial;
+    --k-plan-fs: initial;
+    --k-plan-step-pad: initial;
+    --k-plan-marker: initial;
+    --k-plan-btn-fs: initial;
+    --k-plan-btn-pad: initial;
+  }
+  /* The panel takes the same measure as a turn. It is the plan you were just
+     reading about, in the place those words were. */
+  .wide .panelScroll > * {
+    max-width: 700px;
+    margin: 0 auto;
   }
 }

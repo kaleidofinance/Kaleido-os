@@ -13,6 +13,7 @@ import AgentCards from "@/components/v2/AgentCards";
 import Answer from "@/components/v2/Answer";
 import PlanReview from "@/components/v2/PlanReview";
 import ReceivePanel from "@/components/v2/ReceivePanel";
+import SwapRoute from "@/components/v2/SwapRoute";
 import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import chart from "@/components/v2/ChartPanel.module.css";
 import TxHistory from "@/components/v2/TxHistory";
@@ -20,6 +21,7 @@ import hist from "@/components/v2/TxHistory.module.css";
 import Headline from "./Headline";
 import { getChainMeta } from "@/constants/chains";
 import { intentsFromChat } from "@/lib/v2/intents/fromChat";
+import { traceFromChat } from "@/lib/v2/agentTurn";
 import { renderIntent } from "@/lib/v2/intents";
 import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
 import { matchFaq } from "@/lib/ai/faq";
@@ -31,7 +33,7 @@ import {
   type ParseResult,
   type Slot,
 } from "@/lib/v2/intents/fromCommand";
-import { nextSuggestions } from "@/lib/v2/intents/nextSuggestions";
+import { SUGGESTIONS } from "./suggestions";
 import s from "./agent.module.css";
 
 /**
@@ -68,44 +70,23 @@ import s from "./agent.module.css";
  */
 type Panel = { kind: "idle" } | { kind: "plan" } | { kind: "receive" };
 
-/*
- * Product-specific starting points on the empty card. Clicking one *fills the
- * prompt box* — it does not send. See fillPrompt for why.
+/**
+ * Where the expanded/compact preference lives.
  *
- * Because the text lands in an editable box the user then reads, label and
- * prompt are the same string wherever they honestly can be: showing "Mint kfUSD
- * with 500 USDC" and pasting something else would edit the user's words behind
- * their back, which is worse than a slightly awkward template. Mint is the one
- * exception and it is a grammar constraint, not a style choice — the parser
- * binds mint's token as the *collateral*, so "mint 500 kfUSD" resolves to
- * kfUSD-as-collateral and the planner rejects it with "kfUSD isn't accepted as
- * kfUSD collateral". "mint 500 USDC" is the phrasing that plans, so that is
- * what both the chip and the box say.
- *
- * Seven items, one per surface: faucet, swap, stake, stablecoin, lend, borrow,
- * receive. Each completes on a connected wallet — no chip lands at "nothing is
- * deployed yet". Receive closes the list because it is the only one needing no
- * signature at all, and it teaches the word the panel answers to.
- *
- * The faucet opens it because on a testnet it is genuinely the first step: a
- * whitelisted tester arrives with an empty wallet, and every other chip here
- * needs a balance to spend. "everything" rather than a ticker: it lands in the
- * planner's batch branch and claims every asset currently due in one
- * transaction, which is what somebody starting from zero wants, and it needs no
- * assumption about which assets this chain's faucet stocks. It resolves to
- * claimTestTokens rather than claimYield because `VERBS.claimTestTokens` is
- * scanned ahead of the zero-slot verbs, so the "claim" in it cannot hijack the
- * sentence.
+ * localStorage, matching agent *settings* rather than the transcript: how wide
+ * you like the conversation is a standing preference about this screen, not
+ * something about the conversation in it, and it should survive closing the tab
+ * the way the slippage cap does. Nothing about a wallet is in it, so unlike the
+ * thread it is not scoped per address.
  */
-const SUGGESTIONS = [
-  "claim everything from the faucet",
-  "swap 500 USDC to KLD",
-  "stake 100 KLD",
-  "mint 500 USDC",
-  "lend 1,000 USDC at 10% for 60 days",
-  "borrow 500 USDC at 8% for 30 days",
-  "receive",
-];
+const WIDE_KEY = "kaleido.v2.agentExpanded";
+
+/*
+ * The empty card's starting points live in ./suggestions, so that a plain tsx
+ * test can run all seven through the real parser — see the comment there. The
+ * list is short and the reasoning behind each item is long, which is the other
+ * reason it is not inline.
+ */
 
 export default function AgentPage() {
   const { chainId, address } = useWalletV2();
@@ -138,6 +119,39 @@ export default function AgentPage() {
     quota: number;
   } | null>(null);
 
+  /*
+   * Expanded mode.
+   *
+   * The card is 520px wide because it was designed to stand beside the chart and
+   * to read like one column of a trading screen. That is the right default and
+   * the wrong ceiling: a plan with four steps, a route with two legs and a
+   * paragraph of reasoning is a document, and reading it 520px at a time is the
+   * complaint. This widens the same card in place rather than opening a second
+   * surface — same transcript, same composer, same scroll position — so the
+   * toggle is a view of the conversation and never a different one.
+   *
+   * Starts compact and is corrected in an effect rather than read during render:
+   * localStorage does not exist on the server, so seeding state from it directly
+   * makes the first client render disagree with the markup Next sent.
+   */
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    try {
+      setExpanded(localStorage.getItem(WIDE_KEY) === "1");
+    } catch {
+      /* storage unavailable — compact is the safe default, and it fits */
+    }
+  }, []);
+  const toggleWide = () => {
+    const next = !expanded;
+    setExpanded(next);
+    try {
+      localStorage.setItem(WIDE_KEY, next ? "1" : "0");
+    } catch {
+      /* the preference just doesn't outlive the tab */
+    }
+  };
+
   /** The connected wallet as of this render, readable from a stale closure. */
   const addrRef = useRef(address);
   addrRef.current = address;
@@ -169,8 +183,48 @@ export default function AgentPage() {
     refreshCredits(address);
   }, [address, refreshCredits]);
 
+  /*
+   * What this turn is doing, as it does it.
+   *
+   * "Thinking…" was one static word for a wait that can be a parse, a chain read,
+   * a quote, or a model round-trip that reads your portfolio and then prices
+   * something — four very different waits reported identically, so the only
+   * information in it was "still busy".
+   *
+   * Two layers, and both are things this page can actually witness. Live: the
+   * stages below, recorded as they happen and rendered in the turn that is
+   * coming. Afterwards: for a model turn, the read tools the server says it ran,
+   * appended from the reply (see traceFromChat). What is deliberately NOT here is
+   * invented reasoning — the reply is one non-streaming call and no provider
+   * thinking is requested, so there are no reasoning tokens to show, and
+   * paraphrasing the model's job into "considering your options…" would be a
+   * caption written by the UI and read as a quote from the agent.
+   *
+   * A ref alongside the state because `say` needs to read the turn's record at
+   * the moment it appends the message, and every entry is a fresh array so the
+   * snapshot a message keeps can't be mutated by a later stage.
+   */
+  const [thinking, setThinking] = useState<string[]>([]);
+  const traceRef = useRef<string[]>([]);
+  const note = useCallback((line: string) => {
+    traceRef.current = [...traceRef.current, line];
+    setThinking(traceRef.current);
+  }, []);
+
   const say = (text: string, extra?: Partial<Msg>) =>
-    setMessages((m) => [...m, { role: "assistant", text, ...extra }]);
+    setMessages((m) => [
+      ...m,
+      {
+        role: "assistant",
+        text,
+        /* Attached here rather than at each call site: every answer is the end of
+           some sequence of steps, and there is no reply this page can produce
+           that shouldn't be able to say how it got there. Spread first, so a
+           caller can still override or drop it. */
+        ...(traceRef.current.length ? { thinking: traceRef.current } : {}),
+        ...extra,
+      },
+    ]);
 
   /**
    * Turns a successful parse into a rendered plan. Returns false when the
@@ -185,6 +239,7 @@ export default function AgentPage() {
   ): Promise<boolean> => {
     if (result.status === "incomplete") {
       setPending({ draft: result.draft, missing: result.missing });
+      note("Needs one more detail before it can be built");
       say(result.prompt, { via: "local" });
       return true;
     }
@@ -193,6 +248,7 @@ export default function AgentPage() {
     setPending(null);
 
     if (result.command.kind === "help") {
+      note("Answered from the command reference");
       say(
         `Things I can do without using a reasoning request:\n\n${COMMAND_HELP}\n\n` +
           "I can also answer common questions directly — health factor, kfUSD, staking, slippage, agent permissions, which chains are live.",
@@ -244,6 +300,7 @@ export default function AgentPage() {
      * asking it for a transaction that does not exist.
      */
     if (result.command.kind === "receive") {
+      note("Opened your receive panel");
       setPanel({ kind: "receive" });
       return true;
     }
@@ -265,6 +322,7 @@ export default function AgentPage() {
      * is informative. Rendering the steps costs nothing and is the whole point
      * of the screen.
      */
+    note("Reading balances and quotes to price the steps");
     const built = await buildPlan(result.command, {
       slippageBps: settings.slippageBps,
       deadlineMin: 20,
@@ -283,10 +341,13 @@ export default function AgentPage() {
     if (signal.aborted) return true;
 
     if (!built.ok) {
+      note("Couldn't build it — the reply says why");
       say(built.error, { via: "local" });
       return true;
     }
 
+    const n = built.build.intents.length;
+    note(`Built ${n} step${n === 1 ? "" : "s"} to sign`);
     say(built.build.summary, { via: "local", plan: built.build.intents });
     return true;
   };
@@ -319,6 +380,10 @@ export default function AgentPage() {
     setMessages((m) => [...m, { role: "user", text: content }]);
     setInput("");
     setBusy(true);
+    /* A turn's record starts empty. Cleared here and not when the turn ends, so
+       the lines stay readable in the busy row until its answer replaces them. */
+    traceRef.current = [];
+    setThinking([]);
     // A new question invalidates whatever panel is open, so drop back to the
     // steps view rather than leaving a stale signing flow open over it. Any
     // panel the turn goes on to open (receive, below) is set after this and
@@ -341,6 +406,7 @@ export default function AgentPage() {
           vocabulary,
         );
         if (filled.status !== "unknown") {
+          note("Took this as the answer to what I asked");
           await planLocally(filled, abort.signal);
           return;
         }
@@ -351,6 +417,7 @@ export default function AgentPage() {
 
       const parsed = parseCommand(content, vocabulary);
       if (parsed.status !== "unknown") {
+        note("Read it as a direct command — no reasoning request needed");
         await planLocally(parsed, abort.signal);
         return;
       }
@@ -362,6 +429,7 @@ export default function AgentPage() {
       // so falling through is the expected case, not a failure.
       const faq = matchFaq(content);
       if (faq) {
+        note("Matched a question I already know the answer to");
         /*
          * The answer, plus its frames. Static cards come from the topic; a
          * `figure` is filled here because faq.ts is a lib and these values —
@@ -381,6 +449,7 @@ export default function AgentPage() {
       }
 
       // Only genuine questions reach the model.
+      note("Not a command I know — asking the reasoning engine");
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -420,6 +489,11 @@ export default function AgentPage() {
 
       const plan = intentsFromChat(data);
       const cards = cardsFromChat(data);
+      /* What the model read, and how the turn ended, appended to the stages this
+         page recorded itself. Server-reported and validated on the way in — the
+         names come from a reply, so traceFromChat drops anything that isn't one
+         of the read tools with a plausible name rather than printing it. */
+      for (const line of traceFromChat(data)) note(line);
       // A 429 never reached a provider, so it isn't a model answer. Tagging it
       // as one would misreport where the turn was served.
       say(reply, {
@@ -485,7 +559,10 @@ export default function AgentPage() {
   useEffect(() => {
     const el = threadRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+    /* Stage count too, for the same reason: the turn in flight grows a line at a
+       time now, and a wait that reports its progress below the fold reports it to
+       nobody. */
+  }, [messages.length, thinking.length]);
 
   /*
    * The composer grows with the sentence in it, from one line to the four-line
@@ -511,27 +588,6 @@ export default function AgentPage() {
 
   const plan = latest?.plan;
   const steps = useMemo(() => (plan ? plan.map(renderIntent) : []), [plan]);
-
-  /**
-   * Chips predicted from this thread, for the row above the composer's field.
-   *
-   * The empty card shows SUGGESTIONS — the product tour. Once a conversation
-   * exists that list has done its job, and the useful question is no longer
-   * "what can this do" but "what comes after what I just did". nextSuggestions
-   * answers it from the user's own turns: the sequel to their last command
-   * first, then their own phrasings, topped up from the tour so the row is never
-   * empty.
-   *
-   * Derived on-device from text already in memory — no model call, so a thread
-   * that changes every turn costs nothing to keep current, and no transcript of
-   * anyone's positions leaves the machine to decorate a button row. Recomputed
-   * on `messages` and on `chainId`, because a symbol resolves per chain and a
-   * chip naming a token the new chain doesn't list would be dead on arrival.
-   */
-  const derived = useMemo(
-    () => nextSuggestions(messages, chainTokens(chainId), SUGGESTIONS),
-    [messages, chainId],
-  );
 
   /*
    * What the chart beside this card follows.
@@ -600,7 +656,7 @@ export default function AgentPage() {
     : "";
 
   return (
-    <div className={s.card}>
+    <div className={`${s.card} ${expanded ? s.wide : ""}`}>
       <AgentSettings
         address={address}
         open={settingsOpen}
@@ -654,6 +710,50 @@ export default function AgentPage() {
                 Clear
               </button>
             )}
+            {/* Compact ↔ expanded. A view control, so it sits with the other view
+                controls rather than in settings: it changes nothing about the
+                conversation or the account, and it is the sort of thing you press
+                mid-read and press back. Hidden below 721px, where the card is
+                already the width of the screen and there is nothing to widen
+                into — see the media query in agent.module.css. */}
+            <button
+              type="button"
+              className={`${s.expand} ${expanded ? s.expandOn : ""}`}
+              onClick={toggleWide}
+              aria-pressed={expanded}
+              aria-label={
+                expanded
+                  ? "Collapse the conversation"
+                  : "Expand the conversation"
+              }
+              title={expanded ? "Compact view" : "Expanded view"}
+            >
+              <svg
+                viewBox="0 0 16 16"
+                width="13"
+                height="13"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                {expanded ? (
+                  /* Arrows pointing in: pressing this makes it smaller. */
+                  <>
+                    <path d="M9.5 6.5h4M9.5 6.5v-4M9.5 6.5 14 2" />
+                    <path d="M6.5 9.5h-4M6.5 9.5v4M6.5 9.5 2 14" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M10 2.5h3.5V6M13.5 2.5 9.5 6.5" />
+                    <path d="M6 13.5H2.5V10M2.5 13.5l4-4" />
+                  </>
+                )}
+              </svg>
+            </button>
             <ChartToggle className={chart.toggleRound} />
             {/* Same log the swap card shows — a swap Luca signed for you is still
                 your swap, so both surfaces read one history rather than each
@@ -740,6 +840,31 @@ export default function AgentPage() {
                   <div key={i} className={s.turn}>
                     <span className={`${s.who} ${s.whoAgent}`}>Luca</span>
                     <div className={s.said}>
+                      {/* How the turn got here, folded away. Above the answer,
+                          in the place the live stages occupied while it was
+                          being written, so the reply doesn't shift when it
+                          lands and the record stays where you watched it.
+
+                          Two lines or more, or nothing: a single line is not a
+                          process, and the "Direct" tag below already reports
+                          the one thing a one-step turn has to say. Closed by
+                          default — the answer is the content, and this is
+                          available rather than presented. */}
+                      {m.thinking && m.thinking.length >= 2 && (
+                        <details className={s.think}>
+                          <summary className={s.thinkHead}>
+                            {m.thinking.length} steps
+                          </summary>
+                          <ol className={s.thinkList}>
+                            {m.thinking.map((line, k) => (
+                              <li key={k} className={s.thinkLine}>
+                                {line}
+                              </li>
+                            ))}
+                          </ol>
+                        </details>
+                      )}
+
                       <Answer text={m.text} />
 
                       {/* Frames for the turn's data — rendered on every turn
@@ -754,23 +879,35 @@ export default function AgentPage() {
                       {/* Steps render on the turn that proposed them, and only on
                           the newest one. An older plan left on screen would sit
                           above a review button that can no longer act on it. */}
-                      {m === latest && steps.length > 0 && (
-                        <ol className={s.steps}>
-                          {steps.map((v, j) => (
-                            <li key={j} className={s.step}>
-                              <span className={s.marker}>{j + 1}</span>
-                              <div className={s.stepBody}>
-                                <div className={s.stepTitle}>{v.title}</div>
-                                {v.detail && (
-                                  <div className={s.stepDetail}>{v.detail}</div>
-                                )}
-                              </div>
-                              <span className={s.stepMeta}>
-                                {v.chain ?? "—"}
-                              </span>
-                            </li>
-                          ))}
-                        </ol>
+                      {m === latest && plan && steps.length > 0 && (
+                        <>
+                          {/* The pool and the floor, above the steps, when the
+                              plan swaps. A route is a property of the plan
+                              rather than of any one step — with two legs it is
+                              the thing neither step can state alone — and it is
+                              read off the intents themselves, so what it draws
+                              is what the signature does. Renders nothing when no
+                              step is a swap. */}
+                          <SwapRoute intents={plan} />
+                          <ol className={s.steps}>
+                            {steps.map((v, j) => (
+                              <li key={j} className={s.step}>
+                                <span className={s.marker}>{j + 1}</span>
+                                <div className={s.stepBody}>
+                                  <div className={s.stepTitle}>{v.title}</div>
+                                  {v.detail && (
+                                    <div className={s.stepDetail}>
+                                      {v.detail}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className={s.stepMeta}>
+                                  {v.chain ?? "—"}
+                                </span>
+                              </li>
+                            ))}
+                          </ol>
+                        </>
                       )}
 
                       {/* Newest turn only. Tagging every local turn is more
@@ -805,11 +942,41 @@ export default function AgentPage() {
             {busy && (
               <div className={s.turn}>
                 <span className={`${s.who} ${s.whoAgent}`}>Luca</span>
-                <div className={`${s.said} ${s.thinking}`}>
-                  <span className={s.spin} aria-hidden="true">
-                    ↻
-                  </span>
-                  Thinking…
+                {/* The stages, as they happen, with the spinner on the newest —
+                    it is the one still running, and the ones above it are done.
+                    Falls back to "Thinking…" for the instant before the first
+                    stage is recorded, so the row never appears empty.
+
+                    aria-live, because this is the only place the wait is
+                    reported now that the button is a plain ■: a screen reader
+                    otherwise hears nothing between the question and the answer. */}
+                <div
+                  className={`${s.said} ${s.thinking}`}
+                  aria-live="polite"
+                  aria-atomic="false"
+                >
+                  {(thinking.length > 0 ? thinking : ["Thinking…"]).map(
+                    (line, i, all) => {
+                      const now = i === all.length - 1;
+                      return (
+                        <div
+                          key={i}
+                          className={`${s.thinkLine} ${now ? s.thinkNow : ""}`}
+                        >
+                          {now ? (
+                            <span className={s.spin} aria-hidden="true">
+                              ↻
+                            </span>
+                          ) : (
+                            <span className={s.thinkDone} aria-hidden="true">
+                              ✓
+                            </span>
+                          )}
+                          {line}
+                        </div>
+                      );
+                    },
+                  )}
                 </div>
               </div>
             )}
@@ -819,11 +986,19 @@ export default function AgentPage() {
         {/* The composer. `flex: none`, so it stays where you left it however long
             the conversation runs — the transcript is what absorbs the height. */}
         <div className={s.composer}>
-          {/* One slot, two mutually exclusive rows: the plan handoff when there
-              is a plan to open, predictions otherwise. Predictions continue a
-              conversation and this finishes one, so they are never both useful at
-              once. Hidden while a panel is open, because "Review 3 steps" above an
-              open review is a button pointing at itself. */}
+          {/* The plan handoff, and nothing else in this slot.
+
+              A row of predicted chips used to share it — the sequel to your last
+              command, then your own past phrasings — and it is gone on purpose.
+              Suggestions belong to the empty card, where the question is "what
+              can this do". Once you have typed one sentence you have answered
+              that, and a standing row of guesses above the field stops being an
+              offer and becomes competition for the thing you were already
+              writing. It also spent the composer's height on furniture on every
+              turn of the conversation, not just the first.
+
+              Hidden while a panel is open, because "Review 3 steps" above an open
+              review is a button pointing at itself. */}
           {plan && panel.kind === "idle" ? (
             <button
               type="button"
@@ -832,19 +1007,6 @@ export default function AgentPage() {
             >
               {planLabel}
             </button>
-          ) : messages.length > 0 && derived.length > 0 ? (
-            <div className={s.predict}>
-              {derived.map((sug) => (
-                <button
-                  key={sug}
-                  className={s.chip}
-                  onClick={() => fillPrompt(sug)}
-                  disabled={busy}
-                >
-                  {sug}
-                </button>
-              ))}
-            </div>
           ) : null}
 
           <div className={s.sendRow}>
