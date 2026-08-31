@@ -15,6 +15,7 @@
  * refuses to print.
  */
 import { swapRoute, feeLabel, routePath, traceFromChat } from "./agentTurn.ts";
+import { TOOL_CATALOG } from "../ai/toolCatalog.ts";
 
 let pass = 0;
 let fail = 0;
@@ -184,7 +185,7 @@ console.log("\n— the trace names what was read —");
   );
   check(
     "the portfolio read is in words",
-    lines[0] === "Read your balances and positions",
+    lines[0] === "Checked your lending position",
     lines[0],
   );
   check(
@@ -268,7 +269,7 @@ console.log("\n— a repeated call collapses —");
   );
   check(
     "a following different read is untouched",
-    lines[1] === "Read your balances and positions",
+    lines[1] === "Checked your lending position",
     lines[1],
   );
 
@@ -317,6 +318,33 @@ console.log("\n— the trace refuses what it cannot vouch for —");
     "an unusable argument degrades the label",
     lines[1] === "Worked out the loan repayment",
     lines[1],
+  );
+}
+
+console.log("\n— every read tool says something in words —");
+{
+  /* "Called getBalances" reached the screen this way: getBalances arrived in the
+     tool catalogue without a matching entry in READ_LABELS, so the fold showed the
+     user an internal tool name. Asserting the property rather than the one label,
+     because a read tool is added in a different file from the one that names it
+     and the next one would go the same way silently. */
+  const reads = TOOL_CATALOG.filter((t) => t.kind === "read").map(
+    (t) => t.name,
+  );
+  check(
+    "the catalog still has read tools",
+    reads.length > 0,
+    `${reads.length}`,
+  );
+  const named = reads.filter((name) =>
+    traceFromChat({ context: { reads: [{ name, args: {} }] } })[0]?.startsWith(
+      "Called ",
+    ),
+  );
+  check(
+    "no read tool falls through to its own name",
+    named.length === 0,
+    named.join(", "),
   );
 }
 

@@ -239,11 +239,20 @@ export function buildSystemPrompt(opts: {
        list-item label. A clause fits that shape; a paragraph does not. The bound
        asked for here is well under MAX_THINKING_LINE in chatStream.ts so that the
        cap stays a safety net instead of becoming the editor — it truncates, and a
-       sentence losing its ending is worse than one that was short to begin with. */
+       sentence losing its ending is worse than one that was short to begin with.
+
+       One sentence per round and not one per read, because the reads are already
+       labelled without the model's help: traceFromChat turns each call into its
+       own <li> from READ_LABELS. Asking for a line per read got both, and since a
+       round's prose arrives as a single note, two labels for two reads were joined
+       into "checking your lending position checking your Sepolia balances" —
+       condenseNote flattens whitespace, so a line break between them is a space.
+       Nothing downstream can put that sentence back together; not writing it twice
+       is the fix. */
     "Showing your steps:",
-    "- Before each read, write one line naming what you are about to look at. The user sees these as a numbered list of steps under a count they can open, so write the label for a list item, not a paragraph of narration.",
-    "- One clause, under 120 characters. Nothing about what you will do with the result, and no restating the plan.",
-    '- Every rule under "How you write" applies to these lines too, because the user can open them: "checking your Sepolia balances", never "calling getPortfolio for chain 11155111".',
+    "- Each read you make already prints its own step, written for you. Do not narrate them one by one — a line per read states everything twice.",
+    "- Write at most one short sentence before a round of reads, saying what you are checking. One clause, under 120 characters. Nothing about what you will do with the result, and no restating the plan.",
+    '- Every rule under "How you write" applies to that sentence too, because the user can open it: "checking your Sepolia balances", never "calling getPortfolio for chain 11155111".',
     "",
     /* The channel the frontend renders as chips. Spelled out to the letter
        because a near-miss produces no buttons at all: the block is matched on

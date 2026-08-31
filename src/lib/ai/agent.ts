@@ -113,7 +113,6 @@ export async function runAgent(
       : provider.chat({ system, messages, tools: TOOL_CATALOG });
 
   let result = await ask();
-  let seededPortfolio = false;
   const trace: ReadCall[] = [];
 
   /**
@@ -121,18 +120,21 @@ export async function runAgent(
    *
    * A turn is one question from the user, so asking the chain the same thing
    * twice inside it cannot produce a better answer — but it can produce a worse
-   * one. Observed twice in a row on 2026-08-31: the model called getPortfolio,
-   * got zeros, then called it again, and the second call came back with
-   * collateral and health factor unavailable. Sepolia-class endpoints return a
-   * rate limit as HTTP 200 with a JSON-RPC error (see lib/dex/rpcRetry.ts), so
-   * the retry is exactly where that surfaces. The reply then opened by retracting
-   * itself — "correction on what I said a moment ago" — which reads as the agent
-   * being unreliable about the user's own balance.
+   * one. Observed twice in a row on 2026-08-31: getPortfolio ran, came back with
+   * zeros, ran again on the same address, and the second call reported collateral
+   * and health factor unavailable. Sepolia-class endpoints return a rate limit as
+   * HTTP 200 with a JSON-RPC error (see lib/dex/rpcRetry.ts), so a needless retry
+   * is exactly where that surfaces. The reply then opened by retracting itself —
+   * "correction on what I said a moment ago" — which reads as the agent being
+   * unreliable about the user's own balance.
    *
-   * So a repeat is served from here instead of re-rolling the dice, and the round
-   * that asked for nothing new adds no line to the trace: it did not touch the
-   * chain, and a second "checked your positions" is noise in a transcript whose
-   * whole purpose is to be short.
+   * The duplicate turned out to be the seed below rather than the model asking
+   * twice, and this map is what the seed's guard now reads. It covers the model
+   * repeating itself too, which is cheap to do once the keys exist: a repeat is
+   * served from here instead of re-rolling the dice, and the round that asked for
+   * nothing new adds no line to the trace, because it did not touch the chain and
+   * a second "checked your positions" is noise in a transcript whose whole purpose
+   * is to be short.
    */
   const served = new Map<string, unknown>();
 
@@ -178,9 +180,20 @@ export async function runAgent(
       trace.push(...ran);
       events?.onReads?.(ran);
       contextBlock = JSON.stringify(resolved, null, 2);
-    } else if (!seededPortfolio && input.address) {
-      // Default seed: only once, only when the model asked for nothing.
-      seededPortfolio = true;
+    } else if (served.size === 0 && input.address) {
+      /* The seed grounds a turn that never touched the chain at all — not every
+         round that happens to ask for nothing.
+
+         `served.size` and not a "did I seed yet" flag, because that flag only
+         stopped the seed running twice; it never asked whether the read had
+         already happened by the model's own request. Instrumented on 2026-08-31:
+         round 0 the model called getPortfolio and got zeros, round 1 it asked for
+         nothing because it was writing the answer — and the seed fired anyway,
+         re-read the same address, got collateral and health factor unavailable
+         this time, and forced a further round whose reply opened by correcting
+         the answer the user had just watched appear. A round with no reads after
+         a read has landed means the model is done, so the loop should end there
+         and let its text stand. */
       const portfolio = await runReadTool(
         "getPortfolio",
         { address: input.address },
