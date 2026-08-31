@@ -363,10 +363,13 @@ export async function POST(request: NextRequest) {
         return new Response(stream, {
           headers: {
             "content-type": "application/x-ndjson; charset=utf-8",
-            /* A cached or transformed stream is not a stream. `no-transform`
-               is the one that matters in front of a proxy that would helpfully
-               buffer the body to compress it, and `x-accel-buffering` is the
-               nginx-specific way of saying the same thing. */
+            /* A cached or transformed stream is not a stream, and the proxy
+               that would helpfully buffer this body to compress it is our own
+               server: `compress: true` in next.config.mjs wraps every response
+               in Next's bundled `compression` middleware, whose shouldTransform
+               opts out on exactly one condition — `no-transform` in
+               Cache-Control. So that token is load-bearing, not defensive.
+               `x-accel-buffering` is the nginx-specific way of saying it. */
             "cache-control": "no-store, no-transform",
             "x-accel-buffering": "no",
           },
