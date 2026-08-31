@@ -9,7 +9,11 @@ import { runAgent } from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText } from "@/lib/ai/auditor";
-import { consumeModelRequest, peekModelUsage } from "@/lib/ai/credits";
+import {
+  consumeModelRequest,
+  peekModelUsage,
+  releaseModelRequest,
+} from "@/lib/ai/credits";
 
 /**
  * Reports remaining model quota without spending any, so the UI can show a
@@ -208,10 +212,47 @@ export async function POST(request: NextRequest) {
         });
       } catch (aiError: any) {
         console.error("[chat] provider failed:", aiError);
+        /*
+         * "Try again shortly" is only true of a failure that might pass next
+         * time, and one class here never will.
+         *
+         * AgentRouter screens the user's own wording and answers 400
+         * `content-blocked` to anything shaped like a transfer instruction
+         * naming uppercase currency codes. Measured against the live gateway:
+         * "swap 100 USDC to KLD", "move 100 USDC to KLD" and "100 USDC to KLD"
+         * are all refused, as is "swap 100 EUR to GBP" — so the screen is about
+         * money-movement phrasing, not about crypto. "exchange 100 USDC for
+         * KLD" passes, every conversational question passes, and the same text
+         * passes when the *assistant* says it. Retrying is futile and so is
+         * switching model: the Anthropic- and OpenAI-shaped paths on that
+         * gateway refuse identically.
+         *
+         * Which makes the honest reply an actionable one. Almost every refused
+         * phrasing is a direct command `parseCommand` already owns, so it
+         * resolves locally, faster, and without spending a request — naming
+         * that form turns a dead end into the path that works.
+         */
+        const blocked = /content[-_ ]?blocked|content[-_ ]?filter/i.test(
+          String(aiError?.message ?? ""),
+        );
+        /* A refused request never reached a model, so the allowance it was
+           charged goes back. Only on this branch: a timeout or a 5xx may well
+           have generated tokens upstream, and handing those back would make the
+           ceiling refundable by making the provider fail. */
+        const refunded = blocked
+          ? await releaseModelRequest(body.address, quota)
+          : null;
         return NextResponse.json({
-          response:
-            "I couldn't complete that just now — the reasoning service returned an error. Try again shortly.",
-          context: { status: "provider_error" },
+          response: blocked
+            ? "The model gateway refused that wording — it screens messages shaped like a transfer instruction. Say it as a command, like `swap 100 USDC to KLD`, and it runs here without a reasoning request. Questions about your positions or the markets are unaffected."
+            : "I couldn't complete that just now — the reasoning service returned an error. Try again shortly.",
+          context: {
+            status: blocked ? "provider_blocked" : "provider_error",
+            /* Reported so the UI's counter follows the refund. Absent when
+               there was nothing to hand back, which the client already treats
+               as "leave the count alone". */
+            ...(refunded ? { credits: refunded } : {}),
+          },
         });
       }
     }
