@@ -21,7 +21,9 @@
  * side effect. The two route queries at the end are replayed verbatim, because a
  * column-by-column comparison is a diagnosis and the query is the ground truth.
  *
- * Exits non-zero when anything the app reads is missing.
+ * Exit 0 when the schema matches, 1 when the app reads something the database
+ * does not have, and 2 when the check could not run at all — a deploy gate needs
+ * to tell "the schema is wrong" from "I never found out".
  */
 
 const fs = require("fs");
@@ -51,6 +53,12 @@ const URL_ = env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE = env.SUPABASE_SERVICE_ROLE_KEY;
 
 let missing = 0;
+/* "Could not ask" is a different answer from "asked, and it is missing", and
+   conflating them is how a flaky network gets read as a broken deployment. The
+   first push of these migrations hit exactly this: PostgREST drops connections
+   while it reloads its schema cache after DDL, and the script reported drift
+   that had in fact just been fixed. */
+let unreachable = null;
 const pass = (m) => console.log(`  ✓ ${m}`);
 const fail = (m) => {
   missing++;
@@ -129,19 +137,31 @@ async function main() {
   console.log("\nSupabase schema vs. what the app queries\n");
 
   if (!URL_ || !SERVICE) {
-    fail("NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is empty");
+    unreachable = "NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is empty";
     return finish();
   }
   console.log(`project ${URL_}\n`);
 
-  const res = await fetch(`${URL_}/rest/v1/`, {
-    headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
-  }).catch((e) => ({ ok: false, status: 0, err: e.message }));
-  if (!res.ok) {
-    fail(`could not read the schema description: ${res.err ?? res.status}`);
-    return finish();
+  /* Retried, because PostgREST closes connections while it reloads its schema
+     cache after a migration — which is the moment someone is most likely to run
+     this. Three tries with a widening gap, then give up and say so. */
+  let spec = null;
+  for (let attempt = 1; attempt <= 3 && !spec; attempt++) {
+    const res = await fetch(`${URL_}/rest/v1/`, {
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
+    }).catch((e) => ({ ok: false, status: 0, err: e.message }));
+    if (res.ok) {
+      spec = await res.json().catch(() => null);
+      if (spec) break;
+    }
+    unreachable = res.err ?? `HTTP ${res.status}`;
+    if (attempt < 3) {
+      console.log(`  … ${unreachable} — retrying (${attempt}/3)`);
+      await new Promise((r) => setTimeout(r, attempt * 3000));
+    }
   }
-  const spec = await res.json();
+  if (!spec) return finish();
+  unreachable = null;
 
   /* PostgREST names every reachable function as a path and every table and view
      as a definition, so both questions are answered from one document. */
@@ -234,6 +254,15 @@ async function main() {
 }
 
 function finish() {
+  /* Exit 2, not 1: a caller gating a deploy on this needs to tell "the schema is
+     wrong" from "I never found out". */
+  if (unreachable) {
+    console.log(
+      `\nCould not check the schema: ${unreachable}\n` +
+        "This says nothing about whether the schema is correct.\n",
+    );
+    process.exit(2);
+  }
   console.log(
     missing === 0
       ? "Schema matches what the app queries.\n"
