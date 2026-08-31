@@ -229,6 +229,36 @@ async function run() {
     );
   }
   {
+    /* Arc v0.8.0 / revm 38: eth_call / eth_estimateGas with value > balance.
+       Old text: "insufficient funds for gas * price + value"
+       New text: "OutOfFunds" */
+    const r = await classify(
+      makeError("OutOfFunds", "CALL_EXCEPTION", { action: "estimateGas" }),
+    );
+    check("Arc OutOfFunds is not a decline", !r.rejected);
+    check(
+      "Arc OutOfFunds says cover the gas",
+      /cover the gas/i.test(r.message) && /free/i.test(r.message),
+      `got ${r.message}`,
+    );
+  }
+  {
+    /* Arc v0.8.0 / revm 38: simple EOA transfer with insufficient balance.
+       Old text: "Missing or invalid parameters"
+       New text: "gas required exceeds allowance" */
+    const r = await classify(
+      makeError("gas required exceeds allowance", "CALL_EXCEPTION", {
+        action: "estimateGas",
+      }),
+    );
+    check("Arc gas-exceeds-allowance is not a decline", !r.rejected);
+    check(
+      "Arc gas-exceeds-allowance says cover the gas",
+      /cover the gas/i.test(r.message) && /free/i.test(r.message),
+      `got ${r.message}`,
+    );
+  }
+  {
     const r = await classify(
       makeError("network changed", "NETWORK_ERROR", { event: "changed" }),
     );
