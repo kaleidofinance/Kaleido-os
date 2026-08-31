@@ -37,6 +37,7 @@
     "test:positionvalue": "tsx src/lib/dex/positionValue.test.ts",
     "verify:quota": "node scripts/verify_supabase_quota.cjs",
     "verify:schema": "node scripts/verify_supabase_schema.cjs",
+    "verify:leaderboard": "tsx scripts/verify_leaderboard.mts",
     "gen:registry": "node --import tsx scripts/gen-registry.mjs",
     "gen:arc": "node --import tsx scripts/gen-hero-arc.mjs",
     "watch:push": "node --import tsx scripts/push-watcher.mjs",
