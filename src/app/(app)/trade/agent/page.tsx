@@ -26,6 +26,7 @@ import { readChatStream } from "@/lib/v2/chatStream";
 import { renderIntent } from "@/lib/v2/intents";
 import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
 import { matchFaq } from "@/lib/ai/faq";
+import { visibleProse } from "@/lib/ai/actionsBlock";
 import {
   parseCommand,
   fillSlot,
@@ -460,8 +461,14 @@ export default function AgentPage() {
         return;
       }
 
-      // Only genuine questions reach the model.
-      note("Not a command I know — asking the reasoning engine");
+      /* Only genuine questions reach the model.
+       *
+       * No trace line for crossing that boundary. The one that used to be here
+       * — "Not a command I know — asking the reasoning engine" — reported the
+       * app's own dispatch: which of two code paths the sentence had fallen
+       * down, named after the machinery at the bottom of it. The reads that
+       * follow are things that happened to the user's positions, which is what
+       * a record is for; this was only ever a note about us. */
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -516,12 +523,25 @@ export default function AgentPage() {
         /* Opens the bubble on the first delta and patches it after. The decision
            and the mutation both happen out here so the updater stays pure —
            React may call it twice, and an updater that flipped `open` itself
-           would append a second bubble the second time. */
+           would append a second bubble the second time.
+
+           What goes on screen is `visibleProse`, not the raw accumulation: a
+           reply that ends by offering choices carries them as a fenced block
+           (src/lib/ai/actionsBlock.ts), and that block streams like any other
+           text. Cutting it here is the difference between the answer ending on
+           its last sentence and ending on a second of raw JSON. `finish`
+           replaces all of this with the server's stripped reply either way, so
+           this is only about what the live view shows.
+
+           Opening waits for prose rather than for the first delta, since a reply
+           whose first characters are the fence has nothing to put in a bubble
+           yet. */
         const write = (chunk: string) => {
+          live!.text += chunk;
+          const text = visibleProse(live!.text);
+          if (!text) return;
           const first = !live!.open;
           live!.open = true;
-          live!.text += chunk;
-          const text = live!.text;
           setMessages((m) =>
             first
               ? [...m, { role: "assistant", text, via: "model" }]
@@ -614,15 +634,21 @@ export default function AgentPage() {
           /* The body ended with no final frame, so the connection dropped. The
              text that arrived is real and stays on screen; what is missing is
              any confirmation that it was the whole answer, and presenting half a
-             sentence as finished would be the one thing worse than saying so. */
-          if (live.open && live.text.trim()) {
+             sentence as finished would be the one thing worse than saying so.
+
+             `visibleProse` again, because this is the one path that saves the
+             streamed text instead of replacing it with the server's: nothing is
+             coming to strip a half-arrived actions block, so it has to be cut
+             here or it is what gets persisted. */
+          const partial = visibleProse(live.text).trim();
+          if (live.open && partial) {
             finish(
-              `${live.text.trim()}\n\n---\n\nThe connection dropped before that answer finished.`,
+              `${partial}\n\n---\n\nThe connection dropped before that answer finished.`,
               undefined,
             );
           } else {
             say(
-              "The connection dropped before the reasoning engine answered. Try again shortly.",
+              "The connection dropped before that answer finished. Try again shortly.",
               { via: "local" },
             );
           }
@@ -634,7 +660,7 @@ export default function AgentPage() {
       const reply =
         data?.response ??
         data?.error ??
-        "I couldn't reach the reasoning engine just now. Try again shortly.";
+        "I couldn't work that out just now. Try again shortly.";
       const used = data?.context?.credits;
       if (used && typeof used.remaining === "number") {
         setCredits({ remaining: used.remaining, quota: used.quota });
@@ -660,7 +686,7 @@ export default function AgentPage() {
        *
        * `fetch` rejects with an AbortError when the controller fires, which is
        * the same catch that handles a dead network. Falling through would print
-       * "I can't reach the reasoning engine" to someone who pressed Stop —
+       * "I can't think that through" to someone who pressed Stop —
        * blaming the infrastructure for the user's own decision, and offering
        * help nobody asked for. The stopped turn says so itself, once.
        */
@@ -668,9 +694,11 @@ export default function AgentPage() {
         /* A stop during a streamed answer already has a bubble on screen with
            real text in it. A second turn saying "Stopped." would leave that
            partial answer looking finished, so the note goes on the turn it
-           interrupted instead. */
-        if (live?.open && live.text.trim()) {
-          const text = `${live.text.trim()}\n\n— Stopped.`;
+           interrupted instead. Stripped, for the same reason as the dropped
+           connection above: this text is kept, not replaced. */
+        const stoppedAt = live ? visibleProse(live.text).trim() : "";
+        if (live?.open && stoppedAt) {
+          const text = `${stoppedAt}\n\n— Stopped.`;
           const thinking = traceRef.current;
           setMessages((m) =>
             m.map((msg, i) =>
@@ -691,7 +719,7 @@ export default function AgentPage() {
       // The model being unreachable is no longer a dead end: commands still
       // execute, so say what still works instead of only apologising.
       say(
-        `I can't reach the reasoning engine, but I can still act on commands:\n\n${COMMAND_HELP}`,
+        `I can't think that through right now, but I can still act on commands:\n\n${COMMAND_HELP}`,
         { via: "local" },
       );
     } finally {

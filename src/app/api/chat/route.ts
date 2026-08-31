@@ -15,6 +15,7 @@ import {
   releaseModelRequest,
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
+import { splitActionsBlock } from "@/lib/ai/actionsBlock";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -91,8 +92,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             response: !body.address
-              ? "Connect your wallet to use the reasoning engine. Direct commands like `swap 500 USDC to KLD` work without it."
-              : `You've used all ${quota.quota} reasoning requests for today. Direct commands still work, and the allowance resets at 00:00 UTC.`,
+              ? "Connect your wallet and I can work on your positions. Direct commands like `swap 500 USDC to KLD` work without it."
+              : `You've asked me all ${quota.quota} questions for today. Direct commands still work, and the allowance resets at 00:00 UTC.`,
             context: {
               status: "quota_exhausted",
               credits: { used: quota.used, quota: quota.quota, remaining: 0 },
@@ -128,6 +129,12 @@ export async function POST(request: NextRequest) {
        * would stream a plan nothing had checked.
        */
       const settle = async (result: AgentRun) => {
+        /* The offered-actions block comes off the prose first, so every use of
+           the reply below is the reader's version. Doing it here rather than at
+           each of the three concatenations means a refusal, a build note and a
+           clean answer cannot disagree about whether the block is still in. */
+        const reply = splitActionsBlock(result.text);
+
         /*
          * Verbs become intents here, before anything is audited.
          *
@@ -197,14 +204,25 @@ export async function POST(request: NextRequest) {
 
         return {
           response: verdict.ok
-            ? `${result.text}${buildNotes}`
+            ? `${reply.text}${buildNotes}`
             : /* The model's own words, then the refusal. Dropping the prose
                  would hide the analysis the user paid a request for. */
-              `${result.text}${buildNotes}\n\n---\n\n${refusalText(verdict)}`,
+              `${reply.text}${buildNotes}\n\n---\n\n${refusalText(verdict)}`,
           context: {
             plan: verdict.ok ? built.plan : [],
             provider: result.provider,
             model: result.model,
+            /* The choices the answer offered, as the one card kind that can be
+               clicked. Sent unvalidated on purpose: `cardsFromChat` on the
+               client is the gate every card passes through, local or model, and
+               a second half-implementation of its caps here would be a second
+               thing to keep in step with it.
+
+               Omitted rather than sent empty, so a reply that offered nothing
+               does not carry a key implying it might have. */
+            ...(reply.actions.length
+              ? { cards: [{ kind: "actions", actions: reply.actions }] }
+              : {}),
             /* What the model read before answering, in the order it ran.
                Reported so the turn can show its own work: the frontend renders
                these as the thought process under the reply (traceFromChat in
