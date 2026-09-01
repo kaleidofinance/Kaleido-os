@@ -149,6 +149,11 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
      them sat next to getBalances in the same fold. */
   getPortfolio: () => "Checked your lending position",
   getBalances: () => "Checked what your wallet holds",
+  /* "open orders" because that is what the limit page calls them on the screen
+     the user is looking at, and the fold should not introduce a second name for
+     the same rows. Its only argument is a wallet address, which is never worth
+     printing — `str` would refuse it at 42 characters anyway. */
+  getOrders: () => "Checked your open orders",
   /* A loan quote, not a swap quote — it takes an APR and a maturity date.
      "Quoted USDC → KLD" here would name an action that did not happen. */
   getQuote: (a) => {
