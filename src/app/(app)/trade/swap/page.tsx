@@ -56,6 +56,20 @@ const PREFER_SELL = ["WETH", "USDC"] as const;
 const PREFER_BUY = ["USDT", "USDC", "WETH", "ETH"] as const;
 
 /**
+ * A balance for the row under each well, or a dash when there isn't one.
+ *
+ * `useTokenBalance` reports `unread` when the read did not land — a dead RPC in
+ * chains.ts, an endpoint still refusing after its retries. Formatting the "0" it
+ * carries in that state would tell the user their wallet is empty on the strength
+ * of a request that failed, which is the failure this whole path was rewritten
+ * for. A dash says the same thing the code knows: not read.
+ */
+const balanceText = (balance: string, unread: boolean) =>
+  unread
+    ? "—"
+    : Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
+
+/**
  * The token button on a swap side. Takes a nullable token so the form can
  * render before a pair is chosen — an unselected side is an ordinary state, not
  * an error, and it reads as "Select token" rather than replacing the screen.
@@ -245,8 +259,11 @@ export default function SwapPage() {
   // the tokens you pick rather than holding whatever was selected first.
   usePublishChartPair(tokenIn?.symbol, tokenOut?.symbol);
 
-  const { balance: balanceIn, loading: balanceInLoading } =
-    useTokenBalance(tokenIn);
+  const {
+    balance: balanceIn,
+    loading: balanceInLoading,
+    unread: balanceInUnread,
+  } = useTokenBalance(tokenIn);
   /*
    * The buy side's balance. Read for symmetry as much as for the number: `.sub`
    * carries a 20px floor, so giving the Buy well the same row is what keeps the
@@ -254,8 +271,11 @@ export default function SwapPage() {
    * not. Without it the Sell well stands ~29px taller and the pair reads as two
    * different components stacked, rather than one control with two sides.
    */
-  const { balance: balanceOut, loading: balanceOutLoading } =
-    useTokenBalance(tokenOut);
+  const {
+    balance: balanceOut,
+    loading: balanceOutLoading,
+    unread: balanceOutUnread,
+  } = useTokenBalance(tokenOut);
   const { getV3AmountOut, V3_ROUTER_ADDRESS: v3Router } = useV3SwapRouter();
 
   useEffect(() => {
@@ -295,9 +315,20 @@ export default function SwapPage() {
     };
   }, [amountIn, tokenIn, tokenOut, getV3AmountOut]);
 
+  /*
+   * Only ever true against a balance we actually read.
+   *
+   * `balanceIn` falls back to "0" when the read did not land, and blocking the
+   * CTA on that told a funded wallet it held nothing of the token it was trying
+   * to sell — with no way past it, since the button is disabled. An unread
+   * balance means we do not know, so the swap proceeds and the chain decides;
+   * being short there costs a rejected simulation, which is recoverable. Saying
+   * "Insufficient WETH" to someone holding WETH is not.
+   */
   const insufficientBalance =
     isConnected &&
     !balanceInLoading &&
+    !balanceInUnread &&
     Number(balanceIn) < parseFloat(amountIn || "0");
 
   const minOut = useMemo(() => {
@@ -355,7 +386,12 @@ export default function SwapPage() {
     );
   };
 
-  const quickDisabled = !isConnected || !tokenIn || !Number(balanceIn);
+  /* Max and the fractions compute from `balanceIn`, so they are only offered
+     when that number is one we read. Unread keeps whatever the last successful
+     read said, which is the right thing to keep showing and the wrong thing to
+     paste into the field as though it were current. */
+  const quickDisabled =
+    !isConnected || !tokenIn || balanceInUnread || !Number(balanceIn);
 
   // A swap is a two-step plan: approve the router to move tokenIn, then swap.
   // The approve resolver no-ops when allowance already covers it, so the step
@@ -508,12 +544,7 @@ export default function SwapPage() {
             <span />
             <span>
               {isConnected && !balanceInLoading && tokenIn && (
-                <>
-                  Balance{" "}
-                  {Number(balanceIn).toLocaleString(undefined, {
-                    maximumFractionDigits: 4,
-                  })}
-                </>
+                <>Balance {balanceText(balanceIn, balanceInUnread)}</>
               )}
             </span>
           </div>
@@ -547,12 +578,7 @@ export default function SwapPage() {
             <span />
             <span>
               {isConnected && !balanceOutLoading && tokenOut && (
-                <>
-                  Balance{" "}
-                  {Number(balanceOut).toLocaleString(undefined, {
-                    maximumFractionDigits: 4,
-                  })}
-                </>
+                <>Balance {balanceText(balanceOut, balanceOutUnread)}</>
               )}
             </span>
           </div>

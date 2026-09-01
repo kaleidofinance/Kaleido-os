@@ -82,8 +82,8 @@ function TokenRow({
   switches: boolean;
   disabled: boolean;
 }) {
-  const { balance, loading } = useTokenBalance(token);
-  const hasBalance = !loading && Number(balance) > 0;
+  const { balance, loading, unread } = useTokenBalance(token);
+  const hasBalance = !loading && !unread && Number(balance) > 0;
   /* The token's own chain, not the connected one. In a multichain list those
      differ for most rows, and labelling a Base token with the wallet's current
      chain is the (chainId, address) confusion this registry exists to stop. */
@@ -131,6 +131,15 @@ function TokenRow({
             {Number(balance).toLocaleString(undefined, {
               maximumFractionDigits: 4,
             })}
+          </span>
+        ) : unread ? (
+          /* A row whose balance could not be read, kept distinct from the empty
+             rows around it. Blank would put it in the same silence as a token the
+             wallet genuinely holds none of — and this list is how people pick
+             what to trade, so "we couldn't check" has to look different from
+             "you have none". */
+          <span className={s.rv} title="Balance could not be read">
+            —
           </span>
         ) : null}
       </div>

@@ -43,12 +43,19 @@ export default function StakePage() {
     () => chainTokenBySymbol(chainId, "KLD") ?? null,
     [chainId],
   );
-  const { balance: kldBalance, loading: kldLoading } = useTokenBalance(kld);
+  const {
+    balance: kldBalance,
+    loading: kldLoading,
+    unread: kldUnread,
+  } = useTokenBalance(kld);
 
   const [mode, setMode] = useState<"stake" | "unstake">("stake");
   const [amount, setAmount] = useState("");
 
   const balance = mode === "stake" ? kldBalance : stake.stakedBalance;
+  /* Only the KLD side can be unread — `stake.stakedBalance` comes from the
+     staking hook, which has its own read path. */
+  const balanceUnread = mode === "stake" && kldUnread;
   const balanceLabel = mode === "stake" ? "KLD" : "stKLD";
   /* Always the other one — the form only ever swaps these two. */
   const receiveLabel = mode === "stake" ? "stKLD" : "KLD";
@@ -69,8 +76,13 @@ export default function StakePage() {
     return Number.isFinite(a) && a > 0 ? String(a) : "";
   }, [amount]);
 
+  /* Never against a balance that was not read: `balance` carries "0" then, and
+     gating the CTA on it tells a holder they have no KLD and leaves them no way
+     forward. Unknown means let the transaction be attempted. */
   const insufficient =
-    isConnected && Number(balance) < parseFloat(amount || "0");
+    isConnected &&
+    !balanceUnread &&
+    Number(balance) < parseFloat(amount || "0");
 
   /** Unstaking is gated on an open request whose cooldown has elapsed. */
   const canWithdraw = stake.hasRequest && !stake.cooldownActive;
@@ -230,9 +242,21 @@ export default function StakePage() {
                     <span />
                     <span>
                       {isConnected && !(mode === "stake" && kldLoading) && (
+                        /* Max is dropped with the number, not left pointing at a
+                           stale one — it writes the balance into the field, so
+                           offering it without a balance to write is the one thing
+                           it must not do. */
                         <>
-                          Balance {fmt(Number(balance), 4)} ·{" "}
-                          <b onClick={() => setAmount(String(balance))}>Max</b>
+                          {balanceUnread ? (
+                            <>Balance —</>
+                          ) : (
+                            <>
+                              Balance {fmt(Number(balance), 4)} ·{" "}
+                              <b onClick={() => setAmount(String(balance))}>
+                                Max
+                              </b>
+                            </>
+                          )}
                         </>
                       )}
                     </span>
