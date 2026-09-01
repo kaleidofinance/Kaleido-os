@@ -13,11 +13,7 @@ import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3PositionManager } from "@/hooks/dex/useV3PositionManager";
 import { readPoolState } from "@/lib/dex/pool";
 import { providerForChain } from "@/config/provider";
-import {
-  SLIPPAGE_BPS,
-  depositFailure,
-  depositV3,
-} from "@/lib/dex/deposit";
+import { SLIPPAGE_BPS, depositFailure, depositV3 } from "@/lib/dex/deposit";
 import { FEE_TIERS as TRADED_TIERS, ticksForRange } from "@/lib/dex/liquidity";
 import { chainTokens } from "@/constants/tokens";
 import { getChainMeta } from "@/constants/chains";
@@ -137,8 +133,8 @@ export default function NewPositionPage() {
     if (!ok1) setToken1(second);
   }, [available, token0, token1]);
 
-  const { balance: balance0 } = useTokenBalance(token0);
-  const { balance: balance1 } = useTokenBalance(token1);
+  const { balance: balance0, unread: unread0 } = useTokenBalance(token0);
+  const { balance: balance1, unread: unread1 } = useTokenBalance(token1);
 
   /**
    * Where this pair's market sits at a tier, on the chain the wallet is on.
@@ -443,10 +439,14 @@ export default function NewPositionPage() {
             <span className={s.tkPill}>{token0.symbol}</span>
           </div>
           <div className={s.priceHint}>
+            {/* A dash rather than a formatted "0" when the read did not land —
+                see useTokenBalance's `unread`. */}
             Balance{" "}
-            {Number(balance0).toLocaleString(undefined, {
-              maximumFractionDigits: 4,
-            })}
+            {unread0
+              ? "—"
+              : Number(balance0).toLocaleString(undefined, {
+                  maximumFractionDigits: 4,
+                })}
           </div>
         </div>
 
@@ -466,9 +466,11 @@ export default function NewPositionPage() {
           </div>
           <div className={s.priceHint}>
             Balance{" "}
-            {Number(balance1).toLocaleString(undefined, {
-              maximumFractionDigits: 4,
-            })}
+            {unread1
+              ? "—"
+              : Number(balance1).toLocaleString(undefined, {
+                  maximumFractionDigits: 4,
+                })}
           </div>
         </div>
 

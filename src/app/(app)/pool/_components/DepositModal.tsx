@@ -233,17 +233,28 @@ export default function DepositModal({
     });
   }, [ratio, side, token0.decimals, token1.decimals]);
 
-  /* Null on the wrong chain, so the hook builds no BrowserProvider: it reads
-     through the wallet's own network, and the same address holds a different
-     balance on each one. A number from the wrong chain is worse than no number —
-     it would gate the CTA on liquidity the depositor does not have here. */
-  const { balance: balance0 } = useTokenBalance(onRightChain ? token0 : null);
-  const { balance: balance1 } = useTokenBalance(onRightChain ? token1 : null);
+  /* Null on the wrong chain, so the hook reads nothing: `useTokenBalance` dials
+     the token's own chain now, and a deposit gated on a balance the depositor
+     cannot spend from here would be a number about the wrong place. The switch
+     prompt in the hint below is the answer instead. */
+  const { balance: balance0, unread: unread0 } = useTokenBalance(
+    onRightChain ? token0 : null,
+  );
+  const { balance: balance1, unread: unread1 } = useTokenBalance(
+    onRightChain ? token1 : null,
+  );
 
-  const shortOf = (amount: string, balance: string) =>
-    onRightChain && positive(amount) && Number(amount) > Number(balance);
-  const short0 = shortOf(amounts.a0, balance0);
-  const short1 = shortOf(amounts.a1, balance1);
+  /* An unread balance never makes the deposit look short. `balance0` carries "0"
+     when the read failed, and "Not enough USDC" on a funded wallet is a dead end:
+     the CTA is disabled, so there is nothing the user can do about a message that
+     is not true. Let the deposit be attempted and let the chain refuse it. */
+  const shortOf = (amount: string, balance: string, unread: boolean) =>
+    onRightChain &&
+    !unread &&
+    positive(amount) &&
+    Number(amount) > Number(balance);
+  const short0 = shortOf(amounts.a0, balance0, unread0);
+  const short1 = shortOf(amounts.a1, balance1, unread1);
 
   const venueReady =
     Boolean(spender) && (!isV3 || (tier !== null && isTradedTier(tier)));
@@ -356,6 +367,7 @@ export default function DepositModal({
     const token = which === "0" ? token0 : token1;
     const value = which === "0" ? amounts.a0 : amounts.a1;
     const balance = which === "0" ? balance0 : balance1;
+    const unread = which === "0" ? unread0 : unread1;
     return (
       <div className={s.mBox}>
         <div className={s.bl}>{token.symbol}</div>
@@ -374,11 +386,13 @@ export default function DepositModal({
           </span>
         </div>
         <div className={s.priceHint}>
-          {onRightChain
-            ? `Balance ${Number(balance).toLocaleString(undefined, {
-                maximumFractionDigits: 4,
-              })}`
-            : `Balance on ${meta?.shortName ?? "this pool's network"} — switch to see it`}
+          {!onRightChain
+            ? `Balance on ${meta?.shortName ?? "this pool's network"} — switch to see it`
+            : unread
+              ? "Balance —"
+              : `Balance ${Number(balance).toLocaleString(undefined, {
+                  maximumFractionDigits: 4,
+                })}`}
         </div>
       </div>
     );
@@ -488,11 +502,11 @@ export default function DepositModal({
           ) : null}
           {oneSided ? (
             <div className={s.mWarn} role="alert">
-              That range sits entirely{" "}
-              {oneSided === "0" ? "above" : "below"} the market, so it would take
-              only {oneSided === "0" ? token0.symbol : token1.symbol} and none of
-              the other side. Move a bound across the current price to deposit
-              into it.
+              That range sits entirely {oneSided === "0" ? "above" : "below"}{" "}
+              the market, so it would take only{" "}
+              {oneSided === "0" ? token0.symbol : token1.symbol} and none of the
+              other side. Move a bound across the current price to deposit into
+              it.
             </div>
           ) : null}
         </div>
@@ -516,9 +530,7 @@ export default function DepositModal({
           "Switch to Base Sepolia" and no way to do it from here. */}
       <button
         className={s.cta}
-        disabled={
-          !account || busy || switching || (onRightChain && !ready)
-        }
+        disabled={!account || busy || switching || (onRightChain && !ready)}
         onClick={onRightChain ? submit : goToChain}
       >
         {cta}
