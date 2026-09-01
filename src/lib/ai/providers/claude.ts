@@ -169,13 +169,56 @@ export class ClaudeProvider implements ChatProvider {
     return { text, executes, reads, provider: this.id, model: this.model };
   }
 
+  /**
+   * The body as JSON, or an error naming whatever arrived instead.
+   *
+   * A gateway is not obliged to answer in JSON even when it answers 200, and a
+   * `res.ok` check does not catch that. AgentRouter served Vercel's egress an
+   * HTML document — a landing page, the model never reached — while answering
+   * the byte-identical request from a developer machine with JSON. Handing that
+   * body to `res.json()` reduces a diagnosable infrastructure block to
+   * `SyntaxError: Unexpected token '<'`, which names neither the gateway, nor
+   * the status, nor the fact that a redirect was followed. That is the whole
+   * cost of the shortcut: the route logs the SyntaxError and the user reads
+   * "the reasoning service returned an error".
+   *
+   * BY CONTENT, NOT BY CONTENT-TYPE. The obvious guard — reject anything whose
+   * content-type is not JSON — would break every working call: **AgentRouter
+   * returns valid JSON as `text/plain; charset=utf-8`**, measured on both the
+   * direct host and through the relay. So the body is what decides, and the
+   * content-type only appears in the error text as evidence.
+   *
+   * `res.url` is the other load-bearing part. fetch follows redirects silently,
+   * so a final URL that is not the one we asked for is the difference between
+   * "the API refused us" and "we were never talking to the API".
+   */
+  private async parseJson<T>(res: Response): Promise<T> {
+    const text = await res.text();
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      const contentType = res.headers.get("content-type") ?? "";
+      const detour =
+        res.url && !res.url.startsWith(this.baseUrl)
+          ? `, redirected to ${res.url}`
+          : "";
+      const body = text.replace(/\s+/g, " ").trim().slice(0, 200);
+      throw new Error(
+        `${this.id} answered ${res.status} with ` +
+          `${contentType || "no content-type"}${detour} and a body that is ` +
+          `not JSON — the request never reached the model. ` +
+          `Body: ${body || "(empty)"}`,
+      );
+    }
+  }
+
   async chat(input: ChatInput): Promise<ChatResult> {
     const res = await this.request(input, false);
 
-    const data = (await res.json()) as {
+    const data = await this.parseJson<{
       content?: AnthropicBlock[];
       stop_reason?: string;
-    };
+    }>(res);
 
     return this.finish(data.content ?? [], data.stop_reason);
   }
@@ -192,10 +235,10 @@ export class ClaudeProvider implements ChatProvider {
        already tolerate because `chatStream` is optional. */
     const ct = res.headers.get("content-type") ?? "";
     if (!res.body || !ct.includes("event-stream")) {
-      const data = (await res.json()) as {
+      const data = await this.parseJson<{
         content?: AnthropicBlock[];
         stop_reason?: string;
-      };
+      }>(res);
       return this.finish(data.content ?? [], data.stop_reason);
     }
 

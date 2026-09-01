@@ -151,14 +151,47 @@ export class OpenAIProvider implements ChatProvider {
     };
   }
 
+  /**
+   * The body as JSON, or an error naming whatever arrived instead.
+   *
+   * The twin of ClaudeProvider.parseJson, and here for the same reason: a
+   * gateway can answer 200 with an HTML landing page, which `res.ok` does not
+   * catch and `res.json()` reports only as `SyntaxError: Unexpected token '<'`.
+   * Both router flavours sit behind the same host, so a block that hits one hits
+   * the other.
+   *
+   * Judged by the body and not the content-type, because **AgentRouter returns
+   * valid JSON as `text/plain`** — a content-type gate would reject every
+   * working call. `res.url` catches the silent redirect fetch performs for us.
+   */
+  private async parseJson<T>(res: Response): Promise<T> {
+    const text = await res.text();
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      const contentType = res.headers.get("content-type") ?? "";
+      const detour =
+        res.url && !res.url.startsWith(this.baseUrl)
+          ? `, redirected to ${res.url}`
+          : "";
+      const body = text.replace(/\s+/g, " ").trim().slice(0, 200);
+      throw new Error(
+        `${this.id} answered ${res.status} with ` +
+          `${contentType || "no content-type"}${detour} and a body that is ` +
+          `not JSON — the request never reached the model. ` +
+          `Body: ${body || "(empty)"}`,
+      );
+    }
+  }
+
   async chat(input: ChatInput): Promise<ChatResult> {
     const res = await this.request(input, false);
 
-    const data = (await res.json()) as {
+    const data = await this.parseJson<{
       choices?: Array<{
         message?: { content?: string | null; tool_calls?: OpenAIToolCall[] };
       }>;
-    };
+    }>(res);
     const message = data.choices?.[0]?.message;
 
     return this.finish(message?.content ?? "", message?.tool_calls ?? []);
@@ -176,11 +209,11 @@ export class OpenAIProvider implements ChatProvider {
        `chatStream` is optional. */
     const ct = res.headers.get("content-type") ?? "";
     if (!res.body || !ct.includes("event-stream")) {
-      const data = (await res.json()) as {
+      const data = await this.parseJson<{
         choices?: Array<{
           message?: { content?: string | null; tool_calls?: OpenAIToolCall[] };
         }>;
-      };
+      }>(res);
       const message = data.choices?.[0]?.message;
       return this.finish(message?.content ?? "", message?.tool_calls ?? []);
     }
