@@ -30,6 +30,21 @@
 # load, so every-30-minutes leaves no margin for a skipped run. Every 20 minutes
 # gives three windows inside the bound: two consecutive drops still stay fresh.
 #
+# That margin is theoretical, and measured 2026-09-01 it does not exist: this
+# schedule delivered 47 runs in 152 hours — one per 3.2 h against a 1 h bound, so
+# GitHub dropped roughly nine of every ten and made none of them up. Tightening
+# the cron does not help, because what is dropped is the trigger. So the push also
+# exists as an HTTP endpoint that any scheduler can call:
+#
+#   GET|POST /api/keeper/push   src/app/api/keeper/push/route.ts
+#                               src/lib/keeper/pushFeeds.ts   (no hardhat)
+#
+# It needs KEEPER_PRIVATE_KEY and CRON_SECRET in the app's server environment, and
+# it refuses every request until CRON_SECRET is set. It cannot cover Arc — that
+# push needs a Pyth-signed blob — so this workflow stays either way, and the two
+# cannot collide: a second push of the same observation is refused off-chain by the
+# feed's own replay rule, costing a read rather than a transaction.
+#
 # ── Activation (this workflow is inert until all three are true) ──────────────
 #   1. Merged to the DEFAULT branch. GitHub runs `schedule` triggers only from the
 #      default branch — on a feature branch this never fires on its own.
