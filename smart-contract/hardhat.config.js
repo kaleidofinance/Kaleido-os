@@ -51,9 +51,25 @@ try {
  * Returns an empty list when no key is configured so that `compile`, `test` and
  * every read-only task still work without credentials present. Deploying
  * without a key fails at that point, which is the correct moment to find out.
+ *
+ * KEEPER_PRIVATE_KEY IS A FALLBACK, AND ONLY EVER A FALLBACK. The keeper scripts
+ * — push-aggregator.js, fill-orders — run on a schedule in CI and need a signer
+ * there, and the only signer this config knew about was the deployer: the key that
+ * owns every contract on every chain. So the price keeper was configured to carry
+ * the most powerful key we hold in order to perform its one routine write, and in
+ * fact it carried nothing at all (the secret was never set, and it had been red
+ * on it for 47 consecutive runs while ETH went unpriceable on Robinhood). The
+ * feeds now name the keeper address in `isPusher`, so a keeper-only key can push
+ * and can do nothing else.
+ *
+ * The ordering is deliberate and matters in one direction: a machine that has both
+ * keys is a deploy machine, and a deploy must be signed by the owner or it silently
+ * produces contracts owned by the keeper — the exact confusion this fallback exists
+ * to end. So the deployer wins whenever it is present, and the keeper is reached
+ * only where there is no deployer key to be had, which in practice is CI.
  */
 const accounts = () => {
-  const key = process.env.DEPLOYER_PRIVATE_KEY;
+  const key = process.env.DEPLOYER_PRIVATE_KEY || process.env.KEEPER_PRIVATE_KEY;
   if (!key) return [];
   return [key.startsWith("0x") ? key : `0x${key}`];
 };

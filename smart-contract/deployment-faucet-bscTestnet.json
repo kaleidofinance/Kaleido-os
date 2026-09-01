@@ -61,9 +61,13 @@
         "drip": "0",
         "source": "dex",
         "funding": {
-          "method": "topup",
-          "stocked": "0.281513390235128218",
-          "claimsLeft": 0
+          "method": "recovered",
+          "stocked": "0.0",
+          "recoveredHuman": "0.281513390235128218",
+          "recoveredTo": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+          "recoveredTx": "0xf584f6f599071e50223288780bb2d63f9f805550a1662fb616b9840f2cd4493e",
+          "unwrappedTx": "0xa9339f6bb98ade802f076daf8ef116398013c7afffe7395b54493c42327400e5",
+          "note": "Paused at drip 0 under the rule that the faucet hands out only assets we issued, so the stock was unreachable. Recovered by scripts/recover-paused-asset.js."
         }
       },
       {
@@ -88,5 +92,6 @@
     "dex": "deployment-dex-bscTestnet.json",
     "kld": "deployment-kld-bscTestnet.json"
   },
-  "lastTopup": "2026-08-30T07:18:27.798Z"
+  "lastTopup": "2026-08-30T07:18:27.798Z",
+  "recoveredAt": "2026-09-01T15:05:21.419Z"
 }
