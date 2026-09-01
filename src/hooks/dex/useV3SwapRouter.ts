@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers } from "ethers";
 import { getContracts } from "@/constants/registry";
+import { providerForChain } from "@/config/provider";
 import { MOCK_DATA, mockQuote, mockQuoteMultiHop } from "@/lib/mock";
 
 const QUOTER_ABI = [
@@ -45,6 +46,45 @@ export const useV3SwapRouter = () => {
     return await provider.getSigner();
   }, [activeAccount]);
 
+  /**
+   * The output a pool would give for `amountIn`, or `null` when we could not ask.
+   *
+   * WHY THE READ PROVIDER AND NOT `window.ethereum`
+   *
+   * This read `new ethers.BrowserProvider(window.ethereum)` and returned `"0"`
+   * from its catch. It is the same pair of mistakes useTokenBalance was rewritten
+   * for — see that hook's docstring — and it reached here because the fix landed
+   * on the balance hooks and not on the quoter:
+   *
+   *   1. **There is often no injected provider.** `window.ethereum` exists when a
+   *      browser extension put it there. This app offers six wallets through
+   *      thirdweb, and WalletConnect and the in-app (email/social/passkey) wallet
+   *      inject nothing on any platform, as does any phone browser. For those,
+   *      `new BrowserProvider(undefined)` threw on the try's first line and every
+   *      pair on every chain quoted nothing.
+   *   2. **The injected node answers for its own chain, not ours.** An extension
+   *      is pinned to whatever network it is showing, while the quoter address
+   *      comes from `getContracts(chainId)` — thirdweb's active chain. Switch
+   *      chains anywhere but in the extension and the two disagree: the call goes
+   *      to Sepolia's quoter address on a chain that has no code there, which
+   *      reverts for every pair regardless of the pool.
+   *
+   * `providerForChain(chainId)` dials the chain whose quoter we just looked up, so
+   * the address and the endpoint cannot come apart. Quoting is a pure read — there
+   * is no reason for it to need the user's signer at all.
+   *
+   * NULL FOR "NO QUOTE", NEVER `"0"`
+   *
+   * `"0"` is truthy in JavaScript, so it passed every `if (!out)` guard a caller
+   * had and was spent as though a pool had really offered nothing. On the swap
+   * card that enabled the CTA, labelled it "Review swap", and put
+   * `amountOutMin: 0` into the plan — an unbounded-slippage swap offered for a
+   * pair we had failed to price. A quote that did not happen is not a number, and
+   * `null` is the only value a caller cannot mistake for one.
+   *
+   * Uniswap never answers 0 for a nonzero input against a live pool — it reverts —
+   * so nothing is lost by reserving null for the failure.
+   */
   const getV3AmountOut = useCallback(
     async (
       tokenIn: string,
@@ -53,7 +93,7 @@ export const useV3SwapRouter = () => {
       fee: number,
       decimalsIn: number = 18,
       decimalsOut: number = 18,
-    ) => {
+    ): Promise<string | null> => {
       if (MOCK_DATA) {
         return mockQuote(
           chainId,
@@ -65,9 +105,10 @@ export const useV3SwapRouter = () => {
           decimalsOut,
         );
       }
-      if (!v3Quoter) return "0";
+      if (!v3Quoter) return null;
+      const provider = providerForChain(chainId);
+      if (!provider) return null;
       try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
         const quoter = new ethers.Contract(v3Quoter, QUOTER_ABI, provider);
 
         const amountInWei = ethers.parseUnits(amountIn, decimalsIn);
@@ -83,13 +124,22 @@ export const useV3SwapRouter = () => {
 
         return ethers.formatUnits(amountOutWei, decimalsOut);
       } catch (error) {
-        // console.error("V3 Quote Error:", error);
-        return "0";
+        /* Logged, not swallowed. A revert here is the ordinary "no pool at this
+           tier" answer, but it is also how a wrong quoter address or a dead
+           endpoint presents, and this used to be commented out — so the one
+           symptom the user could see was a card that quoted nothing with an
+           empty console. */
+        console.error(
+          `No V3 quote for ${tokenIn} -> ${tokenOut} at fee ${fee} on chain ${chainId}:`,
+          error,
+        );
+        return null;
       }
     },
     [chainId, v3Quoter],
   );
 
+  /** The multi-hop form of the above, with the same provider and null contract. */
   const getV3MultiHopAmountOut = useCallback(
     async (
       path: string[],
@@ -97,7 +147,7 @@ export const useV3SwapRouter = () => {
       amountIn: string,
       decimalsIn: number = 18,
       decimalsOut: number = 18,
-    ) => {
+    ): Promise<string | null> => {
       if (MOCK_DATA) {
         return mockQuoteMultiHop(
           chainId,
@@ -108,9 +158,10 @@ export const useV3SwapRouter = () => {
           decimalsOut,
         );
       }
-      if (!v3Quoter) return "0";
+      if (!v3Quoter) return null;
+      const provider = providerForChain(chainId);
+      if (!provider) return null;
       try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
         const quoter = new ethers.Contract(v3Quoter, QUOTER_ABI, provider);
 
         const amountInWei = ethers.parseUnits(amountIn, decimalsIn);
@@ -123,7 +174,11 @@ export const useV3SwapRouter = () => {
 
         return ethers.formatUnits(amountOutWei, decimalsOut);
       } catch (error) {
-        return "0";
+        console.error(
+          `No V3 multi-hop quote for [${path.join(" -> ")}] on chain ${chainId}:`,
+          error,
+        );
+        return null;
       }
     },
     [chainId, v3Quoter],
