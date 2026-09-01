@@ -15,9 +15,12 @@
  *
  * push-prices.js relays a Wormhole-signed blob to a Pyth receiver, which
  * verifies it. There is no signature here and nothing to verify: a
- * PushablePriceFeed takes a bare integer we computed. The two share only the
- * Hermes fetch (blobs there, parsed prices here, via libraries/hermes-prices.js),
- * and push-prices.js explicitly REFUSES any oracle whose oracleKind() is not
+ * PushablePriceFeed takes a bare integer we computed. That difference is also why
+ * only this side has a fallback price source — libraries/hermes-prices.js will
+ * answer from CoinGecko when Hermes will not, which is sound for an integer we
+ * sign for ourselves and impossible for a blob only Pyth can produce. The two
+ * scripts share that library (blobs there, parsed prices here), and
+ * push-prices.js explicitly REFUSES any oracle whose oracleKind() is not
  * "pyth". This is its mirror image and refuses anything that is not
  * "aggregator-v3" carrying self-hosted feeds.
  *
@@ -39,7 +42,7 @@
  * forceAnswer as the owner-only, single-use re-baseline, rather than forcing
  * automatically and defeating the guard on every large move.
  *
- * It will not push a price Hermes is itself serving stale: if the freshest
+ * It will not push a price its source is itself serving stale: if the freshest
  * observation available is already older than the bound, the push would land a
  * price that reverts anyway. It says so and skips that feed.
  *
@@ -58,7 +61,7 @@ const { ethers } = hre;
 const fs = require("fs");
 
 const { backendFor, selfHostedPlanFor } = require("./libraries/aggregator-feeds.js");
-const { fetchScaledPrices, HERMES_ENDPOINT } = require("./libraries/hermes-prices.js");
+const { fetchScaledPrices, HERMES_ENDPOINT, COINGECKO_ENDPOINT } = require("./libraries/hermes-prices.js");
 
 const TARGET_DECIMALS = 8;
 
@@ -318,42 +321,43 @@ async function main() {
     return;
   }
 
-  /* ── 5. Fresh prices from Hermes ───────────────────────────────────────── */
+  /* ── 5. Fresh prices off-chain ─────────────────────────────────────────── */
 
-  console.log(`\n2. Fetching prices from Hermes for ${targets.length} feed(s)`);
+  console.log(`\n2. Fetching prices for ${targets.length} feed(s)`);
   const scaled = await fetchScaledPrices(targets.map((f) => f.id), TARGET_DECIMALS);
 
-  /* Skip a feed Hermes is itself serving stale — pushing it lands a price that
-   * reverts on the bound anyway. Unlike push-prices.js this is per-feed (each is
-   * its own contract and its own transaction), so a hopeless feed is skipped, not
-   * a reason to abort the batch. */
+  /* Skip a feed whose freshest available observation is already stale — pushing
+   * it lands a price that reverts on the bound anyway. Unlike push-prices.js this
+   * is per-feed (each is its own contract and its own transaction), so a hopeless
+   * feed is skipped, not a reason to abort the batch. */
   const pushable = [];
   for (const f of targets) {
     const s = scaled.get(f.id.toLowerCase());
     if (!s) {
-      console.log(`   ⚠️  ${f.symbols.join("/")}: Hermes served no price — skipped`);
+      console.log(`   ⚠️  ${f.symbols.join("/")}: no source served a price — skipped`);
       continue;
     }
-    const hermesAge = Math.max(0, blockTime - s.publishTime);
-    if (hermesAge > f.bound) {
+    const observedAge = Math.max(0, blockTime - s.publishTime);
+    if (observedAge > f.bound) {
       console.log(
-        `   ⚠️  ${f.symbols.join("/")}: Hermes' freshest is ${humanAge(hermesAge)} old ` +
-          `(${hermesAge}s), already over the ${f.bound}s bound. Pushing it would still ` +
-          "revert — skipped. Pyth's publishers are stale for this asset.",
+        `   ⚠️  ${f.symbols.join("/")}: the freshest ${s.source} has is ` +
+          `${humanAge(observedAge)} old (${observedAge}s), already over the ` +
+          `${f.bound}s bound. Pushing it would still revert — skipped. That ` +
+          "source's publishers are stale for this asset.",
       );
       continue;
     }
     console.log(
       `   ${f.symbols.join("/").padEnd(11)} $${Number(s.answer) / 10 ** TARGET_DECIMALS} ` +
-        `(${s.answer}), observed ${humanAge(hermesAge)} ago`,
+        `(${s.answer}), observed ${humanAge(observedAge)} ago via ${s.source}`,
     );
     pushable.push({ ...f, scaled: s });
   }
 
   if (pushable.length === 0) {
     throw new Error(
-      "No feed could be pushed: Hermes served nothing fresh enough for any of them.\n" +
-        "This is Pyth's off-chain publishers being stale, which a keeper cannot fix.",
+      "No feed could be pushed: nothing fresh enough was served for any of them.\n" +
+        "This is the off-chain publishers being stale, which a keeper cannot fix.",
     );
   }
 
@@ -382,6 +386,7 @@ async function main() {
         aggregator: f.address,
         answer: f.scaled.answer.toString(),
         observedAt,
+        source: f.scaled.source,
         bound: f.bound,
         txHash: tx.hash,
       });
@@ -434,6 +439,7 @@ async function main() {
     timestamp: new Date().toISOString(),
     oracle: oracleAddress,
     hermes: HERMES_ENDPOINT,
+    coingecko: COINGECKO_ENDPOINT,
     pushed: results,
   };
   /* pushfeeds-, not deployment- and not pricefeeds-: gen-registry.mjs globs
@@ -457,7 +463,7 @@ async function main() {
   if (stillStale > 0) {
     console.log(
       `\n⚠️  ${stillStale} feed(s) are still over their bound after a push landed.\n` +
-        "    The write worked, so the observation Hermes gave was already old.",
+        "    The write worked, so the observation the price source gave was already old.",
     );
   }
   if (results.length > 0) {
