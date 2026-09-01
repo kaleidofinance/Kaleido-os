@@ -12,6 +12,14 @@
 #               USDC/WUSDC (90000s bound), which nothing else pushes — Arc's own
 #               gas token, and the feed that was found dead and growing.
 #               → scripts/push-prices.js, PUSH_FEEDS=USDC
+#
+#               STILL BLOCKED, and not on a key: hermes.pyth.network has answered
+#               401 on every path since 2026-08-28, and an Arc push needs a
+#               Pyth-SIGNED blob — the CoinGecko fallback that rescued Robinhood
+#               cannot help here, because Arc verifies the signature on chain.
+#               The choice is a Pyth API key or moving Arc's USDC feed onto a
+#               PushablePriceFeed like Robinhood's. Until one of those, expect this
+#               job red and Arc's USDC feed ageing toward its 25h bound.
 #   Robinhood — self-hosted PushablePriceFeed contracts behind an
 #               AggregatorPriceOracle. Nothing but us pushes them. Both feeds
 #               (ETH 3600s, USDC 90000s).
@@ -25,15 +33,35 @@
 # ── Activation (this workflow is inert until all three are true) ──────────────
 #   1. Merged to the DEFAULT branch. GitHub runs `schedule` triggers only from the
 #      default branch — on a feature branch this never fires on its own.
-#   2. Repo secret DEPLOYER_PRIVATE_KEY set. Without it hardhat's account list is
+#   2. Repo secret KEEPER_PRIVATE_KEY set. Without it hardhat's account list is
 #      empty, the push scripts find no signer and fail fast (a red run, by design).
 #   3. Actions enabled for the repo.
 # Optional secrets ARC_TESTNET_RPC / ROBINHOOD_TESTNET_RPC / HERMES_ENDPOINT
 # override the public endpoints the scripts fall back to when they are unset.
 #
-# TESTNET ONLY. DEPLOYER_PRIVATE_KEY here is the burned testnet deployer. A
-# mainnet keeper must run a dedicated keeper key whose only power is pushing
-# prices, with feed/oracle ownership on a multisig — never this key.
+# ── Why the keeper key and not the deployer's ─────────────────────────────────
+#
+# This asked for DEPLOYER_PRIVATE_KEY until 2026-09-01, and that was wrong twice
+# over. Wrong in principle, because the deployer owns every contract on every chain
+# and pushing a price needs none of that: on Arc the push is permissionless (pay
+# `getUpdateFee`, call `updatePriceFeeds`), and on Robinhood the feeds accept
+# `owner || isPusher[msg.sender]`, so a keeper address named in `isPusher` can push
+# and can do nothing else — not re-baseline with `forceAnswer`, not move a bound,
+# not name another pusher. Wrong in fact, because that secret was never set: this
+# workflow had been red on it for 47 consecutive runs, and while it was red the
+# Robinhood ETH/USD feed drifted 3h 32m past its 3600s bound and `getUsdValue`
+# reverted `Protocol__StalePrice` for WETH and for native ETH. Lending against ETH
+# was down for want of a signer nobody had granted.
+#
+# The keeper is `0xB37d079F6AccE50332043cf20e1f4FFD363799aE` — the same address the
+# orders keeper signs with, granted on both Robinhood feeds by
+# `scripts/grant-pusher.js` and funded on both chains. `hardhat.config.js` reads
+# DEPLOYER_PRIVATE_KEY first and falls back to this, so a machine holding both
+# still deploys as the owner.
+#
+# TESTNET ONLY, and for a narrower reason than before: a leaked keeper key here
+# can push a wrong price inside each feed's deviation guard. Mainnet keeps this
+# shape — keeper key for the push, feed and oracle ownership on a multisig.
 
 name: price-keeper
 
@@ -68,7 +96,7 @@ jobs:
       - run: npm ci
       - name: Push Arc USDC/WUSDC
         env:
-          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
           ARC_TESTNET_RPC: ${{ secrets.ARC_TESTNET_RPC }}
           HERMES_ENDPOINT: ${{ secrets.HERMES_ENDPOINT }}
           # PUSH_ALL forces the push even though USDC is nominally still inside its
@@ -93,7 +121,7 @@ jobs:
       - run: npm ci
       - name: Push Robinhood feeds
         env:
-          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
           ROBINHOOD_TESTNET_RPC: ${{ secrets.ROBINHOOD_TESTNET_RPC }}
           HERMES_ENDPOINT: ${{ secrets.HERMES_ENDPOINT }}
           # Both feeds every run — the tightest bound (ETH 3600s) is the whole

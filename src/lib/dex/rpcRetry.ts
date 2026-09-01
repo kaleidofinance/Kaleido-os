@@ -25,14 +25,16 @@
  *
  * WHAT COUNTS AS TRANSIENT
  *
- * Only a phrase that means "ask again". Deliberately NOT the bare word "exceeded":
- * the same `-32005` code also carries "Log response size exceeded. Maximum allowed
- * number of requested blocks is 1000", which is a permanent property of the
- * endpoint's log window — retrying it burns three requests to be told the same
- * thing. That one belongs to `logWindow.ts`, which narrows the range instead.
+ * A phrase that means "ask again", or a transport code that means the request never
+ * reached a node. Deliberately NOT the bare word "exceeded": the same `-32005` code
+ * also carries "Log response size exceeded. Maximum allowed number of requested
+ * blocks is 1000", which is a permanent property of the endpoint's log window —
+ * retrying it burns three requests to be told the same thing. That one belongs to
+ * `logWindow.ts`, which narrows the range instead.
  *
- * Numeric codes are not matched at all, for the same reason: `-32005` means both
- * of the above depending on the vendor.
+ * Numeric JSON-RPC codes are not matched at all, for the same reason: `-32005`
+ * means both of the above depending on the vendor. String codes are, because
+ * ECONNREFUSED means one thing everywhere.
  *
  * WHERE IT IS NOT USED
  *
@@ -69,6 +71,11 @@ const TRANSIENT_PHRASES = [
   /capacity/i,
   /overloaded/i,
   /try again/i,
+  /* undici's generic wrapper. The real one carries the system error under
+     `.cause` and is caught by code above; this catches the flattened copy — an
+     error that has been logged, serialised or rethrown as `new Error(msg)`, which
+     is what most of this repo's own catches produce. */
+  /fetch failed/i,
 ];
 
 /** ethers' own coarse codes for "the transport failed", not "the call reverted". */
@@ -78,6 +85,53 @@ const TRANSIENT_CODES = new Set([
   "NETWORK_ERROR",
   "BUFFER_OVERRUN",
 ]);
+
+/**
+ * Node and undici's codes for a connection that never carried a request.
+ *
+ * Measured 2026-09-01, because the phrases above do not cover any of them and the
+ * gap was doing real damage. ethers surfaces a failed connection by rethrowing the
+ * system error itself, so what reaches a caller is `{code: "ECONNREFUSED", message:
+ * "connect ECONNREFUSED 127.0.0.1:1"}` — no ethers code, and no phrase to match.
+ * An unresolvable host is the same story with `ENOTFOUND`, and undici's own generic
+ * wrapper is the bare string "fetch failed" with the system error under `.cause`.
+ * All three read as "answered, with nothing" to every catch in this repo, and the
+ * keeper's quote loop turned that into "no pool quoted this pair".
+ *
+ * ECONNREFUSED is here despite a refused connection rarely being worth a *retry*,
+ * because the question this predicate answers is narrower and more useful than
+ * "retry?": was this the transport or the call? A caller that swallows its own
+ * errors needs that answer more than the retry loop does, and two extra attempts
+ * against a dead port cost 750ms and no requests.
+ */
+const TRANSPORT_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EPIPE",
+  "EPROTO",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+/** Every string `code` reachable from an error, the same walk `collectText` does. */
+function collectCodes(err: unknown, depth = 0): string[] {
+  if (depth > 4 || err === null || err === undefined || typeof err !== "object")
+    return [];
+  const e = err as Record<string, unknown>;
+  const codes: string[] = [];
+  if (typeof e.code === "string") codes.push(e.code);
+  for (const key of ["info", "error", "cause"]) {
+    if (e[key]) codes.push(...collectCodes(e[key], depth + 1));
+  }
+  return codes;
+}
 
 /** Every message-ish string reachable from an error, one flat haystack. */
 function collectText(err: unknown, depth = 0): string {
@@ -104,8 +158,9 @@ function collectText(err: unknown, depth = 0): string {
  * where it cannot act on it.
  */
 export function isTransientRpcError(err: unknown): boolean {
-  const code = (err as { code?: unknown } | null)?.code;
-  if (typeof code === "string" && TRANSIENT_CODES.has(code)) return true;
+  const codes = collectCodes(err);
+  if (codes.some((c) => TRANSIENT_CODES.has(c) || TRANSPORT_CODES.has(c)))
+    return true;
 
   const text = collectText(err);
   if (!text) return false;

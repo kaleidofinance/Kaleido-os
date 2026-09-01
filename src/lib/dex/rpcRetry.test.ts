@@ -96,6 +96,66 @@ console.log("\n— transport failures, which are transient —");
   );
 }
 
+/*
+ * The endpoint that is not there at all, which is a different failure from the
+ * endpoint that refuses. Measured 2026-09-01 by pointing ethers at a dead port and
+ * at an unresolvable host: it rethrows the SYSTEM error, so what arrives has a
+ * Node code and no ethers code, and none of the phrases above match its message.
+ * Every one of these classified as a revert until then — and the orders keeper's
+ * quote loop, which treats a non-transient failure as "this tier has no pool",
+ * reported an unreachable RPC as an empty market.
+ */
+console.log("\n— an endpoint that never answered at all —");
+{
+  check(
+    "a refused connection, as ethers rethrows it",
+    isTransientRpcError(
+      Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:1"), {
+        code: "ECONNREFUSED",
+      }),
+    ),
+  );
+  check(
+    "a host that does not resolve",
+    isTransientRpcError(
+      Object.assign(new Error("getaddrinfo ENOTFOUND rpc.example.invalid"), {
+        code: "ENOTFOUND",
+      }),
+    ),
+  );
+  check(
+    "a DNS failure that may pass next time",
+    isTransientRpcError({ code: "EAI_AGAIN" }),
+  );
+  check(
+    "undici's connect timeout, by code",
+    isTransientRpcError({ code: "UND_ERR_CONNECT_TIMEOUT" }),
+  );
+  check(
+    "undici's wrapper with the system error underneath",
+    isTransientRpcError(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("read ECONNRESET"), {
+          code: "ECONNRESET",
+        }),
+      }),
+    ),
+  );
+  check(
+    "and flattened to its message alone, which is how this repo rethrows",
+    isTransientRpcError(new Error("fetch failed")),
+  );
+  /* The control the whole set depends on: if a revert reached this predicate as
+     transient, the keeper would retry three times and then call an empty pool an
+     outage. */
+  check(
+    "a revert still is not one of these",
+    !isTransientRpcError(
+      Object.assign(new Error("execution reverted"), { code: "CALL_EXCEPTION" }),
+    ),
+  );
+}
+
 console.log("\n— retryRpc's behaviour —");
 {
   const run = async () => {
