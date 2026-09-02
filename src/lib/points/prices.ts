@@ -35,8 +35,16 @@ if (typeof window !== "undefined") {
   );
 }
 
-/** Pyth Hermes price feed IDs, verified against the live API. */
-const PYTH_FEEDS: Record<string, string> = {
+/**
+ * Pyth Hermes price feed IDs, verified against the live API.
+ *
+ * Exported because these ids are also the keys `AggregatorPriceOracle` registers
+ * feeds under, so `lib/keeper/pushFeeds.ts` resolves an aggregator by asking
+ * `feedAggregator(id)` with one of them. A second copy of the table there is a
+ * copy that can be typed wrong, and a wrong id would publish one asset's price to
+ * another asset's feed — on a feed the protocol liquidates on.
+ */
+export const PYTH_FEEDS: Record<string, string> = {
   ETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
   WETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
   USDC: "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
