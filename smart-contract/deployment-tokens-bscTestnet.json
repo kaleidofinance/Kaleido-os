@@ -2,29 +2,61 @@
   "network": "bscTestnet",
   "chainId": 97,
   "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
-  "timestamp": "2026-08-24T10:25:59.454Z",
+  "timestamp": "2026-09-01T19:05:33.462Z",
   "diamond": "0x2E7dd52073d6653F610607dA9B947ba59B585bf8",
   "oracle": "0xf9928C816b75Bb3EA081Fc0d1C0172E475957C48",
   "oracleKind": "aggregator-v3",
   "pyth": null,
   "nativeFeedSymbol": "BNB",
-  "hermesVerified": true,
+  "hermesVerified": false,
   "registered": [
     {
-      "kind": "loanable",
+      "kind": "collateral",
       "symbol": "BNB",
-      "address": "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
-      "onChainSymbol": "WBNB",
+      "address": "0x0000000000000000000000000000000000000001",
+      "onChainSymbol": null,
       "decimals": 18,
       "feedSymbol": "Crypto.BNB/USD",
       "feedId": "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
       "feedSource": "hermes",
-      "priceAgeSeconds": 1310,
-      "feedMaxAge": 1800,
-      "maxAgeBasis": "BNB/USD is the chain's native-currency feed and the most actively published on BSC Testnet. 1800 is the sibling ETH/USD observation (355s) with 5x slack; not derived from a documented heartbeat.",
-      "effectiveMaxAge": 1800,
-      "txHash": "0xb9a0fd7241c53ee440ffec0676c570014a745b9c8cec88cf9d8c75aeafcf32fc",
-      "skipped": false
+      "priceAgeSeconds": 37,
+      "feedMaxAge": 5400,
+      "maxAgeBasis": "Was 1800, derived from a single 355s sighting of the sibling ETH/USD with 5x slack, and that derivation was wrong in a way one sighting cannot show. Walked the round history instead on 2026-09-01 via getRoundData(roundId-n): the gaps between consecutive answers are 60.5m x5, 60.0m x2, 44.0m, 42.0m, 33.5m and 9.6m — median 60.0m, and TEN OF ELEVEN over the 1800s bound. So BNB and WBNB, which share this id and are two of the four registered collateral tokens on this chain, reverted Protocol__StalePrice for most of most hours with nothing wrong anywhere: the publisher was simply slower than the bound. 5400 is Sepolia's number for the same publisher on the same policy, and covers the observed 60.5m worst gap with ~49% headroom.\n\nLoosening a volatile feed's bound is the move setFeedMaxAge's own docstring warns against, and the warning does not apply here. It is about silencing a feed we could have kept fresh — the Robinhood ETH case, where we are the publisher and a stale price is our keeper's failure. Nobody pays for a faster Chainlink round on BSC Testnet, so this price is the freshest that exists and refusing it protects no one: it takes the chain's main collateral offline and prices nothing more accurately.",
+      "effectiveMaxAge": 5400,
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDC",
+      "address": "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 28723,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Probed 2026-08-23, not the file's 2026-08-21 sweep: getCode 9571 bytes, decimals() 8, description() \"USDC / USD\", price $1.00, answer 55,684s (15h28m) old. That is ~40x the crypto feeds on this chain (BNB/ETH/BTC all ~1,000-1,300s in the same block) — the same pegged/volatile split every testnet in this file shows — so the stablecoin needs the ceiling bound while the crypto feeds keep 1800. 90000 is Constants.MAX_FEED_PRICE_AGE and is only defensible because USDC is pegged: a day-old answer is wrong by basis points, not percent. Same number and same argument as USDC on Sepolia and Base Sepolia. Registering the mock USDC that deploy-mock-tokens.js/deploy-stablecoin.js mint needs this entry.",
+      "effectiveMaxAge": 90000,
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDT",
+      "address": "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2",
+      "onChainSymbol": "USDT",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDT/USD",
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 27577,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Probed 2026-08-23 alongside USDC: 9571 bytes, decimals() 8, description() \"USDT / USD\", price $0.9999, answer 54,558s (15h9m) old. Same 24h-class heartbeat and same pegged-stable reasoning as USDC on this chain. 90000 is the ceiling — see the USDC basis above. deploy-stablecoin.js mints a USDT and this is the feed that lets it be registered.",
+      "effectiveMaxAge": 90000,
+      "txHash": null,
+      "skipped": true
     }
   ],
   "feedBounds": [
@@ -33,10 +65,10 @@
       "symbols": [
         "BNB"
       ],
-      "maxAge": 1800,
-      "basis": "BNB/USD is the chain's native-currency feed and the most actively published on BSC Testnet. 1800 is the sibling ETH/USD observation (355s) with 5x slack; not derived from a documented heartbeat.",
-      "txHash": null,
-      "skipped": true
+      "maxAge": 5400,
+      "basis": "Was 1800, derived from a single 355s sighting of the sibling ETH/USD with 5x slack, and that derivation was wrong in a way one sighting cannot show. Walked the round history instead on 2026-09-01 via getRoundData(roundId-n): the gaps between consecutive answers are 60.5m x5, 60.0m x2, 44.0m, 42.0m, 33.5m and 9.6m — median 60.0m, and TEN OF ELEVEN over the 1800s bound. So BNB and WBNB, which share this id and are two of the four registered collateral tokens on this chain, reverted Protocol__StalePrice for most of most hours with nothing wrong anywhere: the publisher was simply slower than the bound. 5400 is Sepolia's number for the same publisher on the same policy, and covers the observed 60.5m worst gap with ~49% headroom.\n\nLoosening a volatile feed's bound is the move setFeedMaxAge's own docstring warns against, and the warning does not apply here. It is about silencing a feed we could have kept fresh — the Robinhood ETH case, where we are the publisher and a stale price is our keeper's failure. Nobody pays for a faster Chainlink round on BSC Testnet, so this price is the freshest that exists and refusing it protects no one: it takes the chain's main collateral offline and prices nothing more accurately.",
+      "txHash": "0x58957c763005720dfbf99a0cc8c6793aed11dd6b38ea76b9b6774f2eb9625d3e",
+      "skipped": false
     },
     {
       "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
@@ -45,7 +77,7 @@
         "WETH"
       ],
       "maxAge": 1800,
-      "basis": "Observed 355s, x5 slack. Not a documented heartbeat.",
+      "basis": "Observed 355s, x5 slack. Not a documented heartbeat — and that is the same derivation that proved wrong on BNB above, on this chain and from this publisher, so treat 1800 here as unverified rather than as policy. The round history has not been walked for this feed because no token is registered against it. Walk it before registering one.",
       "txHash": null,
       "skipped": true
     },
@@ -55,7 +87,7 @@
         "BTC"
       ],
       "maxAge": 1800,
-      "basis": "Same publisher policy as BSC Testnet ETH/USD.",
+      "basis": "1800 IS KNOWN TO BE UNMEETABLE ON THIS FEED, and is left in place only because no token is registered against it, so it currently gates nothing. The same round-history walk that corrected BNB above measured this one on 2026-09-01: max gap 116.5m, median 49.0m, 7 of 11 gaps over 1800s. Note that BNB's new 5400 would not cover it either — 116.5m is 6,990s. Anyone registering WBTC here must pick a bound from that history first (7200 covers the observed max by 3%, which is thin; 9000 is the defensible number) and must not assume BNB's applies.",
       "txHash": null,
       "skipped": true
     },
