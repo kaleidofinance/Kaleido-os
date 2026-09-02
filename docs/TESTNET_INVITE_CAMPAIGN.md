@@ -57,6 +57,12 @@ named that column after the question instead, falls back to whichever column
 actually contains the most addresses. Check the reported count against what the form
 says it collected; a much smaller number means it picked the wrong column.
 
+Every one of those rules lives in `src/lib/campaign/recipients.ts` rather than in the
+script, with `npm run test:campaign` over it, because this is the code that decides
+who receives the code and who silently does not — a rule that drops the wrong people
+does not fail, it just reports a smaller number. The test carries the cases that
+matter, including the 32 registrations an earlier version discarded.
+
 ### What the real export measured
 
 Run against the 2026-09-02 download of the whitelist form:

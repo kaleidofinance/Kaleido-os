@@ -46,6 +46,7 @@ import path from "node:path";
    normalisation ever changes, this script changes with it — a local reimplementation
    would keep passing its own check while mailing a code the gate rejects. */
 import { CODE_LENGTH, normaliseCode } from "../src/lib/beta";
+import { cleanList, type CleanedList } from "../src/lib/campaign/recipients";
 
 /* ── args ──────────────────────────────────────────────────────────────────── */
 
@@ -177,160 +178,29 @@ const HEADERS = {
   "List-Unsubscribe": `<mailto:${REPLY_TO}?subject=unsubscribe>`,
 };
 
-/* ── the list ──────────────────────────────────────────────────────────────── */
+/* ── the list ────────────────────────────────────────────────── */
 
-/** Enough CSV to survive a Google Forms export: quotes, commas, embedded newlines. */
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (quoted) {
-      if (c === '"') {
-        if (text[i + 1] === '"') {
-          cell += '"';
-          i++;
-        } else quoted = false;
-      } else cell += c;
-      continue;
-    }
-    if (c === '"') quoted = true;
-    else if (c === ",") {
-      row.push(cell);
-      cell = "";
-    } else if (c === "\n") {
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-    } else if (c !== "\r") cell += c;
-  }
-  if (cell !== "" || row.length > 0) {
-    row.push(cell);
-    rows.push(row);
-  }
-  return rows.filter((r) => r.some((v) => v.trim() !== ""));
-}
-
-/* Deliberately not RFC 5322 — that grammar accepts addresses no provider will
-   deliver to. This is the shape a real mailbox has, which is what the filter is
-   for: every address that fails it is a guaranteed hard bounce, and hard bounces
-   are what reputation is scored on. */
-const EMAIL_RE = /^[^\s@,;"'<>()[\]\\]+@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
-
-/* Shared inboxes. Several people read them, most did not sign up, and they
-   generate complaints out of all proportion to their number. */
-const ROLE_LOCALS = new Set([
-  "admin",
-  "administrator",
-  "billing",
-  "contact",
-  "help",
-  "info",
-  "mail",
-  "marketing",
-  "noreply",
-  "no-reply",
-  "office",
-  "postmaster",
-  "sales",
-  "security",
-  "support",
-  "team",
-  "webmaster",
-]);
-
-const rows = parseCsv(fs.readFileSync(listPath, "utf8"));
-if (rows.length < 2) {
-  console.error(`${listPath} has no data rows.`);
+/* Every rule about who is and is not on this list lives in src/lib/campaign, with a
+   test, because a rule that drops the wrong people fails quietly here: the run just
+   reports a smaller number. See recipients.test.ts for the cases, including the 32
+   real registrations that an earlier version of this script discarded. */
+let list: CleanedList;
+try {
+  list = cleanList(fs.readFileSync(listPath, "utf8"));
+} catch (err) {
+  console.error(`${listPath}: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(2);
 }
 
-/* Find the email column by header, then fall back to whichever column actually
-   holds the most addresses. Forms name that column after the question, so it is
-   "Email Address" on one export and "What's your email?" on the next — and a
-   header-only match silently mails nobody. */
-const header = rows[0].map((h) => h.trim().toLowerCase());
-let emailCol = header.findIndex((h) => h.includes("email") || h.includes("e-mail"));
-if (emailCol < 0) {
-  let best = -1;
-  for (let c = 0; c < rows[0].length; c++) {
-    const hits = rows
-      .slice(1)
-      .filter((r) => EMAIL_RE.test((r[c] ?? "").trim().toLowerCase())).length;
-    if (hits > best) {
-      best = hits;
-      emailCol = c;
-    }
-  }
-  if (best <= 0) {
-    console.error(`No column in ${listPath} looks like email addresses.`);
-    process.exit(2);
-  }
-  console.log(`No "email" header — using column ${emailCol} ("${rows[0][emailCol]}").`);
-}
+const { recipients, stats } = list;
 
-const stats = {
-  rows: rows.length - 1,
-  invalid: 0,
-  role: 0,
-  duplicate: 0,
-  recovered: 0,
-  ambiguous: 0,
-};
-const seen = new Set<string>();
-const recipients: string[] = [];
-
-for (const r of rows.slice(1)) {
-  let address = (r[emailCol] ?? "").trim().toLowerCase();
-
-  /* If the email column does not hold an address, look for one elsewhere in the
-     same row before giving up on the person.
-   *
-   * This is not defensive coding, it is a measured property of the real export: 32
-   * of 3,165 registrations put their address in the form's "Username" field and
-   * something else — "yes", "ok", a wallet address — in the email box. The two
-   * questions sit next to each other and the first one is asked first, so people
-   * answered it with the thing they were about to be asked for. Every one of those
-   * 32 rows has a valid address one column over, and the public promise was that
-   * every registrant receives the code. Dropping 1% of the list to a form-layout
-   * confusion is a worse error than reading the row properly.
-   *
-   * Only a cell that is ENTIRELY an address counts, so a free-text answer that
-   * merely mentions one cannot be mistaken for the registrant's own. If a row
-   * offers two different addresses there is no way to tell which is theirs, so it
-   * is reported rather than guessed at. */
-  if (!EMAIL_RE.test(address)) {
-    const elsewhere = [
-      ...new Set(
-        r.map((cell) => cell.trim().toLowerCase()).filter((cell) => EMAIL_RE.test(cell)),
-      ),
-    ];
-    if (elsewhere.length === 1) {
-      address = elsewhere[0];
-      stats.recovered++;
-    } else {
-      if (elsewhere.length > 1) stats.ambiguous++;
-      stats.invalid++;
-      continue;
-    }
-  }
-
-  if (ROLE_LOCALS.has(address.slice(0, address.indexOf("@")))) {
-    stats.role++;
-    continue;
-  }
-  /* After recovery, deliberately — a recovered address can duplicate one already
-     collected from another row, and that is the case this catches. */
-  if (seen.has(address)) {
-    stats.duplicate++;
-    continue;
-  }
-  seen.add(address);
-  recipients.push(address);
+if (list.emailColumnGuessed) {
+  /* No header mentioned email, so the column was inferred from its contents. Worth
+     saying out loud: a wrong guess is the one failure that still produces a
+     plausible-looking list, just of the wrong people. */
+  console.log(
+    `No "email" header — inferred column ${list.emailColumn} ("${list.header[list.emailColumn] ?? ""}") from its contents.`,
+  );
 }
 
 /* ── state ─────────────────────────────────────────────────────────────────── */
@@ -365,7 +235,7 @@ console.log(
     `state       ${statePath}\n` +
     `rows        ${stats.rows}\n` +
     `  recovered ${stats.recovered}${stats.recovered > 0 ? " (address was in another column)" : ""}\n` +
-    `  unusable  ${stats.invalid}${stats.ambiguous > 0 ? ` (${stats.ambiguous} offered two addresses)` : ""}\n` +
+    `  unusable  ${stats.unusable}${stats.ambiguous > 0 ? ` (${stats.ambiguous} offered two addresses)` : ""}\n` +
     `  role      ${stats.role}\n` +
     `  duplicate ${stats.duplicate}\n` +
     `deliverable ${recipients.length}\n` +
