@@ -60,18 +60,77 @@ Redeploy after setting them — Vercel only picks up new environment variables o
 next build. Confirmed: the running deployment answered 503 with both variables
 already saved, and 200 only after `vercel redeploy`.
 
-## 2. Primary scheduler: cron-job.org
+## 2. The Cloudflare Worker — DEPLOYED AND ARMED, BUT NOT FIRING
 
-Free, needs no repository change and no Vercel plan change, and unlike GitHub
-Actions it actually fires on the interval it advertises.
+`scripts/keeper-cron/` is a Cloudflare Worker deployed as `kaleido-keeper-cron`. It
+is armed and it pushes correctly when invoked. **Cloudflare is not dispatching its
+cron trigger, so as of 2026-09-02 this is a working manual trigger and not yet a
+scheduler.** Read the measurement below before treating the feed as covered.
 
-- **URL** `https://kaleidofi.xyz/api/keeper/push?chainId=46630`
-- **Schedule** every **15 minutes** (`*/15`) — four pushes per hour against a
-  3600s bound, so three consecutive misses still leave the feed fresh.
-- **Method** `POST` (the route accepts both; `GET` exists for Vercel Cron)
-- **Header** `X-Keeper-Secret: <CRON_SECRET>`
+Configuration, all of it in `scripts/keeper-cron/wrangler.toml` so a change to it is
+reviewable:
 
-**Scope it to 46630, and do not point the scheduler at the unscoped URL.** Robinhood
+| Name                 | Kind   | Value                                             |
+| -------------------- | ------ | ------------------------------------------------- |
+| `APP_URL`            | var    | `https://kaleidofi.xyz` — the apex, because `www.` answers 307 and a redirect is not somewhere to send a bearer token |
+| `KEEPER_CHAIN_IDS`   | var    | `46630`                                           |
+| `KEEPER_CRON_SECRET` | secret | the Vercel project's `CRON_SECRET`, byte for byte  |
+
+```bash
+npx wrangler deploy --config scripts/keeper-cron/wrangler.toml
+npx wrangler secret put KEEPER_CRON_SECRET --config scripts/keeper-cron/wrangler.toml
+```
+
+Set the secret by **piping** the value in rather than typing it as an argument, so it
+never lands in shell history. The name has to be `KEEPER_CRON_SECRET`: the Worker
+reads exactly that, and a secret under any other name leaves it unarmed — it will
+then throw on every run with the `wrangler secret put` command in the message.
+
+### What was measured, 2026-09-02
+
+Working, and verified rather than assumed:
+
+- The authenticated manual trigger returns
+  `200 pushed=2 wouldPush=0 failed=0 Robinhood:pushed`, and the push **landed**: the
+  ETH feed advanced to round 15 and its age dropped to 121s against a 3,600s bound.
+  So the code, the secret, the URL and the chain scope are all correct.
+
+Not working:
+
+- **The cron trigger never fires.** `*/15 * * * *` is registered — the schedules API
+  returns it — and yet across the 15:30, 15:45, 16:00 and 16:15 UTC boundaries
+  Cloudflare recorded **zero** invocations, in `workersInvocationsAdaptive` and in
+  `wrangler tail` alike, while the chain sat unchanged. Narrowing the schedule to
+  `* * * * *` produced zero invocations over the following four minutes too. The only
+  invocations on the Worker in that hour were HTTP requests.
+
+That last experiment is what makes this a platform condition rather than a bug here:
+the same deployment that pushes on demand does not push on a schedule, so nothing in
+this repository can be edited to fix it. **It needs the Cloudflare dashboard** —
+Workers → `kaleido-keeper-cron` → Settings → Trigger Events, to confirm the schedule
+is listed there and that the account's Workers plan actually includes cron triggers.
+Until a scheduled invocation is observed, treat section 3 and the GitHub Actions
+keeper as the only things keeping the feed alive, and expect the feed to lapse about
+an hour after the last manual push.
+
+### Design notes worth keeping
+
+The Worker **throws** on any non-200 rather than logging and returning, because a
+thrown `scheduled` handler is what marks the invocation failed in Cloudflare's
+dashboard. A keeper that looks green while the feed goes stale is the exact failure it
+exists to end. It retries once, and only for a timeout or a 5xx — a 401 or a 400 is a
+configuration mistake, and retrying one only doubles the log noise.
+
+It also exposes the same run over HTTP on its `workers.dev` hostname, guarded by the
+same secret, so that "is this deployed and reachable?" can be answered without
+waiting out a cadence. That is deliberate and it is not an open relay: without the
+`Authorization: Bearer` header it answers 401 and does nothing. Per-version preview
+URLs are off, because each one would be another public URL able to spend gas.
+
+To read what it did: `npx wrangler tail kaleido-keeper-cron` for live invocations, or
+the dashboard's Cron Triggers tab for history.
+
+**Scope it to 46630, and do not point any scheduler at the unscoped URL.** Robinhood
 is the only chain with a feed of ours to push, and an unscoped run currently returns
 **500** in production even when it succeeds: chains 97 and 11155111 exhaust their RPC
 retries while discovering they have nothing to do, which counts as `failed: 2`
@@ -81,18 +140,19 @@ Unscoped, a job with failure notifications on would therefore alert on every
 successful run — which teaches you to ignore it, and the alert you then ignore is the
 one that matters. Scoped, the run takes 1.7s instead of 13s.
 
-Use `X-Keeper-Secret` rather than `Authorization: Bearer` here, because some
-pingers reserve the `Authorization` header for their own use. Both are accepted and
-compared with `timingSafeEqual`.
+The route accepts `Authorization: Bearer <secret>` or `X-Keeper-Secret: <secret>` and
+compares either with `timingSafeEqual`. The Worker sends Bearer, because nothing else
+in it claims that header. A third-party pinger should send `X-Keeper-Secret` instead,
+because some of them reserve `Authorization` for their own use.
 
 **Never put the secret in the query string.** The route refuses to read it from
 there on purpose: a secret in a URL lands in access logs, referrer headers and
 browser history.
 
-Turn on failure notifications, and treat the status code as the signal — the route
-answers **200 when nothing failed and 500 when something did**, mirroring the
-hardhat keeper's exit code. "Every feed skipped because the source published
-nothing new" is a **200**: that run succeeded and cost no gas.
+Whatever calls it, turn on failure notifications and treat the status code as the
+signal — the route answers **200 when nothing failed and 500 when something did**,
+mirroring the hardhat keeper's exit code. "Every feed skipped because the source
+published nothing new" is a **200**: that run succeeded and cost no gas.
 
 ## 3. Backup scheduler: Vercel Cron — REQUIRES PRO
 

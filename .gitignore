@@ -53,3 +53,13 @@ aborean-contracts-main
 *.xlsx
 /campaign-list*
 /send-state*.json
+
+# Cloudflare Worker local state, for the two workers in scripts/.
+#
+# .dev.vars is the one that matters: it is the file wrangler's own docs tell you to
+# put secrets in for local runs, it is not covered by the .env* rule above, and this
+# repository is public. .wrangler/ is build cache and local storage — noise at best,
+# and it can contain a copy of whatever a dev run was given.
+.dev.vars
+.dev.vars.*
+.wrangler/
