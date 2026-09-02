@@ -17,10 +17,16 @@
 /**
  * Characters in an access code.
  *
- * Six, and the user's phrasing for it is "6 digit code" — but the code in use
- * is `BETAV2`, which is letters and a digit. So the input accepts A–Z and 0–9
- * and normalises to upper case, and this is a character count rather than a
- * digit count. A numeric-only input would have rejected the real code.
+ * Six, and it was asked for as a "6 digit code" — but the code actually issued is
+ * alphanumeric, so this is a character count and not a digit count, and the input
+ * accepts A–Z alongside 0–9. A numeric-only input would reject the real code;
+ * do not narrow it back to digits on the strength of the phrasing.
+ *
+ * The code itself was quoted here as the illustration for that, and has been
+ * removed. This repository is public, so a code in a comment is readable on GitHub
+ * without even loading the app — which walks past the gate the code exists to be,
+ * and it does so more cheaply than the bundle inlining that the route handler below
+ * is careful to avoid. The value lives in `BETA_ACCESS_CODE` and nowhere else.
  */
 export const CODE_LENGTH = 6;
 
