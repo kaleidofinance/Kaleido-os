@@ -44,6 +44,7 @@
     "verify:faucet": "tsx scripts/verify_faucet_capacity.mts",
     "faucet:drip": "tsx scripts/set_faucet_config.mts drip",
     "faucet:cooldown": "tsx scripts/set_faucet_config.mts cooldown",
+    "campaign:send": "tsx scripts/send_campaign.mts",
     "gen:registry": "node --import tsx scripts/gen-registry.mjs",
     "gen:arc": "node --import tsx scripts/gen-hero-arc.mjs",
     "watch:push": "node --import tsx scripts/push-watcher.mjs",

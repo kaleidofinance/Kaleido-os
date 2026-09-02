@@ -322,6 +322,10 @@ export const UNPUBLISHED: Record<string, string> = {
     "An internal engineering spec. Opens by recording that the runtime is not built, cross-references its own implementation plan throughout, and carries a database schema and a disclosure policy.",
   "docs/interface-inventory.md":
     "An audit of which screens are wired and which are not, including the demo fixtures. Build-state by definition.",
+  "docs/KEEPER_SCHEDULING.md":
+    "An operator runbook for arming an endpoint that spends the keeper's gas: which environment variables authenticate it, which header carries the secret, and the exact interval it must be called on. It also records the measured rate at which our own oracle currently goes stale, and which feed's bound is the tightest. Every one of those is a thing a reader would use to find the protocol priced by a stale feed, and none of it is useful to someone using the app.",
+  "docs/TESTNET_INVITE_CAMPAIGN.md":
+    "The send plan for the testnet access code: how the recipient list is handled, the sending domain's DNS, the warm-up schedule, and the bounce and complaint rates at which the send stops. Publishing it would hand a reader the campaign's timing and its exact From address ahead of the mail itself, which is the one thing that makes the anti-phishing announcement work. It also states plainly that the shared code is expected to go public within a day and that the faucet is the exposed surface afterwards — true, and not an invitation to extend to everyone.",
   "docs/CLAUDE_IMPORTS/kaleido-os-main-5c-4980.md":
     "An AI tooling artifact, not a document.",
   "docs/guides/STABLECOIN_INTEGRATION.md":

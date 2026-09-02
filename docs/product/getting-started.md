@@ -26,6 +26,11 @@ than an omission: claiming from the faucet is itself a transaction, so a wallet 
 zero gas cannot pay for the claim that would give it gas. Get a small amount from
 the network's public faucet first — that is the one step that happens off Kaleido.
 
+You do not have to go looking for it. The `/faucet` page names the operator that
+runs the public faucet for whichever chain you are on and links straight to it, and
+it says so more loudly once it can see your wallet is at zero. Come back afterwards
+and everything else on the page is claimable in one go.
+
 ## Claim everything else from the faucet
 
 With gas in hand, the faucet page at `/faucet` hands out the tokens the protocol
