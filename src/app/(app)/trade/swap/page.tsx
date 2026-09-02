@@ -145,6 +145,16 @@ export default function SwapPage() {
   const [amountIn, setAmountIn] = useState("500");
   const [amountOut, setAmountOut] = useState("");
   const [quoting, setQuoting] = useState(false);
+  /**
+   * The quote was asked for and came back with no price.
+   *
+   * Distinct from `!amountOut`, which is also true before the first quote and
+   * between keystrokes. Without it the CTA read "Review swap" for a pair it had
+   * failed to price — enabled, because `amountOut` held the string `"0"` and
+   * `"0"` is truthy. The button is the control that sends a transaction, so it is
+   * the one place that has to say what is actually known.
+   */
+  const [noRoute, setNoRoute] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
   const [slippageBps, setSlippageBps] = useState(AUTO_SLIPPAGE_BPS);
@@ -288,6 +298,7 @@ export default function SwapPage() {
       tokenIn.address === tokenOut.address
     ) {
       setAmountOut("");
+      setNoRoute(false);
       return;
     }
     let cancelled = false;
@@ -302,9 +313,22 @@ export default function SwapPage() {
           tokenIn.decimals,
           tokenOut.decimals,
         );
-        if (!cancelled) setAmountOut(out ? String(out) : "");
+        /* A quote is a positive number or it is nothing. `getV3AmountOut` returns
+           null when it could not ask, and the numeric test covers the rest: a
+           pool cannot fill a nonzero input with zero output, so a zero here is a
+           failure wearing a number's clothes — which is exactly what this page
+           used to spend as `amountOutMin`. */
+        const n = Number(out);
+        const quoted = out !== null && Number.isFinite(n) && n > 0;
+        if (!cancelled) {
+          setAmountOut(quoted ? String(out) : "");
+          setNoRoute(!quoted);
+        }
       } catch {
-        if (!cancelled) setAmountOut("");
+        if (!cancelled) {
+          setAmountOut("");
+          setNoRoute(true);
+        }
       } finally {
         if (!cancelled) setQuoting(false);
       }
@@ -399,9 +423,14 @@ export default function SwapPage() {
   // No router means this chain has no V3 deployment: the plan is empty and the
   // CTA already reads "Connect wallet" / "Select a token" rather than offering a
   // swap that would route to a dead address.
+  //
+  // `minOut` is required for the same reason, and it is not belt-and-braces: this
+  // read `amountOutMin: minOut || "0"`, so an unpriced pair produced a plan with a
+  // zero minimum — a swap that accepts any output at all, which is the one term
+  // protecting the trade. Nothing signable is built without a quote to bound it.
   const plan: Intent[] = useMemo(
     () =>
-      !tokenIn || !tokenOut || !v3Router
+      !tokenIn || !tokenOut || !v3Router || !minOut
         ? []
         : [
             {
@@ -418,7 +447,7 @@ export default function SwapPage() {
               tokenOut: tokenOut.address,
               spender: v3Router,
               amountIn: amountIn || "0",
-              amountOutMin: minOut || "0",
+              amountOutMin: minOut,
               fee: DEFAULT_FEE,
               decimalsIn: tokenIn.decimals,
               decimalsOut: tokenOut.decimals,
@@ -434,6 +463,7 @@ export default function SwapPage() {
     setReviewing(false);
     setAmountIn("");
     setAmountOut("");
+    setNoRoute(false);
   };
 
   const ctaLabel = !isConnected
@@ -446,7 +476,9 @@ export default function SwapPage() {
           ? `Insufficient ${tokenIn.symbol}`
           : quoting
             ? "Fetching quote…"
-            : "Review swap";
+            : noRoute
+              ? `No route for ${tokenIn.symbol} → ${tokenOut.symbol}`
+              : "Review swap";
 
   const ctaDisabled =
     !isConnected ||
