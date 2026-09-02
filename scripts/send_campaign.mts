@@ -273,20 +273,58 @@ if (emailCol < 0) {
   console.log(`No "email" header — using column ${emailCol} ("${rows[0][emailCol]}").`);
 }
 
-const stats = { rows: rows.length - 1, invalid: 0, role: 0, duplicate: 0 };
+const stats = {
+  rows: rows.length - 1,
+  invalid: 0,
+  role: 0,
+  duplicate: 0,
+  recovered: 0,
+  ambiguous: 0,
+};
 const seen = new Set<string>();
 const recipients: string[] = [];
 
 for (const r of rows.slice(1)) {
-  const address = (r[emailCol] ?? "").trim().toLowerCase();
+  let address = (r[emailCol] ?? "").trim().toLowerCase();
+
+  /* If the email column does not hold an address, look for one elsewhere in the
+     same row before giving up on the person.
+   *
+   * This is not defensive coding, it is a measured property of the real export: 32
+   * of 3,165 registrations put their address in the form's "Username" field and
+   * something else — "yes", "ok", a wallet address — in the email box. The two
+   * questions sit next to each other and the first one is asked first, so people
+   * answered it with the thing they were about to be asked for. Every one of those
+   * 32 rows has a valid address one column over, and the public promise was that
+   * every registrant receives the code. Dropping 1% of the list to a form-layout
+   * confusion is a worse error than reading the row properly.
+   *
+   * Only a cell that is ENTIRELY an address counts, so a free-text answer that
+   * merely mentions one cannot be mistaken for the registrant's own. If a row
+   * offers two different addresses there is no way to tell which is theirs, so it
+   * is reported rather than guessed at. */
   if (!EMAIL_RE.test(address)) {
-    stats.invalid++;
-    continue;
+    const elsewhere = [
+      ...new Set(
+        r.map((cell) => cell.trim().toLowerCase()).filter((cell) => EMAIL_RE.test(cell)),
+      ),
+    ];
+    if (elsewhere.length === 1) {
+      address = elsewhere[0];
+      stats.recovered++;
+    } else {
+      if (elsewhere.length > 1) stats.ambiguous++;
+      stats.invalid++;
+      continue;
+    }
   }
+
   if (ROLE_LOCALS.has(address.slice(0, address.indexOf("@")))) {
     stats.role++;
     continue;
   }
+  /* After recovery, deliberately — a recovered address can duplicate one already
+     collected from another row, and that is the case this catches. */
   if (seen.has(address)) {
     stats.duplicate++;
     continue;
@@ -326,7 +364,8 @@ console.log(
     `list        ${listPath}\n` +
     `state       ${statePath}\n` +
     `rows        ${stats.rows}\n` +
-    `  invalid   ${stats.invalid}\n` +
+    `  recovered ${stats.recovered}${stats.recovered > 0 ? " (address was in another column)" : ""}\n` +
+    `  unusable  ${stats.invalid}${stats.ambiguous > 0 ? ` (${stats.ambiguous} offered two addresses)` : ""}\n` +
     `  role      ${stats.role}\n` +
     `  duplicate ${stats.duplicate}\n` +
     `deliverable ${recipients.length}\n` +

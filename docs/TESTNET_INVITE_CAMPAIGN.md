@@ -57,6 +57,50 @@ named that column after the question instead, falls back to whichever column
 actually contains the most addresses. Check the reported count against what the form
 says it collected; a much smaller number means it picked the wrong column.
 
+### What the real export measured
+
+Run against the 2026-09-02 download of the whitelist form:
+
+| | |
+| --- | --- |
+| Registrations | 3,165 |
+| Address found in another column | 32 |
+| Unusable | **0** |
+| Role addresses | 0 |
+| Duplicates | 88 |
+| **Deliverable** | **3,077** |
+
+**Nobody on the form is unreachable.** That is worth stating because the first pass
+said 32 people were: they had put their address in the form's *Username* field and
+answered the email question with "yes", "ok", or a wallet address. The two questions
+are adjacent and Username is asked first, so they answered it with the thing they
+were about to be asked for. `campaign:send` now reads the rest of the row before
+giving up on anyone — only cells that are *entirely* an address, and only when the
+row offers exactly one, so a free-text answer mentioning some other address cannot
+be mistaken for the registrant's.
+
+Two consequences worth knowing:
+
+- **99.8% of the list is `gmail.com`** — 3,072 of 3,077. Deliverability here is not a
+  general question, it is a question about one provider. Gmail is the strictest of
+  them about authentication and about volume from a domain with no history, so DKIM
+  alignment and the warm-up below are the campaign, not precautions around it.
+- **About six addresses are typo'd but syntactically valid** — misspellings of
+  `gmail.com` that a person can see and a regex cannot, plus four on one near-miss of
+  `hotmail.com`. They are left alone deliberately: correcting an address means mailing
+  someone who did not enter it, and `gmail.co` and `mail.com` are both real domains,
+  so the rule that fixes the obvious ones also breaks the legitimate ones. Six hard
+  bounces in 3,077 is 0.2%, well under the 5% that stops the send.
+
+There is also a cluster worth a look before anything is *paid out*, though it does
+not affect the email: four unusual shared domains account for 24 registrations
+between them, in runs of 8, 7, 5 and 4. Distinct addresses on a domain nobody else
+uses is what one person entering repeatedly looks like, and the form promised
+"rewards & whitelisting". Mailing them costs nothing; rewarding them as 24 separate
+people would. The domains are not named here because this repository is public and
+the pattern is a suspicion rather than a finding — regenerate it from the export
+with a group-by on the domain.
+
 ## 2. Sending identity
 
 The domain `kaleidofi.xyz` is already owned, so **nothing needs registering.** What
