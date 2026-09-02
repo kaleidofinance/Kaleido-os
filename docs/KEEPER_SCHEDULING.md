@@ -60,12 +60,12 @@ Redeploy after setting them — Vercel only picks up new environment variables o
 next build. Confirmed: the running deployment answered 503 with both variables
 already saved, and 200 only after `vercel redeploy`.
 
-## 2. The Cloudflare Worker — DEPLOYED AND ARMED, BUT NOT FIRING
+## 2. The Cloudflare Worker — DEPLOYED, ARMED, AND FIRING
 
-`scripts/keeper-cron/` is a Cloudflare Worker deployed as `kaleido-keeper-cron`. It
-is armed and it pushes correctly when invoked. **Cloudflare is not dispatching its
-cron trigger, so as of 2026-09-02 this is a working manual trigger and not yet a
-scheduler.** Read the measurement below before treating the feed as covered.
+`scripts/keeper-cron/` is a Cloudflare Worker deployed as `kaleido-keeper-cron`. It is
+armed, it pushes correctly when invoked, and **as of 2026-09-02 23:39 UTC it is also
+firing on its own schedule** — see the measurement below, which supersedes an earlier
+reading in this file that concluded it never fired.
 
 Configuration, all of it in `scripts/keeper-cron/wrangler.toml` so a change to it is
 reviewable:
@@ -86,6 +86,13 @@ never lands in shell history. The name has to be `KEEPER_CRON_SECRET`: the Worke
 reads exactly that, and a secret under any other name leaves it unarmed — it will
 then throw on every run with the `wrangler secret put` command in the message.
 
+Note that once set, **the live value exists only inside Cloudflare and Vercel, and
+neither will read a secret back.** So the two halves can only be compared by behaviour —
+the route answers **503 when it is unarmed and 401 when it is armed but the offered
+secret is wrong**, which makes a 401 a stale-secret smell before it is a broken-route
+one. Re-arming is therefore always: generate a new value, set it in **both** places, and
+redeploy production so the new value is baked in.
+
 ### What was measured, 2026-09-02
 
 Working, and verified rather than assumed:
@@ -95,23 +102,34 @@ Working, and verified rather than assumed:
   ETH feed advanced to round 15 and its age dropped to 121s against a 3,600s bound.
   So the code, the secret, the URL and the chain scope are all correct.
 
-Not working:
+Also working, measured at **23:39 UTC** and the reason this section's verdict changed:
 
-- **The cron trigger never fires.** `*/15 * * * *` is registered — the schedules API
-  returns it — and yet across the 15:30, 15:45, 16:00 and 16:15 UTC boundaries
-  Cloudflare recorded **zero** invocations, in `workersInvocationsAdaptive` and in
-  `wrangler tail` alike, while the chain sat unchanged. Narrowing the schedule to
-  `* * * * *` produced zero invocations over the following four minutes too. The only
-  invocations on the Worker in that hour were HTTP requests.
+- **The cron fires.** Two consecutive pushes landed **15m15s apart** — 23:13:02 and
+  23:28:17, each derived by subtracting the feed's `ageSeconds` from the sample time —
+  with **no `price-keeper` run in that window** (the last one was 22:41). Nothing else
+  can call the route, so Cloudflare is dispatching `*/15`. ETH was at **640s against
+  its 3,600s bound**, where before it had been sawtoothing up to 4,805s.
 
-That last experiment is what makes this a platform condition rather than a bug here:
-the same deployment that pushes on demand does not push on a schedule, so nothing in
-this repository can be edited to fix it. **It needs the Cloudflare dashboard** —
-Workers → `kaleido-keeper-cron` → Settings → Trigger Events, to confirm the schedule
-is listed there and that the account's Workers plan actually includes cron triggers.
-Until a scheduled invocation is observed, treat section 3 and the GitHub Actions
-keeper as the only things keeping the feed alive, and expect the feed to lapse about
-an hour after the last manual push.
+- **The fires land on a phase offset, not on the quarter hours**: :13, :28, :43, :58.
+  This matters more than it looks. **Measure a cron by the on-chain age, never by
+  watching for an invocation at the boundary** — a check at :15 or :30 sees nothing and
+  reads as a dead scheduler.
+
+  The cheapest way to measure needs no `CRON_SECRET` and signs nothing: load `.env` for
+  `KEEPER_PRIVATE_KEY`, call
+  `pushSelfHostedFeeds({ chainIds: [46630], pushAll: true, dryRun: true })`, and read
+  `ageSeconds`. Two samples a few minutes apart date the last push and give the cadence.
+
+An earlier reading in this file said the opposite, and it is kept here because the
+method is still worth having: across the 15:30, 15:45, 16:00 and 16:15 UTC boundaries
+Cloudflare reported **zero** invocations in both `workersInvocationsAdaptive` and
+`wrangler tail`, and narrowing the schedule to `* * * * *` reported zero over the
+following four minutes too — which was read as a platform condition needing the
+dashboard (Workers → `kaleido-keeper-cron` → Settings → Trigger Events, and whether the
+plan includes cron triggers). The phase offset above, plus analytics ingest lag, would
+each produce that same negative reading from a working scheduler; a dashboard change in
+between would explain it too. **Which of those it was is not established**, so the
+lesson to carry forward is the measurement method, not the diagnosis.
 
 ### Design notes worth keeping
 
