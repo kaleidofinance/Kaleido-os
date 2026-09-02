@@ -1,0 +1,27 @@
+# Cloudflare Worker config for the AgentRouter relay.
+#
+# kincad deployed the same worker through the dashboard and left no config on
+# disk, which meant the deployment could not be reproduced or reviewed. This file
+# exists so Kaleido's relay can be redeployed from the repo:
+#
+#   npx wrangler deploy --config scripts/relay/wrangler.toml
+#
+# The path-prefix secret is NOT here — it is a secret, set once with:
+#
+#   npx wrangler secret put RELAY_PATH_PREFIX --config scripts/relay/wrangler.toml
+#
+# See agentrouter-worker.js for why the relay exists and how the two
+# AGENTROUTER_*_BASE_URL vars must be shaped.
+
+name = "kaleido-agentrouter-relay"
+main = "agentrouter-worker.js"
+compatibility_date = "2026-09-01"
+
+# No routes and no custom domain: the workers.dev hostname is the endpoint, and
+# the prefix secret is what keeps it from being an open proxy onto a paid gateway.
+workers_dev = true
+
+# Observability on, because the whole point of this relay is that a failure here
+# is otherwise invisible from the app — the app only sees a non-JSON body.
+[observability]
+enabled = true
