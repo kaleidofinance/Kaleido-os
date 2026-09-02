@@ -81,10 +81,11 @@ be mistaken for the registrant's.
 
 Two consequences worth knowing:
 
-- **99.8% of the list is `gmail.com`** — 3,072 of 3,077. Deliverability here is not a
-  general question, it is a question about one provider. Gmail is the strictest of
-  them about authentication and about volume from a domain with no history, so DKIM
-  alignment and the warm-up below are the campaign, not precautions around it.
+- **98.1% of the list is `gmail.com`** — 3,017 of 3,077, across 26 distinct domains in
+  total. Deliverability here is not a general question, it is a question about one
+  provider. Gmail is the strictest of them about authentication and about volume from
+  a domain with no history, so DKIM alignment and the warm-up below are the campaign,
+  not precautions around it.
 - **About six addresses are typo'd but syntactically valid** — misspellings of
   `gmail.com` that a person can see and a regex cannot, plus four on one near-miss of
   `hotmail.com`. They are left alone deliberately: correcting an address means mailing
