@@ -26,11 +26,20 @@ fixes this; the fix is to let something more punctual call the same work over HT
 Note the bound is **per feed**, read with `getFeedMaxAge`. Do not reason from the
 global 300s default — it is not what these feeds are configured with.
 
-## 1. Arm the route (required, no scheduler works without this)
+## 1. Arm the route — DONE 2026-09-02
 
-Both of these must exist in Vercel → Project → Settings → Environment Variables →
-**Production**. Neither is set today, which is why the route currently answers 503
-to everything.
+Both of these now exist in Vercel → Project → Settings → Environment Variables →
+**Production**, and production has been redeployed, so the route no longer answers
+503. Verified end to end the same day: a scoped dry run returns 200 with
+`wouldPush > 0`, a wrong secret returns 401, no secret returns 401, and a real push
+of both Robinhood feeds landed and dropped the ETH feed's age from 4,805s to 157s
+against its 3,600s bound.
+
+Keep the values. Rotating `KEEPER_PRIVATE_KEY` is not a matter of generating a new
+one: `0xB37d079F6AccE50332043cf20e1f4FFD363799aE` is the address named in each
+feed's `isPusher` and the address holding the gas, so a fresh key would authenticate
+and then revert. Rotating means `scripts/grant-pusher.js` and funding, in that
+order, before the swap.
 
 | Variable             | Why                                                                                                                                                                                                              |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -48,18 +57,29 @@ openssl rand -hex 32
 secret; it needs to be copied into Vercel by hand for the same reason.
 
 Redeploy after setting them — Vercel only picks up new environment variables on the
-next build.
+next build. Confirmed: the running deployment answered 503 with both variables
+already saved, and 200 only after `vercel redeploy`.
 
 ## 2. Primary scheduler: cron-job.org
 
 Free, needs no repository change and no Vercel plan change, and unlike GitHub
 Actions it actually fires on the interval it advertises.
 
-- **URL** `https://kaleidofi.xyz/api/keeper/push`
+- **URL** `https://kaleidofi.xyz/api/keeper/push?chainId=46630`
 - **Schedule** every **15 minutes** (`*/15`) — four pushes per hour against a
   3600s bound, so three consecutive misses still leave the feed fresh.
 - **Method** `POST` (the route accepts both; `GET` exists for Vercel Cron)
 - **Header** `X-Keeper-Secret: <CRON_SECRET>`
+
+**Scope it to 46630, and do not point the scheduler at the unscoped URL.** Robinhood
+is the only chain with a feed of ours to push, and an unscoped run currently returns
+**500** in production even when it succeeds: chains 97 and 11155111 exhaust their RPC
+retries while discovering they have nothing to do, which counts as `failed: 2`
+alongside `wouldPush: 2`. The same code returns `failed: 0` locally, so it is Vercel's
+egress being rate-limited by those public RPCs rather than anything the keeper did.
+Unscoped, a job with failure notifications on would therefore alert on every
+successful run — which teaches you to ignore it, and the alert you then ignore is the
+one that matters. Scoped, the run takes 1.7s instead of 13s.
 
 Use `X-Keeper-Secret` rather than `Authorization: Bearer` here, because some
 pingers reserve the `Authorization` header for their own use. Both are accepted and
@@ -109,18 +129,23 @@ Point anything new at `?dryRun=1` first. It performs every read and checks every
 guard, and sends no transaction:
 
 ```bash
-curl -sS -X POST -H "X-Keeper-Secret: $CRON_SECRET" "https://kaleidofi.xyz/api/keeper/push?dryRun=1"
+curl -sS -X POST -H "X-Keeper-Secret: $CRON_SECRET" "https://kaleidofi.xyz/api/keeper/push?dryRun=1&chainId=46630"
 ```
 
 Reading the response:
 
 - `wouldPush > 0` — armed, authenticated, and it can see work to do. This is the
-  success condition for a dry run.
+  success condition for a dry run. Note it is also the *steady state*: pushes are
+  gated on the source having a newer observation, not on the feed nearing its bound,
+  so a dry run seconds after a successful push still reports `wouldPush: 2`. Age, not
+  `wouldPush`, is what tells you whether a feed is stale.
 - `503` — `CRON_SECRET` is not set in this environment. Step 1 is incomplete.
 - `401` — the secret does not match. No further detail is returned by design.
 - A chain reporting `status: "not-self-hosted"` with `skipped` feeds is **correct**,
   not a failure: that chain uses a third-party aggregator and has no feed of ours.
-  An unscoped run therefore returns 200 with only Robinhood transacting.
+  An unscoped run therefore returns 200 with only Robinhood transacting — except when
+  a third-party chain's RPC throttles the read that establishes it has nothing to do,
+  which is what section 2 is about.
 
 Then drop `dryRun` and confirm a real push lands. The durable check is on chain, not
 in this response — read the diamond's `getUsdValue` and compare age against that
