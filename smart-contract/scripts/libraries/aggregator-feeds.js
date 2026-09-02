@@ -321,26 +321,52 @@ const AGGREGATORS = {
   },
 
   /* ── BSC Testnet ─────────────────────────────────────────────────────────
-   * The crypto feeds are markedly fresher than Sepolia's — BNB/ETH/BTC measured
-   * 355s (2026-08-21) to ~1,000-1,300s (2026-08-23), still over the 300s global
-   * default so each needs the 1800 override, which is the kind of margin that
-   * makes a protocol look broken intermittently rather than plainly. The two
-   * stablecoin feeds were added 2026-08-23 to make this a Base-equivalent market
-   * rather than a BNB-only one (a BNB/WBNB-only market has nothing to borrow, so
-   * /borrow and kfUSD would be dead here); they are the usual 24h-class publishers
-   * — USDC 55,684s and USDT 54,558s old in one block — and take the 90000 ceiling.
-   * Same pegged/volatile split as every other chain in this file. */
+   * The crypto feeds looked markedly fresher than Sepolia's — BNB/ETH/BTC measured
+   * 355s (2026-08-21) to ~1,000-1,300s (2026-08-23) — and that reading was an
+   * artefact of when we happened to look. A single age tells you how long ago the
+   * last round landed; it cannot tell you how long the gaps are, and on this chain
+   * the gaps are long: BNB/USD's median is 60.0m and BTC/USD's max is 116.5m
+   * (measured 2026-09-01 by walking getRoundData backwards, per feed below). The
+   * 1800 override those sightings produced was therefore below the publisher's own
+   * cadence, and BNB — the chain's native currency and its main collateral — spent
+   * most of most hours reverting Protocol__StalePrice while every component was
+   * working correctly. BNB is now 5400, matching Sepolia for the same publisher;
+   * ETH/WETH/BTC keep 1800 because no token is registered against them, with the
+   * measurement recorded on each so nobody registers one against a bound already
+   * known to fail. The general lesson is worth keeping: an age is one sample of a
+   * distribution, and a bound is a claim about the distribution. Walk the rounds.
+   *
+   * The two stablecoin feeds were added 2026-08-23 to make this a Base-equivalent
+   * market rather than a BNB-only one (a BNB/WBNB-only market has nothing to
+   * borrow, so /borrow and kfUSD would be dead here); they are the usual 24h-class
+   * publishers — USDC 55,684s and USDT 54,558s old in one block — and take the
+   * 90000 ceiling. Same pegged/volatile split as every other chain in this file. */
   97: {
     BNB: {
       aggregator: "0x2514895c72f50D8bd4B4F9b1110F0D6bD2c97526",
       provider: "chainlink",
       decimals: 8,
       observedAgeSeconds: null,
-      maxAge: 1800,
+      maxAge: 5400,
       maxAgeBasis:
-        "BNB/USD is the chain's native-currency feed and the most actively " +
-        "published on BSC Testnet. 1800 is the sibling ETH/USD observation (355s) " +
-        "with 5x slack; not derived from a documented heartbeat.",
+        "Was 1800, derived from a single 355s sighting of the sibling ETH/USD with " +
+        "5x slack, and that derivation was wrong in a way one sighting cannot " +
+        "show. Walked the round history instead on 2026-09-01 via " +
+        "getRoundData(roundId-n): the gaps between consecutive answers are 60.5m " +
+        "x5, 60.0m x2, 44.0m, 42.0m, 33.5m and 9.6m — median 60.0m, and TEN OF " +
+        "ELEVEN over the 1800s bound. So BNB and WBNB, which share this id and are " +
+        "two of the four registered collateral tokens on this chain, reverted " +
+        "Protocol__StalePrice for most of most hours with nothing wrong anywhere: " +
+        "the publisher was simply slower than the bound. 5400 is Sepolia's number " +
+        "for the same publisher on the same policy, and covers the observed 60.5m " +
+        "worst gap with ~49% headroom.\n\n" +
+        "Loosening a volatile feed's bound is the move setFeedMaxAge's own " +
+        "docstring warns against, and the warning does not apply here. It is about " +
+        "silencing a feed we could have kept fresh — the Robinhood ETH case, where " +
+        "we are the publisher and a stale price is our keeper's failure. Nobody " +
+        "pays for a faster Chainlink round on BSC Testnet, so this price is the " +
+        "freshest that exists and refusing it protects no one: it takes the " +
+        "chain's main collateral offline and prices nothing more accurately.",
       descriptionHint: "BNB / USD",
     },
     ETH: {
@@ -349,7 +375,12 @@ const AGGREGATORS = {
       decimals: 8,
       observedAgeSeconds: 355,
       maxAge: 1800,
-      maxAgeBasis: "Observed 355s, x5 slack. Not a documented heartbeat.",
+      maxAgeBasis:
+        "Observed 355s, x5 slack. Not a documented heartbeat — and that is the " +
+        "same derivation that proved wrong on BNB above, on this chain and from " +
+        "this publisher, so treat 1800 here as unverified rather than as policy. " +
+        "The round history has not been walked for this feed because no token is " +
+        "registered against it. Walk it before registering one.",
       descriptionHint: "ETH / USD",
     },
     WETH: {
@@ -358,7 +389,7 @@ const AGGREGATORS = {
       decimals: 8,
       observedAgeSeconds: 355,
       maxAge: 1800,
-      maxAgeBasis: "Same contract as ETH on this chain.",
+      maxAgeBasis: "Same contract as ETH on this chain — and the same caveat.",
       descriptionHint: "ETH / USD",
     },
     BTC: {
@@ -367,7 +398,15 @@ const AGGREGATORS = {
       decimals: 8,
       observedAgeSeconds: null,
       maxAge: 1800,
-      maxAgeBasis: "Same publisher policy as BSC Testnet ETH/USD.",
+      maxAgeBasis:
+        "1800 IS KNOWN TO BE UNMEETABLE ON THIS FEED, and is left in place only " +
+        "because no token is registered against it, so it currently gates nothing. " +
+        "The same round-history walk that corrected BNB above measured this one on " +
+        "2026-09-01: max gap 116.5m, median 49.0m, 7 of 11 gaps over 1800s. Note " +
+        "that BNB's new 5400 would not cover it either — 116.5m is 6,990s. Anyone " +
+        "registering WBTC here must pick a bound from that history first (7200 " +
+        "covers the observed max by 3%, which is thin; 9000 is the defensible " +
+        "number) and must not assume BNB's applies.",
       descriptionHint: "BTC / USD",
     },
     USDC: {
