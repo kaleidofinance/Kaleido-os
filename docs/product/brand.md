@@ -97,6 +97,7 @@ Corners are 12px on inputs, 16px on buttons and inner wells, 20px on cards and t
 | --- | --- |
 | `public/newklogo2.png` | The source art. Every rendering of the mark draws this file |
 | `public/kld.png` | A 300px crop of the same art, used as the KLD token icon |
+| `public/email-logo.png` | A 192px square crop of the same art, for email, where CSS cannot crop. Built by `scripts/crop-email-logo.mjs` |
 | `public/icon-192.png`, `public/icon-512.png` | Installed-app icons, both `any maskable` |
 | `public/apple-icon.png` | The iOS home-screen icon |
 | `public/opengraph-image.png` | The link preview |

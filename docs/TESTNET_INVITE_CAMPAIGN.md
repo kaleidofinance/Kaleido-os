@@ -492,13 +492,21 @@ Notes on the wording, each of which is load-bearing:
 
 These are two different things and only one of them is ours to fix in the email.
 
-**In the body** the HTML part opens with `https://kaleidofi.xyz/icon-192.png` at 48px.
-Note it is the **app icon, not `/newklogo2.png`** — the file the nav and marketing header
-draw is a 500×500 plate with a photographic dark background and the mark small and
-off-centre, which the app crops with CSS. An email cannot crop, so at 48px that file is a
-dark rectangle with something illegible in it. `/icon-192.png` is the same mark squared
-off and filling the frame, on a near-black ground that disappears into the panel, at 23KB
-against 140KB. Both serve 200 from the marketing host; only one of them is a logo.
+**In the body** the HTML part opens with `https://kaleidofi.xyz/email-logo.png` at 48px.
+That file is `/newklogo2.png` — the mark the nav and the marketing header draw — **with the
+crop already applied**. The source is a 500×500 plate: photographic dark-green background,
+mark small and off-centre, which the app handles by cropping in CSS. An email cannot crop
+(`background-position` on an `<img>` does nothing in Gmail), so the plate sent whole reads
+at 48px as a grey-green swatch with a small white glyph in it, and the green fights the
+near-black panel below. `scripts/crop-email-logo.mjs` finds the mark's bounding box —
+measured at (190,130)–(318,348) — squares it around its centre with 12% breathing room and
+resamples to 192px, which keeps a 48px slot sharp at 3×. 33KB against 140KB.
+
+Re-run that script and commit its output if the plate ever changes; it refuses rather than
+ship a no-op crop if its brightness threshold stops separating the mark from the plate. The
+earlier version of this email sent `/icon-192.png` instead, which is legible for the same
+reason — it is the mark squared off — but it is the *installed-app icon*, so the email and
+the brand would drift apart the next time one of them was redrawn.
 
 It is decorative on purpose and the text part has no equivalent. Most clients block
 remote images until the reader allows them, so anything the message depends on — the
