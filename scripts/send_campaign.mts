@@ -47,6 +47,10 @@ import path from "node:path";
    would keep passing its own check while mailing a code the gate rejects. */
 import { CODE_LENGTH, normaliseCode } from "../src/lib/beta";
 import { cleanList, type CleanedList } from "../src/lib/campaign/recipients";
+/* Derived from the message as well as the recipients, and tested. A key naming
+   only the addresses made an edited resend indistinguishable from a duplicate,
+   and the provider refuses that — see idempotency.ts for the failure it caused. */
+import { idempotencyKey, type MessageParts } from "../src/lib/campaign/idempotency";
 
 /* ── args ──────────────────────────────────────────────────────────────────── */
 
@@ -183,6 +187,18 @@ const HEADERS = {
   "List-Unsubscribe": `<mailto:${REPLY_TO}?subject=unsubscribe>`,
 };
 
+/* One description of the message, used both to build each request and to identify
+   it. Keeping it in one place is the point: if the copy above is edited and this
+   is not, the key stops tracking the message and the provider starts refusing
+   resends again. */
+const MESSAGE: MessageParts = {
+  from: FROM,
+  replyTo: REPLY_TO,
+  subject: SUBJECT,
+  text: TEXT,
+  html: HTML,
+};
+
 /* ── the list ────────────────────────────────────────────────── */
 
 /* Every rule about who is and is not on this list lives in src/lib/campaign, with a
@@ -285,12 +301,12 @@ let aborted = false;
 for (let i = 0; i < batch.length && !aborted; i += CHUNK) {
   const chunk = batch.slice(i, i + CHUNK);
   const payload = chunk.map((to) => ({
-    from: FROM,
+    from: MESSAGE.from,
     to: [to],
-    reply_to: REPLY_TO,
-    subject: SUBJECT,
-    text: TEXT,
-    html: HTML,
+    reply_to: MESSAGE.replyTo,
+    subject: MESSAGE.subject,
+    text: MESSAGE.text,
+    html: MESSAGE.html,
     headers: HEADERS,
   }));
 
@@ -303,8 +319,10 @@ for (let i = 0; i < batch.length && !aborted; i += CHUNK) {
       headers: {
         authorization: `Bearer ${API_KEY}`,
         "content-type": "application/json",
-        /* Makes a retried chunk safe at the provider rather than only here. */
-        "idempotency-key": `kaleido-invite-${chunk[0]}-${chunk.length}`,
+        /* Makes a retried chunk safe at the provider rather than only here, and
+           covers the message as well as the addresses so that a resend after a
+           copy edit is a new request instead of a rejected duplicate. */
+        "idempotency-key": idempotencyKey(MESSAGE, chunk),
       },
       body: JSON.stringify(payload),
     });
@@ -323,6 +341,15 @@ for (let i = 0; i < batch.length && !aborted; i += CHUNK) {
        delivery, and writing these down as failures would let a later run treat a
        network blip as a decision. */
     console.log(`  chunk ${i / CHUNK + 1}: could not be submitted — ${transportError}`);
+    if (/idempotenc/i.test(transportError)) {
+      /* Should be unreachable now that the key covers the message body. Kept
+         because if it does fire, re-running will fail identically until the cause
+         is fixed — which makes it the one submission error that is NOT a blip. */
+      console.log(
+        "    ↑ the provider refusing a reused key, not a network fault. The key no longer\n" +
+          "      tracks the message it identifies: see src/lib/campaign/idempotency.ts.",
+      );
+    }
     failed += chunk.length;
   } else {
     chunk.forEach((address, n) => {

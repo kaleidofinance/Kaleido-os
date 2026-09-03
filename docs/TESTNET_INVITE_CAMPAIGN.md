@@ -520,14 +520,63 @@ progress file:
 npm run campaign:send -- --list ../smoke-test.csv --state ../smoke-state.json --send
 ```
 
+Repeat it after any edit to the copy, so the tested payload and the shipping payload are
+the same bytes. The `app.kaleidofi.xyz` link change was re-tested this way and accepted
+(`1 sent, 0 failed`, a fresh Resend id) — and that re-test is what surfaced the
+idempotency bug below.
+
 Two things that showed up and are not failures. **`npm run` pipelines hide the exit
 code** — `$?` after `| tail` is `tail`'s, so the evidence a message was accepted is the
 Resend id recorded in the state file, not the exit status. And on Windows the run ends
 with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` from libuv, emitted *after*
 the summary line and after `persist()` has written state. It is exit-path noise, not an
-aborted batch — verify by parsing the state file, which will be complete. Do not
-re-run a batch because of it; re-running is safe anyway, but panic is how someone
-deletes a state file and mails 3,000 people twice.
+aborted batch — verify by parsing the state file, which will be complete. Note it surfaces
+as **exit 127**, which normally means "command not found" and reads like the script never
+ran; a run that printed `1 sent, 0 failed` and wrote an id did run. Do not re-run a batch
+because of it; re-running is safe anyway, but panic is how someone deletes a state file
+and mails 3,000 people twice.
+
+### Editing the copy between batches
+
+Two things to know before touching `scripts/send_campaign.mts` mid-campaign, because
+this bit already went wrong once.
+
+**Anyone already mailed keeps the old version.** They are in `state.sent`, so the next
+run skips them — an edit applies to the remainder of the list and nothing else. That is
+the correct behaviour (the alternative is mailing them twice) but it means a copy fix
+after batch 1 leaves a split list, and the fix is only worth making if the new text is
+better for the people who have not been mailed yet. A wrong *access code* is the one
+case where a deliberate second send to the earlier batch is right, and that means
+editing the state file by hand.
+
+**The idempotency key now covers the message, not just the addresses.** This was a bug,
+found by changing the app link and re-sending the smoke test:
+
+```
+chunk 1: could not be submitted — This idempotency key has been used with this HTTP
+method and endpoint within the last 24 hours, but the request body was modified and
+doesn't match the original request.
+```
+
+Resend holds a key for 24 hours and rejects a reuse whose body has changed. The key was
+`kaleido-invite-${chunk[0]}-${chunk.length}` — addresses only — so an edited resend was
+indistinguishable from a duplicate and the provider refused all 100 addresses in the
+chunk at once. Nothing is recorded per address on a whole-chunk failure, and 100 failures
+would trip the 5% abort, so a one-word copy fix could have stopped the campaign with an
+error that reads like a network fault.
+
+It is now derived from the message and the recipients together, in
+`src/lib/campaign/idempotency.ts` with `idempotency.test.ts` covering both directions —
+same message and same chunk gives the same key (so a request lost to a timeout is
+deduped, not delivered twice), any change to either gives a different one (so an edited
+resend goes through). The state file, not the key, is what guarantees no address is
+mailed twice; the key only covers the window where the response was lost and nothing
+local knows what the provider did.
+
+If an idempotency error appears again, it is not a blip and re-running will not clear
+it — it means the key has stopped tracking the message, which happens if a new field
+is added to the payload without adding it to `MessageParts`. The script prints that
+distinction beside the error.
 
 ## After the send
 
