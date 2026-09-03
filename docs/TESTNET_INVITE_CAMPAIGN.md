@@ -15,7 +15,8 @@ stale within the hour.
 | | State |
 | --- | --- |
 | Faucet capacity | **12h cooldown on all five chains, and ~80 users short of the real list.** Re-measured 2026-09-03 against the true deliverable count rather than a round 3,000: BSC serves 3,000 (bound by mock USDC), Base Sepolia 2,998 (ETH), Robinhood 2,996 (WETH), Sepolia 2,992 (WETH) — against **3,077 deliverable**. Not a send blocker at realistic claim rates, but the shortfall lands on whoever claims last, which is the day-4 batch. Fix by minting where the bound asset is a mock we issue and by trimming the drip where it is real (WETH 0.005 → 0.004, Base ETH 0.01 → 0.009 clear it without funding). Re-check with `npm run verify:faucet -- 3077`. |
-| Agent | **Verified working** end to end in production through the Cloudflare relay. Quota is 25 requests/day per wallet, and it refuses entirely without a connected wallet. |
+| Agent | **Verified working** end to end in production through the Cloudflare relay. Quota is 25 requests/day **per wallet**, with **no global ceiling** (`DAILY_MODEL_REQUESTS` in `src/lib/ai/credits.ts`, enforced per wallet by the `consume_agent_request` RPC, and failing open when Supabase is unconfigured or errors). It refuses entirely without a connected wallet. Total provider spend is therefore bounded by the number of wallets anyone cares to generate — see "Releasing the code publicly" below. |
+| Access code | **Staying as it is.** No rotation before the send (user's decision, 2026-09-03). Releasing it publicly is being considered for later; the prerequisite is below, and it is a spend question rather than a security one. |
 | Keeper | **Done.** The Cloudflare Worker is now firing `*/15` on its own — measured 2026-09-02 23:39 UTC as two pushes 15m15s apart with no GitHub Actions run in that window — and Robinhood ETH sits at 640s against its 3,600s bound. The fires land ~13 minutes past the quarter hour, so judge it by the feed's age and not by watching a boundary. See `KEEPER_SCHEDULING.md`. |
 | Email | **DNS and credential done; the plan is the last gate.** All four records verified 2026-09-03 from a public resolver, not the dashboard: DKIM `TXT` at `resend._domainkey`, `CNAME`s at `send` and `rsend`, and `_dmarc` answering `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz`. The root SPF and the Zoho MX survived the edit, so replies still land. `RESEND_API_KEY` is in `.env` and authenticates. A dry run reproduces 3,077 deliverable exactly. Left: **upgrade to Pro** (Free caps at 100/day, below the 200 batch floor) and the §3 post. |
 | Arc Testnet | **Do not steer anyone there.** 34 users of faucet capacity, and its oracle is down on the Hermes 401. It stays listed in the app because it is deployed; it is simply not where a new user should start. |
@@ -25,6 +26,32 @@ stale within the hour.
 third-party oracle so it does not depend on our keeper at all, negligible gas, and
 the easiest public gas faucet to reach. Steering belongs in the email, not in the
 docs — `/docs/getting-started` correctly describes all five networks.
+
+### Releasing the code publicly
+
+Under consideration for after the campaign. It changes nothing about security and a
+great deal about spend, and the distinction is worth being precise about.
+
+**The gate was never an authorization boundary** — it is a blur over a `localStorage`
+flag anyone can set by hand, which is why publishing the code does not weaken anything.
+What actually holds today is a *social* bound: the audience is a known list of 3,077
+people. Publishing replaces that with no bound at all, and the two metered resources
+behind the gate are both metered **per identity, by an identity that is free to mint**:
+
+- **The agent.** `DAILY_MODEL_REQUESTS` is 25 per wallet per UTC day and **there is no
+  aggregate ceiling anywhere.** One `Wallet.createRandom()` in a loop yields 25 more
+  Opus-5 calls each, against a 34-tool payload, on a shared provider bill. The module
+  also fails open twice by design — unconfigured Supabase returns `unmetered()`, and an
+  RPC error is logged and allowed — so an outage removes even the per-wallet limit.
+- **The faucet.** The 12h cooldown is per address, so unlimited addresses means the only
+  real bound is total balance. Worse, the binding assets are **native gas and WETH** —
+  the two we cannot mint. Stablecoins refill with a `mint`; ETH has to be bridged.
+
+So the prerequisite for publishing is not a stronger gate, it is **a global daily ceiling
+on provider calls** — one aggregate counter beside the per-wallet one, chosen against
+what the AgentRouter bill can absorb, and a decision about whether the faucet's real
+assets are allowed to drain. Neither is a large change. Doing it in that order keeps the
+choice a product one; doing it the other way round finds the number by being billed it.
 
 ## 1. The list
 
