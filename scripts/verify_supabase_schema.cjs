@@ -112,6 +112,20 @@ const EXPECTED = [
     functions: ["release_agent_request"],
     usedBy: "refunding a model request the gateway refused (credits.ts)",
   },
+  {
+    migration: "20260903000000_global_agent_request_cap.sql",
+    functions: ["peek_global_agent_usage"],
+    tables: {
+      agent_global_usage_daily: ["usage_date", "requests", "throttled_at"],
+    },
+    /* Worth naming precisely, because this is the one entry whose absence costs
+       money rather than breaking a page. Without it consume_agent_request is
+       still the two-argument version, credits.ts's three-argument call fails,
+       and the module fails open — so the agent keeps answering and nothing
+       bounds provider spend at all. */
+    usedBy:
+      "the deployment-wide model-request ceiling — the only thing bounding provider spend (src/lib/ai/credits.ts)",
+  },
 ];
 
 /* Replayed verbatim from the route files. If these two pass, the leaderboard

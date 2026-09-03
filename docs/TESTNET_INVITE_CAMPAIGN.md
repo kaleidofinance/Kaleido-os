@@ -15,7 +15,7 @@ stale within the hour.
 | | State |
 | --- | --- |
 | Faucet capacity | **12h cooldown on all five chains, and ~80 users short of the real list.** Re-measured 2026-09-03 against the true deliverable count rather than a round 3,000: BSC serves 3,000 (bound by mock USDC), Base Sepolia 2,998 (ETH), Robinhood 2,996 (WETH), Sepolia 2,992 (WETH) — against **3,077 deliverable**. Not a send blocker at realistic claim rates, but the shortfall lands on whoever claims last, which is the day-4 batch. Fix by minting where the bound asset is a mock we issue and by trimming the drip where it is real (WETH 0.005 → 0.004, Base ETH 0.01 → 0.009 clear it without funding). Re-check with `npm run verify:faucet -- 3077`. |
-| Agent | **Verified working** end to end in production through the Cloudflare relay. Quota is 25 requests/day **per wallet**, with **no global ceiling** (`DAILY_MODEL_REQUESTS` in `src/lib/ai/credits.ts`, enforced per wallet by the `consume_agent_request` RPC, and failing open when Supabase is unconfigured or errors). It refuses entirely without a connected wallet. Total provider spend is therefore bounded by the number of wallets anyone cares to generate — see "Releasing the code publicly" below. |
+| Agent | **Verified working** end to end in production through the Cloudflare relay. **Two ceilings, both live**, in `src/lib/ai/credits.ts` and enforced in one statement each by the `consume_agent_request` RPC: 25 requests/day **per wallet** (`AGENT_DAILY_MODEL_REQUESTS`) and 2,000 requests/day **across the whole deployment** (`AGENT_GLOBAL_DAILY_MODEL_REQUESTS`). The second is the one that bounds the bill — the first meters by an identity that is free to mint. Applied to production 2026-09-03 (`supabase/migrations/20260903000000_global_agent_request_cap.sql`) and proven there by `npm run verify:quota`, which exercises both refusals and the refund and asserts it left the shared counter where it found it. Both still fail open when Supabase is unconfigured or errors, deliberately. It refuses entirely without a connected wallet. |
 | Access code | **Staying as it is.** No rotation before the send (user's decision, 2026-09-03). Releasing it publicly is being considered for later; the prerequisite is below, and it is a spend question rather than a security one. |
 | Keeper | **Done.** The Cloudflare Worker is now firing `*/15` on its own — measured 2026-09-02 23:39 UTC as two pushes 15m15s apart with no GitHub Actions run in that window — and Robinhood ETH sits at 640s against its 3,600s bound. The fires land ~13 minutes past the quarter hour, so judge it by the feed's age and not by watching a boundary. See `KEEPER_SCHEDULING.md`. |
 | Email | **Done and proven end to end.** All four DNS records verified 2026-09-03 from a public resolver, not the dashboard: DKIM `TXT` at `resend._domainkey`, `CNAME`s at `send` and `rsend`, `_dmarc` answering `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz`. Root SPF and Zoho MX survived the edit, so replies still land. `RESEND_API_KEY` is in `.env` and authenticates. A dry run reproduces 3,077 deliverable exactly, and a real send through the script **landed in the Gmail Inbox** on first contact. Left: **upgrade to Pro** (Free caps at 100/day, below the 200 batch floor) and the §3 post. |
@@ -35,23 +35,37 @@ great deal about spend, and the distinction is worth being precise about.
 **The gate was never an authorization boundary** — it is a blur over a `localStorage`
 flag anyone can set by hand, which is why publishing the code does not weaken anything.
 What actually holds today is a *social* bound: the audience is a known list of 3,077
-people. Publishing replaces that with no bound at all, and the two metered resources
-behind the gate are both metered **per identity, by an identity that is free to mint**:
+people. Publishing replaces that with no bound at all, so what matters is whether the
+metered resources behind the gate are metered by something other than an identity that
+is free to mint. One of the two now is:
 
-- **The agent.** `DAILY_MODEL_REQUESTS` is 25 per wallet per UTC day and **there is no
-  aggregate ceiling anywhere.** One `Wallet.createRandom()` in a loop yields 25 more
-  Opus-5 calls each, against a 34-tool payload, on a shared provider bill. The module
-  also fails open twice by design — unconfigured Supabase returns `unmetered()`, and an
-  RPC error is logged and allowed — so an outage removes even the per-wallet limit.
+- **The agent — done, 2026-09-03.** `AGENT_DAILY_MODEL_REQUESTS` is 25 per wallet per UTC
+  day and `AGENT_GLOBAL_DAILY_MODEL_REQUESTS` caps the whole deployment at 2,000 per UTC
+  day. The second exists because the first bounds nothing: one `Wallet.createRandom()` in
+  a loop yields 25 more Opus-5 calls each against a 34-tool payload, which across the
+  registered list alone multiplies out to **76,925 provider calls a day**. Both ceilings
+  are checked and spent in a single `UPDATE … WHERE requests < limit`, so concurrent
+  requests cannot interleave past them, and a request the shared ceiling refuses is handed
+  straight back to the wallet — the person is told the deployment is out, not that they
+  are, and their own allowance is still there. The module still fails open twice by
+  design — unconfigured Supabase returns `unmetered()`, and an RPC error is logged and
+  allowed — so an outage removes **both** limits, not just one.
 - **The faucet.** The 12h cooldown is per address, so unlimited addresses means the only
   real bound is total balance. Worse, the binding assets are **native gas and WETH** —
   the two we cannot mint. Stablecoins refill with a `mint`; ETH has to be bridged.
 
-So the prerequisite for publishing is not a stronger gate, it is **a global daily ceiling
-on provider calls** — one aggregate counter beside the per-wallet one, chosen against
-what the AgentRouter bill can absorb, and a decision about whether the faucet's real
-assets are allowed to drain. Neither is a large change. Doing it in that order keeps the
-choice a product one; doing it the other way round finds the number by being billed it.
+So one prerequisite is closed and one is not. What remains before publishing is **the
+faucet decision**: whether the real assets are allowed to drain, or whether the drip on
+native gas and WETH comes down first.
+
+**And know what the shared ceiling does not do.** It bounds the bill; it does not
+allocate. One aggregate counter is first-come, first-served, so a script that spends the
+day's 2,000 by 03:00 UTC leaves real users with nothing until midnight. The only thing
+bounding a single identity's share of it is the per-wallet number — 25 of 2,000 is 1.25%
+— so the lever if that happens is to **lower `AGENT_DAILY_MODEL_REQUESTS`**, not to raise
+the shared one; raising it buys the same script a bigger budget. A per-wallet reserve
+would fix that properly, is a different feature, and is deliberately not built. The trade
+is acceptable while the code is private and worth revisiting before it is not.
 
 ## 1. The list
 
