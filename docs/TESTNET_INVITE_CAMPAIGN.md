@@ -128,6 +128,31 @@ and it is also a wait with a rejection risk, positioned immediately before a sen
 you have publicly committed to. Pay the $20 this once; move to SES later if these
 sends become routine.
 
+**The free tier cannot run this campaign, and the reason is the daily cap rather than
+the monthly one.** Free allows 3,000 emails a month, which would just cover the list —
+but it also allows **100 a day**, and the smallest batch in §4 is 200. Pro removes the
+daily limit and raises the month to 50,000. Signing up is free, though, so the order
+below defers the $20 to the last possible moment.
+
+Nothing needs installing. `campaign:send` calls `https://api.resend.com/emails/batch`
+with `fetch` and a bearer token — there is no SDK dependency to add.
+
+1. **Sign up** at `resend.com`. No card at this stage.
+2. **Domains → Add Domain → `kaleidofi.xyz`.** Not `send.kaleidofi.xyz`, for the reason
+   under the record table below. Pick a **region** here: it is baked into the MX value,
+   so changing it afterwards means editing DNS again.
+3. Resend now shows three records. Add them, plus DMARC, per the table and the Namecheap
+   notes below.
+4. **Verify DNS Records** in Resend.
+5. **API Keys → Create.** Give it **sending access only**, not full access, and scope it
+   to this domain if offered — it is a credential that will sit in a `.env` on a laptop.
+   The `re_…` value is shown once. It goes in `.env` as `RESEND_API_KEY`.
+6. **Smoke test to your own address.** Only meaningful after step 4: until the domain
+   verifies, Resend will send from `onboarding@resend.dev` to your own account address
+   and nothing else.
+7. **Upgrade to Pro** — before batch 1, not before step 6.
+8. Dry run, then `--send --limit 200`.
+
 Three DNS records, whose exact values come from the provider's dashboard — but the
 zone was measured on 2026-09-02, so what is already there is known:
 
