@@ -50,7 +50,10 @@ import { cleanList, type CleanedList } from "../src/lib/campaign/recipients";
 /* Derived from the message as well as the recipients, and tested. A key naming
    only the addresses made an edited resend indistinguishable from a duplicate,
    and the provider refuses that — see idempotency.ts for the failure it caused. */
-import { idempotencyKey, type MessageParts } from "../src/lib/campaign/idempotency";
+import {
+  idempotencyKey,
+  type MessageParts,
+} from "../src/lib/campaign/idempotency";
 
 /* ── args ──────────────────────────────────────────────────────────────────── */
 
@@ -84,7 +87,8 @@ if (!fs.existsSync(listPath)) {
   console.error(`No such file: ${listPath}`);
   process.exit(2);
 }
-const statePath = flag("--state") ?? path.join(path.dirname(listPath), "send-state.json");
+const statePath =
+  flag("--state") ?? path.join(path.dirname(listPath), "send-state.json");
 
 /* ── env ───────────────────────────────────────────────────────────────────── */
 
@@ -144,17 +148,22 @@ const SUBJECT = "Your Kaleido testnet access code";
 const APP_URL = "https://app.kaleidofi.xyz/trade/agent";
 /* Docs stay on the marketing host, where they are canonical and ungated. */
 const GUIDE_URL = "https://kaleidofi.xyz/docs/getting-started";
-/* The app icon rather than /newklogo2.png, which is the file the nav and the marketing
-   header draw but is not a logo: it is a 500x500 plate with a photographic dark
-   background and the mark small and off-centre, which the app crops with CSS. An email
-   cannot crop, so at 48px it would be a dark rectangle with something illegible inside.
-   /icon-192.png is the same mark squared off and filling the frame, on a near-black
-   ground that disappears into the panel below, and it is 23KB against 140KB.
+/* /newklogo2.png is the mark the nav and the marketing header draw, and this is that
+   file with the crop already applied: the source is a 500x500 plate with a photographic
+   dark-green background and the mark small and off-centre, which the app crops with CSS.
+   An email cannot crop — `background-position` on an `img` does nothing in Gmail — so
+   the plate sent whole reads at 48px as a grey-green swatch with a small white glyph in
+   it, and the green fights the near-black panel below. Cropping it once, at build time,
+   is the same treatment the app applies at render time, and it is 33KB against 140KB.
+
+   Measured rather than argued: the mark's bounding box in the source is (190,130)-(318,348),
+   squared around its centre with 12% breathing room and resampled to 192px, which keeps a
+   48px slot sharp at 3x. Regenerate with scripts/crop-email-logo.mjs if the plate changes.
 
    It is decorative and nothing depends on it: most clients block remote images until the
    reader allows them, so a logo carrying information would be a logo that sometimes
-   carries none. 192px source for a 48px slot stays sharp at 3x. */
-const LOGO_URL = "https://kaleidofi.xyz/icon-192.png";
+   carries none. */
+const LOGO_URL = "https://kaleidofi.xyz/email-logo.png";
 
 /* Both parts are sent. Plain text is not a fallback nobody reads — a message with
    no text/plain part scores worse with spam filters than one with it, and this
@@ -221,7 +230,9 @@ let list: CleanedList;
 try {
   list = cleanList(fs.readFileSync(listPath, "utf8"));
 } catch (err) {
-  console.error(`${listPath}: ${err instanceof Error ? err.message : String(err)}`);
+  console.error(
+    `${listPath}: ${err instanceof Error ? err.message : String(err)}`,
+  );
   process.exit(2);
 }
 
@@ -243,7 +254,9 @@ type State = { sent: Record<string, string>; failed: Record<string, string> };
 function loadState(): State {
   if (!fs.existsSync(statePath)) return { sent: {}, failed: {} };
   try {
-    const parsed = JSON.parse(fs.readFileSync(statePath, "utf8")) as Partial<State>;
+    const parsed = JSON.parse(
+      fs.readFileSync(statePath, "utf8"),
+    ) as Partial<State>;
     return { sent: parsed.sent ?? {}, failed: parsed.failed ?? {} };
   } catch (err) {
     /* Refuse rather than start clean. An unreadable state file with a fresh start
@@ -322,7 +335,8 @@ for (let i = 0; i < batch.length && !aborted; i += CHUNK) {
     headers: HEADERS,
   }));
 
-  let results: Array<{ id?: string; error?: { message?: string } }> | null = null;
+  let results: Array<{ id?: string; error?: { message?: string } }> | null =
+    null;
   let transportError: string | null = null;
 
   try {
@@ -352,7 +366,9 @@ for (let i = 0; i < batch.length && !aborted; i += CHUNK) {
     /* A whole-chunk failure is not recorded per address. Nothing is known about
        delivery, and writing these down as failures would let a later run treat a
        network blip as a decision. */
-    console.log(`  chunk ${i / CHUNK + 1}: could not be submitted — ${transportError}`);
+    console.log(
+      `  chunk ${i / CHUNK + 1}: could not be submitted — ${transportError}`,
+    );
     if (/idempotenc/i.test(transportError)) {
       /* Should be unreachable now that the key covers the message body. Kept
          because if it does fire, re-running will fail identically until the cause
