@@ -17,7 +17,7 @@ stale within the hour.
 | Faucet capacity | **Done.** 12h cooldown on all five chains; Sepolia serves 2,992, Robinhood 2,996, Base Sepolia 2,998, BSC 3,000. Re-check with `npm run verify:faucet -- 3000`. |
 | Agent | **Verified working** end to end in production through the Cloudflare relay. Quota is 25 requests/day per wallet, and it refuses entirely without a connected wallet. |
 | Keeper | **Done.** The Cloudflare Worker is now firing `*/15` on its own — measured 2026-09-02 23:39 UTC as two pushes 15m15s apart with no GitHub Actions run in that window — and Robinhood ETH sits at 640s against its 3,600s bound. The fires land ~13 minutes past the quarter hour, so judge it by the feed's age and not by watching a boundary. See `KEEPER_SCHEDULING.md`. |
-| Email | **The remaining gate, and it is all off-repo.** `RESEND_API_KEY` is unset (checked: it appears in no `.env` and, correctly, nowhere in Vercel). `_dmarc`, `resend._domainkey` and the `send.` subdomain records do not exist yet. §2 has the measured zone and what to add to it. |
+| Email | **DNS done, credential outstanding.** Resend's three records verified 2026-09-03 and confirmed from a public resolver: DKIM `TXT` at `resend._domainkey`, `CNAME`s at `send` and `rsend`. The root SPF and the Zoho MX survived the edit, so replies still land. Left: **`_dmarc` is still NXDOMAIN**, `RESEND_API_KEY` is unset in `.env`, and the account is on Free (100/day, below the 200 batch floor). §2 has all four. |
 | Arc Testnet | **Do not steer anyone there.** 34 users of faucet capacity, and its oracle is down on the Hermes 401. It stays listed in the app because it is deployed; it is simply not where a new user should start. |
 | Gas drip | `/api/gas-drip` is off in production (`GAS_DRIP_PRIVATE_KEY` unset), by decision. The zeroth-transaction wall is handled by the external faucet links `/faucet` already renders per chain. |
 
@@ -181,33 +181,50 @@ with `fetch` and a bearer token — there is no SDK dependency to add.
 7. **Upgrade to Pro** — before batch 1, not before step 6.
 8. Dry run, then `--send --limit 200`.
 
-Three DNS records, whose exact values come from the provider's dashboard — but the
-zone was measured on 2026-09-02, so what is already there is known:
-
 **The zone is at Namecheap** (`dns1.registrar-servers.com` / `dns2.registrar-servers.com`),
 not Cloudflare. Cloudflare hosts the Workers, not this domain — do not go looking for
 the records there.
 
-| Record | Live value, measured | What Resend needs |
-| --- | --- | --- |
-| root `TXT` (SPF) | `v=spf1 include:zohomail.com include:spf.privateemail.com ~all` | **leave it alone** |
-| root `MX` | `mx.zoho.com`, `mx2`, `mx3` | leave it alone — that is the reply mailbox |
-| `resend._domainkey` `TXT` | absent | the DKIM public key |
-| `send.kaleidofi.xyz` `TXT` | absent | `v=spf1 include:amazonses.com ~all` |
-| `send.kaleidofi.xyz` `MX` | absent | `feedback-smtp.<region>.amazonses.com` |
-| `_dmarc` `TXT` | **absent** | `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz` |
+Resend's records went in on **2026-09-03** and all three verify. Measured from
+Cloudflare's public resolver rather than read off the dashboard, because the dashboard
+reports what it last checked and the resolver reports what a receiver will see:
 
-Two things follow from those measurements. **The root SPF must not be touched**: it
-already carries two `include:` lookups for Zoho, SPF permits ten before it `PermError`s,
-and Resend does not need one there anyway — its SPF belongs on the `send.` subdomain,
-which is the envelope `MAIL FROM` domain, while the visible `From:` stays on the root and
-aligns through DKIM. And **DKIM here is a `TXT` at `resend._domainkey`, not a `CNAME`** —
-CNAME-style DKIM is what SES and Postmark hand out, so a Namecheap form filled in as a
-CNAME will silently fail verification.
+| Record | Live value, measured 2026-09-03 | State |
+| --- | --- | --- |
+| root `TXT` (SPF) | `v=spf1 include:zohomail.com include:spf.privateemail.com ~all` | untouched, as intended |
+| root `MX` | `mx.zoho.com` / `mx2` / `mx3` | intact — that is the reply mailbox |
+| `resend._domainkey` `TXT` | `p=MIGfMA0GCSqGSIb3DQEB…` | **verified** — DKIM |
+| `send` `CNAME` | `send.forge.rmta.net` | **verified** — sending |
+| `rsend` `CNAME` | `rsend.forge.rmta.net` | **verified** — sending |
+| `_dmarc` `TXT` | NXDOMAIN | **still absent** — the one row left |
+
+**Resend's sending records are two `CNAME`s, not the SPF `TXT` plus feedback `MX` that
+an older version of this section predicted.** They delegate both halves into Resend's own
+zone, which is why there are two of them and why the values contain no region:
+
+- `send.kaleidofi.xyz` resolves through to `v=spf1 ip4:52.3.252.119 ip4:44.222.39.36
+  ip4:199.249.231.0/24 ~all` and `MX 10 feedback.forge.rmta.net` — Resend's own MTA pool
+  plus its bounce path.
+- `rsend.kaleidofi.xyz` resolves through to `v=spf1 include:amazonses.com ~all` — the SES
+  pool, kept as a second path.
+
+Delegating by CNAME means Resend can rotate pool IPs without anyone editing this zone
+again. It also means **nothing else may share those two names**: a CNAME cannot coexist
+with a `TXT` or `MX` at the same owner name, so if a hand-written SPF `TXT` was ever added
+at `send`, it has to be deleted before the CNAME will resolve.
+
+Two things held from the earlier measurement and are worth keeping. **The root SPF must
+not be touched**: it already carries two `include:` lookups for Zoho, SPF permits ten
+before it `PermError`s, and Resend needs none there — its SPF lives on the `send.`
+envelope domain while the visible `From:` stays on the root. Both still align under DMARC's
+default relaxed rules, because envelope and header share the organizational domain. And
+**DKIM here is a `TXT` at `resend._domainkey`, not a `CNAME`** — CNAME-style DKIM is what
+SES and Postmark hand out, so a Namecheap form filled in as a CNAME silently fails.
 
 `_dmarc` being absent matters more than it looks: it is the record that lets a receiver
 tell a forged `official@kaleidofi.xyz` from the real one, and it is missing on the domain
-that is about to mail 3,000 people an access code. It is the technical half of §3.
+that is about to mail 3,000 people an access code. It is the technical half of §3, and it
+is now the only DNS row outstanding.
 
 ### Entering them in Namecheap
 
@@ -217,18 +234,19 @@ not the From address. Adding the subdomain as the domain instead forces every me
 come from `@send.kaleidofi.xyz`, which breaks the whole premise of §3: recipients were
 told to expect the address they already know from the site.
 
-Namecheap → Domain List → **Manage** → **Advanced DNS**. Four rows:
+Namecheap → Domain List → **Manage** → **Advanced DNS**. Four rows, three of them copied
+from the dashboard:
 
 | Type | Host | Value | Priority |
 | --- | --- | --- | --- |
-| MX Record | `send` | `feedback-smtp.<region>.amazonses.com`, copied from Resend | 10 |
-| TXT Record | `send` | `v=spf1 include:amazonses.com ~all` | — |
+| CNAME Record | `send` | `send.forge.rmta.net` | — |
+| CNAME Record | `rsend` | `rsend.forge.rmta.net` | — |
 | TXT Record | `resend._domainkey` | the `p=…` value, copied from Resend | — |
 | TXT Record | `_dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz` | — |
 
-TTL `Automatic` on all four. Only the last one is ours; the first three come from the
-dashboard and the region in the MX value depends on the region chosen when the domain was
-added.
+TTL `Automatic` on all four. Only the last one is ours. Note there is **no MX row to add**
+and **no region in any value** — Resend delegates its SPF and bounce MX through the two
+CNAMEs, so both live in `forge.rmta.net` rather than in this zone.
 
 Two hazards, in order of how much they cost:
 
@@ -242,10 +260,10 @@ Two hazards, in order of how much they cost:
    which resolves to nothing and fails verification with no useful error. Same for
    `resend._domainkey` and `_dmarc`.
 
-Two smaller ones: Namecheap **does not label the priority column** — it is the unnamed box
-after `Value` — and the DKIM `p=` value must be pasted verbatim, with no added quotes and
+One smaller one: the DKIM `p=` value must be pasted verbatim, with no added quotes and
 nothing prepended. It is longer than 255 characters; Namecheap splits it correctly on its
-own.
+own. (The unlabelled box after `Value` is the MX priority column — irrelevant here, since
+none of the four rows is an MX.)
 
 `rua=mailto:dmarc@kaleidofi.xyz` needs that address to exist, so **create `dmarc@` as a
 Zoho alias** rather than pointing `rua` at `official@`. DMARC aggregate reports arrive
