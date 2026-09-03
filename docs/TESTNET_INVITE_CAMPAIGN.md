@@ -436,7 +436,7 @@ You registered for the Kaleido private testnet. Here is your access code.
 
     {{ACCESS_CODE}}
 
-Open https://kaleidofi.xyz/trade/agent and enter it once. It is remembered
+Open https://app.kaleidofi.xyz/trade/agent and enter it once. It is remembered
 on that browser afterwards.
 
 Start on Base Sepolia — it is the fastest of the five networks to get funded
@@ -453,6 +453,20 @@ official@kaleidofi.xyz
 ```
 
 Notes on the wording, each of which is load-bearing:
+
+- **The app link is `app.kaleidofi.xyz/trade/agent`, with the path, not the bare
+  subdomain.** `app.kaleidofi.xyz` is a real Vercel host (verified 2026-09-03) and the
+  bare form does reach the agent — but by **two 307 hops**, `/` → `/trade` →
+  `/trade/agent`. Every hop is a chance for a corporate link scanner or a client-side
+  link rewriter to break or flag it, and a redirect chain is the wrong thing to ship in a
+  message whose entire premise is "this really came from us". The direct URL returns 200.
+  `kaleidofi.xyz/trade/agent` also still answers 200, but `app.` is the canonical app host
+  and the root's copy should not be relied on outliving it.
+- **The guide link deliberately stays on the root host**, `kaleidofi.xyz/docs/getting-started`
+  (also verified 200, and 200 on `app.` too). Docs are part of the public, ungated site and
+  that is where they are canonical; pointing them at the app host would invent a dependency
+  on `app.` continuing to serve `/docs`. Two hosts in one email is fine — the anti-phishing
+  claim in §3 is about the **From address**, not about there being a single link host.
 
 - **The copy that actually sends lives in `scripts/send_campaign.mts`**, in both a
   plain-text and an HTML part. The block above is a readable copy for review; if the

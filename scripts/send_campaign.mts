@@ -133,7 +133,12 @@ if (send && !API_KEY) {
 
 const SUBJECT = "Your Kaleido testnet access code";
 
-const APP_URL = "https://kaleidofi.xyz/trade/agent";
+/* The app's own host, and the direct path rather than the bare subdomain:
+   app.kaleidofi.xyz answers 307 -> /trade -> 307 -> /trade/agent, and each hop is a
+   chance for a link scanner to rewrite or flag it. In an email whose whole premise is
+   "this came from us", a redirect chain is the wrong thing to ship. Verified 200. */
+const APP_URL = "https://app.kaleidofi.xyz/trade/agent";
+/* Docs stay on the marketing host, where they are canonical and ungated. */
 const GUIDE_URL = "https://kaleidofi.xyz/docs/getting-started";
 
 /* Both parts are sent. Plain text is not a fallback nobody reads — a message with
