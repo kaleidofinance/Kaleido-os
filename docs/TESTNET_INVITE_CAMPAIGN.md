@@ -156,6 +156,51 @@ CNAME will silently fail verification.
 tell a forged `official@kaleidofi.xyz` from the real one, and it is missing on the domain
 that is about to mail 3,000 people an access code. It is the technical half of §3.
 
+### Entering them in Namecheap
+
+**In Resend, add the domain as `kaleidofi.xyz` — not `send.kaleidofi.xyz`.** Resend then
+generates records *on* the `send.` subdomain, which is the Return-Path (envelope sender),
+not the From address. Adding the subdomain as the domain instead forces every message to
+come from `@send.kaleidofi.xyz`, which breaks the whole premise of §3: recipients were
+told to expect the address they already know from the site.
+
+Namecheap → Domain List → **Manage** → **Advanced DNS**. Four rows:
+
+| Type | Host | Value | Priority |
+| --- | --- | --- | --- |
+| MX Record | `send` | `feedback-smtp.<region>.amazonses.com`, copied from Resend | 10 |
+| TXT Record | `send` | `v=spf1 include:amazonses.com ~all` | — |
+| TXT Record | `resend._domainkey` | the `p=…` value, copied from Resend | — |
+| TXT Record | `_dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz` | — |
+
+TTL `Automatic` on all four. Only the last one is ours; the first three come from the
+dashboard and the region in the MX value depends on the region chosen when the domain was
+added.
+
+Two hazards, in order of how much they cost:
+
+1. **Do not touch the Mail Settings dropdown.** Namecheap only accepts MX rows when it is
+   set to `Custom MX`, and it already is — the Zoho rows in the live zone prove it.
+   Switching that dropdown rewrites the MX set, and the MX set is what delivers mail to
+   `official@kaleidofi.xyz`, which is the campaign's own `Reply-To`. Breaking it means
+   3,000 people replying into a void. Add rows; change nothing else.
+2. **The Host field is relative.** Namecheap appends the domain itself, so `send` becomes
+   `send.kaleidofi.xyz`. Pasting the FQDN produces `send.kaleidofi.xyz.kaleidofi.xyz`,
+   which resolves to nothing and fails verification with no useful error. Same for
+   `resend._domainkey` and `_dmarc`.
+
+Two smaller ones: Namecheap **does not label the priority column** — it is the unnamed box
+after `Value` — and the DKIM `p=` value must be pasted verbatim, with no added quotes and
+nothing prepended. It is longer than 255 characters; Namecheap splits it correctly on its
+own.
+
+`rua=mailto:dmarc@kaleidofi.xyz` needs that address to exist, so **create `dmarc@` as a
+Zoho alias** rather than pointing `rua` at `official@`. DMARC aggregate reports arrive
+daily as XML attachments from every large receiver, and `official@` is the mailbox someone
+has to be reading 3,000 human replies in that same week.
+
+Then **Verify DNS Records** in Resend. Usually minutes; the documented ceiling is 72 hours.
+
 Start DMARC at `p=none`, not `p=reject`. `none` still delivers the aggregate
 reports that tell you whether your own mail is passing; tightening to `quarantine`
 or `reject` before you have read a single report is how a campaign discovers a
