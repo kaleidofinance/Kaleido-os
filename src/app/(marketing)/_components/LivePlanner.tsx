@@ -123,16 +123,21 @@ const VERB: Record<Command["kind"], string> = {
   claimTestTokens: "Claim test tokens",
   help: "Help",
   receive: "Receive",
+  portfolio: "Portfolio",
 };
 
 /**
- * The two commands that resolve to a panel rather than a transaction.
+ * The three commands that resolve to an answer rather than a transaction.
  *
- * `buildIntents` returns `{ ok: false, error: "help" }` and `"receive"` for
- * these — sentinels for the caller, not messages for a human, so they are
- * intercepted before the builder ever runs rather than rendered as a failure.
+ * `buildIntents` returns `{ ok: false, error: "help" }`, `"receive"` and
+ * `"portfolio"` for these — sentinels for the caller, not messages for a human,
+ * so they are intercepted before the builder ever runs rather than rendered as a
+ * failure.
  */
-const PANEL: Record<"help" | "receive", { title: string; body: string }> = {
+const PANEL: Record<
+  "help" | "receive" | "portfolio",
+  { title: string; body: string }
+> = {
   help: {
     title: "Opens the command list",
     body: "No transaction, nothing to sign. Everything the grammar accepts, in one place.",
@@ -140,6 +145,10 @@ const PANEL: Record<"help" | "receive", { title: string; body: string }> = {
   receive: {
     title: "Opens your deposit address",
     body: "The one command that works with no contract deployed anywhere: your own address and a QR code. Nothing is signed and nothing is sent.",
+  },
+  portfolio: {
+    title: "Answers with what you hold",
+    body: "Wallet balances, collateral, debt, the vaults and your liquidity, in one figure — read from the chain and from the protocol itself. A read, so there is nothing to sign.",
   },
 };
 
@@ -702,12 +711,13 @@ function settledOf(
         note: "A bridge settles on two chains, so it is the one action where the second half is out of your hands once the first is signed — which is why the route is resolved and shown before anything is.",
       };
 
-    /* Unreachable: both are intercepted before the builder runs, because
+    /* Unreachable: all three are intercepted before the builder runs, because
        buildIntents answers them with a sentinel rather than a plan. Present so
        the switch stays exhaustive over the union, and so adding a kind here is a
        compile error rather than a silently empty result block. */
     case "help":
     case "receive":
+    case "portfolio":
       return { lines: [], note: "" };
 
     /* Unreachable for the reason given in VERB: a ToolOnlyKind never comes back
@@ -817,7 +827,11 @@ export default function LivePlanner() {
       }
 
       const command = parsed.command;
-      if (command.kind === "help" || command.kind === "receive") {
+      if (
+        command.kind === "help" ||
+        command.kind === "receive" ||
+        command.kind === "portfolio"
+      ) {
         setOut({
           text,
           ms,

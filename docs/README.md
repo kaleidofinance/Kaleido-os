@@ -17,6 +17,10 @@ Welcome to the Kaleido Finance documentation. This directory contains all guides
 - [Multichain Deployment Map](./MULTICHAIN_DEPLOYMENT_MAP.md) - What has to exist on each chain, per chain
 - [KLD Multichain Plan](./KLD_MULTICHAIN_PLAN.md) - Bridging one KLD supply across chains
 
+### Operations
+
+- [Keeper Scheduling](./KEEPER_SCHEDULING.md) - Who calls the price keeper and how often, and what breaks when nothing does
+
 ### User Guides
 
 - [Stablecoin Integration](./guides/STABLECOIN_INTEGRATION.md) - kfUSD/kafUSD integration guide
@@ -70,6 +74,7 @@ All smart contracts have been audited for:
 ### Development
 - [Testnet Deployment Guide](./guides/TESTNET_DEPLOYMENT_GUIDE.md)
 - [Run Tests](./guides/RUN_TESTS.md)
+- [Keeper Scheduling](./KEEPER_SCHEDULING.md) - arming `/api/keeper/push` and the two schedulers that call it
 - [Smart Contracts README](../smart-contract/README.md)
 
 ### Multichain

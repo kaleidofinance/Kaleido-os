@@ -36,3 +36,30 @@ next-env.d.ts
 aborean-contracts-main
 .vercel
 .env*
+
+# Recipient lists and anything derived from them.
+#
+# THIS REPOSITORY IS PUBLIC. The testnet registration form collected 3,000+ email
+# addresses, and a committed export of those is a data breach that a force-push
+# does not undo — the objects stay reachable, and GitHub's forks and caches keep
+# their own copies. So the list never enters the tree, and the campaign tooling
+# reads it from a path outside the repo.
+#
+# Matched by extension rather than by one expected filename, because the mistake
+# this prevents is a browser download landing here under whatever name Google
+# Forms chose.
+*.csv
+*.tsv
+*.xlsx
+/campaign-list*
+/send-state*.json
+
+# Cloudflare Worker local state, for the two workers in scripts/.
+#
+# .dev.vars is the one that matters: it is the file wrangler's own docs tell you to
+# put secrets in for local runs, it is not covered by the .env* rule above, and this
+# repository is public. .wrangler/ is build cache and local storage — noise at best,
+# and it can contain a copy of whatever a dev run was given.
+.dev.vars
+.dev.vars.*
+.wrangler/

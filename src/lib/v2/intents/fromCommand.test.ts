@@ -1049,6 +1049,227 @@ console.log("\n— swap grammar is unaffected by the new verbs —");
 check("swap still parses", p("swap 500 usdc to kld").status === "ok");
 check("'sell' still routes to swap", p("sell 5 kld for usdc").status === "ok");
 
+/*
+ * "buy" is the one verb in the swap list that reverses the sentence: `swap A for
+ * B` spends A, `buy A with B` spends B. Getting it wrong is not a near miss, it
+ * is the opposite trade — so every phrasing that reaches parseSwap under `buy`
+ * is pinned here, including the ones that must refuse to guess.
+ */
+console.log("\n— buy: the same verb table, the opposite direction —");
+{
+  const withUsdc = p("buy KLD with 500 USDC");
+  check(
+    "'with' spends the token on its right",
+    withUsdc.status === "ok" &&
+      withUsdc.command.tokenIn.symbol === "USDC" &&
+      withUsdc.command.tokenOut.symbol === "KLD",
+    withUsdc.status === "ok"
+      ? `${withUsdc.command.tokenIn.symbol}->${withUsdc.command.tokenOut.symbol}`
+      : withUsdc.status,
+  );
+  check(
+    "and keeps the amount on the spent side",
+    withUsdc.status === "ok" && withUsdc.command.amount === "500",
+    withUsdc.status === "ok" ? withUsdc.command.amount : "",
+  );
+
+  const forUsdc = p("buy kld for 500 usdc");
+  check(
+    "'for' after buy means the same as 'with', not what it means after swap",
+    forUsdc.status === "ok" &&
+      forUsdc.command.tokenIn.symbol === "USDC" &&
+      forUsdc.command.tokenOut.symbol === "KLD",
+    forUsdc.status === "ok"
+      ? `${forUsdc.command.tokenIn.symbol}->${forUsdc.command.tokenOut.symbol}`
+      : forUsdc.status,
+  );
+  check(
+    "while 'for' after swap still spends the token on its left",
+    (() => {
+      const r = p("swap 100 usdc for kld");
+      return (
+        r.status === "ok" &&
+        r.command.tokenIn.symbol === "USDC" &&
+        r.command.tokenOut.symbol === "KLD"
+      );
+    })(),
+  );
+
+  const of = p("buy 500 usdc of kld");
+  check(
+    "'of' reads forwards again: spend the 500 USDC",
+    of.status === "ok" &&
+      of.command.tokenIn.symbol === "USDC" &&
+      of.command.tokenOut.symbol === "KLD" &&
+      of.command.amount === "500",
+    of.status === "ok"
+      ? `${of.command.amount} ${of.command.tokenIn.symbol}->${of.command.tokenOut.symbol}`
+      : of.status,
+  );
+  check(
+    "'purchase' is the same verb",
+    p("purchase kld with 5 weth").status === "ok",
+  );
+}
+
+console.log("\n— buy asks rather than picking a side —");
+{
+  const bare = p("buy KLD");
+  check(
+    "one token named is not a trade yet",
+    bare.status === "incomplete" && bare.missing === "tokenIn",
+    `${bare.status} ${bare.status === "incomplete" ? bare.missing : ""}`,
+  );
+  check(
+    "and it is held as the token to receive, not the one to spend",
+    bare.status === "incomplete" && bare.draft.tokenOut?.symbol === "KLD",
+  );
+
+  /* There is no exact-output swap: the intent prices by input. "buy 100 KLD"
+     therefore cannot be honoured as written, and silently spending 100 of
+     whatever token is named next would be the wrong trade at the right size. */
+  const exactOut = p("buy 100 KLD");
+  check(
+    "an output amount is refused, not repurposed",
+    exactOut.status === "incomplete" && exactOut.missing === "tokenIn",
+    `${exactOut.status} ${exactOut.status === "incomplete" ? exactOut.missing : ""}`,
+  );
+  check(
+    "the dropped amount is not left in the draft",
+    exactOut.status === "incomplete" && exactOut.draft.amount === undefined,
+    exactOut.status === "incomplete" ? String(exactOut.draft.amount) : "",
+  );
+  check(
+    "and the prompt says the 100 was dropped and why",
+    exactOut.status === "incomplete" &&
+      exactOut.prompt.includes("100 KLD") &&
+      /what you spend/.test(exactOut.prompt),
+    exactOut.status === "incomplete" ? exactOut.prompt : "",
+  );
+
+  /* No positional fallback under buy: "buy KLD USDC" and "swap KLD USDC" would
+     otherwise mean opposite things while looking equally parseable. */
+  const positional = p("buy kld usdc");
+  check(
+    "two tokens with no separator is not guessed at",
+    positional.status === "incomplete" && positional.missing === "tokenIn",
+    `${positional.status} ${positional.status === "incomplete" ? positional.missing : ""}`,
+  );
+}
+
+/*
+ * A portfolio read. The safety property here is placement rather than the phrase
+ * list — the check runs only where detectVerb found nothing, so any sentence that
+ * states an action has already been claimed. These cases assert both halves: the
+ * reads resolve, and the actions are not stolen.
+ */
+console.log("\n— portfolio: a question about holdings, not a transaction —");
+{
+  for (const text of [
+    "what are my balances",
+    "show my portfolio",
+    "show my positions",
+    "what do i have",
+    "how much do i have",
+    "my holdings",
+    "portfolio",
+    "balances",
+  ]) {
+    const r = p(text);
+    check(
+      `"${text}" is answered locally`,
+      r.status === "ok" && r.command.kind === "portfolio",
+      r.status === "ok" ? r.command.kind : r.status,
+    );
+  }
+}
+
+console.log("\n— and it never takes a sentence that states an action —");
+{
+  check(
+    "'sell my balance of KLD' is still a swap",
+    (() => {
+      const r = p("sell my balance of 5 kld for usdc");
+      return r.status === "ok" && r.command.kind === "swap";
+    })(),
+  );
+  check(
+    "'send my balance to …' is still a send",
+    (() => {
+      const r = p("send 5 kld to 0x1111111111111111111111111111111111111111");
+      return r.status === "ok" && r.command.kind === "send";
+    })(),
+  );
+  /* provideLiquidity is tool-only and has no verb, so "add liquidity" reaches the
+     portfolio check with nothing else to claim it. It has to fall through to the
+     model rather than be answered with a balance sheet. */
+  check(
+    "'add liquidity to my position' falls through to the model",
+    p("add liquidity to my position").status === "unknown",
+    p("add liquidity to my position").status,
+  );
+  check(
+    "'how much liquidity do i have' does too",
+    p("how much liquidity do i have").status === "unknown",
+    p("how much liquidity do i have").status,
+  );
+  check(
+    "'my pool' is not a portfolio read",
+    p("my pools").status === "unknown",
+  );
+}
+
+/*
+ * "fund" belongs to fillRequest and also to ordinary English. The guard has to
+ * decline the second reading without losing the first, so both halves are pinned:
+ * a fill still parses, and a sentence about the user's own wallet gets out of the
+ * way instead of asking which request to fill.
+ */
+console.log("\n— 'fund' declines the sentences that are not about a row —");
+{
+  check(
+    "'fund my wallet' is left for the FAQ",
+    p("fund my wallet").status === "unknown",
+    p("fund my wallet").status,
+  );
+  check("'fund me' too", p("fund me").status === "unknown");
+  check(
+    "and naming a token does not make it a fill",
+    p("fund my wallet with usdc").status === "unknown",
+    p("fund my wallet with usdc").status,
+  );
+
+  const req = p("fund request 7");
+  check(
+    "a referenced request still fills",
+    req.status === "ok" && req.command.kind === "fillRequest",
+    req.status === "ok" ? req.command.kind : req.status,
+  );
+  check(
+    "and the id survives",
+    req.status === "ok" && req.command.requestId === 7,
+  );
+  const possessive = p("fund my request 7");
+  check(
+    "a row named possessively is still a row",
+    possessive.status === "ok" && possessive.command.kind === "fillRequest",
+    possessive.status,
+  );
+  const noRef = p("fund 500 usdc");
+  check(
+    "a fill missing its row is still worth asking about",
+    noRef.status === "incomplete" && noRef.missing === "ref",
+    `${noRef.status} ${noRef.status === "incomplete" ? noRef.missing : ""}`,
+  );
+  check(
+    "'fill' is untouched",
+    (() => {
+      const r = p("fill request 3");
+      return r.status === "ok" && r.command.kind === "fillRequest";
+    })(),
+  );
+}
+
 console.log("\n— completeDraft —");
 {
   const done = completeDraft({

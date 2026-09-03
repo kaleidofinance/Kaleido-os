@@ -97,6 +97,23 @@ export interface HelpCommand {
 export interface ReceiveCommand {
   kind: "receive";
 }
+/**
+ * Show the user what they hold.
+ *
+ * Beside `help` and `receive` for the same reason: it resolves to an *answer*,
+ * not an Intent — there is nothing to sign and nothing for the planner to build.
+ * The figures come from `usePortfolio` on the page, which is the hook /portfolio
+ * itself renders, so the agent cannot quote a net value that page disagrees with.
+ *
+ * Worth saying why this is local at all, given the model has a `getPortfolio`
+ * tool: that tool returns collateral and health only (see planDeps.ts), while the
+ * hook stitches wallet balances, lending, borrowing, the stable vaults and LP
+ * into one figure. So the local answer here is not a cheaper version of the
+ * model's — it is the more complete one.
+ */
+export interface PortfolioCommand {
+  kind: "portfolio";
+}
 
 /* The P2P family. Borrow and lend carry a rate and a term as well as an
  * amount, which is why the parser separates numbers by role rather than taking
@@ -264,7 +281,8 @@ export type Command =
   | ProvideLiquidityCommand
   | ClaimTestTokensCommand
   | HelpCommand
-  | ReceiveCommand;
+  | ReceiveCommand
+  | PortfolioCommand;
 
 /** Kinds resolved immediately, with no slot to ever ask about. */
 type ZeroSlotKind = "claimYield" | "compoundYield";
@@ -290,7 +308,7 @@ type ToolOnlyKind = "provideLiquidity";
 /** Kinds that carry slots, i.e. everything that can be half-specified. */
 export type ActionKind = Exclude<
   Command["kind"],
-  "help" | "receive" | ZeroSlotKind | ToolOnlyKind
+  "help" | "receive" | "portfolio" | ZeroSlotKind | ToolOnlyKind
 >;
 
 export type Slot =
@@ -336,9 +354,32 @@ export type ParseResult =
  * Verb synonyms. Deliberately a fixed list rather than fuzzy matching: a near
  * miss on a money verb should fall through to the model, not resolve to the
  * closest guess.
+ *
+ * WHAT IS DELIBERATELY NOT HERE
+ *
+ * Four words people do type, each absent for its own reason, written down so the
+ * next reader does not have to decide whether they were forgotten:
+ *
+ * - "add liquidity" — `provideLiquidity` is tool-only by construction, see
+ *   ToolOnlyKind above. A verb entry would take "provide 100 usdt" into a Draft
+ *   that can never be completed.
+ * - "unstake" / "withdraw stake" — there is no unstake intent and no unstake tool
+ *   anywhere in the app; the only path is `useWithdrawStake` behind the stake
+ *   page's own control. A verb here would build a Draft the planner cannot plan,
+ *   which is worse than falling through, because the failure would arrive after
+ *   the user had answered a question about it.
+ * - "wrap" / "unwrap" — same shape: no intent exists, so the model's answer
+ *   (which can send the user to the right control) beats a local dead end.
+ * - "pay" — see `send` below. Two readings, one of them a repayment.
+ *
+ * The first three are gaps in the *protocol* surface, not in this grammar, and
+ * closing them starts with an intent, a builder and an auditor rule.
  */
 const VERBS: Record<ActionKind, string[]> = {
-  swap: ["swap", "trade", "convert", "exchange", "sell"],
+  /* "buy" is here rather than absent, and it is the one verb in this list that
+     changes what the sentence means — see parseSwap, which inverts the sides for
+     it. "sell my KLD" spends KLD; "buy KLD" receives it. */
+  swap: ["swap", "trade", "convert", "exchange", "sell", "buy", "purchase"],
   stake: ["stake"],
   approve: ["approve", "allow"],
   /* No "pay". "pay back my loan" and "pay off my loan" are repayments, and a
@@ -441,8 +482,92 @@ const RECEIVE_PHRASES = [
   "qr code",
 ];
 
+/**
+ * Phrases that resolve to a portfolio read.
+ *
+ * Matched anywhere in the sentence, unlike RECEIVE_PHRASES — and the thing that
+ * makes that safe is *where* the check runs, not how the list is written. It sits
+ * after verb detection has already failed, so a request naming any action at all
+ * has been claimed by that action before it can get here. "sell my balance of
+ * KLD" is a swap; "what's my balance" is this. The rule is one sentence: a
+ * request that names no action, and names the user's own holdings, is a read.
+ *
+ * Possessive on purpose. Bare "balance" and bare "positions" are ordinary trading
+ * English — "the balance after the swap", "positions go out of range" — and they
+ * arrive inside questions the FAQ answers better ("why is my balance 0" is a
+ * funding question, not a portfolio one, and it is question-shaped so it never
+ * reaches this file). The three bare nouns below are matched by equality instead,
+ * because as a whole request they mean only one thing.
+ */
+const PORTFOLIO_PHRASES = [
+  "my balance",
+  "my portfolio",
+  "my position",
+  "my holdings",
+  "my net worth",
+  "my assets",
+  "my funds",
+  "what do i have",
+  "what do i own",
+  "what am i holding",
+  "how much do i have",
+  "how much have i got",
+  /* "do I have any KLD", "do I have any positions" — the same question asked as a
+     yes/no. Safe for the same reason the rest are: nothing here states an action,
+     and anything that does was claimed by its verb before this ran. */
+  "do i have any",
+];
+
+/** Whole requests that mean this and nothing else. Compared, not searched. */
+const PORTFOLIO_ALONE = [
+  "balance",
+  "balances",
+  "portfolio",
+  "positions",
+  "holdings",
+  "net worth",
+];
+
+/**
+ * The one family that reaches this check and must not be answered by it.
+ *
+ * Adding liquidity is deliberately tool-only (see ToolOnlyKind), so "add
+ * liquidity to my portfolio" names no verb this grammar knows and would otherwise
+ * land on the read — a request to *do* something, answered with a balance sheet.
+ * Anything naming liquidity or a pool keeps its path to the model.
+ *
+ * The cost is stated rather than hidden: "how much liquidity do I have" is a fair
+ * portfolio question and it will spend a reasoning request. That is the right
+ * direction to fail in — the model can answer it, and a wrong local answer to
+ * "add liquidity" cannot be taken back by the reader.
+ */
+const PORTFOLIO_VETO = new Set(["liquidity", "lp", "pool", "pools"]);
+
 /** Words separating the two sides of a swap. */
 const SEPARATORS = ["to", "for", "into", "->", "→", ">"];
+
+/**
+ * The verbs that name the token being *received* rather than the one being spent.
+ *
+ * Every other word in `VERBS.swap` reads left to right — "swap USDC for KLD",
+ * "sell KLD for USDC" — and these two read right to left. "for" appears in both
+ * lists below with opposite meanings for exactly that reason: `swap A for B`
+ * spends A, `buy A for B` spends B. Getting that backwards is not a near miss,
+ * it is the opposite trade, which is why this is a flag through parseSwap and not
+ * two more entries in the verb table.
+ */
+const BUY_WORDS = new Set(["buy", "purchase"]);
+
+/** Separators that run backwards under a buy: "buy KLD with 500 USDC". */
+const BUY_SEPARATORS = ["with", "using", "for", "->", "→", ">"];
+
+/**
+ * …and the one that still runs forwards: "buy 500 USDC of KLD" spends the USDC.
+ *
+ * Checked only after the backward list, and only under a buy, so "of" has no
+ * effect on any other sentence in the grammar.
+ */
+const BUY_FORWARD_SEPARATORS = ["of"];
 
 /* ---------------------------------------------------------------- amounts -- */
 
@@ -570,10 +695,44 @@ function normalise(text: string): string[] {
     .filter(Boolean);
 }
 
-function detectVerb(words: string[]): { kind: ActionKind; at: number } | null {
+/**
+ * Words that make "fund" mean the user's own balance rather than someone's row.
+ *
+ * "fund" is fillRequest's verb and also the plain English for putting money into
+ * your own wallet. So "fund my wallet" was answered "Which one? For example:
+ * listing 3, request 7…" — the parser asking a confident question about a
+ * marketplace the user never mentioned. Not a wrong transaction, but a wrong
+ * question, and it shadowed the funding answer the FAQ already had.
+ *
+ * The discriminator is whose thing is named: a fill always points at someone
+ * else's row, so a self-word directly after the verb, with no row referenced
+ * anywhere, means this sentence is about the user's own balance. Both conditions
+ * are needed — "fund my request 7" names a row and still fills it, and "fund 500
+ * USDC" is a fill missing its row, which is worth asking about.
+ *
+ * Declining is all this does. There is nothing to build here either: on a testnet
+ * the answer is the faucet, and the faucet needs an asset this sentence does not
+ * name. Falling through reaches the FAQ, which has the two-step funding answer
+ * and a chip that builds the claim.
+ */
+const SELF_WORDS = new Set(["my", "me", "mine", "our", "us", "myself"]);
+
+function detectVerb(
+  words: string[],
+  ctx: { hasRef: boolean },
+): { kind: ActionKind; at: number } | null {
   for (let i = 0; i < words.length; i++) {
     for (const kind of Object.keys(VERBS) as ActionKind[]) {
-      if (VERBS[kind].includes(words[i])) return { kind, at: i };
+      if (!VERBS[kind].includes(words[i])) continue;
+      // See SELF_WORDS.
+      if (
+        words[i] === "fund" &&
+        !ctx.hasRef &&
+        SELF_WORDS.has(words[i + 1] ?? "")
+      ) {
+        continue;
+      }
+      return { kind, at: i };
     }
   }
   return null;
@@ -823,8 +982,27 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     }
   }
 
-  const verb = detectVerb(words);
-  if (!verb) return { status: "unknown" };
+  /* Ahead of the verb because the "fund" guard consults it: a marketplace fill
+     always points at a row, so whether one is named changes what the verb means. */
+  const ref = detectRef(words);
+
+  const verb = detectVerb(words, { hasRef: Boolean(ref) });
+  if (!verb) {
+    /*
+     * Nothing to do, so it may be something to read. Deliberately the last thing
+     * tried before giving up: see PORTFOLIO_PHRASES for why this position is the
+     * safety property rather than the phrase list.
+     */
+    const bare = words.join(" ");
+    if (
+      !words.some((w) => PORTFOLIO_VETO.has(w)) &&
+      (PORTFOLIO_ALONE.includes(bare) ||
+        PORTFOLIO_PHRASES.some((p) => lower.includes(p)))
+    ) {
+      return { status: "ok", command: { kind: "portfolio" } };
+    }
+    return { status: "unknown" };
+  }
 
   // Rate and term claim their numbers first so the amount can't be read off
   // either of them. An address can't be read as an amount (the "0x" stops
@@ -832,7 +1010,6 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   // construction rather than by coincidence.
   const rate = detectRate(words);
   const duration = detectDuration(words);
-  const ref = detectRef(words);
   const recipient = detectRecipient(words, raw);
   const claimed = new Set([
     ...(rate?.claimed ?? []),
@@ -978,22 +1155,64 @@ function parseSwap(
   amount: { amount: string; index: number } | null,
   mentions: Mention[],
 ): ParseResult {
-  const sepAt = words.findIndex((w) => SEPARATORS.includes(w));
+  /*
+   * A purchase is the same transaction read from the other end, and every branch
+   * below has to know which end it is being read from. See BUY_WORDS.
+   */
+  const buying = words.some((w) => BUY_WORDS.has(w));
+  const backAt = buying
+    ? words.findIndex((w) => BUY_SEPARATORS.includes(w))
+    : -1;
+  const fwdAt = buying
+    ? words.findIndex((w) => BUY_FORWARD_SEPARATORS.includes(w))
+    : words.findIndex((w) => SEPARATORS.includes(w));
+  const sepAt = backAt >= 0 ? backAt : fwdAt;
+  /** True when the separator we found puts the spent token on its right. */
+  const inverted = backAt >= 0;
 
   let tokenIn: IToken | undefined;
   let tokenOut: IToken | undefined;
 
   if (sepAt >= 0) {
     // "swap 500 usdc to kld" — the separator disambiguates the two sides even
-    // when only one of them is named.
-    tokenIn = mentions.find((m) => m.index < sepAt)?.token;
-    tokenOut = mentions.find((m) => m.index > sepAt)?.token;
+    // when only one of them is named. "buy kld with 500 usdc" is the same
+    // sentence with the sides swapped, which is all `inverted` does.
+    const before = mentions.find((m) => m.index < sepAt)?.token;
+    const after = mentions.find((m) => m.index > sepAt)?.token;
+    tokenIn = inverted ? after : before;
+    tokenOut = inverted ? before : after;
+  } else if (buying) {
+    /*
+     * No separator, so there is no second side to read — and the positional
+     * fallback below is not available here, because the two orders a purchase
+     * comes in ("buy KLD USDC" vs "buy 500 USDC KLD") mean opposite trades. One
+     * named token is the thing being bought; the token to spend gets asked for.
+     */
+    tokenOut = mentions[0]?.token;
   } else if (mentions.length >= 2) {
     // "swap 500 usdc kld" — positional fallback.
     tokenIn = mentions[0].token;
     tokenOut = mentions[1].token;
   } else if (mentions.length === 1) {
     tokenIn = mentions[0].token;
+  }
+
+  /*
+   * "buy 100 KLD" names an amount of the token being RECEIVED, and there is no
+   * exact-output swap in this app — the intent takes an input amount, so keeping
+   * the 100 would spend 100 of whatever token the user names next. That is the
+   * inverted trade this whole flag exists to prevent, so the number is dropped
+   * and the reply says so rather than quietly re-using it. An explicitly spent
+   * side ("buy KLD with 100 USDC") never reaches here: it has a tokenIn.
+   */
+  if (buying && amount && !tokenIn) {
+    const target = tokenOut ? ` ${tokenOut.symbol}` : "";
+    return {
+      status: "incomplete",
+      draft: { kind: "swap", ...(tokenOut ? { tokenOut } : {}) },
+      missing: "tokenIn",
+      prompt: `I price a swap by what you spend, not by what comes back, so I've dropped the ${amount.amount}${target}. Which token do you want to spend?`,
+    };
   }
 
   const draft: Draft = {
@@ -1300,6 +1519,10 @@ export function completeDraft(draft: Draft): ParseResult {
 /** Shown when the parser is the only thing available, or on `help`. */
 export const COMMAND_HELP = [
   "receive",
+  /* Beside receive because it is the other answer that needs no contract and no
+     signature — and first among the reads because it is what someone checks
+     before and after everything else on this list. */
+  "my portfolio",
   /* The faucet, second, because on a testnet it is what makes every line below
      it possible — an empty wallet cannot swap. Terse forms to match the rest of
      this list, and both of them, because they are the two shapes: one asset by
@@ -1314,6 +1537,10 @@ export const COMMAND_HELP = [
   "send 50 USDC to 0x…",
   "bridge 0.05 ETH to Base Sepolia",
   "swap 500 USDC to KLD",
+  /* The purchase form, shown with the spent side named. "buy KLD" works too and
+     asks two questions; this is the shape that resolves in one line, which is
+     what a reference list is for. */
+  "buy KLD with 500 USDC",
   "stake 100",
   "deposit 500 USDC",
   "withdraw 200 USDC",

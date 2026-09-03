@@ -1,0 +1,61 @@
+# Cloudflare Worker config for the price-keeper's clock.
+#
+# Deploy / redeploy:
+#
+#   npx wrangler deploy --config scripts/keeper-cron/wrangler.toml
+#
+# Arm it (the value must equal the Vercel project's CRON_SECRET — the endpoint
+# compares them with timingSafeEqual and answers 401 to anything else):
+#
+#   npx wrangler secret put KEEPER_CRON_SECRET --config scripts/keeper-cron/wrangler.toml
+#
+# See keeper-cron-worker.js for why this Worker exists rather than a Vercel cron
+# (Hobby plan: once a day, against a 3600s freshness bound) or the existing
+# GitHub Actions schedule (measured: 47 runs in 152 hours, one per ~3.2h).
+
+name = "kaleido-keeper-cron"
+main = "keeper-cron-worker.js"
+compatibility_date = "2026-09-01"
+
+# The workers.dev hostname is only a manual trigger, and it refuses anything
+# without the same secret — see the fetch handler. No route and no custom domain,
+# because nothing but Cloudflare's scheduler needs to reach this.
+#
+# Declared above every [table] header on purpose: a bare key after one belongs to
+# that table, and `workers_dev` under [triggers] is silently the wrong setting
+# (wrangler warns "Unexpected fields found in triggers field" and carries on).
+workers_dev = true
+
+# No per-version preview hostnames. They default on with workers_dev and each one
+# is another public URL that would trigger a real, gas-spending push; the secret
+# check means they are not a hole, but there is nothing here worth previewing.
+preview_urls = false
+
+# Every 15 minutes, against the tightest bound the endpoint pushes for — ETH/WETH
+# on chain 46630 at 3600s. Four runs per hour means the feed survives three
+# consecutive failures before anything reading a price is affected, and at a
+# measured 0.00000045 ETH per push that margin costs about a thousandth of the
+# keeper's balance per year. Anything slower buys nothing back.
+#
+# If a feed is ever added with a bound under an hour, this line is what has to
+# change, and the arithmetic above is the thing to redo: the cadence needs to be
+# short enough that (bound / cadence) still leaves room for a missed run.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+# The apex, deliberately. `www.kaleidofi.xyz` answers 307, and a redirect is not
+# somewhere to send a bearer token.
+APP_URL = "https://kaleidofi.xyz"
+
+# Robinhood testnet. It is the only chain whose feeds we publish ourselves — the
+# other three AggregatorPriceOracle chains (97, 84532, 11155111) report
+# `not-self-hosted` and so a run there is reads with no transaction at the end.
+# Re-derive with `?dryRun=1` and no chainId rather than trusting this comment.
+KEEPER_CHAIN_IDS = "46630"
+
+# On, because a keeper that silently stops is the failure being fixed here. The
+# scheduled handler rethrows on any non-200 so the invocation is marked failed
+# and not just logged.
+[observability]
+enabled = true
