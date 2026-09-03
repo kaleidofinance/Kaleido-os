@@ -144,6 +144,17 @@ const SUBJECT = "Your Kaleido testnet access code";
 const APP_URL = "https://app.kaleidofi.xyz/trade/agent";
 /* Docs stay on the marketing host, where they are canonical and ungated. */
 const GUIDE_URL = "https://kaleidofi.xyz/docs/getting-started";
+/* The app icon rather than /newklogo2.png, which is the file the nav and the marketing
+   header draw but is not a logo: it is a 500x500 plate with a photographic dark
+   background and the mark small and off-centre, which the app crops with CSS. An email
+   cannot crop, so at 48px it would be a dark rectangle with something illegible inside.
+   /icon-192.png is the same mark squared off and filling the frame, on a near-black
+   ground that disappears into the panel below, and it is 23KB against 140KB.
+
+   It is decorative and nothing depends on it: most clients block remote images until the
+   reader allows them, so a logo carrying information would be a logo that sometimes
+   carries none. 192px source for a 48px slot stays sharp at 3x. */
+const LOGO_URL = "https://kaleidofi.xyz/icon-192.png";
 
 /* Both parts are sent. Plain text is not a fallback nobody reads — a message with
    no text/plain part scores worse with spam filters than one with it, and this
@@ -171,6 +182,7 @@ We will never ask for your seed phrase or private key.
 const HTML = `<!doctype html>
 <html><body style="margin:0;padding:24px;background:#0b0b0f;font:16px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#e8e8ef">
 <div style="max-width:520px;margin:0 auto">
+<img src="${LOGO_URL}" width="48" height="48" alt="Kaleido" style="display:block;width:48px;height:48px;border:0;outline:none;margin:0 0 20px;text-decoration:none">
 <p style="margin:0 0 20px">You registered for the Kaleido private testnet. Here is your access code.</p>
 <p style="margin:0 0 24px;padding:16px;background:#16161d;border:1px solid #2a2a35;border-radius:10px;font:600 26px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.18em;text-align:center;color:#fff">${ACCESS_CODE}</p>
 <p style="margin:0 0 20px"><a href="${APP_URL}" style="color:#8b8bff">Open the app</a> and enter it once. It is remembered on that browser afterwards.</p>

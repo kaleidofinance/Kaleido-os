@@ -488,6 +488,50 @@ Notes on the wording, each of which is load-bearing:
 - **The code is shown as text, not as a link.** A link containing the code trains
   people to click links in emails that contain access codes.
 
+### The logo, and the empty circle beside the sender name
+
+These are two different things and only one of them is ours to fix in the email.
+
+**In the body** the HTML part opens with `https://kaleidofi.xyz/icon-192.png` at 48px.
+Note it is the **app icon, not `/newklogo2.png`** — the file the nav and marketing header
+draw is a 500×500 plate with a photographic dark background and the mark small and
+off-centre, which the app crops with CSS. An email cannot crop, so at 48px that file is a
+dark rectangle with something illegible in it. `/icon-192.png` is the same mark squared
+off and filling the frame, on a near-black ground that disappears into the panel, at 23KB
+against 140KB. Both serve 200 from the marketing host; only one of them is a logo.
+
+It is decorative on purpose and the text part has no equivalent. Most clients block
+remote images until the reader allows them, so anything the message depends on — the
+code, the link, the "we will never ask for your seed phrase" line — is text.
+
+**The circle beside the sender name is BIMI, and it is not available to us yet.**
+Verified against Google's own requirements 2026-09-03, and each of these is a hard gate:
+
+| Requirement | Where we are |
+| --- | --- |
+| DMARC `p=quarantine` or `p=reject`, `pct=100` | **`p=none`.** BIMI explicitly does not work at `none`. |
+| Logo as SVG Tiny PS, `baseProfile="tiny-ps"`, ≥96×96 in absolute px, no links or scripts, opaque background, ≤32KB | we have PNGs; this is a real conversion, not an export |
+| A **PEM** holding the SVG plus a certificate — Gmail supports BIMI only via PEM, so the bare-SVG form of the record does nothing | not started |
+| `default._bimi` TXT record, PEM served over HTTPS | not started |
+
+The certificate is the part worth knowing about before anyone budgets for it. A **VMC**
+needs the logo **registered as a trademark** with a recognised IP office — 6–12 months,
+and it is the only route that earns the checkmark Gmail shows beside verified senders. A
+**CMC** needs no trademark and still fills the circle. Issuers are listed at
+`bimigroup.org/vmc-issuers/`.
+
+**Do not move DMARC to `quarantine` in order to get the logo before this send.** The
+root SPF carries `include:zohomail.com` and `include:spf.privateemail.com`, so mail also
+leaves this domain from the reply mailbox; enforcing before confirming that stream is
+DKIM-signed and aligned would quarantine our own replies to the very people we just
+mailed. The order is: keep `p=none`, read the `rua` reports for a week, then enforce —
+and check that `dmarc@kaleidofi.xyz` is a mailbox that exists, or those reports bounce.
+
+Until then the circle shows a letter. The zero-cost thing that sometimes fills it is a
+Google Account profile photo on `official@kaleidofi.xyz`, which Gmail may show from the
+sender's Google profile — undocumented as a branding feature, inconsistent between
+recipients, and not something to count on.
+
 ## 6. Send day
 
 1. `npm run verify:faucet -- 3077` — the true deliverable count, not a round 3,000.
