@@ -17,7 +17,7 @@ stale within the hour.
 | Faucet capacity | **12h cooldown on all five chains, and ~80 users short of the real list.** Re-measured 2026-09-03 against the true deliverable count rather than a round 3,000: BSC serves 3,000 (bound by mock USDC), Base Sepolia 2,998 (ETH), Robinhood 2,996 (WETH), Sepolia 2,992 (WETH) — against **3,077 deliverable**. Not a send blocker at realistic claim rates, but the shortfall lands on whoever claims last, which is the day-4 batch. Fix by minting where the bound asset is a mock we issue and by trimming the drip where it is real (WETH 0.005 → 0.004, Base ETH 0.01 → 0.009 clear it without funding). Re-check with `npm run verify:faucet -- 3077`. |
 | Agent | **Verified working** end to end in production through the Cloudflare relay. Quota is 25 requests/day per wallet, and it refuses entirely without a connected wallet. |
 | Keeper | **Done.** The Cloudflare Worker is now firing `*/15` on its own — measured 2026-09-02 23:39 UTC as two pushes 15m15s apart with no GitHub Actions run in that window — and Robinhood ETH sits at 640s against its 3,600s bound. The fires land ~13 minutes past the quarter hour, so judge it by the feed's age and not by watching a boundary. See `KEEPER_SCHEDULING.md`. |
-| Email | **DNS complete, credential outstanding.** All four records verified 2026-09-03 from a public resolver, not the dashboard: DKIM `TXT` at `resend._domainkey`, `CNAME`s at `send` and `rsend`, and `_dmarc` now answering `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz`. The root SPF and the Zoho MX survived the edit, so replies still land. A dry run reproduces 3,077 deliverable exactly. Left: `RESEND_API_KEY` in `.env`, and the account is on Free (100/day, below the 200 batch floor). |
+| Email | **DNS and credential done; the plan is the last gate.** All four records verified 2026-09-03 from a public resolver, not the dashboard: DKIM `TXT` at `resend._domainkey`, `CNAME`s at `send` and `rsend`, and `_dmarc` answering `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz`. The root SPF and the Zoho MX survived the edit, so replies still land. `RESEND_API_KEY` is in `.env` and authenticates. A dry run reproduces 3,077 deliverable exactly. Left: **upgrade to Pro** (Free caps at 100/day, below the 200 batch floor) and the §3 post. |
 | Arc Testnet | **Do not steer anyone there.** 34 users of faucet capacity, and its oracle is down on the Hermes 401. It stays listed in the app because it is deployed; it is simply not where a new user should start. |
 | Gas drip | `/api/gas-drip` is off in production (`GAS_DRIP_PRIVATE_KEY` unset), by decision. The zeroth-transaction wall is handled by the external faucet links `/faucet` already renders per chain. |
 
@@ -231,6 +231,19 @@ which is precisely the impersonation §3 warns recipients about. Treat it accord
 belongs in `.env` and nowhere else — not in a shell command, where it lands in history,
 and not pasted into a chat or an issue. If it is ever exposed, deleting the key in the
 dashboard is instant and free, so rotate rather than reason about how bad the exposure was.
+
+**Verify the key without sending anything.** A correctly scoped key **401s on every read
+endpoint** — `GET /domains` answers `{"name":"restricted_api_key","message":"This API key
+is restricted to only send emails"}` — so a 401 there is the scope working, not a bad key.
+The probe that actually distinguishes them is `POST /emails` with `{}`: an authenticated
+key gets **422 `missing_required_field`** ("Missing `to` field"), an invalid one gets 401.
+Nothing can be sent without a `to`, so this is safe to run against production.
+
+When the smoke test does happen, **send it to a Gmail address**, not to
+`official@kaleidofi.xyz`. 98.1% of the list is `gmail.com`, so Gmail is the only receiver
+whose verdict matters — and Gmail will show its own SPF, DKIM and DMARC results under
+**Show original**, which is the only place the four DNS records above get graded by the
+party that counts.
 
 ### Entering them in Namecheap
 
