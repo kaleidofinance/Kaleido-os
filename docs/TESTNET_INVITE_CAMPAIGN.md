@@ -16,7 +16,8 @@ stale within the hour.
 | --- | --- |
 | Faucet capacity | **Done.** 12h cooldown on all five chains; Sepolia serves 2,992, Robinhood 2,996, Base Sepolia 2,998, BSC 3,000. Re-check with `npm run verify:faucet -- 3000`. |
 | Agent | **Verified working** end to end in production through the Cloudflare relay. Quota is 25 requests/day per wallet, and it refuses entirely without a connected wallet. |
-| Keeper | **Blocked on three manual steps** — see the runbook. Do not send until `?dryRun=1` returns `wouldPush > 0` in production. |
+| Keeper | **Done.** The Cloudflare Worker is now firing `*/15` on its own — measured 2026-09-02 23:39 UTC as two pushes 15m15s apart with no GitHub Actions run in that window — and Robinhood ETH sits at 640s against its 3,600s bound. The fires land ~13 minutes past the quarter hour, so judge it by the feed's age and not by watching a boundary. See `KEEPER_SCHEDULING.md`. |
+| Email | **The remaining gate, and it is all off-repo.** `RESEND_API_KEY` is unset (checked: it appears in no `.env` and, correctly, nowhere in Vercel). `_dmarc`, `resend._domainkey` and the `send.` subdomain records do not exist yet. §2 has the measured zone and what to add to it. |
 | Arc Testnet | **Do not steer anyone there.** 34 users of faucet capacity, and its oracle is down on the Hermes 401. It stays listed in the app because it is deployed; it is simply not where a new user should start. |
 | Gas drip | `/api/gas-drip` is off in production (`GAS_DRIP_PRIVATE_KEY` unset), by decision. The zeroth-transaction wall is handled by the external faucet links `/faucet` already renders per chain. |
 
@@ -127,13 +128,33 @@ and it is also a wait with a rejection risk, positioned immediately before a sen
 you have publicly committed to. Pay the $20 this once; move to SES later if these
 sends become routine.
 
-Three DNS records, from the provider's dashboard:
+Three DNS records, whose exact values come from the provider's dashboard — but the
+zone was measured on 2026-09-02, so what is already there is known:
 
-- **SPF** — `TXT` authorising the service's servers.
-- **DKIM** — the `CNAME` records the provider generates. This is what actually
-  signs the mail; skip it and Gmail will not accept the message as authenticated.
-- **DMARC** — `TXT` at `_dmarc.kaleidofi.xyz`, starting at
-  `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz`.
+**The zone is at Namecheap** (`dns1.registrar-servers.com` / `dns2.registrar-servers.com`),
+not Cloudflare. Cloudflare hosts the Workers, not this domain — do not go looking for
+the records there.
+
+| Record | Live value, measured | What Resend needs |
+| --- | --- | --- |
+| root `TXT` (SPF) | `v=spf1 include:zohomail.com include:spf.privateemail.com ~all` | **leave it alone** |
+| root `MX` | `mx.zoho.com`, `mx2`, `mx3` | leave it alone — that is the reply mailbox |
+| `resend._domainkey` `TXT` | absent | the DKIM public key |
+| `send.kaleidofi.xyz` `TXT` | absent | `v=spf1 include:amazonses.com ~all` |
+| `send.kaleidofi.xyz` `MX` | absent | `feedback-smtp.<region>.amazonses.com` |
+| `_dmarc` `TXT` | **absent** | `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz` |
+
+Two things follow from those measurements. **The root SPF must not be touched**: it
+already carries two `include:` lookups for Zoho, SPF permits ten before it `PermError`s,
+and Resend does not need one there anyway — its SPF belongs on the `send.` subdomain,
+which is the envelope `MAIL FROM` domain, while the visible `From:` stays on the root and
+aligns through DKIM. And **DKIM here is a `TXT` at `resend._domainkey`, not a `CNAME`** —
+CNAME-style DKIM is what SES and Postmark hand out, so a Namecheap form filled in as a
+CNAME will silently fail verification.
+
+`_dmarc` being absent matters more than it looks: it is the record that lets a receiver
+tell a forged `official@kaleidofi.xyz` from the real one, and it is missing on the domain
+that is about to mail 3,000 people an access code. It is the technical half of §3.
 
 Start DMARC at `p=none`, not `p=reject`. `none` still delivers the aggregate
 reports that tell you whether your own mail is passing; tightening to `quarantine`
@@ -159,6 +180,12 @@ belong in a committed file:
 | `CAMPAIGN_FROM` | Defaults to `Kaleido <official@kaleidofi.xyz>`. |
 | `CAMPAIGN_REPLY_TO` | Defaults to `official@kaleidofi.xyz`. Also where opt-outs land. |
 
+**None of these belong in Vercel.** `campaign:send` runs on your machine and the app
+sends no mail at all — `RESEND_API_KEY` appears in exactly one file in this repository,
+this script. Putting it in the deployment would add a live sending credential to a
+surface that has no use for it. `.env` is enough, and the script walks up from the cwd to
+find it, so it works from a git worktree too (where `.env`, being gitignored, is absent).
+
 ## 3. Announce the From address before you send
 
 Post on X, **before the first batch**, naming the exact address the email will come
@@ -168,6 +195,28 @@ Three thousand people expecting an email containing an access code is a phishing
 opportunity, and it is a predictable one: the form was public, the promise was
 public, and the timing is now known. The single cheapest defence is that the real
 From address was published first, by you.
+
+A draft that says all of it, at **276 characters** so it fits without Premium:
+
+> 3,000+ registered for the Kaleido private testnet. Access codes go out by email this
+> week, from official@kaleidofi.xyz — that address and no other.
+>
+> We send in batches over four days, so yours may not be first. That's normal.
+>
+> We never ask for your seed phrase or private key.
+
+And as the first reply in the same thread, **233 characters**:
+
+> Nobody from Kaleido will DM you a code, a link to "verify" your wallet, or a form
+> asking for a seed phrase. If it didn't come from official@kaleidofi.xyz, it isn't us —
+> and a DM offering to move you up the queue is the one to report.
+
+Two deliberate choices in that copy. **The batching is stated up front**, because §4
+sends over four days and a registrant who sees other people posting their code on day one
+concludes theirs was lost — which is exactly the person a "having trouble? DM me" reply is
+waiting for. Saying "yours may not be first" in advance removes the opening. And **it sells
+nothing.** Luca is the reason to use the product and belongs in every other post, but a
+security notice that also markets reads as marketing, and this one has to be believed.
 
 ## 4. Warm-up, and the numbers that stop the send
 
