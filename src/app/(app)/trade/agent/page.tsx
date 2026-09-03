@@ -5,6 +5,7 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
+import { usePortfolio, type Portfolio } from "@/hooks/usePortfolio";
 import { useLocalPlanner } from "@/hooks/v2/useLocalPlanner";
 import { useChatHistory, type Msg } from "@/hooks/v2/useChatHistory";
 import { chainTokens } from "@/constants/tokens";
@@ -25,6 +26,7 @@ import { traceFromChat } from "@/lib/v2/agentTurn";
 import { readChatStream } from "@/lib/v2/chatStream";
 import { renderIntent } from "@/lib/v2/intents";
 import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
+import { portfolioAnswer } from "@/lib/v2/cards/portfolio";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
 import { visibleProse } from "@/lib/ai/actionsBlock";
 import {
@@ -99,6 +101,29 @@ export default function AgentPage() {
   // V3 positions, so "collect fees position 42" / "remove position 42" can
   // find the position and its real liquidity value without asking.
   const { positions } = useV3Positions();
+  /*
+   * Everything the address holds, for "what are my balances".
+   *
+   * The same hook /portfolio renders, deliberately: the agent quoting a net value
+   * that page disagrees with would be worse than not answering. It costs one
+   * mirror read and one price read on mount, both shared through react-query with
+   * every other surface that wants them, and it is the data this screen is most
+   * often asked for.
+   */
+  const portfolio = usePortfolio();
+  /*
+   * The latest portfolio, readable from inside an async turn.
+   *
+   * `planLocally` closes over the render that created it, and the reads above
+   * settle on their own schedule — so a turn that lands mid-fetch would answer
+   * "you hold nothing", which is the one wrong answer this read can give. A ref
+   * written from an effect rather than during render, so a double render in
+   * development cannot make the two disagree.
+   */
+  const portfolioRef = useRef<Portfolio>(portfolio);
+  useEffect(() => {
+    portfolioRef.current = portfolio;
+  }, [portfolio]);
   /*
    * The transcript, persisted per wallet and capped — see useChatHistory. It
    * lives in a hook rather than here because this route unmounts whenever you
@@ -230,6 +255,25 @@ export default function AgentPage() {
     ]);
 
   /**
+   * Waits for the portfolio reads to settle, then hands back whatever they hold.
+   *
+   * Bounded, because `isLoading` staying true is a real outcome — a throttled RPC,
+   * a chain with no deployment — and a turn that never answers is worse than one
+   * that answers from what arrived. The caller says which of the two happened.
+   */
+  const readPortfolio = async (signal: AbortSignal): Promise<Portfolio> => {
+    const deadline = Date.now() + 8_000;
+    while (
+      portfolioRef.current.isLoading &&
+      !signal.aborted &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+    return portfolioRef.current;
+  };
+
+  /**
    * Turns a successful parse into a rendered plan. Returns false when the
    * command can't be planned locally, so the caller can fall through.
    *
@@ -305,6 +349,25 @@ export default function AgentPage() {
     if (result.command.kind === "receive") {
       note("Opened your receive panel");
       setPanel({ kind: "receive" });
+      return true;
+    }
+
+    /*
+     * The portfolio, same shape: an answer, not a plan. It short-circuits here
+     * for the same reason receive does — there is no transaction that is a
+     * balance sheet — and it waits for the hooks rather than reporting whatever
+     * they happened to hold when the turn started.
+     */
+    if (result.command.kind === "portfolio") {
+      note("Reading your balances and positions");
+      const held = await readPortfolio(signal);
+      if (signal.aborted) return true;
+      if (held.isLoading) {
+        note("Some reads didn't come back — answering from the rest");
+      }
+      const answer = portfolioAnswer(held, { connected: Boolean(address) });
+      const cards = localCards(answer.cards);
+      say(answer.text, { via: "local", ...(cards.length ? { cards } : {}) });
       return true;
     }
 

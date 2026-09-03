@@ -7,10 +7,12 @@
 // the miss list it prints IS the next work item.
 //
 // Measured 2026-09-03, before the widening: 44% overall, 31% of the questions.
-// After: 78% and 87%. The floors below sit under those, deliberately loose, so
-// that adding a new corpus prompt with no topic behind it is a nudge rather than
-// a broken build — but losing a whole topic, or a chip falling through to the
-// model, fails immediately.
+// After: 78% and 87%. Then the portfolio read and the funding phrasings landed and
+// the corpus grew by twelve to measure them: 49/56, 88%. The floors below sit under
+// those, deliberately loose, so that adding a new corpus prompt with no topic
+// behind it is a nudge rather than a broken build — but losing a whole topic, or a
+// chip falling through to the model, fails immediately. The section at the foot is
+// where the exact routing is pinned.
 import { matchFaq, isQuestionShaped } from "./faq.ts";
 import { parseCommand } from "../v2/intents/fromCommand.ts";
 import { chainTokens } from "../../constants/tokens.ts";
@@ -104,6 +106,7 @@ const QUESTIONS = [
   "what is a health factor",
   "is there an airdrop",
   "how do I get KLD",
+  "how do I buy KLD",
   "is this audited",
   "do you have a token",
   "where are the docs",
@@ -112,6 +115,24 @@ const QUESTIONS = [
   "my transaction is stuck",
   "what are the fees",
   "what is the APY",
+  /* Asking what you hold. Absent from this corpus until the read existed, which
+     means the percentage above it never measured the single most-asked thing —
+     so they are here now whether or not they pass. "am I in profit" is the one
+     that will stay open: it needs a cost basis, and nothing in the app records
+     what anyone paid, so the model cannot answer it either. */
+  "what are my balances",
+  "show my portfolio",
+  "show my positions",
+  "what do I have",
+  "how much is my portfolio worth",
+  "do I have any positions",
+  "am I in profit",
+  /* Asking to be given something, which is a request wearing a question's clothes.
+     The grammar has one faucet word, so these depend entirely on the FAQ. */
+  "give me some USDC",
+  "fund my wallet",
+  "my wallet is empty",
+  "I need test ETH",
   // Both of these are asked at the gate, which is upstream of this screen — you
   // cannot reach Luca without already having entered a working code. Kept in the
   // corpus because they are real questions from real registrants; they belong in
@@ -160,6 +181,35 @@ console.log("\n— a question never answers with a transaction —");
   for (const q of asked) {
     const r = route(q);
     check(`"${q}" -> ${r}`, String(r).startsWith("faq:"), String(r));
+  }
+}
+
+/* The percentage above is a trend line and is deliberately loose. These are the
+   sharp checks: each says not merely that a prompt is answered locally, but which
+   of the two nets answers it. Both directions have been wrong before — a balance
+   question answered with a transaction plan, and a request for test funds answered
+   with "which marketplace request do you want to fill?". */
+console.log("\n— and the right net answers it —");
+{
+  const ROUTES = {
+    // Reads. The grammar owns these because it resolves them to a command the page
+    // short-circuits, not to a plan.
+    "what are my balances": "command:portfolio",
+    "show my portfolio": "command:portfolio",
+    "do I have any KLD": "command:portfolio",
+    // Prose. Nothing to build, so a paragraph with a chip on it is the answer.
+    "give me some USDC": "faq:test-funds",
+    "fund my wallet": "faq:test-funds",
+    "how do I buy KLD": "faq:kld",
+    // Still a transaction, and still the grammar's.
+    "buy KLD with 500 USDC": "command:swap",
+    "claim everything from the faucet": "command:claimTestTokens",
+    // A read must not swallow a stated action, whatever it mentions.
+    "add liquidity to my portfolio": null,
+  };
+  for (const [text, want] of Object.entries(ROUTES)) {
+    const got = route(text);
+    check(`"${text}" -> ${want ?? "the model"}`, got === want, String(got));
   }
 }
 

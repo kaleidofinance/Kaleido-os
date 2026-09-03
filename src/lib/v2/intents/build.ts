@@ -508,6 +508,16 @@ export async function buildIntents(
     return { ok: false, error: "receive" };
   }
 
+  /*
+   * Same shape as receive: a portfolio is an answer, not a transaction. The agent
+   * page short-circuits it against the hooks it already holds — the planner has
+   * no address book and no price feed of its own, and asking it for "the
+   * transaction that is a balance sheet" has no answer either.
+   */
+  if (command.kind === "portfolio") {
+    return { ok: false, error: "portfolio" };
+  }
+
   if (command.kind === "swap") {
     const { amount, tokenIn, tokenOut } = command;
 

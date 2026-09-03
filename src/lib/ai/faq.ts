@@ -101,12 +101,55 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "why is my balance 0",
       "why is my balance zero",
       "balance is empty",
+      "wallet is empty",
+      "empty wallet",
+      /* The phrasings that are a request rather than a question: "I need test
+         ETH", "need some gas", "give me USDC". They reach this file because the
+         grammar finds no verb in them — "faucet" is its only faucet word — so
+         without these they were a miss on both nets and landed on the model.
+
+         "give me USDC" stops here rather than becoming a faucet claim in the
+         grammar, and that is a choice: making "give" a faucet verb would turn
+         every sentence that starts with it and names a token into a transaction
+         proposal, "give me the price of KLD" included. A paragraph with a chip on
+         it costs one click; a wrong transaction proposal costs trust.
+
+         "fund my wallet" is here now that the grammar declines it. `fund` is
+         fillRequest's verb, so it used to claim the sentence and ask which
+         request to fill — a confident wrong question. See SELF_WORDS in
+         fromCommand.ts: a fill points at someone's row, and this names none. */
+      "need test",
+      "need gas",
+      "need some gas",
+      "give me",
+      "fund my wallet",
+      "fund me",
+      "how do i fund",
+      "how do i add funds",
       "limit on the faucet",
       "how often can i claim",
       "how much does the faucet",
     ],
     answer:
       "Two steps, and only the first happens off Kaleido. The chain's own gas token has to come from that network's public faucet, because claiming from ours is itself a transaction — a wallet at zero cannot pay for the claim that would fund it. The faucet page names the operator for whichever chain you are on and links straight to it, and says so louder once it can see your balance is zero. With gas in hand everything else is claimable in one go: USDC, USDT, USDe, the wrapped native and KLD, one claim per address every 12 hours. Or just say \"claim everything from the faucet\" and I will build it.",
+    /* The last sentence of that answer names a phrasing, so the chip is the same
+       sentence in one click — a card can only fill the prompt box, which is
+       exactly the reach this needs. Ordered as the answer is: gas is a link on
+       /faucet that no card here can carry, so the first chip is the step after
+       it, and the second is what the whole exercise was for. */
+    cards: [
+      {
+        kind: "actions",
+        title: "Once you have gas",
+        actions: [
+          {
+            label: "Claim testnet tokens",
+            prompt: "claim everything from the faucet",
+          },
+          { label: "Then one swap", prompt: "swap 500 USDC to KLD" },
+        ],
+      },
+    ],
     /* Twelve hours is the cooldown set on all five faucet contracts, not a
        constant in this repo — the /faucet page reads drip, stock and remaining
        wait from the contract, so that page is authoritative and this sentence is
@@ -339,6 +382,15 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "what is kld",
       "how do i get kld",
       "get kld",
+      /* Asking how to buy it is asking for the explanation, not for the trade. The
+         grammar would take these as an incomplete swap and ask which token to
+         spend — a fair reply, but the answer below names both routes and hands
+         over the same chip, so the question form belongs here. Kept specific to
+         KLD: "how do i buy" alone would answer for every token with this
+         paragraph. */
+      "how do i buy kld",
+      "where can i buy kld",
+      "can i buy kld",
       "kld token",
       "do you have a token",
       "is there a token",
@@ -346,6 +398,23 @@ export const FAQ_TOPICS: FaqTopic[] = [
     ],
     answer:
       "KLD is Kaleido's own token, deployed on all five networks. Two ways to get it on testnet: claim it from the faucet page along with the other test assets, or swap for it — there is a KLD/USDC pool on Sepolia and Base Sepolia. Staking it mints stKLD; ask me how staking works for that part.",
+    /* Both routes as chips, because this is the one topic where the answer is two
+       things you can do rather than something to know. The purchase phrasing is
+       the parser's own — "buy X with N Y" is the shape that resolves in one line,
+       since a swap is priced by what you spend. */
+    cards: [
+      {
+        kind: "actions",
+        title: "Two ways",
+        actions: [
+          {
+            label: "Claim KLD from the faucet",
+            prompt: "claim everything from the faucet",
+          },
+          { label: "Buy KLD with USDC", prompt: "buy KLD with 500 USDC" },
+        ],
+      },
+    ],
   },
   {
     id: "docs-support",

@@ -136,6 +136,68 @@ check("earning points", matchFaq("how do I earn points")?.id === "points");
   check("staking still wins its own question", r?.id === "staking", r?.id);
 }
 
+/*
+ * The funding question is asked as a request at least as often as it is asked as
+ * a question — "my wallet is empty", "I need test ETH" — and those phrasings miss
+ * the grammar (it has one faucet word) as well as the FAQ, so they used to land on
+ * the model to be told about a faucet page.
+ */
+console.log("\n— funding, phrased as a complaint rather than a question —");
+check("empty wallet", matchFaq("my wallet is empty")?.id === "test-funds");
+check(
+  "the shorter form too",
+  matchFaq("empty wallet here, what now")?.id === "test-funds",
+);
+check("need test ETH", matchFaq("i need test eth")?.id === "test-funds");
+check("need gas", matchFaq("need some gas please")?.id === "test-funds");
+check(
+  "how do I fund",
+  matchFaq("how do i fund my wallet")?.id === "test-funds",
+);
+check("adding funds", matchFaq("how do i add funds")?.id === "test-funds");
+check("give me some", matchFaq("give me usdc")?.id === "test-funds");
+/* Both of these used to be claimed by the grammar and answered wrongly: "fund" is
+   fillRequest's verb. The grammar now declines them, and this is the answer they
+   fall through to — so a regression there shows up here as well as in the
+   shadowing check below. */
+check("fund my wallet", matchFaq("fund my wallet")?.id === "test-funds");
+check("fund me", matchFaq("fund me")?.id === "test-funds");
+check(
+  "and the answer offers the phrasing that acts on it",
+  matchFaq("my wallet is empty")?.cards?.some((c) =>
+    c.actions?.some((a) => a.prompt === "claim everything from the faucet"),
+  ),
+);
+{
+  /* "need eth" is deliberately not a trigger: at 8 characters it ties with
+     mainnet's "real eth", and matchFaq breaks ties by topic order, so this topic
+     would steal "do I need real ETH for this". Asserted rather than trusted. */
+  const r = matchFaq("do i need real eth for this");
+  check(
+    "a nearby mainnet question is not captured",
+    r?.id === "mainnet",
+    r?.id,
+  );
+}
+{
+  /* The token topic now offers the purchase phrasing, which only became parseable
+     with the `buy` verb — a card that fills the box with an unparseable sentence
+     is worse than no card. */
+  const buy = matchFaq("how do I get KLD")?.cards?.flatMap(
+    (c) => c.actions?.map((a) => a.prompt) ?? [],
+  );
+  check(
+    "the KLD answer offers a way to buy it",
+    buy?.includes("buy KLD with 500 USDC"),
+    JSON.stringify(buy),
+  );
+  /* And asking how to buy it lands on that answer rather than on the grammar's
+     "which token do you want to spend?", which is a fair reply to an instruction
+     and the wrong shape of reply to a question. */
+  check("how to buy it", matchFaq("how do i buy kld")?.id === "kld");
+  check("where to buy it", matchFaq("where can i buy kld")?.id === "kld");
+}
+
 console.log("\n— question-shaped, so the FAQ gets first refusal —");
 for (const q of [
   "what is slippage",
@@ -226,6 +288,28 @@ console.log("\n— every trigger can actually fire, given the routing order —"
     "the shadowed noun phrase still fires inside its question",
     isQuestionShaped("is there a limit on the faucet") &&
       matchFaq("is there a limit on the faucet")?.id === "test-funds",
+  );
+
+  /* A card can only fill the prompt box — clicking one submits the sentence as
+     though the user typed it. So a chip whose prompt neither net can handle is a
+     model request this file invited, on a phrasing we chose ourselves. Every one
+     of them has to be answerable locally: parsed by the grammar, or question-
+     shaped and matched here. */
+  const unhandled = [];
+  for (const topic of FAQ_TOPICS) {
+    for (const card of topic.cards ?? []) {
+      for (const action of card.actions ?? []) {
+        const local =
+          parseCommand(action.prompt, TOKENS).status !== "unknown" ||
+          (isQuestionShaped(action.prompt) && matchFaq(action.prompt) !== null);
+        if (!local) unhandled.push(`${topic.id}: ${action.prompt}`);
+      }
+    }
+  }
+  check(
+    "every chip we offer is a sentence one of the two local nets can answer",
+    unhandled.length === 0,
+    unhandled.join(" | "),
   );
 }
 

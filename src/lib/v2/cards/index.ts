@@ -10,3 +10,4 @@ export type {
 } from "./types";
 export { cardsFromChat, localCards } from "./fromChat";
 export { figureCards, type FigureContext } from "./figures";
+export { portfolioAnswer, type PortfolioAnswer } from "./portfolio";
