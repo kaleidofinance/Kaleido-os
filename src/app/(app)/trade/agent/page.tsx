@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
@@ -130,7 +137,12 @@ export default function AgentPage() {
    * step over to /trade/swap, so an in-memory thread was lost on a tab change,
    * not only on a reload.
    */
-  const { messages, setMessages, clear: clearThread } = useChatHistory(address);
+  const {
+    messages,
+    setMessages,
+    clear: clearThread,
+    hydrated,
+  } = useChatHistory(address);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -832,16 +844,81 @@ export default function AgentPage() {
    * Keyed on the message *count*, not the array: `onComplete` rewrites the array
    * to drop a spent plan, and yanking someone to the bottom because a signature
    * finished would fight them mid-read. A new turn is always something the user
-   * just asked for, so following it is what they expect.
+   * just asked for, so following it is what they expect. Stage count too, for the
+   * same reason: the turn in flight grows a line at a time, and a wait that
+   * reports its progress below the fold reports it to nobody.
    */
   const threadRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+
+  /**
+   * Whether the reader is still at the foot of the transcript.
+   *
+   * A new turn always follows, per the paragraph above. This flag governs the
+   * other reason the view moves — the transcript changing size underneath it —
+   * where following is only right if that is where they already were. Someone who
+   * has scrolled up to re-read turn three must not be thrown to the bottom
+   * because the chart beside them finished laying out.
+   */
+  const pinned = useRef(true);
+
+  /*
+   * `hydrated` is in the deps because a restored thread has to open where the
+   * conversation left off, and one assignment was not enough to do it.
+   *
+   * `.card` takes its height from `.stage`'s `align-items: stretch`, which means
+   * from the tallest thing in that row, which is the chart panel beside it. On a
+   * reload the transcript is therefore measured against a provisional box: the
+   * content fits, `scrollHeight` equals `clientHeight`, and the assignment clamps
+   * to zero. The row then settles, the thread gets its real height, the content
+   * starts overflowing — and the offset is still zero, so the conversation opened
+   * at its oldest turn with the newest reply cut off below the fold. Which is
+   * what a reload actually looked like.
+   *
+   * The ResizeObserver is the direct statement of that: re-pin whenever the
+   * measurement changes, for as long as the reader is at the foot of it. It covers
+   * that class of thing generally — the card expanding, a phone rotating, a font
+   * swapping in late — rather than only the load that provoked it. The turns are
+   * observed alongside the container because the two move independently: this is a
+   * scroll container, so it does *not* grow with its content, and a turn that
+   * reflows or streams in changes `scrollHeight` while the box stays put.
+   *
+   * useLayoutEffect, so a restored thread is never painted at the top and then
+   * corrected — a visible jump on every reload would be a second, smaller version
+   * of the same bug. Same reasoning as TracePlayer's.
+   *
+   * `panel.kind` is in there because a panel *replaces* the transcript rather than
+   * covering it, so opening Receive or reviewing a plan unmounts this element and
+   * closing one hands back a fresh box at offset zero. Same symptom as the reload,
+   * reached a different way: the conversation you were just having, rewound to its
+   * first turn.
+   */
+  useLayoutEffect(() => {
     const el = threadRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-    /* Stage count too, for the same reason: the turn in flight grows a line at a
-       time now, and a wait that reports its progress below the fold reports it to
-       nobody. */
-  }, [messages.length, thinking.length]);
+    if (!el || !hydrated) return;
+    el.scrollTop = el.scrollHeight;
+    pinned.current = true;
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (pinned.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    for (const turn of Array.from(el.children)) observer.observe(turn);
+    return () => observer.disconnect();
+  }, [hydrated, messages.length, thinking.length, panel.kind]);
+
+  /**
+   * Hands control back the moment the reader takes it.
+   *
+   * The threshold is a line's worth rather than an exact bottom, because a scroll
+   * container rounds: a fractional line height leaves `scrollTop + clientHeight`
+   * a pixel or two short of `scrollHeight` when it is visually at the end, and
+   * unpinning there would strand the very reader who never scrolled at all.
+   */
+  const onThreadScroll = useCallback(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 24;
+  }, []);
 
   /*
    * The composer grows with the sentence in it, from one line to the four-line
@@ -1078,7 +1155,7 @@ export default function AgentPage() {
              left it about one turn's worth of height. It now takes the leftover
              height of the card itself, so turn fifty costs exactly what turn one
              did. */
-          <div className={s.thread} ref={threadRef}>
+          <div className={s.thread} ref={threadRef} onScroll={onThreadScroll}>
             {messages.length === 0 ? (
               /* Chips only. The paragraph that used to sit above them explained
                  that Luca proposes and you sign — which the numbered steps and
