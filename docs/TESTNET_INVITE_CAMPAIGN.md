@@ -14,10 +14,10 @@ stale within the hour.
 
 | | State |
 | --- | --- |
-| Faucet capacity | **Done.** 12h cooldown on all five chains; Sepolia serves 2,992, Robinhood 2,996, Base Sepolia 2,998, BSC 3,000. Re-check with `npm run verify:faucet -- 3000`. |
+| Faucet capacity | **12h cooldown on all five chains, and ~80 users short of the real list.** Re-measured 2026-09-03 against the true deliverable count rather than a round 3,000: BSC serves 3,000 (bound by mock USDC), Base Sepolia 2,998 (ETH), Robinhood 2,996 (WETH), Sepolia 2,992 (WETH) — against **3,077 deliverable**. Not a send blocker at realistic claim rates, but the shortfall lands on whoever claims last, which is the day-4 batch. Fix by minting where the bound asset is a mock we issue and by trimming the drip where it is real (WETH 0.005 → 0.004, Base ETH 0.01 → 0.009 clear it without funding). Re-check with `npm run verify:faucet -- 3077`. |
 | Agent | **Verified working** end to end in production through the Cloudflare relay. Quota is 25 requests/day per wallet, and it refuses entirely without a connected wallet. |
 | Keeper | **Done.** The Cloudflare Worker is now firing `*/15` on its own — measured 2026-09-02 23:39 UTC as two pushes 15m15s apart with no GitHub Actions run in that window — and Robinhood ETH sits at 640s against its 3,600s bound. The fires land ~13 minutes past the quarter hour, so judge it by the feed's age and not by watching a boundary. See `KEEPER_SCHEDULING.md`. |
-| Email | **DNS done, credential outstanding.** Resend's three records verified 2026-09-03 and confirmed from a public resolver: DKIM `TXT` at `resend._domainkey`, `CNAME`s at `send` and `rsend`. The root SPF and the Zoho MX survived the edit, so replies still land. Left: **`_dmarc` is still NXDOMAIN**, `RESEND_API_KEY` is unset in `.env`, and the account is on Free (100/day, below the 200 batch floor). §2 has all four. |
+| Email | **DNS complete, credential outstanding.** All four records verified 2026-09-03 from a public resolver, not the dashboard: DKIM `TXT` at `resend._domainkey`, `CNAME`s at `send` and `rsend`, and `_dmarc` now answering `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz`. The root SPF and the Zoho MX survived the edit, so replies still land. A dry run reproduces 3,077 deliverable exactly. Left: `RESEND_API_KEY` in `.env`, and the account is on Free (100/day, below the 200 batch floor). |
 | Arc Testnet | **Do not steer anyone there.** 34 users of faucet capacity, and its oracle is down on the Hermes 401. It stays listed in the app because it is deployed; it is simply not where a new user should start. |
 | Gas drip | `/api/gas-drip` is off in production (`GAS_DRIP_PRIVATE_KEY` unset), by decision. The zeroth-transaction wall is handled by the external faucet links `/faucet` already renders per chain. |
 
@@ -196,7 +196,7 @@ reports what it last checked and the resolver reports what a receiver will see:
 | `resend._domainkey` `TXT` | `p=MIGfMA0GCSqGSIb3DQEB…` | **verified** — DKIM |
 | `send` `CNAME` | `send.forge.rmta.net` | **verified** — sending |
 | `rsend` `CNAME` | `rsend.forge.rmta.net` | **verified** — sending |
-| `_dmarc` `TXT` | NXDOMAIN | **still absent** — the one row left |
+| `_dmarc` `TXT` | `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz` | **verified 2026-09-03** — parses as valid DMARC1 |
 
 **Resend's sending records are two `CNAME`s, not the SPF `TXT` plus feedback `MX` that
 an older version of this section predicted.** They delegate both halves into Resend's own
@@ -221,10 +221,16 @@ default relaxed rules, because envelope and header share the organizational doma
 **DKIM here is a `TXT` at `resend._domainkey`, not a `CNAME`** — CNAME-style DKIM is what
 SES and Postmark hand out, so a Namecheap form filled in as a CNAME silently fails.
 
-`_dmarc` being absent matters more than it looks: it is the record that lets a receiver
-tell a forged `official@kaleidofi.xyz` from the real one, and it is missing on the domain
-that is about to mail 3,000 people an access code. It is the technical half of §3, and it
-is now the only DNS row outstanding.
+`_dmarc` was the last row to land and it now answers. It is the record that lets a
+receiver tell a forged `official@kaleidofi.xyz` from the real one, on the domain that is
+about to mail 3,000 people an access code — the technical half of §3. Resend labels it
+Optional, which it is for Resend and is not for this campaign.
+
+**A sending-scoped Resend API key is the ability to send as `official@kaleidofi.xyz`**,
+which is precisely the impersonation §3 warns recipients about. Treat it accordingly: it
+belongs in `.env` and nowhere else — not in a shell command, where it lands in history,
+and not pasted into a chat or an issue. If it is ever exposed, deleting the key in the
+dashboard is instant and free, so rotate rather than reason about how bad the exposure was.
 
 ### Entering them in Namecheap
 
