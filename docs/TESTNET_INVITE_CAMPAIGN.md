@@ -18,7 +18,7 @@ stale within the hour.
 | Agent | **Verified working** end to end in production through the Cloudflare relay. Quota is 25 requests/day **per wallet**, with **no global ceiling** (`DAILY_MODEL_REQUESTS` in `src/lib/ai/credits.ts`, enforced per wallet by the `consume_agent_request` RPC, and failing open when Supabase is unconfigured or errors). It refuses entirely without a connected wallet. Total provider spend is therefore bounded by the number of wallets anyone cares to generate — see "Releasing the code publicly" below. |
 | Access code | **Staying as it is.** No rotation before the send (user's decision, 2026-09-03). Releasing it publicly is being considered for later; the prerequisite is below, and it is a spend question rather than a security one. |
 | Keeper | **Done.** The Cloudflare Worker is now firing `*/15` on its own — measured 2026-09-02 23:39 UTC as two pushes 15m15s apart with no GitHub Actions run in that window — and Robinhood ETH sits at 640s against its 3,600s bound. The fires land ~13 minutes past the quarter hour, so judge it by the feed's age and not by watching a boundary. See `KEEPER_SCHEDULING.md`. |
-| Email | **DNS and credential done; the plan is the last gate.** All four records verified 2026-09-03 from a public resolver, not the dashboard: DKIM `TXT` at `resend._domainkey`, `CNAME`s at `send` and `rsend`, and `_dmarc` answering `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz`. The root SPF and the Zoho MX survived the edit, so replies still land. `RESEND_API_KEY` is in `.env` and authenticates. A dry run reproduces 3,077 deliverable exactly. Left: **upgrade to Pro** (Free caps at 100/day, below the 200 batch floor) and the §3 post. |
+| Email | **Done and proven end to end.** All four DNS records verified 2026-09-03 from a public resolver, not the dashboard: DKIM `TXT` at `resend._domainkey`, `CNAME`s at `send` and `rsend`, `_dmarc` answering `v=DMARC1; p=none; rua=mailto:dmarc@kaleidofi.xyz`. Root SPF and Zoho MX survived the edit, so replies still land. `RESEND_API_KEY` is in `.env` and authenticates. A dry run reproduces 3,077 deliverable exactly, and a real send through the script **landed in the Gmail Inbox** on first contact. Left: **upgrade to Pro** (Free caps at 100/day, below the 200 batch floor) and the §3 post. |
 | Arc Testnet | **Do not steer anyone there.** 34 users of faucet capacity, and its oracle is down on the Hermes 401. It stays listed in the app because it is deployed; it is simply not where a new user should start. |
 | Gas drip | `/api/gas-drip` is off in production (`GAS_DRIP_PRIVATE_KEY` unset), by decision. The zeroth-transaction wall is handled by the external faucet links `/faucet` already renders per chain. |
 
@@ -488,9 +488,17 @@ Notes on the wording, each of which is load-bearing:
 7. Repeat for each batch, raising `--limit`. The state file sits beside the list and
    makes the run resumable, so no address is ever sent to twice — keep it.
 
-**The smoke test, done 2026-09-03 and worth repeating exactly this way.** Send to one
-Gmail address with the real script rather than a hand-built request — put the single
-address in its own CSV and pass **`--state` explicitly**, or the run writes into
+**The smoke test, done 2026-09-03 and worth repeating exactly this way.** It **landed
+directly in the Gmail Inbox** — not Promotions, not Spam — on first contact from a sending
+identity with no history, which is the outcome the four DNS records exist to buy. Gmail
+very rarely inboxes a first message from an unknown domain that fails DMARC, so treat
+authentication as effectively confirmed; the formal check is `⋮ → Show original`, where
+SPF should read `send.kaleidofi.xyz` and DKIM should read **`kaleidofi.xyz`** rather than
+`forge.rmta.net` (that difference is signed-but-not-aligned, which fails DMARC and shows
+up as "via forge.rmta.net" beside the sender name).
+
+Send to one Gmail address with the real script rather than a hand-built request — put the
+single address in its own CSV and pass **`--state` explicitly**, or the run writes into
 `send-state.json` beside the list and the test address ends up in the real campaign's
 progress file:
 
