@@ -476,7 +476,8 @@ Notes on the wording, each of which is load-bearing:
 
 ## 6. Send day
 
-1. `npm run verify:faucet -- 3000` — expect the four campaign chains at 2,992+.
+1. `npm run verify:faucet -- 3077` — the true deliverable count, not a round 3,000.
+   Expect ~80 short on every chain until the drips in the status table are trimmed.
 2. `curl` the keeper with `?dryRun=1` and confirm `wouldPush > 0`. If it 503s, the
    keeper is unarmed; stop here.
 3. Confirm `/api/chat` still answers with a live provider.
@@ -486,6 +487,25 @@ Notes on the wording, each of which is load-bearing:
 6. Add `--send --limit 200`. Wait. Check bounces and complaints on the dashboard.
 7. Repeat for each batch, raising `--limit`. The state file sits beside the list and
    makes the run resumable, so no address is ever sent to twice — keep it.
+
+**The smoke test, done 2026-09-03 and worth repeating exactly this way.** Send to one
+Gmail address with the real script rather than a hand-built request — put the single
+address in its own CSV and pass **`--state` explicitly**, or the run writes into
+`send-state.json` beside the list and the test address ends up in the real campaign's
+progress file:
+
+```bash
+npm run campaign:send -- --list ../smoke-test.csv --state ../smoke-state.json --send
+```
+
+Two things that showed up and are not failures. **`npm run` pipelines hide the exit
+code** — `$?` after `| tail` is `tail`'s, so the evidence a message was accepted is the
+Resend id recorded in the state file, not the exit status. And on Windows the run ends
+with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` from libuv, emitted *after*
+the summary line and after `persist()` has written state. It is exit-path noise, not an
+aborted batch — verify by parsing the state file, which will be complete. Do not
+re-run a batch because of it; re-running is safe anyway, but panic is how someone
+deletes a state file and mails 3,000 people twice.
 
 ## After the send
 
