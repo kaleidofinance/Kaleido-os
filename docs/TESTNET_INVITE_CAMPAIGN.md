@@ -128,6 +128,34 @@ and it is also a wait with a rejection risk, positioned immediately before a sen
 you have publicly committed to. Pay the $20 this once; move to SES later if these
 sends become routine.
 
+**Self-hosting an SMTP server was considered and rejected, and not because it is hard
+to install.** Postfix plus OpenDKIM is an afternoon. The problem is that what a sending
+service actually sells is **IP reputation**, and a brand-new IP has none — so a first
+act of 3,000 near-identical messages carrying a code and a link is the exact shape
+Gmail and Microsoft filter hardest. Three specifics make it worse than a general
+warm-up problem:
+
+- **We have nowhere to host it.** Vercel is serverless — no persistent daemon, no port
+  25. Cloudflare Workers cannot do it either: outbound mail there goes through a
+  `send_email` binding that requires the domain onboarded to Cloudflare's Email Service
+  and caps a message at **50 recipients**, and this zone's DNS is at Namecheap anyway.
+  Self-hosting therefore means provisioning, securing and monitoring a new VPS.
+- **Most providers block outbound port 25 by default** — permanently on Google Cloud,
+  by request form on AWS, off by default on DigitalOcean and Hetzner. That is the same
+  approval-queue-before-a-committed-send risk that ruled out the SES sandbox, with the
+  added need for a PTR/rDNS record matching the HELO name.
+- **It does not remove any of the DNS work below**, it adds to it: SPF, DKIM and DMARC
+  are still required, except now generating and rotating the DKIM key is ours to get
+  wrong, and bounce and complaint handling becomes an MTA queue to read rather than a
+  per-message error in a JSON response.
+
+It would also mean rewriting the transport in `scripts/send_campaign.mts` — which posts
+to a batch HTTP endpoint with a per-chunk idempotency key — into SMTP, discarding the
+"never sends twice" guarantee on the one operation with no undo. Against $20 once,
+cancellable after, on a domain whose reputation the app itself depends on, that is the
+wrong trade. Revisit it only if these sends become routine, and warm a new IP over weeks
+on a subdomain rather than on `kaleidofi.xyz`.
+
 **The free tier cannot run this campaign, and the reason is the daily cap rather than
 the monthly one.** Free allows 3,000 emails a month, which would just cover the list —
 but it also allows **100 a day**, and the smallest batch in §4 is 200. Pro removes the
