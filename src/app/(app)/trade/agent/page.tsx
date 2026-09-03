@@ -25,7 +25,7 @@ import { traceFromChat } from "@/lib/v2/agentTurn";
 import { readChatStream } from "@/lib/v2/chatStream";
 import { renderIntent } from "@/lib/v2/intents";
 import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
-import { matchFaq } from "@/lib/ai/faq";
+import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
 import { visibleProse } from "@/lib/ai/actionsBlock";
 import {
   parseCommand,
@@ -428,20 +428,14 @@ export default function AgentPage() {
         setPending(null);
       }
 
-      const parsed = parseCommand(content, vocabulary);
-      if (parsed.status !== "unknown") {
-        note("Read it as a direct command — no reasoning request needed");
-        await planLocally(parsed, abort.signal);
-        return;
-      }
-
       // Second local net: static questions with a fixed, known answer. Checked
-      // after the parser (a command is never an FAQ) and before the model,
-      // since "what is slippage" has one correct answer that doesn't need
-      // reasoning. A miss here is silent — most real questions are open-ended,
-      // so falling through is the expected case, not a failure.
-      const faq = matchFaq(content);
-      if (faq) {
+      // against the parser rather than after it — see the ordering below — and
+      // before the model, since "what is slippage" has one correct answer that
+      // doesn't need reasoning. A miss here is silent: most real questions are
+      // open-ended, so falling through is the expected case, not a failure.
+      const answerFromFaq = (text: string): boolean => {
+        const faq = matchFaq(text);
+        if (!faq) return false;
         note("Matched a question I already know the answer to");
         /*
          * The answer, plus its frames. Static cards come from the topic; a
@@ -458,8 +452,29 @@ export default function AgentPage() {
           via: "local",
           ...(cards.length ? { cards } : {}),
         });
+        return true;
+      };
+
+      /*
+       * Which net goes first depends on the sentence, because the grammar reads a
+       * verb anywhere in it. "stake kld" is an instruction and must reach the
+       * parser; "is there a limit on the faucet" contains the same kind of verb
+       * and used to reach it too, answering a question with a claim transaction.
+       * An opening interrogative is the cheap, reliable split between the two, and
+       * either way a miss falls through to the other net before the model — so
+       * "how do I swap" still opens a swap draft, which is the better answer.
+       */
+      const question = isQuestionShaped(content);
+      if (question && answerFromFaq(content)) return;
+
+      const parsed = parseCommand(content, vocabulary);
+      if (parsed.status !== "unknown") {
+        note("Read it as a direct command — no reasoning request needed");
+        await planLocally(parsed, abort.signal);
         return;
       }
+
+      if (!question && answerFromFaq(content)) return;
 
       /* Only genuine questions reach the model.
        *
