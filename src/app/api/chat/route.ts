@@ -89,14 +89,36 @@ export async function POST(request: NextRequest) {
       // routing locally first is what makes the allowance go far.
       const quota = await consumeModelRequest(body.address);
       if (!quota.allowed) {
+        /*
+         * Three refusals, three different things to say, and the difference
+         * matters. Telling someone the shared allowance ran out when in fact
+         * they have used their own 25 sends them back to try again in ten
+         * minutes; telling someone they have used all 25 of theirs when they
+         * have asked two questions is simply false, and it sends them away for
+         * the day. `refusedBy` is what the ceiling itself reported, so the two
+         * cannot drift the way re-deriving them here from `body.address` could.
+         *
+         * On the shared refusal the wallet's own counter was rolled back inside
+         * the same transaction, so `remaining` is real and is passed through
+         * rather than zeroed — the credits pill in the UI reads this field, and
+         * it should not show a user as spent when they are not.
+         */
+        const global = quota.refusedBy === "global";
         return NextResponse.json(
           {
-            response: !body.address
-              ? "Connect your wallet and I can work on your positions. Direct commands like `swap 500 USDC to KLD` work without it."
-              : `You've asked me all ${quota.quota} questions for today. Direct commands still work, and the allowance resets at 00:00 UTC.`,
+            response:
+              quota.refusedBy === "anonymous"
+                ? "Connect your wallet and I can work on your positions. Direct commands like `swap 500 USDC to KLD` work without it."
+                : global
+                  ? `The reasoning allowance shared across everyone on the testnet is spent for today — it resets at 00:00 UTC. Your own ${quota.remaining} questions are untouched and will still be there. Direct commands like \`swap 500 USDC to KLD\` work right now.`
+                  : `You've asked me all ${quota.quota} questions for today. Direct commands still work, and the allowance resets at 00:00 UTC.`,
             context: {
-              status: "quota_exhausted",
-              credits: { used: quota.used, quota: quota.quota, remaining: 0 },
+              status: global ? "global_quota_exhausted" : "quota_exhausted",
+              credits: {
+                used: quota.used,
+                quota: quota.quota,
+                remaining: global ? quota.remaining : 0,
+              },
             },
           },
           { status: 429 },
