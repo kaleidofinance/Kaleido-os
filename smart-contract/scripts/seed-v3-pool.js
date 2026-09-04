@@ -66,10 +66,16 @@ const path = require("path");
 const { registryFor } = require("./libraries/registry.js");
 const { feedFor } = require("./libraries/pyth-feeds.js");
 const { fetchScaledPrices } = require("./libraries/hermes-prices.js");
-
-/** Uniswap V3's absolute tick bounds. */
-const MIN_TICK = -887272;
-const MAX_TICK = 887272;
+/* The tick math both this script and reprice-v3-pool.js depend on. Shared so
+   the two cannot disagree about which tick a price is: one moves the price and
+   the other centres a position on it. */
+const {
+  MIN_TICK,
+  MAX_TICK,
+  encodeSqrtRatioX96,
+  sqrtRatioAtTick,
+  tickAtSqrtRatio,
+} = require("./libraries/tick-math.js");
 
 const ERC20_ABI = [
   "function symbol() view returns (string)",
@@ -107,81 +113,6 @@ const NPM_ABI = [
 const PROTOCOL_ABI = [
   "function getUsdValue(address,uint256,uint8) view returns (uint256)",
 ];
-
-/**
- * Integer square root by Newton's method.
- *
- * Needed because sqrtPriceX96 is a Q64.96 fixed-point value and the intermediate
- * `amount1 << 192` overflows every float long before it overflows a BigInt.
- * Doing this in Number would silently lose the low bits of the price.
- */
-function sqrtBig(n) {
-  if (n < 0n) throw new Error("sqrt of a negative");
-  if (n < 2n) return n;
-  let x = n;
-  let y = (x + 1n) / 2n;
-  while (y < x) {
-    x = y;
-    y = (x + n / x) / 2n;
-  }
-  return x;
-}
-
-/** Uniswap's encodeSqrtRatioX96: the price of token0 in token1, as Q64.96. */
-function encodeSqrtRatioX96(amount1, amount0) {
-  return sqrtBig((amount1 << 192n) / amount0);
-}
-
-/**
- * The tick whose price is closest to this sqrtPriceX96, found by bisection.
- *
- * The closed form needs a base-1.0001 logarithm and Uniswap's own TickMath is a
- * Solidity library, so the tick is searched for instead: getSqrtRatioAtTick is
- * monotonic, and 41 halvings of the full ±887272 range land exactly. Slower than
- * a log and immune to the floating-point error that would put the position's
- * range one tick off the price we just set.
- */
-function tickAtSqrtRatio(sqrtPriceX96, sqrtAtTick) {
-  /* Bounds first: outside them the bisection would silently return an endpoint
-     rather than admit the price is unrepresentable, and a pool initialised at an
-     endpoint tick is one the price can only move away from. */
-  if (sqrtPriceX96 < sqrtAtTick(MIN_TICK) || sqrtPriceX96 > sqrtAtTick(MAX_TICK))
-    throw new Error(
-      `sqrtPriceX96 ${sqrtPriceX96} is outside V3's representable range — check the decimals on both sides`,
-    );
-  let lo = MIN_TICK;
-  let hi = MAX_TICK;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi + 1) / 2);
-    if (sqrtAtTick(mid) <= sqrtPriceX96) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo;
-}
-
-/**
- * sqrt(1.0001^tick) * 2^96, computed in BigInt.
- *
- * 1.0001^tick is irrational, so it is built by repeated squaring over a rational
- * approximation held at 128 bits of extra precision. The error is far below one
- * tick, which is all the bisection above needs.
- */
-const Q96 = 1n << 96n;
-const PREC = 1n << 128n;
-function sqrtRatioAtTick(tick) {
-  const abs = BigInt(Math.abs(tick));
-  /* sqrt(1.0001) as a PREC-scaled rational, from sqrt(1.0001 * PREC^2). */
-  let ratio = PREC;
-  let base = sqrtBig(10001n * PREC * PREC / 10000n);
-  let n = abs;
-  while (n > 0n) {
-    if (n & 1n) ratio = (ratio * base) / PREC;
-    base = (base * base) / PREC;
-    n >>= 1n;
-  }
-  if (tick < 0) ratio = (PREC * PREC) / ratio;
-  return (ratio * Q96) / PREC;
-}
 
 const num = (v, dflt) => {
   const n = Number(v);
@@ -412,6 +343,29 @@ async function main() {
   const live = await new ethers.Contract(pool, POOL_ABI, ethers.provider).slot0();
   const liveTick = Number(live.tick);
   console.log(`live tick ${liveTick}`);
+
+  /* Refuse when the pool's price and the price just asserted are not the same
+     market. amount0/amount1 above are sized from the oracle, but the manager draws
+     whichever ratio the LIVE price requires — so on a pool sitting somewhere else
+     "~$N each side" is a ceiling and the deposit lands lopsided, at a price nobody
+     asked for. Not hypothetical: a BSC KLD/USDC pool left at $4.00 took 50k KLD +
+     200k USDC against a $0.03 assertion and still read $4.00 afterwards. Reprice
+     it first, or say plainly that the market is the price. */
+  const driftPct = num(process.env.MAX_DRIFT_PCT, 100);
+  const driftTicks = Math.round(Math.log(1 + driftPct / 100) / Math.log(1.0001));
+  if (Math.abs(liveTick - tick) > driftTicks) {
+    const ratio = Math.pow(1.0001, liveTick - tick);
+    if (process.env.ACCEPT_LIVE !== "1")
+      throw new Error(
+        `the pool is at tick ${liveTick}, the asserted price at tick ${tick} — ${ratio.toFixed(3)}x apart, past MAX_DRIFT_PCT=${driftPct}. ` +
+          `Reprice it first: PAIR=${keyA}/${keyB} FEE=${fee} STABLE_USD="${process.env.STABLE_USD ?? ""}" MAX_IN=<n> EXECUTE=1 npx hardhat run scripts/reprice-v3-pool.js --network ${hre.network.name} ` +
+          `— or set ACCEPT_LIVE=1 to mint at the live price, in which case the sizing above is a ceiling per side rather than the deposit.`,
+      );
+    console.log(
+      `  ACCEPT_LIVE: minting at the live price, ${ratio.toFixed(3)}x the asserted one — the sizing above is a ceiling per side, not the deposit`,
+    );
+  }
+
 
   /* ---- fund and approve ---- */
   const needed0 = amount0 * 2n;
