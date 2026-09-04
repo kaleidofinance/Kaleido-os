@@ -47,6 +47,7 @@
     "verify:schema": "node scripts/verify_supabase_schema.cjs",
     "verify:leaderboard": "tsx scripts/verify_leaderboard.mts",
     "verify:faucet": "tsx scripts/verify_faucet_capacity.mts",
+    "verify:pools": "tsx scripts/verify_seeded_pools.mts",
     "faucet:drip": "tsx scripts/set_faucet_config.mts drip",
     "faucet:cooldown": "tsx scripts/set_faucet_config.mts cooldown",
     "campaign:send": "tsx scripts/send_campaign.mts",
