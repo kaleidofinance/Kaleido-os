@@ -285,6 +285,10 @@ export const GENERATED_SEEDED_POOLS: Record<number, string[]> = {
     "0xD03FC526BC9Cbf6f4ed0A4996347EBFb1ffca22C",
     "0xD888671C7525D592c0f7aa5f31Ede5B7C7eB8F5B",
   ],
+  5042002: [
+    "0x269624aaD4197a9E822642011607e3D68FeeB394",
+    "0xC41cd7D86A28695f779B36217b592D7048A6d664",
+  ],
   11155111: [
     "0x04EfB41F6aCeCB6B1eB46be75A929cD5b42dC1e4",
     "0x0C71361DAd26dD63ba0D10Bc72928FDCB38e673b",
@@ -302,7 +306,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-04T18:40:57.536Z",
+  generatedAt: "2026-09-04T20:03:42.039Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -329,6 +333,8 @@ export const GENERATED_META: {
     "deployment-oracle-bscTestnet.json",
     "deployment-oracle-robinhoodTestnet.json",
     "deployment-oracle-sepolia.json",
+    "deployment-pool-arcTestnet-USDT-KLD-3000.json",
+    "deployment-pool-arcTestnet-USDT-USDe-500.json",
     "deployment-pool-baseTestnet-KLD-USDC-3000.json",
     "deployment-pool-baseTestnet-USDT-USDC-3000.json",
     "deployment-pool-baseTestnet-USDT-WETH-500.json",
