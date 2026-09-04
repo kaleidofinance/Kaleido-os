@@ -5,6 +5,7 @@ import Script from "next/script";
 import { envVars } from "@/constants/envVars";
 import { ClientProviders } from "@/app/client-provider";
 import { geist, lora, zenDots } from "@/lib/font";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   title: "Kaleido Agentic OS",
@@ -160,6 +161,7 @@ export default function RootLayout({
         className={`${geist.variable} ${lora.variable} ${zenDots.variable}`}
       >
         <ClientProviders>{children}</ClientProviders>
+        <Analytics />
       </body>
     </html>
   );
