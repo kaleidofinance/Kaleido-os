@@ -17,12 +17,18 @@
  *      price the run seeded it from;
  *   5. both balances, so neither side is empty, and in-range `liquidity()`;
  *   6. each recorded position still exists, holds liquidity, spans the recorded
- *      ticks, and is still held by the address that minted it;
- *   7. its recent Swaps, newest first, which is what explains a pool sitting off
- *      its seed tick — the difference between "has been traded" and "something
- *      moved this pool". Budgeted, and the report says which window it covered;
- *      see `LOG_CALL_BUDGET`;
- *   8. and that the pool is in `SEEDED_POOLS`, so the tick will actually render.
+ *      ticks, and is still held by the address that minted it — recovering the
+ *      token id from the mint receipt for the one record that never captured it;
+ *   7. whether it has EVER been traded, from cumulative fee growth, and then its
+ *      recent Swaps — which is what explains a pool sitting off its seed tick.
+ *      The fee-growth read is what makes that explanation sound: it covers the
+ *      pool's whole life in one call, so the log scan below it can stay budgeted
+ *      without a partial window turning into an unexplained anomaly. See
+ *      `LOG_CALL_BUDGET`;
+ *   8. and that the pool is in `SEEDED_POOLS`, so the tick will actually render —
+ *      then, once every record has been read, that `SEEDED_POOLS` holds nothing
+ *      the records cannot account for, which is the direction that would put an
+ *      unearned claim on screen.
  *
  * READ-ONLY, AND NO KEY. Nothing here signs. Ownership is established by
  * comparing `ownerOf` against the `from` of the mint transaction the record
@@ -33,8 +39,9 @@
  * `JsonRpcProvider`, which cannot detect the network from this machine. Two of
  * these endpoints return a rate limit as HTTP 200 with a JSON-RPC error, so a
  * failed call rotates endpoints instead of being reported as a missing pool, and
- * `eth_getLogs` ranges shrink on a range complaint rather than giving up (the
- * ceiling is per-endpoint — thirdweb Sepolia caps at 1000 blocks).
+ * `eth_getLogs` ranges narrow to whatever the endpoint will serve rather than
+ * giving up — the ceiling is per-endpoint and spans three orders of magnitude, so
+ * telling a range limit from a rate limit is load-bearing here. See `TooWide`.
  *
  *   npm run verify:pools            every recorded pool
  *   npm run verify:pools -- WETH    only records whose filename matches
@@ -44,7 +51,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { Interface, getAddress, type Result } from "ethers";
 
 import { CHAINS_BY_ID } from "../src/constants/chains";
-import { getContracts, isSeededPool } from "../src/constants/registry";
+import {
+  getContracts,
+  isSeededPool,
+  SEEDED_POOLS,
+} from "../src/constants/registry";
 
 const DIR = "smart-contract";
 
@@ -73,6 +84,8 @@ const POOL = new Interface([
   "function fee() view returns (uint24)",
   "function liquidity() view returns (uint128)",
   "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 oi, uint16 oc, uint16 ocn, uint8 feeProtocol, bool unlocked)",
+  "function feeGrowthGlobal0X128() view returns (uint256)",
+  "function feeGrowthGlobal1X128() view returns (uint256)",
   "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
 ]);
 const FACTORY = new Interface([
@@ -85,17 +98,40 @@ const ERC20 = new Interface([
 const NPM = new Interface([
   "function ownerOf(uint256) view returns (address)",
   "function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 fg0, uint256 fg1, uint128 owed0, uint128 owed1)",
+  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ]);
 const SWAP_TOPIC = POOL.getEvent("Swap")!.topicHash;
+const TRANSFER_TOPIC = NPM.getEvent("Transfer")!.topicHash;
 
 /* ------------------------------------------------------------------ rpc -- */
 
 let calls = 0;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Thrown for "you asked for too many blocks", which the caller answers by
-    asking for fewer rather than by trying another endpoint. */
-class TooWide extends Error {}
+/**
+ * Thrown for "you asked for too many blocks", which the caller answers by asking
+ * for fewer rather than by trying another endpoint.
+ *
+ * Distinguishing this from a rate limit is not cosmetic: BSC's endpoint returns a
+ * *rate* limit as the same `-32005` code thirdweb uses for a *range* limit, and
+ * reading one as the other threw away both pools' swap history on the first full
+ * run — the scan shrank its window to the floor and then gave up, when the answer
+ * was to wait and re-ask. So the test is whether the message mentions blocks or a
+ * range at all, and a bare "limit exceeded" falls through to the backoff.
+ *
+ * `max` carries the ceiling when the endpoint states one ("Maximum allowed number
+ * of requested blocks is 1000"), which is worth far more than halving blindly: it
+ * gets the next call right on the first try instead of after four rejections.
+ */
+class TooWide extends Error {
+  readonly max: number | null;
+  constructor(message: string) {
+    super(message);
+    const m = /(\d[\d_,]*)\s*(?:blocks?|block range)/i.exec(message);
+    const n = m ? Number(m[1].replace(/[_,]/g, "")) : NaN;
+    this.max = Number.isFinite(n) && n > 0 ? n : null;
+  }
+}
 
 async function rpc(
   urls: string[],
@@ -118,8 +154,7 @@ async function rpc(
       };
       if (body.error) {
         last = `${body.error.code} ${body.error.message}`;
-        if (/range|too many|limit exceeded/i.test(last))
-          throw new TooWide(last);
+        if (/block|range|too many/i.test(last)) throw new TooWide(last);
         await sleep(600 * (attempt + 1));
         continue;
       }
@@ -131,6 +166,43 @@ async function rpc(
     }
   }
   throw new Error(`${method} failed on every endpoint: ${last}`);
+}
+
+interface MintReceipt {
+  status?: string;
+  blockNumber?: string;
+  logs?: RawLog[];
+}
+
+/**
+ * A mint receipt, insisted upon rather than accepted as absent.
+ *
+ * `rpc` rotates endpoints on an *error*, but a null result is a successful
+ * response, and an endpoint that does not hold a three-week-old receipt answers
+ * exactly that way — sepolia USDC/USDT's first mint came back null from one
+ * endpoint while `eth_getTransactionByHash` resolved the same hash from another,
+ * which read as "mint status not found" and was reported as a problem with the
+ * position. It was a problem with the endpoint. So a null is retried elsewhere
+ * before it is believed, and only a receipt that arrives and says `0x0` is a
+ * failed mint.
+ */
+async function receiptOf(
+  urls: string[],
+  hash: string,
+): Promise<MintReceipt | null> {
+  for (let attempt = 0; attempt < Math.max(urls.length, 3); attempt++) {
+    /* Rotated, because `rpc` starts each call at the head of the list and would
+       otherwise ask the endpoint that just said no. */
+    const cut = attempt % urls.length;
+    const got = (await rpc(
+      [...urls.slice(cut), ...urls.slice(0, cut)],
+      "eth_getTransactionReceipt",
+      [hash],
+    )) as MintReceipt | null;
+    if (got) return got;
+    await sleep(400 * (attempt + 1));
+  }
+  return null;
 }
 
 async function call(
@@ -148,6 +220,7 @@ async function call(
 }
 
 interface RawLog {
+  address?: string;
   data: string;
   topics: string[];
   blockNumber: string;
@@ -170,8 +243,15 @@ interface SwapScan {
  * this script sat on that one pool until it was killed. A budget turns the scan
  * from unbounded into a window, which is why the report says which window it
  * covered instead of implying it saw everything.
+ *
+ * 120 rather than a tighter number because the per-call width is the endpoint's
+ * to decide and it varies by three orders of magnitude: Robinhood's node answers
+ * a million blocks at once, so its 4.8M-block history costs five calls, while
+ * thirdweb caps Sepolia at a thousand and the same budget buys 120,000 blocks
+ * there. Spending it is also now conditional — a pool that has never charged a
+ * fee is not scanned at all, so the budget goes to the pools that moved.
  */
-const LOG_CALL_BUDGET = 40;
+const LOG_CALL_BUDGET = 120;
 
 /**
  * Swaps, newest first, walking BACKWARD from the head.
@@ -181,6 +261,10 @@ const LOG_CALL_BUDGET = 40;
  * and a pool nobody has touched lately is one whose last activity is the thing
  * to report. Forward-scanning would spend the budget on the empty weeks after
  * the mint and stop before reaching anything.
+ *
+ * The window starts at a million blocks and comes down to whatever the endpoint
+ * will serve, because starting small is a permanent cost on a generous node while
+ * starting large costs one rejected call on a strict one.
  */
 async function swapLogs(
   urls: string[],
@@ -190,7 +274,7 @@ async function swapLogs(
 ): Promise<SwapScan> {
   const out: RawLog[] = [];
   let cursor = to;
-  let width = 9000;
+  let width = 1_000_000;
   let spent = 0;
 
   while (cursor >= from) {
@@ -214,7 +298,9 @@ async function swapLogs(
       cursor = start - 1;
     } catch (e) {
       if (e instanceof TooWide && width > 200) {
-        width = Math.floor(width / 5);
+        width = e.max
+          ? Math.min(e.max, width - 1)
+          : Math.max(Math.floor(width / 5), 200);
         continue;
       }
       throw e;
@@ -244,9 +330,33 @@ const fmt = (n: number, dp = 4) =>
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const addrFromTopic = (t: string) => getAddress("0x" + t.slice(26));
 
+/**
+ * The position NFT minted by a transaction, read out of its own receipt.
+ *
+ * One record — sepolia USDT/USDe — carries the literal string `"(unknown)"` where
+ * its two token ids should be, because the seeding run failed to pull them off the
+ * mint receipt and wrote its failure into the file. Passing that to `positions()`
+ * is what ended that pool's check with an ethers BigInt error rather than a
+ * verdict, so the id is recovered here instead: a mint is an ERC-721 `Transfer`
+ * from the zero address emitted by the position manager, and the token id is its
+ * third indexed topic. The record's gap does not have to mean an unverifiable
+ * position when the chain still holds the answer.
+ */
+function tokenIdFrom(logs: RawLog[], npm: string): string | null {
+  for (const l of logs) {
+    if ((l.address ?? "").toLowerCase() !== npm.toLowerCase()) continue;
+    if (l.topics[0] !== TRANSFER_TOPIC || l.topics.length !== 4) continue;
+    if (BigInt(l.topics[1]) !== 0n) continue;
+    return String(BigInt(l.topics[3]));
+  }
+  return null;
+}
+
 /* --------------------------------------------------------------- report -- */
 
 const problems: string[] = [];
+/** `chainId:address` of every record read, for the reverse badge check in main. */
+const seen = new Set<string>();
 
 async function verify(rec: PoolRecord) {
   const pair = `${rec.token0.symbol}/${rec.token1.symbol}`;
@@ -386,26 +496,40 @@ async function verify(rec: PoolRecord) {
     note("no v3PositionManager recorded for this chain");
   } else {
     for (const p of rec.positions) {
-      const pos = await call(urls, c.v3PositionManager, NPM, "positions", [
-        p.tokenId,
-      ]);
-      const [owner] = await call(urls, c.v3PositionManager, NPM, "ownerOf", [
-        p.tokenId,
-      ]);
+      /* The receipt comes first because it is the only thing that can supply a
+         token id the record does not have — see `tokenIdFrom`. */
       const tx = (await rpc(urls, "eth_getTransactionByHash", [p.tx])) as {
         from?: string;
       } | null;
-      const receipt = (await rpc(urls, "eth_getTransactionReceipt", [
-        p.tx,
-      ])) as {
-        status?: string;
-        blockNumber?: string;
-      } | null;
+      const receipt = await receiptOf(urls, p.tx);
       if (receipt?.blockNumber) {
         const b = Number(BigInt(receipt.blockNumber));
         firstMintBlock =
           firstMintBlock === null ? b : Math.min(firstMintBlock, b);
       }
+
+      const recovered =
+        /^\d+$/.test(p.tokenId) === false
+          ? tokenIdFrom(receipt?.logs ?? [], c.v3PositionManager)
+          : null;
+      const tokenId = /^\d+$/.test(p.tokenId) ? p.tokenId : recovered;
+      if (tokenId === null) {
+        console.log(
+          `    #? ${p.label.padEnd(11)} record has no token id (${JSON.stringify(p.tokenId)}) and its mint receipt has no NFT transfer`,
+        );
+        note(
+          `position "${p.label}" has no token id in the record and none recoverable from ${short(p.tx)}`,
+        );
+        continue;
+      }
+      const idLabel = recovered ? `${tokenId} (recovered)` : tokenId;
+
+      const pos = await call(urls, c.v3PositionManager, NPM, "positions", [
+        tokenId,
+      ]);
+      const [owner] = await call(urls, c.v3PositionManager, NPM, "ownerOf", [
+        tokenId,
+      ]);
 
       const posLiq = BigInt(pos[7] as bigint);
       const rangeOk =
@@ -418,29 +542,66 @@ async function verify(rec: PoolRecord) {
       const held =
         minter !== null && String(owner).toLowerCase() === minter.toLowerCase();
 
+      /* A minted NFT that holds liquidity on the recorded ticks is itself proof
+         the mint landed — a reverted one leaves nothing to read. So an unserved
+         receipt is reported as the gap it is, and only a receipt that arrives
+         saying `0x0` is a failure. */
+      const mintSays =
+        receipt === null
+          ? posLiq > 0n
+            ? "mint receipt unserved (but the position exists, so it landed)"
+            : "mint receipt unserved"
+          : receipt.status === "0x1"
+            ? "mint succeeded"
+            : `mint status ${receipt.status ?? "absent from the receipt"}`;
+
       console.log(
-        `    #${p.tokenId} ${p.label.padEnd(11)} liq ${String(posLiq).padEnd(22)} ticks ${rangeOk ? "as recorded" : `${Number(pos[5])}..${Number(pos[6])} NOT as recorded`}`,
+        `    #${idLabel} ${p.label.padEnd(11)} liq ${String(posLiq).padEnd(22)} ticks ${rangeOk ? "as recorded" : `${Number(pos[5])}..${Number(pos[6])} NOT as recorded`}`,
       );
       console.log(
-        `         pair ${pairOk ? "matches" : "MISMATCH"} · mint ${receipt?.status === "0x1" ? "succeeded" : `status ${receipt?.status ?? "not found"}`} · ${held ? `still held by its minter ${short(String(owner))}` : `owner ${short(String(owner))} is NOT the minter ${minter ? short(minter) : "unknown"}`}`,
+        `         pair ${pairOk ? "matches" : "MISMATCH"} · ${mintSays} · ${held ? `still held by its minter ${short(String(owner))}` : `owner ${short(String(owner))} is NOT the minter ${minter ? short(minter) : "unknown"}`}`,
       );
 
-      if (posLiq === 0n) note(`position #${p.tokenId} holds no liquidity`);
-      if (!rangeOk)
-        note(`position #${p.tokenId} range differs from the record`);
-      if (!pairOk) note(`position #${p.tokenId} is on a different pair`);
-      if (receipt?.status !== "0x1")
-        note(`mint tx for #${p.tokenId} is not a successful receipt`);
-      if (!held) note(`position #${p.tokenId} left its minter`);
+      if (posLiq === 0n) note(`position #${tokenId} holds no liquidity`);
+      if (!rangeOk) note(`position #${tokenId} range differs from the record`);
+      if (!pairOk) note(`position #${tokenId} is on a different pair`);
+      if (receipt !== null && receipt.status !== "0x1")
+        note(`mint tx for #${tokenId} reverted (status ${receipt.status})`);
+      if (!held) note(`position #${tokenId} left its minter`);
     }
   }
 
-  /* 7. swaps, newest first. A pool cannot have been swapped before it held
-        liquidity, so the first mint is the oldest block worth asking about — but
-        the scan is budgeted, so the report states the window it actually covered
-        rather than letting a partial answer read as a complete one. */
-  if (firstMintBlock === null) {
-    console.log("    swaps     range unknown (no mint receipt), not scanned");
+  /* 7. has it ever been traded, and if so what recently traded on it.
+        `feeGrowthGlobal` is the cheap half of that question and the only half a
+        log scan cannot answer completely: it is cumulative over the pool's whole
+        life in one `eth_call`, so a pool that has never charged a fee is settled
+        without reading a single block, and a pool that has needs no scan to prove
+        it moved. Which turns the budget from a source of unexplained drift into a
+        detail level — the scan below says *what* traded, not *whether*. */
+  const [fg0] = await call(urls, rec.pool, POOL, "feeGrowthGlobal0X128");
+  const [fg1] = await call(urls, rec.pool, POOL, "feeGrowthGlobal1X128");
+  const traded = BigInt(fg0 as bigint) > 0n || BigInt(fg1 as bigint) > 0n;
+
+  /* A pool cannot have been swapped before it held liquidity, so the first mint
+     is the oldest block worth asking about — but the scan is budgeted, so the
+     report states the window it actually covered rather than letting a partial
+     answer read as a complete one. */
+  if (!traded) {
+    console.log(
+      `    swaps     none ever — fee growth is zero on both sides${
+        tick === rec.openedAt.tick
+          ? ", and it sits exactly where it was opened"
+          : ` despite sitting ${(drift * 100).toFixed(3)}% off its seed tick`
+      }`,
+    );
+    /* Only a swap moves slot0 — mint and burn do not — so an untraded pool that
+       is not at its seed tick is a contradiction, not a gap in the scan. */
+    if (tick !== rec.openedAt.tick)
+      note(
+        `sits ${(drift * 100).toFixed(3)}% off its seed tick but has never charged a fee, so nothing explains the move`,
+      );
+  } else if (firstMintBlock === null) {
+    console.log("    swaps     traded, but no mint receipt to scan back to");
   } else {
     const head = Number(
       BigInt((await rpc(urls, "eth_blockNumber", [])) as string),
@@ -451,16 +612,11 @@ async function verify(rec: PoolRecord) {
         ? `all ${head - firstMintBlock} blocks since the first mint`
         : `the last ${head - scan.scannedFrom} of ${head - firstMintBlock} blocks since the first mint`;
       console.log(`    swaps     ${scan.logs.length} in ${window}`);
-      /* An unexplained tick is the one case where a partial scan is not good
-         enough: the pool moved, and the swap that moved it may be older than the
-         window. Say so rather than leaving the drift unaccounted for. */
-      if (
-        !scan.complete &&
-        tick !== rec.openedAt.tick &&
-        scan.logs.length === 0
-      )
-        note(
-          `sits ${(drift * 100).toFixed(3)}% off its seed tick with no swap in the ${head - scan.scannedFrom} blocks scanned — widen LOG_CALL_BUDGET to find what moved it`,
+      /* Not a problem, because fee growth already established that it traded —
+         the swaps are simply older than the budget reached. */
+      if (!scan.complete && scan.logs.length === 0)
+        console.log(
+          "              it has traded, so its swaps are older than that window",
         );
       for (const log of scan.logs) {
         const ev = POOL.decodeEventLog("Swap", log.data, log.topics);
@@ -531,6 +687,7 @@ async function main() {
       >),
       file: f,
     };
+    seen.add(`${rec.chainId}:${rec.pool.toLowerCase()}`);
     try {
       await verify(rec);
     } catch (e) {
@@ -542,13 +699,42 @@ async function main() {
     }
   }
 
+  /* The badge, checked the other way round. Every record above asks "will the app
+     tick this pool"; this asks whether the app ticks anything it cannot show a
+     record for, which is the direction that would put an unearned claim on screen.
+     `SEEDED_POOLS` is generated from these same files, so a difference means the
+     generated list is stale or was edited by hand — either way the tick would be
+     asserting a seeding run that left no evidence. Only meaningful over the whole
+     set, so a filtered run skips it rather than reporting every pool it was told
+     not to look at. */
+  if (filter === "") {
+    console.log("\n\n=== badges without a record ===");
+    let orphans = 0;
+    for (const [chainId, pools] of Object.entries(SEEDED_POOLS)) {
+      for (const pool of pools) {
+        if (seen.has(`${chainId}:${pool.toLowerCase()}`)) continue;
+        orphans++;
+        const network = CHAINS_BY_ID[Number(chainId)]?.name ?? chainId;
+        console.log(`    ${network} ${pool}`);
+        problems.push(
+          `${network} ${pool}: badged in SEEDED_POOLS with no deployment record behind it`,
+        );
+      }
+    }
+    if (orphans === 0)
+      console.log(
+        `    none — all ${Object.values(SEEDED_POOLS).flat().length} badged pools have a record here`,
+      );
+  }
+
   console.log(`\n\n===== ${problems.length} problem(s) =====`);
   for (const p of problems) console.log(`  - ${p}`);
   if (problems.length === 0)
     console.log(
       "  none — every record checked is on chain, is the factory's canonical pool\n" +
         "  for its pair and tier, holds both sides with liquidity in range, and its\n" +
-        "  positions are still held by the address that minted them.",
+        "  positions are still held by the address that minted them. Where a pool has\n" +
+        "  moved off its seed tick, a swap on its own history accounts for it.",
     );
   console.log(`\n(${calls} RPC calls)`);
   process.exit(problems.length === 0 ? 0 : 1);
