@@ -102,6 +102,35 @@ export function tickToPrice(
 }
 
 /**
+ * Is this tick past the last price any position could span?
+ *
+ * A swap that exhausts every position in its path does not revert — it clamps.
+ * The pool walks its price to `MIN_SQRT_RATIO + 1` or `MAX_SQRT_RATIO - 1` and
+ * stops there, leaving `slot0` at a tick of ±887271 and holding dust of whichever
+ * token ran out. Measured on the Robinhood Testnet KLD/USDC 0.30% pool: one 117
+ * USDC buy took all the KLD, and `tickToPrice` on the tick it left behind reads
+ * 3.4e50 USDC per KLD — which is 2^128 in disguise, not a market.
+ *
+ * The test is not a plausibility threshold. `fullRangeTicks` is the widest range a
+ * mint will accept at this tier, so a tick outside it is a price no position can
+ * ever sit at — not "implausibly far" but unreachable — which makes it the exact
+ * line between a thin market and the contract's own clamp, and it moves with the
+ * fee tier the way the mintable range does.
+ *
+ * `>=` on the magnitude, not `>`: the clamp lands one tick inside `MAX_TICK`, and
+ * a pool sitting exactly on the outermost mintable tick has no room either side of
+ * it. An unknown fee falls back to the raw bound, which still catches a clamped
+ * pool. A non-finite tick counts as pinned because no price follows from it, and
+ * every caller wants the same refusal for both.
+ */
+export function isTickPinned(tick: number, fee: number): boolean {
+  if (!Number.isFinite(tick)) return true;
+  const spacing = TICK_SPACINGS[fee];
+  const outermost = spacing ? fullRangeTicks(spacing).tickUpper : MAX_TICK - 1;
+  return Math.abs(tick) >= outermost;
+}
+
+/**
  * Snaps a tick to the nearest valid tick based on fee tier spacing.
  *
  * `Math.round` on the compressed tick, rather than floor with a sign branch:

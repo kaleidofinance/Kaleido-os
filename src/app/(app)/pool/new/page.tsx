@@ -274,14 +274,34 @@ export default function NewPositionPage() {
    * The pool wins whenever there is one, because it is the price the mint meets;
    * the feed is what makes the form useful before a pool exists.
    */
+  /**
+   * The pool's own quote, or null when it has none to give.
+   *
+   * Narrowed once and read three times below, because those three readers have
+   * to agree on what "the pool has a price" means. `readPoolState` returns null
+   * here for a pool whose tick is pinned at the clamp a drained pool stops at,
+   * which is not a price but the end of the number line - see `isTickPinned`.
+   * Centring a band on it is the failure the note under `applyPreset` describes,
+   * except fifty orders of magnitude out rather than four.
+   */
+  const poolPrice =
+    pool && pool.price !== null && pool.price > 0 ? pool.price : null;
+
+  /**
+   * A pool that exists and declines to quote, which is a different sentence to
+   * say than "there is no pool here". `readPoolState` nulls `price` only for a
+   * pinned tick, so this is that case and no other.
+   */
+  const poolPinned = pool !== null && pool.price === null;
+
   const market: MarketPrice | null = useMemo(() => {
-    if (pool && pool.price > 0) return { price: pool.price, source: "pool" };
+    if (poolPrice !== null) return { price: poolPrice, source: "pool" };
     if (feedPrice !== null) return { price: feedPrice, source: "feed" };
     return null;
-  }, [pool, feedPrice]);
+  }, [poolPrice, feedPrice]);
 
   /** A band can only be centred on a pool. See `MarketPrice`. */
-  const bandsAvailable = pool !== null && pool.price > 0;
+  const bandsAvailable = poolPrice !== null;
 
   const applyPreset = (p: (typeof RANGE_PRESETS)[number]) => {
     if (!token0 || !token1) return;
@@ -326,19 +346,21 @@ export default function NewPositionPage() {
      * of magnitude away would open the position out of range and earn nothing,
      * silently. The refusal names the two things that do work.
      */
-    if (!bandsAvailable || !pool) {
+    if (poolPrice === null) {
       toast.error(
-        market
-          ? `No pool at ${(fee / 10_000).toString()}% for this pair yet, so there's no market to centre a band on. Open it with full range, or set explicit bounds around ${showPrice(market.price)}.`
-          : "There's no pool at this tier yet, so there's no market price to centre a band on. Open it with full range, or set explicit bounds.",
+        pool
+          ? `The ${(fee / 10_000).toString()}% pool exists, but it has run to the far end of its price range: a trade took everything on one side, so there is no market here to centre a band on. Set explicit bounds around what you believe the pair is worth, and expect to be the one who moves the price back.`
+          : market
+            ? `No pool at ${(fee / 10_000).toString()}% for this pair yet, so there's no market to centre a band on. Open it with full range, or set explicit bounds around ${showPrice(market.price)}.`
+            : "There's no pool at this tier yet, so there's no market price to centre a band on. Open it with full range, or set explicit bounds.",
       );
       return;
     }
 
     setPreset(p);
     const pct = p === "±5%" ? 0.05 : 0.1;
-    setMinPrice(showPrice(pool.price * (1 - pct)));
-    setMaxPrice(showPrice(pool.price * (1 + pct)));
+    setMinPrice(showPrice(poolPrice * (1 - pct)));
+    setMaxPrice(showPrice(poolPrice * (1 + pct)));
   };
 
   /**
@@ -562,6 +584,12 @@ export default function NewPositionPage() {
            * seeded at $0.03 and a mainnet ETH/USDC quote differ by orders of
            * magnitude, so labelling it "market" without qualification would invite
            * someone to type bounds around a number this pool has never traded at.
+           *
+           * Under both, a third state: a pool that exists and reports no price,
+           * because its tick is pinned. That used to render as the no-pool
+           * sentence, which then promised the deposit would set the starting
+           * price - it would not. The pool is already initialised, and the mint
+           * would land entirely on one side of the clamp.
            */}
           <div className={s.currentPrice}>
             {poolLoading ? (
@@ -572,9 +600,13 @@ export default function NewPositionPage() {
                 <span className="tabular">{showPrice(market.price)}</span>{" "}
                 {token1.symbol} per {token0.symbol}
                 {market.source === "feed"
-                  ? " — from price feeds; no pool at this tier yet, so bands are unavailable"
+                  ? poolPinned
+                    ? " — from price feeds. This tier's pool has run to the far end of its range, so bands are unavailable"
+                    : " — from price feeds; no pool at this tier yet, so bands are unavailable"
                   : ""}
               </>
+            ) : poolPinned ? (
+              "This tier's pool has run to the far end of its price range: a trade took everything on one side of it, so it has no price to quote. Set explicit bounds around what you believe the pair is worth — until someone moves the price back, a deposit here is trading against that clamp."
             ) : (
               "No market price for this pair on this chain. Open it with full range, or set explicit bounds — the two amounts you deposit will set the starting price."
             )}

@@ -4,7 +4,8 @@
 // and whatever order the UI shows the pair in — and every bug it has produced
 // came from applying half a conversion. These pin the halves to each other, plus
 // the two arithmetic faults that shipped: a full range at ticks no fee tier can
-// accept, and a snap that landed a whole spacing low below parity.
+// accept, and a snap that landed a whole spacing low below parity. Plus the one
+// that shipped to a screen: a price read off a tick that was never a price.
 import {
   TICK_SPACINGS,
   MIN_TICK,
@@ -15,6 +16,7 @@ import {
   priceToTick,
   tickToPrice,
   nearestUsableTick,
+  isTickPinned,
 } from "./v3Math.ts";
 
 let pass = 0;
@@ -252,6 +254,81 @@ console.log("\n— price and tick round trip —");
     priceToTick(1e300, 18, 18) === MAX_TICK &&
       priceToTick(1e-300, 18, 18) === MIN_TICK,
     `${priceToTick(1e300, 18, 18)} ${priceToTick(1e-300, 18, 18)}`,
+  );
+}
+
+/*
+ * The clamp a drained pool stops at.
+ *
+ * Not hypothetical, and not a mainnet-scale event either: a KLD/USDC 0.30% pool
+ * on Robinhood Chain Testnet held 0.019 KLD and 117 USDC at tick 887271, its
+ * sqrtPriceX96 one below MAX_SQRT_RATIO. A ~117 USDC buy took every KLD in it and
+ * the swap clamped rather than reverted. `tickToPrice` answered 3.4e50 for that
+ * tick, which is 2^128 scaled by the decimal gap and entirely correct as
+ * arithmetic; the /pool table printed it, the unpriced-leg derivation valued KLD
+ * at it, and the headline read $6.47e48. What is pinned below is therefore the
+ * line where a tick stops being a price.
+ */
+console.log("\n— a pinned tick is refused, and a real one is not —");
+{
+  check(
+    "the measured pool: tick 887271 at the 0.30% tier",
+    isTickPinned(887271, 3000),
+  );
+  check("and the same clamp on the floor", isTickPinned(-887271, 3000));
+  check(
+    "the ticks either side of it too, since nothing can sit out there",
+    isTickPinned(MAX_TICK, 3000) &&
+      isTickPinned(MIN_TICK, 3000) &&
+      isTickPinned(887220, 3000),
+    "887220 is the widest tick the 0.30% tier can mint at, so it is the clamp",
+  );
+  /* Two measured ticks that ARE markets, both KLD/USDC at 0.30% and both far from
+     parity — which is the case worth pinning, since a guard reaching for "this
+     number looks too big" would blank them. 303397 is Sepolia's live pool, where
+     USDC sorts first, so its price is 14.99 KLD per USDC; -311349 is the same pair
+     where KLD sorts first, at $0.0301. The same market, read from either side,
+     lands six figures of ticks from zero without being pinned at either end. */
+  check("a live pool's tick is not pinned", !isTickPinned(303397, 3000));
+  check(
+    "nor is the same market read the other way",
+    !isTickPinned(-311349, 3000),
+  );
+  check("nor is parity itself", !isTickPinned(0, 3000));
+
+  /* Derived from the tier rather than from a plausibility threshold, which is the
+     whole point: `fullRangeTicks` is the widest range a mint accepts, so a tick
+     outside it is a price no position can be opened at, at any spacing. */
+  for (const [feeKey, spacing] of Object.entries(TICK_SPACINGS)) {
+    const fee = Number(feeKey);
+    const { tickUpper } = fullRangeTicks(spacing);
+    check(
+      `fee ${fee}: the outermost mintable tick is pinned, one spacing in is not`,
+      isTickPinned(tickUpper, fee) &&
+        isTickPinned(-tickUpper, fee) &&
+        !isTickPinned(tickUpper - spacing, fee) &&
+        !isTickPinned(-(tickUpper - spacing), fee),
+      `tickUpper ${tickUpper} spacing ${spacing}`,
+    );
+  }
+
+  /* An unknown fee has no spacing to look up and a NaN tick has no magnitude to
+     compare, so both fail closed. A missing price is recoverable copy; a printed
+     3.4e50 is not. */
+  check(
+    "an unknown fee tier still bounds the tick",
+    isTickPinned(887271, 1234),
+  );
+  check(
+    "and stays honest about a real one",
+    !isTickPinned(303397, 1234),
+    "MAX_TICK - 1 is the fallback, so only the true extremes are pinned",
+  );
+  check(
+    "a tick that is not a number is pinned, not passed through",
+    isTickPinned(NaN, 3000) &&
+      isTickPinned(Infinity, 3000) &&
+      isTickPinned(-Infinity, 3000),
   );
 }
 

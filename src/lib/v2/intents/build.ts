@@ -717,9 +717,11 @@ export async function buildIntents(
           `I couldn't get a price for ${tokenIn.symbol} to ${tokenOut.symbol}. ` +
           `There's no pool for that pair at any of the tiers we trade ` +
           `(${FEE_TIERS.map((f) => `${f / 10_000}%`).join(", ")}), and no route ` +
-          `through ${intermediateTokens(chainId)
-            .map((t) => t.symbol)
-            .join(" or ") || "another token"} either.`,
+          `through ${
+            intermediateTokens(chainId)
+              .map((t) => t.symbol)
+              .join(" or ") || "another token"
+          } either.`,
       };
     }
 
@@ -1816,6 +1818,22 @@ export async function buildIntents(
       state = best.state;
     }
 
+    /* A pool that exists and reports no price has run to the far end of its
+       range: a swap took everything on one side and clamped instead of
+       reverting, so its tick is where the number line ends, not a market.
+       Refused here rather than folded into the `spot: null` case below, because
+       null there means "this pool is about to be created" and mintMinimums would
+       take the floor from the two amounts typed - which is signing a mint into a
+       clamp with a floor derived from the clamp. /pool/new still allows it, with
+       bounds typed by hand and the state named on screen; a plan has nobody
+       reading a chart. */
+    if (state && state.price === null) {
+      return {
+        ok: false,
+        error: `The ${token0.symbol}/${token1.symbol} ${fee / 10_000}% pool has run to the far end of its price range: a trade took everything on one side of it, so there is no price I can set a slippage floor against. Add to it from the pool page instead, where you set the bounds yourself.`,
+      };
+    }
+
     /* null price, not zero. A pool that does not exist has no market, and the two
        amounts below will set its opening price — which is exactly why a band is
        refused in that case rather than centred on something. */
@@ -2008,7 +2026,8 @@ export async function buildIntents(
       }
     }
 
-    const forSide = (symbol: string) => sides.find((s) => names(s.word, symbol));
+    const forSide = (symbol: string) =>
+      sides.find((s) => names(s.word, symbol));
     const side0 = forSide(sym0);
     const side1 = forSide(sym1);
 
@@ -2028,14 +2047,17 @@ export async function buildIntents(
        ratio from the two amounts themselves, which for an increase means taking
        the floor from what the caller typed instead of from the market — exactly
        the hole that function exists to close. A position whose pool cannot be
-       read is a failed read, not a new pool. */
+       read is a failed read, not a new pool - and a pool pinned at the far end
+       of its own range is neither, so it is refused on the same grounds. */
     const state = await deps
       .poolState(pos.token0, pos.token1, pos.fee, dec0, dec1)
       .catch(() => null);
-    if (!state) {
+    if (!state || state.price === null) {
       return {
         ok: false,
-        error: `I couldn't read the ${pairLabel} ${pos.fee / 10_000}% pool's current price, so I can't set a slippage floor for the deposit. Without one it would be accepted at any price.`,
+        error: state
+          ? `The ${pairLabel} ${pos.fee / 10_000}% pool has run to the far end of its price range: a trade took everything on one side of it, so there is no price left to set a slippage floor against. Adding here would be filled at that clamp.`
+          : `I couldn't read the ${pairLabel} ${pos.fee / 10_000}% pool's current price, so I can't set a slippage floor for the deposit. Without one it would be accepted at any price.`,
       };
     }
 
