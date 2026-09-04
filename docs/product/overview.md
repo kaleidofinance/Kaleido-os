@@ -38,7 +38,7 @@ from a contract on the chain your wallet is connected to.
 ### Luca
 
 The agent panel takes a sentence — "lend 10000 USDC at 6% for 60 days" — and turns
-it into named steps you sign one at a time. It has twenty-three actions and six
+it into named steps you sign one at a time. It has twenty-four actions and seven
 reads, and it never holds your keys. See [Saying it instead of clicking
 it](./agent.md), and [Letting it act without you](./delegation.md) for the case
 where you want it to move without a prompt each time.

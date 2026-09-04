@@ -573,6 +573,37 @@
   background: var(--k-brand-hover);
 }
 
+/* The share to remove, and the two boxes for adding to a position. Both reuse
+   the new-position form's chips and wells below rather than growing a second
+   look for the same controls — a share chip here and a band preset there are the
+   same gesture, and the amount boxes are the same input. */
+.shareRow {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.shareLabel {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+.addForm {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--k-line);
+}
+/* The first `.priceRow` inside the form already carries the gap under the rule. */
+.addForm .priceRow {
+  margin-top: 0;
+}
+.addNote {
+  font-size: 11px;
+  color: var(--k-t3);
+  line-height: 1.5;
+  margin: 10px 0 0;
+}
+
 /* ---------- new position form ---------- */
 .form {
   display: flex;

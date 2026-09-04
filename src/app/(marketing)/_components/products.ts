@@ -5,7 +5,7 @@
  * places quote it and they must not disagree: the rail renders it, and the page
  * puts `PRODUCTS.length` in the section heading and in the hero's stat row. A
  * sixth product added here corrects both without either being edited — which is
- * the same discipline `capabilities.ts` applies to the 23 in `#can`, and for the
+ * the same discipline `capabilities.ts` applies to the 24 in `#can`, and for the
  * same reason. A count is the one kind of copy a reader can falsify by scrolling.
  *
  * `ProductRail` is a client component and this file is not marked `"use client"`,

@@ -7,11 +7,13 @@ import { borrowCurrencies, getContracts } from "@/constants/registry";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import { readMarketRow } from "@/lib/lending/book";
 import { readPoolState } from "@/lib/dex/pool";
+import { encodeV3Path, type PathQuoter } from "@/lib/dex/route";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
 import type {
   FaucetAssetRef,
   LoanRef,
   MarketRow,
+  PathQuoteRequest,
   PlanDeps,
   PoolPositionRef,
   QuoteRequest,
@@ -52,6 +54,10 @@ import type {
 
 const QUOTER_ABI = [
   "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut)",
+  /* The deployed lens is `Quoter`, not `QuoterV2` (see deploy-v3.js), so this
+     returns a bare uint256 rather than V2's four-value tuple. Getting that wrong
+     would decode the first 32 bytes of a different return shape as the answer. */
+  "function quoteExactInput(bytes path, uint256 amountIn) external returns (uint256 amountOut)",
 ];
 
 /**
@@ -110,6 +116,76 @@ async function serverQuote(
   } catch {
     return null;
   }
+}
+
+/**
+ * Quote a whole route server-side, through `quoteExactInput`.
+ *
+ * Same provider/address pairing and the same null contract as `serverQuote`
+ * above — a route that cannot be priced is not a route, and returning "0" here
+ * would put a floor of zero on a two-hop swap, which is the shape with the least
+ * protection to begin with (`exactInput` has no per-pool price limit).
+ *
+ * The path is encoded by `encodeV3Path`, the same function the intent carries its
+ * bytes from and the auditor re-encodes with, so the route that gets quoted is
+ * byte-identical to the route that gets signed.
+ */
+async function serverQuotePath(
+  chainId: number | undefined,
+  req: PathQuoteRequest,
+): Promise<string | null> {
+  try {
+    const provider = providerForChain(chainId);
+    const quoterAddress = getContracts(chainId).v3Quoter;
+    if (!provider || !quoterAddress) return null;
+    const path = encodeV3Path(req.tokens, req.fees);
+    if (path === "0x") return null;
+    const quoter = new ethers.Contract(quoterAddress, QUOTER_ABI, provider);
+    const amountOutWei = await quoter.quoteExactInput.staticCall(
+      path,
+      ethers.parseUnits(req.amountIn, req.decimalsIn),
+    );
+    const out = ethers.formatUnits(amountOutWei, req.decimalsOut);
+    return Number(out) > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The two quoters above behind one `PathQuoter`, for a caller that wants a route
+ * rather than a plan.
+ *
+ * Exported so `getSwapRoute` can ask "is there a way from A to B" without going
+ * anywhere near `buildIntents`. Sharing this rather than writing a second quoter
+ * is the same argument `findBestRoute` itself rests on: a read tool that tells
+ * the user "ETH → KLD routes through USDC at 0.3%" and a plan that then routes it
+ * differently is worse than the read tool not existing, because the user acted on
+ * the first answer.
+ *
+ * The length switch is the same one every caller of `findBestRoute` makes, and it
+ * belongs to whoever holds the quoter surfaces — `quoteExactInputSingle` for a
+ * pair, `quoteExactInput` for a path, and only the latter prices the hops in
+ * sequence against real ticks.
+ */
+export function serverPathQuoter(chainId: number | undefined): PathQuoter {
+  return (tokens, fees, amountIn, decimalsIn, decimalsOut) =>
+    tokens.length === 2
+      ? serverQuote(chainId, {
+          tokenIn: tokens[0],
+          tokenOut: tokens[1],
+          amountIn,
+          fee: fees[0],
+          decimalsIn,
+          decimalsOut,
+        })
+      : serverQuotePath(chainId, {
+          tokens,
+          fees,
+          amountIn,
+          decimalsIn,
+          decimalsOut,
+        });
 }
 
 /**
@@ -206,6 +282,10 @@ function symbolOf(chainId: number | undefined, address: string): string {
  * liquidity is kept as the raw uint128 string the position manager stores. It
  * is not a token amount and must never be formatted with token decimals —
  * decreaseLiquidity takes exactly this value.
+ *
+ * The tier and the tick pair come out of the same call and are kept rather than
+ * discarded, because `increasePosition` needs them to derive its slippage floor
+ * from the range the position already has — see PoolPositionRef.
  */
 async function serverPositions(
   chainId: number | undefined,
@@ -237,6 +317,9 @@ async function serverPositions(
             token0: String(pos.token0 ?? pos[2]),
             token1: String(pos.token1 ?? pos[3]),
             liquidity: String(pos.liquidity ?? pos[7]),
+            fee: Number(pos.fee ?? pos[4]),
+            tickLower: Number(pos.tickLower ?? pos[5]),
+            tickUpper: Number(pos.tickUpper ?? pos[6]),
           };
         } catch {
           return null;
@@ -340,6 +423,7 @@ export function serverPlanDeps(
   return {
     chainId,
     quote: (req) => serverQuote(chainId, req),
+    quotePath: (req) => serverQuotePath(chainId, req),
     marketRow: (kind, id) => serverMarketRow(chainId, kind, id),
     positions: () => serverPositions(chainId, address),
     loans: () => serverLoans(chainId, address),

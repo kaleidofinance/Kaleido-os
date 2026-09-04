@@ -35,7 +35,19 @@ export interface AgentSettings {
   slippageBps: number;
   /** Which products Luca may act in. */
   allowedActions: Record<AgentAction, boolean>;
-  /** Require an explicit signature per step (always true in the shared-wallet model). */
+  /**
+   * Stop between the steps of a plan Luca built, instead of running it through.
+   *
+   * NOT a switch on signing. Every step is a separate wallet signature whichever
+   * way this sits — the wallet owns that prompt and the app cannot waive it, and
+   * a setting that appeared to would be the worst kind of guardrail. What it
+   * controls is PlanReview's own confirmation between steps: on, a four-step plan
+   * hands control back after each one, so it can be abandoned after the second
+   * with the first two settled; off, the wallet prompts arrive back to back.
+   *
+   * Read by the agent panel only. A swap's approve+swap is two steps of one thing
+   * the user just filled in a form for, and this setting is about the agent.
+   */
   confirmEachStep: boolean;
   /**
    * Preferred model id, or undefined to let the server choose.

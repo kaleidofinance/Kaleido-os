@@ -1,8 +1,9 @@
 import { useCallback } from "react";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useActiveWalletChain } from "thirdweb/react";
 import { ethers } from "ethers";
 import { getContracts } from "@/constants/registry";
 import { providerForChain } from "@/config/provider";
+import { encodeV3Path } from "@/lib/dex/route";
 import { MOCK_DATA, mockQuote, mockQuoteMultiHop } from "@/lib/mock";
 
 const QUOTER_ABI = [
@@ -10,41 +11,37 @@ const QUOTER_ABI = [
   "function quoteExactInput(bytes path, uint256 amountIn) external returns (uint256 amountOut)",
 ];
 
-const SWAP_ROUTER_ABI = [
-  "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)",
-  "function exactInput((bytes path, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum)) external payable returns (uint256 amountOut)",
-];
-
 /**
- * Encodes a path for Uniswap V3
- * [tokenIn, fee, tokenOut] or [tokenIn, fee, tokenMid, fee, tokenOut]
+ * Quoting only. Nothing here signs.
+ *
+ * THIS HOOK USED TO CARRY A SECOND HALF, and removing it is the fix rather than a
+ * tidy-up. `swapV3` and `swapV3MultiHop` built `exactInputSingle` and
+ * `exactInput` calldata and sent it, and they had no callers: every signing
+ * surface in the app goes through the intent registry, where the same two router
+ * functions are reached by `definitions.ts`'s resolvers and every step is checked
+ * by `auditor.ts` first. A second, unaudited path to the same two functions is a
+ * standing invitation to drift — and it had already drifted, because the encoder
+ * beside them was not the encoder the audited path uses.
+ *
+ * That encoder was the other half. A local `encodePath(path: any[], fees)`
+ * checked only `path.length === fees.length + 1`, while `encodeV3Path` in
+ * lib/dex/route.ts checks every address against a 20-byte hex shape and every fee
+ * against uint24. The consequence was specific and silent: this file encodes the
+ * path that gets QUOTED, and `route.ts` encodes the path that goes into the
+ * intent and gets AUDITED. Two encoders that agree today are two encoders that
+ * can disagree tomorrow, and the failure has no revert behind it — the quote
+ * prices one route, the auditor approves another, and `amountOutMin` is a floor
+ * computed against pools the transaction never touches. One function, imported.
  */
-const encodePath = (path: any[], fees: number[]) => {
-  if (path.length !== fees.length + 1) return "0x";
-  let encoded = "0x" + path[0].slice(2);
-  for (let i = 0; i < fees.length; i++) {
-    encoded += fees[i].toString(16).padStart(6, "0");
-    encoded += path[i + 1].slice(2);
-  }
-  return encoded.toLowerCase();
-};
-
 export const useV3SwapRouter = () => {
-  const activeAccount = useActiveAccount();
   /* The wallet's chain, load-bearing twice over: it selects this chain's V3
-     router and quoter from the registry (a swap must route through the periphery
-     deployed on the chain the wallet is actually on, not a stale Abstract one),
-     and it lets the mock quote seams below resolve the native sentinel to the
-     right asset — 0xEeee… names a different token on each chain, so pricing it
-     without a chain id would value BNB as ether. */
+     quoter from the registry (a quote must come from the periphery deployed on
+     the chain the wallet is actually on, not a stale Abstract one), and it lets
+     the mock quote seams below resolve the native sentinel to the right asset —
+     0xEeee… names a different token on each chain, so pricing it without a chain
+     id would value BNB as ether. */
   const chainId = useActiveWalletChain()?.id;
   const { v3Router, v3Quoter } = getContracts(chainId);
-
-  const getSigner = useCallback(async () => {
-    if (!activeAccount) return null;
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    return await provider.getSigner();
-  }, [activeAccount]);
 
   /**
    * The output a pool would give for `amountIn`, or `null` when we could not ask.
@@ -161,11 +158,22 @@ export const useV3SwapRouter = () => {
       if (!v3Quoter) return null;
       const provider = providerForChain(chainId);
       if (!provider) return null;
+      /* Encoded before the try, and a bad encode is a null rather than a caught
+         revert. `encodeV3Path` returns "0x" for a mismatched pair of arrays, an
+         address that is not 20 bytes of hex, or a fee outside uint24 — all of
+         which the quoter would answer by reverting, which reads in the console as
+         "no pool" and is not what happened. */
+      const encodedPath = encodeV3Path(path, fees);
+      if (encodedPath === "0x") {
+        console.error(
+          `Refusing to quote an unencodable path on chain ${chainId}: [${path.join(" -> ")}] fees [${fees.join(", ")}]`,
+        );
+        return null;
+      }
       try {
         const quoter = new ethers.Contract(v3Quoter, QUOTER_ABI, provider);
 
         const amountInWei = ethers.parseUnits(amountIn, decimalsIn);
-        const encodedPath = encodePath(path, fees);
 
         const amountOutWei = await quoter.quoteExactInput.staticCall(
           encodedPath,
@@ -184,84 +192,9 @@ export const useV3SwapRouter = () => {
     [chainId, v3Quoter],
   );
 
-  const swapV3 = useCallback(
-    async (
-      tokenIn: string,
-      tokenOut: string,
-      fee: number,
-      amountIn: string,
-      amountOutMin: string,
-      deadline: number,
-      decimalsIn: number = 18,
-      decimalsOut: number = 18,
-    ) => {
-      const signer = await getSigner();
-      if (!signer) throw new Error("Wallet not connected");
-      if (!v3Router)
-        throw new Error("KaleidoSwap V3 router is not deployed on this chain");
-
-      const router = new ethers.Contract(v3Router, SWAP_ROUTER_ABI, signer);
-      const amountInWei = ethers.parseUnits(amountIn, decimalsIn);
-      const amountOutMinWei = ethers.parseUnits(amountOutMin, decimalsOut);
-      const to = await signer.getAddress();
-
-      const params = {
-        tokenIn,
-        tokenOut,
-        fee,
-        recipient: to,
-        deadline,
-        amountIn: amountInWei,
-        amountOutMinimum: amountOutMinWei,
-        sqrtPriceLimitX96: 0,
-      };
-
-      console.log("Executing V3 Swap with params:", params);
-      return await router.exactInputSingle(params);
-    },
-    [getSigner, v3Router],
-  );
-
-  const swapV3MultiHop = useCallback(
-    async (
-      path: string[],
-      fees: number[],
-      amountIn: string,
-      amountOutMin: string,
-      deadline: number,
-      decimalsIn: number = 18,
-      decimalsOut: number = 18,
-    ) => {
-      const signer = await getSigner();
-      if (!signer) throw new Error("Wallet not connected");
-      if (!v3Router)
-        throw new Error("KaleidoSwap V3 router is not deployed on this chain");
-
-      const router = new ethers.Contract(v3Router, SWAP_ROUTER_ABI, signer);
-      const amountInWei = ethers.parseUnits(amountIn, decimalsIn);
-      const amountOutMinWei = ethers.parseUnits(amountOutMin, decimalsOut);
-      const to = await signer.getAddress();
-      const encodedPath = encodePath(path, fees);
-
-      const params = {
-        path: encodedPath,
-        recipient: to,
-        deadline,
-        amountIn: amountInWei,
-        amountOutMinimum: amountOutMinWei,
-      };
-
-      console.log("Executing V3 Multi-Hop Swap with params:", params);
-      return await router.exactInput(params);
-    },
-    [getSigner, v3Router],
-  );
-
   return {
     getV3AmountOut,
     getV3MultiHopAmountOut,
-    swapV3,
-    swapV3MultiHop,
     V3_ROUTER_ADDRESS: v3Router,
   };
 };

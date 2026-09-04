@@ -287,10 +287,54 @@ function toCommand(
       return { kind: "compoundYield" };
 
     case "collectFees":
+      {
+        const positionId = numOf(a.positionId);
+        if (positionId === null) return `${call.name}: no position id`;
+        return { kind: call.name, positionId };
+      }
+
     case "removePosition": {
       const positionId = numOf(a.positionId);
       if (positionId === null) return `${call.name}: no position id`;
-      return { kind: call.name, positionId };
+      /* Absent is the whole position, which is what the verb has always meant.
+         Range-checked by the builder rather than here, so the message names the
+         position: this layer cannot say "25% of #48211 rounds to nothing". */
+      const percent = numOf(a.percent);
+      return percent === null
+        ? { kind: "removePosition", positionId }
+        : { kind: "removePosition", positionId, percent };
+    }
+
+    case "increasePosition": {
+      /*
+       * `str`, not `dexToken`, for both symbols — the one token-carrying case
+       * besides the faucet's that does not resolve against the registry, and for
+       * the same kind of reason. The position's own token0/token1 came off the
+       * chain and are the authority on what this pool holds, so the builder
+       * matches these words against those two symbols; resolving here would
+       * introduce a second opinion that can only agree or be wrong, and would
+       * refuse a position holding a token the registry has not declared.
+       */
+      const positionId = numOf(a.positionId);
+      const amount0 = amountOf(a.amount0);
+      const amount1 = amountOf(a.amount1);
+      const symbol0 = str(a.token0).trim();
+      const symbol1 = str(a.token1).trim();
+      if (positionId === null) return "increasePosition: no position id";
+      if (!symbol0 || !symbol1)
+        return "increasePosition: name both of the position's tokens";
+      if (!amount0)
+        return `increasePosition: no amount given for ${symbol0 || "(none)"}`;
+      if (!amount1)
+        return `increasePosition: no amount given for ${symbol1 || "(none)"}`;
+      return {
+        kind: "increasePosition",
+        positionId,
+        amount0,
+        symbol0,
+        amount1,
+        symbol1,
+      };
     }
 
     case "provideLiquidity": {

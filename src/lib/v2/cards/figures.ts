@@ -56,10 +56,17 @@ export function figureCards(
               label: "Min health factor",
               value: settings.minHealthFactor.toFixed(2),
             },
+            /* No tone on this row, and the label says "stop", not "sign".
+               It used to read "Signature per step: Required / Off" with a warn
+               tone on Off — three problems in one row. Nothing read the setting,
+               so both values were claims about behaviour that did not exist; the
+               label described the wallet's prompt, which no setting here can
+               waive; and the warn tone framed a legitimate preference as a
+               weakened guardrail. It now names what PlanReview actually does
+               with it, and a preference gets no tone. */
             {
-              label: "Signature per step",
-              value: settings.confirmEachStep ? "Required" : "Off",
-              tone: settings.confirmEachStep ? "good" : "warn",
+              label: "Stop between plan steps",
+              value: settings.confirmEachStep ? "On" : "Off",
             },
           ],
         },

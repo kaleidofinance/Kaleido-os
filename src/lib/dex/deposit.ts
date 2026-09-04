@@ -217,6 +217,25 @@ export type MintPositionFn = (
 ) => Promise<{ wait?: () => Promise<unknown> } | null | undefined>;
 
 /**
+ * What `useV3Positions.increaseLiquidity` is, from this module's side.
+ *
+ * Passed in for the same reason `MintPositionFn` is — it is a hook's callback,
+ * with its own signer and its own idea of which chain's position manager to talk
+ * to — and shaped differently in one telling way: no recipient. An increase
+ * credits the position, not an address, so there is nobody to name.
+ */
+export type IncreaseLiquidityFn = (
+  tokenId: string,
+  amount0Desired: string,
+  amount1Desired: string,
+  decimals0: number,
+  decimals1: number,
+  amount0Min: string,
+  amount1Min: string,
+  deadline: number,
+) => Promise<{ wait?: () => Promise<unknown> } | null | undefined>;
+
+/**
  * Mints a concentrated position into a pool that exists, or opens one that does
  * not.
  *
@@ -291,6 +310,100 @@ export async function depositV3(args: {
     args.token1.decimals,
     floors.amount0Min,
     floors.amount1Min,
+  );
+  if (tx?.wait) await tx.wait();
+  return null;
+}
+
+/**
+ * Adds to a concentrated position that already exists.
+ *
+ * Everything a mint has to decide, this one reads: `increaseLiquidity` takes a
+ * tokenId and two amounts, and the position manager loads the pair, the tier and
+ * the range out of storage. So there is no tier argument, no range argument, and
+ * no sort — THE AMOUNTS MUST ARRIVE IN THE POSITION'S OWN token0/token1 ORDER,
+ * which is what `positions(tokenId)` returns them as. Handing this the caller's
+ * order does not revert; it deposits the pair inverted.
+ *
+ * The one place it deliberately disagrees with `depositV3`: a null `readSpot` is
+ * refused here rather than handled. Null means "no pool" to a mint, which is a
+ * real case it opens — but a position cannot exist without its pool, so null here
+ * is a failed read, and `mintMinimums` answers a null spot by deriving the ratio
+ * from the caller's own amounts. A floor that agrees with whatever was typed is
+ * not a floor.
+ */
+export async function increaseV3(args: {
+  signer: ethers.Signer;
+  owner: string;
+  positionManager: string;
+  tokenId: string;
+  /** The position's token0 and token1, in that order — not the caller's. */
+  token0: IToken;
+  token1: IToken;
+  amount0: string;
+  amount1: string;
+  /** The position's own bounds, read from `positions(tokenId)`. */
+  tickLower: number;
+  tickUpper: number;
+  readSpot: () => Promise<number | null>;
+  slippageBps?: number;
+  deadline?: number;
+  increase: IncreaseLiquidityFn;
+}): Promise<{ error: string } | null> {
+  const parsed = parseBoth({
+    amount0: args.amount0,
+    amount1: args.amount1,
+    decimals0: args.token0.decimals,
+    decimals1: args.token1.decimals,
+  });
+  if ("error" in parsed) return parsed;
+
+  const spot = await args.readSpot();
+  if (spot === null) {
+    return {
+      error:
+        "Couldn't read the pool's current price, so there is no slippage floor to set. Without one the deposit would be accepted at any price.",
+    };
+  }
+
+  const floors = mintMinimums({
+    amount0: args.amount0,
+    amount1: args.amount1,
+    decimals0: args.token0.decimals,
+    decimals1: args.token1.decimals,
+    tickLower: args.tickLower,
+    tickUpper: args.tickUpper,
+    spot,
+    slippageBps: args.slippageBps ?? SLIPPAGE_BPS,
+  });
+  if ("error" in floors) return floors;
+
+  /* Approvals after the floor, not before, for the reason /pool/new learned the
+     hard way: a refusal that arrives after two signed approvals has cost the user
+     two transactions to be told no. Everything that can fail without the chain
+     fails first. */
+  for (const [token, needed] of [
+    [args.token0, parsed.d0],
+    [args.token1, parsed.d1],
+  ] as const) {
+    await ensureAllowance({
+      signer: args.signer,
+      owner: args.owner,
+      token,
+      spender: args.positionManager,
+      needed,
+    });
+  }
+
+  const tx = await args.increase(
+    args.tokenId,
+    args.amount0,
+    args.amount1,
+    args.token0.decimals,
+    args.token1.decimals,
+    floors.amount0Min,
+    floors.amount1Min,
+    args.deadline ?? deadlineIn20Minutes(),
   );
   if (tx?.wait) await tx.wait();
   return null;

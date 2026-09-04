@@ -70,17 +70,46 @@ export interface SwapRoute {
  */
 export function swapRoute(intents: Intent[] | undefined): SwapRoute | null {
   const swaps = (intents ?? []).filter(
-    (i): i is Extract<Intent, { kind: "swap" }> => i.kind === "swap",
+    (
+      i,
+    ): i is Extract<Intent, { kind: "swap" | "swapMultiHop" }> =>
+      i.kind === "swap" || i.kind === "swapMultiHop",
   );
   if (swaps.length === 0) return null;
 
-  const hops: Hop[] = swaps.map((sw) => ({
-    from: sw.symbolIn,
-    to: sw.symbolOut,
-    amountIn: sw.amountIn,
-    minOut: sw.amountOutMin,
-    fee: sw.fee,
-  }));
+  /*
+   * A `swapMultiHop` is already a path, so it contributes one hop per pool
+   * rather than one hop per intent.
+   *
+   * Without this it fell out of the filter entirely and a routed swap rendered
+   * with no route at all — the one plan shape where the display matters most,
+   * since it is the only one that moves the user's money through a token they
+   * never named. Its per-leg amounts are the fields this shape has no source
+   * for: `exactInput` is quoted end to end and never states what the middle pool
+   * received, so the intermediate legs carry the ends' own figures. That is why
+   * `Hop.amountIn`/`minOut` are documented as only meaningful on an unchained
+   * plan — a path's legs have no separate floors, one `amountOutMinimum` governs
+   * the whole transaction.
+   */
+  const hops: Hop[] = swaps.flatMap((sw) =>
+    sw.kind === "swap"
+      ? [
+          {
+            from: sw.symbolIn,
+            to: sw.symbolOut,
+            amountIn: sw.amountIn,
+            minOut: sw.amountOutMin,
+            fee: sw.fee,
+          },
+        ]
+      : sw.hops.map((h) => ({
+          from: h.symbolIn,
+          to: h.symbolOut,
+          amountIn: sw.amountIn,
+          minOut: sw.amountOutMin,
+          fee: h.fee,
+        })),
+  );
   const first = swaps[0];
   const last = swaps[swaps.length - 1];
 
@@ -186,6 +215,18 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
     const to = str(a.toChain);
     if (from && to) return `Looked for the ${from} → ${to} route`;
     return to ? `Looked for a route to ${to}` : "Looked for a bridge route";
+  },
+  /* Both ends, same reasoning as the bridge above: the model may check several
+     pairs in one turn, and a line naming one of them repeats verbatim. The
+     amount is deliberately left out — it is optional on this tool, so printing
+     it would make two lines out of the same question asked with and without a
+     size. */
+  getSwapRoute: (a) => {
+    const from = str(a.tokenIn);
+    const to = str(a.tokenOut);
+    return from && to
+      ? `Priced the ${from} → ${to} route`
+      : "Looked for a swap route";
   },
 };
 

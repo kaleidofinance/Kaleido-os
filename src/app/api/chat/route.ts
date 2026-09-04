@@ -16,6 +16,7 @@ import {
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
 import { splitActionsBlock } from "@/lib/ai/actionsBlock";
+import type { ChatMessage } from "@/lib/ai/types";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -61,6 +62,53 @@ const AI_ENGINE_TIMEOUT = parseInt(
   process.env.AI_ENGINE_TIMEOUT || "300000",
   10,
 );
+
+/**
+ * How many prior messages of a conversation travel to the model.
+ *
+ * Six, i.e. roughly three exchanges. The number is bounded for two separate
+ * reasons and the smaller one decides it: cost is per-token on every round of a
+ * turn, and the client controls this array, so an unbounded field is a way to
+ * make one request cost as much as a hundred. Three exchanges is what the
+ * observed failure needs — "use USDC" answering an offer Luca made one or two
+ * turns earlier — and a conversation longer than that has usually moved on.
+ */
+const MAX_HISTORY_MESSAGES = 6;
+
+/** Longest a single remembered message may be, in characters. */
+const MAX_HISTORY_CHARS = 2_000;
+
+/**
+ * The conversation so far, from a request body, fit to send to a provider.
+ *
+ * Everything here is client input, which is the whole reason this function
+ * exists rather than passing `body.history` through. It is not a trust boundary
+ * in the auditor's sense — nothing in a prompt can sign anything, and the
+ * auditor still checks the built plan — but three things would go wrong without
+ * it: a non-array or a wrong-shaped entry would reach an adapter and throw
+ * mid-turn; an unbounded array would let a caller inflate the token bill of a
+ * single quota-metered request; and a role outside the two the interface names
+ * would be silently reinterpreted by whichever provider received it.
+ *
+ * Trailing slice, not leading: the messages nearest the current one are the ones
+ * it is likely to be a reply to. Empty strings drop out, because a frame-only
+ * turn — a card, a plan, a receive panel with no prose — has nothing to say to a
+ * model, and an empty `content` is rejected outright by some providers.
+ */
+function historyFromBody(raw: unknown): ChatMessage[] {
+  if (!Array.isArray(raw)) return [];
+  const clean: ChatMessage[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const { role, content } = entry as { role?: unknown; content?: unknown };
+    if (role !== "user" && role !== "assistant") continue;
+    if (typeof content !== "string") continue;
+    const text = content.trim().slice(0, MAX_HISTORY_CHARS);
+    if (!text) continue;
+    clean.push({ role, content: text });
+  }
+  return clean.slice(-MAX_HISTORY_MESSAGES);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -139,6 +187,11 @@ export async function POST(request: NextRequest) {
         address: body.address,
         chainId: body.chainId,
         limits: body.limits,
+        /* The conversation this message belongs to. Sanitised and bounded — see
+           historyFromBody. Without it the model received only the sentence the
+           local grammar could not parse, which on a local-first page is often a
+           bare reply to something Luca itself said. */
+        history: historyFromBody(body.history),
       };
 
       /**

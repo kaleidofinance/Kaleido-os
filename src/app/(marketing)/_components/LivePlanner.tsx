@@ -114,12 +114,14 @@ const VERB: Record<Command["kind"], string> = {
   compoundYield: "Compound yield",
   collectFees: "Collect fees",
   removePosition: "Close position",
-  /* Present because the Record is exhaustive, and unreachable from this page for
-     the same reason it needs no entry in VERBS: `provideLiquidity` is a
-     ToolOnlyKind, so parseCommand never returns it and nothing here can render
-     this label. Kept as a label rather than an empty string because the type is
-     the only thing forcing the decision, and a blank would read as an oversight. */
+  /* Both present because the Record is exhaustive, and both unreachable from this
+     page for the same reason neither needs an entry in VERBS: they are the two
+     ToolOnlyKinds, so parseCommand never returns either and nothing here can
+     render these labels. Kept as labels rather than empty strings because the type
+     is the only thing forcing the decision, and a blank would read as an
+     oversight. */
   provideLiquidity: "Add liquidity",
+  increasePosition: "Add to position",
   claimTestTokens: "Claim test tokens",
   help: "Help",
   receive: "Receive",
@@ -723,6 +725,7 @@ function settledOf(
     /* Unreachable for the reason given in VERB: a ToolOnlyKind never comes back
        from parseCommand. */
     case "provideLiquidity":
+    case "increasePosition":
       return { lines: [], note: "" };
   }
 }

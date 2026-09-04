@@ -13,6 +13,7 @@ import {
 } from "@/constants/registry";
 import { envVars } from "@/constants/envVars";
 import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
+import { encodeV3Path } from "@/lib/dex/route";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
@@ -131,6 +132,9 @@ export const HARD_MAX_NOTIONAL_USD = Number(
  */
 const ACTION_OF: Record<IntentKind, string> = {
   swap: "swap",
+  /* The same product toggle. A route through two pools is still a swap, and
+     gating it separately would let a user who disabled swaps be shown one. */
+  swapMultiHop: "swap",
   stake: "stake",
   /* An approve is not a product; it is the enabling step for one. Gating it on
      its own toggle would let a user disable swaps and still be shown the
@@ -203,6 +207,12 @@ const ACTION_OF: Record<IntentKind, string> = {
      switches useAgentSettings ships — so unlike every other pool kind here, this
      one has a toggle to answer to. */
   mintPoolPosition: "provideLiquidity",
+
+  /* Adding to one is the same act as opening one, so it answers to the same
+     switch. Gating it on anything looser would make "provideLiquidity: off" a
+     setting an agent could route around by finding an existing position — which
+     is the whole surface the toggle exists to close. */
+  increasePoolLiquidity: "provideLiquidity",
 
   /* Delegation is not one of the five product toggles. It is governed by the
      dedicated checks in AUDITORS below — expiry, health floor, notional — and
@@ -715,6 +725,58 @@ function routerReasons(step: PlanStep, chainId: number | undefined): string[] {
 }
 
 /**
+ * `nativeIn` / `nativeOut` against the ends of the path they claim to describe.
+ *
+ * BOTH FLAGS ARE INSTRUCTIONS TO THE RESOLVER, not annotations. `nativeIn` puts
+ * `value: amountIn` on the transaction; `nativeOut` wraps the swap in a
+ * `multicall` that sends the output to the router and then calls `unwrapWETH9`.
+ * Either one paired with the wrong token is a loss rather than a revert, which is
+ * why they are pinned here and not merely shape-checked:
+ *
+ *   - `nativeIn` with an ERC20 input. The router pulls the ERC20 through the
+ *     allowance as normal and the attached `value` is never spent, so it sits in
+ *     the router's balance — and `PeripheryPayments.refundETH()` is unpermissioned
+ *     and sends the router's whole ETH balance to whoever calls it. The swap
+ *     succeeds and the ETH is gone to the next caller.
+ *   - `nativeOut` with a non-WETH output. `unwrapWETH9` withdraws the router's
+ *     WETH9 balance, so the output token stays in the router — the user pays, the
+ *     swap fills, and the proceeds are left behind for the same sweep.
+ *
+ * So the check is: a native end must name this chain's wrapped native, and the
+ * end it names must be the end of the path the money actually leaves or arrives
+ * at. `wrappedNative` absent means the substitution that produced these flags
+ * could not have run here, so fail closed.
+ */
+function nativeFlagReasons(
+  step: PlanStep,
+  chainId: number | undefined,
+  ends: { in: string; out: string },
+): string[] {
+  const nativeIn = step.nativeIn === true;
+  const nativeOut = step.nativeOut === true;
+  if (!nativeIn && !nativeOut) return [];
+
+  const wrapped = getContracts(chainId).wrappedNative;
+  if (!wrapped)
+    return [
+      "the swap is marked as paying or receiving the chain's own currency, but no wrapped native is recorded on this chain",
+    ];
+
+  const reasons: string[] = [];
+  const is = (a: string) => a.toLowerCase() === wrapped.toLowerCase();
+
+  if (nativeIn && !is(ends.in))
+    reasons.push(
+      `marked as paying with the chain's own currency, but the swap spends ${ends.in} rather than the wrapped native ${wrapped}`,
+    );
+  if (nativeOut && !is(ends.out))
+    reasons.push(
+      `marked as receiving the chain's own currency, but the swap buys ${ends.out} rather than the wrapped native ${wrapped}`,
+    );
+  return reasons;
+}
+
+/**
  * The spender an `approve` authorises — any of THIS chain's own contracts, plus
  * the one vetted bridge router.
  *
@@ -922,6 +984,14 @@ const AUDITORS: Record<IntentKind, Auditor> = {
        redundant — a plan can contain either step alone. */
     reasons.push(...routerReasons(s, chainId));
 
+    /* And whether either end is the chain's own currency, which decides whether
+       the resolver attaches `value` and whether it unwraps afterwards. There is
+       no approve to pin when `nativeIn`: build.ts omits it, because an allowance
+       on the native sentinel cannot be granted and asking for one throws. */
+    reasons.push(
+      ...nativeFlagReasons(s, chainId, { in: tokenIn, out: tokenOut }),
+    );
+
     return {
       reasons,
       ...(inTok.ok && amountIn !== null && amountIn > 0
@@ -943,6 +1013,187 @@ const AUDITORS: Record<IntentKind, Auditor> = {
               amountIn,
               minOut,
             },
+          }
+        : {}),
+    };
+  },
+
+  /*
+   * A route through several pools.
+   *
+   * Everything the single-hop rule checks, plus the two things a path adds: every
+   * token on the way through has to be one this chain knows, and the encoded
+   * bytes have to be the pools the step names.
+   *
+   * THE PATH CHECK IS THE POINT OF THIS RULE. `exactInput` takes a packed byte
+   * string, and nobody — user, model or reviewer — can look at 66 hex characters
+   * and tell whether they encode WETH→USDC→KLD or WETH→(something)→KLD. So the
+   * rule re-encodes from `hops`, which are the fields the confirmation row was
+   * rendered from, and requires the result to equal `path` exactly. A mismatch is
+   * the failure with no revert behind it: the swap succeeds, through pools nobody
+   * approved, and the only symptom is an output the user did not expect. The
+   * resolver makes the same comparison again at signing time, because these two
+   * checks guard different moments — a plan can be audited and then edited.
+   *
+   * A one-hop path is refused rather than accepted as a degenerate case: the
+   * `swap` kind exists for that, it is the shape with a per-pool price limit, and
+   * two kinds able to describe the same transaction is two rules to keep in step.
+   */
+  swapMultiHop: (s, chainId, limits) => {
+    const reasons: string[] = [];
+
+    const hops = Array.isArray(s.hops) ? s.hops : null;
+    if (!hops || hops.length < 2) {
+      /* Returned early: every check below reads the hops, and reporting eight
+         further failures caused by their absence buries the one that matters. */
+      return {
+        reasons: [
+          hops
+            ? "a multi-hop route needs at least two pools — a single pool is an ordinary swap"
+            : "the route's pools are missing",
+        ],
+      };
+    }
+
+    /* Each hop's own shape, and that consecutive hops actually join. A path
+       whose second leg starts from a token the first leg does not produce is not
+       a route at all; the router would revert, but the summary would already
+       have claimed a conversion that never happens. */
+    const legs = hops.map((h) => (h ?? {}) as Record<string, unknown>);
+    const addresses: string[] = [];
+    const fees: number[] = [];
+    legs.forEach((h, idx) => {
+      const tokenIn = str(h.tokenIn);
+      const tokenOut = str(h.tokenOut);
+      const inTok = knownToken(chainId, tokenIn);
+      const outTok = knownToken(chainId, tokenOut);
+      if (!inTok.ok)
+        reasons.push(
+          `hop ${idx + 1}: unrecognised input token ${tokenIn || "(none)"}`,
+        );
+      if (!outTok.ok)
+        reasons.push(
+          `hop ${idx + 1}: unrecognised output token ${tokenOut || "(none)"}`,
+        );
+      if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
+        reasons.push(`hop ${idx + 1}: input and output token are the same`);
+
+      const fee = num(h.fee);
+      if (fee === null || !isTradedTier(fee)) {
+        reasons.push(
+          `hop ${idx + 1}: ${fee === null ? "no pool fee tier" : `the ${fee / 10_000}% tier isn't one this DEX has a pool for`}`,
+        );
+      } else {
+        fees.push(fee);
+      }
+
+      if (idx === 0) addresses.push(tokenIn);
+      addresses.push(tokenOut);
+
+      if (
+        idx > 0 &&
+        tokenIn &&
+        str(legs[idx - 1].tokenOut).toLowerCase() !== tokenIn.toLowerCase()
+      ) {
+        reasons.push(
+          `hop ${idx + 1} starts from a token hop ${idx} doesn't produce, so this isn't a single route`,
+        );
+      }
+    });
+
+    /* The route may not double back. A path that visits a token twice can be a
+       legitimate arbitrage cycle, and it is not what any caller here builds — so
+       it is refused rather than priced, because a cycle's `amountOutMin` says
+       nothing about what the user receives. */
+    const seen = new Set<string>();
+    for (const a of addresses) {
+      const key = a.toLowerCase();
+      if (key && seen.has(key)) {
+        reasons.push("the route passes through the same token twice");
+        break;
+      }
+      seen.add(key);
+    }
+
+    const first = knownToken(chainId, str(legs[0].tokenIn));
+    const last = knownToken(chainId, str(legs[legs.length - 1].tokenOut));
+
+    const amountIn = num(s.amountIn);
+    if (amountIn === null || amountIn <= 0)
+      reasons.push("swap amount is missing or not positive");
+
+    /* Identical to the single-hop rule, and more load-bearing here: `exactInput`
+       has no `sqrtPriceLimitX96`, so on a path this is the ONLY protection the
+       transaction carries. */
+    const minOut = num(s.amountOutMin);
+    if (minOut === null)
+      reasons.push(
+        "no minimum output — the swap would execute at any price. Slippage protection is required.",
+      );
+
+    if (num(s.decimalsIn) === null || num(s.decimalsOut) === null)
+      reasons.push(
+        "token decimals are missing, so the amount cannot be parsed",
+      );
+
+    reasons.push(...routerReasons(s, chainId));
+
+    /* The native flags against the ends of the PATH, not against `symbolIn` /
+       `symbolOut` — those hold the user's own symbol by design, so on a native
+       swap they say ETH while the path says WETH and comparing them would refuse
+       every correct plan. `addresses` is built above from the hops in order, so
+       its first and last entries are the tokens the money really leaves from and
+       arrives at. */
+    reasons.push(
+      ...nativeFlagReasons(s, chainId, {
+        in: addresses[0] ?? "",
+        out: addresses[addresses.length - 1] ?? "",
+      }),
+    );
+
+    /* The bytes against the pools. Only attempted once the hops themselves are
+       sound — re-encoding a malformed route reports a mismatch caused by the
+       malformation rather than a substituted path. */
+    if (reasons.length === 0) {
+      const encoded = encodeV3Path(addresses, fees);
+      if (encoded === "0x") {
+        reasons.push("the route's pools don't encode to a valid path");
+      } else if (encoded !== str(s.path).toLowerCase()) {
+        reasons.push(
+          "the encoded path doesn't match the pools this step names — the transaction would route somewhere other than the summary says",
+        );
+      }
+    }
+
+    return {
+      reasons,
+      ...(first.ok && amountIn !== null && amountIn > 0
+        ? { priced: { symbol: first.symbol!, amount: String(amountIn) } }
+        : {}),
+      ...(reasons.length === 0 &&
+      first.ok &&
+      last.ok &&
+      amountIn !== null &&
+      minOut !== null
+        ? {
+            swap: {
+              inSymbol: first.symbol!,
+              outSymbol: last.symbol!,
+              amountIn,
+              minOut,
+            },
+          }
+        : {}),
+      /* Said out loud, because it is a real difference from a direct swap and
+         the caps cannot express it: a path's fee is charged once per pool, so a
+         two-hop route concedes both tiers before slippage. The market-rate check
+         in auditPlan measures the total against the user's own limit, so this is
+         context rather than a second gate. */
+      ...(reasons.length === 0
+        ? {
+            notes: [
+              `this routes through ${legs.length} pools, so ${legs.length} fee tiers are charged`,
+            ],
           }
         : {}),
     };
@@ -1758,6 +2009,90 @@ const AUDITORS: Record<IntentKind, Auditor> = {
     };
   },
 
+  /**
+   * Adding to a position that already exists.
+   *
+   * The same money leaves the wallet as for a mint, so both legs are priced and
+   * the floors are required for the identical reason — `increaseLiquidity` checks
+   * `amount0 >= amount0Min && amount1 >= amount1Min`, and zeroes accept any
+   * execution. One side may legitimately be zero when the position's range sits
+   * wholly above or below the price.
+   *
+   * What is deliberately NOT checked here: the tier, the ticks and their spacing.
+   * A mint has to be audited for all three because the caller supplies them; an
+   * increase cannot, because the contract reads the pair, the tier and the range
+   * out of the position itself and ignores anything the intent says about them.
+   * Auditing the display copy would be theatre — the fields it would check cannot
+   * reach the transaction. `tokenId` is what identifies the position, and a
+   * tokenId the wallet does not own reverts in `NonfungiblePositionManager`'s own
+   * `isAuthorizedForToken` rather than needing a rule here.
+   *
+   * Not pinned to a diamond and no mandate action, for `mintPoolPosition`'s
+   * reason: the position manager is not the diamond, so
+   * `LibAgentPermission.enforce()` never runs on this call.
+   */
+  increasePoolLiquidity: (s, chainId) => {
+    const reasons: string[] = [];
+    const token0 = str(s.token0);
+    const token1 = str(s.token1);
+    const tok0 = knownToken(chainId, token0);
+    const tok1 = knownToken(chainId, token1);
+
+    if (!tok0.ok) reasons.push(`unrecognised token ${token0 || "(none)"}`);
+    if (!tok1.ok) reasons.push(`unrecognised token ${token1 || "(none)"}`);
+    if (token0 && token0.toLowerCase() === token1.toLowerCase())
+      reasons.push("both sides of the pair are the same token");
+
+    reasons.push(
+      ...pinned(
+        str(s.positionManager),
+        getContracts(chainId).v3PositionManager,
+        "position manager",
+      ),
+    );
+
+    if (rawUnits(s.tokenId) === null) reasons.push("position id is missing");
+
+    const amount0 = num(s.amount0);
+    const amount1 = num(s.amount1);
+    if (amount0 === null || amount0 <= 0)
+      reasons.push("the first token's amount is missing or not positive");
+    if (amount1 === null || amount1 <= 0)
+      reasons.push("the second token's amount is missing or not positive");
+    if (num(s.decimals0) === null || num(s.decimals1) === null)
+      reasons.push(
+        "token decimals are missing, so the amounts cannot be parsed",
+      );
+
+    const min0 = num(s.amount0Min);
+    const min1 = num(s.amount1Min);
+    if (min0 === null || min1 === null) {
+      reasons.push(
+        "no minimum amounts — the deposit would be accepted at any price. Slippage protection is required.",
+      );
+    } else if (min0 <= 0 && min1 <= 0) {
+      reasons.push(
+        "both minimum amounts are zero, which is no slippage protection at all",
+      );
+    }
+
+    return {
+      reasons,
+      /* Both legs, so the per-action cap covers the whole deposit. */
+      ...(tok0.ok && amount0 !== null && amount0 > 0
+        ? { priced: { symbol: tok0.symbol!, amount: String(amount0) } }
+        : {}),
+      ...(tok0.ok &&
+      amount0 !== null &&
+      amount0 > 0 &&
+      tok1.ok &&
+      amount1 !== null &&
+      amount1 > 0
+        ? { pricedAlso: [{ symbol: tok1.symbol!, amount: String(amount1) }] }
+        : {}),
+    };
+  },
+
   collectPoolFees: (s, chainId) => ({
     reasons: [
       ...pinned(
@@ -1781,6 +2116,14 @@ const AUDITORS: Record<IntentKind, Auditor> = {
          no-op transaction the user pays gas for. */
       ...(rawUnits(s.liquidity) === null
         ? ["liquidity amount is missing or zero"]
+        : []),
+      /* `percent` only labels the row — `liquidity` is what gets burned — so this
+         cannot loosen the transaction. It is checked anyway because the row is
+         what the user reads before signing away a position, and a percentage
+         outside 1–100 there is a sentence that does not describe the call. */
+      ...(s.percent !== undefined &&
+      (num(s.percent) === null || num(s.percent)! <= 0 || num(s.percent)! > 100)
+        ? [`${str(s.percent)} isn't a percentage of a position`]
         : []),
     ],
   }),

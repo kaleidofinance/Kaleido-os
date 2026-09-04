@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
@@ -11,12 +11,13 @@ import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3PositionManager } from "@/hooks/dex/useV3PositionManager";
-import { readPoolState } from "@/lib/dex/pool";
+import { readPoolState, type PoolState } from "@/lib/dex/pool";
 import { providerForChain } from "@/config/provider";
 import { SLIPPAGE_BPS, depositFailure, depositV3 } from "@/lib/dex/deposit";
 import { FEE_TIERS as TRADED_TIERS, ticksForRange } from "@/lib/dex/liquidity";
 import { chainTokens } from "@/constants/tokens";
 import { getChainMeta } from "@/constants/chains";
+import { useSpotPrices } from "@/hooks/useSpotPrices";
 import type { IToken } from "@/constants/types/dex";
 import s from "../pool.module.css";
 
@@ -41,6 +42,33 @@ const TIER_COPY: Record<
 const FEE_TIERS = TRADED_TIERS.map((fee) => ({ fee, ...TIER_COPY[fee] }));
 
 const RANGE_PRESETS = ["Full range", "±5%", "±10%", "Custom"] as const;
+
+/** Six significant figures, without the zeros `toPrecision` pads with. */
+const showPrice = (n: number) => String(Number(n.toPrecision(6)));
+
+/**
+ * Where this pair's market sits, and where the number came from.
+ *
+ * Two sources, and the distinction is the point rather than a detail. `pool` is
+ * the tier's own `slot0` — the price the mint will actually meet, and the only
+ * one a range may be centred on. `feed` is the USD spot table, which knows what
+ * ETH and USDC are worth on a real exchange and therefore has an answer for a
+ * pair this DEX has never listed.
+ *
+ * A feed price is shown and never silently used as a range centre, because the
+ * two can disagree by any amount: a testnet pool seeded at $0.03 is a real
+ * market that a $4,300 mainnet quote would misprice a band around by five orders
+ * of magnitude. `applyPreset` only accepts `pool`; the feed is an anchor for the
+ * human typing bounds into Custom, and for the "no pool yet" case where the
+ * amounts themselves set the opening price and a reference is genuinely useful.
+ */
+type PriceSource = "pool" | "feed";
+
+interface MarketPrice {
+  /** token1 per token0, in the caller's order. */
+  price: number;
+  source: PriceSource;
+}
 
 /**
  * mintPosition already handles token sorting, pool-init-if-needed and the
@@ -146,46 +174,171 @@ export default function NewPositionPage() {
    * range derived from a different market. Nothing reverts when that happens; the
    * position simply opens out of range and earns nothing.
    */
-  const poolAt = (tier: number) =>
-    token0 && token1
-      ? readPoolState(
-          providerForChain(chainId),
-          chainId,
-          token0.address,
-          token1.address,
-          tier,
-          token0.decimals,
-          token1.decimals,
-        )
-      : Promise.resolve(null);
+  const poolAt = useCallback(
+    (tier: number) =>
+      token0 && token1
+        ? readPoolState(
+            providerForChain(chainId),
+            chainId,
+            token0.address,
+            token1.address,
+            tier,
+            token0.decimals,
+            token1.decimals,
+          )
+        : Promise.resolve(null),
+    [chainId, token0, token1],
+  );
 
-  const applyPreset = async (p: (typeof RANGE_PRESETS)[number]) => {
+  /*
+   * The pool for the pair and tier currently selected, held in state.
+   *
+   * IT USED TO BE FETCHED INSIDE THE PRESET CLICK HANDLER AND NOWHERE ELSE, and
+   * that single fact is what made the range controls look broken. Three
+   * consequences, all visible in the screenshot this was reported from:
+   *
+   *   1. Nothing on the page ever said where the market was. The read happened,
+   *      its price was spread into two input strings, and the state itself was
+   *      dropped — so a pair with a live pool rendered identically to one with
+   *      none, and "Full range · 0 / ∞" was the whole of what the user was told.
+   *   2. Every band click paid for its own round trip, and until it landed the
+   *      chip that had been pressed showed no sign of having been. On a throttled
+   *      endpoint that is a second or more of a control that looks dead.
+   *   3. `preset` was set BEFORE the await and then reverted to "Custom" on a
+   *      null read, so the pressed chip lit up, sat there, and then quietly
+   *      un-pressed itself with a toast about a starting price.
+   *
+   * Reading it here instead means the price is known before anything is clicked,
+   * which is also what lets the band chips be disabled when there is no market to
+   * centre on — the same rule DepositModal already follows, where the row it was
+   * opened from carried the price.
+   */
+  const [pool, setPool] = useState<PoolState | null>(null);
+  const [poolLoading, setPoolLoading] = useState(false);
+
+  useEffect(() => {
+    if (!token0 || !token1) {
+      setPool(null);
+      return;
+    }
+    let live = true;
+    setPoolLoading(true);
+    /* Cleared while the next read is in flight. Keeping the previous tier's
+       price on screen would attribute one pool's market to another, and the
+       tiers genuinely differ — that is what a tier is. */
+    setPool(null);
+    poolAt(fee)
+      .then((state) => {
+        if (!live) return;
+        setPool(state);
+      })
+      .catch(() => {
+        if (live) setPool(null);
+      })
+      .finally(() => {
+        if (live) setPoolLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [poolAt, fee]);
+
+  /*
+   * The USD table, used only to derive a reference rate for a pair with no pool.
+   *
+   * This is the "their live price should have been shown since they are already
+   * listed pairs somewhere else" case. ETH/USDC has a knowable market price
+   * whether or not this chain's factory has a pool at 0.3%, and showing nothing
+   * leaves the user to invent an opening price for a pool they are creating —
+   * which is the one number in this form that cannot be recovered from later.
+   *
+   * `priceOf` returns null for anything the table has no price for (KLD before
+   * TGE, USDe), and a ratio needs both legs, so this is null far more often than
+   * it is a number. That is correct and it is why the label below always says
+   * which source it is quoting.
+   */
+  const { priceOf } = useSpotPrices();
+  const feedPrice = useMemo(() => {
+    if (!token0 || !token1) return null;
+    const usd0 = priceOf(token0.symbol);
+    const usd1 = priceOf(token1.symbol);
+    if (!usd0 || !usd1) return null;
+    /* token1 per token0, matching every other price in this form. */
+    const ratio = usd0 / usd1;
+    return Number.isFinite(ratio) && ratio > 0 ? ratio : null;
+  }, [priceOf, token0, token1]);
+
+  /**
+   * The price to show, preferring the pool's own over the feed's.
+   *
+   * The pool wins whenever there is one, because it is the price the mint meets;
+   * the feed is what makes the form useful before a pool exists.
+   */
+  const market: MarketPrice | null = useMemo(() => {
+    if (pool && pool.price > 0) return { price: pool.price, source: "pool" };
+    if (feedPrice !== null) return { price: feedPrice, source: "feed" };
+    return null;
+  }, [pool, feedPrice]);
+
+  /** A band can only be centred on a pool. See `MarketPrice`. */
+  const bandsAvailable = pool !== null && pool.price > 0;
+
+  const applyPreset = (p: (typeof RANGE_PRESETS)[number]) => {
     if (!token0 || !token1) return;
-    setPreset(p);
-    if (p === "Custom") return;
+
     /*
-     * Full range needs no price read, and asking for one before this check is
-     * what stopped anyone opening a new pool: the fetch returns null for a pool
-     * that doesn't exist yet, which bounced the preset to Custom and demanded a
-     * starting price for the one range that doesn't depend on the market. The
-     * displayed bounds stay 0/∞ — `ticks` ignores them under this preset.
+     * Full range needs no price at all, which is why it is answered before any
+     * check on the pool. Asking for one first is what used to stop anyone opening
+     * a NEW pool: the read returns null for a pool that does not exist yet, which
+     * bounced the preset to Custom and demanded a starting price for the one
+     * range that does not depend on the market. The displayed bounds stay 0/∞ —
+     * `ticks` ignores both inputs under this preset.
      */
     if (p === "Full range") {
+      setPreset(p);
       setMinPrice("0");
       setMaxPrice("∞");
       return;
     }
-    const state = await poolAt(fee);
-    if (!state) {
-      toast.error(
-        "This pool doesn't exist yet — enter a starting price manually.",
-      );
-      setPreset("Custom");
+
+    if (p === "Custom") {
+      setPreset(p);
+      /* Seeded from whatever is currently resolved, so Custom opens on the range
+         already on screen rather than on two empty boxes — the same courtesy
+         DepositModal extends. Full range is the exception: its real bounds are
+         10^±38 and pasting those in would be worse than blank. */
+      if (ticks && preset !== "Full range") {
+        setMinPrice(showPrice(ticks.lowerPrice));
+        setMaxPrice(showPrice(ticks.upperPrice));
+      } else if (market) {
+        setMinPrice(showPrice(market.price * 0.9));
+        setMaxPrice(showPrice(market.price * 1.1));
+      }
       return;
     }
+
+    /*
+     * A band, centred on the pool and never on the feed.
+     *
+     * The chip is disabled without a pool, so this is unreachable from the UI —
+     * it is here because "unreachable" is a claim about today's render, and
+     * centring a ±10% band on a mainnet quote when the pool is seeded four orders
+     * of magnitude away would open the position out of range and earn nothing,
+     * silently. The refusal names the two things that do work.
+     */
+    if (!bandsAvailable || !pool) {
+      toast.error(
+        market
+          ? `No pool at ${(fee / 10_000).toString()}% for this pair yet, so there's no market to centre a band on. Open it with full range, or set explicit bounds around ${showPrice(market.price)}.`
+          : "There's no pool at this tier yet, so there's no market price to centre a band on. Open it with full range, or set explicit bounds.",
+      );
+      return;
+    }
+
+    setPreset(p);
     const pct = p === "±5%" ? 0.05 : 0.1;
-    setMinPrice((state.price * (1 - pct)).toPrecision(6));
-    setMaxPrice((state.price * (1 + pct)).toPrecision(6));
+    setMinPrice(showPrice(pool.price * (1 - pct)));
+    setMaxPrice(showPrice(pool.price * (1 + pct)));
   };
 
   /**
@@ -375,15 +528,56 @@ export default function NewPositionPage() {
         <div className={s.box} style={{ marginTop: 4 }}>
           <div className={s.bl}>Price range</div>
           <div className={s.rangePresets}>
-            {RANGE_PRESETS.map((p) => (
-              <button
-                key={p}
-                className={`${s.preset} ${preset === p ? s.presetOn : ""}`}
-                onClick={() => applyPreset(p)}
-              >
-                {p}
-              </button>
-            ))}
+            {RANGE_PRESETS.map((p) => {
+              /* Only the bands need a market to centre on. Full range and Custom
+                 are always available — disabling them is what made this whole
+                 control look broken on a pair with no pool yet, which is exactly
+                 the case someone opening a new pool is in. */
+              const needsMarket = p !== "Full range" && p !== "Custom";
+              return (
+                <button
+                  key={p}
+                  className={`${s.preset} ${preset === p ? s.presetOn : ""}`}
+                  onClick={() => applyPreset(p)}
+                  disabled={needsMarket && !bandsAvailable}
+                  title={
+                    needsMarket && !bandsAvailable
+                      ? poolLoading
+                        ? "Reading this tier's price…"
+                        : "No pool at this tier yet, so there's no market price to centre a band on."
+                      : undefined
+                  }
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
+          {/*
+           * What the market is, and where the number came from.
+           *
+           * Two prices with the same shape and very different standing, so the
+           * line says which one it is showing. The pool's own slot0 is the price a
+           * band is centred on. The feed rate is a reference only — a testnet pool
+           * seeded at $0.03 and a mainnet ETH/USDC quote differ by orders of
+           * magnitude, so labelling it "market" without qualification would invite
+           * someone to type bounds around a number this pool has never traded at.
+           */}
+          <div className={s.currentPrice}>
+            {poolLoading ? (
+              "Reading market price…"
+            ) : market ? (
+              <>
+                {market.source === "pool" ? "Market" : "Reference"}:{" "}
+                <span className="tabular">{showPrice(market.price)}</span>{" "}
+                {token1.symbol} per {token0.symbol}
+                {market.source === "feed"
+                  ? " — from price feeds; no pool at this tier yet, so bands are unavailable"
+                  : ""}
+              </>
+            ) : (
+              "No market price for this pair on this chain. Open it with full range, or set explicit bounds — the two amounts you deposit will set the starting price."
+            )}
           </div>
           <div className={s.priceRow}>
             <div className={s.priceBox}>

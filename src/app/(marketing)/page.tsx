@@ -232,8 +232,8 @@ const ANCHORS = [
  * they cannot be zero, cannot be stale, and cannot be wrong without
  * capabilities.test.ts failing in the gate.
  *
- * The labels disambiguate on purpose. 23 and 29 side by side invite "what is the
- * difference", so the labels answer it: 23 execute, 29 total, the remaining six
+ * The labels disambiguate on purpose. 24 and 31 side by side invite "what is the
+ * difference", so the labels answer it: 24 execute, 31 total, the remaining seven
  * being reads. A stat a reader has to resolve themselves is a stat that reads as
  * padding.
  */
@@ -697,7 +697,7 @@ export default async function LandingPage() {
               {EXECUTE_COUNT} actions it can execute
             </h2>
             {/* The second number is here because the grid shows both sets and a
-                reader counting cards gets 29, not EXECUTE_COUNT. Both derived
+                reader counting cards gets 31, not EXECUTE_COUNT. Both derived
                 from capabilities.ts, so neither can drift from the data. */}
             <p className={s.sub}>
               Every one of them plays here in order — the sentence going in,
@@ -707,7 +707,7 @@ export default async function LandingPage() {
             </p>
           </div>
 
-          {/* All 29 tools as cards beside one animated turn, and the turn walks
+          {/* All 31 tools as cards beside one animated turn, and the turn walks
               the cards in reading order by itself — a visitor who never clicks
               still sees the whole surface, which is what the section claims.
               Each turn is replayed rather than authored: the prompt goes through

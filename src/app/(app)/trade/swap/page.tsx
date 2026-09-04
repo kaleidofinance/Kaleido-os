@@ -13,9 +13,31 @@ import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import type { Intent } from "@/lib/v2/intents";
+import {
+  describeRoute,
+  encodeV3Path,
+  findBestRoute,
+  poolSide,
+  type SwapPath,
+} from "@/lib/dex/route";
 import s from "../trade.module.css";
 
-const DEFAULT_FEE = 3000;
+/*
+ * There is no default fee tier any more, and its removal is the fix rather than a
+ * cleanup.
+ *
+ * `DEFAULT_FEE = 3000` was the only tier this card ever quoted. Everything
+ * followed from that one constant: a pair whose pool is at 0.05% or 1% quoted
+ * nothing and the CTA read "No route", the plan hardcoded 3000 into the `swap`
+ * intent regardless of where liquidity actually was, and a pair with no direct
+ * pool at all — WETH→KLD on every chain, since KLD is seeded only against USDC —
+ * was unreachable from this page while being perfectly routable through USDC.
+ *
+ * The tier and the path now both come from `findBestRoute`, which is what the
+ * agent's planner calls too, so the card and the chat cannot route the same
+ * request through different pools.
+ */
+
 
 /** Quick sell amounts, as fractions of the sell-side balance. */
 const QUICK = [0.25, 0.5, 0.75, 1] as const;
@@ -286,46 +308,111 @@ export default function SwapPage() {
     loading: balanceOutLoading,
     unread: balanceOutUnread,
   } = useTokenBalance(tokenOut);
-  const { getV3AmountOut, V3_ROUTER_ADDRESS: v3Router } = useV3SwapRouter();
+  const {
+    getV3AmountOut,
+    getV3MultiHopAmountOut,
+    V3_ROUTER_ADDRESS: v3Router,
+  } = useV3SwapRouter();
+
+  /**
+   * The route the quote came from, or null when the pair could not be priced.
+   *
+   * Held rather than discarded, which is the same mistake `/pool/new` was making
+   * with its pool read: the route decides the fee tier the plan carries, whether
+   * the plan is one `exactInputSingle` or an `exactInput` path, and what the card
+   * should tell the user about the pools their money passes through. Deriving any
+   * of that a second time from the amounts would let the quote and the
+   * transaction disagree.
+   */
+  const [route, setRoute] = useState<SwapPath | null>(null);
+
+  /**
+   * The two ends as a pool can hold them.
+   *
+   * The card opens on the chain's own currency (see the seeding note above), so
+   * until this existed the DEFAULT state of the page was the one state that could
+   * not trade: the native sentinel went into the quoter, which `eth_call`s an
+   * address with no code, and the card said "No route for ETH → KLD" about pools
+   * that were sitting there with liquidity. `poolSide` swaps in the wrapped
+   * address — which is the calldata the periphery wants — and keeps the symbol the
+   * user is reading, so nothing on screen starts claiming they are selling WETH.
+   *
+   * Recomputed from `chainId` as well as the token, because the wrapped address
+   * is per-chain and switching networks with the form filled must not leave the
+   * previous chain's WETH in the quote.
+   */
+  const sell = useMemo(
+    () => (tokenIn ? poolSide(chainId, tokenIn) : null),
+    [chainId, tokenIn],
+  );
+  const buy = useMemo(
+    () => (tokenOut ? poolSide(chainId, tokenOut) : null),
+    [chainId, tokenOut],
+  );
+
+  /* ETH and WETH are one asset held two ways, so in pool form both sides
+     collapse to a single address. Tracked as its own state rather than falling
+     through to "no route": there is no pool between a token and its own wrapper
+     and there never will be, so calling it a liquidity problem sends the user
+     looking for the pool that would fix it. */
+  const samePoolSide =
+    !!sell &&
+    !!buy &&
+    sell.token.address.toLowerCase() === buy.token.address.toLowerCase();
 
   useEffect(() => {
     const amount = parseFloat(amountIn);
-    if (
-      !tokenIn ||
-      !tokenOut ||
-      !amount ||
-      amount <= 0 ||
-      tokenIn.address === tokenOut.address
-    ) {
+    if (!sell || !buy || !amount || amount <= 0 || samePoolSide) {
       setAmountOut("");
       setNoRoute(false);
+      setRoute(null);
       return;
     }
     let cancelled = false;
     setQuoting(true);
     const t = setTimeout(async () => {
       try {
-        const out = await getV3AmountOut(
-          tokenIn.address,
-          tokenOut.address,
+        /*
+         * Every tier of the direct pool AND every two-hop route through this
+         * chain's quote assets, best fill wins. `findBestRoute` is shared with
+         * the planner — see lib/dex/route.ts for why that sharing is
+         * load-bearing rather than tidy.
+         *
+         * The quoter is chosen by path length here rather than inside the search,
+         * because this component is where the two hook functions live: a direct
+         * pair goes to `quoteExactInputSingle`, a path to `quoteExactInput`, and
+         * only the latter prices the hops in sequence.
+         */
+        const found = await findBestRoute(
+          chainId,
+          sell.token,
+          buy.token,
           amountIn,
-          DEFAULT_FEE,
-          tokenIn.decimals,
-          tokenOut.decimals,
+          (tokens, fees, amt, decIn, decOut) =>
+            tokens.length === 2
+              ? getV3AmountOut(
+                  tokens[0],
+                  tokens[1],
+                  amt,
+                  fees[0],
+                  decIn,
+                  decOut,
+                )
+              : getV3MultiHopAmountOut(tokens, fees, amt, decIn, decOut),
         );
-        /* A quote is a positive number or it is nothing. `getV3AmountOut` returns
-           null when it could not ask, and the numeric test covers the rest: a
-           pool cannot fill a nonzero input with zero output, so a zero here is a
-           failure wearing a number's clothes — which is exactly what this page
-           used to spend as `amountOutMin`. */
-        const n = Number(out);
-        const quoted = out !== null && Number.isFinite(n) && n > 0;
+        /* A quote is a positive number or it is nothing. `findBestRoute` already
+           rejects null, zero and non-finite answers — a pool cannot fill a
+           nonzero input with zero output, so a zero is a failure wearing a
+           number's clothes, which is exactly what this page used to spend as
+           `amountOutMin`. */
         if (!cancelled) {
-          setAmountOut(quoted ? String(out) : "");
-          setNoRoute(!quoted);
+          setRoute(found);
+          setAmountOut(found ? String(found.amountOut) : "");
+          setNoRoute(!found);
         }
       } catch {
         if (!cancelled) {
+          setRoute(null);
           setAmountOut("");
           setNoRoute(true);
         }
@@ -337,7 +424,15 @@ export default function SwapPage() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [amountIn, tokenIn, tokenOut, getV3AmountOut]);
+  }, [
+    amountIn,
+    sell,
+    buy,
+    samePoolSide,
+    chainId,
+    getV3AmountOut,
+    getV3MultiHopAmountOut,
+  ]);
 
   /*
    * Only ever true against a balance we actually read.
@@ -356,10 +451,10 @@ export default function SwapPage() {
     Number(balanceIn) < parseFloat(amountIn || "0");
 
   const minOut = useMemo(() => {
-    if (!amountOut || !tokenOut) return "";
+    if (!amountOut || !buy) return "";
     const n = Number(amountOut) * (1 - slippageBps / 10000);
-    return n.toFixed(tokenOut.decimals > 6 ? 6 : tokenOut.decimals);
-  }, [amountOut, slippageBps, tokenOut]);
+    return n.toFixed(buy.token.decimals > 6 ? 6 : buy.token.decimals);
+  }, [amountOut, slippageBps, buy]);
 
   /*
    * The executed rate, quoted per unit of the sell token.
@@ -420,6 +515,8 @@ export default function SwapPage() {
   // A swap is a two-step plan: approve the router to move tokenIn, then swap.
   // The approve resolver no-ops when allowance already covers it, so the step
   // simply shows "already done" — one code path whether or not approval exists.
+  // One step when the sell side is the chain's own currency: `value` on the
+  // transaction is the payment, and there is no allowance to grant.
   // No router means this chain has no V3 deployment: the plan is empty and the
   // CTA already reads "Connect wallet" / "Select a token" rather than offering a
   // swap that would route to a dead address.
@@ -428,57 +525,107 @@ export default function SwapPage() {
   // read `amountOutMin: minOut || "0"`, so an unpriced pair produced a plan with a
   // zero minimum — a swap that accepts any output at all, which is the one term
   // protecting the trade. Nothing signable is built without a quote to bound it.
-  const plan: Intent[] = useMemo(
-    () =>
-      !tokenIn || !tokenOut || !v3Router || !minOut
-        ? []
-        : [
-            {
-              kind: "approve",
-              token: tokenIn.address,
-              spender: v3Router,
-              amount: amountIn || "0",
-              decimals: tokenIn.decimals,
-              symbol: tokenIn.symbol,
-            },
-            {
-              kind: "swap",
-              tokenIn: tokenIn.address,
-              tokenOut: tokenOut.address,
-              spender: v3Router,
-              amountIn: amountIn || "0",
-              amountOutMin: minOut,
-              fee: DEFAULT_FEE,
-              decimalsIn: tokenIn.decimals,
-              decimalsOut: tokenOut.decimals,
-              symbolIn: tokenIn.symbol,
-              symbolOut: tokenOut.symbol,
-              deadlineMin,
-            },
-          ],
-    [tokenIn, tokenOut, amountIn, minOut, deadlineMin, v3Router],
-  );
+  // `route` is required for the same reason as `minOut`, and it is the second
+  // half of the same guarantee: the tier the plan carries has to be the tier the
+  // quote came from. This used to write `fee: DEFAULT_FEE` unconditionally, so a
+  // pair quoted at 0.05% was submitted against the 0.3% pool — a floor computed
+  // from liquidity the transaction would never touch, which is a worse failure
+  // than no floor at all because it looks correct.
+  const plan: Intent[] = useMemo(() => {
+    if (!sell || !buy || !v3Router || !minOut || !route) return [];
+
+    /* Built from `sell`/`buy`, never from `tokenIn`/`tokenOut`: those still hold
+       the native sentinel, and the whole point of the substitution is that the
+       calldata names a token that exists. The symbols inside them are still the
+       user's, so the review rows read ETH. */
+    const approve: Intent | null = sell.native
+      ? null
+      : {
+          kind: "approve",
+          token: sell.token.address,
+          spender: v3Router,
+          amount: amountIn || "0",
+          decimals: sell.token.decimals,
+          symbol: sell.token.symbol,
+        };
+
+    // One pool is `exactInputSingle`, more is `exactInput`. Two kinds because
+    // they are two router functions with two calldata shapes — see the note on
+    // `swapMultiHop` in intents/types.ts.
+    const trade: Intent =
+      route.hops.length === 1
+        ? {
+            kind: "swap",
+            tokenIn: sell.token.address,
+            tokenOut: buy.token.address,
+            spender: v3Router,
+            amountIn: amountIn || "0",
+            amountOutMin: minOut,
+            fee: route.fees[0],
+            decimalsIn: sell.token.decimals,
+            decimalsOut: buy.token.decimals,
+            symbolIn: sell.token.symbol,
+            symbolOut: buy.token.symbol,
+            deadlineMin,
+            nativeIn: sell.native,
+            nativeOut: buy.native,
+          }
+        : {
+            kind: "swapMultiHop",
+            hops: route.hops.map((h) => ({
+              tokenIn: h.tokenIn,
+              tokenOut: h.tokenOut,
+              symbolIn: h.symbolIn,
+              symbolOut: h.symbolOut,
+              fee: h.fee,
+            })),
+            path: encodeV3Path(route.tokens, route.fees),
+            spender: v3Router,
+            amountIn: amountIn || "0",
+            amountOutMin: minOut,
+            decimalsIn: sell.token.decimals,
+            decimalsOut: buy.token.decimals,
+            symbolIn: sell.token.symbol,
+            symbolOut: buy.token.symbol,
+            deadlineMin,
+            nativeIn: sell.native,
+            nativeOut: buy.native,
+          };
+
+    return approve ? [approve, trade] : [trade];
+  }, [sell, buy, amountIn, minOut, deadlineMin, v3Router, route]);
 
   const onComplete = () => {
     setReviewing(false);
     setAmountIn("");
     setAmountOut("");
     setNoRoute(false);
+    /* With the amount cleared there is nothing for a route to price, and a
+       stale one left here would let the next `plan` build against pools that
+       were chosen for the previous trade's size. */
+    setRoute(null);
   };
 
   const ctaLabel = !isConnected
     ? "Connect wallet"
     : !tokenIn || !tokenOut
       ? "Select a token"
-      : !amountIn || parseFloat(amountIn) <= 0
-        ? "Enter an amount"
-        : insufficientBalance
-          ? `Insufficient ${tokenIn.symbol}`
-          : quoting
-            ? "Fetching quote…"
-            : noRoute
-              ? `No route for ${tokenIn.symbol} → ${tokenOut.symbol}`
-              : "Review swap";
+      : /* Both of these used to arrive as "No route", which is a claim about
+           liquidity. Neither is: one is a pair that can never have a pool, the
+           other is a gap in our own deployment record. */
+        samePoolSide
+        ? `${tokenIn.symbol} and ${tokenOut.symbol} are the same asset`
+        : !sell || !buy
+          ? `No wrapped ${(!sell ? tokenIn : tokenOut).symbol} on this chain`
+          : !amountIn || parseFloat(amountIn) <= 0
+            ? "Enter an amount"
+            : insufficientBalance
+              ? `Insufficient ${tokenIn.symbol}`
+              : quoting
+                ? "Fetching quote…"
+                : noRoute
+                  ? `No route for ${tokenIn.symbol} → ${tokenOut.symbol}`
+                  : "Review swap";
 
   const ctaDisabled =
     !isConnected ||
@@ -638,6 +785,24 @@ export default function SwapPage() {
                 </b>
               </span>
             )}
+          </div>
+        )}
+
+        {/* The route, on its own row and stated before signing.
+            Two hops means the trade passes through a token the user never
+            named, and PlanReview's own summary is the last place they'd see
+            it — after they've committed to reviewing. It is also the only
+            visible evidence of which tier won: the rate above is the same
+            string whether it came from the 0.05% pool or a path through
+            USDC. Shown for a single hop too, since "which pool" is the same
+            question either way and a row that appears only sometimes reads
+            as a warning. */}
+        {route && (
+          <div className={s.quote}>
+            <span title="The pools this swap is quoted through, in order">
+              {route.hops.length > 1 ? "Route " : "Pool "}
+              <b>{describeRoute(route)}</b>
+            </span>
           </div>
         )}
       </div>

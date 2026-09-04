@@ -262,7 +262,7 @@
 /* ------------------------------------------------------------------
  * The tool call, on the turns that make one.
  *
- * Only the one execute tool with no typed form and the six reads. Its absence on
+ * Only the one execute tool with no typed form and the seven reads. Its absence on
  * the other 20 is the point: those turns never called a model, so there is no
  * call to show, and the arguments are visible in the sentence the user typed.
  * ------------------------------------------------------------------ */

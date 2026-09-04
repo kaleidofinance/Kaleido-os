@@ -31,6 +31,22 @@ interface PlanReviewProps {
   intents: Intent[];
   /** Shown on the primary button, e.g. "Sign & swap". */
   submitLabel?: string;
+  /**
+   * Hand control back between steps instead of running the plan straight through.
+   *
+   * The user's `confirmEachStep` setting, and the only caller that passes it is
+   * the agent panel — deliberately. A swap's approve+swap is two steps of one
+   * thing the user just filled in a form for; a plan Luca drafted is a sequence
+   * they are reading for the first time, and the setting is on the agent.
+   *
+   * What it gates is THIS COMPONENT'S confirmation, not the wallet's. Every step
+   * is a separate wallet signature either way — that is not ours to switch off,
+   * and a setting that appeared to would be the worst kind of guardrail. Off, the
+   * loop runs and the wallet prompts arrive back to back; on, the plan stops after
+   * each step that broadcast, so a four-step plan can be abandoned after the
+   * second with the first two already settled.
+   */
+  confirmEachStep?: boolean;
   /** Called after every step succeeds. */
   onComplete?: () => void;
   onCancel?: () => void;
@@ -39,6 +55,7 @@ interface PlanReviewProps {
 export default function PlanReview({
   intents,
   submitLabel = "Sign & execute",
+  confirmEachStep = false,
   onComplete,
   onCancel,
 }: PlanReviewProps) {
@@ -49,9 +66,34 @@ export default function PlanReview({
   );
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
+  /**
+   * The step the next click runs from.
+   *
+   * Zero until something stops the loop part-way, which is either a pause or a
+   * failure. It fixes a real defect in the failure case as well as carrying the
+   * pause: the button used to re-enter at 0 after a step failed, so a plan whose
+   * *fourth* step reverted would re-broadcast the swap in its second on retry.
+   * Steps already on chain are not re-signed.
+   */
+  const [next, setNext] = useState(0);
 
   const setStep = (i: number, status: StepStatus) =>
     setStatuses((prev) => prev.map((s0, idx) => (idx === i ? status : s0)));
+
+  /**
+   * Stops after step `i` when the setting asks for it, reporting whether it did.
+   *
+   * A skipped step never pauses. Nothing was signed — the allowance was already
+   * there — so asking for a click to continue past a no-op spends a click to
+   * confirm that nothing happened. Nor does the last step: there is nothing after
+   * it to confirm, and pausing would replace the plan's completion with a button.
+   */
+  const pauseAfter = (i: number, skipped: boolean) => {
+    if (!confirmEachStep || skipped || i >= intents.length - 1) return false;
+    setNext(i + 1);
+    setRunning(false);
+    return true;
+  };
 
   const run = async () => {
     const ctx = getContext();
@@ -60,7 +102,7 @@ export default function PlanReview({
       return;
     }
     setRunning(true);
-    for (let i = 0; i < intents.length; i++) {
+    for (let i = next; i < intents.length; i++) {
       setStep(i, "pending");
       try {
         const result = await resolveIntent(ctx, intents[i]);
@@ -79,6 +121,7 @@ export default function PlanReview({
             at: Date.now(),
           });
         }
+        if (pauseAfter(i, !!result.skipped)) return;
       } catch (err) {
         console.error("[PlanReview] step failed:", intents[i].kind, err);
         /* Only steps that actually reached the chain are logged, and with the
@@ -106,11 +149,13 @@ export default function PlanReview({
            and the step falls through to the failure below. */
         if (settled?.status === "confirmed") {
           setStep(i, "done");
+          if (pauseAfter(i, false)) return;
           continue;
         }
 
         setStep(i, "failed");
         setRunning(false);
+        setNext(i);
         toast.error(`${views[i].title} failed. Nothing further was signed.`);
         return;
       }
@@ -166,7 +211,10 @@ export default function PlanReview({
       <div className={s.actions}>
         {!done && onCancel && (
           <button className={s.ghost} onClick={onCancel} disabled={running}>
-            Cancel
+            {/* Named for what it does. Past the first step the plan is part-done
+                and this abandons the rest — "Cancel" would suggest undoing what
+                is already on chain. */}
+            {next > 0 ? "Stop here" : "Cancel"}
           </button>
         )}
         {done ? (
@@ -175,14 +223,19 @@ export default function PlanReview({
           </button>
         ) : (
           <button className={s.primary} onClick={run} disabled={running}>
-            {running ? "Signing…" : submitLabel}
+            {running
+              ? "Signing…"
+              : next > 0
+                ? `Sign step ${next + 1} of ${intents.length}`
+                : submitLabel}
           </button>
         )}
       </div>
 
       <p className={s.foot}>
-        Each step is a separate signature. Nothing runs until you approve it,
-        and a failure stops the rest.
+        {confirmEachStep && intents.length > 1
+          ? "Each step is a separate signature, and the plan stops between them so you can stop after any one. A failure stops the rest."
+          : "Each step is a separate signature. Nothing runs until you approve it, and a failure stops the rest."}
       </p>
     </div>
   );

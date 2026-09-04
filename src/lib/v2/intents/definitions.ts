@@ -3,6 +3,7 @@ import { formatInterestRate } from "@/constants/utils/FormatInterestRate";
 import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import { getContracts } from "@/constants/registry";
 import { initialSqrtPriceX96, sortMintParams } from "@/lib/dex/liquidity";
+import { encodeV3Path } from "@/lib/dex/route";
 import { register } from "./registry";
 
 /**
@@ -18,9 +19,83 @@ const ERC20_ABI = [
   "function transfer(address to, uint256 amount) external returns (bool)",
 ];
 
+/*
+ * Both router entry points, checked against
+ * smart-contract/contracts/dex-v3/periphery/interfaces/ISwapRouter.sol.
+ *
+ * `exactInput` takes the packed path as its first tuple member and has no
+ * `sqrtPriceLimitX96` — a multi-hop swap cannot express a per-pool price limit,
+ * which is why `amountOutMinimum` is the only protection a path has and why the
+ * auditor treats a missing one as fatal rather than defaulting it.
+ *
+ * The last two are the native-currency path, from PeripheryPayments and
+ * Multicall. `multicall` is `payable` and uses `delegatecall`, so `msg.sender`
+ * and `msg.value` are the user's inside the swap — which is what lets one
+ * signature both wrap and unwrap. `refundETH` is deliberately absent: it matters
+ * for exact-OUTPUT swaps, where the router may keep change, and every swap this
+ * app builds is exact-input, so the whole `value` is always consumed.
+ */
 const V3_ROUTER_ABI = [
   "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)",
+  "function exactInput((bytes path, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum)) external payable returns (uint256 amountOut)",
+  "function unwrapWETH9(uint256 amountMinimum, address recipient) external payable",
+  "function multicall(bytes[] data) external payable returns (bytes[] results)",
 ];
+
+/**
+ * Sends one of the two router entry points, wrapping or unwrapping as the
+ * intent's native flags ask.
+ *
+ * Shared by both swap resolvers because the native handling is identical and the
+ * only difference is which function the calldata names — and because a second
+ * copy of it is exactly how the quote path and the signing path came apart
+ * before (see useV3SwapRouter's docstring).
+ *
+ * THREE SHAPES, ONE SIGNATURE EACH:
+ *
+ *   - Neither end native: the plain call, recipient is the user.
+ *   - `nativeIn`: the same call with `value` attached. `PeripheryPayments.pay()`
+ *     wraps `msg.value` when the token it is asked to pull is WETH9, so there is
+ *     no approve and no separate wrap transaction.
+ *   - `nativeOut`: `multicall([swap, unwrapWETH9])` with the swap's recipient
+ *     left as the zero address, which `exactInputInternal` maps to the router
+ *     itself (SwapRouter.sol:86). The router therefore holds the WETH9 when
+ *     `unwrapWETH9` runs, withdraws it and forwards ether to the user.
+ *
+ * `amountOutMinimum` is passed to `unwrapWETH9` as its own floor, not zero. It
+ * reverts rather than short-paying when the router holds less — so the slippage
+ * term is enforced twice, once by the swap and once by the payout, and a
+ * multicall that somehow reached the unwrap with nothing to unwrap cannot
+ * silently succeed having paid the user nothing.
+ */
+async function sendSwap(
+  router: ethers.Contract,
+  recipient: string,
+  fn: "exactInputSingle" | "exactInput",
+  /* Every tuple member except `recipient`, which this function chooses. */
+  params: Record<string, unknown>,
+  o: {
+    nativeIn?: boolean;
+    nativeOut?: boolean;
+    amountIn: bigint;
+    amountOutMinimum: bigint;
+  },
+) {
+  const overrides = o.nativeIn ? { value: o.amountIn } : {};
+
+  if (!o.nativeOut) {
+    return router.getFunction(fn)({ ...params, recipient }, overrides);
+  }
+
+  const swapData = router.interface.encodeFunctionData(fn, [
+    { ...params, recipient: ethers.ZeroAddress },
+  ]);
+  const unwrapData = router.interface.encodeFunctionData("unwrapWETH9", [
+    o.amountOutMinimum,
+    recipient,
+  ]);
+  return router.multicall([swapData, unwrapData], overrides);
+}
 
 /*
  * Two arguments, not three. `KLDVaultV2.deposit` is `(address _token, uint256
@@ -74,12 +149,14 @@ const YIELD_TREASURY_ABI = [
   "function claimAndCompound(address asset) external",
 ];
 
-// collect and decreaseLiquidity need no tick math; mint and the pool
-// initialiser do, which is why `lib/dex/liquidity.ts` exists and why the two
-// tuples below are spelled out in full rather than shared with useV3Positions.
+// collect, decreaseLiquidity and increaseLiquidity need no tick math — the
+// position already holds its range — while mint and the pool initialiser do,
+// which is why `lib/dex/liquidity.ts` exists and why the tuples below are
+// spelled out in full rather than shared with useV3Positions.
 const POSITION_MANAGER_ABI = [
   "function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) external payable returns (uint256 amount0, uint256 amount1)",
   "function decreaseLiquidity((uint256 tokenId, uint128 liquidity, uint256 amount0Min, uint256 amount1Min, uint256 deadline)) external payable returns (uint256 amount0, uint256 amount1)",
+  "function increaseLiquidity((uint256 tokenId, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, uint256 deadline)) external payable returns (uint128 liquidity, uint256 amount0, uint256 amount1)",
   "function mint((address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, address recipient, uint256 deadline)) external payable returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
   "function createAndInitializePoolIfNecessary(address token0, address token1, uint24 fee, uint160 sqrtPriceX96) external payable returns (address pool)",
 ];
@@ -91,6 +168,24 @@ const V3_FACTORY_ABI = [
 // uint128 max — "collect everything owed," matching useV3Positions.ts's own
 // collectFees/removeLiquidity, not a value invented for this file.
 const UINT128_MAX = "340282366920938463463374607431768211455";
+
+/**
+ * Six significant digits, trailing zeros trimmed — for the two pool renders.
+ *
+ * The minimums are exact base-unit strings formatted at the token's own decimals,
+ * which for an 18-decimal leg means the row read "At least 1.011174111964746435
+ * WETH" — every digit true and none of them information. Trimmed in the view
+ * only: the intent's own `amount0Min` is what gets parsed and sent, so shortening
+ * the label cannot loosen the floor.
+ *
+ * The dot check is not decoration. `toPrecision(6)` on 100000 returns "100000"
+ * with no decimal point, and stripping trailing zeros off that would print a
+ * range bound of 1.
+ */
+const sig = (n: number | string) => {
+  const s = Number(n).toPrecision(6);
+  return s.includes(".") ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
+};
 
 // No `amount` in either. KaleidoTokenFaucet fixes the drip per asset, so the
 // caller chooses which tokens and nothing else — see Faucet.sol.
@@ -133,16 +228,84 @@ register("swap", {
     // spender by construction — see the Intent type.
     const router = new ethers.Contract(i.spender, V3_ROUTER_ABI, ctx.signer);
     const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
-    const tx = await router.exactInputSingle({
-      tokenIn: i.tokenIn,
-      tokenOut: i.tokenOut,
-      fee: i.fee,
-      recipient: ctx.address,
-      deadline,
-      amountIn: ethers.parseUnits(i.amountIn, i.decimalsIn),
-      amountOutMinimum: ethers.parseUnits(i.amountOutMin, i.decimalsOut),
-      sqrtPriceLimitX96: 0,
-    });
+    const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
+    const amountOutMinimum = ethers.parseUnits(i.amountOutMin, i.decimalsOut);
+    /* `tokenIn`/`tokenOut` are already the wrapped addresses on a native swap —
+       the substitution happens where the route is chosen, so the same two fields
+       are what got quoted and what the auditor checked. See poolSide() in
+       lib/dex/route.ts. */
+    const tx = await sendSwap(
+      router,
+      ctx.address,
+      "exactInputSingle",
+      {
+        tokenIn: i.tokenIn,
+        tokenOut: i.tokenOut,
+        fee: i.fee,
+        deadline,
+        amountIn,
+        amountOutMinimum,
+        sqrtPriceLimitX96: 0,
+      },
+      {
+        nativeIn: i.nativeIn,
+        nativeOut: i.nativeOut,
+        amountIn,
+        amountOutMinimum,
+      },
+    );
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/* --------------------------------------------------------- swapMultiHop -- */
+register("swapMultiHop", {
+  render: (i) => ({
+    title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
+    /* The route is the whole reason this kind exists, so it leads the detail
+       line: the user is being asked to sign a transaction that touches a token
+       they never named, and the confirmation is the only place that says so. */
+    detail: `Through ${[i.hops[0].symbolIn, ...i.hops.map((h) => h.symbolOut)].join(" → ")}. Minimum received ${i.amountOutMin} ${i.symbolOut} at the set slippage.`,
+  }),
+  resolve: async (ctx, i) => {
+    const router = new ethers.Contract(i.spender, V3_ROUTER_ABI, ctx.signer);
+    const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
+
+    /*
+     * Re-encoded here, and the carried `path` is required to match.
+     *
+     * The intent carries `path` so the auditor can check the bytes rather than a
+     * description of them, and this resolver derives them again from `hops`
+     * rather than trusting the string it was handed. Both halves matter: a path
+     * that disagrees with the hops means the row the user read described a
+     * different route than the calldata performs, and there is no revert for
+     * that — the swap succeeds, through pools nobody agreed to.
+     */
+    const encoded = encodeV3Path(
+      [i.hops[0].tokenIn, ...i.hops.map((h) => h.tokenOut)],
+      i.hops.map((h) => h.fee),
+    );
+    if (encoded === "0x" || encoded !== i.path.toLowerCase()) {
+      throw new Error(
+        "This route's encoded path doesn't match the pools it names. Nothing was sent.",
+      );
+    }
+
+    const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
+    const amountOutMinimum = ethers.parseUnits(i.amountOutMin, i.decimalsOut);
+    const tx = await sendSwap(
+      router,
+      ctx.address,
+      "exactInput",
+      { path: encoded, deadline, amountIn, amountOutMinimum },
+      {
+        nativeIn: i.nativeIn,
+        nativeOut: i.nativeOut,
+        amountIn,
+        amountOutMinimum,
+      },
+    );
     await tx.wait();
     return { hash: tx.hash };
   },
@@ -583,22 +746,8 @@ register("compoundStableYield", {
  */
 register("mintPoolPosition", {
   render: (i) => {
-    /*
-     * Six significant digits, trailing zeros trimmed. The minimums are exact
-     * base-unit strings formatted at the token's own decimals, which for an
-     * 18-decimal leg means the row read "At least 1.011174111964746435 WETH" —
-     * every digit true and none of them information. Trimmed here in the view
-     * only: the intent's own `amount0Min` is what gets parsed and sent, so
-     * shortening the label cannot loosen the floor.
-     *
-     * The dot check is not decoration. `toPrecision(6)` on 100000 returns
-     * "100000" with no decimal point, and stripping trailing zeros off that
-     * would print a range bound of 1.
-     */
-    const sig = (n: number | string) => {
-      const s = Number(n).toPrecision(6);
-      return s.includes(".") ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
-    };
+    /* `sig` is module-level — the increase render prints the same kind of floor
+       and the two must trim it identically. */
     const range = i.createsPool
       ? `Opens the pool at ${sig(Number(i.amount1) / Number(i.amount0))} ${i.symbol1}/${i.symbol0}`
       : `Range ${sig(i.lowerPrice)} – ${sig(i.upperPrice)} ${i.symbol1} per ${i.symbol0}`;
@@ -693,11 +842,65 @@ register("collectPoolFees", {
   },
 });
 
+/**
+ * Adding to a position that already exists.
+ *
+ * The shortest pool resolver in the file, and every one of the things it does not
+ * do is the reason why. It sorts nothing — `build.ts` put the amounts in the
+ * pool's own `token0 < token1` order, which it read off the position rather than
+ * inferred, so there is no frame to cross. It reads no factory — a position
+ * cannot exist without its pool. It names no ticks and no tier — the contract
+ * takes both from storage, which is also why `fee`, `lowerPrice` and `upperPrice`
+ * on the intent are display-only and cannot disagree with what actually happens.
+ *
+ * The floors are the whole substance of it. `increaseLiquidity` checks
+ * `amount0 >= amount0Min && amount1 >= amount1Min` exactly as `mint` does, so a
+ * pair of zeroes here would accept the deposit at whatever ratio a sandwiched
+ * price implied. They come from `mintMinimums` over the position's real range.
+ *
+ * No `value`, ever — the position manager reverts when native currency arrives
+ * beside a WETH leg, and build.ts refuses native by name before a plan exists.
+ */
+register("increasePoolLiquidity", {
+  render: (i) => ({
+    title: `Add ${i.amount0} ${i.symbol0} + ${i.amount1} ${i.symbol1} to ${i.pairLabel} #${i.tokenId}`,
+    detail: `Same ${i.fee / 10_000}% pool and the same ${sig(i.lowerPrice)} – ${sig(i.upperPrice)} ${i.symbol1}/${i.symbol0} range the position already has. At least ${sig(i.amount0Min)} ${i.symbol0} and ${sig(i.amount1Min)} ${i.symbol1} must be taken, or it reverts.`,
+  }),
+  resolve: async (ctx, i) => {
+    const posManager = new ethers.Contract(
+      i.positionManager,
+      POSITION_MANAGER_ABI,
+      ctx.signer,
+    );
+    const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
+    /* Positional, like the mint's, for the same ethers v6 reason. */
+    const tx = await posManager.increaseLiquidity([
+      BigInt(i.tokenId),
+      ethers.parseUnits(i.amount0, i.decimals0),
+      ethers.parseUnits(i.amount1, i.decimals1),
+      ethers.parseUnits(i.amount0Min, i.decimals0),
+      ethers.parseUnits(i.amount1Min, i.decimals1),
+      BigInt(deadline),
+    ]);
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
 register("decreasePoolLiquidity", {
   render: (i) => ({
-    title: `Remove liquidity from ${i.pairLabel} #${i.tokenId}`,
+    title:
+      i.percent !== undefined && i.percent < 100
+        ? `Remove ${i.percent}% of ${i.pairLabel} #${i.tokenId}`
+        : `Remove liquidity from ${i.pairLabel} #${i.tokenId}`,
+    /* The fraction is stated rather than implied. "Withdraws the full position"
+       was true when there was no other option and is a false claim now that a
+       percentage can be asked for — and this is the row a user reads before
+       signing away a position. */
     detail:
-      "Withdraws the full position. Fees owed are collected in the next step.",
+      i.percent !== undefined && i.percent < 100
+        ? `Withdraws ${i.percent}% of the position and leaves the rest earning. Fees owed are collected in the next step.`
+        : "Withdraws the full position. Fees owed are collected in the next step.",
   }),
   resolve: async (ctx, i) => {
     const posManager = new ethers.Contract(

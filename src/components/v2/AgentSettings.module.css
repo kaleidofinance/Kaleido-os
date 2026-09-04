@@ -279,7 +279,10 @@
 .modelOn .modelName::after {
   content: " ✓";
 }
-.modelNote {
+/* The small print under a section. Was `.modelNote`, and stayed that name for
+   one section longer than it was true — the signing toggle needs the same shape,
+   and a second identical class would have been the alternative. */
+.note {
   font-size: var(--k-fs-xs);
   color: var(--k-t3);
   margin: 8px 0 0;
@@ -288,7 +291,7 @@
 /* Not monospaced — tokens.css sets "no monospace" as a palette rule, and one
    inline code span is not the place to break it. The command reads as quoted
    by weight and colour instead. */
-.modelNote code {
+.note code {
   font-family: inherit;
   font-weight: var(--k-fw-med);
   color: var(--k-t2);

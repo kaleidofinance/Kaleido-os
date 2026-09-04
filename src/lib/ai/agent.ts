@@ -40,6 +40,26 @@ export interface AgentInput {
   address?: string;
   chainId?: number;
   limits?: Guardrails;
+  /**
+   * What was already said in this conversation, oldest first, excluding
+   * `message` itself.
+   *
+   * Absent until 2026-09-03, and its absence was visible to users. The turn is
+   * local-first: the grammar and the FAQ answer most sentences on the client and
+   * only what neither can read reaches this loop. So the model was routinely
+   * handed the *second half* of an exchange — "use USDC" with no record that
+   * anything had offered USDC — and it either asked the user to repeat
+   * themselves or guessed at which of Luca's own earlier answers it was
+   * continuing.
+   *
+   * Every entry is client input and is sanitised at the route, not here: this
+   * loop's contract is that `messages` is already fit to send. See
+   * `historyFromBody` in app/api/chat/route.ts for the bound and the trimming,
+   * and note the shape is deliberately `ChatMessage` and not the page's `Msg` —
+   * a turn's plan, cards and trace are frames the client draws, and replaying
+   * them into a prompt would spend tokens on our own rendering.
+   */
+  history?: ChatMessage[];
 }
 
 /**
@@ -99,7 +119,15 @@ export async function runAgent(
     limits: input.limits,
   });
 
-  const messages: ChatMessage[] = [{ role: "user", content: input.message }];
+  /* History first, then this turn's message. The loop appends its own
+     assistant/tool-result pairs onto the end of this array, so prior turns have
+     to be in front of the current message or the round-trips would interleave
+     with them and the model would read the tool results as answering an older
+     question. */
+  const messages: ChatMessage[] = [
+    ...(input.history ?? []),
+    { role: "user", content: input.message },
+  ];
 
   /* One call site for the model, so every round streams or none does. Streaming
      is chosen per turn rather than per provider: the caller asking for deltas is

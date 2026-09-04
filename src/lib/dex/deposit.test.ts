@@ -23,9 +23,23 @@
 //   4. Mixed decimals in the reserve ratio. USDC/WETH is 6/18, and reading the
 //      raw reserves without scaling is wrong by 10^12 while still being finite.
 //      Test 4.
+//   5. `increaseV3`'s order of operations. Test 6, and the one thing in this file
+//      that is about a sequence rather than a number: the function's whole reason
+//      for putting the slippage floor before the two approvals is that a refusal
+//      arriving after them has cost the user two signatures to be told no. That
+//      ordering is invisible in the return value, so the refusal cases run with a
+//      signer that throws on contact — if an approval ever moves back in front of
+//      the floor, they fail loudly instead of silently costing gas.
 
 import { ethers } from "ethers";
-import { pairedAmount, reserveRatio, trimAmount } from "./deposit";
+import {
+  deadlineIn20Minutes,
+  increaseV3,
+  pairedAmount,
+  reserveRatio,
+  trimAmount,
+} from "./deposit";
+import type { IToken } from "@/constants/types/dex";
 
 let pass = 0;
 let fail = 0;
@@ -242,5 +256,184 @@ for (const [decA, decB, ra, rb] of [
   }
 }
 
-console.log(`\n${pass} passed, ${fail} failed\n`);
-if (fail > 0) process.exit(1);
+/* ------------------------------------------------------------------ 6 -- */
+/* increaseV3 — what reaches the position manager, and what never gets that far.
+ *
+ * The range and the amounts are lifted from build.test.ts's increase section on
+ * purpose, so the two floors below are the same pair of numbers the agent's path
+ * measures for the same band. A floor derived from the typed amounts instead of
+ * from the range shows up here as a change in one of them, and it shows up in
+ * both files at once rather than in whichever one nobody is running.
+ */
+const BAND = { tickLower: -202200, tickUpper: -200220 };
+const SPOT = 1834.61; // USDC per WETH, inside the band
+const EXPECTED_FLOORS = { amount0Min: "0.995", amount1Min: "1958.169197" };
+
+const token = (symbol: string, decimals: number, address: string): IToken => ({
+  address,
+  name: symbol,
+  symbol,
+  decimals,
+  verified: true,
+});
+const WETH = token("WETH", 18, "0x4200000000000000000000000000000000000006");
+const USDC = token("USDC", 6, "0x036CbD53842c5426634e7929541eC2318f3dCF7e");
+const OWNER = "0x1111111111111111111111111111111111111111";
+const MANAGER = "0x2222222222222222222222222222222222222222";
+
+/** Every uint256 bit set — an allowance no deposit can exceed. */
+const MAX_UINT256 = `0x${"f".repeat(64)}`;
+
+/**
+ * A signer that answers `allowance` with the maximum and refuses to sign.
+ *
+ * So the happy path needs no approval transaction, and an approval it should not
+ * be sending surfaces as a thrown error rather than as a passing test.
+ */
+const readingSigner = (reads: string[]) =>
+  ({
+    call: async (tx: { data?: string }) => {
+      reads.push((tx.data ?? "").slice(0, 10));
+      return MAX_UINT256;
+    },
+    sendTransaction: async () => {
+      throw new Error("increaseV3 sent a transaction through the signer");
+    },
+  }) as unknown as ethers.Signer;
+
+/** A signer that fails on any contact at all, for the cases that must refuse first. */
+const untouchableSigner = () =>
+  ({
+    call: async () => {
+      throw new Error("increaseV3 read an allowance before it had a floor");
+    },
+    sendTransaction: async () => {
+      throw new Error("increaseV3 signed before it had a floor");
+    },
+  }) as unknown as ethers.Signer;
+
+type IncreaseArgs = [string, string, string, number, number, string, string, number];
+
+const runIncrease = async (over: {
+  signer: ethers.Signer;
+  amount0?: string;
+  amount1?: string;
+  spot?: number | null;
+}) => {
+  const calls: IncreaseArgs[] = [];
+  const result = await increaseV3({
+    signer: over.signer,
+    owner: OWNER,
+    positionManager: MANAGER,
+    tokenId: "7",
+    token0: WETH,
+    token1: USDC,
+    amount0: over.amount0 ?? "1",
+    amount1: over.amount1 ?? "2000",
+    tickLower: BAND.tickLower,
+    tickUpper: BAND.tickUpper,
+    readSpot: async () => (over.spot === undefined ? SPOT : over.spot),
+    increase: async (...args: IncreaseArgs) => {
+      calls.push(args);
+      return { wait: async () => null };
+    },
+  });
+  return { result, calls };
+};
+
+/* Everything above is synchronous and has already run. From here down the checks
+   await a write path, and a top-level await is not available — the suite is
+   transformed to CJS. Same `main()` shape as build.test.ts and auditor.test.ts. */
+async function main() {
+  /* A position cannot exist without its pool, so a null spot is a failed read and
+     not the "pool about to be created" case mintMinimums handles. Passing it
+     through would floor the deposit at a ratio derived from the caller's own
+     amounts — a floor that agrees with whatever was typed. */
+  const noSpot = await runIncrease({ signer: untouchableSigner(), spot: null });
+  check(
+    "a pool whose price cannot be read is refused",
+    noSpot.result !== null && /current price/.test(noSpot.result.error),
+    JSON.stringify(noSpot.result),
+  );
+  check(
+    "nothing is signed when the price is unreadable",
+    noSpot.calls.length === 0,
+  );
+
+  /* The ordering claim, stated as a test: a zero leg is refused by mintMinimums,
+     which runs before the approvals. With the untouchable signer, an approval
+     moved back in front of the floor throws instead of passing. */
+  const zeroLeg = await runIncrease({
+    signer: untouchableSigner(),
+    amount1: "0",
+  });
+  check(
+    "a zero leg is refused before any allowance is read",
+    zeroLeg.result !== null && zeroLeg.calls.length === 0,
+    JSON.stringify(zeroLeg.result),
+  );
+
+  /* Amounts finer than the token, caught by parseBoth ahead of everything. */
+  const tooPrecise = await runIncrease({
+    signer: untouchableSigner(),
+    amount1: "2000.1234567",
+  });
+  check(
+    "an amount finer than USDC is refused before any allowance is read",
+    tooPrecise.result !== null && /6 decimals/.test(tooPrecise.result.error),
+    JSON.stringify(tooPrecise.result),
+  );
+
+  const reads: string[] = [];
+  const ok = await runIncrease({ signer: readingSigner(reads) });
+  check(
+    "a good increase returns no error",
+    ok.result === null,
+    JSON.stringify(ok.result),
+  );
+  check("it calls increaseLiquidity exactly once", ok.calls.length === 1);
+  check(
+    "both legs' allowances are read",
+    reads.length === 2 && reads.every((d) => d === "0xdd62ed3e"),
+    reads.join(","),
+  );
+
+  if (ok.calls.length === 1) {
+    const [tokenId, a0, a1, d0, d1, min0, min1, deadline] = ok.calls[0];
+    check("the tokenId is carried", tokenId === "7");
+    /* Amounts, decimals and floors must line up leg for leg. Every one of these
+       is a pair of same-typed values in a positional call, so a swap
+       type-checks, encodes and deposits the position upside down. */
+    check("amount0 is the token0 leg", a0 === "1" && d0 === 18);
+    check("amount1 is the token1 leg", a1 === "2000" && d1 === 6);
+    check(
+      "the floors are the ones this range implies",
+      min0 === EXPECTED_FLOORS.amount0Min && min1 === EXPECTED_FLOORS.amount1Min,
+      `${min0} / ${min1}`,
+    );
+    /* Neither floor may be the typed amount less the tolerance: the pool takes
+       min(L(amount0), L(amount1)) and leaves the over-supplied side alone, so
+       flooring both at 99.5% of what was typed reverts an honest deposit. Here
+       the range sits below the market, so it consumes nearly all the WETH and
+       under a fifth of the USDC. */
+    check(
+      "the over-supplied leg is floored well under what was typed",
+      Number(min1) < 2000 * 0.995,
+      min1,
+    );
+    const slack = deadline - deadlineIn20Minutes();
+    check(
+      "the deadline is twenty minutes out",
+      Math.abs(slack) <= 5,
+      String(slack),
+    );
+  }
+
+  console.log(`\n${pass} passed, ${fail} failed\n`);
+  if (fail > 0) process.exit(1);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
