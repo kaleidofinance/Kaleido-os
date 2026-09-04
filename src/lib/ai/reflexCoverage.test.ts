@@ -8,11 +8,15 @@
 //
 // Measured 2026-09-03, before the widening: 44% overall, 31% of the questions.
 // After: 78% and 87%. Then the portfolio read and the funding phrasings landed and
-// the corpus grew by twelve to measure them: 49/56, 88%. The floors below sit under
-// those, deliberately loose, so that adding a new corpus prompt with no topic
-// behind it is a nudge rather than a broken build — but losing a whole topic, or a
-// chip falling through to the model, fails immediately. The section at the foot is
-// where the exact routing is pinned.
+// the corpus grew by twelve to measure them: 49/56, 88%. Then three topics that a
+// model answers *worse* than a fixed paragraph does — a failed transaction, the fee
+// schedule, and the APY question whose true answer is that there is no number —
+// took it to 53/56, 95%. The three left are open for reasons no topic fixes: one
+// needs a cost basis nothing records, and two are asked upstream of this screen.
+// The floors below sit under those, deliberately loose, so that adding a new corpus
+// prompt with no topic behind it is a nudge rather than a broken build — but losing
+// a whole topic, or a chip falling through to the model, fails immediately. The
+// section at the foot is where the exact routing is pinned.
 import { matchFaq, isQuestionShaped } from "./faq.ts";
 import { parseCommand } from "../v2/intents/fromCommand.ts";
 import { chainTokens } from "../../constants/tokens.ts";
@@ -69,8 +73,12 @@ const EMAIL_EXAMPLES = ["swap 50 USDC for ETH", "lend 100 USDC at 8%"];
 //
 // It deliberately includes the ones that still reach the model. Trimming those
 // would make the percentage a statement about this list rather than about the
-// reflex, and two of them SHOULD reach the model: diagnosing a failed transaction
-// needs the actual revert reason, which no fixed paragraph has.
+// reflex. This comment used to claim that diagnosing a failed transaction should
+// reach the model because it needs the actual revert reason — which was the wrong
+// conclusion from a true premise: the model has no access to that reason either.
+// It cannot see the toast, the revert data or the wallet's refusal, so it answers
+// with generic causes at the cost of a metered request. The local topic lists the
+// same five causes accurately, and points at the toast, which does have the reason.
 const QUESTIONS = [
   "how do I get test tokens",
   "where is the faucet",
@@ -177,6 +185,13 @@ console.log("\n— a question never answers with a transaction —");
     "why is my balance 0",
     "who are you",
     "is this real money",
+    /* Found by the shadowing check while the fees topic was being written: this
+       is question-shaped, so the FAQ has first refusal, but with only the plural
+       "any fees" as a trigger it missed and the grammar took the sentence for its
+       `stake` verb — "how much KLD do you want to stake?" in answer to a question
+       about cost. It is here because a singular/plural slip is exactly the kind of
+       near-miss that reopens this failure quietly. */
+    "is there any fee to stake",
   ];
   for (const q of asked) {
     const r = route(q);
@@ -201,6 +216,17 @@ console.log("\n— and the right net answers it —");
     "give me some USDC": "faq:test-funds",
     "fund my wallet": "faq:test-funds",
     "how do I buy KLD": "faq:kld",
+    /* The three newest topics, pinned by id rather than left to the percentage
+       above. Each was a model call until now, and each is a question a model
+       answers *worse* than a fixed paragraph does: it cannot see the failure, and
+       it will quote a fee schedule or an APY from general DeFi rather than from
+       this protocol. The first is also the only pin here whose text is not
+       question-shaped, so it proves the grammar declines it before the FAQ is
+       asked at all. */
+    "the transaction failed, why": "faq:tx-failed",
+    "my transaction is stuck": "faq:tx-failed",
+    "what are the fees": "faq:fees",
+    "what is the APY": "faq:apy",
     // Still a transaction, and still the grammar's.
     "buy KLD with 500 USDC": "command:swap",
     "claim everything from the faucet": "command:claimTestTokens",
