@@ -1,0 +1,45 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": "2026-09-04T11:40:33.861Z",
+  "pool": "0x0C71361DAd26dD63ba0D10Bc72928FDCB38e673b",
+  "fee": 500,
+  "token0": {
+    "address": "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55",
+    "symbol": "USDT",
+    "decimals": 6
+  },
+  "token1": {
+    "address": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+    "symbol": "WETH",
+    "decimals": 18
+  },
+  "openedAt": {
+    "sqrtPriceX96": "1577159181012062075483187601028919",
+    "tick": 197985,
+    "liveTick": 197985
+  },
+  "oracle": {
+    "usd0": "1000000000000000000",
+    "usd1": "2523527900000000000000",
+    "source0": "operator override $1.0",
+    "source1": "diamond oracle"
+  },
+  "positions": [
+    {
+      "label": "full range",
+      "tickLower": -887270,
+      "tickUpper": 887270,
+      "tokenId": "18",
+      "tx": "0x71ced48d7ab9ef836972a5ac21072e014e2bd4ab6e49c548c0f6bdb2a41bd4d7"
+    },
+    {
+      "label": "±2%",
+      "tickLower": 197790,
+      "tickUpper": 198190,
+      "tokenId": "19",
+      "tx": "0x71a9a8fb9cbb5bdeeb93fa6e2c09089c7dc09ca5aac132b029e2d62628043789"
+    }
+  ],
+  "feeProtocol": null
+}

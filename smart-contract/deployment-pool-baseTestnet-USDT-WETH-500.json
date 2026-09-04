@@ -1,0 +1,45 @@
+{
+  "network": "baseTestnet",
+  "chainId": 84532,
+  "timestamp": "2026-09-04T11:42:43.590Z",
+  "pool": "0x814C64a304e2A837f2A76589587Fdc9C527C5C28",
+  "fee": 500,
+  "token0": {
+    "address": "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
+    "symbol": "USDT",
+    "decimals": 6
+  },
+  "token1": {
+    "address": "0x4200000000000000000000000000000000000006",
+    "symbol": "WETH",
+    "decimals": 18
+  },
+  "openedAt": {
+    "sqrtPriceX96": "1576502826994421090672241728120469",
+    "tick": 197977,
+    "liveTick": 197977
+  },
+  "oracle": {
+    "usd0": "1000070000000000000",
+    "usd1": "2525806400000000000000",
+    "source0": "diamond oracle",
+    "source1": "diamond oracle"
+  },
+  "positions": [
+    {
+      "label": "full range",
+      "tickLower": -887270,
+      "tickUpper": 887270,
+      "tokenId": "26",
+      "tx": "0xecbb92961686514f30fd35fd269d25ae935a53af1036a534519827b7cc76b683"
+    },
+    {
+      "label": "±2%",
+      "tickLower": 197780,
+      "tickUpper": 198180,
+      "tokenId": "27",
+      "tx": "0xb375a953a8cdc3d59ea3989305d5b15d28070bf499009ce729b52bf02301141d"
+    }
+  ],
+  "feeProtocol": null
+}

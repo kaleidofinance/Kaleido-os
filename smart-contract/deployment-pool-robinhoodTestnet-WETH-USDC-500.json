@@ -1,0 +1,45 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "timestamp": "2026-09-04T11:39:51.402Z",
+  "pool": "0x4741473a0C0E15F1dA1B9E9C972fe9E90316D290",
+  "fee": 500,
+  "token0": {
+    "address": "0x7943e237c7F95DA44E0301572D358911207852Fa",
+    "symbol": "WETH",
+    "decimals": 18
+  },
+  "token1": {
+    "address": "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B",
+    "symbol": "USDC",
+    "decimals": 6
+  },
+  "openedAt": {
+    "sqrtPriceX96": "3982184227634673290153338",
+    "tick": -197976,
+    "liveTick": -197976
+  },
+  "oracle": {
+    "usd0": "2526110000000000000000",
+    "usd1": "999928000000000000",
+    "source0": "diamond oracle",
+    "source1": "diamond oracle"
+  },
+  "positions": [
+    {
+      "label": "full range",
+      "tickLower": -887270,
+      "tickUpper": 887270,
+      "tokenId": "13",
+      "tx": "0xd384ad737070fd4cb31e6d18fbf7269cbbdebebe2ea4eb4e3e12826e9c186ba0"
+    },
+    {
+      "label": "±2%",
+      "tickLower": -198180,
+      "tickUpper": -197780,
+      "tokenId": "14",
+      "tx": "0x5f1b1d41a6c39c68df6e140a59e36762a0dac06773a46c7baef26ae3a3a2402a"
+    }
+  ],
+  "feeProtocol": null
+}

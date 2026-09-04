@@ -55,6 +55,15 @@
  * price is nowhere near. Every decimal below comes from the token's own
  * `decimals()`.
  *
+ * ── The wrapped native is deposited, not minted ────────────────────────────
+ *
+ * Every other token here is a mock with a mint we control. The chain's wrapped
+ * native has neither mint nor owner, and issues one token per unit of native
+ * sent to it — so a WETH side is funded by wrapping, and the run holds
+ * GAS_RESERVE (0.05 native, by default) back so it can still pay for the mints
+ * that follow. Note that "wrapped native" is not ETH everywhere: it is WBNB on
+ * BSC, and WUSDC on Arc, whose gas token is USDC.
+ *
  * Writes deployment-pool-<network>-<t0>-<t1>-<fee>.json.
  */
 
@@ -85,6 +94,9 @@ const ERC20_ABI = [
   "function approve(address,uint256) returns (bool)",
   "function owner() view returns (address)",
   "function mint(address,uint256)",
+  /* The wrapped native's deposit. Not ERC20, and only ever called on the one
+     token that has it — see wrapNative. */
+  "function deposit() payable",
 ];
 
 const FACTORY_ABI = [
@@ -215,18 +227,91 @@ async function priceOf(protocol, address, symbol, decimals) {
   };
 }
 
-async function ensureBalance(token, me, need, label) {
+/* Native left unwrapped, in whole units. Every write after the wrap — two
+   approvals and two mints — pays gas out of the same balance the wrap draws
+   from, so a run that wrapped its shortfall exactly would fund the pool and
+   then be unable to fill it. */
+const GAS_RESERVE = ethers.parseEther(process.env.GAS_RESERVE ?? "0.05");
+
+/* A funded balance, confirmed rather than assumed. A token that takes the call
+   and credits somebody else reports nothing wrong, and the mint two calls later
+   would be the first thing to notice. */
+async function confirmFunded(token, me, need, label) {
+  const now = await token.balanceOf(me);
+  if (now < need)
+    throw new Error(
+      `${label}: funded, and still short — ${now} raw units against ${need} needed`,
+    );
+  return now;
+}
+
+/**
+ * Cover a shortfall in the chain's wrapped native by depositing native for it.
+ *
+ * This is the one token here that cannot be minted and does not need to be:
+ * WETH9 issues exactly one token per unit of native sent, so the shortfall is a
+ * deposit. Without this it falls through to the mint path below, whose report —
+ * "no mint we control" — is true, useless, and the reason an ETH pool could not
+ * be seeded at all.
+ *
+ * Two mechanisms, because the deployed contract is not always inspectable: the
+ * explicit deposit(), and a bare value transfer into receive()/fallback(), which
+ * every WETH9 forwards to that same deposit. Which one exists is settled by
+ * simulating each. Not by scanning the bytecode for the selector: on Robinhood
+ * that reads absent for totalSupply() too, which demonstrably answers, so the
+ * scan proves nothing there — and a real send is far too expensive a way to ask.
+ */
+async function wrapNative(token, me, short, need, label) {
+  const native = await ethers.provider.getBalance(me);
+  if (native < short + GAS_RESERVE)
+    throw new Error(
+      `${label}: short by ${ethers.formatEther(short)} with ${ethers.formatEther(native)} native to wrap it from, ` +
+        `which does not clear the ${ethers.formatEther(GAS_RESERVE)} gas reserve. Lower USD, or fund ${me} on this chain.`,
+    );
+
+  let send;
+  try {
+    await token.deposit.staticCall({ value: short });
+    send = () => token.deposit({ value: short });
+  } catch (e) {
+    try {
+      await ethers.provider.call({ to: token.target, from: me, value: short, data: "0x" });
+      send = () => token.runner.sendTransaction({ to: token.target, value: short });
+    } catch {
+      throw new Error(
+        `${label}: short by ${ethers.formatEther(short)} and it takes neither deposit() nor a bare ` +
+          `transfer (${e.shortMessage ?? e.message}) — not a wrapped native this script can obtain`,
+      );
+    }
+  }
+
+  console.log(
+    `  wrapping ${ethers.formatEther(short)} native into ${label}, leaving ${ethers.formatEther(native - short)}`,
+  );
+  await (await send()).wait();
+  return confirmFunded(token, me, need, label);
+}
+
+async function ensureBalance(token, me, need, label, wrappedNative) {
   const have = await token.balanceOf(me);
   if (have >= need) return have;
   const short = need - have;
+
+  /* The wrapped native goes through a deposit instead of a mint. Checked by
+     address rather than by symbol or by probing for deposit(), because the
+     registry is the thing that decides which token this chain wraps into. */
+  if (wrappedNative && token.target.toLowerCase() === wrappedNative.toLowerCase())
+    return wrapNative(token, me, short, need, label);
+
   /* Two mint shapes live behind this list. The Ownable stablecoin mocks
      (USDT/USDe) expose owner() and gate mint() on it; the plain-ERC20 mock USDC
      (contracts/test/MockERC20.sol) has a PUBLIC mint() and no owner() at all.
      So an owner() that reverts is not "no mint" — it is the second shape, whose
      mint we can still call. Only when owner() names someone else is the mint
      genuinely out of reach, and checking that first avoids spending gas on a
-     mint() we know will revert. WETH9 lands here too: no owner(), no mint(), so
-     the direct attempt reverts and we report it as unfundable. */
+     mint() we know will revert. A token with no mint at all still lands here and
+     still reports itself unfundable; the wrapped native used to be the one that
+     did, which is what the branch above exists to stop. */
   let owner = null;
   try {
     owner = await token.owner();
@@ -245,7 +330,7 @@ async function ensureBalance(token, me, need, label) {
       `${label}: short by ${short} raw units and the token has no mint we control (${e.shortMessage ?? e.message})`,
     );
   }
-  return token.balanceOf(me);
+  return confirmFunded(token, me, need, label);
 }
 
 async function ensureAllowance(token, me, spender, need, label) {
@@ -370,8 +455,8 @@ async function main() {
   /* ---- fund and approve ---- */
   const needed0 = amount0 * 2n;
   const needed1 = amount1 * 2n;
-  await ensureBalance(t0, me, needed0, s0);
-  await ensureBalance(t1, me, needed1, s1);
+  await ensureBalance(t0, me, needed0, s0, reg.wrappedNative);
+  await ensureBalance(t1, me, needed1, s1, reg.wrappedNative);
   await ensureAllowance(t0, me, reg.v3PositionManager, needed0, s0);
   await ensureAllowance(t1, me, reg.v3PositionManager, needed1, s1);
 
