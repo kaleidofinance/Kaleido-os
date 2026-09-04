@@ -146,7 +146,20 @@ const FIELD_MAP = {
   tokens: {},
 };
 
-const KNOWN_COMPONENTS = new Set(Object.keys(FIELD_MAP));
+/**
+ * The one component whose record is not an address bag.
+ *
+ * seed-v3-pool.js writes one file per pool it opens, so a chain has as many of
+ * these as it has pools and none of their fields belong in ChainContracts. They
+ * are collected separately (see build) into the list the app uses to tell a pool
+ * the deployer opened from one a stranger opened at a price they chose.
+ */
+const POOL_COMPONENT = "pool";
+
+const KNOWN_COMPONENTS = new Set([
+  ...Object.keys(FIELD_MAP),
+  POOL_COMPONENT,
+]);
 
 /* ------------------------------------------------------------- discovery -- */
 
@@ -167,6 +180,15 @@ function parseName(filename) {
   if (parts.length < 2) return null;
 
   const component = parts[0];
+
+  /* A pool record's name carries its pair and fee tier after the network:
+     deployment-pool-sepolia-USDC-WETH-500.json. So its trailing number is a fee,
+     not the epoch stamp deploy-v3.js appends -- read as one, 500 becomes the
+     record's timestamp and the network becomes "sepolia-USDC-WETH". Both the pair
+     and the fee are inside the record, so nothing here has to parse them. */
+  if (component === POOL_COMPONENT)
+    return { component, network: parts[1], epochMs: null };
+
   let epochMs = null;
   let rest = parts.slice(1);
   if (rest.length > 1 && /^\d+$/.test(rest[rest.length - 1])) {
@@ -504,7 +526,16 @@ function newestPerComponent(kept) {
   const best = new Map();
   const superseded = [];
   for (const e of kept) {
-    const key = `${e.chainId}:${e.component}`;
+    /* Pool records are keyed by the pool too, because a chain has many and they do
+       not supersede one another -- collapsing them per chain would quietly reduce
+       "every pool we opened here" to the most recently opened one. Two records
+       naming the SAME pool do supersede, which is what a re-seed leaves behind. */
+    const key =
+      e.component === POOL_COMPONENT
+        ? `${e.chainId}:${e.component}:${String(
+            e.record?.pool ?? e.name,
+          ).toLowerCase()}`
+        : `${e.chainId}:${e.component}`;
     const prev = best.get(key);
     if (!prev || e.time.ms > prev.time.ms) {
       if (prev) superseded.push({ loser: prev, winner: e });
@@ -529,6 +560,11 @@ function build(chosen) {
   );
 
   for (const entry of ordered) {
+    /* Before the line below, not after it: that line creates the chain's entry as
+       a side effect, and a chain whose only record is a pool would otherwise get
+       an empty address bag in GENERATED_DEPLOYMENTS. Collected further down. */
+    if (entry.component === POOL_COMPONENT) continue;
+
     const contracts = (deployments[entry.chainId] ??= {});
     const prov = (provenance[entry.chainId] ??= {});
     const map = FIELD_MAP[entry.component];
@@ -618,11 +654,31 @@ function build(chosen) {
     }
   }
 
+  /* Which pools the deployer opened, per chain.
+   *
+   * Address only, because that is the entire question the app asks of this: a row
+   * in the pool table either matches or it does not. The pair, the tier and the
+   * two minted positions are all in the record and none of them help answer it,
+   * and restating them here would be a second, staler copy of what the chain
+   * already says.
+   *
+   * Sorted, and de-duplicated across records, so the emitted file is byte-stable
+   * run to run for the reason `ordered` above is sorted. */
+  const seededPools = {};
+  for (const entry of ordered) {
+    if (entry.component !== POOL_COMPONENT) continue;
+    const address = normalise("pool", entry.record?.pool, entry.name);
+    const list = (seededPools[entry.chainId] ??= []);
+    if (!list.includes(address)) list.push(address);
+  }
+  for (const list of Object.values(seededPools)) list.sort();
+
   return {
     deployments,
     provenance,
     registration,
     registrationProvenance,
+    seededPools,
     droppedKeys,
     warnings,
   };
@@ -633,6 +689,7 @@ function render(
   provenance,
   registration,
   registrationProvenance,
+  seededPools,
   sources,
 ) {
   const chainIds = Object.keys(deployments)
@@ -708,6 +765,27 @@ function render(
 
   const regMap = regIds.length ? `{\n${regBody}\n}` : `{}`;
 
+  /* Same one-line-if-it-fits rule as the registration map above, and for the same
+   * reason: prettier's printWidth is 80 and this file is inside the glob that
+   * `npm run format:check` runs, so output prettier would rewrite fails the format
+   * gate on every regeneration. An address is 44 characters quoted, so two of them
+   * on one line already overflows and most chains expand. */
+  const poolIds = Object.keys(seededPools)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  const poolBody = poolIds
+    .map((id) => {
+      const list = seededPools[id];
+      const flat = `  ${id}: [${list.map((a) => `"${a}"`).join(", ")}],`;
+      if (flat.length <= 80) return flat;
+      const items = list.map((a) => `    "${a}",`).join("\n");
+      return `  ${id}: [\n${items}\n  ],`;
+    })
+    .join("\n");
+
+  const poolMap = poolIds.length ? `{\n${poolBody}\n}` : `{}`;
+
   const sourceList = sources.length
     ? sources.map((s) => `    "${s}",`).join("\n")
     : "";
@@ -766,6 +844,30 @@ export const GENERATED_LENDING_REGISTRATION: Record<
 > = ${regMap};
 
 /**
+ * Every V3 pool the deployer opened, per chain, from the
+ * \`deployment-pool-<network>-<pair>-<fee>.json\` that seed-v3-pool.js writes when
+ * it creates one and mints the first liquidity into it.
+ *
+ * This is what the verified tick on a pool row reads, so it is worth being exact
+ * about the claim. The record proves the protocol's own deployer opened this pool
+ * and funded it at a price taken from the diamond's oracle. It does NOT claim the
+ * pool is still ours, still deep, or still correctly priced: any address can add
+ * liquidity to a V3 pool, and a seeded pool's price moves with whoever trades it.
+ * Sepolia's KLD/USDC has drifted to roughly 2.2x its seed through ordinary
+ * trading and is no less ours for it.
+ *
+ * The distinction it does draw is the one a reader cannot make by looking. A pool
+ * at the same pair and the same tier, opened by a stranger at a price they chose,
+ * is otherwise identical in the table. That is not hypothetical either: on
+ * Robinhood a third party had minted KLD at $9-$11 against our $0.03.
+ *
+ * Absence means "no record", never "not ours" -- an unseeded chain and an
+ * unrecorded seed look the same here. So this list only ever ADDS a tick; nothing
+ * uses it to mark a pool as suspect.
+ */
+export const GENERATED_SEEDED_POOLS: Record<number, string[]> = ${poolMap};
+
+/**
  * What the generator last read, for debugging a wrong or missing address.
  */
 export const GENERATED_META: {
@@ -804,6 +906,7 @@ const {
   provenance,
   registration,
   registrationProvenance,
+  seededPools,
   droppedKeys,
   warnings,
 } = build(chosen);
@@ -816,7 +919,14 @@ if (droppedKeys.length) {
 const sources = chosen.map((e) => e.name).sort();
 writeFileSync(
   OUT_FILE,
-  render(deployments, provenance, registration, registrationProvenance, sources),
+  render(
+    deployments,
+    provenance,
+    registration,
+    registrationProvenance,
+    seededPools,
+    sources,
+  ),
   "utf8",
 );
 
@@ -847,6 +957,21 @@ if (regChains.length) {
     "No lending registration recorded: no tokens record carried an `onChain` " +
       "block, so the app will refuse to build lending steps on every chain. " +
       "Re-run register-tokens.js if any chain has assets registered.",
+  );
+}
+
+const poolChains = Object.keys(seededPools);
+if (poolChains.length) {
+  const total = Object.values(seededPools).reduce((n, l) => n + l.length, 0);
+  console.log(
+    `Pools opened by the deployer: ${total} across ${poolChains.length} chain(s) ` +
+      `-- these carry the verified tick in the app.`,
+  );
+} else {
+  console.log(
+    "No deployment-pool-*.json records, so no pool carries the verified tick. " +
+      "Seed a pool with seed-v3-pool.js, or check the records were committed -- " +
+      "an untracked record ticks the pool locally and not in production.",
   );
 }
 

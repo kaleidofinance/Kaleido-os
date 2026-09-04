@@ -30,6 +30,7 @@ import type { ITradingPair } from "@/constants/types/dex";
 import ChainTag from "./ChainTag";
 import PairIcon from "./PairIcon";
 import PoolModal from "./PoolModal";
+import SeededTick from "./SeededTick";
 import { feeLabel } from "../format";
 import s from "../pool.module.css";
 
@@ -421,6 +422,12 @@ export default function DepositModal({
               {feeLabel(pool.feeBps)} · {pool.version.toUpperCase()}
             </span>
             <ChainTag chainId={pool.chainId} />
+            {/* The highest-stakes place this badge appears: the reader is one
+                button from putting funds into this exact pool, and the pair,
+                the tier and the chain above do not distinguish ours from one
+                a stranger opened at a price they chose. Labelled for the same
+                reason the detail page's is. */}
+            {pool.seeded ? <SeededTick label /> : null}
           </div>
         </div>
       </div>

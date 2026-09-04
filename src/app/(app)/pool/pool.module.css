@@ -468,6 +468,32 @@
   border-radius: 50%;
   background: var(--k-glass-deep);
 }
+/* The verified tick on a pool our own deployer opened -- see SeededTick. It
+   sits inside `.pairFee` beside the chain tag, so it takes that tag's shape
+   exactly: inline-flex for the 13px mark's centre line, the same 4px gap, and
+   `white-space: nowrap` so the badge and its optional word never break apart.
+
+   `--k-brand` and not `--k-pos`. Both are greens and the difference is what
+   they mean: `--k-pos` is the colour of a number that went up, and this is not
+   a measurement at all. It is an identity mark, so it carries the brand's own
+   green -- which also has a light-theme value with contrast on white, where
+   `--k-pos`'s dark-theme #4cc46a does not.
+
+   The colour lives on the span rather than the circle so one declaration feeds
+   both halves of the mark: the circle fills with `currentColor` and the check
+   knocks out in `--k-card`. */
+.seededTick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--k-brand);
+  white-space: nowrap;
+}
+.seededTick > svg {
+  flex: none;
+  display: block;
+}
 .badge {
   margin-left: auto;
   font-size: var(--k-fs-xs);
@@ -906,6 +932,14 @@
 .detailTitle .chainTag {
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
+}
+/* Row scale by default, like the chain tag above it, so on the title line it
+   grows with the fee it sits beside. The colour is *not* inherited down to
+   `--k-t2` the way those two are: the tick is the one element here whose whole
+   job is to be noticed, and this is the page a reader reaches when they are
+   deciding which of two same-pair pools to trade against. */
+.detailTitle .seededTick {
+  font-size: var(--k-fs-sm);
 }
 .detailActions {
   margin-left: auto;

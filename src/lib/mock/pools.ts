@@ -117,10 +117,20 @@ const WINDOW_SEC = 9_413;
  * honest single answer — it is the chain a fixture-mode reader would otherwise be
  * looking at.
  */
+/*
+ * `seeded` is mixed rather than stamped, for the reason the `verified` note above
+ * gives: a fixture that only ever produces one branch leaves the other one
+ * unexercised, and the un-ticked row is the one a reader has to be able to spot.
+ *
+ * Which two are false is not arbitrary. We seed pools in the assets we issue, so a
+ * WBTC or DAI book is one somebody else opened — the same rule the faucet follows
+ * when it hands out only our own tokens.
+ */
 const V2_MOCK_POOLS: Omit<ITradingPair, "version" | "chainId">[] = [
   {
     // 615 WETH ⇄ 2,091,000 USDC — the deepest book, both legs priced.
     address: pairAddress(1),
+    seeded: true,
     token0: MOCK_TOKENS.WETH,
     token1: MOCK_TOKENS.USDC,
     reserves: { reserve0: raw("615", 18), reserve1: raw("2091000", 6) },
@@ -138,6 +148,7 @@ const V2_MOCK_POOLS: Omit<ITradingPair, "version" | "chainId">[] = [
   {
     // KLD is unpriced, so liquidity is the USDC leg doubled: 643,000 × 2.
     address: pairAddress(2),
+    seeded: true,
     token0: MOCK_TOKENS.KLD,
     token1: MOCK_TOKENS.USDC,
     reserves: { reserve0: raw("3100000", 18), reserve1: raw("643000", 6) },
@@ -155,6 +166,7 @@ const V2_MOCK_POOLS: Omit<ITradingPair, "version" | "chainId">[] = [
   {
     // Same doubling, this time off the WETH leg: 76.25 × 3,400 × 2.
     address: pairAddress(3),
+    seeded: true,
     token0: MOCK_TOKENS.KLD,
     token1: MOCK_TOKENS.WETH,
     reserves: { reserve0: raw("1250000", 18), reserve1: raw("76.25", 18) },
@@ -172,6 +184,7 @@ const V2_MOCK_POOLS: Omit<ITradingPair, "version" | "chainId">[] = [
   {
     // kfUSD trading a shade under par, on the 5 bps tier stables belong on.
     address: pairAddress(4),
+    seeded: true,
     token0: MOCK_TOKENS.kfUSD,
     token1: MOCK_TOKENS.USDC,
     reserves: { reserve0: raw("1228400", 18), reserve1: raw("1226900", 6) },
@@ -188,6 +201,7 @@ const V2_MOCK_POOLS: Omit<ITradingPair, "version" | "chainId">[] = [
   },
   {
     address: pairAddress(5),
+    seeded: true,
     token0: MOCK_TOKENS.USDT,
     token1: MOCK_TOKENS.USDC,
     reserves: { reserve0: raw("952300", 6), reserve1: raw("952470", 6) },
@@ -205,6 +219,7 @@ const V2_MOCK_POOLS: Omit<ITradingPair, "version" | "chainId">[] = [
   {
     // 8-decimal token0, so the ratio is large and the reserves look small.
     address: pairAddress(6),
+    seeded: false,
     token0: MOCK_TOKENS.WBTC,
     token1: MOCK_TOKENS.WETH,
     reserves: { reserve0: raw("25", 8), reserve1: raw("456.25", 18) },
@@ -227,6 +242,7 @@ const V2_MOCK_POOLS: Omit<ITradingPair, "version" | "chainId">[] = [
      * usePoolData's header describes fixing.
      */
     address: pairAddress(7),
+    seeded: true,
     token0: MOCK_TOKENS.KLD,
     token1: MOCK_TOKENS.stKLD,
     reserves: { reserve0: raw("410000", 18), reserve1: raw("402300", 18) },
@@ -249,6 +265,7 @@ const V2_MOCK_POOLS: Omit<ITradingPair, "version" | "chainId">[] = [
      * Liquidity and volume are unaffected, because neither needs the fee.
      */
     address: pairAddress(8),
+    seeded: false,
     token0: MOCK_TOKENS.DAI,
     token1: MOCK_TOKENS.USDC,
     reserves: { reserve0: raw("159200", 18), reserve1: raw("159240", 6) },

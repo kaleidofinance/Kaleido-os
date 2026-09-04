@@ -244,13 +244,65 @@ export const GENERATED_LENDING_REGISTRATION: Record<
 };
 
 /**
+ * Every V3 pool the deployer opened, per chain, from the
+ * `deployment-pool-<network>-<pair>-<fee>.json` that seed-v3-pool.js writes when
+ * it creates one and mints the first liquidity into it.
+ *
+ * This is what the verified tick on a pool row reads, so it is worth being exact
+ * about the claim. The record proves the protocol's own deployer opened this pool
+ * and funded it at a price taken from the diamond's oracle. It does NOT claim the
+ * pool is still ours, still deep, or still correctly priced: any address can add
+ * liquidity to a V3 pool, and a seeded pool's price moves with whoever trades it.
+ * Sepolia's KLD/USDC has drifted to roughly 2.2x its seed through ordinary
+ * trading and is no less ours for it.
+ *
+ * The distinction it does draw is the one a reader cannot make by looking. A pool
+ * at the same pair and the same tier, opened by a stranger at a price they chose,
+ * is otherwise identical in the table. That is not hypothetical either: on
+ * Robinhood a third party had minted KLD at $9-$11 against our $0.03.
+ *
+ * Absence means "no record", never "not ours" -- an unseeded chain and an
+ * unrecorded seed look the same here. So this list only ever ADDS a tick; nothing
+ * uses it to mark a pool as suspect.
+ */
+export const GENERATED_SEEDED_POOLS: Record<number, string[]> = {
+  97: [
+    "0x75159b4Da8C5FF7C1Bc2B53106300a50171c2169",
+    "0x82A907fe860886d01FF8E13D74af2b990829B832",
+    "0xE52C6AaBe6B6C0E2cfA8A589ad7182FD65fBe04d",
+  ],
+  46630: [
+    "0x3d5043fa8353b5A636eeFdeC6Ac26B488c99E518",
+    "0x4741473a0C0E15F1dA1B9E9C972fe9E90316D290",
+    "0xEDACd83d9CE55E81493F15C1E099BefBD92B5A0d",
+    "0xF00783C4B0687a805CB25047aa2f1C969E068c97",
+    "0xb2B96857437176674Bc3Bb276A5E25602cb668e6",
+  ],
+  84532: [
+    "0x32C3E8E8F6620d0D6716F656aa7C92BE87B7E180",
+    "0x7306100bE0464aF15E3552dC38C08b499C3C0E99",
+    "0x814C64a304e2A837f2A76589587Fdc9C527C5C28",
+    "0xD03FC526BC9Cbf6f4ed0A4996347EBFb1ffca22C",
+    "0xD888671C7525D592c0f7aa5f31Ede5B7C7eB8F5B",
+  ],
+  11155111: [
+    "0x04EfB41F6aCeCB6B1eB46be75A929cD5b42dC1e4",
+    "0x0C71361DAd26dD63ba0D10Bc72928FDCB38e673b",
+    "0x6de82ffB6D2180F77D284F287F53199547E87428",
+    "0x8c832F0Ef9F7d2EF89769D1e9bd97cCC4a2218eB",
+    "0xbA88dF1A2353e2d0141F0756c4e91D62EF0BF20F",
+    "0xf95b8155ad0Dda2f64fD73B9771F59FDfd0df7E4",
+  ],
+};
+
+/**
  * What the generator last read, for debugging a wrong or missing address.
  */
 export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-08-29T04:04:00.629Z",
+  generatedAt: "2026-09-04T18:40:57.536Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -277,6 +329,25 @@ export const GENERATED_META: {
     "deployment-oracle-bscTestnet.json",
     "deployment-oracle-robinhoodTestnet.json",
     "deployment-oracle-sepolia.json",
+    "deployment-pool-baseTestnet-KLD-USDC-3000.json",
+    "deployment-pool-baseTestnet-USDT-USDC-3000.json",
+    "deployment-pool-baseTestnet-USDT-WETH-500.json",
+    "deployment-pool-baseTestnet-USDe-USDC-3000.json",
+    "deployment-pool-baseTestnet-WETH-USDC-500.json",
+    "deployment-pool-bscTestnet-KLD-USDC-500.json",
+    "deployment-pool-bscTestnet-USDT-USDC-3000.json",
+    "deployment-pool-bscTestnet-USDe-USDC-3000.json",
+    "deployment-pool-robinhoodTestnet-KLD-USDC-3000.json",
+    "deployment-pool-robinhoodTestnet-USDT-USDC-3000.json",
+    "deployment-pool-robinhoodTestnet-USDe-USDC-3000.json",
+    "deployment-pool-robinhoodTestnet-WETH-USDC-500.json",
+    "deployment-pool-robinhoodTestnet-WETH-USDT-500.json",
+    "deployment-pool-sepolia-USDC-KLD-3000.json",
+    "deployment-pool-sepolia-USDC-USDT-3000.json",
+    "deployment-pool-sepolia-USDC-USDe-3000.json",
+    "deployment-pool-sepolia-USDC-WETH-500.json",
+    "deployment-pool-sepolia-USDT-USDe-500.json",
+    "deployment-pool-sepolia-USDT-WETH-500.json",
     "deployment-stablecoin-arcTestnet-1787384790044.json",
     "deployment-stablecoin-baseTestnet.json",
     "deployment-stablecoin-bscTestnet-1787453692948.json",

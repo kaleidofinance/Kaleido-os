@@ -18,6 +18,7 @@ import PairIcon from "../_components/PairIcon";
 import PoolBalanceBar from "../_components/PoolBalanceBar";
 import PoolDepthChart from "../_components/PoolDepthChart";
 import PoolTxnTable from "../_components/PoolTxnTable";
+import SeededTick from "../_components/SeededTick";
 import { feeLabel, volumeTitle } from "../format";
 import { poolCurves } from "../poolCurve";
 import s from "../pool.module.css";
@@ -303,6 +304,10 @@ function PoolHeader({ pool }: { pool: ITradingPair }) {
             explorer link on it and the transactions table all describe this pool
             on this chain, and nothing else on the page says which one that is. */}
         <ChainTag chainId={pool.chainId} />
+        {/* Labelled here, unlike the table's. This is the page a reader
+            reaches when they are deciding rather than scanning, and it is
+            where the word is worth its width. */}
+        {pool.seeded ? <SeededTick label /> : null}
         <AddressChip address={pool.address} explorer={explorer} />
 
         <div className={s.detailActions}>

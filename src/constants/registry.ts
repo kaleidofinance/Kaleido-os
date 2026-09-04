@@ -2,6 +2,7 @@ import { getChainMeta, type ChainMeta } from "./chains";
 import {
   GENERATED_DEPLOYMENTS,
   GENERATED_LENDING_REGISTRATION,
+  GENERATED_SEEDED_POOLS,
 } from "./deployments.generated";
 
 /**
@@ -1153,6 +1154,44 @@ export interface LendingRegistration {
 export const LENDING_REGISTRATION: Record<number, LendingRegistration> = {
   ...GENERATED_LENDING_REGISTRATION,
 };
+
+/**
+ * Every V3 pool the deployer opened, per chain. GENERATED, with the same override
+ * seam as the two maps above for a value that has to be corrected before the next
+ * deploy can regenerate it.
+ *
+ * Sourced from the `deployment-pool-*.json` that seed-v3-pool.js writes, so a pool
+ * is in here because a run of ours created it and funded it, not because someone
+ * decided it was legitimate. See `GENERATED_SEEDED_POOLS` for the exact scope of
+ * that claim.
+ */
+export const SEEDED_POOLS: Record<number, string[]> = {
+  ...GENERATED_SEEDED_POOLS,
+};
+
+/**
+ * Did we open this pool? The question behind the verified tick on a pool row.
+ *
+ * Case-insensitive, because the two sides reach this function from different
+ * places: the generated list is checksummed by `getAddress`, while the address it
+ * is compared against arrives from a factory call, a URL, or a paste, in whatever
+ * case that produced. A `===` would answer no for a pool that is unambiguously
+ * ours, and the failure would be invisible — a missing tick looks like a pool we
+ * simply did not seed.
+ *
+ * A missing chain or address is false rather than a throw. This decides whether a
+ * badge renders, and the honest answer to "we cannot tell" is no badge.
+ */
+export function isSeededPool(
+  chainId: number | undefined,
+  address: string | undefined,
+): boolean {
+  if (chainId === undefined || !address) return false;
+  const seeded = SEEDED_POOLS[chainId];
+  if (!seeded) return false;
+  const wanted = address.toLowerCase();
+  return seeded.some((pool) => pool.toLowerCase() === wanted);
+}
 
 /**
  * Which side of the lending market a token has to be registered on.
