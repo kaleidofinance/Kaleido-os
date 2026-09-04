@@ -286,8 +286,14 @@ export function buildSystemPrompt(opts: {
       lines.push(`- Max $${limits.maxPerDay} per day`);
     if (limits.minHealthFactor !== undefined)
       lines.push(`- Keep health factor at or above ${limits.minHealthFactor}`);
+    /* "Beyond the pool fees", because that is how the auditor measures it. Left
+       unqualified, a model reading a 0.50% ceiling would widen amountOutMin to
+       clear a check that already subtracts the fees — conceding real slippage to
+       satisfy a limit it was not up against. */
     if (limits.slippageBps !== undefined)
-      lines.push(`- Max slippage ${(limits.slippageBps / 100).toFixed(2)}%`);
+      lines.push(
+        `- Max slippage ${(limits.slippageBps / 100).toFixed(2)}%, beyond the pools' own fees`,
+      );
   }
 
   return lines.join("\n");

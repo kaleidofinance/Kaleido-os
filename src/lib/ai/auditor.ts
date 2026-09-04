@@ -914,6 +914,19 @@ interface Shape {
     outSymbol: string;
     amountIn: number;
     minOut: number;
+    /**
+     * Every pool the route passes through, in hundredths of a bip.
+     *
+     * Carried because the check downstream measures the gap between what goes
+     * in and what the floor guarantees, and the pools' own fees are part of
+     * that gap — a deterministic part, quoted up front, that no tolerance can
+     * reduce. Without these the check compares a number containing the fees
+     * against a limit that was never meant to cover them: one 0.30% pool
+     * spends 30 of a 50 bps tolerance before the trade has any price impact at
+     * all, and a two-hop route through two of them exceeds it outright while
+     * being correctly priced. See `excessBps` in auditPlan.
+     */
+    fees: number[];
   };
 }
 
@@ -1012,6 +1025,9 @@ const AUDITORS: Record<IntentKind, Auditor> = {
               outSymbol: outTok.symbol!,
               amountIn,
               minOut,
+              /* One pool, one fee. Non-null here: `reasons.length === 0`
+                 includes the `no pool fee tier` check above. */
+              fees: [num(s.fee)!],
             },
           }
         : {}),
@@ -1181,18 +1197,24 @@ const AUDITORS: Record<IntentKind, Auditor> = {
               outSymbol: last.symbol!,
               amountIn,
               minOut,
+              /* Collected hop by hop above, and every one validated against
+                 `isTradedTier` — so this is the real cost of the route, not a
+                 default. The slippage check subtracts their sum. */
+              fees,
             },
           }
         : {}),
-      /* Said out loud, because it is a real difference from a direct swap and
-         the caps cannot express it: a path's fee is charged once per pool, so a
-         two-hop route concedes both tiers before slippage. The market-rate check
-         in auditPlan measures the total against the user's own limit, so this is
-         context rather than a second gate. */
+      /* Said out loud, because it is a real difference from a direct swap that
+         the user is paying for: the fee is charged once per pool, so a two-hop
+         route concedes both tiers. The slippage check in auditPlan now accounts
+         for them rather than counting them against the tolerance, so this is
+         disclosure and not a warning. */
       ...(reasons.length === 0
         ? {
             notes: [
-              `this routes through ${legs.length} pools, so ${legs.length} fee tiers are charged`,
+              `this routes through ${legs.length} pools, so ${legs.length} fee tiers are charged (${fees
+                .map((f) => `${f / 10_000}%`)
+                .join(" + ")})`,
             ],
           }
         : {}),
@@ -2451,9 +2473,14 @@ export async function auditPlan(opts: {
      * cap on the protocol's own token rather than on risk. Said out loud in
      * `notes` so an unchecked swap is never silently indistinguishable from a
      * checked one.
+     *
+     * The pools' fees come out of the measurement before the comparison. They
+     * are a quoted, deterministic cost that no tolerance can reduce, and
+     * counting them as slippage is what made the default 50 bps refuse honest
+     * multi-hop routes.
      */
     if (shape.swap && limits.slippageBps !== undefined) {
-      const { inSymbol, outSymbol, amountIn, minOut } = shape.swap;
+      const { inSymbol, outSymbol, amountIn, minOut, fees } = shape.swap;
       const [inSide, outSide] = await Promise.all([
         priceOf(inSymbol, String(amountIn)),
         priceOf(outSymbol, String(minOut)),
@@ -2479,8 +2506,41 @@ export async function auditPlan(opts: {
            Negative would mean the floor is worth more than the input, which is
            not a slippage failure — so only a shortfall is measured. */
         const lossBps = ((inSide.usd - outSide.usd) / inSide.usd) * 10_000;
-        if (lossBps > limits.slippageBps) {
-          audited.blocked = `minimum output concedes ${(lossBps / 100).toFixed(2)}%, over your ${(limits.slippageBps / 100).toFixed(2)}% slippage limit`;
+        /*
+         * Minus the pools' own fees, which is what a slippage tolerance is not
+         * for.
+         *
+         * `lossBps` is the whole gap between the input and the guaranteed
+         * output, and the swap fee is inside it: the pool takes its cut before
+         * the router hands anything back, so a perfectly executed trade at the
+         * exact quoted price still lands below its input by the fee. Comparing
+         * that total against `slippageBps` charged the user's risk budget for a
+         * cost that carries no risk — 30 of the default 50 bps gone to one
+         * 0.30% pool, and a two-hop route through two of them refused outright
+         * while being correctly priced.
+         *
+         * Compounded rather than summed because that is how the router charges
+         * them: each hop's fee is taken from what the previous hop returned, so
+         * two 0.30% pools cost 0.5991%, not 0.60%. The difference is under a bip
+         * and the direction matters more than the size — summing would overstate
+         * the deduction and let a fraction of real slippage through.
+         *
+         * What remains is price impact plus whatever the market moved between
+         * the quote and the floor, which is exactly what the tolerance governs.
+         */
+        const kept = fees.reduce((acc, f) => acc * (1 - f / 1_000_000), 1);
+        const feeBps = (1 - kept) * 10_000;
+        const excessBps = lossBps - feeBps;
+        if (excessBps > limits.slippageBps) {
+          /* Names all three numbers. A refusal that reported only the total was
+             unactionable in the case that matters — the user cannot tell a wide
+             floor from an expensive route, and the advice differs: one is a
+             tolerance to raise, the other is a route to avoid. */
+          audited.blocked =
+            `minimum output concedes ${(excessBps / 100).toFixed(2)}% beyond ` +
+            `${fees.length > 1 ? `${fees.length} pool fees` : "the pool fee"} of ` +
+            `${(feeBps / 100).toFixed(2)}%, over your ` +
+            `${(limits.slippageBps / 100).toFixed(2)}% slippage limit`;
           blocked.push(`${kind}: ${audited.blocked}`);
           steps.push(audited);
           continue;

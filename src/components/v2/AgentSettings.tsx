@@ -182,6 +182,15 @@ export default function AgentSettings({
                   update({ slippageBps: Math.round(num(v) * 100) })
                 }
               />
+              {/* The baseline, because the field is a percentage of something and
+                  the something is not obvious. The auditor measures against the
+                  quote after the pools take their fee, so this number is not
+                  partly spent before the trade has moved at all. */}
+              <p className={s.note}>
+                Measured on top of the pools&apos; own trading fees, which are a
+                quoted cost rather than a risk. A route through two 0.30% pools
+                doesn&apos;t spend any of this.
+              </p>
             </section>
 
             <section className={s.section}>

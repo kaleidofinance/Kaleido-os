@@ -88,6 +88,11 @@ export function figureCards(
         },
       ];
 
+    /* The note names what the figure excludes. A tolerance is only meaningful
+       against a stated baseline, and the auditor's baseline is the quote after
+       the pools have taken their fee — so a card reading "0.50%" with nothing
+       beside it invites the reading that a 0.30% pool has already spent most of
+       it. */
     case "slippage":
       return [
         {
@@ -95,7 +100,7 @@ export function figureCards(
           label: "Your max slippage",
           value: (settings.slippageBps / 100).toFixed(2),
           unit: "%",
-          note: "Applied to swaps Luca builds. Per-swap settings override it.",
+          note: "On top of the pools' own fees. Applied to swaps Luca builds; per-swap settings override it.",
         },
       ];
 

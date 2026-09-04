@@ -407,8 +407,11 @@ async function main() {
     };
 
     {
-      // 0.5% slippage against a floor that concedes ~1% — over the limit, so
-      // the baseline "passes" case needs a tolerance that admits it.
+      // 0.5% slippage against a floor that concedes ~1% in total — 0.30% of
+      // that is the pool's fee, which the check now subtracts, but the 0.70%
+      // left is still over the limit. So the baseline "passes" case keeps a
+      // tolerance that admits it. The cases at the foot of this section are the
+      // ones that pin where the fee boundary actually falls.
       const v = await audit([wellFormed], {
         limits: { ...LIMITS, slippageBps: 200 },
       });
@@ -597,6 +600,232 @@ async function main() {
         !v.ok && v.blocked.some((b) => b.includes("daily limit")),
         JSON.stringify(v.blocked),
       );
+    }
+
+    /* ------------------------------------------- fees are not slippage -- */
+
+    /*
+     * The pools' own fees, and why they are subtracted before the comparison.
+     *
+     * A swap fee is not slippage. The pool takes its cut before the router hands
+     * anything back, so a trade filled at exactly the quoted price still returns
+     * less than it cost by the fee — and no tolerance the user sets can reduce
+     * that, because it is the price of using the pool. Measuring the two together
+     * spent the user's risk budget on a quoted cost: 30 of the default 50 bps
+     * gone to one 0.30% pool, and a two-hop route through two of them refused
+     * outright while being correctly priced.
+     *
+     * These four cases fix the boundary in both directions, because the failure
+     * this replaced would have passed any test that only asserted "an honest swap
+     * passes" — it did pass, at 200 bps, which is what the baseline case above
+     * had to be raised to. The pair that matters is the last two: the same route,
+     * at the same default tolerance, distinguished only by whether what it
+     * concedes beyond the fees is inside 0.50%.
+     */
+    {
+      /* 0.30% pool, floor set 0.30% under the quote — the whole loss is fee, so
+         nothing is conceded and the default 50 bps is untouched. 100 USDC at the
+         stub's $3000 is 0.0333…, and 0.99700 of that is 0.033233. */
+      const v = await audit([{ ...wellFormed, amountOutMin: "0.0332333" }]);
+      check(
+        "a swap conceding exactly its 0.30% pool fee passes at the 0.50% default",
+        v.ok,
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      /* The same trade through the 1% tier. Under the old measurement this was
+         refused twice over — the fee alone is double the tolerance — which is
+         the shape that made the widest pools unusable to the agent. */
+      const v = await audit([
+        { ...wellFormed, fee: 10000, amountOutMin: "0.033" },
+      ]);
+      check(
+        "a swap through the 1% tier is not refused for the fee alone",
+        v.ok,
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      /* Real slippage still fails, and the refusal has to name all three numbers
+         — a message reporting only the total tells the user to raise a tolerance
+         when the problem may be the route. 2% under the quote: 0.30% is fee,
+         1.70% is not. */
+      const v = await audit([{ ...wellFormed, amountOutMin: "0.03267" }]);
+      check(
+        "slippage beyond the fee is still refused, and the fee is named",
+        !v.ok &&
+          v.blocked.some(
+            (b) =>
+              b.includes("beyond the pool fee") && b.includes("slippage limit"),
+          ),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      /* The deduction is not a blanket pass. A floor at half the input is 50%
+         gone, of which 0.30% is fee — the fee cannot absorb a real shortfall. */
+      const v = await audit([{ ...wellFormed, amountOutMin: "0.0167" }]);
+      check(
+        "subtracting the fee does not excuse a nominal floor",
+        !v.ok && v.blocked.some((b) => b.includes("slippage limit")),
+        JSON.stringify(v.blocked),
+      );
+    }
+  }
+
+  /* ---------------------------------------------------------------------- *
+   * Multi-hop
+   *
+   * The kind with no coverage at all until now, which is how a slippage gate
+   * that refused every two-hop route reached main. Two pools is the shape the
+   * builder produces whenever no direct pool exists — WETH→USDC→KLD is the
+   * live example, since KLD's only pool is against USDC — so this is the
+   * ordinary case for the protocol's own token, not an exotic one.
+   * ---------------------------------------------------------------------- */
+
+  {
+    const { encodeV3Path } = await import("../dex/route");
+    const weth = tokens.find((t) => t.symbol === "WETH");
+    const kld = tokens.find((t) => t.symbol === "KLD");
+
+    if (!weth || !usdc || !kld) {
+      skip(
+        "multi-hop cases",
+        "WETH, USDC or KLD is not registered on this chain",
+      );
+    } else {
+      /* WETH → USDC → KLD, both hops at 0.30%. Priced legs on the way in and an
+         unpriced token on the way out, which is deliberate: it exercises the
+         path and fee checks while the slippage check reports what it cannot
+         measure. The priced pair is asserted separately below. */
+      const route = (fees: [number, number], amountOutMin: string): Step => ({
+        kind: "swapMultiHop",
+        hops: [
+          {
+            tokenIn: weth.address,
+            tokenOut: usdc.address,
+            symbolIn: "WETH",
+            symbolOut: "USDC",
+            fee: fees[0],
+          },
+          {
+            tokenIn: usdc.address,
+            tokenOut: kld.address,
+            symbolIn: "USDC",
+            symbolOut: "KLD",
+            fee: fees[1],
+          },
+        ],
+        path: encodeV3Path(
+          [weth.address, usdc.address, kld.address],
+          [fees[0], fees[1]],
+        ),
+        amountIn: "0.1",
+        amountOutMin,
+        decimalsIn: weth.decimals,
+        decimalsOut: kld.decimals,
+        symbolIn: "WETH",
+        symbolOut: "KLD",
+        spender: ROUTER,
+      });
+
+      {
+        const v = await audit([route([3000, 3000], "1000")]);
+        check(
+          "a well-formed two-hop route passes",
+          v.ok,
+          JSON.stringify(v.blocked),
+        );
+        check(
+          "and both fee tiers are disclosed in the notes",
+          v.notes.some((n) => n.includes("2 pools") && n.includes("0.3%")),
+          JSON.stringify(v.notes),
+        );
+      }
+
+      {
+        /* The substituted-path case: hops say 0.30% + 0.30%, the bytes say
+           0.30% + 1%. No revert behind this one — the swap would succeed
+           through a pool nobody approved. */
+        const bad = route([3000, 3000], "1000");
+        bad.path = encodeV3Path(
+          [weth.address, usdc.address, kld.address],
+          [3000, 10000],
+        );
+        const v = await audit([bad]);
+        check(
+          "a path whose bytes disagree with its hops is rejected",
+          !v.ok && v.blocked.some((b) => b.includes("encoded path")),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        const v = await audit([route([3000, 4200], "1000")]);
+        check(
+          "a hop at a tier this DEX has no pool for is rejected",
+          !v.ok && v.blocked.some((b) => b.includes("0.42% tier")),
+          JSON.stringify(v.blocked),
+        );
+      }
+
+      {
+        /* THE REGRESSION. Both legs priced, both pools at 0.30%, and a floor a
+           whisker under the quote — the plan the old gate refused. 0.1 WETH is
+           $300 at the stub; two 0.30% fees compound to 0.5991%, and a floor at
+           296.7117 concedes 1.0961% in total, of which 0.4970% is beyond the
+           fees. Inside the default 0.50%, and outside it before this fix. */
+        const priced: Step = {
+          ...route([3000, 3000], "296.7117"),
+          hops: [
+            {
+              tokenIn: weth.address,
+              tokenOut: kld.address,
+              symbolIn: "WETH",
+              symbolOut: "KLD",
+              fee: 3000,
+            },
+            {
+              tokenIn: kld.address,
+              tokenOut: usdc.address,
+              symbolIn: "KLD",
+              symbolOut: "USDC",
+              fee: 3000,
+            },
+          ],
+          path: encodeV3Path(
+            [weth.address, kld.address, usdc.address],
+            [3000, 3000],
+          ),
+          decimalsOut: usdc.decimals,
+          symbolOut: "USDC",
+        };
+        const v = await audit([priced]);
+        check(
+          "a two-hop route at the 0.50% default is not refused for its two fee tiers",
+          v.ok,
+          JSON.stringify(v.blocked),
+        );
+
+        /* And the same route with a floor 1% under, which is genuine slippage on
+           top of the same two fees. The pair is the whole point: one number
+           apart, opposite verdicts. */
+        const wide = await audit([{ ...priced, amountOutMin: "293.7" }]);
+        check(
+          "the same route with real slippage on top of the fees is refused",
+          !wide.ok &&
+            wide.blocked.some(
+              (b) =>
+                b.includes("beyond 2 pool fees") &&
+                b.includes("slippage limit"),
+            ),
+          JSON.stringify(wide.blocked),
+        );
+      }
     }
   }
 

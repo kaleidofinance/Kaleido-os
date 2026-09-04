@@ -215,8 +215,11 @@ export const FAQ_TOPICS: FaqTopic[] = [
   {
     id: "slippage",
     triggers: ["what is slippage", "slippage tolerance", "max slippage"],
+    /* Says what the tolerance is not counted against, because the two costs look
+       identical on a receipt and only one of them is a risk. A user who reads
+       0.50% as covering the fee too will set it far wider than they need to. */
     answer:
-      "Slippage is how far the price can move between when you submit a swap and when it executes before the transaction reverts instead of filling at a worse rate. The default here is Auto, currently 0.50%, and it's adjustable per-swap in settings.",
+      "Slippage is how far the price can move between when you submit a swap and when it executes before the transaction reverts instead of filling at a worse rate. The default here is Auto, currently 0.50%, and it's adjustable per-swap in settings. It's measured on top of the pools' own trading fees, which are a fixed, quoted cost rather than a risk — so a route through two 0.30% pools doesn't spend your tolerance on them.",
     figure: "slippage",
   },
   {
