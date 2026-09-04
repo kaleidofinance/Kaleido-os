@@ -215,9 +215,104 @@ export const FAQ_TOPICS: FaqTopic[] = [
   {
     id: "slippage",
     triggers: ["what is slippage", "slippage tolerance", "max slippage"],
+    /* Says what the tolerance is not counted against, because the two costs look
+       identical on a receipt and only one of them is a risk. A user who reads
+       0.50% as covering the fee too will set it far wider than they need to. */
     answer:
-      "Slippage is how far the price can move between when you submit a swap and when it executes before the transaction reverts instead of filling at a worse rate. The default here is Auto, currently 0.50%, and it's adjustable per-swap in settings.",
+      "Slippage is how far the price can move between when you submit a swap and when it executes before the transaction reverts instead of filling at a worse rate. The default here is Auto, currently 0.50%, and it's adjustable per-swap in settings. It's measured on top of the pools' own trading fees, which are a fixed, quoted cost rather than a risk — so a route through two 0.30% pools doesn't spend your tolerance on them.",
     figure: "slippage",
+  },
+  {
+    /*
+     * Every charge, from docs/product/fees.md — which is itself written against
+     * constant.sol, kfUSD.sol and YieldTreasury.sol. Static and complete, so a
+     * model turn spent on it is a model turn spent reciting a table it cannot
+     * see; worse, a model asked "what are the fees" with no table in front of it
+     * will produce plausible DeFi defaults, and a wrong fee is a wrong trade.
+     *
+     * Rates as they stand today. The doc's own framing — the ceilings are the
+     * promise, not the rates — is why the last sentence points at it rather than
+     * trying to carry ten more numbers here.
+     */
+    id: "fees",
+    triggers: [
+      "the fees",
+      "what fees",
+      /* Singular, and it matters more than the plural: "is there any fee to
+         stake" is question-shaped, so this file gets first refusal — but with
+         only "any fees" here it missed, the grammar took the sentence for its
+         `stake` verb, and a question about cost was answered with "how much KLD?".
+         "any fee" covers the plural as a substring; the reverse is not true. */
+      "any fee",
+      "there a fee",
+      "hidden fee",
+      "trading fee",
+      "swap fee",
+      "protocol fee",
+      "do you charge",
+      "what do you charge",
+      "how much does it cost",
+      "what does it cost",
+      "commission",
+    ],
+    answer:
+      "Five charges are live, and Kaleido takes none of the trading one: a swap pays its pool's tier — 0.05%, 0.3% or 1% — in full to the liquidity providers who were in range, and both venues' protocol-fee switches are off. Lending is free to enter and free to leave; the only cut is 10% of the interest actually earned, taken from interest and never from principal. A liquidation adds a 6.4% penalty on the debt cleared, split 75/25 between the liquidator and the protocol. kfUSD costs 0.05% to mint and 0.05% to redeem, so a round trip is 0.1%, and the yield path keeps 10% of what it distributes. Staking has no fee parameter of any kind, and the seven-day withdrawal wait is not a fee — you keep earning through it. Gas is the network's and a bridge fee is the bridge's. Every rate also has a ceiling written into the contract, which is on the fees page in the docs.",
+    /* Six rows against an eight-row cap, values inside the 24-character limit
+       fromChat.ts enforces — a truncated fee is worse than no card. Staking
+       carries the only tone, because "none" is the one row a reader will assume
+       is a rounding of something small. */
+    cards: [
+      {
+        kind: "stats",
+        title: "What the protocol charges",
+        rows: [
+          { label: "Swap, to the LPs", value: "0.05% / 0.3% / 1%" },
+          { label: "Protocol cut of interest", value: "10% of interest" },
+          { label: "Liquidation penalty", value: "6.4% of the debt" },
+          { label: "kfUSD mint, redeem", value: "0.05% each" },
+          { label: "Yield performance", value: "10% of yield" },
+          { label: "Staking", value: "none", tone: "good" },
+        ],
+      },
+    ],
+  },
+  {
+    /*
+     * "What is the APY" has a correct static answer, and it is that there isn't
+     * one — no page in this app advertises a rate. That makes it exactly the
+     * question a model should not take: with nothing to read it will quote a
+     * number, and an invented APY is the most expensive kind of wrong answer
+     * here. The four sources below are stake.md, stable.md, borrow.md and
+     * liquidity.md; the 10% interest cut is the fees topic's.
+     */
+    id: "apy",
+    triggers: [
+      "apy",
+      "apr",
+      "how much yield",
+      "what yield",
+      "how much interest",
+      "interest rate",
+      "how much can i earn",
+      "how much will i earn",
+      "expected return",
+      "what return",
+      "rate of return",
+    ],
+    answer:
+      "There is no single number, and nothing here advertises one — that is deliberate rather than missing. Lending is peer to peer: the rate is written into the offer or request itself, so you choose it, and what you receive is that rate less the protocol's 10% cut of the interest. Staking has no advertised APY at all; rewards arrive as stKLD appreciating against KLD, so the exchange rate is the figure to watch rather than a percentage. kafUSD is the same shape — its yield comes from lending and pool fees as they are collected, with no fixed promise attached. Liquidity earns its pool's fee tier on whatever volume trades inside your range, which is why a narrow band earns more per dollar and earns nothing once price leaves it. Any single percentage quoted for these is backward-looking.",
+    cards: [
+      {
+        kind: "stats",
+        title: "Where a return comes from",
+        rows: [
+          { label: "Lending", value: "the rate you set" },
+          { label: "Staking", value: "stKLD / KLD rate" },
+          { label: "kafUSD", value: "lending + pool fees" },
+          { label: "Liquidity", value: "fees in your range" },
+        ],
+      },
+    ],
   },
   {
     id: "chains",
@@ -412,6 +507,58 @@ export const FAQ_TOPICS: FaqTopic[] = [
             prompt: "claim everything from the faucet",
           },
           { label: "Buy KLD with USDC", prompt: "buy KLD with 500 USDC" },
+        ],
+      },
+    ],
+  },
+  {
+    /*
+     * A failed transaction, and the reason this is a topic rather than a model
+     * turn: the model has no more access to the failure than this paragraph does.
+     * It cannot see the revert data, the toast, or the wallet's own refusal — so
+     * asked why something failed it will list generic causes, which is what this
+     * does, only less accurately and at the cost of a metered request.
+     *
+     * The five cases are txErrors.ts's own branches, in its order, with its
+     * wording compressed: a declined signature, an empty gas tank, a wallet on
+     * the wrong network, an earlier transaction still pending, and a genuine
+     * revert. That file is what puts a sentence on the screen at the moment of
+     * failure, so it is the authority and this is the after-the-fact version.
+     * If a branch is added there, this paragraph is where it goes stale.
+     */
+    id: "tx-failed",
+    triggers: [
+      "transaction fail",
+      "transaction reverted",
+      "tx fail",
+      "swap fail",
+      "it failed",
+      "keeps failing",
+      "why did it fail",
+      "transaction is stuck",
+      "tx is stuck",
+      "stuck pending",
+      "stuck in pending",
+      "still pending",
+      "nothing happened",
+      "didn't go through",
+      "did not go through",
+    ],
+    answer:
+      "The failure is named at the moment it happens — the toast on the page carries the specific reason, and that sentence is more precise than anything reconstructable afterwards, including by me. Five cases cover nearly all of them. You dismissed the request in your wallet, in which case nothing was sent and nothing was spent. The wallet cannot cover gas, which needs a little of the network's own token first — ask me how to get gas for that. Your wallet is on a different network than the app, so switch it and try again. An earlier transaction from the wallet is still pending, which is usually what a stuck transaction is: wait for it to land or speed it up in your wallet, then retry, because the next one queues behind it. Or the contract refused for a stated reason — a faucet cooldown that has not elapsed, a swap that would have filled past your slippage limit, a health factor the borrow would have broken. If what you saw reads like a bug rather than one of these, reply to the email your access code came from and say what you were doing.",
+    /* Cause and the move that clears it, because the reader's question is not
+       really "why" — it is "what do I do now", and prose makes them find their
+       own case in a paragraph of five. */
+    cards: [
+      {
+        kind: "stats",
+        title: "The five, and the fix",
+        rows: [
+          { label: "Rejected in your wallet", value: "nothing was sent" },
+          { label: "No gas", value: "fund the gas token" },
+          { label: "Wrong network", value: "switch, then retry" },
+          { label: "Earlier tx pending", value: "wait, then retry" },
+          { label: "Contract refused", value: "the toast names it" },
         ],
       },
     ],

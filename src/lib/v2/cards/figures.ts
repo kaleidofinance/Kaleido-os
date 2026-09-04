@@ -56,10 +56,17 @@ export function figureCards(
               label: "Min health factor",
               value: settings.minHealthFactor.toFixed(2),
             },
+            /* No tone on this row, and the label says "stop", not "sign".
+               It used to read "Signature per step: Required / Off" with a warn
+               tone on Off — three problems in one row. Nothing read the setting,
+               so both values were claims about behaviour that did not exist; the
+               label described the wallet's prompt, which no setting here can
+               waive; and the warn tone framed a legitimate preference as a
+               weakened guardrail. It now names what PlanReview actually does
+               with it, and a preference gets no tone. */
             {
-              label: "Signature per step",
-              value: settings.confirmEachStep ? "Required" : "Off",
-              tone: settings.confirmEachStep ? "good" : "warn",
+              label: "Stop between plan steps",
+              value: settings.confirmEachStep ? "On" : "Off",
             },
           ],
         },
@@ -81,6 +88,11 @@ export function figureCards(
         },
       ];
 
+    /* The note names what the figure excludes. A tolerance is only meaningful
+       against a stated baseline, and the auditor's baseline is the quote after
+       the pools have taken their fee — so a card reading "0.50%" with nothing
+       beside it invites the reading that a 0.30% pool has already spent most of
+       it. */
     case "slippage":
       return [
         {
@@ -88,7 +100,7 @@ export function figureCards(
           label: "Your max slippage",
           value: (settings.slippageBps / 100).toFixed(2),
           unit: "%",
-          note: "Applied to swaps Luca builds. Per-swap settings override it.",
+          note: "On top of the pools' own fees. Applied to swaps Luca builds; per-swap settings override it.",
         },
       ];
 

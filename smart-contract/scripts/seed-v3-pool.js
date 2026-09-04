@@ -55,6 +55,15 @@
  * price is nowhere near. Every decimal below comes from the token's own
  * `decimals()`.
  *
+ * ── The wrapped native is deposited, not minted ────────────────────────────
+ *
+ * Every other token here is a mock with a mint we control. The chain's wrapped
+ * native has neither mint nor owner, and issues one token per unit of native
+ * sent to it — so a WETH side is funded by wrapping, and the run holds
+ * GAS_RESERVE (0.05 native, by default) back so it can still pay for the mints
+ * that follow. Note that "wrapped native" is not ETH everywhere: it is WBNB on
+ * BSC, and WUSDC on Arc, whose gas token is USDC.
+ *
  * Writes deployment-pool-<network>-<t0>-<t1>-<fee>.json.
  */
 
@@ -66,10 +75,16 @@ const path = require("path");
 const { registryFor } = require("./libraries/registry.js");
 const { feedFor } = require("./libraries/pyth-feeds.js");
 const { fetchScaledPrices } = require("./libraries/hermes-prices.js");
-
-/** Uniswap V3's absolute tick bounds. */
-const MIN_TICK = -887272;
-const MAX_TICK = 887272;
+/* The tick math both this script and reprice-v3-pool.js depend on. Shared so
+   the two cannot disagree about which tick a price is: one moves the price and
+   the other centres a position on it. */
+const {
+  MIN_TICK,
+  MAX_TICK,
+  encodeSqrtRatioX96,
+  sqrtRatioAtTick,
+  tickAtSqrtRatio,
+} = require("./libraries/tick-math.js");
 
 const ERC20_ABI = [
   "function symbol() view returns (string)",
@@ -79,6 +94,9 @@ const ERC20_ABI = [
   "function approve(address,uint256) returns (bool)",
   "function owner() view returns (address)",
   "function mint(address,uint256)",
+  /* The wrapped native's deposit. Not ERC20, and only ever called on the one
+     token that has it — see wrapNative. */
+  "function deposit() payable",
 ];
 
 const FACTORY_ABI = [
@@ -107,81 +125,6 @@ const NPM_ABI = [
 const PROTOCOL_ABI = [
   "function getUsdValue(address,uint256,uint8) view returns (uint256)",
 ];
-
-/**
- * Integer square root by Newton's method.
- *
- * Needed because sqrtPriceX96 is a Q64.96 fixed-point value and the intermediate
- * `amount1 << 192` overflows every float long before it overflows a BigInt.
- * Doing this in Number would silently lose the low bits of the price.
- */
-function sqrtBig(n) {
-  if (n < 0n) throw new Error("sqrt of a negative");
-  if (n < 2n) return n;
-  let x = n;
-  let y = (x + 1n) / 2n;
-  while (y < x) {
-    x = y;
-    y = (x + n / x) / 2n;
-  }
-  return x;
-}
-
-/** Uniswap's encodeSqrtRatioX96: the price of token0 in token1, as Q64.96. */
-function encodeSqrtRatioX96(amount1, amount0) {
-  return sqrtBig((amount1 << 192n) / amount0);
-}
-
-/**
- * The tick whose price is closest to this sqrtPriceX96, found by bisection.
- *
- * The closed form needs a base-1.0001 logarithm and Uniswap's own TickMath is a
- * Solidity library, so the tick is searched for instead: getSqrtRatioAtTick is
- * monotonic, and 41 halvings of the full ±887272 range land exactly. Slower than
- * a log and immune to the floating-point error that would put the position's
- * range one tick off the price we just set.
- */
-function tickAtSqrtRatio(sqrtPriceX96, sqrtAtTick) {
-  /* Bounds first: outside them the bisection would silently return an endpoint
-     rather than admit the price is unrepresentable, and a pool initialised at an
-     endpoint tick is one the price can only move away from. */
-  if (sqrtPriceX96 < sqrtAtTick(MIN_TICK) || sqrtPriceX96 > sqrtAtTick(MAX_TICK))
-    throw new Error(
-      `sqrtPriceX96 ${sqrtPriceX96} is outside V3's representable range — check the decimals on both sides`,
-    );
-  let lo = MIN_TICK;
-  let hi = MAX_TICK;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi + 1) / 2);
-    if (sqrtAtTick(mid) <= sqrtPriceX96) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo;
-}
-
-/**
- * sqrt(1.0001^tick) * 2^96, computed in BigInt.
- *
- * 1.0001^tick is irrational, so it is built by repeated squaring over a rational
- * approximation held at 128 bits of extra precision. The error is far below one
- * tick, which is all the bisection above needs.
- */
-const Q96 = 1n << 96n;
-const PREC = 1n << 128n;
-function sqrtRatioAtTick(tick) {
-  const abs = BigInt(Math.abs(tick));
-  /* sqrt(1.0001) as a PREC-scaled rational, from sqrt(1.0001 * PREC^2). */
-  let ratio = PREC;
-  let base = sqrtBig(10001n * PREC * PREC / 10000n);
-  let n = abs;
-  while (n > 0n) {
-    if (n & 1n) ratio = (ratio * base) / PREC;
-    base = (base * base) / PREC;
-    n >>= 1n;
-  }
-  if (tick < 0) ratio = (PREC * PREC) / ratio;
-  return (ratio * Q96) / PREC;
-}
 
 const num = (v, dflt) => {
   const n = Number(v);
@@ -284,18 +227,91 @@ async function priceOf(protocol, address, symbol, decimals) {
   };
 }
 
-async function ensureBalance(token, me, need, label) {
+/* Native left unwrapped, in whole units. Every write after the wrap — two
+   approvals and two mints — pays gas out of the same balance the wrap draws
+   from, so a run that wrapped its shortfall exactly would fund the pool and
+   then be unable to fill it. */
+const GAS_RESERVE = ethers.parseEther(process.env.GAS_RESERVE ?? "0.05");
+
+/* A funded balance, confirmed rather than assumed. A token that takes the call
+   and credits somebody else reports nothing wrong, and the mint two calls later
+   would be the first thing to notice. */
+async function confirmFunded(token, me, need, label) {
+  const now = await token.balanceOf(me);
+  if (now < need)
+    throw new Error(
+      `${label}: funded, and still short — ${now} raw units against ${need} needed`,
+    );
+  return now;
+}
+
+/**
+ * Cover a shortfall in the chain's wrapped native by depositing native for it.
+ *
+ * This is the one token here that cannot be minted and does not need to be:
+ * WETH9 issues exactly one token per unit of native sent, so the shortfall is a
+ * deposit. Without this it falls through to the mint path below, whose report —
+ * "no mint we control" — is true, useless, and the reason an ETH pool could not
+ * be seeded at all.
+ *
+ * Two mechanisms, because the deployed contract is not always inspectable: the
+ * explicit deposit(), and a bare value transfer into receive()/fallback(), which
+ * every WETH9 forwards to that same deposit. Which one exists is settled by
+ * simulating each. Not by scanning the bytecode for the selector: on Robinhood
+ * that reads absent for totalSupply() too, which demonstrably answers, so the
+ * scan proves nothing there — and a real send is far too expensive a way to ask.
+ */
+async function wrapNative(token, me, short, need, label) {
+  const native = await ethers.provider.getBalance(me);
+  if (native < short + GAS_RESERVE)
+    throw new Error(
+      `${label}: short by ${ethers.formatEther(short)} with ${ethers.formatEther(native)} native to wrap it from, ` +
+        `which does not clear the ${ethers.formatEther(GAS_RESERVE)} gas reserve. Lower USD, or fund ${me} on this chain.`,
+    );
+
+  let send;
+  try {
+    await token.deposit.staticCall({ value: short });
+    send = () => token.deposit({ value: short });
+  } catch (e) {
+    try {
+      await ethers.provider.call({ to: token.target, from: me, value: short, data: "0x" });
+      send = () => token.runner.sendTransaction({ to: token.target, value: short });
+    } catch {
+      throw new Error(
+        `${label}: short by ${ethers.formatEther(short)} and it takes neither deposit() nor a bare ` +
+          `transfer (${e.shortMessage ?? e.message}) — not a wrapped native this script can obtain`,
+      );
+    }
+  }
+
+  console.log(
+    `  wrapping ${ethers.formatEther(short)} native into ${label}, leaving ${ethers.formatEther(native - short)}`,
+  );
+  await (await send()).wait();
+  return confirmFunded(token, me, need, label);
+}
+
+async function ensureBalance(token, me, need, label, wrappedNative) {
   const have = await token.balanceOf(me);
   if (have >= need) return have;
   const short = need - have;
+
+  /* The wrapped native goes through a deposit instead of a mint. Checked by
+     address rather than by symbol or by probing for deposit(), because the
+     registry is the thing that decides which token this chain wraps into. */
+  if (wrappedNative && token.target.toLowerCase() === wrappedNative.toLowerCase())
+    return wrapNative(token, me, short, need, label);
+
   /* Two mint shapes live behind this list. The Ownable stablecoin mocks
      (USDT/USDe) expose owner() and gate mint() on it; the plain-ERC20 mock USDC
      (contracts/test/MockERC20.sol) has a PUBLIC mint() and no owner() at all.
      So an owner() that reverts is not "no mint" — it is the second shape, whose
      mint we can still call. Only when owner() names someone else is the mint
      genuinely out of reach, and checking that first avoids spending gas on a
-     mint() we know will revert. WETH9 lands here too: no owner(), no mint(), so
-     the direct attempt reverts and we report it as unfundable. */
+     mint() we know will revert. A token with no mint at all still lands here and
+     still reports itself unfundable; the wrapped native used to be the one that
+     did, which is what the branch above exists to stop. */
   let owner = null;
   try {
     owner = await token.owner();
@@ -314,7 +330,7 @@ async function ensureBalance(token, me, need, label) {
       `${label}: short by ${short} raw units and the token has no mint we control (${e.shortMessage ?? e.message})`,
     );
   }
-  return token.balanceOf(me);
+  return confirmFunded(token, me, need, label);
 }
 
 async function ensureAllowance(token, me, spender, need, label) {
@@ -413,11 +429,34 @@ async function main() {
   const liveTick = Number(live.tick);
   console.log(`live tick ${liveTick}`);
 
+  /* Refuse when the pool's price and the price just asserted are not the same
+     market. amount0/amount1 above are sized from the oracle, but the manager draws
+     whichever ratio the LIVE price requires — so on a pool sitting somewhere else
+     "~$N each side" is a ceiling and the deposit lands lopsided, at a price nobody
+     asked for. Not hypothetical: a BSC KLD/USDC pool left at $4.00 took 50k KLD +
+     200k USDC against a $0.03 assertion and still read $4.00 afterwards. Reprice
+     it first, or say plainly that the market is the price. */
+  const driftPct = num(process.env.MAX_DRIFT_PCT, 100);
+  const driftTicks = Math.round(Math.log(1 + driftPct / 100) / Math.log(1.0001));
+  if (Math.abs(liveTick - tick) > driftTicks) {
+    const ratio = Math.pow(1.0001, liveTick - tick);
+    if (process.env.ACCEPT_LIVE !== "1")
+      throw new Error(
+        `the pool is at tick ${liveTick}, the asserted price at tick ${tick} — ${ratio.toFixed(3)}x apart, past MAX_DRIFT_PCT=${driftPct}. ` +
+          `Reprice it first: PAIR=${keyA}/${keyB} FEE=${fee} STABLE_USD="${process.env.STABLE_USD ?? ""}" MAX_IN=<n> EXECUTE=1 npx hardhat run scripts/reprice-v3-pool.js --network ${hre.network.name} ` +
+          `— or set ACCEPT_LIVE=1 to mint at the live price, in which case the sizing above is a ceiling per side rather than the deposit.`,
+      );
+    console.log(
+      `  ACCEPT_LIVE: minting at the live price, ${ratio.toFixed(3)}x the asserted one — the sizing above is a ceiling per side, not the deposit`,
+    );
+  }
+
+
   /* ---- fund and approve ---- */
   const needed0 = amount0 * 2n;
   const needed1 = amount1 * 2n;
-  await ensureBalance(t0, me, needed0, s0);
-  await ensureBalance(t1, me, needed1, s1);
+  await ensureBalance(t0, me, needed0, s0, reg.wrappedNative);
+  await ensureBalance(t1, me, needed1, s1, reg.wrappedNative);
   await ensureAllowance(t0, me, reg.v3PositionManager, needed0, s0);
   await ensureAllowance(t1, me, reg.v3PositionManager, needed1, s1);
 

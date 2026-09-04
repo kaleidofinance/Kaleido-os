@@ -112,6 +112,62 @@ console.log("\n— several swaps that form one path —");
   );
 }
 
+console.log("\n— one swapMultiHop is one path —");
+{
+  /* The routed swap: one intent, one signature, several pools. It used to fall
+     out of `swapRoute` entirely — the filter took `kind === "swap"` only — so the
+     one plan shape whose route the user most needs to see rendered with no route
+     strip at all. */
+  const r = swapRoute([
+    approve("WETH"),
+    {
+      kind: "swapMultiHop",
+      hops: [
+        {
+          tokenIn: "0xWETH",
+          tokenOut: "0xUSDC",
+          symbolIn: "WETH",
+          symbolOut: "USDC",
+          fee: 3000,
+        },
+        {
+          tokenIn: "0xUSDC",
+          tokenOut: "0xKLD",
+          symbolIn: "USDC",
+          symbolOut: "KLD",
+          fee: 500,
+        },
+      ],
+      path: "0xdeadbeef",
+      amountIn: "0.5",
+      amountOutMin: "16000",
+      decimalsIn: 18,
+      decimalsOut: 18,
+      symbolIn: "WETH",
+      symbolOut: "KLD",
+      spender: "0xrouter",
+    },
+  ]);
+  check("found", r !== null);
+  check("one hop per pool, not per intent", r.hops.length === 2);
+  check(
+    "the path runs end to end",
+    routePath(r).join(">") === "WETH>USDC>KLD",
+    routePath(r).join(">"),
+  );
+  check("it is a path", r.chained === true);
+  check(
+    "each pool keeps its own tier",
+    r.hops[0].fee === 3000 && r.hops[1].fee === 500,
+  );
+  /* The ends are the intent's own, because `exactInput` has exactly one input
+     and one floor for the whole route — there is no per-leg figure to report. */
+  check(
+    "the ends are the whole route's",
+    r.amountIn === "0.5" && r.symbolIn === "WETH" && r.minOut === "16000",
+  );
+}
+
 console.log("\n— two swaps that are not a path —");
 {
   /* The model can propose this: sell two positions in one plan. Drawing it as

@@ -72,6 +72,24 @@ export interface ITradingPair {
    * no default.
    */
   version: "v2" | "v3";
+  /**
+   * Whether the protocol's own deployer opened this pool and funded it.
+   *
+   * Required rather than optional, and the reason is about producers rather than
+   * consumers: a `seeded?:` would let a new enumerator ship rows that quietly
+   * make no claim either way, and the row it emits is the only place a reader
+   * ever learns the difference. Required means the compiler asks.
+   *
+   * Answered by `isSeededPool` from the committed deployment records. What it
+   * claims is narrow and worth keeping straight — that a run of ours created
+   * this pool and minted the first liquidity into it at an oracle price. Not
+   * that we still hold that liquidity, and not that the price is still fair:
+   * anyone may add to a V3 pool, and a seeded pool drifts with whoever trades
+   * it. It is here because the alternative is worse — at the same pair and tier,
+   * a pool a stranger opened at a price they picked is otherwise identical in
+   * the table to one we opened at the oracle's.
+   */
+  seeded: boolean;
   token0: IToken;
   token1: IToken;
   /**
@@ -90,8 +108,11 @@ export interface ITradingPair {
   /**
    * token1 per token0, in human units — the pool's own quote, not a market
    * price. From the reserves on V2 and from `slot0`'s tick on V3. Null when the
-   * pool has no quote at all: an unfunded V2 pair, or a V3 pool that was created
-   * but never initialised.
+   * pool has no quote at all: an unfunded V2 pair, a V3 pool that was created but
+   * never initialised, or a V3 pool whose tick is pinned at the clamp a drained
+   * pool stops at — see `isTickPinned`. That last one is not an edge case worth
+   * hoping about: a testnet KLD/USDC pool reached it in normal use, and reading
+   * its tick as a price published a $6.47e48 headline off 117 dollars of USDC.
    */
   price: number | null;
   /**

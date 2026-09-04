@@ -14,7 +14,7 @@ import s from "./CapabilityTabs.module.css";
  * replays the chat turn the product would actually run: the sentence being typed,
  * Luca answering, and the plan arriving step by step. None of it is authored.
  * `traces.ts` runs each prompt through `parseCommand` and `buildIntents` — the
- * app's own local path — so on 21 of the 23 execute tools the line Luca says is
+ * app's own local path — so on 21 of the 24 execute tools the line Luca says is
  * `built.build.summary`, the identical expression agent/page.tsx:271 passes to
  * `say()`, and the steps are labelled by `renderIntent`, the same renderer the
  * in-app plan panel uses. Change a step's title in definitions.ts and this section
@@ -35,7 +35,7 @@ import s from "./CapabilityTabs.module.css";
  * Two reasons, and the first is the one that mattered:
  *
  *   1. A strip plus a rail showed one group's tools at a time, so the size of the
- *      surface — 29 tools — was something a reader had to assemble by clicking
+ *      surface — 31 tools — was something a reader had to assemble by clicking
  *      through eight tabs. The count in the heading was the only evidence of it.
  *      All 29 on screen at once *is* the claim, and it needs no copy.
  *   2. It ends the height problem for good. Groups holding 1 to 8 tools cannot
@@ -114,8 +114,8 @@ import s from "./CapabilityTabs.module.css";
  * this is `tallest ordinary` rather than `tallest`. `provideLiquidity` (three
  * steps) and the delegation grant (one step) each carry an authored reply *and* a
  * tool-call block on top of their plan — see capabilities.ts — which makes them a
- * good ~200px taller than any of the 21 typed turns or the six reads. Reserving
- * *their* height for all 29 turns is what left an ordinary turn — a swap, a send —
+ * good ~200px taller than any of the 21 typed turns or the seven reads. Reserving
+ * *their* height for all 31 turns is what left an ordinary turn — a swap, a send —
  * sitting in ~200px of empty glass, with the card overshooting the catalog beside
  * it. So they are left out of the floor: the reserved height now tracks the
  * tallest ordinary turn, which lands within a hair of the catalog's own height,

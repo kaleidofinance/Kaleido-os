@@ -139,6 +139,16 @@ const DEX_USDC = addressOf("USDC");
 const WETH = addressOf("WETH");
 const LENDING_USDC = stableContracts(TRACE_CHAIN).USDC ?? DEX_USDC;
 
+/* Read out of the same vocabulary as the addresses, for the same reason: the
+   position fixture's ticks are a price expressed in the pool's frame, and a
+   hardcoded 6 against a token the registry declares differently would put the
+   range 10^12 away from the market. Only the tick derivation uses these — every
+   other fixture is handed decimals by its caller. */
+const decimalsOf = (symbol: string) =>
+  VOCABULARY.find((t) => t.symbol === symbol)?.decimals ?? 18;
+const USDC_DECIMALS = decimalsOf("USDC");
+const WETH_DECIMALS = decimalsOf("WETH");
+
 /** The one price the fixtures need, and only the swap quote consumes it. */
 const ETH_USD = 1834.61;
 
@@ -177,6 +187,17 @@ export const TRACE_DEPS: PlanDeps = {
     req.tokenIn.toLowerCase() === DEX_USDC.toLowerCase()
       ? (Number(req.amountIn) / ETH_USD).toFixed(6)
       : (Number(req.amountIn) * ETH_USD).toFixed(2),
+  /*
+   * No route quotes, so every trace on this page routes through one pool.
+   *
+   * Deliberate rather than unfinished. These traces are the swap the marketing
+   * copy describes — USDC↔WETH, the pair whose direct pool is the deepest thing
+   * on the chain — and a fixture that made a two-hop route win would print a path
+   * through a third token in a panel that claims to show what the app does with
+   * this pair. Null means "cannot price this route", which the builder reads as
+   * the direct pool winning by default.
+   */
+  quotePath: async () => null,
   marketRow: async () => ({ tokenAddress: LENDING_USDC, amount: "5000000000" }),
   positions: async () => [
     {
@@ -184,6 +205,31 @@ export const TRACE_DEPS: PlanDeps = {
       token0: DEX_USDC,
       token1: WETH,
       liquidity: "1240998877665544",
+      /* The tier and range `increasePosition` derives its floor from. 0.3% is
+         the tier the `provideLiquidity` example names, so both liquidity traces
+         describe the same pool.
+
+         The ticks are DERIVED from the band that example asks for rather than
+         typed, for the reason the pool fixture's `tick` is: a hand-written pair
+         would be a second, disagreeing statement of where this position sits, and
+         a position whose range does not contain the price would render an
+         increase whose floor is one-sided — true of the fixture and untrue of the
+         product. ±10% of the market, snapped to the 60-tick spacing the 0.3% tier
+         uses, in the pool's USDC-first frame. */
+      fee: 3000,
+      ...(() => {
+        const spacing = 60;
+        const snap = (price: number) =>
+          Math.round(priceToTick(price, USDC_DECIMALS, WETH_DECIMALS) / spacing) *
+          spacing;
+        /* USDC-first, so the price is WETH per USDC and the band's *lower* price
+           bound in dollars is the *upper* one here. Sorted rather than assumed. */
+        const [tickLower, tickUpper] = [
+          snap(1 / (ETH_USD * 1.1)),
+          snap(1 / (ETH_USD * 0.9)),
+        ].sort((a, b) => a - b);
+        return { tickLower, tickUpper };
+      })(),
     },
   ],
   loans: async () => [

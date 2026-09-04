@@ -5,7 +5,13 @@
 // ambiguous case must fall through to "unknown" (escalate to a model) or
 // "incomplete" (ask the user). Silently guessing an amount or a token is the
 // one outcome that must never happen.
-import { parseCommand, fillSlot, completeDraft } from "./fromCommand.ts";
+import {
+  parseCommand,
+  fillSlot,
+  completeDraft,
+  draftFromCommand,
+  clearSlot,
+} from "./fromCommand.ts";
 
 let pass = 0;
 let fail = 0;
@@ -1283,6 +1289,115 @@ console.log("\n— completeDraft —");
   check(
     "holds an unfinished draft",
     half.status === "incomplete" && half.missing === "tokenOut",
+  );
+}
+
+// The resume path: a command the planner refused, taken back to a draft so the
+// follow-up answer is read locally instead of escalating to a model.
+//
+// The round trip is the property worth testing, and it is testable exactly
+// because both halves are here: `completeDraft(draftFromCommand(c))` must give
+// back `c`. If it ever doesn't, a refusal that offered to fix one value would
+// quietly rebuild a *different* command from the rest — the failure mode with no
+// error attached to it.
+console.log("\n— draftFromCommand —");
+{
+  const SENTENCES = [
+    "swap 500 USDC to KLD",
+    "stake 100",
+    "send 50 USDC to 0x1111111111111111111111111111111111111111",
+    "bridge 0.05 WETH to Base Sepolia",
+    "borrow 500 USDC at 8% for 30 days",
+    "lend 1000 USDC at 10% for 60 days",
+    "deposit 500 USDC",
+    "withdraw 200 USDC",
+    "approve 100 USDC",
+    "mint 500 USDC",
+    "redeem 500 kfUSD",
+    "lock 500",
+    "unlock 200",
+    "repay",
+    "cancel listing 3",
+    "cancel request 7",
+    "take listing 3 for 100",
+    "fund request 7",
+    "collect fees position 42",
+    "remove liquidity position 42",
+    "complete withdrawal to USDC",
+  ];
+
+  for (const sentence of SENTENCES) {
+    const parsed = p(sentence);
+    if (parsed.status !== "ok") {
+      check(`"${sentence}" parses`, false, parsed.status);
+      continue;
+    }
+    const draft = draftFromCommand(parsed.command);
+    if (!draft) {
+      check(`"${sentence}" round-trips`, false, "no draft");
+      continue;
+    }
+    const back = completeDraft(draft);
+    check(
+      `"${sentence}" round-trips through a draft`,
+      back.status === "ok" &&
+        JSON.stringify(back.command) === JSON.stringify(parsed.command),
+      back.status === "ok"
+        ? JSON.stringify(back.command)
+        : `${back.status} ${back.status === "incomplete" ? back.missing : ""}`,
+    );
+  }
+
+  // The slotless kinds. Null, not an empty draft: there is nothing about "what
+  // do you hold" that a follow-up answer could complete.
+  for (const kind of [
+    "help",
+    "receive",
+    "portfolio",
+    "claimYield",
+    "compoundYield",
+  ]) {
+    check(`${kind} has no draft`, draftFromCommand({ kind }) === null);
+  }
+}
+
+console.log("\n— clearSlot —");
+{
+  const parsed = p("lend 1000 USDC at 10% for 60 days");
+  const draft = draftFromCommand(parsed.command);
+  const cleared = clearSlot(draft, "token");
+
+  const asked = completeDraft(cleared);
+  check(
+    "clearing the token makes the draft ask for one",
+    asked.status === "incomplete" && asked.missing === "token",
+    `${asked.status} ${asked.status === "incomplete" ? asked.missing : ""}`,
+  );
+  // The whole reason to resume rather than restart: being told USDT is not
+  // accepted must not also cost the amount, the rate and the term.
+  check("the amount survives", cleared.amount === "1000");
+  check("the rate survives", cleared.interestPct === 10);
+  check("the term survives", cleared.days === 60);
+
+  const answered = fillSlot(cleared, "token", "use USDC", TOKENS);
+  check(
+    "and a bare 'use USDC' completes it",
+    answered.status === "ok" &&
+      answered.command.kind === "lend" &&
+      answered.command.token.symbol === "USDC" &&
+      answered.command.amount === "1000" &&
+      answered.command.interestPct === 10 &&
+      answered.command.days === 60,
+    answered.status,
+  );
+
+  // A ref is two fields, so clearing it has to drop both — leaving refTarget
+  // behind would let a bare "3" resolve against the side the refusal objected to.
+  const takeDraft = draftFromCommand(p("cancel listing 3").command);
+  const noRef = clearSlot(takeDraft, "ref");
+  check(
+    "clearing a ref drops the side as well as the id",
+    noRef.refTarget === undefined && noRef.refId === undefined,
   );
 }
 

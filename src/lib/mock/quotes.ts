@@ -43,8 +43,10 @@ import { chainTokenByAddress } from "@/constants/tokens";
  * A fixture that quoted where the real thing cannot would hide the blank-output
  * behaviour rather than demonstrate it.
  *
- * Nothing here touches `swapV3` or `swapV3MultiHop`. Those build calldata and
- * hand it to a signer, and they stay on the real router.
+ * Nothing here touches the router. Building calldata and handing it to a signer
+ * is the intent registry's job (see intents/definitions.ts), and it stays on the
+ * real router — `useV3SwapRouter` used to carry an unused second copy of that,
+ * which is why this note used to name two functions that no longer exist.
  */
 
 /** ./pools pool 2: 3,100,000 KLD against 643,000 USDC. */

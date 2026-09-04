@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
-import { getContracts } from "@/constants/registry";
+import { getContracts, resolveUserToken } from "@/constants/registry";
 import { getChainMeta } from "@/constants/chains";
 import { readOpenBook } from "@/lib/lending/book";
 import protocolAbi from "@/abi/ProtocolFacet.json";
@@ -8,6 +8,7 @@ import {
   chainTokenBySymbol,
   chainTokens,
   symbolForAddress,
+  toIToken,
 } from "@/constants/tokens";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import {
@@ -15,6 +16,14 @@ import {
   indexedAssets,
 } from "@/constants/utils/omniChainBalances";
 import { getSpotPrice, PRICED_SYMBOLS } from "@/lib/v2/prices/spot";
+import { FEE_TIERS } from "@/lib/dex/liquidity";
+import {
+  describeRoute,
+  findBestRoute,
+  intermediateTokens,
+  poolSide,
+} from "@/lib/dex/route";
+import { serverPathQuoter } from "./planDeps";
 import { getBridgeQuote } from "./bridgeQuotes";
 
 /**
@@ -510,6 +519,146 @@ async function getBridgeRoute(args: Json): Promise<Json> {
 }
 
 /**
+ * Whether a swap can be routed, and through what — without proposing it.
+ *
+ * WHY THIS TOOL HAD TO EXIST. Nothing in the catalog could answer "can I get KLD
+ * with my ETH?" or "what would 0.1 ETH get me?". The only DEX tool was `swap`, an
+ * execute tool, so the model's choices were to propose a transaction the user had
+ * not asked for — a plan card, a signature request, and an audit against their
+ * spend caps, in answer to a question — or to guess. Both are wrong, and the guess
+ * was wrong in a specific and repeatable way: the model would reach for `getPrice`
+ * (which does not price KLD, kfUSD, kafUSD or stKLD, and says so) and conclude the
+ * pair could not be traded, when KLD/USDC is the best-seeded pool on two chains.
+ *
+ * AND IT IS WHERE THE ROUTING FINALLY BECOMES SAYABLE. `findBestRoute` has been
+ * quoting two-hop paths for the plan builder and the Swap card since the routing
+ * fix, and the model was never told: its `swap` description described a pool, so
+ * the honest answer it could give about a pair with no direct pool was "there
+ * isn't one". This returns the hops, so the model can say ETH → USDC → KLD and be
+ * describing the route the plan would actually take — the same function, the same
+ * quoter, the same tie-breaks.
+ *
+ * Native currency resolves through `poolSide` here exactly as it does in the
+ * builder, so "can I swap ETH for KLD" is answered about the wrapped pools the
+ * trade would really touch, and the reply still names ETH.
+ *
+ * The quote is explicitly NOT a floor. `amountOut` is what the pools would fill
+ * right now; the slippage minimum is set from the user's own setting at build
+ * time, and the note says so, because a model that relays this number as
+ * guaranteed has promised something no pool can honour.
+ */
+async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
+  const inSym = String(args.tokenIn ?? "").trim();
+  const outSym = String(args.tokenOut ?? "").trim();
+  /* Default rather than required. "Is there a route from ETH to KLD?" is a real
+     question with no amount in it, and a tool that refused it would send the
+     model back to guessing — which is the behaviour this replaces. One unit is
+     enough to establish that pools exist and to state a rate; it is a poor
+     estimate of a large fill, so the note says which of the two the caller got. */
+  const raw = String(args.amount ?? "").trim();
+  const sized = raw !== "" && Number(raw) > 0;
+  const amount = sized ? raw : "1";
+
+  if (!inSym || !outSym)
+    return { error: "Two token symbols are required, e.g. tokenIn ETH, tokenOut KLD" };
+
+  if (!getContracts(chainId).v3Router)
+    return {
+      routable: false,
+      note: "Kaleido's DEX isn't deployed on this chain, so no swap can be routed here — not a liquidity problem.",
+    };
+
+  const meta = getChainMeta(chainId);
+  const inEntry = resolveUserToken(meta, inSym, "dex");
+  const outEntry = resolveUserToken(meta, outSym, "dex");
+  if (!inEntry || !outEntry)
+    return {
+      error: `I don't know a token called ${!inEntry ? inSym : outSym} on this chain.`,
+      tokens: chainTokens(chainId)
+        .map((t) => t.symbol)
+        .join(", "),
+    };
+
+  /* The wrapped substitution, from the same function build.ts uses. Without it
+     this tool would answer "no route" for every native pair — which is the
+     default state of the Swap card — and would be quoting a sentinel while doing
+     it. */
+  const sell = poolSide(chainId, toIToken(inEntry));
+  const buy = poolSide(chainId, toIToken(outEntry));
+  if (!sell || !buy)
+    return {
+      routable: false,
+      note: "That pair needs the chain's wrapped native currency to route through, and none is recorded here. Our deployment records, not the user's request.",
+    };
+
+  if (sell.token.address.toLowerCase() === buy.token.address.toLowerCase())
+    return {
+      routable: false,
+      sameAsset: true,
+      note: `${sell.token.symbol} and ${buy.token.symbol} are the same asset — one is the wrapped form of the other, held one for one. There is no pool between them and there never will be; say that rather than reporting missing liquidity.`,
+    };
+
+  try {
+    const path = await findBestRoute(
+      chainId,
+      sell.token,
+      buy.token,
+      amount,
+      serverPathQuoter(chainId),
+      /* Capped, unlike the Swap card's unbounded search: this runs inside a chat
+         turn that is already several provider round trips deep, and each extra
+         intermediate is nine more `eth_call`s. Two covers the pair that matters
+         on every chain here — USDC, then the wrapped native. */
+      { maxIntermediates: 2 },
+    );
+
+    if (!path)
+      return {
+        routable: false,
+        tokenIn: sell.token.symbol,
+        tokenOut: buy.token.symbol,
+        triedTiers: FEE_TIERS.map((f) => `${f / 10_000}%`),
+        triedVia: intermediateTokens(chainId).map((t) => t.symbol),
+        note: "No pool at any tier and no two-hop route either. Report which tiers and intermediates were tried — a bare 'not supported' reads as a missing feature when it is missing liquidity.",
+      };
+
+    const rate = path.amountOut / Number(amount);
+    return {
+      routable: true,
+      tokenIn: sell.token.symbol,
+      tokenOut: buy.token.symbol,
+      amountIn: amount,
+      amountOut: path.amountOut,
+      rate: `1 ${sell.token.symbol} ≈ ${Number(rate.toPrecision(6))} ${buy.token.symbol}`,
+      hops: path.hops.map((h) => ({
+        from: h.symbolIn,
+        to: h.symbolOut,
+        feeTier: `${h.fee / 10_000}%`,
+      })),
+      route: describeRoute(path),
+      nativeIn: sell.native,
+      nativeOut: buy.native,
+      note:
+        `A live pool quote, not a promise: the minimum output is set from the user's own slippage setting when the swap is built, and this number moves with the pools. ` +
+        (sized
+          ? "Quoted at the amount asked about, so it includes that size's price impact."
+          : "No amount was given, so this is quoted at 1 unit — state it as an indicative rate and re-quote before claiming what a specific size would fill.") +
+        (path.hops.length > 1
+          ? ` This routes through ${path.hops.length} pools, so ${path.hops.length} fee tiers are charged.`
+          : "") +
+        (sell.native || buy.native
+          ? ` The chain's own currency is ${sell.native ? "spent" : "received"} here; the pools hold its wrapped form, which the router wraps and unwraps inside the transaction. Talk about it as ${sell.native ? sell.token.symbol : buy.token.symbol}.`
+          : ""),
+    };
+  } catch (err) {
+    return {
+      error: `getSwapRoute failed: ${(err as Error).message}`,
+      note: "The quoter is unreachable. Say that rather than concluding the pair cannot be traded.",
+    };
+  }
+}
+
+/**
  * Handlers take the chain even when they don't read one.
  *
  * `getPrice` (CoinGecko), `getChains` (sweeps INDEXED_CHAINS) and
@@ -528,6 +677,7 @@ const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
     getPrice,
     getChains,
     getBridgeRoute,
+    getSwapRoute,
   };
 
 export function isReadTool(name: string): boolean {

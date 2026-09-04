@@ -78,7 +78,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
 
-import { getContracts } from "@/constants/registry";
+import { getContracts, isSeededPool } from "@/constants/registry";
 import { chainTokens } from "@/constants/tokens";
 import type { IToken, ITradingPair } from "@/constants/types/dex";
 import { FEE_TIERS } from "@/lib/dex/liquidity";
@@ -333,6 +333,13 @@ async function buildPool(
       address: found.state.address,
       chainId: chain.chainId,
       version: "v3",
+      /* From the committed deployment records rather than from anything on
+         chain. A pool does not know who created it: `createAndInitialize` has
+         no memory of its caller, PoolCreated names the factory's caller only
+         in a log this sweep does not read, and the first position could have
+         been transferred since. The record is the evidence, and it is the
+         same file the seeding run wrote. */
+      seeded: isSeededPool(chain.chainId, found.state.address),
       token0,
       token1,
       reserves: {

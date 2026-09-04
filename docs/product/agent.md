@@ -9,9 +9,10 @@ against the same contracts, and it never holds a key.
 
 ## What it can actually do
 
-Twenty-three actions and six reads. The reads cost nothing and need no signature —
-your portfolio, the markets, a quote, a price, which chains are live, a bridge
-route. The actions are the same surface the app exposes:
+Twenty-four actions and seven reads. The reads cost nothing and need no signature —
+your portfolio, the markets, a loan quote, a price, whether a swap can be routed and
+through what, which chains are live, a bridge route. The actions are the same surface
+the app exposes:
 
 | Product | Actions |
 | --- | --- |
@@ -19,7 +20,7 @@ route. The actions are the same surface the app exposes:
 | Move funds | Send, bridge |
 | Borrow and lend | Borrow, lend, take a listing, fill a request, repay, cancel, deposit collateral, withdraw collateral |
 | Stablecoin | Mint, redeem, lock, unlock, complete a withdrawal, claim yield, compound yield |
-| Liquidity | Provide, collect fees, remove a position |
+| Liquidity | Provide, add to a position, collect fees, remove all or part of one |
 | Staking | Stake |
 | Delegation | Grant a mandate |
 

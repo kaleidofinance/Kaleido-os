@@ -35,8 +35,8 @@ export interface Tool {
   /** The catalog's `required` list, in order. Empty means the tool takes none. */
   params: readonly string[];
   /**
-   * Properties the catalog declares but leaves out of `required`. Eight cases,
-   * and none of them is an oversight in the catalog:
+   * Properties the catalog declares but leaves out of `required`. Ten of them,
+   * and none is an oversight in the catalog:
    *
    *   `repay.loanId` — "Only when the user has more than one open loan",
    *   because the server resolves a single open loan itself.
@@ -45,6 +45,8 @@ export interface Tool {
    *   `getMarkets.side` — an enum of borrow/lend; absent means both sides.
    *   `getBridgeRoute.address` — "improves quote accuracy", so a route can be
    *   quoted for a visitor with no wallet connected.
+   *   `getSwapRoute.amount` — absent prices one unit, so "can I route ETH to
+   *   KLD?" can be answered before a size is decided.
    *   `provideLiquidity.fee` — absent means "whichever tier already has a pool",
    *   which the builder resolves by reading all three.
    *   `provideLiquidity.bandPct`, `.minPrice`, `.maxPrice` — the three ways to
@@ -52,6 +54,9 @@ export interface Tool {
    *   the reason they are optional rather than one required `range`: full range
    *   is the only choice that is valid on every pool, including one that does
    *   not exist yet.
+   *   `removePosition.percent` — absent closes the position, which is what the
+   *   verb has always meant and what the typed grammar can express; a partial
+   *   removal is the case only a declared argument can state unambiguously.
    *
    * Rendering any of them as required would misstate the API.
    */
@@ -112,12 +117,13 @@ export interface Group {
 }
 
 /**
- * The seven execute groups — 23 tools, which is the number in the section
+ * The seven execute groups — 24 tools, which is the number in the section
  * heading. Keep that true: the heading is a count, and a count is the one kind
  * of copy that a reader can falsify by scrolling.
  *
  * `READS` is deliberately not in here. A read tool is not an action the agent
- * executes, and folding the six of them in would make the heading wrong by six.
+ * executes, and folding the seven of them in would make the heading wrong by
+ * seven.
  */
 export const GROUPS: readonly Group[] = [
   {
@@ -131,17 +137,14 @@ export const GROUPS: readonly Group[] = [
         params: ["amount", "tokenIn", "tokenOut"],
         prompt: "swap 1000 USDC to WETH",
         /*
-         * USDC in, not ETH, and the reason is a real gap rather than taste.
-         * build.ts's swap branch emits its `approve` unconditionally — unlike
-         * the four lending branches, which spread `...(isNative ? [] : [...])`
-         * — so a native `tokenIn` produces an approve against the 0xEeee…
-         * sentinel, and the approve resolver's `allowance()` call on an address
-         * with no code throws rather than no-ops. The `swap` Intent also
-         * carries no `isNative` and its resolver passes no `value`.
-         * useV3SwapRouter.ts:174 has the same shape, so the Swap page cannot do
-         * a native `tokenIn` either — this is a product-wide gap, not something
-         * the planner introduced. An ERC20 pair is therefore the honest
-         * example: every step shown here is one that would actually sign.
+         * USDC in, not ETH, and it is no longer a gap that decides this — a
+         * native `tokenIn` builds and signs now: build.ts's swap branch spreads
+         * its approve the way the four lending branches do, and the `swap`
+         * Intent carries `isNative` through to a resolver that passes `value`.
+         * The reason to keep an ERC20 pair here is that it is the trace with
+         * more in it. A native swap is two steps shorter — no approve at all —
+         * so ETH → USDC would show the panel a one-step plan and hide the thing
+         * the panel is for. This example is the wrapped leg on purpose.
          */
         example: { amount: "1000", tokenIn: "USDC", tokenOut: "WETH" },
       },
@@ -329,7 +332,7 @@ export const GROUPS: readonly Group[] = [
   {
     title: "Liquidity",
     tab: "Liquidity",
-    note: "Open a position, collect what it earned, or close it.",
+    note: "Open a position, add to it, collect what it earned, or close part of it.",
     href: "/pool",
     tools: [
       {
@@ -392,6 +395,54 @@ export const GROUPS: readonly Group[] = [
         },
       },
       {
+        name: "increasePosition",
+        /* Five, and the four that provideLiquidity has and this does not are the
+           tier and the three range arguments. They are absent rather than
+           optional: increaseLiquidity takes a tokenId and two amounts, and reads
+           the pair, the tier and the bounds out of storage. An argument for a
+           range here would be one the contract ignores. */
+        params: ["positionId", "token0", "amount0", "token1", "amount1"],
+        /*
+         * The third and last model turn on the page. Same cause as
+         * provideLiquidity's — five values against a grammar whose only amount
+         * slot is `amount` — so fromCommand.ts names it the second
+         * `ToolOnlyKind` rather than leaving a verb list that cannot be filled.
+         *
+         * The prompt names the tokens in the order a person would say them,
+         * which is the *opposite* of the pool's own order, and that is the point
+         * of the row: the position is the authority on which leg is which. The
+         * builder matches each named symbol against the position's own token0
+         * and token1 and refuses if it cannot place both, so naming them
+         * backwards cannot deposit them backwards. Nothing else in this panel
+         * has that property — every other pair example is order-sensitive.
+         */
+        prompt: "add 0.5 WETH and 1000 USDC to position 48211",
+        reply:
+          "Two approvals and the increase. The pool, the 0.3% tier and the range are the position's own — this adds to what's already there and doesn't move the bounds, so the floors below come from the range you already have.",
+        example: {
+          positionId: "48211",
+          /*
+           * WETH, not ETH, and the builder is what decides that rather than the
+           * panel's taste: an increase refuses a native name and answers with
+           * the wrapped symbol to retry with, exactly as the mint does. A
+           * position holds WETH, and someone asking to add ETH is quite likely
+           * holding only ETH — aliasing the word would sign two approvals and
+           * then revert for want of a WETH balance.
+           *
+           * The amounts are half the mint example's at the same ratio, and the
+           * ratio is the measured one rather than spot: this position's ticks
+           * are derived from that example's ±10% band, so it takes ~1968 USDC
+           * per WETH, and 0.5 against 1000 leaves USDC very slightly
+           * over-supplied exactly as 1 against 2000 does. The floors the panel
+           * prints come from what the range will take.
+           */
+          token0: "WETH",
+          amount0: "0.5",
+          token1: "USDC",
+          amount1: "1000",
+        },
+      },
+      {
         name: "collectFees",
         params: ["positionId"],
         prompt: "collect fees position 48211",
@@ -400,6 +451,14 @@ export const GROUPS: readonly Group[] = [
       {
         name: "removePosition",
         params: ["positionId"],
+        optional: ["percent"],
+        /* No percentage in the prompt, and it is the grammar rather than the
+           example that decides that: `detectRate` owns bare percentage tokens —
+           "lend at 6%" is how a rate is found — so "remove 50% of position
+           48211" would have its 50% read as an interest rate. This prompt is
+           the sentence the typed path actually parses; the partial case is
+           reachable only as a declared argument, which is why `percent` is
+           optional here and absent from the prompt. */
         prompt: "remove liquidity position 48211",
         example: { positionId: "48211" },
       },
@@ -509,7 +568,7 @@ export const GROUPS: readonly Group[] = [
 export const READS: Group = {
   title: "Reads before it acts",
   tab: "Reads",
-  note: "Six read tools, so a proposal arrives with numbers.",
+  note: "Seven read tools, so a proposal arrives with numbers.",
   href: "/portfolio",
   tools: [
     {
@@ -533,6 +592,17 @@ export const READS: Group = {
       prompt: "how much interest on 5,000 USDC at 8% over 30 days?",
     },
     { name: "getPrice", params: ["asset"], prompt: "what's ETH worth today?" },
+    {
+      name: "getSwapRoute",
+      params: ["tokenIn", "tokenOut"],
+      optional: ["amount"],
+      /* A question about a pair with no direct pool, which is the case this tool
+         exists for: KLD is seeded against USDC and nothing else, so the answer
+         runs ETH → USDC → KLD and could not be given at all before this. Phrased
+         as a question for the same reason as getQuote above — "swap 0.1 ETH for
+         KLD" is parsed as a swap and never reaches a read. */
+      prompt: "can I get KLD with my ETH?",
+    },
     {
       name: "getChains",
       params: ["address", "asset"],

@@ -96,7 +96,7 @@ async function browserFaucetAssets(
 }
 
 export function useLocalPlanner() {
-  const { getV3AmountOut } = useV3SwapRouter();
+  const { getV3AmountOut, getV3MultiHopAmountOut } = useV3SwapRouter();
   const { chainId, address } = useWalletV2();
 
   const buildPlan = useCallback(
@@ -112,6 +112,18 @@ export function useLocalPlanner() {
               q.tokenOut,
               q.amountIn,
               q.fee,
+              q.decimalsIn,
+              q.decimalsOut,
+            ) as Promise<string | number | null>,
+          /* The multi-hop quoter, which had no callers at all until now — see
+             lib/dex/route.ts for what that cost. Same hook, same provider, so a
+             route quoted here and a route quoted in the chat go through the same
+             quoter on the same chain. */
+          quotePath: (q) =>
+            getV3MultiHopAmountOut(
+              q.tokens,
+              q.fees,
+              q.amountIn,
               q.decimalsIn,
               q.decimalsOut,
             ) as Promise<string | number | null>,
@@ -154,7 +166,7 @@ export function useLocalPlanner() {
                 }),
         },
       ),
-    [getV3AmountOut, chainId, address],
+    [getV3AmountOut, getV3MultiHopAmountOut, chainId, address],
   );
 
   return { buildPlan };

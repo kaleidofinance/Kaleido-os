@@ -17,11 +17,20 @@ import {
   FEE_TIERS,
   isTradedTier,
   mintMinimums,
+  shareOfLiquidity,
   ticksForRange,
 } from "@/lib/dex/liquidity";
+import { tickToPrice } from "@/constants/utils/v3Math";
 import type { PoolState } from "@/lib/dex/pool";
+import {
+  describeRoute,
+  encodeV3Path,
+  findBestRoute,
+  intermediateTokens,
+  poolSide,
+} from "@/lib/dex/route";
 import type { Intent } from "@/lib/v2/intents";
-import type { Command } from "@/lib/v2/intents/fromCommand";
+import type { Command, Slot } from "@/lib/v2/intents/fromCommand";
 /* A value import, unlike the type above, and the only one in this file that
    costs nothing: fromCommand.ts is deliberately dependency-free. The set is
    shared rather than restated so the parser and this branch cannot disagree
@@ -89,21 +98,69 @@ export interface PlanBuild {
   summary: string;
 }
 
+/**
+ * A refusal that names the one thing that would fix it.
+ *
+ * Most refusals here are terminal: no staking on this chain, the faucet is out of
+ * stock, you have no open loans. A few are not — they are objections to a single
+ * value in an otherwise complete command, and the user's next message is almost
+ * always the corrected value on its own ("use USDC").
+ *
+ * That reply used to reach the model. The command had parsed, so no Draft was
+ * being held; "use USDC" then hit the grammar as a bare fragment with no verb, no
+ * amount and no context, fell through as unknown, and cost a reasoning request to
+ * answer a question the planner had just asked itself. Worse than the cost, the
+ * model had none of the refusal's own knowledge — which side of the market was
+ * being checked, what it accepts — so it re-derived an answer that the planner
+ * might refuse again.
+ *
+ * `slot` is which value to re-ask about, and it is deliberately a `Slot` and not
+ * a free-text hint: the caller resumes by clearing exactly that slot on the
+ * reconstructed draft, so a value this union has no name for cannot be resumed
+ * by accident. See `draftFromCommand` and `clearSlot` in fromCommand.ts, and the
+ * `!built.ok` branch of the agent page.
+ */
+export interface PlanRetry {
+  slot: Slot;
+  /** Asked verbatim after the refusal, so the two read as one sentence. */
+  prompt: string;
+}
+
 export type PlanResult =
-  { ok: true; build: PlanBuild } | { ok: false; error: string };
+  | { ok: true; build: PlanBuild }
+  | { ok: false; error: string; retry?: PlanRetry };
 
 export interface PlannerOptions {
   slippageBps: number;
   deadlineMin: number;
 }
 
-/** The slice of a V3 position the planner needs. */
+/**
+ * The slice of a V3 position the planner needs.
+ *
+ * The tier and the tick pair are here because `increasePosition` cannot be
+ * planned without them: adding to a position deposits at the ratio its OWN range
+ * consumes at, so the slippage floor comes from `mintMinimums` over these ticks
+ * and the pool this tier identifies. They cost nothing to carry — every producer
+ * already reads them in the same `positions(tokenId)` call that returns the
+ * liquidity, and both used to throw them away.
+ *
+ * They are required rather than optional on purpose. Optional would let a
+ * producer omit them and have the increase branch refuse at runtime for a reason
+ * that is really a wiring gap; required makes it a compile error at the one place
+ * that could introduce it.
+ */
 export interface PoolPositionRef {
   tokenId: string;
   token0: string;
   token1: string;
   /** Raw uint128 liquidity, as the position manager stores it — not a token amount. */
   liquidity: string;
+  /** The pool's tier in hundredths of a bip, e.g. 3000 for 0.3%. */
+  fee: number;
+  /** The position's own range, in the pool's `token0 < token1` frame. */
+  tickLower: number;
+  tickUpper: number;
 }
 
 /** The slice of an active loan the planner needs. */
@@ -138,6 +195,28 @@ export interface QuoteRequest {
   amountIn: string;
   fee: number;
   decimalsIn: number;
+  decimalsOut: number;
+}
+
+/**
+ * A quote for a whole route, through two or more pools.
+ *
+ * Separate from `QuoteRequest` because the on-chain function is a different one:
+ * `quoteExactInput(bytes,uint256)` walks each pool's ticks in sequence with the
+ * real output of the previous hop as the next hop's input. That sequencing is why
+ * this cannot be composed from two `QuoteRequest`s and multiplied — doing so
+ * prices each hop as though it were the only trade in the pool, which overstates
+ * the fill on exactly the thin pools where a route matters, and the number then
+ * becomes `amountOutMin` on something the user signs.
+ */
+export interface PathQuoteRequest {
+  /** Addresses in order, `fees.length + 1` of them. */
+  tokens: string[];
+  fees: number[];
+  amountIn: string;
+  /** Decimals of the first token. */
+  decimalsIn: number;
+  /** Decimals of the last token. */
   decimalsOut: number;
 }
 
@@ -231,6 +310,16 @@ export interface PlanDeps {
   chainId?: number;
   /** Expected out, in human units. Null or throw both mean "no price". */
   quote(req: QuoteRequest): Promise<string | number | null>;
+  /**
+   * The same, for a route through two or more pools.
+   *
+   * Its own dep rather than an overload of `quote`, because an implementation can
+   * legitimately have one and not the other: the marketing page's snapshot deps
+   * hold recorded single-pool answers and no path quotes, and answering null there
+   * is the honest result — it means the direct pool wins by default, which is
+   * what those fixtures describe.
+   */
+  quotePath(req: PathQuoteRequest): Promise<string | number | null>;
   marketRow(
     kind: "listings" | "requests",
     id: number,
@@ -400,12 +489,22 @@ const unsupported = (
   }
   const noun = side === "loanable" ? "lend or borrow" : "use as collateral";
   const names = [...assets.map((a) => a.symbol), ...unnamed];
-  return {
-    ok: false,
-    error: names.length
-      ? `The lending market on this chain doesn't accept ${symbol} to ${noun}. Accepted: ${names.join(", ")}.`
-      : `The lending market on this chain has no assets registered yet, so there's nothing to ${noun}.`,
-  };
+  /* Resumable only when there is something to switch to. With an empty market
+     the answer to "which asset instead?" is none of them, and asking would
+     invite a reply nothing could accept. */
+  return names.length
+    ? {
+        ok: false,
+        error: `The lending market on this chain doesn't accept ${symbol} to ${noun}. Accepted: ${names.join(", ")}.`,
+        retry: {
+          slot: "token",
+          prompt: `Which of those do you want to ${noun} instead?`,
+        },
+      }
+    : {
+        ok: false,
+        error: `The lending market on this chain has no assets registered yet, so there's nothing to ${noun}.`,
+      };
 };
 
 /**
@@ -456,12 +555,19 @@ const unsupportedCollateral = (
     s.USDT && "USDT",
     s.USDe && "USDe",
   ].filter(Boolean);
-  return {
-    ok: false,
-    error: accepted.length
-      ? `${symbol} isn't accepted as kfUSD collateral. Supported: ${accepted.join(", ")}.`
-      : `kfUSD collateral isn't available on this chain yet.`,
-  };
+  return accepted.length
+    ? {
+        ok: false,
+        error: `${symbol} isn't accepted as kfUSD collateral. Supported: ${accepted.join(", ")}.`,
+        // Same bargain as `unsupported`: the amount and the verb were both
+        // stated and only the collateral was wrong, so re-asking one slot is
+        // cheaper for the user than re-typing the sentence.
+        retry: { slot: "token", prompt: "Which of those do you want to use?" },
+      }
+    : {
+        ok: false,
+        error: `kfUSD collateral isn't available on this chain yet.`,
+      };
 };
 
 /**
@@ -531,81 +637,148 @@ export async function buildIntents(
       };
     }
 
-    /* Every tier at once. Sequentially it would be up to three round trips on
-       the server for a pair whose pool is at the last one; concurrently it is
-       one, and a tier with no pool resolves to null instead of rejecting, so a
-       missing pool costs nothing beyond the call. */
-    const quotes = await Promise.all(
-      FEE_TIERS.map(async (fee) => {
-        try {
-          const q = await deps.quote({
-            tokenIn: tokenIn.address,
-            tokenOut: tokenOut.address,
-            amountIn: amount,
-            fee,
-            decimalsIn: tokenIn.decimals,
-            decimalsOut: tokenOut.decimals,
-          });
-          const n = Number(q);
-          return q && Number.isFinite(n) && n > 0 ? { fee, out: n } : null;
-        } catch {
-          return null;
-        }
-      }),
+    /*
+     * The chain's own currency becomes its wrapped form before anything is
+     * quoted, and the flags remember which end it was.
+     *
+     * THIS IS WHAT MAKES A NATIVE SWAP POSSIBLE AT ALL, and its absence is why
+     * `swap 0.1 ETH for KLD` could not work on any chain: the sentinel went
+     * straight into the quoter (an `eth_call` to an address with no code, which
+     * comes back as a revert and reads as "no pool") and into an `approve` step
+     * (`allowance()` on the same non-address, which throws mid-plan, after the
+     * user has already agreed to sign). Neither failure mentions ETH.
+     *
+     * Substituted BEFORE `findBestRoute` rather than after, for two reasons. The
+     * quote has to price the pools the transaction will really touch, and
+     * `intermediateTokens` excludes whatever sits at either end — so a WETH end
+     * has to be a WETH end by the time that exclusion runs, or the search wastes
+     * nine quotes on WETH→WETH→X and can return a route that doubles back.
+     */
+    const sell = poolSide(chainId, tokenIn);
+    const buy = poolSide(chainId, tokenOut);
+    if (!sell || !buy) {
+      /* Ours to fix, not the user's: a chain with a router always has a wrapped
+         native (the periphery takes it as a constructor argument), so reaching
+         here means our own records are short of one. */
+      return {
+        ok: false,
+        error: `Selling ${(!sell ? tokenIn : tokenOut).symbol} means routing through its wrapped form, and we haven't recorded one on this chain. The pools hold the wrapped token, so there's nothing to route through until that's fixed.`,
+      };
+    }
+    if (sell.token.address.toLowerCase() === buy.token.address.toLowerCase()) {
+      return {
+        ok: false,
+        error:
+          sell.native !== buy.native
+            ? `${tokenIn.symbol} and ${tokenOut.symbol} are the same asset — one is the wrapped form of the other, held one for one. There's no pool between them, and wrapping isn't part of the swap path.`
+            : `${tokenIn.symbol} and ${tokenOut.symbol} are the same token, so there's nothing to swap.`,
+      };
+    }
+
+    /*
+     * Every direct tier AND every two-hop route through this chain's quote
+     * assets, quoted concurrently, best fill wins.
+     *
+     * This used to quote the three direct tiers and nothing else, and refuse
+     * whenever all three came back empty — which is a true statement about the
+     * direct pair and a false one about the DEX. KLD is seeded against USDC and
+     * against nothing else, so "swap ETH for KLD" had no direct pool on any tier
+     * and was refused, while ETH→USDC→KLD was sitting there with liquidity in
+     * both legs. `findBestRoute` holds the search, shared with the Swap page so
+     * the card and the chat cannot route the same request differently.
+     */
+    const path = await findBestRoute(
+      chainId,
+      sell.token,
+      buy.token,
+      amount,
+      (tokens, fees, amountIn, decimalsIn, decimalsOut) =>
+        tokens.length === 2
+          ? deps.quote({
+              tokenIn: tokens[0],
+              tokenOut: tokens[1],
+              amountIn,
+              fee: fees[0],
+              decimalsIn,
+              decimalsOut,
+            })
+          : deps.quotePath({
+              tokens,
+              fees,
+              amountIn,
+              decimalsIn,
+              decimalsOut,
+            }),
     );
 
-    /* Best fill wins, and `>` rather than `>=` keeps the tier order as the
-       tie-break — two pools quoting identically is the stable-pair case, where
-       the cheaper tier is the one to route through. */
-    let best: { fee: number; out: number } | null = null;
-    for (const q of quotes) if (q && (!best || q.out > best.out)) best = q;
-
-    if (!best) {
+    if (!path) {
       return {
         ok: false,
         error:
           `I couldn't get a price for ${tokenIn.symbol} to ${tokenOut.symbol}. ` +
           `There's no pool for that pair at any of the tiers we trade ` +
-          `(${FEE_TIERS.map((f) => `${f / 10_000}%`).join(", ")}).`,
+          `(${FEE_TIERS.map((f) => `${f / 10_000}%`).join(", ")}), and no route ` +
+          `through ${
+            intermediateTokens(chainId)
+              .map((t) => t.symbol)
+              .join(" or ") || "another token"
+          } either.`,
       };
     }
 
-    const { fee: bestFee, out } = best;
+    const out = path.amountOut;
 
     // Mirrors the Swap page: trim to the token's precision, but never past
     // 6dp, so the string stays inside parseUnits' tolerance.
     const minOut = (out * (1 - opts.slippageBps / 10000)).toFixed(
-      tokenOut.decimals > 6 ? 6 : tokenOut.decimals,
+      buy.token.decimals > 6 ? 6 : buy.token.decimals,
     );
 
-    return {
-      ok: true,
-      build: {
-        summary: `Swap ${amount} ${tokenIn.symbol} for about ${out} ${tokenOut.symbol} through the ${bestFee / 10_000}% pool.`,
-        intents: [
-          {
-            kind: "approve",
-            token: tokenIn.address,
-            spender: router,
-            amount,
-            decimals: tokenIn.decimals,
-            symbol: tokenIn.symbol,
-          },
-          {
+    /* The approve is the same either way: one router, the whole input amount,
+       whichever entry point spends it.
+
+       Absent entirely when the user is paying with the chain's own currency —
+       value needs no allowance, and there is no contract to ask for one. This
+       used to be emitted unconditionally, which is the second half of why a
+       native swap could not work: the plan's first step called `allowance()` on
+       the 0xEeee… sentinel and threw. */
+    const approve: Intent | null = sell.native
+      ? null
+      : {
+          kind: "approve",
+          token: sell.token.address,
+          spender: router,
+          amount,
+          decimals: sell.token.decimals,
+          symbol: sell.token.symbol,
+        };
+
+    /*
+     * One hop is a `swap`; more is a `swapMultiHop`. Not a stylistic split —
+     * they are two different router functions with two different calldata
+     * shapes, and a one-hop `exactInput` gives up the per-pool price limit that
+     * `exactInputSingle` carries for nothing in return.
+     */
+    const trade: Intent =
+      path.hops.length === 1
+        ? {
             kind: "swap",
-            tokenIn: tokenIn.address,
-            tokenOut: tokenOut.address,
+            /* The wrapped addresses, with the user's symbols beside them — the
+               calldata has to name a token that exists, the confirmation row has
+               to name the asset leaving the wallet. See poolSide(). */
+            tokenIn: sell.token.address,
+            tokenOut: buy.token.address,
             amountIn: amount,
             amountOutMin: minOut,
             /* The tier the winning quote came from, never a fixed default:
                `amountOutMin` above was derived from this pool's price, so routing
                the swap through a different one applies a floor computed against
                liquidity it will not touch. */
-            fee: bestFee,
-            decimalsIn: tokenIn.decimals,
-            decimalsOut: tokenOut.decimals,
-            symbolIn: tokenIn.symbol,
-            symbolOut: tokenOut.symbol,
+            fee: path.fees[0],
+            decimalsIn: sell.token.decimals,
+            decimalsOut: buy.token.decimals,
+            symbolIn: sell.token.symbol,
+            symbolOut: buy.token.symbol,
             /* The same `router` the approve above authorises, deliberately the
                one variable rather than two lookups — see the note on `spender`
                in types.ts. If these ever disagree the approve grants an
@@ -613,8 +786,38 @@ export async function buildIntents(
                for want of one. */
             spender: router,
             deadlineMin: opts.deadlineMin,
-          },
-        ],
+            nativeIn: sell.native,
+            nativeOut: buy.native,
+          }
+        : {
+            kind: "swapMultiHop",
+            hops: path.hops.map((h) => ({
+              tokenIn: h.tokenIn,
+              tokenOut: h.tokenOut,
+              symbolIn: h.symbolIn,
+              symbolOut: h.symbolOut,
+              fee: h.fee,
+            })),
+            /* Encoded from the same hops the row is rendered from, so the
+               auditor's re-encode compares like with like. */
+            path: encodeV3Path(path.tokens, path.fees),
+            amountIn: amount,
+            amountOutMin: minOut,
+            decimalsIn: sell.token.decimals,
+            decimalsOut: buy.token.decimals,
+            symbolIn: sell.token.symbol,
+            symbolOut: buy.token.symbol,
+            spender: router,
+            deadlineMin: opts.deadlineMin,
+            nativeIn: sell.native,
+            nativeOut: buy.native,
+          };
+
+    return {
+      ok: true,
+      build: {
+        summary: `Swap ${amount} ${sell.token.symbol} for about ${out} ${buy.token.symbol}, ${describeRoute(path)}.`,
+        intents: approve ? [approve, trade] : [trade],
       },
     };
   }
@@ -1616,6 +1819,22 @@ export async function buildIntents(
       state = best.state;
     }
 
+    /* A pool that exists and reports no price has run to the far end of its
+       range: a swap took everything on one side and clamped instead of
+       reverting, so its tick is where the number line ends, not a market.
+       Refused here rather than folded into the `spot: null` case below, because
+       null there means "this pool is about to be created" and mintMinimums would
+       take the floor from the two amounts typed - which is signing a mint into a
+       clamp with a floor derived from the clamp. /pool/new still allows it, with
+       bounds typed by hand and the state named on screen; a plan has nobody
+       reading a chart. */
+    if (state && state.price === null) {
+      return {
+        ok: false,
+        error: `The ${token0.symbol}/${token1.symbol} ${fee / 10_000}% pool has run to the far end of its price range: a trade took everything on one side of it, so there is no price I can set a slippage floor against. Add to it from the pool page instead, where you set the bounds yourself.`,
+      };
+    }
+
     /* null price, not zero. A pool that does not exist has no market, and the two
        amounts below will set its opening price — which is exactly why a band is
        refused in that case rather than centred on something. */
@@ -1706,6 +1925,211 @@ export async function buildIntents(
     };
   }
 
+  /**
+   * Adding to a position that already exists.
+   *
+   * The shape of this branch is set by one fact: the position, not the caller,
+   * owns every decision a mint has to make. The pair, the tier and the range are
+   * in storage, so there is no tier to pick, no range to derive and no factory to
+   * check — and no `createsPool` case, because a position cannot exist without its
+   * pool. What is left is deciding which of the position's two tokens each amount
+   * belongs to, and setting a floor.
+   *
+   * IT MATCHES BY SYMBOL AGAINST THE POSITION, not by resolving the caller's words
+   * through the token registry. The position's own `token0`/`token1` came off the
+   * chain and are the authority on what this pool holds; the registry is a second
+   * opinion that can only agree or be wrong. Matching against the position also
+   * makes the failure legible — "that position holds USDC and WETH" names the two
+   * tokens the caller can retry with, which "I don't know a token called X" does
+   * not.
+   *
+   * The amounts come out of here in the POOL's order rather than the caller's,
+   * which is the opposite of `provideLiquidity` and the reason
+   * `increasePoolLiquidity`'s resolver does no sorting. See that kind in types.ts.
+   */
+  if (command.kind === "increasePosition") {
+    const positionManager = contracts.v3PositionManager;
+    if (!positionManager) {
+      return {
+        ok: false,
+        error: "Liquidity positions aren't available on this chain yet.",
+      };
+    }
+
+    const positions = await deps.positions();
+    const pos = positions.find((p) => p.tokenId === String(command.positionId));
+    if (!pos) {
+      return {
+        ok: false,
+        error: `I can't find position #${command.positionId} in your wallet.`,
+      };
+    }
+
+    /* Decimals are the hard requirement, not the symbol: they size what leaves
+       the wallet, and a wrong scale is off by a factor of 10^12 on a 6-against-18
+       pair. Refused rather than defaulted, the same bargain `undescribable`
+       makes for a market row. */
+    const dec0 = declaredDecimals(chainId, pos.token0);
+    const dec1 = declaredDecimals(chainId, pos.token1);
+    if (dec0 === undefined || dec1 === undefined) {
+      return {
+        ok: false,
+        error: `Position #${pos.tokenId} holds a token this app has no declared decimals for, so I can't size a deposit into it accurately. Use the Positions page, which reads the token's own decimals on-chain.`,
+      };
+    }
+    const sym0 = symbolForPoolToken(chainId, pos.token0);
+    const sym1 = symbolForPoolToken(chainId, pos.token1);
+    const pairLabel = `${sym0}/${sym1}`;
+
+    /* Which word names which side.
+     *
+     * An exact symbol match — and a native name is refused rather than aliased
+     * onto the wrapped leg. The mint branch above refuses native for a reason
+     * that survives into an increase: what a position takes is the wrapped
+     * token, and someone who asks to add ETH is quite likely holding only ETH.
+     * Aliasing the word would build two approvals and a deposit that reverts
+     * inside the periphery's `pay()` for want of a WETH balance, after the
+     * approvals had been signed. Refusing names the wrapped token and the amount
+     * to retry with, so the second attempt succeeds. One rule in both
+     * directions: native value never enters a V3 position through here.
+     *
+     * The native test is guarded on the address really being this chain's
+     * wrapped native rather than on the letter W, so an unrelated token whose
+     * symbol happens to start with one cannot produce a wrap-it-first message
+     * about a token that wraps nothing. */
+    const wrapped = contracts.wrappedNative?.toLowerCase();
+    const word = (w: string) => w.trim().toLowerCase();
+    const names = (w: string, symbol: string) =>
+      word(w) !== "" && word(w) === symbol.toLowerCase();
+    const namesWrapped = (w: string, symbol: string, address: string) =>
+      wrapped !== undefined &&
+      address.toLowerCase() === wrapped &&
+      word(w) !== "" &&
+      `w${word(w)}` === symbol.toLowerCase();
+
+    const sides = [
+      { amount: command.amount0, word: command.symbol0 },
+      { amount: command.amount1, word: command.symbol1 },
+    ];
+
+    for (const leg of [
+      { symbol: sym0, address: pos.token0 },
+      { symbol: sym1, address: pos.token1 },
+    ]) {
+      const asNative = sides.find((s) =>
+        namesWrapped(s.word, leg.symbol, leg.address),
+      );
+      if (asNative) {
+        return {
+          ok: false,
+          error: `Position #${pos.tokenId} holds ${leg.symbol}, not native ${word(asNative.word).toUpperCase()} — the position manager takes the wrapped token. Wrap it first, then add ${asNative.amount} ${leg.symbol}.`,
+        };
+      }
+    }
+
+    const forSide = (symbol: string) =>
+      sides.find((s) => names(s.word, symbol));
+    const side0 = forSide(sym0);
+    const side1 = forSide(sym1);
+
+    if (!side0 || !side1 || side0 === side1) {
+      return {
+        ok: false,
+        error: `Position #${pos.tokenId} is a ${pairLabel} position, so it takes one amount of ${sym0} and one of ${sym1} — I was given ${command.symbol0 || "(nothing)"} and ${command.symbol1 || "(nothing)"}.`,
+      };
+    }
+
+    /* The floor's inputs, and the one read this branch makes. `poolState` returns
+       the price in the order the tokens were passed, which here is the pool's own
+       order — so `state.price` needs no inversion.
+
+       Null is refused rather than passed through as `spot: null`. mintMinimums
+       reads a null spot as "this pool is about to be created" and derives the
+       ratio from the two amounts themselves, which for an increase means taking
+       the floor from what the caller typed instead of from the market — exactly
+       the hole that function exists to close. A position whose pool cannot be
+       read is a failed read, not a new pool - and a pool pinned at the far end
+       of its own range is neither, so it is refused on the same grounds. */
+    const state = await deps
+      .poolState(pos.token0, pos.token1, pos.fee, dec0, dec1)
+      .catch(() => null);
+    if (!state || state.price === null) {
+      return {
+        ok: false,
+        error: state
+          ? `The ${pairLabel} ${pos.fee / 10_000}% pool has run to the far end of its price range: a trade took everything on one side of it, so there is no price left to set a slippage floor against. Adding here would be filled at that clamp.`
+          : `I couldn't read the ${pairLabel} ${pos.fee / 10_000}% pool's current price, so I can't set a slippage floor for the deposit. Without one it would be accepted at any price.`,
+      };
+    }
+
+    const floors = mintMinimums({
+      amount0: side0.amount,
+      amount1: side1.amount,
+      decimals0: dec0,
+      decimals1: dec1,
+      /* The position's own range. Nothing here is chosen — adding to a position
+         cannot move its bounds, so these are read, not derived. */
+      tickLower: pos.tickLower,
+      tickUpper: pos.tickUpper,
+      spot: state.price,
+      slippageBps: opts.slippageBps,
+    });
+    if ("error" in floors) return { ok: false, error: floors.error };
+
+    const priced = (n: number) =>
+      n >= 1000 ? n.toFixed(2) : n.toPrecision(6).replace(/\.?0+$/, "");
+    const lowerPrice = tickToPrice(pos.tickLower, dec0, dec1);
+    const upperPrice = tickToPrice(pos.tickUpper, dec0, dec1);
+
+    return {
+      ok: true,
+      build: {
+        summary: `Add ${side0.amount} ${sym0} and ${side1.amount} ${sym1} to ${pairLabel} #${pos.tokenId}, which earns between ${priced(lowerPrice)} and ${priced(upperPrice)} ${sym1} per ${sym0}.`,
+        intents: [
+          /* Two approves to the position manager, for the mint branch's reason:
+             two tokens leave the wallet, and an allowance to the router would
+             revert here for want of one. */
+          {
+            kind: "approve",
+            token: pos.token0,
+            spender: positionManager,
+            amount: side0.amount,
+            decimals: dec0,
+            symbol: sym0,
+          },
+          {
+            kind: "approve",
+            token: pos.token1,
+            spender: positionManager,
+            amount: side1.amount,
+            decimals: dec1,
+            symbol: sym1,
+          },
+          {
+            kind: "increasePoolLiquidity",
+            positionManager,
+            tokenId: pos.tokenId,
+            token0: pos.token0,
+            token1: pos.token1,
+            decimals0: dec0,
+            decimals1: dec1,
+            symbol0: sym0,
+            symbol1: sym1,
+            amount0: side0.amount,
+            amount1: side1.amount,
+            amount0Min: floors.amount0Min,
+            amount1Min: floors.amount1Min,
+            fee: pos.fee,
+            lowerPrice,
+            upperPrice,
+            pairLabel,
+            deadlineMin: opts.deadlineMin,
+          },
+        ],
+      },
+    };
+  }
+
   if (command.kind === "collectFees" || command.kind === "removePosition") {
     /* Bound to a local before the positions fetch, for both of the reasons the
        swap branch does it: there is no point paying for a network round trip on
@@ -1747,21 +2171,55 @@ export async function buildIntents(
       };
     }
 
-    // removePosition: decreaseLiquidity to zero, then collect — two
-    // intents, matching how every other multi-step flow in this bus is
-    // modelled, so the user reviews and signs each leg rather than one
-    // resolver silently sending two transactions.
+    // removePosition: decreaseLiquidity, then collect — two intents, matching
+    // how every other multi-step flow in this bus is modelled, so the user
+    // reviews and signs each leg rather than one resolver silently sending two
+    // transactions.
+    //
+    // The whole position unless a percentage was named. The share arithmetic and
+    // the reasons for its rounding live in `shareOfLiquidity`, which
+    // /pool/positions calls too — so a percentage typed at Luca and the same one
+    // clicked on that page burn the identical amount, enforced by the call rather
+    // than asserted by a comment on each copy.
+    const percent = command.percent;
+    if (percent !== undefined && (percent <= 0 || percent > 100)) {
+      return {
+        ok: false,
+        error: `${percent}% isn't a share of a position — give something between 1 and 100.`,
+      };
+    }
+    const liquidity =
+      percent === undefined
+        ? pos.liquidity
+        : shareOfLiquidity(pos.liquidity, percent);
+    if (BigInt(liquidity) <= 0n) {
+      return {
+        ok: false,
+        error: `${percent}% of ${pairLabel} #${pos.tokenId} rounds to nothing — the position is too small to split that finely.`,
+      };
+    }
+    const share =
+      percent === undefined || percent === 100
+        ? "all liquidity"
+        : `${percent}% of the liquidity`;
+
     return {
       ok: true,
       build: {
-        summary: `Remove all liquidity from ${pairLabel} #${pos.tokenId}, then collect what's owed.`,
+        summary: `Remove ${share} from ${pairLabel} #${pos.tokenId}, then collect what's owed.`,
         intents: [
           {
             kind: "decreasePoolLiquidity",
             positionManager,
             tokenId: pos.tokenId,
-            liquidity: pos.liquidity,
+            liquidity,
             pairLabel,
+            /* Dropped at 100 as well as when absent, so a full removal is one
+               intent shape however it was asked for. Carrying `percent: 100`
+               would make the render say "100% of the liquidity" under a summary
+               that says "all liquidity" — two statements of one fact, free to
+               disagree, in the two lines a user actually reads before signing. */
+            ...(percent === undefined || percent === 100 ? {} : { percent }),
           },
           {
             kind: "collectPoolFees",

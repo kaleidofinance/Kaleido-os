@@ -199,8 +199,8 @@ export interface CompoundYieldCommand {
   kind: "compoundYield";
 }
 
-/* Pool. Both act on an existing position by id — never a mint, which needs a
- * tick range the parser has no business inventing. */
+/* Pool. All three act on an existing position by id — never a mint, which needs
+ * a tick range the parser has no business inventing. */
 export interface CollectFeesCommand {
   kind: "collectFees";
   positionId: number;
@@ -208,6 +208,44 @@ export interface CollectFeesCommand {
 export interface RemovePositionCommand {
   kind: "removePosition";
   positionId: number;
+  /**
+   * How much of the position to withdraw, 1–100. Absent means all of it, which
+   * is what the verb has always meant and what the Pool page's button does.
+   *
+   * NOT REACHABLE FROM THE GRAMMAR, deliberately, and this is the one field in
+   * this file whose absence upstream is a decision rather than an omission.
+   * "remove 50% of position 7" would have to tokenise a bare percentage, and
+   * `detectRate` already owns that shape — it is how "lend at 6%" finds its
+   * rate — so a percentage in a remove would be read as an interest rate by
+   * whichever detector ran first. The tool carries it instead: a model that has
+   * been told the argument exists can fill it unambiguously, and the local
+   * grammar keeps meaning "all of it", which is the safe reading of a bare verb.
+   */
+  percent?: number;
+}
+
+/**
+ * Add to a position that already exists.
+ *
+ * A second `ToolOnlyKind`, for `provideLiquidity`'s reason rather than a new one:
+ * it carries two amounts and two tokens against a `Slot` union whose only amount
+ * is `amount`, so a Draft cannot hold it half-specified. See ToolOnlyKind.
+ *
+ * `symbol0`/`symbol1` are bare words, not `IToken`s, and that is the difference
+ * from `ProvideLiquidityCommand`. A mint's pair is whatever the caller names; an
+ * increase's pair is already fixed by the position, so the builder's job is to
+ * decide which of the position's two tokens each amount belongs to. It matches
+ * the words against the pool's own `token0`/`token1` — read off the chain — which
+ * means it also catches a symbol that names neither, by name, instead of
+ * depositing the pair upside down.
+ */
+export interface IncreasePositionCommand {
+  kind: "increasePosition";
+  positionId: number;
+  amount0: string;
+  symbol0: string;
+  amount1: string;
+  symbol1: string;
 }
 
 /**
@@ -278,6 +316,7 @@ export type Command =
   | CompoundYieldCommand
   | CollectFeesCommand
   | RemovePositionCommand
+  | IncreasePositionCommand
   | ProvideLiquidityCommand
   | ClaimTestTokensCommand
   | HelpCommand
@@ -290,20 +329,24 @@ type ZeroSlotKind = "claimYield" | "compoundYield";
 /**
  * Kinds that only ever arrive already complete, from a tool call.
  *
- * One member, and it is not a gap left for later. Opening a position needs two
- * tokens, two amounts, a fee tier and a range — six values against a `Slot` union
- * whose token slots are `tokenIn`/`tokenOut`/`token` and whose only amount is
- * `amount`, so the draft machinery cannot hold it half-specified without growing
- * a second amount and a second token that no other verb would use.
+ * Two members, and neither is a gap left for later. Both carry two amounts and
+ * two tokens against a `Slot` union whose token slots are
+ * `tokenIn`/`tokenOut`/`token` and whose only amount is `amount`, so the draft
+ * machinery cannot hold either half-specified without growing a second amount and
+ * a second token that no other verb would use.
  *
  * Falling through to the model is the better path rather than the fallback one.
  * "add some liquidity to the USDT/USDe pool" reaches `provideLiquidity` in the
  * tool catalog, where the model collects both sides conversationally and calls
  * once with everything; a `VERBS` entry would instead take "provide 100 usdt"
- * into a Draft that can never be completed. Excluded here rather than given an
- * empty verb list so the omission is stated, not silent.
+ * into a Draft that can never be completed. `increasePosition` is the same shape
+ * with the pair already fixed by the position — "add 500 USDC and 0.3 ETH to
+ * position 48211" is four values and an id.
+ *
+ * Excluded here rather than given empty verb lists so the omission is stated,
+ * not silent.
  */
-type ToolOnlyKind = "provideLiquidity";
+type ToolOnlyKind = "provideLiquidity" | "increasePosition";
 
 /** Kinds that carry slots, i.e. everything that can be half-specified. */
 export type ActionKind = Exclude<
@@ -1349,6 +1392,158 @@ export function fillSlot(
   }
 
   return completeDraft(next);
+}
+
+/**
+ * Turns a finished Command back into the Draft it came from.
+ *
+ * The inverse of `completeDraft`, and it exists for one situation: the planner
+ * refused a command that parsed perfectly. "lend 1000 USDT at 8% for 30 days" is
+ * a complete sentence; whether this chain's lending market accepts USDT is not
+ * something a grammar can know, so the refusal arrives one layer down, after the
+ * Draft that produced the Command has been thrown away. Reconstructing it is
+ * what lets the follow-up — "use USDC" — be answered by the same local machinery
+ * that asked, instead of falling through to the model as an unparseable
+ * fragment. See `retry` in intents/build.ts.
+ *
+ * Returns null for the kinds that carry no slots (`help`, `receive`,
+ * `portfolio`, the yield verbs) and for the two tool-only kinds —
+ * `provideLiquidity` and `increasePosition` — the same exclusions `ActionKind`
+ * makes, checked here at runtime because a Command arrives from the parser, from
+ * a tool call, or from a test.
+ *
+ * `claimTestTokens` returns a draft with no asset in it, deliberately: the
+ * faucet's `symbol` is a bare word matched against the faucet's own list rather
+ * than a registry token (see ClaimTestTokensCommand), and `Draft` has nowhere to
+ * put it. A faucet refusal is therefore not resumable this way, which costs
+ * nothing — "faucet USDC" is one short line the parser reads directly.
+ */
+export function draftFromCommand(command: Command): Draft | null {
+  switch (command.kind) {
+    case "help":
+    case "receive":
+    case "portfolio":
+    case "claimYield":
+    case "compoundYield":
+    case "provideLiquidity":
+    case "increasePosition":
+      return null;
+    case "swap":
+      return {
+        kind: "swap",
+        amount: command.amount,
+        tokenIn: command.tokenIn,
+        tokenOut: command.tokenOut,
+      };
+    case "stake":
+    case "lock":
+    case "unlock":
+      return { kind: command.kind, amount: command.amount };
+    case "send":
+      return {
+        kind: "send",
+        amount: command.amount,
+        token: command.token,
+        to: command.to,
+      };
+    case "bridge":
+      return {
+        kind: "bridge",
+        amount: command.amount,
+        token: command.token,
+        toChain: command.toChain,
+      };
+    case "borrow":
+    case "lend":
+      return {
+        kind: command.kind,
+        amount: command.amount,
+        token: command.token,
+        interestPct: command.interestPct,
+        days: command.days,
+      };
+    case "repay":
+      return { kind: "repay", loanId: command.loanId };
+    case "takeListing":
+      return {
+        kind: "takeListing",
+        amount: command.amount,
+        refTarget: "listing",
+        refId: command.listingId,
+      };
+    case "fillRequest":
+      return {
+        kind: "fillRequest",
+        refTarget: "request",
+        refId: command.requestId,
+      };
+    case "cancel":
+      return {
+        kind: "cancel",
+        refTarget: command.target,
+        refId: command.id,
+      };
+    case "collectFees":
+      return {
+        kind: command.kind,
+        refTarget: "position",
+        refId: command.positionId,
+      };
+    case "removePosition":
+      /*
+       * Not resumable once a percentage was named, and that is a safety choice
+       * rather than a limitation worth working around. `Draft` has nowhere to put
+       * `percent` — see RemovePositionCommand for why it is not a slot — so a
+       * reconstructed draft would drop it, and `completeDraft` would then rebuild
+       * "remove 25% of position 7" as "remove position 7". Silently withdrawing
+       * four times what was asked for is a worse outcome than making the user
+       * retype one short sentence, so the refusal stays terminal. Without a
+       * percentage there is nothing to lose and it resumes as before.
+       */
+      if (command.percent !== undefined) return null;
+      return {
+        kind: command.kind,
+        refTarget: "position",
+        refId: command.positionId,
+      };
+    case "completeWithdrawal":
+      return { kind: "completeWithdrawal", token: command.token };
+    case "claimTestTokens":
+      return { kind: "claimTestTokens" };
+    default:
+      // approve, deposit, withdraw, mint, redeem — amount plus token.
+      return {
+        kind: command.kind,
+        amount: command.amount,
+        token: command.token,
+      };
+  }
+}
+
+/**
+ * A draft with one slot emptied, ready to be asked about again.
+ *
+ * Pairs with `draftFromCommand` above: a refusal names the slot it objects to,
+ * and this is what makes the draft incomplete in exactly that place so
+ * `fillSlot` can accept an answer for it. Every other slot survives, which is
+ * the whole point — being told USDT is not accepted should not also cost you the
+ * amount, the rate and the term you already stated.
+ */
+export function clearSlot(draft: Draft, slot: Slot): Draft {
+  const next: Draft = { ...draft };
+  if (slot === "amount") next.amount = undefined;
+  else if (slot === "tokenIn") next.tokenIn = undefined;
+  else if (slot === "tokenOut") next.tokenOut = undefined;
+  else if (slot === "token") next.token = undefined;
+  else if (slot === "recipient") next.to = undefined;
+  else if (slot === "toChain") next.toChain = undefined;
+  else if (slot === "rate") next.interestPct = undefined;
+  else if (slot === "days") next.days = undefined;
+  else if (slot === "ref") {
+    next.refTarget = undefined;
+    next.refId = undefined;
+  }
+  return next;
 }
 
 /** Promotes a draft to a command once every slot it needs is present. */

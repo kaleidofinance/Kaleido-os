@@ -60,7 +60,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
-import { getContracts } from "@/constants/registry";
+import { getContracts, isSeededPool } from "@/constants/registry";
 import { ITradingPair } from "@/constants/types/dex";
 import { chainTokenByAddress } from "@/constants/tokens";
 import { readVolumeWindow } from "@/lib/dex/logWindow";
@@ -336,6 +336,11 @@ async function sweepChain(
           address: pairAddress,
           chainId,
           version: "v2",
+          /* False for every V2 pair today, and correctly so — the V2 factories
+             hold no pairs on any deployed chain and seed-v3-pool.js writes V3
+             records only. Matched by address, so a seeded V2 pair would be
+             picked up here the moment a record for one exists. */
+          seeded: isSeededPool(chainId, pairAddress),
           token0,
           token1,
           reserves: {

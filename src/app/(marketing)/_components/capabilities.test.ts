@@ -27,10 +27,10 @@
  *      that stops being valid — a token delisted, a validation tightened — has
  *      to fail here rather than ship as an error message on the landing page.
  *   4. Which entry point each tool takes, and that the two agree. The panel tags
- *      20 turns "Direct" on the strength of `parseCommand` having closed the
+ *      21 turns "Direct" on the strength of `parseCommand` having closed the
  *      sentence; if a grammar change quietly pushes one onto the model path, the
- *      page keeps claiming it and nothing looks broken. So the one model tool is
- *      named here, and every local tool's typed plan is compared step for step
+ *      page keeps claiming it and nothing looks broken. So the three model tools
+ *      are named here, and every local tool's typed plan is compared step for step
  *      against the plan its tool call builds. That comparison is the animation's
  *      whole claim.
  *   5. The shapes the section is actually selling: a swap is two transactions, a
@@ -87,7 +87,7 @@ interface CatalogEntry {
 }
 
 /**
- * The two execute tools that have no typed form, and why — so that a third one
+ * The three execute tools that have no typed form, and why — so that a fourth one
  * joining them has to be a decision rather than a regression.
  *
  * `grantAgentPermission` has no verb in `fromCommand.ts` at all; a mandate is a
@@ -98,6 +98,11 @@ interface CatalogEntry {
  * fee tier and a range against a `Slot` union with one amount in it — the draft
  * machinery cannot hold that half-specified. The model collects it and calls once.
  *
+ * `increasePosition` is the second `ToolOnlyKind`, and it is here for the same
+ * arithmetic: a position id plus two amounts and two symbols is five values
+ * against that same one-amount union. It is narrower than a mint by four
+ * arguments and still one too wide for a Draft.
+ *
  * `completeWithdrawal` was a third, and it left this list by being fixed rather
  * than by being edited around. Its payout token resolves through
  * `findToken("kfusd", tokens)`, which found nothing while no chain had a kfUSD
@@ -105,7 +110,11 @@ interface CatalogEntry {
  * closes on the grammar. This assertion is what caught the move — worth saying
  * because the check reads like a formality until the day it changes.
  */
-const MODEL_PATH = ["grantAgentPermission", "provideLiquidity"];
+const MODEL_PATH = [
+  "grantAgentPermission",
+  "increasePosition",
+  "provideLiquidity",
+];
 
 async function load() {
   const catalogMod = await import("../../../lib/ai/toolCatalog");
@@ -340,7 +349,7 @@ async function main() {
     .map((t) => t.name)
     .sort();
   check(
-    "exactly the named tool needs a model, and no others",
+    "exactly the named tools need a model, and no others",
     JSON.stringify(modelExecute) === JSON.stringify([...MODEL_PATH].sort()),
     `on the model path: [${modelExecute.join(",")}]`,
   );
@@ -374,7 +383,7 @@ async function main() {
   /*
    * The section's strongest claim, and the only one that needs both builders run
    * side by side: that typing the sentence and calling the tool arrive at the same
-   * transactions. The panel says "Direct" on 20 turns, which is a statement that
+   * transactions. The panel says "Direct" on 21 turns, which is a statement that
    * the model was not needed — not that it would have produced something else.
    *
    * Compared by `kind` sequence rather than by whole intents. The two paths pass

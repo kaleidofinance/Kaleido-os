@@ -27,11 +27,16 @@ const ACTION_BITS: Record<AgentAction, number> = {
  * Agent settings panel — the guardrails on Luca, plus the on-chain delegation
  * surface for external agents.
  *
- * The limits/actions/slippage here are the off-chain guardrails (persisted per
- * address, fed to /api/chat). The "Delegate to an agent" section is the
- * on-chain grant — bounded authority for an autonomous or SDK-connected agent —
- * which maps to AgentPermissionFacet but isn't callable from the frontend yet,
- * so it's shown and honestly disabled.
+ * Every control here does something, which is worth stating because a panel of
+ * this shape is usually half decorative. The caps, the health floor, the slippage
+ * default and the action toggles are sent to /api/chat and enforced by the
+ * server-side auditor (see lib/ai/auditor.ts, which takes the smaller of each and
+ * its own ceiling). "Stop between steps" is read by PlanReview. The model choice
+ * is re-checked against the server's allow-list. And "Delegate to an external
+ * agent" builds a real `grantAgentPermission` intent and signs it through
+ * PlanReview — the resolver is registered (intents/definitions.ts:927) and calls
+ * AgentPermissionFacet, so the bounds it carries are enforced by the contract
+ * rather than by anything on this device.
  */
 interface AgentSettingsProps {
   address?: string;
@@ -177,6 +182,15 @@ export default function AgentSettings({
                   update({ slippageBps: Math.round(num(v) * 100) })
                 }
               />
+              {/* The baseline, because the field is a percentage of something and
+                  the something is not obvious. The auditor measures against the
+                  quote after the pools take their fee, so this number is not
+                  partly spent before the trade has moved at all. */}
+              <p className={s.note}>
+                Measured on top of the pools&apos; own trading fees, which are a
+                quoted cost rather than a risk. A route through two 0.30% pools
+                doesn&apos;t spend any of this.
+              </p>
             </section>
 
             <section className={s.section}>
@@ -195,6 +209,34 @@ export default function AgentSettings({
                   </button>
                 </div>
               ))}
+            </section>
+
+            <section className={s.section}>
+              <div className={s.sectionTitle}>Signing</div>
+              <div className={s.toggleRow}>
+                <span>Stop between steps</span>
+                <button
+                  className={`${s.toggle} ${settings.confirmEachStep ? s.toggleOn : ""}`}
+                  onClick={() =>
+                    update({ confirmEachStep: !settings.confirmEachStep })
+                  }
+                  role="switch"
+                  aria-checked={settings.confirmEachStep}
+                  aria-label="Stop between steps"
+                >
+                  <i />
+                </button>
+              </div>
+              {/* Says what the toggle does not do, because the name invites the
+                  stronger reading. Nothing here can waive a wallet prompt, and a
+                  panel that let someone believe otherwise would be worse than one
+                  with no switch at all. */}
+              <p className={s.note}>
+                A plan Luca drafts hands control back after each step, so you can
+                stop part-way with the earlier steps already settled. Either way
+                every step is its own signature in your wallet — that isn&apos;t
+                ours to switch off.
+              </p>
             </section>
 
             {/* Hidden entirely when the server offers nothing — an empty picker
@@ -223,7 +265,7 @@ export default function AgentSettings({
                     </button>
                   ))}
                 </div>
-                <p className={s.modelNote}>
+                <p className={s.note}>
                   Applies to reasoning turns only. Direct commands like{" "}
                   <code>swap 500 USDC to KLD</code> are parsed on this device,
                   cost nothing and don&apos;t use a model.

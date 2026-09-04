@@ -39,6 +39,8 @@ import { visibleProse } from "@/lib/ai/actionsBlock";
 import {
   parseCommand,
   fillSlot,
+  clearSlot,
+  draftFromCommand,
   COMMAND_HELP,
   type Draft,
   type ParseResult,
@@ -91,6 +93,40 @@ type Panel = { kind: "idle" } | { kind: "plan" } | { kind: "receive" };
  * thread it is not scoped per address.
  */
 const WIDE_KEY = "kaleido.v2.agentExpanded";
+
+/**
+ * How many prior turns travel with a model request.
+ *
+ * Eight, i.e. four exchanges — one more than the server keeps, so the trimming
+ * that decides what the model sees happens in exactly one place. Sending
+ * slightly more than will be used costs a little bandwidth and buys the
+ * property that changing the model's window is a one-file change on the server,
+ * where the token bill is.
+ */
+const HISTORY_TURNS = 8;
+
+/**
+ * The transcript as a model can read it.
+ *
+ * Prose only. A `Msg` also carries `plan`, `cards`, `via` and `thinking`, and
+ * none of them belong in a prompt: a plan is a signable artefact the auditor
+ * already checked, cards are frames this client draws, `via` is our own routing,
+ * and `thinking` is a record of reads whose results the loop re-fetches itself.
+ * Replaying any of it would spend tokens describing our rendering to the model
+ * that is meant to be reasoning about the user's money.
+ *
+ * Empty-text turns drop out — a receive panel or a card-only answer has prose of
+ * "" — because a blank message is not a turn a model can interpret, and some
+ * providers reject one outright.
+ */
+function historyForModel(
+  thread: { role: "user" | "assistant"; text: string }[],
+): { role: "user" | "assistant"; content: string }[] {
+  return thread
+    .slice(-HISTORY_TURNS)
+    .filter((m) => m.text.trim().length > 0)
+    .map((m) => ({ role: m.role, content: m.text }));
+}
 
 /*
  * The empty card's starting points live in ./suggestions, so that a plain tsx
@@ -419,6 +455,35 @@ export default function AgentPage() {
     if (signal.aborted) return true;
 
     if (!built.ok) {
+      /*
+       * A refusal that names a fixable value keeps the turn alive.
+       *
+       * The planner knows things the grammar cannot — which assets this chain's
+       * lending market actually accepts, which collateral kfUSD takes — so a
+       * sentence that parsed cleanly can still be refused here. Before this, that
+       * refusal ended the local turn: `pending` was only ever set for a parse
+       * that came back "incomplete", so "use USDC" arrived at the next turn as a
+       * bare fragment, fell through the grammar as unknown, and spent a reasoning
+       * request answering the question the planner had just asked.
+       *
+       * `retry` carries the slot to re-ask, so the draft is rebuilt from the
+       * command with that one value cleared and everything else — the amount, the
+       * rate, the term — kept. Refusals with no `retry` are terminal and still
+       * end the turn: "staking isn't available on this chain" has no slot whose
+       * answer would change it.
+       */
+      if (built.retry) {
+        const draft = draftFromCommand(result.command);
+        if (draft) {
+          setPending({
+            draft: clearSlot(draft, built.retry.slot),
+            missing: built.retry.slot,
+          });
+          note("Refused, but one answer away — asked for it");
+          say(`${built.error}\n\n${built.retry.prompt}`, { via: "local" });
+          return true;
+        }
+      }
       note("Couldn't build it — the reply says why");
       say(built.error, { via: "local" });
       return true;
@@ -565,6 +630,16 @@ export default function AgentPage() {
         signal: abort.signal,
         body: JSON.stringify({
           message: content,
+          /* What was already said. `messages` is this render's value, so it is
+             the thread *before* the line just added above — which is what the
+             server wants, since `message` is that line.
+
+             This page answers most sentences itself, so without this the model
+             saw only the fragments the grammar could not read: "use USDC" after
+             Luca had listed USDC as an option arrived as a standalone request
+             with nothing to attach it to. Bounded and re-sanitised server-side
+             (historyFromBody), since a client is sending it. */
+          history: historyForModel(messages),
           // No fallback. The old `?? 11124` silently told the server every
           // disconnected user was on Abstract Testnet, so answers came back
           // confidently scoped to a chain the user wasn't on. Undefined is the
@@ -953,11 +1028,30 @@ export default function AgentPage() {
    * nothing proposed it falls back to the chain's own asset. That makes the panel
    * answer the question the turn just raised — ask Luca to swap ETH for USDC and
    * the price you would be trading at is already on screen.
+   *
+   * TWO THINGS THIS GOT WRONG, and the panel was blank for a swap plan either
+   * way, which is why they are worth naming rather than just fixing.
+   *
+   * It published addresses. `usePublishChartPair` documents its arguments as
+   * symbols — the feed is keyed by symbol, see ChartPanel.tsx:124 — and
+   * `swap.tokenIn` is the contract. So every swap plan published a 42-character
+   * string to a lookup keyed by "ETH", found nothing, and drew the empty state.
+   * `symbolIn`/`symbolOut` are the fields the same intent carries for exactly
+   * this, and they are what the Swap page passes.
+   *
+   * And it matched `kind === "swap"` only, so a routed swap — the one plan shape
+   * where the user most needs to see the market, since it moves their money
+   * through a token they never named — fell through to the chain's native asset.
+   * `swapMultiHop`'s `symbolIn`/`symbolOut` are the route's two ends, which is
+   * the pair the user asked about; the intermediate is a pool, not a market they
+   * chose. Same filter bug `swapRoute()` in agentTurn.ts carried.
    */
   const charted = useMemo(() => {
-    const swap = plan?.find((i) => i.kind === "swap");
-    if (swap && swap.kind === "swap") {
-      return { base: swap.tokenIn, quote: swap.tokenOut };
+    const swap = plan?.find(
+      (i) => i.kind === "swap" || i.kind === "swapMultiHop",
+    );
+    if (swap && (swap.kind === "swap" || swap.kind === "swapMultiHop")) {
+      return { base: swap.symbolIn, quote: swap.symbolOut };
     }
     const native = getChainMeta(chainId)?.nativeCurrency.symbol ?? "ETH";
     return { base: native, quote: null };
@@ -1136,6 +1230,10 @@ export default function AgentPage() {
             <PlanReview
               intents={plan}
               submitLabel="Sign & run"
+              /* The one caller that passes it, because the setting is on the
+                 agent: this is a plan the user is reading for the first time,
+                 not a form they just filled in. */
+              confirmEachStep={settings.confirmEachStep}
               onComplete={onComplete}
               onCancel={() => setPanel({ kind: "idle" })}
             />
@@ -1408,7 +1506,7 @@ export default function AgentPage() {
               signatures. While the plan sits unopened in the transcript that is
               this footnote, because the CTA above is the only thing offering to
               sign. Once the review panel takes the box it prints the same
-              sentence itself (PlanReview.tsx:184), and both were rendering — the
+              sentence itself (PlanReview.tsx:235), and both were rendering — the
               identical line twice, a few rows apart, on the one surface where a
               reader is being asked to trust what it says. */}
           {plan && panel.kind !== "plan" ? (

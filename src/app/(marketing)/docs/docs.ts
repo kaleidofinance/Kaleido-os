@@ -200,7 +200,7 @@ export const DOC_GROUPS: DocGroup[] = [
         file: "docs/product/agent.md",
         title: "The agent",
         blurb:
-          "Twenty-three actions and six reads driven from a sentence, with a second model auditing the plan before anything reaches your wallet to sign.",
+          "Twenty-four actions and seven reads driven from a sentence, with a second model auditing the plan before anything reaches your wallet to sign.",
       },
       {
         slug: "delegation",

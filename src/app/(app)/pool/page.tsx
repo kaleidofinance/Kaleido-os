@@ -13,6 +13,7 @@ import ChainTag from "./_components/ChainTag";
 import DepositModal from "./_components/DepositModal";
 import PairIcon from "./_components/PairIcon";
 import PoolFilterModal from "./_components/PoolFilterModal";
+import SeededTick from "./_components/SeededTick";
 import {
   NO_FILTERS,
   activeFilterCount,
@@ -259,6 +260,12 @@ export default function PoolsPage() {
                       {feeLabel(p.feeBps)} · {p.version.toUpperCase()}
                     </span>
                     <ChainTag chainId={p.chainId} />
+                    {/* Only when it is true, and no counterpart when it is
+                        not: absence here means no deployment record, which
+                        covers a stranger's pool and one of ours whose record
+                        never got committed alike. Label off -- this line
+                        already carries three text runs. See SeededTick. */}
+                    {p.seeded ? <SeededTick /> : null}
                   </div>
                 </div>
               </Link>

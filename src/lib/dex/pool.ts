@@ -1,6 +1,10 @@
 import { ethers } from "ethers";
 import { getContracts } from "@/constants/registry";
-import { poolOrderInverted, tickToPrice } from "@/constants/utils/v3Math";
+import {
+  isTickPinned,
+  poolOrderInverted,
+  tickToPrice,
+} from "@/constants/utils/v3Math";
 import { retryRpc } from "@/lib/dex/rpcRetry";
 
 /**
@@ -41,8 +45,13 @@ export interface PoolState {
    * decimals must NOT also be swapped.
    */
   tick: number;
-  /** token1 per token0, as the CALLER named them, in human units. */
-  price: number;
+  /**
+   * token1 per token0, as the CALLER named them, in human units. Null when the
+   * tick is pinned at the clamp a drained pool stops at, because there is no
+   * price there to report — see `isTickPinned`, and the note on this function
+   * about what callers may not do with a missing price.
+   */
+  price: number | null;
   /** Raw uint128 in-range liquidity. A pool can exist with none. */
   liquidity: string;
 }
@@ -97,7 +106,15 @@ export async function readPoolState(
     return {
       address,
       tick,
-      price: tickToPrice(tick, decimalsA, decimalsB),
+      /* A pinned tick is the contract's clamp rather than a market, and every
+         caller here would do something wrong with it: the range picker would
+         centre a ±10% band on 3.4e50, the planners would build a mint around
+         that band, and the all-pools sweep would value the pool's unpriced leg
+         off it — which is how one drained testnet pool published a $6.47e48
+         headline. One refusal at the read covers all four. */
+      price: isTickPinned(tick, fee)
+        ? null
+        : tickToPrice(tick, decimalsA, decimalsB),
       liquidity: BigInt(liquidity).toString(),
     };
   } catch {
@@ -124,7 +141,15 @@ export async function readPoolTiers(
   const found = new Map<number, PoolState>();
   const states = await Promise.all(
     fees.map((fee) =>
-      readPoolState(provider, chainId, tokenA, tokenB, fee, decimalsA, decimalsB),
+      readPoolState(
+        provider,
+        chainId,
+        tokenA,
+        tokenB,
+        fee,
+        decimalsA,
+        decimalsB,
+      ),
     ),
   );
   states.forEach((state, i) => {

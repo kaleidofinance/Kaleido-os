@@ -118,8 +118,22 @@ export const TOOL_CATALOG: ToolSpec[] = [
   {
     name: "swap",
     kind: "execute",
+    /*
+     * The description used to say "Swap one token for another on Kaleido's DEX",
+     * and that sentence cost the agent the routing it already had. `findBestRoute`
+     * quotes every fee tier of the direct pair AND every two-hop path through the
+     * chain's quote assets, and has since the routing fix — but the model was told
+     * about a pool, so when a pair had no direct pool the honest answer it could
+     * give was "Kaleido doesn't support that pair". KLD is seeded against USDC and
+     * against nothing else, so that was the answer for every KLD pair but one.
+     *
+     * The routing is stated here, and the read tool that can check it before
+     * proposing anything is named, because a model that has to propose a
+     * transaction to find out whether one is possible will propose transactions to
+     * answer questions.
+     */
     description:
-      "Swap one token for another on Kaleido's DEX. The server quotes the pool and sets the minimum output from the user's slippage setting — do not attempt to specify a price or a minimum.",
+      "Swap one token for another on Kaleido's DEX. The server finds the route: every fee tier of the direct pool and every two-hop route through the chain's quote assets, best fill wins — so a pair with no direct pool is usually still tradable and you should not tell the user a pair is unsupported without checking. It also quotes the pools and sets the minimum output from the user's slippage setting; do not attempt to specify a price, a minimum, a fee tier or a route. Either side may be the chain's own currency (ETH, BNB, POL): the router wraps and unwraps inside the transaction, and paying with it needs no approval. Use getSwapRoute first for any question about whether, or at what rate, a pair can be traded — proposing a swap is not how to find out.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -351,13 +365,63 @@ export const TOOL_CATALOG: ToolSpec[] = [
   {
     name: "removePosition",
     kind: "execute",
+    /*
+     * `percent` is the one argument in this catalog that exists BECAUSE the local
+     * grammar cannot carry it. "remove 50% of position 7" would need a bare
+     * percentage token, and `detectRate` already owns that shape — it is how
+     * "lend at 6%" finds its rate — so the same text in a remove would be read as
+     * an interest rate. A declared argument has no such ambiguity, which is why
+     * partial removal is a model-side capability and full removal is both.
+     */
     description:
-      "Close a liquidity position entirely, withdrawing all of its liquidity. To open one instead, use provideLiquidity.",
+      "Withdraw liquidity from one of the user's positions. Omit percent to close it entirely; pass percent (1–100) to take only part and leave the rest earning — 100 and omitted are the same transaction. Fees owed are collected in the same plan either way. To add to a position instead, use increasePosition; to open a new one, provideLiquidity.",
     parameters: {
       type: "object",
       additionalProperties: false,
-      properties: { positionId },
+      properties: {
+        positionId,
+        percent: {
+          type: "number",
+          description:
+            "Share of the position's liquidity to withdraw, 1–100. Omit for all of it — never guess a partial amount the user did not ask for.",
+        },
+      },
       required: ["positionId"],
+    },
+  },
+  {
+    name: "increasePosition",
+    kind: "execute",
+    /*
+     * Narrower than `provideLiquidity` by four arguments, and every one of them is
+     * missing because the position already answers it. There is no fee tier, no
+     * band and no price pair here: adding to a position cannot move its range, so
+     * an argument for one would be a field the contract ignores — it reads the
+     * pair, the tier and the bounds out of storage. Stating that in the
+     * description matters, because a model that assumed otherwise would report a
+     * range change to the user that never happened.
+     */
+    description:
+      "Add more liquidity to one of the user's existing positions. The pool, the fee tier and the price range are the position's own and cannot be changed by this — to earn over a different range, open a new position with provideLiquidity. Give one amount for each of the position's two tokens, named by symbol in either order; the exact split the range consumes is worked out server-side. Name the wrapped token, not native ETH: a position holds WETH, and native is refused with the wrapped symbol to retry with.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        positionId,
+        token0: symbol,
+        amount0: {
+          type: "string",
+          description:
+            'Human amount of the first named token, e.g. "500" — never base units',
+        },
+        token1: symbol,
+        amount1: {
+          type: "string",
+          description:
+            'Human amount of the second named token, e.g. "0.3" — never base units',
+        },
+      },
+      required: ["positionId", "token0", "amount0", "token1", "amount1"],
     },
   },
   {
@@ -600,6 +664,36 @@ export const TOOL_CATALOG: ToolSpec[] = [
         },
       },
       required: ["fromChain", "toChain", "asset", "amount"],
+    },
+  },
+  {
+    name: "getSwapRoute",
+    kind: "read",
+    /*
+     * The DEX's missing read tool, and the gap was structural rather than
+     * cosmetic: `swap` was the only DEX tool in the catalog, so every question
+     * about a pair — can it be traded, at what rate, through what — could only be
+     * answered by proposing a transaction. A plan card and a signature request in
+     * reply to "can I get KLD with my ETH?" is the wrong artefact, so the model
+     * would instead reach for `getPrice`, find KLD deliberately unpriced, and
+     * answer that the pair could not be traded. Measured against the seeded pools,
+     * KLD/USDC is the best-filled pair on two chains.
+     */
+    description:
+      "Whether a swap can be routed on Kaleido's DEX right now, at what rate, and through which pools — without proposing anything. Use this for any question about whether a pair is tradable, what an amount would get, or how a route goes; and before telling a user a pair is unsupported, because the router finds two-hop routes and most pairs here have no direct pool. Amount is optional: without it you get an indicative rate at one unit, with it you get that size's real fill. Either side may be the chain's own currency. This is a live pool quote and not a floor — the minimum output is set from the user's slippage setting when the swap is actually built.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        tokenIn: symbol,
+        tokenOut: symbol,
+        amount: {
+          type: "string",
+          description:
+            "Optional. Amount of tokenIn in human units. Omit for an indicative rate.",
+        },
+      },
+      required: ["tokenIn", "tokenOut"],
     },
   },
 ];

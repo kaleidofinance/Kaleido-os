@@ -30,6 +30,7 @@ import type { Command } from "./fromCommand";
 import type { IntentKind } from "./types";
 import type {
   BridgeRouteRequest,
+  PathQuoteRequest,
   PlanDeps,
   PlanResult,
   QuoteRequest,
@@ -88,6 +89,8 @@ const OPTS = { slippageBps: 50, deadlineMin: 20 };
 function fakeDeps(over: Partial<PlanDeps> = {}) {
   const calls = {
     quote: [] as QuoteRequest[],
+    /** Routes the builder asked to price, in order. See `quotePath` below. */
+    paths: [] as PathQuoteRequest[],
     rows: [] as string[],
     positions: 0,
     loans: 0,
@@ -110,6 +113,20 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
     quote: async (req) => {
       calls.quote.push(req);
       return over.quote ? over.quote(req) : null;
+    },
+    /*
+     * Null unless a test asks for a route, so the swap cases below keep
+     * describing the direct pool they were written for.
+     *
+     * Recorded as well as answered, because "did the builder look for a route at
+     * all?" is a distinct assertion from "which route did it pick": a swap branch
+     * that quoted only the direct tiers would still return a plan on every
+     * existing case here, which is precisely how the missing multi-hop search
+     * went unnoticed for as long as it did.
+     */
+    quotePath: async (req) => {
+      calls.paths.push(req);
+      return over.quotePath ? over.quotePath(req) : null;
     },
     marketRow: async (kind, id) => {
       calls.rows.push(`${kind}#${id}`);
@@ -283,6 +300,10 @@ async function main() {
   const at = (r: PlanResult, i: number): Record<string, unknown> =>
     r.ok ? (r.build.intents[i] as unknown as Record<string, unknown>) : {};
   const errorOf = (r: PlanResult) => (r.ok ? "" : r.error);
+  /* The slot a refusal offers to re-ask, or "" for a terminal one. What the
+     agent page reads to keep a refused turn local instead of handing the
+     follow-up to a model. */
+  const retryOf = (r: PlanResult) => (r.ok ? "" : (r.retry?.slot ?? ""));
   const summaryOf = (r: PlanResult) => (r.ok ? r.build.summary : "");
   const same = (a: unknown, b: string) =>
     typeof a === "string" && a.toLowerCase() === b.toLowerCase();
@@ -478,6 +499,111 @@ async function main() {
       "slippage and deadline come from the caller, not a constant",
       at(r, 1).amountOutMin === "990.000000" && at(r, 1).deadlineMin === 5,
       JSON.stringify(at(r, 1)),
+    );
+  }
+
+  console.log("\n— swapping the chain's own currency —");
+  /*
+   * The default state of the Swap card, and until the wrapped substitution went
+   * in it was the one state that could not trade: the sell side seeds with the
+   * chain's native asset, so `swap 0.1 ETH for KLD` was the first thing anyone
+   * tried and the sentinel went straight into the quoter. Neither failure named
+   * ETH — the quote came back empty (an `eth_call` to an address with no code)
+   * and read as "no pool for that pair", and the plan's `approve` step called
+   * `allowance()` on 0xEeee… and threw after the user had already agreed to sign.
+   *
+   * Same class as the lending case further down ("native collateral skips the
+   * approve that would revert"), and asserted the same way: what the plan omits
+   * matters as much as what it contains.
+   */
+  const WRAPPED = String(DEPLOYED.wrappedNative);
+  {
+    const { deps, calls } = fakeDeps({ quote: async () => "1000" });
+    const r = await build(
+      { kind: "swap", amount: "0.5", tokenIn: DEX_ETH, tokenOut: DEX_KLD },
+      deps,
+    );
+    check(
+      "selling the native asset is one step — no allowance to grant",
+      kinds(r) === "swap",
+      kinds(r),
+    );
+    const s = at(r, 0);
+    check(
+      "the calldata names the wrapped token, which is what a pool holds",
+      same(s.tokenIn, WRAPPED),
+      `${String(s.tokenIn)} (wrapped ${WRAPPED})`,
+    );
+    check(
+      "the row still names the asset leaving the wallet",
+      s.symbolIn === "ETH" && s.symbolOut === "KLD",
+      `${String(s.symbolIn)} → ${String(s.symbolOut)}`,
+    );
+    check(
+      "and the step is flagged, so the resolver attaches value",
+      s.nativeIn === true && s.nativeOut === false,
+      JSON.stringify({ nativeIn: s.nativeIn, nativeOut: s.nativeOut }),
+    );
+    /* The substitution has to happen BEFORE the quote, not between the quote and
+       the plan: a route priced against the sentinel prices nothing, and
+       `intermediateTokens` excludes whatever sits at either end, so a sentinel
+       end would leave WETH in the candidate list and let the search return
+       WETH→WETH→KLD. */
+    check(
+      "every quote asked about the wrapped token, never the sentinel",
+      calls.quote.length === 3 &&
+        calls.quote.every((q) => same(q.tokenIn, WRAPPED)),
+      JSON.stringify(calls.quote.map((q) => q.tokenIn)),
+    );
+  }
+  {
+    const { deps } = fakeDeps({ quote: async () => "0.25" });
+    const r = await build(
+      { kind: "swap", amount: "100", tokenIn: DEX_KLD, tokenOut: DEX_ETH },
+      deps,
+    );
+    check(
+      "buying the native asset still approves the token being sold",
+      kinds(r) === "approve,swap",
+      kinds(r),
+    );
+    const s = at(r, 1);
+    check(
+      "the swap buys wrapped and is flagged to unwrap on the way out",
+      same(s.tokenOut, WRAPPED) &&
+        s.symbolOut === "ETH" &&
+        s.nativeOut === true &&
+        s.nativeIn === false,
+      JSON.stringify(s),
+    );
+  }
+  {
+    /* One asset held two ways, so in pool form both sides are one address. This
+       used to fall through to "I couldn't get a price", which is a claim about
+       liquidity — and it sends the user looking for the pool that would fix it.
+       There is no pool between a token and its own wrapper and there never will
+       be. */
+    const { deps, calls } = fakeDeps({ quote: async () => "1000" });
+    const r = await build(
+      {
+        kind: "swap",
+        amount: "1",
+        tokenIn: DEX_ETH,
+        tokenOut: tk("WETH", 18, WRAPPED),
+      },
+      deps,
+    );
+    check(
+      "ETH for its own wrapper is refused as one asset, not as no liquidity",
+      !r.ok &&
+        errorOf(r).includes("same asset") &&
+        !errorOf(r).includes("couldn't get a price"),
+      errorOf(r),
+    );
+    check(
+      "and it costs no quotes to say so",
+      calls.quote.length === 0,
+      String(calls.quote.length),
     );
   }
 
@@ -1110,6 +1236,14 @@ async function main() {
       errorOf(r).includes(acceptedList("collateral")),
       errorOf(r),
     );
+    /* And it says which value to re-ask about, which is what stops "use USDC"
+       from becoming a reasoning request. The list above is only useful if the
+       user's reply to it can be read locally. */
+    check(
+      "and it offers to take a different token without re-parsing the sentence",
+      retryOf(r) === "token",
+      retryOf(r) || "none",
+    );
   }
   {
     const { deps } = fakeDeps();
@@ -1399,6 +1533,24 @@ async function main() {
       !r.ok && errorOf(r).startsWith("KLD isn't accepted as kfUSD collateral"),
       errorOf(r),
     );
+    check(
+      "and the amount is kept, so only the collateral is re-asked",
+      retryOf(r) === "token",
+      retryOf(r) || "none",
+    );
+  }
+  {
+    /* The other half of the contract: a refusal no answer can fix must NOT set
+       `retry`. Staking is unavailable on this chain full stop, so holding a
+       draft open would ask a question whose every possible reply is refused —
+       the slot loop the agent page's `pending` handling exists to avoid. */
+    const { deps } = fakeDeps({ chainId: 1 });
+    const r = await build({ kind: "stake", amount: "100" }, deps);
+    check(
+      "a terminal refusal offers no retry",
+      !r.ok && retryOf(r) === "",
+      `${errorOf(r)} / ${retryOf(r) || "none"}`,
+    );
   }
   {
     const { deps } = fakeDeps();
@@ -1530,14 +1682,50 @@ async function main() {
 
   console.log("\n— pool —");
   const baseTokens = chainTokens(CHAIN);
-  const t0 = baseTokens[0];
-  const t1 = baseTokens[1];
-  if (!t0 || !t1) throw new Error(`chain ${CHAIN} has no token registry`);
+  /*
+   * The pair every position fixture below holds, read out of the registry rather
+   * than fabricated the way the mint's legs are.
+   *
+   * The difference is real and not stylistic: a `provideLiquidity` command
+   * carries an IToken per leg, so the mint is handed its decimals. A position
+   * branch is handed nothing but two addresses off the chain and looks the
+   * decimals up with `declaredDecimals`. A made-up address has none, and every
+   * increase case here would assert nothing but that one refusal.
+   */
+  const WETH_TOKEN = baseTokens.find((t) => t.symbol === "WETH");
+  const USDC_TOKEN = baseTokens.find((t) => t.symbol === "USDC");
+  if (!WETH_TOKEN || !USDC_TOKEN) {
+    throw new Error(`chain ${CHAIN} has no WETH and USDC in its token registry`);
+  }
+  /* 1834.61 USDC per WETH, the same figure the landing-page fixture uses so the
+     two cannot describe different markets. */
+  const WETH_USDC_SPOT = 1834.61;
+  /*
+   * ±10% of that spot, snapped outward to the 0.3% tier's 60-tick spacing.
+   *
+   * Written down in one place because two branches have to agree on it. The mint
+   * case ASSERTS the band resolves to exactly this pair — nothing feeds it a
+   * tick, so the assertion is as strong against a named constant as against a
+   * literal — and the increase fixture is GIVEN it. That makes an increase into
+   * this position and a fresh mint of the same band two paths to one range, so
+   * the floors and bounds they print have to match, and a divergence in either
+   * shows up as a number the other case already measured.
+   */
+  const BAND_TICKS = { lower: -202200, upper: -200220 };
   const POSITION = {
     tokenId: "7",
-    token0: t0.address,
-    token1: t1.address,
+    token0: WETH_TOKEN.address,
+    token1: USDC_TOKEN.address,
     liquidity: "123456789",
+    /* Neither `collectFees` nor `removePosition` reads the tier or the ticks — a
+       collect takes a tokenId and a recipient, a decrease takes an amount of
+       liquidity — so these three are here because `increasePosition` made them
+       required on PoolPositionRef. They are the real range rather than zeroes for
+       the reason the pool fixtures carry a real `tick`: a fixture that lies about
+       a field nothing reads is still a lie waiting for a reader. */
+    fee: 3000,
+    tickLower: BAND_TICKS.lower,
+    tickUpper: BAND_TICKS.upper,
   };
   {
     const { deps, calls } = fakeDeps({ positions: async () => [POSITION] });
@@ -1555,7 +1743,7 @@ async function main() {
     );
     check(
       "the pair label resolves both symbols from the chain registry",
-      at(r, 0).pairLabel === `${t0.symbol}/${t1.symbol}`,
+      at(r, 0).pairLabel === `${WETH_TOKEN.symbol}/${USDC_TOKEN.symbol}`,
       String(at(r, 0).pairLabel),
     );
   }
@@ -1615,11 +1803,10 @@ async function main() {
    * decimals changed would move the expected ticks without the test saying why.
    */
   const DEX_WETH = tk("WETH", 18, "0xdec0000000000000000000000000000000000003");
-  /* 1834.61 USDC per WETH, the same figure the landing-page fixture uses so the
-     two cannot describe different markets. `tick` is what that price is in the
-     contracts' own terms; nothing in build.ts reads it, and a fixture that lies
-     about an unread field is still a lie. */
-  const WETH_USDC_SPOT = 1834.61;
+  /* The spot and the band both live at the top of the pool section now, shared
+     with the position fixtures — see BAND_TICKS there for why. `tick` is what
+     that price is in the contracts' own terms; nothing in build.ts reads it, and
+     a fixture that lies about an unread field is still a lie. */
   const pool = (liquidity: string, price = WETH_USDC_SPOT) => ({
     address: "0x0000000000000000000000000000000000000f01",
     tick: priceToTick(price, 18, 6),
@@ -1681,11 +1868,11 @@ async function main() {
     );
     /* The tick assertion, and the reason it names numbers rather than a
        relation: ±10% of 1834.61 is 1651.15–2018.07, which snaps OUTWARD to the
-       60-tick multiples -202200 and -200220. Asserting only "lower < upper"
-       would pass for a band centred anywhere at all. */
+       60-tick multiples BAND_TICKS holds. Asserting only "lower < upper" would
+       pass for a band centred anywhere at all. */
     check(
       "the band snapped to the 0.3% tier's 60-tick multiples around the spot",
-      m.tickLower === -202200 && m.tickUpper === -200220,
+      m.tickLower === BAND_TICKS.lower && m.tickUpper === BAND_TICKS.upper,
       `${m.tickLower}..${m.tickUpper}`,
     );
     check(
@@ -2013,6 +2200,305 @@ async function main() {
       "a failing pool read degrades to 'no pool', not to a thrown plan",
       r.ok && at(r, 2).createsPool === true,
       `${errorOf(r)} ${String(at(r, 2).createsPool)}`,
+    );
+  }
+
+  console.log("\n— pool: adding to and trimming a position —");
+  /*
+   * The two branches that act on a position that already exists and change what
+   * it holds. What is being held in place here:
+   *
+   *   THE POOL'S ORDER WINS. `increasePoolLiquidity` carries amounts in the
+   *   POSITION's token0/token1 order, not the caller's — the opposite of the mint
+   *   — because `increaseLiquidity` reads the pair out of storage and its
+   *   resolver therefore sorts nothing. Getting this backwards does not revert:
+   *   it deposits the pair upside down. So the first two cases call with the
+   *   tokens named in each order and assert the same intent comes out.
+   *
+   *   THE RANGE IS READ, NOT CHOSEN. An increase cannot move a position's bounds,
+   *   so the floors come from the ticks in storage. The fixture is given
+   *   BAND_TICKS and the amounts the mint case uses, which makes every number
+   *   below one the mint already measured — a floor derived from the caller's
+   *   amounts instead of from the range would show up as a different pair.
+   *
+   *   A SHARE IS AN EXACT SHARE. Liquidity is a uint128 past 2^53, so the burn is
+   *   integer maths on a BigInt, and 100 is the position's own figure rather than
+   *   the arithmetic's — "remove 100%" must not leave dust that a later collect
+   *   then reports as a balance.
+   */
+  const INCREASE = {
+    kind: "increasePosition" as const,
+    positionId: 7,
+    /* Bare words, not IToken objects — the command carries what the model said,
+       and the position is what resolves it. Named USDC-first, which is the
+       OPPOSITE of the fixture's pool order: the whole point of the case is that
+       the builder has to cross them. */
+    symbol0: "USDC",
+    amount0: "2000",
+    symbol1: "WETH",
+    amount1: "1",
+  };
+  {
+    const { deps, calls } = fakeDeps({
+      positions: async () => [POSITION],
+      poolState: async () => pool("9000"),
+    });
+    const r = await build(INCREASE, deps);
+    check(
+      "an increase is approve, approve, then the increase",
+      kinds(r) === "approve,approve,increasePoolLiquidity",
+      kinds(r),
+    );
+    check(
+      "it reads the position's own tier and nothing else",
+      calls.pools.join(",") === "3000" && calls.positions === 1,
+      `${calls.pools.join(",")} / ${calls.positions}`,
+    );
+    check(
+      "both approves authorise the position manager, each at its own decimals",
+      same(at(r, 0).spender, LEGACY_CONTRACTS.v3PositionManager) &&
+        same(at(r, 1).spender, LEGACY_CONTRACTS.v3PositionManager) &&
+        same(at(r, 0).token, WETH_TOKEN.address) &&
+        at(r, 0).decimals === 18 &&
+        same(at(r, 1).token, USDC_TOKEN.address) &&
+        at(r, 1).decimals === 6,
+      `${JSON.stringify(at(r, 0))} ${JSON.stringify(at(r, 1))}`,
+    );
+    const inc = at(r, 2);
+    check(
+      "the amounts cross into the pool's order, not the caller's",
+      same(inc.token0, WETH_TOKEN.address) &&
+        inc.amount0 === "1" &&
+        same(inc.token1, USDC_TOKEN.address) &&
+        inc.amount1 === "2000",
+      JSON.stringify(inc),
+    );
+    check(
+      "and so do the decimals and the symbols",
+      inc.decimals0 === 18 &&
+        inc.decimals1 === 6 &&
+        inc.symbol0 === "WETH" &&
+        inc.symbol1 === "USDC",
+      JSON.stringify(inc),
+    );
+    check(
+      "it carries the position's tier and token id, and the caller's deadline",
+      inc.fee === 3000 &&
+        inc.tokenId === "7" &&
+        inc.deadlineMin === 20 &&
+        same(inc.positionManager, LEGACY_CONTRACTS.v3PositionManager),
+      JSON.stringify(inc),
+    );
+    /* The same floors the mint case measured for this band and these amounts,
+       which is the assertion that says the range came out of storage: a floor
+       taken from the typed amounts would be 0.995 and 1990 instead. */
+    check(
+      "the floors come from the position's range, matching the mint of the same band",
+      inc.amount0Min === "0.995" && inc.amount1Min === "1958.169197",
+      `${inc.amount0Min} / ${inc.amount1Min}`,
+    );
+    check(
+      "the bounds it reports are the position's, and they straddle the market",
+      Number(inc.lowerPrice) < WETH_USDC_SPOT &&
+        WETH_USDC_SPOT < Number(inc.upperPrice),
+      `${inc.lowerPrice} < ${WETH_USDC_SPOT} < ${inc.upperPrice}`,
+    );
+    check(
+      "the summary names the pair, the id and the range it will earn over",
+      summaryOf(r).includes("WETH/USDC #7") &&
+        summaryOf(r).includes("1655.79") &&
+        summaryOf(r).includes("2018.32"),
+      summaryOf(r),
+    );
+  }
+  {
+    /* The same increase with the tokens named in the pool's own order. Two
+       different sentences, one transaction — if this and the case above ever
+       disagree, one of them is depositing the pair inverted. */
+    const { deps } = fakeDeps({
+      positions: async () => [POSITION],
+      poolState: async () => pool("9000"),
+    });
+    const r = await build(
+      {
+        ...INCREASE,
+        symbol0: "WETH",
+        amount0: "1",
+        symbol1: "USDC",
+        amount1: "2000",
+      },
+      deps,
+    );
+    const inc = at(r, 2);
+    check(
+      "naming the pair in the pool's order builds the identical increase",
+      same(inc.token0, WETH_TOKEN.address) &&
+        inc.amount0 === "1" &&
+        inc.amount1 === "2000" &&
+        inc.amount0Min === "0.995" &&
+        inc.amount1Min === "1958.169197",
+      JSON.stringify(inc),
+    );
+  }
+  {
+    /* A token the position does not hold. The refusal names both of the ones it
+       does, which is the whole reason this branch matches against the position
+       instead of resolving the words through the registry. */
+    const { deps } = fakeDeps({
+      positions: async () => [POSITION],
+      poolState: async () => pool("9000"),
+    });
+    const r = await build({ ...INCREASE, symbol0: "KLD" }, deps);
+    check(
+      "a token the position doesn't hold is refused, naming the two it does",
+      !r.ok &&
+        errorOf(r).includes("WETH/USDC position") &&
+        errorOf(r).includes("I was given KLD and WETH"),
+      errorOf(r),
+    );
+  }
+  {
+    /* Native, refused rather than aliased onto the wrapped leg — the same answer
+       the mint gives, and for the same reason: what the position takes is WETH,
+       and someone asking to add ETH may be holding only ETH. The message has to
+       carry the wrapped symbol or the retry has nothing to go on. */
+    const { deps, calls } = fakeDeps({
+      positions: async () => [POSITION],
+      poolState: async () => pool("9000"),
+    });
+    const r = await build({ ...INCREASE, symbol1: "ETH" }, deps);
+    check(
+      "a native name is refused with the wrapped symbol to retry with",
+      !r.ok &&
+        errorOf(r).includes("not native ETH") &&
+        errorOf(r).includes("then add 1 WETH"),
+      errorOf(r),
+    );
+    check(
+      "and it refuses before pricing the pool",
+      calls.pools.length === 0,
+      calls.pools.join(","),
+    );
+  }
+  {
+    /* No price, no floor. Refused rather than built with `spot: null`, which
+       mintMinimums reads as "this pool is about to be created" and answers by
+       deriving the ratio from the caller's own amounts — a floor that agrees with
+       whatever was typed is not a floor. */
+    const { deps } = fakeDeps({
+      positions: async () => [POSITION],
+      poolState: async () => null,
+    });
+    const r = await build(INCREASE, deps);
+    check(
+      "a pool that can't be priced refuses the increase rather than flooring at the typed amounts",
+      !r.ok && errorOf(r).includes("can't set a slippage floor"),
+      errorOf(r),
+    );
+  }
+  {
+    const { deps } = fakeDeps({ positions: async () => [POSITION] });
+    const r = await build({
+        kind: "increasePosition",
+        positionId: 9,
+        symbol0: "WETH",
+        amount0: "1",
+        symbol1: "USDC",
+        amount1: "2000",
+      }, deps);
+    check(
+      "an increase into a position the wallet doesn't hold is refused by id",
+      !r.ok && errorOf(r).includes("can't find position #9 in your wallet"),
+      errorOf(r),
+    );
+  }
+  {
+    const { deps } = fakeDeps({ positions: async () => [POSITION] });
+    const r = await build(
+      { kind: "removePosition", positionId: 7, percent: 25 },
+      deps,
+    );
+    check(
+      "a partial removal is still decrease then collect",
+      kinds(r) === "decreasePoolLiquidity,collectPoolFees",
+      kinds(r),
+    );
+    /* 123456789 × 2500 / 10000, truncated. Written as the answer rather than as
+       the expression so the test states a number the reader can check. */
+    check(
+      "it burns exactly a quarter of the raw liquidity, truncated",
+      at(r, 0).liquidity === "30864197",
+      String(at(r, 0).liquidity),
+    );
+    check(
+      "the share rides along for the render, and the summary says it",
+      at(r, 0).percent === 25 && summaryOf(r).includes("25% of the liquidity"),
+      `${String(at(r, 0).percent)} / ${summaryOf(r)}`,
+    );
+  }
+  {
+    /* A fractional share, which a model will reach for the moment a user says
+       "an eighth". Taken in hundredths of a percent, so 12.5 is exact rather than
+       rounded up to 13 — 123456789 × 1250 / 10000. */
+    const { deps } = fakeDeps({ positions: async () => [POSITION] });
+    const r = await build(
+      { kind: "removePosition", positionId: 7, percent: 12.5 },
+      deps,
+    );
+    check(
+      "a fractional share is exact, not rounded to a whole percent",
+      at(r, 0).liquidity === "15432098",
+      String(at(r, 0).liquidity),
+    );
+  }
+  {
+    const { deps } = fakeDeps({ positions: async () => [POSITION] });
+    const r = await build(
+      { kind: "removePosition", positionId: 7, percent: 100 },
+      deps,
+    );
+    check(
+      "100% is the position's own figure, so it cannot leave dust",
+      at(r, 0).liquidity === POSITION.liquidity &&
+        at(r, 0).percent === undefined &&
+        summaryOf(r).includes("all liquidity"),
+      `${String(at(r, 0).liquidity)} / ${String(at(r, 0).percent)} / ${summaryOf(r)}`,
+    );
+  }
+  {
+    const { deps } = fakeDeps({ positions: async () => [POSITION] });
+    const over = await build(
+      { kind: "removePosition", positionId: 7, percent: 140 },
+      deps,
+    );
+    const under = await build(
+      { kind: "removePosition", positionId: 7, percent: 0 },
+      deps,
+    );
+    check(
+      "a share outside 1–100 is refused in both directions",
+      !over.ok &&
+        errorOf(over).includes("isn't a share of a position") &&
+        !under.ok &&
+        errorOf(under).includes("isn't a share of a position"),
+      `${errorOf(over)} / ${errorOf(under)}`,
+    );
+  }
+  {
+    /* A position so small the share truncates to zero. `decreaseLiquidity(0)`
+       does not revert — it succeeds, burns nothing, and the plan would read as a
+       withdrawal that happened. */
+    const { deps } = fakeDeps({
+      positions: async () => [{ ...POSITION, liquidity: "40" }],
+    });
+    const r = await build(
+      { kind: "removePosition", positionId: 7, percent: 1 },
+      deps,
+    );
+    check(
+      "a share that truncates to zero is refused rather than burning nothing",
+      !r.ok && errorOf(r).includes("rounds to nothing"),
+      errorOf(r),
     );
   }
 

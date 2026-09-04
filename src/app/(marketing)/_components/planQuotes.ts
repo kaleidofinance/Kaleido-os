@@ -161,6 +161,13 @@ export function snapshotDeps(): {
       }
       return out;
     },
+    /* No path quotes recorded, and null is the honest answer rather than a gap:
+       the snapshot below is a set of `quoteExactInputSingle` answers against one
+       seeded pool, so there is no multi-hop figure to serve. The builder reads
+       null as "this route cannot be priced" and the direct pool wins, which is
+       exactly what these fixtures describe. Inventing a two-hop number here
+       would put a figure on the marketing page that no quoter ever returned. */
+    quotePath: async () => null,
     marketRow: async () => null,
     positions: async () => [],
     loans: async () => [],

@@ -1,0 +1,45 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "timestamp": "2026-09-04T20:02:55.394Z",
+  "pool": "0xC41cd7D86A28695f779B36217b592D7048A6d664",
+  "fee": 3000,
+  "token0": {
+    "address": "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6",
+    "symbol": "USDT",
+    "decimals": 6
+  },
+  "token1": {
+    "address": "0xC0f8D36ec1D96477F26228A629a31248c584f477",
+    "symbol": "KLD",
+    "decimals": 18
+  },
+  "openedAt": {
+    "sqrtPriceX96": "457424009550099325341618683423704726",
+    "tick": 311391,
+    "liveTick": 311391
+  },
+  "oracle": {
+    "usd0": "1000000000000000000",
+    "usd1": "30000000000000000",
+    "source0": "operator override $1.0",
+    "source1": "operator override $0.03"
+  },
+  "positions": [
+    {
+      "label": "full range",
+      "tickLower": -887220,
+      "tickUpper": 887220,
+      "tokenId": "6",
+      "tx": "0x578e1ed05ef7ea6c0e2952f56e2381beccb4155316c1e42a2eb568e9ab9153b8"
+    },
+    {
+      "label": "±2%",
+      "tickLower": 311220,
+      "tickUpper": 311580,
+      "tokenId": "7",
+      "tx": "0x11ec3d253f257490a269f393c5d57a69a545d451b7f3daaa7626fbea5ff08de3"
+    }
+  ],
+  "feeProtocol": null
+}

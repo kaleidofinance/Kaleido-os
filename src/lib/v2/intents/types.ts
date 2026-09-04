@@ -47,6 +47,126 @@ export type Intent =
       spender: string;
       /** Transaction deadline in minutes. Defaults to 20 if omitted. */
       deadlineMin?: number;
+      /* ------------------------------------------------- native currency -- */
+      /*
+       * THE ADDRESSES ARE ALWAYS WRAPPED, THE SYMBOLS ARE ALWAYS THE USER'S.
+       *
+       * A native swap carries WETH9's address in `tokenIn`/`tokenOut` and "ETH"
+       * in `symbolIn`/`symbolOut`, and these two flags say which end was native.
+       * The split is what makes the transaction both valid and legible: the
+       * router's parameters have to name a real ERC20 — there is no sentinel
+       * handling anywhere in the V3 periphery, and passing 0xEeee… produces a
+       * revert that reads as "no pool" — while the row the user signs has to name
+       * the asset that actually leaves their wallet.
+       *
+       * NO CONTRACT CHANGE WAS NEEDED FOR EITHER, which is worth recording
+       * because this union used to say native was unsupported. Checked against
+       * smart-contract/contracts/dex-v3/periphery: `PeripheryPayments.pay()`
+       * wraps `msg.value` itself when the token it is asked to pull is WETH9;
+       * `unwrapWETH9(uint256,address)` and `refundETH()` are both deployed; and
+       * `Multicall.multicall` is `payable` and uses `delegatecall`, so `msg.sender`
+       * and `msg.value` survive into the swap. What was missing was on this side.
+       */
+      /**
+       * Selling the chain's own currency: the amount rides as `value` and there
+       * is no approve step.
+       *
+       * The absent approve is the load-bearing half. `build.ts` used to emit one
+       * unconditionally, so a native sell called `allowance()` on the sentinel —
+       * an address with no code — and threw after the user had already committed
+       * to the plan. There is nothing to authorise here: the router wraps value
+       * it was sent rather than pulling a balance it was permitted to move.
+       */
+      nativeIn?: boolean;
+      /**
+       * Wanting the chain's own currency back: the pool pays WETH9 and the
+       * router unwraps it in the same transaction.
+       *
+       * Still one signature. The resolver sends
+       * `multicall([exactInputSingle, unwrapWETH9(amountOutMin, user)])` with the
+       * swap's recipient left as the router, because a token that has to be
+       * unwrapped cannot be paid to the user first — and `unwrapWETH9` reverts
+       * rather than short-paying when the router holds less than the floor.
+       */
+      nativeOut?: boolean;
+    }
+  /*
+   * A swap through more than one pool, in one transaction.
+   *
+   * A SEPARATE KIND RATHER THAN `swap` WITH AN OPTIONAL PATH, and the reason is
+   * the calldata: this calls `exactInput`, which takes a packed byte string, where
+   * `swap` calls `exactInputSingle`, which takes a tuple of named fields. Folding
+   * them together would mean a resolver branching on whether an optional array is
+   * present to choose between two different router functions, and an auditor rule
+   * that has to check `fee` OR `fees` depending on a field's absence. Two kinds
+   * cost one more entry in three total records and keep both rules readable.
+   *
+   * NOT A CHAIN OF `swap` STEPS EITHER, which is the other shape this could have
+   * taken — `swapRoute()` in agentTurn.ts already renders several `swap` intents
+   * as one path, so the display layer would have accepted it. It is wrong for the
+   * money: N chained swaps are N signatures and N transactions, each with its own
+   * floor and its own chance to land while the next is still unsigned, so a user
+   * who signs the first and rejects the second is left holding an intermediate
+   * token they never asked for. `exactInput` is one signature that either
+   * completes the whole path or reverts, and the intermediate never touches the
+   * wallet.
+   *
+   * Native currency is supported at both ends, by the same wrapped-address /
+   * user-symbol split the `swap` kind documents above: the packed path names
+   * WETH9 because that is the token the first pool holds, and `nativeIn` /
+   * `nativeOut` say which end the user actually handed over or wants back. This
+   * comment used to claim the opposite — that a path could not take ETH and that
+   * the refusal named `wrapNative` so a retry could succeed. Both halves were
+   * false: nothing in this app has ever registered a `wrapNative` intent, and the
+   * only thing missing for native was the substitution, not a contract.
+   */
+  | {
+      kind: "swapMultiHop";
+      /**
+       * The pools, in order. Length >= 2 — a one-hop route is a `swap`, not this,
+       * and the auditor rejects a single-element path so the two kinds cannot
+       * describe the same transaction.
+       */
+      hops: readonly {
+        tokenIn: string;
+        tokenOut: string;
+        symbolIn: string;
+        symbolOut: string;
+        fee: number;
+      }[];
+      /**
+       * The encoded path the router is actually called with.
+       *
+       * Carried rather than derived in the resolver so that what the auditor
+       * checks is the bytes that get signed. `encodeV3Path` is deterministic over
+       * `hops`, and the auditor re-encodes and compares — which is what makes a
+       * path auditable at all: nobody can read a 43-byte hex string and tell
+       * whether it is the route the summary described.
+       */
+      path: string;
+      amountIn: string;
+      amountOutMin: string;
+      /** Decimals of the FIRST hop's input, for parsing `amountIn`. */
+      decimalsIn: number;
+      /** Decimals of the LAST hop's output, for parsing `amountOutMin`. */
+      decimalsOut: number;
+      symbolIn: string;
+      symbolOut: string;
+      /** Same router the paired `approve` authorises. See `swap`'s note. */
+      spender: string;
+      /** Transaction deadline in minutes. Defaults to 20 if omitted. */
+      deadlineMin?: number;
+      /**
+       * The first hop's input is the chain's own currency. See `swap.nativeIn` —
+       * identical meaning, and the first hop's `tokenIn` is WETH9 either way.
+       */
+      nativeIn?: boolean;
+      /**
+       * The last hop's output should be paid out as the chain's own currency.
+       * See `swap.nativeOut`. The multicall wraps `exactInput` rather than
+       * `exactInputSingle`; nothing else differs.
+       */
+      nativeOut?: boolean;
     }
   | {
       kind: "stake";
@@ -364,14 +484,80 @@ export type Intent =
       tokenId: string;
       pairLabel: string;
     }
+  /*
+   * Adding to a position that already exists.
+   *
+   * Separate from `mintPoolPosition` because the position, not the caller, owns
+   * every decision a mint has to make: the pair, the tier and the range are all
+   * already in storage, and `increaseLiquidity` takes only a tokenId and two
+   * amounts. Nothing here names a tick, and there is deliberately no field
+   * through which one could be named — the range cannot be changed by adding to
+   * a position, and a kind that appeared to accept one would be lying.
+   *
+   * THE AMOUNTS ARE IN THE POOL'S OWN token0/token1 ORDER, not the caller's, and
+   * that is the one thing about this kind worth reading twice. `mintPoolPosition`
+   * carries caller-frame amounts and crosses into the pool's frame once, in the
+   * resolver, via `sortMintParams` — it has to, because a mint is where the
+   * caller's order is the only order there is. Here the pool's order is already
+   * known: it is `positions(tokenId).token0`, read off the chain. So the builder
+   * maps the user's two symbols onto that pair and stores them sorted, and the
+   * resolver does no crossing at all. Getting this backwards does not revert; it
+   * deposits the pair upside down, which either takes far less than asked or
+   * reverts on the floor with no explanation of why.
+   *
+   * No native currency, for `mintPoolPosition`'s reason: the position manager
+   * reverts when native value arrives beside a wrapped leg.
+   */
   | {
-      /** decreaseLiquidity — always to zero, matching the Pool page's own
-       * "Remove liquidity" button, which has no partial-removal option either. */
+      kind: "increasePoolLiquidity";
+      positionManager: string;
+      tokenId: string;
+      /** Pool frame — `token0 < token1`, exactly as `positions()` reports them. */
+      token0: string;
+      token1: string;
+      decimals0: number;
+      decimals1: number;
+      symbol0: string;
+      symbol1: string;
+      /** Human amounts, pool order. */
+      amount0: string;
+      amount1: string;
+      /** Slippage floor from `mintMinimums` over the position's own range. */
+      amount0Min: string;
+      amount1Min: string;
+      /** The tier and range being added to. Display only — the contract reads
+       * both from the position itself, so these cannot disagree with it. */
+      fee: number;
+      lowerPrice: number;
+      upperPrice: number;
+      pairLabel: string;
+      /** Transaction deadline in minutes. Defaults to 20 if omitted. */
+      deadlineMin?: number;
+    }
+  | {
+      /**
+       * decreaseLiquidity, for all of a position or part of it.
+       *
+       * `liquidity` is the exact uint128 the contract is asked to burn, computed
+       * by the builder — the full `pos.liquidity` by default, or a fraction of it
+       * when the caller named a percentage. It used to only ever be the whole of
+       * it, matching the Pool page's own button, which had no partial option
+       * either; both now do.
+       *
+       * `percent` is the SAME decision expressed for the confirmation row, and it
+       * is display-only: `liquidity` is what gets sent, so the row can be wrong
+       * about the fraction without loosening anything. It exists because the
+       * fraction is not recoverable from `liquidity` alone — the renderer never
+       * sees the position's total — and "Remove liquidity" that silently means
+       * "all of it" is the wrong sentence to put above a signature.
+       */
       kind: "decreasePoolLiquidity";
       positionManager: string;
       tokenId: string;
       liquidity: string;
       pairLabel: string;
+      /** 1–100. Absent means the whole position. Display only — see above. */
+      percent?: number;
     }
   | {
       kind: "grantAgentPermission";

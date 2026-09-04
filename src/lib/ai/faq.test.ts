@@ -234,7 +234,7 @@ check(
 console.log("\n— every trigger can actually fire, given the routing order —");
 {
   /* The parser is consulted first for anything not question-shaped, so a trigger
-     it parses is a trigger that cannot fire on its own. Three are like that, each
+     it parses is a trigger that cannot fire on its own. Five are like that, each
      for a stated reason. Anything else appearing here is an unreachable trigger —
      write it as a question, or drop it. */
   const EXPECTED_SHADOWED = {
@@ -246,6 +246,13 @@ console.log("\n— every trigger can actually fire, given the routing order —"
     // on the faucet", which is question-shaped, so it reaches this file there.
     // Asserted just below rather than left as an argument.
     "limit on the faucet": "only occurs inside a question",
+    /* Both open with the grammar's `swap` verb, so bare they are an incomplete
+       swap — and would be with or without these triggers, since the grammar finds
+       that verb anywhere in a sentence. They earn their place by the question
+       forms, "what is the swap fee" and "why did my swap fail", which is where
+       anyone actually types them. Asserted below. */
+    "swap fee": "only occurs inside a question",
+    "swap fail": "only occurs inside a question",
   };
   const TOKENS = [
     {
@@ -288,6 +295,13 @@ console.log("\n— every trigger can actually fire, given the routing order —"
     "the shadowed noun phrase still fires inside its question",
     isQuestionShaped("is there a limit on the faucet") &&
       matchFaq("is there a limit on the faucet")?.id === "test-funds",
+  );
+  check(
+    "the two swap-verb triggers still fire inside their questions",
+    matchFaq("what is the swap fee")?.id === "fees" &&
+      matchFaq("why did my swap fail")?.id === "tx-failed" &&
+      isQuestionShaped("what is the swap fee") &&
+      isQuestionShaped("why did my swap fail"),
   );
 
   /* A card can only fill the prompt box — clicking one submits the sentence as

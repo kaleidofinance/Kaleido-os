@@ -468,6 +468,32 @@
   border-radius: 50%;
   background: var(--k-glass-deep);
 }
+/* The verified tick on a pool our own deployer opened -- see SeededTick. It
+   sits inside `.pairFee` beside the chain tag, so it takes that tag's shape
+   exactly: inline-flex for the 13px mark's centre line, the same 4px gap, and
+   `white-space: nowrap` so the badge and its optional word never break apart.
+
+   `--k-brand` and not `--k-pos`. Both are greens and the difference is what
+   they mean: `--k-pos` is the colour of a number that went up, and this is not
+   a measurement at all. It is an identity mark, so it carries the brand's own
+   green -- which also has a light-theme value with contrast on white, where
+   `--k-pos`'s dark-theme #4cc46a does not.
+
+   The colour lives on the span rather than the circle so one declaration feeds
+   both halves of the mark: the circle fills with `currentColor` and the check
+   knocks out in `--k-card`. */
+.seededTick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--k-brand);
+  white-space: nowrap;
+}
+.seededTick > svg {
+  flex: none;
+  display: block;
+}
 .badge {
   margin-left: auto;
   font-size: var(--k-fs-xs);
@@ -571,6 +597,37 @@
 }
 .actBtn.primary:hover:not(:disabled) {
   background: var(--k-brand-hover);
+}
+
+/* The share to remove, and the two boxes for adding to a position. Both reuse
+   the new-position form's chips and wells below rather than growing a second
+   look for the same controls — a share chip here and a band preset there are the
+   same gesture, and the amount boxes are the same input. */
+.shareRow {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.shareLabel {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+.addForm {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--k-line);
+}
+/* The first `.priceRow` inside the form already carries the gap under the rule. */
+.addForm .priceRow {
+  margin-top: 0;
+}
+.addNote {
+  font-size: 11px;
+  color: var(--k-t3);
+  line-height: 1.5;
+  margin: 10px 0 0;
 }
 
 /* ---------- new position form ---------- */
@@ -875,6 +932,14 @@
 .detailTitle .chainTag {
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
+}
+/* Row scale by default, like the chain tag above it, so on the title line it
+   grows with the fee it sits beside. The colour is *not* inherited down to
+   `--k-t2` the way those two are: the tick is the one element here whose whole
+   job is to be noticed, and this is the page a reader reaches when they are
+   deciding which of two same-pair pools to trade against. */
+.detailTitle .seededTick {
+  font-size: var(--k-fs-sm);
 }
 .detailActions {
   margin-left: auto;
