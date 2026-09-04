@@ -11,10 +11,10 @@ import {
 } from "@/constants/utils/v3Math";
 
 /**
- * Everything a V3 mint needs that isn't a chain read.
+ * Everything a V3 mint or burn needs that isn't a chain read.
  *
- * Pure, and shared by the /pool/new form and the agent's `provideLiquidity`
- * plan. The form had all of this inline, and lifting it out is the same move the
+ * Pure, and shared by the /pool/new form, /pool/positions, and the agent's
+ * `provideLiquidity` and `removePosition` plans. The form had all of this inline, and lifting it out is the same move the
  * intent bus is built on: "a pricing or slippage fix lands once"
  * (fromToolCall.ts's header). Two of the three functions here exist because the
  * form got them wrong at some point — the range inversion and the slippage floor
@@ -365,4 +365,34 @@ export function initialSqrtPriceX96(
     y = (x + ratio / x) / BigInt(2);
   }
   return x;
+}
+/**
+ * A share of a position's liquidity, in raw units.
+ *
+ * The burn side of this file, here for the reason the header gives. The page and
+ * the agent's `removePosition` plan each had this arithmetic inline, and the
+ * page's copy carried a comment asserting the two agreed. They did — but the
+ * assertion was prose, so "remove 25%" typed at Luca and 25% clicked on
+ * /pool/positions were one edit away from decreasing a position by different
+ * amounts, which is the class of divergence this module was extracted to end.
+ *
+ * Hundredths of a percent, so 12.5% is exact rather than rounded to 13, and
+ * integer arithmetic throughout — liquidity runs past 2^53, and a float turns a
+ * uint128 into 1.2345678901234568e21.
+ *
+ * Truncation is the right direction: a rounded-down burn leaves a few units of
+ * liquidity in the position, while a rounded-up one asks for more than is there
+ * and reverts. 100 returns the input untouched rather than going through the
+ * arithmetic, so "remove 100%" and "remove" are the identical transaction and
+ * neither can leave dust behind.
+ *
+ * Floor division means a small enough position rounds a share to zero. Both
+ * callers refuse that rather than sending it — a zero-liquidity
+ * `decreaseLiquidity` succeeds and removes nothing.
+ */
+export function shareOfLiquidity(liquidity: string, percent: number): string {
+  if (percent === 100) return liquidity;
+  return String(
+    (BigInt(liquidity) * BigInt(Math.round(percent * 100))) / 10_000n,
+  );
 }

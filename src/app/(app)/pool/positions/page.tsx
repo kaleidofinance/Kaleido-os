@@ -14,6 +14,7 @@ import {
   increaseV3,
   type IncreaseLiquidityFn,
 } from "@/lib/dex/deposit";
+import { shareOfLiquidity } from "@/lib/dex/liquidity";
 import { providerForChain } from "@/config/provider";
 import {
   chainTokenByAddress,
@@ -172,25 +173,6 @@ function RangeBar({
         <span>{fmt(hi)}</span>
       </div>
     </div>
-  );
-}
-
-/**
- * A share of a position's liquidity, in raw units.
- *
- * Hundredths of a percent and integer arithmetic throughout, which is the same
- * derivation `buildRemovePosition` does for the agent — so "remove 25%" typed at
- * Luca and 25% clicked here decrease the position by the identical amount, and
- * neither goes through a float that could turn a uint128 into 1.2345678901234568e21.
- *
- * Floor division, so a small enough position rounds a share to zero. The caller
- * refuses that rather than sending it: a zero-liquidity `decreaseLiquidity`
- * succeeds and removes nothing.
- */
-export function shareOfLiquidity(liquidity: string, percent: number): string {
-  if (percent === 100) return liquidity;
-  return String(
-    (BigInt(liquidity) * BigInt(Math.round(percent * 100))) / 10_000n,
   );
 }
 

@@ -17,6 +17,7 @@ import {
   FEE_TIERS,
   isTradedTier,
   mintMinimums,
+  shareOfLiquidity,
   ticksForRange,
 } from "@/lib/dex/liquidity";
 import { tickToPrice } from "@/constants/utils/v3Math";
@@ -2175,16 +2176,11 @@ export async function buildIntents(
     // reviews and signs each leg rather than one resolver silently sending two
     // transactions.
     //
-    // The whole position unless a percentage was named. Integer maths on the raw
-    // uint128 — because liquidity runs past 2^53 and a float would round the burn
-    // amount — and the share is taken in hundredths of a percent rather than whole
-    // ones, so "12.5%" is exact instead of becoming 13. Truncation is the right
-    // direction: a rounded-down burn leaves a few units of liquidity in the
-    // position, while a rounded-up one exceeds what is there and reverts.
-    //
-    // 100 takes the exact `pos.liquidity` rather than going through the
-    // arithmetic, so "remove 100%" and "remove" are the identical transaction and
-    // neither can leave dust behind.
+    // The whole position unless a percentage was named. The share arithmetic and
+    // the reasons for its rounding live in `shareOfLiquidity`, which
+    // /pool/positions calls too — so a percentage typed at Luca and the same one
+    // clicked on that page burn the identical amount, enforced by the call rather
+    // than asserted by a comment on each copy.
     const percent = command.percent;
     if (percent !== undefined && (percent <= 0 || percent > 100)) {
       return {
@@ -2193,12 +2189,9 @@ export async function buildIntents(
       };
     }
     const liquidity =
-      percent === undefined || percent === 100
+      percent === undefined
         ? pos.liquidity
-        : String(
-            (BigInt(pos.liquidity) * BigInt(Math.round(percent * 100))) /
-              10_000n,
-          );
+        : shareOfLiquidity(pos.liquidity, percent);
     if (BigInt(liquidity) <= 0n) {
       return {
         ok: false,
