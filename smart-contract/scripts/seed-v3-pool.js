@@ -549,6 +549,27 @@ async function main() {
     feeProtocolSet = n;
   }
 
+  /* A re-seed adds depth, it does not replace it: the earlier mints are still on
+     chain, still ours and still in range, so writing only this run's positions
+     would quietly shrink what verify:pools checks without touching the pool.
+     Carry forward every recorded position this run did not itself mint. */
+  const file = `deployment-pool-${hre.network.name}-${s0}-${s1}-${fee}.json`;
+  const recordPath = path.join(__dirname, "..", file);
+  const fresh = new Set(minted.map((p) => p.tokenId));
+  let carried = [];
+  if (fs.existsSync(recordPath)) {
+    try {
+      const prior = JSON.parse(fs.readFileSync(recordPath, "utf8")).positions ?? [];
+      carried = prior.filter((p) => p && p.tokenId && !fresh.has(p.tokenId));
+    } catch (e) {
+      console.log(`  prior record unreadable (${e.message}) — recording this run's positions only`);
+    }
+  }
+  if (carried.length)
+    console.log(
+      `  carrying forward ${carried.length} earlier position(s): ${carried.map((p) => "#" + p.tokenId).join(", ")}`,
+    );
+
   const out = {
     network: hre.network.name,
     chainId,
@@ -564,11 +585,10 @@ async function main() {
       source0: p0.source,
       source1: p1.source,
     },
-    positions: minted,
+    positions: [...carried, ...minted],
     feeProtocol: feeProtocolSet,
   };
-  const file = `deployment-pool-${hre.network.name}-${s0}-${s1}-${fee}.json`;
-  fs.writeFileSync(path.join(__dirname, "..", file), JSON.stringify(out, null, 2));
+  fs.writeFileSync(recordPath, JSON.stringify(out, null, 2));
   console.log(`\nwrote ${file}`);
 }
 
