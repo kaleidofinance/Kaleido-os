@@ -1,7 +1,7 @@
 {
   "network": "sepolia",
   "chainId": 11155111,
-  "timestamp": "2026-08-28T10:34:14.842Z",
+  "timestamp": "2026-09-04T23:59:01.974Z",
   "pool": "0x04EfB41F6aCeCB6B1eB46be75A929cD5b42dC1e4",
   "fee": 3000,
   "token0": {
@@ -15,7 +15,7 @@
     "decimals": 18
   },
   "openedAt": {
-    "sqrtPriceX96": "457424009550099325341618614810103293",
+    "sqrtPriceX96": "457424009550099325341618697146425012",
     "tick": 311391,
     "liveTick": 311391
   },
@@ -27,18 +27,32 @@
   },
   "positions": [
     {
-      "label": "full range",
+      "label": "full range (2026-08-28 seed)",
       "tickLower": -887220,
       "tickUpper": 887220,
       "tokenId": "7",
       "tx": "0x5d29d440f6530b87bc7615e7600ddef4b9263a638867becb7585b0e9525bd683"
     },
     {
-      "label": "±2%",
+      "label": "±2% (2026-08-28 seed)",
       "tickLower": 311220,
       "tickUpper": 311580,
       "tokenId": "8",
       "tx": "0xeab1b78524dc623d4cafa59a43a916997f51a7e38d7b3ba8e130a4bbf35c5344"
+    },
+    {
+      "label": "full range",
+      "tickLower": -887220,
+      "tickUpper": 887220,
+      "tokenId": "25",
+      "tx": "0x0fbfea988b8b845484ebb4f4eca98b1328e2ec51fc34f66870b4925fe592c2d2"
+    },
+    {
+      "label": "±5%",
+      "tickLower": 310920,
+      "tickUpper": 311880,
+      "tokenId": "26",
+      "tx": "0xc8bcab603995b381fc8d732015185055994404ad72030dbf375e4f220599ae51"
     }
   ],
   "feeProtocol": null
