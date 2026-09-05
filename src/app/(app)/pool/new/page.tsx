@@ -13,8 +13,18 @@ import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3PositionManager } from "@/hooks/dex/useV3PositionManager";
 import { readPoolState, type PoolState } from "@/lib/dex/pool";
 import { providerForChain } from "@/config/provider";
-import { SLIPPAGE_BPS, depositFailure, depositV3 } from "@/lib/dex/deposit";
-import { FEE_TIERS as TRADED_TIERS, ticksForRange } from "@/lib/dex/liquidity";
+import {
+  SLIPPAGE_BPS,
+  depositFailure,
+  depositV3,
+  pairedAmount,
+} from "@/lib/dex/deposit";
+import {
+  FEE_TIERS as TRADED_TIERS,
+  isTradedTier,
+  ticksForRange,
+} from "@/lib/dex/liquidity";
+import { getV3AmountRatio } from "@/constants/utils/v3Math";
 import { chainTokens } from "@/constants/tokens";
 import { getChainMeta } from "@/constants/chains";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
@@ -99,6 +109,32 @@ export default function NewPositionPage() {
     useV3PositionManager();
   const gate = useChainGate();
 
+  /*
+   * The pair and tier a link asked for, matching /pool/[address]'s own `chain`
+   * parameter.
+   *
+   * Every route in here used to arrive bare, so the seeding effect below fell
+   * through to its KLD/USDC fallback and the form opened on a pair nobody had
+   * chosen — including from "+ Add liquidity" on a pool's own page, where the
+   * reader had just named one. Addresses rather than symbols because a symbol is
+   * not an identity: two USDCs are registered on Sepolia (see the mock cutover),
+   * and the fee is validated against the tiers this form actually offers so a V2
+   * pair's bps-of-10000 cannot name a tier that does not exist here.
+   *
+   * Read from `window.location` in an effect rather than through
+   * `useSearchParams`, the same call `trade/swap` and `pool/[address]` make: that
+   * hook forces a Suspense boundary on the route to prerender, and every value
+   * here only ever seeds state. `null` is "not read yet" and not "nothing asked",
+   * which is what stops the seeding effect below from filling in its defaults on
+   * the first render and then finding both sides already valid.
+   */
+  const [wanted, setWanted] = useState<{
+    token0: string;
+    token1: string;
+    fee: number | null;
+    chainId: number | null;
+  } | null>(null);
+
   // Seeded from the connected chain's registry, never from a compiled-in list:
   // a KLD address is only meaningful together with the chain it lives on.
   const available = useMemo(() => chainTokens(chainId), [chainId]);
@@ -111,7 +147,41 @@ export default function NewPositionPage() {
   const [maxPrice, setMaxPrice] = useState("");
   const [amount0, setAmount0] = useState("");
   const [amount1, setAmount1] = useState("");
+  /* Which box was typed into last, so the other one is the derived one. */
+  const [side, setSide] = useState<"0" | "1">("0");
   const [busy, setBusy] = useState(false);
+
+  /* Once, on mount. A link is the initial URL of a navigation here, not something
+     that changes underneath the form — and re-reading it would fight the pickers,
+     which are the reader editing the same two values by hand. */
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const tier = Number(p.get("fee"));
+    const forChain = Number(p.get("chain"));
+    const asked = {
+      token0: (p.get("token0") ?? "").toLowerCase(),
+      token1: (p.get("token1") ?? "").toLowerCase(),
+      fee: Number.isFinite(tier) && isTradedTier(tier) ? tier : null,
+      chainId: Number.isInteger(forChain) && forChain > 0 ? forChain : null,
+    };
+    setWanted(asked);
+    if (asked.fee !== null) setFee(asked.fee);
+  }, []);
+
+  /*
+   * A link that named a pool on a chain the wallet is not on.
+   *
+   * Worth saying rather than swallowing: the prefill below can only match tokens
+   * in `available`, which holds one chain's, so those addresses resolve to
+   * nothing and the form falls back to its defaults. That fallback is correct —
+   * and indistinguishable, from the reader's side, from the bug where no link
+   * carried a pair at all. A link cannot switch the wallet's network, so the only
+   * honest thing left is to say which network it wanted.
+   */
+  const linkChain =
+    wanted && wanted.chainId !== null && wanted.chainId !== chainId
+      ? wanted.chainId
+      : null;
 
   /*
    * Fills whichever side is not a token on this chain.
@@ -128,6 +198,10 @@ export default function NewPositionPage() {
    * nothing from the previous chain can survive the test.
    */
   useEffect(() => {
+    /* Before the URL has been read there is nothing to prefer, and seeding the
+       defaults now would make both sides valid by the time it has been. */
+    if (!wanted) return;
+
     const validHere = (t: IToken | null) =>
       t &&
       available.some((a) => a.chainId === t.chainId && a.address === t.address)
@@ -141,6 +215,17 @@ export default function NewPositionPage() {
     const pick = (sym: string, not?: IToken | null) =>
       available.find((t) => t.symbol === sym && t.address !== not?.address);
 
+    /* What the link asked for, ahead of any default. Only ever an address on
+       this chain — a link naming another chain's pool matches nothing here, and
+       `linkChain` above is what tells the reader why. */
+    const asked = (addr: string, not?: IToken | null) =>
+      addr
+        ? available.find(
+            (t) =>
+              t.address.toLowerCase() === addr && t.address !== not?.address,
+          )
+        : undefined;
+
     /* Each side now avoids the other's address. `available[1]` was the previous
        fallback for the second slot and it is only "the other token" by accident
        of ordering — on a chain whose USDC sits at index 0 with nothing before it,
@@ -148,18 +233,20 @@ export default function NewPositionPage() {
        itself cannot be created. */
     const first =
       ok0 ??
+      asked(wanted.token0, ok1) ??
       pick("KLD", ok1) ??
       available.find((t) => t.address !== ok1?.address) ??
       null;
     const second =
       ok1 ??
+      asked(wanted.token1, first) ??
       pick("USDC", first) ??
       available.find((t) => t.address !== first?.address) ??
       null;
 
     if (!ok0) setToken0(first);
     if (!ok1) setToken1(second);
-  }, [available, token0, token1]);
+  }, [available, token0, token1, wanted]);
 
   const { balance: balance0, unread: unread0 } = useTokenBalance(token0);
   const { balance: balance1, unread: unread1 } = useTokenBalance(token1);
@@ -411,6 +498,79 @@ export default function NewPositionPage() {
     const n = Number(v);
     return Number.isFinite(n) && n > 0;
   };
+
+  /*
+   * token1 per token0 as THIS RANGE will consume it, which is the whole of what
+   * links the two amount boxes.
+   *
+   * The boxes were two independent strings and nothing derived one from the
+   * other, so this form asked for a ratio it already knew and then silently
+   * ignored whatever was typed: the position manager draws the ratio the range
+   * requires and refunds the rest, so an over-supplied leg came back without
+   * comment and the position was smaller than the numbers on screen said. That
+   * is the same arithmetic DepositModal has always done — `getV3AmountRatio` and
+   * `pairedAmount`, imported rather than restated, so the two paths cannot drift.
+   *
+   * It is the RANGE's ratio and not the market's: a band above the market takes
+   * only token0 and one below takes only token1, which is why this depends on
+   * `ticks` and moves when a preset is clicked.
+   */
+  const ratio = useMemo(() => {
+    if (!token0 || !token1 || !ticks || poolPrice === null) return null;
+    return getV3AmountRatio(
+      poolPrice,
+      ticks.lowerPrice,
+      ticks.upperPrice,
+      token0.decimals,
+      token1.decimals,
+    );
+  }, [ticks, poolPrice, token0, token1]);
+
+  /* A range wholly on one side of the market takes one token and none of the
+     other — a legitimate position, and not one this can mint, because
+     `mintMinimums` refuses a zero leg. Said rather than attempted, as in the
+     modal. */
+  const oneSided =
+    ratio === 0 ? "0" : ratio !== null && ratio === Infinity ? "1" : null;
+
+  const edit = (which: "0" | "1", raw: string) => {
+    const value = raw.replace(/[^0-9.]/g, "");
+    setSide(which);
+    if (which === "0") setAmount0(value);
+    else setAmount1(value);
+    /* Untouched when there is nothing to pair by — a pair with no pool at this
+       tier is exactly the case where both legs are the reader's to choose, since
+       the deposit is what sets the opening price. */
+    if (ratio === null || !token0 || !token1) return;
+    const other = pairedAmount({
+      value,
+      from: which,
+      ratio,
+      decimals: which === "0" ? token1.decimals : token0.decimals,
+    });
+    if (which === "0") setAmount1(other);
+    else setAmount0(other);
+  };
+
+  /* Re-pairs the derived box when the range moves under a typed amount: widening
+     a band changes what it consumes, and leaving the old counter-amount on screen
+     would show a ratio the mint is not going to use. Writing only the OTHER side
+     is what keeps this from feeding back — the typed side is an input to it. */
+  useEffect(() => {
+    if (ratio === null || !token0 || !token1) return;
+    const value = side === "0" ? amount0 : amount1;
+    if (!positive(value)) return;
+    const other = pairedAmount({
+      value,
+      from: side,
+      ratio,
+      decimals: side === "0" ? token1.decimals : token0.decimals,
+    });
+    if (side === "0") setAmount1(other);
+    else setAmount0(other);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ratio, side, amount0, amount1, token0, token1]);
+
   const ready =
     isConnected &&
     token0 &&
@@ -530,6 +690,16 @@ export default function NewPositionPage() {
               {token1.symbol} <span>▾</span>
             </button>
           </div>
+          {/* Only when a link named another chain — see `linkChain`. Without it
+              the fallback pair below is indistinguishable from an ignored link. */}
+          {linkChain ? (
+            <div className={s.priceHint} style={{ marginTop: 8 }}>
+              That pool is on{" "}
+              {getChainMeta(linkChain)?.name ?? `chain ${linkChain}`}. Switch your
+              wallet to it to open this form on its pair — a link cannot switch
+              networks for you.
+            </div>
+          ) : null}
           <div className={s.bl} style={{ marginTop: 14 }}>
             Fee tier
           </div>
@@ -656,9 +826,7 @@ export default function NewPositionPage() {
             <input
               className={`${s.inp} tabular`}
               value={amount0}
-              onChange={(e) =>
-                setAmount0(e.target.value.replace(/[^0-9.]/g, ""))
-              }
+              onChange={(e) => edit("0", e.target.value)}
               placeholder="0"
               aria-label={`Amount of ${token0.symbol}`}
             />
@@ -682,9 +850,7 @@ export default function NewPositionPage() {
             <input
               className={`${s.inp} tabular`}
               value={amount1}
-              onChange={(e) =>
-                setAmount1(e.target.value.replace(/[^0-9.]/g, ""))
-              }
+              onChange={(e) => edit("1", e.target.value)}
               placeholder="0"
               aria-label={`Amount of ${token1.symbol}`}
             />
@@ -699,6 +865,39 @@ export default function NewPositionPage() {
                 })}
           </div>
         </div>
+
+        {/*
+         * What the range will actually take, under the boxes it links.
+         *
+         * Three states and they are different sentences. A pairing ratio means
+         * the second box is derived and the reader should know why it moved. A
+         * one-sided range takes nothing of one token — legitimate as a position,
+         * refused by `mintMinimums`, so it is named here rather than surfacing as
+         * a disabled button with no reason. And no pool at this tier means there
+         * is no ratio to derive from at all, which is the case where both legs
+         * really are the reader's to choose: the deposit sets the opening price.
+         */}
+        {oneSided ? (
+          <div className={s.priceHint} style={{ marginTop: 8 }} role="alert">
+            This range sits entirely {oneSided === "0" ? "above" : "below"} the
+            market, so it would take only{" "}
+            {oneSided === "0" ? token0.symbol : token1.symbol} and none of{" "}
+            {oneSided === "0" ? token1.symbol : token0.symbol}. Move a bound
+            across the current price to deposit into it.
+          </div>
+        ) : ratio !== null && Number.isFinite(ratio) && ratio > 0 ? (
+          <div className={s.priceHint} style={{ marginTop: 8 }}>
+            This range takes{" "}
+            <span className="tabular">{showPrice(ratio)}</span>{" "}
+            {token1.symbol} per {token0.symbol} — the second amount follows the
+            first.
+          </div>
+        ) : ticks && poolPrice === null ? (
+          <div className={s.priceHint} style={{ marginTop: 8 }}>
+            No pool at this tier yet, so both amounts are yours to set: their
+            ratio is what opens the price.
+          </div>
+        ) : null}
 
         <button className={s.cta} disabled={!ready || busy} onClick={submit}>
           {!isConnected

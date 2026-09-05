@@ -324,13 +324,23 @@ function PoolHeader({ pool }: { pool: ITradingPair }) {
           >
             Swap
           </Link>
-          {/* Not prefilled, even from a V3 pool: /pool/new picks a pair *and* a
-              tier, and pre-selecting this pool's would point the form at a pool
-              the reader is already looking at rather than at the one they came to
-              open. From a V2 pair it would be wrong as well as unhelpful — its
-              fee is bps-of-10000, so carrying it across would name a tier that
-              does not exist on the other side. */}
-          <Link href="/pool/new" className={s.bt}>
+          {/* Prefilled with this pool's pair, because the reader has already
+              named it: arriving bare meant the form fell through to its KLD/USDC
+              default and silently replaced the pair the link was on. The FEE is
+              a separate question and is only carried from a V3 pool — a V2
+              pair's fee is bps-of-10000 and would name a tier that does not
+              exist on the other side. `chain` is carried too, so a wallet on
+              another network is told which one this pool is on instead of being
+              shown the fallback pair with no explanation; a link cannot switch
+              networks itself. */}
+          <Link
+            href={`/pool/new?token0=${pool.token0.address}&token1=${pool.token1.address}&chain=${pool.chainId}${
+              pool.version === "v3" && pool.feeBps !== null
+                ? `&fee=${pool.feeBps}`
+                : ""
+            }`}
+            className={s.bt}
+          >
             + Add liquidity
           </Link>
         </div>
