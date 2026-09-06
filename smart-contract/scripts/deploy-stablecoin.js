@@ -83,6 +83,36 @@ function readStablecoinConfig() {
     usdc = hre.ethers.getAddress(rawUsdc);
   }
 
+  /*
+   * USDT and USDe are OPTIONAL, and their presence is what makes this a
+   * redeploy rather than a first deploy.
+   *
+   * On a first deploy both are unset and the script deploys fresh mocks, as it
+   * always has. On a redeploy — replacing kfUSD/kafUSD/YieldTreasury on a chain
+   * that already has collateral, a faucet dripping it and pools seeded against
+   * it — a fresh mock would orphan all of that: the faucet keeps dripping the
+   * old token, the registry would carry two USDTs, and gen-registry.mjs would
+   * throw on the disagreement. So the existing addresses are passed in and
+   * reused, exactly as USDC already is.
+   *
+   * Same validation as USDC: a well-formed string is not a token, so the
+   * address is proved live on chain before any gas is spent (assertErc20IsLive
+   * below). An address that is set but wrong is a configuration error, not a
+   * silent fall-through to deploying a mock — a redeploy that quietly minted new
+   * collateral is the exact failure this is here to prevent.
+   */
+  function optionalCollateral(name) {
+    const raw = (process.env[name] || "").trim();
+    if (!raw) return null;
+    if (!hre.ethers.isAddress(raw) || raw === hre.ethers.ZeroAddress) {
+      errors.push(`${name} is set but not a usable address: ${raw}`);
+      return null;
+    }
+    return hre.ethers.getAddress(raw);
+  }
+  const usdt = optionalCollateral("USDT_ADDRESS");
+  const usde = optionalCollateral("USDE_ADDRESS");
+
   if (errors.length) {
     throw new Error(
       "Refusing to deploy with incomplete configuration:\n" +
@@ -91,11 +121,11 @@ function readStablecoinConfig() {
     );
   }
 
-  return { feeRecipient, performanceFeeBps, usdc };
+  return { feeRecipient, performanceFeeBps, usdc, usdt, usde };
 }
 
 /**
- * Prove the configured USDC is an ERC20 on the chain being deployed to.
+ * Prove a configured collateral is an ERC20 on the chain being deployed to.
  *
  * `isAddress` only says the string is twenty well-formed bytes; every wrong
  * address in this class is also well-formed. These two reads are what
@@ -110,14 +140,16 @@ function readStablecoinConfig() {
  *    and the deploy summary is the last place anyone will look before it is
  *    live.
  *
- * Called before the first deploy, so a misconfigured run costs no gas.
+ * `label` names the env var in errors so a wrong USDT and a wrong USDe don't
+ * report the same message. Called before the first deploy, so a misconfigured
+ * run costs no gas.
  */
-async function assertUsdcIsLive(address) {
+async function assertErc20IsLive(label, address) {
   const code = await hre.ethers.provider.getCode(address);
   if (code === "0x") {
     const { name, chainId } = await hre.ethers.provider.getNetwork();
     throw new Error(
-      `USDC_ADDRESS ${address} has no code on ${name} (chainId ${chainId}). ` +
+      `${label} ${address} has no code on ${name} (chainId ${chainId}). ` +
         `Either it belongs to another network or the token is not deployed yet.`,
     );
   }
@@ -131,7 +163,7 @@ async function assertUsdcIsLive(address) {
     decimals = await token.decimals();
   } catch (error) {
     throw new Error(
-      `USDC_ADDRESS ${address} has code but does not answer decimals(), so it ` +
+      `${label} ${address} has code but does not answer decimals(), so it ` +
         `is not an ERC20 kfUSD can redeem against (see kfUSD.sol:270-284). ` +
         `Underlying error: ${error.message}`,
     );
@@ -155,23 +187,47 @@ async function main() {
 
   /* Still before any gas is spent: the env said this is USDC, now check the
    * chain agrees. */
-  const usdcDecimals = await assertUsdcIsLive(USDC_ADDRESS);
+  const usdcDecimals = await assertErc20IsLive("USDC_ADDRESS", USDC_ADDRESS);
   console.log(
     `\nUsing USDC at ${USDC_ADDRESS} (${usdcDecimals} decimals, code verified)`,
   );
 
-  // Deploy Tokens (USDT and USDe)
-  console.log("\n=== Deploying Tokens ===");
+  /*
+   * USDT and USDe: reuse if an address was supplied, otherwise deploy a fresh
+   * mock. See readStablecoinConfig — a supplied address makes this a redeploy
+   * that keeps the faucet, pools and registry pointing at the collateral that
+   * already exists. The reuse path is verified on chain exactly like USDC; the
+   * deploy path is the original first-deploy behaviour, unchanged.
+   */
+  console.log("\n=== Collateral: USDT and USDe ===");
 
-  const USDT = await hre.ethers.getContractFactory("USDT");
-  const usdt = await USDT.deploy(deployer.address);
-  await usdt.waitForDeployment();
-  console.log("USDT deployed to:", await usdt.getAddress());
+  let usdt;
+  if (revenueConfig.usdt) {
+    const d = await assertErc20IsLive("USDT_ADDRESS", revenueConfig.usdt);
+    usdt = await hre.ethers.getContractAt("USDT", revenueConfig.usdt);
+    console.log(
+      `Reusing USDT at ${revenueConfig.usdt} (${d} decimals, code verified)`,
+    );
+  } else {
+    const USDT = await hre.ethers.getContractFactory("USDT");
+    usdt = await USDT.deploy(deployer.address);
+    await usdt.waitForDeployment();
+    console.log("USDT deployed to:", await usdt.getAddress());
+  }
 
-  const USDe = await hre.ethers.getContractFactory("USDe");
-  const usde = await USDe.deploy(deployer.address);
-  await usde.waitForDeployment();
-  console.log("USDe deployed to:", await usde.getAddress());
+  let usde;
+  if (revenueConfig.usde) {
+    const d = await assertErc20IsLive("USDE_ADDRESS", revenueConfig.usde);
+    usde = await hre.ethers.getContractAt("USDe", revenueConfig.usde);
+    console.log(
+      `Reusing USDe at ${revenueConfig.usde} (${d} decimals, code verified)`,
+    );
+  } else {
+    const USDe = await hre.ethers.getContractFactory("USDe");
+    usde = await USDe.deploy(deployer.address);
+    await usde.waitForDeployment();
+    console.log("USDe deployed to:", await usde.getAddress());
+  }
 
   // Deploy kfUSD Stablecoin
   console.log("\n=== Deploying kfUSD Stablecoin ===");

@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -159,6 +160,75 @@ contract kfUSD is
         address _collateralToken,
         uint256 _collateralAmount
     ) external onlyRole(MINTER_ROLE) nonReentrant whenNotPaused {
+        _mintWithCollateral(_to, _amount, _collateralToken, _collateralAmount);
+    }
+
+    /**
+     * @dev Permissionless mint: deposit collateral, receive kfUSD at par.
+     *
+     * The reason this exists beside the role-gated `mint` above, and the reason
+     * `mint` cannot simply be opened up: `mint` takes the kfUSD amount and the
+     * collateral amount as INDEPENDENT arguments and checks no relationship
+     * between them. A caller who could set both would mint any amount of kfUSD
+     * against one wei of collateral — so the `onlyRole(MINTER_ROLE)` on it is
+     * load-bearing, not incidental, and it stays exactly as it was for the
+     * scripts and integrations that pass an explicit pair.
+     *
+     * This entry point removes the free parameter instead of the guard. The
+     * caller names only the collateral and how much of it; the kfUSD amount is
+     * DERIVED here at par — one unit of collateral backs one kfUSD, scaled from
+     * the collateral's own decimals to kfUSD's 18. That is the same 1:1 the mint
+     * form has always quoted (useStablecoin.ts) and the same relationship the
+     * backing ratio is measured against, so the peg it implies is one the
+     * contract can actually honour on redeem. There is no amount a caller can
+     * pass that mints kfUSD the collateral does not back, which is what makes it
+     * safe to leave open.
+     *
+     * Decimals are read from the collateral token rather than passed in, so the
+     * scaling cannot be spoofed by a caller and a collateral whose decimals
+     * exceed 18 (none of the three registered ones do) reverts on the subtraction
+     * rather than minting a distorted amount.
+     */
+    function mintWithCollateral(
+        address _collateralToken,
+        uint256 _collateralAmount
+    ) external nonReentrant whenNotPaused {
+        require(
+            supportedCollaterals[_collateralToken],
+            "kfUSD: Collateral not supported"
+        );
+        require(
+            _collateralAmount > 0,
+            "kfUSD: Collateral amount must be greater than zero"
+        );
+
+        uint8 collateralDecimals = IERC20Metadata(_collateralToken).decimals();
+        require(collateralDecimals <= 18, "kfUSD: Collateral decimals too high");
+        // Par: 1 collateral unit backs 1 kfUSD, scaled to kfUSD's 18 decimals.
+        uint256 kfUsdAmount = _collateralAmount *
+            (10 ** (18 - collateralDecimals));
+
+        _mintWithCollateral(
+            msg.sender,
+            kfUsdAmount,
+            _collateralToken,
+            _collateralAmount
+        );
+    }
+
+    /**
+     * @dev The shared mint body. Both entry points funnel here so the collateral
+     * accounting, the fee split and the yield-treasury notification live in one
+     * place and cannot drift between the permissioned and permissionless paths.
+     * Collateral is always pulled from msg.sender, so the caller pays whether or
+     * not `_to` is themselves.
+     */
+    function _mintWithCollateral(
+        address _to,
+        uint256 _amount,
+        address _collateralToken,
+        uint256 _collateralAmount
+    ) internal {
         require(_to != address(0), "kfUSD: Cannot mint to zero address");
         require(_amount > 0, "kfUSD: Amount must be greater than zero");
         require(

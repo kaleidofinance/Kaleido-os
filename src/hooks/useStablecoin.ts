@@ -821,13 +821,6 @@ export function useStablecoin() {
         collateralToken === "USDT" || collateralToken === "USDC" ? 6 : 18;
       const collateralAmount = ethers.parseUnits(amount, collateralDecimals);
 
-      // Normalize kfUSD amount to match collateral value
-      // Example: 1000 USDC (6 decimals) should mint approximately 1000 kfUSD (18 decimals)
-      // Since USDC has 6 decimals and kfUSD has 18, we need to scale by 10^12
-      // But for simplicity, we'll use 1:1 nominal ratio (requires proper calculation)
-      const kfUSDAmount =
-        collateralAmount * ethers.parseUnits("1", 18 - collateralDecimals);
-
       // Approve collateral
       const allowance = await collateralContract.allowance(
         activeAccount.address,
@@ -841,10 +834,15 @@ export function useStablecoin() {
         await approveTx.wait();
       }
 
-      // Mint kfUSD
-      const mintTx = await kfUSDContract.mint(
-        activeAccount.address,
-        kfUSDAmount,
+      /* mintWithCollateral, not mint. The four-argument mint takes the kfUSD
+       * amount as its own parameter and is onlyRole(MINTER_ROLE) precisely
+       * because a caller who set both amounts could mint kfUSD the collateral
+       * does not back — so it reverts for every ordinary wallet, which is what
+       * left the whole Stable section unusable. This permissionless entry point
+       * names only the collateral and derives the kfUSD at par on-chain (see
+       * kfUSD.sol), so the amount the form quoted and the amount minted are the
+       * same 1:1 the contract can honour on redeem. */
+      const mintTx = await kfUSDContract.mintWithCollateral(
         collateralAddress,
         collateralAmount,
       );
@@ -972,6 +970,10 @@ export function useStablecoin() {
   };
 
   // Request withdrawal from vault (initiates cooldown)
+  //
+  // The asset is named at request time now — the vault fixes the payout asset
+  // when the request is made, not when it completes (kafUSD.sol requestWithdrawal).
+  // This page only ever locks and withdraws kfUSD, so kfUSD is what it requests.
   const requestWithdrawal = async (amount: string) => {
     if (!activeAccount?.address || !activeChain) {
       toast.error("Please connect your wallet");
@@ -992,7 +994,10 @@ export function useStablecoin() {
       );
       const kafUSDAmount = ethers.parseUnits(amount, 18);
 
-      const requestTx = await kafUSDContract.requestWithdrawal(kafUSDAmount);
+      const requestTx = await kafUSDContract.requestWithdrawal(
+        a.kfUSD,
+        kafUSDAmount,
+      );
       const receipt = await requestTx.wait();
 
       if (receipt.status) {
@@ -1013,8 +1018,12 @@ export function useStablecoin() {
     }
   };
 
-  // Complete withdrawal after cooldown period
-  const completeWithdrawal = async (outputToken: string) => {
+  // Complete withdrawal after cooldown period.
+  //
+  // Takes no payout token any more — the vault pays out in the asset fixed at
+  // request time (kafUSD.sol completeWithdrawal). The optional argument is kept
+  // so existing callers that pass a symbol still type-check; it is not sent.
+  const completeWithdrawal = async (_outputToken?: string) => {
     if (!activeAccount?.address || !activeChain) {
       toast.error("Please connect your wallet");
       return;
@@ -1027,18 +1036,13 @@ export function useStablecoin() {
 
     try {
       const signer = await getSigner();
-      const outputAddress: string | undefined = a[outputToken as StableKey];
-
-      if (!outputAddress) {
-        throw new Error(`Invalid output token: ${outputToken}`);
-      }
 
       const kafUSDContract = new ethers.Contract(
         a.kafUSD,
         kafUSDAbi.abi,
         signer,
       );
-      const completeTx = await kafUSDContract.completeWithdrawal(outputAddress);
+      const completeTx = await kafUSDContract.completeWithdrawal();
       const receipt = await completeTx.wait();
 
       if (receipt.status) {

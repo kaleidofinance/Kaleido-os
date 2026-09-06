@@ -1627,6 +1627,7 @@ export async function buildIntents(
 
   if (command.kind === "unlock") {
     if (!stables.kafUSD) return stableUnavailable("The kfUSD yield vault");
+    if (!stables.kfUSD) return stableUnavailable("kfUSD");
     return {
       ok: true,
       build: {
@@ -1635,6 +1636,7 @@ export async function buildIntents(
           {
             kind: "requestStableWithdrawal",
             kafUSD: stables.kafUSD,
+            kfUSD: stables.kfUSD,
             amount: command.amount,
           },
         ],

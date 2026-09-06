@@ -26,8 +26,8 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
   97: {
     diamond: "0x2E7dd52073d6653F610607dA9B947ba59B585bf8", // deployment-diamond-bscTestnet.json
     faucet: "0x5B8Ce8F0a44ED4F73CFD9b6E7DC1E15Ebe7F6e8e", // deployment-faucet-bscTestnet.json
-    kafUSD: "0xf36ef8273ed6223Cd71B775929036505cCdF4976", // deployment-stablecoin-bscTestnet-1787453692948.json
-    kfUSD: "0xCF59972d09Dbf9b37c1e3CDa55c47d0253038D76", // deployment-stablecoin-bscTestnet-1787453692948.json
+    kafUSD: "0xf677e522df1d9A0A13926F84Ac6cf1119d81d05A", // deployment-stablecoin-bscTestnet-1788709839524.json
+    kfUSD: "0x99d6c3d9C2f00BD5da74C9A78035DD5790d17F50", // deployment-stablecoin-bscTestnet-1788709839524.json
     kld: "0x0d6a6F10adeCdc8a8b93aAc0Fa5210653de3511d", // deployment-kld-bscTestnet.json
     kldVault: "0x73B7341c15b12BcfA328733d753f5c30e67dBdce", // deployment-kld-bscTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-bscTestnet.json
@@ -35,9 +35,9 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-bscTestnet-1787453320471.json
     priceOracle: "0xf9928C816b75Bb3EA081Fc0d1C0172E475957C48", // deployment-diamond-bscTestnet.json
     stKLD: "0x6D066143d21863c6Ef2975f213346d41CE3321c2", // deployment-kld-bscTestnet.json
-    usdc: "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F", // deployment-stablecoin-bscTestnet-1787453692948.json
-    usde: "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6", // deployment-stablecoin-bscTestnet-1787453692948.json
-    usdt: "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2", // deployment-stablecoin-bscTestnet-1787453692948.json
+    usdc: "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F", // deployment-stablecoin-bscTestnet-1788709839524.json
+    usde: "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6", // deployment-stablecoin-bscTestnet-1788709839524.json
+    usdt: "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2", // deployment-stablecoin-bscTestnet-1788709839524.json
     v2Factory: "0x2b882149eBfC79710E6E0c93661CE2718866705b", // deployment-dex-bscTestnet.json
     v2Router: "0x5900dDe9b1583e5Fc1783D41152235725cbC867d", // deployment-dex-bscTestnet.json
     v3Factory: "0x23E4236D1bB3f9944faa8d01b7e3e4a5521a2E1A", // deployment-v3-bscTestnet-1787453320471.json
@@ -46,13 +46,13 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0xAc1a10df0a742f107517f1944e0a37da74932c06", // deployment-v3-bscTestnet-1787453320471.json
     v3Router: "0x8A6BbC81d9678c92aa33A3eD0580389B82B18579", // deployment-v3-bscTestnet-1787453320471.json
     wrappedNative: "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd", // deployment-dex-bscTestnet.json
-    yieldTreasury: "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A", // deployment-stablecoin-bscTestnet-1787453692948.json
+    yieldTreasury: "0x06400357a8B1Bbcd52982597AFF2d6873C4bd7Cc", // deployment-stablecoin-bscTestnet-1788709839524.json
   },
   46630: {
     diamond: "0x3565904975AE169c0a48af085b9f786660875874", // deployment-diamond-robinhoodTestnet.json
     faucet: "0xD65927aF66B52E5a43C9C4Fb405D6F0823B65441", // deployment-faucet-robinhoodTestnet.json
-    kafUSD: "0xdAFf6E1941CA376A5cA711EF2D6762BC545D5d89", // deployment-stablecoin-robinhoodTestnet-1787447030493.json
-    kfUSD: "0x1e2BeA8a1958088b50eC9410F7870a2C254e43E4", // deployment-stablecoin-robinhoodTestnet-1787447030493.json
+    kafUSD: "0xF28E455971593842275DB8ee949052e04b5Ed72A", // deployment-stablecoin-robinhoodTestnet-1788709709470.json
+    kfUSD: "0xB43362e579a5076e99708e38C06DF5Bb591B2782", // deployment-stablecoin-robinhoodTestnet-1788709709470.json
     kld: "0x6F57844d0C6DCB7eB906d21C99195a3FC446E81D", // deployment-kld-robinhoodTestnet.json
     kldVault: "0x46351a88bf64DFd0Cb8e88D6F88fd84d70ABe50e", // deployment-kld-robinhoodTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-robinhoodTestnet.json
@@ -60,9 +60,9 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-robinhoodTestnet-1787450008885.json
     priceOracle: "0x7Ee07e9eb94B6b21589539a491E37804886AB201", // deployment-diamond-robinhoodTestnet.json
     stKLD: "0x99d6c3d9C2f00BD5da74C9A78035DD5790d17F50", // deployment-kld-robinhoodTestnet.json
-    usdc: "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B", // deployment-stablecoin-robinhoodTestnet-1787447030493.json
-    usde: "0x5C95260eBD1dD21547528E73dc601d74B2793e0D", // deployment-stablecoin-robinhoodTestnet-1787447030493.json
-    usdt: "0xcB8A20e5d3eD3940678Cc00E70F6CF307f5750Df", // deployment-stablecoin-robinhoodTestnet-1787447030493.json
+    usdc: "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B", // deployment-stablecoin-robinhoodTestnet-1788709709470.json
+    usde: "0x5C95260eBD1dD21547528E73dc601d74B2793e0D", // deployment-stablecoin-robinhoodTestnet-1788709709470.json
+    usdt: "0xcB8A20e5d3eD3940678Cc00E70F6CF307f5750Df", // deployment-stablecoin-robinhoodTestnet-1788709709470.json
     v2Factory: "0x0abf6Dc7f20A05E4c731FFa66c09B6688EfcCF93", // deployment-dex-robinhoodTestnet.json
     v2Router: "0x1632F2d350291e8ab9Dec9F14B518c6076fE3500", // deployment-dex-robinhoodTestnet.json
     v3Factory: "0x2987378eeB3E61bC8F9D2A80bFd0b1628771AC68", // deployment-v3-robinhoodTestnet-1787450008885.json
@@ -71,13 +71,13 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0xE0646438bd4744Cb2052fA21420794DC58A6b9a1", // deployment-v3-robinhoodTestnet-1787450008885.json
     v3Router: "0xD78c79129410883fD818498e18f0D4f1d3B5DF9f", // deployment-v3-robinhoodTestnet-1787450008885.json
     wrappedNative: "0x7943e237c7F95DA44E0301572D358911207852Fa", // deployment-dex-robinhoodTestnet.json
-    yieldTreasury: "0x387d687B9574E93aCCEF1c272ce0D77381305eC3", // deployment-stablecoin-robinhoodTestnet-1787447030493.json
+    yieldTreasury: "0x92a9d8179b414540B3a1f2a9218baF248CbD2894", // deployment-stablecoin-robinhoodTestnet-1788709709470.json
   },
   84532: {
     diamond: "0x1e2BeA8a1958088b50eC9410F7870a2C254e43E4", // deployment-diamond-baseTestnet.json
     faucet: "0x459fA03715EbE0B2914273720Ad687d4Ff3Ed888", // deployment-faucet-baseTestnet.json
-    kafUSD: "0xb4b8fF43BC177C7cB1180c2f6010ab979A7Ee336", // deployment-stablecoin-baseTestnet.json
-    kfUSD: "0xAE330a471E09733F66b0423352D61A2B6228dBD1", // deployment-stablecoin-baseTestnet.json
+    kafUSD: "0xf8947384f9acA8908fC0a7821991ceAFa27Bf770", // deployment-stablecoin-baseTestnet-1788709726722.json
+    kfUSD: "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB", // deployment-stablecoin-baseTestnet-1788709726722.json
     kld: "0x6140Da1f66fCafa0b5197065ae91A00208F3Cd86", // deployment-kld-baseTestnet.json
     kldVault: "0x32E24AAdb0e346A3b334D29C9A334390aE022BE1", // deployment-kld-baseTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-baseTestnet.json
@@ -85,9 +85,9 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-baseTestnet-1787327167156.json
     priceOracle: "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A", // deployment-diamond-baseTestnet.json
     stKLD: "0xdFbF7276dd0ed0DaBb40EFD4Afc99f811484bD2c", // deployment-kld-baseTestnet.json
-    usdc: "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9", // deployment-stablecoin-baseTestnet.json
-    usde: "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9", // deployment-stablecoin-baseTestnet.json
-    usdt: "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B", // deployment-stablecoin-baseTestnet.json
+    usdc: "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9", // deployment-stablecoin-baseTestnet-1788709726722.json
+    usde: "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9", // deployment-stablecoin-baseTestnet-1788709726722.json
+    usdt: "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B", // deployment-stablecoin-baseTestnet-1788709726722.json
     v2Factory: "0x750b10d92bE67Ba86593169B5E8442CefEcBF708", // deployment-dex-baseTestnet.json
     v2Router: "0x629C8Af0230466558953ea305a6319E5e938d7f0", // deployment-dex-baseTestnet.json
     v3Factory: "0x76B9aF77B7e8323E30b6d933B0A0ea41bE466D9A", // deployment-v3-baseTestnet-1787327167156.json
@@ -96,13 +96,13 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0x36E323fFA93c724ae7EC5b28f4cbac9121dB4945", // deployment-v3-baseTestnet-1787327167156.json
     v3Router: "0xfEC12073E7b833508734052Cf72b53428d2e478b", // deployment-v3-baseTestnet-1787327167156.json
     wrappedNative: "0x4200000000000000000000000000000000000006", // deployment-dex-baseTestnet.json
-    yieldTreasury: "0xC4d4B493039c3957A7fcF24d78dc169b44E08372", // deployment-stablecoin-baseTestnet.json
+    yieldTreasury: "0xBF13ac311ff0b4C06B1d67da9D6d23eCc57628f5", // deployment-stablecoin-baseTestnet-1788709726722.json
   },
   5042002: {
     diamond: "0x90a1620578CE419242F806e7387Db7e70c8cfa96", // deployment-diamond-arcTestnet.json
     faucet: "0x41D38A5b47887B98957cD2Bbe53528c2be0a3238", // deployment-faucet-arcTestnet.json
-    kafUSD: "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A", // deployment-stablecoin-arcTestnet-1787384790044.json
-    kfUSD: "0xf36ef8273ed6223Cd71B775929036505cCdF4976", // deployment-stablecoin-arcTestnet-1787384790044.json
+    kafUSD: "0xE94f351cBfec2c4BeAcF99988EC4e701d6C267Ce", // deployment-stablecoin-arcTestnet-1788709849665.json
+    kfUSD: "0x2d1ea4f5E6269E4379aBd8D3d302AAb8772C2d62", // deployment-stablecoin-arcTestnet-1788709849665.json
     kld: "0xC0f8D36ec1D96477F26228A629a31248c584f477", // deployment-kld-arcTestnet.json
     kldVault: "0x2987378eeB3E61bC8F9D2A80bFd0b1628771AC68", // deployment-kld-arcTestnet.json
     oracleKind: "pyth", // deployment-oracle-arcTestnet.json
@@ -111,9 +111,9 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     priceOracle: "0x0262aff2a0D8E56048e408D5fE875EA051dED65c", // deployment-diamond-arcTestnet.json
     pythContract: "0x2880aB155794e7179c9eE2e38200202908C17B43", // deployment-oracle-arcTestnet.json
     stKLD: "0xD78c79129410883fD818498e18f0D4f1d3B5DF9f", // deployment-kld-arcTestnet.json
-    usdc: "0x3600000000000000000000000000000000000000", // deployment-stablecoin-arcTestnet-1787384790044.json
-    usde: "0xCF59972d09Dbf9b37c1e3CDa55c47d0253038D76", // deployment-stablecoin-arcTestnet-1787384790044.json
-    usdt: "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6", // deployment-stablecoin-arcTestnet-1787384790044.json
+    usdc: "0x3600000000000000000000000000000000000000", // deployment-stablecoin-arcTestnet-1788709849665.json
+    usde: "0xCF59972d09Dbf9b37c1e3CDa55c47d0253038D76", // deployment-stablecoin-arcTestnet-1788709849665.json
+    usdt: "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6", // deployment-stablecoin-arcTestnet-1788709849665.json
     v2Factory: "0x5900dDe9b1583e5Fc1783D41152235725cbC867d", // deployment-dex-arcTestnet.json
     v2Router: "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2", // deployment-dex-arcTestnet.json
     v3Factory: "0x8A6BbC81d9678c92aa33A3eD0580389B82B18579", // deployment-v3-arcTestnet-1787358306379.json
@@ -122,13 +122,13 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0x2b882149eBfC79710E6E0c93661CE2718866705b", // deployment-v3-arcTestnet-1787358306379.json
     v3Router: "0x65149395E67867Db4Ef74b4151Ca0A2c1C014c80", // deployment-v3-arcTestnet-1787358306379.json
     wrappedNative: "0x911b4000D3422F482F4062a913885f7b035382Df", // deployment-dex-arcTestnet.json
-    yieldTreasury: "0xcB8A20e5d3eD3940678Cc00E70F6CF307f5750Df", // deployment-stablecoin-arcTestnet-1787384790044.json
+    yieldTreasury: "0xDf540734273a87C41Dd7D2079a44576cb7F983a5", // deployment-stablecoin-arcTestnet-1788709849665.json
   },
   11155111: {
     diamond: "0x32a9971381C969d15205AC9e509C204D31341080", // deployment-diamond-sepolia.json
     faucet: "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB", // deployment-faucet-sepolia.json
-    kafUSD: "0xb56439976066BBb2a2084916c5fd53403D87F289", // deployment-stablecoin-sepolia.json
-    kfUSD: "0x6A6D4dA719b5275C1a927DBc2177614f61a49289", // deployment-stablecoin-sepolia.json
+    kafUSD: "0x4Fa82D254050e0872fc274c4f4dF6FB95c4C2C82", // deployment-stablecoin-sepolia-1788709502392.json
+    kfUSD: "0x0A2c3bB26aB21A560eC789E531CdF35f3E5F60C9", // deployment-stablecoin-sepolia-1788709502392.json
     kld: "0x79C14246120369A98c4226a01158645a7A501F35", // deployment-kld-sepolia.json
     kldVault: "0x3305F04C7DDb32C23F250620CBa50C8DE61f67B5", // deployment-kld-sepolia.json
     oracleKind: "aggregator-v3", // deployment-oracle-sepolia.json
@@ -136,9 +136,9 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-sepolia-1787339244721.json
     priceOracle: "0x126C64a2d48F40EeAEcD534387902f5da74c9dbb", // deployment-diamond-sepolia.json
     stKLD: "0xb13744e75aA50B6204b445673341A1fE03b02dFd", // deployment-kld-sepolia.json
-    usdc: "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70", // deployment-stablecoin-sepolia.json
-    usde: "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b", // deployment-stablecoin-sepolia.json
-    usdt: "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55", // deployment-stablecoin-sepolia.json
+    usdc: "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70", // deployment-stablecoin-sepolia-1788709502392.json
+    usde: "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b", // deployment-stablecoin-sepolia-1788709502392.json
+    usdt: "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55", // deployment-stablecoin-sepolia-1788709502392.json
     v2Factory: "0xc6e96bcb53bf9f5235Df8c4018717DEA3d9d7fb6", // deployment-dex-sepolia.json
     v2Router: "0xe049B8d1E31510BE156B9230169aC2199989D93A", // deployment-dex-sepolia.json
     v3Factory: "0x57440671f8F67A56C4D56665553Bf7d8c2C73794", // deployment-v3-sepolia-1787339244721.json
@@ -147,7 +147,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0x6653B81FEE8CECf0AB5ce2863A63D9D3C28C1DE7", // deployment-v3-sepolia-1787339244721.json
     v3Router: "0x482555B9232A5BEE6034cdfa91dBcF4F19633c59", // deployment-v3-sepolia-1787339244721.json
     wrappedNative: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14", // deployment-dex-sepolia.json
-    yieldTreasury: "0x2488216dF30680f96078E3B303D6Aa0391f3f79F", // deployment-stablecoin-sepolia.json
+    yieldTreasury: "0x2dF9941C50a3ceA43103EdF89713a8224b52baC0", // deployment-stablecoin-sepolia-1788709502392.json
   },
 };
 
@@ -306,7 +306,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-04T20:03:42.039Z",
+  generatedAt: "2026-09-06T15:53:10.276Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -354,11 +354,11 @@ export const GENERATED_META: {
     "deployment-pool-sepolia-USDC-WETH-500.json",
     "deployment-pool-sepolia-USDT-USDe-500.json",
     "deployment-pool-sepolia-USDT-WETH-500.json",
-    "deployment-stablecoin-arcTestnet-1787384790044.json",
-    "deployment-stablecoin-baseTestnet.json",
-    "deployment-stablecoin-bscTestnet-1787453692948.json",
-    "deployment-stablecoin-robinhoodTestnet-1787447030493.json",
-    "deployment-stablecoin-sepolia.json",
+    "deployment-stablecoin-arcTestnet-1788709849665.json",
+    "deployment-stablecoin-baseTestnet-1788709726722.json",
+    "deployment-stablecoin-bscTestnet-1788709839524.json",
+    "deployment-stablecoin-robinhoodTestnet-1788709709470.json",
+    "deployment-stablecoin-sepolia-1788709502392.json",
     "deployment-tokens-arcTestnet.json",
     "deployment-tokens-baseTestnet.json",
     "deployment-tokens-bscTestnet.json",
