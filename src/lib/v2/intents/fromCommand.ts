@@ -272,6 +272,38 @@ export interface ProvideLiquidityCommand {
 }
 
 /**
+ * Open the add-liquidity form, prefilled with whatever the sentence named.
+ *
+ * The counterpart to `ProvideLiquidityCommand` above, and the difference between
+ * them is the whole reason this exists. That one is a *transaction*: two amounts,
+ * a tier and a range, which is more than a `Draft` can hold half-specified (see
+ * ToolOnlyKind) — so it stays tool-only, where the model can collect all of it in
+ * one exchange. This one is a *handoff*. It builds nothing, signs nothing and
+ * asks nothing; it points at /pool/new, which is the form that already collects
+ * those four values, with both boxes visible and each deriving the other from the
+ * range.
+ *
+ * Which is why every field is optional and none of them is ever asked for. The
+ * form has its own pickers and its own defaults, so a bare "add liquidity" is a
+ * complete request — it means "open that" — and a half-named pair is better
+ * carried than interrogated. The alternative, four sequential slot questions to
+ * assemble what one screen collects at once, is the version of this that would be
+ * worse than the model rather than cheaper than it.
+ *
+ * Local because the sentence needs no reasoning: "add liquidity to KLD/USDC" is a
+ * stated destination. It costs nothing, answers instantly and never reaches a
+ * provider, which for the one product whose form is this good is the right trade.
+ */
+export interface OpenLiquidityCommand {
+  kind: "openLiquidity";
+  /** In the order named, not the pool's — /pool/new sorts its own pair. */
+  token0?: IToken;
+  token1?: IToken;
+  /** A traded tier in bps, only when one was named as a percentage. */
+  fee?: number;
+}
+
+/**
  * Claim a drip from the testnet faucet.
  *
  * `symbol` is a bare word, not an `IToken`, and that is the one thing about this
@@ -318,6 +350,7 @@ export type Command =
   | RemovePositionCommand
   | IncreasePositionCommand
   | ProvideLiquidityCommand
+  | OpenLiquidityCommand
   | ClaimTestTokensCommand
   | HelpCommand
   | ReceiveCommand
@@ -325,6 +358,16 @@ export type Command =
 
 /** Kinds resolved immediately, with no slot to ever ask about. */
 type ZeroSlotKind = "claimYield" | "compoundYield";
+
+/**
+ * Kinds that carry only optional detail, so they are never half-specified.
+ *
+ * `openLiquidity` names up to a pair and a tier and is complete without any of
+ * them — the form it opens owns every one of those choices. Excluded here rather
+ * than given a `Slot`, because there is no question to ask: the answer to "which
+ * pair?" is a picker on the next screen.
+ */
+type HandoffKind = "openLiquidity";
 
 /**
  * Kinds that only ever arrive already complete, from a tool call.
@@ -336,12 +379,21 @@ type ZeroSlotKind = "claimYield" | "compoundYield";
  * a second token that no other verb would use.
  *
  * Falling through to the model is the better path rather than the fallback one.
- * "add some liquidity to the USDT/USDe pool" reaches `provideLiquidity` in the
- * tool catalog, where the model collects both sides conversationally and calls
- * once with everything; a `VERBS` entry would instead take "provide 100 usdt"
- * into a Draft that can never be completed. `increasePosition` is the same shape
- * with the pair already fixed by the position — "add 500 USDC and 0.3 ETH to
- * position 48211" is four values and an id.
+ * "add 300 KLD and 10 USDC to the KLD/USDC pool at 0.3%" reaches
+ * `provideLiquidity` in the tool catalog, where the model collects both sides
+ * conversationally and calls once with everything; a `VERBS` entry would instead
+ * take "provide 100 usdt" into a Draft that can never be completed.
+ * `increasePosition` is the same shape with the pair already fixed by the
+ * position — "add 500 USDC and 0.3 ETH to position 48211" is four values and an
+ * id.
+ *
+ * WHAT THIS IS NOT AN ARGUMENT FOR. It says the *transaction* cannot be
+ * assembled here, and nothing about the request. "add liquidity to KLD/USDC"
+ * names no amounts at all, so there is no draft to fail to complete — it is a
+ * destination, and `openLiquidity` above takes it to the form that collects the
+ * rest. The two coexist by amount: a sentence with the numbers in it is a plan
+ * the model can build, a sentence without them is a screen this grammar can
+ * open. See detectOpenLiquidity for where the line is drawn.
  *
  * Excluded here rather than given empty verb lists so the omission is stated,
  * not silent.
@@ -351,7 +403,7 @@ type ToolOnlyKind = "provideLiquidity" | "increasePosition";
 /** Kinds that carry slots, i.e. everything that can be half-specified. */
 export type ActionKind = Exclude<
   Command["kind"],
-  "help" | "receive" | "portfolio" | ZeroSlotKind | ToolOnlyKind
+  "help" | "receive" | "portfolio" | ZeroSlotKind | ToolOnlyKind | HandoffKind
 >;
 
 export type Slot =
@@ -403,9 +455,12 @@ export type ParseResult =
  * Four words people do type, each absent for its own reason, written down so the
  * next reader does not have to decide whether they were forgotten:
  *
- * - "add liquidity" — `provideLiquidity` is tool-only by construction, see
- *   ToolOnlyKind above. A verb entry would take "provide 100 usdt" into a Draft
- *   that can never be completed.
+ * - "add liquidity" — a verb entry would take "provide 100 usdt" into a Draft
+ *   that can never be completed, because `provideLiquidity` needs two amounts and
+ *   `Slot` has one. The sentence is not unhandled, though: it is claimed ahead of
+ *   verb detection by `detectOpenLiquidity`, which opens the form rather than
+ *   building the transaction. A *priced* request — both amounts named — still
+ *   falls to the model and its tool. See ToolOnlyKind.
  * - "unstake" / "withdraw stake" — there is no unstake intent and no unstake tool
  *   anywhere in the app; the only path is `useWithdrawStake` behind the stake
  *   page's own control. A verb here would build a Draft the planner cannot plan,
@@ -415,8 +470,10 @@ export type ParseResult =
  *   (which can send the user to the right control) beats a local dead end.
  * - "pay" — see `send` below. Two readings, one of them a repayment.
  *
- * The first three are gaps in the *protocol* surface, not in this grammar, and
- * closing them starts with an intent, a builder and an auditor rule.
+ * The middle two are gaps in the *protocol* surface, not in this grammar, and
+ * closing them starts with an intent, a builder and an auditor rule. Liquidity
+ * was never one of those: the intent, the builder and the rule all exist, and the
+ * form does too — which is what made the handoff the cheaper half to close first.
  */
 const VERBS: Record<ActionKind, string[]> = {
   /* "buy" is here rather than absent, and it is the one verb in this list that
@@ -574,17 +631,170 @@ const PORTFOLIO_ALONE = [
 /**
  * The one family that reaches this check and must not be answered by it.
  *
- * Adding liquidity is deliberately tool-only (see ToolOnlyKind), so "add
- * liquidity to my portfolio" names no verb this grammar knows and would otherwise
- * land on the read — a request to *do* something, answered with a balance sheet.
- * Anything naming liquidity or a pool keeps its path to the model.
+ * "add liquidity to my portfolio" names no verb in the table below and would
+ * otherwise land on the read — a request to *do* something, answered with a
+ * balance sheet. Anything naming liquidity or a pool keeps its path onward.
  *
- * The cost is stated rather than hidden: "how much liquidity do I have" is a fair
- * portfolio question and it will spend a reasoning request. That is the right
- * direction to fail in — the model can answer it, and a wrong local answer to
- * "add liquidity" cannot be taken back by the reader.
+ * Still a veto now that `detectOpenLiquidity` claims most of this family, and the
+ * remainder is exactly why it stays: that detector needs an opening word as well
+ * as the noun, so "how much liquidity do I have" passes straight through it — and
+ * without this set it would land here instead, on a read that answers a fair
+ * question about pools with a wallet balance. The cost is stated rather than
+ * hidden: that sentence reaches the model and spends a reasoning request. It is
+ * the right direction to fail in, because the model can answer it and a wrong
+ * local answer about someone's positions cannot be taken back by the reader.
  */
 const PORTFOLIO_VETO = new Set(["liquidity", "lp", "pool", "pools"]);
+
+/* ------------------------------------------------------- open liquidity -- */
+
+/**
+ * Nouns that make a sentence about a liquidity position rather than a balance.
+ *
+ * Shares its members with PORTFOLIO_VETO above, which is not a coincidence worth
+ * de-duplicating: that set exists to stop these words reaching a *read*, and this
+ * one to route them to a *screen*. The same four words, for two reasons that
+ * could diverge — a fifth noun worth opening the form for is not automatically a
+ * fifth noun worth withholding a balance sheet from.
+ */
+const LIQUIDITY_NOUNS = new Set(["liquidity", "lp", "pool", "pools"]);
+
+/**
+ * Words that make it a request to *open* one.
+ *
+ * The noun alone is not enough and never was — "swap 100 KLD in the KLD/USDC
+ * pool" is a swap, "what is a liquidity pool" is a question — so a match needs
+ * one word from each set. That pairing is the whole safety property here, and it
+ * is what keeps this detector from swallowing the sentences PORTFOLIO_VETO
+ * protects.
+ *
+ * "lp" is in both sets deliberately, which does make the pairing vacuous for that
+ * one word. It earns it by having no second reading: nobody types "lp" to mean
+ * anything but providing liquidity, so "lp into KLD/USDC" is as stated a request
+ * as this grammar ever sees. "remove my lp" is not a counter-example — the
+ * removal guard below claims it first.
+ *
+ * "deposit" and "supply" are here despite being lending verbs, and this detector
+ * running ahead of `detectVerb` is what lets them be: "deposit into the KLD/USDC
+ * pool" is not collateral. LENDING_NOUNS is the other half of that bargain.
+ */
+const OPEN_WORDS = new Set([
+  "add",
+  "provide",
+  "open",
+  "create",
+  "new",
+  "start",
+  "make",
+  "seed",
+  "supply",
+  "deposit",
+  "put",
+  "lp",
+]);
+
+/**
+ * Words that mean the opposite, or mean an existing position.
+ *
+ * "remove liquidity", "withdraw from the pool", "collect fees on my LP" are all
+ * `removePosition`/`collectFees` requests that contain a liquidity noun, and
+ * several contain an opening word too ("take out", "close out"). Falling through
+ * hands them to the verb table, which already resolves them properly against a
+ * position id — the one place this detector must not be greedy, because sending
+ * someone to a *deposit* form when they asked to withdraw is not a near miss.
+ */
+const CLOSING_WORDS = new Set([
+  "remove",
+  "withdraw",
+  "exit",
+  "close",
+  "pull",
+  "collect",
+  "unwind",
+  "decrease",
+  "reduce",
+  "burn",
+  "redeem",
+]);
+
+/**
+ * Words that make "pool" mean the lending book instead.
+ *
+ * "deposit USDC into the lending pool" pairs an opening word with a liquidity
+ * noun and means collateral, so without this it would open the wrong form. The
+ * list is the vocabulary of the other product, not an attempt at English.
+ */
+const LENDING_NOUNS = new Set([
+  "collateral",
+  "collateralise",
+  "collateralize",
+  "borrow",
+  "borrowing",
+  "loan",
+  "loans",
+  "lending",
+  "debt",
+  "health",
+]);
+
+/**
+ * The three traded tiers, as the percentages people say them in.
+ *
+ * Both spellings of each, because "0.3%" and "0.30%" are the same tier and a
+ * reader who types the second should not silently get the default. Anything else
+ * is ignored rather than refused: an unrecognised tier means the form opens on
+ * its own picker, which is a working outcome, where an error about a fee would
+ * block a request that never needed to name one.
+ */
+const FEE_TIER_BY_PERCENT: Record<string, number> = {
+  "0.05": 500,
+  "0.050": 500,
+  "0.3": 3000,
+  "0.30": 3000,
+  "1": 10_000,
+  "1.0": 10_000,
+  "1.00": 10_000,
+};
+
+/**
+ * "add liquidity to KLD/USDC" → the form, prefilled. See OpenLiquidityCommand.
+ *
+ * Runs ahead of `detectVerb` so the lending verbs in OPEN_WORDS cannot claim
+ * these sentences first, and after `detectRef` so a position reference can veto
+ * it: "add 500 USDC to position 42" is an increase, which is the model's, and
+ * pointing that at a blank new-position form would lose the position the sentence
+ * named.
+ *
+ * `priced` is the other veto and the more interesting one. A number anywhere in
+ * the sentence means it is a transaction rather than a destination, and the
+ * model's `provideLiquidity` tool can build it in full — where this branch would
+ * open a form with no amount field to carry it into, silently dropping a figure
+ * the user typed. So the line between the two paths is arithmetic: name a number
+ * and it is a plan, name none and it is a screen. "0.3%" is not a number by this
+ * test, because parseAmount rejects the trailing sign — which is what lets a tier
+ * be named without turning the request into a priced one.
+ */
+function detectOpenLiquidity(
+  words: string[],
+  ctx: { hasPositionRef: boolean; priced: boolean },
+): { fee?: number } | null {
+  if (ctx.hasPositionRef || ctx.priced) return null;
+  if (!words.some((w) => LIQUIDITY_NOUNS.has(w))) return null;
+  if (!words.some((w) => OPEN_WORDS.has(w))) return null;
+  if (words.some((w) => CLOSING_WORDS.has(w) || LENDING_NOUNS.has(w))) {
+    return null;
+  }
+
+  /* A tier only when it was written as a percentage. The bare "3000" that names
+     the same tier in the tool catalog is a number here, and a number in this
+     sentence is far more likely to be an amount. */
+  for (const word of words) {
+    if (!word.endsWith("%")) continue;
+    const tier = FEE_TIER_BY_PERCENT[word.slice(0, -1)];
+    if (tier !== undefined) return { fee: tier };
+  }
+  return {};
+}
 
 /** Words separating the two sides of a swap. */
 const SEPARATORS = ["to", "for", "into", "->", "→", ">"];
@@ -1029,6 +1239,36 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
      always points at a row, so whether one is named changes what the verb means. */
   const ref = detectRef(words);
 
+  /*
+   * The add-liquidity handoff, ahead of verb detection for the same reason
+   * RECEIVE_PHRASES is: two of its opening words ("deposit", "supply") are
+   * lending verbs, and the verb table would claim "deposit into the KLD/USDC
+   * pool" as collateral before this branch ever saw it. See detectOpenLiquidity
+   * for the pairing rule and the four vetoes that keep it from being greedy.
+   *
+   * The pair travels as `IToken`s from the caller's own registry, which is what
+   * makes the prefill safe to hand to a URL: the agent page resolves against
+   * `chainTokens(chainId)` and /pool/new offers exactly `chainTokens(chainId)`,
+   * so a token matched here is a token that page can select. Order is as named,
+   * not sorted — the form sorts its own pair.
+   */
+  const open = detectOpenLiquidity(words, {
+    hasPositionRef: ref?.target === "position",
+    priced: words.some((w) => parseAmount(w) !== null),
+  });
+  if (open) {
+    const pair = findTokenMentions(words, tokens);
+    return {
+      status: "ok",
+      command: {
+        kind: "openLiquidity",
+        ...(pair[0] ? { token0: pair[0].token } : {}),
+        ...(pair[1] ? { token1: pair[1].token } : {}),
+        ...(open.fee !== undefined ? { fee: open.fee } : {}),
+      },
+    };
+  }
+
   const verb = detectVerb(words, { hasRef: Boolean(ref) });
   if (!verb) {
     /*
@@ -1427,6 +1667,9 @@ export function draftFromCommand(command: Command): Draft | null {
     case "compoundYield":
     case "provideLiquidity":
     case "increasePosition":
+    /* Nothing to collect. Every field it carries is optional and the form owns
+       the rest — see OpenLiquidityCommand. */
+    case "openLiquidity":
       return null;
     case "swap":
       return {

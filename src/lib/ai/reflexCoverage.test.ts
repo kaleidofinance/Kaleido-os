@@ -13,6 +13,10 @@
 // schedule, and the APY question whose true answer is that there is no number —
 // took it to 53/56, 95%. The three left are open for reasons no topic fixes: one
 // needs a cost basis nothing records, and two are asked upstream of this screen.
+// The add-liquidity handoff then brought its own prompt and answered it, 54/57 —
+// and it is the grammar, not the FAQ, that answers it. That is the shape of what
+// is left here: the remaining ground is reached by the parser learning another
+// destination, not by another paragraph.
 // The floors below sit under those, deliberately loose, so that adding a new corpus
 // prompt with no topic behind it is a nudge rather than a broken build — but losing
 // a whole topic, or a chip falling through to the model, fails immediately. The
@@ -110,6 +114,11 @@ const QUESTIONS = [
   "are you an AI",
   "what is Luca",
   "how do I lend",
+  /* Question-shaped and answered by the *grammar*, which is the ordering working
+     as designed rather than an accident: no topic explains adding liquidity as
+     well as the form that does it, so the miss falls through to the net that
+     opens the form. */
+  "how do I add liquidity",
   "what happens if I get liquidated",
   "what is a health factor",
   "is there an airdrop",
@@ -230,8 +239,18 @@ console.log("\n— and the right net answers it —");
     // Still a transaction, and still the grammar's.
     "buy KLD with 500 USDC": "command:swap",
     "claim everything from the faucet": "command:claimTestTokens",
-    // A read must not swallow a stated action, whatever it mentions.
-    "add liquidity to my portfolio": null,
+    /* A read must not swallow a stated action, whatever it mentions. This was
+       pinned to the model until the add-liquidity handoff existed; the check is
+       the same one and the answer got better, because "portfolio" no longer has
+       to be the most specific thing in the sentence for it to be routed. What it
+       still proves is that PORTFOLIO_VETO holds — the read never claims it. */
+    "add liquidity to my portfolio": "command:openLiquidity",
+    /* The handoff itself, pinned by kind. The grammar answers it and must: the
+       form it opens is the one screen that collects a range and both amounts,
+       so a model call here would end in the same place having cost a request. */
+    "add liquidity to KLD/USDC": "command:openLiquidity",
+    // But only where nothing was priced. With an amount in it, it is a plan.
+    "add 500 USDC and 100 KLD to the KLD/USDC pool": null,
   };
   for (const [text, want] of Object.entries(ROUTES)) {
     const got = route(text);

@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import Link from "next/link";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
@@ -416,6 +417,56 @@ export default function AgentPage() {
       const answer = portfolioAnswer(held, { connected: Boolean(address) });
       const cards = localCards(answer.cards);
       say(answer.text, { via: "local", ...(cards.length ? { cards } : {}) });
+      return true;
+    }
+
+    /*
+     * Adding liquidity resolves to a *screen*, which is the third answer in this
+     * grammar that is not a plan — and the only one that leaves the page.
+     *
+     * /pool/new is a better collector than a conversation for this one request,
+     * and that is a claim about the form rather than about the parser. Four values
+     * decide a position — the pair, the tier, the range and two amounts that
+     * derive from it — and the form shows all of them at once, with each amount
+     * box computing the other from the range's own ratio. A slot loop asks for
+     * them one at a time and cannot show a range at all, so the local path would
+     * take more turns than the model it was meant to undercut.
+     *
+     * So the parser's job is only to carry what the sentence already named. The
+     * pair comes from the same `chainTokens(chainId)` list the form itself offers,
+     * so a token matched here is a token it can select; `chain` is the wallet's,
+     * which makes the form's own cross-chain hint stay quiet when they agree, and
+     * is omitted when no wallet is connected rather than guessed.
+     */
+    if (result.command.kind === "openLiquidity") {
+      const { token0, token1, fee } = result.command;
+      const params = new URLSearchParams();
+      if (token0) params.set("token0", token0.address);
+      if (token1) params.set("token1", token1.address);
+      if (chainId !== undefined) params.set("chain", String(chainId));
+      if (fee !== undefined) params.set("fee", String(fee));
+
+      const pair =
+        token0 && token1
+          ? `${token0.symbol}/${token1.symbol}`
+          : (token0 ?? token1)?.symbol;
+      const tier = fee !== undefined ? ` at ${fee / 10_000}%` : "";
+
+      note(
+        "Read it as a request to open a position — no reasoning request needed",
+      );
+      say(
+        pair
+          ? `Opening the add-liquidity form for ${pair}${tier}. Pick a price range there and the two amounts follow from it — type one side and the other fills itself.`
+          : "Opening the add-liquidity form. Choose the pair and a fee tier there, then a price range — the two deposit amounts follow from it.",
+        {
+          via: "local",
+          link: {
+            href: `/pool/new?${params.toString()}`,
+            label: pair ? `Add liquidity to ${pair}` : "Add liquidity",
+          },
+        },
+      );
       return true;
     }
 
@@ -1328,6 +1379,26 @@ export default function AgentPage() {
                           They don't survive a reload; see revive() for why. */}
                       {m.cards && m.cards.length > 0 && (
                         <AgentCards cards={m.cards} onPrompt={fillPrompt} />
+                      )}
+
+                      {/* A route this turn offers. Rendered on every turn that
+                          carries one rather than only the newest, like the
+                          cards above and unlike a plan: a link cannot go stale
+                          the way signable steps do — the form it opens reads
+                          the wallet's chain when it loads, and re-reads the
+                          pair from the URL either way.
+
+                          Deliberately not an `actions` card. Those put a
+                          sentence in the prompt box and stop there, precisely
+                          so a model-emitted one cannot navigate; this is set
+                          only by the local branches above, and Msg.link says
+                          why that distinction is enforced rather than
+                          promised. */}
+                      {m.link && (
+                        <Link href={m.link.href} className={s.goLink}>
+                          {m.link.label}
+                          <span aria-hidden="true"> →</span>
+                        </Link>
                       )}
 
                       {/* Steps render on the turn that proposed them, and only on

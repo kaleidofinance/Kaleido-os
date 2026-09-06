@@ -29,6 +29,21 @@ export interface Msg {
   /** Which path answered. Surfaced so the cheap path is visible, not implied. */
   via?: "local" | "model";
   /**
+   * A route this turn offers, rendered as a control under the answer.
+   *
+   * LOCAL ONLY, and that is a property of the code rather than a convention: a
+   * model turn is assembled from `via`, `plan` and `cards` explicitly (see
+   * finish() on the agent page), so there is no path by which a reply over the
+   * wire can set this. Which is what keeps it out of AgentCard, whose whole
+   * contract is that the renderer cannot tell a local card from a model one — a
+   * card must therefore never carry a URL, and this is not a card.
+   *
+   * Dropped on reload with `plan` and `cards`, by the allow-list in revive()
+   * below rather than by a rule of its own. Right for the same reason: it
+   * encodes a pair and a chain that were the wallet's when the turn was written.
+   */
+  link?: { href: string; label: string };
+  /**
    * How the answer was reached: the steps the page took, and for a model turn the
    * read tools it called. Persisted, unlike `plan` and `cards`, because it is a
    * record of what happened rather than a claim about what is currently true —

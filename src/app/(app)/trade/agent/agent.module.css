@@ -485,6 +485,37 @@
   color: var(--k-t1);
 }
 
+/* ---------- a route a turn offers ---------- */
+
+/* The one control in the transcript that leaves the page, and it is styled to
+   say so. Brand-filled rather than recessed like `.chip` above, because the two
+   are not the same offer: a chip writes a sentence into the box you are already
+   looking at, and this navigates. A reader should be able to tell those apart
+   before clicking, not after.
+
+   `align-self: flex-start` because `.said` is a block and a full-width bar
+   under one sentence reads as a page-level banner rather than as part of the
+   turn. It takes the width of its own label, which is a pair and a verb.
+
+   8px matches `.wrap` in AgentCards.module.css and `.steps`: everything that
+   hangs under a turn's prose sits at the same distance from it. */
+.goLink {
+  align-self: flex-start;
+  margin-top: 8px;
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  line-height: 17px;
+  padding: 5px 11px;
+  border-radius: var(--k-r-pill);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.goLink:hover {
+  background: var(--k-brand-hover);
+}
+
 /* ---------- the chat well ---------- */
 
 /* One well, three regions: a header naming who you are talking to, the

@@ -3,6 +3,22 @@ import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers } from "ethers";
 import { getContracts } from "@/constants/registry";
 import { MOCK_DATA, MOCK_V3_POSITIONS } from "@/lib/mock";
+import { uncollectedFees } from "@/lib/dex/feeGrowth";
+
+/*
+ * The pool's own fee accounting, the part `slot0` does not carry. The two globals
+ * only ever grow; `ticks(t)` gives the growth recorded on the far side of a tick.
+ * Combined with the position's `feeGrowthInsideLast` (already on the NFT) these
+ * reconstruct fees earned since the last touch — see lib/dex/feeGrowth.ts. The
+ * `ticks` return tuple is the full V3 shape; only the two `feeGrowthOutside`
+ * fields are read, but the whole tuple has to be declared for ethers to decode.
+ */
+const POOL_FEE_ABI = [
+  "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
+  "function feeGrowthGlobal0X128() view returns (uint256)",
+  "function feeGrowthGlobal1X128() view returns (uint256)",
+  "function ticks(int24 tick) view returns (uint128 liquidityGross, int128 liquidityNet, uint256 feeGrowthOutside0X128, uint256 feeGrowthOutside1X128, int56 tickCumulativeOutside, uint160 secondsPerLiquidityOutsideX128, uint32 secondsOutside, bool initialized)",
+];
 
 const POSITION_MANAGER_ABI = [
   "function balanceOf(address owner) external view returns (uint256)",
@@ -28,6 +44,24 @@ export interface V3Position {
   liquidity: string;
   tokensOwed0: string;
   tokensOwed1: string;
+  /**
+   * What a `collect` would actually pay right now, in raw base units, per token
+   * in pool order — the LIVE figure, not the stale `tokensOwed` checkpoint.
+   *
+   * `tokensOwed0/1` above are only the fees frozen at the position's last touch
+   * (mint / increase / decrease / collect); everything earned since then lives in
+   * the pool's accumulators and is not on the NFT. These two are that live amount,
+   * reconstructed from the pool's fee growth — see lib/dex/feeGrowth.ts. They fall
+   * back to the `tokensOwed` checkpoint (never below it) when the pool's fee-growth
+   * reads fail, so a row never understates by showing null; null here means the
+   * position row itself could not be read.
+   *
+   * DISPLAY ONLY. `collect` sweeps with uint128-max and takes whatever the pool
+   * says at execution — it never carries this number. Read at one block, the
+   * collect lands at another; the pool is the only authority on the amount then.
+   */
+  uncollectedFees0: string | null;
+  uncollectedFees1: string | null;
   inRange: boolean;
   /**
    * The pool's `slot0().sqrtPriceX96` at the time of the read, or null when the
@@ -112,6 +146,12 @@ export const useV3Positions = () => {
             // Determine if In Range
             let inRange = false;
             let sqrtPriceX96: string | null = null;
+            /* Default to the on-NFT checkpoint. If the pool's fee-growth reads
+               below succeed we replace these with the live figure; if they fail
+               the row still shows the (understated but never wrong-direction)
+               owed amount rather than null. */
+            let uncollectedFees0: string | null = pos.tokensOwed0.toString();
+            let uncollectedFees1: string | null = pos.tokensOwed1.toString();
             try {
               const poolAddr = await factory.getPool(
                 pos.token0,
@@ -121,12 +161,20 @@ export const useV3Positions = () => {
               if (poolAddr !== ethers.ZeroAddress) {
                 const poolContract = new ethers.Contract(
                   poolAddr,
-                  [
-                    "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
-                  ],
+                  POOL_FEE_ABI,
                   provider,
                 );
-                const slot0 = await poolContract.slot0();
+                /* One round of reads: slot0 for price/tick, the two globals, and
+                   each of the position's two boundary ticks. All independent, so
+                   fired together rather than awaited in series. */
+                const [slot0, global0, global1, lowerTick, upperTick] =
+                  await Promise.all([
+                    poolContract.slot0(),
+                    poolContract.feeGrowthGlobal0X128(),
+                    poolContract.feeGrowthGlobal1X128(),
+                    poolContract.ticks(pos.tickLower),
+                    poolContract.ticks(pos.tickUpper),
+                  ]);
                 const currentTick = Number(slot0.tick);
                 /* Kept as a decimal string. It is only useful for valuing the
                    position (positionValue.ts) and stays null when this read
@@ -136,6 +184,35 @@ export const useV3Positions = () => {
                 inRange =
                   currentTick >= Number(pos.tickLower) &&
                   currentTick < Number(pos.tickUpper);
+
+                /* The live uncollected figure. All the accumulators are BigInt
+                   already off ethers; feeGrowth.ts does the uint256-wrapping
+                   maths that a float cannot. A null return (impossible range)
+                   leaves the checkpoint fallback in place. */
+                const fees = uncollectedFees({
+                  tickLower: Number(pos.tickLower),
+                  tickUpper: Number(pos.tickUpper),
+                  tickCurrent: currentTick,
+                  liquidity: BigInt(pos.liquidity),
+                  feeGrowthInside0LastX128: BigInt(pos.feeGrowthInside0LastX128),
+                  feeGrowthInside1LastX128: BigInt(pos.feeGrowthInside1LastX128),
+                  tokensOwed0: BigInt(pos.tokensOwed0),
+                  tokensOwed1: BigInt(pos.tokensOwed1),
+                  token0: {
+                    feeGrowthGlobalX128: BigInt(global0),
+                    feeGrowthOutsideLowerX128: BigInt(lowerTick.feeGrowthOutside0X128),
+                    feeGrowthOutsideUpperX128: BigInt(upperTick.feeGrowthOutside0X128),
+                  },
+                  token1: {
+                    feeGrowthGlobalX128: BigInt(global1),
+                    feeGrowthOutsideLowerX128: BigInt(lowerTick.feeGrowthOutside1X128),
+                    feeGrowthOutsideUpperX128: BigInt(upperTick.feeGrowthOutside1X128),
+                  },
+                });
+                if (fees) {
+                  uncollectedFees0 = fees.amount0.toString();
+                  uncollectedFees1 = fees.amount1.toString();
+                }
               }
             } catch (tickErr) {
               console.warn(
@@ -155,6 +232,8 @@ export const useV3Positions = () => {
               liquidity: pos.liquidity.toString(),
               tokensOwed0: pos.tokensOwed0.toString(),
               tokensOwed1: pos.tokensOwed1.toString(),
+              uncollectedFees0,
+              uncollectedFees1,
               inRange,
               sqrtPriceX96,
             } as V3Position;

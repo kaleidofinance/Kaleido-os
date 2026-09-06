@@ -30,6 +30,13 @@ import { MOCK_TOKENS } from "./pools";
  * `liquidity`, `tokensOwed0` and `tokensOwed1` are raw base units in each leg's
  * own decimals, which is what the position manager returns.
  *
+ * `uncollectedFees0/1` are the LIVE amount a collect would pay — what the pool's
+ * fee accumulators say right now, not the frozen `tokensOwed` checkpoint (see
+ * lib/dex/feeGrowth.ts). For a position still earning, the live figure sits ABOVE
+ * its checkpoint, so these are set a little higher than `tokensOwed` on the
+ * in-range earning rows and equal to it where nothing has accrued since the last
+ * touch (the fresh row) or the position cannot earn (out of range, withdrawn).
+ *
  * `sqrtPriceX96` is DERIVED from the tick in that list rather than typed in, by
  * `sqrtAt` below. It is the field /portfolio values a position from, so a
  * hand-written one that disagreed with the tick above it would put a dollar
@@ -68,6 +75,9 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     liquidity: "184203991248872",
     tokensOwed0: "41200000000000000", // 0.0412 WETH
     tokensOwed1: "138420000", // 138.42 USDC
+    // Live: earned since the last touch, so above the checkpoint.
+    uncollectedFees0: "47380000000000000", // 0.04738 WETH
+    uncollectedFees1: "151070000", // 151.07 USDC
     inRange: true,
     sqrtPriceX96: sqrtAt(-195005),
   },
@@ -82,6 +92,9 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     liquidity: "8420119377421155",
     tokensOwed0: "0",
     tokensOwed1: "0",
+    // Nothing accrued since mint, so the live figure equals the checkpoint.
+    uncollectedFees0: "0",
+    uncollectedFees1: "0",
     inRange: true,
     sqrtPriceX96: sqrtAt(-292071),
   },
@@ -96,6 +109,9 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     liquidity: "1204880091337",
     tokensOwed0: "18450", // 0.0001845 WBTC (8 decimals)
     tokensOwed1: "9120000000000000", // 0.00912 WETH
+    // Out of range: earns nothing, so live equals the checkpoint.
+    uncollectedFees0: "18450",
+    uncollectedFees1: "9120000000000000",
     inRange: false,
     /* Below the range, so the position is entirely WBTC — the one fixture that
        exercises positionValue's clamp rather than its in-range branch. */
@@ -112,6 +128,9 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     liquidity: "42019887334120993",
     tokensOwed0: "2140000000000000000", // 2.14 kfUSD
     tokensOwed1: "2190000", // 2.19 USDC
+    // Live: thin but positive accrual above the checkpoint.
+    uncollectedFees0: "2380000000000000000", // 2.38 kfUSD
+    uncollectedFees1: "2440000", // 2.44 USDC
     inRange: true,
     sqrtPriceX96: sqrtAt(-276332),
   },
@@ -126,6 +145,9 @@ export const MOCK_V3_POSITIONS: V3Position[] = [
     liquidity: "0",
     tokensOwed0: "1840000000000000000000", // 1,840 KLD
     tokensOwed1: "112000000000000000", // 0.112 WETH
+    // Withdrawn (liquidity 0): can accrue nothing more, so live equals owed.
+    uncollectedFees0: "1840000000000000000000",
+    uncollectedFees1: "112000000000000000",
     inRange: true,
     sqrtPriceX96: sqrtAt(-74024),
   },

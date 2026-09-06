@@ -126,6 +126,20 @@ const EXPECTED = [
     usedBy:
       "the deployment-wide model-request ceiling — the only thing bounding provider spend (src/lib/ai/credits.ts)",
   },
+  {
+    migration: "20260905000000_health_watch_state.sql",
+    tables: {
+      health_watch_state: ["last_warned_at", "last_health", "last_check_at"],
+    },
+    /* The columns are named rather than left empty because each one is load-
+       bearing in a different direction, and the monitor degrades quietly without
+       any of them: no last_warned_at and every run re-warns the same position, no
+       last_health and a real deterioration is silenced by the cooldown, no
+       last_check_at and "nothing was warned" cannot be told apart from "nothing
+       has run since Tuesday". */
+    usedBy:
+      "the pre-liquidation warning's cooldown (/api/health/watch, src/lib/health/monitor.ts)",
+  },
 ];
 
 /* Replayed verbatim from the route files. If these two pass, the leaderboard

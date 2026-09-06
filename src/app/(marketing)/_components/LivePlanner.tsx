@@ -122,6 +122,9 @@ const VERB: Record<Command["kind"], string> = {
      oversight. */
   provideLiquidity: "Add liquidity",
   increasePosition: "Add to position",
+  /* Reachable, unlike the two above — and it reaches the PANEL branch rather
+     than the builder, so this label heads a card about a screen. */
+  openLiquidity: "Open a position",
   claimTestTokens: "Claim test tokens",
   help: "Help",
   receive: "Receive",
@@ -129,15 +132,16 @@ const VERB: Record<Command["kind"], string> = {
 };
 
 /**
- * The three commands that resolve to an answer rather than a transaction.
+ * The four commands that resolve to an answer or a screen rather than a
+ * transaction.
  *
- * `buildIntents` returns `{ ok: false, error: "help" }`, `"receive"` and
- * `"portfolio"` for these — sentinels for the caller, not messages for a human,
- * so they are intercepted before the builder ever runs rather than rendered as a
- * failure.
+ * `buildIntents` returns `{ ok: false, error: "help" }`, `"receive"`,
+ * `"portfolio"` and `"openLiquidity"` for these — sentinels for the caller, not
+ * messages for a human, so they are intercepted before the builder ever runs
+ * rather than rendered as a failure.
  */
 const PANEL: Record<
-  "help" | "receive" | "portfolio",
+  "help" | "receive" | "portfolio" | "openLiquidity",
   { title: string; body: string }
 > = {
   help: {
@@ -151,6 +155,10 @@ const PANEL: Record<
   portfolio: {
     title: "Answers with what you hold",
     body: "Wallet balances, collateral, debt, the vaults and your liquidity, in one figure — read from the chain and from the protocol itself. A read, so there is nothing to sign.",
+  },
+  openLiquidity: {
+    title: "Opens the add-liquidity form, prefilled",
+    body: "The pair and the fee tier travel from the sentence into the form, which is where the price range and the two amounts are chosen — each amount box computing the other from the range. A handoff, so nothing is built and nothing is signed.",
   },
 };
 
@@ -720,6 +728,9 @@ function settledOf(
     case "help":
     case "receive":
     case "portfolio":
+    /* Same shape: intercepted by PANEL above, so the builder never runs and
+       there is nothing settled to describe. */
+    case "openLiquidity":
       return { lines: [], note: "" };
 
     /* Unreachable for the reason given in VERB: a ToolOnlyKind never comes back
@@ -833,7 +844,8 @@ export default function LivePlanner() {
       if (
         command.kind === "help" ||
         command.kind === "receive" ||
-        command.kind === "portfolio"
+        command.kind === "portfolio" ||
+        command.kind === "openLiquidity"
       ) {
         setOut({
           text,

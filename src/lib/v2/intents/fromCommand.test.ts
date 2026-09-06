@@ -1051,6 +1051,168 @@ console.log("\n— pool: collect fees, remove position —");
   );
 }
 
+// The one command that is a destination rather than a transaction. The tests
+// that matter are the refusals: this branch runs ahead of the verb table, so a
+// sentence it takes wrongly is a sentence the correct verb never sees.
+console.log("\n— add liquidity: a handoff, not a plan —");
+{
+  const named = p("add liquidity to KLD/USDC");
+  check(
+    "'add liquidity to KLD/USDC' opens the form",
+    named.status === "ok" && named.command.kind === "openLiquidity",
+    named.status,
+  );
+  check(
+    "the pair travels in the order it was named",
+    named.status === "ok" &&
+      named.command.kind === "openLiquidity" &&
+      named.command.token0?.symbol === "KLD" &&
+      named.command.token1?.symbol === "USDC",
+  );
+  check(
+    "and no tier unless one was said",
+    named.status === "ok" &&
+      named.command.kind === "openLiquidity" &&
+      named.command.fee === undefined,
+  );
+
+  // Every field optional, so the barest form of the request still resolves —
+  // this is the case that would otherwise cost a round trip to the model to
+  // answer with "which pair?".
+  const bare = p("add liquidity");
+  check(
+    "bare 'add liquidity' is complete, not incomplete",
+    bare.status === "ok" && bare.command.kind === "openLiquidity",
+    bare.status,
+  );
+  check(
+    "and carries no pair it was not given",
+    bare.status === "ok" &&
+      bare.command.kind === "openLiquidity" &&
+      bare.command.token0 === undefined &&
+      bare.command.token1 === undefined,
+  );
+
+  for (const sentence of [
+    "provide liquidity to KLD/USDC",
+    "lp into KLD/USDC",
+    "open a KLD/USDC pool",
+    "create a new pool for KLD and USDC",
+    "seed a KLD/USDC pool",
+    "put KLD and USDC into a pool",
+  ]) {
+    const r = p(sentence);
+    check(
+      `"${sentence}" opens the form`,
+      r.status === "ok" && r.command.kind === "openLiquidity",
+      r.status,
+    );
+  }
+
+  // A tier only in percent. The bare 3000 that names the same tier in the tool
+  // catalog is a number, and a number in this sentence is an amount.
+  const tiered = p("create a new 0.3% KLD/USDC pool");
+  check(
+    "'0.3%' becomes fee 3000",
+    tiered.status === "ok" &&
+      tiered.command.kind === "openLiquidity" &&
+      tiered.command.fee === 3000,
+    tiered.status === "ok" && tiered.command.kind === "openLiquidity"
+      ? String(tiered.command.fee)
+      : tiered.status,
+  );
+  const padded = p("add liquidity to KLD/USDC at 0.30%");
+  check(
+    "'0.30%' is the same tier, not a miss",
+    padded.status === "ok" &&
+      padded.command.kind === "openLiquidity" &&
+      padded.command.fee === 3000,
+  );
+  const wide = p("open a 1% KLD/USDC pool");
+  check(
+    "'1%' becomes fee 10000",
+    wide.status === "ok" &&
+      wide.command.kind === "openLiquidity" &&
+      wide.command.fee === 10_000,
+  );
+  const odd = p("open a 0.7% KLD/USDC pool");
+  check(
+    "an untraded tier is ignored rather than refused",
+    odd.status === "ok" &&
+      odd.command.kind === "openLiquidity" &&
+      odd.command.fee === undefined,
+    odd.status,
+  );
+
+  // The four vetoes, each the sentence it exists for.
+  const priced = p("add 1 WETH and 2000 USDC to the WETH/USDC pool");
+  check(
+    "a priced sentence is the model's, not the form's",
+    priced.status !== "ok" || priced.command.kind !== "openLiquidity",
+    priced.status === "ok" ? priced.command.kind : priced.status,
+  );
+  const onePrice = p("add 500 USDC of liquidity to KLD/USDC");
+  check(
+    "one amount is enough to veto — the form has nowhere to put it",
+    onePrice.status !== "ok" || onePrice.command.kind !== "openLiquidity",
+    onePrice.status === "ok" ? onePrice.command.kind : onePrice.status,
+  );
+  const onPosition = p("add liquidity to position 42");
+  check(
+    "a position reference means increase, not open",
+    onPosition.status !== "ok" || onPosition.command.kind !== "openLiquidity",
+    onPosition.status === "ok" ? onPosition.command.kind : onPosition.status,
+  );
+  // The noun vetoes with or without a number, and that costs a real sentence:
+  // "start an LP position in KLD/USDC" is a new-position request this refuses.
+  // Kept deliberately. detectRef binds "position" whether or not an id follows,
+  // so an unnumbered one is a sentence about a position nobody has named — and
+  // the rule at the top of this file is that ambiguity escalates rather than
+  // guesses. The model answers it; the other reading opens a blank deposit form
+  // over a position the user already owns.
+  const unnumbered = p("start an LP position in KLD/USDC");
+  check(
+    "an unnumbered position reference vetoes too, by design",
+    unnumbered.status !== "ok" || unnumbered.command.kind !== "openLiquidity",
+    unnumbered.status === "ok" ? unnumbered.command.kind : unnumbered.status,
+  );
+  const lending = p("deposit USDC as collateral in the lending pool");
+  check(
+    "the lending pool is a different pool",
+    lending.status !== "ok" || lending.command.kind !== "openLiquidity",
+    lending.status === "ok" ? lending.command.kind : lending.status,
+  );
+  for (const sentence of [
+    "remove liquidity position 7",
+    "withdraw from the KLD/USDC pool",
+    "collect fees on my LP",
+    "close my KLD/USDC pool position",
+  ]) {
+    const r = p(sentence);
+    check(
+      `"${sentence}" is never a deposit form`,
+      r.status !== "ok" || r.command.kind !== "openLiquidity",
+      r.status === "ok" ? r.command.kind : r.status,
+    );
+  }
+
+  // The noun alone must not be enough, or every question about pools becomes a
+  // navigation. These stay with the model and with PORTFOLIO_VETO respectively.
+  for (const sentence of [
+    "what is a liquidity pool",
+    "how much liquidity do I have",
+    "swap 100 KLD in the KLD/USDC pool",
+    "which pools have the best fees",
+  ]) {
+    const r = p(sentence);
+    check(
+      `"${sentence}" needs more than a liquidity noun`,
+      r.status !== "ok" || r.command.kind !== "openLiquidity",
+      r.status === "ok" ? r.command.kind : r.status,
+    );
+  }
+}
+
 console.log("\n— swap grammar is unaffected by the new verbs —");
 check("swap still parses", p("swap 500 usdc to kld").status === "ok");
 check("'sell' still routes to swap", p("sell 5 kld for usdc").status === "ok");
@@ -1349,13 +1511,16 @@ console.log("\n— draftFromCommand —");
   }
 
   // The slotless kinds. Null, not an empty draft: there is nothing about "what
-  // do you hold" that a follow-up answer could complete.
+  // do you hold" that a follow-up answer could complete. `openLiquidity` is the
+  // one that gets there differently — it has fields, all optional, and the form
+  // it opens collects the rest, so asking here would be asking twice.
   for (const kind of [
     "help",
     "receive",
     "portfolio",
     "claimYield",
     "compoundYield",
+    "openLiquidity",
   ]) {
     check(`${kind} has no draft`, draftFromCommand({ kind }) === null);
   }

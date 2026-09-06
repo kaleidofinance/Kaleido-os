@@ -4,6 +4,7 @@ import type {
   PositionGroup,
 } from "@/hooks/usePortfolio";
 import { positionAmounts, positionValueUsd } from "@/lib/dex/positionValue";
+import { feeAmountToNumber } from "@/lib/dex/feeGrowth";
 import { shortAmount } from "@/lib/format/figures";
 
 import { mockBalanceOf } from "./balances";
@@ -167,48 +168,96 @@ const stakingRows: Position[] = [
     id: "staking-stkld",
     kind: "staking",
     label: "stKLD",
-    sublabel: "Liquid staking",
-    amount: shortAmount(stakedKld, MOCK_STAKE.stakedBalance),
+    /* The vault's share-price index, as the live hook now shows it: pooled ÷
+       shares, the yield made legible without double-counting the rebase. Drawn
+       from MOCK_STAKE.yieldIndex, the same figure the /stake page fixture shows,
+       so the two screens cannot disagree about how much the vault has earned. */
+    sublabel:
+      MOCK_STAKE.yieldIndex !== null
+        ? `Liquid staking · ${MOCK_STAKE.yieldIndex.toFixed(4)}× index`
+        : "Liquid staking",
+    /* KLD-denominated, because stKLD rebases 1:1 to KLD for the holder. */
+    amount: `${shortAmount(stakedKld, MOCK_STAKE.stakedBalance)} KLD`,
     valueUsd: stakedKld * MOCK_USD.stKLD,
     apy: null,
     state: { tone: "ok", text: "Accruing" },
   },
-  ...MOCK_V3_POSITIONS.filter((p) => Number(p.liquidity) !== 0).map((p) => {
+  ...MOCK_V3_POSITIONS.flatMap((p) => {
     const t0 = MOCK_TOKEN_BY_ADDRESS.get(p.token0.toLowerCase());
     const t1 = MOCK_TOKEN_BY_ADDRESS.get(p.token1.toLowerCase());
-    const amounts =
-      t0 && t1
-        ? positionAmounts({
-            sqrtPriceX96: p.sqrtPriceX96,
-            tickLower: p.tickLower,
-            tickUpper: p.tickUpper,
-            liquidity: p.liquidity,
-            decimals0: t0.decimals,
-            decimals1: t1.decimals,
-          })
-        : null;
     const label = `${t0?.symbol ?? "?"} / ${t1?.symbol ?? "?"}`;
-    return {
-      id: `liquidity-${p.tokenId}`,
-      kind: "liquidity" as const,
-      label,
-      sublabel: `Liquidity · ${(p.fee / 10000).toFixed(2)}%`,
-      amount: amounts
-        ? `${shortAmount(amounts.amount0, "—")} ${t0?.symbol} + ${shortAmount(
-            amounts.amount1,
-            "—",
-          )} ${t1?.symbol}`
-        : null,
-      valueUsd: positionValueUsd(
-        amounts,
-        MOCK_USD[t0?.symbol ?? ""] ?? null,
-        MOCK_USD[t1?.symbol ?? ""] ?? null,
-      ),
-      apy: null,
-      state: p.inRange
-        ? { tone: "ok" as const, text: "In range" }
-        : { tone: "bad" as const, text: "Out of range" },
-    };
+    const out: Position[] = [];
+
+    /* The capital row — skipped for a fully-withdrawn position, matching the
+       hook, which contributes no liquidity row when there is no capital. */
+    if (Number(p.liquidity) !== 0) {
+      const amounts =
+        t0 && t1
+          ? positionAmounts({
+              sqrtPriceX96: p.sqrtPriceX96,
+              tickLower: p.tickLower,
+              tickUpper: p.tickUpper,
+              liquidity: p.liquidity,
+              decimals0: t0.decimals,
+              decimals1: t1.decimals,
+            })
+          : null;
+      out.push({
+        id: `liquidity-${p.tokenId}`,
+        kind: "liquidity" as const,
+        label,
+        sublabel: `Liquidity · ${(p.fee / 10000).toFixed(2)}%`,
+        amount: amounts
+          ? `${shortAmount(amounts.amount0, "—")} ${t0?.symbol} + ${shortAmount(
+              amounts.amount1,
+              "—",
+            )} ${t1?.symbol}`
+          : null,
+        valueUsd: positionValueUsd(
+          amounts,
+          MOCK_USD[t0?.symbol ?? ""] ?? null,
+          MOCK_USD[t1?.symbol ?? ""] ?? null,
+        ),
+        apy: null,
+        state: p.inRange
+          ? { tone: "ok" as const, text: "In range" }
+          : { tone: "bad" as const, text: "Out of range" },
+      });
+    }
+
+    /* The uncollected-fee row — emitted for every position with fees, including
+       a withdrawn one, exactly as the hook does. Amounts are the live figure in
+       ./positions run through the same human-units conversion the hook uses. */
+    const fee0 = p.uncollectedFees0;
+    const fee1 = p.uncollectedFees1;
+    const hasFees =
+      (fee0 !== null && fee0 !== "0") || (fee1 !== null && fee1 !== "0");
+    if (hasFees && t0 && t1) {
+      const amount0 = fee0 !== null ? feeAmountToNumber(BigInt(fee0), t0.decimals) : null;
+      const amount1 = fee1 !== null ? feeAmountToNumber(BigInt(fee1), t1.decimals) : null;
+      out.push({
+        id: `fees-${p.tokenId}`,
+        kind: "yield" as const,
+        label,
+        sublabel: "Uncollected fees",
+        amount:
+          amount0 !== null && amount1 !== null
+            ? `${shortAmount(amount0, "—")} ${t0.symbol} + ${shortAmount(
+                amount1,
+                "—",
+              )} ${t1.symbol}`
+            : null,
+        valueUsd: positionValueUsd(
+          amount0 === null || amount1 === null ? null : { amount0, amount1 },
+          MOCK_USD[t0.symbol] ?? null,
+          MOCK_USD[t1.symbol] ?? null,
+        ),
+        apy: null,
+        state: { tone: "warn" as const, text: "Ready to claim" },
+      });
+    }
+
+    return out;
   }),
 ];
 

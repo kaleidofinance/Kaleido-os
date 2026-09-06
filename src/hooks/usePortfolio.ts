@@ -12,6 +12,7 @@ import { useStablecoin } from "@/hooks/useStablecoin";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { positionAmounts, positionValueUsd } from "@/lib/dex/positionValue";
+import { feeAmountToNumber } from "@/lib/dex/feeGrowth";
 /* Shared with `lib/mock/portfolio.ts`, which formats its fixture rows with the
    same function so the demo amounts look like the live ones. It lives in a leaf
    module because importing it *from here* closed a cycle — see its own note. */
@@ -256,6 +257,20 @@ const sumRows = (
   return { subtotalUsd: priced === 0 ? null : total, unpriced };
 };
 
+/**
+ * A vault atom as a number, or null when it has not been read.
+ *
+ * `Number("")` is 0 and the vault atoms start as "", so a naive read would
+ * publish a confident "1.0000× index" before the vault read lands — the same
+ * trap useStakeV2's `measured` guards, kept in step with it here.
+ */
+const measuredNum = (v: string | number | undefined | null): number | null => {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
 const toneForHealth = (health: number | null): StateTone => {
   if (health === null) return "ok";
   if (health < HEALTH_CRITICAL) return "bad";
@@ -296,6 +311,8 @@ export const usePortfolio = (): Portfolio => {
     AVA4,
     AVA5,
     userstKldBalance,
+    totalPooledKLD,
+    totalShares,
   } = useGetValueAndHealth();
 
   const { requests: activeReq } = useGetActiveRequest();
@@ -719,13 +736,34 @@ export const usePortfolio = (): Portfolio => {
 
     const stKld = Number(userstKldBalance ?? 0);
     if (stKld > 0) {
+      /* stKLD REBASES, so `balanceOf` is already the holder's pooled-KLD claim —
+         1 stKLD is worth 1 KLD to the holder and the balance IS the KLD amount.
+         The yield does not show up as a growing balance-to-KLD rate per holder;
+         it shows up in the vault-wide share price, pooled ÷ shares, which starts
+         at 1.0 and rises as yield is harvested. That index is what turns the flat
+         "Accruing" into a real, moving number without misrepresenting the rebase
+         (multiplying the balance by it would double-count — see useStakeV2). */
+      const pooled = measuredNum(totalPooledKLD);
+      const shares = measuredNum(totalShares);
+      const index =
+        pooled !== null && shares !== null && shares > 0
+          ? pooled / shares
+          : null;
       const price = priceOf("stKLD");
       rows.push({
         id: "staking-stkld",
         kind: "staking",
         label: "stKLD",
-        sublabel: "Liquid staking",
-        amount: shortAmount(stKld, String(userstKldBalance)),
+        /* The index is the yield made legible: "1.0000×" the day the vault opens,
+           climbing as rewards land. Falls back to the old label until the vault
+           reads resolve, so a slow read never shows a bare or wrong figure. */
+        sublabel:
+          index !== null
+            ? `Liquid staking · ${index.toFixed(4)}× index`
+            : "Liquid staking",
+        /* The rebased KLD value: the balance itself, since stKLD is 1:1 with KLD
+           for the holder. Shown in KLD because that is what the position IS. */
+        amount: `${shortAmount(stKld, String(userstKldBalance))} KLD`,
         /* Null before TGE, and that is the correct answer rather than a gap —
            KLD has no market, so nothing derived from it has a dollar value.
            `priceOf` is still consulted so the row prices itself the day a feed
@@ -737,11 +775,6 @@ export const usePortfolio = (): Portfolio => {
     }
 
     v3Positions?.forEach((p) => {
-      /* A fully-withdrawn position still exists as an NFT and may still hold
-         uncollected fees, which is why it appears on /pool/positions. It holds
-         no capital, so it contributes nothing here. */
-      if (Number(p.liquidity) === 0) return;
-
       const symbol0 = walletSymbol(p.token0);
       const symbol1 = walletSymbol(p.token1);
       const decimals0 = decimalsForAddress(walletChainId, p.token0);
@@ -754,8 +787,16 @@ export const usePortfolio = (): Portfolio => {
        * by 10^12 — a plausible-looking dollar figure a trillion times too small,
        * which is worse than an em dash by every measure.
        */
-      const amounts =
-        decimals0 === undefined || decimals1 === undefined
+      const knownDecimals =
+        decimals0 !== undefined && decimals1 !== undefined;
+
+      /* The capital row. A fully-withdrawn position (liquidity 0) still exists as
+         an NFT and may still hold uncollected fees — but it holds no CAPITAL, so
+         it contributes no liquidity row. Its fees are handled by the fee row
+         below, which is why the early continue moved off this whole block and
+         onto this row alone. */
+      if (Number(p.liquidity) !== 0) {
+        const amounts = !knownDecimals
           ? null
           : positionAmounts({
               sqrtPriceX96: p.sqrtPriceX96,
@@ -766,29 +807,85 @@ export const usePortfolio = (): Portfolio => {
               decimals1,
             });
 
-      const valueUsd = positionValueUsd(
-        amounts,
-        priceOf(symbol0),
-        priceOf(symbol1),
-      );
+        const valueUsd = positionValueUsd(
+          amounts,
+          priceOf(symbol0),
+          priceOf(symbol1),
+        );
 
-      rows.push({
-        id: `liquidity-${p.tokenId}`,
-        kind: "liquidity",
-        label: `${symbol0} / ${symbol1}`,
-        sublabel: `Liquidity · ${(Number(p.fee) / 10000).toFixed(2)}%`,
-        amount: amounts
-          ? `${shortAmount(amounts.amount0, "—")} ${symbol0} + ${shortAmount(
-              amounts.amount1,
-              "—",
-            )} ${symbol1}`
-          : null,
-        valueUsd,
-        apy: null,
-        state: p.inRange
-          ? { tone: "ok", text: "In range" }
-          : { tone: "bad", text: "Out of range" },
-      });
+        rows.push({
+          id: `liquidity-${p.tokenId}`,
+          kind: "liquidity",
+          label: `${symbol0} / ${symbol1}`,
+          sublabel: `Liquidity · ${(Number(p.fee) / 10000).toFixed(2)}%`,
+          amount: amounts
+            ? `${shortAmount(amounts.amount0, "—")} ${symbol0} + ${shortAmount(
+                amounts.amount1,
+                "—",
+              )} ${symbol1}`
+            : null,
+          valueUsd,
+          apy: null,
+          state: p.inRange
+            ? { tone: "ok", text: "In range" }
+            : { tone: "bad", text: "Out of range" },
+        });
+      }
+
+      /*
+       * The uncollected-fee row — the live figure a collect would pay, not the
+       * stale `tokensOwed` checkpoint (see lib/dex/feeGrowth.ts, which
+       * useV3Positions calls to fill `uncollectedFees0/1`). This is the rewards
+       * surface: money already earned and sitting claimable, kept as its own row
+       * so a reader sees "0.047 WETH + 151 USDC in fees" beside the capital
+       * rather than folded into it.
+       *
+       * Emitted for EVERY position with fees, including a withdrawn one, because
+       * a closed position holding uncollected fees is exactly the claimable state
+       * this row exists to surface — the one the capital row above skips.
+       */
+      const fee0 = p.uncollectedFees0;
+      const fee1 = p.uncollectedFees1;
+      const hasFees =
+        (fee0 !== null && fee0 !== "0") || (fee1 !== null && fee1 !== "0");
+      if (hasFees) {
+        const amount0 =
+          knownDecimals && fee0 !== null
+            ? feeAmountToNumber(BigInt(fee0), decimals0 as number)
+            : null;
+        const amount1 =
+          knownDecimals && fee1 !== null
+            ? feeAmountToNumber(BigInt(fee1), decimals1 as number)
+            : null;
+
+        /* Priced through the same authority the capital row uses. An unpriced leg
+           (KLD before TGE, WBTC with no feed) is not zero — positionValueUsd's
+           null-price rules keep the total a floor rather than an understatement. */
+        const valueUsd = positionValueUsd(
+          amount0 === null || amount1 === null
+            ? null
+            : { amount0, amount1 },
+          priceOf(symbol0),
+          priceOf(symbol1),
+        );
+
+        rows.push({
+          id: `fees-${p.tokenId}`,
+          kind: "yield",
+          label: `${symbol0} / ${symbol1}`,
+          sublabel: "Uncollected fees",
+          amount:
+            amount0 !== null && amount1 !== null
+              ? `${shortAmount(amount0, "—")} ${symbol0} + ${shortAmount(
+                  amount1,
+                  "—",
+                )} ${symbol1}`
+              : null,
+          valueUsd,
+          apy: null,
+          state: { tone: "warn", text: "Ready to claim" },
+        });
+      }
     });
 
     const { subtotalUsd, unpriced } = sumRows(rows);
@@ -801,7 +898,14 @@ export const usePortfolio = (): Portfolio => {
       empty: "Nothing staked and no liquidity provided.",
       href: "/stake",
     };
-  }, [userstKldBalance, v3Positions, walletChainId, priceOf]);
+  }, [
+    userstKldBalance,
+    totalPooledKLD,
+    totalShares,
+    v3Positions,
+    walletChainId,
+    priceOf,
+  ]);
 
   const groups = useMemo<PositionGroup[]>(() => {
     if (!address) return [];
