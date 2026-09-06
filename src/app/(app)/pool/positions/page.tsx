@@ -15,6 +15,8 @@ import {
   type IncreaseLiquidityFn,
 } from "@/lib/dex/deposit";
 import { shareOfLiquidity } from "@/lib/dex/liquidity";
+import { feeAmountToNumber } from "@/lib/dex/feeGrowth";
+import { shortAmount } from "@/lib/format/figures";
 import { providerForChain } from "@/config/provider";
 import {
   chainTokenByAddress,
@@ -230,7 +232,17 @@ function PositionCard({
   const token1 = chainTokenByAddress(chainId, p.token1);
   const legs = token0 && token1 ? { token0, token1 } : null;
 
-  const owedTotal = Number(p.tokensOwed0) + Number(p.tokensOwed1);
+  /* The LIVE uncollected figure, not the stale `tokensOwed` checkpoint on the
+     NFT — see lib/dex/feeGrowth.ts. A position that has traded since its last
+     touch has fees the checkpoint does not show, so gating Collect on the
+     checkpoint would grey out the button over real, claimable money. These fall
+     back to the checkpoint when the pool's fee-growth reads fail, so the gate is
+     never looser than the truth. */
+  const fee0 = p.uncollectedFees0 ?? p.tokensOwed0;
+  const fee1 = p.uncollectedFees1 ?? p.tokensOwed1;
+  const owedTotal = Number(fee0) + Number(fee1);
+  const feeAmount0 = feeAmountToNumber(BigInt(fee0), decimalsFor(chainId, p.token0));
+  const feeAmount1 = feeAmountToNumber(BigInt(fee1), decimalsFor(chainId, p.token1));
   const canAdd =
     legs !== null &&
     account !== undefined &&
@@ -372,8 +384,8 @@ function PositionCard({
         <div className={s.stat}>
           <span className={s.statLabel}>Unclaimed fees</span>
           <span className={`${s.statValue} tabular`}>
-            {p.tokensOwed0} {symbolFor(p.token0)} + {p.tokensOwed1}{" "}
-            {symbolFor(p.token1)}
+            {shortAmount(feeAmount0, "—")} {symbolFor(p.token0)} +{" "}
+            {shortAmount(feeAmount1, "—")} {symbolFor(p.token1)}
           </span>
         </div>
       </div>

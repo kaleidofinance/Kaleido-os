@@ -1,0 +1,71 @@
+# Cloudflare Worker config for the health monitor's clock.
+#
+# Deploy / redeploy:
+#
+#   npx wrangler deploy --config scripts/health-cron/wrangler.toml
+#
+# Arm it (the value must equal the Vercel project's CRON_SECRET — the endpoint
+# compares them with timingSafeEqual and answers 401 to anything else):
+#
+#   npx wrangler secret put HEALTH_CRON_SECRET --config scripts/health-cron/wrangler.toml
+#
+# Sending also needs APP_URL and PUSH_SEND_SECRET set in the Vercel project. The
+# route does every read without them and reports what it WOULD have sent, so an
+# unconfigured deployment is quiet rather than broken — read `dryRun` in the
+# response to tell the two apart.
+#
+# See health-cron-worker.js for why this is a second Worker rather than a second
+# cron expression on scripts/keeper-cron.
+
+name = "kaleido-health-cron"
+main = "health-cron-worker.js"
+compatibility_date = "2026-09-01"
+
+# The workers.dev hostname is only a manual trigger, and it refuses anything
+# without the same secret — see the fetch handler. No route and no custom domain,
+# because nothing but Cloudflare's scheduler needs to reach this.
+#
+# Declared above every [table] header on purpose: a bare key after one belongs to
+# that table, and `workers_dev` under [triggers] is silently the wrong setting
+# (wrangler warns "Unexpected fields found in triggers field" and carries on).
+workers_dev = true
+
+# No per-version preview hostnames. They default on with workers_dev and each one
+# is another public URL that would trigger real notifications to real wallets; the
+# secret check means they are not a hole, but there is nothing here worth
+# previewing.
+preview_urls = false
+
+# Every 15 minutes, and unlike the price keeper's cadence this one is not derived
+# from a bound the chain enforces — nothing on chain cares how often we look. What
+# sets it is how long a position may sit unhealthy before its owner is told, and
+# 15 minutes is the same interval the keeper already runs at, so the two jobs cost
+# the same and there is one number to reason about rather than two.
+#
+# It is deliberately much shorter than the six-hour cooldown in
+# src/lib/health/monitor.ts. Those are different quantities: the cadence bounds how
+# late a FIRST warning can be, and the cooldown bounds how often a warning repeats.
+# Making the cadence long to avoid duplicates would be solving the cooldown's
+# problem with the wrong lever, and would delay the alert that has to arrive.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+# The apex, deliberately. `www.kaleidofi.xyz` answers 307, and a redirect is not
+# somewhere to send a bearer token.
+APP_URL = "https://kaleidofi.xyz"
+
+# HEALTH_CHAIN_IDS is deliberately unset: every tradable chain has a lending
+# deployment and a borrower on any of them can be liquidated, so the default is
+# all of them. Set it (comma-separated) only if a run stops finishing inside the
+# route's 60s ceiling, and understand that doing so stops watching the rest.
+#
+# HEALTH_DRY_RUN is also unset. Set it to exactly "1" to have the schedule read
+# and decide without sending — worth doing for a cadence or two after the first
+# deploy, then removing.
+
+# On, because a monitor that silently stops is the failure being fixed here. The
+# scheduled handler rethrows on any non-200 so the invocation is marked failed and
+# not just logged.
+[observability]
+enabled = true

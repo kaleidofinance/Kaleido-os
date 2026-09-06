@@ -235,6 +235,10 @@ Narrowing is a latency choice, not a safety one.
 ## Related
 
 - `src/lib/keeper/pushFeeds.ts` — what gets pushed, what does not, and why
+- `docs/HEALTH_MONITOR.md` — the sibling Worker, on the same `CRON_SECRET`. Its
+  failure mode is downstream of this one: a feed that ages out makes
+  `getHealthFactor` revert, and the monitor counts that as a failed check rather
+  than as a healthy borrower
 - `docs/MULTICHAIN_DEPLOYMENT_MAP.md` — which chains have which oracle
 - `.github/workflows/price-keeper.yml` — the hardhat keeper; leave it running as a
   third, unreliable safety net, but do not count it as a scheduler

@@ -624,6 +624,17 @@ export async function buildIntents(
     return { ok: false, error: "portfolio" };
   }
 
+  /*
+   * Same shape again: opening the add-liquidity form is a navigation, not a
+   * transaction. The agent page short-circuits it before reaching here, and this
+   * guard narrows the union — asking this module for "the transaction that is a
+   * screen" has no answer, and the transaction that screen goes on to build is
+   * `provideLiquidity`, which arrives as its own command with the amounts in it.
+   */
+  if (command.kind === "openLiquidity") {
+    return { ok: false, error: "openLiquidity" };
+  }
+
   if (command.kind === "swap") {
     const { amount, tokenIn, tokenOut } = command;
 
