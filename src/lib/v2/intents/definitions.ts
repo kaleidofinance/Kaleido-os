@@ -140,8 +140,8 @@ const KFUSD_ABI = [
 
 const KAFUSD_ABI = [
   "function lockAssets(address assetToken, uint256 amount) external",
-  "function requestWithdrawal(uint256 amount) external",
-  "function completeWithdrawal(address outputToken) external",
+  "function requestWithdrawal(address asset, uint256 amount) external",
+  "function completeWithdrawal() external",
 ];
 
 const YIELD_TREASURY_ABI = [
@@ -657,7 +657,9 @@ register("requestStableWithdrawal", {
       KAFUSD_ABI,
       ctx.signer,
     );
+    // Asset named at request time; kfUSD is the only asset this flow locks.
     const tx = await kafUSDContract.requestWithdrawal(
+      i.kfUSD,
       ethers.parseUnits(i.amount, 18),
     );
     await tx.wait();
@@ -676,7 +678,8 @@ register("completeStableWithdrawal", {
       KAFUSD_ABI,
       ctx.signer,
     );
-    const tx = await kafUSDContract.completeWithdrawal(i.outputToken);
+    // Payout asset was fixed when the request was made; takes no argument now.
+    const tx = await kafUSDContract.completeWithdrawal();
     await tx.wait();
     return { hash: tx.hash };
   },

@@ -394,6 +394,9 @@ export type Intent =
       /** Starts the withdrawal cooldown. Amount is in kafUSD shares. */
       kind: "requestStableWithdrawal";
       kafUSD: string;
+      /** The asset the request is sized against and will pay out; the vault
+       * fixes it now rather than at completion. This flow only locks kfUSD. */
+      kfUSD: string;
       amount: string;
     }
   | {

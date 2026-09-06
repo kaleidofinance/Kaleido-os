@@ -51,6 +51,11 @@ contract kafUSD is
     uint256 public cooldownPeriod = 7 days;
     mapping(address => uint256) public withdrawalRequestTime;
     mapping(address => uint256) public withdrawalAmount;
+    // The asset a pending request will pay out in, chosen when the request is
+    // made rather than when it completes. requestWithdrawal is asset-agnostic no
+    // longer: a request is a claim on one asset's locked balance, so it names the
+    // asset up front and completeWithdrawal must be handed the same one.
+    mapping(address => address) public withdrawalAsset;
 
     // Total locked values
     uint256 public totalLocked;
@@ -133,20 +138,49 @@ contract kafUSD is
     }
 
     /**
-     * @dev Request withdrawal of locked assets
-     * @param _amount Amount of kafUSD to burn (which determines how much to unlock)
+     * @dev Request withdrawal of a specific locked asset.
+     *
+     * The asset is named here, not at completion, for two reasons that were both
+     * bugs in the earlier asset-agnostic version:
+     *
+     *  - It lets the locked balance be checked NOW. A request that exceeds what
+     *    the caller has locked in _asset used to succeed and then revert a full
+     *    cooldown later at completeWithdrawal — a week's notice spent queuing a
+     *    withdrawal that could never complete. Here it reverts immediately.
+     *  - It makes the request an unambiguous claim on one asset, so
+     *    completeWithdrawal cannot be pointed at a different, cheaper asset than
+     *    the one the request was sized against.
+     *
+     * A pending request is NOT overwritten. The single request slot per address
+     * used to be reassigned unconditionally, silently discarding however much of
+     * the notice had already elapsed; now a second request reverts and the caller
+     * must cancelWithdrawal first, which is explicit about restarting the clock.
+     *
+     * @param _asset Asset to withdraw (must be one this caller has locked)
+     * @param _amount Amount of kafUSD to burn, and of _asset to unlock 1:1
      */
     function requestWithdrawal(
+        address _asset,
         uint256 _amount
     ) external nonReentrant whenNotPaused {
         require(_amount > 0, "kafUSD: Amount must be greater than zero");
+        require(supportedAssets[_asset], "kafUSD: Asset not supported");
+        require(
+            withdrawalAmount[msg.sender] == 0,
+            "kafUSD: Withdrawal already pending"
+        );
         require(
             balanceOf(msg.sender) >= _amount,
             "kafUSD: Insufficient balance"
         );
+        require(
+            assetLockBalances[msg.sender][_asset] >= _amount,
+            "kafUSD: Insufficient locked balance"
+        );
 
         withdrawalRequestTime[msg.sender] = block.timestamp;
         withdrawalAmount[msg.sender] = _amount;
+        withdrawalAsset[msg.sender] = _asset;
 
         emit WithdrawalRequested(
             msg.sender,
@@ -156,28 +190,48 @@ contract kafUSD is
     }
 
     /**
-     * @dev Complete withdrawal after cooldown period
-     * @param _asset Address of the asset to withdraw
+     * @dev Cancel a pending withdrawal request, freeing the slot and stopping the
+     * clock. Nothing was locked or burned by requestWithdrawal, so this only
+     * clears the record — it exists so a caller who requested the wrong amount or
+     * asset can correct it without waiting out a cooldown for a request they will
+     * not complete.
      */
-    function completeWithdrawal(
-        address _asset
-    ) external nonReentrant whenNotPaused {
+    function cancelWithdrawal() external {
+        require(
+            withdrawalAmount[msg.sender] > 0,
+            "kafUSD: No withdrawal request"
+        );
+        withdrawalRequestTime[msg.sender] = 0;
+        withdrawalAmount[msg.sender] = 0;
+        withdrawalAsset[msg.sender] = address(0);
+    }
+
+    /**
+     * @dev Complete withdrawal after cooldown period.
+     *
+     * Pays out in the asset named at request time — the caller no longer chooses
+     * it here. Letting the payout asset be picked at completion is what allowed a
+     * request sized against one asset to be settled from another; the asset is
+     * now fixed when the request is made and read back from storage.
+     */
+    function completeWithdrawal() external nonReentrant whenNotPaused {
+        require(
+            withdrawalAmount[msg.sender] > 0,
+            "kafUSD: No withdrawal request"
+        );
         require(
             block.timestamp >=
                 withdrawalRequestTime[msg.sender] + cooldownPeriod,
             "kafUSD: Cooldown not complete"
         );
-        require(
-            withdrawalAmount[msg.sender] > 0,
-            "kafUSD: No withdrawal request"
-        );
-        require(supportedAssets[_asset], "kafUSD: Asset not supported");
 
+        address _asset = withdrawalAsset[msg.sender];
         uint256 amountToUnlock = withdrawalAmount[msg.sender];
 
         // Clear withdrawal request
         withdrawalRequestTime[msg.sender] = 0;
         withdrawalAmount[msg.sender] = 0;
+        withdrawalAsset[msg.sender] = address(0);
 
         // Calculate assets to unlock (1:1 ratio)
         uint256 assetsToUnlock = amountToUnlock;

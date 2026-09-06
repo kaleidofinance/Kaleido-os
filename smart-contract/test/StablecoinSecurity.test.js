@@ -51,12 +51,33 @@ describe("Stablecoin Security Tests", function () {
     // Grant MINTER_ROLE to kafUSD for minting kafUSD tokens
     await kfUSD.grantRole(MINTER_ROLE, await kafUSD.getAddress());
 
+    // The vault accepts kfUSD as a lockable asset. requestWithdrawal now checks
+    // the caller's locked balance in a named asset, so tests that queue a
+    // withdrawal must lock first — support kfUSD here so they can.
+    await kafUSD.setAssetSupport(await kfUSD.getAddress(), true);
+
     // Mint some tokens to users for testing
     await USDC.mint(user1.address, ethers.parseUnits("1000000", 6));
     await USDC.mint(user2.address, ethers.parseUnits("1000000", 6));
     await USDC.mint(attacker.address, ethers.parseUnits("1000000", 6));
 
     return { kfUSD, kafUSD, USDC, USDT, USDe, owner, attacker, user1, user2 };
+  }
+
+  // Give `user` a locked kfUSD position in the vault: mint kfUSD against USDC at
+  // par, then lock it for kafUSD. Returns the kfUSD/kafUSD amount now locked.
+  // The 5bps mint fee means minting N collateral yields slightly less than N
+  // kfUSD, so lock a round amount below that and return it.
+  async function lockKfUSD(kfUSD, kafUSD, USDC, user, whole) {
+    const kfusdAddr = await kfUSD.getAddress();
+    const kafusdAddr = await kafUSD.getAddress();
+    const collateral = ethers.parseUnits(String(whole + 1), 6); // headroom for fee
+    await USDC.connect(user).approve(kfusdAddr, collateral);
+    await kfUSD.connect(user).mintWithCollateral(await USDC.getAddress(), collateral);
+    const lockAmount = ethers.parseEther(String(whole));
+    await kfUSD.connect(user).approve(kafusdAddr, lockAmount);
+    await kafUSD.connect(user).lockAssets(kfusdAddr, lockAmount);
+    return lockAmount;
   }
 
   describe("1. Reentrancy Attacks", function () {
@@ -202,6 +223,59 @@ describe("Stablecoin Security Tests", function () {
         .withArgs(attacker.address, MINTER_ROLE);
     });
 
+    it("Should let any wallet mint via mintWithCollateral, at par, without MINTER_ROLE", async function () {
+      const { kfUSD, USDC, user1 } = await loadFixture(deployContractsFixture);
+
+      // user1 holds no MINTER_ROLE — the four-argument mint would revert for
+      // them. mintWithCollateral is the permissionless path and derives the
+      // kfUSD amount at par on-chain, so there is nothing for the caller to
+      // over-claim.
+      expect(await kfUSD.hasRole(MINTER_ROLE, user1.address)).to.equal(false);
+
+      const collateral = ethers.parseUnits("1000", 6); // 1,000 USDC
+      await USDC.connect(user1).approve(kfUSD.target, collateral);
+      await kfUSD.connect(user1).mintWithCollateral(USDC.target, collateral);
+
+      // Par, scaled 6 → 18 decimals, less the 5 bps mint fee taken from the
+      // minted amount. 1,000 kfUSD gross, 0.5 kfUSD fee, 999.5 to the user.
+      const gross = ethers.parseEther("1000");
+      const fee = (gross * 5n) / 10000n;
+      expect(await kfUSD.balanceOf(user1.address)).to.equal(gross - fee);
+
+      // Collateral actually moved and is booked against the token.
+      expect(await kfUSD.collateralBalances(USDC.target)).to.equal(collateral);
+    });
+
+    it("mintWithCollateral cannot mint against unsupported collateral", async function () {
+      const { kfUSD, user1 } = await loadFixture(deployContractsFixture);
+
+      // A random address is not a registered collateral, so there is no way to
+      // mint kfUSD the protocol does not back through this path.
+      await expect(
+        kfUSD.connect(user1).mintWithCollateral(
+          "0x00000000000000000000000000000000DeaDBeef",
+          ONE_USDC,
+        ),
+      ).to.be.revertedWith("kfUSD: Collateral not supported");
+    });
+
+    it("Should still gate the four-argument mint on MINTER_ROLE", async function () {
+      const { kfUSD, USDC, attacker } = await loadFixture(deployContractsFixture);
+
+      // The role-gated mint is untouched: it takes an explicit kfUSD amount and
+      // must stay permissioned, because a caller who set both amounts could
+      // mint unbacked kfUSD.
+      await expect(
+        kfUSD.connect(attacker).mint(
+          attacker.address,
+          ONE_ETHER,
+          USDC.target,
+          ONE_USDC,
+        ),
+      ).to.be.revertedWithCustomError(kfUSD, "AccessControlUnauthorizedAccount")
+        .withArgs(attacker.address, MINTER_ROLE);
+    });
+
     it("Should restrict pause function to PAUSER_ROLE", async function () {
       const { kfUSD, attacker } = await loadFixture(deployContractsFixture);
       
@@ -289,58 +363,95 @@ describe("Stablecoin Security Tests", function () {
 
   describe("10. Cooldown Bypass (kafUSD)", function () {
     it("Should prevent completeWithdrawal before cooldown completes", async function () {
-      const { kafUSD, user1 } = await loadFixture(deployContractsFixture);
-      
-      // First, user needs to request withdrawal
-      const withdrawAmount = ethers.parseEther("1000");
-      
-      // Request withdrawal
-      await kafUSD.connect(user1).requestWithdrawal(withdrawAmount);
-      
+      const { kfUSD, kafUSD, USDC, user1 } = await loadFixture(deployContractsFixture);
+      const locked = await lockKfUSD(kfUSD, kafUSD, USDC, user1, 1000);
+
+      // Request withdrawal of the locked kfUSD
+      await kafUSD.connect(user1).requestWithdrawal(await kfUSD.getAddress(), locked);
+
       // Attempt immediate completeWithdrawal (should fail)
       await expect(
-        kafUSD.connect(user1).completeWithdrawal(await kafUSD.kfusd())
+        kafUSD.connect(user1).completeWithdrawal()
       ).to.be.revertedWith("kafUSD: Cooldown not complete");
-      
-      // Fast forward time (7 days)
+
+      // After the cooldown it succeeds and pays out the locked kfUSD
       await time.increase(7 * 24 * 60 * 60);
-      
-      // Now withdrawal should succeed (if sufficient balances exist)
-      // Note: This requires actual locked assets to test fully
+      await expect(kafUSD.connect(user1).completeWithdrawal()).to.not.be.reverted;
+      expect(await kfUSD.balanceOf(user1.address)).to.be.gte(locked);
     });
 
-    it("Should track withdrawal request time correctly", async function () {
-      const { kafUSD, user1 } = await loadFixture(deployContractsFixture);
-      
-      const withdrawAmount = ethers.parseEther("500");
-      
-      // Request withdrawal
-      const tx = await kafUSD.connect(user1).requestWithdrawal(withdrawAmount);
+    it("Should track withdrawal request time and asset correctly", async function () {
+      const { kfUSD, kafUSD, USDC, user1 } = await loadFixture(deployContractsFixture);
+      const locked = await lockKfUSD(kfUSD, kafUSD, USDC, user1, 500);
+
+      const tx = await kafUSD
+        .connect(user1)
+        .requestWithdrawal(await kfUSD.getAddress(), locked);
       const receipt = await tx.wait();
       const block = await ethers.provider.getBlock(receipt.blockNumber);
-      
-      // Verify withdrawal request time is set
-      const requestTime = await kafUSD.withdrawalRequestTime(user1.address);
-      expect(requestTime).to.equal(block.timestamp);
-      
-      // Verify withdrawal amount is set
-      const amount = await kafUSD.withdrawalAmount(user1.address);
-      expect(amount).to.equal(withdrawAmount);
+
+      expect(await kafUSD.withdrawalRequestTime(user1.address)).to.equal(block.timestamp);
+      expect(await kafUSD.withdrawalAmount(user1.address)).to.equal(locked);
+      // The asset is now recorded at request time, not chosen at completion.
+      expect(await kafUSD.withdrawalAsset(user1.address)).to.equal(await kfUSD.getAddress());
     });
 
-    it("Should clear withdrawal request after completion", async function () {
-      const { kafUSD, user1 } = await loadFixture(deployContractsFixture);
-      
-      const withdrawAmount = ethers.parseEther("100");
-      
-      // Request and complete withdrawal (after cooldown)
-      await kafUSD.connect(user1).requestWithdrawal(withdrawAmount);
+    it("Should clear the request (time, amount and asset) after completion", async function () {
+      const { kfUSD, kafUSD, USDC, user1 } = await loadFixture(deployContractsFixture);
+      const locked = await lockKfUSD(kfUSD, kafUSD, USDC, user1, 100);
+
+      await kafUSD.connect(user1).requestWithdrawal(await kfUSD.getAddress(), locked);
       await time.increase(7 * 24 * 60 * 60);
-      
-      // After completion, withdrawal request should be cleared
-      // This is done in completeWithdrawal:
-      // withdrawalRequestTime[msg.sender] = 0;
-      // withdrawalAmount[msg.sender] = 0;
+      await kafUSD.connect(user1).completeWithdrawal();
+
+      expect(await kafUSD.withdrawalRequestTime(user1.address)).to.equal(0);
+      expect(await kafUSD.withdrawalAmount(user1.address)).to.equal(0);
+      expect(await kafUSD.withdrawalAsset(user1.address)).to.equal(ethers.ZeroAddress);
+    });
+
+    it("requestWithdrawal reverts when the caller has not locked that asset", async function () {
+      const { kfUSD, kafUSD, user1 } = await loadFixture(deployContractsFixture);
+      // user1 holds no locked kfUSD, so a request must fail NOW rather than a
+      // cooldown later — this is the bug the up-front balance check closes.
+      await expect(
+        kafUSD.connect(user1).requestWithdrawal(await kfUSD.getAddress(), ethers.parseEther("1"))
+      ).to.be.revertedWith("kafUSD: Insufficient balance");
+    });
+
+    it("A second requestWithdrawal reverts instead of silently overwriting the first", async function () {
+      const { kfUSD, kafUSD, USDC, user1 } = await loadFixture(deployContractsFixture);
+      const locked = await lockKfUSD(kfUSD, kafUSD, USDC, user1, 1000);
+      const half = locked / 2n;
+
+      await kafUSD.connect(user1).requestWithdrawal(await kfUSD.getAddress(), half);
+      // The old behaviour threw away the first request and restarted the clock.
+      await expect(
+        kafUSD.connect(user1).requestWithdrawal(await kfUSD.getAddress(), half)
+      ).to.be.revertedWith("kafUSD: Withdrawal already pending");
+      // The first request is intact.
+      expect(await kafUSD.withdrawalAmount(user1.address)).to.equal(half);
+    });
+
+    it("cancelWithdrawal frees the slot so a corrected request can be made", async function () {
+      const { kfUSD, kafUSD, USDC, user1 } = await loadFixture(deployContractsFixture);
+      const locked = await lockKfUSD(kfUSD, kafUSD, USDC, user1, 1000);
+
+      await kafUSD.connect(user1).requestWithdrawal(await kfUSD.getAddress(), locked / 2n);
+      await kafUSD.connect(user1).cancelWithdrawal();
+      expect(await kafUSD.withdrawalAmount(user1.address)).to.equal(0);
+
+      // A fresh request for the full amount now goes through.
+      await expect(
+        kafUSD.connect(user1).requestWithdrawal(await kfUSD.getAddress(), locked)
+      ).to.not.be.reverted;
+      expect(await kafUSD.withdrawalAmount(user1.address)).to.equal(locked);
+    });
+
+    it("cancelWithdrawal reverts when there is nothing pending", async function () {
+      const { kafUSD, user1 } = await loadFixture(deployContractsFixture);
+      await expect(
+        kafUSD.connect(user1).cancelWithdrawal()
+      ).to.be.revertedWith("kafUSD: No withdrawal request");
     });
   });
 
