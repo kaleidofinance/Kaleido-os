@@ -1,4 +1,5 @@
 import { envVars } from "@/constants/envVars";
+import { FailoverJsonRpcProvider } from "@/lib/chain/rpcFailover";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import { ethers } from "ethers";
 
@@ -110,9 +111,21 @@ const READ_CHAIN = CHAINS_BY_ID[READ_ONLY_CHAIN_ID];
  * and cannot disagree.
  */
 const overrideRpcUrl = envVars.httpRPC?.trim() || "";
-const readRpcUrl = overrideRpcUrl || READ_CHAIN.rpcUrls[0];
 
-if (!readRpcUrl) {
+/**
+ * Every endpoint for the read chain, preferred first.
+ *
+ * An override collapses this to one URL by design: an operator naming an
+ * endpoint means that endpoint, and silently falling through to a public node
+ * they did not choose would answer from somewhere they cannot see. Failover is
+ * for the list chains.ts curates, where every entry is already a vetted peer of
+ * the others.
+ */
+const readRpcUrls = overrideRpcUrl
+  ? [overrideRpcUrl]
+  : READ_CHAIN.rpcUrls.filter((u) => !!u);
+
+if (readRpcUrls.length === 0) {
   throw new Error(
     `No RPC URL for read chain ${READ_ONLY_CHAIN_ID} ` +
       `(${READ_CHAIN.name}): chains.ts lists no rpcUrls for it and ` +
@@ -120,8 +133,16 @@ if (!readRpcUrl) {
   );
 }
 
-export const readOnlyProvider = new ethers.JsonRpcProvider(
-  readRpcUrl,
+/**
+ * Falls through to the next endpoint when the current one stops answering.
+ *
+ * NOT a change of source: `rpcUrls[0]` is still what this dials, and it leaves
+ * that endpoint only while the endpoint is refusing requests. See
+ * lib/chain/rpcFailover.ts — the outage it was written for took out every
+ * server-side read on this chain while a healthy alternate sat unused at [1].
+ */
+export const readOnlyProvider = new FailoverJsonRpcProvider(
+  readRpcUrls,
   {
     chainId: READ_ONLY_CHAIN_ID,
     name: READ_CHAIN.name,
@@ -167,11 +188,14 @@ export function providerForChain(
   if (cached) return cached;
 
   const meta = CHAINS_BY_ID[chainId];
-  const url = meta?.rpcUrls[0];
-  if (!url) return null;
+  const urls = (meta?.rpcUrls ?? []).filter((u) => !!u);
+  if (urls.length === 0) return null;
 
-  const provider = new ethers.JsonRpcProvider(
-    url,
+  /* Every URL here comes from the one `CHAINS_BY_ID[chainId]` record, so they
+     all serve the chain being declared — which is what keeps `staticNetwork`
+     sound while the provider is free to move between them. */
+  const provider = new FailoverJsonRpcProvider(
+    urls,
     { chainId, name: meta.name },
     { staticNetwork: true },
   );
