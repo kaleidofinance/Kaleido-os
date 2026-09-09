@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useState, useEffect } from "react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useQuery } from "@tanstack/react-query";
 import { ethers } from "ethers";
 import { IToken } from "@/constants/types/dex";
 import { providerForChain } from "@/config/provider";
@@ -16,126 +16,113 @@ const ERC20_ABI = [
 /**
  * One token's balance for the connected wallet.
  *
+ * NOW A react-query READ, and that is the fix for a specific waste rather than a
+ * rewrite for its own sake. The hook still does exactly what its docstring below
+ * describes — the chain-awareness and the unread-not-zero discipline are the
+ * point and are unchanged — but it used to drive its own `setInterval(…, 10s)`
+ * per instance, and the token picker, both swap wells, /stake, /pool/new and the
+ * deposit modal all mount it at once. Ten-plus timers, each re-reading the same
+ * few balances on its own clock, on RPCs this app has measured throttling on.
+ * Keyed by (chainId, token, wallet), react-query collapses every instance
+ * reading the same balance into one poll and one cache entry, and `staleTime`
+ * keeps a re-render from refiring it. The return shape is unchanged, so no caller
+ * moved.
+ *
  * WHY THE READ PROVIDER AND NOT `window.ethereum`
  *
- * This read `new ethers.BrowserProvider(window.ethereum)` and reported `"0"` from
- * its catch. Both halves were wrong, and together they produced the failure this
- * hook was rewritten for: every balance in the app rendering as 0.00.
- *
- *   1. **There is often no injected provider.** `window.ethereum` exists when a
- *      browser extension put it there. The app ships six wallet options through
- *      thirdweb — WalletConnect and in-app (email/social) wallets inject nothing,
- *      on any platform, and a phone browser has no extension at all. So on mobile
- *      `new BrowserProvider(undefined)` threw on the first line of the try, for a
- *      wallet that was properly connected and holding funds. Every consumer of
- *      this hook was affected at once: both swap wells, every row of the token
- *      picker, /stake, /pool/new and the deposit modal.
- *   2. **The wallet's node answers for one chain.** An injected provider is
- *      pinned to whatever network the wallet is on, while the token carries its
- *      own `chainId` — and the picker's list spans chains, so a Base row was read
- *      at Base's address against Sepolia. That returns zero (no code there) or,
- *      where a deployer's nonces line up across chains, another token's balance
- *      under this one's name. `providerForChain(token.chainId)` dials the chain
- *      the token is actually on, which is the (chainId, address) identity rule
- *      the registry exists to enforce.
+ * The read goes through `providerForChain(token.chainId)`, never
+ * `new ethers.BrowserProvider(window.ethereum)`. Two failures came from the
+ * injected provider: it is absent for WalletConnect, the in-app wallet and every
+ * phone browser (so a connected wallet holding funds read empty), and when
+ * present it answers for one chain while the picker's rows span several (so a Base
+ * row read at Base's address against Sepolia came back zero, or another token's
+ * balance under this one's name). `providerForChain` dials the chain the token is
+ * actually on — the (chainId, address) identity the registry enforces.
  *
  * A FAILED READ IS `unread`, NOT ZERO
  *
- * `"0"` from a catch is a claim — that the wallet holds none of this token — made
- * from a read that never landed. It disables Max, the percentage chips and the
- * CTA exactly as an empty wallet does, so the user cannot tell the two apart.
- * Failures now set `unread`, and `retryRpc` first gives a throttled endpoint the
- * few retries it needs: Sepolia-class nodes return a rate limit as HTTP 200 with
- * a JSON-RPC error body that ethers surfaces as "missing revert data" (see
- * lib/dex/rpcRetry.ts), which is indistinguishable from an empty answer here.
+ * A read that throws leaves `unread` true and the last good balance in place,
+ * rather than claiming the wallet holds none — the two are indistinguishable to a
+ * user, and one is a lie. `retryRpc` first gives a throttled endpoint the few
+ * retries it needs (a rate limit arrives as "missing revert data"; see
+ * lib/dex/rpcRetry.ts). A chain with no endpoint, or a token with no declared
+ * decimals, resolves to `unread` without a guess.
  *
  * DECIMALS ARE DECLARED, NEVER GUESSED
  *
- * `IToken.decimals` is required and the registry always sets it, so the old
- * `decimals()` call and its `?? 18` fallback are gone — one less round trip per
- * token, and no guess. The guess is not a rounding matter: BSC's USDC is 18
- * decimals where every other chain's is 6, so 18 in place of 6 overstates a
- * balance by 10^12. A token that somehow arrives without declared decimals is
- * `unread` rather than formatted at a guessed scale.
+ * `IToken.decimals` is required and the registry always sets it. The guess is not
+ * a rounding matter: BSC's USDC is 18 decimals where every other chain's is 6, so
+ * 18 in place of 6 overstates a balance by 10^12. A token that somehow arrives
+ * without declared decimals is `unread` rather than formatted at a guessed scale.
  */
 export const useTokenBalance = (token: IToken | null) => {
   const activeAccount = useActiveAccount();
   const connectedChainId = useActiveWalletChain()?.id;
-  const [balance, setBalance] = useState("0");
-  /** True when the read was attempted and did not land. `balance` is not a fact. */
-  const [unread, setUnread] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const address = activeAccount?.address;
 
   /* The token's own chain, falling back to the wallet's only when the token does
-     not say. Registry tokens always carry `chainId`, so the fallback is for a
-     token assembled elsewhere — and for those the connected chain is the only
-     chain the caller could have meant. Not a `?? READ_ONLY_CHAIN_ID`: answering
-     with Sepolia's balance for a wallet on Base is the confidently-wrong-chain
-     bug providerForChain's docstring is about. */
+     not say. Not a `?? READ_ONLY_CHAIN_ID`: answering with Sepolia's balance for
+     a wallet on Base is the confidently-wrong-chain bug providerForChain is about. */
   const chainId = token?.chainId ?? connectedChainId;
 
-  const fetchBalance = useCallback(async () => {
-    if (!activeAccount || !token) {
-      setBalance("0");
-      setUnread(false);
-      return;
-    }
-    /* Fixture balances, above the read so no provider is ever dialled: on a
-       chain with no deployment every call below fails and the wallet reads empty,
-       which disables Max, the quick-percentage buttons and every CTA. Placed
-       after the guard rather than before it, so it is scoped to a connected
-       address for free — a wallet balance without a wallet is not a number this
-       should invent. Deleting ./mock deletes these four lines. */
-    if (MOCK_DATA) {
-      setBalance(mockBalance(token));
-      setUnread(false);
-      setLoading(false);
-      return;
-    }
+  const query = useQuery({
+    queryKey: ["tokenBalance", chainId, token?.address ?? null, address ?? null],
+    enabled: Boolean(token && address),
+    /* The 10s cadence this hook always had, now shared: every mount of the same
+       (chain, token, wallet) reads on one timer instead of its own. */
+    refetchInterval: 10_000,
+    queryFn: async (): Promise<string | null> => {
+      /* enabled gates these, but the queryFn signature cannot see that. */
+      if (!token || !address) return null;
 
-    const provider = providerForChain(chainId);
-    if (!provider || !Number.isInteger(token.decimals)) {
-      /* No endpoint for this chain, or no declared decimals to format with.
-         Nothing was read, so nothing is claimed. */
-      setUnread(true);
-      setLoading(false);
-      return;
-    }
+      if (MOCK_DATA) return mockBalance(token);
 
-    setLoading(true);
-    try {
+      const provider = providerForChain(chainId);
+      if (!provider || !Number.isInteger(token.decimals)) {
+        /* No endpoint for this chain, or no declared decimals to format with.
+           A resolved null — nothing was read, nothing is claimed, and there is
+           nothing to retry. Surfaces as `unread` below. */
+        return null;
+      }
+
       const isNative =
         token.isNative ||
         isNativeSentinel(token.address, "dex") ||
         isNativeSentinel(token.address, "lending");
 
+      /* Thrown on failure, not caught to a zero: a throw is what lets react-query
+         retry a throttle and keep the last good value while it does. retryRpc
+         handles the rate-limit-as-"missing revert data" case first. */
       const raw: bigint = isNative
-        ? await retryRpc(() => provider.getBalance(activeAccount.address))
+        ? await retryRpc(() => provider.getBalance(address))
         : await retryRpc(() =>
             new ethers.Contract(token.address, ERC20_ABI, provider).balanceOf(
-              activeAccount.address,
+              address,
             ),
           );
 
-      setBalance(ethers.formatUnits(raw, token.decimals));
-      setUnread(false);
-    } catch (error) {
-      /* Kept as a console error because a persistent one is a dead endpoint in
-         chains.ts, which is worth seeing. The previous balance is left in place:
-         a number read ten seconds ago is closer to the truth than a zero, and
-         `unread` is what the UI shows instead of trusting it. */
-      console.error("Could not read balance for", token.symbol, error);
-      setUnread(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeAccount, token, chainId]);
+      return ethers.formatUnits(raw, token.decimals);
+    },
+  });
 
-  useEffect(() => {
-    fetchBalance();
-    const interval = setInterval(fetchBalance, 10000); // Poll every 10s
-    return () => clearInterval(interval);
-  }, [fetchBalance]);
+  const enabled = Boolean(token && address);
 
-  return { balance, loading, unread, refetch: fetchBalance };
+  return {
+    /* Last good value, or "0" before one exists. The `unread` flag beside it is
+       what a caller shows instead when this number is not a fact. */
+    balance: query.data ?? "0",
+    /* Only the first load, so a background re-poll does not flip every well to a
+       spinner. */
+    loading: query.isLoading,
+    /* Not a fact when: the read errored (stale value kept underneath), or it
+       resolved to null (no endpoint / no decimals). Never while still loading,
+       and never when there is simply no wallet or token to read. */
+    unread:
+      enabled &&
+      !query.isLoading &&
+      (query.isError || query.data === null),
+    refetch: () => {
+      query.refetch();
+    },
+  };
 };
