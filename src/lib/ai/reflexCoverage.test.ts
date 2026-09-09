@@ -132,6 +132,13 @@ const QUESTIONS = [
   "my transaction is stuck",
   "what are the fees",
   "what is the APY",
+  /* Newcomer phrasings that reached the model until the FAQ learned them: the fee
+     question worded as a verb, the unstake flow (which has no grammar verb behind
+     it), and the skeptic's "is any of this real / can I lose money". */
+  "how do fees work",
+  "how do I unstake",
+  "can I lose money",
+  "is my money safe",
   /* Asking what you hold. Absent from this corpus until the read existed, which
      means the percentage above it never measured the single most-asked thing —
      so they are here now whether or not they pass. "am I in profit" is the one
@@ -236,6 +243,11 @@ console.log("\n— and the right net answers it —");
     "my transaction is stuck": "faq:tx-failed",
     "what are the fees": "faq:fees",
     "what is the APY": "faq:apy",
+    /* The phrasings the FAQ just learned — pinned by id so a reworded trigger
+       that stops catching them fails here, not silently at a tester's screen. */
+    "how do fees work": "faq:fees",
+    "how do I unstake": "faq:staking",
+    "can I lose money": "faq:mainnet",
     // Still a transaction, and still the grammar's.
     "buy KLD with 500 USDC": "command:swap",
     "claim everything from the faucet": "command:claimTestTokens",

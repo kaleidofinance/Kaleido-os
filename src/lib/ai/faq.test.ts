@@ -242,6 +242,11 @@ console.log("\n— every trigger can actually fire, given the routing order —"
     // and the parser giving them one is the correct outcome.
     "stake kld": "imperative",
     "mint kfusd": "imperative",
+    /* The grammar grew an `unstake` verb, so the bare word now builds a plan —
+       the transaction someone typing it wants. The staking topic keeps the
+       trigger for the question form, "how do I unstake", which is question-
+       shaped and reaches this file first. Asserted just below. */
+    unstake: "imperative",
     // A noun phrase that nobody types alone: it arrives inside "is there a limit
     // on the faucet", which is question-shaped, so it reaches this file there.
     // Asserted just below rather than left as an argument.

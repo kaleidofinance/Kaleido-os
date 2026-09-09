@@ -8,6 +8,7 @@ import {
   registeredLendingAssetAt,
   registeredLendingAssets,
   stableContracts,
+  stakingContracts,
   type LendingSide,
   type Protocol,
 } from "@/constants/registry";
@@ -136,6 +137,11 @@ const ACTION_OF: Record<IntentKind, string> = {
      gating it separately would let a user who disabled swaps be shown one. */
   swapMultiHop: "swap",
   stake: "stake",
+  /* The unstake lifecycle is the same product toggle as staking: a user who
+     disabled staking should not be shown a withdrawal from the vault either. */
+  requestStakeWithdrawal: "stake",
+  withdrawStake: "stake",
+  cancelStakeWithdrawal: "stake",
   /* An approve is not a product; it is the enabling step for one. Gating it on
      its own toggle would let a user disable swaps and still be shown the
      approve that only exists to serve one. The step it precedes carries the
@@ -1280,6 +1286,47 @@ const AUDITORS: Record<IntentKind, Auditor> = {
         : {}),
     };
   },
+
+  /*
+   * The unstake lifecycle. Every address is pinned to this chain's recorded
+   * staking set rather than merely checked for shape: a well-formed vault
+   * address that is not OUR vault is the plan worth refusing, and a plan that
+   * names one is a plan the model invented. Only `withdrawStake` moves value
+   * out of the vault, so only it is priced; a request starts a clock and a
+   * cancel stops one, and neither can be capped by a notional it does not have.
+   */
+  requestStakeWithdrawal: (s, chainId) => {
+    const staking = stakingContracts(chainId);
+    return {
+      reasons: [
+        ...pinned(str(s.vault), staking.kldVault, "KLD vault"),
+        ...pinned(str(s.token), staking.kld, "KLD"),
+        ...pinned(str(s.stToken), staking.stKLD, "stKLD"),
+      ],
+    };
+  },
+  withdrawStake: (s, chainId) => {
+    const staking = stakingContracts(chainId);
+    const amount = num(s.amount);
+    const reasons = [
+      ...pinned(str(s.vault), staking.kldVault, "KLD vault"),
+      ...pinned(str(s.token), staking.kld, "KLD"),
+      ...pinned(str(s.stToken), staking.stKLD, "stKLD"),
+    ];
+    if (amount === null || amount <= 0)
+      reasons.push("unstake amount is missing or not positive");
+    return {
+      reasons,
+      ...(amount !== null && amount > 0
+        ? { priced: { symbol: "KLD", amount: String(amount) } }
+        : {}),
+    };
+  },
+  cancelStakeWithdrawal: (s, chainId) => ({
+    reasons: [
+      ...pinned(str(s.vault), stakingContracts(chainId).kldVault, "KLD vault"),
+    ],
+  }),
 
   /* --------------------------------------------------------------- send -- */
   /**

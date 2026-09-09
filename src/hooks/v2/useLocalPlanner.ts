@@ -6,6 +6,7 @@ import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { readFaucetAssets } from "@/hooks/v2/useFaucet";
 import { readMarketRow } from "@/lib/lending/book";
+import { readStakingState } from "@/lib/staking/state";
 import { readPoolState } from "@/lib/dex/pool";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
 import { providerForChain } from "@/config/provider";
@@ -130,6 +131,11 @@ export function useLocalPlanner() {
           marketRow: (kind, id) => fetchMarketRow(chainId, kind, id),
           positions: async () => opts.positions ?? [],
           loans: async () => opts.loans ?? [],
+          /* Read lazily and only by the unstake branch, which needs to know
+             whether this wallet is mid-cooldown before it can say which of the
+             vault's three steps "unstake" means. The same reader the server
+             planner uses, so both agree on the step. */
+          stakingState: () => readStakingState(chainId, address),
           /* Read here rather than passed in, and read lazily, which is the whole
              reason PlanDeps takes thunks: the faucet is one more eth_call, and
              an agent page that fired it on mount would pay for it on every visit

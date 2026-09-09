@@ -327,6 +327,15 @@ export interface PlanDeps {
   positions(): Promise<PoolPositionRef[]>;
   loans(): Promise<LoanRef[]>;
   /**
+   * Where this wallet is in the vault's unstake cooldown, or null when that
+   * cannot be read. Optional, on the `quotePath` precedent: the marketing
+   * snapshot deps and the test fixture have no wallet to ask about, and an
+   * implementation without it makes the unstake branch refuse rather than
+   * guess — a guessed "no request" would send a second request at a vault that
+   * already holds one. Read by exactly one branch. See lib/staking/state.ts.
+   */
+  stakingState?(): Promise<{ hasRequest: boolean; timeLeft: number } | null>;
+  /**
    * What the faucet lists, including assets it has paused.
    *
    * Empty is a valid answer and the only one an implementation with no faucet
@@ -860,6 +869,96 @@ export async function buildIntents(
           },
           {
             kind: "stake",
+            vault: staking.kldVault!,
+            token: staking.kld!,
+            stToken: staking.stKLD!,
+            amount: command.amount,
+            symbol: "KLD",
+          },
+        ],
+      },
+    };
+  }
+
+  if (command.kind === "unstake") {
+    /*
+     * One sentence, three possible transactions, decided by chain state.
+     *
+     * KLDVaultV2 keys a withdrawal cooldown on the account: `requestWithdrawal`
+     * opens it, `withdraw` pays out only after it elapses, and until it does the
+     * honest answer is the countdown, not a signature. So this branch reads the
+     * wallet's state and emits the single step that applies — which is what
+     * lets "unstake 100 KLD" mean a request today and a withdrawal tomorrow
+     * without the user learning the vault's lifecycle first.
+     *
+     * Every failure to read is a refusal, never a default. A planner that
+     * assumed "no request" on a missing reader would send a second request at a
+     * vault already holding one, and the vault refuses that with a revert the
+     * user cannot act on.
+     */
+    const staking = stakingContracts(chainId);
+    if (!staking.supported) {
+      return {
+        ok: false,
+        error: "Staking isn't available on this chain yet.",
+      };
+    }
+    if (!deps.stakingState) {
+      return {
+        ok: false,
+        error:
+          "I can't read your staking state from here, so I can't tell which unstake step you're on. The Stake page can — it reads it directly.",
+      };
+    }
+    const state = await deps.stakingState();
+    if (!state) {
+      return {
+        ok: false,
+        error:
+          "I couldn't read your staking state — the vault didn't answer. Try again in a moment, or use the Stake page.",
+      };
+    }
+
+    if (!state.hasRequest) {
+      return {
+        ok: true,
+        build: {
+          summary: `Request to unstake ${command.amount} KLD. This starts the vault's cooldown — nothing pays out yet. Ask me again once it ends and I'll withdraw it.`,
+          intents: [
+            {
+              kind: "requestStakeWithdrawal",
+              vault: staking.kldVault!,
+              token: staking.kld!,
+              stToken: staking.stKLD!,
+            },
+          ],
+        },
+      };
+    }
+
+    if (state.timeLeft > 0) {
+      /* Seconds to a phrase a person reads at a glance — the same figure the
+         Stake page's countdown shows, so the two never disagree. */
+      const s = state.timeLeft;
+      const left =
+        s >= 3600
+          ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+          : s >= 60
+            ? `${Math.floor(s / 60)}m`
+            : `${s}s`;
+      return {
+        ok: false,
+        error: `Your unstake is already requested — the cooldown has ${left} left. Ask me again then and I'll withdraw it, or say "cancel my unstake" to keep it staked.`,
+      };
+    }
+
+    return {
+      ok: true,
+      build: {
+        summary: `Withdraw ${command.amount} KLD from the vault — the cooldown has ended.`,
+        intents: [
+          {
+            kind: "withdrawStake",
             vault: staking.kldVault!,
             token: staking.kld!,
             stToken: staking.stKLD!,
