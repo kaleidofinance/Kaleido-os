@@ -149,6 +149,32 @@ export interface ChainContracts {
 
   /** Testnet only. */
   faucet?: string;
+  /* -- Limit / recurring orders ----------------------------------------- */
+  /**
+   * KaleidoOrders - the settlement contract for /trade/limit.
+   *
+   * A maker signs an EIP-712 `Order` off-chain and anyone may call `fill`; the
+   * contract passes the maker's own signed `minOut` to the V3 router as
+   * `amountOutMinimum` and sends the output straight to the maker. So the address
+   * matters to the frontend twice over and for different reasons:
+   *
+   * - it is the EIP-712 `verifyingContract`, which is part of the digest. A
+   *   signature made against the wrong address is not a weaker signature, it is
+   *   a different one, and every fill of it reverts. This is why the field is
+   *   read rather than configured: an env var that drifts produces orders that
+   *   are valid nowhere.
+   * - it is the ERC20 spender the maker approves, because `fill` moves funds by
+   *   `transferFrom`.
+   *
+   * Bound to one router at construction (`router` is immutable), so it belongs
+   * to the same deployment set as `v3Router` and cannot be pointed at a
+   * different venue after the fact. V3 and not V2 because that is where the
+   * liquidity is: the V2 factory has created no pair on any chain, while the V3
+   * KLD/USDC pool is what /trade quotes and what the chart on the limit page
+   * draws. A limit order settled on the other venue would fill - when it could
+   * fill at all - at a price the user never saw.
+   */
+  orders?: string;
 
   /* -- External, NOT deployed by us ------------------------------------- */
   /**

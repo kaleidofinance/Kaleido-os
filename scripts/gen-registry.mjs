@@ -111,6 +111,23 @@ const FIELD_MAP = {
     USDT: "usdt",
     USDe: "usde",
   },
+  /* deploy-orders.js. KaleidoOrders, the settlement contract behind /trade/limit.
+   *
+   * `v3Router` is mapped rather than dropped, and that is the point of the entry.
+   * KaleidoOrders takes the router in its constructor and holds it `immutable`, so
+   * the pairing cannot be corrected after deploy - and a redeployed V3 periphery
+   * would leave this contract routing every fill through a codeless address while
+   * both records looked fine on their own. Mapping it to the same field the v3
+   * record writes puts that mismatch through mergeField, which stops the
+   * generation and names both files. Dropping it would trade a loud failure here
+   * for a revert at the first fill of a signed order.
+   *
+   * V3 and not V2 because that is where the liquidity is - see the note on
+   * ChainContracts.orders. */
+  orders: {
+    orders: "orders",
+    v3Router: "v3Router",
+  },
   /* deploy-faucet.js. Testnet only, and the record also carries the drip and
    * funding per asset under `config` — none of which the registry needs, because
    * the contract itself answers assetInfo(). Only the address is mapped. */
