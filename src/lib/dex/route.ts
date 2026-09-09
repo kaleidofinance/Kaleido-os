@@ -142,7 +142,16 @@ export function intermediateTokens(
 
   const bySymbol = (symbol: string) =>
     registered.find(
-      (t) => t.symbol.toLowerCase() === symbol.toLowerCase() && !t.isNative,
+      (t) =>
+        t.symbol.toLowerCase() === symbol.toLowerCase() &&
+        !t.isNative &&
+        /* Skip the precompile "native-alias" face — Arc's 6-decimal USDC at
+           0x3600…, which mirrors the native balance for display but is not what
+           pools hold. Pools hold the wrapped-native form (WUSDC, 18 decimals),
+           which `wrapped` below supplies. Quoting the alias finds no pool, and
+           pairing its 6 decimals against WUSDC's 18 is a route mispriced by
+           10^12 the day a USDC pool is seeded on Arc. */
+        !t.tags?.includes("native-alias"),
     );
 
   const wrapped = contracts.wrappedNative
@@ -154,9 +163,12 @@ export function intermediateTokens(
 
   const ordered = [bySymbol("USDC"), wrapped, bySymbol("USDT")];
 
-  /* Deduped by address, because `wrappedNative` IS the USDC entry on Arc — the
-     chain wraps its native USDC, so the two lookups return one token and
-     quoting it twice would double the calls for one candidate. */
+  /* Deduped by address, defensively. On most chains USDC, the wrapped native and
+     USDT are three distinct tokens; the dedup only bites if a chain registers the
+     wrapped native under one of those symbols too, where quoting one address
+     twice would double the calls for a single candidate. (Arc used to be the case
+     this comment named as its native USDC — but that 6-decimal alias is excluded
+     above now, so WUSDC reaches the list only through `wrapped`, at 18 decimals.) */
   const seen = new Set<string>();
   const out: { address: string; symbol: string; decimals: number }[] = [];
   for (const t of ordered) {
