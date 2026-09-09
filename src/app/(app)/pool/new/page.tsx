@@ -137,7 +137,17 @@ export default function NewPositionPage() {
 
   // Seeded from the connected chain's registry, never from a compiled-in list:
   // a KLD address is only meaningful together with the chain it lives on.
-  const available = useMemo(() => chainTokens(chainId), [chainId]);
+  //
+  // The native sentinel is filtered out. A V3 pool holds ERC20s, never the
+  // native asset, and the mint path has no wrap step — `value` is hardcoded to 0
+  // (see useV3PositionManager). So offering "ETH" on Sepolia, or "USDC" on Arc
+  // whose gas token is USDC, is a trap: the position manager reverts trying to
+  // transferFrom a 0xEeee… sentinel that is not a real ERC20. The wrapped form
+  // (WETH, WUSDC) is a separate registered token and stays selectable.
+  const available = useMemo(
+    () => chainTokens(chainId).filter((t) => !t.isNative),
+    [chainId],
+  );
   const [token0, setToken0] = useState<IToken | null>(null);
   const [token1, setToken1] = useState<IToken | null>(null);
   const [pickerFor, setPickerFor] = useState<"0" | "1" | null>(null);
