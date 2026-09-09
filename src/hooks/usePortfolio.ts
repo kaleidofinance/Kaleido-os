@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 
 import useGetValueAndHealth from "@/hooks/useGetValueAndHealth";
+import { useStakingData } from "@/hooks/v2/useStakingData";
 import useGetActiveRequest from "@/hooks/useGetActiveRequest";
 import { useLenderPositions } from "@/hooks/useLenderPositions";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
@@ -257,20 +258,6 @@ const sumRows = (
   return { subtotalUsd: priced === 0 ? null : total, unpriced };
 };
 
-/**
- * A vault atom as a number, or null when it has not been read.
- *
- * `Number("")` is 0 and the vault atoms start as "", so a naive read would
- * publish a confident "1.0000× index" before the vault read lands — the same
- * trap useStakeV2's `measured` guards, kept in step with it here.
- */
-const measuredNum = (v: string | number | undefined | null): number | null => {
-  if (v === null || v === undefined) return null;
-  if (typeof v === "string" && v.trim() === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-};
-
 const toneForHealth = (health: number | null): StateTone => {
   if (health === null) return "ok";
   if (health < HEALTH_CRITICAL) return "bad";
@@ -310,10 +297,13 @@ export const usePortfolio = (): Portfolio => {
     AVA2,
     AVA4,
     AVA5,
-    userstKldBalance,
-    totalPooledKLD,
-    totalShares,
   } = useGetValueAndHealth();
+  /* Staking is read chain-aware, NOT through useGetValueAndHealth — that hook
+     pins its staking reads to READ_ONLY_CHAIN_ID (Sepolia), so a wallet on any
+     other chain showed a Sepolia staking row here, the same bug /stake had.
+     useStakingData follows the wallet, and hands back the pooled÷shares index
+     ready-made. */
+  const { stakedBalance, yieldIndex } = useStakingData();
 
   const { requests: activeReq } = useGetActiveRequest();
   const {
@@ -734,7 +724,7 @@ export const usePortfolio = (): Portfolio => {
   const stakingGroup = useMemo<PositionGroup>(() => {
     const rows: Position[] = [];
 
-    const stKld = Number(userstKldBalance ?? 0);
+    const stKld = Number(stakedBalance ?? 0);
     if (stKld > 0) {
       /* stKLD REBASES, so `balanceOf` is already the holder's pooled-KLD claim —
          1 stKLD is worth 1 KLD to the holder and the balance IS the KLD amount.
@@ -743,12 +733,7 @@ export const usePortfolio = (): Portfolio => {
          at 1.0 and rises as yield is harvested. That index is what turns the flat
          "Accruing" into a real, moving number without misrepresenting the rebase
          (multiplying the balance by it would double-count — see useStakeV2). */
-      const pooled = measuredNum(totalPooledKLD);
-      const shares = measuredNum(totalShares);
-      const index =
-        pooled !== null && shares !== null && shares > 0
-          ? pooled / shares
-          : null;
+      const index = yieldIndex;
       const price = priceOf("stKLD");
       rows.push({
         id: "staking-stkld",
@@ -763,7 +748,7 @@ export const usePortfolio = (): Portfolio => {
             : "Liquid staking",
         /* The rebased KLD value: the balance itself, since stKLD is 1:1 with KLD
            for the holder. Shown in KLD because that is what the position IS. */
-        amount: `${shortAmount(stKld, String(userstKldBalance))} KLD`,
+        amount: `${shortAmount(stKld, String(stakedBalance))} KLD`,
         /* Null before TGE, and that is the correct answer rather than a gap —
            KLD has no market, so nothing derived from it has a dollar value.
            `priceOf` is still consulted so the row prices itself the day a feed
@@ -899,9 +884,8 @@ export const usePortfolio = (): Portfolio => {
       href: "/stake",
     };
   }, [
-    userstKldBalance,
-    totalPooledKLD,
-    totalShares,
+    stakedBalance,
+    yieldIndex,
     v3Positions,
     walletChainId,
     priceOf,
