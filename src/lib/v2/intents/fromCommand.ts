@@ -485,11 +485,12 @@ const VERBS: Record<ActionKind, string[]> = {
     /* Degen synonyms, so Luca reads the room a trader types in and not only the
        textbook verb. Two directions, kept straight below in BUY_WORDS: "dump"
        and "unload" spend the token you name (like "sell"); "ape", "cop", "grab"
-       and "snag" receive it (like "buy"). None collides with a token symbol on
-       any of the five chains, and the buy-side ones are safe even when a
-       phrasing is genuinely ambiguous — parseSwap's guard asks which token to
-       spend rather than ever guessing a trade. */
-    "dump", "unload", "ape", "cop", "grab", "snag",
+       and "snag" receive it (like "buy"). "flip" and "yeet" read forward like
+       "swap"/"convert" — spend the first token named — so they stay out of
+       BUY_WORDS. None collides with a token symbol on any of the five chains, and
+       the buy-side ones are safe even when a phrasing is genuinely ambiguous —
+       parseSwap's guard asks which token to spend rather than guessing a trade. */
+    "dump", "unload", "ape", "cop", "grab", "snag", "flip", "yeet",
   ],
   stake: ["stake"],
   approve: ["approve", "allow"],

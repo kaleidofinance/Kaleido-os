@@ -1640,6 +1640,28 @@ console.log("\n— degen and whale slang read as the trade a person meant —");
     noAmount.status === "incomplete" && noAmount.missing === "amount",
     JSON.stringify(noAmount),
   );
+
+  const flip = p("flip 100 USDC to KLD");
+  check(
+    "'flip' reads forward like swap — spends the first token named",
+    flip.status === "ok" &&
+      flip.command.kind === "swap" &&
+      flip.command.tokenIn.symbol === "USDC" &&
+      flip.command.tokenOut.symbol === "KLD" &&
+      flip.command.amount === "100",
+    JSON.stringify(flip),
+  );
+
+  const yeet = p("yeet 500 USDC into KLD");
+  check(
+    "'yeet … into' reads forward too, not as a buy",
+    yeet.status === "ok" &&
+      yeet.command.kind === "swap" &&
+      yeet.command.tokenIn.symbol === "USDC" &&
+      yeet.command.tokenOut.symbol === "KLD" &&
+      yeet.command.amount === "500",
+    JSON.stringify(yeet),
+  );
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

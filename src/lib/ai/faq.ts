@@ -195,9 +195,20 @@ export const FAQ_TOPICS: FaqTopic[] = [
   },
   {
     id: "staking",
-    triggers: ["stkld", "how does staking work", "liquid staking", "stake kld"],
+    triggers: [
+      "stkld",
+      "how does staking work",
+      "liquid staking",
+      "stake kld",
+      /* Unstaking has no local grammar verb (no intent behind it), so a question
+         about it would otherwise reach the model. The answer below now covers the
+         three-step flow, so route it here. "unstake" as a substring also catches
+         the imperative "unstake 100 kld", which the grammar leaves unknown. */
+      "unstake",
+      "unstaking",
+    ],
     answer:
-      "Staking KLD mints stKLD, a liquid derivative. There's no advertised APY — the yield shows up as stKLD appreciating against KLD over time as rewards accrue, so the exchange rate is the number that matters, not a percentage.",
+      "Staking KLD mints stKLD, a liquid derivative. There's no advertised APY — the yield shows up as stKLD appreciating against KLD over time as rewards accrue, so the exchange rate is the number that matters, not a percentage. Unstaking is a three-step flow on the Stake page: request the withdrawal, wait out the vault's cooldown, then withdraw — so after requesting, the next thing to watch is the countdown, not a second request.",
   },
   {
     id: "agent-permission",
@@ -238,6 +249,10 @@ export const FAQ_TOPICS: FaqTopic[] = [
     triggers: [
       "the fees",
       "what fees",
+      /* "how do fees work" / "how fees work" — the phrasing a newcomer reaches
+         for, which none of the noun triggers above caught. */
+      "fees work",
+      "how fees",
       /* Singular, and it matters more than the plural: "is there any fee to
          stake" is question-shaped, so this file gets first refusal — but with
          only "any fees" here it missed, the grammar took the sentence for its
@@ -461,6 +476,16 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "when is the token",
       "when is tge",
       "is this a testnet",
+      /* The skeptical newcomer's way of asking the same thing: whether there is
+         real value at stake. The answer — testnet funds, none of it real money —
+         is exactly the reassurance these want. */
+      /* "is it safe" is deliberately NOT here — it already belongs to the
+         audit-status topic. These are the ones unambiguously about whether real
+         value is at stake. */
+      "lose money",
+      "can i lose",
+      "my money safe",
+      "the catch",
     ],
     answer:
       "You are on a testnet. The five networks live today are Sepolia, Base Sepolia, BNB Smart Chain Testnet, Robinhood Chain Testnet and Arc Testnet; the tokens come from a faucet and none of it is real money, which is the point — you can borrow, get liquidated and find out what that feels like without risking anything. Mainnet is September 2026, with the token event by the end of the same month. That is the roadmap on the landing page.",
