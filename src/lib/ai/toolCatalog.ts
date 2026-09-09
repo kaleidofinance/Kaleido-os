@@ -599,6 +599,20 @@ export const TOOL_CATALOG: ToolSpec[] = [
     },
   },
   {
+    name: "getBalances",
+    kind: "read",
+    description:
+      "What the wallet actually holds on the chain it is connected to: the native gas asset plus every registered token, in token units. Use for 'what do I have', 'what is my balance', or to check the user can cover an amount before planning it. Distinct from getPortfolio, which reports positions - collateral, debt, staked KLD, pooled liquidity - that have LEFT the wallet; and from getChains, which takes one named symbol and looks for it across every chain.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
     name: "getMarkets",
     kind: "read",
     description:

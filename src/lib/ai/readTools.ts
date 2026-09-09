@@ -3,6 +3,7 @@ import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { getContracts, resolveUserToken } from "@/constants/registry";
 import { getChainMeta } from "@/constants/chains";
 import { readOpenBook } from "@/lib/lending/book";
+import { MULTICALL3_ADDRESS, readContracts } from "@/lib/chain/multicall";
 import protocolAbi from "@/abi/ProtocolFacet.json";
 import {
   chainTokenBySymbol,
@@ -200,6 +201,123 @@ async function getPortfolio(args: Json, chainId: number): Promise<Json> {
   } catch (err) {
     return { error: `getPortfolio failed: ${(err as Error).message}` };
   }
+}
+
+
+const ERC20_BALANCE = new ethers.Interface([
+  "function balanceOf(address owner) view returns (uint256)",
+]);
+
+/** Multicall3 carries this view on itself, so the gas balance rides the batch. */
+const NATIVE_BALANCE = new ethers.Interface([
+  "function getEthBalance(address addr) view returns (uint256 balance)",
+]);
+
+/**
+ * What the wallet actually holds, on the chain it is connected to.
+ *
+ * Nothing answered this before, and the gap showed: asked "what's my balance",
+ * the model reached for `getPortfolio` - which reads the lending diamond's
+ * collateral and health factor and knows nothing about tokens sitting in a
+ * wallet - or for `getChains`, which needs a symbol named up front and sweeps
+ * every chain to answer about one asset. Neither can list holdings, so the agent
+ * either said it could not check or relayed a collateral figure as though it
+ * were a balance. `getChains` is still the right tool for "where are my USDC",
+ * and this one for "what do I have here".
+ *
+ * ONE round trip for the whole wallet. Multicall3 exposes `getEthBalance` as a
+ * view on itself, so the native asset batches alongside every `balanceOf`
+ * instead of needing a request of its own - verified against `eth_getBalance` on
+ * Sepolia, same wei through both paths.
+ *
+ * The native-alias face is dropped, and the registry says why in its own words:
+ * a UI that lists Arc's 0x3600 USDC next to the native asset "is showing one
+ * holding twice". The alias mirrors the gas balance rather than holding anything
+ * separate, so listing both would report a wallet's USDC at double what it has.
+ * Same filter and same reason as `bySymbol` in lib/dex/route.ts.
+ *
+ * A symbol that could not be read goes in `unread` rather than appearing as 0.
+ * That distinction is the whole reason this is not one flat list: the model
+ * relays what it is given as fact, and "you hold no USDC" built from a failed
+ * request is the class of answer that gets planned off. Measured zeros are
+ * dropped for the opposite reason - they were read, and a wallet does not need
+ * forty rows of nothing. When NOTHING could be read the whole call refuses, for
+ * the same reason `readOpenBook` returns null rather than an empty book: an
+ * empty holdings list is a sentence about the user's money.
+ */
+async function getBalances(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+
+  if (!providerForChain(chainId))
+    return {
+      error:
+        `Chain ${chainId} isn't in Kaleido's chain registry, so there's no ` +
+        `endpoint to read balances from.`,
+    };
+
+  const chainName = getChainMeta(chainId)?.name ?? `chain ${chainId}`;
+  const tokens = chainTokens(chainId).filter(
+    (t) => !t.tags?.includes("native-alias"),
+  );
+
+  const results = await readContracts(
+    chainId,
+    tokens.map((t) =>
+      t.isNative
+        ? {
+            target: MULTICALL3_ADDRESS,
+            iface: NATIVE_BALANCE,
+            method: "getEthBalance",
+            args: [address],
+          }
+        : {
+            target: t.address,
+            iface: ERC20_BALANCE,
+            method: "balanceOf",
+            args: [address],
+          },
+    ),
+  );
+
+  const holdings: { symbol: string; address: string; amount: string }[] = [];
+  const unread: string[] = [];
+  tokens.forEach((t, i) => {
+    const r = results[i];
+    if (!r?.success || r.value === null) {
+      unread.push(t.symbol);
+      return;
+    }
+    /* Decimals are the registry's declared value, never a guess: BSC's USDC is
+       18 where every other chain's is 6, so guessing 18 overstates a balance by
+       a factor of 10^12. */
+    const amount = ethers.formatUnits(r.value as bigint, t.decimals);
+    if (!(Number(amount) > 0)) return;
+    holdings.push({ symbol: t.symbol, address: t.address, amount });
+  });
+
+  if (tokens.length > 0 && unread.length === tokens.length)
+    return {
+      error:
+        `Balances could not be read on ${chainName} - the RPC did not answer. ` +
+        `Do not tell the user their wallet is empty; say the balance check failed.`,
+    };
+
+  return {
+    chainId,
+    chain: chainName,
+    holdings,
+    unread,
+    note:
+      (holdings.length === 0
+        ? `This wallet holds none of the tokens Kaleido knows about on ${chainName}. It may hold funds on another chain - getChains checks one asset across all of them - or tokens that aren't in the registry, which this cannot see. Say which of those you checked. `
+        : `Balances on ${chainName} only, in token units. They carry no USD value: use getPrice for that, and say so rather than implying a total we did not compute. `) +
+      (unread.length > 0
+        ? `These could not be read and are NOT zero - say they could not be checked: ${unread.join(", ")}. `
+        : "") +
+      "Wallet balances are separate from positions: collateral deposited into the lending pool, staked KLD and liquidity in a pool have left the wallet and appear in getPortfolio, not here.",
+  };
 }
 
 /**
@@ -673,6 +791,7 @@ const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
   {
     getQuote,
     getPortfolio,
+    getBalances,
     getMarkets,
     getPrice,
     getChains,
