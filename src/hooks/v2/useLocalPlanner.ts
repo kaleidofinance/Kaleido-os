@@ -7,6 +7,7 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { readFaucetAssets } from "@/hooks/v2/useFaucet";
 import { readMarketRow } from "@/lib/lending/book";
 import { readStakingState } from "@/lib/staking/state";
+import { readCollateralDeposits } from "@/lib/lending/collateral";
 import { readPoolState } from "@/lib/dex/pool";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
 import { providerForChain } from "@/config/provider";
@@ -136,6 +137,10 @@ export function useLocalPlanner() {
              vault's three steps "unstake" means. The same reader the server
              planner uses, so both agree on the step. */
           stakingState: () => readStakingState(chainId, address),
+          /* Lazy for the same reason, and read by the two borrow branches: the
+             facet won't lend a token this wallet has posted as collateral, and
+             a plan that ignores that can only revert at the wallet. */
+          collateralDeposits: () => readCollateralDeposits(chainId, address),
           /* Read here rather than passed in, and read lazily, which is the whole
              reason PlanDeps takes thunks: the faucet is one more eth_call, and
              an agent page that fired it on mount would pay for it on every visit

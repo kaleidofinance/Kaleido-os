@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useActiveAccount } from "thirdweb/react";
 import { getKaleidoContract } from "@/config/contracts";
 import { READ_ONLY_CHAIN_ID, readOnlyProvider } from "@/config/provider";
+import { readBookRows } from "@/lib/lending/book";
 import { MOCK_DATA } from "@/lib/mock";
 import { mockListings, mockRequests } from "@/lib/mock/lending";
 
@@ -185,21 +186,34 @@ export function useLenderPositions(): LenderPositions {
       }
     };
 
+    /*
+     * The user's own open offers, from the diamond — the same source the funded
+     * loans above already use.
+     *
+     * This read `/api/listings?sender=…&status=OPEN` until 2026-09-09, which is
+     * the Supabase mirror, which has never had a row in it: a lender with real
+     * offers escrowed on chain saw an empty Offers group here while the loans
+     * beside it (read from the chain) were correct. Reading two halves of one
+     * screen from two sources is how that stayed invisible. See
+     * lib/lending/book.ts.
+     */
     const readOffers = async (): Promise<LenderOffer[]> => {
       try {
-        const res = await fetch(
-          `/api/listings?sender=${encodeURIComponent(address)}&status=OPEN`,
-          { cache: "no-store" },
-        );
-        const body = await res.json();
-        if (!res.ok || !body?.success || !Array.isArray(body.data)) return [];
-        return body.data.map((l: Record<string, unknown>) => ({
-          listingId: Number(l.listingId),
-          tokenAddress: String(l.tokenAddress ?? ""),
-          amount: String(l.amount ?? "0"),
-          interestBps: Number(l.interest ?? 0),
-          returnDate: Number(l.returnDate ?? 0),
-        }));
+        const rows = await readBookRows(READ_ONLY_CHAIN_ID, "listings");
+        if (!rows) return [];
+        return rows
+          .filter(
+            (l) =>
+              l.status === "OPEN" &&
+              l.sender.toLowerCase() === address.toLowerCase(),
+          )
+          .map((l) => ({
+            listingId: l.listingId,
+            tokenAddress: l.tokenAddress,
+            amount: l.amount,
+            interestBps: l.interest,
+            returnDate: l.returnDate,
+          }));
       } catch (err) {
         console.warn(
           "[lender] open offers unreadable:",

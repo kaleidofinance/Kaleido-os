@@ -100,6 +100,10 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
        else — a branch that read it unprompted would be paying an eth_call the
        command never needed. */
     staking: 0,
+    /* How many times a borrow branch asked which tokens are posted as
+       collateral. The facet refuses to lend one of those back, so a branch that
+       never asked would build a plan that can only revert. */
+    collateral: 0,
     /* The fee tiers asked about, in the order they were asked. The mint branch
        reads all three when `fee` is omitted and exactly one when it is given, so
        this is how the tier-resolution cases tell those two apart — a branch that
@@ -150,6 +154,14 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
     stakingState: async () => {
       calls.staking++;
       return over.stakingState ? over.stakingState() : null;
+    },
+    /* Empty by default — nothing deposited — so every existing borrow case keeps
+       describing the plan it was written for. A case that wants the refusal says
+       which token is posted. Note this default is `[]` and not `null`: null means
+       "couldn't read", which the branch deliberately lets through. */
+    collateralDeposits: async () => {
+      calls.collateral++;
+      return over.collateralDeposits ? over.collateralDeposits() : [];
     },
     faucetAssets: async () => {
       calls.faucet++;
@@ -1397,7 +1409,87 @@ async function main() {
         at(r, 0).returnDate > Date.now() / 1000,
       String(at(r, 0).returnDate),
     );
-    check("borrow reads nothing", quiet(calls));
+    /* One read, and it is the collateral set: the facet won't lend a token this
+       wallet has posted, so the branch has to ask before it can build. Nothing
+       else — no quote, no market row, no faucet. */
+    check(
+      "borrow reads the collateral set and nothing else",
+      quiet(calls) && calls.collateral === 1,
+      `collateral=${calls.collateral}`,
+    );
+  }
+  {
+    /* The tester's exact sequence, 2026-09-09: deposit USDC because that is what
+       the faucet gives out, then ask to borrow USDC. ProtocolFacet.sol:192
+       reverts Protocol__CannotBorrowCollateralAsset on it, and both the agent and
+       the Borrow page happily built the transaction anyway. */
+    const { deps } = fakeDeps({
+      collateralDeposits: async () => [USDC_LENDING.toLowerCase()],
+    });
+    const r = await build(
+      {
+        kind: "borrow",
+        amount: "500",
+        token: DEX_USDC,
+        interestPct: 8,
+        days: 30,
+      },
+      deps,
+    );
+    check(
+      "borrowing a token you posted as collateral is refused, not built",
+      !r.ok,
+      kinds(r),
+    );
+    check(
+      "and the refusal names the asset and both ways out",
+      errorOf(r).includes("USDC") &&
+        /collateral/i.test(errorOf(r)) &&
+        /withdraw/i.test(errorOf(r)),
+      errorOf(r),
+    );
+  }
+  {
+    /* A different asset is unaffected — the rule is per token, not a global
+       "you have collateral so you cannot borrow". */
+    const { deps } = fakeDeps({
+      collateralDeposits: async () => [ETH_LENDING.toLowerCase()],
+    });
+    const r = await build(
+      {
+        kind: "borrow",
+        amount: "500",
+        token: DEX_USDC,
+        interestPct: 8,
+        days: 30,
+      },
+      deps,
+    );
+    check(
+      "posting a DIFFERENT asset as collateral still lets the borrow through",
+      kinds(r) === "createLendingRequest",
+      kinds(r),
+    );
+  }
+  {
+    /* A courtesy check in front of a gate the contract enforces anyway, so an
+       unreadable chain must not refuse a borrow that would have succeeded. */
+    const { deps } = fakeDeps({ collateralDeposits: async () => null });
+    const r = await build(
+      {
+        kind: "borrow",
+        amount: "500",
+        token: DEX_USDC,
+        interestPct: 8,
+        days: 30,
+      },
+      deps,
+    );
+    check(
+      "an unreadable collateral set lets the borrow through rather than refusing it",
+      kinds(r) === "createLendingRequest",
+      kinds(r),
+    );
   }
   {
     const { deps } = fakeDeps();
@@ -1518,6 +1610,27 @@ async function main() {
       "the symbol and decimals come from describeToken",
       at(r, 0).symbol === "USDC" && at(r, 0).decimals === 6,
       JSON.stringify(at(r, 0)),
+    );
+  }
+  {
+    /* requestLoanFromListing carries the same collateral rule (:944), and here
+       the token is the LISTING's rather than one the user named — so the check
+       has to run after the row is read, not on the command. */
+    const { deps } = fakeDeps({
+      marketRow: async (kind, id) =>
+        kind === "listings" && id === 99
+          ? { tokenAddress: USDC_LENDING, amount: "500000000" }
+          : null,
+      collateralDeposits: async () => [USDC_LENDING.toLowerCase()],
+    });
+    const r = await build(
+      { kind: "takeListing", listingId: 99, amount: "500" },
+      deps,
+    );
+    check(
+      "taking a listing denominated in your own collateral is refused too",
+      !r.ok && /collateral/i.test(errorOf(r)),
+      kinds(r),
     );
   }
   {
