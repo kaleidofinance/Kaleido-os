@@ -1,0 +1,105 @@
+# The filler for /trade/limit. Submits resting orders that are due.
+#
+# A maker signs an EIP-712 order and nothing happens until someone calls `fill`.
+# This is that someone. Everything it decides is decided by src/lib/dex/fill.ts
+# under test; this workflow only gives it a clock, a signer and the secrets.
+#
+# WHAT A MISSED RUN COSTS. A late fill, never a bad one. The maker's own signed
+# `minOut` is what the contract hands the router as `amountOutMinimum` and the
+# output goes to the maker, so this keeper chooses only *when* to submit. That is
+# why the cadence below is best-effort and why a failed run is not an emergency:
+# the order is still valid, still signed, and the next cycle sees it first
+# (scripts/fill-orders.mts sweeps oldest-first).
+#
+# Cadence: five minutes is GitHub's floor for `schedule`, and scheduled runs are
+# delayed — sometimes dropped — under load, so the real interval is "about five
+# minutes, usually". Good enough for a limit order and honest about itself. One
+# job for all five chains rather than one per chain, because the script already
+# isolates a chain's failure to that chain; the price-keeper splits its jobs
+# because its two chains need different scripts, not for isolation's sake.
+#
+# ── Activation (inert until all of these are true) ────────────────────────────
+#   1. Merged to the DEFAULT branch. GitHub runs `schedule` only from there.
+#   2. KaleidoOrders deployed and in src/constants/registry.ts. Until then the
+#      script finds no chain to sweep and exits 0 having done nothing — that is
+#      the correct answer, not a misconfiguration, so it stays green.
+#   3. supabase/migrations/20260901000000_limit_orders.sql applied. Without the
+#      table the read fails per chain and the run goes red, by design: an order
+#      book that cannot be read is not an empty one.
+#   4. Secrets set — see below. A missing one fails fast with the variable named.
+#   5. Actions enabled for the repo.
+#
+# ── Secrets ───────────────────────────────────────────────────────────────────
+#   KEEPER_PRIVATE_KEY        the signer. Optional here, and preferred: see below.
+#   DEPLOYER_PRIVATE_KEY      fallback signer. Not set as of 2026-09-01: price-keeper
+#                             reads the same name and has been red on it since it
+#                             landed, so this workflow uses KEEPER_PRIVATE_KEY,
+#                             which is set.
+#   NEXT_PUBLIC_SUPABASE_URL  the project.
+#   NEXT_PUBLIC_SUPABASE_KEY  anon — the read. The book is public on purpose.
+#   SUPABASE_SERVICE_ROLE_KEY the write. Never prefixed NEXT_PUBLIC_; it must not
+#                             reach a browser bundle.
+#   RPC_URL_<chainId>         optional per-chain endpoint override. The public ones
+#                             in chains.ts throttle, and this runs every 5 minutes.
+#
+# TESTNET ONLY as configured. DEPLOYER_PRIVATE_KEY is the burned testnet deployer
+# and every contract's owner. Filling needs no permission from anyone — `fill` is
+# callable by any address — so on mainnet this runs KEEPER_PRIVATE_KEY: a key
+# holding nothing but gas, whose worst case if leaked is that someone else fills
+# our makers' orders for us.
+
+name: orders-keeper
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      chains:
+        description: "Comma-separated chain ids, or empty for all"
+        required: false
+        default: ""
+      dry_run:
+        description: "Decide and log, send nothing"
+        type: boolean
+        required: false
+        default: false
+
+# One filler at a time. Two overlapping runs would each read the same order as
+# open and send the same fill — the second reverts on the interval or the fill
+# count, so it costs gas and nothing else, but there is no reason to pay it.
+concurrency:
+  group: orders-keeper
+  cancel-in-progress: false
+
+jobs:
+  fill:
+    name: Sweep and fill due orders
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Fill
+        env:
+          KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Optional per-chain overrides for the public endpoints in chains.ts,
+          # which rate-limit — and this runs every five minutes. Same names
+          # push-watcher uses: 11155111 Sepolia, 84532 Base Sepolia, 5042002 Arc,
+          # 46630 Robinhood, 97 BSC.
+          RPC_URL_11155111: ${{ secrets.RPC_URL_11155111 }}
+          RPC_URL_84532: ${{ secrets.RPC_URL_84532 }}
+          RPC_URL_5042002: ${{ secrets.RPC_URL_5042002 }}
+          RPC_URL_46630: ${{ secrets.RPC_URL_46630 }}
+          RPC_URL_97: ${{ secrets.RPC_URL_97 }}
+          ORDERS_CHAINS: ${{ inputs.chains }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: npm run keeper:orders

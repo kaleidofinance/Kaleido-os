@@ -1,5 +1,13 @@
-/* Shared styling for Trade modes whose UI is built but whose execution is
-   deferred (Limit, Buy, Sell) — the preset pills and the honest note. */
+/* Shared styling for the Trade modes built out of a priced sentence and a row of
+   preset pills — the head, the pills, and the note under the CTA.
+
+   Named for what it used to hold. All three of Limit, Buy and Sell were mockups
+   with disabled CTAs when this file was written, and the note was the honest
+   admission of it. Limit executes now — KaleidoOrders gave it a primitive to
+   sign against — so `.note` on that page is ordinary explanatory copy rather
+   than a deferral, and Buy and Sell are the only two left waiting. The file
+   keeps its name because both of those still import it and a rename is a
+   two-page diff for nothing. */
 
 /* Limit's head — "When 1 [KLD] is worth" on one line, the way Uniswap sets it.
 
@@ -76,9 +84,23 @@
    (0,1,0) — pointing at the chip you had already selected would strip its solid
    fill and hand it the hover treatment instead. Excluding the selected state
    fixes that and the colour it was already stealing before this change. */
-.preset:not(.presetOn):hover {
+.preset:not(.presetOn):not(:disabled):hover {
   background: var(--k-brand-dim);
   color: var(--k-t1);
+}
+/* A chip whose choice is unavailable: a repeat cadence longer than the order's
+   own expiry, a fill count the window cannot hold, or a price preset on a pair
+   with no market rate to price against. Dimmed and cursor-cleared rather than
+   dropped from the row — which cadences exist is a fact about the product, and
+   removing them would make the row change shape as you pick an expiry, leaving
+   no way to see that the setting you wanted is the one you priced out.
+
+   `opacity` and not a colour override, so the rule reaches `.presetOn` too: the
+   selected chip stays legibly selected while it is unavailable, which is exactly
+   the state the four price presets sit in before the first quote lands. */
+.preset:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 .presetOn {
   background: var(--k-btn-solid);

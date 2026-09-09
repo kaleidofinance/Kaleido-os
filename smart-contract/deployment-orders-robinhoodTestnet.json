@@ -1,0 +1,27 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "timestamp": "2026-09-01T10:43:50.895Z",
+  "contracts": {
+    "orders": "0x2488216dF30680f96078E3B303D6Aa0391f3f79F",
+    "v3Router": "0xD78c79129410883fD818498e18f0D4f1d3B5DF9f"
+  },
+  "config": {
+    "owner": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+    "fillerFeeBps": 0,
+    "maxFillerFeeBps": 100
+  },
+  "eip712": {
+    "name": "Kaleido Orders",
+    "version": "1",
+    "chainId": 46630,
+    "verifyingContract": "0x2488216dF30680f96078E3B303D6Aa0391f3f79F"
+  },
+  "notes": {
+    "priceTrigger": "The maker's signed minOut is passed to the router as amountOutMinimum, so the price bound and the trigger are the same value. No oracle.",
+    "venue": "V3. The V2 factory has created no pair on any chain; the V3 pools are what /trade quotes. Paths are V3-packed: token || fee || token.",
+    "output": "Swapped straight to the maker; the contract never holds it.",
+    "cancellation": "cancel(order) per order, cancelAll() bumps the maker's epoch and kills every signature at once. Deleting a row from the off-chain store does not invalidate a signature."
+  }
+}

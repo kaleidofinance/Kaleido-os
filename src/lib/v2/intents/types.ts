@@ -665,6 +665,93 @@ export type Intent =
        * the plan and the block is skipped rather than reverting the batch.
        */
       payouts: readonly string[];
+    }
+  /* ----------------------------------------------------- signed orders -- */
+  /*
+   * A conditional order — a limit order and a recurring buy are the same object,
+   * separated only by `interval` and `maxFills`. Settled by KaleidoOrders, which
+   * passes the maker's own signed `minOut` to the V3 router as
+   * `amountOutMinimum` and sends the output straight to the maker.
+   *
+   * `placeOrder` is the only intent in this union that sends no transaction. It
+   * produces a signature and an HTTP POST, and returns `{hash: null}` — which the
+   * plan UI already renders as done and logs no history row for, the same shape a
+   * skipped approve uses minus the `skipped` flag. That is not a gap in the bus;
+   * it is what a limit order IS. Nothing moves when you place one.
+   *
+   * Which makes it the one intent whose failure mode is invisible on chain. A
+   * signature that was never stored is an order nobody can see and nobody will
+   * fill, and the user believes it is live — so the resolver treats a failed POST
+   * as a failed step rather than swallowing it.
+   *
+   * It still needs a paired `approve`, and to KaleidoOrders rather than to the
+   * router: the contract pulls `amountIn` from the maker per fill. A recurring
+   * order therefore needs the allowance to cover every fill it will make, which
+   * is why build.ts approves `amountIn × maxFills` and not `amountIn`.
+   */
+  | {
+      kind: "placeOrder";
+      /**
+       * KaleidoOrders on this chain — `getContracts(chainId).orders`.
+       *
+       * Load-bearing twice over, and differently each time. It is the EIP-712
+       * `verifyingContract`, so it is inside the digest the wallet signs: a wrong
+       * value produces a signature that is valid nowhere, on a step that appears
+       * to succeed. And it is the ERC20 spender, so the paired approve must name
+       * the same address or every fill reverts on the transfer instead.
+       */
+      orders: string;
+      tokenIn: string;
+      tokenOut: string;
+      decimalsIn: number;
+      decimalsOut: number;
+      symbolIn: string;
+      symbolOut: string;
+      /** Human amount sold PER FILL. A recurring order spends this on each of `maxFills`. */
+      amountIn: string;
+      /**
+       * Human minimum output per fill — the price bound and the fill trigger in
+       * one value, because the contract has no oracle and needs none: this
+       * becomes the router's `amountOutMinimum`.
+       *
+       * Never zero. A zero floor lets whoever fills the order move the price
+       * first, fill, and move it back, so the contract refuses it outright.
+       */
+      minOut: string;
+      /** Seconds from signing until the order stops being fillable. */
+      expiresIn: number;
+      /** Seconds between fills. 0 for a one-time limit order. */
+      interval: number;
+      /** How many times it may fill. 1 for a limit order. */
+      maxFills: number;
+    }
+  | {
+      /**
+       * Cancel one order on chain.
+       *
+       * A transaction and not a DELETE, because a signature is not stored state:
+       * removing the row leaves the signature valid and anyone who kept a copy
+       * can still fill it. `cancel` takes the whole struct rather than a hash so
+       * the contract can check the caller is the maker.
+       */
+      kind: "cancelOrder";
+      orders: string;
+      /** Exactly as signed. Any field changed here is a different order, and the call reverts. */
+      order: SignedOrderFields;
+      /** "KLD → USDC", for the review row. */
+      pairLabel: string;
+    }
+  | {
+      /**
+       * Bump the maker's epoch, killing every signature they have made at once.
+       *
+       * Broader than it looks, and deliberately: every order carries the epoch it
+       * was signed under, so this invalidates orders signed on another device or
+       * placed before this app knew about them. It is the safety valve for "I
+       * don't know what I have out there", which is why it takes no list.
+       */
+      kind: "cancelAllOrders";
+      orders: string;
     };
 
 /** AgentPermissionFacet action bitmask (mirrors LibAgentPermission). */
@@ -676,6 +763,29 @@ export const AGENT_ACTIONS = {
   WITHDRAW_COLLATERAL: 16,
   CLOSE: 32,
 } as const;
+
+/**
+ * The signed order struct, as `cancel` takes it.
+ *
+ * Restated here rather than imported from `lib/dex/orders` so this union stays
+ * readable on its own and stays free of a runtime import. The uint256 fields are
+ * decimal strings for the reason that file gives at length: a `number` above 2^53
+ * is silently rounded by JSON, and a rounded `minOut` or `salt` hashes to a
+ * different order.
+ */
+export interface SignedOrderFields {
+  maker: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  minOut: string;
+  startAt: number;
+  expiry: number;
+  interval: number;
+  maxFills: number;
+  epoch: number;
+  salt: string;
+}
 
 export type IntentKind = Intent["kind"];
 

@@ -31,6 +31,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kld: "0x0d6a6F10adeCdc8a8b93aAc0Fa5210653de3511d", // deployment-kld-bscTestnet.json
     kldVault: "0x73B7341c15b12BcfA328733d753f5c30e67dBdce", // deployment-kld-bscTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-bscTestnet.json
+    orders: "0x40ABaDfCDD24159069859f756cf6B68C79027cB8", // deployment-orders-bscTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-bscTestnet-1787453320471.json
     priceOracle: "0xf9928C816b75Bb3EA081Fc0d1C0172E475957C48", // deployment-diamond-bscTestnet.json
@@ -44,7 +45,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3PositionDescriptor: "0xB939f0eEA9EF2F27985A3091D82c1621ef739c66", // deployment-v3-bscTestnet-1787453320471.json
     v3PositionManager: "0x248Cf3951Fdb6469B49ded78e310322CbA5651A1", // deployment-v3-bscTestnet-1787453320471.json
     v3Quoter: "0xAc1a10df0a742f107517f1944e0a37da74932c06", // deployment-v3-bscTestnet-1787453320471.json
-    v3Router: "0x8A6BbC81d9678c92aa33A3eD0580389B82B18579", // deployment-v3-bscTestnet-1787453320471.json
+    v3Router: "0x8A6BbC81d9678c92aa33A3eD0580389B82B18579", // deployment-orders-bscTestnet.json
     wrappedNative: "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd", // deployment-dex-bscTestnet.json
     yieldTreasury: "0x06400357a8B1Bbcd52982597AFF2d6873C4bd7Cc", // deployment-stablecoin-bscTestnet-1788709839524.json
   },
@@ -56,6 +57,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kld: "0x6F57844d0C6DCB7eB906d21C99195a3FC446E81D", // deployment-kld-robinhoodTestnet.json
     kldVault: "0x46351a88bf64DFd0Cb8e88D6F88fd84d70ABe50e", // deployment-kld-robinhoodTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-robinhoodTestnet.json
+    orders: "0x2488216dF30680f96078E3B303D6Aa0391f3f79F", // deployment-orders-robinhoodTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-robinhoodTestnet-1787450008885.json
     priceOracle: "0x7Ee07e9eb94B6b21589539a491E37804886AB201", // deployment-diamond-robinhoodTestnet.json
@@ -69,7 +71,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3PositionDescriptor: "0x6147279C2B7d84b178Ff9cfaAfD8482710454aAc", // deployment-v3-robinhoodTestnet-1787450008885.json
     v3PositionManager: "0x3a2A6cbD201f090878502b48c94fE5b418211DdC", // deployment-v3-robinhoodTestnet-1787450008885.json
     v3Quoter: "0xE0646438bd4744Cb2052fA21420794DC58A6b9a1", // deployment-v3-robinhoodTestnet-1787450008885.json
-    v3Router: "0xD78c79129410883fD818498e18f0D4f1d3B5DF9f", // deployment-v3-robinhoodTestnet-1787450008885.json
+    v3Router: "0xD78c79129410883fD818498e18f0D4f1d3B5DF9f", // deployment-orders-robinhoodTestnet.json
     wrappedNative: "0x7943e237c7F95DA44E0301572D358911207852Fa", // deployment-dex-robinhoodTestnet.json
     yieldTreasury: "0x92a9d8179b414540B3a1f2a9218baF248CbD2894", // deployment-stablecoin-robinhoodTestnet-1788709709470.json
   },
@@ -81,6 +83,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kld: "0x6140Da1f66fCafa0b5197065ae91A00208F3Cd86", // deployment-kld-baseTestnet.json
     kldVault: "0x32E24AAdb0e346A3b334D29C9A334390aE022BE1", // deployment-kld-baseTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-baseTestnet.json
+    orders: "0x123E353ABafE726C8e417817F002F320CfEFC30A", // deployment-orders-baseTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-baseTestnet-1787327167156.json
     priceOracle: "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A", // deployment-diamond-baseTestnet.json
@@ -94,7 +97,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3PositionDescriptor: "0x6A86c768C4cABca7ddaEbB6D47b21105fF22F323", // deployment-v3-baseTestnet-1787327167156.json
     v3PositionManager: "0xa6e6219937921102d95370F5fE2DD35a89b41278", // deployment-v3-baseTestnet-1787327167156.json
     v3Quoter: "0x36E323fFA93c724ae7EC5b28f4cbac9121dB4945", // deployment-v3-baseTestnet-1787327167156.json
-    v3Router: "0xfEC12073E7b833508734052Cf72b53428d2e478b", // deployment-v3-baseTestnet-1787327167156.json
+    v3Router: "0xfEC12073E7b833508734052Cf72b53428d2e478b", // deployment-orders-baseTestnet.json
     wrappedNative: "0x4200000000000000000000000000000000000006", // deployment-dex-baseTestnet.json
     yieldTreasury: "0xBF13ac311ff0b4C06B1d67da9D6d23eCc57628f5", // deployment-stablecoin-baseTestnet-1788709726722.json
   },
@@ -106,6 +109,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kld: "0xC0f8D36ec1D96477F26228A629a31248c584f477", // deployment-kld-arcTestnet.json
     kldVault: "0x2987378eeB3E61bC8F9D2A80bFd0b1628771AC68", // deployment-kld-arcTestnet.json
     oracleKind: "pyth", // deployment-oracle-arcTestnet.json
+    orders: "0xB53b9689d9Eb363760770a45867c072DFe400AB4", // deployment-orders-arcTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcTestnet-1787358306379.json
     priceOracle: "0x0262aff2a0D8E56048e408D5fE875EA051dED65c", // deployment-diamond-arcTestnet.json
@@ -120,7 +124,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3PositionDescriptor: "0x248Cf3951Fdb6469B49ded78e310322CbA5651A1", // deployment-v3-arcTestnet-1787358306379.json
     v3PositionManager: "0xAc1a10df0a742f107517f1944e0a37da74932c06", // deployment-v3-arcTestnet-1787358306379.json
     v3Quoter: "0x2b882149eBfC79710E6E0c93661CE2718866705b", // deployment-v3-arcTestnet-1787358306379.json
-    v3Router: "0x65149395E67867Db4Ef74b4151Ca0A2c1C014c80", // deployment-v3-arcTestnet-1787358306379.json
+    v3Router: "0x65149395E67867Db4Ef74b4151Ca0A2c1C014c80", // deployment-orders-arcTestnet.json
     wrappedNative: "0x911b4000D3422F482F4062a913885f7b035382Df", // deployment-dex-arcTestnet.json
     yieldTreasury: "0xDf540734273a87C41Dd7D2079a44576cb7F983a5", // deployment-stablecoin-arcTestnet-1788709849665.json
   },
@@ -132,6 +136,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kld: "0x79C14246120369A98c4226a01158645a7A501F35", // deployment-kld-sepolia.json
     kldVault: "0x3305F04C7DDb32C23F250620CBa50C8DE61f67B5", // deployment-kld-sepolia.json
     oracleKind: "aggregator-v3", // deployment-oracle-sepolia.json
+    orders: "0x3713336a6Ba0Ae1BD758257334091CEFa283ceC1", // deployment-orders-sepolia.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-sepolia-1787339244721.json
     priceOracle: "0x126C64a2d48F40EeAEcD534387902f5da74c9dbb", // deployment-diamond-sepolia.json
@@ -145,7 +150,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3PositionDescriptor: "0xc376Add659cbE5a32421Ac3B932Ea51740222B8d", // deployment-v3-sepolia-1787339244721.json
     v3PositionManager: "0xCda76853D991184EB273bC493e43f92Caaa31E77", // deployment-v3-sepolia-1787339244721.json
     v3Quoter: "0x6653B81FEE8CECf0AB5ce2863A63D9D3C28C1DE7", // deployment-v3-sepolia-1787339244721.json
-    v3Router: "0x482555B9232A5BEE6034cdfa91dBcF4F19633c59", // deployment-v3-sepolia-1787339244721.json
+    v3Router: "0x482555B9232A5BEE6034cdfa91dBcF4F19633c59", // deployment-orders-sepolia.json
     wrappedNative: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14", // deployment-dex-sepolia.json
     yieldTreasury: "0x2dF9941C50a3ceA43103EdF89713a8224b52baC0", // deployment-stablecoin-sepolia-1788709502392.json
   },
@@ -306,7 +311,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-06T15:53:10.276Z",
+  generatedAt: "2026-09-09T20:37:14.324Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -333,6 +338,11 @@ export const GENERATED_META: {
     "deployment-oracle-bscTestnet.json",
     "deployment-oracle-robinhoodTestnet.json",
     "deployment-oracle-sepolia.json",
+    "deployment-orders-arcTestnet.json",
+    "deployment-orders-baseTestnet.json",
+    "deployment-orders-bscTestnet.json",
+    "deployment-orders-robinhoodTestnet.json",
+    "deployment-orders-sepolia.json",
     "deployment-pool-arcTestnet-USDT-KLD-3000.json",
     "deployment-pool-arcTestnet-USDT-USDe-500.json",
     "deployment-pool-baseTestnet-KLD-USDC-3000.json",
