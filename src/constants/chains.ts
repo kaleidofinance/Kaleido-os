@@ -80,13 +80,33 @@ export const CHAINS: ChainMeta[] = [
     pairChainId: 1,
     nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: [
-      "https://11155111.rpc.thirdweb.com",
-      /* Was https://rpc.sepolia.org, which serves an Apache 404 to a JSON-RPC
-         POST rather than failing as a node — measured 2026-08-25. A fallback that
-         answers HTML is worse than no fallback: ethers reports a parse error, not
-         an unreachable endpoint. publicnode agreed with thirdweb on both chain id
-         and height when the two were compared. */
+      /* publicnode is [0] since 2026-09-09, and that ordering came out of a
+         production outage rather than a preference.
+
+         The thirdweb endpoint below is UNKEYED, and thirdweb rate-limits its
+         public RPC by IP. From a browser that is one visitor's IP and invisible;
+         from Vercel it is ONE shared IP serving every request, and it answers
+         429 — "You are using a public RPC with rate limits, to lift those limits
+         you can obtain an api key". That took out every server-side read on this
+         chain at once: /api/market/overview's kfUSD-supply and pooled-KLD legs
+         and the whole lending book behind /borrow. It surfaced the day the book
+         started reading the chain (PR #56) because nothing server-side had asked
+         this endpoint for much before — the limit was always there.
+
+         Measured side by side that day, publicnode wins on every axis the app
+         uses: same chainId, same block height, same eth_call result, same
+         balance; faster on all four; and eth_getLogs serves a 10,000-block span
+         where thirdweb refuses anything over 1,000 with -32005, which is the
+         range ceiling this repo has had to chunk around elsewhere.
+
+         Was https://rpc.sepolia.org, which serves an Apache 404 to a JSON-RPC
+         POST rather than failing as a node — measured 2026-08-25. A fallback
+         that answers HTML is worse than no fallback: ethers reports a parse
+         error, not an unreachable endpoint. */
       "https://ethereum-sepolia-rpc.publicnode.com",
+      /* Correct, just limited without a key — kept as the measured-good
+         alternate. Promoting it back means keying it first. */
+      "https://11155111.rpc.thirdweb.com",
     ],
     blockExplorer: { name: "Etherscan", url: "https://sepolia.etherscan.io" },
     iconId: "sepolia",
@@ -162,10 +182,26 @@ export const CHAINS: ChainMeta[] = [
          watcher — [0] is also every app read on chain 97 via
          `providerForChain(97)`, and thirdweb answers all four. publicnode threw
          `fetch failed` twice on first measurement and 8/8 clean on re-measure,
-         so it is transient, which is the second reason it sits at [1] and not
-         [0]. */
-      "https://97.rpc.thirdweb.com",
+         so it is transient, which was the second reason it sat at [1] and not
+         [0].
+
+         PROMOTED TO [0] on 2026-09-09, reversing that, on information the
+         measurement above could not have had: thirdweb's public RPC is UNKEYED
+         and rate-limits by IP, and from Vercel — one shared IP for every request
+         — it answers 429 rather than data. That is what it did on chain 11155111
+         the same day, taking out every server-side read there at once (see the
+         Sepolia entry). Chain 97 dials the same unkeyed host and carries the
+         same exposure, so this is a latent outage being closed, not one being
+         reacted to.
+
+         Re-measured 2026-09-09, publicnode is clean and beats thirdweb on all
+         four methods: same chainId, same height, same eth_call and balance,
+         faster on each — and it serves a 10,000-block eth_getLogs span where
+         thirdweb refuses anything over 1,000 (-32005), which matters to the
+         push-watcher this ordering was originally chosen for. The transient
+         `fetch failed` has not reappeared across two re-measurements. */
       "https://bsc-testnet-rpc.publicnode.com",
+      "https://97.rpc.thirdweb.com",
       "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
     ],
     blockExplorer: { name: "BscScan", url: "https://testnet.bscscan.com" },
