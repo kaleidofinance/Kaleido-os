@@ -470,7 +470,30 @@ export function PostRequestModal({
   const { asset, symbol, setSymbol } = useAssetOptions(loanable);
   const [busy, setBusy] = useState(false);
 
-  const ready = !!asset && Number(amount) > 0 && Number(apr) > 0;
+  /*
+   * The facet will not lend you a token you have posted as collateral:
+   * createLendingRequest reverts Protocol__CannotBorrowCollateralAsset when
+   * `s_addressToCollateralDeposited[msg.sender][token] > 0` (ProtocolFacet.sol:192).
+   *
+   * A tester hit this on 2026-09-09 by doing the obvious thing — deposit USDC,
+   * because USDC is what the faucet gives out, then ask to borrow USDC. The form
+   * offered the asset, priced it, enabled the button, and the wallet rejected the
+   * transaction with a decoded custom error. Nothing on the way there mentioned
+   * the rule.
+   *
+   * Read off `borrow.collateral`, the deposited balances this modal's sibling
+   * already loads from the same diamond, so this costs no extra call. Matched on
+   * address: identity is (chain, address), and a symbol match is what let a
+   * picker entry and a holding row disagree elsewhere in this file.
+   */
+  const collateralBlocked = asset
+    ? borrow.collateral.some(
+        (c) => c.address.toLowerCase() === asset.address.toLowerCase(),
+      )
+    : false;
+
+  const ready =
+    !!asset && !collateralBlocked && Number(amount) > 0 && Number(apr) > 0;
 
   const submit = async () => {
     if (!ready || !asset) return;
@@ -517,6 +540,13 @@ export function PostRequestModal({
           options={loanable}
           what="borrowable"
         />
+        {collateralBlocked && (
+          <div className={s.warn}>
+            You have {symbol} deposited as collateral, so the protocol won&apos;t
+            lend it to you — pick a different asset, or withdraw your {symbol}{" "}
+            collateral first.
+          </div>
+        )}
       </div>
 
       <div className={s.box}>
@@ -565,9 +595,11 @@ export function PostRequestModal({
             ? "Reading assets…"
             : !asset
               ? "Nothing borrowable here"
-              : ready
-                ? "Post request"
-                : "Enter an amount and rate"}
+              : collateralBlocked
+                ? `${symbol} is your collateral`
+                : ready
+                  ? "Post request"
+                  : "Enter an amount and rate"}
       </button>
     </Shell>
   );
@@ -614,7 +646,14 @@ export function TakeLoanModal({
   const n = Number(amount);
   const tooLow = n > 0 && n < listing.min;
   const tooHigh = n > 0 && n > listing.max;
-  const ready = n > 0 && !tooLow && !tooHigh;
+  /* requestLoanFromListing carries the same collateral rule as
+     createLendingRequest (ProtocolFacet.sol:944), and there is no picker here to
+     choose past it — the listing is denominated in one thing. So this one can
+     only be reported, which is still better than paying gas to learn it. */
+  const collateralBlocked = borrow.collateral.some(
+    (c) => c.address.toLowerCase() === listing.asset.address.toLowerCase(),
+  );
+  const ready = n > 0 && !tooLow && !tooHigh && !collateralBlocked;
 
   const submit = async () => {
     if (!ready) return;
@@ -684,6 +723,13 @@ export function TakeLoanModal({
       {tooHigh && (
         <div className={s.warn}>Above the {fmt(listing.max)} maximum.</div>
       )}
+      {collateralBlocked && (
+        <div className={s.warn}>
+          You have {symbol} deposited as collateral, and the protocol won&apos;t
+          lend you a token you&apos;re using to back a loan. Withdraw your{" "}
+          {symbol} collateral first, or take an offer in a different asset.
+        </div>
+      )}
 
       <div className={s.summary}>
         <div className={s.sRow}>
@@ -704,9 +750,11 @@ export function TakeLoanModal({
       <button className={s.cta} disabled={!ready || busy} onClick={submit}>
         {busy
           ? "Borrowing…"
-          : ready
-            ? `Borrow ${amount} ${symbol}`
-            : "Enter an amount"}
+          : collateralBlocked
+            ? `${symbol} is your collateral`
+            : ready
+              ? `Borrow ${amount} ${symbol}`
+              : "Enter an amount"}
       </button>
     </Shell>
   );

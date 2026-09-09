@@ -8,6 +8,7 @@ import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import { readMarketRow } from "@/lib/lending/book";
 import { readPoolState } from "@/lib/dex/pool";
 import { readStakingState } from "@/lib/staking/state";
+import { readCollateralDeposits } from "@/lib/lending/collateral";
 import { encodeV3Path, type PathQuoter } from "@/lib/dex/route";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
 import type {
@@ -431,6 +432,9 @@ export function serverPlanDeps(
     /* Shared with useLocalPlanner, so a wallet mid-cooldown is told the same
        thing in the chat and on the page. See lib/staking/state.ts. */
     stakingState: () => readStakingState(chainId, address),
+    /* Shared with useLocalPlanner for the same reason: a borrow the facet will
+       refuse should be refused identically in the chat and on the page. */
+    collateralDeposits: () => readCollateralDeposits(chainId, address),
     faucetAssets: () => serverFaucetAssets(chainId, address),
     /* Delegated to the same reader useLocalPlanner and the /pool/new range
        picker call. Sharing it is not tidiness here: a ±10% band that centres on

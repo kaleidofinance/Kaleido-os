@@ -336,6 +336,30 @@ export interface PlanDeps {
    */
   stakingState?(): Promise<{ hasRequest: boolean; timeLeft: number } | null>;
   /**
+   * Which tokens this wallet currently has deposited as collateral, or null when
+   * that cannot be read.
+   *
+   * ProtocolFacet refuses to lend a wallet a token it has posted as collateral —
+   * `s_addressToCollateralDeposited[msg.sender][token] > 0` reverts
+   * `Protocol__CannotBorrowCollateralAsset`, in `createLendingRequest`
+   * (ProtocolFacet.sol:192) and again in `requestLoanFromListing` (:944). Both of
+   * those are plans this planner builds, and neither could see the rule, so a
+   * tester who deposited USDC and asked to borrow USDC got a signable plan that
+   * could only revert. Nothing in the returned amount or the summary hinted at
+   * it; the failure was at the wallet.
+   *
+   * Addresses only, lowercased — the branch needs membership, and a balance would
+   * imply it could be spent down to zero to clear the gate, which withdrawing
+   * collateral against an open loan cannot safely do.
+   *
+   * Optional on `stakingState`'s precedent, and for the same reason: an
+   * implementation with no wallet to ask about (the marketing snapshot, the test
+   * fixture) has no answer, and a missing reader makes the branch WARN rather
+   * than refuse. A refusal there would block every borrow on the landing page's
+   * planner, which has no address and so no collateral either.
+   */
+  collateralDeposits?(): Promise<string[] | null>;
+  /**
    * What the faucet lists, including assets it has paused.
    *
    * Empty is a valid answer and the only one an implementation with no faucet
@@ -590,6 +614,43 @@ const stableUnavailable = (what: string): PlanResult => ({
   ok: false,
   error: `${what} isn't deployed on this chain yet.`,
 });
+
+/**
+ * Refuse a borrow of a token this wallet has posted as collateral, or null.
+ *
+ * The facet's rule, not ours: `createLendingRequest` and `requestLoanFromListing`
+ * both revert `Protocol__CannotBorrowCollateralAsset` when
+ * `s_addressToCollateralDeposited[msg.sender][token] > 0` (ProtocolFacet.sol:192
+ * and :944). It is checked here because a plan that can only revert should never
+ * reach a signature — the user pays gas to be told, and the message they get is
+ * a decoded custom error rather than the sentence below.
+ *
+ * A missing reader passes rather than refuses. `collateralDeposits` is optional
+ * for the implementations that have no wallet to ask about, and refusing every
+ * borrow there would break the landing-page planner over a rule that cannot
+ * apply to it. A reader returning null — the wallet is known but the chain did
+ * not answer — passes too, on the same reasoning the auditor uses: this is a
+ * courtesy check in front of a gate the contract enforces regardless, so a failed
+ * read must not become a refusal of a borrow that would have succeeded.
+ */
+async function borrowBlockedByCollateral(
+  deps: PlanDeps,
+  token: { address: string; symbol: string },
+): Promise<PlanResult | null> {
+  if (!deps.collateralDeposits) return null;
+  const deposited = await deps.collateralDeposits();
+  if (!deposited) return null;
+
+  const held = deposited.some(
+    (a) => a.toLowerCase() === token.address.toLowerCase(),
+  );
+  if (!held) return null;
+
+  return {
+    ok: false,
+    error: `You have ${token.symbol} deposited as collateral, and the protocol won't lend you a token you're using to back a loan — the transaction would revert. Borrow a different asset, or withdraw your ${token.symbol} collateral first and then ask again.`,
+  };
+}
 
 export async function buildIntents(
   command: Command,
@@ -1467,6 +1528,9 @@ export async function buildIntents(
        allowlist — a token can be depositable and not borrowable. */
     const cur = toLendingCurrency(chainId, "loanable", command.token.symbol);
     if (!cur) return unsupported(chainId, "loanable", command.token.symbol);
+    /* The facet refuses to lend a token this wallet has posted as collateral. */
+    const blocked = await borrowBlockedByCollateral(deps, cur);
+    if (blocked) return blocked;
     return {
       ok: true,
       build: {
@@ -1568,6 +1632,13 @@ export async function buildIntents(
     const described = describeToken(chainId, row.tokenAddress);
     if (!described) return undescribable(row.tokenAddress);
     const { symbol, decimals } = described;
+    /* Same facet rule as the `borrow` branch — requestLoanFromListing checks it
+       too, against the LISTING's token rather than one the user named. */
+    const blocked = await borrowBlockedByCollateral(deps, {
+      address: row.tokenAddress,
+      symbol,
+    });
+    if (blocked) return blocked;
     return {
       ok: true,
       build: {

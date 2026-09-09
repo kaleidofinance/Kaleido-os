@@ -5,14 +5,13 @@
  * This exists because the strip cannot be computed in the browser, for two
  * reasons that are both hard constraints rather than preferences:
  *
- *  1. `kaleido_listings.amount` and `kaleido_requests.amount` are **base-unit
- *     integers stored as TEXT**. The migration that created them
- *     (20260731000000_kaleido_core_tables.sql:19-25) says the text type is there
- *     precisely to stop this being read as a number: "18-decimal amounts run
- *     past 10^19 and overflow float64". The hook this route replaces did
- *     `Number(item.amount)` and summed across tokens, so a 1 USDC offer (1e6)
- *     and a 1 ETH offer (1e18) added to 1000000000001000000 and rendered as
- *     $1,000,000,000,001,000,000.
+ *  1. Book amounts are **base-unit integers** — `uint256` on chain, and they
+ *     were TEXT in the mirror this used to read for the same reason the
+ *     migration gives (20260731000000_kaleido_core_tables.sql:19-25):
+ *     "18-decimal amounts run past 10^19 and overflow float64". The hook this
+ *     route replaces did `Number(item.amount)` and summed across tokens, so a
+ *     1 USDC offer (1e6) and a 1 ETH offer (1e18) added to 1000000000001000000
+ *     and rendered as $1,000,000,000,001,000,000.
  *  2. Valuation lives in `@/lib/points/prices`, which throws on import in the
  *     browser (prices.ts:28-34) — a client-supplied price is a client-supplied
  *     dollar figure.
@@ -30,13 +29,14 @@
 
 import { NextResponse } from "next/server";
 
-import { supabase } from "@/lib/supabase/supabaseClient";
 import {
   borrowCurrencies,
   getContracts,
+  registeredLendingAssets,
   stakingContracts,
 } from "@/constants/registry";
 import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { readBookRows } from "@/lib/lending/book";
 import { getERC20Contract, getKLDVaultContract } from "@/config/contracts";
 import { getPrices } from "@/lib/points/prices";
 import {
@@ -45,6 +45,7 @@ import {
   toWholeUnits,
   valueBook,
   type BookRow,
+  type Currency,
   type MarketCoverage,
   type MarketOverview,
 } from "@/lib/market/bookValue";
@@ -55,16 +56,50 @@ export const dynamic = "force-dynamic";
  * Decimals resolve through the read chain's lending-currency list rather than a
  * per-row `decimalsForAddress(chainId, address)`, and that is forced, not lazy:
  *
- *  - The mirror tables carry **no chainId column**, so a per-row chain-scoped
- *    lookup has nothing to key on.
- *  - `readOnlyProvider` is pinned to `READ_ONLY_CHAIN_ID`, the same chain the
- *    book was indexed from, so `borrowCurrencies(READ_ONLY_CHAIN_ID)` and the
- *    rows agree by construction.
+ *  - `readBookRows` is called with `READ_ONLY_CHAIN_ID`, so every row returned
+ *    is from that chain by construction and `borrowCurrencies(READ_ONLY_CHAIN_ID)`
+ *    resolves it. There is no row here whose chain is in doubt — which was NOT
+ *    true of the mirror these rows used to come from, whose tables carry no
+ *    chainId column at all.
  *
- * When a second chain is indexed this breaks — the fix is a chainId column on
- * the mirror tables and a per-row lookup, not a wider guess here.
+ * When this strip covers a second chain the shape changes: read each chain's
+ * book and resolve decimals per chain, rather than widening the guess here.
  */
-const CURRENCIES = borrowCurrencies(READ_ONLY_CHAIN_ID);
+/*
+ * REGISTERED assets first, then the offered list — merged, deduped by address.
+ *
+ * `borrowCurrencies` alone was wrong here, and measurably: on 2026-09-09 it
+ * named ETH, USDC, USDT and kfUSD on Sepolia, while the diamond's own book held
+ * 14 open rows denominated in WETH. Every one of those was dropped from the
+ * total as an unknown token — a real offer, excluded from TVL, because the list
+ * being consulted describes what this app OFFERS rather than what the facet
+ * ACCEPTS. That gap is documented in useLendingAssets.ts and it runs both ways:
+ * kfUSD and USDT are offered here and registered on no chain.
+ *
+ * `registeredLendingAssets(chain, "collateral")` is the union of both registered
+ * arrays (a loanable token is depositable too — see its header), so it names
+ * every address the facet has ever accepted for lending on this chain. The
+ * offered list is appended rather than dropped so a token de-registered while it
+ * still has open rows keeps resolving: the row is on the book either way, and
+ * excluding it would understate the total for a reason the reader cannot see.
+ *
+ * Two entries can share a symbol — Sepolia has both the Circle and the mock USDC
+ * registered — and that is correct: `foldBook` folds by symbol, and both are USDC
+ * at 6 decimals, so they sum into one total the way a reader would expect.
+ */
+const CURRENCIES: Currency[] = (() => {
+  const merged = [
+    ...registeredLendingAssets(READ_ONLY_CHAIN_ID, "collateral").assets,
+    ...borrowCurrencies(READ_ONLY_CHAIN_ID),
+  ];
+  const seen = new Set<string>();
+  return merged.filter((c) => {
+    const key = c.address.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+})();
 
 /**
  * An on-chain read that must not be able to hang the route.
@@ -104,40 +139,44 @@ async function lendingLeg(): Promise<{
   const degraded: string[] = [];
 
   /*
-   * The two OPEN selects ask for an exact count alongside the rows.
-   * `listings.data.length` would give the same number today and be silently
-   * wrong the day a PostgREST `max-rows` cap truncates the response — and a
-   * truncated response also understates the value total, which is the harder
-   * half to notice. With an exact count the two disagree visibly instead:
-   * `coverage.rows` would fall below `openOffers + openRequests`.
+   * The book comes from the diamond, not from `kaleido_listings` /
+   * `kaleido_requests`.
+   *
+   * These three legs were Supabase selects until 2026-09-09, and every tile they
+   * fed had been reading zero since launch: the mirror tables have never had a
+   * row, because the indexer that fills them (server/src/syncListing.ts) has
+   * never been run. Sepolia's diamond held 39 open listings and 16 open requests
+   * on the day this was measured, so "lending TVL $0 / 0 offers / 0 loans" was a
+   * headline figure about a market that existed. A stalled indexer's empty
+   * result is indistinguishable from an empty market — the argument
+   * lib/lending/book.ts makes at length — and here the app was publishing that
+   * ambiguity as a number.
+   *
+   * `readBookRows` is one Multicall3 round trip per side and returns null rather
+   * than an empty array when the chain does not answer, which is what keeps the
+   * "not measured" tile distinct from a real zero.
    */
-  const [listings, requests, serviced] = await Promise.all([
-    supabase
-      .from("kaleido_listings")
-      .select("tokenAddress, amount", { count: "exact" })
-      .eq("status", "OPEN"),
-    supabase
-      .from("kaleido_requests")
-      .select("tokenAddress, amount", { count: "exact" })
-      .eq("status", "OPEN"),
-    supabase
-      .from("kaleido_requests")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "SERVICED"),
+  const [listingRows, requestRows] = await Promise.all([
+    readBookRows(READ_ONLY_CHAIN_ID, "listings").catch(() => null),
+    readBookRows(READ_ONLY_CHAIN_ID, "requests").catch(() => null),
   ]);
 
-  const loansOutstanding = serviced.error ? null : (serviced.count ?? null);
-  if (serviced.error) {
-    console.error(
-      "[market/overview] serviced count failed:",
-      serviced.error.message,
-    );
+  /*
+   * SERVICED requests are the funded loans. Counted off the same read as the
+   * open ones rather than by a second query — one read of the book answers both,
+   * and two reads could disagree about a request funded between them.
+   */
+  const loansOutstanding =
+    requestRows === null
+      ? null
+      : requestRows.filter((r) => r.status === "SERVICED").length;
+  if (loansOutstanding === null) {
+    console.error("[market/overview] serviced count failed: book unreadable");
     degraded.push("loansOutstanding");
   }
 
-  const bookError = listings.error ?? requests.error;
-  if (bookError) {
-    console.error("[market/overview] book read failed:", bookError.message);
+  if (listingRows === null || requestRows === null) {
+    console.error("[market/overview] book read failed: chain did not answer");
     return {
       usd: null,
       coverage: EMPTY_COVERAGE,
@@ -148,19 +187,20 @@ async function lendingLeg(): Promise<{
     };
   }
 
-  /* PostgREST returns the count in a Content-Range header, so a proxy that
-     strips it leaves `count` null with no error to go with it. A null tile with
-     nothing in `degraded` reads as "still loading" rather than "not measured",
-     hence naming the leg here too. */
-  const openOffers = listings.count ?? null;
-  const openRequests = requests.count ?? null;
-  if (openOffers === null) degraded.push("openOffers");
-  if (openRequests === null) degraded.push("openRequests");
+  const openListings = listingRows.filter((l) => l.status === "OPEN");
+  const openReqs = requestRows.filter((r) => r.status === "OPEN");
 
-  const rows = [
-    ...((listings.data ?? []) as BookRow[]),
-    ...((requests.data ?? []) as BookRow[]),
-  ];
+  /* Counted from the rows the value total is computed over, so the two cannot
+     disagree — the failure mode the exact-count select above was guarding
+     against (a truncated response understating the total while the count stayed
+     right) cannot arise when one array feeds both. */
+  const openOffers = openListings.length;
+  const openRequests = openReqs.length;
+
+  const rows: BookRow[] = [...openListings, ...openReqs].map((r) => ({
+    tokenAddress: r.tokenAddress,
+    amount: r.amount,
+  }));
   const folded = foldBook(rows, CURRENCIES);
 
   if (folded.unknownToken > 0) {
