@@ -572,9 +572,14 @@ export const READS: Group = {
   href: "/portfolio",
   tools: [
     {
-      name: "getPortfolio",
+      name: "getBalances",
       params: ["address"],
       prompt: "what am I holding?",
+    },
+    {
+      name: "getPortfolio",
+      params: ["address"],
+      prompt: "how healthy is my position?",
     },
     {
       name: "getMarkets",
