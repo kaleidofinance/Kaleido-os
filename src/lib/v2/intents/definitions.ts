@@ -135,6 +135,7 @@ const PROTOCOL_ABI = [
 
 const KFUSD_ABI = [
   "function mint(address to, uint256 kfUsdAmount, address collateralToken, uint256 collateralAmount) external",
+  "function mintWithCollateral(address collateralToken, uint256 collateralAmount) external",
   "function redeem(uint256 amount, address outputToken) external",
 ];
 
@@ -593,14 +594,16 @@ register("mintStable", {
       i.collateralAmount,
       i.collateralDecimals,
     );
-    // Matches useStablecoin.ts's own scaling exactly, rather than inventing a
-    // different one: kfUSD is 18 decimals, so a 6-decimal collateral amount is
-    // scaled up by 10^12 to land at a 1:1 nominal mint.
-    const kfUSDAmount =
-      collateralAmount * ethers.parseUnits("1", 18 - i.collateralDecimals);
-    const tx = await kfUSDContract.mint(
-      ctx.address,
-      kfUSDAmount,
+    /* mintWithCollateral, not mint — the same fix the /stable form carries (see
+       useStablecoin.ts). The four-argument mint is onlyRole(MINTER_ROLE): a
+       caller who set both the kfUSD amount and the collateral could mint kfUSD
+       the collateral does not back, so it reverts for every ordinary wallet —
+       which is exactly what made "mint 500 USDC" through Luca fail on-chain while
+       the form worked. This permissionless entry point names only the collateral
+       and derives the kfUSD at par on-chain (see kfUSD.sol), so the amount the
+       plan quoted and the amount minted are the same 1:1 the contract honours on
+       redeem — and the scaling this used to do by hand is gone with it. */
+    const tx = await kfUSDContract.mintWithCollateral(
       i.collateralToken,
       collateralAmount,
     );
