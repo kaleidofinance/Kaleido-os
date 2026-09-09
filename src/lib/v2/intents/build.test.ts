@@ -95,6 +95,11 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
     positions: 0,
     loans: 0,
     faucet: 0,
+    /* How many times the unstake branch asked where the wallet is in the
+       vault's cooldown. Exactly one per unstake plan, and zero for everything
+       else — a branch that read it unprompted would be paying an eth_call the
+       command never needed. */
+    staking: 0,
     /* The fee tiers asked about, in the order they were asked. The mint branch
        reads all three when `fee` is omitted and exactly one when it is given, so
        this is how the tier-resolution cases tell those two apart — a branch that
@@ -139,6 +144,12 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
     loans: async () => {
       calls.loans++;
       return over.loans ? over.loans() : [];
+    },
+    /* Null unless a case says where the wallet is — the "vault didn't answer"
+       refusal by default, so a case has to state a cooldown to get a step. */
+    stakingState: async () => {
+      calls.staking++;
+      return over.stakingState ? over.stakingState() : null;
     },
     faucetAssets: async () => {
       calls.faucet++;
@@ -629,6 +640,100 @@ async function main() {
       JSON.stringify(at(r, 1)),
     );
     check("stake reads nothing", quiet(calls));
+  }
+
+  console.log("\n— unstake: one sentence, three steps, chosen by vault state —");
+  {
+    /* No request open: the plan is the request that opens the cooldown. It
+       takes no amount on-chain, so the intent carries none. */
+    const { deps, calls } = fakeDeps({
+      stakingState: async () => ({ hasRequest: false, timeLeft: 0 }),
+    });
+    const r = await build({ kind: "unstake", amount: "100" }, deps);
+    check(
+      "no open request builds the cooldown request",
+      kinds(r) === "requestStakeWithdrawal",
+      kinds(r),
+    );
+    check(
+      "the request names this chain's vault, KLD and stKLD",
+      r.ok &&
+        same(at(r, 0).vault, STAKING.kldVault) &&
+        same(at(r, 0).token, STAKING.kld) &&
+        same(at(r, 0).stToken, STAKING.stKLD),
+      r.ok ? JSON.stringify(at(r, 0)) : String(r.error),
+    );
+    check(
+      "and says the cooldown has to end before anything pays out",
+      r.ok && /cooldown/i.test(r.build.summary),
+      r.ok ? r.build.summary : "",
+    );
+    check("unstake read the vault state exactly once", calls.staking === 1);
+  }
+  {
+    /* Request open, cooldown still running: nothing to sign, so it refuses
+       with the countdown rather than building a withdrawal that would revert. */
+    const { deps } = fakeDeps({
+      stakingState: async () => ({ hasRequest: true, timeLeft: 5400 }),
+    });
+    const r = await build({ kind: "unstake", amount: "100" }, deps);
+    check(
+      "a live cooldown refuses instead of building a reverting withdrawal",
+      !r.ok && /cooldown has 1h 30m left/.test(r.error),
+      r.ok ? kinds(r) : r.error,
+    );
+  }
+  {
+    /* Cooldown elapsed: the withdrawal, with the amount and the token. */
+    const { deps } = fakeDeps({
+      stakingState: async () => ({ hasRequest: true, timeLeft: 0 }),
+    });
+    const r = await build({ kind: "unstake", amount: "100" }, deps);
+    check(
+      "an elapsed cooldown builds the withdrawal",
+      kinds(r) === "withdrawStake",
+      kinds(r),
+    );
+    check(
+      "the withdrawal carries the amount, in KLD, against this chain's vault",
+      r.ok &&
+        at(r, 0).amount === "100" &&
+        at(r, 0).symbol === "KLD" &&
+        same(at(r, 0).vault, STAKING.kldVault) &&
+        same(at(r, 0).token, STAKING.kld),
+      r.ok ? JSON.stringify(at(r, 0)) : String(r.error),
+    );
+  }
+  {
+    /* An unreadable state is a refusal, never a default. Two ways to be
+       unreadable, two different sentences: the reader answered null (vault did
+       not answer), or there is no reader at all (a deps without a wallet). */
+    const { deps } = fakeDeps();
+    const r = await build({ kind: "unstake", amount: "100" }, deps);
+    check(
+      "a null state refuses rather than guessing 'no request'",
+      !r.ok && /didn't answer/.test(r.error),
+      r.ok ? kinds(r) : r.error,
+    );
+    const { deps: bare } = fakeDeps();
+    const r2 = await build(
+      { kind: "unstake", amount: "100" },
+      { ...bare, stakingState: undefined },
+    );
+    check(
+      "no reader at all refuses and points at the Stake page",
+      !r2.ok && /can't read your staking state/.test(r2.error),
+      r2.ok ? kinds(r2) : r2.error,
+    );
+  }
+  {
+    const { deps } = fakeDeps({ chainId: 1 });
+    const r = await build({ kind: "unstake", amount: "100" }, deps);
+    check(
+      "a chain with no vault refuses before reading anything",
+      !r.ok && /isn't available on this chain/.test(r.error),
+      r.ok ? kinds(r) : r.error,
+    );
   }
   {
     const { deps } = fakeDeps();

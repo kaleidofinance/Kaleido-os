@@ -13,6 +13,7 @@
 
 import type { Pricer } from "./auditor";
 import type { LendingSide } from "../../constants/registry";
+import { stakingContracts } from "../../constants/registry";
 
 /*
  * The Diamond env var, fixed before the auditor is loaded.
@@ -1624,6 +1625,9 @@ async function main() {
       "collectPoolFees",
       "decreasePoolLiquidity",
       "grantAgentPermission",
+      "requestStakeWithdrawal",
+      "withdrawStake",
+      "cancelStakeWithdrawal",
     ];
 
     const unruled: string[] = [];
@@ -1636,6 +1640,77 @@ async function main() {
       `all ${KINDS.length} intent kinds reach a rule`,
       unruled.length === 0,
       `no rule for: ${unruled.join(", ")}`,
+    );
+  }
+
+  /* ---------------------------------------------------------------------- *
+   * Unstake lifecycle
+   *
+   * Three kinds, one property under test: every address is PINNED to this
+   * chain's recorded staking set, not merely checked for shape. A well-formed
+   * vault address that is not our vault is exactly the plan a model invents, and
+   * exactly the one to refuse. Only the withdrawal moves value, so only it is
+   * priced and only it needs an amount.
+   * ---------------------------------------------------------------------- */
+  {
+    const STK = stakingContracts(CHAIN);
+    const STRANGER = "0x000000000000000000000000000000000000dEaD";
+    const wellFormed = (kind: string, extra: Record<string, unknown> = {}) =>
+      ({
+        kind,
+        vault: STK.kldVault,
+        token: STK.kld,
+        stToken: STK.stKLD,
+        ...extra,
+      }) as Step;
+
+    let v = await audit([wellFormed("requestStakeWithdrawal")]);
+    check(
+      "a request against this chain's vault passes",
+      v.blocked.length === 0,
+      v.blocked.join("; "),
+    );
+
+    v = await audit([wellFormed("requestStakeWithdrawal", { vault: STRANGER })]);
+    check(
+      "a request naming a vault that is not ours is refused",
+      v.blocked.some((b) => /vault/i.test(b)),
+      v.blocked.join("; ") || "(passed)",
+    );
+
+    v = await audit([wellFormed("withdrawStake", { amount: "25", symbol: "KLD" })]);
+    check(
+      "a withdrawal with a positive amount passes and is priced",
+      v.blocked.length === 0,
+      v.blocked.join("; "),
+    );
+
+    v = await audit([wellFormed("withdrawStake", { amount: "0", symbol: "KLD" })]);
+    check(
+      "a withdrawal of nothing is refused",
+      v.blocked.some((b) => /amount/i.test(b)),
+      v.blocked.join("; ") || "(passed)",
+    );
+
+    v = await audit([wellFormed("withdrawStake", { amount: "25", symbol: "KLD", token: STRANGER })]);
+    check(
+      "a withdrawal of a token that is not this chain's KLD is refused",
+      v.blocked.some((b) => /KLD/.test(b)),
+      v.blocked.join("; ") || "(passed)",
+    );
+
+    v = await audit([{ kind: "cancelStakeWithdrawal", vault: STK.kldVault } as Step]);
+    check(
+      "a cancel against this chain's vault passes",
+      v.blocked.length === 0,
+      v.blocked.join("; "),
+    );
+
+    v = await audit([{ kind: "cancelStakeWithdrawal", vault: STRANGER } as Step]);
+    check(
+      "a cancel against a stranger's vault is refused",
+      v.blocked.some((b) => /vault/i.test(b)),
+      v.blocked.join("; ") || "(passed)",
     );
   }
 

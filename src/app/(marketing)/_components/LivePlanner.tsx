@@ -94,6 +94,7 @@ const OPTS = { slippageBps: 50, deadlineMin: 20 };
 const VERB: Record<Command["kind"], string> = {
   swap: "Swap",
   stake: "Stake",
+  unstake: "Unstake",
   approve: "Approve",
   send: "Send",
   bridge: "Bridge",
@@ -554,6 +555,23 @@ function settledOf(
           ...allowance,
         ],
         note: "kfUSD in, kafUSD out. Getting back out is two steps and a cooldown rather than one transaction — `unlock` starts it, and `complete withdrawal` claims it once the cooldown is up.",
+      };
+
+    case "unstake":
+      return {
+        lines: [
+          { label: "Asked for", value: `${num(command.amount)} KLD back` },
+          {
+            label: "Paid out now",
+            value:
+              "nothing on the first pass — it opens the vault's withdrawal window",
+          },
+          {
+            label: "Then",
+            value: "say it again once the cooldown has elapsed and the KLD lands",
+          },
+        ],
+        note: "One phrase, two transactions, because the vault is built that way: a request starts a cooldown and a withdrawal claims after it. The planner reads which of the two you are at and builds only that one — and while the clock is still running it tells you how long is left instead of sending a transaction that would revert.",
       };
 
     case "unlock":

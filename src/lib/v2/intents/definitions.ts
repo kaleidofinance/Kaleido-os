@@ -107,7 +107,17 @@ async function sendSwap(
  * no matching function. `useStake.ts:86` had it right all along, because it
  * reads the generated ABI rather than restating the signature.
  */
-const VAULT_ABI = ["function deposit(address token, uint256 amount) external"];
+const VAULT_ABI = [
+  "function deposit(address token, uint256 amount) external",
+  /* The unstake lifecycle, restated from src/abi/KLDVaultAbi.json with the same
+     care as `deposit` above: `requestWithdrawal` takes NO argument (the vault
+     keys the cooldown on msg.sender), `withdraw` takes the token and amount, and
+     `cancelWithdrawalRequest` takes nothing. A restated arity is a restated
+     selector, so these are copied, not paraphrased. */
+  "function requestWithdrawal() external",
+  "function withdraw(address _token, uint256 _amount) external",
+  "function cancelWithdrawalRequest() external",
+];
 
 /*
  * Minimal ProtocolFacet surface. Written out rather than imported from the full
@@ -322,6 +332,50 @@ register("stake", {
     const vault = new ethers.Contract(i.vault, VAULT_ABI, ctx.signer);
     const amount = ethers.parseUnits(i.amount, 18);
     const tx = await vault.deposit(i.token, amount);
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/* The three unstake steps. Same calls the Stake page's useRequestWithdrawal,
+   useWithdrawStake and useCancelWithdrawalRequest make — which is the parity
+   this file is held to, and the reason each is one call with no scaling of its
+   own: the vault takes the amount at withdraw time and nothing else. */
+register("requestStakeWithdrawal", {
+  render: () => ({
+    title: "Request to unstake",
+    detail:
+      "Starts the vault's cooldown. Nothing pays out until it ends; ask again then to withdraw.",
+  }),
+  resolve: async (ctx, i) => {
+    const vault = new ethers.Contract(i.vault, VAULT_ABI, ctx.signer);
+    const tx = await vault.requestWithdrawal();
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+register("withdrawStake", {
+  render: (i) => ({
+    title: `Withdraw ${i.amount} ${i.symbol} from the vault`,
+    detail: "Burns stKLD and returns KLD. The cooldown has already elapsed.",
+  }),
+  resolve: async (ctx, i) => {
+    const vault = new ethers.Contract(i.vault, VAULT_ABI, ctx.signer);
+    const tx = await vault.withdraw(i.token, ethers.parseUnits(i.amount, 18));
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+register("cancelStakeWithdrawal", {
+  render: () => ({
+    title: "Cancel the unstake request",
+    detail: "Abandons the cooldown and keeps the position staked.",
+  }),
+  resolve: async (ctx, i) => {
+    const vault = new ethers.Contract(i.vault, VAULT_ABI, ctx.signer);
+    const tx = await vault.cancelWithdrawalRequest();
     await tx.wait();
     return { hash: tx.hash };
   },

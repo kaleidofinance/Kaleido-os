@@ -1664,5 +1664,37 @@ console.log("\n— degen and whale slang read as the trade a person meant —");
   );
 }
 
+console.log("\n— unstake parses like stake: one amount, the step decided later —");
+{
+  const full = p("unstake 100 KLD");
+  check(
+    "'unstake 100 KLD' is a complete unstake command",
+    full.status === "ok" &&
+      full.command.kind === "unstake" &&
+      full.command.amount === "100",
+    JSON.stringify(full),
+  );
+  const bare = p("unstake");
+  check(
+    "a bare 'unstake' asks for the amount rather than escalating",
+    bare.status === "incomplete" && bare.missing === "amount",
+    JSON.stringify(bare),
+  );
+  const noNumber = p("unstake my kld");
+  check(
+    "'unstake my kld' names the token but not the amount, so it asks",
+    noNumber.status === "incomplete" && noNumber.missing === "amount",
+    JSON.stringify(noNumber),
+  );
+  /* Whole-word matching is the whole safety of this verb: "unstake" must never
+     be read as the `stake` verb wearing a prefix, or "unstake 100 KLD" would
+     stake 100 more. */
+  check(
+    "'unstake' is never mistaken for 'stake'",
+    full.status === "ok" && full.command.kind !== "stake",
+    full.status === "ok" ? full.command.kind : full.status,
+  );
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

@@ -177,6 +177,33 @@ export type Intent =
       amount: string;
       symbol: string;
     }
+  /*
+   * Unstaking, in the vault's own three steps. None of these is "unstake": the
+   * vault has no such call. `requestWithdrawal()` opens a per-account cooldown
+   * and takes no amount; `withdraw(token, amount)` pays out only after it has
+   * elapsed; `cancelWithdrawalRequest()` abandons it. The planner reads the
+   * wallet's state (lib/staking/state.ts) and emits the one step that applies —
+   * which is why a single "unstake 100 KLD" can build a request today and a
+   * withdrawal tomorrow, and why neither carries the other's fields.
+   */
+  | {
+      kind: "requestStakeWithdrawal";
+      vault: string;
+      token: string;
+      stToken: string;
+    }
+  | {
+      kind: "withdrawStake";
+      vault: string;
+      token: string;
+      stToken: string;
+      amount: string;
+      symbol: string;
+    }
+  | {
+      kind: "cancelStakeWithdrawal";
+      vault: string;
+    }
   /* --------------------------------------------------------- transfer -- */
   /*
    * A plain wallet-to-wallet send — the only intent in this union that calls no

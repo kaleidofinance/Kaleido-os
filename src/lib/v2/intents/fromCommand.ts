@@ -39,6 +39,18 @@ export interface StakeCommand {
   kind: "stake";
   amount: string;
 }
+/**
+ * The mirror of StakeCommand, and deliberately just as thin. The vault's unstake
+ * is three transactions gated by a per-account cooldown, and which one applies
+ * is a fact about chain state, not about the sentence — so this carries only
+ * the amount and leaves the step to the planner, which reads the wallet's
+ * cooldown (lib/staking/state.ts) and emits a request, a withdrawal, or a
+ * refusal with the countdown. See the unstake branch in build.ts.
+ */
+export interface UnstakeCommand {
+  kind: "unstake";
+  amount: string;
+}
 export interface ApproveCommand {
   kind: "approve";
   amount: string;
@@ -328,6 +340,7 @@ export interface ClaimTestTokensCommand {
 export type Command =
   | SwapCommand
   | StakeCommand
+  | UnstakeCommand
   | ApproveCommand
   | SendCommand
   | BridgeCommand
@@ -461,19 +474,22 @@ export type ParseResult =
  *   verb detection by `detectOpenLiquidity`, which opens the form rather than
  *   building the transaction. A *priced* request — both amounts named — still
  *   falls to the model and its tool. See ToolOnlyKind.
- * - "unstake" / "withdraw stake" — there is no unstake intent and no unstake tool
- *   anywhere in the app; the only path is `useWithdrawStake` behind the stake
- *   page's own control. A verb here would build a Draft the planner cannot plan,
- *   which is worse than falling through, because the failure would arrive after
- *   the user had answered a question about it.
- * - "wrap" / "unwrap" — same shape: no intent exists, so the model's answer
- *   (which can send the user to the right control) beats a local dead end.
+ * - "unstake" — CLOSED. It sat here for a while because the vault's unstake is
+ *   three cooldown-gated transactions and a verb that built a Draft the planner
+ *   could not plan would fail after the user had answered a question about it.
+ *   It has a verb now because the planner can choose the step: it reads the
+ *   wallet's cooldown state (lib/staking/state.ts) and emits the one that
+ *   applies. "withdraw my stake" still reads as a collateral withdrawal — the
+ *   `withdraw` verb wins that sentence — which is the remaining seam.
+ * - "wrap" / "unwrap" — no intent exists, so the model's answer (which can send
+ *   the user to the right control) beats a local dead end.
  * - "pay" — see `send` below. Two readings, one of them a repayment.
  *
- * The middle two are gaps in the *protocol* surface, not in this grammar, and
- * closing them starts with an intent, a builder and an auditor rule. Liquidity
- * was never one of those: the intent, the builder and the rule all exist, and the
- * form does too — which is what made the handoff the cheaper half to close first.
+ * Wrap/unwrap is a gap in the *protocol* surface, not in this grammar, and
+ * closing it starts with an intent, a builder and an auditor rule — the same
+ * three things unstake needed. Liquidity was never one of those: the intent, the
+ * builder and the rule all exist, and the form does too — which is what made the
+ * handoff the cheaper half to close first.
  */
 const VERBS: Record<ActionKind, string[]> = {
   /* "buy" (and its degen synonyms below) is here rather than absent, and these
@@ -493,6 +509,9 @@ const VERBS: Record<ActionKind, string[]> = {
     "dump", "unload", "ape", "cop", "grab", "snag", "flip", "yeet",
   ],
   stake: ["stake"],
+  /* One word, matched whole, so "unstake" never reads as the `stake` verb with
+     a prefix — VERBS matches words, not substrings. */
+  unstake: ["unstake"],
   approve: ["approve", "allow"],
   /* No "pay". "pay back my loan" and "pay off my loan" are repayments, and a
      money verb with two readings is precisely what the note above says should
@@ -1396,6 +1415,19 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     return { status: "ok", command: { kind: "stake", amount: amount.amount } };
   }
 
+  if (verb.kind === "unstake") {
+    /* Same shape as stake, for the same reason: the vault holds one token. The
+       amount is asked for even when the step that ends up built is a request
+       (which takes none), because the sentence should carry what the user
+       wants back — it is what the withdrawal will need once the cooldown ends,
+       and asking then would mean asking twice. */
+    if (!amount) return incomplete({ kind: "unstake" }, "amount");
+    return {
+      status: "ok",
+      command: { kind: "unstake", amount: amount.amount },
+    };
+  }
+
   if (verb.kind === "repay") {
     // A bare "repay" is valid: the planner resolves it when exactly one loan is
     // open, and asks which otherwise. Only a number here names the loan.
@@ -1697,6 +1729,7 @@ export function draftFromCommand(command: Command): Draft | null {
         tokenOut: command.tokenOut,
       };
     case "stake":
+    case "unstake":
     case "lock":
     case "unlock":
       return { kind: command.kind, amount: command.amount };
