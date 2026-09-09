@@ -228,6 +228,18 @@ const ACTION_OF: Record<IntentKind, string> = {
   /* A receive, and useAgentSettings ships no faucet switch to gate it on. */
   claimTestTokens: "",
   claimAllTestTokens: "",
+
+  /* An order is a swap that has not happened yet, so it answers to the same
+     switch a swap does. Gating it on anything else would let a user who turned
+     swapping off have the agent commit them to one anyway — for a week, at a
+     price they can no longer decline, since a signed order fills without them. */
+  placeOrder: "swap",
+
+  /* Both are exits, and the second is the panic button. Gating a cancellation on
+     a product switch would mean turning swapping off also removed the way out of
+     an order already signed. */
+  cancelOrder: "",
+  cancelAllOrders: "",
 };
 
 export interface AuditedStep {
@@ -916,6 +928,23 @@ interface Shape {
    * design, so that they stay unit-testable without a network.
    */
   swap?: {
+    /**
+     * Overrides `limits.slippageBps` for this step alone.
+     *
+     * Exists for `placeOrder`, where the two numbers measure different things.
+     * A slippage tolerance bounds how far execution may drift from a price the
+     * MARKET quoted. A resting order has no such quote: its floor is a price the
+     * maker chose, and the proceeds go to the maker, so "buy the dip 20% down"
+     * is a correct order rather than a 20% loss. Measuring it against the
+     * default 0.5% would refuse the orders the feature exists to place.
+     *
+     * So the rule sets its own, far wider, sanity bound. What survives at that
+     * width is the floor nobody chose - a `minOut` off by 1e12 from crossed
+     * decimals, or a near-zero floor that hands the fill price to the filler.
+     * The check still has to run here rather than in the rule, because it needs
+     * a USD price for both sides and these rules are synchronous by design.
+     */
+    toleranceBps?: number;
     inSymbol: string;
     outSymbol: string;
     amountIn: number;
@@ -2320,6 +2349,207 @@ const AUDITORS: Record<IntentKind, Auditor> = {
 
     return { reasons };
   },
+
+  /**
+   * A signed order. Audited as a swap, because that is what it becomes.
+   *
+   * The one structural difference from `swap` is what the signature commits to.
+   * A swap is one transaction the user sees; a recurring order is ONE signature
+   * authorising `maxFills` swaps that happen without them, over weeks. So the
+   * priced leg is `amountIn × maxFills` — the whole commitment — measured against
+   * the per-action cap. Pricing a single fill would let a plan slip 12× a user's
+   * per-action limit past it on one signature, which is the only way this kind
+   * can be worse than the swap it resembles.
+   *
+   * `minOut` is scaled the same way, so the slippage check compares like with
+   * like. It cannot be scaled independently: the ratio is the price, and
+   * multiplying one side alone would report a fill at 1/maxFills of the signed
+   * price.
+   *
+   * `orders` is pinned rather than merely present, and it is the field the whole
+   * order rests on: it is the EIP-712 `verifyingContract`, so a wrong value is
+   * not a failed step — it is a signature that stores cleanly, lists cleanly, and
+   * can never be filled by anything.
+   */
+  placeOrder: (s, chainId, limits) => {
+    const reasons: string[] = [];
+    const tokenIn = str(s.tokenIn);
+    const tokenOut = str(s.tokenOut);
+    const inTok = knownToken(chainId, tokenIn);
+    const outTok = knownToken(chainId, tokenOut);
+
+    reasons.push(...pinned(str(s.orders), getContracts(chainId).orders, "orders"));
+
+    if (!inTok.ok) reasons.push(`unrecognised input token ${tokenIn || "(none)"}`);
+    if (!outTok.ok)
+      reasons.push(`unrecognised output token ${tokenOut || "(none)"}`);
+    if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
+      reasons.push("input and output token are the same");
+
+    const amountIn = num(s.amountIn);
+    if (amountIn === null || amountIn <= 0)
+      reasons.push("order amount is missing or not positive");
+
+    /* Required, not defaulted, and the contract agrees: it refuses a zero floor
+       outright. A limit order with no floor is not an order at any price — it is
+       an instruction to whoever fills it to pick the price, having first moved
+       it. */
+    const minOut = num(s.minOut);
+    if (minOut === null || minOut <= 0)
+      reasons.push(
+        "no minimum output — the order would fill at any price, and the filler chooses when. A floor is required.",
+      );
+
+    if (num(s.decimalsIn) === null || num(s.decimalsOut) === null)
+      reasons.push("token decimals are missing, so the amount cannot be parsed");
+
+    const maxFills = num(s.maxFills);
+    if (maxFills === null || maxFills < 1 || !Number.isInteger(maxFills))
+      reasons.push("fill count is missing or not a whole number");
+
+    const interval = num(s.interval);
+    if (interval === null || interval < 0)
+      reasons.push("interval is missing or negative");
+    else if (maxFills !== null && maxFills > 1 && interval === 0)
+      reasons.push("a recurring order has no gap between fills");
+
+    const expiresIn = num(s.expiresIn);
+    if (expiresIn === null || expiresIn <= 0)
+      reasons.push(
+        "the order has no expiry — a signature with no end never stops being fillable",
+      );
+    /* The window has to hold the fills being signed for, or the order does fewer
+       than it says. The contract has no view that reports this, and it is not a
+       revert either: fills simply stop. */
+    else if (
+      maxFills !== null &&
+      interval !== null &&
+      maxFills > 1 &&
+      interval * (maxFills - 1) > expiresIn
+    )
+      reasons.push(
+        `${maxFills} fills that far apart need longer than the order runs`,
+      );
+
+    /* The total the signature authorises, not one fill. See the note above. */
+    const total =
+      amountIn !== null && maxFills !== null ? amountIn * maxFills : null;
+    const totalOut =
+      minOut !== null && maxFills !== null ? minOut * maxFills : null;
+
+    return {
+      reasons,
+      ...(inTok.ok && total !== null && total > 0
+        ? { priced: { symbol: inTok.symbol!, amount: String(total) } }
+        : {}),
+      ...(reasons.length === 0 &&
+      inTok.ok &&
+      outTok.ok &&
+      total !== null &&
+      totalOut !== null
+        ? {
+            swap: {
+              inSymbol: inTok.symbol!,
+              outSymbol: outTok.symbol!,
+              amountIn: total,
+              minOut: totalOut,
+              /*
+               * 50% — a sanity bound, deliberately not the user's slippage limit.
+               *
+               * A resting order's floor is the price the maker picked, and the
+               * output goes to the maker: `_settle` sends the router's proceeds to
+               * `o.maker`, so anything above the floor is theirs too. "Buy the dip
+               * 20% down" is therefore a correct order, not a 20% loss, and
+               * measuring it against a 0.5% tolerance would refuse the very orders
+               * this tool exists to place — while the plan summary next to the
+               * refusal said the order was fine.
+               *
+               * What survives at this width is the floor that was never chosen: a
+               * `minOut` off by a factor of 1e12 from crossed decimals, or a
+               * near-zero floor that hands the fill price to the filler. Both land
+               * far past 50%, and both are exactly the cases the maker cannot see
+               * in a hash.
+               */
+              toleranceBps: 5_000,
+              /* No pool is known at signing: the filler chooses the path at
+                 fill time, and the intent carries none. Declaring none is the
+                 honest input, and it is immaterial anyway - a 0.30% pool fee
+                 against a 50% bound cannot change the verdict. */
+              fees: [],
+            },
+          }
+        : {}),
+      ...(maxFills !== null && maxFills > 1
+        ? {
+            notes: [
+              `this is one signature authorising ${maxFills} fills without asking again — it stays fillable until it expires or you cancel it on chain`,
+            ],
+          }
+        : {}),
+    };
+  },
+
+  /**
+   * Cancelling one order. Nothing to price — it moves no value in either
+   * direction — so the whole audit is that the contract is ours and the struct is
+   * the one that was signed.
+   *
+   * Every field is checked because `cancel` keys on the hash of all of them: one
+   * altered value is a different order, and the call reverts with
+   * KaleidoOrders_NotMaker rather than saying the struct was wrong. A cancel that
+   * silently fails is worse than most failures here, because the user has been
+   * told the order is gone.
+   */
+  cancelOrder: (s, chainId) => {
+    const reasons = [
+      ...pinned(str(s.orders), getContracts(chainId).orders, "orders"),
+    ];
+
+    const o = s.order;
+    if (!o || typeof o !== "object") {
+      reasons.push("no order to cancel");
+      return { reasons };
+    }
+    const f = o as Record<string, unknown>;
+
+    for (const key of ["maker", "tokenIn", "tokenOut"]) {
+      if (!ethers.isAddress(str(f[key])))
+        reasons.push(`order.${key} is not an address`);
+    }
+    /* Decimal strings, and strings is half the check. A uint256 that arrived as
+       a JSON number was rounded by the parser, and a rounded field hashes to an
+       order the contract has never heard of — so the cancel would succeed at
+       cancelling nothing. Testing the digits alone was not enough: precision is
+       lost above 2^53, which is about 0.009 ETH in wei, so a rounded `minOut`
+       stringifies back to a run of digits and would have passed. Every producer
+       of this step reads the struct out of the order book, where all three are
+       strings, so requiring the type refuses nothing that was built correctly. */
+    for (const key of ["amountIn", "minOut", "salt"]) {
+      if (typeof f[key] !== "string" || !/^[0-9]+$/.test(f[key] as string))
+        reasons.push(`order.${key} is not a decimal string`);
+    }
+    for (const key of ["startAt", "expiry", "interval", "maxFills", "epoch"]) {
+      const v = f[key];
+      if (typeof v !== "number" || !Number.isInteger(v) || v < 0)
+        reasons.push(`order.${key} is not a whole number`);
+    }
+
+    return { reasons };
+  },
+
+  /**
+   * Cancelling everything. One call, no arguments, so there is nothing to check
+   * beyond the contract being ours — but it is not a no-op audit: `cancelAll`
+   * bumps the maker's epoch, which invalidates every signature they have made on
+   * this chain, including orders signed elsewhere. Irreversible in the sense that
+   * matters: the orders cannot be brought back, only signed again.
+   */
+  cancelAllOrders: (s, chainId) => ({
+    reasons: pinned(str(s.orders), getContracts(chainId).orders, "orders"),
+    notes: [
+      "this invalidates every order signed on this network, including any this app cannot see",
+    ],
+  }),
 };
 
 /* ---------------------------------------------------------------- audit -- */
@@ -2528,6 +2758,8 @@ export async function auditPlan(opts: {
      */
     if (shape.swap && limits.slippageBps !== undefined) {
       const { inSymbol, outSymbol, amountIn, minOut, fees } = shape.swap;
+      /* The step's own bound when it declares one - see Shape.swap.toleranceBps. */
+      const boundBps = shape.swap.toleranceBps ?? limits.slippageBps;
       const [inSide, outSide] = await Promise.all([
         priceOf(inSymbol, String(amountIn)),
         priceOf(outSymbol, String(minOut)),
@@ -2578,7 +2810,7 @@ export async function auditPlan(opts: {
         const kept = fees.reduce((acc, f) => acc * (1 - f / 1_000_000), 1);
         const feeBps = (1 - kept) * 10_000;
         const excessBps = lossBps - feeBps;
-        if (excessBps > limits.slippageBps) {
+        if (excessBps > boundBps) {
           /* Names all three numbers. A refusal that reported only the total was
              unactionable in the case that matters — the user cannot tell a wide
              floor from an expensive route, and the advice differs: one is a
@@ -2586,8 +2818,9 @@ export async function auditPlan(opts: {
           audited.blocked =
             `minimum output concedes ${(excessBps / 100).toFixed(2)}% beyond ` +
             `${fees.length > 1 ? `${fees.length} pool fees` : "the pool fee"} of ` +
-            `${(feeBps / 100).toFixed(2)}%, over your ` +
-            `${(limits.slippageBps / 100).toFixed(2)}% slippage limit`;
+            `${(feeBps / 100).toFixed(2)}%, over ` +
+            `${shape.swap.toleranceBps === undefined ? "your " : "the "}` +
+            `${(boundBps / 100).toFixed(2)}% ${shape.swap.toleranceBps === undefined ? "slippage limit" : "sanity bound for a signed order"}`;
           blocked.push(`${kind}: ${audited.blocked}`);
           steps.push(audited);
           continue;

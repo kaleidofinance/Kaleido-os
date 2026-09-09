@@ -1,0 +1,111 @@
+/* The maker's own live orders, listed under the card's CTA.
+
+   Not a well. Every other block on this card is a `.box` — a bordered, blurred,
+   17px-padded surface — because every other block is a control you type into.
+   This one is a record of what you already signed, and giving it the same
+   framing would make a card whose whole job is fitting the viewport about 90px
+   taller for a list that is empty most of the time. A rule and a label are
+   enough to say "and here is what you have out there".
+
+   It renders nothing at all when there are no open orders, which is why there
+   is no empty state here: an empty list under a form is a promise that
+   something belongs there. */
+.orders {
+  margin-top: 14px;
+  border-top: 1px solid var(--k-line);
+  padding-top: 10px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-s3);
+}
+.title {
+  /* `cursor: default` for the same reason as `.bl` in trade.module.css — a
+     section label is part of the control, not text to select. */
+  cursor: default;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+
+/* Cancel, per row and for all of them. Ghost rather than a `.preset` chip: a
+   chip reads as a choice among alternatives, and these are the only destructive
+   controls on the card. The danger colour is on the text alone until hover, so
+   a list of four orders is not four red buttons. */
+.ghost {
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  padding: 4px 9px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  flex: none;
+  white-space: nowrap;
+}
+.ghost:hover {
+  background: var(--k-hover);
+  color: var(--k-t1);
+}
+.danger {
+  color: var(--k-danger);
+}
+.danger:hover {
+  background: var(--k-danger-dim);
+  color: var(--k-danger);
+}
+
+/* Separated by rules rather than gaps, so two orders on the same pair do not
+   read as one four-line block. The first row's rule is dropped because
+   `.orders` already drew one 10px above it. */
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-s3);
+  padding: 8px 2px;
+  border-top: 1px solid var(--k-line);
+}
+.row:first-of-type {
+  border-top: 0;
+}
+.body {
+  flex: 1;
+  min-width: 0;
+}
+.terms {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 2px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+/* The chain agrees the terms permit a fill and the pool pays the floor. The one
+   state on this list worth colour. */
+.ready {
+  color: var(--k-pos);
+}
+/* A row the chain has not answered for — no RPC on this network, or a token this
+   build does not carry. Dimmer than `.meta`, because it is the absence of an
+   answer rather than an answer. */
+.stale {
+  color: var(--k-t3);
+}
+
+/* Why the CTA is refusing, or why a price cannot be turned into a floor. Sits
+   where `.note` in deferred.module.css sits and reads the same, in the one
+   colour that says the form is not going to accept this. */
+.warn {
+  font-size: var(--k-fs-xs);
+  color: var(--k-danger);
+  margin: 10px 2px 0;
+  line-height: 1.5;
+  text-align: center;
+}
