@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers } from "ethers";
+import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { useQuery } from "@tanstack/react-query";
+import { client } from "@/config/client";
 import { getContracts } from "@/constants/registry";
+import { providerForChain } from "@/config/provider";
 import { MOCK_DATA, MOCK_V3_POSITIONS } from "@/lib/mock";
 import { uncollectedFees } from "@/lib/dex/feeGrowth";
 
@@ -26,13 +30,10 @@ const POSITION_MANAGER_ABI = [
   "function positions(uint256 tokenId) external view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
   "function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) external payable returns (uint256 amount0, uint256 amount1)",
   "function decreaseLiquidity((uint256 tokenId, uint128 liquidity, uint256 amount0Min, uint256 amount1Min, uint256 deadline)) external payable returns (uint256 amount0, uint256 amount1)",
-  /* The one fragment this file was missing, and the reason the app had no way to
-     add to a position it had already opened. Nothing in the contract needed
-     changing — `NonfungiblePositionManager.increaseLiquidity` has been there since
-     the periphery was deployed; it simply was not in this array, so there was no
-     callable form of it anywhere in the app. */
   "function increaseLiquidity((uint256 tokenId, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, uint256 deadline)) external payable returns (uint128 liquidity, uint256 amount0, uint256 amount1)",
 ];
+
+const UINT128_MAX = BigInt("340282366920938463463374607431768211455");
 
 export interface V3Position {
   tokenId: string;
@@ -46,79 +47,56 @@ export interface V3Position {
   tokensOwed1: string;
   /**
    * What a `collect` would actually pay right now, in raw base units, per token
-   * in pool order — the LIVE figure, not the stale `tokensOwed` checkpoint.
-   *
-   * `tokensOwed0/1` above are only the fees frozen at the position's last touch
-   * (mint / increase / decrease / collect); everything earned since then lives in
-   * the pool's accumulators and is not on the NFT. These two are that live amount,
-   * reconstructed from the pool's fee growth — see lib/dex/feeGrowth.ts. They fall
-   * back to the `tokensOwed` checkpoint (never below it) when the pool's fee-growth
-   * reads fail, so a row never understates by showing null; null here means the
-   * position row itself could not be read.
-   *
-   * DISPLAY ONLY. `collect` sweeps with uint128-max and takes whatever the pool
-   * says at execution — it never carries this number. Read at one block, the
-   * collect lands at another; the pool is the only authority on the amount then.
+   * in pool order — the LIVE figure, not the stale `tokensOwed` checkpoint. Falls
+   * back to the checkpoint (never below it) when the pool's fee-growth reads fail.
+   * DISPLAY ONLY: `collect` sweeps with uint128-max and takes whatever the pool
+   * says at execution.
    */
   uncollectedFees0: string | null;
   uncollectedFees1: string | null;
   inRange: boolean;
-  /**
-   * The pool's `slot0().sqrtPriceX96` at the time of the read, or null when the
-   * pool could not be read (no pool for the pair on this chain, or the call
-   * failed — the same condition that leaves `inRange` false).
-   *
-   * Carried because the split of a position between its two tokens depends
-   * entirely on where price sits inside its range, so this is the one extra field
-   * that turns "liquidity 1.2e18 over ticks -6000…6000" into "0.4 ETH and 900
-   * USDC" — see lib/dex/positionValue.ts. It costs no extra RPC: the slot0 read
-   * that computes `inRange` already returns it and used to discard it.
-   *
-   * A string, not a number: it is a uint160, and `Number` would silently drop
-   * everything past the 53rd bit at the point of capture rather than at the point
-   * of display where the loss is understood and documented.
-   */
+  /** The pool's `slot0().sqrtPriceX96` at read time, or null when unread. A
+   *  string because it is a uint160 and `Number` would drop its low bits. */
   sqrtPriceX96: string | null;
 }
 
 export const useV3Positions = () => {
   const activeAccount = useActiveAccount();
+  const activeChain = useActiveWalletChain();
   /* Positions are read and written on the chain the wallet is on — the position
      manager and factory are a per-chain set, and reading this chain's NFTs
      through a manager address deployed on another chain returns whatever code
      (if any) sits at that address there. */
-  const chainId = useActiveWalletChain()?.id;
+  const chainId = activeChain?.id;
   const { v3PositionManager, v3Factory } = getContracts(chainId);
-  const [positions, setPositions] = useState<V3Position[]>([]);
-  const [loading, setLoading] = useState(false);
+  const address = activeAccount?.address;
 
-  const fetchPositions = useCallback(async () => {
-    if (!activeAccount) {
-      setPositions([]);
-      return;
-    }
+  /*
+   * The read, now through react-query and `providerForChain` rather than a manual
+   * effect over `new ethers.BrowserProvider(window.ethereum)`.
+   *
+   * The provider swap is the correctness half: `window.ethereum` is absent for
+   * WalletConnect, the in-app (email/social/passkey) wallet, and every phone
+   * browser, so this whole page showed "no positions" to a connected wallet that
+   * held them — the same failure useTokenBalance and the quoter were already
+   * fixed for. `providerForChain(chainId)` dials the chain the wallet is on and is
+   * always present. react-query is the caching half: the positions tab and the
+   * portfolio both mount this, and one shared query with a refetch after each
+   * write beats two effects re-reading the same NFTs.
+   */
+  const {
+    data,
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["v3Positions", chainId, v3PositionManager ?? null, address ?? null],
+    enabled: Boolean(address),
+    queryFn: async (): Promise<V3Position[]> => {
+      if (MOCK_DATA) return MOCK_V3_POSITIONS;
+      if (!address || !v3PositionManager || !v3Factory) return [];
+      const provider = providerForChain(chainId);
+      if (!provider) return [];
 
-    setLoading(true);
-    try {
-      /*
-       * Demo mode. Deliberately inside the effect and after the wallet check, so
-       * the "connect your wallet" empty state still behaves normally and the rows
-       * arrive asynchronously — a fixture delivered synchronously would render
-       * during SSR and mismatch on hydration. Delete with src/lib/mock.
-       */
-      if (MOCK_DATA) {
-        setPositions(MOCK_V3_POSITIONS);
-        return;
-      }
-      if (typeof window === "undefined" || !window.ethereum) {
-        setPositions([]);
-        return;
-      }
-      if (!v3PositionManager || !v3Factory) {
-        setPositions([]);
-        return;
-      }
-      const provider = new ethers.BrowserProvider(window.ethereum);
       const posManager = new ethers.Contract(
         v3PositionManager,
         POSITION_MANAGER_ABI,
@@ -130,17 +108,14 @@ export const useV3Positions = () => {
         provider,
       );
 
-      const balance = await posManager.balanceOf(activeAccount.address);
+      const balance = await posManager.balanceOf(address);
       const balanceNum = Number(balance);
 
       const positionPromises = Array.from(
         { length: balanceNum },
         async (_, i) => {
           try {
-            const tokenId = await posManager.tokenOfOwnerByIndex(
-              activeAccount.address,
-              i,
-            );
+            const tokenId = await posManager.tokenOfOwnerByIndex(address, i);
             const pos = await posManager.positions(tokenId);
 
             // Determine if In Range
@@ -245,26 +220,33 @@ export const useV3Positions = () => {
       );
 
       const results = await Promise.all(positionPromises);
-      const posData = results.filter((p): p is V3Position => p !== null);
+      return results.filter((p): p is V3Position => p !== null);
+    },
+  });
 
-      setPositions(posData);
-    } catch (error) {
-      console.error("Error fetching V3 positions:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeAccount, v3PositionManager, v3Factory]);
+  const positions = data ?? [];
+  const refresh = useCallback(() => {
+    refetch();
+  }, [refetch]);
 
-  useEffect(() => {
-    fetchPositions();
-  }, [fetchPositions]);
-
+  /*
+   * The writing signer, through thirdweb's adapter rather than
+   * `window.ethereum`.
+   *
+   * Same reason as the read above and the same fix the rest of the app already
+   * uses (see /pool/new and this page's own onAdd): a wallet that injects nothing
+   * — WalletConnect, in-app, any phone — has no `window.ethereum`, so collect and
+   * remove threw "Wallet not connected" for a wallet that plainly was. The adapter
+   * signs through whichever wallet thirdweb has active.
+   */
   const getSigner = useCallback(async () => {
-    if (typeof window === "undefined" || !window.ethereum) return null;
-    if (!activeAccount) return null;
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    return await provider.getSigner();
-  }, [activeAccount]);
+    if (!activeAccount || !activeChain) return null;
+    return ethers6Adapter.signer.toEthers({
+      client,
+      chain: activeChain,
+      account: activeAccount,
+    });
+  }, [activeAccount, activeChain]);
 
   const collectFees = useCallback(
     async (tokenId: string) => {
@@ -285,14 +267,14 @@ export const useV3Positions = () => {
       const tx = await posManager.collect({
         tokenId: BigInt(tokenId),
         recipient,
-        amount0Max: BigInt("340282366920938463463374607431768211455"), // uint128 max
-        amount1Max: BigInt("340282366920938463463374607431768211455"),
+        amount0Max: UINT128_MAX,
+        amount1Max: UINT128_MAX,
       });
       await tx.wait();
-      await fetchPositions(); // Refresh
+      await refetch(); // Refresh
       return tx;
     },
-    [getSigner, fetchPositions, v3PositionManager],
+    [getSigner, refetch, v3PositionManager],
   );
 
   const removeLiquidity = useCallback(
@@ -331,15 +313,15 @@ export const useV3Positions = () => {
       const collectTx = await posManager.collect({
         tokenId: BigInt(tokenId),
         recipient,
-        amount0Max: BigInt("340282366920938463463374607431768211455"),
-        amount1Max: BigInt("340282366920938463463374607431768211455"),
+        amount0Max: UINT128_MAX,
+        amount1Max: UINT128_MAX,
       });
       await collectTx.wait();
 
-      await fetchPositions(); // Refresh
+      await refetch(); // Refresh
       return collectTx;
     },
-    [getSigner, fetchPositions, v3PositionManager],
+    [getSigner, refetch, v3PositionManager],
   );
 
   /**
@@ -389,16 +371,16 @@ export const useV3Positions = () => {
         BigInt(deadline),
       ]);
       await tx.wait();
-      await fetchPositions(); // Refresh
+      await refetch(); // Refresh
       return tx;
     },
-    [getSigner, fetchPositions, v3PositionManager],
+    [getSigner, refetch, v3PositionManager],
   );
 
   return {
     positions,
-    loading,
-    refresh: fetchPositions,
+    loading: isLoading,
+    refresh,
     collectFees,
     increaseLiquidity,
     removeLiquidity,
