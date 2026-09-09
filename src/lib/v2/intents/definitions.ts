@@ -1,4 +1,11 @@
 import { ethers } from "ethers";
+import {
+  buildOrder,
+  describeDuration,
+  describeInterval,
+  signOrder,
+  submitOrder,
+} from "@/lib/dex/orders";
 import { formatInterestRate } from "@/constants/utils/FormatInterestRate";
 import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import { getContracts } from "@/constants/registry";
@@ -1064,6 +1071,102 @@ register("claimAllTestTokens", {
   resolve: async (ctx, i) => {
     const faucet = new ethers.Contract(i.faucet, FAUCET_ABI, ctx.signer);
     const tx = await faucet.claimMany(i.tokens);
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/*
+ * KaleidoOrders. `cancel` takes the whole struct rather than a hash because the
+ * contract has to check the caller is the maker, and the hash alone does not say
+ * who that is. `epochOf` is read before signing, not cached: a `cancelAll` from
+ * another tab bumps it, and an order signed under the old epoch is dead on
+ * arrival with nothing in the UI to say so.
+ */
+const ORDERS_ABI = [
+  "function epochOf(address maker) external view returns (uint64)",
+  "function cancel((address maker, address tokenIn, address tokenOut, uint256 amountIn, uint256 minOut, uint64 startAt, uint64 expiry, uint32 interval, uint32 maxFills, uint64 epoch, uint256 salt) o) external",
+  "function cancelAll() external",
+];
+
+register("placeOrder", {
+  render: (i) => {
+    const each = i.maxFills > 1 ? " per fill" : "";
+    const schedule =
+      i.maxFills > 1
+        ? ` ${i.maxFills} times, every ${describeInterval(i.interval)},`
+        : "";
+    return {
+      title:
+        i.maxFills > 1
+          ? `Set up a recurring ${i.symbolIn} → ${i.symbolOut} buy`
+          : `Place a ${i.symbolIn} → ${i.symbolOut} limit order`,
+      detail:
+        `Sell ${i.amountIn} ${i.symbolIn}${each} for at least ${i.minOut} ${i.symbolOut}${each},` +
+        `${schedule} any time in the next ${describeDuration(i.expiresIn)}. ` +
+        "You sign this rather than send it — nothing moves until the price is there, " +
+        "and the price you signed is the worst you can get. Cancelling is a transaction.",
+    };
+  },
+  resolve: async (ctx, i) => {
+    /* Read rather than assumed, and read here rather than at plan time: the
+       epoch is inside the digest, so a `cancelAll` between building the plan and
+       signing it would produce a signature the contract discards. */
+    const contract = new ethers.Contract(i.orders, ORDERS_ABI, ctx.signer);
+    const epoch: bigint = await contract.epochOf(ctx.address);
+
+    const minOut = ethers.parseUnits(i.minOut, i.decimalsOut);
+    const order = buildOrder({
+      maker: ctx.address,
+      tokenIn: i.tokenIn,
+      tokenOut: i.tokenOut,
+      amountIn: ethers.parseUnits(i.amountIn, i.decimalsIn),
+      minOut,
+      epoch: Number(epoch),
+      expiresIn: i.expiresIn,
+      interval: i.maxFills > 1 ? i.interval : null,
+      maxFills: i.maxFills,
+      now: Math.floor(Date.now() / 1000),
+    });
+    if ("error" in order) throw new Error(order.error);
+
+    const signed = await signOrder(ctx.signer, order, ctx.chainId, i.orders);
+
+    /* Not swallowed. Every other resolver's failure leaves the chain untouched
+       and is self-evident; this one leaves a valid signature that nobody can see,
+       while the user believes an order is live. */
+    await submitOrder(signed);
+
+    /* No hash, and no `skipped`: the step is done, it simply had no transaction.
+       PlanReview renders that as complete and logs no history row, which is
+       right — there is nothing to look up on a block explorer yet. */
+    return { hash: null };
+  },
+});
+
+register("cancelOrder", {
+  render: (i) => ({
+    title: `Cancel ${i.pairLabel} order`,
+    detail:
+      "On chain, because a signature is not stored state — forgetting the order here would leave it fillable by anyone who kept a copy.",
+  }),
+  resolve: async (ctx, i) => {
+    const contract = new ethers.Contract(i.orders, ORDERS_ABI, ctx.signer);
+    const tx = await contract.cancel(i.order);
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+register("cancelAllOrders", {
+  render: () => ({
+    title: "Cancel every order",
+    detail:
+      "Invalidates every order you have signed on this network at once, including any signed on another device or that this app can't see. One transaction, and it cannot be undone — you would sign new orders instead.",
+  }),
+  resolve: async (ctx, i) => {
+    const contract = new ethers.Contract(i.orders, ORDERS_ABI, ctx.signer);
+    const tx = await contract.cancelAll();
     await tx.wait();
     return { hash: tx.hash };
   },
