@@ -11,6 +11,7 @@ import { chainTokens } from "@/constants/tokens";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
+import { makeBatchingQuoter } from "@/lib/dex/batchQuoter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import type { Intent } from "@/lib/v2/intents";
 import {
@@ -308,11 +309,7 @@ export default function SwapPage() {
     loading: balanceOutLoading,
     unread: balanceOutUnread,
   } = useTokenBalance(tokenOut);
-  const {
-    getV3AmountOut,
-    getV3MultiHopAmountOut,
-    V3_ROUTER_ADDRESS: v3Router,
-  } = useV3SwapRouter();
+  const { V3_ROUTER_ADDRESS: v3Router } = useV3SwapRouter();
 
   /**
    * The route the quote came from, or null when the pair could not be priced.
@@ -378,27 +375,18 @@ export default function SwapPage() {
          * the planner — see lib/dex/route.ts for why that sharing is
          * load-bearing rather than tidy.
          *
-         * The quoter is chosen by path length here rather than inside the search,
-         * because this component is where the two hook functions live: a direct
-         * pair goes to `quoteExactInputSingle`, a path to `quoteExactInput`, and
-         * only the latter prices the hops in sequence.
+         * The quoter is `makeBatchingQuoter`, which coalesces every route the
+         * search prices into a single Multicall3 call — one round trip and one
+         * block, rather than the thirty concurrent eth_calls a throttled testnet
+         * RPC rate-limits into a slow quote. A fresh one per search, because it
+         * accumulates the tick's calls. See lib/dex/batchQuoter.ts.
          */
         const found = await findBestRoute(
           chainId,
           sell.token,
           buy.token,
           amountIn,
-          (tokens, fees, amt, decIn, decOut) =>
-            tokens.length === 2
-              ? getV3AmountOut(
-                  tokens[0],
-                  tokens[1],
-                  amt,
-                  fees[0],
-                  decIn,
-                  decOut,
-                )
-              : getV3MultiHopAmountOut(tokens, fees, amt, decIn, decOut),
+          makeBatchingQuoter(chainId),
         );
         /* A quote is a positive number or it is nothing. `findBestRoute` already
            rejects null, zero and non-finite answers — a pool cannot fill a
@@ -430,8 +418,6 @@ export default function SwapPage() {
     buy,
     samePoolSide,
     chainId,
-    getV3AmountOut,
-    getV3MultiHopAmountOut,
   ]);
 
   /*

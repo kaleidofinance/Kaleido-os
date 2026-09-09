@@ -1566,5 +1566,81 @@ console.log("\n— clearSlot —");
   );
 }
 
+console.log("\n— degen and whale slang read as the trade a person meant —");
+{
+  /* Tester feedback: Luca should read the language every user types — newbie to
+     degen to whale — not only the textbook verb. These synonyms resolve to swap,
+     with the two directions "buy"/"sell" already carry, and the same refusal to
+     guess when a phrasing is ambiguous: a synonym that inverted a trade in
+     silence would be worse than no synonym at all. */
+
+  const dump = p("dump 1000 KLD for USDC");
+  check(
+    "'dump' spends the token you name",
+    dump.status === "ok" &&
+      dump.command.kind === "swap" &&
+      dump.command.tokenIn.symbol === "KLD" &&
+      dump.command.tokenOut.symbol === "USDC" &&
+      dump.command.amount === "1000",
+    JSON.stringify(dump),
+  );
+
+  const unload = p("unload 500 KLD to USDC");
+  check(
+    "'unload' reads the same as sell",
+    unload.status === "ok" &&
+      unload.command.kind === "swap" &&
+      unload.command.tokenIn.symbol === "KLD" &&
+      unload.command.tokenOut.symbol === "USDC",
+    JSON.stringify(unload),
+  );
+
+  const ape = p("ape KLD with 500 USDC");
+  check(
+    "'ape … with' receives the token you name",
+    ape.status === "ok" &&
+      ape.command.kind === "swap" &&
+      ape.command.tokenIn.symbol === "USDC" &&
+      ape.command.tokenOut.symbol === "KLD" &&
+      ape.command.amount === "500",
+    JSON.stringify(ape),
+  );
+
+  const grab = p("grab KLD with 1k USDC");
+  check(
+    "'grab' inverts like buy, and 1k is a whale's thousand",
+    grab.status === "ok" &&
+      grab.command.kind === "swap" &&
+      grab.command.tokenIn.symbol === "USDC" &&
+      grab.command.tokenOut.symbol === "KLD" &&
+      grab.command.amount === "1000",
+    JSON.stringify(grab),
+  );
+
+  const cop = p("cop KLD");
+  check(
+    "'cop KLD' alone asks which token to spend, never guesses one",
+    cop.status === "incomplete" && cop.missing === "tokenIn",
+    JSON.stringify(cop),
+  );
+
+  /* The phrasing where a buy synonym runs forward — amount and both tokens are
+     present, but "into" is not a spend marker, so the trade could be read two
+     ways. It must ask, not pick. */
+  const forwardApe = p("ape 500 USDC into KLD");
+  check(
+    "an ambiguous 'ape … into' asks rather than inverting a trade",
+    forwardApe.status === "incomplete" && forwardApe.missing === "tokenIn",
+    JSON.stringify(forwardApe),
+  );
+
+  const noAmount = p("dump my KLD for USDC");
+  check(
+    "slang with no amount asks for the amount, locally",
+    noAmount.status === "incomplete" && noAmount.missing === "amount",
+    JSON.stringify(noAmount),
+  );
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
