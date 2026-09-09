@@ -260,7 +260,11 @@ function PositionCard({
       refresh();
     } catch (err) {
       console.error("[v2/pool] collect failed", err);
-      toast.error("Couldn't collect fees");
+      /* Decode the revert rather than swallow it. This was the one write on the
+         page that showed a generic sentence — its siblings onAdd/onRemove already
+         run `depositFailure` — which is why a BSC collect that reverts on-chain
+         read to the user as "nothing happened" with no reason to act on. */
+      toast.error(await depositFailure(err));
     } finally {
       setBusy(null);
     }
