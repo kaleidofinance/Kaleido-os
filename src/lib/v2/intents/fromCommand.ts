@@ -476,10 +476,21 @@ export type ParseResult =
  * form does too — which is what made the handoff the cheaper half to close first.
  */
 const VERBS: Record<ActionKind, string[]> = {
-  /* "buy" is here rather than absent, and it is the one verb in this list that
-     changes what the sentence means — see parseSwap, which inverts the sides for
-     it. "sell my KLD" spends KLD; "buy KLD" receives it. */
-  swap: ["swap", "trade", "convert", "exchange", "sell", "buy", "purchase"],
+  /* "buy" (and its degen synonyms below) is here rather than absent, and these
+     are the verbs in this list that change what the sentence means — see
+     parseSwap, which inverts the sides for them. "sell my KLD" spends KLD; "buy
+     KLD" receives it. The set that inverts is BUY_WORDS. */
+  swap: [
+    "swap", "trade", "convert", "exchange", "sell", "buy", "purchase",
+    /* Degen synonyms, so Luca reads the room a trader types in and not only the
+       textbook verb. Two directions, kept straight below in BUY_WORDS: "dump"
+       and "unload" spend the token you name (like "sell"); "ape", "cop", "grab"
+       and "snag" receive it (like "buy"). None collides with a token symbol on
+       any of the five chains, and the buy-side ones are safe even when a
+       phrasing is genuinely ambiguous — parseSwap's guard asks which token to
+       spend rather than ever guessing a trade. */
+    "dump", "unload", "ape", "cop", "grab", "snag",
+  ],
   stake: ["stake"],
   approve: ["approve", "allow"],
   /* No "pay". "pay back my loan" and "pay off my loan" are repayments, and a
@@ -803,13 +814,19 @@ const SEPARATORS = ["to", "for", "into", "->", "→", ">"];
  * The verbs that name the token being *received* rather than the one being spent.
  *
  * Every other word in `VERBS.swap` reads left to right — "swap USDC for KLD",
- * "sell KLD for USDC" — and these two read right to left. "for" appears in both
+ * "sell KLD for USDC" — and these read right to left. "for" appears in both
  * lists below with opposite meanings for exactly that reason: `swap A for B`
  * spends A, `buy A for B` spends B. Getting that backwards is not a near miss,
  * it is the opposite trade, which is why this is a flag through parseSwap and not
- * two more entries in the verb table.
+ * more entries in the verb table.
+ *
+ * The degen synonyms sit here too: "ape into KLD", "cop KLD", "grab KLD", "snag
+ * KLD" all name what comes back, the same right-to-left reading as "buy". Where
+ * such a phrasing is ambiguous — "ape 500 USDC into KLD" reads forward — parseSwap
+ * refuses to guess and asks which token to spend, so a synonym can never invert a
+ * trade behind the user's back.
  */
-const BUY_WORDS = new Set(["buy", "purchase"]);
+const BUY_WORDS = new Set(["buy", "purchase", "ape", "cop", "grab", "snag"]);
 
 /** Separators that run backwards under a buy: "buy KLD with 500 USDC". */
 const BUY_SEPARATORS = ["with", "using", "for", "->", "→", ">"];
