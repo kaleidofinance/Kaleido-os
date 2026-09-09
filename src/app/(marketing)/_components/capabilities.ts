@@ -582,6 +582,11 @@ export const READS: Group = {
       prompt: "how healthy is my position?",
     },
     {
+      name: "getOrders",
+      params: ["address"],
+      prompt: "what orders do I have resting?",
+    },
+    {
       name: "getMarkets",
       params: ["asset"],
       optional: ["side"],

@@ -628,6 +628,30 @@ export const TOOL_CATALOG: ToolSpec[] = [
     },
   },
   {
+    name: "getOrders",
+    kind: "read",
+    /*
+     * The one read tool that reads no chain: a resting order is a signature in our
+     * own store until someone fills it, so there is nothing on-chain to query
+     * until the moment there is nothing left to query.
+     *
+     * The description does NOT send the model on to a cancel tool, because none
+     * exists yet - the intents shipped with the limit page but nothing maps a
+     * model call onto them. Naming one here would produce an offer the agent
+     * cannot honour, which is worse than the gap itself.
+     */
+    description:
+      "The user's resting limit orders and recurring buys on the connected chain: what each one sells, its price floor, its schedule, and how far the pool's current price is from filling it. Call this before answering anything about pending or open orders, and before proposing a new one that might duplicate an existing one. These are signatures, not transactions: nothing has moved for any order listed here, and the wallet's balance is untouched until one fills.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
     name: "getPrice",
     kind: "read",
     description:
