@@ -135,6 +135,15 @@ const QUESTIONS = [
   /* Newcomer phrasings that reached the model until the FAQ learned them: the fee
      question worded as a verb, the unstake flow (which has no grammar verb behind
      it), and the skeptic's "is any of this real / can I lose money". */
+  /* The first thing anyone types, and until 2026-09-10 the local nets caught
+     none of it: a bare greeting matched no verb and no trigger, so "hi" cost a
+     reasoning request - and when the model was down it was answered with "the
+     reasoning service returned an error". Pinned here because a corpus that
+     covers "how do I unstake" but not "hi" is measuring the wrong end of the
+     funnel. */
+  "hi",
+  "hey luca",
+  "gm",
   "how do fees work",
   "how do I unstake",
   "can I lose money",
@@ -245,6 +254,9 @@ console.log("\n— and the right net answers it —");
     "what is the APY": "faq:apy",
     /* The phrasings the FAQ just learned — pinned by id so a reworded trigger
        that stops catching them fails here, not silently at a tester's screen. */
+    "hi": "faq:greeting",
+    "hey luca": "faq:greeting",
+    "gm": "faq:greeting",
     "how do fees work": "faq:fees",
     "how do I unstake": "faq:staking",
     "can I lose money": "faq:mainnet",
