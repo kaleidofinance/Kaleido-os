@@ -5,8 +5,8 @@
   "status": "complete",
   "contracts": {
     "KLD": "0x6140Da1f66fCafa0b5197065ae91A00208F3Cd86",
-    "KLDVault": "0x32E24AAdb0e346A3b334D29C9A334390aE022BE1",
-    "stKLD": "0xdFbF7276dd0ed0DaBb40EFD4Afc99f811484bD2c"
+    "KLDVault": "0xff3932A4353146a2C7CA76b5F1C481bd9020779E",
+    "stKLD": "0x2B4bf5b310d009a83405916Fe60a6ed1e6902511"
   },
   "config": {
     "maxSupply": "1000000000000000000000000000",
@@ -14,7 +14,7 @@
     "homeChainId": 84532,
     "isHomeChain": true,
     "mintedToDeployer": "1000000000000000000000000000",
-    "yieldTreasury": "0xC4d4B493039c3957A7fcF24d78dc169b44E08372"
+    "yieldTreasury": "0xBF13ac311ff0b4C06B1d67da9D6d23eCc57628f5"
   },
   "faucet": {
     "address": "0x459fA03715EbE0B2914273720Ad687d4Ff3Ed888",
@@ -30,5 +30,18 @@
   "sources": {
     "stablecoin": "deployment-stablecoin-baseTestnet.json"
   },
-  "note": "Testnet topology: this chain is its own KLD home, so it issues its own supply. Mainnet uses a single home chain with every other chain holding bridged supply only — see the script header."
+  "note": "Testnet topology: this chain is its own KLD home, so it issues its own supply. Mainnet uses a single home chain with every other chain holding bridged supply only \u2014 see the script header.",
+  "migration": {
+    "note": "KLDVault and stKLD below are POST-MIGRATION. Originals under migratedFrom; the old vault still holds its KLD and has no owner exit.",
+    "migratedAt": "2026-09-10T11:53:06.361Z",
+    "record": "deployment-staking-baseTestnet.json",
+    "migratedFrom": {
+      "vault": "0x32E24AAdb0e346A3b334D29C9A334390aE022BE1",
+      "stKLD": "0xdFbF7276dd0ed0DaBb40EFD4Afc99f811484bD2c",
+      "holders": 54,
+      "amount": "2317253419648581515154123",
+      "strandedInOldVault": "2317253419648581515154123"
+    },
+    "reason": "KLDVaultV2.yieldTreasury was constructor-only and pointed at the pre-2026-09-06 treasury, so harvestYield always reverted and staking never paid. StKLD.kldVault is immutable, so both had to be replaced."
+  }
 }

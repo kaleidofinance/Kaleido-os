@@ -1,0 +1,31 @@
+{
+  "network": "baseTestnet",
+  "chainId": 84532,
+  "timestamp": "2026-09-10T12:00:43.803Z",
+  "contracts": {
+    "YieldTreasury": "0x3305F04C7DDb32C23F250620CBa50C8DE61f67B5"
+  },
+  "config": {
+    "assets": [
+      "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB",
+      "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9",
+      "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
+      "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9"
+    ],
+    "sources": [
+      "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB"
+    ],
+    "performanceFeeBps": "1000",
+    "feeRecipient": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+  },
+  "migratedFrom": {
+    "treasury": "0xBF13ac311ff0b4C06B1d67da9D6d23eCc57628f5",
+    "holdersCheckpointed": 8,
+    "movedOnHand": {
+      "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB": "0",
+      "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9": "0",
+      "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B": "0",
+      "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9": "0"
+    }
+  }
+}

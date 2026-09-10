@@ -91,6 +91,15 @@ const call = async (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
  *
  * 400k blocks is roughly 8 weeks of Sepolia at 12s, against a set deployed
  * 2026-08-27. Raise it if a chain ever reports a mismatch. */
+/* Both are per-chain and both are overridable, because neither is a property
+   of this script. LOOKBACK is measured in BLOCKS while the thing being covered
+   is a number of DAYS, so a window that reaches back a fortnight on Sepolia
+   (12s blocks) covers three days on Base (2s) - the first Base scan came up
+   594,203 KLD short for exactly that reason, and the totals check caught it.
+   SPAN is what one endpoint will answer in a single getLogs; thirdweb caps
+   Base at 1,000 while base.org and publicnode serve 10,000, which is 70
+   requests instead of 700. */
+const SPAN_OVERRIDE = process.env.SPAN ? Number(process.env.SPAN) : null;
 const LOOKBACK = BigInt(process.env.LOOKBACK ?? 150_000);
 
 async function main() {
@@ -103,8 +112,8 @@ async function main() {
 
   const holders = new Set();
   let scanned = 0n;
-  for (let start = from; start <= head; start += BigInt(chain.span)) {
-    const end = start + BigInt(chain.span) - 1n > head ? head : start + BigInt(chain.span) - 1n;
+  for (let start = from; start <= head; start += BigInt((SPAN_OVERRIDE ?? chain.span))) {
+    const end = start + BigInt((SPAN_OVERRIDE ?? chain.span)) - 1n > head ? head : start + BigInt((SPAN_OVERRIDE ?? chain.span)) - 1n;
     const logs = await rpc("eth_getLogs", [{
       address: stKLD,
       topics: [TRANSFER],

@@ -7,10 +7,18 @@
     "USDe": "0x42bea7B539Ce0eB7368534c94e522F092F6A2bc9",
     "kfUSD": "0x94553403B87430c9263b1bE0f0DcEC478E7a7CbB",
     "kafUSD": "0xf8947384f9acA8908fC0a7821991ceAFa27Bf770",
-    "YieldTreasury": "0xBF13ac311ff0b4C06B1d67da9D6d23eCc57628f5",
+    "YieldTreasury": "0x3305F04C7DDb32C23F250620CBa50C8DE61f67B5",
     "USDC": "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9"
   },
   "timestamps": {
     "deployed": "2026-09-06T15:48:46.722Z"
+  },
+  "treasuryMigration": {
+    "note": "POST-MIGRATION address; the original is under migratedFrom.",
+    "migratedAt": "2026-09-10T12:00:43.803Z",
+    "record": "deployment-treasury-baseTestnet.json",
+    "migratedFrom": "0xBF13ac311ff0b4C06B1d67da9D6d23eCc57628f5",
+    "reason": "userRewardDebt was never initialised on acquisition, so holders were entitled to yield from before they arrived; claimYield underflowed (PANIC 17).",
+    "holdersCheckpointed": 8
   }
 }
