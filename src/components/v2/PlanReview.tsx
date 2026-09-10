@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { renderIntent, resolveIntent, type Intent } from "@/lib/v2/intents";
 import { encodeBatch, planRuns } from "@/lib/v2/intents/batch";
@@ -29,6 +29,16 @@ import s from "./PlanReview.module.css";
 
 type StepStatus = "idle" | "pending" | "done" | "skipped" | "failed";
 
+/** One step as it actually finished, for the caller to report. */
+export interface SettledStep {
+  /** The same title the step showed while it ran. */
+  title: string;
+  /** Absent for a step that broadcast nothing — a skipped approve, or a
+   *  signature-only step like placing an order. */
+  hash?: string;
+  skipped: boolean;
+}
+
 interface PlanReviewProps {
   intents: Intent[];
   /** Shown on the primary button, e.g. "Sign & swap". */
@@ -49,8 +59,19 @@ interface PlanReviewProps {
    * second with the first two already settled.
    */
   confirmEachStep?: boolean;
-  /** Called after every step succeeds. */
-  onComplete?: () => void;
+  /**
+   * Called after every step succeeds, WITH what settled.
+   *
+   * It used to take no arguments, and the caller had nothing to say
+   * afterwards as a result: the agent page cleared the plan and left the
+   * sentence it had written BEFORE anything was signed sitting in the
+   * transcript. So "stake 100 KLD" was answered with "Stake 100 KLD for
+   * stKLD." both before and after the wallet prompt, and a tester reported
+   * exactly that — a reply that repeats itself and never says whether the
+   * transaction worked. This component knew every status and every hash the
+   * whole time; nothing carried them up.
+   */
+  onComplete?: (settled: SettledStep[]) => void;
   onCancel?: () => void;
 }
 
@@ -94,6 +115,10 @@ export default function PlanReview({
   const batchable = batch.supported && !batch.checking && bundledWith.size > 0;
   /* Prompts, not steps: one per run. A bundled pair is one prompt. */
   const prompts = runs.length;
+  /* A ref, not state: the run loop reads this immediately after the last step
+     and a setState would still be a render behind. Nothing renders from it. */
+  const settledRef = useRef<SettledStep[]>([]);
+
   const [statuses, setStatuses] = useState<StepStatus[]>(() =>
     intents.map(() => "idle"),
   );
@@ -145,6 +170,11 @@ export default function PlanReview({
     try {
       const result = await resolveIntent(ctx, intents[i]);
       setStep(i, result.skipped ? "skipped" : "done");
+      settledRef.current[i] = {
+        title: views[i].title,
+        hash: result.hash ?? undefined,
+        skipped: !!result.skipped,
+      };
       /* Logged with the same title and detail the step above showed, so the
          history reads as a record of what the user approved rather than a
          second, differently-worded account of it. A skipped step has a null
@@ -253,6 +283,16 @@ export default function PlanReview({
        * pair, which is also what the user signed.
        */
       const hash = hashes[0];
+      /* Every step the bundle covered, against the one hash it produced. The
+         caller reports what settled, and a bundled plan that reported nothing
+         would read to the user as a plan that did nothing. */
+      for (const i of steps) {
+        settledRef.current[i] = {
+          title: views[i].title,
+          hash: hash ?? undefined,
+          skipped: false,
+        };
+      }
       if (hash) {
         recordTx(ctx.chainId, ctx.address, {
           hash,
@@ -310,7 +350,7 @@ export default function PlanReview({
     }
     setRunning(false);
     setDone(true);
-    onComplete?.();
+    onComplete?.(settledRef.current.filter(Boolean));
   };
 
   const mark = (status: StepStatus, n: number) => {
@@ -377,7 +417,10 @@ export default function PlanReview({
           </button>
         )}
         {done ? (
-          <button className={s.primary} onClick={onComplete}>
+          <button
+            className={s.primary}
+            onClick={() => onComplete?.(settledRef.current.filter(Boolean))}
+          >
             Done
           </button>
         ) : (

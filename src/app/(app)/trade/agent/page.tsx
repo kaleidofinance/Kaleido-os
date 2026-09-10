@@ -20,7 +20,7 @@ import { chainTokens } from "@/constants/tokens";
 import AgentSettings from "@/components/v2/AgentSettings";
 import AgentCards from "@/components/v2/AgentCards";
 import Answer from "@/components/v2/Answer";
-import PlanReview from "@/components/v2/PlanReview";
+import PlanReview, { type SettledStep } from "@/components/v2/PlanReview";
 import ReceivePanel from "@/components/v2/ReceivePanel";
 import SwapRoute from "@/components/v2/SwapRoute";
 import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
@@ -1131,13 +1131,54 @@ export default function AgentPage() {
     el?.setSelectionRange(text.length, text.length);
   };
 
-  const onComplete = () => {
+  /**
+   * Report what actually settled, rather than leaving the plan's own sentence.
+   *
+   * This used to clear the plan and stop, on the reasoning that "the well still
+   * says what was done". It did not: that sentence was written BEFORE anything
+   * was signed, so "stake 100 KLD" was answered with "Stake 100 KLD for stKLD."
+   * both before and after the wallet prompt. A tester reported it as a reply
+   * that repeats itself and never says whether the transaction worked, and they
+   * were reading it correctly — there was no second sentence to read.
+   *
+   * The outcome is a NEW message rather than an edit of the old one, because the
+   * two say different things and both are worth keeping: the first is what was
+   * proposed and approved, the second is what happened. Overwriting the first
+   * would lose the record of what the user actually agreed to.
+   *
+   * A hash is quoted per step that broadcast one. A step that broadcast nothing
+   * says so instead of being silently dropped: an approve that was already in
+   * place and a signature-only step are both legitimately hashless, and a list
+   * that omitted them would not add up to the plan the user just signed.
+   */
+  const onComplete = (settled: SettledStep[] = []) => {
     setPanel({ kind: "idle" });
-    // Clearing the plan leaves the summary text in place, so the well still
-    // says what was done instead of emptying itself out.
-    setMessages((prev) =>
-      prev.map((m) => (m === latest ? { ...m, plan: undefined } : m)),
+
+    const lines = settled.map((st) =>
+      st.skipped
+        ? `${st.title} — already in place, nothing sent`
+        : st.hash
+          ? `${st.title} — done · ${st.hash.slice(0, 10)}…${st.hash.slice(-6)}`
+          : `${st.title} — done, no transaction needed`,
     );
+    const sent = settled.filter((st) => st.hash && !st.skipped).length;
+    const head =
+      settled.length === 0
+        ? "Done."
+        : sent === 0
+          ? "Done — nothing needed to be sent."
+          : `Done — ${sent} transaction${sent === 1 ? "" : "s"} confirmed.`;
+
+    setMessages((prev) => [
+      ...prev.map((m) => (m === latest ? { ...m, plan: undefined } : m)),
+      {
+        role: "assistant" as const,
+        text: lines.length
+          ? [head, ...lines].join("\n")
+          : head,
+        via: "local" as const,
+      },
+    ]);
   };
 
   /*
