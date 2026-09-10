@@ -53,6 +53,9 @@ contract KLDVaultV2 is ReentrancyGuard, Pausable, Ownable {
 
     uint256 public constant WITHDRAWAL_WAITING_PERIOD = 7 days; // Optimized from 14d
 
+    /// @dev Set once by {finalizeMigration}; {migrateIn} reverts afterwards.
+    bool public migrationFinalized;
+
     error TokenNotSupported();
     error InvalidAmount();
     error CooldownNotPassed();
@@ -64,6 +67,9 @@ contract KLDVaultV2 is ReentrancyGuard, Pausable, Ownable {
     event Harvested(address indexed asset, uint256 amount);
     event WithdrawalRequested(address indexed user, uint256 unlocksAt);
     event WithdrawalRequestCancelled(address indexed user);
+    event YieldTreasuryChanged(address indexed yieldTreasury);
+    event Migrated(address indexed user, address indexed token, uint256 amount);
+    event MigrationFinalized();
 
     constructor(address _yieldTreasury) Ownable(msg.sender) {
         require(_yieldTreasury != address(0), "Invalid treasury");
@@ -74,6 +80,105 @@ contract KLDVaultV2 is ReentrancyGuard, Pausable, Ownable {
         require(stKLD == address(0), "stKLD already set");
         require(_stKLD != address(0), "Invalid stKLD");
         stKLD = _stKLD;
+    }
+
+    /**
+     * @notice Repoint the vault at a different Yield Treasury.
+     * @dev This was missing, and its absence is why staking has never paid a
+     *      yield on any chain. `yieldTreasury` was assigned once in the
+     *      constructor, and `harvestYield` — the vault's ONLY accrual path —
+     *      calls `claimYield` on it. When the stablecoin set was redeployed on
+     *      2026-09-06 the treasury got a new address, and every vault kept
+     *      calling the old one. Measured on Sepolia before this change: the
+     *      vault held 10,104,342.345940497342672767 KLD against exactly that
+     *      many stKLD, identical to the wei, because the rate had never moved
+     *      once since deployment. `harvestYield` reverted "Asset not supported"
+     *      against a treasury that no longer knew the current kfUSD.
+     *
+     *      A dependency that can be redeployed and cannot be repointed is a
+     *      dependency that eventually strands the contract that holds it — this
+     *      one stranded 10.1M KLD of real stake and the fix required a new vault
+     *      AND a new stKLD, because StKLD.kldVault is immutable too.
+     *
+     *      Owner-gated and deliberately unguarded beyond the zero check: the
+     *      treasury cannot take anything from this vault. `harvestYield` only
+     *      ever calls `claimYield` and credits whatever arrived, so the worst a
+     *      wrong address does is fail to pay — the same state this fixes, not a
+     *      worse one.
+     */
+    function setYieldTreasury(address _yieldTreasury) external onlyOwner {
+        require(_yieldTreasury != address(0), "Invalid treasury");
+        yieldTreasury = _yieldTreasury;
+        emit YieldTreasuryChanged(_yieldTreasury);
+    }
+
+    /**
+     * @notice Credit positions carried over from a previous vault. One-shot.
+     * @dev Exists because the migration this contract replaces cannot be done
+     *      any other way. The old vault has no owner-level exit — the only
+     *      transfer out sits inside per-user `withdraw()`, behind a 7-day
+     *      cooldown — so its KLD can never be moved by us, and StKLD.kldVault is
+     *      immutable so the old receipt can never be repointed here. Without
+     *      this, all 44 stakers would each have to request, wait a week and
+     *      re-deposit.
+     *
+     *      THE SAFETY PROPERTY IS BACKING, NOT TRUST. The final require compares
+     *      the token this vault actually holds against everything it has just
+     *      promised. So the owner cannot credit a share the vault could not pay
+     *      out, and the funding transfer must land BEFORE the credit rather than
+     *      being taken on faith afterwards. That is what makes an owner-callable
+     *      mint acceptable here at all.
+     *
+     *      Shares are minted 1:1 with `_amounts` because that is the state being
+     *      reproduced: the old vault's pooled total equals its share supply to
+     *      the wei, so every holder's balance IS their share count. The require
+     *      on `getTotalShares` pins that assumption rather than assuming it — if
+     *      this is ever pointed at a vault whose rate has moved, it stops.
+     *
+     *      `totalStakers` is incremented per holder, which is exact here: every
+     *      address in the list is being credited from zero.
+     */
+    function migrateIn(
+        address _token,
+        address[] calldata _holders,
+        uint256[] calldata _amounts
+    ) external onlyOwner {
+        require(!migrationFinalized, "Migration closed");
+        require(supportedTokens[_token], "Token not supported");
+        require(_holders.length == _amounts.length, "Length mismatch");
+
+        uint256 credited = 0;
+        for (uint256 i = 0; i < _holders.length; i++) {
+            require(_holders[i] != address(0), "Invalid holder");
+            require(_amounts[i] > 0, "Invalid amount");
+            credited += _amounts[i];
+            totalStakers += 1;
+            IStKLD(stKLD).mintShares(_holders[i], _amounts[i]);
+            emit Migrated(_holders[i], _token, _amounts[i]);
+        }
+        totalPooledKLD[_token] += credited;
+
+        /* The rate this function assumes, asserted rather than trusted. */
+        require(
+            IStKLD(stKLD).getTotalShares() == totalPooledKLD[_token],
+            "Rate is not 1:1"
+        );
+        /* Every credited share is backed by a token already in the vault. */
+        require(
+            IERC20(_token).balanceOf(address(this)) >= totalPooledKLD[_token],
+            "Credited more than the vault holds"
+        );
+    }
+
+    /**
+     * @notice Permanently disable {migrateIn}.
+     * @dev One way, with no re-open. The owner mint above is tolerable only for
+     *      as long as it is a migration step; leaving the door ajar would make
+     *      it a standing privilege over every staker's balance.
+     */
+    function finalizeMigration() external onlyOwner {
+        migrationFinalized = true;
+        emit MigrationFinalized();
     }
 
     /**

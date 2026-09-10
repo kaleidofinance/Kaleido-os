@@ -279,4 +279,120 @@ describe("KLD staking (vault + stKLD)", function () {
       "AccessControlUnauthorizedAccount",
     );
   });
+
+  /* ------------------------------------------------------------------ *
+   * The treasury pointer, and the migration it made necessary
+   *
+   * These two land together because they are one incident. `yieldTreasury`
+   * was constructor-only, `harvestYield` is the vault's sole accrual path,
+   * and the stablecoin redeploy of 2026-09-06 moved the treasury. Every
+   * vault kept calling the old address, so no vault on any chain has ever
+   * paid a yield: Sepolia held 10,104,342.345940497342672767 KLD against
+   * exactly that many stKLD, the rate never having moved once.
+   *
+   * The fix could not be a new vault alone, because StKLD.kldVault is
+   * immutable as well — so the receipt had to be redeployed too, and the
+   * positions carried over. `migrateIn` is that carry-over, and the thing
+   * worth testing about it is not that it mints: it is that it CANNOT mint
+   * a share the vault could not pay out.
+   * ------------------------------------------------------------------ */
+  describe("treasury pointer and migration", function () {
+    it("repoints the treasury, which was impossible before", async function () {
+      expect(await vault.yieldTreasury()).to.equal(treasury.address);
+      await vault.setYieldTreasury(alice.address);
+      expect(await vault.yieldTreasury()).to.equal(alice.address);
+    });
+
+    it("refuses a zero treasury, and refuses a non-owner entirely", async function () {
+      await expect(vault.setYieldTreasury(ethers.ZeroAddress)).to.be.revertedWith(
+        "Invalid treasury",
+      );
+      await expect(
+        vault.connect(alice).setYieldTreasury(alice.address),
+      ).to.be.reverted;
+    });
+
+    it("carries positions over once the vault is funded to back them", async function () {
+      const kldAddr = await kld.getAddress();
+      await kld.mint(await vault.getAddress(), KLD(300));
+
+      await vault.migrateIn(kldAddr, [alice.address, bob.address], [KLD(100), KLD(200)]);
+
+      expect(await stkld.balanceOf(alice.address)).to.equal(KLD(100));
+      expect(await stkld.balanceOf(bob.address)).to.equal(KLD(200));
+      expect(await vault.totalPooledKLD(kldAddr)).to.equal(KLD(300));
+      expect(await stkld.getTotalShares()).to.equal(KLD(300));
+      expect(await vault.totalStakers()).to.equal(2n);
+    });
+
+    /* The property the whole design rests on. An owner-callable mint is only
+       acceptable while it cannot promise what the vault does not hold, so the
+       funding transfer has to land FIRST rather than be taken on faith. */
+    it("cannot credit more than the vault actually holds", async function () {
+      const kldAddr = await kld.getAddress();
+      await kld.mint(await vault.getAddress(), KLD(100));
+
+      await expect(
+        vault.migrateIn(kldAddr, [alice.address], [KLD(101)]),
+      ).to.be.revertedWith("Credited more than the vault holds");
+
+      expect(await stkld.balanceOf(alice.address)).to.equal(0n);
+      expect(await vault.totalPooledKLD(kldAddr)).to.equal(0n);
+    });
+
+    it("a migrated staker can withdraw what they were credited", async function () {
+      const kldAddr = await kld.getAddress();
+      await kld.mint(await vault.getAddress(), KLD(100));
+      await vault.migrateIn(kldAddr, [alice.address], [KLD(100)]);
+
+      await vault.connect(alice).requestWithdrawal();
+      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
+      await ethers.provider.send("evm_mine", []);
+
+      const before = await kld.balanceOf(alice.address);
+      await vault.connect(alice).withdraw(kldAddr, KLD(100));
+      expect(await kld.balanceOf(alice.address)).to.equal(before + KLD(100));
+    });
+
+    it("closes for good, and cannot be reopened", async function () {
+      const kldAddr = await kld.getAddress();
+      await kld.mint(await vault.getAddress(), KLD(100));
+
+      await vault.finalizeMigration();
+      expect(await vault.migrationFinalized()).to.equal(true);
+
+      await expect(
+        vault.migrateIn(kldAddr, [alice.address], [KLD(100)]),
+      ).to.be.revertedWith("Migration closed");
+    });
+
+    it("is owner-only, and rejects a ragged holder/amount pair", async function () {
+      const kldAddr = await kld.getAddress();
+      await kld.mint(await vault.getAddress(), KLD(100));
+
+      await expect(
+        vault.connect(alice).migrateIn(kldAddr, [alice.address], [KLD(1)]),
+      ).to.be.reverted;
+
+      await expect(
+        vault.migrateIn(kldAddr, [alice.address, bob.address], [KLD(1)]),
+      ).to.be.revertedWith("Length mismatch");
+    });
+
+    /* Migrated shares must price exactly like deposited ones, or the carry-over
+       has quietly changed what a share is worth to everybody already holding. */
+    it("leaves a migrated holder priced identically to a depositor", async function () {
+      const kldAddr = await kld.getAddress();
+      await kld.mint(await vault.getAddress(), KLD(100));
+      await vault.migrateIn(kldAddr, [alice.address], [KLD(100)]);
+
+      await kld.connect(bob).approve(await vault.getAddress(), KLD(100));
+      await vault.connect(bob).deposit(kldAddr, KLD(100));
+
+      expect(await stkld.balanceOf(bob.address)).to.equal(
+        await stkld.balanceOf(alice.address),
+      );
+    });
+  });
+
 });
