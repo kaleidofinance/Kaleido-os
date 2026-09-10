@@ -158,6 +158,31 @@ function scoreProse(section: DocSection, query: string[]): { score: number; matc
   return { score, matched };
 }
 
+/**
+ * Questions about the user's own state, or the market right now, which no
+ * static page can answer.
+ *
+ * The bank is curated and its rules exclude these, so a bank hit is safe. The
+ * prose scorer has no such judgement: it matched "who's lending USDC right
+ * now" to the getting-started page and "where is my USDC" to the faucet
+ * section - confident, well-cited, and wrong in the way that matters most,
+ * because the user cannot tell a quoted paragraph from a read of their
+ * position. So the prose stage declines anything that names the asker's own
+ * holdings or the present moment, and those questions go on to the model,
+ * whose read tools are the only honest answer.
+ *
+ * READ-shaped, not merely possessive. "how do I get my KLD out of staking" is
+ * a how-to that happens to say "my", and the docs answer it well; "where is
+ * my USDC" is a read. The first cut keyed on "my" alone and blocked the
+ * how-to. The markers below are the shapes a request for live state takes -
+ * openers ("where is my", "do I have"), the present moment, or a value. A bare
+ * "my <noun>" is deliberately NOT one: "can I repay part of my loan" is a
+ * how-to about repaying, and blocking it sent the sentence to the grammar,
+ * which read it as a repay transaction - the exact misroute the bank fixes.
+ */
+const LIVE_STATE =
+  /\b(where (is|are) my|how much (is|are|do i have|have i)|what('s| is| are) my|do i have|have i got|am i|right now|currently|today|at the moment|resting|worth|price of)\b/i;
+
 function searchProse(question: string): { section: DocSection; score: number; matched: string[] } | null {
   const query = askTerms(question);
   if (query.length === 0) return null;
@@ -195,6 +220,11 @@ function toHit(section: DocSection, via: DocHit["via"], matched: string[], score
 }
 
 export function searchDocs(question: string): DocHit | null {
+  /* Both stages, not just prose. A one-word bank overlap ("usdc") had let
+     "where is my USDC" through the bank stage to a faucet section, which the
+     prose guard never saw. A live-state question is a false match against ANY
+     page by definition - the bank's own rules exclude such asks. */
+  if (LIVE_STATE.test(question)) return null;
   const bank = searchBank(question);
   if (bank) return { ...toHit(bank.section, "ask", [bank.ask], bank.score), shared: bank.shared };
   const prose = searchProse(question);

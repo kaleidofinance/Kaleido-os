@@ -213,6 +213,28 @@ function main() {
     }
   }
 
+  console.log("\n— a question about live state is never answered from a page —");
+  {
+    /* Found by routing every advertised READ tool's own prompt: two of them were
+       being answered by static docs. A quoted paragraph about the faucet is not
+       an answer to "where is my USDC", and the getting-started page is not who
+       is lending right now. These must reach the model, whose read tools are
+       the only honest source. The bank is curated to exclude such asks; this
+       pins the prose fallback to the same rule. */
+    const LIVE = [
+      "who's lending USDC right now, and at what rate?",
+      "where is my USDC?",
+      "what's ETH worth today?",
+      "what orders do I have resting?",
+      "what is the price of KLD right now",
+      "how much is my position worth",
+    ];
+    for (const q of LIVE) {
+      const r = route(q);
+      check(`"${q}" -> ${r}`, !r.startsWith("docs:"), r);
+    }
+  }
+
   console.log("\n— the reply cites, it does not paraphrase —");
   {
     const hit = searchDocs("how long is the unstaking cooldown");

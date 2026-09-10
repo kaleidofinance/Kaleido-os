@@ -264,6 +264,25 @@ console.log("\n— a question never answers with a transaction —");
    of the two nets answers it. Both directions have been wrong before — a balance
    question answered with a transaction plan, and a request for test funds answered
    with "which marketplace request do you want to fill?". */
+console.log("\n— a sentence the grammar cannot read is not half-read into a plan —");
+{
+  /* Each of these parsed as SOMETHING before the MODEL_ONLY decline: a recurring
+     buy as a one-off swap, a limit order as a swap missing its input, a
+     delegation grant as a lend missing its rate. A plan the user did not
+     describe is worse than no plan. They reach the model. */
+  const misread = [
+    "buy 50 KLD every week with USDC",
+    "place a limit order to buy 100 KLD at 0.02 USDC",
+    "cancel all my orders",
+    "grant the agent permission to lend up to 5000 USDC",
+    "dca 20 USDC into KLD daily",
+  ];
+  for (const q of misread) {
+    const r = route(q);
+    check(`"${q}" -> ${r ?? "the model"}`, !String(r).startsWith("command:") && !String(r).startsWith("asks:"), String(r));
+  }
+}
+
 console.log("\n— and the right net answers it —");
 {
   const ROUTES = {

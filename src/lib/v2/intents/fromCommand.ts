@@ -1175,6 +1175,9 @@ function detectDuration(
   return null;
 }
 
+const MODEL_ONLY =
+  /\b(every (day|week|month|hour|\d+ (days|weeks|months|hours))|daily|weekly|monthly|recurring|dca|limit (order|buy|sell)|at a price of|when (the )?price|(?<!in )orders?|grant|permission|mandate|delegat(e|ion|ed))\b/i;
+
 export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   const raw = text.trim();
   if (!raw) return { status: "unknown" };
@@ -1196,6 +1199,24 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
    * "received 500 USDC from Alice" out, which a prefix match would have claimed.
    */
   const lower = raw.toLowerCase();
+
+  /*
+   * Sentences this grammar cannot read correctly, declined outright so they reach
+   * the model rather than being half-read into the wrong transaction.
+   *
+   * Found by routing the product's own example prompts: "buy 50 KLD every week
+   * with USDC" parsed as a one-off SWAP, "place a limit order to buy 100 KLD at
+   * 0.02 USDC" as a swap missing its input, and "grant the agent permission to
+   * lend up to 5000 USDC" as a LEND missing its rate. Each is a plan the user
+   * did not describe - the recurring buy is the dangerous one, since it builds
+   * a single swap that looks reasonable right up to the signature. Limit and
+   * recurring orders have intents (KaleidoOrders, #60) but no grammar yet;
+   * delegation is granted from the settings panel. Until a verb exists for
+   * them, "unknown" is the honest answer and the model's tools are the path.
+   *
+   * `(?<!in )order` keeps "in order to" out of it.
+   */
+  if (MODEL_ONLY.test(lower)) return { status: "unknown" };
   if (
     RECEIVE_PHRASES.some(
       (p) => lower === p || lower.startsWith(`${p} `) || lower === `${p}?`,
