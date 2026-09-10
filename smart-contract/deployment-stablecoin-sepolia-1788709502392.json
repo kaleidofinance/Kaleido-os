@@ -7,10 +7,18 @@
     "USDe": "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b",
     "kfUSD": "0x0A2c3bB26aB21A560eC789E531CdF35f3E5F60C9",
     "kafUSD": "0x4Fa82D254050e0872fc274c4f4dF6FB95c4C2C82",
-    "YieldTreasury": "0x2dF9941C50a3ceA43103EdF89713a8224b52baC0",
+    "YieldTreasury": "0x4700a5681fc403Ea36e85c856F88d3eD3Ac3DFaf",
     "USDC": "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70"
   },
   "timestamps": {
     "deployed": "2026-09-06T15:45:02.392Z"
+  },
+  "treasuryMigration": {
+    "note": "YieldTreasury above is the POST-MIGRATION address. The original is under migratedFrom; its remaining kfUSD was moved across, and what its ledger claimed above its actual balance could not be.",
+    "migratedAt": "2026-09-10T10:43:24.995Z",
+    "record": "deployment-treasury-sepolia.json",
+    "migratedFrom": "0x2dF9941C50a3ceA43103EdF89713a8224b52baC0",
+    "reason": "userRewardDebt was never initialised when a holder acquired kafUSD, so every holder was entitled to yield that accrued before they arrived - 3,969 kfUSD of entitlement against 71.45 that existed. claimYield subtracted it from the pool unguarded and underflowed, which reached users as PANIC 17 on the Claim button.",
+    "holdersCheckpointed": 11
   }
 }

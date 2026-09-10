@@ -152,7 +152,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0x6653B81FEE8CECf0AB5ce2863A63D9D3C28C1DE7", // deployment-v3-sepolia-1787339244721.json
     v3Router: "0x482555B9232A5BEE6034cdfa91dBcF4F19633c59", // deployment-orders-sepolia.json
     wrappedNative: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14", // deployment-dex-sepolia.json
-    yieldTreasury: "0x2dF9941C50a3ceA43103EdF89713a8224b52baC0", // deployment-stablecoin-sepolia-1788709502392.json
+    yieldTreasury: "0x4700a5681fc403Ea36e85c856F88d3eD3Ac3DFaf", // deployment-stablecoin-sepolia-1788709502392.json
   },
 };
 
@@ -311,7 +311,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-10T08:11:20.822Z",
+  generatedAt: "2026-09-10T10:45:38.535Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",

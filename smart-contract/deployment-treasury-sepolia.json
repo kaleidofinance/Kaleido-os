@@ -1,0 +1,31 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": "2026-09-10T10:43:24.995Z",
+  "contracts": {
+    "YieldTreasury": "0x4700a5681fc403Ea36e85c856F88d3eD3Ac3DFaf"
+  },
+  "config": {
+    "assets": [
+      "0x0A2c3bB26aB21A560eC789E531CdF35f3E5F60C9",
+      "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70",
+      "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55",
+      "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b"
+    ],
+    "sources": [
+      "0x0A2c3bB26aB21A560eC789E531CdF35f3E5F60C9"
+    ],
+    "performanceFeeBps": "1000",
+    "feeRecipient": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+  },
+  "migratedFrom": {
+    "treasury": "0x2dF9941C50a3ceA43103EdF89713a8224b52baC0",
+    "holdersCheckpointed": 11,
+    "movedOnHand": {
+      "0x0A2c3bB26aB21A560eC789E531CdF35f3E5F60C9": "51356412783317331460",
+      "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70": "0",
+      "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55": "0",
+      "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b": "0"
+    }
+  }
+}
