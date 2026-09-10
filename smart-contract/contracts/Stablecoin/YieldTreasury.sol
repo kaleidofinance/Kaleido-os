@@ -38,6 +38,39 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
     uint256 public constant PRECISION = 1e18;
     mapping(address => uint256) public accYieldPerShare; // Global index per asset
     mapping(address => mapping(address => uint256)) public userRewardDebt; // User checkpoint
+
+    /*
+     * ---- Holder checkpoints -------------------------------------------------
+     *
+     * WHAT WENT WRONG WITHOUT THESE. `userRewardDebt` was written in exactly
+     * three places, all of them claims, and NOTHING initialised it when a user
+     * acquired kafUSD. So `calculateUserYield` valued every holder against the
+     * whole historical `accYieldPerShare` with a debt of zero, crediting them
+     * yield accrued before they arrived. Measured on Sepolia 2026-09-10: 74,243
+     * kafUSD in issue against 71.45 kfUSD of yield ever deposited, but a total
+     * entitlement of 3,969 — over-entitled 55x. `claimYield` then subtracted
+     * that from `yieldBalancePerAsset` with no guard and underflowed, which is
+     * the `PANIC 17` two testers reported on the Claim button.
+     *
+     * WHY A CHECKPOINT AND NOT A HOOK. Exact accounting wants kafUSD to call in
+     * on every balance change, and kafUSD is ours, so that was available — at
+     * the price of redeploying kafUSD and migrating every holder's balance.
+     * This is the design that needs only THIS contract replaced: the accrual for
+     * a window is credited at the SMALLER of the balance now and the balance at
+     * the last checkpoint, so a balance that grew mid-window earns at the old
+     * size and a balance that shrank earns at the new one.
+     *
+     * That is deliberately conservative, and the direction matters more than the
+     * size: it can under-credit slightly, never over-credit, so the pool can
+     * always pay what it has promised and the subtraction below cannot underflow
+     * no matter what a holder does between checkpoints. `checkpoint` is
+     * permissionless precisely so the window can be kept short — anyone, a
+     * keeper included, can close it for any holder at any time.
+     */
+    mapping(address => mapping(address => uint256)) public userIndex;
+    mapping(address => mapping(address => uint256)) public lastBalance;
+    mapping(address => mapping(address => uint256)) public owedYield;
+    mapping(address => mapping(address => bool)) public trackedHolder;
     
     // totalYieldPerAsset[asset] = total yield accumulated in this asset
     mapping(address => uint256) public totalYieldPerAsset;
@@ -290,20 +323,89 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
      * @param _asset Asset address
      * @return User's claimable yield in the specified asset
      */
+    /**
+     * @dev Accrue a holder's share of everything the index has moved since their
+     *      last checkpoint, and re-checkpoint them.
+     *
+     * The window is valued at the SMALLER of the balance now and the balance
+     * recorded last time. See the note on the checkpoint mappings: this is what
+     * makes the contract safe without a callback from kafUSD on every transfer.
+     * A holder who doubled their position mid-window earns the window at the old
+     * size; one who halved it earns at the new size. Both under-credit rather
+     * than over-credit, and under-crediting cannot make the pool insolvent.
+     *
+     * An untracked holder is checkpointed and credited NOTHING for history. That
+     * is the whole bug fix in one line: arriving after the index has moved must
+     * not entitle anyone to what moved it.
+     */
+    function _sync(address _user, address _asset) internal {
+        if (kafUSDContract == address(0)) return;
+        uint256 acc = accYieldPerShare[_asset];
+        uint256 bal = IERC20(kafUSDContract).balanceOf(_user);
+
+        if (!trackedHolder[_user][_asset]) {
+            trackedHolder[_user][_asset] = true;
+            userIndex[_user][_asset] = acc;
+            lastBalance[_user][_asset] = bal;
+            return;
+        }
+
+        uint256 idx = userIndex[_user][_asset];
+        if (acc > idx) {
+            uint256 prev = lastBalance[_user][_asset];
+            uint256 basis = bal < prev ? bal : prev;
+            if (basis > 0) {
+                owedYield[_user][_asset] += (basis * (acc - idx)) / PRECISION;
+            }
+        }
+        userIndex[_user][_asset] = acc;
+        lastBalance[_user][_asset] = bal;
+    }
+
+    /**
+     * @notice Close the accrual window for a holder. Callable by anyone.
+     * @dev Permissionless on purpose. The shorter the window between checkpoints
+     *      the less the conservative `min` above can cost a holder, so anybody —
+     *      the holder, a keeper, another user — is allowed to close it. It moves
+     *      no tokens and can only ever move `owedYield` up, so there is nothing
+     *      to gain by calling it on someone else and nothing to lose by it being
+     *      open.
+     */
+    function checkpoint(address _user) external {
+        for (uint256 i = 0; i < yieldAssetList.length; i++) {
+            _sync(_user, yieldAssetList[i]);
+        }
+    }
+
+    /**
+     * @dev Calculate a user's claimable yield in one asset.
+     * @param _user User address
+     * @param _asset Asset address
+     * @return User's claimable yield in the specified asset
+     *
+     * A view, so it mirrors `_sync` without writing. It reports what a claim
+     * would pay right now, which is `owedYield` plus this window valued the same
+     * conservative way. An untracked holder reads zero rather than the whole
+     * history of the index — the figure the old build showed, and could never
+     * pay.
+     */
     function calculateUserYield(
         address _user,
         address _asset
     ) public view returns (uint256) {
         if (kafUSDContract == address(0)) return 0;
-        
-        uint256 userKafUSDBalance = IERC20(kafUSDContract).balanceOf(_user);
-        if (userKafUSDBalance == 0) return 0;
+        uint256 pending = owedYield[_user][_asset];
+        if (!trackedHolder[_user][_asset]) return pending;
 
-        // pendingReward = (userShares * accYieldPerShare) - userRewardDebt
-        uint256 accumulated = (userKafUSDBalance * accYieldPerShare[_asset]) / PRECISION;
-        
-        if (accumulated <= userRewardDebt[_user][_asset]) return 0;
-        return accumulated - userRewardDebt[_user][_asset];
+        uint256 acc = accYieldPerShare[_asset];
+        uint256 idx = userIndex[_user][_asset];
+        if (acc > idx) {
+            uint256 bal = IERC20(kafUSDContract).balanceOf(_user);
+            uint256 prev = lastBalance[_user][_asset];
+            uint256 basis = bal < prev ? bal : prev;
+            if (basis > 0) pending += (basis * (acc - idx)) / PRECISION;
+        }
+        return pending;
     }
 
     /**
@@ -336,11 +438,31 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
         require(_asset != address(0), "YieldTreasury: Invalid asset");
         require(supportedYieldAssets[_asset], "YieldTreasury: Asset not supported");
 
-        uint256 userYield = calculateUserYield(msg.sender, _asset);
+        _sync(msg.sender, _asset);
+        uint256 userYield = owedYield[msg.sender][_asset];
         require(userYield > 0, "YieldTreasury: No yield available for this asset");
 
-        // Update User Reward Debt and Pool Balance (Accounting Shield)
-        userRewardDebt[msg.sender][_asset] += userYield;
+        /* The guard `claimAllYield` has always had and this one never did. It is
+           belt-and-braces now that _sync cannot over-credit, and it stays because
+           an unguarded subtraction here is what produced PANIC 17 rather than a
+           sentence anyone could act on. */
+        require(
+            yieldBalancePerAsset[_asset] >= userYield,
+            "YieldTreasury: Not enough of this asset in the pool"
+        );
+        /* And that the tokens are really here, not just on the books. The two
+           can disagree - an emergencyWithdraw moves tokens without touching the
+           ledger, and the old claimAndCompound paid out without decrementing it,
+           which is why this contract's predecessor held 47.40 kfUSD while its
+           books said 71.45. Without this the shortfall surfaces as a raw
+           ERC20InsufficientBalance from inside safeTransfer, which names nothing
+           the user or an operator could act on. */
+        require(
+            IERC20(_asset).balanceOf(address(this)) >= userYield,
+            "YieldTreasury: Pool is short of this asset on hand"
+        );
+
+        owedYield[msg.sender][_asset] = 0;
         yieldBalancePerAsset[_asset] -= userYield;
 
         // Transfer yield to user
@@ -360,12 +482,12 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
         for (uint256 i = 0; i < yieldAssetList.length; i++) {
             address asset = yieldAssetList[i];
             
-            uint256 userYield = calculateUserYield(msg.sender, asset);
+            _sync(msg.sender, asset);
+            uint256 userYield = owedYield[msg.sender][asset];
             if (userYield == 0) continue;
             if (yieldBalancePerAsset[asset] < userYield) continue;
 
-            // Update User Reward Debt and Pool Balance
-            userRewardDebt[msg.sender][asset] += userYield;
+            owedYield[msg.sender][asset] = 0;
             yieldBalancePerAsset[asset] -= userYield;
 
             // Transfer yield to user in the native asset
@@ -387,11 +509,22 @@ contract YieldTreasury is AccessControl, ReentrancyGuard {
         require(_asset != address(0), "YieldTreasury: Invalid asset");
         require(supportedYieldAssets[_asset], "YieldTreasury: Asset not supported");
 
-        uint256 userYield = calculateUserYield(msg.sender, _asset);
+        _sync(msg.sender, _asset);
+        uint256 userYield = owedYield[msg.sender][_asset];
         require(userYield > 0, "YieldTreasury: No yield to claim");
 
-        // Update User Reward Debt
-        userRewardDebt[msg.sender][_asset] += userYield;
+        /* This path paid out and did NOT decrement the pool, so every compound
+           left `yieldBalancePerAsset` claiming to hold tokens that had already
+           left. Measured on Sepolia 2026-09-10: the treasury said it owed 71.45
+           kfUSD while holding 47.40. It is the same subtraction as the other two
+           paths and it belongs here for the same reason. */
+        require(
+            yieldBalancePerAsset[_asset] >= userYield,
+            "YieldTreasury: Not enough of this asset in the pool"
+        );
+
+        owedYield[msg.sender][_asset] = 0;
+        yieldBalancePerAsset[_asset] -= userYield;
 
         // Transfer yield to user for compounding
         IERC20(_asset).safeTransfer(msg.sender, userYield);
