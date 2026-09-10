@@ -41,6 +41,42 @@ const { ethers, network } = require("hardhat");
 const DRY = process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true";
 const BATCH = 20; // holders per migrateIn call, to stay well inside a block
 
+/* Canonical Multicall3, same address on every chain this repo touches.
+ *
+ * Reading 47 balances as 47 sequential eth_calls is what broke the first live
+ * run: at ~2s a call that is ~95s of round trips inside hardhat's 120s window,
+ * so a slow patch anywhere in the middle times the whole migration out. It
+ * timed out AFTER pause() had already landed, which is a bad place to stop.
+ * One aggregate3 makes the verification a single call and takes the whole
+ * failure mode off the table. */
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
+
+async function balancesOf(tokenAddr, holders) {
+  const erc20 = new ethers.Interface([
+    "function balanceOf(address) view returns (uint256)",
+  ]);
+  const mc = await ethers.getContractAt(
+    [
+      "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[] returnData)",
+    ],
+    MULTICALL3,
+  );
+  const out = [];
+  for (let i = 0; i < holders.length; i += 400) {
+    const slice = holders.slice(i, i + 400);
+    const res = await mc.aggregate3.staticCall(
+      slice.map((h) => ({
+        target: tokenAddr,
+        allowFailure: false,
+        callData: erc20.encodeFunctionData("balanceOf", [h]),
+      })),
+    );
+    for (const r of res)
+      out.push(erc20.decodeFunctionResult("balanceOf", r.returnData)[0]);
+  }
+  return out;
+}
+
 const f = (x) =>
   Number(ethers.formatUnits(x, 18)).toLocaleString(undefined, {
     maximumFractionDigits: 6,
@@ -97,14 +133,14 @@ async function main() {
   console.log(`2. re-verify ${snap.holders.length} holders against the chain`);
   let sum = 0n;
   let drifted = 0;
-  for (const h of snap.holders) {
-    const live = await oldStkld.balanceOf(h.holder);
-    if (live.toString() !== h.amount) {
+  const live = await balancesOf(oldStkldAddr, snap.holders.map((h) => h.holder));
+  snap.holders.forEach((h, i) => {
+    if (live[i].toString() !== h.amount) {
       drifted++;
-      console.log(`     DRIFT ${h.holder}  file ${f(h.amount)}  chain ${f(live)}`);
+      console.log(`     DRIFT ${h.holder}  file ${f(h.amount)}  chain ${f(live[i])}`);
     }
     sum += BigInt(h.amount);
-  }
+  });
   const supply = await oldStkld.totalSupply();
   const vaultKld = await kld.balanceOf(oldVaultAddr);
   console.log(`   sum ${f(sum)} | supply ${f(supply)} | old vault KLD ${f(vaultKld)}`);
@@ -163,13 +199,13 @@ async function main() {
 
   // ---- 7. verify every position landed -------------------------------------
   let bad = 0;
-  for (const h of snap.holders) {
-    const got = await stkld.balanceOf(h.holder);
-    if (got.toString() !== h.amount) {
+  const landed = await balancesOf(stkldAddr, snap.holders.map((h) => h.holder));
+  snap.holders.forEach((h, i) => {
+    if (landed[i].toString() !== h.amount) {
       bad++;
-      console.log(`   WRONG ${h.holder} expected ${f(h.amount)} got ${f(got)}`);
+      console.log(`   WRONG ${h.holder} expected ${f(h.amount)} got ${f(landed[i])}`);
     }
-  }
+  });
   const newSupply = await stkld.totalSupply();
   const newBacking = await kld.balanceOf(vaultAddr);
   console.log(`\n7. ${snap.holders.length - bad}/${snap.holders.length} positions exact`);
