@@ -63,3 +63,7 @@ aborean-contracts-main
 .dev.vars
 .dev.vars.*
 .wrangler/
+
+# Staking migration snapshots — regenerate with scripts/snapshot-stakers.mjs.
+# Point-in-time and chain-specific; a stale one must never be migrated from.
+smart-contract/snapshot-stakers-*.json

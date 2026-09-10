@@ -1,0 +1,21 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": "2026-09-10T08:09:46.039Z",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "KLD": "0x79C14246120369A98c4226a01158645a7A501F35",
+    "KLDVault": "0xefc1A2Cb814b5dF04EfC2931d2cd731647aEb832",
+    "stKLD": "0xbA98BDA4974802AEBa0359c326C7b83107cA74F5"
+  },
+  "config": {
+    "yieldTreasury": "0x2dF9941C50a3ceA43103EdF89713a8224b52baC0"
+  },
+  "migratedFrom": {
+    "vault": "0x3305F04C7DDb32C23F250620CBa50C8DE61f67B5",
+    "stKLD": "0xb13744e75aA50B6204b445673341A1fE03b02dFd",
+    "holders": 47,
+    "amount": "10316672910925625534713029",
+    "strandedInOldVault": "10316672910925625534713029"
+  }
+}

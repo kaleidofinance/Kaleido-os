@@ -134,13 +134,13 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kafUSD: "0x4Fa82D254050e0872fc274c4f4dF6FB95c4C2C82", // deployment-stablecoin-sepolia-1788709502392.json
     kfUSD: "0x0A2c3bB26aB21A560eC789E531CdF35f3E5F60C9", // deployment-stablecoin-sepolia-1788709502392.json
     kld: "0x79C14246120369A98c4226a01158645a7A501F35", // deployment-kld-sepolia.json
-    kldVault: "0x3305F04C7DDb32C23F250620CBa50C8DE61f67B5", // deployment-kld-sepolia.json
+    kldVault: "0xefc1A2Cb814b5dF04EfC2931d2cd731647aEb832", // deployment-kld-sepolia.json
     oracleKind: "aggregator-v3", // deployment-oracle-sepolia.json
     orders: "0x3713336a6Ba0Ae1BD758257334091CEFa283ceC1", // deployment-orders-sepolia.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-sepolia-1787339244721.json
     priceOracle: "0x126C64a2d48F40EeAEcD534387902f5da74c9dbb", // deployment-diamond-sepolia.json
-    stKLD: "0xb13744e75aA50B6204b445673341A1fE03b02dFd", // deployment-kld-sepolia.json
+    stKLD: "0xbA98BDA4974802AEBa0359c326C7b83107cA74F5", // deployment-kld-sepolia.json
     usdc: "0x0B485b9E120464F3DE5DD7C3AF96f7aF3f8E9F70", // deployment-stablecoin-sepolia-1788709502392.json
     usde: "0xFD58F8B21DDaBF004f87AE9023c7cfD8700BA58b", // deployment-stablecoin-sepolia-1788709502392.json
     usdt: "0x5deA1292ceDd7Ca24aCe12DEc727f00A6865BC55", // deployment-stablecoin-sepolia-1788709502392.json
@@ -311,7 +311,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-09T20:37:14.324Z",
+  generatedAt: "2026-09-10T08:11:20.822Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
