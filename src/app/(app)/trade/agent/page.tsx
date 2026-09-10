@@ -1264,20 +1264,28 @@ export default function AgentPage() {
   const onComplete = (settled: SettledStep[] = []) => {
     setPanel({ kind: "idle" });
 
+    /* Each step's wall-clock, when it was measured. Shown because the wait is
+       the thing testers report as slow, and a number they can see is the
+       difference between "it hung" and "the chain took 14s" - which are
+       different complaints with different fixes. Seconds, one decimal: the
+       precision that distinguishes a slow chain from a slow app. */
+    const took = (st: SettledStep) =>
+      st.ms === undefined ? "" : ` · ${(st.ms / 1000).toFixed(1)}s`;
     const lines = settled.map((st) =>
       st.skipped
         ? `${st.title} — already in place, nothing sent`
         : st.hash
-          ? `${st.title} — done · ${st.hash.slice(0, 10)}…${st.hash.slice(-6)}`
-          : `${st.title} — done, no transaction needed`,
+          ? `${st.title} — done${took(st)} · ${st.hash.slice(0, 10)}…${st.hash.slice(-6)}`
+          : `${st.title} — done${took(st)}, no transaction needed`,
     );
     const sent = settled.filter((st) => st.hash && !st.skipped).length;
+    const totalMs = settled.reduce((n, st) => n + (st.ms ?? 0), 0);
     const head =
       settled.length === 0
         ? "Done."
         : sent === 0
           ? "Done — nothing needed to be sent."
-          : `Done — ${sent} transaction${sent === 1 ? "" : "s"} confirmed.`;
+          : `Done — ${sent} transaction${sent === 1 ? "" : "s"} confirmed${totalMs ? ` in ${(totalMs / 1000).toFixed(1)}s` : ""}.`;
 
     setMessages((prev) => [
       ...prev.map((m) => (m === latest ? { ...m, plan: undefined } : m)),

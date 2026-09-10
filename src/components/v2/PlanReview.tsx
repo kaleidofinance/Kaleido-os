@@ -37,6 +37,17 @@ export interface SettledStep {
    *  signature-only step like placing an order. */
   hash?: string;
   skipped: boolean;
+  /**
+   * Wall-clock milliseconds for this step: the wallet prompt AND the receipt.
+   *
+   * Recorded because testers report the agent as slow and nothing measured it.
+   * Every resolver ends in `await tx.wait()` and the steps run in sequence, so
+   * a plan costs a signature plus a full block confirmation per step - about
+   * 12-24s each on Sepolia before the user has clicked anything. Which half is
+   * the wait and which is the human is not knowable from here, so this is the
+   * honest total rather than a breakdown that would need a guess.
+   */
+  ms?: number;
 }
 
 interface PlanReviewProps {
@@ -167,6 +178,7 @@ export default function PlanReview({
     i: number,
   ): Promise<"done" | "failed" | "paused"> => {
     setStep(i, "pending");
+    const startedAt = Date.now();
     try {
       const result = await resolveIntent(ctx, intents[i]);
       setStep(i, result.skipped ? "skipped" : "done");
@@ -174,6 +186,7 @@ export default function PlanReview({
         title: views[i].title,
         hash: result.hash ?? undefined,
         skipped: !!result.skipped,
+        ms: Date.now() - startedAt,
       };
       /* Logged with the same title and detail the step above showed, so the
          history reads as a record of what the user approved rather than a
@@ -265,6 +278,7 @@ export default function PlanReview({
     ctx: NonNullable<ReturnType<typeof getContext>>,
     steps: number[],
   ): Promise<"done" | "failed" | "paused"> => {
+    const bundleStartedAt = Date.now();
     const calls = encodeBatch(intents, steps, ctx.address);
     if (!calls) return runSequential(ctx, steps);
 
@@ -291,6 +305,7 @@ export default function PlanReview({
           title: views[i].title,
           hash: hash ?? undefined,
           skipped: false,
+          ms: Date.now() - bundleStartedAt,
         };
       }
       if (hash) {
