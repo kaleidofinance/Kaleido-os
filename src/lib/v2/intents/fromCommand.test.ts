@@ -7,6 +7,7 @@
 // one outcome that must never happen.
 import {
   parseCommand,
+  parseFollowUp,
   fillSlot,
   completeDraft,
   draftFromCommand,
@@ -1693,6 +1694,98 @@ console.log("\n— unstake parses like stake: one amount, the step decided later
     "'unstake' is never mistaken for 'stake'",
     full.status === "ok" && full.command.kind !== "stake",
     full.status === "ok" ? full.command.kind : full.status,
+  );
+}
+
+
+/* ------------------------------------------------------------------------- *
+ * Follow-ups: one thought across two messages
+ *
+ * "swap 10 USDC to USDT" then "now the same to USDe". Until parseFollowUp this
+ * cost a reasoning request for a sentence the grammar had every part of. What
+ * the cases below actually protect is the opposite of coverage: a follow-up
+ * that reads the sentence WRONG builds a trade the user did not ask for, and
+ * they are reviewing a plan that looks reasonable.
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— a follow-up continues the last plan —");
+  const seeded = parseCommand("swap 10 USDC to KLD", TOKENS);
+  const last = seeded.status === "ok" ? seeded.command : null;
+  check("the seed parses", last !== null, seeded.status);
+
+  const follow = (text) => parseFollowUp(text, TOKENS, last);
+  const swapOf = (r) =>
+    r.status === "ok" && r.command.kind === "swap"
+      ? `${r.command.amount} ${r.command.tokenIn.symbol}->${r.command.tokenOut.symbol}`
+      : r.status;
+
+  check(
+    "'now the same to WETH' keeps the amount and the input, changes the output",
+    swapOf(follow("now the same to WETH")) === "10 USDC->WETH",
+    swapOf(follow("now the same to WETH")),
+  );
+  check(
+    "'and 50 to kfUSD' changes both the amount and the output",
+    swapOf(follow("and 50 to kfUSD")) === "50 USDC->kfUSD",
+    swapOf(follow("and 50 to kfUSD")),
+  );
+  check(
+    "'make it 50' changes only the amount",
+    swapOf(follow("make it 50")) === "50 USDC->KLD",
+    swapOf(follow("make it 50")),
+  );
+  /* Direction is read, never assumed — the same trap `buy` set. A lone token is
+     the OUTPUT, because that is what "now to X" means; "from X" says otherwise
+     and must be honoured, or the follow-up inverts the trade. */
+  check(
+    "a lone token is the output, not the input",
+    swapOf(follow("WETH instead")) === "10 USDC->WETH",
+    swapOf(follow("WETH instead")),
+  );
+  check(
+    "'from' names the input",
+    swapOf(follow("same but from WETH")) === "10 WETH->KLD",
+    swapOf(follow("same but from WETH")),
+  );
+
+  /* THE CASE THAT MADE THIS FUNCTION DANGEROUS BEFORE IT WAS GUARDED. USDR is
+     on no chain here (the fixture has KLD, USDC, WETH, kfUSD), so nothing was substituted while
+     "same" still counted as naming something — and the carry-over rebuilt the
+     USDT swap. The user names one destination and is handed a plan for another. */
+  check(
+    "an unresolvable destination is refused, not silently ignored",
+    follow("now the same to USDR").status === "unknown",
+    swapOf(follow("now the same to USDR")),
+  );
+  check(
+    "and so is a bare unknown symbol after a preposition",
+    follow("to NOTATOKEN").status === "unknown",
+    swapOf(follow("to NOTATOKEN")),
+  );
+
+  /* A sentence with its own verb belongs to the grammar. Reading it as a
+     modified swap would keep the previous verb and change the action. */
+  for (const fresh of ["now stake it", "swap 5 USDC to WETH", "lend 100 USDC at 8%"]) {
+    check(
+      `'${fresh}' is a fresh command, not a follow-up`,
+      follow(fresh).status === "unknown",
+      follow(fresh).status,
+    );
+  }
+  /* Naming nothing must not repeat the last transaction. */
+  for (const empty of ["ok", "thanks", "sure", "what about fees"]) {
+    check(
+      `'${empty}' names nothing and is refused`,
+      follow(empty).status === "unknown",
+      follow(empty).status,
+    );
+  }
+  /* The MODEL_ONLY refusals hold here too, or a follow-up becomes the way a
+     recurring buy gets built after all. */
+  check(
+    "'same to WETH every week' still reaches the model",
+    follow("same to WETH every week").status === "unknown",
+    follow("same to WETH every week").status,
   );
 }
 

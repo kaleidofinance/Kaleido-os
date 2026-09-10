@@ -40,10 +40,12 @@ import { docsReply, groundingFor, MIN_ASK_SIMILARITY, outageReply, searchDocs } 
 import { visibleProse } from "@/lib/ai/actionsBlock";
 import {
   parseCommand,
+  parseFollowUp,
   fillSlot,
   clearSlot,
   draftFromCommand,
   COMMAND_HELP,
+  type Command,
   type Draft,
   type ParseResult,
   type Slot,
@@ -190,6 +192,16 @@ export default function AgentPage() {
     draft: Draft;
     missing: Slot;
   } | null>(null);
+  /*
+   * The last command that planned successfully, so the NEXT sentence can
+   * continue it. "swap 10 USDC to USDT" then "now the same to USDe" is one
+   * thought in two messages, and without this the second half reached the
+   * model as an unparseable fragment - a reasoning request for a sentence the
+   * grammar already had every part of. `pending` is the other half of this and
+   * they are not the same thing: that one resumes a draft LUCA asked about,
+   * this one continues a plan the USER completed. See parseFollowUp.
+   */
+  const [lastCommand, setLastCommand] = useState<Command | null>(null);
   /** Remaining model requests today. Null until known, or when unmetered. */
   const [credits, setCredits] = useState<{
     remaining: number;
@@ -343,6 +355,9 @@ export default function AgentPage() {
     if (result.status !== "ok") return false;
 
     setPending(null);
+    /* Recorded only on the path that actually produced a plan, so a refused or
+       half-read sentence never becomes the thing a follow-up continues. */
+    setLastCommand(result.command);
 
     if (result.command.kind === "help") {
       note("Answered from the command reference");
@@ -705,6 +720,24 @@ export default function AgentPage() {
         log(parsed.status === "ok" ? `command:${parsed.command.kind}` : `asks:${parsed.missing}`);
         await planLocally(parsed, abort.signal);
         return;
+      }
+
+      /* A continuation of the last plan, tried only once the grammar has
+         declined the sentence outright. Order matters: a sentence with its own
+         verb is a fresh command and parseFollowUp refuses it anyway, so this
+         can never re-point an instruction at the previous action. */
+      if (lastCommand) {
+        const followed = parseFollowUp(content, vocabulary, lastCommand);
+        if (followed.status !== "unknown") {
+          note("Read it as a follow-up to the last plan");
+          log(
+            followed.status === "ok"
+              ? `command:${followed.command.kind}`
+              : `asks:${followed.missing}`,
+          );
+          await planLocally(followed, abort.signal);
+          return;
+        }
       }
 
       if (!question && answerFromFaq(content)) return;

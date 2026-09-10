@@ -1638,6 +1638,136 @@ function parseBridge(
  * This is the whole point of tracking drafts: a missing parameter costs one
  * cheap follow-up question instead of a model call.
  */
+/**
+ * A sentence that continues the last one, rather than starting a new one.
+ *
+ * "swap 10 USDC to USDT" then "now the same to USDR" is one thought in two
+ * messages, and until now only the MODEL could follow it: `fillSlot` resumes a
+ * draft the agent ITSELF asked about, and a completed command left nothing
+ * behind, so the second sentence arrived as an unparseable fragment and cost a
+ * reasoning request. This reads it against the command that just succeeded.
+ *
+ * ── Four rules, and each exists because breaking it produces a wrong trade ──
+ *
+ * 1. A SENTENCE WITH ITS OWN VERB IS NOT A FOLLOW-UP. "now stake it" is a fresh
+ *    instruction and belongs to the grammar; reading it as a modified swap
+ *    would keep the previous verb and quietly change the action. Declined here,
+ *    and the caller has already tried the parser anyway.
+ *
+ * 2. DIRECTION IS READ, NEVER ASSUMED. This is the same trap `buy` set (see
+ *    BUY_WORDS): for a swap, a lone token could plausibly mean either side, and
+ *    guessing wrong inverts the trade. So "to/into/for X" sets the output,
+ *    "from/with X" sets the input, and a bare single token is the OUTPUT —
+ *    which is what "now to USDR", "same for USDR" and "USDR instead" all mean.
+ *    Two tokens name both sides in the order they appear.
+ *
+ * 3. SOMETHING MUST ACTUALLY BE NAMED. If the sentence substitutes nothing —
+ *    "ok", "thanks", "do it" — this is not a follow-up and returns `unknown`.
+ *    Repeating the previous command because the user said "ok" would build a
+ *    second identical transaction.
+ *
+ * 4. WHAT IS NOT NAMED IS CARRIED, INCLUDING THE AMOUNT. "same amount" and
+ *    "the same" are therefore not special cases: the amount survives unless the
+ *    sentence gives a new one. They are recognised only so the phrases do not
+ *    read as unnamed slots under rule 3.
+ *
+ * A recipient is deliberately never carried into a NEW recipient by inference —
+ * `detectRecipient` requires a literal address, so "send it to Bob" cannot
+ * resolve to anybody. Changing who gets paid is not a thing to infer.
+ */
+const SAME_PHRASES = ["same", "the same", "same amount", "same size", "again"];
+
+export function parseFollowUp(
+  text: string,
+  tokens: IToken[],
+  last: Command,
+): ParseResult {
+  const raw = text.trim();
+  if (!raw) return { status: "unknown" };
+
+  const lower = raw.toLowerCase();
+  /* The same sentences parseCommand refuses. A follow-up must not be the way a
+     recurring buy or a delegation grant gets built after all. */
+  if (MODEL_ONLY.test(lower)) return { status: "unknown" };
+
+  const words = normalise(raw);
+  if (detectVerb(words, { hasRef: detectRef(words) !== null })) {
+    return { status: "unknown" };
+  }
+
+  const draft = draftFromCommand(last);
+  if (!draft) return { status: "unknown" };
+
+  const next: Draft = { ...draft };
+  let named = false;
+
+  const amount = detectAmount(words);
+  if (amount) {
+    next.amount = amount.amount;
+    named = true;
+  } else if (SAME_PHRASES.some((s) => lower === s || lower.includes(s))) {
+    /* Rule 4: nothing to copy — the amount is already in the draft. This only
+       records that the sentence said something, so it is not refused as empty. */
+    named = true;
+  }
+
+  /*
+   * A destination this registry cannot name aborts the follow-up.
+   *
+   * The failure it prevents was silent and produced the WRONG TRADE: after
+   * "swap 10 USDC to USDT", the reply "now the same to USDR" resolved no token
+   * (USDR is on no chain here - the registry has USDe), so nothing was
+   * substituted while `same` still counted as naming something under rule 3,
+   * and the carry-over rebuilt the USDT swap. The user names one destination
+   * and is handed a plan for another, which is the one outcome this file's
+   * whole design is against. A token named after a directional preposition
+   * must therefore resolve, or the sentence is not a follow-up this grammar
+   * can read and the model gets it.
+   */
+  const DIRECTIONAL = new Set(["to", "into", "for", "from", "with", "using"]);
+  const mentions = findTokenMentions(words, tokens);
+  const covered = new Set(mentions.map((m) => m.index));
+  for (let w = 0; w < words.length - 1; w++) {
+    if (!DIRECTIONAL.has(words[w])) continue;
+    const target = w + 1;
+    if (covered.has(target)) continue;
+    /* A number after "for" is a duration or a size, not a token: "for 30". */
+    if (parseAmount(words[target]) !== null) continue;
+    return { status: "unknown" };
+  }
+  if (mentions.length > 0) {
+    named = true;
+    if (next.kind === "swap") {
+      /* Rule 2. The word before the token decides the side. */
+      const sideOf = (m: Mention): "in" | "out" | null => {
+        const before = words[m.index - 1];
+        if (before === "to" || before === "into" || before === "for") return "out";
+        if (before === "from" || before === "with" || before === "using") return "in";
+        return null;
+      };
+      if (mentions.length === 1) {
+        const side = sideOf(mentions[0]);
+        if (side === "in") next.tokenIn = mentions[0].token;
+        else next.tokenOut = mentions[0].token;
+      } else {
+        const ins = mentions.filter((m) => sideOf(m) === "in");
+        const outs = mentions.filter((m) => sideOf(m) === "out");
+        next.tokenIn = (ins[0] ?? mentions[0]).token;
+        next.tokenOut = (outs[0] ?? mentions[1]).token;
+      }
+    } else if ("tokenIn" in next || "tokenOut" in next) {
+      next.tokenIn = mentions[0].token;
+      if (mentions[1]) next.tokenOut = mentions[1].token;
+    } else {
+      next.token = mentions[0].token;
+    }
+  }
+
+  if (!named) return { status: "unknown" };
+  return completeDraft(next);
+}
+
+
 export function fillSlot(
   draft: Draft,
   missing: Slot,
