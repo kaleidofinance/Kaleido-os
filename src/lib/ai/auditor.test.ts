@@ -13,7 +13,6 @@
 
 import type { Pricer } from "./auditor";
 import type { LendingSide } from "../../constants/registry";
-import { stakingContracts } from "../../constants/registry";
 
 /*
  * The Diamond env var, fixed before the auditor is loaded.
@@ -126,7 +125,14 @@ async function load() {
   const { chainTokens } = await import("../../constants/tokens");
   const registry = await import("../../constants/registry");
   const { NATIVE_SENTINEL } = registry;
-  const { auditPlan, HARD_MAX_NOTIONAL_USD } = await import("./auditor");
+  const { auditPlan, HARD_MAX_NOTIONAL_USD, ALL_INTENT_KINDS } =
+    await import("./auditor");
+  /* Same reason as everything else in here: a static import of either would
+     evaluate before the DIAMOND assignment at the top of the file, and the
+     send-into-our-own-diamond case would then be checked against an address
+     the auditor never saw. Both were static for a while and the second one
+     turned that case red, which is how the rule got re-learned. */
+  const { stakingContracts } = registry;
   /* The bridge allowlists, read here for the same reason the registry is read
      rather than pasted: these are the tables the auditor itself consults, so an
      assertion against a hand-copied address would stop testing the pin the day
@@ -138,6 +144,8 @@ async function load() {
     NATIVE_SENTINEL,
     auditPlan,
     HARD_MAX_NOTIONAL_USD,
+    ALL_INTENT_KINDS,
+    stakingContracts,
     isKnownBridgeSpender,
   };
 }
@@ -149,6 +157,8 @@ async function main() {
     NATIVE_SENTINEL,
     auditPlan,
     HARD_MAX_NOTIONAL_USD,
+    ALL_INTENT_KINDS,
+    stakingContracts,
     isKnownBridgeSpender,
   } = await load();
 
@@ -1600,35 +1610,13 @@ async function main() {
    * ---------------------------------------------------------------------- */
 
   {
-    const KINDS = [
-      "approve",
-      "swap",
-      "stake",
-      "transfer",
-      "bridge",
-      "depositCollateral",
-      "withdrawCollateral",
-      "repayLoan",
-      "createLendingRequest",
-      "createLoanListing",
-      "borrowFromListing",
-      "fillRequest",
-      "closeListing",
-      "closeRequest",
-      "mintStable",
-      "redeemStable",
-      "lockStable",
-      "requestStableWithdrawal",
-      "completeStableWithdrawal",
-      "claimStableYield",
-      "compoundStableYield",
-      "collectPoolFees",
-      "decreasePoolLiquidity",
-      "grantAgentPermission",
-      "requestStakeWithdrawal",
-      "withdrawStake",
-      "cancelStakeWithdrawal",
-    ];
+    /* Derived, not written. This was a hand-kept array and it had already
+       fallen behind the union by three kinds - placeOrder, cancelOrder and
+       cancelAllOrders all shipped while this list still named 28. A list of
+       kinds is a second thing to keep in step with `IntentKind`, and nothing
+       makes anyone do it. ALL_INTENT_KINDS is the keys of AUDITORS, which tsc
+       will not let be incomplete, so a new kind arrives here on its own. */
+    const KINDS = ALL_INTENT_KINDS;
 
     const unruled: string[] = [];
     for (const kind of KINDS) {

@@ -986,7 +986,7 @@ type Auditor = (
  * The type is the fix, not another set: the reason to consult a second table was
  * to catch a kind with no rule, and a total record cannot have one.
  */
-const AUDITORS: Record<IntentKind, Auditor> = {
+export const AUDITORS: Record<IntentKind, Auditor> = {
   swap: (s, chainId, limits) => {
     const reasons: string[] = [];
     const tokenIn = str(s.tokenIn);
@@ -2551,6 +2551,20 @@ const AUDITORS: Record<IntentKind, Auditor> = {
     ],
   }),
 };
+
+/**
+ * Every intent kind, at runtime.
+ *
+ * `IntentKind` is a type and erases, so nothing can iterate it directly - which
+ * is how a hand-kept list of kinds drifts from the union without anything
+ * noticing. AUDITORS cannot drift: it is a total `Record<IntentKind, Auditor>`,
+ * so tsc refuses the file until every kind has an entry. Its keys are therefore
+ * the complete list, derived rather than restated.
+ *
+ * Exported for the checks that need to walk every kind - notably that each one
+ * has a RESOLVER, which no type enforces (see intents/registry.test.ts).
+ */
+export const ALL_INTENT_KINDS = Object.keys(AUDITORS) as IntentKind[];
 
 /* ---------------------------------------------------------------- audit -- */
 
