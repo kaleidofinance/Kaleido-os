@@ -75,9 +75,10 @@ console.log("\n— overlap resolves to the more specific topic —");
 console.log("\n— every topic is reachable and non-degenerate —");
 {
   let allReachable = true;
-  let noEmptyTriggers = true;
+  let reachable = true;
   for (const topic of FAQ_TOPICS) {
-    if (topic.triggers.length === 0) noEmptyTriggers = false;
+    if (topic.triggers.length === 0 && (topic.exact?.length ?? 0) === 0)
+      reachable = false;
     for (const trigger of topic.triggers) {
       if (matchFaq(trigger)?.id !== topic.id) {
         allReachable = false;
@@ -91,7 +92,12 @@ console.log("\n— every topic is reachable and non-degenerate —");
     "every trigger phrase actually resolves to its own topic",
     allReachable,
   );
-  check("no topic has an empty trigger list", noEmptyTriggers);
+  /* The property is REACHABILITY, and it grew a second mechanism. A topic with
+     no triggers used to be dead, so an empty list was the whole test. `exact`
+     now reaches a topic too - it is the only thing that can carry a greeting,
+     since trigger matching is `includes` and "hi" is inside "this". A topic
+     with neither is still dead, and that is what this asks. */
+  check("every topic is reachable by a trigger or an exact phrase", reachable);
 }
 
 console.log("\n— the questions a first-time tester actually asks —");

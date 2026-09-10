@@ -39,9 +39,21 @@ export type FaqFigure = "limits" | "healthFloor" | "slippage" | "credits";
 
 export interface FaqTopic {
   id: string;
-  /** Lowercase phrases. A longer trigger beats a shorter one on overlap, so
-   * "health factor" outranks a topic that only matched on "factor". */
+  /** Lowercase phrases, matched as SUBSTRINGS. A longer trigger beats a shorter
+   * one on overlap, so "health factor" outranks a topic that only matched on
+   * "factor". */
   triggers: string[];
+  /**
+   * Phrases matched against the WHOLE normalised message instead of anywhere
+   * inside it.
+   *
+   * Exists because a greeting cannot be a `trigger`. Matching is `includes`, so
+   * "hi" would fire on "t-h-i-s", "within" and "high", and a one-word topic
+   * would quietly capture a large share of every sentence typed at the agent.
+   * Whole-string matching makes short words safe: "hi" is a greeting, "is this
+   * safe" is not, and neither can be mistaken for the other.
+   */
+  exact?: string[];
   answer: string;
   /**
    * Frames rendered under the answer. Static facts only — the rollout order, a
@@ -399,6 +411,44 @@ export const FAQ_TOPICS: FaqTopic[] = [
   },
   {
     /*
+     * A greeting, which had been costing a reasoning request every time - and,
+     * when the model was down, getting "the reasoning service returned an error"
+     * back in reply to the word "hi". That is the worst first impression the
+     * product can make: the cheapest message a person can send, routed down the
+     * most expensive path available, and then not answered at all.
+     *
+     * `exact` rather than `triggers` because trigger matching is `includes`, and
+     * "hi" appears inside "this", "within" and "high". Whole-string matching is
+     * what makes a two-letter topic safe to have.
+     *
+     * Shorter than orientation on purpose. Someone who typed "hi" has not asked
+     * anything yet, so this offers the first move instead of reciting the
+     * product list at them.
+     */
+    id: "greeting",
+    triggers: [],
+    exact: [
+      "hi",
+      "hey",
+      "hello",
+      "yo",
+      "sup",
+      "gm",
+      "good morning",
+      "good afternoon",
+      "good evening",
+      "hiya",
+      "howdy",
+      "hi there",
+      "hey there",
+      "hello there",
+      "morning",
+    ],
+    answer:
+      "Hey. I'm Luca - tell me what you want to do in plain language and I'll build the transactions for you to check and sign. Nothing goes on chain without your signature. If you're not sure where to start: \"what can I do here\", \"what's my balance\", or just name a trade like \"swap 50 USDC for KLD\".",
+  },
+  {
+    /*
      * "Who are you", "what is this", "how do I start". Static, asked by everyone
      * once, and currently a reasoning request each time. The product line mirrors
      * the overview blurb in (marketing)/docs/docs.ts; the sequence is
@@ -607,8 +657,32 @@ export const FAQ_TOPICS: FaqTopic[] = [
   },
 ];
 
+/**
+ * The message reduced to the words that carry meaning.
+ *
+ * Punctuation and an address to Luca by name are both noise for an exact match:
+ * "hi", "hi!", "Hi Luca" and "hey luca :)" are one greeting, and a table that
+ * had to list all four spellings would miss the fifth.
+ */
+function normalise(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\b(luca|kaleido)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function matchFaq(text: string): FaqTopic | null {
   const t = text.toLowerCase();
+  const whole = normalise(text);
+
+  /* Exact before substring, and returning immediately: a whole-string match is
+     the strongest signal available here, so nothing longer should outrank it. */
+  for (const topic of FAQ_TOPICS) {
+    if (topic.exact?.includes(whole)) return topic;
+  }
+
   let best: { topic: FaqTopic; len: number } | null = null;
 
   for (const topic of FAQ_TOPICS) {
