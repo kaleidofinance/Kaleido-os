@@ -64,9 +64,18 @@ export function figureCards(
                waive; and the warn tone framed a legitimate preference as a
                weakened guardrail. It now names what PlanReview actually does
                with it, and a preference gets no tone. */
-            {
-              label: "Stop between plan steps",
-              value: settings.confirmEachStep ? "On" : "Off",
+            {
+              label: "Between plan steps",
+              /* The mode's own word. `agent` is reported as granted rather than
+                 as a pause setting, because it is not one - it is an on-chain
+                 mandate, and a row implying this panel switched it on would be
+                 claiming something only the contract can say. */
+              value:
+                settings.stepMode === "manual"
+                  ? "Stops after each"
+                  : settings.stepMode === "agent"
+                    ? "Delegated on chain"
+                    : "Runs through",
             },
           ],
         },

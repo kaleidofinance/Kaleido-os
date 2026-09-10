@@ -24,6 +24,9 @@ export type AgentAction =
   | "stake"
   | "provideLiquidity";
 
+/** See AgentSettings.stepMode. */
+export type StepMode = "manual" | "auto" | "agent";
+
 export interface AgentSettings {
   /** Max USD value Luca may propose for a single action. Mirrors the auditor gate. */
   maxPerAction: number;
@@ -36,19 +39,25 @@ export interface AgentSettings {
   /** Which products Luca may act in. */
   allowedActions: Record<AgentAction, boolean>;
   /**
-   * Stop between the steps of a plan Luca built, instead of running it through.
+   * How much the agent does between your signatures.
    *
-   * NOT a switch on signing. Every step is a separate wallet signature whichever
-   * way this sits — the wallet owns that prompt and the app cannot waive it, and
-   * a setting that appeared to would be the worst kind of guardrail. What it
-   * controls is PlanReview's own confirmation between steps: on, a four-step plan
-   * hands control back after each one, so it can be abandoned after the second
-   * with the first two settled; off, the wallet prompts arrive back to back.
+   * Replaced a `confirmEachStep` boolean, which was too blunt in one direction
+   * and misleading in the other. What it gates is THIS APP'S pause, never the
+   * wallet's prompt: every step is its own signature under all three modes, and
+   * that is not ours to switch off.
    *
-   * Read by the agent panel only. A swap's approve+swap is two steps of one thing
-   * the user just filled in a form for, and this setting is about the agent.
+   *   manual  Pause after every step. A four-step plan can be abandoned after
+   *           the second with the first two already settled.
+   *   auto    Run the plan through. The wallet still prompts per step, so
+   *           declining one is still how you stop - this removes an extra
+   *           click, not a checkpoint.
+   *   agent   The on-chain mandate acts without you, inside bounds you signed
+   *           (AgentPermissionFacet). NOT a preference this panel can grant:
+   *           selecting it opens the delegation flow, and it stays selected
+   *           only while a mandate exists. Lending actions only - swaps,
+   *           liquidity, staking and minting have no bit and never will.
    */
-  confirmEachStep: boolean;
+  stepMode: StepMode;
   /**
    * Preferred model id, or undefined to let the server choose.
    *
@@ -73,7 +82,10 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     stake: true,
     provideLiquidity: false,
   },
-  confirmEachStep: true,
+  /* Auto, where the boolean defaulted to pausing. The pause was an app-level
+     click on top of a wallet prompt that already asks, and testers reported the
+     agent as slow. Declining the next prompt is still how a plan is stopped. */
+  stepMode: "auto",
 };
 
 /** Clears the stored preference back to "let the server choose". */
@@ -93,12 +105,25 @@ export function useAgentSettings(address?: string) {
       const raw = localStorage.getItem(key(address));
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<AgentSettings>;
+        /*
+         * A stored `confirmEachStep` predates stepMode and must not be dropped:
+         * someone who deliberately asked to stop between steps would silently
+         * be moved to auto by the new default, which is the one direction this
+         * migration must not go. Only honoured when stepMode is absent, so it
+         * cannot override a mode the user has since chosen, and `agent` is
+         * never inferred - that one requires an on-chain grant.
+         */
+        const legacy = (parsed as { confirmEachStep?: boolean }).confirmEachStep;
+        const migrated: Partial<AgentSettings> =
+          parsed.stepMode === undefined && typeof legacy === "boolean"
+            ? { ...parsed, stepMode: legacy ? "manual" : "auto" }
+            : parsed;
         setSettings({
           ...DEFAULT_AGENT_SETTINGS,
-          ...parsed,
+          ...migrated,
           allowedActions: {
             ...DEFAULT_AGENT_SETTINGS.allowedActions,
-            ...(parsed.allowedActions ?? {}),
+            ...(migrated.allowedActions ?? {}),
           },
         });
       } else {

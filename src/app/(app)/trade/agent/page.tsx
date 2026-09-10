@@ -1442,8 +1442,14 @@ export default function AgentPage() {
               submitLabel="Sign & run"
               /* The one caller that passes it, because the setting is on the
                  agent: this is a plan the user is reading for the first time,
-                 not a form they just filled in. */
-              confirmEachStep={settings.confirmEachStep}
+                 not a form they just filled in.
+
+                 `agent` maps to `auto` here rather than being passed through.
+                 That mode is the on-chain mandate, which executes against the
+                 contract without producing a plan for anyone to review - so if
+                 a plan IS on screen under it, the user is signing this one
+                 themselves and has asked not to be stopped between steps. */
+              stepMode={settings.stepMode === "manual" ? "manual" : "auto"}
               onComplete={onComplete}
               onCancel={() => setPanel({ kind: "idle" })}
             />
