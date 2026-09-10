@@ -42,6 +42,15 @@ if (!ethers.isAddress(token ?? "")) throw new Error("Pass a token address");
 const RPC =
   process.env[`RPC_URL_${chain.id}`] ||
   `https://${chain.id}.rpc.thirdweb.com/${process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_KEY ?? ""}`;
+/* Both are per-chain and both are overridable, because neither is a property
+   of this script. LOOKBACK is measured in BLOCKS while the thing being covered
+   is a number of DAYS, so a window that reaches back a fortnight on Sepolia
+   (12s blocks) covers three days on Base (2s) - the first Base scan came up
+   594,203 KLD short for exactly that reason, and the totals check caught it.
+   SPAN is what one endpoint will answer in a single getLogs; thirdweb caps
+   Base at 1,000 while base.org and publicnode serve 10,000, which is 70
+   requests instead of 700. */
+const SPAN_OVERRIDE = process.env.SPAN ? Number(process.env.SPAN) : null;
 const LOOKBACK = BigInt(process.env.LOOKBACK ?? 150_000);
 
 const TRANSFER = ethers.id("Transfer(address,address,uint256)");
@@ -77,8 +86,8 @@ async function main() {
   console.log(`scanning ${head - from} blocks from ${from}\n`);
 
   const seen = new Set();
-  for (let start = from; start <= head; start += BigInt(chain.span)) {
-    const end = start + BigInt(chain.span) - 1n > head ? head : start + BigInt(chain.span) - 1n;
+  for (let start = from; start <= head; start += BigInt((SPAN_OVERRIDE ?? chain.span))) {
+    const end = start + BigInt((SPAN_OVERRIDE ?? chain.span)) - 1n > head ? head : start + BigInt((SPAN_OVERRIDE ?? chain.span)) - 1n;
     const logs = await rpc("eth_getLogs", [
       {
         address: token,
