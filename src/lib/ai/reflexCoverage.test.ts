@@ -22,6 +22,7 @@
 // a whole topic, or a chip falling through to the model, fails immediately. The
 // section at the foot is where the exact routing is pinned.
 import { matchFaq, isQuestionShaped } from "./faq.ts";
+import { MIN_ASK_SIMILARITY, searchDocs } from "./docsSearch";
 import { parseCommand } from "../v2/intents/fromCommand.ts";
 import { chainTokens } from "../../constants/tokens.ts";
 
@@ -47,12 +48,20 @@ function route(text) {
   if (isQuestionShaped(text)) {
     const faq = matchFaq(text);
     if (faq) return `faq:${faq.id}`;
+    /* Mirrors the page: a question with an exact docs ask is a question
+       about the action, checked before the grammar can read its verb. */
+    const exact = searchDocs(text);
+    if (exact && exact.via === "ask" && exact.score >= MIN_ASK_SIMILARITY && (exact.shared ?? 0) >= 2) return `docs:${exact.slug}`;
   }
   const parsed = parseCommand(text, VOCAB);
   if (parsed.status === "ok") return `command:${parsed.command.kind}`;
   if (parsed.status === "incomplete") return `asks:${parsed.missing}`;
   const faq = matchFaq(text);
-  return faq ? `faq:${faq.id}` : null;
+  if (faq) return `faq:${faq.id}`;
+  /* Third net, in the page's order: only what the FAQ and the grammar both
+     declined. A docs hit is local and cited; null is the model. */
+  const doc = searchDocs(text);
+  return doc ? `docs:${doc.slug}` : null;
 }
 
 // The seven chips the empty state offers. A miss here is a defect, not a gap:
@@ -172,6 +181,32 @@ const QUESTIONS = [
   // the invite email and the docs, not in a topic here.
   "how do I get the access code",
   "my access code doesn't work",
+  /* Written from three registers - first-timer, DeFi-native, large holder -
+     after the docs net landed. Every one of these used to reach the model.
+     They are here so the docs net is measured on questions the FAQ never
+     learned, not only on the ones it did. */
+  "how do fees work on swaps",
+  "is there a fee to unstake",
+  "what is the unstaking cooldown",
+  "how do i get my kld back",
+  "why has my stkld not grown",
+  "what is the difference between kfusd and kafusd",
+  "does unlocking kafusd give me usdc back",
+  "how is the liquidation penalty split",
+  "how much can i borrow against my collateral",
+  "is the lending rate apr or apy",
+  "can i repay part of my loan",
+  "what happens when my lp position goes out of range",
+  "why did my range snap to different prices",
+  "do lp fees compound",
+  "which fee tier does the swap page use",
+  "why does the agent get a better price than the page",
+  "can the agent swap without me",
+  "how do i revoke the agent",
+  "what oracle do you use",
+  "how much kld unlocks at tge",
+  "is kld a governance token",
+  "when is the exchange listing",
 ];
 
 console.log("\n— every suggestion chip is answered locally —");
@@ -258,6 +293,12 @@ console.log("\n— and the right net answers it —");
     "hey luca": "faq:greeting",
     "gm": "faq:greeting",
     "how do fees work": "faq:fees",
+    "what is the unstaking cooldown": "faq:staking",
+    "how do i get my kld back": "docs:stake",
+    "how is the liquidation penalty split": "faq:health-factor",
+    "can the agent swap without me": "docs:delegation",
+    "what oracle do you use": "docs:architecture",
+    "how much kld unlocks at tge": "docs:token",
     "how do I unstake": "faq:staking",
     "can I lose money": "faq:mainnet",
     // Still a transaction, and still the grammar's.

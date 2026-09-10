@@ -36,6 +36,7 @@ import { renderIntent } from "@/lib/v2/intents";
 import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
 import { portfolioAnswer } from "@/lib/v2/cards/portfolio";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
+import { docsReply, groundingFor, MIN_ASK_SIMILARITY, outageReply, searchDocs } from "@/lib/ai/docsSearch";
 import { visibleProse } from "@/lib/ai/actionsBlock";
 import {
   parseCommand,
@@ -599,6 +600,20 @@ export default function AgentPage() {
     let live: { text: string; open: boolean } | null = null;
 
     try {
+      /* Which net answered, recorded after the fact and never awaited. The
+         local nets were all written from a corpus we imagined; this is how the
+         next topic gets chosen from what people actually typed. keepalive so a
+         navigation does not cancel it; the catch so a logging failure cannot
+         become a visible one. See supabase/migrations/20260910000000. */
+      const log = (route: string) => {
+        void fetch("/api/agent/log", {
+          method: "POST",
+          keepalive: true,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: content, route, chainId, address }),
+        }).catch(() => {});
+      };
+
       // Local-first. A stated command is not a reasoning problem, and routing it
       // through a provider costs a credit, adds latency, and introduces the one
       // failure mode a grammar can't have: a confidently wrong number.
@@ -611,6 +626,7 @@ export default function AgentPage() {
         );
         if (filled.status !== "unknown") {
           note("Took this as the answer to what I asked");
+          log(`asks:${pending.missing}`);
           await planLocally(filled, abort.signal);
           return;
         }
@@ -628,6 +644,7 @@ export default function AgentPage() {
         const faq = matchFaq(text);
         if (!faq) return false;
         note("Matched a question I already know the answer to");
+        log(`faq:${faq.id}`);
         /*
          * The answer, plus its frames. Static cards come from the topic; a
          * `figure` is filled here because faq.ts is a lib and these values —
@@ -658,14 +675,55 @@ export default function AgentPage() {
       const question = isQuestionShaped(content);
       if (question && answerFromFaq(content)) return;
 
+      /* A question that contains a verb. "do lp fees compound" parses as a
+         compoundYield command and "can i repay part of my loan" as a repay -
+         each a question answered with a transaction, the exact failure the
+         FAQ-first ordering exists to prevent, reaching the grammar because
+         the FAQ had no topic for it. So between the FAQ and the grammar, a
+         question-shaped sentence gets one more chance: if the docs bank has
+         an ask that says the same thing, it is a question about the action,
+         not the action. Question-shaped only, so no imperative can be
+         diverted, and two shared content words at least, so a passing word
+         cannot: "do I have any KLD" shares "kld" with "what is kld" and is a
+         balance question, which the grammar reads as a portfolio read. "how do I
+         add liquidity" still opens the form - decided on purpose, and the
+         bank deliberately carries no ask for it. */
+      if (question) {
+        const exact = searchDocs(content);
+        if (exact && exact.via === "ask" && exact.score >= MIN_ASK_SIMILARITY && (exact.shared ?? 0) >= 2) {
+          note("Read this as a question about the action, not the action");
+          log(`docs:${exact.slug}`);
+          const reply = docsReply(exact);
+          say(reply.text, { via: "local", link: reply.link });
+          return;
+        }
+      }
+
       const parsed = parseCommand(content, vocabulary);
       if (parsed.status !== "unknown") {
         note("Read it as a direct command — no reasoning request needed");
+        log(parsed.status === "ok" ? `command:${parsed.command.kind}` : `asks:${parsed.missing}`);
         await planLocally(parsed, abort.signal);
         return;
       }
 
       if (!question && answerFromFaq(content)) return;
+
+      /* Third local net: the docs. Only reached once the FAQ has had both its
+         chances and the grammar has declined the sentence, which is the
+         property that keeps "stake 100 KLD" from coming back as a paragraph
+         about staking. It quotes the section and links to it - never a
+         paraphrase, because a local answer that invents a detail is worse than
+         escalating. See src/lib/ai/docsSearch.ts. */
+      const hit = searchDocs(content);
+      if (hit) {
+        note("Found the section of the docs that answers this");
+        log(`docs:${hit.slug}`);
+        const reply = docsReply(hit);
+        say(reply.text, { via: "local", link: reply.link });
+        return;
+      }
+      log("model");
 
       /* Only genuine questions reach the model.
        *
@@ -691,6 +749,16 @@ export default function AgentPage() {
              with nothing to attach it to. Bounded and re-sanitised server-side
              (historyFromBody), since a client is sending it. */
           history: historyForModel(messages),
+          /* The two docs sections closest to the question, so the model can
+             answer from the protocol's own text instead of reconstructing it
+             from tool calls. Re-checked server-side like everything else that
+             arrives from a client. */
+          grounding: groundingFor(content, 2).map((g) => ({
+            title: g.title,
+            heading: g.heading,
+            href: g.href,
+            text: g.text,
+          })),
           // No fallback. The old `?? 11124` silently told the server every
           // disconnected user was on Abstract Testnet, so answers came back
           // confidently scoped to a chain the user wasn't on. Undefined is the
@@ -774,6 +842,15 @@ export default function AgentPage() {
           response: string,
           context: Record<string, unknown> | undefined,
         ) => {
+          /* The model could not answer. The old reply was the bare error -
+             "the reasoning service returned an error" - which tells the user
+             nothing about their question. Say what happened and give them the
+             closest thing the docs have, marked as such. */
+          if ((context as { status?: string } | undefined)?.status === "provider_error") {
+            const o = outageReply(content);
+            say(o.text, { via: "local", ...(o.link ? { link: o.link } : {}) });
+            return;
+          }
           const data = { response, context };
           const credit = (context as any)?.credits;
           if (credit && typeof credit.remaining === "number") {
