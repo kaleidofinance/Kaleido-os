@@ -96,7 +96,7 @@ const POSITION_MANAGER_ABI = [
  * quoter deployed, or none in chains.ts to dial, returns null here rather than
  * constructing a contract at `undefined`.
  */
-async function serverQuote(
+export async function serverQuote(
   chainId: number | undefined,
   req: QuoteRequest,
 ): Promise<string | null> {

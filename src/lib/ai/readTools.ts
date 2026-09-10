@@ -4,8 +4,19 @@ import { getContracts, resolveUserToken } from "@/constants/registry";
 import { getChainMeta } from "@/constants/chains";
 import { readOpenBook } from "@/lib/lending/book";
 import { MULTICALL3_ADDRESS, readContracts } from "@/lib/chain/multicall";
+import { readOpenOrders } from "@/lib/dex/orderStore";
+import {
+  describeDuration,
+  describeInterval,
+  nextFillAt,
+  pairLabelFor,
+  shortHash,
+  swapInputFor,
+} from "@/lib/dex/orders";
+import { retryRpc } from "@/lib/dex/rpcRetry";
 import protocolAbi from "@/abi/ProtocolFacet.json";
 import {
+  chainTokenByAddress,
   chainTokenBySymbol,
   chainTokens,
   symbolForAddress,
@@ -24,7 +35,7 @@ import {
   intermediateTokens,
   poolSide,
 } from "@/lib/dex/route";
-import { serverPathQuoter } from "./planDeps";
+import { serverPathQuoter, serverQuote } from "./planDeps";
 import { getBridgeQuote } from "./bridgeQuotes";
 
 /**
@@ -787,12 +798,236 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
  * `LENDING_CHAIN_ID` because the mirror tables it read carry no chain column; it
  * reads the caller's own diamond now and takes the chain like the rest.
  */
+/**
+ * One fragment, because one value is read.
+ *
+ * One value is read, so one fragment is imported rather than the artifact, and
+ * a single `view returns (uint16)` is stable ABI regardless. The width matters:
+ * it is a `uint16 public` in the contract
+ * (KaleidoOrders.sol:183), and an ABI fragment is what decodes the returned word.
+ * See `swapInputFor` in dex/orders.ts for what the value does.
+ */
+const ORDERS_FEE_ABI = ["function fillerFeeBps() external view returns (uint16)"];
+
+/**
+ * Resting limit orders and recurring buys, from our own store.
+ *
+ * The one read tool that queries no protocol contract, because there is nothing
+ * to query: a signed order is a signature until someone fills it, so KaleidoOrders
+ * holds only signatures' consequences and the book itself lives in Supabase.
+ *
+ * Two sources in one answer, and the split is worth being exact about because the
+ * model relays both. Everything about WHAT the order is — the amounts, the floor,
+ * the schedule, whether its start time has passed, whether its interval has
+ * elapsed since the last fill — comes from the stored row, which is the object the
+ * signature was computed over and therefore authoritative. Only `awayPct` is a
+ * live read, quoted off the pool. So a stale pool read makes one field vague; it
+ * cannot misdescribe the order.
+ *
+ * `hash` is in every row whether or not the rest of it could be described. It is
+ * the handle a cancel keys on, so an order in a token this registry cannot name
+ * still lists - a failed symbol lookup drops the amounts and keeps the order,
+ * because a cancel names no amount.
+ *
+ * No cancel TOOL exists yet, though: the `cancelOrder`/`cancelAllOrders` intents
+ * shipped with the limit page but nothing maps a model's call onto them. Until
+ * that lands this tool is read-only and its note says so rather than offering
+ * something the agent cannot do.
+ */
+async function getOrders(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+
+  const chainName = getChainMeta(chainId)?.name ?? `chain ${chainId}`;
+
+  /* Answered by name rather than by an empty list, because the two mean opposite
+     things to the next turn: no contract here means the user cannot place one
+     either, while an empty list on a live chain is an invitation to place one. */
+  if (!getContracts(chainId).orders) {
+    return {
+      chainId,
+      chain: chainName,
+      orders: [],
+      note: `Limit orders and recurring buys aren't live on ${chainName} yet, so this wallet cannot have any resting here. Say that rather than reporting an empty list, and do not offer to place one on this chain.`,
+    };
+  }
+
+  let rows;
+  try {
+    rows = await readOpenOrders(address, chainId);
+  } catch {
+    /* Never an empty list. "You have no resting orders" would invite placing a
+       duplicate of one that is already out there and fillable. */
+    return {
+      error:
+        `Couldn't read the order book, so it is unknown whether this wallet has ` +
+        `resting orders on ${chainName}. Do NOT say there are none, and do not ` +
+        `place a new order until this has been read — it could duplicate one ` +
+        `that is already resting.`,
+    };
+  }
+
+  /*
+   * The filler's cut, read once for the whole batch rather than per row.
+   *
+   * It is zero today and capped at 1%, but it has to be read rather than assumed
+   * because it changes the input the pool is quoted on: a filler swaps
+   * `amountIn` minus the fee, so quoting the full amount overstates the output
+   * and makes every order look closer to filling than it is. Defaulting to 0 on a
+   * failed read leaves the quote optimistic by at most the fee, which is the
+   * right direction for a value that is currently exactly that.
+   */
+  let feeBps = 0;
+  try {
+    const provider = providerForChain(chainId);
+    if (provider) {
+      const c = new ethers.Contract(
+        getContracts(chainId).orders as string,
+        ORDERS_FEE_ABI,
+        provider,
+      );
+      feeBps = Number(await retryRpc(() => c.fillerFeeBps()));
+    }
+  } catch {
+    /* Left at 0. See above. */
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+
+  const orders = await Promise.all(
+    rows.map(async (row) => {
+      const o = row.order;
+      const tin = chainTokenByAddress(chainId, o.tokenIn);
+      const tout = chainTokenByAddress(chainId, o.tokenOut);
+
+      /* Derived from the row, not from the chain: every one of these values is
+         inside the signature, so the stored copy cannot be stale relative to what
+         the contract will enforce. */
+      const fillsLeft = Math.max(0, o.maxFills - row.fills);
+      /*
+       * Three answers, because `nextFillAt` has three — and each one is a different
+       * sentence rather than a different number. A future timestamp is a wait the
+       * user can be told the length of; 0 is an order whose rounds are spent and is
+       * only here because the keeper has not reconciled the row yet; null is a row
+       * whose last fill has no recorded time, and the only honest thing to say about
+       * that is that we cannot time it. See dex/orders.ts for why none of the three
+       * collapses into another.
+       */
+      const next = nextFillAt(row);
+      const timing =
+        next === null
+          ? "unknown — the book has recorded fills for this order but not when the last one happened, so its next fill can't be timed"
+          : next === 0
+            ? "no — it has used all its fills already"
+            : next > now
+              ? row.fills > 0
+                ? `not yet — its next fill can't happen for another ${describeDuration(next - now)}`
+                : `not yet — it doesn't start for another ${describeDuration(next - now)}`
+              : "yes — its terms allow a fill now, so only the price decides";
+
+      const base: Json = {
+        hash: row.hash,
+        /* Both forms. The full digest is what `cancel` needs; the short one is
+           what a model should put in front of the user, and offering only the
+           full one produced sentences with 66 hex characters in them. */
+        shortHash: shortHash(row.hash),
+        pair: pairLabelFor(o, tin?.symbol, tout?.symbol),
+        kind: o.maxFills > 1 ? "recurring buy" : "limit order",
+        ...(o.maxFills > 1
+          ? { every: describeInterval(o.interval), fillsDone: row.fills, fillsLeft }
+          : {}),
+        expiresIn: describeDuration(Math.max(0, o.expiry - now)),
+        /* Unconditional, and phrased as an answer rather than as a flag. An absent
+           key would leave "the terms permit a fill now" to be inferred from the
+           absence of a wait, and a model that missed the inference would report a
+           resting order as though nothing had been said about its schedule. */
+        eligibleForAFillNow: timing,
+      };
+
+      /* Amounts need declared decimals, and a token this registry cannot name has
+         none to declare. The order still lists — it can still be cancelled, and a
+         cancel names no amount — but nothing here will guess a scale. */
+      if (!tin || !tout) {
+        return {
+          ...base,
+          note: `Amounts unavailable: this order is in a token Kaleido has no declared decimals for, so its size and floor cannot be stated accurately. It can still be cancelled by hash.`,
+        };
+      }
+
+      const amountIn = ethers.formatUnits(o.amountIn, tin.decimals);
+      const minOut = ethers.formatUnits(o.minOut, tout.decimals);
+
+      /*
+       * How far the pool is from the floor, in percent, and the sign is the whole
+       * answer: at or below zero the order can fill on the next keeper pass, above
+       * zero it waits. Every tier at once for the reason build.ts gives — a pair
+       * whose pool is at the last tier would otherwise read as unpriceable.
+       */
+      const swapIn = ethers.formatUnits(
+        swapInputFor(BigInt(o.amountIn), feeBps),
+        tin.decimals,
+      );
+      const quotes = await Promise.all(
+        FEE_TIERS.map((fee) =>
+          serverQuote(chainId, {
+            tokenIn: o.tokenIn,
+            tokenOut: o.tokenOut,
+            amountIn: swapIn,
+            fee,
+            decimalsIn: tin.decimals,
+            decimalsOut: tout.decimals,
+          }).catch(() => null),
+        ),
+      );
+      let market: number | null = null;
+      for (const q of quotes) {
+        const n = Number(q);
+        if (q && Number.isFinite(n) && n > 0 && (market === null || n > market))
+          market = n;
+      }
+      const floorNum = Number(minOut);
+      const awayPct =
+        market !== null && floorNum > 0
+          ? Number((((floorNum - market) / market) * 100).toFixed(2))
+          : null;
+
+      return {
+        ...base,
+        sells: `${amountIn} ${tin.symbol}${o.maxFills > 1 ? " per fill" : ""}`,
+        floor: `at least ${minOut} ${tout.symbol}${o.maxFills > 1 ? " per fill" : ""}`,
+        /* Null is "no pool to quote", never "at the market". A model told 0 would
+           report an order as ready to fill on a pair that cannot be traded. */
+        awayPct,
+        canFillOnPriceNow: awayPct === null ? null : awayPct <= 0,
+      };
+    }),
+  );
+
+  return {
+    chainId,
+    chain: chainName,
+    orders,
+    note:
+      (orders.length === 0
+        ? `This wallet has no resting orders on ${chainName}. `
+        : `${orders.length} resting on ${chainName}. `) +
+      "These are signatures, not transactions: nothing has moved for any of them, and the wallet's balance is untouched until one fills. " +
+      "A fill needs two things at once, so do not report either one alone as 'about to fill': `eligibleForAFillNow` is whether the order's own terms permit a fill this second, and `awayPct` is how far its floor sits above the pool's live price — 0 or below means the price is there. A null awayPct means the pair has no pool to quote, which is not the same as ready. " +
+      "Never say an order will fill: the floor guarantees the price it fills at, not that anyone fills it, and an order can rest until it expires. " +
+      "Everything except awayPct comes from the signed order itself. " +
+      "Cancelling is not something you can do yet - there is no cancel tool - so do not offer to. " +
+      "Point the user at the Limit tab under Trade, where each resting order has its own cancel, and give them the shortHash so they can find the right one.",
+  };
+}
+
 const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
   {
     getQuote,
     getPortfolio,
     getBalances,
     getMarkets,
+    getOrders,
     getPrice,
     getChains,
     getBridgeRoute,
