@@ -318,7 +318,10 @@ console.log("\n— and the right net answers it —");
     "how is the liquidation penalty split": "faq:health-factor",
     "can the agent swap without me": "docs:delegation",
     "what oracle do you use": "docs:architecture",
-    "how much kld unlocks at tge": "docs:token",
+    /* The supply page is no longer published, so this reaches the model like
+       any other question we have not answered in writing. It sat here as
+       "docs:token" while that page was live. */
+    "how much kld unlocks at tge": null,
     "how do I unstake": "faq:staking",
     "can I lose money": "faq:mainnet",
     // Still a transaction, and still the grammar's.

@@ -16,7 +16,7 @@ import s from "../docs.module.css";
  * reader's IP. This content is markdown in our own repository, reviewed in pull
  * requests, so that threat is absent and an image in a document should render.
  *
- * (Thirteen of the fifteen published pages carry a figure, and they are SVGs from
+ * (Thirteen of the fourteen published pages carry a figure, and they are SVGs from
  * `public/docs-media/`. The `p` override below turns each one into a `<figure>`
  * with a caption; sanitize still has to allow the `img` it starts as.)
  *
