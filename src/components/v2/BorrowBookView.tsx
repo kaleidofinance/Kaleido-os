@@ -11,6 +11,7 @@ import { formatAddress } from "@/constants/utils/formatAddress";
 import { convertbasisPointsToPercentage } from "@/constants/utils/FormatInterestRate";
 import { getTimeUntil, getOverdue } from "@/constants/utils/formatOderDate";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
+import { useLenderPosition } from "@/hooks/v2/useLenderPosition";
 import { READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { describeLendingAsset, type LendingAsset } from "@/lib/lending/assets";
 import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
@@ -527,66 +528,10 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
   // Not on /lend: funding someone else's request doesn't touch your collateral.
   const showBorrowerPosition = isMine || isBorrow;
 
-  /*
-   * The lender's own numbers for /mylends.
-   *
-   * `usdValue` is shared because both figures price a base-unit amount the same
-   * way, and both were previously computed inline off `myListings`. The funded
-   * pair was dead: it filtered listings for status SERVICED, and a listing is
-   * only ever OPEN or CLOSED on-chain, so Funded and Outstanding always read
-   * 0 / $0.00 no matter how much the user had lent. A funded loan is a request
-   * row with `lender` set — see myFundedLoans in useDataFiltersPanel.
-   */
-  const usdValue = (tokenAddress: string, baseUnits: string | undefined) => {
-    try {
-      const amt =
-        Number(
-          ethers.formatUnits(
-            baseUnits ?? "0",
-            getTokenDecimals(READ_ONLY_CHAIN_ID, tokenAddress),
-          ),
-        ) || 0;
-      /*
-       * The native asset takes the native price, everything else takes the
-       * dollar one — and `etherPrice` is misnamed rather than ETH-specific: it is
-       * `getUsdValue(NATIVE_SENTINEL.lending, 1, 0)` off the diamond
-       * (useGetValueAndHealth.ts:545), so it is BNB's price on BSC and USDC's on
-       * Arc. Testing the sentinel is therefore correct on all five chains.
-       *
-       * It used to test `tokenImageMap[tokenAddress]?.label === "ETH"` against a
-       * flat table of Abstract addresses. After the address cutover that table
-       * matched nothing anywhere, so the branch was unreachable and EVERY row
-       * priced at `usdcPrice ?? 1` — a native-denominated listing valued at a
-       * dollar a token.
-       */
-      const price = isNativeSentinel(tokenAddress, "lending")
-        ? Number(filters?.etherPrice ?? 0)
-        : Number(filters?.usdcPrice ?? 1);
-      return amt * price;
-    } catch {
-      return 0;
-    }
-  };
-
-  // The borrow cursor asks for status OPEN, so this is the value still on offer
-  // rather than everything ever posted — labelled accordingly below.
-  const openValueUsd = myListings.reduce(
-    (sum, li) => sum + usdValue(li.tokenAddress, li.amount),
-    0,
-  );
-  const myOpenCount = myListings.length;
-
-  const myFundedLoans = (filters?.myFundedLoans ?? []) as unknown as Row[];
-  const funded = myFundedLoans.filter(
-    (r) => String(r.status).toUpperCase() === "SERVICED",
-  );
-  const fundedCount = funded.length;
-  // What the borrowers owe back, so principal plus interest — `amount` alone
-  // understates a lender's position by exactly the interest they are lending at.
-  const outstandingUsd = funded.reduce(
-    (sum, r) => sum + usdValue(r.tokenAddress, r.totalRepayment ?? r.amount),
-    0,
-  );
+  /* One computation, shared with the header strip on /mylends - see
+     hooks/v2/useLenderPosition.ts for why it is not inline any more. */
+  const { openValueUsd, myOpenCount, fundedCount, outstandingUsd } =
+    useLenderPosition(filters);
 
   const asDays = (ts: number) => Math.max(0, Math.round((ts - nowSec) / 86400));
   const termLabel =
