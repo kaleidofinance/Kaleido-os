@@ -202,3 +202,51 @@ export function mergeCandles(stored: Candle[], fresh: Candle[]): Candle[] {
   for (const c of fresh) byT.set(c.t, c);
   return [...byT.values()].sort((a, b) => a.t - b.t);
 }
+
+/**
+ * Rolls base candles up into a coarser interval.
+ *
+ * This is what lets only the 15m base be stored. OHLC composes: an hour's open
+ * is its first base candle's open, its close the last's close, its high and low
+ * the extremes across them, and its `n` the sum — identical to an hour computed
+ * from the swaps directly, because open and close are the earliest and latest
+ * prices either way. So the store keeps one granularity and the chart asks for
+ * any coarser one without a second pass over swaps.
+ *
+ * The base is assumed to divide the target, which every offered interval does
+ * (15m into 1h, 4h, 1d). A target equal to or finer than the base returns the
+ * base sorted, since there is nothing to combine.
+ *
+ * Gaps stay gaps here too: an hour with two of its four 15m candles present
+ * produces one candle spanning what traded, not four with two invented. `n`
+ * therefore counts real swaps, and a reader can still tell a thin hour from a
+ * full one.
+ */
+export function aggregateCandles(base: Candle[], target: Interval): Candle[] {
+  const width = INTERVALS[target];
+  const byBucket = new Map<number, Candle[]>();
+
+  for (const c of base) {
+    const t = Math.floor(c.t / width) * width;
+    const group = byBucket.get(t);
+    if (group) group.push(c);
+    else byBucket.set(t, [c]);
+  }
+
+  const out: Candle[] = [];
+  for (const [t, group] of byBucket) {
+    /* Sorted so open and close come from the ends, not from insertion order —
+       the same reason candlesFrom sorts before folding. */
+    group.sort((a, b) => a.t - b.t);
+    out.push({
+      t,
+      o: group[0].o,
+      c: group[group.length - 1].c,
+      h: Math.max(...group.map((g) => g.h)),
+      l: Math.min(...group.map((g) => g.l)),
+      n: group.reduce((sum, g) => sum + g.n, 0),
+    });
+  }
+
+  return out.sort((a, b) => a.t - b.t);
+}

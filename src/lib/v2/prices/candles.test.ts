@@ -20,12 +20,14 @@
 //      scan can replay a page. Neither may double-count.
 
 import {
+  aggregateCandles,
   bucketStart,
   candlesFrom,
   INTERVALS,
   isInterval,
   mergeCandles,
   priceFromTick,
+  type Candle,
   type PoolShape,
   type SwapTick,
 } from "./candles.ts";
@@ -205,6 +207,64 @@ console.log("\n— scanning the same swap twice must not double it —");
   check("re-folding the open bucket replaces it", merged.length === 1, String(merged.length));
   check("and carries the newer close", near(merged[0].c, priceFromTick(2_000, BASE)!));
   check("merging is stable on an untouched bucket", mergeCandles(stored, []).length === 1);
+}
+
+console.log("\n— rolling 15m up is the same as computing the hour from swaps —");
+{
+  /* The property that lets only the 15m base be stored: aggregating the base
+     candles must equal candlesFrom at the coarser interval, or the chart's 1h
+     would disagree with its own four 15m bars. Same swaps, both ways. */
+  const swaps: SwapTick[] = [];
+  for (let i = 0; i < 8; i++) {
+    swaps.push({
+      blockNumber: i + 1,
+      logIndex: 0,
+      timestamp: i * 900, // one swap per 15m bucket, across two hours
+      tick: 1_000 + i * 250,
+    });
+  }
+  const base = candlesFrom(swaps, "15m", BASE);
+  const direct = candlesFrom(swaps, "1h", BASE);
+  const rolled = aggregateCandles(base, "1h");
+
+  const sameCandle = (a: Candle, b: Candle) =>
+    a.t === b.t && near(a.o, b.o) && near(a.c, b.c) && near(a.h, b.h) && near(a.l, b.l) && a.n === b.n;
+
+  check("rollup produces the same bucket count", rolled.length === direct.length, `${rolled.length} vs ${direct.length}`);
+  check(
+    "and every rolled candle equals the direct one",
+    rolled.length === direct.length && rolled.every((r, i) => sameCandle(r, direct[i])),
+    JSON.stringify({ rolled, direct }),
+  );
+
+  /* Open is the first base open, close the last base close, n the sum. */
+  const [h1] = rolled;
+  check("the hour opens where the first 15m did", near(h1.o, base[0].o));
+  check("closes where the fourth 15m did", near(h1.c, base[3].c));
+  check("and sums the base counts", h1.n === base.slice(0, 4).reduce((s, c) => s + c.n, 0));
+}
+
+console.log("\n— a partial hour rolls up what traded, not what it lacked —");
+{
+  /* Two of four 15m present: one 1h candle spanning them, n counting only the
+     real swaps — a gap is not filled. */
+  const base = candlesFrom(
+    [
+      { blockNumber: 1, logIndex: 0, timestamp: 0, tick: 1_000 },
+      { blockNumber: 2, logIndex: 0, timestamp: 2_700, tick: 2_000 }, // 45m in
+    ],
+    "15m",
+    BASE,
+  );
+  const [hour] = aggregateCandles(base, "1h");
+  check("two sparse 15m make one 1h", aggregateCandles(base, "1h").length === 1);
+  check("its n is the real swaps only", hour.n === 2, String(hour.n));
+  check("open and close span the gap", near(hour.o, priceFromTick(1_000, BASE)!) && near(hour.c, priceFromTick(2_000, BASE)!));
+
+  /* A target at the base returns the base. */
+  const same = aggregateCandles(base, "15m");
+  check("aggregating to the base is a no-op", same.length === base.length);
+  check("empty in, empty out", aggregateCandles([], "1d").length === 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
