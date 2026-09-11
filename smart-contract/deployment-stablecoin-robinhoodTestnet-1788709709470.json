@@ -7,10 +7,18 @@
     "USDe": "0x5C95260eBD1dD21547528E73dc601d74B2793e0D",
     "kfUSD": "0xB43362e579a5076e99708e38C06DF5Bb591B2782",
     "kafUSD": "0xF28E455971593842275DB8ee949052e04b5Ed72A",
-    "YieldTreasury": "0x92a9d8179b414540B3a1f2a9218baF248CbD2894",
+    "YieldTreasury": "0xb054E57467f71E0DE9E7ECDB39D4556583Fcfae0",
     "USDC": "0xcf00f8609deECcE0a84E2A7b9D11210ac495938B"
   },
   "timestamps": {
     "deployed": "2026-09-06T15:48:29.470Z"
+  },
+  "treasuryMigration": {
+    "note": "YieldTreasury above is the POST-MIGRATION address. The original is under migratedFrom; its remaining kfUSD was moved across, and what its ledger claimed above its actual balance could not be.",
+    "migratedAt": "2026-09-11T20:24:54.189Z",
+    "record": "deployment-treasury-robinhoodTestnet.json",
+    "migratedFrom": "0x92a9d8179b414540B3a1f2a9218baF248CbD2894",
+    "reason": "userRewardDebt was never initialised when a holder acquired kafUSD, so every holder was entitled to yield that accrued before they arrived. claimYield subtracted it from the pool unguarded and underflowed, which reached users as PANIC 17 on the Claim button.",
+    "holdersCheckpointed": 4
   }
 }
