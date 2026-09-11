@@ -6,6 +6,7 @@ import { useStable } from "../StableContext";
 import { quoteAfterFee, trim } from "../quote";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
+import AssetSelect from "../AssetSelect";
 import f from "../form.module.css";
 
 const COLLATERALS = ["USDC", "USDT", "USDe"] as const;
@@ -58,18 +59,6 @@ export default function MintPage() {
   return (
     <div className={f.card}>
       <div className={f.box}>
-        <div className={f.assets}>
-          {COLLATERALS.map((c) => (
-            <button
-              key={c}
-              className={`${f.assetChip} ${collateral === c ? f.assetChipOn : ""}`}
-              onClick={() => setCollateral(c)}
-            >
-              <TokenIcon symbol={c} size={16} />
-              {c}
-            </button>
-          ))}
-        </div>
         <div className={f.bl}>You deposit</div>
         <div className={f.amt}>
           <input
@@ -80,18 +69,15 @@ export default function MintPage() {
             placeholder="0"
             aria-label="Amount to deposit"
           />
-          <span className={f.pill}>
-            <span
-              className={`${f.tki} ${hasTokenIcon(collateral) ? f.tkiArt : ""}`}
-            >
-              <TokenIcon
-                symbol={collateral}
-                size={28}
-                fallback={collateral.slice(0, 3)}
-              />
-            </span>
-            {collateral}
-          </span>
+          <AssetSelect
+            value={collateral}
+            label="Deposit asset"
+            options={COLLATERALS.map((c) => ({
+              symbol: c,
+              balance: balances?.[c] ?? "0",
+            }))}
+            onChange={(sym) => setCollateral(sym as Collateral)}
+          />
         </div>
         <div className={f.sub}>
           <span />
