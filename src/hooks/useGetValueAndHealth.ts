@@ -1,5 +1,9 @@
 import { getKaleidoContract } from "@/config/contracts";
-import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import {
+  providerForChain,
+  readOnlyProvider,
+  READ_ONLY_CHAIN_ID,
+} from "@/config/provider";
 import { getContracts, NATIVE_SENTINEL } from "@/constants/registry";
 import { ethers } from "ethers";
 import { useCallback, useEffect, useState } from "react";
@@ -103,7 +107,12 @@ const USD_SCALE = 1e18;
  * Module-level because `getContracts` is a pure projection of a static table and
  * the read chain cannot change at runtime.
  */
-const LENDING = getContracts(READ_ONLY_CHAIN_ID);
+/* LENDING used to be pinned here to READ_ONLY_CHAIN_ID. It moved into the hook
+   body, keyed on the CONNECTED chain, when lending went multi-chain: the "Your
+   position" card shows collateral and the health factor for the chain the wallet
+   is on — where the user is acting and where the book's actions switch them — and
+   a health factor is per-deployment, so there is no single cross-chain number to
+   show. Disconnected falls back to the read chain for a browse view. */
 
 /*
  * Staking reads used to live here too, pinned to READ_ONLY_CHAIN_ID like LENDING
@@ -136,6 +145,13 @@ const useGetValueAndHealth = () => {
   const activeChain = useActiveWalletChain();
   const chainId = activeChain?.id;
 
+  /* The chain "Your position" reads. The wallet's when connected — collateral
+     and health are per-deployment, so the figures follow where you are acting —
+     falling back to the read chain when disconnected, for a browsable default. */
+  const readChain = chainId ?? READ_ONLY_CHAIN_ID;
+  const readProvider = providerForChain(readChain) ?? readOnlyProvider;
+  const LENDING = getContracts(readChain);
+
   // Set client-side mounting state
   useEffect(() => {
     setIsClient(true);
@@ -161,10 +177,7 @@ const useGetValueAndHealth = () => {
       });
 
       try {
-        const contract = getKaleidoContract(
-          readOnlyProvider,
-          READ_ONLY_CHAIN_ID,
-        );
+        const contract = getKaleidoContract(readProvider, readChain);
         /*
          * Two dead reads used to sit here, and one of them broke this whole
          * effect for every connected wallet.
@@ -453,10 +466,7 @@ const useGetValueAndHealth = () => {
         }
 
         try {
-          const contract = getKaleidoContract(
-            readOnlyProvider,
-            READ_ONLY_CHAIN_ID,
-          );
+          const contract = getKaleidoContract(readProvider, readChain);
           const refCount = await contract.getDownlinersCount(address);
           // console.log("Downliners count:", refCount)
           setTotalReferrals(Number(refCount));
@@ -601,7 +611,7 @@ const useGetValueAndHealth = () => {
     if (activeAccount && address && isClient) {
       fetchUserStatus();
     }
-  }, [address, activeAccount, isClient, refreshNonce]);
+  }, [address, activeAccount, isClient, refreshNonce, readChain]);
 
   // Bumping the nonce re-runs the fetch effect above. Consumers (useBorrowV2)
   // call this after a collateral deposit/withdraw so the position re-reads

@@ -1091,7 +1091,30 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
             </div>
           ) : showBorrowerPosition ? (
             <div className={s.card}>
-              <div className={s.cardTitle}>Your position</div>
+              {/* Names the chain, because the figures are for it alone. A health
+                  factor is per-deployment — you can be safe on one chain and
+                  liquidatable on another — so this card follows the connected
+                  chain rather than pretending there is one cross-chain number.
+                  The book above shows every chain; this is "here". */}
+              <div className={s.cardTitleRow}>
+                <span className={s.cardTitle}>Your position</span>
+                {activeChain && CHAINS_BY_ID[activeChain.id] && (
+                  <span className={s.chainTag}>
+                    <ChainIcon
+                      id={CHAINS_BY_ID[activeChain.id]?.iconId}
+                      size={12}
+                      variant="branded"
+                      fallback={
+                        <i
+                          className={s.chainDot}
+                          style={{ background: CHAINS_BY_ID[activeChain.id].color }}
+                        />
+                      }
+                    />
+                    {CHAINS_BY_ID[activeChain.id].shortName}
+                  </span>
+                )}
+              </div>
               <div className={s.posRow}>
                 <span className={s.cardBody}>Collateral</span>
                 <span className="tabular">
