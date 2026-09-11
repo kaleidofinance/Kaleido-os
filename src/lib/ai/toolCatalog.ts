@@ -479,6 +479,80 @@ export const TOOL_CATALOG: ToolSpec[] = [
     },
   },
 
+  /* ---- EXECUTE: resting orders ---------------------------------------- */
+  {
+    name: "placeLimitOrder",
+    kind: "execute",
+    /*
+     * The only execute tool whose output is a signature rather than a
+     * transaction, and the only one where a wrong argument cannot be undone.
+     *
+     * Every other verb here fails loudly when the model gets a number wrong: a
+     * swap with a bad amount reverts, or the auditor blocks it, or the user reads
+     * the review row and declines. A limit order with an inverted price signs
+     * cleanly, stores cleanly, and rests forever at a price nobody chose - the
+     * maker cannot take the signature back.
+     *
+     * So `basis` is required, alone among the optional-looking fields here. Left
+     * to a default it would be wrong about half the time on a field where wrong
+     * inverts the price by a factor of the price itself - 0.05 becomes 20. The
+     * backstop is the plan review, not this schema: buildIntents quotes the pool
+     * and says how far the floor sits from the live price, so an inverted basis
+     * reads as "39900% above the pool's current price" in the sentence the user
+     * approves.
+     *
+     * The GRAMMAR already places the sell-framed, absolutely-priced order with no
+     * model call. This tool exists for what the grammar declines: a BUY (the
+     * user names the output, so the model states the input and basis inPerOut), a
+     * RECURRING order (intervalDays + fills), and a RELATIVE price ("5% below
+     * market") - for which the model calls getPrice or getQuote first and passes
+     * the absolute number it computed.
+     */
+    description:
+      "Place a resting limit order, or a recurring buy that repeats on a schedule - the same object, separated by intervalDays. Nothing moves when placed: the user signs the order and it sits until the market reaches their price. `amount` is the tokenIn sold per fill; `price` is the rate the user named and `basis` says which way round. Selling 1000 KLD at 0.05 USDC each is price 0.05, basis outPerIn; the same order as 20 KLD per USDC is price 20, basis inPerOut. Both sides must be ERC20 - native ETH/BNB cannot be either side, so use the wrapped token. Never invent a price: if the user did not name one, ask; and call getPrice or getQuote first if they asked for something relative to the market, then pass the absolute price you computed.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        amount: {
+          type: "string",
+          description:
+            'Human amount of tokenIn sold, e.g. "1000" - never base units. For a recurring buy this is the amount PER FILL, not the total.',
+        },
+        tokenIn: symbol,
+        tokenOut: symbol,
+        price: {
+          type: "string",
+          description:
+            'The rate the user named, as a decimal string, e.g. "0.05". A string so a small price keeps every digit - never scientific notation.',
+        },
+        basis: {
+          type: "string",
+          enum: ["outPerIn", "inPerOut"],
+          description:
+            'Which way round `price` is stated. outPerIn: how much tokenOut for one tokenIn ("0.05 USDC each" when selling KLD). inPerOut: how much tokenIn for one tokenOut ("20 KLD per USDC"). Get this wrong and the order signs at the inverse price, so state the direction the user actually said rather than converting it yourself.',
+        },
+        expiresInDays: {
+          type: "number",
+          description:
+            "How long the order rests before it stops being fillable. Omit for a month. A year is the maximum, because the token allowance it needs stays granted for the whole time.",
+        },
+        intervalDays: {
+          type: "number",
+          description:
+            "Days between fills, for a recurring buy - 7 is weekly, 30 monthly. Omit or 0 for a one-time limit order.",
+        },
+        fills: {
+          type: "number",
+          description:
+            "How many times a recurring order may fill. Only with intervalDays. Omit for a single fill.",
+        },
+      },
+      required: ["amount", "tokenIn", "tokenOut", "price", "basis"],
+    },
+  },
+
+
   /* ---- EXECUTE: delegation ------------------------------------------- */
   {
     name: "grantAgentPermission",

@@ -959,10 +959,55 @@ export async function buildIntents(
        precision is not rounded before being multiplied. */
     const totalIn = ethers.formatUnits(amountInBase * BigInt(fills), tokenIn.decimals);
 
+    /* How far the floor sits from the pool right now, appended to the summary
+       the user reads before signing.
+
+       This is the real backstop against an inverted price, and it matters most
+       on the model path: a limit order needs no quote to be VALID, so nothing
+       forces the price to be sane - an inverted basis (0.05 read as 20) signs
+       cleanly, stores cleanly, and rests forever at a price nobody chose. The
+       auditor prices the floor in USD but treats a floor ABOVE input value as
+       the maker's gain, not a failure, so it does not block one - it just never
+       fills. The sentence the user approves is what catches it, which is why the
+       order quotes the market even though it does not need to.
+
+       Best-effort: a limit order on a pair with no pool is still a real order
+       (someone may seed the pool later), so a null quote drops the clause rather
+       than refusing the order. */
+    let distance = "";
+    try {
+      const sell = poolSide(chainId, tokenIn);
+      const buy = poolSide(chainId, tokenOut);
+      if (sell && buy && sell.token.address.toLowerCase() !== buy.token.address.toLowerCase()) {
+        const path = await findBestRoute(
+          chainId,
+          sell.token,
+          buy.token,
+          amount,
+          (tokens, fees, amountIn, decimalsIn, decimalsOut) =>
+            tokens.length === 2
+              ? deps.quote({ tokenIn: tokens[0], tokenOut: tokens[1], amountIn, fee: fees[0], decimalsIn, decimalsOut })
+              : deps.quotePath({ tokens, fees, amountIn, decimalsIn, decimalsOut }),
+        );
+        const market = path ? Number(path.amountOut) : 0;
+        const floor = Number(minOut);
+        if (market > 0 && floor > 0) {
+          const pct = ((floor - market) / market) * 100;
+          distance =
+            pct >= 0
+              ? ` That floor is about ${pct.toFixed(pct < 10 ? 1 : 0)}% above the pool's current price, so it rests until the market rises to meet it.`
+              : ` That floor is about ${Math.abs(pct).toFixed(Math.abs(pct) < 10 ? 1 : 0)}% below the pool's current price, so it could fill on the next keeper pass.`;
+        }
+      }
+    } catch {
+      /* A market comparison is a nicety, never a gate. If the quote throws, the
+         order is still valid and the summary simply omits the distance. */
+    }
+
     const recurring = fills > 1;
     const summary = recurring
-      ? `Set up a recurring buy: sell ${amount} ${tokenIn.symbol} for at least ${minOut} ${tokenOut.symbol} every ${everyDays} day${everyDays === 1 ? "" : "s"}, up to ${fills} times.`
-      : `Place a limit order: sell ${amount} ${tokenIn.symbol} for at least ${minOut} ${tokenOut.symbol}.`;
+      ? `Set up a recurring buy: sell ${amount} ${tokenIn.symbol} for at least ${minOut} ${tokenOut.symbol} every ${everyDays} day${everyDays === 1 ? "" : "s"}, up to ${fills} times.${distance}`
+      : `Place a limit order: sell ${amount} ${tokenIn.symbol} for at least ${minOut} ${tokenOut.symbol}.${distance}`;
 
     return {
       ok: true,

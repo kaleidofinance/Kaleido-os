@@ -548,6 +548,38 @@ export const GROUPS: readonly Group[] = [
       },
     ],
   },
+  {
+    title: "Resting orders",
+    tab: "Orders",
+    note: "Limit orders and recurring buys, signed once and filled by a keeper.",
+    href: "/trade/limit",
+    tools: [
+      {
+        name: "placeLimitOrder",
+        params: ["amount", "tokenIn", "tokenOut", "price", "basis"],
+        optional: ["expiresInDays", "intervalDays", "fills"],
+        /*
+         * A model turn (see MODEL_PATH in the test), because this tool exists for
+         * exactly what the grammar declines: a recurring buy, a buy that names the
+         * output, a price relative to the market. The sell-framed one-shot order
+         * IS grammar - "limit sell 500 KLD at 0.05 USDC" - and needs no model; the
+         * example here is the recurring buy that does.
+         */
+        prompt: "buy 50 USDC of KLD every week, four times",
+        reply:
+          "Signed once, not sent: an order that sells 50 USDC for KLD at your price every week, up to four times. Nothing moves until a fill lands, and the approval covers all four.",
+        example: {
+          amount: "50",
+          tokenIn: "USDC",
+          tokenOut: "KLD",
+          price: "0.04",
+          basis: "inPerOut",
+          intervalDays: 7,
+          fills: 4,
+        },
+      },
+    ],
+  },
 ];
 
 /**
