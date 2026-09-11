@@ -53,7 +53,7 @@ export default function LendingLayout({ children }: { children: ReactNode }) {
 function LendingShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const mode = modeFromPath(pathname);
-  const { filters, borrow } = useLendingData();
+  const { filters, borrow, collateral } = useLendingData();
   /* Only `stats` now. The whole state object was held as `market` so the strip's
      notes could ask it about `loading` and `degraded` — those notes are gone (see
      StatStrip), and with them the last reader of anything but the figures. */
@@ -63,7 +63,6 @@ function LendingShell({ children }: { children: ReactNode }) {
   const lender = useLenderPosition(filters);
   const [offerOpen, setOfferOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
-  const [collateralOpen, setCollateralOpen] = useState(false);
 
   const title = useMemo(() => {
     if (mode === "mylends") return "My Lends";
@@ -99,7 +98,7 @@ function LendingShell({ children }: { children: ReactNode }) {
             <div className={s.headActions}>
               <button
                 className={s.ghostBtn}
-                onClick={() => setCollateralOpen(true)}
+                onClick={() => collateral.setOpen(true)}
               >
                 Collateral
               </button>
@@ -208,10 +207,14 @@ function LendingShell({ children }: { children: ReactNode }) {
         onClose={() => setRequestOpen(false)}
         borrow={borrow}
         onDone={refresh}
+        onNeedCollateral={() => {
+          setRequestOpen(false);
+          collateral.setOpen(true);
+        }}
       />
       <CollateralModal
-        open={collateralOpen}
-        onClose={() => setCollateralOpen(false)}
+        open={collateral.open}
+        onClose={() => collateral.setOpen(false)}
         borrow={borrow}
         onDone={() => borrow.refreshPosition()}
       />

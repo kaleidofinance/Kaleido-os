@@ -616,11 +616,15 @@ export function PostRequestModal({
   onClose,
   borrow,
   onDone,
+  onNeedCollateral,
 }: {
   open: boolean;
   onClose: () => void;
   borrow: BorrowV2;
   onDone: () => void;
+  /** Open the Collateral (deposit) modal — a request with no collateral
+   *  behind it reverts Protocol__InsufficientCollateral, same as a take. */
+  onNeedCollateral?: () => void;
 }) {
   const [amount, setAmount] = useState("");
   const [apr, setApr] = useState("");
@@ -654,8 +658,19 @@ export function PostRequestModal({
       )
     : false;
 
+  const account = useActiveAccount();
+  /* Same rule as taking a listing: createLendingRequest reverts
+     Protocol__InsufficientCollateral with nothing posted. Only a fact once
+     connected and on a supported chain — collateralValueUsd follows the
+     connected chain, and while it is wrong the CTA is Switch. */
+  const noCollateral =
+    !!account && !gate.wrong && borrow.collateralValueUsd === 0;
   const ready =
-    !!asset && !collateralBlocked && Number(amount) > 0 && Number(apr) > 0;
+    !!asset &&
+    !collateralBlocked &&
+    !noCollateral &&
+    Number(amount) > 0 &&
+    Number(apr) > 0;
 
   const submit = async () => {
     if (!ready || !asset) return;
@@ -743,10 +758,11 @@ export function PostRequestModal({
           </span>
         </div>
       </div>
-      {borrow.collateralValueUsd === 0 && (
+      {noCollateral && (
         <div className={s.warn}>
-          You have no collateral deposited — the request will revert until you
-          add some.
+          You have no collateral deposited — a request reverts until you add
+          some. Post collateral first; you can then borrow up to 75% of its
+          value.
         </div>
       )}
       <LiquidationNote fees={borrow.fees} />
@@ -758,8 +774,18 @@ export function PostRequestModal({
           used to. */}
       <button
         className={s.cta}
-        disabled={gate.switching || busy || (!gate.wrong && !ready)}
-        onClick={gate.wrong ? gate.goToChain : submit}
+        disabled={
+          gate.switching ||
+          busy ||
+          (!gate.wrong && !ready && !(noCollateral && onNeedCollateral))
+        }
+        onClick={
+          gate.wrong
+            ? gate.goToChain
+            : noCollateral && onNeedCollateral
+              ? onNeedCollateral
+              : submit
+        }
       >
         {gate.switching
           ? "Switching…"
@@ -771,11 +797,15 @@ export function PostRequestModal({
                 ? "Reading assets…"
                 : !asset
                   ? "Nothing borrowable here"
-                  : collateralBlocked
-                    ? `${symbol} is your collateral`
-                    : ready
-                      ? "Post request"
-                      : "Enter an amount and rate"}
+                  : noCollateral
+                    ? onNeedCollateral
+                      ? "Deposit collateral to borrow"
+                      : "Deposit collateral first"
+                    : collateralBlocked
+                      ? `${symbol} is your collateral`
+                      : ready
+                        ? "Post request"
+                        : "Enter an amount and rate"}
       </button>
     </Shell>
   );
@@ -788,6 +818,7 @@ export function TakeLoanModal({
   borrow,
   listing,
   onDone,
+  onNeedCollateral,
 }: {
   open: boolean;
   onClose: () => void;
@@ -811,6 +842,9 @@ export function TakeLoanModal({
     asset: LendingAsset;
   } | null;
   onDone: () => void;
+  /** Open the Collateral (deposit) modal — the way out of a zero-
+   *  collateral book, where every take reverts Protocol__InsufficientCollateral. */
+  onNeedCollateral?: () => void;
 }) {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
@@ -818,6 +852,7 @@ export function TakeLoanModal({
      holds it, so the gate switches the wallet there rather than to a fixed
      lending chain. */
   const gate = useLendingChain(listing?.chainId);
+  const account = useActiveAccount();
 
   useEffect(() => {
     if (open) setAmount("");
@@ -836,7 +871,18 @@ export function TakeLoanModal({
   const collateralBlocked = borrow.collateral.some(
     (c) => c.address.toLowerCase() === listing.asset.address.toLowerCase(),
   );
-  const ready = n > 0 && !tooLow && !tooHigh && !collateralBlocked;
+  /* No collateral, no loan. requestLoanFromListing prices the borrow limit
+     at 75% of deposited collateral and reverts Protocol__InsufficientCollateral
+     when that is zero (ProtocolFacet.sol:957,996) — the "Failed to accept bid!"
+     a tester hit with a full wallet but nothing posted. collateralValueUsd
+     follows the connected chain, so this is only a fact once the wallet is on
+     the listing's chain; while it is not, the CTA is Switch and `ready` is not
+     consulted anyway. Gated on `account` because collateralValueUsd is 0 for a
+     disconnected wallet too, and that is a connect prompt, not a deposit one. */
+  const noCollateral =
+    !!account && !gate.wrong && borrow.collateralValueUsd === 0;
+  const ready =
+    n > 0 && !tooLow && !tooHigh && !collateralBlocked && !noCollateral;
 
   const submit = async () => {
     if (!ready) return;
@@ -914,6 +960,13 @@ export function TakeLoanModal({
           {symbol} collateral first, or take an offer in a different asset.
         </div>
       )}
+      {noCollateral && (
+        <div className={s.warn}>
+          Borrowing is collateralised — you have none deposited on {gate.target},
+          so the protocol has nothing to lend against and the loan reverts. Post
+          some collateral first; you can then borrow up to 75% of its value.
+        </div>
+      )}
 
       <div className={s.summary}>
         <div className={s.sRow}>
@@ -938,8 +991,18 @@ export function TakeLoanModal({
           used to. */}
       <button
         className={s.cta}
-        disabled={gate.switching || busy || (!gate.wrong && !ready)}
-        onClick={gate.wrong ? gate.goToChain : submit}
+        disabled={
+          gate.switching ||
+          busy ||
+          (!gate.wrong && !ready && !(noCollateral && onNeedCollateral))
+        }
+        onClick={
+          gate.wrong
+            ? gate.goToChain
+            : noCollateral && onNeedCollateral
+              ? onNeedCollateral
+              : submit
+        }
       >
         {gate.switching
           ? "Switching…"
@@ -947,11 +1010,15 @@ export function TakeLoanModal({
             ? `Switch to ${gate.target}`
             : busy
               ? "Borrowing…"
-              : collateralBlocked
-                ? `${symbol} is your collateral`
-                : ready
-                  ? `Borrow ${amount} ${symbol}`
-                  : "Enter an amount"}
+              : noCollateral
+                ? onNeedCollateral
+                  ? "Deposit collateral to borrow"
+                  : "Deposit collateral first"
+                : collateralBlocked
+                  ? `${symbol} is your collateral`
+                  : ready
+                    ? `Borrow ${amount} ${symbol}`
+                    : "Enter an amount"}
       </button>
     </Shell>
   );

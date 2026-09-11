@@ -209,7 +209,7 @@ function FeeCard({ fees, lender }: { fees: LendingFees; lender: boolean }) {
 }
 
 export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
-  const { filters, borrow } = useLendingData();
+  const { filters, borrow, collateral } = useLendingData();
   const { isConnected } = useWalletV2();
   const activeChain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
@@ -1299,6 +1299,13 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
         borrow={borrow}
         listing={takeTarget}
         onDone={onTakeDone}
+        /* No collateral, no loan: hand the borrower to the Collateral
+           modal (shared flag on the lending context) instead of a dead
+           Borrow button. Closing this one first keeps one modal on screen. */
+        onNeedCollateral={() => {
+          setTakeTarget(null);
+          collateral.setOpen(true);
+        }}
       />
 
       {filterOpen && (
