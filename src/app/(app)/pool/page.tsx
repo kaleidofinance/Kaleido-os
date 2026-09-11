@@ -253,19 +253,24 @@ export default function PoolsPage() {
                 </div>
                 <div>
                   <div className={s.pairName}>
-                    {p.token0.symbol} / {p.token1.symbol}
+                    <span>
+                      {p.token0.symbol} / {p.token1.symbol}
+                    </span>
+                    {/* Beside the pair name, not on the fee line below: the
+                        fee line wraps, so on a narrow row the tick used to drop
+                        under everything else. It is an identity mark on the
+                        pair, so it belongs with the pair's name. Only when it is
+                        true, and no counterpart when it is not — absence means no
+                        deployment record, covering a stranger's pool and one of
+                        ours whose record never got committed alike. See
+                        SeededTick. */}
+                    {p.seeded ? <SeededTick /> : null}
                   </div>
                   <div className={s.pairFee}>
                     <span>
                       {feeLabel(p.feeBps)} · {p.version.toUpperCase()}
                     </span>
                     <ChainTag chainId={p.chainId} />
-                    {/* Only when it is true, and no counterpart when it is
-                        not: absence here means no deployment record, which
-                        covers a stranger's pool and one of ours whose record
-                        never got committed alike. Label off -- this line
-                        already carries three text runs. See SeededTick. */}
-                    {p.seeded ? <SeededTick /> : null}
                   </div>
                 </div>
               </Link>
