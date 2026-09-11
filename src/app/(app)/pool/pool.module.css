@@ -816,6 +816,31 @@
   font-size: 11px;
   color: var(--k-t3);
 }
+/* Wallet balance under an add input, with a Max chip — mirrors the borrow
+   forms' balance row. The chip fills the box, and the paired box follows. */
+.addBal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.maxChip {
+  border: 0;
+  background: var(--k-glass-strong);
+  color: var(--k-t2);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--k-r-sm);
+}
+.maxChip:hover {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
+}
 
 .currentPrice {
   font-size: var(--k-fs-xs);
