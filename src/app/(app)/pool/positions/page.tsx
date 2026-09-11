@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
@@ -26,7 +26,9 @@ import {
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { getContracts } from "@/constants/registry";
-import { tickToPrice } from "@/constants/utils/v3Math";
+import { getV3AmountRatio, tickToPrice } from "@/constants/utils/v3Math";
+import { pairedAmount } from "@/lib/dex/deposit";
+import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import PairIcon from "../_components/PairIcon";
 import s from "../pool.module.css";
 
@@ -232,6 +234,51 @@ function PositionCard({
   const token1 = chainTokenByAddress(chainId, p.token1);
   const legs = token0 && token1 ? { token0, token1 } : null;
 
+  /* Both legs' wallet balances, so the form says how much you have and a Max
+     chip can fill it — the same thing the borrow forms show. Hooks run
+     unconditionally; a null token reads as no balance. */
+  const bal0 = useTokenBalance(legs?.token0 ?? null);
+  const bal1 = useTokenBalance(legs?.token1 ?? null);
+
+  /* token1 per token0 as THIS position's range consumes it, from the pool's
+     current price and the position's own bounds — which do not move, so the
+     ratio is fixed. Feeds pairedAmount, so typing one leg fills the other
+     instead of leaving it to the depositor. Null when there is no price to quote
+     against (an unread or pinned pool), which pairedAmount reads as "leave the
+     box editable". 0 / Infinity mean the range sits wholly on one side of the
+     market and only that leg is needed. */
+  const ratio = useMemo(() => {
+    const price = poolState?.price;
+    if (!legs || price == null || price <= 0) return null;
+    const lower = tickToPrice(p.tickLower, legs.token0.decimals, legs.token1.decimals);
+    const upper = tickToPrice(p.tickUpper, legs.token0.decimals, legs.token1.decimals);
+    return getV3AmountRatio(price, lower, upper, legs.token0.decimals, legs.token1.decimals);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legs, poolState?.price, p.tickLower, p.tickUpper]);
+
+  /* Type one side, the other follows. A range on one side of the market fills
+     only the leg it needs (pairedAmount empties the other), and with no ratio to
+     link by both boxes stay independently editable. */
+  const editAmount = (which: "0" | "1", raw: string) => {
+    const value = raw.replace(/[^0-9.]/g, "");
+    const other = pairedAmount({
+      value,
+      from: which,
+      ratio,
+      decimals: which === "0" ? (legs?.token1.decimals ?? 18) : (legs?.token0.decimals ?? 18),
+    });
+    if (which === "0") {
+      setAmount0(value);
+      if (ratio !== null) setAmount1(other);
+    } else {
+      setAmount1(value);
+      if (ratio !== null) setAmount0(other);
+    }
+  };
+
+  const fmtBal = (x: string) =>
+    Number(x).toLocaleString(undefined, { maximumFractionDigits: 4 });
+
   /* The LIVE uncollected figure, not the stale `tokensOwed` checkpoint on the
      NFT — see lib/dex/feeGrowth.ts. A position that has traded since its last
      touch has fees the checkpoint does not show, so gating Collect on the
@@ -248,8 +295,13 @@ function PositionCard({
     account !== undefined &&
     chain !== undefined &&
     v3PositionManager !== undefined &&
-    positive(amount0) &&
-    positive(amount1) &&
+    /* The range decides which legs are required: a one-sided range needs only
+       its own leg, an in-range position needs both (auto-filled above). */
+    (ratio === 0
+      ? positive(amount0)
+      : ratio === Infinity
+        ? positive(amount1)
+        : positive(amount0) && positive(amount1)) &&
     busy === null;
 
   const onCollect = async () => {
@@ -458,8 +510,24 @@ function PositionCard({
                 inputMode="decimal"
                 placeholder="0.0"
                 value={amount0}
-                onChange={(e) => setAmount0(e.target.value)}
+                onChange={(e) => editAmount("0", e.target.value)}
               />
+              {!bal0.loading && !bal0.unread && (
+                <div className={s.addBal}>
+                  <span>
+                    Balance: {fmtBal(bal0.balance)} {legs.token0.symbol}
+                  </span>
+                  {Number(bal0.balance) > 0 && (
+                    <button
+                      type="button"
+                      className={s.maxChip}
+                      onClick={() => editAmount("0", bal0.balance)}
+                    >
+                      Max
+                    </button>
+                  )}
+                </div>
+              )}
             </label>
             <label className={s.priceBox}>
               <div className={s.priceLabel}>{legs.token1.symbol}</div>
@@ -468,8 +536,24 @@ function PositionCard({
                 inputMode="decimal"
                 placeholder="0.0"
                 value={amount1}
-                onChange={(e) => setAmount1(e.target.value)}
+                onChange={(e) => editAmount("1", e.target.value)}
               />
+              {!bal1.loading && !bal1.unread && (
+                <div className={s.addBal}>
+                  <span>
+                    Balance: {fmtBal(bal1.balance)} {legs.token1.symbol}
+                  </span>
+                  {Number(bal1.balance) > 0 && (
+                    <button
+                      type="button"
+                      className={s.maxChip}
+                      onClick={() => editAmount("1", bal1.balance)}
+                    >
+                      Max
+                    </button>
+                  )}
+                </div>
+              )}
             </label>
           </div>
           {/* Both facts a reader needs and cannot see: nothing about the position
