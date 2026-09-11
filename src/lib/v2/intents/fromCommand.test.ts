@@ -1865,5 +1865,114 @@ console.log("\n— funding a borrower is filling their request —");
   check("the borrow verb is not shadowed", p("borrow 500 USDC at 8% for 30 days").status === "ok" && p("borrow 500 USDC at 8% for 30 days").command.kind === "borrow");
 }
 
+console.log("\n— a misspelled symbol is named back, not asked around —");
+{
+  /* A tester typed a symbol wrong and got "Which token do you want to spend?",
+     which is the parser asking a question it already knows the answer to. Worse,
+     the word it could not read was dropped from the sentence, and the token it
+     COULD read slid into the empty side: "swap 100 usdcc to KLD" was one answer
+     away from spending the KLD. Both halves are fixed here. */
+  const r = p("swap 100 usdcc to KLD");
+  check("a near miss asks by name", r.status === "incomplete" && r.prompt.includes("did you mean USDC"), r.status + " " + (r.prompt || ""));
+  check("it asks about the side the typo was on", r.status === "incomplete" && r.missing === "tokenIn", r.missing);
+  check("the token that was spelled right keeps its side", r.status === "incomplete" && r.draft.tokenOut?.symbol === "KLD" && !r.draft.tokenIn, JSON.stringify(r.draft));
+  check("the amount survives the question", r.status === "incomplete" && r.draft.amount === "100", r.draft?.amount);
+
+  /* And "yes" finishes it, locally. This is the whole saving: the sentence and
+     its confirmation both stay inside the grammar. */
+  const y = fillSlot(r.draft, r.missing, "yes", TOKENS);
+  check("yes completes the swap", y.status === "ok" && y.command.kind === "swap", y.status);
+  check("yes spends the suggested token", y.status === "ok" && y.command.tokenIn.symbol === "USDC", y.status === "ok" ? y.command.tokenIn.symbol : y.status);
+  check("yes does not invert the trade", y.status === "ok" && y.command.tokenOut.symbol === "KLD" && y.command.amount === "100");
+}
+
+console.log("\n— the shapes a symbol comes out in —");
+{
+  /* A transposition is one mistake, not two. Plain Levenshtein scores "udsc"
+     the same as a word sharing half its letters; this is why the distance has
+     the extra move. */
+  const t = p("swap 100 udsc to KLD");
+  check("a transposition is a near miss", t.status === "incomplete" && t.prompt.includes("did you mean USDC"), t.prompt || t.status);
+
+  /* A symbol broken by a space is the same mistake as one broken by a letter. */
+  const w = p("swap 100 kf usd to KLD");
+  check("a symbol split by a space is found", w.status === "incomplete" && w.prompt.includes("did you mean kfUSD"), w.prompt || w.status);
+
+  /* Not every miss is a typo. "eth" is simply what WETH is called, and no
+     distance could pick it out — WETH and ETH are equally far. A list can. */
+  const a = p("swap 100 eth to KLD");
+  check("a shorthand resolves by name", a.status === "incomplete" && a.prompt.includes("did you mean WETH"), a.prompt || a.status);
+  const ay = fillSlot(a.draft, a.missing, "yeah", TOKENS);
+  check("the shorthand confirms too", ay.status === "ok" && ay.command.tokenIn.symbol === "WETH", ay.status);
+
+  /* The reply can be a near miss as well — a word typed wrong once is often
+     typed wrong twice, and the second one deserves the same named question. */
+  const again = fillSlot({ kind: "swap", amount: "100", tokenOut: TOKENS[0] }, "tokenIn", "usdcc", TOKENS);
+  check("a mistyped answer is named back", again.status === "incomplete" && again.prompt.includes("did you mean USDC"), again.prompt || again.status);
+}
+
+console.log("\n— what must never become a token —");
+{
+  /* A tie is not a near miss. USDC, USDT and USDe sit one edit from each other,
+     so a word one edit from all three has identified nothing, and picking one
+     is a coin flip with someone's money on it. */
+  const STABLES = [
+    { address: "0xa", name: "USD Coin", symbol: "USDC", decimals: 6, chainId: 11124 },
+    { address: "0xb", name: "Tether USD", symbol: "USDT", decimals: 6, chainId: 11124 },
+    { address: "0xc", name: "Ethena USDe", symbol: "USDe", decimals: 18, chainId: 11124 },
+  ];
+  const tie = parseCommand("deposit 100 usd", STABLES);
+  check("a three-way tie asks the plain question", tie.status === "incomplete" && tie.missing === "token" && !tie.prompt.includes("did you mean"), tie.prompt || tie.status);
+  check("a tie leaves no guess on the draft", tie.status === "incomplete" && !tie.draft.suggest);
+
+  /* A word the grammar already knows is never a misspelled symbol, however
+     close it lands. "rate" carries an interest rate and is two edits from DAI;
+     "sold", "old" and "cold" are all two from POL. */
+  const plain = p("deposit 100");
+  check("a sentence with no candidate asks plainly", plain.status === "incomplete" && plain.missing === "token" && !plain.prompt.includes("did you mean"), plain.prompt || plain.status);
+  const junk = p("deposit 100 zzzzzz");
+  check("a word close to nothing asks plainly", junk.status === "incomplete" && !junk.prompt.includes("did you mean"), junk.prompt || junk.status);
+
+  /* Correctly spelled sentences are untouched: the scan only runs on drafts
+     that were already going to end in a question. */
+  const ok1 = p("swap 500 USDC to KLD");
+  check("an exact swap still builds", ok1.status === "ok" && ok1.command.tokenIn.symbol === "USDC" && ok1.command.tokenOut.symbol === "KLD", ok1.status);
+  const ok2 = p("lend 1000 USDC at 8% for 30 days");
+  check("an exact lend still builds", ok2.status === "ok" && ok2.command.kind === "lend", ok2.status);
+
+  /* A chain name is not a token. The bridge scan stops at the separator, so a
+     destination can never be read back as a symbol to spend. */
+  const b = p("bridge 100 usdcc to Base Sepolia");
+  check("a bridge names the typo", b.status === "incomplete" && b.prompt.includes("did you mean USDC"), b.prompt || b.status);
+  check("and keeps the destination", b.status === "incomplete" && (b.draft.toChain || "").toLowerCase() === "base sepolia", b.draft?.toChain);
+}
+
+console.log("\n— a guess is only ever offered —");
+{
+  const r = p("lend 500 usdcc at 8% for 30 days");
+  check("the rest of the sentence survives", r.status === "incomplete" && r.draft.amount === "500" && r.draft.interestPct === 8 && r.draft.days === 30, JSON.stringify(r.draft));
+
+  /* "no" withdraws the guess rather than repeating it — and once withdrawn,
+     "yes" means nothing again. */
+  const no = fillSlot(r.draft, r.missing, "no", TOKENS);
+  check("no falls back to the plain question", no.status === "incomplete" && !no.prompt.includes("did you mean"), no.prompt || no.status);
+  const after = fillSlot(no.draft, no.missing, "yes", TOKENS);
+  check("yes means nothing once the guess is gone", after.status === "incomplete" && after.missing === "token", after.status);
+
+  /* Naming a different token beats the guess, obviously. */
+  const other = fillSlot(r.draft, r.missing, "KLD", TOKENS);
+  check("naming another token overrides the guess", other.status === "ok" && other.command.token.symbol === "KLD", other.status);
+
+  /* A guess never survives onto a question it was not offered for: being asked
+     "How much?" must not be answerable with "yes". */
+  const amountAsk = completeDraft({ kind: "swap", tokenIn: TOKENS[1], tokenOut: TOKENS[0], suggest: { token: TOKENS[1], typed: "usdcc" } });
+  check("an amount question drops the guess", amountAsk.status === "incomplete" && amountAsk.missing === "amount" && !amountAsk.draft.suggest, amountAsk.prompt || amountAsk.status);
+
+  /* A planner refusal re-asks a slot on an old draft. Whatever was guessed a
+     turn ago must not be what the next "yes" agrees to. */
+  const cleared = clearSlot({ kind: "swap", amount: "100", tokenIn: TOKENS[1], tokenOut: TOKENS[0], suggest: { token: TOKENS[2], typed: "eth" } }, "tokenIn");
+  check("clearing a slot clears the guess", !cleared.suggest);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
