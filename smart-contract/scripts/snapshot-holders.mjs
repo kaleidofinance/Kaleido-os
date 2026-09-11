@@ -26,6 +26,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { ethers } from "ethers";
 
+/* Every chain honours RPC_URL_<chainId>, not just one of them. The default
+   here is whatever answered when the chain was added, and defaults go stale in
+   two different ways: BSC's publicnode prunes the history this scan needs, and
+   thirdweb caps Base at a tenth of the span base.org serves. The override is
+   how a run picks the endpoint that can actually answer it, and it was silently
+   ignored on four of the five chains until 2026-09-10. */
 const CHAINS = {
   sepolia: { id: 11155111, span: 1_000 },
   baseTestnet: { id: 84532, span: 1_000 },
@@ -79,9 +85,53 @@ async function rpc(method, params) {
 
 const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
 
+/**
+ * The block the contract was created in, found by bisection on eth_getCode.
+ *
+ * A LOOKBACK is a guess, and the guess has been wrong twice: 150k blocks
+ * reaches back a fortnight on Sepolia's 12s blocks, three days on Base's 2s,
+ * and about nineteen hours on BSC's 0.45s. The first Base scan came up 594,203
+ * KLD short because of it. The creation block is not a guess - it is the
+ * earliest block that could possibly carry a log for this contract, so it is
+ * both correct and the smallest range that can be.
+ *
+ * Falls back to LOOKBACK when an endpoint has pruned the state it needs to
+ * answer (publicnode does; thirdweb does not), because a slower correct scan
+ * still beats no scan - and the totals check downstream is what actually
+ * decides whether the result is usable either way.
+ */
+async function creationBlock(address, head) {
+  const has = async (b) => {
+    const code = await rpc("eth_getCode", [address, "0x" + b.toString(16)]);
+    return code !== "0x";
+  };
+  try {
+    if (await has(0n)) return 0n;
+    let lo = 0n;
+    let hi = head;
+    if (!(await has(hi))) throw new Error("no code at head");
+    while (lo < hi) {
+      const mid = (lo + hi) / 2n;
+      if (await has(mid)) hi = mid;
+      else lo = mid + 1n;
+    }
+    return lo;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const head = BigInt(await rpc("eth_blockNumber", []));
-  const from = head > LOOKBACK ? head - LOOKBACK : 0n;
+  /* Exact where the endpoint allows it, a window only as a fallback. */
+  const created = await creationBlock(token, head);
+  const from =
+    created !== null ? created : head > LOOKBACK ? head - LOOKBACK : 0n;
+  console.log(
+    created !== null
+      ? `created at block ${created} - scanning ${head - created} blocks (exact)`
+      : `state pruned, falling back to a ${LOOKBACK}-block window`,
+  );
   console.log(`${key} (chain ${chain.id})  token ${token}`);
   console.log(`scanning ${head - from} blocks from ${from}\n`);
 

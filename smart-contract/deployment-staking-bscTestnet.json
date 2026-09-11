@@ -1,0 +1,21 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "timestamp": "2026-09-11T08:03:07.670Z",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "KLD": "0x0d6a6F10adeCdc8a8b93aAc0Fa5210653de3511d",
+    "KLDVault": "0xEE73946fF9794B03fE87874532F9e4aE3D758788",
+    "stKLD": "0x6140Da1f66fCafa0b5197065ae91A00208F3Cd86"
+  },
+  "config": {
+    "yieldTreasury": "0x06400357a8B1Bbcd52982597AFF2d6873C4bd7Cc"
+  },
+  "migratedFrom": {
+    "vault": "0x73B7341c15b12BcfA328733d753f5c30e67dBdce",
+    "stKLD": "0x6D066143d21863c6Ef2975f213346d41CE3321c2",
+    "holders": 6,
+    "amount": "4672299223541199400181924",
+    "strandedInOldVault": "4672299223541199400181924"
+  }
+}
