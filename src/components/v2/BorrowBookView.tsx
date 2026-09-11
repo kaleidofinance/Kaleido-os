@@ -23,6 +23,7 @@ import { formatWithCommas } from "@/constants/utils/formatNumber";
 import { declaredSymbol, isNativeSentinel } from "@/constants/registry";
 import TokenIcon from "@/components/v2/TokenIcon";
 import { TakeLoanModal } from "@/components/v2/BorrowModals";
+import BorrowFilterModal from "@/components/v2/BorrowFilterModal";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import ChainIcon from "@/components/v2/ChainIcon";
 import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
@@ -259,6 +260,18 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
   const [repaying, setRepaying] = useState<number | null>(null);
   const [pending, setPending] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  /* Book facet filters, like the Pool page's — an empty list per facet means no
+     constraint, so unchecking the last box restores the full book rather than
+     emptying it. Chain is the one that matters most now the book is
+     multi-chain; asset is the other axis a lender or borrower narrows by. */
+  const [filterChains, setFilterChains] = useState<number[]>([]);
+  const [filterSymbols, setFilterSymbols] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
+  /* List (the table) or grid (cards). The rows already carry data-label for the
+     phone stacked layout, so grid mode is that card, arranged in columns — see
+     .asGrid in borrow.module.css. Not persisted: a view choice is cheap to
+     re-make and per-visit is fine. */
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   /*
    * `isBorrow` alone can't drive this view, because the tabs vary on two
@@ -436,8 +449,39 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     ? filters?.loadingBorrow
     : filters?.lendLoading;
 
+  /* The options come from the rows themselves — a chain or an asset the sweep
+     found nothing on is a checkbox whose only outcome is an empty table. */
+  const facets = useMemo(() => {
+    const chains: number[] = [];
+    const symbols: string[] = [];
+    for (const r of book) {
+      if (!chains.includes(r.chainId)) chains.push(r.chainId);
+      const sym = declaredSymbol(r.chainId, r.tokenAddress);
+      if (sym && !symbols.includes(sym)) symbols.push(sym);
+    }
+    return { chains, symbols };
+  }, [book]);
+
+  const filtered = useMemo(
+    () =>
+      book.filter(
+        (r) =>
+          (filterChains.length === 0 || filterChains.includes(r.chainId)) &&
+          (filterSymbols.length === 0 ||
+            filterSymbols.includes(
+              declaredSymbol(r.chainId, r.tokenAddress) ?? "",
+            )),
+      ),
+    [book, filterChains, filterSymbols],
+  );
+
+  /* One count per facet that has a constraint, matching the Pool page: three
+     chains ticked is still one thing the reader narrowed by. */
+  const filterCount =
+    (filterChains.length > 0 ? 1 : 0) + (filterSymbols.length > 0 ? 1 : 0);
+
   const sorted = useMemo(() => {
-    const copy = [...book];
+    const copy = [...filtered];
     copy.sort((a, b) => {
       const pick = (r: Row) =>
         sortKey === "interest"
@@ -448,7 +492,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
       return sortDir === "asc" ? pick(a) - pick(b) : pick(b) - pick(a);
     });
     return copy;
-  }, [book, sortKey, sortDir]);
+  }, [filtered, sortKey, sortDir]);
 
   const median = useMemo(() => {
     const rates = book
@@ -755,10 +799,63 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                   placeholder={isListingShape ? "Offer ID" : "Request ID"}
                 />
               )}
+              {/* Filters, the same control the Pool page carries — offered only
+                  when there is more than one chain or asset in the book to narrow
+                  between, since a filter with one option can only empty the table.
+                  Not on /mylends, whose slice is already the user's own. */}
+              {!isMyLends &&
+                (facets.chains.length > 1 || facets.symbols.length > 1) && (
+                  <button
+                    type="button"
+                    className={`${s.filterBt} ${filterCount ? s.filterBtOn : ""}`}
+                    onClick={() => setFilterOpen(true)}
+                    aria-haspopup="dialog"
+                  >
+                    Filters
+                    {filterCount > 0 && (
+                      <span className={s.filterCount}>{filterCount}</span>
+                    )}
+                  </button>
+                )}
+              {/* List / grid view, beside Filters. The grid is the same rows as
+                  cards — the phone stacked layout, on demand. */}
+              {!isMyLends && (
+                <div className={s.viewToggle} role="group" aria-label="View">
+                  <button
+                    type="button"
+                    className={`${s.viewBt} ${viewMode === "list" ? s.viewOn : ""}`}
+                    onClick={() => setViewMode("list")}
+                    aria-pressed={viewMode === "list"}
+                    aria-label="List view"
+                    title="List"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <rect x="2" y="3" width="12" height="1.6" rx="0.8" fill="currentColor" />
+                      <rect x="2" y="7.2" width="12" height="1.6" rx="0.8" fill="currentColor" />
+                      <rect x="2" y="11.4" width="12" height="1.6" rx="0.8" fill="currentColor" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${s.viewBt} ${viewMode === "grid" ? s.viewOn : ""}`}
+                    onClick={() => setViewMode("grid")}
+                    aria-pressed={viewMode === "grid"}
+                    aria-label="Grid view"
+                    title="Grid"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <rect x="2" y="2" width="5" height="5" rx="1" fill="currentColor" />
+                      <rect x="9" y="2" width="5" height="5" rx="1" fill="currentColor" />
+                      <rect x="2" y="9" width="5" height="5" rx="1" fill="currentColor" />
+                      <rect x="9" y="9" width="5" height="5" rx="1" fill="currentColor" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className={s.table}>
-              <div className={s.tw}>
+              <div className={`${s.tw} ${viewMode === "grid" ? s.asGrid : ""}`}>
                 {/* Three tabs share this table — Borrow, Lend and My lends. The
                       books stay a true table, read down columns and scrolled in
                       `.tw`'s own box; only My lends carries `mineList`, which the
@@ -897,13 +994,14 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                             }
                           />
                           <div className={s.aMeta}>
-                            <div className={s.aName}>{symbol ?? "—"}</div>
-                            <div className={s.aSub}>
-                              {/* Which chain this row is on. The book sweeps every
-                                  deployment now, so two rows can be the same asset
-                                  and rate on different chains — the tag is what
-                                  tells them apart and what a take/cancel targets.
-                                  Same idea as the Pool page's ChainTag. */}
+                            {/* Asset and chain on the same top line — the chain
+                                sits with the name, not under it. The book sweeps
+                                every deployment now, so two rows can be the same
+                                asset and rate on different chains; the tag is what
+                                tells them apart and what a take/cancel targets.
+                                Same idea as the Pool page's ChainTag. */}
+                            <div className={s.aNameRow}>
+                              <span className={s.aName}>{symbol ?? "—"}</span>
                               <span className={s.chainTag}>
                                 <ChainIcon
                                   id={CHAINS_BY_ID[row.chainId]?.iconId}
@@ -923,7 +1021,8 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                                 {CHAINS_BY_ID[row.chainId]?.shortName ??
                                   `Chain ${row.chainId}`}
                               </span>
-                              <span className={s.aSubDot}>·</span>
+                            </div>
+                            <div className={s.aSub}>
                               {counterparty ? formatAddress(counterparty) : "—"}
                               {isOwnRow && " · you"}
                             </div>
@@ -1201,6 +1300,22 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
         listing={takeTarget}
         onDone={onTakeDone}
       />
+
+      {filterOpen && (
+        <BorrowFilterModal
+          chains={facets.chains}
+          symbols={facets.symbols}
+          selectedChains={filterChains}
+          selectedSymbols={filterSymbols}
+          onChains={setFilterChains}
+          onSymbols={setFilterSymbols}
+          onClear={() => {
+            setFilterChains([]);
+            setFilterSymbols([]);
+          }}
+          onClose={() => setFilterOpen(false)}
+        />
+      )}
     </>
   );
 }
