@@ -305,6 +305,38 @@ export const FAQ_TOPICS: FaqTopic[] = [
   },
   {
     /*
+     * How to earn, not how much - the apy topic below answers the number, this
+     * one answers the product. A tester typed "deposit USDC on yield" and the
+     * grammar, which reads "deposit" as lending collateral, has been taught to
+     * decline that phrasing (see fromCommand's yield-deposit guard) so it lands
+     * here. The answer names the three routes and the first step of each, drawn
+     * from stable.md, borrow.md and liquidity.md, because "on yield" does not
+     * pick one and this app has no single yield product to assume.
+     */
+    id: "earn-yield",
+    /* Every trigger is yield-qualified or otherwise unique, so none shadows the
+       points topic ("earn points") or is claimed by the deposit grammar. */
+    triggers: [
+      "on yield",
+      "for yield",
+      "earn yield",
+      "to earn yield",
+      "how do i earn yield",
+      "how to earn yield",
+      "where can i earn yield",
+      "earn on my usdc",
+      "earn on my stable",
+      "put my usdc to work",
+      "put it to work",
+      "grow my usdc",
+      "passive income",
+      "best yield",
+    ],
+    answer:
+      "There are three ways to earn here, and “on yield” does not pick one, so here they are. Mint kfUSD against your USDC, USDT or USDe and lock it into kafUSD: the vault pays out the protocol's lending and pool fees, and only the locked kafUSD earns — plain kfUSD does not. Or lend on the peer-to-peer book: you post an amount, a rate and a term, and a borrower takes it, so you set the yield rather than the protocol quoting one. Or provide liquidity into a pool and collect its fee tier on the volume that trades inside your price range. They are different transactions with different risks, so tell me which — for example “mint 500 kfUSD” then “lock 500 kfUSD”, or “lend 500 USDC at 8% for 30 days” — and I will build it.",
+  },
+  {
+    /*
      * "What is the APY" has a correct static answer, and it is that there isn't
      * one — no page in this app advertises a rate. That makes it exactly the
      * question a model should not take: with nothing to read it will quote a
