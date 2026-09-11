@@ -153,6 +153,71 @@ function AssetState({
   return null;
 }
 
+/**
+ * The asset chooser for the lending forms.
+ *
+ * It used to lay every registered asset out as a row of inline pills. The pills
+ * named the asset and nothing else, so the one fact that decides which to pick
+ * when you are lending or posting collateral — how much of each you hold — was
+ * absent, and the form only revealed it (for the selected one) in the balance
+ * line below. This is the swap and pool pattern instead: a single pill showing
+ * the current asset that opens a modal listing them all, each with its wallet
+ * balance, so the choice is made with the balances in view rather than after.
+ *
+ * The list is still the curated set the diamond gave us (loanable or collateral,
+ * whichever the caller passed), NOT the global token registry TokenSelector
+ * lists — offering a token the facet has not registered would only revert — and
+ * balances read on LENDING_CHAIN_ID, the chain these assets live on, the same as
+ * the balance line the forms already show.
+ *
+ * Signature unchanged from the pills it replaces (value symbol, options, onChange),
+ * so the three call sites are untouched.
+ */
+function AssetSelectRow({
+  asset,
+  selected,
+  onPick,
+}: {
+  asset: LendingAsset;
+  selected: boolean;
+  onPick: () => void;
+}) {
+  /* Lifted to the token shape useTokenBalance reads, pinned to LENDING_CHAIN_ID
+     like BalanceRow — so the figure stays right while the wallet is still on the
+     wrong network and the form is saying so. */
+  const token: IToken = {
+    address: asset.address,
+    symbol: asset.symbol,
+    name: asset.symbol,
+    decimals: asset.decimals,
+    chainId: LENDING_CHAIN_ID,
+    verified: true,
+  };
+  const { balance, loading, unread } = useTokenBalance(token);
+  const shown =
+    loading || unread
+      ? null
+      : Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
+  return (
+    <button
+      type="button"
+      className={`${s.asRow} ${selected ? s.asRowOn : ""}`}
+      onClick={onPick}
+    >
+      <span className={`${s.tki} ${hasTokenIcon(asset.symbol) ? s.tkiArt : ""}`}>
+        {hasTokenIcon(asset.symbol) ? (
+          <TokenIcon symbol={asset.symbol} size={24} variant="branded" />
+        ) : null}
+      </span>
+      <span className={s.asRowSym}>{asset.symbol}</span>
+      <span className={s.asRowBal}>
+        {shown === null ? "" : shown}
+        {selected ? <span className={s.asRowTick} aria-hidden="true">{"\u2713"}</span> : null}
+      </span>
+    </button>
+  );
+}
+
 function CurrencyPicker({
   value,
   options,
@@ -162,37 +227,77 @@ function CurrencyPicker({
   options: LendingAsset[];
   onChange: (symbol: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  /* Selected by symbol to match the incoming value, falling back to the first
+     option so the trigger always names something once a list has arrived. */
+  const selected = options.find((o) => o.symbol === value) ?? options[0];
+
   return (
-    <div className={s.ccy}>
-      {options.map((c) => {
-        return (
-          <button
-            /* Keyed on the address, not the symbol: identity here is
-               (chain, address), and two registered assets can share a symbol —
-               Arc's registered WUSDC and the `0x3600…` USDC predeploy both read
-               as dollar tokens. */
-            key={c.address}
-            className={`${s.ccyOpt} ${value === c.symbol ? s.ccyOn : ""}`}
-            onClick={() => onChange(c.symbol)}
+    <>
+      <button
+        type="button"
+        className={s.asSel}
+        onClick={() => setOpen(true)}
+        disabled={options.length === 0}
+        aria-haspopup="dialog"
+      >
+        <span
+          className={`${s.tki} ${
+            selected && hasTokenIcon(selected.symbol) ? s.tkiArt : ""
+          }`}
+        >
+          {selected && hasTokenIcon(selected.symbol) ? (
+            <TokenIcon symbol={selected.symbol} size={20} variant="branded" />
+          ) : null}
+        </span>
+        <span className={s.asSelSym}>{selected?.symbol ?? "Select asset"}</span>
+        <span className={s.asSelChev} aria-hidden="true">
+          {"\u25be"}
+        </span>
+      </button>
+
+      {open && (
+        <Portal>
+          <div
+            className={s.overlay}
+            onClick={() => setOpen(false)}
+            role="presentation"
           >
-            {/* TokenIcon alone, resolved by symbol. There was a raw <img> ahead
-                of it sourced from `tokenImageMap[c.address]?.image` — a flat map
-                of five Abstract-testnet addresses, so once the protocol deployed
-                elsewhere it matched nothing and this fell through to TokenIcon on
-                every chain anyway. Dead branch, and a per-address image table is
-                the wrong shape for art that depends only on the asset. */}
-            <span
-              className={`${s.tki} ${hasTokenIcon(c.symbol) ? s.tkiArt : ""}`}
+            <div
+              className={s.asSelModal}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Select an asset"
+              onClick={(e) => e.stopPropagation()}
             >
-              {hasTokenIcon(c.symbol) ? (
-                <TokenIcon symbol={c.symbol} size={20} variant="branded" />
-              ) : null}
-            </span>
-            {c.symbol}
-          </button>
-        );
-      })}
-    </div>
+              <div className={s.mh}>
+                <span className={s.mt}>Select an asset</span>
+                <button
+                  className={s.mx}
+                  onClick={() => setOpen(false)}
+                  aria-label="Close"
+                >
+                  {"\u2715"}
+                </button>
+              </div>
+              <div className={s.asList}>
+                {options.map((o) => (
+                  <AssetSelectRow
+                    key={o.address}
+                    asset={o}
+                    selected={o.symbol === value}
+                    onPick={() => {
+                      onChange(o.symbol);
+                      setOpen(false);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+    </>
   );
 }
 
