@@ -179,6 +179,34 @@
   cursor: default;
 }
 
+/* "Run all N without stopping" — full width UNDER the actions row, not a third
+   button inside it. Three controls side by side read as three decisions of
+   equal weight, and this one is a variation on the primary rather than a rival
+   to it: quieter type, no fill, and the underline is what says it is pressable
+   without competing with the green. */
+.alt {
+  margin-top: var(--k-s2);
+  width: 100%;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  padding: var(--k-s2) 0;
+  border-radius: var(--k-r-md);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.alt:hover:not(:disabled) {
+  color: var(--k-t1);
+  background: var(--k-hover);
+}
+.alt:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .foot {
   font-size: var(--k-fs-xs);
   color: var(--k-t3);

@@ -146,6 +146,20 @@ export default function PlanReview({
    */
   const [next, setNext] = useState(0);
 
+  /**
+   * Set for the duration of one "run them all" press, and only that press.
+   *
+   * A ref rather than state because `pauseAfter` is called from inside the
+   * async loop: a state read there is whatever it was when the loop started,
+   * which for a flag set by the same click is always the old value.
+   *
+   * `run` assigns it on every entry, so it resets itself — after a failure
+   * part-way through an unstopped run, the ordinary button resumes stepwise
+   * again. That is the right default to fall back to: something already went
+   * wrong, and the click between steps is the thing that lets you look.
+   */
+  const noPauseRef = useRef(false);
+
   const setStep = (i: number, status: StepStatus) =>
     setStatuses((prev) => prev.map((s0, idx) => (idx === i ? status : s0)));
 
@@ -158,6 +172,7 @@ export default function PlanReview({
    * it to confirm, and pausing would replace the plan's completion with a button.
    */
   const pauseAfter = (i: number, skipped: boolean) => {
+    if (noPauseRef.current) return false;
     if (stepMode !== "manual" || skipped || i >= intents.length - 1) return false;
     setNext(i + 1);
     setRunning(false);
@@ -333,7 +348,18 @@ export default function PlanReview({
     }
   };
 
-  const run = async () => {
+  /**
+   * @param withoutStopping Run every remaining step back to back.
+   *
+   * What it removes is THIS COMPONENT'S pause between steps, never a wallet
+   * prompt. Every step is still its own signature — that is not ours to switch
+   * off, and a button that appeared to would be the worst kind of guardrail.
+   * Declining a prompt is still how an unstopped run gets stopped part-way.
+   *
+   * Assigned unconditionally so the flag cannot outlive the press that set it.
+   */
+  const run = async (withoutStopping = false) => {
+    noPauseRef.current = withoutStopping;
     const ctx = getContext();
     if (!ctx) {
       toast.error("Connect a wallet to continue.");
@@ -439,7 +465,10 @@ export default function PlanReview({
             Done
           </button>
         ) : (
-          <button className={s.primary} onClick={run} disabled={running}>
+          /* Wrapped, not passed by reference: `onClick={run}` would hand the
+             click event in as `withoutStopping`, and an event object is
+             truthy — every plan would run unstopped. */
+          <button className={s.primary} onClick={() => run()} disabled={running}>
             {running
               ? "Signing…"
               : next > 0
@@ -448,6 +477,23 @@ export default function PlanReview({
           </button>
         )}
       </div>
+
+      {/* The other way to take a multi-step plan, offered where the choice is
+          actually made rather than behind Agent Settings — a tester asked for
+          it at the plan, which is the only place the number of steps is known.
+
+          Under the actions rather than beside them: it is an alternative to the
+          button above, not a competitor for it, and a third control in that row
+          reads as a third decision. Counted from `next` so a plan resumed after
+          a pause offers what is left, not what it started with, and hidden once
+          fewer than two steps remain — "run all 1" is the button above. */}
+      {!done && stepMode === "manual" && intents.length - next > 1 && (
+        <button className={s.alt} onClick={() => run(true)} disabled={running}>
+          {next > 0
+            ? `Run the remaining ${intents.length - next} without stopping`
+            : `Run all ${intents.length} without stopping`}
+        </button>
+      )}
 
       {/* "Each step is a separate signature" is the load-bearing sentence in this
           component, and batching is the one thing that makes it false — so it is
@@ -459,7 +505,7 @@ export default function PlanReview({
         {batchable
           ? `${prompts} signature${prompts === 1 ? "" : "s"} for ${intents.length} steps — your wallet can approve some of them together. Nothing runs until you approve it, and a failure stops the rest.`
           : stepMode === "manual" && intents.length > 1
-            ? "Each step is a separate signature, and the plan stops between them so you can stop after any one. A failure stops the rest."
+            ? "Each step is a separate signature, and the plan stops between them so you can stop after any one. Running them all removes the stops, not the signatures — your wallet still asks for each. A failure stops the rest."
             : "Each step is a separate signature. Nothing runs until you approve it, and a failure stops the rest."}
       </p>
     </div>
