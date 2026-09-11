@@ -61,24 +61,47 @@ const REAL_200 = JSON.stringify({
   chains: [{ network: "robinhoodTestnet", status: "pushed" }],
 });
 
+/* The candle route's real shape: { dryRun, results: [...] }. A quiet run finds
+   no swaps and writes no candles, which is a clean 200, not a failure. */
+const CANDLE_200 = JSON.stringify({
+  dryRun: false,
+  results: [
+    { chainId: 11155111, pool: "0xpool", swaps: 0, candles: 0, wrote: false, error: null },
+    { chainId: 5042002, pool: null, swaps: 0, candles: 0, wrote: false, error: null },
+  ],
+});
+
 const realSetTimeout = globalThis.setTimeout;
 /* Collapse only the retry wait. The abort timer is 70s and must stay a timer, or
    the "hung fetch" path would abort instantly and the test would prove nothing. */
 globalThis.setTimeout = (fn, ms, ...rest) =>
   ms === 20_000 ? realSetTimeout(fn, 0) : realSetTimeout(fn, ms, ...rest);
 
+/* Now that one tick calls TWO endpoints, the stub routes by URL: the `responses`
+   sequence drives the endpoint under test (push, unless noted), and the OTHER
+   endpoint always answers a clean 200 so it never interferes with a push
+   assertion. `pushCalls`/`candleCalls` let a count assertion name which
+   endpoint it means. */
 let calls = [];
-const stub = (...responses) => {
+const stubFor = (which, ...responses) => {
   calls = [];
   let i = 0;
+  const other = which === "push" ? "/api/keeper/candles" : "/api/keeper/push";
+  const otherBody = which === "push" ? CANDLE_200 : REAL_200;
   globalThis.fetch = async (url, init) => {
-    calls.push({ url: String(url), init });
+    const u = String(url);
+    calls.push({ url: u, init });
+    if (u.includes(other)) return new Response(otherBody, { status: 200 });
     const r = responses[Math.min(i, responses.length - 1)];
     i++;
     if (r instanceof Error) throw r;
     return new Response(r.body, { status: r.status });
   };
 };
+/* Most tests drive the push endpoint; keep the short name for them. */
+const stub = (...responses) => stubFor("push", ...responses);
+const pushCalls = () => calls.filter((c) => c.url.includes("/api/keeper/push"));
+const candleCalls = () => calls.filter((c) => c.url.includes("/api/keeper/candles"));
 
 const trigger = (env = ENV, auth = `Bearer ${SECRET}`) =>
   worker.fetch(
@@ -112,13 +135,13 @@ console.log("\n— it refuses anything without the secret —");
   check("and still calls nothing", calls.length === 0, JSON.stringify(calls));
 }
 
-console.log("\n— the request it builds —");
+console.log("\n— the requests it builds —");
 {
   stub({ status: 200, body: REAL_200 });
   await trigger();
-  const [call] = calls;
+  const call = pushCalls()[0];
   check(
-    "targets the apex, scoped to the chain in vars",
+    "push targets the apex, scoped to the chain in vars",
     call.url === "https://kaleidofi.xyz/api/keeper/push?chainId=46630",
     call.url,
   );
@@ -128,11 +151,23 @@ console.log("\n— the request it builds —");
     call.init.headers.authorization === `Bearer ${SECRET}`,
     JSON.stringify(call.init.headers),
   );
+  check("and never in the query string", !call.url.includes(SECRET), call.url);
+
+  /* The same tick also calls the candle indexer, scoped to the four KLD-pool
+     chains and NOT to the push's single chain. */
+  const cc = candleCalls()[0];
+  check("candles are called on the same tick", cc !== undefined, JSON.stringify(calls.map((c) => c.url)));
   check(
-    "and never in the query string",
-    !call.url.includes(SECRET),
-    call.url,
+    "candles target the apex, scoped to the pool chains",
+    /* The comma is percent-encoded by URLSearchParams, and the route decodes it
+       back through nextUrl.searchParams — so decode before comparing rather than
+       assert the %2C form. */
+    decodeURIComponent(cc?.url ?? "") ===
+      "https://kaleidofi.xyz/api/keeper/candles?chainId=11155111,84532,97,46630",
+    cc?.url,
   );
+  check("candles carry the bearer too", cc?.init.headers.authorization === `Bearer ${SECRET}`);
+  check("and the secret is nowhere in the candle URL", !cc?.url.includes(SECRET), cc?.url);
 }
 
 console.log("\n— it reads the real response shape —");
@@ -162,26 +197,26 @@ console.log("\n— what it retries, and what it does not —");
   stub({ status: 500, body: '{"pushed":0,"wouldPush":0,"failed":1,"chains":[]}' }, { status: 200, body: REAL_200 });
   const recovered = await trigger();
   const body = await recovered.json();
-  check("a 500 is retried once", calls.length === 2, `${calls.length} call(s)`);
+  check("a 500 is retried once", pushCalls().length === 2, `${pushCalls().length} push call(s)`);
   check("and a recovered retry reports ok", body.ok === true, JSON.stringify(body));
 
   /* A 400 means the chainId list is wrong. Retrying cannot fix a var. */
   stub({ status: 400, body: '{"error":"chainId must be one or more positive integers."}' });
   const bad = await trigger();
   const badBody = await bad.json();
-  check("a 400 is not retried", calls.length === 1, `${calls.length} call(s)`);
+  check("a 400 is not retried", pushCalls().length === 1, `${pushCalls().length} push call(s)`);
   check("and is reported as a failure", bad.status === 502 && badBody.ok === false, JSON.stringify(badBody));
   check("quoting the endpoint's own reason", badBody.error.includes("chainId must be"), badBody.error);
 
   /* 401 is the one that would look like a working scheduler if swallowed. */
   stub({ status: 401, body: '{"error":"Unauthorized."}' });
   const unauth = await trigger();
-  check("a 401 is not retried", calls.length === 1, `${calls.length} call(s)`);
+  check("a 401 is not retried", pushCalls().length === 1, `${pushCalls().length} push call(s)`);
   check("and fails loudly", (await unauth.json()).ok === false, "");
 
   stub(new Error("network unreachable"));
   const dead = await trigger();
-  check("a thrown fetch is retried once", calls.length === 2, `${calls.length} call(s)`);
+  check("a thrown fetch is retried once", pushCalls().length === 2, `${pushCalls().length} push call(s)`);
   const deadBody = await dead.json();
   check("then reported", deadBody.ok === false, "");
   check(
@@ -213,7 +248,7 @@ console.log("\n— the cron entry point runs the same path —");
     threw !== null,
     String(threw),
   );
-  check("after the same one retry", calls.length === 2, `${calls.length} call(s)`);
+  check("after the same one retry", pushCalls().length === 2, `${pushCalls().length} push call(s)`);
 
   stub({ status: 200, body: REAL_200 });
   let ok = true;
@@ -227,25 +262,57 @@ console.log("\n— defaults, for the case where a var is dropped —");
   await trigger({ KEEPER_CRON_SECRET: SECRET });
   check(
     "no vars still targets the apex and scopes the chain",
-    calls[0].url === "https://kaleidofi.xyz/api/keeper/push?chainId=46630",
-    calls[0].url,
+    pushCalls()[0].url === "https://kaleidofi.xyz/api/keeper/push?chainId=46630",
+    pushCalls()[0].url,
   );
 
   stub({ status: 200, body: REAL_200 });
   await trigger({ KEEPER_CRON_SECRET: SECRET, KEEPER_CHAIN_IDS: "" });
   check(
     "an explicitly empty chain list means unscoped, deliberately",
-    calls[0].url === "https://kaleidofi.xyz/api/keeper/push",
-    calls[0].url,
+    pushCalls()[0].url === "https://kaleidofi.xyz/api/keeper/push",
+    pushCalls()[0].url,
   );
 
   stub({ status: 200, body: REAL_200 });
   await trigger({ KEEPER_CRON_SECRET: SECRET, APP_URL: "https://kaleidofi.xyz/" });
   check(
     "a trailing slash on APP_URL does not double up",
-    calls[0].url === "https://kaleidofi.xyz/api/keeper/push?chainId=46630",
-    calls[0].url,
+    pushCalls()[0].url === "https://kaleidofi.xyz/api/keeper/push?chainId=46630",
+    pushCalls()[0].url,
   );
+}
+
+console.log("\n— candles are their own job, judged on their own —");
+{
+  /* A clean candle run reads its own shape: candles written, per-chain swaps,
+     and a pool-less chain (Arc) shown as a skip rather than a failure. */
+  stub({ status: 200, body: REAL_200 });
+  const res = await trigger();
+  const detail = (await res.json()).detail;
+  check("the candle line reports written candles", detail.includes("candles="), detail);
+  check("and a pool-less chain reads as a skip", detail.includes("5042002:no-pool"), detail);
+
+  /* A candle failure fails the invocation even when the push is clean — a
+     silently failing indexer is the same anti-pattern the push guards against. */
+  stubFor(
+    "candles",
+    { status: 500, body: '{"error":"The candle run could not be completed."}' },
+    { status: 500, body: '{"error":"The candle run could not be completed."}' },
+  );
+  const mixed = await trigger();
+  const mixedBody = await mixed.json();
+  check("push ok + candles failed is a failed invocation", mixed.status === 502 && mixedBody.ok === false, JSON.stringify(mixedBody));
+  check("and the error names the candle route, not the push", mixedBody.error.includes("/api/keeper/candles"), mixedBody.error);
+  check("a candle 500 is retried once, like the push", candleCalls().length === 2, `${candleCalls().length} candle call(s)`);
+  check("while the push, being fine, was called once", pushCalls().length === 1, `${pushCalls().length} push call(s)`);
+
+  /* And a scheduled tick rethrows on a candle-only failure, so Cloudflare marks
+     it — the push being fine must not paper over it. */
+  stubFor("candles", { status: 401, body: '{"error":"Unauthorized."}' });
+  let threw = null;
+  await worker.scheduled({ cron: "*/15 * * * *" }, ENV).catch((e) => (threw = e));
+  check("scheduled() rethrows when only candles failed", threw !== null, String(threw));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
