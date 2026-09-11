@@ -1,6 +1,11 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
 import useDataFiltersPanel from "@/hooks/useDataFilterPanel";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 
@@ -10,6 +15,17 @@ type BorrowV2 = ReturnType<typeof useBorrowV2>;
 interface LendingData {
   filters: FiltersPanel;
   borrow: BorrowV2;
+  /**
+   * The Collateral modal's open flag, shared rather than local.
+   *
+   * The modal is rendered from the (lending) layout header, but the button that
+   * needs to open it is not only there: TakeLoanModal, deep inside
+   * BorrowBookView, sends a borrower with no collateral here rather than letting
+   * them pay gas to learn requestLoanFromListing reverts
+   * Protocol__InsufficientCollateral. Both live under this one provider, so the
+   * flag lives here too — the same reason the book itself is one shared instance.
+   */
+  collateral: { open: boolean; setOpen: (open: boolean) => void };
 }
 
 const LendingDataContext = createContext<LendingData | null>(null);
@@ -28,8 +44,15 @@ const LendingDataContext = createContext<LendingData | null>(null);
 export function LendingDataProvider({ children }: { children: ReactNode }) {
   const filters = useDataFiltersPanel();
   const borrow = useBorrowV2();
+  const [collateralOpen, setCollateralOpen] = useState(false);
   return (
-    <LendingDataContext.Provider value={{ filters, borrow }}>
+    <LendingDataContext.Provider
+      value={{
+        filters,
+        borrow,
+        collateral: { open: collateralOpen, setOpen: setCollateralOpen },
+      }}
+    >
       {children}
     </LendingDataContext.Provider>
   );
