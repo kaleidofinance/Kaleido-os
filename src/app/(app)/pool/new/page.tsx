@@ -581,12 +581,41 @@ export default function NewPositionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ratio, side, amount0, amount1, token0, token1]);
 
+  /* Read but never used until now: the form showed both balances and then let
+     `ready` ignore them, so a leg typed over the wallet enabled "Add liquidity"
+     and the mint reverted. Gated here the way DepositModal already gates an add.
+     An unread balance never makes a leg look short — see useTokenBalance. */
+  const short = (amt: string, bal: string, unread: boolean) =>
+    !unread && positive(amt) && Number(amt) > Number(bal);
+  const short0 = short(amount0, balance0, unread0);
+  const short1 = short(amount1, balance1, unread1);
+
+  /* The largest deposit each leg can make given BOTH balances. A pairing ratio
+     locks the legs together, so filling the binding leg to its exact balance and
+     letting `edit` pair the other down keeps Max off the "Not enough" edge — the
+     swap card's float trap. With no pool at this tier the legs are independent
+     (they set the opening price), so each takes its own balance. */
+  const maxLeg = (which: "0" | "1") => {
+    if (ratio === null) return edit(which, which === "0" ? balance0 : balance1);
+    if (ratio === 0) return edit("0", balance0);
+    if (ratio === Infinity) return edit("1", balance1);
+    const b0 = Number(balance0);
+    const b1 = Number(balance1);
+    if (!(b0 > 0) || !(b1 > 0)) return;
+    if (b1 / ratio < b0) edit("1", balance1);
+    else edit("0", balance0);
+  };
+  const consumable = (which: "0" | "1") =>
+    ratio === 0 ? which === "0" : ratio === Infinity ? which === "1" : true;
+
   const ready =
     isConnected &&
     token0 &&
     token1 &&
     positive(amount0) &&
     positive(amount1) &&
+    !short0 &&
+    !short1 &&
     ticks !== null;
 
   const submit = async () => {
@@ -842,15 +871,24 @@ export default function NewPositionPage() {
             />
             <span className={s.tkPill}>{token0.symbol}</span>
           </div>
-          <div className={s.priceHint}>
-            {/* A dash rather than a formatted "0" when the read did not land —
-                see useTokenBalance's `unread`. */}
-            Balance{" "}
-            {unread0
-              ? "—"
-              : Number(balance0).toLocaleString(undefined, {
-                  maximumFractionDigits: 4,
-                })}
+          <div className={s.addBal}>
+            <span>
+              Balance{" "}
+              {unread0
+                ? "—"
+                : Number(balance0).toLocaleString(undefined, {
+                    maximumFractionDigits: 4,
+                  })}
+            </span>
+            {!unread0 && consumable("0") && Number(balance0) > 0 && (
+              <button
+                type="button"
+                className={s.maxChip}
+                onClick={() => maxLeg("0")}
+              >
+                Max
+              </button>
+            )}
           </div>
         </div>
 
@@ -866,13 +904,24 @@ export default function NewPositionPage() {
             />
             <span className={s.tkPill}>{token1.symbol}</span>
           </div>
-          <div className={s.priceHint}>
-            Balance{" "}
-            {unread1
-              ? "—"
-              : Number(balance1).toLocaleString(undefined, {
-                  maximumFractionDigits: 4,
-                })}
+          <div className={s.addBal}>
+            <span>
+              Balance{" "}
+              {unread1
+                ? "—"
+                : Number(balance1).toLocaleString(undefined, {
+                    maximumFractionDigits: 4,
+                  })}
+            </span>
+            {!unread1 && consumable("1") && Number(balance1) > 0 && (
+              <button
+                type="button"
+                className={s.maxChip}
+                onClick={() => maxLeg("1")}
+              >
+                Max
+              </button>
+            )}
           </div>
         </div>
 
@@ -914,9 +963,13 @@ export default function NewPositionPage() {
             ? "Connect wallet"
             : busy
               ? "Creating position…"
-              : !ready
-                ? "Enter an amount and range"
-                : "Add liquidity"}
+              : short0
+                ? `Not enough ${token0.symbol}`
+                : short1
+                  ? `Not enough ${token1.symbol}`
+                  : !ready
+                    ? "Enter an amount and range"
+                    : "Add liquidity"}
         </button>
       </div>
 
