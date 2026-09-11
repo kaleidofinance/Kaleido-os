@@ -65,9 +65,24 @@ const ERC20 = new ethers.Interface([
   "function totalSupply() view returns (uint256)",
 ]);
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Pace between requests, and treat a rate limit as a request to wait rather
+   than a failure to spend a retry on. Arc forced both: its own node is the only
+   endpoint that serves its history (thirdweb cannot getLogs there at all), and
+   it rate-limits a back-to-back scan hard enough that a linear 600ms backoff
+   burns the whole budget inside one limiter window and the scan parks with the
+   endpoint about to answer again. The same fix snapshot-stakers.mjs carries.
+   Both knobs are 0/off unless a run sets them, so no other chain changes. */
+const DELAY_MS = Number(process.env.DELAY_MS ?? 0);
+const isRateLimit = (e) =>
+  /rate limit|too many requests|429/i.test(String(e?.message ?? e));
+
 async function rpc(method, params) {
-  for (let attempt = 0; attempt < 5; attempt++) {
+  let limited = 0;
+  for (let attempt = 0; attempt < 5; ) {
     try {
+      if (DELAY_MS) await sleep(DELAY_MS);
       const r = await fetch(RPC, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -77,8 +92,14 @@ async function rpc(method, params) {
       if (j.error) throw new Error(JSON.stringify(j.error).slice(0, 120));
       return j.result;
     } catch (e) {
-      if (attempt === 4) throw e;
-      await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+      if (isRateLimit(e) && limited < 8) {
+        await sleep(Math.min(1000 * 2 ** limited, 30_000));
+        limited++;
+        continue;
+      }
+      attempt++;
+      if (attempt === 5) throw e;
+      await sleep(600 * attempt);
     }
   }
 }

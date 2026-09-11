@@ -107,14 +107,14 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kafUSD: "0xE94f351cBfec2c4BeAcF99988EC4e701d6C267Ce", // deployment-stablecoin-arcTestnet-1788709849665.json
     kfUSD: "0x2d1ea4f5E6269E4379aBd8D3d302AAb8772C2d62", // deployment-stablecoin-arcTestnet-1788709849665.json
     kld: "0xC0f8D36ec1D96477F26228A629a31248c584f477", // deployment-kld-arcTestnet.json
-    kldVault: "0x2987378eeB3E61bC8F9D2A80bFd0b1628771AC68", // deployment-kld-arcTestnet.json
+    kldVault: "0xf341BFb02404485FD360Ca864f49e2F7F1172951", // deployment-kld-arcTestnet.json
     oracleKind: "pyth", // deployment-oracle-arcTestnet.json
     orders: "0xB53b9689d9Eb363760770a45867c072DFe400AB4", // deployment-orders-arcTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcTestnet-1787358306379.json
     priceOracle: "0x0262aff2a0D8E56048e408D5fE875EA051dED65c", // deployment-diamond-arcTestnet.json
     pythContract: "0x2880aB155794e7179c9eE2e38200202908C17B43", // deployment-oracle-arcTestnet.json
-    stKLD: "0xD78c79129410883fD818498e18f0D4f1d3B5DF9f", // deployment-kld-arcTestnet.json
+    stKLD: "0xA44b63033BD3bc7F240ccD88EC3E9BB669E99c82", // deployment-kld-arcTestnet.json
     usdc: "0x3600000000000000000000000000000000000000", // deployment-stablecoin-arcTestnet-1788709849665.json
     usde: "0xCF59972d09Dbf9b37c1e3CDa55c47d0253038D76", // deployment-stablecoin-arcTestnet-1788709849665.json
     usdt: "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6", // deployment-stablecoin-arcTestnet-1788709849665.json
@@ -126,7 +126,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0x2b882149eBfC79710E6E0c93661CE2718866705b", // deployment-v3-arcTestnet-1787358306379.json
     v3Router: "0x65149395E67867Db4Ef74b4151Ca0A2c1C014c80", // deployment-orders-arcTestnet.json
     wrappedNative: "0x911b4000D3422F482F4062a913885f7b035382Df", // deployment-dex-arcTestnet.json
-    yieldTreasury: "0xDf540734273a87C41Dd7D2079a44576cb7F983a5", // deployment-stablecoin-arcTestnet-1788709849665.json
+    yieldTreasury: "0x32E24AAdb0e346A3b334D29C9A334390aE022BE1", // deployment-stablecoin-arcTestnet-1788709849665.json
   },
   11155111: {
     diamond: "0x32a9971381C969d15205AC9e509C204D31341080", // deployment-diamond-sepolia.json
@@ -311,7 +311,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-11T08:11:10.482Z",
+  generatedAt: "2026-09-11T12:59:32.832Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",

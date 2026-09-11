@@ -63,9 +63,39 @@ const ERC20 = new ethers.Interface([
   "function totalSupply() view returns (uint256)",
 ]);
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Milliseconds to wait between requests. Zero everywhere it is not needed.
+ *
+ * The third per-run knob, for the same reason as SPAN and LOOKBACK: none of
+ * these is a property of the script, they are properties of whichever endpoint
+ * can actually answer a given chain. Arc is the case that forced it. Its own
+ * node is the ONLY endpoint that serves its history — thirdweb cannot do
+ * eth_getLogs there at all, failing at the transport before the first chunk —
+ * and that node rate-limits a back-to-back scan hard enough that four retries
+ * cannot outlast it. Pacing the requests is the difference between a scan that
+ * finishes and one that parks forever.
+ */
+const DELAY_MS = Number(process.env.DELAY_MS ?? 0);
+
+/**
+ * A rate limit is not a failure, it is a request to wait, so it is not spent
+ * out of the same four attempts as a real error.
+ *
+ * It also arrives as HTTP 200 with a JSON-RPC error rather than a 429, which is
+ * why it is matched on the message: the fetch succeeded, and only the body says
+ * the call did not. Backing off linearly from 800ms was far too shallow for it —
+ * the whole retry budget elapsed inside one limiter window and the scan parked
+ * with the endpoint about to answer again.
+ */
+const isRateLimit = (e) => /rate limit|too many requests|429/i.test(String(e?.message ?? e));
+
 const rpc = async (method, params) => {
-  for (let attempt = 0; attempt < 4; attempt++) {
+  let limited = 0;
+  for (let attempt = 0; attempt < 4; ) {
     try {
+      if (DELAY_MS) await sleep(DELAY_MS);
       const r = await fetch(chain.rpc, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,8 +105,15 @@ const rpc = async (method, params) => {
       if (j.error) throw new Error(JSON.stringify(j.error).slice(0, 120));
       return j.result;
     } catch (e) {
-      if (attempt === 3) throw e;
-      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      if (isRateLimit(e) && limited < 8) {
+        /* Exponential, capped, and outside the attempt budget. */
+        await sleep(Math.min(1000 * 2 ** limited, 30_000));
+        limited++;
+        continue;
+      }
+      attempt++;
+      if (attempt === 4) throw e;
+      await sleep(800 * attempt);
     }
   }
 };
