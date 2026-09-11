@@ -30,7 +30,7 @@ export interface SidebarHeading {
  * THE FILTER IS A FILTER, AND IS LABELLED AS ONE
  * ---------------------------------------------------------------------------
  * It matches page titles, blurbs, and heading text. It does not match body prose.
- * That is an honest thing to offer over fifteen pages and it is NOT search, so the
+ * That is an honest thing to offer over fourteen pages and it is NOT search, so the
  * placeholder says "Filter pages" — a reader who typed "cooldown", got nothing,
  * and concluded the docs never mention cooldowns would have been misled by a
  * placeholder that said "Search".
@@ -60,8 +60,8 @@ export default function DocsSidebar({
    * A page survives if its own text matches OR any of its headings do; the
    * matching headings are listed under it so a hit lands on the section rather
    * than on the top of a 6,000-character document. When the query is empty the
-   * heading lists are empty too — as permanent navigation, the fifteen pages would
-   * put 104 entries in the rail instead of 15.
+   * heading lists are empty too — as permanent navigation, the fourteen pages would
+   * put 95 entries in the rail instead of 14.
    */
   const shown = useMemo(() => {
     return DOC_GROUPS.map((g) => ({

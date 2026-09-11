@@ -150,8 +150,6 @@ function main() {
       ["what is delegation", "docs:delegation"],
       ["what oracle do you use", "docs:architecture"],
       ["how are prices sourced", "docs:architecture"],
-      ["how much kld unlocks at tge", "docs:token"],
-      ["is kld a governance token", "docs:token"],
       /* The mainnet topic owns "when is the token", and a "when" about the token is
          its question to answer first; the unlock table is one link further. */
       ["when is the token unlock", "faq:mainnet"],

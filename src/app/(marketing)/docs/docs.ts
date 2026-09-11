@@ -121,9 +121,10 @@ export interface DocGroup {
 /**
  * The published set.
  *
- * Fifteen pages out of thirty-five files. Fourteen of the fifteen were written for
- * this site and live in `docs/product/`; the fifteenth is an engineering document
- * that happens to be publishable with two sections removed. Everything else is
+ * Fourteen pages out of thirty-five files. Thirteen of the fourteen were written
+ * for this site and live in `docs/product/`; the fourteenth is an engineering
+ * document that happens to be publishable with two sections removed. Everything
+ * else is
  * recorded in `UNPUBLISHED` with its reason, so the decision is reviewable and
  * reversible one line at a time rather than re-argued from scratch.
  *
@@ -260,18 +261,6 @@ export const DOC_GROUPS: DocGroup[] = [
     ],
   },
   {
-    label: "Token economy",
-    entries: [
-      {
-        slug: "token",
-        file: "docs/product/token.md",
-        title: "KLD and its supply",
-        blurb:
-          "One billion KLD across eight buckets, the unlock curve those buckets produce, and the two invariants that keep the ceiling global rather than per chain.",
-      },
-    ],
-  },
-  {
     label: "The project",
     entries: [
       {
@@ -314,6 +303,8 @@ export function docBySlug(slug: string): DocEntry | undefined {
  * a decision about it here.
  */
 export const UNPUBLISHED: Record<string, string> = {
+  "docs/product/token.md":
+    "The supply table and the unlock curve. Written for this site and published until 2026-09-11, then withdrawn: the allocation is not something we have announced, and a docs page is an announcement whoever reads it first. It came down because the agent quoted it, but the agent was only reading what the site already served ungated — pulling the page is what actually closes it. Nothing else links here, and the roadmap covers what happens at TGE without naming the buckets. Its two figures went with it and are NOT recoverable from a config line: public/docs-media/token-supply.svg and unlock-curve.svg carried the same allocation in picture form and were served at 200 whether or not any page linked them, so hiding the page alone would have left the numbers up. They are deleted, hand-drawn, and have no generator, so re-publishing means one line in DOC_GROUPS, restoring the asks from this commit's diff, redrawing both figures, and `npm run gen:docs`.",
   "docs/README.md":
     "A GitHub file-browser index: emoji headings, a Contributing section, Document Conventions. The /docs index replaces its job.",
   "docs/KLD_MULTICHAIN_PLAN.md":
