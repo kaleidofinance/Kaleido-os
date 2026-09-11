@@ -14,7 +14,6 @@ import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import { useLenderPosition } from "@/hooks/v2/useLenderPosition";
 import { READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { describeLendingAsset, type LendingAsset } from "@/lib/lending/assets";
-import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
 import {
   formatBps,
   netLenderRateBps,
@@ -26,7 +25,12 @@ import TokenIcon from "@/components/v2/TokenIcon";
 import { TakeLoanModal } from "@/components/v2/BorrowModals";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import ChainIcon from "@/components/v2/ChainIcon";
-import { CHAINS_BY_ID } from "@/constants/chains";
+import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
+import {
+  useActiveWalletChain,
+  useSwitchActiveWalletChain,
+} from "thirdweb/react";
+import { defineChain } from "thirdweb/chains";
 import s from "@/app/(app)/(lending)/borrow.module.css";
 
 export type BorrowBookMode = "borrow" | "lend" | "mine" | "mylends";
@@ -206,6 +210,34 @@ function FeeCard({ fees, lender }: { fees: LendingFees; lender: boolean }) {
 export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
   const { filters, borrow } = useLendingData();
   const { isConnected } = useWalletV2();
+  const activeChain = useActiveWalletChain();
+  const switchChain = useSwitchActiveWalletChain();
+
+  /*
+   * Put the wallet on a row's own chain before an action targets that chain's
+   * diamond. The book is multi-chain, so a take/fund/cancel on a Base row while
+   * the wallet is on Sepolia would address a diamond on the wrong deployment —
+   * the switch is what keeps the write on the chain the row lives on. Same idea
+   * as the Pool deposit modal. Returns false (and toasts) if the switch is
+   * declined, so the caller aborts rather than signing on the wrong chain.
+   */
+  const switchTo = async (chainId: number): Promise<boolean> => {
+    if (activeChain?.id === chainId) return true;
+    const meta = CHAINS_BY_ID[chainId];
+    if (!meta) {
+      toast.error(`Chain ${chainId} is not configured.`);
+      return false;
+    }
+    try {
+      await switchChain(defineChain(toThirdwebChainOptions(meta)));
+      return true;
+    } catch {
+      toast.error(
+        `Couldn't switch to ${meta.name} — switch there in your wallet, then try again.`,
+      );
+      return false;
+    }
+  };
   /* Serves four routes off one component, so gating here covers /borrow, /lend,
      /myloans and /mylends at once. Every one of them reads the Diamond. */
   const gate = useChainGate();
@@ -219,6 +251,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
   );
   const [takeTarget, setTakeTarget] = useState<{
     listingId: number;
+    chainId: number;
     min: number;
     max: number;
     asset: LendingAsset;
@@ -325,6 +358,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     const max = raw.maxAmount ?? raw.max_amount ?? row.amount;
     setTakeTarget({
       listingId: Number(row.listingId),
+      chainId: row.chainId,
       min: Number(ethers.formatUnits(min, asset.decimals)),
       max: Number(ethers.formatUnits(max, asset.decimals)),
       asset,
@@ -349,6 +383,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     if (id === undefined) return;
     setPending(id);
     try {
+      if (!(await switchTo(row.chainId))) return;
       if (isListingShape) await filters?.closeListingAd(Number(id));
       else await filters?.closeRequest(Number(id));
       filters?.refreshListings?.();
@@ -361,6 +396,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     if (row.requestId === undefined) return;
     setPending(row.requestId);
     try {
+      if (!(await switchTo(row.chainId))) return;
       await filters?.serviceRequest(
         Number(row.requestId),
         String(row.tokenAddress),

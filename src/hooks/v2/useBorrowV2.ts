@@ -19,7 +19,7 @@ import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import { READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { declaredSymbol, type BorrowCurrency } from "@/constants/registry";
 import type { CollateralHolding, LendingAsset } from "@/lib/lending/assets";
-import { lendingChainMismatch } from "@/lib/lending/chain";
+import { isSupportedChain } from "@/config/chain";
 import {
   MOCK_COLLATERAL,
   MOCK_DATA,
@@ -35,12 +35,15 @@ import {
  * onSuccess callback, which is what keeps v2 inside its own shell — the legacy
  * hooks otherwise router.push() to "/" or "/successful" mid-flow.
  *
- * It is also the one place the lending chain is enforced. Reads were already
- * pinned to it (useGetValueAndHealth) while writes went to whatever chain the
- * wallet was on, so a deposit on Base Sepolia landed in Base's diamond and the
- * health factor next to it came from Sepolia's — two deployments, one screen, no
- * error. Every action below refuses on a mismatch instead. See
- * src/lib/lending/chain.ts for why lending is single-chain today.
+ * Writes go to the connected chain, which is now correct rather than a hazard:
+ * lending is multi-chain (the book sweeps every deployment), so a deposit or a
+ * post lands in the diamond of whatever supported chain the wallet is on, and a
+ * take/fund/cancel of a specific row is preceded by a switch to that row's
+ * chain. `wrongChain` only stops an action on a chain with no deployment at all.
+ *
+ * One seam remains and is Stage 4: `useGetValueAndHealth` still reads collateral
+ * and health from READ_ONLY_CHAIN_ID, so the "Your position" figures are still
+ * one chain's until that hook is made per-chain too.
  */
 
 // Only the type is re-exported. The table itself was `BORROW_CURRENCIES`, a flat
@@ -184,7 +187,12 @@ export const useBorrowV2 = (): BorrowV2 => {
   const fees = useLendingFees();
 
   /**
-   * Refuse an action whose wallet chain is not the lending chain.
+   * Refuse an action whose wallet chain has no lending deployment.
+   *
+   * Lending is multi-chain now, so this no longer pins one chain — it only stops
+   * an action on a chain the protocol was never deployed to, where the write
+   * would address a diamond that isn't there. Any of the five deployed chains is
+   * fine; the modals switch to a specific one where a row demands it.
    *
    * Returns true when the caller should stop. Toasts rather than throwing
    * because every call site is a button handler that already has a `finally`
@@ -192,12 +200,11 @@ export const useBorrowV2 = (): BorrowV2 => {
    * update collateral" and hide the one thing the user can act on.
    */
   const wrongChain = useCallback((): boolean => {
-    const message = lendingChainMismatch(activeChain?.id);
-    if (message) {
-      toast.warning(message);
-      return true;
-    }
-    return false;
+    if (isSupportedChain(activeChain?.id)) return false;
+    toast.warning(
+      "Switch to a supported network to use lending — Sepolia, Base Sepolia, BSC Testnet, Arc or Robinhood.",
+    );
+    return true;
   }, [activeChain?.id]);
 
   const loans: ActiveLoan[] = useMemo(() => {

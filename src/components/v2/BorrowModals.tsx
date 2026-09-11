@@ -24,6 +24,7 @@ import {
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
+import { isSupportedChain } from "@/config/chain";
 import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
 import s from "./BorrowModals.module.css";
 
@@ -217,41 +218,47 @@ function TermPicker({
 }
 
 /**
- * The lending chain, the wallet's chain, and the one button that closes the gap.
+ * The chain an action needs, the wallet's chain, and the one button that closes
+ * the gap — the CTA becomes a switch, the pattern pool/DepositModal settled.
  *
- * Lending is single-chain (see lib/lending/chain.ts), and until now the mismatch
- * was only discovered by PRESSING the button: every action in useBorrowV2 calls
- * `wrongChain()`, which raises a toast naming the two networks and aborts. So
- * the user picked an offer, typed an amount, pressed Borrow, and got a sentence
- * telling them to go and do something else somewhere else. The work was done and
- * the fix was not reachable from where they were standing.
+ * TWO SHAPES, because lending went multi-chain:
  *
- * The CTA becomes the switch instead, which is the pattern pool/DepositModal
- * already settled: two actions behind one button, because switching is a step on
- * the way to borrowing rather than a different intent. The modal stays open, the
- * amount stays typed, and the button goes back to saying what it does.
+ *  - With a `targetChainId` (taking a specific listing): the action MUST happen
+ *    on that listing's chain — the diamond that holds it — so `wrong` is "the
+ *    wallet is not on that chain" and the button switches to it. This is what
+ *    lets a Base listing be taken from a wallet on Sepolia.
+ *  - Without one (posting an offer or a request, managing collateral): the
+ *    action works on whatever supported chain the wallet is on, so `wrong` is
+ *    only "the wallet is on a chain with no lending deployment", and the switch
+ *    lands on LENDING_CHAIN_ID as a sensible default. On a supported chain the
+ *    button just does its job, on the connected chain, which is the multi-chain
+ *    behaviour.
  *
- * DISCONNECTED IS NOT A MISMATCH. With no wallet there is nothing to switch;
- * `switchChain()` would throw and the catch would advise switching manually in a
- * wallet that was never connected. NetworkSelector makes the same distinction.
- *
- * The toast is not removed. It still backs every path that does not go through
- * one of these buttons, and it is the thing that catches a chain changed in the
- * wallet between opening the modal and pressing.
+ * DISCONNECTED IS NOT A MISMATCH. With no wallet there is nothing to switch —
+ * switchChain would throw and the catch would advise switching a wallet that was
+ * never connected. The toast in useBorrowV2 still backs every path, catching a
+ * chain changed in the wallet between opening the modal and pressing.
  */
-function useLendingChain() {
+function useLendingChain(targetChainId?: number) {
   const account = useActiveAccount();
   const chain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
   const [switching, setSwitching] = useState(false);
 
-  const meta = getChainMeta(LENDING_CHAIN_ID);
-  const target = meta?.shortName ?? meta?.name ?? `chain ${LENDING_CHAIN_ID}`;
-  const wrong = !!account && !!chain && chain.id !== LENDING_CHAIN_ID;
+  const goTo = targetChainId ?? LENDING_CHAIN_ID;
+  const meta = getChainMeta(goTo);
+  const target = meta?.shortName ?? meta?.name ?? `chain ${goTo}`;
+
+  const wrong =
+    !!account &&
+    !!chain &&
+    (targetChainId !== undefined
+      ? chain.id !== targetChainId
+      : !isSupportedChain(chain.id));
 
   const goToChain = async () => {
     if (!meta) {
-      toast.error(`Chain ${LENDING_CHAIN_ID} is not in the registry.`);
+      toast.error(`Chain ${goTo} is not in the registry.`);
       return;
     }
     setSwitching(true);
@@ -796,6 +803,9 @@ export function TakeLoanModal({
    */
   listing: {
     listingId: number;
+    /** The chain the listing lives on — the take must run there, so the gate
+     *  switches the wallet to it rather than to a fixed lending chain. */
+    chainId: number;
     min: number;
     max: number;
     asset: LendingAsset;
@@ -804,7 +814,10 @@ export function TakeLoanModal({
 }) {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
-  const gate = useLendingChain();
+  /* Targeted at the listing's OWN chain: taking it must run on the diamond that
+     holds it, so the gate switches the wallet there rather than to a fixed
+     lending chain. */
+  const gate = useLendingChain(listing?.chainId);
 
   useEffect(() => {
     if (open) setAmount("");

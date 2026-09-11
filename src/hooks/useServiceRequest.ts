@@ -15,7 +15,6 @@ import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers6Adapter } from "thirdweb/adapters/ethers6";
 import { client } from "@/config/client";
 import { ensureAllowance } from "@/lib/lending/approve";
-import { lendingChainMismatch } from "@/lib/lending/chain";
 
 const errorDecoder = ErrorDecoder.create([lendbitAbi]);
 import { sendLoanFilledNotification } from "@/lib/notifications/emit";
@@ -36,12 +35,12 @@ import { sendLoanFilledNotification } from "@/lib/notifications/emit";
  * was `parseUnits(_amount, 6)` over an amount already in base units — 1e6 times
  * too large — compared against a stale allowance from useCheckAllowance.
  *
- * The lending-chain guard is here rather than only in useBorrowV2 because this is
- * the one lending write that does not route through it: BorrowBookView calls it
- * through useDataFiltersPanel, and its rows come from the Supabase mirror, which
- * has no chainId column and therefore only ever describes the read chain. Funding
- * a request on a different chain would address a request id in a different
- * deployment's storage. See src/lib/lending/chain.ts.
+ * Acts on the connected chain, which is now the point: the book is multi-chain,
+ * and BorrowBookView switches the wallet to the funded request's own chain
+ * before calling this, so `chainId` here is the request's chain and the fund
+ * lands in the right deployment's storage. It used to carry an extra
+ * lendingChainMismatch lock refusing anything but LENDING_CHAIN_ID; that lock
+ * belonged to the single-chain design and is gone.
  */
 const useServiceRequest = () => {
   const activeAccount = useActiveAccount();
@@ -50,15 +49,20 @@ const useServiceRequest = () => {
 
   return useCallback(
     async (_requestId: number, _tokenAddress: string, _amount: string) => {
-      /* The guard the other six lending write hooks already had, and the one
-       * getKaleidoContract's docstring requires: it throws when the chain has no
-       * Diamond recorded, and the call below sits outside the try, so without
-       * this the throw escapes the useCallback as an unhandled rejection and the
-       * button silently does nothing. */
+      /*
+       * Any supported chain, not one fixed lending chain. Lending is multi-chain
+       * now (the book sweeps every deployment), so funding a request happens on
+       * the chain the request lives on — the caller switches the wallet there
+       * first, and this only has to check that wherever it landed is a chain the
+       * protocol is deployed to. The old lendingChainMismatch lock, which refused
+       * anything but LENDING_CHAIN_ID, is gone with the single-chain design.
+       *
+       * Still required, and still first: getKaleidoContract throws when the
+       * chain has no Diamond, and the call below sits outside the try, so an
+       * unsupported chain here would escape as an unhandled rejection and the
+       * button would silently do nothing.
+       */
       if (!isSupportedChain(chainId)) return toast.warning("SWITCH NETWORK");
-
-      const mismatch = lendingChainMismatch(chainId);
-      if (mismatch) return toast.warning(mismatch);
 
       if (!activeChain) {
         toast.error("Chain not connected");
