@@ -839,3 +839,136 @@
     padding: 9px 14px;
   }
 }
+
+/* ---------- book filters (mirrors the Pool page) ---------- */
+/* The Filters button in the book header, beside the id search. Ringed while a
+   facet is active, with a count badge — the same control and states as the Pool
+   page's, because the book has the same problem: rows that differ only by chain
+   or asset, too many to find by eye once every deployment is swept in. */
+.filterBt {
+  composes: k-glass from global;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 9px 15px;
+  cursor: pointer;
+  flex: none;
+}
+.filterBt:hover {
+  background: var(--k-brand-dim);
+}
+.filterBtOn {
+  box-shadow: 0 0 0 1px var(--k-brand);
+}
+.filterCount {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--k-r-pill);
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  font-size: 11px;
+  font-weight: var(--k-fw-med);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--k-scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.filterModal {
+  width: 100%;
+  max-width: 380px;
+  max-height: 82vh;
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-xl);
+  box-shadow: var(--k-shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden auto;
+  padding: 18px;
+}
+.fHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  margin-bottom: 4px;
+}
+.fTitle {
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+}
+.fClose {
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--k-r-sm);
+}
+.fClose:hover {
+  color: var(--k-t1);
+  background: var(--k-hover);
+}
+.fBox {
+  padding: 10px 0;
+  border-top: 1px solid var(--k-line);
+}
+.fSection {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+.fRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+.fRow input {
+  accent-color: var(--k-brand);
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.fLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--k-fs-sm);
+}
+.fClear {
+  margin-top: 12px;
+  width: 100%;
+  background: var(--k-glass-deep);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 10px;
+  border-radius: var(--k-r-md);
+  cursor: pointer;
+}
+.fClear:hover {
+  background: var(--k-hover);
+}

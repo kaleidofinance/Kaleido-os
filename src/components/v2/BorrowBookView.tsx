@@ -23,6 +23,7 @@ import { formatWithCommas } from "@/constants/utils/formatNumber";
 import { declaredSymbol, isNativeSentinel } from "@/constants/registry";
 import TokenIcon from "@/components/v2/TokenIcon";
 import { TakeLoanModal } from "@/components/v2/BorrowModals";
+import BorrowFilterModal from "@/components/v2/BorrowFilterModal";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import ChainIcon from "@/components/v2/ChainIcon";
 import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
@@ -259,6 +260,13 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
   const [repaying, setRepaying] = useState<number | null>(null);
   const [pending, setPending] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  /* Book facet filters, like the Pool page's — an empty list per facet means no
+     constraint, so unchecking the last box restores the full book rather than
+     emptying it. Chain is the one that matters most now the book is
+     multi-chain; asset is the other axis a lender or borrower narrows by. */
+  const [filterChains, setFilterChains] = useState<number[]>([]);
+  const [filterSymbols, setFilterSymbols] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   /*
    * `isBorrow` alone can't drive this view, because the tabs vary on two
@@ -436,8 +444,39 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     ? filters?.loadingBorrow
     : filters?.lendLoading;
 
+  /* The options come from the rows themselves — a chain or an asset the sweep
+     found nothing on is a checkbox whose only outcome is an empty table. */
+  const facets = useMemo(() => {
+    const chains: number[] = [];
+    const symbols: string[] = [];
+    for (const r of book) {
+      if (!chains.includes(r.chainId)) chains.push(r.chainId);
+      const sym = declaredSymbol(r.chainId, r.tokenAddress);
+      if (sym && !symbols.includes(sym)) symbols.push(sym);
+    }
+    return { chains, symbols };
+  }, [book]);
+
+  const filtered = useMemo(
+    () =>
+      book.filter(
+        (r) =>
+          (filterChains.length === 0 || filterChains.includes(r.chainId)) &&
+          (filterSymbols.length === 0 ||
+            filterSymbols.includes(
+              declaredSymbol(r.chainId, r.tokenAddress) ?? "",
+            )),
+      ),
+    [book, filterChains, filterSymbols],
+  );
+
+  /* One count per facet that has a constraint, matching the Pool page: three
+     chains ticked is still one thing the reader narrowed by. */
+  const filterCount =
+    (filterChains.length > 0 ? 1 : 0) + (filterSymbols.length > 0 ? 1 : 0);
+
   const sorted = useMemo(() => {
-    const copy = [...book];
+    const copy = [...filtered];
     copy.sort((a, b) => {
       const pick = (r: Row) =>
         sortKey === "interest"
@@ -448,7 +487,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
       return sortDir === "asc" ? pick(a) - pick(b) : pick(b) - pick(a);
     });
     return copy;
-  }, [book, sortKey, sortDir]);
+  }, [filtered, sortKey, sortDir]);
 
   const median = useMemo(() => {
     const rates = book
@@ -755,6 +794,24 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                   placeholder={isListingShape ? "Offer ID" : "Request ID"}
                 />
               )}
+              {/* Filters, the same control the Pool page carries — offered only
+                  when there is more than one chain or asset in the book to narrow
+                  between, since a filter with one option can only empty the table.
+                  Not on /mylends, whose slice is already the user's own. */}
+              {!isMyLends &&
+                (facets.chains.length > 1 || facets.symbols.length > 1) && (
+                  <button
+                    type="button"
+                    className={`${s.filterBt} ${filterCount ? s.filterBtOn : ""}`}
+                    onClick={() => setFilterOpen(true)}
+                    aria-haspopup="dialog"
+                  >
+                    Filters
+                    {filterCount > 0 && (
+                      <span className={s.filterCount}>{filterCount}</span>
+                    )}
+                  </button>
+                )}
             </div>
 
             <div className={s.table}>
@@ -1201,6 +1258,22 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
         listing={takeTarget}
         onDone={onTakeDone}
       />
+
+      {filterOpen && (
+        <BorrowFilterModal
+          chains={facets.chains}
+          symbols={facets.symbols}
+          selectedChains={filterChains}
+          selectedSymbols={filterSymbols}
+          onChains={setFilterChains}
+          onSymbols={setFilterSymbols}
+          onClear={() => {
+            setFilterChains([]);
+            setFilterSymbols([]);
+          }}
+          onClose={() => setFilterOpen(false)}
+        />
+      )}
     </>
   );
 }
