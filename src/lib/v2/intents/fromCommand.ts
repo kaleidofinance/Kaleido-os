@@ -754,6 +754,23 @@ const PORTFOLIO_ALONE = [
  */
 const PORTFOLIO_VETO = new Set(["liquidity", "lp", "pool", "pools"]);
 
+/**
+ * Words that make a sentence an ACTION even though the verb table does not know
+ * them, so the portfolio read must not claim it.
+ *
+ * The read runs last, on the reasoning that anything stating an action was
+ * already claimed by its verb. That held until a tester typed "move 30% of my
+ * portfolio to the best yield" and got a balance card: "move" is not a `swap`
+ * or a `send`, so detectVerb returned null and the read swallowed a request to
+ * MOVE funds. These are the movement verbs the grammar has no intent for - they
+ * need the model (a percentage of a live balance, a venue chosen by yield), so
+ * the read declines and the sentence carries on rather than being mis-answered
+ * as a balance sheet. None of them appears in a plain "what do I have".
+ */
+const PORTFOLIO_ACTION_VETO = new Set([
+  "move", "put", "shift", "allocate", "rebalance", "deploy", "invest", "rotate",
+]);
+
 /* ------------------------------------------------------- open liquidity -- */
 
 /**
@@ -1515,6 +1532,7 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     const bare = words.join(" ");
     if (
       !words.some((w) => PORTFOLIO_VETO.has(w)) &&
+      !words.some((w) => PORTFOLIO_ACTION_VETO.has(w)) &&
       (PORTFOLIO_ALONE.includes(bare) ||
         PORTFOLIO_PHRASES.some((p) => lower.includes(p)))
     ) {
@@ -1550,6 +1568,24 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
       status: "ok",
       command: { kind: verb.kind, positionId: ref.id },
     };
+  }
+
+  /*
+   * "deposit USDC on yield" is not a collateral deposit, though the verb table
+   * reads "deposit" as one. A tester typed exactly that and got a lending
+   * collateral deposit - the wrong product, and one that earns nothing and
+   * locks the funds against a loan. The yield product is minting kfUSD and
+   * locking it into kafUSD, or lending on the book, or providing liquidity -
+   * three different transactions, and which one "on yield" means is genuinely
+   * ambiguous. So the grammar declines rather than guessing a transaction, and
+   * the sentence falls to the FAQ, which lays out the options. A collateral
+   * deposit never mentions yield, so this cannot swallow a real one.
+   */
+  if (
+    verb.kind === "deposit" &&
+    words.some((w) => w === "yield" || w === "yields" || w === "apy" || w === "earn")
+  ) {
+    return { status: "unknown" };
   }
 
   // A marketplace reference changes what a verb means: "borrow 500 usdc at 8%

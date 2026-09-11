@@ -1821,5 +1821,34 @@ console.log("\n— resting orders: sell-framed limit + cancel-all —");
   check("cancel listing 3 is a ref-cancel", ref.status === "ok" && ref.command.kind === "cancel", "");
 }
 
+console.log("\n— a move is not a portfolio read; a yield deposit is not collateral —");
+{
+  /* Tester: "move 30% of my portfolio to the best yield" came back as a balance
+     card. "move"/"put" are not grammar verbs, so the read swallowed an action. */
+  for (const q of [
+    "move 30% of my portfolio to the best yield",
+    "put 30% of my portfolio into staking",
+    "rebalance my portfolio",
+    "move my portfolio to lending",
+  ]) {
+    check(q + " is not a portfolio read", p(q).status !== "ok" || p(q).command.kind !== "portfolio", p(q).status);
+  }
+  /* A plain balance question still reads. */
+  for (const q of ["what is in my portfolio", "my balance", "how much do i have", "do i have any KLD"]) {
+    const r = p(q);
+    check(q + " still reads the portfolio", r.status === "ok" && r.command.kind === "portfolio", r.status);
+  }
+  /* Tester: "deposit USDC on yield" built a lending collateral deposit - the
+     wrong product. It now declines so the FAQ explains the yield options. */
+  for (const q of ["deposit 500 usdc on yield", "deposit usdc for yield", "deposit 500 usdc to earn yield"]) {
+    check(q + " does not build a collateral deposit", p(q).status === "unknown", p(q).status);
+  }
+  /* A real collateral deposit is untouched. */
+  const dep = p("deposit 500 USDC");
+  check("plain deposit still builds collateral", dep.status === "ok" && dep.command.kind === "deposit", dep.status);
+  const depc = p("deposit 500 USDC as collateral");
+  check("deposit as collateral still builds", depc.status === "ok" && depc.command.kind === "deposit", depc.status);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
