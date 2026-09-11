@@ -268,27 +268,45 @@ export function docsReply(hit: DocHit): { text: string; link: { href: string; la
   };
 }
 
+/** Offered when there is nothing to quote, so the reply still goes somewhere. */
+const DOCS_LINK = { href: "/docs", label: "Browse the docs" };
+
 /**
  * The reply when the model was needed and could not answer.
  *
  * The old behaviour was the bare error — "the reasoning service returned an
  * error" — which is the worst reply available: it tells the user nothing about
- * their question and nothing about what to do. This says what happened, gives
- * them the closest thing the docs have, and is honest that it is not the
- * reasoning they asked for.
+ * their question and nothing about what to do. This says what happened and, when
+ * the docs genuinely answer the question, quotes them.
+ *
+ * IT QUOTES ONLY A THRESHOLDED HIT, and that is the whole of this function.
+ * It used to fall back to `groundingFor`, which is the wrong search for this
+ * job: grounding accepts any section sharing a single term because a loose
+ * passage handed silently to a model costs nothing, and the model discards it.
+ * Shown to a person, prefixed "the closest thing the docs have", the same loose
+ * passage is a confident non-answer. Asked to "make me a volume of $100,000" it
+ * quoted the KLD supply table — matched on the digits — to a user who had asked
+ * about trading volume.
+ *
+ * So an unmatched question now gets no quote at all. A question the docs do not
+ * answer has no closest thing, and saying so is the honest reply; reaching for
+ * the nearest paragraph is how a search becomes an assertion.
  */
 export function outageReply(question: string): { text: string; link?: { href: string; label: string } } {
-  const hit = searchDocs(question) ?? groundingFor(question, 1)[0];
+  const hit = searchDocs(question);
   if (!hit) {
     return {
-      text: "I can't reason about that right now — the model I use for open questions is unavailable. Direct commands like `swap 100 USDC to KLD` still run here without it, and the docs at /docs cover how everything works.",
+      text:
+        "I can't reason about that right now — the model I use for open questions is unavailable. " +
+        "Direct commands like `swap 100 USDC to KLD` still run here without it, and the docs cover how everything works.",
+      link: DOCS_LINK,
     };
   }
   const where = hit.heading && hit.heading !== hit.title ? `${hit.title} › ${hit.heading}` : hit.title;
   return {
     text:
       `I can't reason about that right now — the model I use for open questions is unavailable. ` +
-      `The closest thing the docs have is this, from ${where}:\n\n${hit.text}`,
+      `The docs do answer this, though, from ${where}:\n\n${hit.text}`,
     link: { href: hit.href, label: "Read the full section" },
   };
 }

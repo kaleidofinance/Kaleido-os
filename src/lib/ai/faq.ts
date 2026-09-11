@@ -685,7 +685,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "who do i contact",
     ],
     answer:
-      "The docs sit on the main site under /docs and need no access code — Getting started is the first page, and there is one page per product. If something looks broken, or you have found a bug, reply to the email your access code came from; replies to that address reach us.",
+      "The docs sit on the main site and need no access code — Getting started is the first page, and there is one page per product. If something looks broken, or you have found a bug, reply to the email your access code came from; replies to that address reach us.",
   },
 ];
 

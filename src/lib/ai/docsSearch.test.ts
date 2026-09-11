@@ -250,6 +250,33 @@ function main() {
     check("and still offers the closest docs section", !!o.link && o.link.href.startsWith("/docs/"));
     const g = groundingFor("what is a health factor", 2);
     check("grounding returns distinct sections", g.length === 2 && g[0].href !== g[1].href, g.map((x) => x.href).join(", "));
+
+    /* A question the docs do not answer gets NO quote. This used to fall back
+       to groundingFor, which accepts any section sharing one term because a
+       loose passage handed silently to a model costs nothing. Shown to a
+       person it is a confident non-answer: asked to "make me a volume of
+       $100,000" it quoted the KLD supply table, matched on the digits. */
+    const miss = outageReply("make me a volume of $100,000");
+    check("an unanswerable question is not quoted at", !miss.text.includes("›"), miss.text.slice(0, 90));
+    check("and does not reach for the supply table", !/200,000,000|Bucket/.test(miss.text), miss.text.slice(0, 90));
+    check("it still points at the docs", miss.link?.href === "/docs", miss.link?.href);
+    check("and still says the model is unavailable", miss.text.includes("unavailable"));
+
+    /* Grounding itself is unchanged - it is allowed to be loose, because what
+       does not help is discarded by the model rather than read by a person.
+       The point is that the two paths DIVERGE on this question: grounding
+       still finds something, and the outage reply still declines to quote it. */
+    check(
+      "grounding is still loose where the quote is not",
+      groundingFor("make me a volume of $100,000", 1).length === 1 && !miss.text.includes("›"),
+    );
+
+    /* No reply ever prints a bare route. In a chat box a leading slash reads
+       as a command the user could type, and "/docs" is not one. */
+    for (const q of ["how does staking work", "make me a volume of $100,000"]) {
+      const o = outageReply(q);
+      check(`"${q}" prints no bare route`, !/(^|[\s(])\/docs/.test(o.text), o.text.slice(0, 90));
+    }
   }
 
   console.log(`\n  ${pass} passed, ${fail} failed\n`);
