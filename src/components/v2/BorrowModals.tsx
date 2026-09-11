@@ -15,6 +15,9 @@ import {
   netLenderRateBps,
   penaltySplitBps,
 } from "@/lib/lending/fees";
+import type { IToken } from "@/constants/types/dex";
+import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
+import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
 import s from "./BorrowModals.module.css";
 
 /**
@@ -298,6 +301,56 @@ function BorrowerCostNote({ fees }: { fees: LendingFees }) {
 }
 
 /** Lender posts an offer others can borrow against. */
+/**
+ * The connected wallet's balance of the selected loanable asset, with a Max.
+ *
+ * A tester reported the lend form showed no balance on selecting a token - the
+ * swap form does, and a form that spends your tokens should say how many you
+ * have. `useTokenBalance` takes an IToken and the lending assets are on a single
+ * chain (LENDING_CHAIN_ID), so the LendingAsset is lifted to the token shape the
+ * hook reads. `unread` (a dead RPC, or no wallet) shows nothing rather than a
+ * zero that would read as an empty wallet.
+ */
+function BalanceRow({
+  asset,
+  onMax,
+}: {
+  asset: LendingAsset | undefined;
+  onMax: (amount: string) => void;
+}) {
+  const token: IToken | null = asset
+    ? {
+        address: asset.address,
+        symbol: asset.symbol,
+        name: asset.symbol,
+        decimals: asset.decimals,
+        chainId: LENDING_CHAIN_ID,
+        verified: true,
+      }
+    : null;
+  const { balance, loading, unread } = useTokenBalance(token);
+  if (!asset || loading || unread) return null;
+  const shown = Number(balance).toLocaleString(undefined, {
+    maximumFractionDigits: 4,
+  });
+  return (
+    <div className={s.balRow}>
+      <span>
+        Balance: {shown} {asset.symbol}
+      </span>
+      {Number(balance) > 0 && (
+        <button
+          type="button"
+          className={s.maxBtn}
+          onClick={() => onMax(balance)}
+        >
+          Max
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function PostOfferModal({
   open,
   onClose,
@@ -378,6 +431,7 @@ export function PostOfferModal({
             onChange={setSymbol}
           />
         </div>
+        <BalanceRow asset={asset} onMax={setAmount} />
         <AssetState
           state={borrow.assets}
           options={loanable}
