@@ -1850,5 +1850,20 @@ console.log("\n— a move is not a portfolio read; a yield deposit is not collat
   check("deposit as collateral still builds", depc.status === "ok" && depc.command.kind === "deposit", depc.status);
 }
 
+console.log("\n— funding a borrower is filling their request —");
+{
+  /* Tester funded a borrow request with "fund borrower 7" and was asked which
+     request. Filling a request IS funding its borrower, so the person-word now
+     resolves the same reference as the mechanism-word. */
+  for (const q of ["fund borrower 7", "fill borrower 3", "fund borrower 5"]) {
+    const r = p(q);
+    check(q + " funds the request", r.status === "ok" && r.command.kind === "fillRequest", r.status);
+  }
+  /* The mechanism-word still works, and the borrow VERB is untouched - "borrow"
+     is not "borrower". */
+  check("fund request 7 still works", p("fund request 7").status === "ok" && p("fund request 7").command.kind === "fillRequest");
+  check("the borrow verb is not shadowed", p("borrow 500 USDC at 8% for 30 days").status === "ok" && p("borrow 500 USDC at 8% for 30 days").command.kind === "borrow");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
