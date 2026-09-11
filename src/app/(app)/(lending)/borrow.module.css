@@ -979,6 +979,44 @@
   background: var(--k-hover);
 }
 
+/* Range rows for the continuous columns (amount, APR, term). A min/max pair
+   sharing the facet row's vertical rhythm, so the modal reads as one list. */
+.fRange {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.fNum {
+  flex: 1;
+  min-width: 0;
+  background: var(--k-glass-deep);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-sm);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 7px 9px;
+}
+.fNum:focus {
+  outline: none;
+  border-color: var(--k-brand);
+}
+.fNum::placeholder {
+  color: var(--k-t3);
+}
+.fDash {
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+  flex: none;
+}
+.fUnit {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  flex: none;
+  white-space: nowrap;
+}
+
 /* ---------- list / grid view toggle ---------- */
 /* Beside the Filters button: a two-segment control, list or grid. */
 .viewToggle {

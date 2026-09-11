@@ -266,6 +266,14 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
      multi-chain; asset is the other axis a lender or borrower narrows by. */
   const [filterChains, setFilterChains] = useState<number[]>([]);
   const [filterSymbols, setFilterSymbols] = useState<string[]>([]);
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
+  /* The continuous columns filter by range, not facet: a min/max pair each,
+     empty meaning unbounded on that end. Amount is in the row's own asset units
+     (a coarse cut across a mixed book), APR is a percentage, term is days left
+     until maturity. */
+  const [amountRange, setAmountRange] = useState({ min: "", max: "" });
+  const [aprRange, setAprRange] = useState({ min: "", max: "" });
+  const [termRange, setTermRange] = useState({ min: "", max: "" });
   const [filterOpen, setFilterOpen] = useState(false);
   /* List (the table) or grid (cards). The rows already carry data-label for the
      phone stacked layout, so grid mode is that card, arranged in columns — see
@@ -454,31 +462,76 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
   const facets = useMemo(() => {
     const chains: number[] = [];
     const symbols: string[] = [];
+    const statuses: string[] = [];
     for (const r of book) {
       if (!chains.includes(r.chainId)) chains.push(r.chainId);
       const sym = declaredSymbol(r.chainId, r.tokenAddress);
       if (sym && !symbols.includes(sym)) symbols.push(sym);
+      const st = String(r.status).toUpperCase();
+      if (st && !statuses.includes(st)) statuses.push(st);
     }
-    return { chains, symbols };
+    return { chains, symbols, statuses };
   }, [book]);
 
-  const filtered = useMemo(
-    () =>
-      book.filter(
-        (r) =>
-          (filterChains.length === 0 || filterChains.includes(r.chainId)) &&
-          (filterSymbols.length === 0 ||
-            filterSymbols.includes(
-              declaredSymbol(r.chainId, r.tokenAddress) ?? "",
-            )),
-      ),
-    [book, filterChains, filterSymbols],
-  );
+  const filtered = useMemo(() => {
+    const now = Date.now() / 1000;
+    /* Empty end = unbounded. A non-finite value (an amount that would not
+       decode) fails any bound that is set and passes when none is. */
+    const within = (v: number, min: string, max: string) =>
+      (min === "" || (Number.isFinite(v) && v >= Number(min))) &&
+      (max === "" || (Number.isFinite(v) && v <= Number(max)));
+    return book.filter((r) => {
+      if (filterChains.length > 0 && !filterChains.includes(r.chainId))
+        return false;
+      if (
+        filterSymbols.length > 0 &&
+        !filterSymbols.includes(declaredSymbol(r.chainId, r.tokenAddress) ?? "")
+      )
+        return false;
+      if (
+        filterStatuses.length > 0 &&
+        !filterStatuses.includes(String(r.status).toUpperCase())
+      )
+        return false;
+      /* Defensive like the table's own decode — a token whose decimals
+         are unknown, or a malformed amount, would throw here and take the
+         whole book down. NaN then fails a set bound and passes when none. */
+      let human = NaN;
+      try {
+        human = Number(
+          ethers.formatUnits(
+            r.amount ?? "0",
+            getTokenDecimals(r.chainId, r.tokenAddress),
+          ),
+        );
+      } catch {
+        /* leave NaN */
+      }
+      if (!within(human, amountRange.min, amountRange.max)) return false;
+      if (!within(r.interest / 100, aprRange.min, aprRange.max)) return false;
+      const daysLeft = (Number(r.returnDate) - now) / 86400;
+      if (!within(daysLeft, termRange.min, termRange.max)) return false;
+      return true;
+    });
+  }, [
+    book,
+    filterChains,
+    filterSymbols,
+    filterStatuses,
+    amountRange,
+    aprRange,
+    termRange,
+  ]);
 
   /* One count per facet that has a constraint, matching the Pool page: three
      chains ticked is still one thing the reader narrowed by. */
   const filterCount =
-    (filterChains.length > 0 ? 1 : 0) + (filterSymbols.length > 0 ? 1 : 0);
+    (filterChains.length > 0 ? 1 : 0) +
+    (filterSymbols.length > 0 ? 1 : 0) +
+    (filterStatuses.length > 0 ? 1 : 0) +
+    (amountRange.min || amountRange.max ? 1 : 0) +
+    (aprRange.min || aprRange.max ? 1 : 0) +
+    (termRange.min || termRange.max ? 1 : 0);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -803,8 +856,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                   when there is more than one chain or asset in the book to narrow
                   between, since a filter with one option can only empty the table.
                   Not on /mylends, whose slice is already the user's own. */}
-              {!isMyLends &&
-                (facets.chains.length > 1 || facets.symbols.length > 1) && (
+              {!isMyLends && book.length > 0 && (
                   <button
                     type="button"
                     className={`${s.filterBt} ${filterCount ? s.filterBtOn : ""}`}
@@ -1318,13 +1370,26 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
         <BorrowFilterModal
           chains={facets.chains}
           symbols={facets.symbols}
+          statuses={facets.statuses}
           selectedChains={filterChains}
           selectedSymbols={filterSymbols}
+          selectedStatuses={filterStatuses}
+          amountRange={amountRange}
+          aprRange={aprRange}
+          termRange={termRange}
           onChains={setFilterChains}
           onSymbols={setFilterSymbols}
+          onStatuses={setFilterStatuses}
+          onAmountRange={setAmountRange}
+          onAprRange={setAprRange}
+          onTermRange={setTermRange}
           onClear={() => {
             setFilterChains([]);
             setFilterSymbols([]);
+            setFilterStatuses([]);
+            setAmountRange({ min: "", max: "" });
+            setAprRange({ min: "", max: "" });
+            setTermRange({ min: "", max: "" });
           }}
           onClose={() => setFilterOpen(false)}
         />
