@@ -1,5 +1,14 @@
 /**
- * The clock for /api/keeper/push.
+ * The clock for /api/keeper/push AND /api/keeper/candles.
+ *
+ * Two jobs on the one 15-minute tick, because 15 minutes is the right cadence
+ * for both and a second Worker would be a second thing to deploy, arm and watch
+ * for the same clock. The push keeps a self-hosted price feed inside its
+ * freshness bound; the candles fold the KLD pool's swaps into a 15m bucket. They
+ * are INDEPENDENT — each is called on its own, each retried on its own, and a
+ * failure in one is reported without hiding or being hidden by the other — but
+ * they share this file's one contribution: a clock, a secret and a chain list.
+ * Everything about what either endpoint actually does lives behind it.
  *
  * Robinhood's ETH/WETH feed is one we publish ourselves, and ProtocolFacet ages a
  * price as `block.timestamp - updatedAt` against a per-feed bound. Measured
@@ -68,6 +77,18 @@ const DEFAULT_APP_URL = "https://kaleidofi.xyz";
  */
 const DEFAULT_CHAIN_IDS = "46630";
 
+/**
+ * The chains the candle indexer is pointed at.
+ *
+ * Not the push's list. KLD/USDC pools exist on four chains — Sepolia (11155111),
+ * Base (84532), BSC (97) and Robinhood (46630) — and NOT on Arc (5042002), so
+ * Arc is left off rather than scanned to be skipped. Scoped for the same reason
+ * the push is: the route's ceiling is 60s and an unscoped run pays a getLogs
+ * sweep on every registry chain to reach the same four. Override with
+ * CANDLE_CHAIN_IDS if a pool lands on a fifth.
+ */
+const DEFAULT_CANDLE_CHAIN_IDS = "11155111,84532,97,46630";
+
 /** A hung fetch must be reported, not waited on: the endpoint's own ceiling is
  *  60s, so anything past that is not going to arrive. */
 const REQUEST_TIMEOUT_MS = 70_000;
@@ -83,10 +104,20 @@ const REQUEST_TIMEOUT_MS = 70_000;
  */
 const RETRY_DELAY_MS = 20_000;
 
+function baseUrl(env) {
+  return (env.APP_URL || DEFAULT_APP_URL).replace(/\/+$/, "");
+}
+
 function pushUrl(env) {
-  const base = (env.APP_URL || DEFAULT_APP_URL).replace(/\/+$/, "");
   const chains = (env.KEEPER_CHAIN_IDS ?? DEFAULT_CHAIN_IDS).trim();
-  const url = new URL(`${base}/api/keeper/push`);
+  const url = new URL(`${baseUrl(env)}/api/keeper/push`);
+  if (chains) url.searchParams.set("chainId", chains);
+  return url;
+}
+
+function candlesUrl(env) {
+  const chains = (env.CANDLE_CHAIN_IDS ?? DEFAULT_CANDLE_CHAIN_IDS).trim();
+  const url = new URL(`${baseUrl(env)}/api/keeper/candles`);
   if (chains) url.searchParams.set("chainId", chains);
   return url;
 }
@@ -143,7 +174,78 @@ function summarise(status, body) {
   );
 }
 
-async function run(env) {
+/**
+ * The candle route's shape, which is not the push's.
+ *
+ * It returns `{ dryRun, results: [{ chainId, pool, swaps, candles, wrote,
+ * error }] }`. A chain with no KLD pool comes back `pool: null` and is a clean
+ * skip, not a failure. The line restates the candles written and flags any chain
+ * that reported an error, so a failing indexer is legible in Cloudflare's log
+ * without opening Vercel's — the same reason the push summary is restated here.
+ */
+function summariseCandles(status, body) {
+  if (status === 0) return body;
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return `${status} non-JSON: ${body.slice(0, 200)}`;
+  }
+  if (parsed?.error) return `${status} ${parsed.error}`;
+
+  const results = parsed?.results ?? [];
+  const wrote = results.reduce((n, r) => n + (r?.wrote ? r.candles : 0), 0);
+  const perChain = results
+    .map((r) =>
+      r?.pool
+        ? `${r.chainId}:${r.swaps ?? "?"}sw/${r.candles ?? "?"}c${r.error ? "!" : ""}`
+        : `${r.chainId}:no-pool`,
+    )
+    .join(" ");
+  return `${status} candles=${wrote}${perChain ? ` ${perChain}` : ""}`;
+}
+
+/**
+ * One endpoint, called with the one retry the failures a retry can fix deserve.
+ *
+ * Extracted so push and candles share the exact same call, retry and reporting
+ * rules — a divergence between them is a divergence nobody asked for. Returns
+ * whether it succeeded and the line to log; the caller decides what a failure
+ * means for the invocation as a whole.
+ */
+async function attempt(url, secret, summarise) {
+  let result = await callPush(url, secret).catch((error) => ({
+    status: 0,
+    body: `fetch failed: ${error?.message ?? error}`,
+  }));
+
+  const worthRetrying = result.status === 0 || result.status >= 500;
+  if (worthRetrying) {
+    console.warn(`[keeper-cron] ${summarise(result.status, result.body)} — retrying once`);
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    result = await callPush(url, secret).catch((error) => ({
+      status: 0,
+      body: `fetch failed: ${error?.message ?? error}`,
+    }));
+  }
+
+  const line = `[keeper-cron] ${url.pathname}${url.search} → ${summarise(result.status, result.body)}`;
+  return { ok: result.status === 200, line };
+}
+
+/**
+ * Both jobs, on one tick, independent.
+ *
+ * Push and candles are called together (Promise.all) rather than in sequence,
+ * because neither waits on the other and the invocation's own ceiling is better
+ * spent overlapping two waits than stacking them. Each is judged on its own
+ * status. The invocation is marked failed if EITHER failed — a silently failing
+ * candle indexer is the same anti-pattern as a silently failing push, so both
+ * are made loud — and the thrown message names every line that failed so the
+ * dashboard says which job, not just that one did.
+ */
+async function runAll(env) {
   const secret = env.KEEPER_CRON_SECRET;
   if (!secret) {
     /* Unarmed is a state, not a bug — the same choice the route makes about its
@@ -156,38 +258,27 @@ async function run(env) {
     );
   }
 
-  const url = pushUrl(env);
-  let attempt = await callPush(url, secret).catch((error) => ({
-    status: 0,
-    body: `fetch failed: ${error?.message ?? error}`,
-  }));
+  const results = await Promise.all([
+    attempt(pushUrl(env), secret, summarise),
+    attempt(candlesUrl(env), secret, summariseCandles),
+  ]);
 
-  const worthRetrying = attempt.status === 0 || attempt.status >= 500;
-  if (worthRetrying) {
-    console.warn(`[keeper-cron] ${summarise(attempt.status, attempt.body)} — retrying once`);
-    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-    attempt = await callPush(url, secret).catch((error) => ({
-      status: 0,
-      body: `fetch failed: ${error?.message ?? error}`,
-    }));
-  }
+  for (const r of results) (r.ok ? console.info : console.error)(r.line);
 
-  const line = `[keeper-cron] ${url.pathname}${url.search} → ${summarise(attempt.status, attempt.body)}`;
-  if (attempt.status !== 200) {
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length > 0) {
     /* Thrown, not logged and swallowed. A thrown scheduled handler is what marks
        the invocation failed in Cloudflare's dashboard, and an invisible failing
        keeper is the exact shape of the outage this replaces. */
-    console.error(line);
-    throw new Error(line);
+    throw new Error(failed.map((r) => r.line).join(" | "));
   }
-  console.info(line);
-  return line;
+  return results.map((r) => r.line).join(" | ");
 }
 
 export default {
   /** The cron trigger. See wrangler.toml for the cadence and why. */
   async scheduled(event, env) {
-    await run(env);
+    await runAll(env);
   },
 
   /**
@@ -210,13 +301,13 @@ export default {
         JSON.stringify({
           error: "Unauthorized.",
           armed: Boolean(env.KEEPER_CRON_SECRET),
-          target: pushUrl(env).toString(),
+          targets: [pushUrl(env).toString(), candlesUrl(env).toString()],
         }),
         { status: 401, headers: { "content-type": "application/json" } },
       );
     }
     try {
-      return new Response(JSON.stringify({ ok: true, detail: await run(env) }), {
+      return new Response(JSON.stringify({ ok: true, detail: await runAll(env) }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
