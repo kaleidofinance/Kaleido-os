@@ -23,6 +23,7 @@ import {
 import { tickToPrice } from "@/constants/utils/v3Math";
 import { minOutFor } from "@/lib/dex/orders";
 import type { PoolState } from "@/lib/dex/pool";
+import { LENDING_CHAIN_ID, lendingChainMismatch } from "@/lib/lending/chain";
 import {
   describeRoute,
   encodeV3Path,
@@ -1614,6 +1615,39 @@ export async function buildIntents(
     getContracts(chainId).diamond ?? envVars.lendbitDiamondAddress;
   if (!diamond) {
     return { ok: false, error: "The protocol address isn't configured." };
+  }
+
+  /*
+   * Lending is single-chain, and the agent had no guard for it.
+   *
+   * A tester asked Luca to "offer 100 USDC to lend at 8% for 30 days", was told
+   * done, and found nothing under My lends. The offer was real — it posted to
+   * the diamond on the chain the WALLET was on, because `chainId` here is
+   * deps.chainId, the connected chain, with no pin to the one lending reads. My
+   * lends reads LENDING_CHAIN_ID (src/lib/lending/chain.ts), so an offer on any
+   * other chain is invisible there: a transaction that succeeded on the wrong
+   * deployment, which is worse than one that failed.
+   *
+   * The modals learned this in #80 and switch the wallet before signing. The
+   * agent cannot open a wallet dialog mid-plan, so it does the honest thing a
+   * layer earlier: it refuses to BUILD a lending command off the lending chain,
+   * with the same message the modal shows, so Luca says "switch to X" instead of
+   * posting where nothing will find it. The stablecoin verbs below
+   * (mint/redeem/lock/unlock) are per-chain and deliberately NOT guarded — they
+   * work wherever they are deployed.
+   */
+  const LENDING_KINDS = new Set([
+    "deposit",
+    "withdraw",
+    "borrow",
+    "lend",
+    "cancel",
+    "takeListing",
+    "fillRequest",
+  ]);
+  if (LENDING_KINDS.has(command.kind) && chainId !== LENDING_CHAIN_ID) {
+    const mismatch = lendingChainMismatch(chainId);
+    if (mismatch) return { ok: false, error: mismatch };
   }
 
   if (command.kind === "deposit") {

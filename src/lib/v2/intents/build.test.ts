@@ -1561,6 +1561,43 @@ async function main() {
     );
   }
   {
+    /* The tester bug: "offer 100 USDC to lend at 8% for 30 days" said done, and
+       My lends was empty. The offer had posted to the diamond on the wallet's
+       chain, which is not the one lending reads. A lending command off the
+       lending chain is now refused at build time — the agent cannot switch the
+       wallet mid-plan, so it says so instead of posting where nothing finds it. */
+    const { deps } = fakeDeps({ chainId: 84532 }); // Base, not the lending chain
+    const r = await build(
+      { kind: "lend", amount: "100", token: DEX_USDC, interestPct: 8, days: 30 },
+      deps,
+    );
+    check(
+      "a lend off the lending chain is refused, not posted to the wrong diamond",
+      !r.ok && errorOf(r).includes("Lending runs on"),
+      errorOf(r),
+    );
+    check(
+      "and the refusal names both chains so it is actionable",
+      !r.ok && errorOf(r).includes("switch"),
+      errorOf(r),
+    );
+
+    /* Every other lending verb is guarded the same way, and the stablecoin
+       verbs are deliberately NOT — they work wherever they are deployed. */
+    const offChain = fakeDeps({ chainId: 84532 }).deps;
+    for (const cmd of [
+      { kind: "borrow", amount: "100", token: DEX_USDC, interestPct: 5, days: 30 },
+      { kind: "deposit", amount: "100", token: DEX_USDC },
+      { kind: "withdraw", amount: "100", token: DEX_USDC },
+      { kind: "cancel", target: "listing", id: 1 },
+    ] as Command[]) {
+      const rr = await build(cmd, offChain);
+      check(`${cmd.kind} off the lending chain is refused too`, !rr.ok && errorOf(rr).includes("Lending runs on"), `${cmd.kind}: ${errorOf(rr)}`);
+    }
+    const mintOff = await build({ kind: "mint", amount: "100", token: DEX_USDC }, offChain);
+    check("but mint (stablecoin) is not lending-chain-gated", mintOff.ok || !errorOf(mintOff).includes("Lending runs on"), errorOf(mintOff));
+  }
+  {
     const { deps, calls } = fakeDeps();
     const r = await build({ kind: "cancel", target: "listing", id: 42 }, deps);
     check(
