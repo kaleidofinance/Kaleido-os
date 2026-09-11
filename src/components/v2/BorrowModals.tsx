@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import {
+  useActiveAccount,
+  useActiveWalletChain,
+  useSwitchActiveWalletChain,
+} from "thirdweb/react";
+import { defineChain } from "thirdweb/chains";
 import { toast } from "sonner";
 import {
   type BorrowV2,
@@ -17,6 +23,7 @@ import {
 } from "@/lib/lending/fees";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
+import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
 import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
 import s from "./BorrowModals.module.css";
 
@@ -207,6 +214,59 @@ function TermPicker({
       ))}
     </div>
   );
+}
+
+/**
+ * The lending chain, the wallet's chain, and the one button that closes the gap.
+ *
+ * Lending is single-chain (see lib/lending/chain.ts), and until now the mismatch
+ * was only discovered by PRESSING the button: every action in useBorrowV2 calls
+ * `wrongChain()`, which raises a toast naming the two networks and aborts. So
+ * the user picked an offer, typed an amount, pressed Borrow, and got a sentence
+ * telling them to go and do something else somewhere else. The work was done and
+ * the fix was not reachable from where they were standing.
+ *
+ * The CTA becomes the switch instead, which is the pattern pool/DepositModal
+ * already settled: two actions behind one button, because switching is a step on
+ * the way to borrowing rather than a different intent. The modal stays open, the
+ * amount stays typed, and the button goes back to saying what it does.
+ *
+ * DISCONNECTED IS NOT A MISMATCH. With no wallet there is nothing to switch;
+ * `switchChain()` would throw and the catch would advise switching manually in a
+ * wallet that was never connected. NetworkSelector makes the same distinction.
+ *
+ * The toast is not removed. It still backs every path that does not go through
+ * one of these buttons, and it is the thing that catches a chain changed in the
+ * wallet between opening the modal and pressing.
+ */
+function useLendingChain() {
+  const account = useActiveAccount();
+  const chain = useActiveWalletChain();
+  const switchChain = useSwitchActiveWalletChain();
+  const [switching, setSwitching] = useState(false);
+
+  const meta = getChainMeta(LENDING_CHAIN_ID);
+  const target = meta?.shortName ?? meta?.name ?? `chain ${LENDING_CHAIN_ID}`;
+  const wrong = !!account && !!chain && chain.id !== LENDING_CHAIN_ID;
+
+  const goToChain = async () => {
+    if (!meta) {
+      toast.error(`Chain ${LENDING_CHAIN_ID} is not in the registry.`);
+      return;
+    }
+    setSwitching(true);
+    try {
+      await switchChain(defineChain(toThirdwebChainOptions(meta)));
+    } catch {
+      toast.error(
+        `Couldn't switch to ${meta.name} — switch manually in your wallet, then try again.`,
+      );
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  return { wrong, switching, goToChain, target };
 }
 
 const num = (v: string) => v.replace(/[^0-9.]/g, "");
@@ -400,6 +460,7 @@ export function PostOfferModal({
   const { loanable } = borrow.assets;
   const { asset, symbol, setSymbol } = useAssetOptions(loanable);
   const [busy, setBusy] = useState(false);
+  const gate = useLendingChain();
 
   const minN = Number(min);
   const maxN = Number(max);
@@ -514,16 +575,29 @@ export function PostOfferModal({
         <TermPicker days={days} onChange={setDays} />
       </div>
 
-      <button className={s.cta} disabled={!ready || busy} onClick={submit}>
-        {busy
-          ? "Posting…"
-          : borrow.assets.loading
-            ? "Reading assets…"
-            : !asset
-              ? "No loan currency available"
-              : ready
-                ? "Post offer"
-                : "Enter amount, range and rate"}
+      {/* Two actions behind one button — see useLendingChain. `ready` is
+          not consulted while the chain is wrong: the amount cannot be
+          validated against a market the wallet cannot reach yet, and a
+          disabled switch would strand the user exactly where the toast
+          used to. */}
+      <button
+        className={s.cta}
+        disabled={gate.switching || busy || (!gate.wrong && !ready)}
+        onClick={gate.wrong ? gate.goToChain : submit}
+      >
+        {gate.switching
+          ? "Switching…"
+          : gate.wrong
+            ? `Switch to ${gate.target}`
+            : busy
+              ? "Posting…"
+              : borrow.assets.loading
+                ? "Reading assets…"
+                : !asset
+                  ? "No loan currency available"
+                  : ready
+                    ? "Post offer"
+                    : "Enter amount, range and rate"}
       </button>
     </Shell>
   );
@@ -549,6 +623,7 @@ export function PostRequestModal({
   const { loanable } = borrow.assets;
   const { asset, symbol, setSymbol } = useAssetOptions(loanable);
   const [busy, setBusy] = useState(false);
+  const gate = useLendingChain();
 
   /*
    * The facet will not lend you a token you have posted as collateral:
@@ -623,9 +698,9 @@ export function PostRequestModal({
         <BalanceRow asset={asset} />
         {collateralBlocked && (
           <div className={s.warn}>
-            You have {symbol} deposited as collateral, so the protocol won&apos;t
-            lend it to you — pick a different asset, or withdraw your {symbol}{" "}
-            collateral first.
+            You have {symbol} deposited as collateral, so the protocol
+            won&apos;t lend it to you — pick a different asset, or withdraw your{" "}
+            {symbol} collateral first.
           </div>
         )}
       </div>
@@ -669,18 +744,31 @@ export function PostRequestModal({
       )}
       <LiquidationNote fees={borrow.fees} />
 
-      <button className={s.cta} disabled={!ready || busy} onClick={submit}>
-        {busy
-          ? "Posting…"
-          : borrow.assets.loading
-            ? "Reading assets…"
-            : !asset
-              ? "Nothing borrowable here"
-              : collateralBlocked
-                ? `${symbol} is your collateral`
-                : ready
-                  ? "Post request"
-                  : "Enter an amount and rate"}
+      {/* Two actions behind one button — see useLendingChain. `ready` is
+          not consulted while the chain is wrong: the amount cannot be
+          validated against a market the wallet cannot reach yet, and a
+          disabled switch would strand the user exactly where the toast
+          used to. */}
+      <button
+        className={s.cta}
+        disabled={gate.switching || busy || (!gate.wrong && !ready)}
+        onClick={gate.wrong ? gate.goToChain : submit}
+      >
+        {gate.switching
+          ? "Switching…"
+          : gate.wrong
+            ? `Switch to ${gate.target}`
+            : busy
+              ? "Posting…"
+              : borrow.assets.loading
+                ? "Reading assets…"
+                : !asset
+                  ? "Nothing borrowable here"
+                  : collateralBlocked
+                    ? `${symbol} is your collateral`
+                    : ready
+                      ? "Post request"
+                      : "Enter an amount and rate"}
       </button>
     </Shell>
   );
@@ -716,6 +804,7 @@ export function TakeLoanModal({
 }) {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
+  const gate = useLendingChain();
 
   useEffect(() => {
     if (open) setAmount("");
@@ -829,14 +918,27 @@ export function TakeLoanModal({
           liquidation penalty, which is entirely the borrower's. */}
       <LiquidationNote fees={borrow.fees} />
 
-      <button className={s.cta} disabled={!ready || busy} onClick={submit}>
-        {busy
-          ? "Borrowing…"
-          : collateralBlocked
-            ? `${symbol} is your collateral`
-            : ready
-              ? `Borrow ${amount} ${symbol}`
-              : "Enter an amount"}
+      {/* Two actions behind one button — see useLendingChain. `ready` is
+          not consulted while the chain is wrong: the amount cannot be
+          validated against a market the wallet cannot reach yet, and a
+          disabled switch would strand the user exactly where the toast
+          used to. */}
+      <button
+        className={s.cta}
+        disabled={gate.switching || busy || (!gate.wrong && !ready)}
+        onClick={gate.wrong ? gate.goToChain : submit}
+      >
+        {gate.switching
+          ? "Switching…"
+          : gate.wrong
+            ? `Switch to ${gate.target}`
+            : busy
+              ? "Borrowing…"
+              : collateralBlocked
+                ? `${symbol} is your collateral`
+                : ready
+                  ? `Borrow ${amount} ${symbol}`
+                  : "Enter an amount"}
       </button>
     </Shell>
   );
@@ -864,6 +966,7 @@ export function CollateralModal({
   const { collateral: depositable } = borrow.assets;
   const { asset, symbol, setSymbol } = useAssetOptions(depositable);
   const [busy, setBusy] = useState(false);
+  const gate = useLendingChain();
 
   /* Matched on address. The holdings come from the same diamond list the picker
      does, so the addresses are identical strings today — but symbol matching is
@@ -987,20 +1090,33 @@ export function CollateralModal({
         </>
       )}
 
-      <button className={s.cta} disabled={!ready || busy} onClick={submit}>
-        {busy
-          ? mode === "deposit"
-            ? "Depositing…"
-            : "Withdrawing…"
-          : borrow.assets.loading
-            ? "Reading assets…"
-            : !asset
-              ? "No collateral asset available"
-              : ready
-                ? mode === "deposit"
-                  ? "Deposit collateral"
-                  : "Withdraw collateral"
-                : "Enter an amount"}
+      {/* Two actions behind one button — see useLendingChain. `ready` is
+          not consulted while the chain is wrong: the amount cannot be
+          validated against a market the wallet cannot reach yet, and a
+          disabled switch would strand the user exactly where the toast
+          used to. */}
+      <button
+        className={s.cta}
+        disabled={gate.switching || busy || (!gate.wrong && !ready)}
+        onClick={gate.wrong ? gate.goToChain : submit}
+      >
+        {gate.switching
+          ? "Switching…"
+          : gate.wrong
+            ? `Switch to ${gate.target}`
+            : busy
+              ? mode === "deposit"
+                ? "Depositing…"
+                : "Withdrawing…"
+              : borrow.assets.loading
+                ? "Reading assets…"
+                : !asset
+                  ? "No collateral asset available"
+                  : ready
+                    ? mode === "deposit"
+                      ? "Deposit collateral"
+                      : "Withdraw collateral"
+                    : "Enter an amount"}
       </button>
     </Shell>
   );

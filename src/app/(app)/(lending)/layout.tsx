@@ -16,7 +16,8 @@ import {
 } from "@/components/v2/LendingDataContext";
 import { Stat, StatStrip } from "@/components/v2/StatStrip";
 import { useMarketStats } from "@/hooks/market/useMarketStats";
-import { qty, usd } from "@/lib/format/figures";
+import { useLenderPosition } from "@/hooks/v2/useLenderPosition";
+import { DASH, qty, usd } from "@/lib/format/figures";
 import s from "./borrow.module.css";
 
 /**
@@ -57,6 +58,9 @@ function LendingShell({ children }: { children: ReactNode }) {
      notes could ask it about `loading` and `degraded` — those notes are gone (see
      StatStrip), and with them the last reader of anything but the figures. */
   const { stats } = useMarketStats();
+  /* The same computation the /mylends sidebar reads, so the two cannot
+     disagree about a lender's position. */
+  const lender = useLenderPosition(filters);
   const [offerOpen, setOfferOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [collateralOpen, setCollateralOpen] = useState(false);
@@ -118,36 +122,77 @@ function LendingShell({ children }: { children: ReactNode }) {
         </div>
 
         {/*
-          Market-scoped in every tile, and deliberately so. The sidebar beside
-          the book already carries this wallet's own collateral, health factor
-          and open loans (BorrowBookView's "Your position" card, which is why
-          nothing moved out of it), and the Liquidity strip avoids a wallet-scoped
-          tile for the reason that applies here too: a figure that changes meaning
-          depending on whether you have connected is worse than one that is
-          missing. What these four add is the thing neither the table nor the
-          sidebar says — how big the book is, and whether there is anything in it
-          to act on. That holds on all four tabs, which the same strip has to
-          serve.
+          MARKET-SCOPED ON THE TWO BOOK TABS, WALLET-SCOPED ON THE TWO PERSONAL
+          ONES, because the tabs are asking different questions. /borrow and
+          /lend are two sides of one book and the useful thing to say there is
+          how big it is and whether there is anything in it to act on. /mylends
+          and /myloans are asking how YOU are doing, and four market figures
+          answer a question those tabs are not asking.
 
-          Also why there is no APR tile: the sidebar's "Market" card already
-          shows the best rate and the term range, read from the rows on screen,
-          and a second APR computed from a different query would be a second
-          answer to the same question.
+          The earlier version of this comment argued the opposite - that a
+          figure changing meaning on connect is worse than one that is missing,
+          and that the sidebar carries the wallet's own numbers already. The
+          first half still holds and is why the personal tiles fall back to the
+          same DASH an absent figure gets anywhere. The second half was a
+          desktop-only observation: `.side` stacks UNDER the table below 960px
+          (borrow.module.css), so on a phone "Your position" sits past the whole
+          book and the strip is the only thing above it. That is precisely where
+          a lender or borrower most needs one line about themselves.
+
+          The figures are not recomputed here. The lender's four come from the
+          same useLenderPosition the sidebar reads and the borrower's from the
+          same useBorrowV2, so the strip and the card cannot disagree - which is
+          the rule that also keeps an APR tile off this strip, the sidebar's
+          Market card already answering that from the rows on screen.
         */}
-        <StatStrip>
-          <Stat label="Open offers" value={qty(stats?.openOffers)} />
-          <Stat label="Open requests" value={qty(stats?.openRequests)} />
-          {/* "Open book" rather than "Lending TVL", which is what /leaderboard
-              calls the same field. On a page whose reader is about to take one of
-              these rows, the useful thing to say is that the figure is the
-              unfilled book — not capital deposited in a pool, which is what TVL
-              means everywhere else in DeFi. */}
-          <Stat label="Open book" value={usd(stats?.lendingTvlUsd)} />
-          <Stat
-            label="Loans outstanding"
-            value={qty(stats?.loansOutstanding)}
-          />
-        </StatStrip>
+        {mode === "mylends" ? (
+          <StatStrip>
+            <Stat label="Open offers" value={qty(lender.myOpenCount)} />
+            {/* "Open value", not "Lent": the borrow cursor asks for status
+                OPEN, so this is what is still on offer rather than everything
+                ever posted. */}
+            <Stat label="Open value" value={usd(lender.openValueUsd)} />
+            <Stat label="Funded" value={qty(lender.fundedCount)} />
+            {/* Principal plus interest - `amount` alone understates a lender's
+                position by exactly the rate they are lending at. */}
+            <Stat label="Outstanding" value={usd(lender.outstandingUsd)} />
+          </StatStrip>
+        ) : mode === "mine" ? (
+          <StatStrip>
+            <Stat label="Open loans" value={qty(borrow.loans.length)} />
+            <Stat label="Collateral" value={usd(borrow.collateralValueUsd)} />
+            <Stat
+              label="Health factor"
+              value={
+                borrow.healthFactor === null
+                  ? DASH
+                  : borrow.healthFactor.toFixed(2)
+              }
+            />
+            {/* The one figure neither the sidebar nor a single row states: a
+                row can say it is overdue, but only a count says how many are,
+                and that is the thing worth seeing before the table. */}
+            <Stat
+              label="Overdue"
+              value={qty(borrow.loans.filter((l) => l.overdue).length)}
+            />
+          </StatStrip>
+        ) : (
+          <StatStrip>
+            <Stat label="Open offers" value={qty(stats?.openOffers)} />
+            <Stat label="Open requests" value={qty(stats?.openRequests)} />
+            {/* "Open book" rather than "Lending TVL", which is what /leaderboard
+                calls the same field. On a page whose reader is about to take one
+                of these rows, the useful thing to say is that the figure is the
+                unfilled book — not capital deposited in a pool, which is what TVL
+                means everywhere else in DeFi. */}
+            <Stat label="Open book" value={usd(stats?.lendingTvlUsd)} />
+            <Stat
+              label="Loans outstanding"
+              value={qty(stats?.loansOutstanding)}
+            />
+          </StatStrip>
+        )}
 
         {children}
       </main>
