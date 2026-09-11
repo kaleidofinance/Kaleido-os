@@ -1,0 +1,96 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--k-surface, var(--k-glass-deep));
+  border-radius: var(--k-r-lg, 16px);
+  padding: 16px;
+  min-height: 320px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  gap: 12px;
+}
+
+.title {
+  font-size: var(--k-fs-sm, 14px);
+  font-weight: var(--k-fw-med, 600);
+  color: var(--k-t1);
+  letter-spacing: 0.01em;
+}
+
+.intervals {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--k-glass-deep);
+  border-radius: var(--k-r-md, 10px);
+  padding: 2px;
+}
+
+.iv {
+  border: 0;
+  background: none;
+  color: var(--k-t3);
+  font: inherit;
+  font-size: var(--k-fs-xs, 12px);
+  padding: 4px 10px;
+  border-radius: var(--k-r-sm, 7px);
+  cursor: pointer;
+}
+.iv:hover {
+  color: var(--k-t1);
+}
+.ivOn {
+  background: var(--k-brand-dim, rgba(120, 120, 255, 0.15));
+  color: var(--k-t1);
+}
+
+/* The plot takes the leftover height, matching PriceChart's approach: header is
+   flex:none, this fills the rest, so the panel is whatever height its row gives. */
+.plotWrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 240px;
+  margin-top: 12px;
+}
+
+.plot {
+  position: absolute;
+  inset: 0;
+}
+
+/* The three not-a-chart states, centred and quiet — this is a normal condition
+   (a fresh chain has no trades), not an error to shout about. Same treatment as
+   PriceChart's `.empty`. */
+.empty,
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+}
+
+.emptyText {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm, 14px);
+  margin: 0;
+}
+
+.emptySub {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs, 12px);
+}
+
+.loadingText {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs, 12px);
+}
