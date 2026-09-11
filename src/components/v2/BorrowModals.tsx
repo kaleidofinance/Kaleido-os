@@ -212,6 +212,21 @@ function TermPicker({
 const num = (v: string) => v.replace(/[^0-9.]/g, "");
 
 /**
+ * A number as a plain decimal string the amount input will accept back.
+ *
+ * `String(n)` is wrong here for the two cases that matter: a small balance
+ * formats as `1e-7`, and `num()` strips the `e` on the way in, turning a dust
+ * amount into `17`. `toLocaleString` is wrong too — it groups with commas,
+ * which `num()` also strips, so 20,000 comes back as 20000 only by luck of the
+ * separator. Fixed notation, then the trailing zeros off, and only inside the
+ * fraction so `100` does not become `1`.
+ */
+const exact = (n: number, dp = 8) => {
+  const s0 = n.toFixed(dp);
+  return s0.includes(".") ? s0.replace(/0+$/, "").replace(/\.$/, "") : s0;
+};
+
+/**
  * What the lender keeps of the rate they just typed.
  *
  * The protocol takes `getBPS()` of the interest a loan earns, out of the
@@ -302,21 +317,32 @@ function BorrowerCostNote({ fees }: { fees: LendingFees }) {
 
 /** Lender posts an offer others can borrow against. */
 /**
- * The connected wallet's balance of the selected loanable asset, with a Max.
+ * The connected wallet's balance of an asset, optionally with a Max.
  *
  * A tester reported the lend form showed no balance on selecting a token - the
  * swap form does, and a form that spends your tokens should say how many you
- * have. `useTokenBalance` takes an IToken and the lending assets are on a single
- * chain (LENDING_CHAIN_ID), so the LendingAsset is lifted to the token shape the
- * hook reads. `unread` (a dead RPC, or no wallet) shows nothing rather than a
- * zero that would read as an empty wallet.
+ * have. The same then applied everywhere an asset is named: borrowing, posting
+ * a request, and depositing collateral all show it now.
+ *
+ * `onMax` IS OPTIONAL, AND ITS ABSENCE IS THE POINT on the borrow forms. What
+ * you hold is context there, not a bound - a loan is capped by the offer's own
+ * min/max, and a Max chip that filled in your wallet balance would name a
+ * number the form is about to reject. Only a form that SPENDS the balance gets
+ * the chip.
+ *
+ * `useTokenBalance` takes an IToken and the lending assets are on a single
+ * chain (LENDING_CHAIN_ID), so the LendingAsset is lifted to the token shape
+ * the hook reads. It resolves through `providerForChain(token.chainId)` rather
+ * than the wallet's chain, so this stays correct while the wallet is still on
+ * the wrong network and the page is saying so. `unread` (a dead RPC, or no
+ * wallet) shows nothing rather than a zero that would read as an empty wallet.
  */
 function BalanceRow({
   asset,
   onMax,
 }: {
   asset: LendingAsset | undefined;
-  onMax: (amount: string) => void;
+  onMax?: (amount: string) => void;
 }) {
   const token: IToken | null = asset
     ? {
@@ -338,7 +364,7 @@ function BalanceRow({
       <span>
         Balance: {shown} {asset.symbol}
       </span>
-      {Number(balance) > 0 && (
+      {onMax && Number(balance) > 0 && (
         <button
           type="button"
           className={s.maxBtn}
@@ -594,6 +620,7 @@ export function PostRequestModal({
           options={loanable}
           what="borrowable"
         />
+        <BalanceRow asset={asset} />
         {collateralBlocked && (
           <div className={s.warn}>
             You have {symbol} deposited as collateral, so the protocol won&apos;t
@@ -769,6 +796,7 @@ export function TakeLoanModal({
         <div className={s.hint}>
           This offer allows {fmt(listing.min)} – {fmt(listing.max)} {symbol}.
         </div>
+        <BalanceRow asset={listing.asset} />
       </div>
 
       {tooLow && (
@@ -911,12 +939,34 @@ export function CollateralModal({
           options={depositable}
           what="collateral"
         />
-        <div className={s.hint}>
-          Deposited:{" "}
-          {(held?.amount ?? 0).toLocaleString(undefined, {
-            maximumFractionDigits: 6,
-          })}{" "}
-          {symbol}
+        {/* Two figures, and which one you are spending depends on the tab.
+            Depositing spends the wallet; withdrawing spends what is already
+            posted. Both are shown in both modes, because the one you are not
+            acting on is the context for the one you are - you cannot judge a
+            deposit without knowing what is already down. Only the one being
+            spent carries a Max.
+
+            Until now this box showed "Deposited" in BOTH modes and nothing
+            else, so the deposit tab named the one number that has no bearing
+            on how much you can deposit. */}
+        {mode === "deposit" && <BalanceRow asset={asset} onMax={setAmount} />}
+        <div className={s.balRow}>
+          <span>
+            Deposited:{" "}
+            {(held?.amount ?? 0).toLocaleString(undefined, {
+              maximumFractionDigits: 6,
+            })}{" "}
+            {symbol}
+          </span>
+          {mode === "withdraw" && (held?.amount ?? 0) > 0 && (
+            <button
+              type="button"
+              className={s.maxBtn}
+              onClick={() => setAmount(exact(held?.amount ?? 0))}
+            >
+              Max
+            </button>
+          )}
         </div>
       </div>
 
