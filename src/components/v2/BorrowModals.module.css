@@ -432,3 +432,89 @@
   background: var(--k-row-hover);
   color: var(--k-t1);
 }
+
+/* ---------- asset select (pill trigger + modal list with balances) ---------- */
+/* Replaces the inline pill row: one pill for the current asset, a modal listing
+   every registered option with its wallet balance. */
+.asSel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--k-well2);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+  padding: 6px 12px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.asSel:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.asSelSym {
+  font-weight: var(--k-fw-med);
+}
+.asSelChev {
+  color: var(--k-t3);
+  font-size: 11px;
+  margin-left: 2px;
+}
+.asSelModal {
+  width: 100%;
+  max-width: 360px;
+  max-height: 70vh;
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-xl);
+  box-shadow: var(--k-shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.asList {
+  padding: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.asRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--k-t1);
+  padding: 9px 10px;
+  border-radius: var(--k-r-md);
+  cursor: pointer;
+  text-align: left;
+}
+.asRow:hover {
+  background: var(--k-well2);
+}
+.asRowOn {
+  background: var(--k-well2);
+}
+.asRowSym {
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+}
+.asRowBal {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.asRowTick {
+  color: var(--k-brand);
+  font-size: var(--k-fs-base);
+}
+
