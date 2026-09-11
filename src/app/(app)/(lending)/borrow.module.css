@@ -353,11 +353,19 @@
 .aName {
   font-size: var(--k-fs-base);
 }
-.aSub {
+/* Asset name and its chain tag on one line — the chain sits WITH the asset, not
+   under it. The tag is muted and a notch smaller so the symbol stays the anchor. */
+.aNameRow {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
   flex-wrap: wrap;
+}
+.aNameRow .chainTag {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+}
+.aSub {
   font-size: var(--k-fs-xs);
   color: var(--k-t2);
 }
@@ -384,9 +392,7 @@
   border-radius: 50%;
   background: var(--k-glass-deep);
 }
-.aSubDot {
-  color: var(--k-t3);
-}
+
 
 .cellNum {
   text-align: right;

@@ -954,13 +954,14 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                             }
                           />
                           <div className={s.aMeta}>
-                            <div className={s.aName}>{symbol ?? "—"}</div>
-                            <div className={s.aSub}>
-                              {/* Which chain this row is on. The book sweeps every
-                                  deployment now, so two rows can be the same asset
-                                  and rate on different chains — the tag is what
-                                  tells them apart and what a take/cancel targets.
-                                  Same idea as the Pool page's ChainTag. */}
+                            {/* Asset and chain on the same top line — the chain
+                                sits with the name, not under it. The book sweeps
+                                every deployment now, so two rows can be the same
+                                asset and rate on different chains; the tag is what
+                                tells them apart and what a take/cancel targets.
+                                Same idea as the Pool page's ChainTag. */}
+                            <div className={s.aNameRow}>
+                              <span className={s.aName}>{symbol ?? "—"}</span>
                               <span className={s.chainTag}>
                                 <ChainIcon
                                   id={CHAINS_BY_ID[row.chainId]?.iconId}
@@ -980,7 +981,8 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                                 {CHAINS_BY_ID[row.chainId]?.shortName ??
                                   `Chain ${row.chainId}`}
                               </span>
-                              <span className={s.aSubDot}>·</span>
+                            </div>
+                            <div className={s.aSub}>
                               {counterparty ? formatAddress(counterparty) : "—"}
                               {isOwnRow && " · you"}
                             </div>
