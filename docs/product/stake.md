@@ -81,6 +81,8 @@ chain are in
 supply is, how the eight allocation buckets unlock, and why issuance is confined to
 one chain in code are on [KLD and its supply](./token.md). The
 pages are at `/stake`. The agent can stake for you from a sentence — "stake 1200
-KLD" — but the exit is deliberately not one of its actions: requesting, cancelling
-and withdrawing are done on the page, by you. See [saying it instead of clicking
+KLD" — and it can take you out again: "unstake 100 KLD" reads the vault and builds
+whichever of the three moves you are at, so it starts the clock if none is running,
+tells you how long is left if one is, and withdraws once it has elapsed. Cancelling
+a pending request is its own action too. See [saying it instead of clicking
 it](./agent.md).

@@ -9,9 +9,10 @@ against the same contracts, and it never holds a key.
 
 ## What it can actually do
 
-Twenty-four actions and seven reads. The reads cost nothing and need no signature —
-your portfolio, the markets, a loan quote, a price, whether a swap can be routed and
-through what, which chains are live, a bridge route. The actions are the same surface
+Twenty-four actions and nine reads. The reads cost nothing and need no signature —
+what your wallet holds, your positions, the markets, a loan quote, a price, whether a
+swap can be routed and through what, which chains are live, a bridge route, and your
+resting orders. The actions are the same surface
 the app exposes:
 
 | Product | Actions |

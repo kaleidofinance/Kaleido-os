@@ -5,7 +5,7 @@ import {
   ROUTER_MODELS,
   ROUTER_MODEL_IDS,
 } from "@/lib/ai";
-import { runAgent, type AgentRun } from "@/lib/ai/agent";
+import { runAgent, type AgentInput, type AgentRun } from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText } from "@/lib/ai/auditor";
@@ -110,6 +110,34 @@ function historyFromBody(raw: unknown): ChatMessage[] {
   return clean.slice(-MAX_HISTORY_MESSAGES);
 }
 
+/**
+ * Docs sections the client found for this question, re-checked here.
+ *
+ * The client sends the two closest sections so the model can answer from the
+ * protocol's own text rather than reconstruct it from tool calls. It arrives
+ * from a browser, so it is bounded and shaped before it is trusted: at most
+ * three entries, each field a string with a hard length cap, the href a docs
+ * path and nothing else. A client that sends garbage gets no grounding, not an
+ * error - the turn still works, it just costs the model a read or two more.
+ */
+function groundingFromBody(raw: unknown): AgentInput["grounding"] {
+  if (!Array.isArray(raw)) return undefined;
+  const out: NonNullable<AgentInput["grounding"]> = [];
+  for (const g of raw.slice(0, 3)) {
+    if (!g || typeof g !== "object") continue;
+    const { title, heading, href, text } = g as Record<string, unknown>;
+    if (typeof title !== "string" || typeof text !== "string" || typeof href !== "string") continue;
+    if (!/^\/docs\/[a-z0-9-]+(#[a-z0-9-]+)?$/.test(href)) continue;
+    out.push({
+      title: title.slice(0, 80),
+      heading: typeof heading === "string" ? heading.slice(0, 80) : "",
+      href,
+      text: text.slice(0, 900),
+    });
+  }
+  return out.length ? out : undefined;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -192,6 +220,7 @@ export async function POST(request: NextRequest) {
            local grammar could not parse, which on a local-first page is often a
            bare reply to something Luca itself said. */
         history: historyFromBody(body.history),
+        grounding: groundingFromBody(body.grounding),
       };
 
       /**
@@ -590,6 +619,11 @@ export async function POST(request: NextRequest) {
         response:
           "I'm currently unable to connect to my backend services. Please try again later or contact support if the issue persists.",
         context: {
+          /* Tagged like the provider-error branch above, so the client can
+             answer from the docs instead of showing this sentence. Without
+             the tag, a network failure to the engine reached the user as a
+             bare apology while a provider 5xx got the graceful path. */
+          status: "provider_error",
           conversation_id: body.conversation_id || "fallback-" + Date.now(),
         },
         error_details: {

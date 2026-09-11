@@ -123,6 +123,8 @@ const VERB: Record<Command["kind"], string> = {
      oversight. */
   provideLiquidity: "Add liquidity",
   increasePosition: "Add to position",
+  placeOrder: "Place order",
+  cancelOrders: "Cancel orders",
   /* Reachable, unlike the two above — and it reaches the PANEL branch rather
      than the builder, so this label heads a card about a screen. */
   openLiquidity: "Open a position",
@@ -753,6 +755,31 @@ function settledOf(
 
     /* Unreachable for the reason given in VERB: a ToolOnlyKind never comes back
        from parseCommand. */
+    case "placeOrder": {
+      const order = intents.find((i) => i.kind === "placeOrder");
+      if (order?.kind !== "placeOrder") return { lines: [], note: "" };
+      const recurring = order.maxFills > 1;
+      return {
+        lines: [
+          {
+            label: "You sign",
+            value: `an order to sell ${order.amountIn} ${order.symbolIn}${recurring ? " per fill" : ""} for at least ${order.minOut} ${order.symbolOut}`,
+          },
+          {
+            label: "Sent now",
+            value: "nothing — it rests until the price is there, or it expires",
+          },
+        ],
+        note: "A resting order is a signature, not a transaction. Your balance is untouched until a filler takes it at the floor you signed, and cancelling is its own transaction.",
+      };
+    }
+    case "cancelOrders":
+      return {
+        lines: [
+          { label: "Cancels", value: "every resting order you have on this chain" },
+        ],
+        note: "One transaction. It can’t be undone — you would sign new orders instead.",
+      };
     case "provideLiquidity":
     case "increasePosition":
       return { lines: [], note: "" };

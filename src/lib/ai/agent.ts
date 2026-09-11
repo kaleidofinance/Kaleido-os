@@ -41,6 +41,14 @@ export interface AgentInput {
   chainId?: number;
   limits?: Guardrails;
   /**
+   * Docs sections the client matched to this question, for the model to answer
+   * from. Optional and advisory: the model may still call reads. Present so a
+   * question the docs answer costs one round instead of two or three tool
+   * calls rebuilding what a page already says, and so its answer cites the
+   * protocol's own text. Sanitised by the route before it gets here.
+   */
+  grounding?: { title: string; heading: string; href: string; text: string }[];
+  /**
    * What was already said in this conversation, oldest first, excluding
    * `message` itself.
    *
@@ -119,6 +127,22 @@ export async function runAgent(
     limits: input.limits,
   });
 
+  /* Composed here rather than inside the builder: the builder describes who
+     Luca is, and that does not change per question. This block does. It is
+     framed as reference, not instruction - the model may quote it, and should
+     prefer it to guessing, but it is not told the answer is in there, because
+     sometimes it is not and a model told otherwise will make it fit. */
+  const systemWithDocs = input.grounding?.length
+    ? system +
+      "\n\nReference from the docs, matched to this question. Prefer it to reconstructing the same facts from tool calls, quote it where it answers directly, and give the path so the user can read the rest. If it does not answer the question, ignore it.\n" +
+      input.grounding
+        .map(
+          (g) =>
+            `\n[${g.title}${g.heading && g.heading !== g.title ? ` › ${g.heading}` : ""}] (${g.href})\n${g.text}`,
+        )
+        .join("\n")
+    : system;
+
   /* History first, then this turn's message. The loop appends its own
      assistant/tool-result pairs onto the end of this array, so prior turns have
      to be in front of the current message or the round-trips would interleave
@@ -135,10 +159,10 @@ export async function runAgent(
   const ask = () =>
     events?.onText && provider.chatStream
       ? provider.chatStream(
-          { system, messages, tools: TOOL_CATALOG },
+          { system: systemWithDocs, messages, tools: TOOL_CATALOG },
           events.onText,
         )
-      : provider.chat({ system, messages, tools: TOOL_CATALOG });
+      : provider.chat({ system: systemWithDocs, messages, tools: TOOL_CATALOG });
 
   let result = await ask();
   const trace: ReadCall[] = [];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isAddress } from "ethers";
 import {
   useAgentSettings,
@@ -61,6 +61,10 @@ export default function AgentSettings({
   const { chainId } = useWalletV2();
   const [agentAddr, setAgentAddr] = useState("");
   const [grant, setGrant] = useState<Intent[] | null>(null);
+  /* Selecting Agent scrolls here rather than toggling something invisible: the
+     mode is only real once a mandate exists on chain, and the grant is three
+     sections down where nobody would look for it. */
+  const delegateRef = useRef<HTMLElement | null>(null);
   /**
    * The selectable models, from the server rather than a constant here.
    *
@@ -213,29 +217,60 @@ export default function AgentSettings({
 
             <section className={s.section}>
               <div className={s.sectionTitle}>Signing</div>
-              <div className={s.toggleRow}>
-                <span>Stop between steps</span>
-                <button
-                  className={`${s.toggle} ${settings.confirmEachStep ? s.toggleOn : ""}`}
-                  onClick={() =>
-                    update({ confirmEachStep: !settings.confirmEachStep })
-                  }
-                  role="switch"
-                  aria-checked={settings.confirmEachStep}
-                  aria-label="Stop between steps"
-                >
-                  <i />
-                </button>
+              {/*
+                * Three rungs, not a switch, because the old boolean was blunt in
+                * one direction and misleading in the other — and because the
+                * third rung is not this panel's to grant.
+                *
+                * `agent` is the on-chain mandate (AgentPermissionFacet): bounds
+                * signed once and enforced by the contract, which is the only
+                * thing here that genuinely acts without you. Selecting it is
+                * therefore a request to open the delegation flow below, not a
+                * preference that takes effect on click — and it is offered only
+                * where that flow can run, since a mode you cannot reach would be
+                * a promise the panel cannot keep.
+                */}
+              <div className={s.modes} role="radiogroup" aria-label="Between plan steps">
+                {(
+                  [
+                    ["manual", "Manual", "Stops after every step"],
+                    ["auto", "Auto", "Runs the plan through"],
+                    ["agent", "Agent", "Acts within on-chain bounds"],
+                  ] as const
+                ).map(([mode, label, hint]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={settings.stepMode === mode}
+                    className={`${s.mode} ${settings.stepMode === mode ? s.modeOn : ""}`}
+                    onClick={() => {
+                      update({ stepMode: mode });
+                      if (mode === "agent") {
+                        delegateRef.current?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
+                      }
+                    }}
+                  >
+                    <span className={s.modeName}>{label}</span>
+                    <span className={s.modeHint}>{hint}</span>
+                  </button>
+                ))}
               </div>
-              {/* Says what the toggle does not do, because the name invites the
+              {/* Says what none of the three does, because the names invite the
                   stronger reading. Nothing here can waive a wallet prompt, and a
                   panel that let someone believe otherwise would be worse than one
-                  with no switch at all. */}
+                  with no control at all. */}
               <p className={s.note}>
-                A plan Luca drafts hands control back after each step, so you can
-                stop part-way with the earlier steps already settled. Either way
-                every step is its own signature in your wallet — that isn&apos;t
-                ours to switch off.
+                {settings.stepMode === "manual"
+                  ? "The plan hands control back after each step, so you can stop part-way with the earlier steps already settled."
+                  : settings.stepMode === "agent"
+                    ? "A mandate lets an agent act on lending without you, inside the caps, health floor and expiry you sign — enforced by the contract, not by this app. Swaps, liquidity, staking and minting cannot be delegated at all."
+                    : "The plan runs straight through. Declining a prompt is still how you stop it, and the earlier steps stay settled."}{" "}
+                Either way every step is its own signature in your wallet — that
+                isn&apos;t ours to switch off.
               </p>
             </section>
 
@@ -273,7 +308,7 @@ export default function AgentSettings({
               </section>
             )}
 
-            <section className={s.section}>
+            <section className={s.section} ref={delegateRef}>
               <div className={s.sectionTitle}>
                 Delegate to an external agent
               </div>

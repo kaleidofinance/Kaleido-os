@@ -279,6 +279,62 @@
 .modelOn .modelName::after {
   content: " ✓";
 }
+
+/* Between plan steps: Manual / Auto / Agent.
+
+   A row of three rather than a column like .models, because these are one
+   dial with three positions and the reader is comparing them against each
+   other — where the model list is a set of names being picked from. Each
+   carries its own hint, so the difference is legible without the note
+   underneath, which matters most for Agent: it is the only one that is not a
+   preference at all. */
+.modes {
+  display: flex;
+  gap: 6px;
+}
+.mode {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: left;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: var(--k-r-sm);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  color: var(--k-t1);
+}
+.mode:hover {
+  background: var(--k-row-hover);
+}
+.modeName {
+  font-size: var(--k-fs-sm);
+}
+.modeHint {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+/* Selection carries the brand fill AND a check, for the reason .modelOn does:
+   colour alone leaves nothing for a reader who cannot separate the fills. */
+.modeOn {
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+  box-shadow: none;
+}
+.modeOn:hover {
+  background: var(--k-brand-hover);
+}
+.modeOn .modeHint {
+  color: var(--k-brand-fg);
+  opacity: 0.75;
+}
+.modeOn .modeName::after {
+  content: " ✓";
+}
 /* The small print under a section. Was `.modelNote`, and stayed that name for
    one section longer than it was true — the signing toggle needs the same shape,
    and a second identical class would have been the alternative. */

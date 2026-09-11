@@ -337,6 +337,63 @@ export interface ClaimTestTokensCommand {
   symbol?: string;
 }
 
+/**
+ * A resting order: a limit order or a recurring buy, which are one struct apart.
+ *
+ * KaleidoOrders (#60) settles both. The difference is only the cadence:
+ * `fills = 1, everyDays = 0` is a limit order; `fills = 8, everyDays = 7` is a
+ * recurring buy. The grammar produces this; buildIntents resolves it against the
+ * chain — the orders address, both tokens' decimals, and the `minOut` the price
+ * implies — because none of those are things a sentence carries.
+ *
+ * PRICE IS THE HARD PART, and it is carried unresolved on purpose. `price` is
+ * the number the user typed, and `basis` says which ratio it is, because English
+ * does not: "buy 100 KLD at 0.02 USDC" prices the OUTPUT (0.02 USDC per KLD
+ * bought), while "sell 100 KLD at 0.02 USDC" prices the INPUT. Inverting it here
+ * would bake a guess into a decimal string that `minOutFor` then parses exactly —
+ * so the guess is named instead, and buildIntents does the arithmetic with the
+ * tested helper the limit page uses.
+ *
+ * `amount` is ALWAYS the input — what you spend per fill. KaleidoOrders commits
+ * a fixed input and a `minOut` floor; it has no exact-output order, so "buy 100
+ * KLD at a price" (a fixed OUTPUT) is not a thing the contract can sign and is
+ * left to the model tool, which can convert and explain. The grammar takes the
+ * input-framed order — "sell 500 KLD at 0.05 USDC", "dca 50 USDC into KLD" —
+ * where `minOutFor` applies with no inversion and the arithmetic is exact.
+ */
+export interface PlaceOrderCommand {
+  kind: "placeOrder";
+  /** The token spent per fill. */
+  tokenIn: IToken;
+  /** The token received per fill. */
+  tokenOut: IToken;
+  /** The human amount spent per fill, in `tokenIn`. */
+  amount: string;
+  /** The limit price as typed, read according to `basis`. Absolute only. */
+  price: string;
+  /** `outPerIn` when the price is quote-per-output (a buy), else `inPerOut`. */
+  basis: "outPerIn" | "inPerOut";
+  /** Days between fills. 0 is a one-time limit order. */
+  everyDays: number;
+  /** How many times it may fill. 1 for a limit order. */
+  fills: number;
+  /** Days until the order stops being fillable. */
+  expiryDays: number;
+}
+
+/**
+ * Cancel every resting order the wallet has signed on this chain.
+ *
+ * Only the all-at-once form is grammar. Cancelling ONE order needs its whole
+ * signed struct, which lives in the order store and not in any sentence — so
+ * "cancel my KLD order" is left to the model tool (getOrders finds the struct;
+ * see the follow-up PR), and this covers "cancel all my orders", the panic form,
+ * which needs nothing but the wallet.
+ */
+export interface CancelOrdersCommand {
+  kind: "cancelOrders";
+}
+
 export type Command =
   | SwapCommand
   | StakeCommand
@@ -363,6 +420,8 @@ export type Command =
   | RemovePositionCommand
   | IncreasePositionCommand
   | ProvideLiquidityCommand
+  | PlaceOrderCommand
+  | CancelOrdersCommand
   | OpenLiquidityCommand
   | ClaimTestTokensCommand
   | HelpCommand
@@ -413,10 +472,28 @@ type HandoffKind = "openLiquidity";
  */
 type ToolOnlyKind = "provideLiquidity" | "increasePosition";
 
+/**
+ * Kinds parsed whole or not at all, by a dedicated detector rather than the
+ * verb table, and with no generic slot to ask about.
+ *
+ * A resting order is a swap sentence carrying a price and maybe a cadence, so
+ * it is recognised by `parseOrder` before the verb dispatch (a bare "sell 500
+ * KLD" is still a swap). It resolves only when fully specified - pair, amount
+ * and price all present - and otherwise falls through to the model, which can
+ * collect a missing price conversationally and handles the output-framed buy
+ * the contract cannot sign. So there is no half-order to hold in a Draft, which
+ * is why these are excluded here rather than given a `price` slot: the slot
+ * machinery exists to ASK, and this grammar does not ask about an order, it
+ * either reads one or declines it. `cancelOrders` is the all-at-once cancel,
+ * which needs nothing to complete.
+ */
+type SpecialParsedKind = "placeOrder" | "cancelOrders";
+
 /** Kinds that carry slots, i.e. everything that can be half-specified. */
 export type ActionKind = Exclude<
   Command["kind"],
   "help" | "receive" | "portfolio" | ZeroSlotKind | ToolOnlyKind | HandoffKind
+  | SpecialParsedKind
 >;
 
 export type Slot =
@@ -1160,6 +1237,102 @@ const DAY_UNITS: Record<string, number> = {
   years: 365,
 };
 
+
+/* Words that mark a swap sentence as a resting order rather than a spot trade. */
+const ORDER_MARKERS = ["limit", "resting", "gtc"];
+
+/* A recurring cadence. Present means v1 declines to the model - a schedule needs
+   a fill count the grammar does not yet read, and the model handles it. */
+const RECURRING = /\b(every|each|daily|weekly|monthly|recurring|dca|repeat)\b/;
+
+/**
+ * A resting limit order, or the all-at-once cancel. Everything else returns null
+ * and the sentence carries on to the normal parser and the model backstop.
+ *
+ * SCOPE, STATED SO THE GAP IS NOT MISTAKEN FOR A BUG. Only the SELL-framed,
+ * single-fill, absolutely-priced order resolves here:
+ *
+ *   "limit sell 500 KLD at 0.05 USDC"     -> sell 500 KLD, floor 25 USDC
+ *   "sell 500 KLD for USDC at 0.05"       -> same
+ *
+ * because that is the shape KaleidoOrders signs and the arithmetic has no
+ * inversion: the amount is the input, the price is output-per-input, minOut is
+ * their product. A buy names the OUTPUT ("buy 100 KLD"), which the contract has
+ * no exact-output order for; a recurring order needs a fill count; a relative
+ * price ("5% below market") needs a live quote. All three fall through to the
+ * model tool, which converts, counts and reads the market - see the follow-up.
+ *
+ * `cancelOrders` is the panic cancel: "cancel all my orders". Cancelling ONE
+ * order needs its signed struct, which lives in the store, so a single-order
+ * cancel also falls through.
+ */
+function parseOrder(raw: string, tokens: IToken[]): ParseResult | null {
+  const words = normalise(raw);
+  const lower = raw.toLowerCase();
+
+  /* Cancel-all. Requires a plural/collective marker so "cancel order 5" and
+     "cancel my listing" are NOT swept in - those are the ref-cancel the verb
+     table already handles. */
+  const cancels = words.includes("cancel");
+  const collective = words.some((w) => ["all", "every", "everything"].includes(w));
+  /* Singular "order" counts only with a collective word — "cancel every order"
+     is the panic form, while "cancel order 5" is a ref the verb table owns. */
+  const ordersNoun = collective
+    ? /\border(s)?\b/.test(lower)
+    : /\bmy orders\b/.test(lower);
+  if (cancels && (collective || /\bmy orders\b/.test(lower)) && ordersNoun) {
+    return { status: "ok", command: { kind: "cancelOrders" } };
+  }
+
+  /* Place. A sell verb AND a price marker is the minimum signal - "sell 500 KLD"
+     alone is a spot swap, and only "at <price>" makes it resting. */
+  const isSell = words.some((w) => ["sell", "dump", "unload"].includes(w));
+  const isLimit = words.some((w) => ORDER_MARKERS.includes(w));
+  const priceAt = words.findIndex((w) => w === "at" || w === "@");
+  if (!(isSell || isLimit) || priceAt < 0) return null;
+
+  /* Anything v1 cannot price correctly is handed on rather than half-read. */
+  if (RECURRING.test(lower)) return null;
+  if (words.some((w) => BUY_WORDS.has(w))) return null;
+
+  const price = words.slice(priceAt + 1).map(parseAmount).find(Boolean) ?? null;
+  if (!price) return null;
+
+  const priceIdx = words.findIndex(
+    (w, i) => i > priceAt && parseAmount(w) !== null,
+  );
+  /* The amount is a parseable number that is NOT the price. */
+  const amount = detectAmount(words, new Set([priceIdx]));
+  const mentions = findTokenMentions(words, tokens);
+  if (!amount || mentions.length < 2) return null;
+
+  /* The sold token sits with the amount; the received token is the other. A
+     price quote token ("at 0.05 USDC") names the received side and confirms it. */
+  const tokenIn = mentions.find((m) => m.index > amount.index)?.token ?? mentions[0].token;
+  const tokenOut = mentions.find(
+    (m) => m.token.address.toLowerCase() !== tokenIn.address.toLowerCase(),
+  )?.token;
+  if (!tokenOut) return null;
+
+  return {
+    status: "ok",
+    command: {
+      kind: "placeOrder",
+      tokenIn,
+      tokenOut,
+      amount: amount.amount,
+      price,
+      /* The price is quote-per-base, and the base is what is sold. So it is
+         output-per-input: minOutFor multiplies, never inverts. */
+      basis: "outPerIn",
+      everyDays: 0,
+      fills: 1,
+      expiryDays: 30,
+    },
+  };
+}
+
+
 /** "30 days", "2 weeks", "1 month". Normalised to whole days. */
 function detectDuration(
   words: string[],
@@ -1174,6 +1347,9 @@ function detectDuration(
   }
   return null;
 }
+
+const MODEL_ONLY =
+  /\b(every (day|week|month|hour|\d+ (days|weeks|months|hours))|daily|weekly|monthly|recurring|dca|limit (order|buy|sell)|at a price of|when (the )?price|(?<!in )orders?|grant|permission|mandate|delegat(e|ion|ed))\b/i;
 
 export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   const raw = text.trim();
@@ -1196,6 +1372,29 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
    * "received 500 USDC from Alice" out, which a prefix match would have claimed.
    */
   const lower = raw.toLowerCase();
+
+  /*
+   * Sentences this grammar cannot read correctly, declined outright so they reach
+   * the model rather than being half-read into the wrong transaction.
+   *
+   * Found by routing the product's own example prompts: "buy 50 KLD every week
+   * with USDC" parsed as a one-off SWAP, "place a limit order to buy 100 KLD at
+   * 0.02 USDC" as a swap missing its input, and "grant the agent permission to
+   * lend up to 5000 USDC" as a LEND missing its rate. Each is a plan the user
+   * did not describe - the recurring buy is the dangerous one, since it builds
+   * a single swap that looks reasonable right up to the signature. Limit and
+   * recurring orders have intents (KaleidoOrders, #60) but no grammar yet;
+   * delegation is granted from the settings panel. Until a verb exists for
+   * them, "unknown" is the honest answer and the model's tools are the path.
+   *
+   * `(?<!in )order` keeps "in order to" out of it.
+   */
+  /* Resting orders, before the model backstop declines them. Returns null for
+     everything it does not handle, so the backstop still catches those. */
+  const order = parseOrder(raw, tokens);
+  if (order) return order;
+
+  if (MODEL_ONLY.test(lower)) return { status: "unknown" };
   if (
     RECEIVE_PHRASES.some(
       (p) => lower === p || lower.startsWith(`${p} `) || lower === `${p}?`,
@@ -1617,6 +1816,136 @@ function parseBridge(
  * This is the whole point of tracking drafts: a missing parameter costs one
  * cheap follow-up question instead of a model call.
  */
+/**
+ * A sentence that continues the last one, rather than starting a new one.
+ *
+ * "swap 10 USDC to USDT" then "now the same to USDR" is one thought in two
+ * messages, and until now only the MODEL could follow it: `fillSlot` resumes a
+ * draft the agent ITSELF asked about, and a completed command left nothing
+ * behind, so the second sentence arrived as an unparseable fragment and cost a
+ * reasoning request. This reads it against the command that just succeeded.
+ *
+ * ── Four rules, and each exists because breaking it produces a wrong trade ──
+ *
+ * 1. A SENTENCE WITH ITS OWN VERB IS NOT A FOLLOW-UP. "now stake it" is a fresh
+ *    instruction and belongs to the grammar; reading it as a modified swap
+ *    would keep the previous verb and quietly change the action. Declined here,
+ *    and the caller has already tried the parser anyway.
+ *
+ * 2. DIRECTION IS READ, NEVER ASSUMED. This is the same trap `buy` set (see
+ *    BUY_WORDS): for a swap, a lone token could plausibly mean either side, and
+ *    guessing wrong inverts the trade. So "to/into/for X" sets the output,
+ *    "from/with X" sets the input, and a bare single token is the OUTPUT —
+ *    which is what "now to USDR", "same for USDR" and "USDR instead" all mean.
+ *    Two tokens name both sides in the order they appear.
+ *
+ * 3. SOMETHING MUST ACTUALLY BE NAMED. If the sentence substitutes nothing —
+ *    "ok", "thanks", "do it" — this is not a follow-up and returns `unknown`.
+ *    Repeating the previous command because the user said "ok" would build a
+ *    second identical transaction.
+ *
+ * 4. WHAT IS NOT NAMED IS CARRIED, INCLUDING THE AMOUNT. "same amount" and
+ *    "the same" are therefore not special cases: the amount survives unless the
+ *    sentence gives a new one. They are recognised only so the phrases do not
+ *    read as unnamed slots under rule 3.
+ *
+ * A recipient is deliberately never carried into a NEW recipient by inference —
+ * `detectRecipient` requires a literal address, so "send it to Bob" cannot
+ * resolve to anybody. Changing who gets paid is not a thing to infer.
+ */
+const SAME_PHRASES = ["same", "the same", "same amount", "same size", "again"];
+
+export function parseFollowUp(
+  text: string,
+  tokens: IToken[],
+  last: Command,
+): ParseResult {
+  const raw = text.trim();
+  if (!raw) return { status: "unknown" };
+
+  const lower = raw.toLowerCase();
+  /* The same sentences parseCommand refuses. A follow-up must not be the way a
+     recurring buy or a delegation grant gets built after all. */
+  if (MODEL_ONLY.test(lower)) return { status: "unknown" };
+
+  const words = normalise(raw);
+  if (detectVerb(words, { hasRef: detectRef(words) !== null })) {
+    return { status: "unknown" };
+  }
+
+  const draft = draftFromCommand(last);
+  if (!draft) return { status: "unknown" };
+
+  const next: Draft = { ...draft };
+  let named = false;
+
+  const amount = detectAmount(words);
+  if (amount) {
+    next.amount = amount.amount;
+    named = true;
+  } else if (SAME_PHRASES.some((s) => lower === s || lower.includes(s))) {
+    /* Rule 4: nothing to copy — the amount is already in the draft. This only
+       records that the sentence said something, so it is not refused as empty. */
+    named = true;
+  }
+
+  /*
+   * A destination this registry cannot name aborts the follow-up.
+   *
+   * The failure it prevents was silent and produced the WRONG TRADE: after
+   * "swap 10 USDC to USDT", the reply "now the same to USDR" resolved no token
+   * (USDR is on no chain here - the registry has USDe), so nothing was
+   * substituted while `same` still counted as naming something under rule 3,
+   * and the carry-over rebuilt the USDT swap. The user names one destination
+   * and is handed a plan for another, which is the one outcome this file's
+   * whole design is against. A token named after a directional preposition
+   * must therefore resolve, or the sentence is not a follow-up this grammar
+   * can read and the model gets it.
+   */
+  const DIRECTIONAL = new Set(["to", "into", "for", "from", "with", "using"]);
+  const mentions = findTokenMentions(words, tokens);
+  const covered = new Set(mentions.map((m) => m.index));
+  for (let w = 0; w < words.length - 1; w++) {
+    if (!DIRECTIONAL.has(words[w])) continue;
+    const target = w + 1;
+    if (covered.has(target)) continue;
+    /* A number after "for" is a duration or a size, not a token: "for 30". */
+    if (parseAmount(words[target]) !== null) continue;
+    return { status: "unknown" };
+  }
+  if (mentions.length > 0) {
+    named = true;
+    if (next.kind === "swap") {
+      /* Rule 2. The word before the token decides the side. */
+      const sideOf = (m: Mention): "in" | "out" | null => {
+        const before = words[m.index - 1];
+        if (before === "to" || before === "into" || before === "for") return "out";
+        if (before === "from" || before === "with" || before === "using") return "in";
+        return null;
+      };
+      if (mentions.length === 1) {
+        const side = sideOf(mentions[0]);
+        if (side === "in") next.tokenIn = mentions[0].token;
+        else next.tokenOut = mentions[0].token;
+      } else {
+        const ins = mentions.filter((m) => sideOf(m) === "in");
+        const outs = mentions.filter((m) => sideOf(m) === "out");
+        next.tokenIn = (ins[0] ?? mentions[0]).token;
+        next.tokenOut = (outs[0] ?? mentions[1]).token;
+      }
+    } else if ("tokenIn" in next || "tokenOut" in next) {
+      next.tokenIn = mentions[0].token;
+      if (mentions[1]) next.tokenOut = mentions[1].token;
+    } else {
+      next.token = mentions[0].token;
+    }
+  }
+
+  if (!named) return { status: "unknown" };
+  return completeDraft(next);
+}
+
+
 export function fillSlot(
   draft: Draft,
   missing: Slot,
@@ -1802,6 +2131,12 @@ export function draftFromCommand(command: Command): Draft | null {
       };
     case "completeWithdrawal":
       return { kind: "completeWithdrawal", token: command.token };
+    /* Parsed whole by parseOrder or not at all, so there is never a partial
+       order to re-draft here. Explicit rather than folded into the default,
+       which reads .amount and .token off a shape these do not have. */
+    case "placeOrder":
+    case "cancelOrders":
+      return null;
     case "claimTestTokens":
       return { kind: "claimTestTokens" };
     default:

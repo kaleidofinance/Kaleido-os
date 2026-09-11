@@ -3213,6 +3213,118 @@ async function main() {
     `unregistered: ${[...unregistered].join(", ")}`,
   );
 
+  {
+    const { deps } = fakeDeps();
+    /* The money arithmetic, which is the whole risk: amount is the input, the
+       price is output-per-input, minOut is their product. A wrong side here is
+       a mispriced order the maker cannot see in a signature. */
+    const limit = await build(
+      {
+        kind: "placeOrder",
+        tokenIn: DEX_KLD,
+        tokenOut: DEX_USDC,
+        amount: "500",
+        price: "0.05",
+        basis: "outPerIn",
+        everyDays: 0,
+        fills: 1,
+        expiryDays: 30,
+      },
+      deps,
+    );
+    check("limit order builds", limit.ok, kinds(limit));
+    if (limit.ok) {
+      const order = limit.build.intents.find((x) => x.kind === "placeOrder");
+      const appr = limit.build.intents.find((x) => x.kind === "approve");
+      check(
+        "approve then placeOrder",
+        kinds(limit) === "approve,placeOrder",
+        kinds(limit),
+      );
+      check(
+        "minOut is amount times price (500 x 0.05 = 25)",
+        order?.kind === "placeOrder" && order.minOut === "25.0",
+        order?.kind === "placeOrder" ? order.minOut : "?",
+      );
+      check(
+        "a one-shot approves exactly the input",
+        appr?.kind === "approve" && appr.amount === "500.0",
+        appr?.kind === "approve" ? appr.amount : "?",
+      );
+      check(
+        "the approve spender is the orders contract, not the router",
+        order?.kind === "placeOrder" &&
+          appr?.kind === "approve" &&
+          appr.spender === order.orders,
+        "",
+      );
+      check(
+        "one fill, no interval",
+        order?.kind === "placeOrder" && order.maxFills === 1 && order.interval === 0,
+        "",
+      );
+    }
+
+    /* A recurring order pulls amountIn every fill, so the allowance must cover
+       all of them or the second fill reverts for want of one. */
+    const recurring = await build(
+      {
+        kind: "placeOrder",
+        tokenIn: DEX_KLD,
+        tokenOut: DEX_USDC,
+        amount: "500",
+        price: "0.05",
+        basis: "outPerIn",
+        everyDays: 7,
+        fills: 3,
+        expiryDays: 30,
+      },
+      deps,
+    );
+    check(
+      "a recurring order approves amount x fills (500 x 3 = 1500)",
+      recurring.ok &&
+        recurring.build.intents.some(
+          (x) => x.kind === "approve" && x.amount === "1500.0",
+        ),
+      "",
+    );
+    check(
+      "the interval is carried in seconds",
+      recurring.ok &&
+        recurring.build.intents.some(
+          (x) => x.kind === "placeOrder" && x.interval === 604800 && x.maxFills === 3,
+        ),
+      "",
+    );
+
+    /* Native input cannot be an order - the filler pulls it with transferFrom,
+       which the chain currency has no path for. Refused with a sentence, not a
+       mid-plan throw on the sentinel. */
+    const native = await build(
+      {
+        kind: "placeOrder",
+        tokenIn: { ...DEX_ETH, isNative: true },
+        tokenOut: DEX_USDC,
+        amount: "1",
+        price: "2000",
+        basis: "outPerIn",
+        everyDays: 0,
+        fills: 1,
+        expiryDays: 30,
+      },
+      deps,
+    );
+    check("a native-input order is refused", !native.ok, kinds(native));
+
+    const cancelAll = await build({ kind: "cancelOrders" }, deps);
+    check(
+      "cancel-all builds a cancelAllOrders",
+      kinds(cancelAll) === "cancelAllOrders",
+      kinds(cancelAll),
+    );
+  }
+
   console.log(`\n${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exit(1);
 }

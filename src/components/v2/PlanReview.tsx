@@ -37,6 +37,17 @@ export interface SettledStep {
    *  signature-only step like placing an order. */
   hash?: string;
   skipped: boolean;
+  /**
+   * Wall-clock milliseconds for this step: the wallet prompt AND the receipt.
+   *
+   * Recorded because testers report the agent as slow and nothing measured it.
+   * Every resolver ends in `await tx.wait()` and the steps run in sequence, so
+   * a plan costs a signature plus a full block confirmation per step - about
+   * 12-24s each on Sepolia before the user has clicked anything. Which half is
+   * the wait and which is the human is not knowable from here, so this is the
+   * honest total rather than a breakdown that would need a guess.
+   */
+  ms?: number;
 }
 
 interface PlanReviewProps {
@@ -44,21 +55,21 @@ interface PlanReviewProps {
   /** Shown on the primary button, e.g. "Sign & swap". */
   submitLabel?: string;
   /**
-   * Hand control back between steps instead of running the plan straight through.
+   * Whether to hand control back between steps. See AgentSettings.stepMode.
    *
-   * The user's `confirmEachStep` setting, and the only caller that passes it is
-   * the agent panel — deliberately. A swap's approve+swap is two steps of one
-   * thing the user just filled in a form for; a plan Luca drafted is a sequence
-   * they are reading for the first time, and the setting is on the agent.
+   * Only two of the three modes can reach this component. `agent` is the
+   * on-chain mandate, and a delegated action is executed by whoever holds the
+   * grant against the contract - it never becomes a plan anyone reviews here.
+   * So the caller maps it to `auto`: if a plan IS on screen under that mode,
+   * the user is signing it themselves and asked not to be stopped.
    *
-   * What it gates is THIS COMPONENT'S confirmation, not the wallet's. Every step
-   * is a separate wallet signature either way — that is not ours to switch off,
-   * and a setting that appeared to would be the worst kind of guardrail. Off, the
-   * loop runs and the wallet prompts arrive back to back; on, the plan stops after
-   * each step that broadcast, so a four-step plan can be abandoned after the
-   * second with the first two already settled.
+   * What this gates is THIS COMPONENT'S pause, never the wallet's prompt.
+   * Every step is a separate signature under either mode - that is not ours to
+   * switch off, and a setting that appeared to would be the worst kind of
+   * guardrail. Under `auto` the loop runs and the prompts arrive back to back,
+   * so declining one is still how a plan is stopped part-way.
    */
-  confirmEachStep?: boolean;
+  stepMode?: "manual" | "auto";
   /**
    * Called after every step succeeds, WITH what settled.
    *
@@ -78,7 +89,7 @@ interface PlanReviewProps {
 export default function PlanReview({
   intents,
   submitLabel = "Sign & execute",
-  confirmEachStep = false,
+  stepMode = "manual",
   onComplete,
   onCancel,
 }: PlanReviewProps) {
@@ -147,7 +158,7 @@ export default function PlanReview({
    * it to confirm, and pausing would replace the plan's completion with a button.
    */
   const pauseAfter = (i: number, skipped: boolean) => {
-    if (!confirmEachStep || skipped || i >= intents.length - 1) return false;
+    if (stepMode !== "manual" || skipped || i >= intents.length - 1) return false;
     setNext(i + 1);
     setRunning(false);
     return true;
@@ -167,6 +178,7 @@ export default function PlanReview({
     i: number,
   ): Promise<"done" | "failed" | "paused"> => {
     setStep(i, "pending");
+    const startedAt = Date.now();
     try {
       const result = await resolveIntent(ctx, intents[i]);
       setStep(i, result.skipped ? "skipped" : "done");
@@ -174,6 +186,7 @@ export default function PlanReview({
         title: views[i].title,
         hash: result.hash ?? undefined,
         skipped: !!result.skipped,
+        ms: Date.now() - startedAt,
       };
       /* Logged with the same title and detail the step above showed, so the
          history reads as a record of what the user approved rather than a
@@ -265,6 +278,7 @@ export default function PlanReview({
     ctx: NonNullable<ReturnType<typeof getContext>>,
     steps: number[],
   ): Promise<"done" | "failed" | "paused"> => {
+    const bundleStartedAt = Date.now();
     const calls = encodeBatch(intents, steps, ctx.address);
     if (!calls) return runSequential(ctx, steps);
 
@@ -291,6 +305,7 @@ export default function PlanReview({
           title: views[i].title,
           hash: hash ?? undefined,
           skipped: false,
+          ms: Date.now() - bundleStartedAt,
         };
       }
       if (hash) {
@@ -443,7 +458,7 @@ export default function PlanReview({
       <p className={s.foot}>
         {batchable
           ? `${prompts} signature${prompts === 1 ? "" : "s"} for ${intents.length} steps — your wallet can approve some of them together. Nothing runs until you approve it, and a failure stops the rest.`
-          : confirmEachStep && intents.length > 1
+          : stepMode === "manual" && intents.length > 1
             ? "Each step is a separate signature, and the plan stops between them so you can stop after any one. A failure stops the rest."
             : "Each step is a separate signature. Nothing runs until you approve it, and a failure stops the rest."}
       </p>

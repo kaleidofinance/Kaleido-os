@@ -36,13 +36,16 @@ import { renderIntent } from "@/lib/v2/intents";
 import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
 import { portfolioAnswer } from "@/lib/v2/cards/portfolio";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
+import { docsReply, groundingFor, MIN_ASK_SIMILARITY, outageReply, searchDocs } from "@/lib/ai/docsSearch";
 import { visibleProse } from "@/lib/ai/actionsBlock";
 import {
   parseCommand,
+  parseFollowUp,
   fillSlot,
   clearSlot,
   draftFromCommand,
   COMMAND_HELP,
+  type Command,
   type Draft,
   type ParseResult,
   type Slot,
@@ -189,6 +192,16 @@ export default function AgentPage() {
     draft: Draft;
     missing: Slot;
   } | null>(null);
+  /*
+   * The last command that planned successfully, so the NEXT sentence can
+   * continue it. "swap 10 USDC to USDT" then "now the same to USDe" is one
+   * thought in two messages, and without this the second half reached the
+   * model as an unparseable fragment - a reasoning request for a sentence the
+   * grammar already had every part of. `pending` is the other half of this and
+   * they are not the same thing: that one resumes a draft LUCA asked about,
+   * this one continues a plan the USER completed. See parseFollowUp.
+   */
+  const [lastCommand, setLastCommand] = useState<Command | null>(null);
   /** Remaining model requests today. Null until known, or when unmetered. */
   const [credits, setCredits] = useState<{
     remaining: number;
@@ -342,6 +355,9 @@ export default function AgentPage() {
     if (result.status !== "ok") return false;
 
     setPending(null);
+    /* Recorded only on the path that actually produced a plan, so a refused or
+       half-read sentence never becomes the thing a follow-up continues. */
+    setLastCommand(result.command);
 
     if (result.command.kind === "help") {
       note("Answered from the command reference");
@@ -599,6 +615,20 @@ export default function AgentPage() {
     let live: { text: string; open: boolean } | null = null;
 
     try {
+      /* Which net answered, recorded after the fact and never awaited. The
+         local nets were all written from a corpus we imagined; this is how the
+         next topic gets chosen from what people actually typed. keepalive so a
+         navigation does not cancel it; the catch so a logging failure cannot
+         become a visible one. See supabase/migrations/20260910000000. */
+      const log = (route: string) => {
+        void fetch("/api/agent/log", {
+          method: "POST",
+          keepalive: true,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: content, route, chainId, address }),
+        }).catch(() => {});
+      };
+
       // Local-first. A stated command is not a reasoning problem, and routing it
       // through a provider costs a credit, adds latency, and introduces the one
       // failure mode a grammar can't have: a confidently wrong number.
@@ -611,6 +641,7 @@ export default function AgentPage() {
         );
         if (filled.status !== "unknown") {
           note("Took this as the answer to what I asked");
+          log(`asks:${pending.missing}`);
           await planLocally(filled, abort.signal);
           return;
         }
@@ -628,6 +659,7 @@ export default function AgentPage() {
         const faq = matchFaq(text);
         if (!faq) return false;
         note("Matched a question I already know the answer to");
+        log(`faq:${faq.id}`);
         /*
          * The answer, plus its frames. Static cards come from the topic; a
          * `figure` is filled here because faq.ts is a lib and these values —
@@ -658,14 +690,73 @@ export default function AgentPage() {
       const question = isQuestionShaped(content);
       if (question && answerFromFaq(content)) return;
 
+      /* A question that contains a verb. "do lp fees compound" parses as a
+         compoundYield command and "can i repay part of my loan" as a repay -
+         each a question answered with a transaction, the exact failure the
+         FAQ-first ordering exists to prevent, reaching the grammar because
+         the FAQ had no topic for it. So between the FAQ and the grammar, a
+         question-shaped sentence gets one more chance: if the docs bank has
+         an ask that says the same thing, it is a question about the action,
+         not the action. Question-shaped only, so no imperative can be
+         diverted, and two shared content words at least, so a passing word
+         cannot: "do I have any KLD" shares "kld" with "what is kld" and is a
+         balance question, which the grammar reads as a portfolio read. "how do I
+         add liquidity" still opens the form - decided on purpose, and the
+         bank deliberately carries no ask for it. */
+      if (question) {
+        const exact = searchDocs(content);
+        if (exact && exact.via === "ask" && exact.score >= MIN_ASK_SIMILARITY && (exact.shared ?? 0) >= 2) {
+          note("Read this as a question about the action, not the action");
+          log(`docs:${exact.slug}`);
+          const reply = docsReply(exact);
+          say(reply.text, { via: "local", link: reply.link });
+          return;
+        }
+      }
+
       const parsed = parseCommand(content, vocabulary);
       if (parsed.status !== "unknown") {
         note("Read it as a direct command — no reasoning request needed");
+        log(parsed.status === "ok" ? `command:${parsed.command.kind}` : `asks:${parsed.missing}`);
         await planLocally(parsed, abort.signal);
         return;
       }
 
+      /* A continuation of the last plan, tried only once the grammar has
+         declined the sentence outright. Order matters: a sentence with its own
+         verb is a fresh command and parseFollowUp refuses it anyway, so this
+         can never re-point an instruction at the previous action. */
+      if (lastCommand) {
+        const followed = parseFollowUp(content, vocabulary, lastCommand);
+        if (followed.status !== "unknown") {
+          note("Read it as a follow-up to the last plan");
+          log(
+            followed.status === "ok"
+              ? `command:${followed.command.kind}`
+              : `asks:${followed.missing}`,
+          );
+          await planLocally(followed, abort.signal);
+          return;
+        }
+      }
+
       if (!question && answerFromFaq(content)) return;
+
+      /* Third local net: the docs. Only reached once the FAQ has had both its
+         chances and the grammar has declined the sentence, which is the
+         property that keeps "stake 100 KLD" from coming back as a paragraph
+         about staking. It quotes the section and links to it - never a
+         paraphrase, because a local answer that invents a detail is worse than
+         escalating. See src/lib/ai/docsSearch.ts. */
+      const hit = searchDocs(content);
+      if (hit) {
+        note("Found the section of the docs that answers this");
+        log(`docs:${hit.slug}`);
+        const reply = docsReply(hit);
+        say(reply.text, { via: "local", link: reply.link });
+        return;
+      }
+      log("model");
 
       /* Only genuine questions reach the model.
        *
@@ -691,6 +782,16 @@ export default function AgentPage() {
              with nothing to attach it to. Bounded and re-sanitised server-side
              (historyFromBody), since a client is sending it. */
           history: historyForModel(messages),
+          /* The two docs sections closest to the question, so the model can
+             answer from the protocol's own text instead of reconstructing it
+             from tool calls. Re-checked server-side like everything else that
+             arrives from a client. */
+          grounding: groundingFor(content, 2).map((g) => ({
+            title: g.title,
+            heading: g.heading,
+            href: g.href,
+            text: g.text,
+          })),
           // No fallback. The old `?? 11124` silently told the server every
           // disconnected user was on Abstract Testnet, so answers came back
           // confidently scoped to a chain the user wasn't on. Undefined is the
@@ -774,6 +875,15 @@ export default function AgentPage() {
           response: string,
           context: Record<string, unknown> | undefined,
         ) => {
+          /* The model could not answer. The old reply was the bare error -
+             "the reasoning service returned an error" - which tells the user
+             nothing about their question. Say what happened and give them the
+             closest thing the docs have, marked as such. */
+          if ((context as { status?: string } | undefined)?.status === "provider_error") {
+            const o = outageReply(content);
+            say(o.text, { via: "local", ...(o.link ? { link: o.link } : {}) });
+            return;
+          }
           const data = { response, context };
           const credit = (context as any)?.credits;
           if (credit && typeof credit.remaining === "number") {
@@ -1154,20 +1264,28 @@ export default function AgentPage() {
   const onComplete = (settled: SettledStep[] = []) => {
     setPanel({ kind: "idle" });
 
+    /* Each step's wall-clock, when it was measured. Shown because the wait is
+       the thing testers report as slow, and a number they can see is the
+       difference between "it hung" and "the chain took 14s" - which are
+       different complaints with different fixes. Seconds, one decimal: the
+       precision that distinguishes a slow chain from a slow app. */
+    const took = (st: SettledStep) =>
+      st.ms === undefined ? "" : ` · ${(st.ms / 1000).toFixed(1)}s`;
     const lines = settled.map((st) =>
       st.skipped
         ? `${st.title} — already in place, nothing sent`
         : st.hash
-          ? `${st.title} — done · ${st.hash.slice(0, 10)}…${st.hash.slice(-6)}`
-          : `${st.title} — done, no transaction needed`,
+          ? `${st.title} — done${took(st)} · ${st.hash.slice(0, 10)}…${st.hash.slice(-6)}`
+          : `${st.title} — done${took(st)}, no transaction needed`,
     );
     const sent = settled.filter((st) => st.hash && !st.skipped).length;
+    const totalMs = settled.reduce((n, st) => n + (st.ms ?? 0), 0);
     const head =
       settled.length === 0
         ? "Done."
         : sent === 0
           ? "Done — nothing needed to be sent."
-          : `Done — ${sent} transaction${sent === 1 ? "" : "s"} confirmed.`;
+          : `Done — ${sent} transaction${sent === 1 ? "" : "s"} confirmed${totalMs ? ` in ${(totalMs / 1000).toFixed(1)}s` : ""}.`;
 
     setMessages((prev) => [
       ...prev.map((m) => (m === latest ? { ...m, plan: undefined } : m)),
@@ -1324,8 +1442,14 @@ export default function AgentPage() {
               submitLabel="Sign & run"
               /* The one caller that passes it, because the setting is on the
                  agent: this is a plan the user is reading for the first time,
-                 not a form they just filled in. */
-              confirmEachStep={settings.confirmEachStep}
+                 not a form they just filled in.
+
+                 `agent` maps to `auto` here rather than being passed through.
+                 That mode is the on-chain mandate, which executes against the
+                 contract without producing a plan for anyone to review - so if
+                 a plan IS on screen under it, the user is signing this one
+                 themselves and has asked not to be stopped between steps. */
+              stepMode={settings.stepMode === "manual" ? "manual" : "auto"}
               onComplete={onComplete}
               onCancel={() => setPanel({ kind: "idle" })}
             />
