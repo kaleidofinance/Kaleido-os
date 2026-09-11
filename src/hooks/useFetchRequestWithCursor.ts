@@ -9,7 +9,7 @@ import {
   type BookListingRow,
   type BookRequestRow,
 } from "@/lib/lending/book";
-import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
+import { lendingChains } from "@/lib/lending/chain";
 import { MOCK_DATA, mockListings, mockRequests } from "@/lib/mock";
 
 /**
@@ -40,9 +40,12 @@ import { MOCK_DATA, mockListings, mockRequests } from "@/lib/mock";
  * cursor to carry — a multicall has no pages — and a "Load more" that can never
  * add a row is better than one that pages through a table with nothing in it.
  *
- * Chain: LENDING_CHAIN_ID, matching the writes. `useBorrowV2` refuses every
- * lending action off that chain (see lib/lending/chain.ts), so a book read from
- * anywhere else would list offers this wallet is not allowed to take.
+ * Chains: EVERY deployed lending chain, swept together — see `useBook` below and
+ * `lendingChains`. The book shows offers and requests from all five testnets at
+ * once, each row tagged with its own chain, the way the Pool page shows every
+ * chain's pools. A take or a cancel targets the row's chain, not the connected
+ * one; posting a new offer uses the connected chain. This replaced the single
+ * chain the book used to be pinned to.
  */
 
 /** The filters the callers pass. Applied to the fetched rows, not to a query. */
@@ -102,38 +105,80 @@ function idMatches(rowId: number | undefined, searchId?: string): boolean {
   return Number(rowId) === n;
 }
 
-/** Either side's row, as `readBookRows` returns it before the caller narrows. */
-type BookRow = BookListingRow | BookRequestRow;
+/** Either side's row, as `readBookRows` returns it, tagged with its chain. */
+type BookRow = (BookListingRow | BookRequestRow) & { chainId: number };
 
-/** One book read, shared by both hooks. */
+interface BookResult {
+  rows: BookRow[];
+  /** Chains that were asked and did not answer. A partial book, not an empty one. */
+  failed: number[];
+}
+
+/**
+ * The whole book, swept across every lending chain, each row tagged with the
+ * chain it came from.
+ *
+ * This is what makes lending multi-chain: instead of one chain pinned by
+ * LENDING_CHAIN_ID, every deployed chain's diamond is read in parallel and the
+ * rows are merged, each carrying its `chainId` so the table can tag it and a
+ * take/cancel can target the right chain.
+ *
+ * A PER-CHAIN FAILURE IS NOT AN EMPTY BOOK. readBookRows returns null when a
+ * chain declines to answer. On one chain that used to mean "show the error state
+ * rather than lie that the market is empty" — and that reasoning still holds, but
+ * across five chains it must not blank the four that DID answer. So a failed
+ * chain drops out of the rows and into `failed`, and only an all-chains failure
+ * reads as the book being unreadable.
+ */
 function useBook<T>(
   side: "listings" | "requests",
   enabled: boolean,
 ): { rows: T[]; loading: boolean; error: string | null; refetch: () => void } {
-  const query = useQuery<BookRow[] | null>({
-    queryKey: ["lendingBook", LENDING_CHAIN_ID, side],
-    queryFn: () =>
-      side === "listings"
-        ? readBookRows(LENDING_CHAIN_ID, "listings")
-        : readBookRows(LENDING_CHAIN_ID, "requests"),
+  const chains = useMemo(() => lendingChains(), []);
+
+  const query = useQuery<BookResult>({
+    queryKey: ["lendingBook", "all", side],
+    queryFn: async () => {
+      const perChain = await Promise.all(
+        chains.map(async (chainId) => {
+          try {
+            const rows =
+              side === "listings"
+                ? await readBookRows(chainId, "listings")
+                : await readBookRows(chainId, "requests");
+            if (rows === null) return { chainId, rows: null };
+            return {
+              chainId,
+              rows: rows.map((r) => ({ ...r, chainId })) as BookRow[],
+            };
+          } catch {
+            return { chainId, rows: null };
+          }
+        }),
+      );
+
+      const rows: BookRow[] = [];
+      const failed: number[] = [];
+      for (const r of perChain) {
+        if (r.rows === null) failed.push(r.chainId);
+        else rows.push(...r.rows);
+      }
+      return { rows, failed };
+    },
     enabled,
     refetchInterval: REFETCH_MS,
   });
 
-  /*
-   * `null` is the chain declining to answer, and it must not render as an empty
-   * market — that is the sentence this whole change exists to stop the app
-   * saying. So it becomes an error with no rows, and the table shows its error
-   * state rather than "no offers right now".
-   */
-  const unread = query.data === null && !query.isLoading;
+  const data = query.data;
+  /* Unreadable only when EVERY chain failed — one chain down leaves the rest. */
+  const allFailed =
+    !!data && data.rows.length === 0 && data.failed.length === chains.length;
 
   return {
-    rows: (query.data ?? []) as T[],
+    rows: (data?.rows ?? []) as T[],
     loading: query.isLoading,
-    error: query.isError
-      ? "Couldn't read the order book from the chain."
-      : unread
+    error:
+      query.isError || allFailed
         ? "Couldn't read the order book from the chain."
         : null,
     refetch: query.refetch,

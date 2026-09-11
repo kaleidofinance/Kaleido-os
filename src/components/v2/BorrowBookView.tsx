@@ -25,6 +25,8 @@ import { declaredSymbol, isNativeSentinel } from "@/constants/registry";
 import TokenIcon from "@/components/v2/TokenIcon";
 import { TakeLoanModal } from "@/components/v2/BorrowModals";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
+import ChainIcon from "@/components/v2/ChainIcon";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import s from "@/app/(app)/(lending)/borrow.module.css";
 
 export type BorrowBookMode = "borrow" | "lend" | "mine" | "mylends";
@@ -44,6 +46,9 @@ type SortDir = "asc" | "desc";
  * use site coerces but not while an id is compared for equality.
  */
 interface Row {
+  /** The chain this row was read from — the book sweeps every deployment now, so
+   *  every row carries it, for the tag and for targeting a take/cancel. */
+  chainId: number;
   listingId?: number;
   requestId?: number;
   tokenAddress: string;
@@ -301,7 +306,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     const asset =
       borrow.assets.loanable.find((a) => a.address.toLowerCase() === addr) ??
       borrow.assets.collateral.find((a) => a.address.toLowerCase() === addr) ??
-      describeLendingAsset(LENDING_CHAIN_ID, row.tokenAddress);
+      describeLendingAsset(row.chainId, row.tokenAddress);
 
     if (!asset) {
       toast.error(
@@ -773,8 +778,12 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                      * beside it were already resolving correctly, which is what
                      * made the mismatch easy to miss.
                      */
+                    /* Per the ROW's chain, not a fixed one: the book now
+                       carries rows from every deployment, and USDC's address on
+                       Base is not USDC's address on Sepolia. Decoding a Base row
+                       against Sepolia's registry named it "—". */
                     const symbol = declaredSymbol(
-                      READ_ONLY_CHAIN_ID,
+                      row.chainId,
                       row.tokenAddress,
                     );
                     const isNative = isNativeSentinel(
@@ -782,7 +791,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                       "lending",
                     );
                     const decimals = getTokenDecimals(
-                      READ_ONLY_CHAIN_ID,
+                      row.chainId,
                       row.tokenAddress,
                     );
                     const id = rowId(row);
@@ -838,7 +847,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
 
                     return (
                       <div
-                        key={row.listingId ?? row.requestId ?? i}
+                        key={`${row.chainId}-${row.listingId ?? row.requestId ?? i}`}
                         className={`${s.tr} ${isMyLends ? s.mineList : ""}`}
                       >
                         <div className={s.asset}>
@@ -854,6 +863,31 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                           <div className={s.aMeta}>
                             <div className={s.aName}>{symbol ?? "—"}</div>
                             <div className={s.aSub}>
+                              {/* Which chain this row is on. The book sweeps every
+                                  deployment now, so two rows can be the same asset
+                                  and rate on different chains — the tag is what
+                                  tells them apart and what a take/cancel targets.
+                                  Same idea as the Pool page's ChainTag. */}
+                              <span className={s.chainTag}>
+                                <ChainIcon
+                                  id={CHAINS_BY_ID[row.chainId]?.iconId}
+                                  size={13}
+                                  variant="branded"
+                                  fallback={
+                                    <i
+                                      className={s.chainDot}
+                                      style={
+                                        CHAINS_BY_ID[row.chainId]
+                                          ? { background: CHAINS_BY_ID[row.chainId].color }
+                                          : undefined
+                                      }
+                                    />
+                                  }
+                                />
+                                {CHAINS_BY_ID[row.chainId]?.shortName ??
+                                  `Chain ${row.chainId}`}
+                              </span>
+                              <span className={s.aSubDot}>·</span>
                               {counterparty ? formatAddress(counterparty) : "—"}
                               {isOwnRow && " · you"}
                             </div>

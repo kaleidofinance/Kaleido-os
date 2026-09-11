@@ -354,8 +354,38 @@
   font-size: var(--k-fs-base);
 }
 .aSub {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
   font-size: var(--k-fs-xs);
   color: var(--k-t2);
+}
+
+/* The row's chain, mirroring the Pool page's ChainTag: logo (or a coloured dot
+   where web3icons has none) plus the short name, kept on one line so a row's
+   height does not change with the chain it is on. */
+.chainTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  color: var(--k-t1);
+}
+.chainTag > svg {
+  flex: none;
+  display: block;
+  border-radius: 50%;
+}
+.chainDot {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--k-glass-deep);
+}
+.aSubDot {
+  color: var(--k-t3);
 }
 
 .cellNum {
