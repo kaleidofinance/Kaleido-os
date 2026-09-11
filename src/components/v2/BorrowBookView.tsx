@@ -1300,11 +1300,17 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
         listing={takeTarget}
         onDone={onTakeDone}
         /* No collateral, no loan: hand the borrower to the Collateral
-           modal (shared flag on the lending context) instead of a dead
-           Borrow button. Closing this one first keeps one modal on screen. */
+           modal (shared on the lending context) instead of a dead Borrow
+           button. Deposit when they have none; Withdraw, on the blocked
+           token, when the loan asset IS their collateral. Closing this one
+           first keeps a single modal on screen. */
         onNeedCollateral={() => {
           setTakeTarget(null);
-          collateral.setOpen(true);
+          collateral.openDeposit();
+        }}
+        onWithdrawCollateral={(symbol) => {
+          setTakeTarget(null);
+          collateral.openWithdraw(symbol);
         }}
       />
 

@@ -13,6 +13,9 @@ import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { makeBatchingQuoter } from "@/lib/dex/batchQuoter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useConnectModal } from "thirdweb/react";
+import { client } from "@/config/client";
+import { WALLETS } from "@/config/wallets";
 import type { Intent } from "@/lib/v2/intents";
 import {
   describeRoute,
@@ -143,6 +146,15 @@ function TokenPill({
 
 export default function SwapPage() {
   const { isConnected, chainId } = useWalletV2();
+  /* Disconnected is a fixable state, not a dead end: /trade is the one shell
+     without a ChainGate, so the CTA opens the connect modal itself rather than
+     sitting disabled while the only way to connect lives up in the nav. */
+  const { connect } = useConnectModal();
+  const openConnect = () => {
+    connect({ client, wallets: WALLETS, size: "compact" }).catch(() => {
+      /* Dismissing the modal rejects — a choice, not a fault. */
+    });
+  };
 
   /*
    * Token state is nullable and seeded from the chain, not from a module-level
@@ -751,8 +763,8 @@ export default function SwapPage() {
 
         <button
           className={s.cta}
-          disabled={ctaDisabled}
-          onClick={() => setReviewing(true)}
+          disabled={isConnected && ctaDisabled}
+          onClick={isConnected ? () => setReviewing(true) : openConnect}
         >
           {ctaLabel}
         </button>

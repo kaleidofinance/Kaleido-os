@@ -22,6 +22,7 @@ import {
   penaltySplitBps,
 } from "@/lib/lending/fees";
 import type { IToken } from "@/constants/types/dex";
+import type { CollateralIntent } from "@/components/v2/LendingDataContext";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
 import { isSupportedChain } from "@/config/chain";
@@ -617,6 +618,7 @@ export function PostRequestModal({
   borrow,
   onDone,
   onNeedCollateral,
+  onWithdrawCollateral,
 }: {
   open: boolean;
   onClose: () => void;
@@ -625,6 +627,9 @@ export function PostRequestModal({
   /** Open the Collateral (deposit) modal — a request with no collateral
    *  behind it reverts Protocol__InsufficientCollateral, same as a take. */
   onNeedCollateral?: () => void;
+  /** Open the Collateral modal on Withdraw, on this asset — the loan token is
+   *  the borrower's own collateral, and the diamond won't lend it back. */
+  onWithdrawCollateral?: (symbol: string) => void;
 }) {
   const [amount, setAmount] = useState("");
   const [apr, setApr] = useState("");
@@ -777,14 +782,19 @@ export function PostRequestModal({
         disabled={
           gate.switching ||
           busy ||
-          (!gate.wrong && !ready && !(noCollateral && onNeedCollateral))
+          (!gate.wrong &&
+            !ready &&
+            !(noCollateral && onNeedCollateral) &&
+            !(collateralBlocked && onWithdrawCollateral))
         }
         onClick={
           gate.wrong
             ? gate.goToChain
             : noCollateral && onNeedCollateral
               ? onNeedCollateral
-              : submit
+              : collateralBlocked && onWithdrawCollateral
+                ? () => onWithdrawCollateral(symbol)
+                : submit
         }
       >
         {gate.switching
@@ -802,7 +812,9 @@ export function PostRequestModal({
                       ? "Deposit collateral to borrow"
                       : "Deposit collateral first"
                     : collateralBlocked
-                      ? `${symbol} is your collateral`
+                      ? onWithdrawCollateral
+                        ? `Withdraw ${symbol} collateral`
+                        : `${symbol} is your collateral`
                       : ready
                         ? "Post request"
                         : "Enter an amount and rate"}
@@ -819,6 +831,7 @@ export function TakeLoanModal({
   listing,
   onDone,
   onNeedCollateral,
+  onWithdrawCollateral,
 }: {
   open: boolean;
   onClose: () => void;
@@ -845,6 +858,9 @@ export function TakeLoanModal({
   /** Open the Collateral (deposit) modal — the way out of a zero-
    *  collateral book, where every take reverts Protocol__InsufficientCollateral. */
   onNeedCollateral?: () => void;
+  /** Open the Collateral modal on Withdraw, on this asset — the loan token is
+   *  the borrower's own collateral, and the diamond won't lend it back. */
+  onWithdrawCollateral?: (symbol: string) => void;
 }) {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
@@ -994,14 +1010,19 @@ export function TakeLoanModal({
         disabled={
           gate.switching ||
           busy ||
-          (!gate.wrong && !ready && !(noCollateral && onNeedCollateral))
+          (!gate.wrong &&
+            !ready &&
+            !(noCollateral && onNeedCollateral) &&
+            !(collateralBlocked && onWithdrawCollateral))
         }
         onClick={
           gate.wrong
             ? gate.goToChain
             : noCollateral && onNeedCollateral
               ? onNeedCollateral
-              : submit
+              : collateralBlocked && onWithdrawCollateral
+                ? () => onWithdrawCollateral(symbol)
+                : submit
         }
       >
         {gate.switching
@@ -1015,7 +1036,9 @@ export function TakeLoanModal({
                   ? "Deposit collateral to borrow"
                   : "Deposit collateral first"
                 : collateralBlocked
-                  ? `${symbol} is your collateral`
+                  ? onWithdrawCollateral
+                    ? `Withdraw ${symbol} collateral`
+                    : `${symbol} is your collateral`
                   : ready
                     ? `Borrow ${amount} ${symbol}`
                     : "Enter an amount"}
@@ -1030,11 +1053,15 @@ export function CollateralModal({
   onClose,
   borrow,
   onDone,
+  intent,
 }: {
   open: boolean;
   onClose: () => void;
   borrow: BorrowV2;
   onDone: () => void;
+  /** Which tab and asset to land on when opened from a CTA — a blocked
+   *  borrower arrives on Withdraw, on their collateral token. */
+  intent?: CollateralIntent | null;
 }) {
   const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
@@ -1045,6 +1072,17 @@ export function CollateralModal({
      was offered on every one. */
   const { collateral: depositable } = borrow.assets;
   const { asset, symbol, setSymbol } = useAssetOptions(depositable);
+
+  /* Land where the CTA that opened this asked — Withdraw on the blocked
+     token, Deposit for an empty position. Keyed on `intent` identity (each
+     opener makes a fresh object) so a fresh open re-applies it while a manual
+     switch inside the modal is left alone. */
+  useEffect(() => {
+    if (!open || !intent) return;
+    setMode(intent.mode);
+    if (intent.symbol) setSymbol(intent.symbol);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, intent]);
   const [busy, setBusy] = useState(false);
   const gate = useLendingChain();
 

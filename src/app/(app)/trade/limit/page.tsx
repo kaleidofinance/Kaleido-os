@@ -14,6 +14,9 @@ import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useConnectModal } from "thirdweb/react";
+import { client } from "@/config/client";
+import { WALLETS } from "@/config/wallets";
 import type { Intent } from "@/lib/v2/intents";
 import {
   EXPIRY_CHOICES,
@@ -425,6 +428,12 @@ function OpenOrders({
 
 export default function LimitPage() {
   const { address, isConnected, chainId, chainName } = useWalletV2();
+  /* See swap: /trade has no ChainGate, so a disconnected CTA connects rather
+     than sits disabled. */
+  const { connect } = useConnectModal();
+  const openConnect = () => {
+    connect({ client, wallets: WALLETS, size: "compact" }).catch(() => {});
+  };
   const { orders: ordersAddress } = getContracts(chainId);
 
   const available = useMemo(
@@ -934,8 +943,8 @@ export default function LimitPage() {
 
         <button
           className={s.cta}
-          disabled={block !== null}
-          onClick={() => setReviewing(plan)}
+          disabled={isConnected ? block !== null : false}
+          onClick={isConnected ? () => setReviewing(plan) : openConnect}
         >
           {block?.label ??
             (maxFills > 1 ? "Review recurring buy" : "Review limit order")}

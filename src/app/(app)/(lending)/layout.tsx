@@ -98,7 +98,7 @@ function LendingShell({ children }: { children: ReactNode }) {
             <div className={s.headActions}>
               <button
                 className={s.ghostBtn}
-                onClick={() => collateral.setOpen(true)}
+                onClick={() => collateral.openDeposit()}
               >
                 Collateral
               </button>
@@ -209,11 +209,16 @@ function LendingShell({ children }: { children: ReactNode }) {
         onDone={refresh}
         onNeedCollateral={() => {
           setRequestOpen(false);
-          collateral.setOpen(true);
+          collateral.openDeposit();
+        }}
+        onWithdrawCollateral={(symbol) => {
+          setRequestOpen(false);
+          collateral.openWithdraw(symbol);
         }}
       />
       <CollateralModal
         open={collateral.open}
+        intent={collateral.intent}
         onClose={() => collateral.setOpen(false)}
         borrow={borrow}
         onDone={() => borrow.refreshPosition()}
