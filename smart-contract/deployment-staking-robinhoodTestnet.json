@@ -1,0 +1,21 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "timestamp": "2026-09-11T19:24:12.519Z",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "KLD": "0x6F57844d0C6DCB7eB906d21C99195a3FC446E81D",
+    "KLDVault": "0x5528FC4D02Ca74Fa42eC9D9B104f49829994B0F4",
+    "stKLD": "0x76e0dD774e0cD0cbEaF3369CE61D31E76b413477"
+  },
+  "config": {
+    "yieldTreasury": "0x92a9d8179b414540B3a1f2a9218baF248CbD2894"
+  },
+  "migratedFrom": {
+    "vault": "0x46351a88bf64DFd0Cb8e88D6F88fd84d70ABe50e",
+    "stKLD": "0x99d6c3d9C2f00BD5da74C9A78035DD5790d17F50",
+    "holders": 15,
+    "amount": "3826976785989287756140261",
+    "strandedInOldVault": "3826976785989287756140261"
+  }
+}

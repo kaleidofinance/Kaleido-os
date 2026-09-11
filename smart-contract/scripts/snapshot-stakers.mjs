@@ -45,7 +45,7 @@ const CHAINS = {
   baseTestnet: { id: 84532, rpc: process.env.RPC_URL_84532 || "https://sepolia.base.org", span: 10_000 },
   bscTestnet: { id: 97, rpc: process.env.RPC_URL_97 || "https://bsc-testnet-rpc.publicnode.com", span: 10_000 },
   arcTestnet: { id: 5042002, rpc: process.env.RPC_URL_5042002 || "https://rpc.arc-testnet.circle.com", span: 10_000 },
-  robinhoodTestnet: { id: 46630, rpc: process.env.RPC_URL_46630 || "https://testnet.rpc.robinhood.com", span: 10_000 },
+  robinhoodTestnet: { id: 46630, rpc: process.env.RPC_URL_46630 || "https://rpc.testnet.chain.robinhood.com", span: 10_000 },
 };
 
 const key = process.argv[2] ?? "sepolia";

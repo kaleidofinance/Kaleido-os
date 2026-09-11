@@ -5,8 +5,8 @@
   "status": "complete",
   "contracts": {
     "KLD": "0x6F57844d0C6DCB7eB906d21C99195a3FC446E81D",
-    "KLDVault": "0x46351a88bf64DFd0Cb8e88D6F88fd84d70ABe50e",
-    "stKLD": "0x99d6c3d9C2f00BD5da74C9A78035DD5790d17F50"
+    "KLDVault": "0x5528FC4D02Ca74Fa42eC9D9B104f49829994B0F4",
+    "stKLD": "0x76e0dD774e0cD0cbEaF3369CE61D31E76b413477"
   },
   "config": {
     "maxSupply": "1000000000000000000000000000",
@@ -14,7 +14,7 @@
     "homeChainId": 46630,
     "isHomeChain": true,
     "mintedToDeployer": "1000000000000000000000000000",
-    "yieldTreasury": "0x387d687B9574E93aCCEF1c272ce0D77381305eC3"
+    "yieldTreasury": "0x92a9d8179b414540B3a1f2a9218baF248CbD2894"
   },
   "faucet": {
     "address": "0xD65927aF66B52E5a43C9C4Fb405D6F0823B65441",
@@ -32,5 +32,18 @@
   "sources": {
     "stablecoin": "deployment-stablecoin-robinhoodTestnet.json"
   },
-  "note": "Testnet topology: this chain is its own KLD home, so it issues its own supply. Mainnet uses a single home chain with every other chain holding bridged supply only — see the script header."
+  "note": "Testnet topology: this chain is its own KLD home, so it issues its own supply. Mainnet uses a single home chain with every other chain holding bridged supply only — see the script header.",
+  "migration": {
+    "note": "KLDVault and stKLD below are the POST-MIGRATION addresses. The originals are recorded under migratedFrom, and the old vault still holds its KLD - it has no owner exit, so nobody can retrieve it.",
+    "migratedAt": "2026-09-11T19:24:12.519Z",
+    "record": "deployment-staking-robinhoodTestnet.json",
+    "migratedFrom": {
+      "vault": "0x46351a88bf64DFd0Cb8e88D6F88fd84d70ABe50e",
+      "stKLD": "0x99d6c3d9C2f00BD5da74C9A78035DD5790d17F50",
+      "holders": 15,
+      "amount": "3826976785989287756140261",
+      "strandedInOldVault": "3826976785989287756140261"
+    },
+    "reason": "KLDVaultV2.yieldTreasury was constructor-only and pointed at the pre-2026-09-06 treasury, so harvestYield - the only accrual path - always reverted and staking never paid a yield. StKLD.kldVault is immutable, so both had to be replaced."
+  }
 }
