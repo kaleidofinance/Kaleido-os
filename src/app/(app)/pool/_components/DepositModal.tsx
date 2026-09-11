@@ -257,6 +257,29 @@ export default function DepositModal({
   const short0 = shortOf(amounts.a0, balance0, unread0);
   const short1 = shortOf(amounts.a1, balance1, unread1);
 
+  /* The largest deposit each leg can make given BOTH wallet balances. With a
+     pairing ratio the two legs are locked together, so a leg's Max is bounded
+     by the OTHER token too: filling the binding leg to its exact balance string
+     and letting `edit` pair the other down keeps Max from landing a hair over
+     the counter-balance and reading back as "Not enough" — the float trap the
+     swap card documents. Independent legs (no ratio) just take their own. */
+  const maxLeg = (which: "0" | "1") => {
+    if (ratio === null) return edit(which, which === "0" ? balance0 : balance1);
+    if (ratio === 0) return edit("0", balance0);
+    if (ratio === Infinity) return edit("1", balance1);
+    const b0 = Number(balance0);
+    const b1 = Number(balance1);
+    if (!(b0 > 0) || !(b1 > 0)) return;
+    if (b1 / ratio < b0) edit("1", balance1);
+    else edit("0", balance0);
+  };
+
+  /* A one-sided range consumes a single token, so only that leg gets a Max —
+     offering it on the leg the mint takes none of would fill a box the form is
+     about to empty. */
+  const consumable = (which: "0" | "1") =>
+    ratio === 0 ? which === "0" : ratio === Infinity ? which === "1" : true;
+
   const venueReady =
     Boolean(spender) && (!isV3 || (tier !== null && isTradedTier(tier)));
   const bothPositive = positive(amounts.a0) && positive(amounts.a1);
@@ -386,15 +409,32 @@ export default function DepositModal({
             {token.symbol}
           </span>
         </div>
-        <div className={s.priceHint}>
-          {!onRightChain
-            ? `Balance on ${meta?.shortName ?? "this pool's network"} — switch to see it`
-            : unread
-              ? "Balance —"
-              : `Balance ${Number(balance).toLocaleString(undefined, {
-                  maximumFractionDigits: 4,
-                })}`}
-        </div>
+        {!onRightChain ? (
+          <div className={s.priceHint}>
+            Balance on {meta?.shortName ?? "this pool's network"} — switch to
+            see it
+          </div>
+        ) : unread ? (
+          <div className={s.priceHint}>Balance —</div>
+        ) : (
+          <div className={s.addBal}>
+            <span>
+              Balance{" "}
+              {Number(balance).toLocaleString(undefined, {
+                maximumFractionDigits: 4,
+              })}
+            </span>
+            {consumable(which) && Number(balance) > 0 && (
+              <button
+                type="button"
+                className={s.maxChip}
+                onClick={() => maxLeg(which)}
+              >
+                Max
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   };
