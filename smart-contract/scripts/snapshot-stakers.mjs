@@ -34,12 +34,18 @@ import { ethers } from "ethers";
  * thirdweb keeps the history and caps a single response instead, so it fails
  * loudly and is chunked small to stay under the cap. RPC_URL_<chainId> overrides
  * either, for the same reason the keeper takes one. */
+/* Every chain honours RPC_URL_<chainId>, not just one of them. The default
+   here is whatever answered when the chain was added, and defaults go stale in
+   two different ways: BSC's publicnode prunes the history this scan needs, and
+   thirdweb caps Base at a tenth of the span base.org serves. The override is
+   how a run picks the endpoint that can actually answer it, and it was silently
+   ignored on four of the five chains until 2026-09-10. */
 const CHAINS = {
   sepolia: { id: 11155111, rpc: process.env.RPC_URL_11155111 || `https://11155111.rpc.thirdweb.com/${process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_KEY ?? ""}`, span: 1_000 },
-  baseTestnet: { id: 84532, rpc: "https://sepolia.base.org", span: 10_000 },
-  bscTestnet: { id: 97, rpc: "https://bsc-testnet-rpc.publicnode.com", span: 10_000 },
-  arcTestnet: { id: 5042002, rpc: "https://rpc.arc-testnet.circle.com", span: 10_000 },
-  robinhoodTestnet: { id: 46630, rpc: "https://testnet.rpc.robinhood.com", span: 10_000 },
+  baseTestnet: { id: 84532, rpc: process.env.RPC_URL_84532 || "https://sepolia.base.org", span: 10_000 },
+  bscTestnet: { id: 97, rpc: process.env.RPC_URL_97 || "https://bsc-testnet-rpc.publicnode.com", span: 10_000 },
+  arcTestnet: { id: 5042002, rpc: process.env.RPC_URL_5042002 || "https://rpc.arc-testnet.circle.com", span: 10_000 },
+  robinhoodTestnet: { id: 46630, rpc: process.env.RPC_URL_46630 || "https://testnet.rpc.robinhood.com", span: 10_000 },
 };
 
 const key = process.argv[2] ?? "sepolia";
@@ -99,34 +105,124 @@ const call = async (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
    SPAN is what one endpoint will answer in a single getLogs; thirdweb caps
    Base at 1,000 while base.org and publicnode serve 10,000, which is 70
    requests instead of 700. */
+/* Where a partial scan parks itself.
+ *
+ * BSC needs 2,597,896 blocks at the 1,000-block span its endpoints will serve -
+ * about 2,600 requests - and the first attempt died on a transient `fetch
+ * failed` at block 1,483,000 having learnt 2 addresses. Without this the retry
+ * starts from zero, which on a chain this size means it may never finish at all.
+ *
+ * The file holds the addresses seen so far and the next block to read. It is
+ * progress, not a result: nothing downstream reads it, and the totals check
+ * still decides whether the finished list is usable. Deleted on success so a
+ * later run cannot resume into a stale range. */
+const PROGRESS = (k) => `smart-contract/.scan-progress-${k}.json`;
 const SPAN_OVERRIDE = process.env.SPAN ? Number(process.env.SPAN) : null;
 const LOOKBACK = BigInt(process.env.LOOKBACK ?? 150_000);
+
+/**
+ * The block the contract was created in, found by bisection on eth_getCode.
+ *
+ * A LOOKBACK is a guess, and the guess has been wrong twice: 150k blocks
+ * reaches back a fortnight on Sepolia's 12s blocks, three days on Base's 2s,
+ * and about nineteen hours on BSC's 0.45s. The first Base scan came up 594,203
+ * KLD short because of it. The creation block is not a guess - it is the
+ * earliest block that could possibly carry a log for this contract, so it is
+ * both correct and the smallest range that can be.
+ *
+ * Falls back to LOOKBACK when an endpoint has pruned the state it needs to
+ * answer (publicnode does; thirdweb does not), because a slower correct scan
+ * still beats no scan - and the totals check downstream is what actually
+ * decides whether the result is usable either way.
+ */
+async function creationBlock(address, head) {
+  const has = async (b) => {
+    const code = await rpc("eth_getCode", [address, "0x" + b.toString(16)]);
+    return code !== "0x";
+  };
+  try {
+    if (await has(0n)) return 0n;
+    let lo = 0n;
+    let hi = head;
+    if (!(await has(hi))) throw new Error("no code at head");
+    while (lo < hi) {
+      const mid = (lo + hi) / 2n;
+      if (await has(mid)) hi = mid;
+      else lo = mid + 1n;
+    }
+    return lo;
+  } catch {
+    return null;
+  }
+}
 
 async function main() {
   const head = BigInt(await rpc("eth_blockNumber", []));
   console.log(`${key} (chain ${chain.id})  head ${head}`);
   console.log(`stKLD ${stKLD}`);
 
-  const from = head > LOOKBACK ? head - LOOKBACK : 0n;
-  console.log(`stKLD created at block ${from} — scanning ${head - from} blocks\n`);
+  /* Exact where the endpoint allows it, a window only as a fallback. */
+  const created = await creationBlock(stKLD, head);
+  const from =
+    created !== null ? created : head > LOOKBACK ? head - LOOKBACK : 0n;
+  console.log(
+    created !== null
+      ? `created at block ${created} - scanning ${head - created} blocks (exact)`
+      : `state pruned, falling back to a ${LOOKBACK}-block window`,
+  );
 
-  const holders = new Set();
-  let scanned = 0n;
-  for (let start = from; start <= head; start += BigInt((SPAN_OVERRIDE ?? chain.span))) {
-    const end = start + BigInt((SPAN_OVERRIDE ?? chain.span)) - 1n > head ? head : start + BigInt((SPAN_OVERRIDE ?? chain.span)) - 1n;
-    const logs = await rpc("eth_getLogs", [{
-      address: stKLD,
-      topics: [TRANSFER],
-      fromBlock: "0x" + start.toString(16),
-      toBlock: "0x" + end.toString(16),
-    }]);
-    for (const l of logs) {
-      holders.add("0x" + l.topics[1].slice(26));
-      holders.add("0x" + l.topics[2].slice(26));
+  const progressPath = PROGRESS(key);
+  let holders = new Set();
+  let resumeFrom = from;
+  if (fs.existsSync(progressPath)) {
+    const prev = JSON.parse(fs.readFileSync(progressPath, "utf8"));
+    if (prev.token?.toLowerCase() === stKLD.toLowerCase() && BigInt(prev.next) > from) {
+      holders = new Set(prev.seen);
+      resumeFrom = BigInt(prev.next);
+      console.log(`  resuming at ${resumeFrom} with ${holders.size} addresses already seen`);
     }
-    scanned = end - from + 1n;
-    process.stdout.write(`\r  scanned ${scanned} blocks, ${holders.size} addresses seen`);
   }
+
+  try {
+    for (let start = resumeFrom; start <= head; start += BigInt(SPAN_OVERRIDE ?? chain.span)) {
+      const end =
+        start + BigInt(SPAN_OVERRIDE ?? chain.span) - 1n > head
+          ? head
+          : start + BigInt(SPAN_OVERRIDE ?? chain.span) - 1n;
+      const logs = await rpc("eth_getLogs", [
+        {
+          address: stKLD,
+          topics: [TRANSFER],
+          fromBlock: "0x" + start.toString(16),
+          toBlock: "0x" + end.toString(16),
+        },
+      ]);
+      for (const l of logs) {
+        holders.add("0x" + l.topics[1].slice(26));
+        holders.add("0x" + l.topics[2].slice(26));
+      }
+      resumeFrom = end + 1n;
+      if (end % 50_000n < BigInt(SPAN_OVERRIDE ?? chain.span)) {
+        fs.writeFileSync(
+          progressPath,
+          JSON.stringify({ token: stKLD, next: resumeFrom.toString(), seen: [...holders] }),
+        );
+      }
+      process.stdout.write(`  ${end - from + 1n} blocks, ${holders.size} addresses seen`);
+    }
+  } catch (e) {
+    /* Park what was learnt before rethrowing. A scan that dies having thrown its
+       progress away is a scan that has to be lucky rather than persistent. */
+    fs.writeFileSync(
+      progressPath,
+      JSON.stringify({ token: stKLD, next: resumeFrom.toString(), seen: [...holders] }),
+    );
+    console.log(`
+  parked at ${resumeFrom} with ${holders.size} addresses - re-run to continue`);
+    throw e;
+  }
+  if (fs.existsSync(progressPath)) fs.unlinkSync(progressPath);
+
   holders.delete(ethers.ZeroAddress.toLowerCase());
   console.log(`\n  ${holders.size} addresses have ever held stKLD\n`);
 

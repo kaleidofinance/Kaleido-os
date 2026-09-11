@@ -70,3 +70,6 @@ smart-contract/snapshot-stakers-*.json
 
 # kafUSD/holder snapshots — regenerate with scripts/snapshot-holders.mjs.
 smart-contract/snapshot-kafusd-*.json
+
+# Partial holder scans — progress only, deleted on success.
+smart-contract/.scan-progress-*.json

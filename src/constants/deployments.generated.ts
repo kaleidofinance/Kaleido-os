@@ -29,13 +29,13 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kafUSD: "0xf677e522df1d9A0A13926F84Ac6cf1119d81d05A", // deployment-stablecoin-bscTestnet-1788709839524.json
     kfUSD: "0x99d6c3d9C2f00BD5da74C9A78035DD5790d17F50", // deployment-stablecoin-bscTestnet-1788709839524.json
     kld: "0x0d6a6F10adeCdc8a8b93aAc0Fa5210653de3511d", // deployment-kld-bscTestnet.json
-    kldVault: "0x73B7341c15b12BcfA328733d753f5c30e67dBdce", // deployment-kld-bscTestnet.json
+    kldVault: "0xEE73946fF9794B03fE87874532F9e4aE3D758788", // deployment-kld-bscTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-bscTestnet.json
     orders: "0x40ABaDfCDD24159069859f756cf6B68C79027cB8", // deployment-orders-bscTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-bscTestnet-1787453320471.json
     priceOracle: "0xf9928C816b75Bb3EA081Fc0d1C0172E475957C48", // deployment-diamond-bscTestnet.json
-    stKLD: "0x6D066143d21863c6Ef2975f213346d41CE3321c2", // deployment-kld-bscTestnet.json
+    stKLD: "0x6140Da1f66fCafa0b5197065ae91A00208F3Cd86", // deployment-kld-bscTestnet.json
     usdc: "0xf9e2A7Ac9143Ea0f25116009095D0B5700e2317F", // deployment-stablecoin-bscTestnet-1788709839524.json
     usde: "0xa2e103934877FFfbaEC8fF0eA45cde017AB845f6", // deployment-stablecoin-bscTestnet-1788709839524.json
     usdt: "0xeAeE746b5eDF09FA45B53F1E080b3eF9817cf6a2", // deployment-stablecoin-bscTestnet-1788709839524.json
@@ -47,7 +47,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     v3Quoter: "0xAc1a10df0a742f107517f1944e0a37da74932c06", // deployment-v3-bscTestnet-1787453320471.json
     v3Router: "0x8A6BbC81d9678c92aa33A3eD0580389B82B18579", // deployment-orders-bscTestnet.json
     wrappedNative: "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd", // deployment-dex-bscTestnet.json
-    yieldTreasury: "0x06400357a8B1Bbcd52982597AFF2d6873C4bd7Cc", // deployment-stablecoin-bscTestnet-1788709839524.json
+    yieldTreasury: "0xeFe21b46e9603A574c7aBd3a88976f9B456D832B", // deployment-stablecoin-bscTestnet-1788709839524.json
   },
   46630: {
     diamond: "0x3565904975AE169c0a48af085b9f786660875874", // deployment-diamond-robinhoodTestnet.json
@@ -311,7 +311,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-10T12:01:09.410Z",
+  generatedAt: "2026-09-11T08:11:10.482Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
