@@ -1,0 +1,21 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "timestamp": "2026-09-11T12:52:51.550Z",
+  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "contracts": {
+    "KLD": "0xC0f8D36ec1D96477F26228A629a31248c584f477",
+    "KLDVault": "0xf341BFb02404485FD360Ca864f49e2F7F1172951",
+    "stKLD": "0xA44b63033BD3bc7F240ccD88EC3E9BB669E99c82"
+  },
+  "config": {
+    "yieldTreasury": "0xDf540734273a87C41Dd7D2079a44576cb7F983a5"
+  },
+  "migratedFrom": {
+    "vault": "0x2987378eeB3E61bC8F9D2A80bFd0b1628771AC68",
+    "stKLD": "0xD78c79129410883fD818498e18f0D4f1d3B5DF9f",
+    "holders": 24,
+    "amount": "3906506795360312151077774",
+    "strandedInOldVault": "3906506795360312151077774"
+  }
+}
