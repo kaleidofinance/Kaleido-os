@@ -96,6 +96,19 @@ export interface PoolShape {
   fee: number;
 }
 
+/**
+ * The wire shape of GET /api/prices/kld. Here rather than in the route so the
+ * route exports only its handler — a route segment that exports a stray type
+ * trips the Next build — and so the client hook imports it without importing
+ * anything server-side.
+ */
+export interface KldCandleResponse {
+  chainId: number;
+  pool: string | null;
+  interval: Interval;
+  candles: Candle[];
+}
+
 export interface Candle {
   /** Bucket start, unix seconds. */
   t: number;
