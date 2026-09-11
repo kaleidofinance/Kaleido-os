@@ -524,6 +524,12 @@ export interface Draft {
   /** Which row a command points at, e.g. listing 3, or position 42. */
   refTarget?: "listing" | "request" | "position";
   refId?: number;
+  /**
+   * A symbol the sentence nearly named. Offered, never applied: the draft
+   * still has the empty slot, and this is only what the question quotes and
+   * what "yes" answers. See `findNearMiss` and `fillSlot`.
+   */
+  suggest?: { token: IToken; typed: string };
 }
 
 export type ParseResult =
@@ -1065,8 +1071,38 @@ const PROMPTS: Record<Slot, string> = {
   ref: "Which one? For example: listing 3, request 7, or position 42.",
 };
 
+/**
+ * Asks for the one slot that is missing.
+ *
+ * When the draft carries a near miss and the missing slot is the token slot it
+ * belongs to, the question names the guess instead of asking the generic one.
+ * That is the whole saving: "did you mean USDC?" is answerable with "yes",
+ * which `fillSlot` reads locally, where the generic re-ask sends people back to
+ * retyping a sentence that the model then has to parse.
+ *
+ * A suggestion never survives onto a non-token question. It would be quoting a
+ * symbol at someone who was asked for an amount, and worse, "yes" would then
+ * have a meaning it was never offered.
+ */
 function incomplete(draft: Draft, missing: Slot): ParseResult {
-  return { status: "incomplete", draft, missing, prompt: PROMPTS[missing] };
+  const naming =
+    missing === "tokenIn" || missing === "tokenOut" || missing === "token";
+
+  if (draft.suggest && naming) {
+    return {
+      status: "incomplete",
+      draft,
+      missing,
+      prompt: `I don't know "${draft.suggest.typed}" — did you mean ${draft.suggest.token.symbol}?`,
+    };
+  }
+
+  return {
+    status: "incomplete",
+    draft: draft.suggest ? { ...draft, suggest: undefined } : draft,
+    missing,
+    prompt: PROMPTS[missing],
+  };
 }
 
 /* ------------------------------------------------------------------ parse -- */
@@ -1627,11 +1663,11 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   }
 
   if (verb.kind === "swap") {
-    return parseSwap(words, amount, mentions);
+    return parseSwap(words, amount, mentions, tokens);
   }
 
   if (verb.kind === "bridge") {
-    return parseBridge(words, amount, mentions);
+    return parseBridge(words, amount, mentions, tokens);
   }
 
   if (verb.kind === "send") {
@@ -1648,6 +1684,7 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
       amount: amount?.amount,
       token: mentions[0]?.token,
       to: recipient?.to,
+      ...suggestion(words, mentions, tokens),
     });
   }
 
@@ -1690,6 +1727,7 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
       token: mentions[0]?.token,
       interestPct: rate?.pct,
       days: duration?.days,
+      ...suggestion(words, mentions, tokens),
     });
   }
 
@@ -1713,7 +1751,12 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
      * explanation of what to do instead, rather than here with a bare re-ask.
      */
     const token = mentions[0]?.token ?? findToken("kfusd", tokens);
-    if (!token) return incomplete({ kind: "completeWithdrawal" }, "token");
+    if (!token) {
+      return incomplete(
+        { kind: "completeWithdrawal", ...suggestion(words, mentions, tokens) },
+        "token",
+      );
+    }
     return { status: "ok", command: { kind: "completeWithdrawal", token } };
   }
 
@@ -1722,13 +1765,305 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     kind: verb.kind,
     amount: amount?.amount,
     token: mentions[0]?.token,
+    ...suggestion(words, mentions, tokens),
   });
 }
+
+/* ------------------------------------------------------------- near misses -- */
+
+/**
+ * Shorthands that are not typos, and that distance could never resolve.
+ *
+ * "eth" is one edit from WETH and one from ETH; "btc" is one from BTCB and two
+ * from both WBTC and cbBTC. The ranking cannot say which one a person meant,
+ * and a list can. Each entry names its candidates in preference order, and the
+ * first one this chain actually has wins.
+ *
+ * Consulted ONLY once a token slot is known to be unresolved, never while
+ * scanning a sentence: several of these words also name chains in the registry
+ * ("Ether", "Ethereum" and "BNB" are all chain or currency names there), and a
+ * bridge destination must never start reading as a token.
+ *
+ * "usd" is deliberately absent, and so is "stable". Both sit one edit from
+ * USDC, USDT and USDe at once, so they say only that the person meant a
+ * dollar, and the honest question there is the plain "which token?".
+ */
+const TOKEN_ALIASES: Record<string, string[]> = {
+  eth: ["WETH", "ETH"],
+  ether: ["WETH", "ETH"],
+  ethereum: ["WETH", "ETH"],
+  btc: ["WBTC", "BTCB", "cbBTC", "cirBTC"],
+  bitcoin: ["WBTC", "BTCB", "cbBTC", "cirBTC"],
+  wrappedbtc: ["WBTC"],
+  tether: ["USDT"],
+  ethena: ["USDe"],
+  susde: ["USDe"],
+  kaleido: ["KLD"],
+  kaleidotoken: ["KLD"],
+  stakedkld: ["stKLD"],
+  euro: ["EURC"],
+  eur: ["EURC"],
+  hyperliquid: ["HYPE"],
+  matic: ["POL", "WPOL"],
+  usdcoin: ["USDC"],
+  kaleidousd: ["kfUSD"],
+};
+
+/**
+ * Lowercased with the punctuation dropped, so "st-kld", "kf usd" and "USD.C"
+ * all fold onto the symbol they were aiming at.
+ */
+function squash(word: string): string {
+  return word.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/**
+ * Optimal string alignment distance — Levenshtein plus one extra move, the
+ * transposition of two adjacent letters.
+ *
+ * That extra move is the whole reason this is not plain Levenshtein. "udsc"
+ * for USDC is the single most common way a symbol comes out wrong, and
+ * Levenshtein scores that swap as two edits: the same distance as a word
+ * sharing only half its letters. One move is what it actually was.
+ */
+function editDistance(a: string, b: string): number {
+  const rows: number[][] = [];
+  for (let i = 0; i <= a.length; i++) {
+    rows.push(new Array<number>(b.length + 1).fill(0));
+    rows[i][0] = i;
+  }
+  for (let j = 0; j <= b.length; j++) rows[0][j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let best = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + cost,
+      );
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        best = Math.min(best, rows[i - 2][j - 2] + 1);
+      }
+      rows[i][j] = best;
+    }
+  }
+  return rows[a.length][b.length];
+}
+
+/**
+ * How far a word may sit from a symbol, measured against the shorter of the
+ * two. Short symbols get almost no room on purpose: KLD and POL are three
+ * letters, and at a tolerance of two, "old", "cold" and "sold" all become
+ * token names.
+ */
+function tolerance(span: number): number {
+  if (span <= 3) return 1;
+  if (span <= 5) return 2;
+  return 3;
+}
+
+/**
+ * Words the grammar already knows, which are therefore never misspelled
+ * tokens however close they happen to land. "rate" is two edits from DAI and
+ * it is the word that carries an interest rate; "sold" is two from POL.
+ *
+ * Built from the parser's own vocabulary rather than retyped, so a verb added
+ * later is excluded here on the day it is added, plus a short list of ordinary
+ * English the parser has no table for.
+ */
+const NEVER_A_TOKEN = new Set<string>([
+  ...Object.values(VERBS).flat(),
+  ...Object.values(ZERO_SLOT_VERBS).flat(),
+  ...SEPARATORS,
+  ...BUY_WORDS,
+  ...BUY_SEPARATORS,
+  ...BUY_FORWARD_SEPARATORS,
+  ...SELF_WORDS,
+  ...ORDER_MARKERS,
+  ...FAUCET_FILLERS,
+  ...LENDING_NOUNS,
+  ...LIQUIDITY_NOUNS,
+  ...OPEN_WORDS,
+  ...CLOSING_WORDS,
+  ...PORTFOLIO_VETO,
+  ...PORTFOLIO_ACTION_VETO,
+  "the", "a", "an", "and", "or", "of", "in", "on", "at", "is", "it", "as",
+  "all", "any", "some", "half", "rest", "more", "less", "most", "best",
+  "rate", "rates", "apy", "apr", "yield", "yields", "interest", "term",
+  "day", "days", "week", "weeks", "month", "months", "year", "years",
+  "wallet", "balance", "balances", "account", "address", "chain", "network",
+  "price", "prices", "value", "worth", "total", "each", "every", "per",
+  "please", "now", "then", "that", "this", "them", "those", "these",
+  "type", "date", "safe", "same", "want", "need", "make", "take", "back",
+  "cost", "code", "cold", "sold", "old", "hold", "held", "sell", "sale",
+  "much", "many", "over", "under", "into", "out", "off", "up", "down",
+]);
+
+/** A word that was probably a symbol, and where in the sentence it sat. */
+export interface NearMiss {
+  token: IToken;
+  /** The word as it was typed, for quoting back in the question. */
+  typed: string;
+  /** Its position, so a swap can tell which side of the trade it was on. */
+  index: number;
+}
+
+/** Every distinct symbol this chain has; the first token wins per symbol. */
+function bySymbol(tokens: IToken[]): Map<string, IToken> {
+  const out = new Map<string, IToken>();
+  for (const t of tokens) {
+    const key = squash(t.symbol);
+    if (!out.has(key)) out.set(key, t);
+  }
+  return out;
+}
+
+/**
+ * The one symbol a word was probably meant to be, or nothing.
+ *
+ * Nothing is the common answer, and that is the point. A tie is not a near
+ * miss: USDC, USDT and USDe are each one edit from the others, so a word that
+ * lands one edit from all three has not identified anything, and choosing
+ * between them is a coin flip with someone's money on it.
+ */
+function nearestToken(word: string, tokens: IToken[]): IToken | null {
+  const w = squash(word);
+  if (w.length < 2) return null;
+
+  const symbols = bySymbol(tokens);
+
+  const alias = TOKEN_ALIASES[w];
+  if (alias) {
+    for (const symbol of alias) {
+      const hit = symbols.get(squash(symbol));
+      if (hit) return hit;
+    }
+  }
+
+  let best: IToken | null = null;
+  let bestDistance = Infinity;
+  let tied = false;
+
+  for (const [symbol, token] of symbols) {
+    const d = editDistance(w, symbol);
+    if (d > tolerance(Math.min(w.length, symbol.length))) continue;
+    if (d < bestDistance) {
+      best = token;
+      bestDistance = d;
+      tied = false;
+    } else if (d === bestDistance && token.symbol !== best?.symbol) {
+      tied = true;
+    }
+  }
+
+  return tied ? null : best;
+}
+
+/**
+ * Scans a sentence for one word that was meant to be a token and came out
+ * wrong.
+ *
+ * Only ever consulted when a token slot could not be filled, so the cost of
+ * looking is paid on sentences that were already going to end in a question.
+ * What changes is which question: "Which token do you want to spend?" becomes
+ * a named guess, which is answerable with one word, by the same local
+ * machinery that asked, and so never reaches a model.
+ *
+ * Two-word windows are scanned as well as single words, because a symbol
+ * broken by a space ("kf usd", "st kld") is the same mistake as a symbol
+ * broken by a letter.
+ */
+function findNearMiss(
+  words: string[],
+  mentions: Mention[],
+  tokens: IToken[],
+): NearMiss | null {
+  // Letters already spoken for by a token this sentence names outright.
+  const spoken = new Set<string>();
+  for (const m of mentions) {
+    for (const part of (m.token.symbol + " " + m.token.name).split(" ")) {
+      if (part) spoken.add(squash(part));
+    }
+  }
+
+  let best: NearMiss | null = null;
+  let bestDistance = Infinity;
+
+  for (let i = 0; i < words.length; i++) {
+    for (let len = Math.min(2, words.length - i); len >= 1; len--) {
+      const window = words.slice(i, i + len);
+      if (window.some((p) => NEVER_A_TOKEN.has(p))) continue;
+
+      const typed = window.join(" ");
+      const w = squash(typed);
+      // Amounts, ids and addresses all carry digits; no symbol here does.
+      if (w.length < 2 || /[0-9]/.test(w)) continue;
+      if (spoken.has(w)) continue;
+      if (findToken(typed, tokens)) continue;
+
+      const token = nearestToken(typed, tokens);
+      if (!token) continue;
+      const d = editDistance(w, squash(token.symbol));
+      if (d < bestDistance) {
+        best = { token, typed, index: i };
+        bestDistance = d;
+      }
+    }
+  }
+
+  return best;
+}
+
+/** Attaches a near miss to a draft, so `incomplete` can quote it back. */
+function suggestion(
+  words: string[],
+  mentions: Mention[],
+  tokens: IToken[],
+): { suggest?: { token: IToken; typed: string } } {
+  const near = findNearMiss(words, mentions, tokens);
+  return near ? { suggest: { token: near.token, typed: near.typed } } : {};
+}
+
+const AFFIRMATIVE = new Set([
+  "y", "ye", "yes", "yeah", "yep", "yup", "yea", "correct", "right", "sure",
+  "ok", "okay", "confirm", "confirmed", "exactly", "indeed", "please",
+]);
+
+const NEGATIVE = new Set([
+  "n", "no", "nope", "nah", "wrong", "incorrect", "neither", "never",
+]);
+
+/**
+ * "yes" is a complete answer to "did you mean USDC?", and has to be read as
+ * one — otherwise the confirmation of a guess the parser made itself is the
+ * thing that finally reaches a model.
+ *
+ * Capped at four words so a full restatement ("yes, swap 100 USDC for KLD") is
+ * parsed as the sentence it is rather than collapsed into a bare confirm.
+ */
+function isAffirmative(words: string[]): boolean {
+  return (
+    words.length > 0 &&
+    words.length <= 4 &&
+    words.some((w) => AFFIRMATIVE.has(w)) &&
+    !words.some((w) => NEGATIVE.has(w))
+  );
+}
+
+function isNegative(words: string[]): boolean {
+  return (
+    words.some((w) => NEGATIVE.has(w)) &&
+    !words.some((w) => AFFIRMATIVE.has(w))
+  );
+}
+
 
 function parseSwap(
   words: string[],
   amount: { amount: string; index: number } | null,
   mentions: Mention[],
+  tokens: IToken[],
 ): ParseResult {
   /*
    * A purchase is the same transaction read from the other end, and every branch
@@ -1745,6 +2080,22 @@ function parseSwap(
   /** True when the separator we found puts the spent token on its right. */
   const inverted = backAt >= 0;
 
+  /*
+   * A misspelled symbol is not only a missing token — it occupies a POSITION,
+   * and dropping it silently slides the tokens that are left onto the wrong
+   * sides. "swap 100 usdcc to KLD" with the first word thrown away reads as a
+   * sentence naming one token, and the positional fallback below would then
+   * spend the KLD. So the near miss is carried through the side logic as a
+   * provisional mention and taken back out afterwards, leaving its own side
+   * empty and its own question asked.
+   */
+  const near = findNearMiss(words, mentions, tokens);
+  const placed = near
+    ? [...mentions, { token: near.token, index: near.index }].sort(
+        (a, b) => a.index - b.index,
+      )
+    : mentions;
+
   let tokenIn: IToken | undefined;
   let tokenOut: IToken | undefined;
 
@@ -1752,8 +2103,8 @@ function parseSwap(
     // "swap 500 usdc to kld" — the separator disambiguates the two sides even
     // when only one of them is named. "buy kld with 500 usdc" is the same
     // sentence with the sides swapped, which is all `inverted` does.
-    const before = mentions.find((m) => m.index < sepAt)?.token;
-    const after = mentions.find((m) => m.index > sepAt)?.token;
+    const before = placed.find((m) => m.index < sepAt)?.token;
+    const after = placed.find((m) => m.index > sepAt)?.token;
     tokenIn = inverted ? after : before;
     tokenOut = inverted ? before : after;
   } else if (buying) {
@@ -1763,13 +2114,38 @@ function parseSwap(
      * comes in ("buy KLD USDC" vs "buy 500 USDC KLD") mean opposite trades. One
      * named token is the thing being bought; the token to spend gets asked for.
      */
-    tokenOut = mentions[0]?.token;
-  } else if (mentions.length >= 2) {
+    tokenOut = placed[0]?.token;
+  } else if (placed.length >= 2) {
     // "swap 500 usdc kld" — positional fallback.
-    tokenIn = mentions[0].token;
-    tokenOut = mentions[1].token;
-  } else if (mentions.length === 1) {
-    tokenIn = mentions[0].token;
+    tokenIn = placed[0].token;
+    tokenOut = placed[1].token;
+  } else if (placed.length === 1) {
+    tokenIn = placed[0].token;
+  }
+
+  /*
+   * The provisional mention comes back out here. Whichever side it landed on
+   * is the side that gets asked about, and it is asked about by name — the
+   * tokens the sentence did spell correctly keep their sides, and the amount
+   * keeps its meaning, so answering takes one word.
+   */
+  if (near) {
+    const suggest = { token: near.token, typed: near.typed };
+    if (tokenIn === near.token) {
+      return incomplete(
+        { kind: "swap", amount: amount?.amount, tokenOut, suggest },
+        "tokenIn",
+      );
+    }
+    if (tokenOut === near.token) {
+      // Same rule as the drop below: a purchase states what comes back, so its
+      // number must not survive into the side that gets spent.
+      const keep = buying && !tokenIn ? undefined : amount?.amount;
+      return incomplete(
+        { kind: "swap", amount: keep, tokenIn, suggest },
+        "tokenOut",
+      );
+    }
   }
 
   /*
@@ -1830,6 +2206,7 @@ function parseBridge(
   words: string[],
   amount: { amount: string; index: number } | null,
   mentions: Mention[],
+  tokens: IToken[],
 ): ParseResult {
   const sepAt = words.findIndex((w) => SEPARATORS.includes(w));
   const dest =
@@ -1849,6 +2226,9 @@ function parseBridge(
     amount: amount?.amount,
     token,
     toChain: dest || undefined,
+    // Only the words before the separator. Everything after it is the
+    // destination, and a chain name must never be read back as a token.
+    ...suggestion(sepAt >= 0 ? words.slice(0, sepAt) : words, mentions, tokens),
   });
 }
 
@@ -2046,8 +2426,37 @@ export function fillSlot(
     if (!answer) return incomplete(draft, "toChain");
     next.toChain = answer;
   } else {
-    const token = findTokenMentions(words, tokens)[0]?.token;
-    if (!token) return incomplete(draft, missing);
+    let token = findTokenMentions(words, tokens)[0]?.token;
+
+    if (!token && draft.suggest) {
+      /*
+       * The question was "did you mean USDC?", so a bare "yes" is the whole
+       * answer and has to be read as one. Without this the confirmation of a
+       * guess the parser made itself would be the thing that finally reached a
+       * model — the sentence it was confirming never did.
+       */
+      if (isAffirmative(words)) token = draft.suggest.token;
+      // "no" withdraws the guess rather than repeating it, so the next
+      // question is the plain one and "yes" stops meaning anything.
+      else if (isNegative(words)) {
+        return incomplete({ ...next, suggest: undefined }, missing);
+      }
+    }
+
+    if (!token) {
+      // The answer can be a near miss too — "usdcc" typed twice is still
+      // "usdcc", and the second one deserves the same named question.
+      const near = findNearMiss(words, [], tokens);
+      return incomplete(
+        {
+          ...next,
+          suggest: near ? { token: near.token, typed: near.typed } : undefined,
+        },
+        missing,
+      );
+    }
+
+    next.suggest = undefined;
     if (missing === "tokenIn") next.tokenIn = token;
     else if (missing === "tokenOut") next.tokenOut = token;
     else next.token = token;
@@ -2203,6 +2612,8 @@ export function draftFromCommand(command: Command): Draft | null {
  */
 export function clearSlot(draft: Draft, slot: Slot): Draft {
   const next: Draft = { ...draft };
+  // A guess from an earlier turn must not be what the next "yes" agrees to.
+  next.suggest = undefined;
   if (slot === "amount") next.amount = undefined;
   else if (slot === "tokenIn") next.tokenIn = undefined;
   else if (slot === "tokenOut") next.tokenOut = undefined;
