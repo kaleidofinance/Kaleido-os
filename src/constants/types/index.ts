@@ -49,6 +49,10 @@ export interface AssetSelectorProps {
 
 export interface LoanListing {
   listingId: number;
+  /** The chain this listing lives on. Every book read tags its rows with it,
+   *  because the book now sweeps every deployment (see lendingChains). A take
+   *  or a cancel must target THIS chain, not the connected one. */
+  chainId: number;
   sender: string;
   tokenAddress: string;
   amount: string;
@@ -61,6 +65,8 @@ export interface LoanListing {
 
 export interface Request {
   listingId: number;
+  /** The chain this request lives on — see LoanListing.chainId. */
+  chainId: number;
   requestId: number;
   author: string;
   amount: string;

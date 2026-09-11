@@ -14,7 +14,6 @@ import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import { useLenderPosition } from "@/hooks/v2/useLenderPosition";
 import { READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { describeLendingAsset, type LendingAsset } from "@/lib/lending/assets";
-import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
 import {
   formatBps,
   netLenderRateBps,
@@ -25,6 +24,13 @@ import { declaredSymbol, isNativeSentinel } from "@/constants/registry";
 import TokenIcon from "@/components/v2/TokenIcon";
 import { TakeLoanModal } from "@/components/v2/BorrowModals";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
+import ChainIcon from "@/components/v2/ChainIcon";
+import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
+import {
+  useActiveWalletChain,
+  useSwitchActiveWalletChain,
+} from "thirdweb/react";
+import { defineChain } from "thirdweb/chains";
 import s from "@/app/(app)/(lending)/borrow.module.css";
 
 export type BorrowBookMode = "borrow" | "lend" | "mine" | "mylends";
@@ -44,6 +50,9 @@ type SortDir = "asc" | "desc";
  * use site coerces but not while an id is compared for equality.
  */
 interface Row {
+  /** The chain this row was read from — the book sweeps every deployment now, so
+   *  every row carries it, for the tag and for targeting a take/cancel. */
+  chainId: number;
   listingId?: number;
   requestId?: number;
   tokenAddress: string;
@@ -201,6 +210,34 @@ function FeeCard({ fees, lender }: { fees: LendingFees; lender: boolean }) {
 export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
   const { filters, borrow } = useLendingData();
   const { isConnected } = useWalletV2();
+  const activeChain = useActiveWalletChain();
+  const switchChain = useSwitchActiveWalletChain();
+
+  /*
+   * Put the wallet on a row's own chain before an action targets that chain's
+   * diamond. The book is multi-chain, so a take/fund/cancel on a Base row while
+   * the wallet is on Sepolia would address a diamond on the wrong deployment —
+   * the switch is what keeps the write on the chain the row lives on. Same idea
+   * as the Pool deposit modal. Returns false (and toasts) if the switch is
+   * declined, so the caller aborts rather than signing on the wrong chain.
+   */
+  const switchTo = async (chainId: number): Promise<boolean> => {
+    if (activeChain?.id === chainId) return true;
+    const meta = CHAINS_BY_ID[chainId];
+    if (!meta) {
+      toast.error(`Chain ${chainId} is not configured.`);
+      return false;
+    }
+    try {
+      await switchChain(defineChain(toThirdwebChainOptions(meta)));
+      return true;
+    } catch {
+      toast.error(
+        `Couldn't switch to ${meta.name} — switch there in your wallet, then try again.`,
+      );
+      return false;
+    }
+  };
   /* Serves four routes off one component, so gating here covers /borrow, /lend,
      /myloans and /mylends at once. Every one of them reads the Diamond. */
   const gate = useChainGate();
@@ -214,6 +251,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
   );
   const [takeTarget, setTakeTarget] = useState<{
     listingId: number;
+    chainId: number;
     min: number;
     max: number;
     asset: LendingAsset;
@@ -301,7 +339,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     const asset =
       borrow.assets.loanable.find((a) => a.address.toLowerCase() === addr) ??
       borrow.assets.collateral.find((a) => a.address.toLowerCase() === addr) ??
-      describeLendingAsset(LENDING_CHAIN_ID, row.tokenAddress);
+      describeLendingAsset(row.chainId, row.tokenAddress);
 
     if (!asset) {
       toast.error(
@@ -320,6 +358,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     const max = raw.maxAmount ?? raw.max_amount ?? row.amount;
     setTakeTarget({
       listingId: Number(row.listingId),
+      chainId: row.chainId,
       min: Number(ethers.formatUnits(min, asset.decimals)),
       max: Number(ethers.formatUnits(max, asset.decimals)),
       asset,
@@ -344,6 +383,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     if (id === undefined) return;
     setPending(id);
     try {
+      if (!(await switchTo(row.chainId))) return;
       if (isListingShape) await filters?.closeListingAd(Number(id));
       else await filters?.closeRequest(Number(id));
       filters?.refreshListings?.();
@@ -356,6 +396,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
     if (row.requestId === undefined) return;
     setPending(row.requestId);
     try {
+      if (!(await switchTo(row.chainId))) return;
       await filters?.serviceRequest(
         Number(row.requestId),
         String(row.tokenAddress),
@@ -773,8 +814,12 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                      * beside it were already resolving correctly, which is what
                      * made the mismatch easy to miss.
                      */
+                    /* Per the ROW's chain, not a fixed one: the book now
+                       carries rows from every deployment, and USDC's address on
+                       Base is not USDC's address on Sepolia. Decoding a Base row
+                       against Sepolia's registry named it "—". */
                     const symbol = declaredSymbol(
-                      READ_ONLY_CHAIN_ID,
+                      row.chainId,
                       row.tokenAddress,
                     );
                     const isNative = isNativeSentinel(
@@ -782,7 +827,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                       "lending",
                     );
                     const decimals = getTokenDecimals(
-                      READ_ONLY_CHAIN_ID,
+                      row.chainId,
                       row.tokenAddress,
                     );
                     const id = rowId(row);
@@ -838,7 +883,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
 
                     return (
                       <div
-                        key={row.listingId ?? row.requestId ?? i}
+                        key={`${row.chainId}-${row.listingId ?? row.requestId ?? i}`}
                         className={`${s.tr} ${isMyLends ? s.mineList : ""}`}
                       >
                         <div className={s.asset}>
@@ -854,6 +899,31 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                           <div className={s.aMeta}>
                             <div className={s.aName}>{symbol ?? "—"}</div>
                             <div className={s.aSub}>
+                              {/* Which chain this row is on. The book sweeps every
+                                  deployment now, so two rows can be the same asset
+                                  and rate on different chains — the tag is what
+                                  tells them apart and what a take/cancel targets.
+                                  Same idea as the Pool page's ChainTag. */}
+                              <span className={s.chainTag}>
+                                <ChainIcon
+                                  id={CHAINS_BY_ID[row.chainId]?.iconId}
+                                  size={13}
+                                  variant="branded"
+                                  fallback={
+                                    <i
+                                      className={s.chainDot}
+                                      style={
+                                        CHAINS_BY_ID[row.chainId]
+                                          ? { background: CHAINS_BY_ID[row.chainId].color }
+                                          : undefined
+                                      }
+                                    />
+                                  }
+                                />
+                                {CHAINS_BY_ID[row.chainId]?.shortName ??
+                                  `Chain ${row.chainId}`}
+                              </span>
+                              <span className={s.aSubDot}>·</span>
                               {counterparty ? formatAddress(counterparty) : "—"}
                               {isOwnRow && " · you"}
                             </div>
@@ -1021,7 +1091,30 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
             </div>
           ) : showBorrowerPosition ? (
             <div className={s.card}>
-              <div className={s.cardTitle}>Your position</div>
+              {/* Names the chain, because the figures are for it alone. A health
+                  factor is per-deployment — you can be safe on one chain and
+                  liquidatable on another — so this card follows the connected
+                  chain rather than pretending there is one cross-chain number.
+                  The book above shows every chain; this is "here". */}
+              <div className={s.cardTitleRow}>
+                <span className={s.cardTitle}>Your position</span>
+                {activeChain && CHAINS_BY_ID[activeChain.id] && (
+                  <span className={s.chainTag}>
+                    <ChainIcon
+                      id={CHAINS_BY_ID[activeChain.id]?.iconId}
+                      size={12}
+                      variant="branded"
+                      fallback={
+                        <i
+                          className={s.chainDot}
+                          style={{ background: CHAINS_BY_ID[activeChain.id].color }}
+                        />
+                      }
+                    />
+                    {CHAINS_BY_ID[activeChain.id].shortName}
+                  </span>
+                )}
+              </div>
               <div className={s.posRow}>
                 <span className={s.cardBody}>Collateral</span>
                 <span className="tabular">

@@ -118,6 +118,7 @@ const PAST = 1783641600; // 2026-07-10 — renders as overdue
 export const MOCK_LISTINGS: LoanListing[] = [
   {
     listingId: 3041,
+    chainId: READ_ONLY_CHAIN_ID,
     sender: party(1),
     tokenAddress: USDC,
     amount: raw("250000", USDC),
@@ -129,6 +130,7 @@ export const MOCK_LISTINGS: LoanListing[] = [
   },
   {
     listingId: 3042,
+    chainId: READ_ONLY_CHAIN_ID,
     sender: party(2),
     tokenAddress: ETH,
     amount: raw("42.5", ETH),
@@ -141,6 +143,7 @@ export const MOCK_LISTINGS: LoanListing[] = [
   {
     // 18-decimal stable: the amount is the longest string in the book.
     listingId: 3043,
+    chainId: READ_ONLY_CHAIN_ID,
     sender: party(3),
     tokenAddress: kfUSD,
     amount: raw("180000", kfUSD),
@@ -152,6 +155,7 @@ export const MOCK_LISTINGS: LoanListing[] = [
   },
   {
     listingId: 3044,
+    chainId: READ_ONLY_CHAIN_ID,
     sender: party(4),
     tokenAddress: USDT,
     amount: raw("96500", USDT),
@@ -164,6 +168,7 @@ export const MOCK_LISTINGS: LoanListing[] = [
   {
     // The viewer's own offer — this is what /mylends exists to show.
     listingId: 3045,
+    chainId: READ_ONLY_CHAIN_ID,
     sender: MOCK_VIEWER,
     tokenAddress: USDC,
     amount: raw("60000", USDC),
@@ -176,6 +181,7 @@ export const MOCK_LISTINGS: LoanListing[] = [
   {
     // Viewer's, and past its return date: the Overdue badge should appear.
     listingId: 3046,
+    chainId: READ_ONLY_CHAIN_ID,
     sender: MOCK_VIEWER,
     tokenAddress: ETH,
     amount: raw("8", ETH),
@@ -192,6 +198,7 @@ export const MOCK_LISTINGS: LoanListing[] = [
      * actually applied rather than assumed, which an all-OPEN fixture cannot show.
      */
     listingId: 3047,
+    chainId: READ_ONLY_CHAIN_ID,
     sender: party(5),
     tokenAddress: USDT,
     amount: raw("30000", USDT),
@@ -215,6 +222,7 @@ export const MOCK_LISTINGS: LoanListing[] = [
 export const MOCK_REQUESTS: Request[] = [
   {
     listingId: 3041,
+    chainId: READ_ONLY_CHAIN_ID,
     requestId: 5120,
     author: party(6),
     amount: raw("12000", USDC),
@@ -228,6 +236,7 @@ export const MOCK_REQUESTS: Request[] = [
   {
     // The viewer borrowing: shows up in /myloans and in MOCK_LOANS below.
     listingId: 3042,
+    chainId: READ_ONLY_CHAIN_ID,
     requestId: 5121,
     author: MOCK_VIEWER,
     amount: raw("3.5", ETH),
@@ -241,6 +250,7 @@ export const MOCK_REQUESTS: Request[] = [
   {
     // Unfilled, so no lender and no listing it was drawn from.
     listingId: 0,
+    chainId: READ_ONLY_CHAIN_ID,
     requestId: 5122,
     author: party(7),
     amount: raw("25000", kfUSD),
@@ -254,6 +264,7 @@ export const MOCK_REQUESTS: Request[] = [
   {
     // Funded BY the viewer — this is the row the funded-loans view filters for.
     listingId: 3044,
+    chainId: READ_ONLY_CHAIN_ID,
     requestId: 5123,
     author: party(8),
     amount: raw("8000", USDT),
@@ -267,6 +278,7 @@ export const MOCK_REQUESTS: Request[] = [
   {
     // Funded by the viewer and overdue: the lender's adverse case.
     listingId: 3045,
+    chainId: READ_ONLY_CHAIN_ID,
     requestId: 5124,
     author: party(9),
     amount: raw("15000", USDC),
@@ -279,6 +291,7 @@ export const MOCK_REQUESTS: Request[] = [
   },
   {
     listingId: 0,
+    chainId: READ_ONLY_CHAIN_ID,
     requestId: 5125,
     author: party(10),
     amount: raw("1.25", ETH),
@@ -291,6 +304,7 @@ export const MOCK_REQUESTS: Request[] = [
   },
   {
     listingId: 3043,
+    chainId: READ_ONLY_CHAIN_ID,
     requestId: 5126,
     author: MOCK_VIEWER,
     amount: raw("4200", USDT),
@@ -304,6 +318,7 @@ export const MOCK_REQUESTS: Request[] = [
   {
     // The viewer's overdue debt. Mirrored in MOCK_LOANS so the two agree.
     listingId: 3041,
+    chainId: READ_ONLY_CHAIN_ID,
     requestId: 5127,
     author: MOCK_VIEWER,
     amount: raw("9000", USDC),

@@ -2,16 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
-import { useActiveAccount } from "thirdweb/react";
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { getKaleidoContract } from "@/config/contracts";
-import { readOnlyProvider } from "@/config/provider";
+import { providerForChain, readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { isDeployed } from "@/constants/registry";
 import {
   readLendingAssets,
   type CollateralHolding,
   type LendingAsset,
 } from "@/lib/lending/assets";
-import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
 import { MOCK_COLLATERAL, MOCK_DATA, MOCK_LENDING_ASSETS } from "@/lib/mock";
 
 /**
@@ -65,6 +64,14 @@ export function useLendingAssets(): LendingAssets {
   const account = useActiveAccount();
   const address = account?.address;
 
+  /* The connected chain: the asset pickers post on the chain the wallet is on,
+     so they must offer what THAT chain's diamond registers, and show holdings
+     there. Falls back to the read chain when disconnected, for a browse view.
+     Lending went multi-chain — this used to be pinned to LENDING_CHAIN_ID. */
+  const activeChain = useActiveWalletChain();
+  const readChain = activeChain?.id ?? READ_ONLY_CHAIN_ID;
+  const readProvider = providerForChain(readChain) ?? readOnlyProvider;
+
   const [sets, setSets] = useState<{
     collateral: LendingAsset[];
     loanable: LendingAsset[];
@@ -82,9 +89,9 @@ export function useLendingAssets(): LendingAssets {
   useEffect(() => {
     if (MOCK_DATA) return;
 
-    if (!isDeployed(LENDING_CHAIN_ID)) {
+    if (!isDeployed(readChain)) {
       setLoading(false);
-      setError(`No lending deployment on chain ${LENDING_CHAIN_ID}.`);
+      setError(`No lending deployment on chain ${readChain}.`);
       return;
     }
 
@@ -92,7 +99,7 @@ export function useLendingAssets(): LendingAssets {
     setLoading(true);
     setError(null);
 
-    readLendingAssets(readOnlyProvider, LENDING_CHAIN_ID)
+    readLendingAssets(readProvider, readChain)
       .then((result) => {
         if (!live) return;
         setSets(result);
@@ -112,7 +119,7 @@ export function useLendingAssets(): LendingAssets {
     return () => {
       live = false;
     };
-  }, [nonce]);
+  }, [nonce, readChain]);
 
   /* Deposited balances, one read per registered collateral asset.
    *
@@ -129,7 +136,7 @@ export function useLendingAssets(): LendingAssets {
     }
 
     let live = true;
-    const diamond = getKaleidoContract(readOnlyProvider, LENDING_CHAIN_ID);
+    const diamond = getKaleidoContract(readProvider, readChain);
 
     Promise.all(
       sets.collateral.map(async (asset) => {
@@ -162,7 +169,7 @@ export function useLendingAssets(): LendingAssets {
     return () => {
       live = false;
     };
-  }, [address, sets.collateral, nonce]);
+  }, [address, sets.collateral, nonce, readChain]);
 
   if (MOCK_DATA) {
     return {

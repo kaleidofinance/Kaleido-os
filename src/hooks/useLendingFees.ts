@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useActiveWalletChain } from "thirdweb/react";
 import { getKaleidoContract } from "@/config/contracts";
-import { readOnlyProvider } from "@/config/provider";
+import { providerForChain, readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { isDeployed } from "@/constants/registry";
-import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
 import type { LendingFeeRates } from "@/lib/lending/fees";
 import { MOCK_DATA, MOCK_LENDING_FEES } from "@/lib/mock";
 
@@ -34,6 +34,13 @@ export interface LendingFees extends LendingFeeRates {
 }
 
 export function useLendingFees(): LendingFees {
+  /* Per the connected chain: fees are charged by the diamond the action runs
+     against, so a fee shown next to a post must be that chain's. Multi-chain —
+     was pinned to LENDING_CHAIN_ID. */
+  const activeChain = useActiveWalletChain();
+  const readChain = activeChain?.id ?? READ_ONLY_CHAIN_ID;
+  const readProvider = providerForChain(readChain) ?? readOnlyProvider;
+
   const [rates, setRates] = useState<LendingFeeRates>({
     interestFeeBps: null,
     liquidationPenaltyBps: null,
@@ -47,9 +54,9 @@ export function useLendingFees(): LendingFees {
   useEffect(() => {
     if (MOCK_DATA) return;
 
-    if (!isDeployed(LENDING_CHAIN_ID)) {
+    if (!isDeployed(readChain)) {
       setLoading(false);
-      setError(`No lending deployment on chain ${LENDING_CHAIN_ID}.`);
+      setError(`No lending deployment on chain ${readChain}.`);
       return;
     }
 
@@ -57,7 +64,7 @@ export function useLendingFees(): LendingFees {
     setLoading(true);
     setError(null);
 
-    const diamond = getKaleidoContract(readOnlyProvider, LENDING_CHAIN_ID);
+    const diamond = getKaleidoContract(readProvider, readChain);
 
     /* Both or neither. The two are shown together and derived figures depend on
        one each, so a half-read state would put a real percentage next to a dash
@@ -83,7 +90,7 @@ export function useLendingFees(): LendingFees {
     return () => {
       live = false;
     };
-  }, [nonce]);
+  }, [nonce, readChain]);
 
   if (MOCK_DATA) {
     return { ...MOCK_LENDING_FEES, loading: false, error: null, refresh };
