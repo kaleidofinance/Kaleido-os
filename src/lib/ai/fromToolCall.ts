@@ -149,6 +149,51 @@ function toCommand(
       return { kind: "swap", amount, tokenIn, tokenOut };
     }
 
+    case "placeLimitOrder": {
+      const amount = amountOf(a.amount);
+      if (!amount) return "placeLimitOrder: no amount given";
+      const inSym = str(a.tokenIn);
+      const outSym = str(a.tokenOut);
+      const tokenIn = dexToken(chainId, inSym);
+      const tokenOut = dexToken(chainId, outSym);
+      if (!tokenIn)
+        return `placeLimitOrder: I don't know a token called ${inSym || "(none)"} on this chain`;
+      if (!tokenOut)
+        return `placeLimitOrder: I don't know a token called ${outSym || "(none)"} on this chain`;
+      const price = amountOf(a.price);
+      if (!price) return "placeLimitOrder: no price given - a resting order needs one, so ask rather than choosing";
+      const basis = a.basis === "inPerOut" ? "inPerOut" : "outPerIn";
+      /* Defaults matched to the grammar (fromCommand's parseOrder), so the
+         typed sentence and the tool call build the identical plan - which is
+         the equality capabilities.test.ts asserts. everyDays 0 and fills 1 are
+         a one-shot limit order; expiryDays 30 is the grammar's month. */
+      const intervalDays =
+        typeof a.intervalDays === "number" && a.intervalDays > 0
+          ? Math.floor(a.intervalDays)
+          : 0;
+      const fills =
+        typeof a.fills === "number" && a.fills > 1 ? Math.floor(a.fills) : 1;
+      const expiryDays =
+        typeof a.expiresInDays === "number" && a.expiresInDays > 0
+          ? Math.floor(a.expiresInDays)
+          : 30;
+      return {
+        kind: "placeOrder",
+        tokenIn,
+        tokenOut,
+        amount,
+        price,
+        basis,
+        everyDays: intervalDays,
+        /* A recurring order with no explicit count fills once per interval for
+           as long as the window holds - but the contract needs a concrete
+           maxFills, so an interval with fills=1 is treated as a single fill.
+           The model is told to pass fills for a real schedule. */
+        fills: intervalDays > 0 ? fills : 1,
+        expiryDays,
+      };
+    }
+
     case "stake": {
       const amount = amountOf(a.amount);
       if (!amount) return "stake: no amount given";

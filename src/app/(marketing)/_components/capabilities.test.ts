@@ -110,8 +110,9 @@ interface CatalogEntry {
  * closes on the grammar. This assertion is what caught the move — worth saying
  * because the check reads like a formality until the day it changes.
  */
-const MODEL_PATH = [
+const MODEL_PATH = [
   "grantAgentPermission",
+  "placeLimitOrder",
   "increasePosition",
   "provideLiquidity",
 ];
