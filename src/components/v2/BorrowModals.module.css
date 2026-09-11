@@ -403,3 +403,32 @@
     transform: translateY(8px) scale(0.99);
   }
 }
+
+/* The wallet balance of the selected loanable asset, under the amount input on
+   the lend form. A tester reported the balance was missing on token select, so
+   this mirrors what the swap form shows: the figure, and a Max chip that fills
+   the amount with it. */
+.balRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  font-variant-numeric: tabular-nums;
+}
+.maxBtn {
+  border: 0;
+  background: var(--k-glass-deep);
+  color: var(--k-t2);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--k-r-sm);
+}
+.maxBtn:hover {
+  background: var(--k-row-hover);
+  color: var(--k-t1);
+}
