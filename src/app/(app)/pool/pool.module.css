@@ -422,8 +422,15 @@
 .tki + .tki {
   margin-left: -10px;
 }
+/* Pair name with the verified tick beside it — a flex row so the 13px mark sits
+   on the name's centre line. The tick used to live on `.pairFee` below, which
+   wraps, so on a narrow row it dropped under the fee, venue and chain rather
+   than staying with the pair it marks. */
 .pairName {
   font-size: var(--k-fs-base);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 /* The identity line under a pair name: fee, venue and now the chain tag. A flex
    row rather than plain text because the tag carries a 14px logo that has to sit
@@ -469,9 +476,9 @@
   background: var(--k-glass-deep);
 }
 /* The verified tick on a pool our own deployer opened -- see SeededTick. It
-   sits inside `.pairFee` beside the chain tag, so it takes that tag's shape
-   exactly: inline-flex for the 13px mark's centre line, the same 4px gap, and
-   `white-space: nowrap` so the badge and its optional word never break apart.
+   sits beside the pair name (`.pairName`, a flex row), on the mark's own
+   inline-flex for the 13px centre line, a 4px gap, and `white-space: nowrap` so
+   the badge and its optional word never break apart.
 
    `--k-brand` and not `--k-pos`. Both are greens and the difference is what
    they mean: `--k-pos` is the colour of a number that went up, and this is not
