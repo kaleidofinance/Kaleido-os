@@ -1226,7 +1226,14 @@ function detectRef(words: string[]): {
     const target =
       w === "listing" || w === "listings" || w === "offer"
         ? ("listing" as const)
-        : w === "request" || w === "requests"
+        : /* "borrower"/"borrowers" fund a borrow REQUEST - a tester funded one
+             with "fund borrower 7" and got asked which request, because only the
+             mechanism word ("request") was recognised, not the person the request
+             belongs to. Filling a request IS funding its borrower. */
+          w === "request" ||
+            w === "requests" ||
+            w === "borrower" ||
+            w === "borrowers"
           ? ("request" as const)
           : w === "position" || w === "positions"
             ? ("position" as const)
