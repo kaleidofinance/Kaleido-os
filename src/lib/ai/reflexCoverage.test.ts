@@ -268,12 +268,13 @@ console.log("\n— a sentence the grammar cannot read is not half-read into a pl
 {
   /* Each of these parsed as SOMETHING before the MODEL_ONLY decline: a recurring
      buy as a one-off swap, a limit order as a swap missing its input, a
-     delegation grant as a lend missing its rate. A plan the user did not
-     describe is worse than no plan. They reach the model. */
+     delegation grant as a lend missing its rate. A buy names an OUTPUT the
+     contract has no exact-output order for, and a recurring order needs a fill
+     count the grammar does not read - both go to the model tool. A plan the
+     user did not describe is worse than no plan. They reach the model. */
   const misread = [
     "buy 50 KLD every week with USDC",
     "place a limit order to buy 100 KLD at 0.02 USDC",
-    "cancel all my orders",
     "grant the agent permission to lend up to 5000 USDC",
     "dca 20 USDC into KLD daily",
   ];
@@ -323,6 +324,13 @@ console.log("\n— and the right net answers it —");
     // Still a transaction, and still the grammar's.
     "buy KLD with 500 USDC": "command:swap",
     "claim everything from the faucet": "command:claimTestTokens",
+    /* Resting orders, local since the order grammar (a sell-framed limit order
+       and the all-at-once cancel). A buy-framed or recurring order still goes
+       to the model, pinned in the misread block above. */
+    "limit sell 500 KLD at 0.05 USDC": "command:placeOrder",
+    "sell 1000 KLD for USDC at 0.03": "command:placeOrder",
+    "cancel all my orders": "command:cancelOrders",
+    "cancel every order": "command:cancelOrders",
     /* A read must not swallow a stated action, whatever it mentions. This was
        pinned to the model until the add-liquidity handoff existed; the check is
        the same one and the answer got better, because "portfolio" no longer has

@@ -21,6 +21,7 @@ import {
   ticksForRange,
 } from "@/lib/dex/liquidity";
 import { tickToPrice } from "@/constants/utils/v3Math";
+import { minOutFor } from "@/lib/dex/orders";
 import type { PoolState } from "@/lib/dex/pool";
 import {
   describeRoute,
@@ -902,6 +903,118 @@ export async function buildIntents(
       },
     };
   }
+
+  if (command.kind === "placeOrder") {
+    const { tokenIn, tokenOut, amount, price, basis, everyDays, fills, expiryDays } =
+      command;
+
+    /* KaleidoOrders (#60). Absent means orders are not deployed on this chain -
+       the same chain-scoped guard every branch here makes, and the reason the
+       address is read from the registry rather than an env var. */
+    const orders = contracts.orders;
+    if (!orders) {
+      return {
+        ok: false,
+        error: "Limit orders aren't available on this chain yet.",
+      };
+    }
+
+    /* Native input cannot be an order. `fill` pulls the maker's `amountIn` with
+       transferFrom, and the chain's own currency has no allowance and no
+       transferFrom - so an order selling ETH could never be filled. The wrapped
+       form can, and the user holds it or can wrap it. Said plainly rather than
+       letting the approve step throw on the 0xEeee sentinel mid-plan. */
+    if (tokenIn.isNative) {
+      return {
+        ok: false,
+        error: `A resting order can't sell ${tokenIn.symbol} directly - the filler pulls the token from you, and the chain's own currency can't be pulled. Use its wrapped form (${tokenIn.symbol === "ETH" ? "WETH" : "the wrapped native"}), which the pools hold anyway.`,
+      };
+    }
+
+    let amountInBase: bigint;
+    try {
+      amountInBase = ethers.parseUnits(amount, tokenIn.decimals);
+    } catch {
+      return { ok: false, error: `"${amount}" isn't an amount I can read.` };
+    }
+
+    /* The floor, from the exact helper the limit page uses. It rounds UP, in the
+       maker's favour, and returns a sentence on bad input that every caller shows
+       unchanged - so a bad price surfaces here rather than as a revert after the
+       signature. */
+    const floor = minOutFor({
+      amountIn: amountInBase,
+      price,
+      basis,
+      decimalsIn: tokenIn.decimals,
+      decimalsOut: tokenOut.decimals,
+    });
+    if ("error" in floor) return { ok: false, error: floor.error };
+
+    const minOut = ethers.formatUnits(floor.minOut, tokenOut.decimals);
+    /* The allowance covers EVERY fill, not one. A recurring order pulls
+       `amountIn` per fill, so an allowance for a single fill lets the first
+       through and reverts the second - see the note on placeOrder in types.ts.
+       Computed in base units then formatted, so a per-fill amount with full
+       precision is not rounded before being multiplied. */
+    const totalIn = ethers.formatUnits(amountInBase * BigInt(fills), tokenIn.decimals);
+
+    const recurring = fills > 1;
+    const summary = recurring
+      ? `Set up a recurring buy: sell ${amount} ${tokenIn.symbol} for at least ${minOut} ${tokenOut.symbol} every ${everyDays} day${everyDays === 1 ? "" : "s"}, up to ${fills} times.`
+      : `Place a limit order: sell ${amount} ${tokenIn.symbol} for at least ${minOut} ${tokenOut.symbol}.`;
+
+    return {
+      ok: true,
+      build: {
+        summary,
+        intents: [
+          {
+            kind: "approve",
+            token: tokenIn.address,
+            spender: orders,
+            amount: totalIn,
+            decimals: tokenIn.decimals,
+            symbol: tokenIn.symbol,
+          },
+          {
+            kind: "placeOrder",
+            orders,
+            tokenIn: tokenIn.address,
+            tokenOut: tokenOut.address,
+            decimalsIn: tokenIn.decimals,
+            decimalsOut: tokenOut.decimals,
+            symbolIn: tokenIn.symbol,
+            symbolOut: tokenOut.symbol,
+            amountIn: amount,
+            minOut,
+            expiresIn: expiryDays * 86_400,
+            interval: everyDays * 86_400,
+            maxFills: fills,
+          },
+        ],
+      },
+    };
+  }
+
+  if (command.kind === "cancelOrders") {
+    const orders = contracts.orders;
+    if (!orders) {
+      return {
+        ok: false,
+        error: "Limit orders aren't available on this chain yet.",
+      };
+    }
+    return {
+      ok: true,
+      build: {
+        summary:
+          "Cancel every resting order you have on this chain. One transaction, and it can't be undone - you'd sign new orders instead.",
+        intents: [{ kind: "cancelAllOrders", orders }],
+      },
+    };
+  }
+
 
   if (command.kind === "stake") {
     /* All three addresses come from the plan's chain, together. The vault used

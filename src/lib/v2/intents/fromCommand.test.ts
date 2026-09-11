@@ -1789,5 +1789,37 @@ console.log("\n— unstake parses like stake: one amount, the step decided later
   );
 }
 
+console.log("\n— resting orders: sell-framed limit + cancel-all —");
+{
+  const limit = p("limit sell 500 KLD at 0.05 USDC");
+  check(
+    "limit sell parses to a placeOrder",
+    limit.status === "ok" && limit.command.kind === "placeOrder",
+    limit.status === "ok" ? limit.command.kind : limit.status,
+  );
+  if (limit.status === "ok" && limit.command.kind === "placeOrder") {
+    const c = limit.command;
+    check("sells the named input", c.tokenIn.symbol === "KLD", c.tokenIn.symbol);
+    check("receives the other token", c.tokenOut.symbol === "USDC", c.tokenOut.symbol);
+    check("amount is the input", c.amount === "500", c.amount);
+    check("price as typed", c.price === "0.05", c.price);
+    check("basis output-per-input", c.basis === "outPerIn", c.basis);
+    check("one fill, no cadence", c.fills === 1 && c.everyDays === 0, c.fills + "/" + c.everyDays);
+  }
+  const alt = p("sell 500 KLD for USDC at 0.05");
+  check("sell..for..at reads the same", alt.status === "ok" && alt.command.kind === "placeOrder", alt.status);
+  const spot = p("sell 500 KLD for USDC");
+  check("no price is a spot swap", spot.status === "ok" && spot.command.kind === "swap", spot.status);
+  const buy = p("buy 100 KLD at 0.02 USDC");
+  check("buy-framed is not a local order", buy.status !== "ok" || buy.command.kind !== "placeOrder", buy.status);
+  check("recurring reaches the model", p("sell 50 KLD every week at 0.05 USDC").status === "unknown", "");
+  for (const q of ["cancel all my orders", "cancel every order", "cancel all orders"]) {
+    const r = p(q);
+    check(q + " cancels every order", r.status === "ok" && r.command.kind === "cancelOrders", r.status);
+  }
+  const ref = p("cancel listing 3");
+  check("cancel listing 3 is a ref-cancel", ref.status === "ok" && ref.command.kind === "cancel", "");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
