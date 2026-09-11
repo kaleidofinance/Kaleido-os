@@ -267,6 +267,11 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
   const [filterChains, setFilterChains] = useState<number[]>([]);
   const [filterSymbols, setFilterSymbols] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
+  /* List (the table) or grid (cards). The rows already carry data-label for the
+     phone stacked layout, so grid mode is that card, arranged in columns — see
+     .asGrid in borrow.module.css. Not persisted: a view choice is cheap to
+     re-make and per-visit is fine. */
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   /*
    * `isBorrow` alone can't drive this view, because the tabs vary on two
@@ -812,10 +817,45 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                     )}
                   </button>
                 )}
+              {/* List / grid view, beside Filters. The grid is the same rows as
+                  cards — the phone stacked layout, on demand. */}
+              {!isMyLends && (
+                <div className={s.viewToggle} role="group" aria-label="View">
+                  <button
+                    type="button"
+                    className={`${s.viewBt} ${viewMode === "list" ? s.viewOn : ""}`}
+                    onClick={() => setViewMode("list")}
+                    aria-pressed={viewMode === "list"}
+                    aria-label="List view"
+                    title="List"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <rect x="2" y="3" width="12" height="1.6" rx="0.8" fill="currentColor" />
+                      <rect x="2" y="7.2" width="12" height="1.6" rx="0.8" fill="currentColor" />
+                      <rect x="2" y="11.4" width="12" height="1.6" rx="0.8" fill="currentColor" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${s.viewBt} ${viewMode === "grid" ? s.viewOn : ""}`}
+                    onClick={() => setViewMode("grid")}
+                    aria-pressed={viewMode === "grid"}
+                    aria-label="Grid view"
+                    title="Grid"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <rect x="2" y="2" width="5" height="5" rx="1" fill="currentColor" />
+                      <rect x="9" y="2" width="5" height="5" rx="1" fill="currentColor" />
+                      <rect x="2" y="9" width="5" height="5" rx="1" fill="currentColor" />
+                      <rect x="9" y="9" width="5" height="5" rx="1" fill="currentColor" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className={s.table}>
-              <div className={s.tw}>
+              <div className={`${s.tw} ${viewMode === "grid" ? s.asGrid : ""}`}>
                 {/* Three tabs share this table — Borrow, Lend and My lends. The
                       books stay a true table, read down columns and scrolled in
                       `.tw`'s own box; only My lends carries `mineList`, which the

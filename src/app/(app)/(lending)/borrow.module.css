@@ -978,3 +978,90 @@
 .fClear:hover {
   background: var(--k-hover);
 }
+
+/* ---------- list / grid view toggle ---------- */
+/* Beside the Filters button: a two-segment control, list or grid. */
+.viewToggle {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--k-glass-deep);
+  border-radius: var(--k-r-md);
+  padding: 2px;
+  flex: none;
+}
+.viewBt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--k-t3);
+  padding: 7px 9px;
+  border-radius: var(--k-r-sm);
+  cursor: pointer;
+}
+.viewBt:hover {
+  color: var(--k-t1);
+}
+.viewOn {
+  background: var(--k-brand-dim);
+  color: var(--k-t1);
+}
+
+/* ---------- grid view ---------- */
+/* The same rows as cards. `.tw` is normally the horizontal scroller for the
+   table; in grid mode it becomes a wrapping grid of cards and the rows drop their
+   720px column template for a stacked card, reusing the data-label ::before
+   labels the phone layout already prints. No sideways scroll — cards wrap. */
+.asGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  overflow: visible;
+  min-width: 0;
+}
+.asGrid .thead {
+  display: none;
+}
+.asGrid .tr {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-lg);
+  background: var(--k-glass);
+}
+.asGrid .tr:not(.thead):not(:last-child) {
+  border-bottom: 1px solid var(--k-line);
+}
+/* Amount / APR / Term / Status: label on the left, figure on the right, the
+   same shape the phone stack uses, with the column title from data-label. */
+.asGrid .tr > .cellNum,
+.asGrid .tr > .center {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--k-s3);
+  text-align: left;
+}
+.asGrid .tr > .cellNum::before,
+.asGrid .tr > .center::before {
+  content: attr(data-label);
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+/* The stacked APR (rate + net) keeps its own two lines, so it aligns to the top
+   rather than the baseline the single-line figures use. */
+.asGrid .tr > .cellStack {
+  align-items: flex-start;
+}
+/* The action fills the card's foot. */
+.asGrid .actionCell {
+  margin-top: 2px;
+}
+.asGrid .actionCell > button {
+  width: 100%;
+}
