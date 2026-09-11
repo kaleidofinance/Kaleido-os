@@ -6,6 +6,7 @@ import { useStable } from "../StableContext";
 import { quoteAfterFee, trim } from "../quote";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
+import AssetSelect from "../AssetSelect";
 import f from "../form.module.css";
 
 const OUTPUTS = ["USDC", "USDT", "USDe"] as const;
@@ -109,18 +110,6 @@ export default function RedeemPage() {
       </div>
 
       <div className={f.box}>
-        <div className={f.assets}>
-          {OUTPUTS.map((o) => (
-            <button
-              key={o}
-              className={`${f.assetChip} ${output === o ? f.assetChipOn : ""}`}
-              onClick={() => setOutput(o)}
-            >
-              <TokenIcon symbol={o} size={16} />
-              {o}
-            </button>
-          ))}
-        </div>
         <div className={f.bl}>You receive</div>
         <div className={f.amt}>
           <input
@@ -130,18 +119,15 @@ export default function RedeemPage() {
             readOnly
             aria-label="Collateral received"
           />
-          <span className={f.pill}>
-            <span
-              className={`${f.tki} ${hasTokenIcon(output) ? f.tkiArt : ""}`}
-            >
-              <TokenIcon
-                symbol={output}
-                size={28}
-                fallback={output.slice(0, 3)}
-              />
-            </span>
-            {output}
-          </span>
+          <AssetSelect
+            value={output}
+            label="Receive asset"
+            options={OUTPUTS.map((o) => ({
+              symbol: o,
+              balance: balances?.[o] ?? "0",
+            }))}
+            onChange={(sym) => setOutput(sym as Output)}
+          />
         </div>
       </div>
 

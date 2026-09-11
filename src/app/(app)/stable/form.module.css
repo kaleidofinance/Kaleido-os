@@ -206,59 +206,6 @@
   cursor: not-allowed;
 }
 
-/* collateral selector chips (mint / redeem output) */
-.assets {
-  display: flex;
-  /* Wraps rather than scrolls, unlike the market tables. Three chips is the whole
-     set and it is not going to grow much, so a second row of one chip is a worse
-     outcome than it sounds only if you never reach it — whereas a horizontal
-     scroller hides a collateral behind a gesture nobody knows is there. Without
-     this the row simply could not narrow, and it is inside the box that sets the
-     column width. */
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-bottom: 10px;
-}
-/* Recessed chips inside the glass box, and the selected one is a raised thumb in
-   that recess — the same pair as `.tg` / `.tg.on` on /borrow. No backdrop-filter
-   on either: the box behind them is already blurred, and blurs do not compose. */
-.assetChip {
-  background: var(--k-glass-deep);
-  box-shadow: var(--k-shadow-inset);
-  border: 0;
-  font: inherit;
-  font-size: var(--k-fs-sm);
-  color: var(--k-t2);
-  /* Tighter on the left, where the mark sits, so the chip stays optically
-     centred — the same trick `.pill` plays above. A collateral with no mark
-     renders text only: TokenIcon's empty fallback emits no node at all, so the
-     gap collapses and only that 5px of asymmetry is left behind. */
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px 7px 9px;
-  border-radius: var(--k-r-pill);
-  cursor: pointer;
-}
-/* No plate under these: at 16px a disc behind a disc is just a ring in the wrong
-   colour, and unlike `.tki` there is no monogram here needing something to sit
-   on — the symbol beside it does that job. */
-.assetChip > svg {
-  display: block;
-  border-radius: 50%;
-}
-.assetChip:hover {
-  background: var(--k-brand-dim);
-  color: var(--k-t1);
-  box-shadow: none;
-}
-.assetChipOn {
-  background: var(--k-glass-strong);
-  color: var(--k-t1);
-  font-weight: var(--k-fw-med);
-  box-shadow: inset 0 1px 0 var(--k-glass-highlight);
-}
-
 /* deposit / withdraw switch */
 /* Sits on the page ground rather than inside a box, so it is the /borrow
    `.toggle` verbatim: glass track, translucent thumb, one blur between them. */
@@ -353,3 +300,129 @@
     flex: 1 1 100%;
   }
 }
+
+
+/* ---------- asset select (pill trigger + modal list with balances) ---------- */
+/* Replaces the collateral/payout chip row: the amount field's pill opens a modal
+   listing every option with its wallet balance. `.asSel` mirrors `.pill` so the
+   field reads unchanged until you click it. */
+.asSel {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s2);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  padding: 6px 12px 6px 6px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  flex: none;
+}
+.asSel:hover {
+  background: var(--k-brand-dim);
+  box-shadow: none;
+}
+.asSelChev {
+  color: var(--k-t2);
+  font-size: 11px;
+  margin-left: 2px;
+}
+.asOverlay {
+  position: fixed;
+  inset: 0;
+  background: var(--k-scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.asModal {
+  width: 100%;
+  max-width: 360px;
+  max-height: 70vh;
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-xl);
+  box-shadow: var(--k-shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.asHead {
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: 16px 18px 12px;
+  flex: none;
+}
+.asTitle {
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+}
+.asClose {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: none;
+  border: 0;
+  color: var(--k-t2);
+  cursor: pointer;
+  font-size: var(--k-fs-base);
+  display: grid;
+  place-items: center;
+}
+.asClose:hover {
+  background: var(--k-glass-deep);
+  color: var(--k-t1);
+}
+.asList {
+  padding: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.asRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--k-t1);
+  padding: 9px 10px;
+  border-radius: var(--k-r-md);
+  cursor: pointer;
+  text-align: left;
+}
+.asRow:hover {
+  background: var(--k-glass-deep);
+}
+.asRowOn {
+  background: var(--k-glass-strong);
+}
+.asRowSym {
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+}
+.asRowBal {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.asRowTick {
+  color: var(--k-brand);
+  font-size: var(--k-fs-base);
+}
+
