@@ -6,6 +6,8 @@ import {
   ROUTER_MODEL_IDS,
   GEMINI_MODELS,
   GEMINI_MODEL_IDS,
+  GATEWAY_MODELS,
+  GATEWAY_MODEL_IDS,
 } from "@/lib/ai";
 import { runAgent, type AgentInput, type AgentRun } from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
@@ -52,6 +54,9 @@ export async function GET(request: NextRequest) {
       : []),
     ...(process.env.GEMINI_API_KEY
       ? GEMINI_MODEL_IDS.map((id) => ({ id, label: GEMINI_MODELS[id].label }))
+      : []),
+    ...(process.env.AI_GATEWAY_API_KEY
+      ? GATEWAY_MODEL_IDS.map((id) => ({ id, label: GATEWAY_MODELS[id].label }))
       : []),
   ];
   return NextResponse.json({

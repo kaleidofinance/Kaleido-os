@@ -110,8 +110,33 @@ export const GEMINI_MODEL_IDS = Object.keys(GEMINI_MODELS) as GeminiModel[];
 
 /** Any model id the chat route will accept from a client — the router family
     plus the Gemini family, whichever keys are configured. */
+/**
+ * Vercel AI Gateway — one key over an OpenAI-compatible endpoint that fans out to
+ * every major provider, so it too rides the existing OpenAIProvider. Same family
+ * shape as the router and Gemini catalogues. Model ids are `provider/model`.
+ *
+ * Tiered like Gemini: on a free Gateway key the premium routes (Anthropic, some
+ * Google) 403 "upgrade to paid credits", while OpenAI's GPT-5 line and DeepSeek
+ * R1 answer 200 — so the catalogue is the confirmed free-tier reasoning set, and
+ * the default is openai/gpt-5. Verified live 2026-09-12; add a row only after a
+ * 200 from /chat/completions, not from the 376-long /models list (a listed id you
+ * lack 403s, not 404s — the same trap as the AgentRouter note above).
+ */
+export const GATEWAY_MODELS = {
+  "openai/gpt-5": { label: "GPT-5 · Gateway" },
+  "openai/gpt-5-mini": { label: "GPT-5 Mini · Gateway" },
+  "deepseek/deepseek-r1": { label: "DeepSeek R1 · Gateway" },
+} as const satisfies Record<string, { label: string }>;
+
+export type GatewayModel = keyof typeof GATEWAY_MODELS;
+
+export const isGatewayModel = (id: string): id is GatewayModel =>
+  Object.hasOwn(GATEWAY_MODELS, id);
+
+export const GATEWAY_MODEL_IDS = Object.keys(GATEWAY_MODELS) as GatewayModel[];
+
 export const isSelectableModel = (id: string): boolean =>
-  isRouterModel(id) || isGeminiModel(id);
+  isRouterModel(id) || isGeminiModel(id) || isGatewayModel(id);
 
 export function getProvider(model?: string): ChatProvider | null {
   const forced = process.env.AI_PROVIDER?.toLowerCase();
@@ -182,6 +207,24 @@ export function getProvider(model?: string): ChatProvider | null {
         )
       : null;
 
+  /* Vercel AI Gateway — same OpenAI adapter, Vercel's base URL and key. maxTokens
+     unset for the same reason as Gemini: the reasoning models it fronts spend
+     thinking tokens against the completion budget. */
+  const gatewayKey = process.env.AI_GATEWAY_API_KEY;
+  const gateway = (id?: string) =>
+    gatewayKey
+      ? new OpenAIProvider(
+          gatewayKey,
+          id || process.env.AI_GATEWAY_MODEL || "openai/gpt-5",
+          {
+            baseUrl:
+              process.env.AI_GATEWAY_BASE_URL ||
+              "https://ai-gateway.vercel.sh/v1",
+            id: "ai-gateway",
+          },
+        )
+      : null;
+
   const openAi = () => {
     if (!openaiKey) return null;
     const baseUrl = process.env.OPENAI_BASE_URL;
@@ -210,6 +253,7 @@ export function getProvider(model?: string): ChatProvider | null {
   /* A Gemini id names its own gateway just like a router id does. Requires the
      Gemini key; without it the hint is ignored and precedence answers. */
   if (geminiKey && model && isGeminiModel(model)) return gemini(model);
+  if (gatewayKey && model && isGatewayModel(model)) return gateway(model);
 
   if (forced === "agentrouter") return agentRouter();
   if (forced === "agentrouter-openai") return agentRouterOpenAi();
@@ -220,6 +264,7 @@ export function getProvider(model?: string): ChatProvider | null {
   }
   if (forced === "openai") return openAi();
   if (forced === "gemini") return gemini();
+  if (forced === "gateway" || forced === "ai-gateway") return gateway();
 
   if (routerKey) return agentRouter();
   if (anthropicKey) {
@@ -229,6 +274,7 @@ export function getProvider(model?: string): ChatProvider | null {
     return openAi();
   }
   if (geminiKey) return gemini();
+  if (gatewayKey) return gateway();
   return null;
 }
 
