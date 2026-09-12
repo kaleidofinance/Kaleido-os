@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useQuery } from "@tanstack/react-query";
 import { ethers } from "ethers";
 import { IToken } from "@/constants/types/dex";
@@ -56,9 +56,7 @@ const ERC20_ABI = [
  * without declared decimals is `unread` rather than formatted at a guessed scale.
  */
 export const useTokenBalance = (token: IToken | null) => {
-  const activeAccount = useActiveAccount();
-  const connectedChainId = useActiveWalletChain()?.id;
-  const address = activeAccount?.address;
+  const { address, chainId: connectedChainId } = useWalletV2();
 
   /* The token's own chain, falling back to the wallet's only when the token does
      not say. Not a `?? READ_ONLY_CHAIN_ID`: answering with Sepolia's balance for

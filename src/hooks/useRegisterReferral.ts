@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { isAddress } from "ethers";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 
 /**
  * Registers the connected address under an upliner.
@@ -13,15 +13,13 @@ import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
  * visitor in the JS bundle.
  */
 export const useRegisterReferral = () => {
-  const activeAccount = useActiveAccount();
-  const activeChain = useActiveWalletChain();
-  const address = activeAccount?.address;
+  const { address, chainId } = useWalletV2();
 
   const [isRegistering, setIsRegistering] = useState(false);
 
   const registerUpliner = useCallback(
     async (upliner: string) => {
-      if (!activeChain || !address) return;
+      if (!chainId || !address) return;
       if (!isAddress(upliner)) return;
       if (upliner.toLowerCase() === address.toLowerCase()) return;
 
@@ -55,7 +53,7 @@ export const useRegisterReferral = () => {
         setIsRegistering(false);
       }
     },
-    [activeChain, address],
+    [chainId, address],
   );
 
   return {

@@ -7,13 +7,12 @@ import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 
 import { ethers } from "ethers";
 import { useCallback, useEffect, useState } from "react";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 
 const useGetActiveRequest = () => {
   const [activeReq, setActiveReq] = useState<Request[] | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const activeAccount = useActiveAccount();
-  const address = activeAccount?.address;
+  const { address } = useWalletV2();
 
   useEffect(() => {
     const fetchUserStatus = async () => {

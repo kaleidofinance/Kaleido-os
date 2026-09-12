@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useActiveAccount } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useAtom } from "jotai";
 import {
   selectedTokenAtom,
@@ -53,8 +53,7 @@ interface FilteredData<T> {
 const ITEMS_PER_PAGE = 6;
 
 export const useEnhancedCardData = () => {
-  const activeAccount = useActiveAccount();
-  const address = activeAccount?.address;
+  const { address } = useWalletV2();
   const { etherPrice, usdcPrice } = useGetValueAndHealth();
 
   // Global filter atoms
