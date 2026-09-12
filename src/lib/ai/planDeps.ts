@@ -296,7 +296,7 @@ function symbolOf(chainId: number | undefined, address: string): string {
  * discarded, because `increasePosition` needs them to derive its slippage floor
  * from the range the position already has — see PoolPositionRef.
  */
-async function serverPositions(
+export async function serverPositions(
   chainId: number | undefined,
   address: string | undefined,
 ): Promise<PoolPositionRef[]> {

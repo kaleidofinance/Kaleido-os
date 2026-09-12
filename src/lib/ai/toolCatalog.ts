@@ -676,7 +676,21 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getPortfolio",
     kind: "read",
     description:
-      "The user's positions across lending, liquidity, staking and the kfUSD vault: net value, health factor, collateral, debt, unclaimed yield. Call this first for any 'what should I do' request.",
+      "The user's net value, health factor, collateral, debt and unclaimed vault yield on the connected chain. Call this first for any 'what should I do' request. For the user's liquidity (LP) positions and whether they are in range, call getPositions instead — those are not in this result.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getPositions",
+    kind: "read",
+    description:
+      "The user's liquidity (LP) positions on the connected chain, each with its id, pair, fee tier and whether it is in range. Call this for 'what liquidity positions do I have', to find which need attention (out of range earns no fees), or to identify the position id before adding to (increasePosition), collecting fees from (collectFees) or removing (removePosition) one — so the user never has to look the id up themselves.",
     parameters: {
       type: "object",
       additionalProperties: false,

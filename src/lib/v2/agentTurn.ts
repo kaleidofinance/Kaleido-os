@@ -177,6 +177,7 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
      left the wallet. A label saying "balances" on the one tool that does not read
      them sat next to getBalances in the same fold. */
   getPortfolio: () => "Checked your lending position",
+  getPositions: () => "Checked your liquidity positions",
   getBalances: () => "Checked what your wallet holds",
   /* "open orders" because that is what the limit page calls them on the screen
      the user is looking at, and the fold should not introduce a second name for
