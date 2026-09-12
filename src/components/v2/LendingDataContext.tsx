@@ -9,6 +9,10 @@ import {
 } from "react";
 import useDataFiltersPanel from "@/hooks/useDataFilterPanel";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
+import {
+  useLendingAssetsAcrossChains,
+  type LendingAssetsAcrossChains,
+} from "@/hooks/useLendingAssets";
 
 type FiltersPanel = ReturnType<typeof useDataFiltersPanel>;
 type BorrowV2 = ReturnType<typeof useBorrowV2>;
@@ -29,6 +33,25 @@ export type CollateralIntent = {
 interface LendingData {
   filters: FiltersPanel;
   borrow: BorrowV2;
+  /**
+   * Every lending chain's registered sets at once, each asset tagged with its
+   * chain — the option source for the multichain post pickers. The book sweeps
+   * every chain's rows; the forms sweep every chain's assets the same way, so a
+   * user connected to one chain can post on any of them.
+   */
+  assetsAcrossChains: LendingAssetsAcrossChains;
+  /**
+   * The chain the open form is acting ON, or `undefined` for the connected one.
+   *
+   * A picker choosing an asset on another chain sets this, and the single shared
+   * `useBorrowV2(formChainId)` re-reads that market's fees, holdings and health —
+   * the Aave-V3 model of one isolated market per chain, selected by the asset
+   * rather than by switching the wallet first. The forms reset it to `undefined`
+   * on close, so the header behind them (which reads the same `borrow`) returns
+   * to the connected chain.
+   */
+  formChainId: number | undefined;
+  setFormChainId: (id: number | undefined) => void;
   /**
    * The Collateral modal, shared rather than local.
    *
@@ -66,7 +89,10 @@ const LendingDataContext = createContext<LendingData | null>(null);
  */
 export function LendingDataProvider({ children }: { children: ReactNode }) {
   const filters = useDataFiltersPanel();
-  const borrow = useBorrowV2();
+  /* The chain the open form acts on; a picker sets it, forms reset it on close. */
+  const [formChainId, setFormChainId] = useState<number | undefined>(undefined);
+  const borrow = useBorrowV2(formChainId);
+  const assetsAcrossChains = useLendingAssetsAcrossChains();
   const [collateralOpen, setCollateralOpen] = useState(false);
   const [collateralIntent, setCollateralIntent] =
     useState<CollateralIntent | null>(null);
@@ -87,7 +113,16 @@ export function LendingDataProvider({ children }: { children: ReactNode }) {
     [collateralOpen, collateralIntent],
   );
   return (
-    <LendingDataContext.Provider value={{ filters, borrow, collateral }}>
+    <LendingDataContext.Provider
+      value={{
+        filters,
+        borrow,
+        assetsAcrossChains,
+        formChainId,
+        setFormChainId,
+        collateral,
+      }}
+    >
       {children}
     </LendingDataContext.Provider>
   );

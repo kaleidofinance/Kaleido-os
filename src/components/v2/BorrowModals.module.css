@@ -503,6 +503,20 @@
 .asRowSym {
   font-size: var(--k-fs-base);
   font-weight: var(--k-fw-med);
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.asRowChain {
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-body);
+  color: var(--k-t3);
+}
+.asSelChain {
+  margin-left: 6px;
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-body);
+  color: var(--k-t3);
 }
 .asRowBal {
   margin-left: auto;
