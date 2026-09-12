@@ -362,24 +362,36 @@ function useLendingChain(targetChainId?: number) {
       ? chain.id !== targetChainId
       : !isSupportedChain(chain.id));
 
-  const goToChain = async () => {
+  const goToChain = async (): Promise<boolean> => {
     if (!meta) {
       toast.error(`Chain ${goTo} is not in the registry.`);
-      return;
+      return false;
     }
     setSwitching(true);
     try {
       await switchChain(defineChain(toThirdwebChainOptions(meta)));
+      return true;
     } catch {
       toast.error(
         `Couldn't switch to ${meta.name} — switch manually in your wallet, then try again.`,
       );
+      return false;
     } finally {
       setSwitching(false);
     }
   };
 
-  return { wrong, switching, goToChain, target };
+  /* One action, two prompts: switch if the wallet is on the wrong chain,
+     then run the action — the swap's startSwap fold. A declined switch stops
+     here. Safe only where the action has no chain-dependent gate before it;
+     take/post-request keep the switch as a step so the collateral check (see
+     #95) runs on the target chain BEFORE anything is signed. */
+  const run = async (action: () => void | Promise<void>) => {
+    if (wrong && !(await goToChain())) return;
+    await action();
+  };
+
+  return { wrong, switching, goToChain, run, target };
 }
 
 const num = (v: string) => v.replace(/[^0-9.]/g, "");
@@ -695,22 +707,22 @@ export function PostOfferModal({
           used to. */}
       <button
         className={s.cta}
-        disabled={gate.switching || busy || (!gate.wrong && !ready)}
-        onClick={gate.wrong ? gate.goToChain : submit}
+        disabled={gate.switching || busy || !ready}
+        onClick={() => gate.run(submit)}
       >
         {gate.switching
           ? "Switching…"
-          : gate.wrong
-            ? `Switch to ${gate.target}`
-            : busy
-              ? "Posting…"
-              : borrow.assets.loading
-                ? "Reading assets…"
-                : !asset
-                  ? "No loan currency available"
-                  : ready
-                    ? "Post offer"
-                    : "Enter amount, range and rate"}
+          : busy
+            ? "Posting…"
+            : borrow.assets.loading
+              ? "Reading assets…"
+              : !asset
+                ? "No loan currency available"
+                : !ready
+                  ? "Enter amount, range and rate"
+                  : gate.wrong
+                    ? `Post on ${gate.target}`
+                    : "Post offer"}
       </button>
     </Shell>
   );
@@ -1320,26 +1332,26 @@ export function CollateralModal({
           used to. */}
       <button
         className={s.cta}
-        disabled={gate.switching || busy || (!gate.wrong && !ready)}
-        onClick={gate.wrong ? gate.goToChain : submit}
+        disabled={gate.switching || busy || !ready}
+        onClick={() => gate.run(submit)}
       >
         {gate.switching
           ? "Switching…"
-          : gate.wrong
-            ? `Switch to ${gate.target}`
-            : busy
-              ? mode === "deposit"
-                ? "Depositing…"
-                : "Withdrawing…"
-              : borrow.assets.loading
-                ? "Reading assets…"
-                : !asset
-                  ? "No collateral asset available"
-                  : ready
-                    ? mode === "deposit"
+          : busy
+            ? mode === "deposit"
+              ? "Depositing…"
+              : "Withdrawing…"
+            : borrow.assets.loading
+              ? "Reading assets…"
+              : !asset
+                ? "No collateral asset available"
+                : !ready
+                  ? "Enter an amount"
+                  : gate.wrong
+                    ? `${mode === "deposit" ? "Deposit" : "Withdraw"} on ${gate.target}`
+                    : mode === "deposit"
                       ? "Deposit collateral"
-                      : "Withdraw collateral"
-                    : "Enter an amount"}
+                      : "Withdraw collateral"}
       </button>
     </Shell>
   );
