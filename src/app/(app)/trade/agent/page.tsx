@@ -41,6 +41,7 @@ import { visibleProse } from "@/lib/ai/actionsBlock";
 import {
   parseCommand,
   parseFollowUp,
+  containsActionVerb,
   fillSlot,
   clearSlot,
   draftFromCommand,
@@ -748,13 +749,21 @@ export default function AgentPage() {
          about staking. It quotes the section and links to it - never a
          paraphrase, because a local answer that invents a detail is worse than
          escalating. See src/lib/ai/docsSearch.ts. */
-      const hit = searchDocs(content);
-      if (hit) {
-        note("Found the section of the docs that answers this");
-        log(`docs:${hit.slug}`);
-        const reply = docsReply(hit);
-        say(reply.text, { via: "local", link: reply.link });
-        return;
+      /* Skipped for an imperative that names an action the grammar could not
+         finish — "add $50 USDC and $50 KLD to my KLD/USDC position" has no docs
+         answer worth giving, because the user asked us to DO it, not read about
+         it. Those go to the model, which can call getPositions to find the
+         position and build the step. Questions and non-action sentences still
+         get the docs net. */
+      if (question || !containsActionVerb(content)) {
+        const hit = searchDocs(content);
+        if (hit) {
+          note("Found the section of the docs that answers this");
+          log(`docs:${hit.slug}`);
+          const reply = docsReply(hit);
+          say(reply.text, { via: "local", link: reply.link });
+          return;
+        }
       }
       log("model");
 

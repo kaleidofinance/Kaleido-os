@@ -634,6 +634,31 @@ const ZERO_SLOT_VERBS: Record<ZeroSlotKind, string[]> = {
 };
 
 /**
+ * Whether the message names an action verb — the union of every command verb,
+ * plus the liquidity words the grammar has no complete parse for (add / increase
+ * / provide). The router uses it as the tie-breaker at the bottom of the local
+ * nets: a sentence that names an action the grammar could not finish is a
+ * planning job for the model (which can read the user's positions and build it),
+ * not a docs paragraph about how to do it by hand. Word-matched, not substring,
+ * to match VERBS.
+ */
+const ACTION_WORDS: ReadonlySet<string> = new Set([
+  ...Object.values(VERBS).flat(),
+  ...Object.values(ZERO_SLOT_VERBS).flat(),
+  "add",
+  "increase",
+  "provide",
+  "reinvest",
+]);
+
+export function containsActionVerb(text: string): boolean {
+  return text
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .some((w) => w.length > 0 && ACTION_WORDS.has(w));
+}
+
+/**
  * Words that follow "faucet" without naming an asset.
  *
  * Ticker-shaped, so the pattern alone lets them through, and each one would
