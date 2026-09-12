@@ -10,15 +10,15 @@ import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import Chevron from "@/components/v2/Chevron";
 import { chainTokens } from "@/constants/tokens";
 import { getContracts } from "@/constants/registry";
-import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
+import { getChainMeta } from "@/constants/chains";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { makeBatchingQuoter } from "@/lib/dex/batchQuoter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
-import { useConnectModal, useSwitchActiveWalletChain } from "thirdweb/react";
-import { defineChain } from "thirdweb/chains";
-import { client } from "@/config/client";
-import { WALLETS } from "@/config/wallets";
+import {
+  useConnectWallet,
+  useChainGateAction,
+} from "@/hooks/v2/useChainAction";
 import type { Intent } from "@/lib/v2/intents";
 import {
   describeRoute,
@@ -153,12 +153,7 @@ export default function SwapPage() {
   /* Disconnected is a fixable state, not a dead end: /trade is the one shell
      without a ChainGate, so the CTA opens the connect modal itself rather than
      sitting disabled while the only way to connect lives up in the nav. */
-  const { connect } = useConnectModal();
-  const openConnect = () => {
-    connect({ client, wallets: WALLETS, size: "compact" }).catch(() => {
-      /* Dismissing the modal rejects — a choice, not a fault. */
-    });
-  };
+  const openConnect = useConnectWallet();
 
   /*
    * Token state is nullable and seeded from the chain, not from a module-level
@@ -186,31 +181,18 @@ export default function SwapPage() {
     tokenIn?.chainId ?? tokenOut?.chainId ?? chainId ?? PREVIEW_CHAIN_ID;
   const available = useMemo(() => chainTokens(swapChainId), [swapChainId]);
   const v3Router = getContracts(swapChainId).v3Router;
-  /* The wallet is not on the swap's chain. A read-only quote is fine; a
-     signature is not, so execution waits behind a one-click switch. */
-  const wrongChain = isConnected && chainId != null && chainId !== swapChainId;
-  const switchWalletChain = useSwitchActiveWalletChain();
-  const [switching, setSwitching] = useState(false);
-  const goToSwapChain = async (): Promise<boolean> => {
-    const meta = getChainMeta(swapChainId);
-    if (!meta) return false;
-    setSwitching(true);
-    try {
-      await switchWalletChain(defineChain(toThirdwebChainOptions(meta)));
-      return true;
-    } catch {
-      /* Declined or failed — stay put. */
-      return false;
-    } finally {
-      setSwitching(false);
-    }
-  };
+  /* Wallet on the wrong chain for a signature: quotes are read-only, so this
+     gates execution only, behind a one-click switch. The gate is the shared
+     useChainGateAction — the same one the lending forms use. */
+  const gate = useChainGateAction(swapChainId);
+  const wrongChain = gate.wrong;
+  const switching = gate.switching;
   /* One action, two prompts: on the wrong chain the wallet's network prompt
      comes first, then review to sign — the way Uniswap folds the switch into
      the swap rather than making it a separate button. A declined switch stops
      here, so review never opens on a chain the plan cannot be signed on. */
   const startSwap = async () => {
-    if (wrongChain && !(await goToSwapChain())) return;
+    if (wrongChain && !(await gate.goToChain())) return;
     setReviewing(true);
   };
   const [amountIn, setAmountIn] = useState("500");
