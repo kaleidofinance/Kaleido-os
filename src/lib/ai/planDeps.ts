@@ -102,7 +102,7 @@ export async function serverQuote(
 ): Promise<string | null> {
   try {
     const provider = providerForChain(chainId);
-    const quoterAddress = getContracts(chainId).v3Quoter;
+    const quoterAddress = req.quoter ?? getContracts(chainId).v3Quoter;
     if (!provider || !quoterAddress) return null;
     const quoter = new ethers.Contract(quoterAddress, QUOTER_ABI, provider);
     const amountInWei = ethers.parseUnits(req.amountIn, req.decimalsIn);
@@ -138,7 +138,7 @@ async function serverQuotePath(
 ): Promise<string | null> {
   try {
     const provider = providerForChain(chainId);
-    const quoterAddress = getContracts(chainId).v3Quoter;
+    const quoterAddress = req.quoter ?? getContracts(chainId).v3Quoter;
     if (!provider || !quoterAddress) return null;
     const path = encodeV3Path(req.tokens, req.fees);
     if (path === "0x") return null;
@@ -170,7 +170,12 @@ async function serverQuotePath(
  * pair, `quoteExactInput` for a path, and only the latter prices the hops in
  * sequence against real ticks.
  */
-export function serverPathQuoter(chainId: number | undefined): PathQuoter {
+export function serverPathQuoter(
+  chainId: number | undefined,
+  /** QuoterV2 to price against; defaults to our own. A fallback venue passes its
+   *  quoter so the read tool prices its pools the same way the plan will. */
+  quoter?: string,
+): PathQuoter {
   return (tokens, fees, amountIn, decimalsIn, decimalsOut) =>
     tokens.length === 2
       ? serverQuote(chainId, {
@@ -180,6 +185,7 @@ export function serverPathQuoter(chainId: number | undefined): PathQuoter {
           fee: fees[0],
           decimalsIn,
           decimalsOut,
+          quoter,
         })
       : serverQuotePath(chainId, {
           tokens,
@@ -187,6 +193,7 @@ export function serverPathQuoter(chainId: number | undefined): PathQuoter {
           amountIn,
           decimalsIn,
           decimalsOut,
+          quoter,
         });
 }
 
