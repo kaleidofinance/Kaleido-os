@@ -13,6 +13,7 @@ import {
 } from "@/constants/chains";
 import ChainIcon from "./ChainIcon";
 import TokenIcon, { hasTokenIcon } from "./TokenIcon";
+import VerifiedBadge, { verifiedTitleFor } from "./VerifiedBadge";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
@@ -113,7 +114,12 @@ function TokenRow({
         />
       </span>
       <div className={s.rb}>
-        <div className={s.rn}>{token.name}</div>
+        <div className={s.rn}>
+          <span className={s.rnName}>{token.name}</span>
+          {token.verified && (
+            <VerifiedBadge title={verifiedTitleFor(token.tags)} />
+          )}
+        </div>
         <div className={s.rs}>
           {token.symbol} · {meta?.shortName ?? "Unknown chain"}
         </div>
