@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { toast } from "sonner";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { client } from "@/config/client";
 import { getTokenFaucetContract } from "@/config/contracts";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
@@ -426,11 +426,7 @@ export const useFaucet = (): FaucetState => {
         return;
       }
 
-      const signer = ethers6Adapter.signer.toEthers({
-        client,
-        chain: activeChain,
-        account,
-      });
+      const signer = toEthersSigner(account, activeChain);
       if (!signer) {
         toast.error("Signer not available");
         return;
@@ -500,11 +496,7 @@ export const useFaucet = (): FaucetState => {
       return;
     }
 
-    const signer = ethers6Adapter.signer.toEthers({
-      client,
-      chain: activeChain,
-      account,
-    });
+    const signer = toEthersSigner(account, activeChain);
     if (!signer) {
       toast.error("Signer not available");
       return;

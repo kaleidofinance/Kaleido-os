@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { toast } from "sonner";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
-import { client } from "@/config/client";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { ethers, MaxUint256 } from "ethers";
 import erc20Abi from "@/abi/ERC20Abi.json";
 import kfUSDAbi from "@/contracts/kfUSD.json";
@@ -231,12 +230,8 @@ export function useStablecoin() {
       throw new Error("Chain or account not available");
     }
 
-    // Use thirdweb's ethers6Adapter instead of creating new provider
-    const signer = ethers6Adapter.signer.toEthers({
-      client,
-      chain: activeChain,
-      account: activeAccount,
-    });
+    // The writing signer, via the shared thirdweb→ethers bridge, not window.ethereum.
+    const signer = toEthersSigner(activeAccount, activeChain);
 
     if (!signer) {
       throw new Error("Signer not available");

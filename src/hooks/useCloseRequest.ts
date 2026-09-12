@@ -9,8 +9,7 @@ import lendbitAbi from "@/abi/ProtocolFacet.json";
 import { toast } from "sonner";
 import { ethers } from "ethers";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
-import { client } from "@/config/client";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { getKaleidoContract } from "@/config/contracts";
 
 const errorDecoder = ErrorDecoder.create([lendbitAbi]);
@@ -39,11 +38,7 @@ export default function useCloseRequest(): IUseCloseRequest {
           toast.error("invalid account");
           return;
         }
-        const signer = ethers6Adapter.signer.toEthers({
-          client,
-          chain: activeChain,
-          account: activeAccount,
-        });
+        const signer = toEthersSigner(activeAccount, activeChain);
 
         if (!signer) {
           toast.error("Signer not available");

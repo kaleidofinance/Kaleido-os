@@ -3,10 +3,9 @@
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { ErrorDecoder } from "ethers-decode-error";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { IUseCloseListingAd } from "@/constants/interfaces/ProtocolInterfaces";
-import { client } from "@/config/client";
 import { getKaleidoContract } from "@/config/contracts";
 import lendbitAbi from "@/abi/ProtocolFacet.json";
 import { ethers } from "ethers";
@@ -78,11 +77,7 @@ export default function useCloseListingAd(): IUseCloseListingAd {
       const loadingToastId = toast.loading("Closing the listing Ad...");
 
       try {
-        const signer = ethers6Adapter.signer.toEthers({
-          client,
-          chain: activeChain,
-          account: activeAccount,
-        });
+        const signer = toEthersSigner(activeAccount, activeChain);
 
         if (!signer) {
           toast.error("Signer not available");

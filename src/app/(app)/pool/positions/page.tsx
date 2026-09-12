@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { client } from "@/config/client";
 import { useV3Positions, type V3Position } from "@/hooks/dex/useV3Positions";
 import { readPoolState, type PoolState } from "@/lib/dex/pool";
@@ -326,7 +326,7 @@ function PositionCard({
     if (!canAdd || !legs || !account || !chain || !v3PositionManager) return;
     setBusy("add");
     try {
-      const signer = ethers6Adapter.signer.toEthers({ client, chain, account });
+      const signer = toEthersSigner(account, chain);
       /* The whole sequence — floor the slippage, approve, approve, increase,
          wait — is `increaseV3` in lib/dex/deposit, which is also what the agent's
          `increasePosition` resolves to. One derivation of the floor for both, for

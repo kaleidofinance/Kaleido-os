@@ -4,9 +4,8 @@ import { useCallback } from "react";
 import { toast } from "sonner";
 import { ethers } from "ethers";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { ErrorDecoder } from "ethers-decode-error";
-import { client } from "@/config/client";
 import { isSupportedChain } from "@/config/chain";
 import { getKaleidoContract } from "@/config/contracts";
 import lendbitAbi from "@/abi/ProtocolFacet.json";
@@ -70,11 +69,7 @@ const useAcceptListedAds = () => {
       }
 
       try {
-        const signer = await ethers6Adapter.signer.toEthers({
-          client,
-          chain: activeChain,
-          account: activeAccount,
-        });
+        const signer = toEthersSigner(activeAccount, activeChain);
 
         if (!signer) {
           toast.error("Signer not available");

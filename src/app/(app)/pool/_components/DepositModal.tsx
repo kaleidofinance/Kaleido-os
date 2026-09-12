@@ -8,8 +8,7 @@ import {
   useSwitchActiveWalletChain,
 } from "thirdweb/react";
 import { defineChain } from "thirdweb/chains";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
-import { client } from "@/config/client";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { providerForChain } from "@/config/provider";
 import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
 import { getContracts } from "@/constants/registry";
@@ -313,7 +312,7 @@ export default function DepositModal({
     if (!ready || !account || !chain || !spender) return;
     setBusy(true);
     try {
-      const signer = ethers6Adapter.signer.toEthers({ client, chain, account });
+      const signer = toEthersSigner(account, chain);
       const shared = {
         signer,
         owner: account.address,

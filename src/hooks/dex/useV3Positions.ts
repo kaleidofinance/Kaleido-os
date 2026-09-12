@@ -1,9 +1,8 @@
 import { useCallback } from "react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { ethers } from "ethers";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { useQuery } from "@tanstack/react-query";
-import { client } from "@/config/client";
 import { getContracts } from "@/constants/registry";
 import { providerForChain } from "@/config/provider";
 import { MOCK_DATA, MOCK_V3_POSITIONS } from "@/lib/mock";
@@ -241,11 +240,7 @@ export const useV3Positions = () => {
    */
   const getSigner = useCallback(async () => {
     if (!activeAccount || !activeChain) return null;
-    return ethers6Adapter.signer.toEthers({
-      client,
-      chain: activeChain,
-      account: activeAccount,
-    });
+    return toEthersSigner(activeAccount, activeChain);
   }, [activeAccount, activeChain]);
 
   const collectFees = useCallback(

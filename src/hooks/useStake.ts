@@ -10,7 +10,7 @@ import KLDVaultAbi from "@/abi/KLDVaultAbi.json";
 import erc20Abi from "@/abi/ERC20Abi.json";
 import { stakingContracts } from "@/constants/registry";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { client } from "@/config/client";
 import useTxFactory from "@/components/factory/TxFactory";
 
@@ -39,11 +39,7 @@ const useStake = () => {
         toast.error("amount must be greater than 0");
         return;
       }
-      const signer = ethers6Adapter.signer.toEthers({
-        client,
-        chain: activeChain,
-        account: activeAccount,
-      });
+      const signer = toEthersSigner(activeAccount, activeChain);
       if (!signer) {
         toast.error("Signer not available");
         return;
