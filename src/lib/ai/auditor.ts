@@ -15,6 +15,7 @@ import {
 import { envVars } from "@/constants/envVars";
 import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
+import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
@@ -736,10 +737,34 @@ function diamondReasons(step: PlanStep, chainId: number | undefined): string[] {
  * Absent from the registry means no V3 router on the chain this plan targets, so
  * a swap there cannot be honoured by anything: fail closed via `pinned`.
  */
+/** True when `address` is a router this app deliberately routes THROUGH on this
+ *  chain but did not deploy — an external fallback venue (Uniswap V3 on
+ *  Robinhood). It is an explicit allow-list from venues.ts, never an address a
+ *  quote handed us, so admitting it widens what a swap may call to a small
+ *  curated set and nothing the model can name. */
+function isFallbackVenueRouter(
+  chainId: number | undefined,
+  address: string,
+): boolean {
+  const a = address.toLowerCase();
+  return fallbackVenues(chainId).some((v) => v.router.toLowerCase() === a);
+}
+
 function routerReasons(step: PlanStep, chainId: number | undefined): string[] {
   const reasons = requireAddresses(step, "spender");
   if (reasons.length > 0) return reasons;
-  return pinned(str(step.spender), getContracts(chainId).v3Router, "spender");
+  const spender = str(step.spender);
+  const ours = getContracts(chainId).v3Router;
+  if (ours && spender.toLowerCase() === ours.toLowerCase()) return [];
+  /* A vetted external venue is the fallback the mainnet plan routes unseeded
+     tokens through — the same allow-list the approve step above admits. */
+  if (isFallbackVenueRouter(chainId, spender)) return [];
+  /* Fail closed: neither our router nor a venue router on the plan's chain. */
+  return [
+    ours || fallbackVenues(chainId).length > 0
+      ? "spender is not a router this app routes through on the chain this plan targets"
+      : "spender is not configured on the chain this plan targets",
+  ];
 }
 
 /**
@@ -860,6 +885,11 @@ function spenderReasons(
     return {
       reasons: [],
       note: "this approves a bridge provider's router, not a Kaleido contract — it is the one outside address this app authorises, and only a bridge step should be pairing it",
+    };
+  if (isFallbackVenueRouter(chainId, spender))
+    return {
+      reasons: [],
+      note: "this approves an external DEX router this app routes through as a fallback for a token not in Kaleido's own pools — from the venues allow-list, not a Kaleido contract",
     };
 
   return {

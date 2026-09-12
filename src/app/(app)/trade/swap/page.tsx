@@ -20,10 +20,11 @@ import type { Intent } from "@/lib/v2/intents";
 import {
   describeRoute,
   encodeV3Path,
-  findBestRoute,
+  findRouteAcrossSources,
   poolSide,
-  type SwapPath,
+  type RoutedPath,
 } from "@/lib/dex/route";
+import { fallbackVenues } from "@/constants/venues";
 import s from "../trade.module.css";
 
 /*
@@ -333,7 +334,7 @@ export default function SwapPage() {
    * of that a second time from the amounts would let the quote and the
    * transaction disagree.
    */
-  const [route, setRoute] = useState<SwapPath | null>(null);
+  const [route, setRoute] = useState<RoutedPath | null>(null);
 
   /**
    * The two ends as a pool can hold them.
@@ -393,12 +394,26 @@ export default function SwapPage() {
          * RPC rate-limits into a slow quote. A fresh one per search, because it
          * accumulates the tick's calls. See lib/dex/batchQuoter.ts.
          */
-        const found = await findBestRoute(
+        /* Our own pools first, then any external fallback venue (Uniswap V3
+           on Robinhood) — see findRouteAcrossSources. Each venue prices through
+           the same batching quoter, bound to its own QuoterV2 address. */
+        const found = await findRouteAcrossSources(
           chainId,
           sell.token,
           buy.token,
           amountIn,
-          makeBatchingQuoter(chainId),
+          [
+            {
+              quote: makeBatchingQuoter(chainId),
+              router: v3Router,
+              venue: null,
+            },
+            ...fallbackVenues(chainId).map((venue) => ({
+              quote: makeBatchingQuoter(chainId, venue.quoter),
+              router: venue.router,
+              venue,
+            })),
+          ],
         );
         /* A quote is a positive number or it is nothing. `findBestRoute` already
            rejects null, zero and non-finite answers — a pool cannot fill a
@@ -430,6 +445,7 @@ export default function SwapPage() {
     buy,
     samePoolSide,
     chainId,
+    v3Router,
   ]);
 
   /*
@@ -530,7 +546,12 @@ export default function SwapPage() {
   // from liquidity the transaction would never touch, which is a worse failure
   // than no floor at all because it looks correct.
   const plan: Intent[] = useMemo(() => {
-    if (!sell || !buy || !v3Router || !minOut || !route) return [];
+    /* The router that executes THIS route — ours for our own pools, the venue's
+       for a fallback. A venue swap on a chain we have not deployed on has no
+       v3Router of ours, so the gate is the route's router, not ours. The approve
+       and both swap shapes spend through the same one — see auditor routerReasons. */
+    const execRouter = route?.router;
+    if (!sell || !buy || !execRouter || !minOut || !route) return [];
 
     /* Built from `sell`/`buy`, never from `tokenIn`/`tokenOut`: those still hold
        the native sentinel, and the whole point of the substitution is that the
@@ -541,7 +562,7 @@ export default function SwapPage() {
       : {
           kind: "approve",
           token: sell.token.address,
-          spender: v3Router,
+          spender: execRouter,
           amount: amountIn || "0",
           decimals: sell.token.decimals,
           symbol: sell.token.symbol,
@@ -556,7 +577,7 @@ export default function SwapPage() {
             kind: "swap",
             tokenIn: sell.token.address,
             tokenOut: buy.token.address,
-            spender: v3Router,
+            spender: execRouter,
             amountIn: amountIn || "0",
             amountOutMin: minOut,
             fee: route.fees[0],
@@ -578,7 +599,7 @@ export default function SwapPage() {
               fee: h.fee,
             })),
             path: encodeV3Path(route.tokens, route.fees),
-            spender: v3Router,
+            spender: execRouter,
             amountIn: amountIn || "0",
             amountOutMin: minOut,
             decimalsIn: sell.token.decimals,
@@ -591,7 +612,7 @@ export default function SwapPage() {
           };
 
     return approve ? [approve, trade] : [trade];
-  }, [sell, buy, amountIn, minOut, deadlineMin, v3Router, route]);
+  }, [sell, buy, amountIn, minOut, deadlineMin, route]);
 
   const onComplete = () => {
     setReviewing(false);
@@ -800,6 +821,12 @@ export default function SwapPage() {
             <span title="The pools this swap is quoted through, in order">
               {route.hops.length > 1 ? "Route " : "Pool "}
               <b>{describeRoute(route)}</b>
+              {/* Named only for a fallback venue — our own pools are the default
+                  and need no label. "via Uniswap V3" tells the user this token
+                  isn't in Kaleido's pools yet and the fill comes from elsewhere. */}
+              {route.venue && (
+                <span className={s.routeVenue}> · via {route.venue.label}</span>
+              )}
             </span>
           </div>
         )}

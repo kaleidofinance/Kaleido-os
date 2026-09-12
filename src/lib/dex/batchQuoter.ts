@@ -35,8 +35,18 @@ import { MOCK_DATA, mockQuoteMultiHop } from "@/lib/mock";
  *
  * Stateful, so make a fresh one per search: `const quote = makeBatchingQuoter(chainId)`.
  */
-export function makeBatchingQuoter(chainId: number | undefined): PathQuoter {
-  const quoterAddr = getContracts(chainId).v3Quoter;
+export function makeBatchingQuoter(
+  chainId: number | undefined,
+  /**
+   * The QuoterV2 to price against. Defaults to our own deployment; an external
+   * venue (Uniswap V3 on Robinhood) passes its quoter here so the same batching
+   * path prices its pools — the ABI is identical, only the address differs. The
+   * Multicall3 the batch aggregates through is the canonical one on every chain,
+   * so nothing else has to be deployed for a venue quote to land.
+   */
+  quoterOverride?: string,
+): PathQuoter {
+  const quoterAddr = quoterOverride ?? getContracts(chainId).v3Quoter;
 
   const QUOTER = new ethers.Interface([
     "function quoteExactInput(bytes path, uint256 amountIn) returns (uint256 amountOut)",
