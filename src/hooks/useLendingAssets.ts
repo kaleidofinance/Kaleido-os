@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { getKaleidoContract } from "@/config/contracts";
 import { providerForChain, readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { isDeployed } from "@/constants/registry";
+import { lendingChains } from "@/lib/lending/chain";
 import {
   readLendingAssets,
   type CollateralHolding,
@@ -60,16 +61,17 @@ export interface LendingAssets {
  */
 const MOCK_ASSETS: LendingAsset[] = MOCK_LENDING_ASSETS;
 
-export function useLendingAssets(): LendingAssets {
+export function useLendingAssets(targetChainId?: number): LendingAssets {
   const account = useActiveAccount();
   const address = account?.address;
 
-  /* The connected chain: the asset pickers post on the chain the wallet is on,
-     so they must offer what THAT chain's diamond registers, and show holdings
-     there. Falls back to the read chain when disconnected, for a browse view.
+  /* The chain to read against. `targetChainId` is the multichain form's own
+     chain (the picked asset's chain), read read-only so a user can browse and
+     post on any chain without switching first. Absent, it falls back to the
+     wallet's chain, and to the read chain when disconnected — a browse view.
      Lending went multi-chain — this used to be pinned to LENDING_CHAIN_ID. */
   const activeChain = useActiveWalletChain();
-  const readChain = activeChain?.id ?? READ_ONLY_CHAIN_ID;
+  const readChain = targetChainId ?? activeChain?.id ?? READ_ONLY_CHAIN_ID;
   const readProvider = providerForChain(readChain) ?? readOnlyProvider;
 
   const [sets, setSets] = useState<{
@@ -186,4 +188,90 @@ export function useLendingAssets(): LendingAssets {
   return { ...sets, holdings, loading, error, refresh };
 }
 
+/** A registered lending asset tagged with the chain it lives on. */
+export interface ChainLendingAsset extends LendingAsset {
+  chainId: number;
+}
+
+export interface LendingAssetsAcrossChains {
+  loanable: ChainLendingAsset[];
+  collateral: ChainLendingAsset[];
+  loading: boolean;
+  /** Non-null only when EVERY chain failed — a partial failure is not empty. */
+  error: string | null;
+}
+
+/**
+ * Every lending chain's registered loanable/collateral sets at once, each asset
+ * tagged with the chain it lives on — the picker source for a multichain post
+ * form, the way the book sweeps every chain's offers. One deployment failing does
+ * not empty the list; only all failing does. No wallet needed: this is protocol
+ * configuration, read read-only through providerForChain per chain.
+ */
+export function useLendingAssetsAcrossChains(): LendingAssetsAcrossChains {
+  const chains = useMemo(() => lendingChains(), []);
+  const [state, setState] = useState<LendingAssetsAcrossChains>({
+    loanable: [],
+    collateral: [],
+    loading: !MOCK_DATA,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (MOCK_DATA) {
+      const tag = (a: LendingAsset): ChainLendingAsset => ({
+        ...a,
+        chainId: READ_ONLY_CHAIN_ID,
+      });
+      setState({
+        loanable: MOCK_ASSETS.map(tag),
+        collateral: MOCK_ASSETS.map(tag),
+        loading: false,
+        error: null,
+      });
+      return;
+    }
+    let live = true;
+    setState((s) => ({ ...s, loading: true }));
+    (async () => {
+      const results = await Promise.all(
+        chains.map(async (c) => {
+          if (!isDeployed(c)) return null;
+          const provider = providerForChain(c);
+          if (!provider) return null;
+          try {
+            return { c, sets: await readLendingAssets(provider, c) };
+          } catch {
+            /* This chain failed; others may still answer. */
+            return null;
+          }
+        }),
+      );
+      if (!live) return;
+      const loanable: ChainLendingAsset[] = [];
+      const collateral: ChainLendingAsset[] = [];
+      let anyOk = false;
+      for (const r of results) {
+        if (!r) continue;
+        anyOk = true;
+        for (const a of r.sets.loanable) loanable.push({ ...a, chainId: r.c });
+        for (const a of r.sets.collateral)
+          collateral.push({ ...a, chainId: r.c });
+      }
+      setState({
+        loanable,
+        collateral,
+        loading: false,
+        error: anyOk
+          ? null
+          : "Couldn't read the registered assets on any lending chain.",
+      });
+    })();
+    return () => {
+      live = false;
+    };
+  }, [chains]);
+
+  return state;
+}
 export default useLendingAssets;

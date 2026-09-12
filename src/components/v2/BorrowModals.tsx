@@ -24,6 +24,8 @@ import {
 } from "@/lib/lending/fees";
 import type { IToken } from "@/constants/types/dex";
 import type { CollateralIntent } from "@/components/v2/LendingDataContext";
+import { useLendingData } from "@/components/v2/LendingDataContext";
+import type { ChainLendingAsset } from "@/hooks/useLendingAssets";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
 import { isSupportedChain } from "@/config/chain";
@@ -95,34 +97,62 @@ function Shell({
 }
 
 /**
- * The selected asset, chosen out of a list the diamond itself gave us.
+ * The selected asset for a multichain lending form, chosen out of the diamond's
+ * own registered sets swept across EVERY lending chain.
  *
- * The list arrives asynchronously and can legitimately be empty, so `asset` is
- * `LendingAsset | undefined` and every caller has to gate its submit on it. That
- * is the whole point of the change: the picker used to be a module-level
- * `borrowCurrencies(READ_ONLY_CHAIN_ID)` — ETH / USDC / USDT / kfUSD, derived from
- * which addresses EXIST in the deployment registry — and on all five deployed
- * chains that disagreed with what the diamond will accept. kfUSD was offered
- * everywhere and registered nowhere; the native asset was offered as a loan
- * currency everywhere and is loanable nowhere; the wrapped native is registered
- * collateral on all five and was offered on none. Each wrong option cost the user
- * gas to discover, because the facet fails closed on the same `s_priceFeeds`
- * mapping it gates registration on.
+ * The list arrives asynchronously and can legitimately be empty, so `selected` is
+ * `ChainLendingAsset | undefined` and every caller has to gate its submit on it.
+ * The picker used to be a module-level `borrowCurrencies(READ_ONLY_CHAIN_ID)` —
+ * ETH / USDC / USDT / kfUSD, derived from which addresses EXIST in the deployment
+ * registry — and on all five deployed chains that disagreed with what the diamond
+ * will accept. Now each option is a real registered asset tagged with the chain it
+ * lives on (see useLendingAssetsAcrossChains).
  *
- * `preferred` is a hint, not a guarantee — Arc's only loanable asset is WUSDC, so
- * asking for "USDC" there falls through to the first entry.
+ * Picking one is what chooses the FORM's chain: `select` sets `formChainId` to the
+ * asset's chain, and the shared useBorrowV2 re-reads that market's fees, holdings
+ * and health — the Aave-V3 model, one isolated market per chain, chosen by the
+ * asset rather than by switching the wallet first. Selection is keyed on
+ * (chainId, address); identity is a pair, and a bare symbol let a picker entry and
+ * a holding row disagree elsewhere in this file.
+ *
+ * The default, before any pick, prefers `preferred` on the CONNECTED chain so the
+ * form opens on the market the wallet is already on, needing no switch; failing
+ * that, any asset on the connected chain, then `preferred` anywhere, then the
+ * first option. `preferred` is a hint — Arc's only loanable asset is WUSDC, so
+ * asking for "USDC" there falls through.
  */
-function useAssetOptions(
-  options: LendingAsset[],
+function useCrossChainSelection(
+  options: ChainLendingAsset[],
+  setFormChainId: (id: number | undefined) => void,
   preferred = "USDC",
 ): {
-  asset: LendingAsset | undefined;
-  symbol: string;
-  setSymbol: (symbol: string) => void;
+  selected: ChainLendingAsset | undefined;
+  select: (asset: ChainLendingAsset) => void;
+  selectSymbolOnConnected: (symbol: string) => void;
 } {
-  const [wanted, setSymbol] = useState(preferred);
-  const asset = options.find((o) => o.symbol === wanted) ?? options[0];
-  return { asset, symbol: asset?.symbol ?? wanted, setSymbol };
+  const connected = useActiveWalletChain()?.id;
+  const [key, setKey] = useState<string | null>(null);
+  const keyOf = (a: ChainLendingAsset) => `${a.chainId}:${a.address.toLowerCase()}`;
+  const selected =
+    (key ? options.find((o) => keyOf(o) === key) : undefined) ??
+    options.find((o) => o.chainId === connected && o.symbol === preferred) ??
+    options.find((o) => o.chainId === connected) ??
+    options.find((o) => o.symbol === preferred) ??
+    options[0];
+  const select = (asset: ChainLendingAsset) => {
+    setKey(keyOf(asset));
+    setFormChainId(asset.chainId);
+  };
+  /* Deep-link openers (a Withdraw CTA) name a symbol, not a chain, and always
+     mean the connected chain's position — that is where the CTA's numbers came
+     from. So this pins to the connected chain and leaves formChainId alone. */
+  const selectSymbolOnConnected = (symbol: string) => {
+    const hit = options.find(
+      (o) => o.chainId === connected && o.symbol === symbol,
+    );
+    if (hit) setKey(keyOf(hit));
+  };
+  return { selected, select, selectSymbolOnConnected };
 }
 
 /**
@@ -138,8 +168,8 @@ function AssetState({
   options,
   what,
 }: {
-  state: BorrowV2["assets"];
-  options: LendingAsset[];
+  state: { loading: boolean; error: string | null };
+  options: ChainLendingAsset[];
   what: string;
 }) {
   if (state.loading)
@@ -179,19 +209,20 @@ function AssetSelectRow({
   selected,
   onPick,
 }: {
-  asset: LendingAsset;
+  asset: ChainLendingAsset;
   selected: boolean;
   onPick: () => void;
 }) {
-  /* Lifted to the token shape useTokenBalance reads, pinned to LENDING_CHAIN_ID
-     like BalanceRow — so the figure stays right while the wallet is still on the
-     wrong network and the form is saying so. */
+  /* Balance on the asset's OWN chain, not a fixed LENDING_CHAIN_ID: this picker
+     lists assets from every lending chain, and useTokenBalance resolves through
+     providerForChain(token.chainId), so the figure stays right for a chain the
+     wallet is not currently on. */
   const token: IToken = {
     address: asset.address,
     symbol: asset.symbol,
     name: asset.symbol,
     decimals: asset.decimals,
-    chainId: LENDING_CHAIN_ID,
+    chainId: asset.chainId,
     verified: true,
   };
   const { balance, loading, unread } = useTokenBalance(token);
@@ -199,6 +230,8 @@ function AssetSelectRow({
     loading || unread
       ? null
       : Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
+  const meta = getChainMeta(asset.chainId);
+  const chainName = meta?.shortName ?? meta?.name ?? `Chain ${asset.chainId}`;
   return (
     <button
       type="button"
@@ -210,7 +243,10 @@ function AssetSelectRow({
           <TokenIcon symbol={asset.symbol} size={24} variant="branded" />
         ) : null}
       </span>
-      <span className={s.asRowSym}>{asset.symbol}</span>
+      <span className={s.asRowSym}>
+        {asset.symbol}
+        <span className={s.asRowChain}>{chainName}</span>
+      </span>
       <span className={s.asRowBal}>
         {shown === null ? "" : shown}
         {selected ? <span className={s.asRowTick} aria-hidden="true">{"\u2713"}</span> : null}
@@ -220,18 +256,19 @@ function AssetSelectRow({
 }
 
 function CurrencyPicker({
-  value,
+  selected,
   options,
-  onChange,
+  onPick,
 }: {
-  value: string;
-  options: LendingAsset[];
-  onChange: (symbol: string) => void;
+  selected: ChainLendingAsset | undefined;
+  options: ChainLendingAsset[];
+  onPick: (asset: ChainLendingAsset) => void;
 }) {
   const [open, setOpen] = useState(false);
-  /* Selected by symbol to match the incoming value, falling back to the first
-     option so the trigger always names something once a list has arrived. */
-  const selected = options.find((o) => o.symbol === value) ?? options[0];
+  const meta = selected ? getChainMeta(selected.chainId) : undefined;
+  const chainName = selected
+    ? meta?.shortName ?? meta?.name ?? `Chain ${selected.chainId}`
+    : null;
 
   return (
     <>
@@ -251,7 +288,10 @@ function CurrencyPicker({
             <TokenIcon symbol={selected.symbol} size={20} variant="branded" />
           ) : null}
         </span>
-        <span className={s.asSelSym}>{selected?.symbol ?? "Select asset"}</span>
+        <span className={s.asSelSym}>
+          {selected?.symbol ?? "Select asset"}
+          {chainName ? <span className={s.asSelChain}>{chainName}</span> : null}
+        </span>
         <Chevron className={s.asSelChev} />
       </button>
 
@@ -282,11 +322,15 @@ function CurrencyPicker({
               <div className={s.asList}>
                 {options.map((o) => (
                   <AssetSelectRow
-                    key={o.address}
+                    key={`${o.chainId}:${o.address}`}
                     asset={o}
-                    selected={o.symbol === value}
+                    selected={
+                      !!selected &&
+                      o.chainId === selected.chainId &&
+                      o.address.toLowerCase() === selected.address.toLowerCase()
+                    }
                     onPick={() => {
-                      onChange(o.symbol);
+                      onPick(o);
                       setOpen(false);
                     }}
                   />
@@ -523,9 +567,14 @@ function BorrowerCostNote({ fees }: { fees: LendingFees }) {
  */
 function BalanceRow({
   asset,
+  chainId,
   onMax,
 }: {
   asset: LendingAsset | undefined;
+  /* The chain to read the balance on. A multichain form's asset carries its own
+     chain (ChainLendingAsset); a single-chain caller (TakeLoan) passes the
+     listing's. Falls back to LENDING_CHAIN_ID when neither is given. */
+  chainId?: number;
   onMax?: (amount: string) => void;
 }) {
   const token: IToken | null = asset
@@ -534,7 +583,7 @@ function BalanceRow({
         symbol: asset.symbol,
         name: asset.symbol,
         decimals: asset.decimals,
-        chainId: LENDING_CHAIN_ID,
+        chainId: chainId ?? LENDING_CHAIN_ID,
         verified: true,
       }
     : null;
@@ -577,14 +626,25 @@ export function PostOfferModal({
   const [max, setMax] = useState("");
   const [apr, setApr] = useState("");
   const [days, setDays] = useState(30);
-  /* Loanable, not collateral. An offer lends the asset out, and the two sets are
+  /* Loanable, across EVERY lending chain — picking one is what chooses this
+     form's chain (see useCrossChainSelection). Not collateral: the two sets are
      genuinely different — the native asset is registered collateral on all five
      chains and loanable on none, so offering it here would revert
      Protocol__TokenNotLoanable. */
-  const { loanable } = borrow.assets;
-  const { asset, symbol, setSymbol } = useAssetOptions(loanable);
+  const { assetsAcrossChains, formChainId, setFormChainId } = useLendingData();
+  const loanable = assetsAcrossChains.loanable;
+  const { selected: asset, select } = useCrossChainSelection(
+    loanable,
+    setFormChainId,
+  );
   const [busy, setBusy] = useState(false);
-  const gate = useLendingChain();
+  const gate = useLendingChain(formChainId);
+
+  /* The form's chain is shared provider state; drop it when the modal closes so
+     the next open starts on the connected chain. */
+  useEffect(() => {
+    if (!open) setFormChainId(undefined);
+  }, [open, setFormChainId]);
 
   const minN = Number(min);
   const maxN = Number(max);
@@ -637,14 +697,14 @@ export function PostOfferModal({
         </div>
         <div style={{ marginTop: 10 }}>
           <CurrencyPicker
-            value={symbol}
+            selected={asset}
             options={loanable}
-            onChange={setSymbol}
+            onPick={select}
           />
         </div>
-        <BalanceRow asset={asset} onMax={setAmount} />
+        <BalanceRow asset={asset} chainId={asset?.chainId} onMax={setAmount} />
         <AssetState
-          state={borrow.assets}
+          state={assetsAcrossChains}
           options={loanable}
           what="a loan currency"
         />
@@ -713,7 +773,7 @@ export function PostOfferModal({
           ? "Switching…"
           : busy
             ? "Posting…"
-            : borrow.assets.loading
+            : assetsAcrossChains.loading
               ? "Reading assets…"
               : !asset
                 ? "No loan currency available"
@@ -750,12 +810,25 @@ export function PostRequestModal({
   const [amount, setAmount] = useState("");
   const [apr, setApr] = useState("");
   const [days, setDays] = useState(30);
-  /* Loanable: a request asks to borrow the asset, and the facet rejects one
-     denominated in anything it has not marked `s_isLoanable`. */
-  const { loanable } = borrow.assets;
-  const { asset, symbol, setSymbol } = useAssetOptions(loanable);
+  /* Loanable, across every lending chain — picking one chooses this form's
+     chain (see useCrossChainSelection). A request asks to borrow the asset, and
+     the facet rejects one denominated in anything it has not marked
+     `s_isLoanable`. */
+  const { assetsAcrossChains, formChainId, setFormChainId } = useLendingData();
+  const loanable = assetsAcrossChains.loanable;
+  const { selected: asset, select } = useCrossChainSelection(
+    loanable,
+    setFormChainId,
+  );
+  const symbol = asset?.symbol ?? "";
   const [busy, setBusy] = useState(false);
-  const gate = useLendingChain();
+  /* Kept two-step, not folded: the collateral gate below depends on the target
+     chain, so the switch has to land BEFORE the check runs (see #95). */
+  const gate = useLendingChain(formChainId);
+
+  useEffect(() => {
+    if (!open) setFormChainId(undefined);
+  }, [open, setFormChainId]);
 
   /*
    * The facet will not lend you a token you have posted as collateral:
@@ -828,17 +901,17 @@ export function PostRequestModal({
         </div>
         <div style={{ marginTop: 10 }}>
           <CurrencyPicker
-            value={symbol}
+            selected={asset}
             options={loanable}
-            onChange={setSymbol}
+            onPick={select}
           />
         </div>
         <AssetState
-          state={borrow.assets}
+          state={assetsAcrossChains}
           options={loanable}
           what="borrowable"
         />
-        <BalanceRow asset={asset} />
+        <BalanceRow asset={asset} chainId={asset?.chainId} />
         {collateralBlocked && (
           <div className={s.warn}>
             You have {symbol} deposited as collateral, so the protocol
@@ -919,7 +992,7 @@ export function PostRequestModal({
             ? `Switch to ${gate.target}`
             : busy
               ? "Posting…"
-              : borrow.assets.loading
+              : assetsAcrossChains.loading
                 ? "Reading assets…"
                 : !asset
                   ? "Nothing borrowable here"
@@ -1076,7 +1149,7 @@ export function TakeLoanModal({
         <div className={s.hint}>
           This offer allows {fmt(listing.min)} – {fmt(listing.max)} {symbol}.
         </div>
-        <BalanceRow asset={listing.asset} />
+        <BalanceRow asset={listing.asset} chainId={listing.chainId} />
       </div>
 
       {tooLow && (
@@ -1181,26 +1254,35 @@ export function CollateralModal({
 }) {
   const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
-  /* Collateral, not loanable. This is the set the offered list was most wrong
-     about: the wrapped native (WETH9 / WBNB / WUSDC) is registered collateral on
-     all five chains and had no option here at all, so a user who deposited it
-     could not withdraw it from this surface, while kfUSD — registered nowhere —
-     was offered on every one. */
-  const { collateral: depositable } = borrow.assets;
-  const { asset, symbol, setSymbol } = useAssetOptions(depositable);
+  /* Collateral, across every lending chain — picking one chooses this form's
+     chain (see useCrossChainSelection). This is the set the offered list was most
+     wrong about: the wrapped native (WETH9 / WBNB / WUSDC) is registered
+     collateral on all five chains and had no option here at all, while kfUSD —
+     registered nowhere — was offered on every one. */
+  const { assetsAcrossChains, formChainId, setFormChainId } = useLendingData();
+  const depositable = assetsAcrossChains.collateral;
+  const { selected: asset, select, selectSymbolOnConnected } =
+    useCrossChainSelection(depositable, setFormChainId);
+  const symbol = asset?.symbol ?? "";
 
-  /* Land where the CTA that opened this asked — Withdraw on the blocked
-     token, Deposit for an empty position. Keyed on `intent` identity (each
-     opener makes a fresh object) so a fresh open re-applies it while a manual
-     switch inside the modal is left alone. */
+  /* Land where the CTA that opened this asked — Withdraw on the blocked token,
+     Deposit for an empty position. A deep-link names a symbol on the connected
+     chain (where the CTA's numbers came from), not another chain. Keyed on
+     `intent` identity (each opener makes a fresh object) so a fresh open
+     re-applies it while a manual switch inside the modal is left alone; a close
+     drops the form chain so the next open starts on the connected chain. */
   useEffect(() => {
-    if (!open || !intent) return;
+    if (!open) {
+      setFormChainId(undefined);
+      return;
+    }
+    if (!intent) return;
     setMode(intent.mode);
-    if (intent.symbol) setSymbol(intent.symbol);
+    if (intent.symbol) selectSymbolOnConnected(intent.symbol);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, intent]);
   const [busy, setBusy] = useState(false);
-  const gate = useLendingChain();
+  const gate = useLendingChain(formChainId);
 
   /* Matched on address. The holdings come from the same diamond list the picker
      does, so the addresses are identical strings today — but symbol matching is
@@ -1266,13 +1348,13 @@ export function CollateralModal({
         </div>
         <div style={{ marginTop: 10 }}>
           <CurrencyPicker
-            value={symbol}
+            selected={asset}
             options={depositable}
-            onChange={setSymbol}
+            onPick={select}
           />
         </div>
         <AssetState
-          state={borrow.assets}
+          state={assetsAcrossChains}
           options={depositable}
           what="collateral"
         />
@@ -1286,7 +1368,9 @@ export function CollateralModal({
             Until now this box showed "Deposited" in BOTH modes and nothing
             else, so the deposit tab named the one number that has no bearing
             on how much you can deposit. */}
-        {mode === "deposit" && <BalanceRow asset={asset} onMax={setAmount} />}
+        {mode === "deposit" && (
+          <BalanceRow asset={asset} chainId={asset?.chainId} onMax={setAmount} />
+        )}
         <div className={s.balRow}>
           <span>
             Deposited:{" "}
@@ -1340,7 +1424,7 @@ export function CollateralModal({
             ? mode === "deposit"
               ? "Depositing…"
               : "Withdrawing…"
-            : borrow.assets.loading
+            : assetsAcrossChains.loading
               ? "Reading assets…"
               : !asset
                 ? "No collateral asset available"

@@ -33,12 +33,13 @@ export interface LendingFees extends LendingFeeRates {
   refresh: () => void;
 }
 
-export function useLendingFees(): LendingFees {
-  /* Per the connected chain: fees are charged by the diamond the action runs
-     against, so a fee shown next to a post must be that chain's. Multi-chain —
+export function useLendingFees(targetChainId?: number): LendingFees {
+  /* Per the action's chain: fees are charged by the diamond the action runs
+     against, so a fee shown next to a post must be that chain's. `targetChainId`
+     is the multichain form's chain; else the connected chain. Multi-chain —
      was pinned to LENDING_CHAIN_ID. */
   const activeChain = useActiveWalletChain();
-  const readChain = activeChain?.id ?? READ_ONLY_CHAIN_ID;
+  const readChain = targetChainId ?? activeChain?.id ?? READ_ONLY_CHAIN_ID;
   const readProvider = providerForChain(readChain) ?? readOnlyProvider;
 
   const [rates, setRates] = useState<LendingFeeRates>({
