@@ -60,16 +60,17 @@ export interface LendingAssets {
  */
 const MOCK_ASSETS: LendingAsset[] = MOCK_LENDING_ASSETS;
 
-export function useLendingAssets(): LendingAssets {
+export function useLendingAssets(targetChainId?: number): LendingAssets {
   const account = useActiveAccount();
   const address = account?.address;
 
-  /* The connected chain: the asset pickers post on the chain the wallet is on,
-     so they must offer what THAT chain's diamond registers, and show holdings
-     there. Falls back to the read chain when disconnected, for a browse view.
+  /* The chain to read against. `targetChainId` is the multichain form's own
+     chain (the picked asset's chain), read read-only so a user can browse and
+     post on any chain without switching first. Absent, it falls back to the
+     wallet's chain, and to the read chain when disconnected — a browse view.
      Lending went multi-chain — this used to be pinned to LENDING_CHAIN_ID. */
   const activeChain = useActiveWalletChain();
-  const readChain = activeChain?.id ?? READ_ONLY_CHAIN_ID;
+  const readChain = targetChainId ?? activeChain?.id ?? READ_ONLY_CHAIN_ID;
   const readProvider = providerForChain(readChain) ?? readOnlyProvider;
 
   const [sets, setSets] = useState<{

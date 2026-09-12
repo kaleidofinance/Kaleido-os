@@ -159,7 +159,14 @@ export interface TakeLoanParams {
   onSuccess?: () => void;
 }
 
-export const useBorrowV2 = (): BorrowV2 => {
+/**
+ * `formChainId` is the chain a multichain lending form is acting ON, when it has
+ * decoupled from the wallet (B): the asset picker chooses a chain, and the assets,
+ * balances, position and fees below are read there read-only, with the switch
+ * folded in at signing. Omitted, everything follows the wallet's chain as before,
+ * so the existing single-chain callers are unchanged.
+ */
+export const useBorrowV2 = (formChainId?: number): BorrowV2 => {
   const activeChain = useActiveWalletChain();
   const createListing = useCreateLoanListing();
   const createRequest = useCreateLendingRequest();
@@ -178,13 +185,13 @@ export const useBorrowV2 = (): BorrowV2 => {
     loading: assetsLoading,
     error: assetsError,
     refresh: refreshAssets,
-  } = useLendingAssets();
+  } = useLendingAssets(formChainId);
   const {
     data2,
     collateralVal,
     refresh: refreshHealth,
-  } = useGetValueAndHealth();
-  const fees = useLendingFees();
+  } = useGetValueAndHealth(formChainId);
+  const fees = useLendingFees(formChainId);
 
   /**
    * Refuse an action whose wallet chain has no lending deployment.

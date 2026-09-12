@@ -122,7 +122,7 @@ const USD_SCALE = 1e18;
  * LENDING reads stay pinned because lending is single-chain by schema.
  */
 
-const useGetValueAndHealth = () => {
+const useGetValueAndHealth = (targetChainId?: number) => {
   const [isClient, setIsClient] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [data, setData] = useAtom(dataAtom);
@@ -145,10 +145,11 @@ const useGetValueAndHealth = () => {
   const activeChain = useActiveWalletChain();
   const chainId = activeChain?.id;
 
-  /* The chain "Your position" reads. The wallet's when connected — collateral
-     and health are per-deployment, so the figures follow where you are acting —
-     falling back to the read chain when disconnected, for a browsable default. */
-  const readChain = chainId ?? READ_ONLY_CHAIN_ID;
+  /* The chain "Your position" reads. `targetChainId` is the multichain form's
+     chain, so collateral and health reflect where you are about to act; else the
+     wallet's when connected — the figures are per-deployment — falling back to
+     the read chain when disconnected, for a browsable default. */
+  const readChain = targetChainId ?? chainId ?? READ_ONLY_CHAIN_ID;
   const readProvider = providerForChain(readChain) ?? readOnlyProvider;
   const LENDING = getContracts(readChain);
 
