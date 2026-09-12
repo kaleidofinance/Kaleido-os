@@ -8,12 +8,14 @@ import TxHistory from "@/components/v2/TxHistory";
 import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import { chainTokens } from "@/constants/tokens";
+import { getContracts } from "@/constants/registry";
+import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
-import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { makeBatchingQuoter } from "@/lib/dex/batchQuoter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
-import { useConnectModal } from "thirdweb/react";
+import { useConnectModal, useSwitchActiveWalletChain } from "thirdweb/react";
+import { defineChain } from "thirdweb/chains";
 import { client } from "@/config/client";
 import { WALLETS } from "@/config/wallets";
 import type { Intent } from "@/lib/v2/intents";
@@ -172,12 +174,34 @@ export default function SwapPage() {
    * the picker that do not exist on the chain you are on, which is the exact
    * ABSTRACT_TOKENS failure this module was rewritten to end.
    */
-  const available = useMemo(
-    () => chainTokens(chainId ?? PREVIEW_CHAIN_ID),
-    [chainId],
-  );
   const [tokenIn, setTokenIn] = useState<IToken | null>(null);
   const [tokenOut, setTokenOut] = useState<IToken | null>(null);
+  /* The chain the swap is ON, derived from the tokens rather than the wallet:
+     any chain's tokens can be priced and picked with the wallet parked
+     elsewhere, and the wallet only moves when you sign (the Switch CTA). Picking
+     a token on a new chain clears the other side (onSelect below), so both ends
+     always share a chain and this is unambiguous. */
+  const swapChainId =
+    tokenIn?.chainId ?? tokenOut?.chainId ?? chainId ?? PREVIEW_CHAIN_ID;
+  const available = useMemo(() => chainTokens(swapChainId), [swapChainId]);
+  const v3Router = getContracts(swapChainId).v3Router;
+  /* The wallet is not on the swap's chain. A read-only quote is fine; a
+     signature is not, so execution waits behind a one-click switch. */
+  const wrongChain = isConnected && chainId != null && chainId !== swapChainId;
+  const switchWalletChain = useSwitchActiveWalletChain();
+  const [switching, setSwitching] = useState(false);
+  const goToSwapChain = async () => {
+    const meta = getChainMeta(swapChainId);
+    if (!meta) return;
+    setSwitching(true);
+    try {
+      await switchWalletChain(defineChain(toThirdwebChainOptions(meta)));
+    } catch {
+      /* Declined or failed — stay put; the CTA still reads Switch. */
+    } finally {
+      setSwitching(false);
+    }
+  };
   const [amountIn, setAmountIn] = useState("500");
   const [amountOut, setAmountOut] = useState("");
   const [quoting, setQuoting] = useState(false);
@@ -322,7 +346,6 @@ export default function SwapPage() {
     loading: balanceOutLoading,
     unread: balanceOutUnread,
   } = useTokenBalance(tokenOut);
-  const { V3_ROUTER_ADDRESS: v3Router } = useV3SwapRouter();
 
   /**
    * The route the quote came from, or null when the pair could not be priced.
@@ -352,12 +375,12 @@ export default function SwapPage() {
    * previous chain's WETH in the quote.
    */
   const sell = useMemo(
-    () => (tokenIn ? poolSide(chainId, tokenIn) : null),
-    [chainId, tokenIn],
+    () => (tokenIn ? poolSide(swapChainId, tokenIn) : null),
+    [swapChainId, tokenIn],
   );
   const buy = useMemo(
-    () => (tokenOut ? poolSide(chainId, tokenOut) : null),
-    [chainId, tokenOut],
+    () => (tokenOut ? poolSide(swapChainId, tokenOut) : null),
+    [swapChainId, tokenOut],
   );
 
   /* ETH and WETH are one asset held two ways, so in pool form both sides
@@ -398,18 +421,18 @@ export default function SwapPage() {
            on Robinhood) — see findRouteAcrossSources. Each venue prices through
            the same batching quoter, bound to its own QuoterV2 address. */
         const found = await findRouteAcrossSources(
-          chainId,
+          swapChainId,
           sell.token,
           buy.token,
           amountIn,
           [
             {
-              quote: makeBatchingQuoter(chainId),
+              quote: makeBatchingQuoter(swapChainId),
               router: v3Router,
               venue: null,
             },
-            ...fallbackVenues(chainId).map((venue) => ({
-              quote: makeBatchingQuoter(chainId, venue.quoter),
+            ...fallbackVenues(swapChainId).map((venue) => ({
+              quote: makeBatchingQuoter(swapChainId, venue.quoter),
               router: venue.router,
               venue,
             })),
@@ -444,7 +467,7 @@ export default function SwapPage() {
     sell,
     buy,
     samePoolSide,
-    chainId,
+    swapChainId,
     v3Router,
   ]);
 
@@ -644,7 +667,11 @@ export default function SwapPage() {
                 ? "Fetching quote…"
                 : noRoute
                   ? `No route for ${tokenIn.symbol} → ${tokenOut.symbol}`
-                  : "Review swap";
+                  : switching
+                    ? "Switching…"
+                    : wrongChain
+                      ? `Switch to ${getChainMeta(swapChainId)?.shortName ?? "network"}`
+                      : "Review swap";
 
   const ctaDisabled =
     !isConnected ||
@@ -654,6 +681,7 @@ export default function SwapPage() {
     parseFloat(amountIn) <= 0 ||
     insufficientBalance ||
     quoting ||
+    switching ||
     !amountOut;
 
   /*
@@ -785,7 +813,13 @@ export default function SwapPage() {
         <button
           className={s.cta}
           disabled={isConnected && ctaDisabled}
-          onClick={isConnected ? () => setReviewing(true) : openConnect}
+          onClick={
+            !isConnected
+              ? openConnect
+              : wrongChain
+                ? goToSwapChain
+                : () => setReviewing(true)
+          }
         >
           {ctaLabel}
         </button>
@@ -838,9 +872,20 @@ export default function SwapPage() {
         /* The whole other-side token, so the picker excludes it by
            (chainId, address) rather than by symbol. */
         exclude={pickerFor === "in" ? tokenOut : tokenIn}
+        /* Lazy: the picker prices any chain read-only and does not move the
+           wallet — the swap switches only at signing. */
+        switchOnSelect={false}
         onSelect={(t) => {
-          if (pickerFor === "in") setTokenIn(t);
-          else setTokenOut(t);
+          if (pickerFor === "in") {
+            setTokenIn(t);
+            /* A token on a new chain moves the whole card there — clear the
+               other side so the seeding effect refills it on the picked chain,
+               the way Uniswap follows the last pick's network. */
+            if (tokenOut && tokenOut.chainId !== t.chainId) setTokenOut(null);
+          } else {
+            setTokenOut(t);
+            if (tokenIn && tokenIn.chainId !== t.chainId) setTokenIn(null);
+          }
           setPickerFor(null);
         }}
       />
