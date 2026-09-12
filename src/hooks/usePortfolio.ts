@@ -23,6 +23,7 @@ import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { convertbasisPointsToPercentage } from "@/constants/utils/FormatInterestRate";
 import { decimalsForAddress, symbolForAddress } from "@/constants/tokens";
 import { MOCK_DATA, MOCK_PORTFOLIO } from "@/lib/mock";
+import { isDeployed } from "@/constants/registry";
 
 /**
  * usePortfolio — the unified view of everything an address holds.
@@ -267,6 +268,12 @@ const toneForHealth = (health: number | null): StateTone => {
 
 export const usePortfolio = (): Portfolio => {
   const { address, chainId: walletChainId } = useWalletV2();
+  /* Our Diamond's home chains only. Where it is not deployed (every mainnet
+     today), the Wallet group still reads — balances come from the connected
+     chain — so the page renders and shows holdings; the four protocol sections
+     below blank until a deployment lands here, rather than gating the whole
+     page or leaking a read-chain position onto a chain the user is not on. */
+  const deployedHere = isDeployed(walletChainId);
 
   /*
    * Two resolvers, and keeping them apart is a fix rather than a flourish.
@@ -399,11 +406,11 @@ export const usePortfolio = (): Portfolio => {
     };
   }, [address, activeReq]);
 
-  const debtUsd = debt.total;
+  const debtUsd = deployedHere ? debt.total : null;
 
   // --- Health -----------------------------------------------------------
   const health = useMemo<number | null>(() => {
-    if (!address) return null;
+    if (!address || !deployedHere) return null;
     // No open requests means nothing can be liquidated.
     if (Array.isArray(data) && data.length === 0) return Infinity;
     if (data2 === undefined || data2 === null) return null;
@@ -416,10 +423,10 @@ export const usePortfolio = (): Portfolio => {
     if (data2 === Infinity) return Infinity;
     const h = Number(data2) * HEALTH_SCALE;
     return Number.isFinite(h) ? h : null;
-  }, [address, data, data2]);
+  }, [address, deployedHere, data, data2]);
 
   const collateralUsd = useMemo<number | null>(() => {
-    if (!address) return null;
+    if (!address || !deployedHere) return null;
     /*
      * `Number(null)` is 0, not NaN, so the Number.isFinite test below passed for
      * an unread atom and published $0.00 as though it had been measured — both
@@ -436,12 +443,12 @@ export const usePortfolio = (): Portfolio => {
     }
     const v = Number(collateralVal);
     return Number.isFinite(v) ? v : null;
-  }, [address, collateralVal]);
+  }, [address, deployedHere, collateralVal]);
 
   const unclaimedYieldUsd = useMemo<number | null>(() => {
-    if (!address) return null;
+    if (!address || !deployedHere) return null;
     return parseUsdString(userRewards?.totalRewards);
-  }, [address, userRewards]);
+  }, [address, deployedHere, userRewards]);
 
   // --- Wallet -----------------------------------------------------------
   const walletGroup = useMemo<PositionGroup>(() => {
@@ -891,15 +898,20 @@ export const usePortfolio = (): Portfolio => {
 
   const groups = useMemo<PositionGroup[]>(() => {
     if (!address) return [];
-    return [
-      walletGroup,
-      lendingGroup,
-      borrowingGroup,
-      stableGroup,
-      stakingGroup,
-    ];
+    /* The four protocol groups have no Diamond to read where it is not deployed.
+       They are still returned so their sections stay visible, but blanked —
+       empty rows, zero subtotal — so nothing from a read-chain leaks onto a
+       chain the wallet is not on, and each fills in the moment a deployment
+       lands here (no code or copy change at deploy time). Wallet is untouched:
+       it reads the connected chain and is real on any network. */
+    const protocol = [lendingGroup, borrowingGroup, stableGroup, stakingGroup];
+    const shown = deployedHere
+      ? protocol
+      : protocol.map((g) => ({ ...g, rows: [], subtotalUsd: 0, unpriced: [] }));
+    return [walletGroup, ...shown];
   }, [
     address,
+    deployedHere,
     walletGroup,
     lendingGroup,
     borrowingGroup,
@@ -933,7 +945,11 @@ export const usePortfolio = (): Portfolio => {
 
   // --- Attention --------------------------------------------------------
   const alerts = useMemo<Alert[]>(() => {
-    if (!address) return [];
+    /* Every alert below is protocol-derived (health, overdue loans, idle
+       offers, out-of-range LPs, claimable yield). None applies where the
+       Diamond is not deployed, and some read the un-blanked read-chain groups,
+       so the whole list is empty there rather than leaking a read-chain alert. */
+    if (!address || !deployedHere) return [];
     const out: Alert[] = [];
 
     if (health !== null && Number.isFinite(health) && health < HEALTH_WARN) {
@@ -1029,6 +1045,7 @@ export const usePortfolio = (): Portfolio => {
     return out.sort((a, b) => order[a.severity] - order[b.severity]);
   }, [
     address,
+    deployedHere,
     health,
     borrowingGroup,
     lendingGroup,
@@ -1046,14 +1063,21 @@ export const usePortfolio = (): Portfolio => {
     unclaimedYieldUsd,
     groups,
     alerts,
+    /* Off a deployment, only the Wallet group renders, so only its own reads
+       gate the spinner — the protocol loaders never resolve there (nothing to
+       read), and `debtUsd` is forced null, which would otherwise pin this true
+       forever and leave the Wallet group skeletoned on a chain where it has real
+       balances to show. */
     isLoading:
       Boolean(address) &&
-      (stableLoading ||
-        v3Loading ||
-        lenderLoading ||
-        walletLoading ||
-        pricesLoading ||
-        debtUsd === null),
+      (deployedHere
+        ? stableLoading ||
+          v3Loading ||
+          lenderLoading ||
+          walletLoading ||
+          pricesLoading ||
+          debtUsd === null
+        : walletLoading || pricesLoading),
     /*
      * Demo mode: the whole aggregate at once, rather than per-input.
      *

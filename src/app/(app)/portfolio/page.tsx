@@ -296,10 +296,16 @@ export default function PortfolioPage() {
 
         {/* The header stays above the gate on purpose — the address and network
             are the two facts that explain *why* the gate is showing, so hiding
-            them behind it would remove the evidence. Everything below reads
-            positions, so all of it is gated together rather than left as four
-            dashes and two empty tables. */}
-        {!gate.ready ? (
+            them behind it would remove the evidence.
+
+            Only "disconnected" and "unknown-chain" gate the whole page — with no
+            wallet, or a chain we do not carry, there is genuinely nothing to
+            attribute rows to. An UNDEPLOYED chain is different: the Wallet group
+            reads the connected chain and is real there (your holdings on
+            Robinhood mainnet, say), so the page renders and shows it, and the
+            protocol sections come back blanked from usePortfolio until a
+            deployment lands on that chain. */}
+        {!gate.ready && gate.reason !== "undeployed" ? (
           <ChainGate product="portfolio" state={gate} />
         ) : (
           <>
