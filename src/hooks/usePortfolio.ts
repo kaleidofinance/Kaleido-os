@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ethers } from "ethers";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 
-import useGetValueAndHealth from "@/hooks/useGetValueAndHealth";
 import { useStakingData } from "@/hooks/v2/useStakingData";
-import useGetActiveRequest from "@/hooks/useGetActiveRequest";
 import { useLenderPositionsAcrossChains } from "@/hooks/useLenderPositionsAcrossChains";
+import { useBorrowPositionsAcrossChains } from "@/hooks/useBorrowPositionsAcrossChains";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
 import { useStablecoin } from "@/hooks/useStablecoin";
 import { useWalletBalancesAcrossChains } from "@/hooks/useWalletBalancesAcrossChains";
@@ -19,12 +18,9 @@ import { feeAmountToNumber } from "@/lib/dex/feeGrowth";
    same function so the demo amounts look like the live ones. It lives in a leaf
    module because importing it *from here* closed a cycle — see its own note. */
 import { shortAmount } from "@/lib/format/figures";
-import { getKaleidoContract } from "@/config/contracts";
-import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { convertbasisPointsToPercentage } from "@/constants/utils/FormatInterestRate";
 import { decimalsForAddress, symbolForAddress } from "@/constants/tokens";
 import { MOCK_DATA, MOCK_PORTFOLIO } from "@/lib/mock";
-import { isDeployed } from "@/constants/registry";
 
 /**
  * usePortfolio — the unified view of everything an address holds.
@@ -185,20 +181,6 @@ export interface Portfolio {
 const HEALTH_WARN = 1.25;
 const HEALTH_CRITICAL = 1.1;
 
-/** Contract health factors are 1e18-scaled, per the dashboard's own maths. */
-const HEALTH_SCALE = 1e-18;
-
-/**
- * getUsdValue returns USD at 18 decimals.
- *
- * This was 1e16, which was correct against the old contract: getUsdValue
- * inverted the Pyth exponent conversion, so its output carried 10**(-2*expo)
- * — 1e16 for the -8 feeds in use. ProtocolFacet._priceScaled18 now normalises to
- * a fixed 18-decimal scale whatever the feed's exponent, so the divisor is 1e18
- * and no longer silently wrong for a feed that isn't -8.
- */
-const USD_SCALE = 1e18;
-
 /**
  * Tokens the Wallet group does not list, because another group owns them.
  *
@@ -269,49 +251,25 @@ const toneForHealth = (health: number | null): StateTone => {
 
 export const usePortfolio = (): Portfolio => {
   const { address, chainId: walletChainId } = useWalletV2();
-  /* Our Diamond's home chains only. Where it is not deployed (every mainnet
-     today), the Wallet group still reads — balances come from the connected
-     chain — so the page renders and shows holdings; the four protocol sections
-     below blank until a deployment lands here, rather than gating the whole
-     page or leaking a read-chain position onto a chain the user is not on. */
-  const deployedHere = isDeployed(walletChainId);
 
   /*
-   * Two resolvers, and keeping them apart is a fix rather than a flourish.
-   *
-   * A token address means nothing without the chain it lives on, and this hook
-   * reads two different chains: `useGetValueAndHealth`, `useGetActiveRequest` and
-   * `useLenderPositions` all describe READ_ONLY_CHAIN_ID, while
-   * `useWalletBalances` and `useV3Positions` describe whichever chain the wallet
-   * is on. A single `symbolFor(chainId)` bound to the wallet's chain — which is
-   * what this hook used to have — rendered every debt row as `0x1234…abcd` for
-   * anyone connected to a chain other than the read chain, because it was
-   * resolving read-chain addresses against the wrong table.
+   * A token address means nothing without the chain it lives on. Every group
+   * that reads across chains (Wallet, Lending, Borrowing) resolves each row's
+   * symbol against that row's OWN chain (symbolForAddress(row.chainId, …)); the
+   * V3 group is the connected chain's, so it keeps a wallet-chain resolver.
    */
-  const protocolSymbol = (a: string | undefined) =>
-    symbolForAddress(READ_ONLY_CHAIN_ID, a);
-  const protocolDecimals = (a: string | undefined) =>
-    decimalsForAddress(READ_ONLY_CHAIN_ID, a);
   const walletSymbol = (a: string | undefined) =>
     symbolForAddress(walletChainId, a);
 
-  const {
-    data,
-    data2,
-    collateralVal,
-    AVA,
-    AVA2,
-    AVA4,
-    AVA5,
-  } = useGetValueAndHealth();
-  /* Staking is read chain-aware, NOT through useGetValueAndHealth — that hook
-     pins its staking reads to READ_ONLY_CHAIN_ID (Sepolia), so a wallet on any
-     other chain showed a Sepolia staking row here, the same bug /stake had.
-     useStakingData follows the wallet, and hands back the pooled÷shares index
-     ready-made. */
+  /* Borrowing across every lending chain — collateral, debt and a per-chain
+     health factor. Replaces useGetValueAndHealth + useGetActiveRequest (both
+     pinned to one read-chain); the scaling behind it is unit-tested in
+     lib/lending/positions.test.ts. */
+  const { chains: borrowChains, loading: borrowLoading } =
+    useBorrowPositionsAcrossChains();
+  /* Staking follows the wallet's chain (useStakingData), not a pinned read
+     chain. */
   const { stakedBalance, yieldIndex } = useStakingData();
-
-  const { requests: activeReq } = useGetActiveRequest();
   const {
     balances,
     userRewards,
@@ -341,115 +299,50 @@ export const usePortfolio = (): Portfolio => {
    * it: pricing the rows from spot instead would leave a column that does not add
    * up to its own total.
    */
-  const [debt, setDebt] = useState<{
-    byId: Record<string, number>;
-    total: number | null;
-  }>({ byId: {}, total: null });
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const priceDebt = async () => {
-      if (!address) {
-        setDebt({ byId: {}, total: null });
-        return;
-      }
-
-      const open =
-        activeReq?.filter((req) => Number(req.totalRepayment) > 0) ?? [];
-      if (!open.length) {
-        setDebt({ byId: {}, total: 0 });
-        return;
-      }
-
-      try {
-        const contract = getKaleidoContract(
-          readOnlyProvider,
-          READ_ONLY_CHAIN_ID,
-        );
-        const priced = await Promise.all(
-          open.map(async (req, i) => {
-            const unitUsd = await contract.getUsdValue(req.tokenAddress, 1, 0);
-            /*
-             * `totalRepayment` is ALREADY decimal-adjusted here.
-             *
-             * This producer is useGetActiveRequest, which runs the contract's
-             * raw value through formatUnits itself (:44) — unlike /api/requests,
-             * which serves base units as text. Formatting it a second time threw
-             * `invalid BigNumberish string: Cannot convert 3.7135 to a BigInt`,
-             * so Promise.all rejected, the catch below set the total to null, and
-             * because a null total feeds `isLoading`, /portfolio spun forever for
-             * anyone holding a loan.
-             */
-            const owed = Number(req.totalRepayment);
-            const usd = Number.isFinite(owed)
-              ? (Number(unitUsd) * owed) / USD_SCALE
-              : 0;
-            return [String(req.requestId ?? i), usd] as const;
-          }),
-        );
-        if (cancelled) return;
-        const byId: Record<string, number> = {};
-        let total = 0;
-        for (const [id, usd] of priced) {
-          byId[id] = usd;
-          total += usd;
-        }
-        setDebt({ byId, total });
-      } catch {
-        if (!cancelled) setDebt({ byId: {}, total: null });
-      }
-    };
-
-    priceDebt();
-    return () => {
-      cancelled = true;
-    };
-  }, [address, activeReq]);
-
-  const debtUsd = deployedHere ? debt.total : null;
+  /* Summed across every chain. Null only when a chain's debt could not be
+     priced — a present-but-unpriced loan makes the total unknown, not short. */
+  const debtUsd = useMemo<number | null>(() => {
+    if (!address) return null;
+    let total = 0;
+    for (const c of borrowChains) {
+      if (c.debtUsd === null) return null;
+      total += c.debtUsd;
+    }
+    return total;
+  }, [address, borrowChains]);
 
   // --- Health -----------------------------------------------------------
+  /* The WORST (lowest) health across chains — markets are isolated, so the
+     summary surfaces the position closest to liquidation and per-chain health
+     shows on each Borrowing row. A chain with no debt reads Infinity and never
+     lowers it; if every chain is no-debt the summary is Infinity, and if none
+     could be read it is null. */
   const health = useMemo<number | null>(() => {
-    if (!address || !deployedHere) return null;
-    // No open requests means nothing can be liquidated.
-    if (Array.isArray(data) && data.length === 0) return Infinity;
-    if (data2 === undefined || data2 === null) return null;
-    /* Infinity is the contract's "no debt" sentinel, already recognised on the
-       bigint by useGetValueAndHealth — pass it through rather than letting the
-       finiteness guard below turn it into "—". It reaches here for a wallet that
-       holds collateral but has borrowed nothing: `data` is non-empty, so the
-       short-circuit above does not catch that case, and before the sentinel was
-       handled at all this line rendered 1.157920892373162e+59 — 2^256 / 1e18. */
-    if (data2 === Infinity) return Infinity;
-    const h = Number(data2) * HEALTH_SCALE;
-    return Number.isFinite(h) ? h : null;
-  }, [address, deployedHere, data, data2]);
+    if (!address) return null;
+    let worst = Infinity;
+    let sawAny = false;
+    for (const c of borrowChains) {
+      if (c.health === null) continue;
+      sawAny = true;
+      if (c.health < worst) worst = c.health;
+    }
+    return sawAny ? worst : null;
+  }, [address, borrowChains]);
 
   const collateralUsd = useMemo<number | null>(() => {
-    if (!address || !deployedHere) return null;
-    /*
-     * `Number(null)` is 0, not NaN, so the Number.isFinite test below passed for
-     * an unread atom and published $0.00 as though it had been measured — both
-     * before the first read completes (collateralValAtom starts null) and
-     * whenever useGetValueAndHealth declines to publish a partial total. An
-     * empty string has the same problem: Number("") is 0.
-     */
-    if (
-      collateralVal === null ||
-      collateralVal === undefined ||
-      collateralVal === ""
-    ) {
-      return null;
+    if (!address) return null;
+    let total = 0;
+    for (const c of borrowChains) {
+      if (c.collateralUsd === null) return null;
+      total += c.collateralUsd;
     }
-    const v = Number(collateralVal);
-    return Number.isFinite(v) ? v : null;
-  }, [address, deployedHere, collateralVal]);
+    return total;
+  }, [address, borrowChains]);
 
   const unclaimedYieldUsd = useMemo<number | null>(() => {
-    if (!address || !deployedHere) return null;
+    if (!address) return null;
     return parseUsdString(userRewards?.totalRewards);
-  }, [address, deployedHere, userRewards]);
+  }, [address, userRewards]);
 
   // --- Wallet -----------------------------------------------------------
   const walletGroup = useMemo<PositionGroup>(() => {
@@ -567,89 +460,69 @@ export const usePortfolio = (): Portfolio => {
 
   // --- Borrowing --------------------------------------------------------
   const borrowingGroup = useMemo<PositionGroup>(() => {
-    // USDR is absent, deliberately: it has no deployment on any live chain, so
-    // useGetValueAndHealth no longer reads it and the AVA3 atom it fed is gone.
-    // The row was unreachable anyway — the filter below drops anything at zero.
-    const collateralTokens: Array<[string, unknown]> = [
-      ["ETH", AVA],
-      ["USDC", AVA2],
-      ["kfUSD", AVA4],
-      ["USDT", AVA5],
-    ];
+    const rows: Position[] = [];
 
-    const rows: Position[] = collateralTokens
-      .filter(([, amount]) => Number(amount) > 0)
-      .map(([symbol, amount]) => ({
-        id: `collateral-${symbol}`,
-        kind: "collateral" as const,
-        label: symbol,
-        sublabel: "Collateral",
-        amount: String(amount),
-        /* Per-token USD is not exposed by the contract — only the aggregate
-           (`collateralVal`) is, and that aggregate is what the group's subtotal
-           uses. Pricing these rows from spot instead would produce a column
-           whose sum contradicts both the strip above it and the health factor
-           the protocol derives from its own oracle. */
-        valueUsd: null,
-        apy: null,
-        state: { tone: toneForHealth(health), text: "Deposited" },
-      }));
-
-    const open =
-      activeReq?.filter((req) => Number(req.totalRepayment) > 0) ?? [];
-    open.forEach((req, i) => {
-      const id = String(req.requestId ?? i);
-      const dueInDays = req.returnDate ? daysUntil(Number(req.returnDate)) : NaN;
-      rows.push({
-        id: `debt-${id}`,
-        kind: "debt",
-        label: protocolSymbol(req.tokenAddress),
-        sublabel: "Borrowed · P2P",
-        // Already formatted by useGetActiveRequest — see the note in priceDebt.
-        // Running it through formatUnits again threw, and the catch rendered
-        // every debt row's amount as "—".
-        amount: String(req.totalRepayment),
-        /* Negative: this row is a liability, and `netValue` is one addition over
-           every group's subtotal. A debt carried as a positive number would have
-           to be subtracted somewhere else, which is where sign errors live. */
-        valueUsd: debt.byId[id] === undefined ? null : -debt.byId[id],
-        // `interest` is basis points straight off the contract — useBorrowV2
-        // names the same field interestBps. Position.apy is documented as a
-        // percentage, so a 10% loan was rendering as "1000.00%".
-        apy:
-          req.interest !== undefined
-            ? convertbasisPointsToPercentage(Number(req.interest))
-            : null,
-        state:
-          Number.isFinite(dueInDays) && dueInDays < 0
-            ? { tone: "bad", text: "Past due" }
-            : { tone: "warn", text: "Outstanding" },
-      });
-    });
+    /* Collateral and debt across every lending chain, each row tagged with its
+       chain and resolved against it. Health is per-chain (isolated markets), so
+       a row's tone reads that chain's own factor, not the summary's worst. */
+    for (const bc of borrowChains) {
+      const chainName =
+        CHAINS_BY_ID[bc.chainId]?.shortName ?? `chain ${bc.chainId}`;
+      for (const col of bc.collateral) {
+        rows.push({
+          id: `collateral-${bc.chainId}-${col.address}`,
+          kind: "collateral",
+          label: col.symbol,
+          sublabel: `${chainName} · Collateral`,
+          amount: shortAmount(col.amount, "—"),
+          /* Priced by the diamond's own oracle (getUsdValue), the same source
+             the subtotal and the health factor use, so the column agrees with
+             both. */
+          valueUsd: col.usd,
+          apy: null,
+          state: {
+            tone: toneForHealth(bc.health ?? Infinity),
+            text: "Deposited",
+          },
+        });
+      }
+      for (const d of bc.debts) {
+        const dueInDays = d.returnDate ? daysUntil(d.returnDate) : NaN;
+        rows.push({
+          id: `debt-${bc.chainId}-${d.requestId}`,
+          kind: "debt",
+          label: d.symbol,
+          sublabel: `${chainName} · Borrowed`,
+          amount: shortAmount(d.outstanding, "—"),
+          /* Negative: a liability in the one-addition netValue. */
+          valueUsd: d.usd === null ? null : -d.usd,
+          apy: convertbasisPointsToPercentage(d.interestBps),
+          state:
+            Number.isFinite(dueInDays) && dueInDays < 0
+              ? { tone: "bad", text: "Past due" }
+              : { tone: "warn", text: "Outstanding" },
+        });
+      }
+    }
 
     /*
-     * The one group whose subtotal is not a sum of its rows.
-     *
-     * Collateral rows carry no USD (see above), so summing them would report a
-     * wallet's whole deposit as unpriced. The protocol's own aggregate is both
-     * available and authoritative here, so the subtotal is that aggregate minus
-     * the debt the same oracle priced — the group's true contribution to net
-     * value, and negative for a wallet that has borrowed more than it has
-     * deposited at par.
+     * The one group whose subtotal is not a sum of its rows: the diamond's own
+     * aggregate collateral minus the debt the same oracle priced, summed across
+     * chains. Null when either side has an unpriced row (a floor, not a total);
+     * 0 for a wallet that has neither borrowed nor deposited anywhere.
      */
     const unpriced: string[] = [];
-    let subtotalUsd: number | null = null;
-    const hasCollateral = rows.some((r) => r.kind === "collateral");
-    const hasDebt = open.length > 0;
-
+    let subtotalUsd: number | null;
+    const hasCollateral = borrowChains.some((bc) => bc.collateral.length > 0);
+    const hasDebt = borrowChains.some((bc) => bc.debts.length > 0);
     if (!hasCollateral && !hasDebt) {
       subtotalUsd = 0;
     } else {
-      const c = hasCollateral ? collateralUsd : 0;
-      const d = hasDebt ? debtUsd : 0;
-      if (c === null) unpriced.push("collateral");
-      if (d === null) unpriced.push("debt");
-      subtotalUsd = c === null || d === null ? null : c - d;
+      const cU = hasCollateral ? collateralUsd : 0;
+      const dU = hasDebt ? debtUsd : 0;
+      if (cU === null) unpriced.push("collateral");
+      if (dU === null) unpriced.push("debt");
+      subtotalUsd = cU === null || dU === null ? null : cU - dU;
     }
 
     return {
@@ -661,17 +534,7 @@ export const usePortfolio = (): Portfolio => {
       empty: "No collateral deposited and nothing borrowed.",
       href: "/borrow",
     };
-  }, [
-    AVA,
-    AVA2,
-    AVA4,
-    AVA5,
-    activeReq,
-    debt.byId,
-    debtUsd,
-    collateralUsd,
-    health,
-  ]);
+  }, [borrowChains, collateralUsd, debtUsd]);
 
   // --- Stable -----------------------------------------------------------
   const stableGroup = useMemo<PositionGroup>(() => {
@@ -906,20 +769,21 @@ export const usePortfolio = (): Portfolio => {
 
   const groups = useMemo<PositionGroup[]>(() => {
     if (!address) return [];
-    /* The four protocol groups have no Diamond to read where it is not deployed.
-       They are still returned so their sections stay visible, but blanked —
-       empty rows, zero subtotal — so nothing from a read-chain leaks onto a
-       chain the wallet is not on, and each fills in the moment a deployment
-       lands here (no code or copy change at deploy time). Wallet is untouched:
-       it reads the connected chain and is real on any network. */
-    const protocol = [lendingGroup, borrowingGroup, stableGroup, stakingGroup];
-    const shown = deployedHere
-      ? protocol
-      : protocol.map((g) => ({ ...g, rows: [], subtotalUsd: 0, unpriced: [] }));
-    return [walletGroup, ...shown];
+    /* Every group, every time — including the empty ones. Wallet, Lending and
+       Borrowing sweep every chain; Stable and Staking read the connected chain
+       and are naturally empty where it has no deployment. Nothing is force-
+       blanked any more: no read is pinned to a chain the wallet is not on, so a
+       group is empty only when the position genuinely is — and each fills in the
+       moment a deployment lands, with no code or copy change. */
+    return [
+      walletGroup,
+      lendingGroup,
+      borrowingGroup,
+      stableGroup,
+      stakingGroup,
+    ];
   }, [
     address,
-    deployedHere,
     walletGroup,
     lendingGroup,
     borrowingGroup,
@@ -953,11 +817,7 @@ export const usePortfolio = (): Portfolio => {
 
   // --- Attention --------------------------------------------------------
   const alerts = useMemo<Alert[]>(() => {
-    /* Every alert below is protocol-derived (health, overdue loans, idle
-       offers, out-of-range LPs, claimable yield). None applies where the
-       Diamond is not deployed, and some read the un-blanked read-chain groups,
-       so the whole list is empty there rather than leaking a read-chain alert. */
-    if (!address || !deployedHere) return [];
+    if (!address) return [];
     const out: Alert[] = [];
 
     if (health !== null && Number.isFinite(health) && health < HEALTH_WARN) {
@@ -1053,7 +913,6 @@ export const usePortfolio = (): Portfolio => {
     return out.sort((a, b) => order[a.severity] - order[b.severity]);
   }, [
     address,
-    deployedHere,
     health,
     borrowingGroup,
     lendingGroup,
@@ -1071,21 +930,14 @@ export const usePortfolio = (): Portfolio => {
     unclaimedYieldUsd,
     groups,
     alerts,
-    /* Off a deployment, only the Wallet group renders, so only its own reads
-       gate the spinner — the protocol loaders never resolve there (nothing to
-       read), and `debtUsd` is forced null, which would otherwise pin this true
-       forever and leave the Wallet group skeletoned on a chain where it has real
-       balances to show. */
     isLoading:
       Boolean(address) &&
-      (deployedHere
-        ? stableLoading ||
-          v3Loading ||
-          lenderLoading ||
-          walletLoading ||
-          pricesLoading ||
-          debtUsd === null
-        : walletLoading || pricesLoading),
+      (stableLoading ||
+        v3Loading ||
+        lenderLoading ||
+        borrowLoading ||
+        walletLoading ||
+        pricesLoading),
     /*
      * Demo mode: the whole aggregate at once, rather than per-input.
      *
