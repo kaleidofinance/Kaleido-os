@@ -9,8 +9,7 @@ import { ErrorDecoder } from "ethers-decode-error";
 import lendbitAbi from "@/abi/ProtocolFacet.json";
 import { formatInterestRate } from "@/constants/utils/FormatInterestRate";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
-import { client } from "@/config/client";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { ensureAllowance } from "@/lib/lending/approve";
 import type { LendingAsset } from "@/lib/lending/assets";
 
@@ -88,11 +87,7 @@ const useCreateLoanListing = () => {
         return;
       }
 
-      const signer = ethers6Adapter.signer.toEthers({
-        client,
-        chain: activeChain,
-        account: activeAccount,
-      });
+      const signer = toEthersSigner(activeAccount, activeChain);
 
       if (!signer) {
         toast.error("Signer not available");

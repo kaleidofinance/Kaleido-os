@@ -2,8 +2,7 @@
 
 import { useCallback } from "react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
-import { client } from "@/config/client";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import type { ResolverContext } from "@/lib/v2/intents";
 
 /**
@@ -21,7 +20,7 @@ export function useResolverContext(): () => ResolverContext | null {
 
   return useCallback(() => {
     if (!account || !chain) return null;
-    const signer = ethers6Adapter.signer.toEthers({ client, chain, account });
+    const signer = toEthersSigner(account, chain);
     return { signer, address: account.address, chainId: chain.id };
   }, [account, chain]);
 }

@@ -12,8 +12,7 @@ import { isNativeSentinel } from "@/constants/registry";
 import { getContractAddressesByChainId } from "@/config/getContractByChain";
 
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
-import { client } from "@/config/client";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { ensureAllowance } from "@/lib/lending/approve";
 
 const errorDecoder = ErrorDecoder.create([lendbitAbi]);
@@ -72,11 +71,7 @@ const useServiceRequest = () => {
         toast.error("invalid account");
         return;
       }
-      const signer = ethers6Adapter.signer.toEthers({
-        client,
-        chain: activeChain,
-        account: activeAccount,
-      });
+      const signer = toEthersSigner(activeAccount, activeChain);
       if (!signer) {
         toast.error("Signer not available");
         return;

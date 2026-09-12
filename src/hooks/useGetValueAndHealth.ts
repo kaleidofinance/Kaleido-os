@@ -9,7 +9,7 @@ import { ethers } from "ethers";
 import { useCallback, useEffect, useState } from "react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { toast } from "sonner";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { client } from "@/config/client";
 import {
   dataAtom,
@@ -171,11 +171,7 @@ const useGetValueAndHealth = (targetChainId?: number) => {
         toast.error("invalid account");
         return;
       }
-      const signer = ethers6Adapter.signer.toEthers({
-        client,
-        chain: activeChain,
-        account: activeAccount,
-      });
+      const signer = toEthersSigner(activeAccount, activeChain);
 
       try {
         const contract = getKaleidoContract(readProvider, readChain);

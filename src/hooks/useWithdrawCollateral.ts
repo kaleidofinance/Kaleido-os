@@ -6,8 +6,7 @@ import { ethers } from "ethers";
 import { ErrorDecoder } from "ethers-decode-error";
 import lendbitAbi from "@/abi/ProtocolFacet.json";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
-import { client } from "@/config/client";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { getKaleidoContract } from "@/config/contracts";
 import type { LendingAsset } from "@/lib/lending/assets";
 
@@ -45,11 +44,7 @@ const useWithdrawCollateral = () => {
         toast.error("invalid account");
         return;
       }
-      const signer = ethers6Adapter.signer.toEthers({
-        client,
-        chain: activeChain,
-        account: activeAccount,
-      });
+      const signer = toEthersSigner(activeAccount, activeChain);
       if (!signer) {
         toast.error("Signer not available");
         return;

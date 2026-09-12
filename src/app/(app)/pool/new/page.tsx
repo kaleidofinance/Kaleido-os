@@ -8,9 +8,8 @@ import {
   useActiveWalletChain,
   useSwitchActiveWalletChain,
 } from "thirdweb/react";
-import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { defineChain } from "thirdweb/chains";
-import { client } from "@/config/client";
 import TokenSelector from "@/components/v2/TokenSelector";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
@@ -657,7 +656,7 @@ export default function NewPositionPage() {
       return;
     setBusy(true);
     try {
-      const signer = ethers6Adapter.signer.toEthers({ client, chain, account });
+      const signer = toEthersSigner(account, chain);
 
       /*
        * The whole sequence — approve, approve, read the spot, floor the slippage,
