@@ -82,6 +82,37 @@ export const isRouterModel = (id: string): id is RouterModel =>
     catalogue order — Messages models first, since that is the default path. */
 export const ROUTER_MODEL_IDS = Object.keys(ROUTER_MODELS) as RouterModel[];
 
+/**
+ * Gemini (Google AI Studio), reached through Google's OpenAI-compatible endpoint
+ * — so it runs on the existing OpenAIProvider, no new adapter. Sits ALONGSIDE the
+ * AgentRouter family: a selectable model id maps to its own gateway + wire format
+ * exactly as the router ids do.
+ *
+ * Entitlement is per key AND per billing tier, the same 403/429-not-404 trap the
+ * AgentRouter note describes: on a free key the `pro` ids are recognised but
+ * quota-gated (429), while `gemini-flash-latest` answers and still reasons
+ * (its usage reports internal thinking tokens). `-latest` tracks Google's current
+ * recommended model, which is why 2.5-pro's "no longer available to new users"
+ * retirement does not strand this list. Verified against GET /v1beta/models and a
+ * live /chat/completions on 2026-09-12.
+ */
+export const GEMINI_MODELS = {
+  "gemini-flash-latest": { label: "Gemini Flash" },
+  "gemini-3.1-pro-preview": { label: "Gemini 3.1 Pro" },
+} as const satisfies Record<string, { label: string }>;
+
+export type GeminiModel = keyof typeof GEMINI_MODELS;
+
+export const isGeminiModel = (id: string): id is GeminiModel =>
+  Object.hasOwn(GEMINI_MODELS, id);
+
+export const GEMINI_MODEL_IDS = Object.keys(GEMINI_MODELS) as GeminiModel[];
+
+/** Any model id the chat route will accept from a client — the router family
+    plus the Gemini family, whichever keys are configured. */
+export const isSelectableModel = (id: string): boolean =>
+  isRouterModel(id) || isGeminiModel(id);
+
 export function getProvider(model?: string): ChatProvider | null {
   const forced = process.env.AI_PROVIDER?.toLowerCase();
   const routerKey = process.env.AGENTROUTER_API_KEY;
@@ -132,6 +163,25 @@ export function getProvider(model?: string): ChatProvider | null {
      forced and fall-through branches. A custom base URL renames the reported
      provider, so a log line names the gateway that actually answered rather
      than claiming OpenAI served it. */
+  /* Gemini via Google's OpenAI-compatible endpoint — same adapter as OpenAI,
+     just Google's base URL and key. maxTokens is left unset on purpose: Gemini
+     spends internal "thinking" tokens against the completion budget, so a low cap
+     truncates the reasoning this model is chosen for. */
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const gemini = (id?: string) =>
+    geminiKey
+      ? new OpenAIProvider(
+          geminiKey,
+          id || process.env.GEMINI_MODEL || "gemini-flash-latest",
+          {
+            baseUrl:
+              process.env.GEMINI_BASE_URL ||
+              "https://generativelanguage.googleapis.com/v1beta/openai",
+            id: "gemini",
+          },
+        )
+      : null;
+
   const openAi = () => {
     if (!openaiKey) return null;
     const baseUrl = process.env.OPENAI_BASE_URL;
@@ -157,6 +207,9 @@ export function getProvider(model?: string): ChatProvider | null {
       ? agentRouterOpenAi(model)
       : agentRouter(model);
   }
+  /* A Gemini id names its own gateway just like a router id does. Requires the
+     Gemini key; without it the hint is ignored and precedence answers. */
+  if (geminiKey && model && isGeminiModel(model)) return gemini(model);
 
   if (forced === "agentrouter") return agentRouter();
   if (forced === "agentrouter-openai") return agentRouterOpenAi();
@@ -166,6 +219,7 @@ export function getProvider(model?: string): ChatProvider | null {
       : null;
   }
   if (forced === "openai") return openAi();
+  if (forced === "gemini") return gemini();
 
   if (routerKey) return agentRouter();
   if (anthropicKey) {
@@ -174,6 +228,7 @@ export function getProvider(model?: string): ChatProvider | null {
   if (openaiKey) {
     return openAi();
   }
+  if (geminiKey) return gemini();
   return null;
 }
 

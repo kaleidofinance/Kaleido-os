@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getProvider,
-  isRouterModel,
+  isSelectableModel,
   ROUTER_MODELS,
   ROUTER_MODEL_IDS,
+  GEMINI_MODELS,
+  GEMINI_MODEL_IDS,
 } from "@/lib/ai";
 import { runAgent, type AgentInput, type AgentRun } from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
@@ -44,9 +46,14 @@ export const maxDuration = 60;
 export async function GET(request: NextRequest) {
   const wallet = request.nextUrl.searchParams.get("address") ?? undefined;
   const usage = await peekModelUsage(wallet);
-  const models = process.env.AGENTROUTER_API_KEY
-    ? ROUTER_MODEL_IDS.map((id) => ({ id, label: ROUTER_MODELS[id].label }))
-    : [];
+  const models = [
+    ...(process.env.AGENTROUTER_API_KEY
+      ? ROUTER_MODEL_IDS.map((id) => ({ id, label: ROUTER_MODELS[id].label }))
+      : []),
+    ...(process.env.GEMINI_API_KEY
+      ? GEMINI_MODEL_IDS.map((id) => ({ id, label: GEMINI_MODELS[id].label }))
+      : []),
+  ];
   return NextResponse.json({
     provider: Boolean(getProvider()),
     models,
@@ -155,7 +162,7 @@ export async function POST(request: NextRequest) {
     // to aim this server's key at an arbitrary model. Anything unrecognised is
     // dropped and the env default answers.
     const requested =
-      typeof body.model === "string" && isRouterModel(body.model)
+      typeof body.model === "string" && isSelectableModel(body.model)
         ? body.model
         : undefined;
     const provider = getProvider(requested);
