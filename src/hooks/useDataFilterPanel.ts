@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useActiveAccount } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useAtom } from "jotai";
 import useServiceRequest from "@/hooks/useServiceRequest";
 import useGetValueAndHealth from "@/hooks/useGetValueAndHealth";
@@ -33,8 +33,7 @@ import { ethers } from "ethers";
 
 export default function useDataFiltersPanel() {
   const router = useRouter();
-  const activeAccount = useActiveAccount();
-  const address = activeAccount?.address;
+  const { address } = useWalletV2();
 
   const { etherPrice, usdcPrice } = useGetValueAndHealth();
   const { closeListingAd } = useCloseListingAd();

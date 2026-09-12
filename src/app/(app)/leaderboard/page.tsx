@@ -35,7 +35,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { useActiveAccount } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 
 import Nav from "@/components/v2/Nav";
 import { Stat, StatStrip } from "@/components/v2/StatStrip";
@@ -96,8 +96,8 @@ export default function LeaderboardPage() {
 
   const board = useLeaderboard(season);
   const market = useMarketStats();
-  const account = useActiveAccount();
-  const wallet = account?.address?.toLowerCase() ?? null;
+  const { address } = useWalletV2();
+  const wallet = address?.toLowerCase() ?? null;
 
   const payload = board.payload;
   const resolvedSeason = payload?.season.id ?? null;

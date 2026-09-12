@@ -11,7 +11,7 @@ import React, {
   type ReactNode,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { useActiveAccount } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import {
   categorise,
   readActionType,
@@ -202,8 +202,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
    * nothing re-ran. A hook value re-renders, so the transport effect below
    * re-subscribes on its own when the address changes.
    */
-  const account = useActiveAccount();
-  const address = account?.address;
+  const { address } = useWalletV2();
 
   /*
    * Two mirrors of render state, both read from callbacks that outlive the

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useActiveAccount } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { Request, LoanListing } from "@/constants/types";
 import {
   readBookRows,
@@ -186,8 +186,7 @@ function useBook<T>(
 }
 
 export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
-  const activeAccount = useActiveAccount();
-  const address = activeAccount?.address;
+  const { address } = useWalletV2();
 
   const book = useBook<Request>("requests", !MOCK_DATA && !!params);
 
@@ -249,8 +248,7 @@ export const useFetchRequestsWithCursor = (params?: CursorHookParams) => {
 };
 
 export const useFetchListingsWithCursor = (params?: CursorHookParams) => {
-  const activeAccount = useActiveAccount();
-  const address = activeAccount?.address;
+  const { address } = useWalletV2();
 
   const book = useBook<LoanListing>("listings", !MOCK_DATA && !!params);
 

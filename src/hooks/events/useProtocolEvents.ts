@@ -39,7 +39,7 @@
 
 import { useEffect } from "react";
 import type { ContractEventName, Listener } from "ethers";
-import { useActiveAccount } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 
 import { getKaleidoContract } from "@/config/contracts";
 import { getWssProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
@@ -50,8 +50,7 @@ import {
 } from "@/lib/notifications/emit";
 
 const useProtocolEvents = () => {
-  const activeAccount = useActiveAccount();
-  const address = activeAccount?.address;
+  const { address } = useWalletV2();
 
   useEffect(() => {
     if (!address) return;

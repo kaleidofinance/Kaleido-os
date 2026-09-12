@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 
 import useGetValueAndHealth from "@/hooks/useGetValueAndHealth";
 import { useStakingData } from "@/hooks/v2/useStakingData";
@@ -266,9 +266,7 @@ const toneForHealth = (health: number | null): StateTone => {
 };
 
 export const usePortfolio = (): Portfolio => {
-  const activeAccount = useActiveAccount();
-  const address = activeAccount?.address;
-  const walletChainId = useActiveWalletChain()?.id;
+  const { address, chainId: walletChainId } = useWalletV2();
 
   /*
    * Two resolvers, and keeping them apart is a fix rather than a flourish.

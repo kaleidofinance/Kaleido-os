@@ -4,15 +4,14 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { isAddress } from "ethers";
 import { useRegisterReferral } from "@/hooks/useRegisterReferral";
-import { useActiveAccount } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 
 function ReferralHandler() {
   const searchParams = useSearchParams();
   // const [referralStored, setReferralStored] = useLocalStorage<string | null>("referralUpliner", null)
   const [referralStored, setReferralStored] = useState<string | null>(null);
   const { registerUpliner } = useRegisterReferral();
-  const activeAccount = useActiveAccount();
-  const address = activeAccount?.address;
+  const { address } = useWalletV2();
 
   // console.log("✅ referralStored initially:", referralStored)
   useEffect(() => {
