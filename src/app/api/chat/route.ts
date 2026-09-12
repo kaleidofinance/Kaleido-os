@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getProvider,
+  getProviderChain,
   isSelectableModel,
   ROUTER_MODELS,
   ROUTER_MODEL_IDS,
@@ -9,7 +10,11 @@ import {
   GATEWAY_MODELS,
   GATEWAY_MODEL_IDS,
 } from "@/lib/ai";
-import { runAgent, type AgentInput, type AgentRun } from "@/lib/ai/agent";
+import {
+  runAgentWithFailover,
+  type AgentInput,
+  type AgentRun,
+} from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText } from "@/lib/ai/auditor";
@@ -176,7 +181,10 @@ export async function POST(request: NextRequest) {
       typeof body.model === "string" && isSelectableModel(body.model)
         ? body.model
         : undefined;
-    const provider = getProvider(requested);
+    /* Primary provider, then the others as fall-backs, so a model outage on
+       one backend degrades to the next instead of failing the turn. */
+    const providers = getProviderChain(requested);
+    const provider = providers[0] ?? null;
     if (provider) {
       // Quota is spent here, at the point of dispatch, and nowhere earlier.
       // A turn the client answered locally never reaches this route at all, so
@@ -469,7 +477,7 @@ export async function POST(request: NextRequest) {
             let round = "";
 
             try {
-              const result = await runAgent(provider, agentInput, {
+              const result = await runAgentWithFailover(providers, agentInput, {
                 onText: (d) => {
                   round += d;
                   send({ t: "text", d });
@@ -518,7 +526,7 @@ export async function POST(request: NextRequest) {
 
       try {
         return NextResponse.json(
-          await settle(await runAgent(provider, agentInput)),
+          await settle(await runAgentWithFailover(providers, agentInput)),
         );
       } catch (aiError: any) {
         return NextResponse.json(await recover(aiError));
