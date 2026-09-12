@@ -1,4 +1,5 @@
 import { getChainMeta, type ChainMeta } from "./chains";
+import { ROBINHOOD_STOCK_TOKENS } from "./robinhoodTokens.generated";
 import {
   GENERATED_DEPLOYMENTS,
   GENERATED_LENDING_REGISTRATION,
@@ -668,6 +669,31 @@ export const TOKENS: Record<number, TokenEntry[]> = {
       decimals: 6,
       tags: ["stablecoin"],
     },
+  ],
+  /* -- Robinhood Chain MAINNET (4663) ------------------------------------ */
+  /* Core is hand-verified (WETH, USDG); the ~194 canonical tokenized stocks are
+     generated from Robinhood's own on-chain asset registry — see
+     robinhoodTokens.generated.ts / scripts/gen-robinhood-tokens.mjs. USDG (Global
+     Dollar, 6-dec) is this chain's stablecoin, NOT USDC/USDT. Robinhood mainnet is
+     4663; the testnet is 46630 above — do not confuse them. */
+  [4663]: [
+    {
+      chainId: 4663,
+      address: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+      symbol: "WETH",
+      name: "Wrapped Ether",
+      decimals: 18,
+      tags: ["wrapped-native"],
+    },
+    {
+      chainId: 4663,
+      address: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      symbol: "USDG",
+      name: "Global Dollar",
+      decimals: 6,
+      tags: ["stablecoin"],
+    },
+    ...ROBINHOOD_STOCK_TOKENS,
   ],
 };
 
