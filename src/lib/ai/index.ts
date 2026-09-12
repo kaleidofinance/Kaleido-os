@@ -82,6 +82,63 @@ export const isRouterModel = (id: string): id is RouterModel =>
     catalogue order — Messages models first, since that is the default path. */
 export const ROUTER_MODEL_IDS = Object.keys(ROUTER_MODELS) as RouterModel[];
 
+/**
+ * Gemini (Google AI Studio), reached through Google's OpenAI-compatible endpoint
+ * — so it runs on the existing OpenAIProvider, no new adapter. Sits ALONGSIDE the
+ * AgentRouter family: a selectable model id maps to its own gateway + wire format
+ * exactly as the router ids do.
+ *
+ * Entitlement is per key AND per billing tier, the same 403/429-not-404 trap the
+ * AgentRouter note describes: on a free key the `pro` ids are recognised but
+ * quota-gated (429), while `gemini-flash-latest` answers and still reasons
+ * (its usage reports internal thinking tokens). `-latest` tracks Google's current
+ * recommended model, which is why 2.5-pro's "no longer available to new users"
+ * retirement does not strand this list. Verified against GET /v1beta/models and a
+ * live /chat/completions on 2026-09-12.
+ */
+export const GEMINI_MODELS = {
+  "gemini-flash-latest": { label: "Gemini Flash" },
+  "gemini-3.1-pro-preview": { label: "Gemini 3.1 Pro" },
+} as const satisfies Record<string, { label: string }>;
+
+export type GeminiModel = keyof typeof GEMINI_MODELS;
+
+export const isGeminiModel = (id: string): id is GeminiModel =>
+  Object.hasOwn(GEMINI_MODELS, id);
+
+export const GEMINI_MODEL_IDS = Object.keys(GEMINI_MODELS) as GeminiModel[];
+
+/** Any model id the chat route will accept from a client — the router family
+    plus the Gemini family, whichever keys are configured. */
+/**
+ * Vercel AI Gateway — one key over an OpenAI-compatible endpoint that fans out to
+ * every major provider, so it too rides the existing OpenAIProvider. Same family
+ * shape as the router and Gemini catalogues. Model ids are `provider/model`.
+ *
+ * Tiered like Gemini: on a free Gateway key the premium routes (Anthropic, some
+ * Google) 403 "upgrade to paid credits", while OpenAI's GPT-5 line and DeepSeek
+ * R1 answer 200 — so the catalogue is the confirmed free-tier reasoning set, and
+ * the default is openai/gpt-5. Verified live 2026-09-12; add a row only after a
+ * 200 from /chat/completions, not from the 376-long /models list (a listed id you
+ * lack 403s, not 404s — the same trap as the AgentRouter note above).
+ */
+export const GATEWAY_MODELS = {
+  "openai/gpt-5": { label: "GPT-5 · Gateway" },
+  "openai/o3": { label: "o3 · Gateway" },
+  "openai/gpt-5-mini": { label: "GPT-5 Mini · Gateway" },
+  "deepseek/deepseek-r1": { label: "DeepSeek R1 · Gateway" },
+} as const satisfies Record<string, { label: string }>;
+
+export type GatewayModel = keyof typeof GATEWAY_MODELS;
+
+export const isGatewayModel = (id: string): id is GatewayModel =>
+  Object.hasOwn(GATEWAY_MODELS, id);
+
+export const GATEWAY_MODEL_IDS = Object.keys(GATEWAY_MODELS) as GatewayModel[];
+
+export const isSelectableModel = (id: string): boolean =>
+  isRouterModel(id) || isGeminiModel(id) || isGatewayModel(id);
+
 export function getProvider(model?: string): ChatProvider | null {
   const forced = process.env.AI_PROVIDER?.toLowerCase();
   const routerKey = process.env.AGENTROUTER_API_KEY;
@@ -132,6 +189,43 @@ export function getProvider(model?: string): ChatProvider | null {
      forced and fall-through branches. A custom base URL renames the reported
      provider, so a log line names the gateway that actually answered rather
      than claiming OpenAI served it. */
+  /* Gemini via Google's OpenAI-compatible endpoint — same adapter as OpenAI,
+     just Google's base URL and key. maxTokens is left unset on purpose: Gemini
+     spends internal "thinking" tokens against the completion budget, so a low cap
+     truncates the reasoning this model is chosen for. */
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const gemini = (id?: string) =>
+    geminiKey
+      ? new OpenAIProvider(
+          geminiKey,
+          id || process.env.GEMINI_MODEL || "gemini-flash-latest",
+          {
+            baseUrl:
+              process.env.GEMINI_BASE_URL ||
+              "https://generativelanguage.googleapis.com/v1beta/openai",
+            id: "gemini",
+          },
+        )
+      : null;
+
+  /* Vercel AI Gateway — same OpenAI adapter, Vercel's base URL and key. maxTokens
+     unset for the same reason as Gemini: the reasoning models it fronts spend
+     thinking tokens against the completion budget. */
+  const gatewayKey = process.env.AI_GATEWAY_API_KEY;
+  const gateway = (id?: string) =>
+    gatewayKey
+      ? new OpenAIProvider(
+          gatewayKey,
+          id || process.env.AI_GATEWAY_MODEL || "openai/gpt-5",
+          {
+            baseUrl:
+              process.env.AI_GATEWAY_BASE_URL ||
+              "https://ai-gateway.vercel.sh/v1",
+            id: "ai-gateway",
+          },
+        )
+      : null;
+
   const openAi = () => {
     if (!openaiKey) return null;
     const baseUrl = process.env.OPENAI_BASE_URL;
@@ -157,6 +251,10 @@ export function getProvider(model?: string): ChatProvider | null {
       ? agentRouterOpenAi(model)
       : agentRouter(model);
   }
+  /* A Gemini id names its own gateway just like a router id does. Requires the
+     Gemini key; without it the hint is ignored and precedence answers. */
+  if (geminiKey && model && isGeminiModel(model)) return gemini(model);
+  if (gatewayKey && model && isGatewayModel(model)) return gateway(model);
 
   if (forced === "agentrouter") return agentRouter();
   if (forced === "agentrouter-openai") return agentRouterOpenAi();
@@ -166,6 +264,8 @@ export function getProvider(model?: string): ChatProvider | null {
       : null;
   }
   if (forced === "openai") return openAi();
+  if (forced === "gemini") return gemini();
+  if (forced === "gateway" || forced === "ai-gateway") return gateway();
 
   if (routerKey) return agentRouter();
   if (anthropicKey) {
@@ -174,6 +274,8 @@ export function getProvider(model?: string): ChatProvider | null {
   if (openaiKey) {
     return openAi();
   }
+  if (geminiKey) return gemini();
+  if (gatewayKey) return gateway();
   return null;
 }
 
