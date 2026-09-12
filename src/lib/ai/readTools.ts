@@ -36,7 +36,8 @@ import {
   poolSide,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
-import { serverPathQuoter, serverQuote } from "./planDeps";
+import { serverPathQuoter, serverQuote, serverPositions } from "./planDeps";
+import { readPoolState } from "@/lib/dex/pool";
 import { getBridgeQuote } from "./bridgeQuotes";
 
 /**
@@ -1035,10 +1036,72 @@ async function getOrders(args: Json, chainId: number): Promise<Json> {
   };
 }
 
+async function getPositions(args: Json, chainId: number): Promise<Json> {
+  const address = typeof args.address === "string" ? args.address : undefined;
+  if (!address) return { error: "getPositions needs the wallet address." };
+  try {
+    const positions = await serverPositions(chainId, address);
+    if (positions.length === 0) {
+      return {
+        positions: [],
+        note:
+          "No liquidity positions on chain " +
+          chainId +
+          ". Positions are per chain, so the user may hold some on another network.",
+      };
+    }
+    const provider = providerForChain(chainId);
+    const rows = await Promise.all(
+      positions.map(async (p) => {
+        const pair = `${symbolFor(chainId, p.token0)} / ${symbolFor(chainId, p.token1)}`;
+        const closed = p.liquidity === "0";
+        /* positions() returns token0/token1 pre-sorted, so readPoolState reads
+           the pool in its own order and returns the RAW tick — comparable
+           directly to the position's tick range, no inversion. */
+        let status = "unknown";
+        if (closed) {
+          status = "closed";
+        } else if (provider) {
+          const state = await readPoolState(
+            provider,
+            chainId,
+            p.token0,
+            p.token1,
+            p.fee,
+            getTokenDecimals(chainId, p.token0),
+            getTokenDecimals(chainId, p.token1),
+          );
+          if (state) {
+            status =
+              state.tick >= p.tickLower && state.tick < p.tickUpper
+                ? "in range"
+                : "out of range";
+          }
+        }
+        return {
+          id: p.tokenId,
+          pair,
+          feePct: p.fee / 10_000,
+          status,
+          needsAttention: status === "out of range",
+        };
+      }),
+    );
+    return {
+      positions: rows,
+      note:
+        "Each id is one liquidity position. Deposited amounts and unclaimed fees show in the app's Liquidity → Your positions tab, not here; to act, use collectFees, increasePosition or removePosition with the id, so the user need not look it up. 'out of range' earns no fees until the price returns or the range is moved.",
+    };
+  } catch (err) {
+    return { error: `getPositions failed: ${(err as Error).message}` };
+  }
+}
+
 const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
   {
     getQuote,
     getPortfolio,
+    getPositions,
     getBalances,
     getMarkets,
     getOrders,
