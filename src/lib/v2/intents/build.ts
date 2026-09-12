@@ -27,9 +27,11 @@ import {
   describeRoute,
   encodeV3Path,
   findBestRoute,
+  findRouteAcrossSources,
   intermediateTokens,
   poolSide,
 } from "@/lib/dex/route";
+import { fallbackVenues } from "@/constants/venues";
 import type { Intent } from "@/lib/v2/intents";
 import type { Command, Slot } from "@/lib/v2/intents/fromCommand";
 /* A value import, unlike the type above, and the only one in this file that
@@ -197,6 +199,9 @@ export interface QuoteRequest {
   fee: number;
   decimalsIn: number;
   decimalsOut: number;
+  /** QuoterV2 to price against; defaults to our own deployment. A fallback
+   *  venue passes its quoter so the same request prices its pools. */
+  quoter?: string;
 }
 
 /**
@@ -219,6 +224,8 @@ export interface PathQuoteRequest {
   decimalsIn: number;
   /** Decimals of the last token. */
   decimalsOut: number;
+  /** QuoterV2 to price against; defaults to our own. See QuoteRequest.quoter. */
+  quoter?: string;
 }
 
 /**
@@ -711,8 +718,10 @@ export async function buildIntents(
 
     /* Before quoting, not after: a chain with no router cannot fill this order
        however good the price is, and the quote is a network round trip. */
-    const router = contracts.v3Router;
-    if (!router) {
+    /* Our own router where we have one, plus any external fallback venue: a
+       swap is possible if either can fill it, and the router each route runs
+       on comes from the winning source below. */
+    if (!contracts.v3Router && fallbackVenues(chainId).length === 0) {
       return {
         ok: false,
         error: "Swapping isn't available on this chain yet.",
@@ -769,12 +778,19 @@ export async function buildIntents(
      * both legs. `findBestRoute` holds the search, shared with the Swap page so
      * the card and the chat cannot route the same request differently.
      */
-    const path = await findBestRoute(
-      chainId,
-      sell.token,
-      buy.token,
-      amount,
-      (tokens, fees, amountIn, decimalsIn, decimalsOut) =>
+    /* Ours first, then any external fallback venue — the same order and the
+       same helper the Swap page uses, so the card and the chat route a request
+       the same way. Each venue prices through deps.quote/quotePath bound to its
+       own quoter address. */
+    const quoterFor =
+      (quoter?: string) =>
+      (
+        tokens: string[],
+        fees: number[],
+        amountIn: string,
+        decimalsIn: number,
+        decimalsOut: number,
+      ) =>
         tokens.length === 2
           ? deps.quote({
               tokenIn: tokens[0],
@@ -783,6 +799,7 @@ export async function buildIntents(
               fee: fees[0],
               decimalsIn,
               decimalsOut,
+              quoter,
             })
           : deps.quotePath({
               tokens,
@@ -790,7 +807,21 @@ export async function buildIntents(
               amountIn,
               decimalsIn,
               decimalsOut,
-            }),
+              quoter,
+            });
+    const path = await findRouteAcrossSources(
+      chainId,
+      sell.token,
+      buy.token,
+      amount,
+      [
+        { quote: quoterFor(), router: contracts.v3Router, venue: null },
+        ...fallbackVenues(chainId).map((venue) => ({
+          quote: quoterFor(venue.quoter),
+          router: venue.router,
+          venue,
+        })),
+      ],
     );
 
     if (!path) {
@@ -809,6 +840,19 @@ export async function buildIntents(
     }
 
     const out = path.amountOut;
+
+    /* The router that executes THIS route — ours for our own pools, the venue's
+       for a fallback. The approve authorises it and the swap calls it, the one
+       variable so the two cannot disagree; auditor routerReasons pins it to the
+       same allow-list. `path` always carries a router once found (a source with
+       no quoter never yields a route), but the guard narrows the type. */
+    const router = path.router;
+    if (!router) {
+      return {
+        ok: false,
+        error: "Swapping isn't available on this chain yet.",
+      };
+    }
 
     // Mirrors the Swap page: trim to the token's precision, but never past
     // 6dp, so the string stays inside parseUnits' tolerance.

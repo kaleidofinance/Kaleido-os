@@ -31,10 +31,11 @@ import { getSpotPrice, PRICED_SYMBOLS } from "@/lib/v2/prices/spot";
 import { FEE_TIERS } from "@/lib/dex/liquidity";
 import {
   describeRoute,
-  findBestRoute,
+  findRouteAcrossSources,
   intermediateTokens,
   poolSide,
 } from "@/lib/dex/route";
+import { fallbackVenues } from "@/constants/venues";
 import { serverPathQuoter, serverQuote } from "./planDeps";
 import { getBridgeQuote } from "./bridgeQuotes";
 
@@ -728,16 +729,27 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
     };
 
   try {
-    const path = await findBestRoute(
+    /* Ours first, then any external fallback venue — the same order and helper
+       buildIntents uses, so the route this tool reports is the route the plan
+       will build. Capped at two intermediates, unlike the Swap card's unbounded
+       search: this runs inside a chat turn already several round trips deep. */
+    const path = await findRouteAcrossSources(
       chainId,
       sell.token,
       buy.token,
       amount,
-      serverPathQuoter(chainId),
-      /* Capped, unlike the Swap card's unbounded search: this runs inside a chat
-         turn that is already several provider round trips deep, and each extra
-         intermediate is nine more `eth_call`s. Two covers the pair that matters
-         on every chain here — USDC, then the wrapped native. */
+      [
+        {
+          quote: serverPathQuoter(chainId),
+          router: getContracts(chainId).v3Router,
+          venue: null,
+        },
+        ...fallbackVenues(chainId).map((venue) => ({
+          quote: serverPathQuoter(chainId, venue.quoter),
+          router: venue.router,
+          venue,
+        })),
+      ],
       { maxIntermediates: 2 },
     );
 
@@ -765,6 +777,8 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
         feeTier: `${h.fee / 10_000}%`,
       })),
       route: describeRoute(path),
+      /* Named only for a fallback venue; our own pools are the default. */
+      venue: path.venue?.label ?? null,
       nativeIn: sell.native,
       nativeOut: buy.native,
       note:
