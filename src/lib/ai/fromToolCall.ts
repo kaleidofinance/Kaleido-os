@@ -200,6 +200,17 @@ function toCommand(
       return { kind: "stake", amount };
     }
 
+    case "unstake": {
+      /* The builder reads the vault's cooldown state and resolves this to the
+         request or the withdrawal step; amount is required either way. */
+      const amount = amountOf(a.amount);
+      if (!amount) return "unstake: no amount given";
+      return { kind: "unstake", amount };
+    }
+
+    case "cancelOrders":
+      return { kind: "cancelOrders" };
+
     case "send": {
       const amount = amountOf(a.amount);
       if (!amount) return "send: no amount given";
