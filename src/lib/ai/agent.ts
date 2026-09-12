@@ -301,3 +301,54 @@ export async function runAgent(
 
   return { ...result, trace };
 }
+
+/**
+ * runAgent, but across a provider chain: the first provider is tried, and if it
+ * ERRORS before anything has been emitted to the caller, the next provider is
+ * tried, and so on. A model outage (401, 429, 5xx, timeout, connection reset)
+ * therefore degrades to the next backend instead of failing the turn — the
+ * resilience the failover exists for.
+ *
+ * Failover is gated on "nothing emitted yet": once text or a read round has been
+ * streamed to the client (`dirty`), switching backends mid-answer would replay or
+ * contradict what the user already saw, so from that point the error propagates.
+ * On the non-streaming path nothing is emitted until the end, so every provider
+ * in the chain is genuinely tried. Retrying is safe because the model never sets
+ * addresses or amounts — the deterministic builder does, after this returns.
+ */
+export async function runAgentWithFailover(
+  providers: ChatProvider[],
+  input: AgentInput,
+  events?: AgentEvents,
+): Promise<AgentRun> {
+  if (providers.length === 0) throw new Error("No model provider configured.");
+
+  let dirty = false;
+  const guarded: AgentEvents | undefined = events && {
+    onText: events.onText
+      ? (d: string) => {
+          dirty = true;
+          events.onText!(d);
+        }
+      : undefined,
+    onReads: events.onReads
+      ? (r: ReadCall[]) => {
+          dirty = true;
+          events.onReads!(r);
+        }
+      : undefined,
+  };
+
+  let lastError: unknown;
+  for (let i = 0; i < providers.length; i++) {
+    try {
+      return await runAgent(providers[i], input, guarded);
+    } catch (err) {
+      lastError = err;
+      /* Last provider, or the client has already seen output — surface it. */
+      if (dirty || i === providers.length - 1) throw err;
+      /* Otherwise fall through to the next backend. */
+    }
+  }
+  throw lastError;
+}

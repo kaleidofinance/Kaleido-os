@@ -139,144 +139,154 @@ export const GATEWAY_MODEL_IDS = Object.keys(GATEWAY_MODELS) as GatewayModel[];
 export const isSelectableModel = (id: string): boolean =>
   isRouterModel(id) || isGeminiModel(id) || isGatewayModel(id);
 
+/* Provider builders, one per configured backend. Module-level so both
+   getProvider (which picks one) and getProviderChain (which orders them for
+   failover) share a single definition — the base URL, cap and UA each key
+   implies live with the key, not duplicated across call sites. Each returns null
+   when its key is unset. */
+const buildAgentRouter = (id?: string): ChatProvider | null =>
+  process.env.AGENTROUTER_API_KEY
+    ? new ClaudeProvider(
+        process.env.AGENTROUTER_API_KEY,
+        id || process.env.AGENTROUTER_MODEL || "claude-opus-5",
+        {
+          baseUrl: process.env.AGENTROUTER_BASE_URL || "https://agentrouter.org",
+          id: "agentrouter",
+          maxTokens: 8192,
+          userAgent: process.env.AGENTROUTER_USER_AGENT,
+        },
+      )
+    : null;
+
+const buildAgentRouterOpenAi = (id?: string): ChatProvider | null =>
+  process.env.AGENTROUTER_API_KEY
+    ? new OpenAIProvider(
+        process.env.AGENTROUTER_API_KEY,
+        id || process.env.AGENTROUTER_OPENAI_MODEL || "gpt-5.6-sol",
+        {
+          baseUrl:
+            process.env.AGENTROUTER_OPENAI_BASE_URL ||
+            "https://agentrouter.org/v1",
+          id: "agentrouter-openai",
+          maxTokens: 8192,
+          userAgent: process.env.AGENTROUTER_USER_AGENT,
+        },
+      )
+    : null;
+
+const buildClaude = (): ChatProvider | null =>
+  process.env.ANTHROPIC_API_KEY
+    ? new ClaudeProvider(
+        process.env.ANTHROPIC_API_KEY,
+        process.env.ANTHROPIC_MODEL,
+      )
+    : null;
+
+const buildOpenAi = (): ChatProvider | null => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return null;
+  const baseUrl = process.env.OPENAI_BASE_URL;
+  const cap = Number(process.env.OPENAI_MAX_TOKENS);
+  return new OpenAIProvider(key, process.env.OPENAI_MODEL, {
+    ...(baseUrl ? { baseUrl, id: "openai-compatible" } : {}),
+    ...(Number.isFinite(cap) && cap > 0 ? { maxTokens: cap } : {}),
+    ...(process.env.OPENAI_USER_AGENT
+      ? { userAgent: process.env.OPENAI_USER_AGENT }
+      : {}),
+  });
+};
+
+/* Gemini + Gateway: maxTokens unset on purpose — their reasoning models spend
+   internal thinking tokens against the completion budget, so a low cap would
+   truncate the reasoning they are chosen for. */
+const buildGemini = (id?: string): ChatProvider | null =>
+  process.env.GEMINI_API_KEY
+    ? new OpenAIProvider(
+        process.env.GEMINI_API_KEY,
+        id || process.env.GEMINI_MODEL || "gemini-flash-latest",
+        {
+          baseUrl:
+            process.env.GEMINI_BASE_URL ||
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+          id: "gemini",
+        },
+      )
+    : null;
+
+const buildGateway = (id?: string): ChatProvider | null =>
+  process.env.AI_GATEWAY_API_KEY
+    ? new OpenAIProvider(
+        process.env.AI_GATEWAY_API_KEY,
+        id || process.env.AI_GATEWAY_MODEL || "openai/gpt-5",
+        {
+          baseUrl:
+            process.env.AI_GATEWAY_BASE_URL ||
+            "https://ai-gateway.vercel.sh/v1",
+          id: "ai-gateway",
+        },
+      )
+    : null;
+
 export function getProvider(model?: string): ChatProvider | null {
   const forced = process.env.AI_PROVIDER?.toLowerCase();
   const routerKey = process.env.AGENTROUTER_API_KEY;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
 
-  /* Built here rather than inline in three places so the base URL and the
-     8192 cap stay together with the key that requires them. The cap is the
-     router's declared maxTokens — asking for the adapter's default 4096 is
-     safe, but asking for more than a gateway allows is a 400 on every turn. */
-  const agentRouter = (id?: string) =>
-    routerKey
-      ? new ClaudeProvider(
-          routerKey,
-          id || process.env.AGENTROUTER_MODEL || "claude-opus-5",
-          {
-            baseUrl:
-              process.env.AGENTROUTER_BASE_URL || "https://agentrouter.org",
-            id: "agentrouter",
-            maxTokens: 8192,
-            userAgent: process.env.AGENTROUTER_USER_AGENT,
-          },
-        )
-      : null;
-
-  /* The same router and the same key, its OpenAI-shaped path. A separate
-     adapter rather than a flag because the request bodies differ entirely;
-     see ROUTER_MODELS above for why the model id is what selects between
-     them. */
-  const agentRouterOpenAi = (id?: string) =>
-    routerKey
-      ? new OpenAIProvider(
-          routerKey,
-          id || process.env.AGENTROUTER_OPENAI_MODEL || "gpt-5.6-sol",
-          {
-            baseUrl:
-              process.env.AGENTROUTER_OPENAI_BASE_URL ||
-              "https://agentrouter.org/v1",
-            id: "agentrouter-openai",
-            maxTokens: 8192,
-            userAgent: process.env.AGENTROUTER_USER_AGENT,
-          },
-        )
-      : null;
-
-  /* Same reason as agentRouter above: the base URL, the cap and the key that
-     implies them stay in one place instead of being duplicated across the
-     forced and fall-through branches. A custom base URL renames the reported
-     provider, so a log line names the gateway that actually answered rather
-     than claiming OpenAI served it. */
-  /* Gemini via Google's OpenAI-compatible endpoint — same adapter as OpenAI,
-     just Google's base URL and key. maxTokens is left unset on purpose: Gemini
-     spends internal "thinking" tokens against the completion budget, so a low cap
-     truncates the reasoning this model is chosen for. */
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const gemini = (id?: string) =>
-    geminiKey
-      ? new OpenAIProvider(
-          geminiKey,
-          id || process.env.GEMINI_MODEL || "gemini-flash-latest",
-          {
-            baseUrl:
-              process.env.GEMINI_BASE_URL ||
-              "https://generativelanguage.googleapis.com/v1beta/openai",
-            id: "gemini",
-          },
-        )
-      : null;
-
-  /* Vercel AI Gateway — same OpenAI adapter, Vercel's base URL and key. maxTokens
-     unset for the same reason as Gemini: the reasoning models it fronts spend
-     thinking tokens against the completion budget. */
-  const gatewayKey = process.env.AI_GATEWAY_API_KEY;
-  const gateway = (id?: string) =>
-    gatewayKey
-      ? new OpenAIProvider(
-          gatewayKey,
-          id || process.env.AI_GATEWAY_MODEL || "openai/gpt-5",
-          {
-            baseUrl:
-              process.env.AI_GATEWAY_BASE_URL ||
-              "https://ai-gateway.vercel.sh/v1",
-            id: "ai-gateway",
-          },
-        )
-      : null;
-
-  const openAi = () => {
-    if (!openaiKey) return null;
-    const baseUrl = process.env.OPENAI_BASE_URL;
-    const cap = Number(process.env.OPENAI_MAX_TOKENS);
-    return new OpenAIProvider(openaiKey, process.env.OPENAI_MODEL, {
-      ...(baseUrl ? { baseUrl, id: "openai-compatible" } : {}),
-      ...(Number.isFinite(cap) && cap > 0 ? { maxTokens: cap } : {}),
-      ...(process.env.OPENAI_USER_AGENT
-        ? { userAgent: process.env.OPENAI_USER_AGENT }
-        : {}),
-    });
-  };
-
-  /* A recognised router model id wins over AI_PROVIDER, because it is strictly
-     more specific: it names both the gateway and the wire format, which is the
-     thing AI_PROVIDER could only approximate. Unrecognised ids fall through to
-     the env-configured provider rather than being forwarded — the router 403s
-     an id the token lacks, and silently passing one on would spend a request to
-     learn that. Requires the router key; without it a caller asking for
-     claude-opus-5 is not entitled to it, so ignore the hint entirely. */
+  /* A recognised model id wins over AI_PROVIDER: it names both the gateway and
+     the wire format, which is what AI_PROVIDER could only approximate. Each is
+     guarded on its own key — without it the hint is ignored and precedence
+     answers, rather than returning a provider the caller is not entitled to. */
   if (routerKey && model && isRouterModel(model)) {
     return ROUTER_MODELS[model].api === "openai"
-      ? agentRouterOpenAi(model)
-      : agentRouter(model);
+      ? buildAgentRouterOpenAi(model)
+      : buildAgentRouter(model);
   }
-  /* A Gemini id names its own gateway just like a router id does. Requires the
-     Gemini key; without it the hint is ignored and precedence answers. */
-  if (geminiKey && model && isGeminiModel(model)) return gemini(model);
-  if (gatewayKey && model && isGatewayModel(model)) return gateway(model);
+  if (process.env.GEMINI_API_KEY && model && isGeminiModel(model)) {
+    return buildGemini(model);
+  }
+  if (process.env.AI_GATEWAY_API_KEY && model && isGatewayModel(model)) {
+    return buildGateway(model);
+  }
 
-  if (forced === "agentrouter") return agentRouter();
-  if (forced === "agentrouter-openai") return agentRouterOpenAi();
-  if (forced === "claude") {
-    return anthropicKey
-      ? new ClaudeProvider(anthropicKey, process.env.ANTHROPIC_MODEL)
-      : null;
-  }
-  if (forced === "openai") return openAi();
-  if (forced === "gemini") return gemini();
-  if (forced === "gateway" || forced === "ai-gateway") return gateway();
+  if (forced === "agentrouter") return buildAgentRouter();
+  if (forced === "agentrouter-openai") return buildAgentRouterOpenAi();
+  if (forced === "claude") return buildClaude();
+  if (forced === "openai") return buildOpenAi();
+  if (forced === "gemini") return buildGemini();
+  if (forced === "gateway" || forced === "ai-gateway") return buildGateway();
 
-  if (routerKey) return agentRouter();
-  if (anthropicKey) {
-    return new ClaudeProvider(anthropicKey, process.env.ANTHROPIC_MODEL);
+  /* Precedence when nothing is forced: first configured key wins. */
+  if (routerKey) return buildAgentRouter();
+  return buildClaude() ?? buildOpenAi() ?? buildGemini() ?? buildGateway();
+}
+
+/**
+ * The provider to use, then the ones to fall back to if it errors — so a model
+ * outage degrades to the next backend instead of taking the agent down (the run
+ * loop applies the failover). The primary is getProvider's pick (honouring a
+ * model id / AI_PROVIDER / precedence); the rest are every OTHER configured
+ * provider, de-duped by reported id. That the same request is retried against a
+ * different backend is safe because the model never sets addresses or amounts —
+ * the deterministic builder does, downstream of this.
+ */
+export function getProviderChain(model?: string): ChatProvider[] {
+  const primary = getProvider(model);
+  if (!primary) return [];
+  const chain: ChatProvider[] = [primary];
+  const seen = new Set<string>([primary.id]);
+  for (const build of [
+    buildGateway,
+    buildGemini,
+    buildAgentRouter,
+    buildClaude,
+    buildOpenAi,
+  ]) {
+    const p = build();
+    if (p && !seen.has(p.id)) {
+      chain.push(p);
+      seen.add(p.id);
+    }
   }
-  if (openaiKey) {
-    return openAi();
-  }
-  if (geminiKey) return gemini();
-  if (gatewayKey) return gateway();
-  return null;
+  return chain;
 }
 
 export interface Guardrails {
