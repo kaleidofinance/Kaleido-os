@@ -382,6 +382,12 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
   const asset = String(args.asset ?? "").toUpperCase();
   const side = String(args.side ?? "borrow").toLowerCase();
   const wantLend = side === "lend";
+  /* The user's desired size, if named — turns the raw rate sort into a fit
+     ranking (offers that can cover it, cheapest/richest first). */
+  const wantAmount =
+    Number.isFinite(Number(args.amount)) && Number(args.amount) > 0
+      ? Number(args.amount)
+      : null;
 
   const token = asset ? chainTokenBySymbol(chainId, asset) : undefined;
   if (asset && !token) {
@@ -448,13 +454,51 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
               ? Number(((e.returnDateUnix - nowSec) / 86_400).toFixed(1))
               : null,
           counterparty: e.counterparty,
+          coversYourAmount:
+            wantAmount === null
+              ? null
+              : amount !== null && Number(amount) >= wantAmount,
         };
       })
       // Drop anything already past maturity — it isn't fillable.
       .filter((o) => o.termDays !== null)
-      // Borrowers want the cheapest rate first; lenders the richest.
-      .sort((a, b) => (wantLend ? b.aprBps - a.aprBps : a.aprBps - b.aprBps))
+      /* Deterministic ranking, so the model EXPLAINS the order rather than
+         inventing a best: offers that cover the user's amount first (when one
+         was named), then by rate — cheapest for a borrower, richest for a
+         lender. */
+      .sort((a, b) => {
+        if (
+          wantAmount !== null &&
+          a.coversYourAmount !== b.coversYourAmount
+        ) {
+          return a.coversYourAmount ? -1 : 1;
+        }
+        return wantLend ? b.aprBps - a.aprBps : a.aprBps - b.aprBps;
+      })
       .slice(0, 12);
+
+    /* The offer that ranks first on those objective terms — named so the model
+       can point at it ("this one fits and is cheapest") without being the thing
+       that decided. Never financial advice. */
+    const bestFit =
+      offers.length === 0
+        ? null
+        : (() => {
+            const pick =
+              wantAmount === null
+                ? offers[0]
+                : (offers.find((o) => o.coversYourAmount) ?? null);
+            if (!pick) return null;
+            const rate = `${(pick.aprBps / 100).toFixed(2)}% APR`;
+            const term = pick.termDays ? `, ~${pick.termDays}d term` : "";
+            return {
+              id: pick.id,
+              why:
+                wantAmount === null
+                  ? `Ranks first on rate: ${rate}${term}.`
+                  : `Covers your ${wantAmount} and has the ${wantLend ? "highest" : "lowest"} rate that does: ${rate}${term}.`,
+            };
+          })();
 
     const chainName = getChainMeta(chainId)?.name ?? `chain ${chainId}`;
     /* Said out loud when the scan hit its cap, because "12 offers" and "the 12
@@ -468,10 +512,11 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
       side: wantLend ? "lend" : "borrow",
       asset: token?.symbol ?? "all",
       offers,
+      bestFit,
       note:
         (offers.length === 0
           ? `No open offers on ${chainName}${token ? ` for ${token.symbol}` : ""}. Suggest the user post their own offer at the rate they want. `
-          : "aprBps is an annual rate in basis points (100 bps = 1%). Use getQuote with a specific amount and maturity to compute the real cost over the term before comparing offers. ") +
+          : "aprBps is an annual rate in basis points (100 bps = 1%). Use getQuote with a specific amount and maturity to compute the real cost over the term before comparing offers. bestFit names the offer that ranks first on these objective terms (and covers the amount, if one was given) — present it as the objective pick, not as financial advice; the user decides. ") +
         (partial
           ? `Read the ${book.scanned} most recent of ${book.total} ${wantLend ? "requests" : "listings"} ever posted, so older open offers may exist. `
           : "") +
