@@ -69,6 +69,11 @@ interface TokenSelectorProps {
    * quote). Identity is (chainId, address) — rule 1 in the registry header.
    */
   exclude?: IToken | null;
+  /** Eagerly switch the wallet to a cross-chain pick before returning it
+   *  (the default, for forms that act on the wallet's chain). The Swap card
+   *  passes false: it prices any chain read-only and switches only at signing,
+   *  so a pick must come back on its own chain without moving the wallet. */
+  switchOnSelect?: boolean;
 }
 
 function TokenRow({
@@ -291,6 +296,7 @@ export default function TokenSelector({
   onClose,
   onSelect,
   exclude,
+  switchOnSelect = true,
 }: TokenSelectorProps) {
   const [query, setQuery] = useState("");
   /* "all" is only the value before the first open. The effect below points it at
@@ -376,7 +382,7 @@ export default function TokenSelector({
    * through as-is.
    */
   const handleSelect = async (token: IToken) => {
-    if (!wallet || token.chainId === chainId) {
+    if (!wallet || token.chainId === chainId || !switchOnSelect) {
       onSelect(token);
       return;
     }
@@ -458,7 +464,7 @@ export default function TokenSelector({
                     key={`${t.chainId}:${t.address}`}
                     token={t}
                     onSelect={handleSelect}
-                    switches={Boolean(wallet) && t.chainId !== chainId}
+                    switches={Boolean(wallet) && switchOnSelect && t.chainId !== chainId}
                     disabled={switching}
                   />
                 ))
