@@ -15,9 +15,7 @@ import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import Chevron from "@/components/v2/Chevron";
-import { useConnectModal } from "thirdweb/react";
-import { client } from "@/config/client";
-import { WALLETS } from "@/config/wallets";
+import { useConnectWallet } from "@/hooks/v2/useChainAction";
 import type { Intent } from "@/lib/v2/intents";
 import {
   EXPIRY_CHOICES,
@@ -431,10 +429,7 @@ export default function LimitPage() {
   const { address, isConnected, chainId, chainName } = useWalletV2();
   /* See swap: /trade has no ChainGate, so a disconnected CTA connects rather
      than sits disabled. */
-  const { connect } = useConnectModal();
-  const openConnect = () => {
-    connect({ client, wallets: WALLETS, size: "compact" }).catch(() => {});
-  };
+  const openConnect = useConnectWallet();
   const { orders: ordersAddress } = getContracts(chainId);
 
   const available = useMemo(

@@ -1,12 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  useActiveAccount,
-  useActiveWalletChain,
-  useSwitchActiveWalletChain,
-} from "thirdweb/react";
-import { defineChain } from "thirdweb/chains";
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { toast } from "sonner";
 import {
   type BorrowV2,
@@ -27,8 +22,8 @@ import type { CollateralIntent } from "@/components/v2/LendingDataContext";
 import { useLendingData } from "@/components/v2/LendingDataContext";
 import type { ChainLendingAsset } from "@/hooks/useLendingAssets";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
-import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
-import { isSupportedChain } from "@/config/chain";
+import { useChainGateAction } from "@/hooks/v2/useChainAction";
+import { getChainMeta } from "@/constants/chains";
 import { LENDING_CHAIN_ID } from "@/lib/lending/chain";
 import s from "./BorrowModals.module.css";
 
@@ -389,52 +384,9 @@ function TermPicker({
  * chain changed in the wallet between opening the modal and pressing.
  */
 function useLendingChain(targetChainId?: number) {
-  const account = useActiveAccount();
-  const chain = useActiveWalletChain();
-  const switchChain = useSwitchActiveWalletChain();
-  const [switching, setSwitching] = useState(false);
-
-  const goTo = targetChainId ?? LENDING_CHAIN_ID;
-  const meta = getChainMeta(goTo);
-  const target = meta?.shortName ?? meta?.name ?? `chain ${goTo}`;
-
-  const wrong =
-    !!account &&
-    !!chain &&
-    (targetChainId !== undefined
-      ? chain.id !== targetChainId
-      : !isSupportedChain(chain.id));
-
-  const goToChain = async (): Promise<boolean> => {
-    if (!meta) {
-      toast.error(`Chain ${goTo} is not in the registry.`);
-      return false;
-    }
-    setSwitching(true);
-    try {
-      await switchChain(defineChain(toThirdwebChainOptions(meta)));
-      return true;
-    } catch {
-      toast.error(
-        `Couldn't switch to ${meta.name} — switch manually in your wallet, then try again.`,
-      );
-      return false;
-    } finally {
-      setSwitching(false);
-    }
-  };
-
-  /* One action, two prompts: switch if the wallet is on the wrong chain,
-     then run the action — the swap's startSwap fold. A declined switch stops
-     here. Safe only where the action has no chain-dependent gate before it;
-     take/post-request keep the switch as a step so the collateral check (see
-     #95) runs on the target chain BEFORE anything is signed. */
-  const run = async (action: () => void | Promise<void>) => {
-    if (wrong && !(await goToChain())) return;
-    await action();
-  };
-
-  return { wrong, switching, goToChain, run, target };
+  /* The shared gate (see useChainGateAction), with the lending home chain as the
+     fallback target for the no-pick case — the only lending-specific part left. */
+  return useChainGateAction(targetChainId, LENDING_CHAIN_ID);
 }
 
 const num = (v: string) => v.replace(/[^0-9.]/g, "");

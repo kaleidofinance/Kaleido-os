@@ -1,13 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useConnectModal } from "thirdweb/react";
-
-import { client } from "@/config/client";
-import { WALLETS } from "@/config/wallets";
 import { CHAINS, getChainMeta } from "@/constants/chains";
 import { isDeployed, tradableChains } from "@/constants/registry";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useConnectWallet } from "@/hooks/v2/useChainAction";
 import { MOCK_DATA } from "@/lib/mock";
 
 import NetworkSelector from "./NetworkSelector";
@@ -131,19 +128,11 @@ export default function ChainGate({
   state: Exclude<ChainGateState, { ready: true }>;
 }) {
   const [picker, setPicker] = useState(false);
-  const { connect } = useConnectModal();
+  const openConnect = useConnectWallet();
 
   /* Deployed AND intended. `tradable` alone is an intention, and reading it as a
      fact is what put "Trading live" under nine chains with no contracts. */
   const live = tradableChains(CHAINS);
-
-  const openConnect = async () => {
-    try {
-      await connect({ client, wallets: WALLETS, size: "compact" });
-    } catch {
-      /* Dismissing the modal rejects. That is a decision, not a fault. */
-    }
-  };
 
   let title: string;
   let body: string;
