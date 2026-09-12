@@ -14,6 +14,7 @@ import {
   type LendingAsset,
 } from "@/hooks/v2/useBorrowV2";
 import Portal from "./Portal";
+import Chevron from "./Chevron";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import type { LendingFees } from "@/hooks/useLendingFees";
 import {
@@ -251,9 +252,7 @@ function CurrencyPicker({
           ) : null}
         </span>
         <span className={s.asSelSym}>{selected?.symbol ?? "Select asset"}</span>
-        <span className={s.asSelChev} aria-hidden="true">
-          {"\u25be"}
-        </span>
+        <Chevron className={s.asSelChev} />
       </button>
 
       {open && (

@@ -7,6 +7,7 @@ import SwapSettings, { AUTO_SLIPPAGE_BPS } from "@/components/v2/SwapSettings";
 import TxHistory from "@/components/v2/TxHistory";
 import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
+import Chevron from "@/components/v2/Chevron";
 import { chainTokens } from "@/constants/tokens";
 import { getContracts } from "@/constants/registry";
 import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
@@ -142,7 +143,7 @@ function TokenPill({
       ) : (
         "Select token"
       )}
-      <span className={s.cv}>▾</span>
+      <Chevron className={s.cv} />
     </button>
   );
 }

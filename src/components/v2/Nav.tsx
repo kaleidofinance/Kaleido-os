@@ -12,6 +12,7 @@ import { client } from "@/config/client";
 import { envVars } from "@/constants/envVars";
 import { WALLETS } from "@/config/wallets";
 import ChainIcon from "./ChainIcon";
+import Chevron from "./Chevron";
 import LinkX from "./LinkX";
 import NetworkSelector from "./NetworkSelector";
 import NotificationBell from "./NotificationBell";
@@ -467,7 +468,7 @@ export default function Nav() {
                 button would be an empty circle. The aria-label above carries
                 the full name either way. */}
             <span className={styles.netName}>{chainName ?? "Network"}</span>
-            <span className={styles.caret}>▾</span>
+            <Chevron className={styles.caret} />
           </button>
           <NetworkSelector
             open={networkOpen}

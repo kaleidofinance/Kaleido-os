@@ -14,6 +14,7 @@ import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import Chevron from "@/components/v2/Chevron";
 import { useConnectModal } from "thirdweb/react";
 import { client } from "@/config/client";
 import { WALLETS } from "@/config/wallets";
@@ -203,7 +204,7 @@ function TokenPill({
       ) : (
         "Select token"
       )}
-      <span className={s.cv}>▾</span>
+      <Chevron className={s.cv} />
     </button>
   );
 }
