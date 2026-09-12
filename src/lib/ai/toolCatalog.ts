@@ -718,13 +718,22 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getMarkets",
     kind: "read",
     description:
-      "Open borrow/lend offers and pool rates on Kaleido, and comparable rates on external protocols where indexed, for a given asset. Use to find the best venue across protocols, and to get the listingId or requestId that takeListing and fillRequest need.",
+      "Open borrow/lend offers and pool rates on Kaleido, and comparable rates on external protocols where indexed, for a given asset. Use to find the best venue across protocols, and to get the listingId or requestId that takeListing and fillRequest need. Pass amount (the size the user wants) to rank offers that can cover it first and get a bestFit pick; the ranking is objective, not advice.",
     parameters: {
       type: "object",
       additionalProperties: false,
       properties: {
         asset: { type: "string", description: "Token symbol, e.g. USDC" },
         side: { type: "string", enum: ["borrow", "lend"] },
+        amount: {
+          type: "number",
+          description:
+            "The size the user wants to borrow or lend, in whole token units. When given, offers that can cover it are ranked first and bestFit names the objective pick.",
+        },
+        termDays: {
+          type: "number",
+          description: "The user's preferred term in days, if they named one.",
+        },
       },
       required: ["asset"],
     },
