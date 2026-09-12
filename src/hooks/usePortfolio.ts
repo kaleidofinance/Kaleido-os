@@ -10,7 +10,8 @@ import useGetActiveRequest from "@/hooks/useGetActiveRequest";
 import { useLenderPositions } from "@/hooks/useLenderPositions";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
 import { useStablecoin } from "@/hooks/useStablecoin";
-import { useWalletBalances } from "@/hooks/useWalletBalances";
+import { useWalletBalancesAcrossChains } from "@/hooks/useWalletBalancesAcrossChains";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { positionAmounts, positionValueUsd } from "@/lib/dex/positionValue";
 import { feeAmountToNumber } from "@/lib/dex/feeGrowth";
@@ -328,7 +329,7 @@ export const usePortfolio = (): Portfolio => {
     holdings,
     unread: unreadHoldings,
     loading: walletLoading,
-  } = useWalletBalances();
+  } = useWalletBalancesAcrossChains();
   const { priceOf, loading: pricesLoading } = useSpotPrices();
 
   /*
@@ -456,11 +457,15 @@ export const usePortfolio = (): Portfolio => {
       .filter((h) => !WALLET_EXCLUDES.has(h.symbol))
       .map((h) => {
         const price = priceOf(h.symbol);
+        const chainName =
+          CHAINS_BY_ID[h.chainId]?.shortName ?? `chain ${h.chainId}`;
         return {
-          id: `wallet-${h.address}`,
+          /* Keyed by (chain, address): the same token exists on several chains,
+             so the bare address collided and React dropped rows. */
+          id: `wallet-${h.chainId}-${h.address}`,
           kind: "wallet" as const,
           label: h.symbol,
-          sublabel: h.isNative ? "Native balance" : "Wallet balance",
+          sublabel: `${chainName} · ${h.isNative ? "Native" : "Wallet"}`,
           amount: shortAmount(h.value, h.amount),
           valueUsd: price === null ? null : h.value * price,
           apy: null,
@@ -482,7 +487,7 @@ export const usePortfolio = (): Portfolio => {
          either way, and the reader needs to know the figure is short. */
       unpriced: [...unpriced, ...unreadHoldings],
       rows,
-      empty: "No token balances on this network.",
+      empty: "No token balances in this wallet.",
       href: "/trade/swap",
     };
   }, [holdings, unreadHoldings, priceOf]);
