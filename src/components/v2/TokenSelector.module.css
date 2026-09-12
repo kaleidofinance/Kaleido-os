@@ -369,6 +369,19 @@
 }
 .rn {
   font-size: var(--k-fs-base);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+/* The name truncates; the verified badge beside it never does — a long stock
+   name ("Advanced Micro Devices • Robinhood Token") must not push the check off
+   the row, since the check is the thing the row exists to let the user trust. */
+.rnName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .rs {
   font-size: var(--k-fs-xs);
