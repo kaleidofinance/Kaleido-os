@@ -148,6 +148,13 @@ export const TOOL_CATALOG: ToolSpec[] = [
       "Stake KLD into the vault to receive liquid stKLD. KLD is the only stakeable asset, so no token is needed.",
     parameters: amountOnly,
   },
+  {
+    name: "unstake",
+    kind: "execute",
+    description:
+      "Unstake KLD. The vault unstakes in steps: this opens the cooldown when the user is not already in one, or pays out the matured amount once the cooldown has elapsed — the builder reads the vault's state and emits the step that applies, so \"unstake 100 KLD\" does the right thing at either point. KLD is the only stakeable asset.",
+    parameters: amountOnly,
+  },
 
   /* ---- EXECUTE: wallet ----------------------------------------------- */
   {
@@ -550,6 +557,13 @@ export const TOOL_CATALOG: ToolSpec[] = [
       },
       required: ["amount", "tokenIn", "tokenOut", "price", "basis"],
     },
+  },
+  {
+    name: "cancelOrders",
+    kind: "execute",
+    description:
+      "Cancel ALL of the user's resting limit and recurring orders at once, on-chain. The panic cancel: it bumps the maker's epoch, so it also invalidates orders signed on other devices. There is no per-order cancel yet — use this to clear everything.",
+    parameters: noArgs,
   },
 
 
