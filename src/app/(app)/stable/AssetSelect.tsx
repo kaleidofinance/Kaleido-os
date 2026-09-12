@@ -3,6 +3,7 @@
 import { useState } from "react";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import Portal from "@/components/v2/Portal";
+import Chevron from "@/components/v2/Chevron";
 import f from "./form.module.css";
 
 /**
@@ -57,9 +58,7 @@ export default function AssetSelect({
           />
         </span>
         {selected?.symbol ?? "Select"}
-        <span className={f.asSelChev} aria-hidden="true">
-          {"▾"}
-        </span>
+        <Chevron className={f.asSelChev} />
       </button>
 
       {open && (

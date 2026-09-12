@@ -435,6 +435,8 @@
 .cv {
   font-size: 12px;
   color: var(--k-t2);
+  flex: none;
+  display: block;
 }
 
 .linkRow {

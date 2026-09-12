@@ -18,6 +18,7 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import Portal from "./Portal";
+import Chevron from "./Chevron";
 import s from "./TokenSelector.module.css";
 
 /**
@@ -214,9 +215,7 @@ function NetworkFilter({
             ))}
           </span>
         )}
-        <span className={s.nfCaret} aria-hidden="true">
-          ▾
-        </span>
+        <Chevron className={s.nfCaret} />
       </button>
 
       {open && (

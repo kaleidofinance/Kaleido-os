@@ -32,6 +32,7 @@ import {
 import { getV3AmountRatio } from "@/constants/utils/v3Math";
 import { chainTokens } from "@/constants/tokens";
 import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
+import Chevron from "@/components/v2/Chevron";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
 import type { IToken } from "@/constants/types/dex";
 import s from "../pool.module.css";
@@ -748,10 +749,10 @@ export default function NewPositionPage() {
           <div className={s.bl}>Pair</div>
           <div className={s.pairRow}>
             <button className={s.pairPick} onClick={() => setPickerFor("0")}>
-              {token0.symbol} <span>▾</span>
+              {token0.symbol} <Chevron />
             </button>
             <button className={s.pairPick} onClick={() => setPickerFor("1")}>
-              {token1.symbol} <span>▾</span>
+              {token1.symbol} <Chevron />
             </button>
           </div>
           {/* Only when a link named another chain — see `linkChain`. Without it
