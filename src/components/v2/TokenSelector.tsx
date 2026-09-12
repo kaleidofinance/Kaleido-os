@@ -290,6 +290,42 @@ function NetworkFilter({
   );
 }
 
+/**
+ * A category filter over the registry's own `tags`.
+ *
+ * Not a new taxonomy — each test reads the tags the registry already carries
+ * (see registry.ts), so a token joins a category by being tagged, and nothing
+ * here has to be kept in sync with the token tables. Order is the row order.
+ *
+ * A category renders ONLY when the list in view has a token in it (see
+ * `categoryTabs`), so the row never offers a button that filters to nothing:
+ * "Memes" stays hidden until the launchpad memes are registered with a `meme`
+ * tag, and "Stocks" appears on Robinhood and nowhere the stock tokens are not
+ * listed. That is the same honesty the empty state keeps — the panel states
+ * what it can see rather than speculating about a future entry.
+ */
+type TokenCategory = { id: string; label: string; test: (t: IToken) => boolean };
+
+const hasTag = (t: IToken, tag: string) => (t.tags ?? []).includes(tag);
+
+const CATEGORIES: TokenCategory[] = [
+  {
+    /* The blue-chips: a chain's gas asset and its wrapper, wrapped BTC, and our
+       own governance token — the assets a user reaches for first, spread across
+       several tags rather than one. */
+    id: "major",
+    label: "Major",
+    test: (t) =>
+      Boolean(t.isNative) ||
+      hasTag(t, "wrapped-native") ||
+      hasTag(t, "wrapped-btc") ||
+      hasTag(t, "governance"),
+  },
+  { id: "stable", label: "Stablecoins", test: (t) => hasTag(t, "stablecoin") },
+  { id: "stock", label: "Stocks", test: (t) => hasTag(t, "stock") },
+  { id: "meme", label: "Memes", test: (t) => hasTag(t, "meme") },
+];
+
 export default function TokenSelector({
   open,
   onClose,
@@ -304,6 +340,10 @@ export default function TokenSelector({
      act, which is what makes the network switch below expected rather than a
      surprise. Disconnected there is no chain to point at, so it stays "all". */
   const [network, setNetwork] = useState<number | "all">("all");
+  /* Which category pill is active; null is "All". Reset whenever the network
+     changes (below), so a category that has no tokens on the newly chosen
+     network cannot stay selected and blank the list. */
+  const [category, setCategory] = useState<string | null>(null);
   /* Held across the await so a second row click cannot queue a second
      wallet_switchEthereumChain behind the first. */
   const [switching, setSwitching] = useState(false);
@@ -319,6 +359,13 @@ export default function TokenSelector({
     }
     setNetwork(chainId ?? "all");
   }, [open, chainId]);
+
+  /* A category is meaningful only within the network in view — Stocks exist on
+     Robinhood and Stablecoins everywhere — so a network change clears it rather
+     than leaving a now-empty filter applied. */
+  useEffect(() => {
+    setCategory(null);
+  }, [network]);
 
   useEffect(() => {
     if (!open) return;
@@ -347,24 +394,43 @@ export default function TokenSelector({
     [network, chains],
   );
 
+  /* Everything selectable in the current network view, the excluded token
+     (the swap's other side) already removed — the base both the category row
+     and the results derive from, so a category button and the list agree about
+     what exists. */
+  const pool = useMemo(
+    () =>
+      available.filter(
+        (t) =>
+          !(
+            exclude &&
+            t.chainId === exclude.chainId &&
+            t.address.toLowerCase() === exclude.address.toLowerCase()
+          ),
+      ),
+    [available, exclude],
+  );
+
+  /* Only the categories with a token in the current pool, so an empty filter is
+     never offered. Because this is derived from the pool, an active category is
+     guaranteed at least one match until a search query narrows it further. */
+  const categoryTabs = useMemo(
+    () => CATEGORIES.filter((cat) => pool.some(cat.test)),
+    [pool],
+  );
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const pool = available.filter(
-      (t) =>
-        !(
-          exclude &&
-          t.chainId === exclude.chainId &&
-          t.address.toLowerCase() === exclude.address.toLowerCase()
-        ),
-    );
-    if (!q) return pool;
-    return pool.filter(
+    const activeCat = CATEGORIES.find((cat) => cat.id === category) ?? null;
+    const scoped = activeCat ? pool.filter(activeCat.test) : pool;
+    if (!q) return scoped;
+    return scoped.filter(
       (t) =>
         t.symbol.toLowerCase().includes(q) ||
         t.name.toLowerCase().includes(q) ||
         t.address.toLowerCase() === q,
     );
-  }, [available, query, exclude]);
+  }, [pool, query, category]);
 
   /*
    * Switch first, hand back second.
@@ -442,6 +508,34 @@ export default function TokenSelector({
                 onChange={setNetwork}
               />
             </div>
+
+            {categoryTabs.length > 0 && (
+              <div className={s.cats} role="tablist" aria-label="Token categories">
+                <button
+                  type="button"
+                  className={`${s.cat} ${category === null ? s.catOn : ""}`}
+                  onClick={() => setCategory(null)}
+                  role="tab"
+                  aria-selected={category === null}
+                >
+                  All
+                </button>
+                {categoryTabs.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    className={`${s.cat} ${category === cat.id ? s.catOn : ""}`}
+                    onClick={() =>
+                      setCategory((cur) => (cur === cat.id ? null : cat.id))
+                    }
+                    role="tab"
+                    aria-selected={category === cat.id}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className={s.list}>
               {available.length === 0 ? (

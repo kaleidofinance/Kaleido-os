@@ -127,6 +127,34 @@
   color: var(--k-t3);
 }
 
+/* Category filter pills — one per registry tag family, rendered only when the
+   current list has a token in it (see TokenSelector). */
+.cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--k-s3);
+  flex: none;
+}
+.cat {
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  background: var(--k-well2);
+  padding: 5px 12px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cat:hover {
+  color: var(--k-t1);
+}
+.catOn {
+  background: var(--k-brand);
+  color: var(--k-brand-fg);
+}
+
 /* Network filter — docked inside the search bar, the way Uniswap docks theirs,
    so filtering by network reads as part of finding a token rather than as a
    separate mode. `position: relative` is what the panel below anchors to. */
