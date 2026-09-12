@@ -4,6 +4,7 @@ import {
   registeredTokens,
 } from "@/constants/registry";
 import { FEE_TIERS } from "@/lib/dex/liquidity";
+import type { DexVenue } from "@/constants/venues";
 
 /**
  * Which pools a swap should go through, direct or via one intermediate token.
@@ -154,14 +155,29 @@ export function intermediateTokens(
         !t.tags?.includes("native-alias"),
     );
 
+  /* Our deployed wrapped native where we have one; otherwise the registry's own
+     canonical wrapped-native token. The fallback matters on a chain we route
+     through but have not deployed on — Robinhood mainnet, where WETH is a real
+     contract in TOKENS (tagged wrapped-native) but `getContracts` has no
+     wrappedNative to point at yet. Without it the chain's most liquid quote asset
+     would never be tried as a middle leg. */
   const wrapped = contracts.wrappedNative
     ? registered.find(
         (t) =>
           t.address.toLowerCase() === contracts.wrappedNative!.toLowerCase(),
       )
-    : undefined;
+    : registered.find((t) => t.tags?.includes("wrapped-native"));
 
-  const ordered = [bySymbol("USDC"), wrapped, bySymbol("USDT")];
+  /* USDG (Global Dollar) is Robinhood mainnet's stablecoin — the quote asset
+     its pools have a side in, the way USDC is elsewhere. `bySymbol` returns
+     undefined on every chain that does not register it, so this is additive:
+     it only appears in the candidate list on a chain that has USDG. */
+  const ordered = [
+    bySymbol("USDC"),
+    bySymbol("USDG"),
+    wrapped,
+    bySymbol("USDT"),
+  ];
 
   /* Deduped by address, defensively. On most chains USDC, the wrapped native and
      USDT are three distinct tokens; the dedup only bites if a chain registers the
@@ -429,6 +445,66 @@ export async function findBestRoute(
     if (r && (!best || r.amountOut > best.amountOut)) best = r;
   }
   return best;
+}
+
+/**
+ * A route plus the router that can execute it and the venue it belongs to.
+ *
+ * `router` undefined and `venue` null means our own deployment — the caller
+ * already holds our router address, so there is nothing to carry. A non-null
+ * `venue` is an external DEX (Uniswap V3 on Robinhood today): its `router` is the
+ * one the swap must approve and call, and `venue.label` is what the card says.
+ */
+export interface RoutedPath extends SwapPath {
+  router: string | undefined;
+  venue: DexVenue | null;
+}
+
+/**
+ * One place a route can be quoted: our own pools, or one external venue.
+ *
+ * `quote` is the venue's quoter bound by the caller (which owns the provider and
+ * the quoter address); `router`/`venue` travel with a winning route so the
+ * executor and the card know where it goes.
+ */
+export interface RouteSource {
+  quote: PathQuoter;
+  router: string | undefined;
+  venue: DexVenue | null;
+}
+
+/**
+ * The first source that can fill this swap, in the order given — OUR pools first,
+ * external venues only after. This is the fallback the mainnet plan calls for: a
+ * token we have not seeded is still tradable through a venue that has, and "no
+ * route" means no source could fill it rather than "our pools couldn't".
+ *
+ * First-hit, not best-fill: our own liquidity is preferred whenever it can fill
+ * the order at all, so a venue is reached only when `findBestRoute` on the source
+ * ahead of it returned null. Sources are tried in sequence rather than in
+ * parallel for the same reason — the second quote is not paid unless the first
+ * came up empty.
+ */
+export async function findRouteAcrossSources(
+  chainId: number | undefined,
+  tokenIn: RouteToken,
+  tokenOut: RouteToken,
+  amountIn: string,
+  sources: RouteSource[],
+  opts: { maxIntermediates?: number } = {},
+): Promise<RoutedPath | null> {
+  for (const src of sources) {
+    const path = await findBestRoute(
+      chainId,
+      tokenIn,
+      tokenOut,
+      amountIn,
+      src.quote,
+      opts,
+    );
+    if (path) return { ...path, router: src.router, venue: src.venue };
+  }
+  return null;
 }
 
 /**

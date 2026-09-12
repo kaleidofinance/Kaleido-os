@@ -555,3 +555,7 @@
     padding: 10px 14px 14px;
   }
 }
+
+.routeVenue {
+  color: var(--k-t3);
+}
