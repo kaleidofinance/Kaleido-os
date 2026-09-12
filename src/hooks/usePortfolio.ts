@@ -7,7 +7,7 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import useGetValueAndHealth from "@/hooks/useGetValueAndHealth";
 import { useStakingData } from "@/hooks/v2/useStakingData";
 import useGetActiveRequest from "@/hooks/useGetActiveRequest";
-import { useLenderPositions } from "@/hooks/useLenderPositions";
+import { useLenderPositionsAcrossChains } from "@/hooks/useLenderPositionsAcrossChains";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
 import { useStablecoin } from "@/hooks/useStablecoin";
 import { useWalletBalancesAcrossChains } from "@/hooks/useWalletBalancesAcrossChains";
@@ -324,7 +324,7 @@ export const usePortfolio = (): Portfolio => {
     offers,
     loans: fundedLoans,
     loading: lenderLoading,
-  } = useLenderPositions();
+  } = useLenderPositionsAcrossChains();
   const {
     holdings,
     unread: unreadHoldings,
@@ -497,16 +497,19 @@ export const usePortfolio = (): Portfolio => {
     const rows: Position[] = [];
 
     fundedLoans.forEach((l) => {
-      const symbol = protocolSymbol(l.tokenAddress);
-      const decimals = protocolDecimals(l.tokenAddress);
+      const symbol = symbolForAddress(l.chainId, l.tokenAddress);
+      const decimals = decimalsForAddress(l.chainId, l.tokenAddress);
       const outstanding = humanAmount(l.outstanding, decimals);
       const price = priceOf(symbol);
       const overdue = daysUntil(l.returnDate) < 0;
+      const chainName =
+        CHAINS_BY_ID[l.chainId]?.shortName ?? `chain ${l.chainId}`;
       rows.push({
-        id: `loan-${l.requestId}`,
+        /* (chain, id): request ids repeat across chains. */
+        id: `loan-${l.chainId}-${l.requestId}`,
         kind: "loan",
         label: symbol,
-        sublabel: "Lent · P2P",
+        sublabel: `${chainName} · Lent`,
         amount: outstanding === null ? null : shortAmount(outstanding, "—"),
         valueUsd:
           outstanding === null || price === null ? null : outstanding * price,
@@ -518,8 +521,8 @@ export const usePortfolio = (): Portfolio => {
     });
 
     offers.forEach((o) => {
-      const symbol = protocolSymbol(o.tokenAddress);
-      const decimals = protocolDecimals(o.tokenAddress);
+      const symbol = symbolForAddress(o.chainId, o.tokenAddress);
+      const decimals = decimalsForAddress(o.chainId, o.tokenAddress);
       const amount = humanAmount(o.amount, decimals);
       const price = priceOf(symbol);
       /* An offer past its own return date can no longer be drawn on for a full
@@ -527,11 +530,13 @@ export const usePortfolio = (): Portfolio => {
          unset, and 0 is not "1970" — it is "no date", so it must not read as
          expired. */
       const expired = o.returnDate > 0 && daysUntil(o.returnDate) < 0;
+      const chainName =
+        CHAINS_BY_ID[o.chainId]?.shortName ?? `chain ${o.chainId}`;
       rows.push({
-        id: `offer-${o.listingId}`,
+        id: `offer-${o.chainId}-${o.listingId}`,
         kind: "offer",
         label: symbol,
-        sublabel: "Offer · unfilled",
+        sublabel: `${chainName} · Offer`,
         amount: amount === null ? null : shortAmount(amount, "—"),
         valueUsd: amount === null || price === null ? null : amount * price,
         apy: convertbasisPointsToPercentage(o.interestBps),
@@ -554,12 +559,10 @@ export const usePortfolio = (): Portfolio => {
       empty: "No offers posted and no loans funded.",
       href: "/lend",
     };
-    /* The two resolvers above are absent from these deps on purpose: both close
-       over READ_ONLY_CHAIN_ID, a module constant, so a new function identity each
-       render carries no new information. `priceOf` is likewise rebuilt every
-       render by design (see useSpotPrices) — these memos are a few dozen rows of
-       mapping, and chasing referential stability through them would cost more
-       than it saves. */
+    /* `symbolForAddress`/`decimalsForAddress` are module imports (stable), and
+       `priceOf` is rebuilt every render by design (see useSpotPrices) — these
+       memos are a few dozen rows of mapping, so chasing referential stability
+       through them would cost more than it saves. */
   }, [offers, fundedLoans, priceOf]);
 
   // --- Borrowing --------------------------------------------------------
