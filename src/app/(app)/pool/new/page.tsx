@@ -3,8 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import {
+  useActiveAccount,
+  useActiveWalletChain,
+  useSwitchActiveWalletChain,
+} from "thirdweb/react";
 import { ethers6Adapter } from "thirdweb/adapters/ethers6";
+import { defineChain } from "thirdweb/chains";
 import { client } from "@/config/client";
 import TokenSelector from "@/components/v2/TokenSelector";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
@@ -26,7 +31,7 @@ import {
 } from "@/lib/dex/liquidity";
 import { getV3AmountRatio } from "@/constants/utils/v3Math";
 import { chainTokens } from "@/constants/tokens";
-import { getChainMeta } from "@/constants/chains";
+import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
 import type { IToken } from "@/constants/types/dex";
 import s from "../pool.module.css";
@@ -105,6 +110,8 @@ export default function NewPositionPage() {
   const { isConnected, address, chainId } = useWalletV2();
   const account = useActiveAccount();
   const chain = useActiveWalletChain();
+  const switchChain = useSwitchActiveWalletChain();
+  const [switchingChain, setSwitchingChain] = useState(false);
   const { mintPosition, POSITION_MANAGER_ADDRESS: positionManager } =
     useV3PositionManager();
   const gate = useChainGate();
@@ -192,6 +199,24 @@ export default function NewPositionPage() {
     wanted && wanted.chainId !== null && wanted.chainId !== chainId
       ? wanted.chainId
       : null;
+
+  /* A link CAN switch the wallet — a raw hyperlink cannot, but this page can.
+     So the note becomes a button: switch to the pool's chain, and the prefill
+     effect above then resolves the link's pair from that chain's token list. */
+  const goToLinkChain = async () => {
+    const meta = linkChain ? getChainMeta(linkChain) : null;
+    if (!meta) return;
+    setSwitchingChain(true);
+    try {
+      await switchChain(defineChain(toThirdwebChainOptions(meta)));
+    } catch {
+      toast.error(
+        `Couldn't switch to ${meta.name} — switch manually in your wallet.`,
+      );
+    } finally {
+      setSwitchingChain(false);
+    }
+  };
 
   /*
    * Fills whichever side is not a token on this chain.
@@ -734,9 +759,18 @@ export default function NewPositionPage() {
           {linkChain ? (
             <div className={s.priceHint} style={{ marginTop: 8 }}>
               That pool is on{" "}
-              {getChainMeta(linkChain)?.name ?? `chain ${linkChain}`}. Switch your
-              wallet to it to open this form on its pair — a link cannot switch
-              networks for you.
+              {getChainMeta(linkChain)?.name ?? `chain ${linkChain}`} — switch to
+              it to open this form on its pair.{" "}
+              <button
+                type="button"
+                className={s.switchLink}
+                onClick={goToLinkChain}
+                disabled={switchingChain}
+              >
+                {switchingChain
+                  ? "Switching…"
+                  : `Switch to ${getChainMeta(linkChain)?.shortName ?? "that network"}`}
+              </button>
             </div>
           ) : null}
           <div className={s.bl} style={{ marginTop: 14 }}>

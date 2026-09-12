@@ -1572,3 +1572,25 @@ a.txAction:hover {
     min-width: 420px;
   }
 }
+/* Inline switch-to-chain button under the New-position pair note — turns the
+   'that pool is on another chain' note from a dead end into one click. */
+.switchLink {
+  display: inline-block;
+  margin-top: 6px;
+  background: var(--k-glass-strong);
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t1);
+  padding: 4px 10px;
+  border-radius: var(--k-r-sm);
+  cursor: pointer;
+}
+.switchLink:hover {
+  background: var(--k-row-hover);
+}
+.switchLink:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
