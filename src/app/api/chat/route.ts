@@ -62,7 +62,13 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     provider: Boolean(getProvider()),
     models,
-    defaultModel: process.env.AGENTROUTER_MODEL ?? null,
+    defaultModel:
+      process.env.AI_PROVIDER === "gateway" ||
+      process.env.AI_PROVIDER === "ai-gateway"
+        ? (process.env.AI_GATEWAY_MODEL ?? "openai/gpt-5")
+        : process.env.AI_PROVIDER === "gemini"
+          ? (process.env.GEMINI_MODEL ?? "gemini-flash-latest")
+          : (process.env.AGENTROUTER_MODEL ?? null),
     ...usage,
   });
 }

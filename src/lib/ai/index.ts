@@ -124,6 +124,7 @@ export const GEMINI_MODEL_IDS = Object.keys(GEMINI_MODELS) as GeminiModel[];
  */
 export const GATEWAY_MODELS = {
   "openai/gpt-5": { label: "GPT-5 · Gateway" },
+  "openai/o3": { label: "o3 · Gateway" },
   "openai/gpt-5-mini": { label: "GPT-5 Mini · Gateway" },
   "deepseek/deepseek-r1": { label: "DeepSeek R1 · Gateway" },
 } as const satisfies Record<string, { label: string }>;
