@@ -190,17 +190,27 @@ export default function SwapPage() {
   const wrongChain = isConnected && chainId != null && chainId !== swapChainId;
   const switchWalletChain = useSwitchActiveWalletChain();
   const [switching, setSwitching] = useState(false);
-  const goToSwapChain = async () => {
+  const goToSwapChain = async (): Promise<boolean> => {
     const meta = getChainMeta(swapChainId);
-    if (!meta) return;
+    if (!meta) return false;
     setSwitching(true);
     try {
       await switchWalletChain(defineChain(toThirdwebChainOptions(meta)));
+      return true;
     } catch {
-      /* Declined or failed — stay put; the CTA still reads Switch. */
+      /* Declined or failed — stay put. */
+      return false;
     } finally {
       setSwitching(false);
     }
+  };
+  /* One action, two prompts: on the wrong chain the wallet's network prompt
+     comes first, then review to sign — the way Uniswap folds the switch into
+     the swap rather than making it a separate button. A declined switch stops
+     here, so review never opens on a chain the plan cannot be signed on. */
+  const startSwap = async () => {
+    if (wrongChain && !(await goToSwapChain())) return;
+    setReviewing(true);
   };
   const [amountIn, setAmountIn] = useState("500");
   const [amountOut, setAmountOut] = useState("");
@@ -670,7 +680,7 @@ export default function SwapPage() {
                   : switching
                     ? "Switching…"
                     : wrongChain
-                      ? `Switch to ${getChainMeta(swapChainId)?.shortName ?? "network"}`
+                      ? `Review on ${getChainMeta(swapChainId)?.shortName ?? "its network"}`
                       : "Review swap";
 
   const ctaDisabled =
@@ -813,13 +823,7 @@ export default function SwapPage() {
         <button
           className={s.cta}
           disabled={isConnected && ctaDisabled}
-          onClick={
-            !isConnected
-              ? openConnect
-              : wrongChain
-                ? goToSwapChain
-                : () => setReviewing(true)
-          }
+          onClick={!isConnected ? openConnect : startSwap}
         >
           {ctaLabel}
         </button>
