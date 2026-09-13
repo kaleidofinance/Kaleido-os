@@ -14,13 +14,26 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import Portal from "./Portal";
 import s from "./AgentSettings.module.css";
 
-/** Maps the settings' action toggles onto the facet's on-chain bitmask. */
+/**
+ * Maps the settings' action toggles onto the facet's on-chain bitmask.
+ *
+ * The bitmask is lending-only by design (BORROW..CLOSE — see LibAgentPermission),
+ * so ONLY the two lending toggles carry a bit; swap, staking and liquidity carry
+ * none, because there is no on-chain authority to grant for them and the panel's
+ * own copy says as much.
+ *
+ * They used to be mapped anyway, and wrongly: `swap` set WITHDRAW_COLLATERAL and
+ * `stake`/`provideLiquidity` set DEPOSIT_COLLATERAL. Since swap is on by default,
+ * a user building a grant to let an agent trade silently signed away the right to
+ * pull their collateral — the one authority the copy promised could never be
+ * delegated. A toggle that is not a lending action now contributes 0.
+ */
 const ACTION_BITS: Record<AgentAction, number> = {
   borrow: AGENT_ACTIONS.BORROW,
   lend: AGENT_ACTIONS.LEND,
-  stake: AGENT_ACTIONS.DEPOSIT_COLLATERAL,
-  swap: AGENT_ACTIONS.WITHDRAW_COLLATERAL,
-  provideLiquidity: AGENT_ACTIONS.DEPOSIT_COLLATERAL,
+  swap: 0,
+  stake: 0,
+  provideLiquidity: 0,
 };
 
 /**
@@ -109,6 +122,9 @@ export default function AgentSettings({
     (Object.keys(settings.allowedActions) as AgentAction[]).forEach((a) => {
       if (settings.allowedActions[a]) bits |= ACTION_BITS[a];
     });
+    // Only swap/staking/liquidity toggled — nothing delegatable, so the grant
+    // would be empty and the auditor would refuse it. Don't offer it to sign.
+    if (bits === 0) return;
     const grantIntent: Intent = {
       kind: "grantAgentPermission",
       diamond,
