@@ -1006,7 +1006,16 @@ register("grantAgentPermission", {
      * ratio is 10000; bps to a percent is 100, and a health factor is not a
      * percentage.
      */
-    detail: `Up to $${i.maxNotionalPerAction} per action, $${i.maxNotionalPerEpoch} per period, health floor ${(i.minHealthFactorBps / 10_000).toFixed(2)}. Revocable any time.`,
+    /*
+     * The full agent address in the detail, for the same reason `send` prints
+     * its recipient in full (see the transfer render): a grant hands an address
+     * standing authority over the user's position, and an abbreviated
+     * `0x1234…abcd` is the exact shape an address-poisoning attack forges. On a
+     * `send` the loss is the amount; here it is a mandate that keeps acting, so
+     * the whole address is the one display that lets the user verify who they are
+     * delegating to. The title stays abbreviated as a heading.
+     */
+    detail: `Agent ${i.agent}. Up to $${i.maxNotionalPerAction} per action, $${i.maxNotionalPerEpoch} per period, health floor ${(i.minHealthFactorBps / 10_000).toFixed(2)}. Revocable any time.`,
   }),
   resolve: async (ctx, i) => {
     const facet = new ethers.Contract(

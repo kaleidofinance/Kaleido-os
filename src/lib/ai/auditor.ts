@@ -2300,11 +2300,52 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     if (!Array.isArray(s.tokens))
       reasons.push("no token allowlist on the grant");
 
-    /* Already a USD figure, per AgentPermissionFacet, so it is capped directly
-       rather than priced. */
+    /*
+     * The notional bounds are already USD figures (per AgentPermissionFacet), so
+     * they are capped directly rather than priced — but they ARE capped. A grant
+     * is the one step whose value is spent later, again and again, without
+     * another signature, so an unbounded per-action figure here is worse than an
+     * unbounded single transaction, not exempt from the ceiling. The bound is the
+     * same one every priced step gets: the tighter of the user's own per-action
+     * limit and this server's HARD_MAX. Without this, a hijacked model could
+     * propose "delegate to 0xATTACKER, $1,000,000,000 per action" and the auditor
+     * waved it through for being "just a permission".
+     */
+    const effectivePerAction = Math.min(
+      typeof limits.maxPerAction === "number" &&
+        Number.isFinite(limits.maxPerAction)
+        ? limits.maxPerAction
+        : HARD_MAX_NOTIONAL_USD,
+      HARD_MAX_NOTIONAL_USD,
+    );
     const perAction = num(s.maxNotionalPerAction);
     if (perAction === null || perAction <= 0)
       reasons.push("no per-action notional bound on the grant");
+    else if (perAction > effectivePerAction)
+      reasons.push(
+        `grant's per-action cap ($${perAction}) is above your $${effectivePerAction} limit`,
+      );
+
+    /* The epoch bound is the standing budget the whole mandate spends against,
+       so it must exist and be at least the per-action cap — a per-action figure
+       above the epoch figure is meaningless and, unchecked, was not caught. */
+    const perEpoch = num(s.maxNotionalPerEpoch);
+    if (perEpoch === null || perEpoch <= 0)
+      reasons.push("no per-epoch notional bound on the grant");
+    else if (perAction !== null && perAction > perEpoch)
+      reasons.push("grant's per-action cap is above its per-epoch cap");
+
+    /* The action bitmask must be a positive integer with no bit set outside the
+       six the facet defines — BORROW|LEND|REPAY|DEPOSIT|WITHDRAW|CLOSE, which is
+       0b111111 = 63 (LibAgentPermission.ACTION_*). A mask of 0 grants nothing
+       usable; a bit above 63 is a bug or an attempt to name authority the
+       contract does not model, and neither should be signed. */
+    const KNOWN_ACTION_BITS = 63;
+    const actions = num(s.allowedActions);
+    if (actions === null || !Number.isInteger(actions) || actions <= 0)
+      reasons.push("no permitted actions on the grant");
+    else if ((actions & ~KNOWN_ACTION_BITS) !== 0)
+      reasons.push("grant permits an action the protocol does not define");
 
     return { reasons };
   },
