@@ -1588,6 +1588,56 @@ async function main() {
         JSON.stringify(v.blocked),
       );
     }
+
+    {
+      // Per-action cap above the user's $1,000 limit — the injected-mandate case.
+      const v = await audit([{ ...grant, maxNotionalPerAction: "5000" }]);
+      check(
+        "a grant whose per-action cap exceeds the user's limit is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("above your")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      const v = await audit([{ ...grant, maxNotionalPerEpoch: undefined }]);
+      check(
+        "a grant with no per-epoch bound is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("per-epoch")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      // Within the user's cap (900 <= 1000) but per-action above per-epoch.
+      const v = await audit([
+        { ...grant, maxNotionalPerAction: "900", maxNotionalPerEpoch: "500" },
+      ]);
+      check(
+        "a grant whose per-action cap exceeds its per-epoch cap is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("above its per-epoch")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      // Bit 7 (128) is outside the six actions the facet defines (0b111111).
+      const v = await audit([{ ...grant, allowedActions: 128 }]);
+      check(
+        "a grant with an out-of-range action bit is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("does not define")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      const v = await audit([{ ...grant, allowedActions: 0 }]);
+      check(
+        "a grant that permits no action is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("no permitted actions")),
+        JSON.stringify(v.blocked),
+      );
+    }
   }
 
   /* ---------------------------------------------------------------------- *
