@@ -2,13 +2,21 @@
 
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ErrorDecoder } from "ethers-decode-error";
 import { renderIntent, resolveIntent, type Intent } from "@/lib/v2/intents";
 import { encodeBatch, planRuns } from "@/lib/v2/intents/batch";
 import { useResolverContext } from "@/hooks/v2/useResolverContext";
 import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
 import { recordTx, txFromError } from "@/lib/v2/txLog";
+import { describeFailure, isRejection } from "@/lib/v2/txErrors";
 import SwapRoute from "./SwapRoute";
 import s from "./PlanReview.module.css";
+
+/* One decoder for every step. It carries no ABIs, so a bespoke Protocol__ error
+   is named generically rather than by its Solidity name — the RPC-level cases
+   (declined, out of gas, wrong network, pending nonce) and the contract's own
+   revert reason, which is what a user can act on, all resolve without one. */
+const errorDecoder = ErrorDecoder.create();
 
 /**
  * PlanReview — the one component that turns an intent[] into signable steps.
@@ -248,10 +256,26 @@ export default function PlanReview({
         return pauseAfter(i, false) ? "paused" : "done";
       }
 
-      setStep(i, "failed");
+      /*
+       * A decline is not a failure — the user chose not to sign this step — so it
+       * resets to idle rather than turning red, and says so plainly; a "failed,
+       * nothing further was signed" toast on a deliberate cancel reads as a bug. A
+       * real failure keeps the red marker and carries the DECODED reason — a
+       * slippage revert, out-of-gas, wrong network, a pending nonce — instead of
+       * one generic sentence that made a stale-quote revert look like a user
+       * cancel. Either way the plan halts here.
+       */
+      const decoded = await errorDecoder.decode(err);
+      const message = describeFailure(decoded, err);
       setRunning(false);
       setNext(i);
-      toast.error(`${views[i].title} failed. Nothing further was signed.`);
+      if (isRejection(decoded)) {
+        setStep(i, "idle");
+        toast.info(message);
+      } else {
+        setStep(i, "failed");
+        toast.error(`${views[i].title} — ${message}`);
+      }
       return "failed";
     }
   };
