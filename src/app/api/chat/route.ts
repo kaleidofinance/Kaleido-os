@@ -236,11 +236,37 @@ export async function POST(request: NextRequest) {
       const chainId =
         typeof body.chainId === "number" ? body.chainId : undefined;
 
+      /*
+       * Client limits are untrusted input, and they reach three places: the
+       * auditor (which treats them as tightening-only), the planner's slippage
+       * floor, and the model prompt. Sanitise once, here, so a non-numeric value
+       * cannot pass through as NaN — Math.min(NaN, cap) is NaN and `stepUsd > NaN`
+       * is always false, which silently disabled the very ceiling the auditor
+       * calls the one the client cannot raise. A bad field becomes undefined (the
+       * auditor then applies its own ceiling), and slippage is clamped into a sane
+       * band so a client cannot post a 100% tolerance that drives amountOutMin to
+       * ~0. allowedActions is passed on untouched — it is the user's product
+       * switches, enforced separately.
+       */
+      const AGENT_MAX_SLIPPAGE_BPS = 500; // 5%, the most an agent swap may quote
+      const finiteOrUndef = (v: unknown) =>
+        typeof v === "number" && Number.isFinite(v) ? v : undefined;
+      const rawLimits = (body.limits ?? {}) as Record<string, unknown>;
+      const safeLimits = {
+        maxPerAction: finiteOrUndef(rawLimits.maxPerAction),
+        maxPerDay: finiteOrUndef(rawLimits.maxPerDay),
+        minHealthFactor: finiteOrUndef(rawLimits.minHealthFactor),
+        slippageBps: Math.min(
+          Math.max(finiteOrUndef(rawLimits.slippageBps) ?? 50, 1),
+          AGENT_MAX_SLIPPAGE_BPS,
+        ),
+      };
+
       const agentInput = {
         message: String(body.message ?? ""),
         address: body.address,
         chainId: body.chainId,
-        limits: body.limits,
+        limits: safeLimits,
         /* The conversation this message belongs to. Sanitised and bounded — see
            historyFromBody. Without it the model received only the sentence the
            local grammar could not parse, which on a local-first page is often a
@@ -280,7 +306,7 @@ export async function POST(request: NextRequest) {
           chainId,
           serverPlanDeps(body.address, chainId),
           {
-            slippageBps: body.limits?.slippageBps ?? 50,
+            slippageBps: safeLimits.slippageBps,
             deadlineMin: 20,
           },
         );
@@ -314,7 +340,7 @@ export async function POST(request: NextRequest) {
         const verdict = await auditPlan({
           plan: built.plan,
           chainId,
-          limits: body.limits,
+          limits: safeLimits,
           allowedActions: body.limits?.allowedActions,
         });
 
