@@ -163,6 +163,28 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
   gap: var(--k-s7);
   align-items: start;
+  position: relative;
+  isolation: isolate;
+}
+
+/* A faint Colosseum wash behind the whole hero. The muted + blurred treatment in
+   public/, at low opacity, faded out across the top so the headline, lede and the
+   glass planner stay clean and strongest toward the foot. z-index -1 inside
+   .hero's own isolate context, so it sits above the page dither and below every
+   hero child. Decorative; the two dials are opacity and the mask stop. */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -40px 0 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("/hero-colosseum.webp");
+  background-size: cover;
+  background-position: center 38%;
+  background-repeat: no-repeat;
+  opacity: 0.13;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 62%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 62%);
 }
 
 .heroCopy {
