@@ -446,6 +446,7 @@
 .stepCard {
   composes: panel;
   composes: k-glass from global;
+  overflow: hidden;
 }
 
 .cardTitle {
@@ -1051,5 +1052,108 @@
 
   .footer {
     margin-top: var(--k-s7);
+  }
+}
+
+
+/* ------------------------------------------------------------------
+ * Step-card showcase panels.
+ *
+ * adam.new's move: each step card opens with a small "app view" instead of
+ * only prose. Here that view is a dark duotone panel carrying the same dither
+ * grain as the page background, full-bleeding to the card's top edge (negative
+ * margins cancel the card padding). It is decorative — aria-hidden — and stays
+ * dark in both themes because it depicts the product, the way a screenshot does.
+ * ------------------------------------------------------------------ */
+.showcase {
+  margin: calc(-1 * var(--k-s6)) calc(-1 * var(--k-s6)) var(--k-s6);
+  min-height: 132px;
+  padding: var(--k-s5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-s3);
+  border-radius: 20px 20px 0 0;
+  background-color: #0b1411;
+  background-image: radial-gradient(rgba(217, 197, 162, 0.1) 0.6px, transparent 0.9px);
+  background-size: 5px 5px;
+  border-bottom: 1px solid rgba(217, 197, 162, 0.14);
+}
+.scChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(217, 197, 162, 0.08);
+  border: 1px solid rgba(217, 197, 162, 0.18);
+  color: #e7dcc4;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.scDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5fd08a;
+  box-shadow: 0 0 8px #5fd08a;
+}
+.scTag {
+  color: #9a8f79;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.scPrompt {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(217, 197, 162, 0.06);
+  border: 1px solid rgba(217, 197, 162, 0.16);
+  color: #e7dcc4;
+  font-size: 13px;
+}
+.scCaret {
+  width: 2px;
+  height: 15px;
+  margin-left: 3px;
+  background: #d9c5a2;
+  animation: scBlink 1.1s steps(1) infinite;
+}
+@keyframes scBlink {
+  50% {
+    opacity: 0;
+  }
+}
+.scPlan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 190px;
+}
+.scStep {
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(217, 197, 162, 0.06);
+  border: 1px solid rgba(217, 197, 162, 0.14);
+  color: #cdbf9f;
+  font-size: 12px;
+}
+.scRun {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #d9c5a2;
+  color: #1a1712;
+  font-size: 12px;
+  font-weight: 500;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scCaret {
+    animation: none;
   }
 }
