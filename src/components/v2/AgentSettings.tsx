@@ -261,13 +261,21 @@ export default function AgentSettings({
                     aria-checked={settings.stepMode === mode}
                     className={`${s.mode} ${settings.stepMode === mode ? s.modeOn : ""}`}
                     onClick={() => {
-                      update({ stepMode: mode });
+                      /* Agent is not a preference this click can grant — it is a
+                         real on-chain mandate. So selecting it opens the
+                         delegation flow (below) and nothing else; the mode
+                         becomes active only when the grant is signed, in the
+                         PlanReview onComplete. Persisting it here claimed a
+                         delegation that did not exist, which is exactly what the
+                         section note above already promised it would not do. */
                       if (mode === "agent") {
                         delegateRef.current?.scrollIntoView({
                           behavior: "smooth",
                           block: "start",
                         });
+                        return;
                       }
+                      update({ stepMode: mode });
                     }}
                   >
                     <span className={s.modeName}>{label}</span>
@@ -333,7 +341,14 @@ export default function AgentSettings({
                   <PlanReview
                     intents={grant}
                     submitLabel="Grant permission"
-                    onComplete={() => setGrant(null)}
+                    onComplete={() => {
+                      setGrant(null);
+                      /* The one place Agent mode becomes active: a mandate now
+                         exists on chain, so the mode is finally real rather than
+                         a claim. Selecting the Agent rung above only opens this
+                         flow; signing it is what turns the mode on. */
+                      update({ stepMode: "agent" });
+                    }}
                     onCancel={() => setGrant(null)}
                   />
                 ) : (
