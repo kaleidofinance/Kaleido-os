@@ -301,6 +301,17 @@ export async function POST(request: NextRequest) {
          * it at the route rather than in each provider adapter means one
          * translation, not one per provider.
          */
+        /* Everything the user themselves typed this turn — this message plus
+           their earlier turns — so the planner can refuse to send to or delegate
+           to an address the user never named. An address a tool result or a
+           document slipped in is not in here. */
+        const userText = [
+          agentInput.message,
+          ...agentInput.history
+            .filter((m) => m.role === "user")
+            .map((m) => m.content),
+        ].join("\n");
+
         const built = await planFromToolCalls(
           result.executes,
           chainId,
@@ -309,6 +320,7 @@ export async function POST(request: NextRequest) {
             slippageBps: safeLimits.slippageBps,
             deadlineMin: 20,
           },
+          userText,
         );
 
         /*

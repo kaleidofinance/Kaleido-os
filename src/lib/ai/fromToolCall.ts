@@ -586,6 +586,19 @@ export async function planFromToolCalls(
   chainId: number | undefined,
   deps: PlanDeps,
   opts: PlannerOptions,
+  /**
+   * The user's own words this turn — their message plus their earlier turns —
+   * used to anchor the two steps that carry a model-supplied address: `transfer`
+   * (a send recipient) and `grantAgentPermission` (a delegate). Every other
+   * address in a plan is resolved from the registry, never named by the model;
+   * these two cannot be, because a recipient and a delegate exist nowhere but in
+   * what the user said. So the rule is exactly that: an address the user did not
+   * type is not one the model may send to or delegate to, regardless of what the
+   * model believes — which makes an address injected through a tool result or a
+   * poisoned document unbuildable rather than merely unlikely. Omitted (tests,
+   * the capability traces) means no check, since those supply fixture addresses.
+   */
+  userText?: string,
 ): Promise<BuiltPlan> {
   const plan: PlanStep[] = [];
   const errors: string[] = [];
@@ -622,6 +635,37 @@ export async function planFromToolCalls(
       continue;
     }
     plan.push(...(built.build.intents as unknown as PlanStep[]));
+  }
+
+  /*
+   * Provenance anchor for the two address-bearing steps. Run after the plan is
+   * built so it catches an address whatever route produced it, and drops only the
+   * offending step — the injected send or grant — while any legitimate steps
+   * beside it survive. A dropped step leaves an error the caller relays, so the
+   * user hears why rather than seeing a step quietly vanish.
+   */
+  if (userText !== undefined) {
+    const corpus = userText.toLowerCase();
+    const named = (addr?: unknown) =>
+      typeof addr === "string" && corpus.includes(addr.toLowerCase());
+    const anchored: PlanStep[] = [];
+    for (const step of plan) {
+      const s = step as { kind?: string; to?: unknown; agent?: unknown };
+      if (s.kind === "transfer" && !named(s.to)) {
+        errors.push(
+          "I can only send to an address you typed yourself, and that recipient wasn't in your message — so I didn't add the transfer. Paste the address if you want it.",
+        );
+        continue;
+      }
+      if (s.kind === "grantAgentPermission" && !named(s.agent)) {
+        errors.push(
+          "I can only delegate to an address you named yourself, and that agent wasn't in your message — so I didn't add the grant.",
+        );
+        continue;
+      }
+      anchored.push(step);
+    }
+    return { plan: anchored, errors };
   }
 
   return { plan, errors };
