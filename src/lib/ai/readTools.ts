@@ -661,7 +661,7 @@ async function getChains(args: Json): Promise<Json> {
         byChain.length === 0
           ? "No balance found for this asset on any indexed chain."
           : byChain.length > 1
-            ? "Holdings span multiple chains. Call getBridgeRoute for the real cost and time of moving them. Kaleido still cannot execute a bridge itself, so present it as a manual step the user completes with the provider, never as a signable action."
+            ? "Holdings span multiple chains. Call getBridgeRoute for the real cost and time of moving them, then the bridge action can sign the move for a supported corridor (native assets today; getBridgeRoute says whether a corridor is available). Do not promise a bridge before getBridgeRoute confirms one exists."
             : "All holdings for this asset are on a single chain.",
     };
   } catch (err) {
@@ -941,10 +941,9 @@ const ORDERS_FEE_ABI = ["function fillerFeeBps() external view returns (uint16)"
  * still lists - a failed symbol lookup drops the amounts and keeps the order,
  * because a cancel names no amount.
  *
- * No cancel TOOL exists yet, though: the `cancelOrder`/`cancelAllOrders` intents
- * shipped with the limit page but nothing maps a model's call onto them. Until
- * that lands this tool is read-only and its note says so rather than offering
- * something the agent cannot do.
+ * A cancel-ALL tool now exists — `cancelOrders` maps onto the `cancelAllOrders`
+ * intent — so the note offers it. There is still no per-ORDER cancel tool, so a
+ * single order is a shortHash the user cancels themselves on the Limit tab.
  */
 async function getOrders(args: Json, chainId: number): Promise<Json> {
   const address = String(args.address ?? "");
@@ -1128,8 +1127,7 @@ async function getOrders(args: Json, chainId: number): Promise<Json> {
       "A fill needs two things at once, so do not report either one alone as 'about to fill': `eligibleForAFillNow` is whether the order's own terms permit a fill this second, and `awayPct` is how far its floor sits above the pool's live price — 0 or below means the price is there. A null awayPct means the pair has no pool to quote, which is not the same as ready. " +
       "Never say an order will fill: the floor guarantees the price it fills at, not that anyone fills it, and an order can rest until it expires. " +
       "Everything except awayPct comes from the signed order itself. " +
-      "Cancelling is not something you can do yet - there is no cancel tool - so do not offer to. " +
-      "Point the user at the Limit tab under Trade, where each resting order has its own cancel, and give them the shortHash so they can find the right one.",
+      "To cancel, the cancelOrders tool cancels ALL of this wallet's resting orders on the chain in one signature — offer it when the user wants to clear their orders. There is no per-order cancel tool yet, so for a single order point the user at the Limit tab under Trade, where each resting order has its own cancel, and give them the shortHash so they can find the right one.",
   };
 }
 
@@ -1287,6 +1285,7 @@ async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
 
     // USD notional is 1e18-scaled on-chain, matching the grant's units.
     const fmtUsd = (v: bigint) => Number(ethers.formatUnits(v, 18));
+    const maxPerEpochUsd = fmtUsd(p.maxNotionalPerEpoch);
     let remainingBudgetUsd: number | null = null;
     try {
       remainingBudgetUsd = fmtUsd(
@@ -1296,9 +1295,30 @@ async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
       remainingBudgetUsd = null;
     }
 
+    /*
+     * Spent is DERIVED from remaining, not read from the struct's spentInEpoch —
+     * the two disagree across an idle epoch and the derived one is the honest
+     * figure. agentRemainingBudget rolls the epoch (returns the full cap once the
+     * window has elapsed), but the on-chain spentInEpoch only resets on the NEXT
+     * spend, so reading it raw produced spent + remaining > max — a mandate that
+     * looks over budget while having its whole allowance free. Deriving it keeps
+     * the pair consistent by construction. Falls back to the raw field only when
+     * remaining could not be read.
+     */
+    const spentThisEpochUsd =
+      remainingBudgetUsd !== null
+        ? Math.max(0, maxPerEpochUsd - remainingBudgetUsd)
+        : fmtUsd(p.spentInEpoch);
+
     const daysLeft = expired
       ? 0
       : Number(((expiry - nowSec) / 86_400).toFixed(1));
+
+    /* When the current epoch's budget rolls over. 0 once the window has elapsed
+       (the next spend opens a fresh one), so "resets now" and "already reset" are
+       the same answer to the user. */
+    const epochEnd = Number(p.epochStart) + Number(p.epochDuration);
+    const epochResetsInSec = Math.max(0, epochEnd - nowSec);
 
     return {
       configured: true,
@@ -1306,9 +1326,10 @@ async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
       status,
       allowedActions,
       maxPerActionUsd: fmtUsd(p.maxNotionalPerAction),
-      maxPerEpochUsd: fmtUsd(p.maxNotionalPerEpoch),
-      spentThisEpochUsd: fmtUsd(p.spentInEpoch),
+      maxPerEpochUsd,
+      spentThisEpochUsd,
       remainingBudgetUsd,
+      epochResetsInSec,
       minHealthFactor: Number(p.minHealthFactorBps) / 10_000,
       maxInterestBps: Number(p.maxInterestBps) || null,
       expiryUnix: expiry,
@@ -1316,10 +1337,12 @@ async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
       note:
         status === "active"
           ? "This is a live, revocable mandate. Amounts are USD. remainingBudgetUsd " +
-            "is what the agent may still spend this epoch; it does not refund on " +
-            "repayment. allowedActions is lending-only by design. The user can " +
-            "revoke it instantly with revokeAgentPermission — offer that if they " +
-            "sound unsure."
+            "is what the agent may still spend this epoch (spentThisEpochUsd is the " +
+            "rest of the cap and is derived from it, so the two always sum to the " +
+            "epoch max); the budget does not refund on repayment, and " +
+            "epochResetsInSec says when it rolls over. allowedActions is " +
+            "lending-only by design. The user can revoke it instantly with " +
+            "revokeAgentPermission — offer that if they sound unsure."
           : status === "revoked"
             ? "This mandate was revoked and does nothing. The agent cannot act."
             : "This mandate has expired and does nothing. The user would need to " +
