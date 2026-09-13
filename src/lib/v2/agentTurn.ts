@@ -178,6 +178,9 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
      them sat next to getBalances in the same fold. */
   getPortfolio: () => "Checked your lending position",
   getPositions: () => "Checked your liquidity positions",
+  /* The delegation the user signed, if any — read only, never a grant. Its args
+     are addresses, which `str` refuses at 42 characters, so this names no one. */
+  getAgentMandate: () => "Checked your agent delegation",
   getBalances: () => "Checked what your wallet holds",
   /* "open orders" because that is what the limit page calls them on the screen
      the user is looking at, and the fold should not introduce a second name for
