@@ -1,16 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { isAddress } from "ethers";
+import { Contract, isAddress } from "ethers";
+import { toast } from "sonner";
 import {
   useAgentSettings,
   type AgentAction,
 } from "@/hooks/v2/useAgentSettings";
+import { useAgentMandate } from "@/hooks/v2/useAgentMandate";
+import { useResolverContext } from "@/hooks/v2/useResolverContext";
 import PlanReview from "@/components/v2/PlanReview";
 import { AGENT_ACTIONS, type Intent } from "@/lib/v2/intents";
-import { envVars } from "@/constants/envVars";
+import { getContracts } from "@/constants/registry";
 import { chainTokens } from "@/constants/tokens";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import AgentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import Portal from "./Portal";
 import s from "./AgentSettings.module.css";
 
@@ -74,6 +78,14 @@ export default function AgentSettings({
   const { chainId } = useWalletV2();
   const [agentAddr, setAgentAddr] = useState("");
   const [grant, setGrant] = useState<Intent[] | null>(null);
+  const [revoking, setRevoking] = useState(false);
+  /* The on-chain mandate for the delegate the user saved, so the panel can tell
+     an active delegation from a stale flag. */
+  const mandate = useAgentMandate(settings.agentAddress);
+  const getCtx = useResolverContext();
+  /* Set the instant a grant is signed so the self-heal below does not flip the
+     mode back off in the window before the mandate read catches up. */
+  const grantedRef = useRef(false);
   /* Selecting Agent scrolls here rather than toggling something invisible: the
      mode is only real once a mandate exists on chain, and the grant is three
      sections down where nobody would look for it. */
@@ -105,9 +117,47 @@ export default function AgentSettings({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  /* Prefill the delegate field from the saved mandate address so the panel opens
+     showing who the user delegated to. Runs only when the saved address changes,
+     never on the user's own typing (which does not touch settings). */
+  useEffect(() => {
+    if (settings.agentAddress) setAgentAddr(settings.agentAddress);
+  }, [settings.agentAddress]);
+
+  /*
+   * Self-heal a stale Agent mode. stepMode becomes "agent" only by signing a
+   * grant, but a grant expires and can be revoked, and neither event touches
+   * localStorage — so a mode left on "agent" would keep claiming a delegation
+   * the chain no longer honours (and the "Delegated on chain" card with it). Once
+   * the mandate read has settled and says the saved delegation is not active, the
+   * mode drops back to "auto". Skipped right after a signature (grantedRef) so the
+   * not-yet-refetched read cannot flip it straight off; the guard clears as soon
+   * as the chain confirms the new mandate.
+   */
+  useEffect(() => {
+    if (grantedRef.current) {
+      if (mandate.active) grantedRef.current = false;
+      return;
+    }
+    if (
+      settings.stepMode === "agent" &&
+      settings.agentAddress &&
+      mandate.settled &&
+      !mandate.active
+    ) {
+      update({ stepMode: "auto" });
+    }
+  }, [
+    settings.stepMode,
+    settings.agentAddress,
+    mandate.active,
+    mandate.settled,
+    update,
+  ]);
+
   if (!open) return null;
 
-  const diamond = envVars.lendbitDiamondAddress;
+  const diamond = chainId ? getContracts(chainId).diamond : undefined;
   const validAgent = isAddress(agentAddr);
   // The grant's token allow-list is chain-scoped: it names addresses on the
   // chain the user is signing from. Empty means nothing is deployed here, and
@@ -139,6 +189,37 @@ export default function AgentSettings({
       tokens: grantable.map((t) => t.address),
     };
     setGrant([grantIntent]);
+  };
+
+  /*
+   * The panic button. Revoke is a direct facet call rather than a PlanReview
+   * plan: it only ever REMOVES authority (never moves funds or grants anything),
+   * so it needs neither the audit pass nor the multi-step review the signing
+   * plans get — and it must stay the simplest, most reliable thing in the panel.
+   * On success the saved delegation is cleared and the mode drops to auto, so
+   * nothing keeps claiming a mandate that no longer exists.
+   */
+  const revoke = async () => {
+    const ctx = getCtx();
+    const target = settings.agentAddress;
+    if (!ctx || !diamond || !target) return;
+    setRevoking(true);
+    try {
+      const facet = new Contract(
+        diamond,
+        AgentPermissionAbi as never,
+        ctx.signer,
+      );
+      const tx = await facet.revokeAgentPermission(target);
+      await tx.wait();
+      update({ stepMode: "auto", agentAddress: undefined });
+      toast.success("Delegation revoked — the agent can no longer act.");
+      mandate.refetch();
+    } catch {
+      toast.error("Couldn't revoke the delegation — try again.");
+    } finally {
+      setRevoking(false);
+    }
   };
 
   const num = (v: string) => {
@@ -345,12 +426,43 @@ export default function AgentSettings({
                       setGrant(null);
                       /* The one place Agent mode becomes active: a mandate now
                          exists on chain, so the mode is finally real rather than
-                         a claim. Selecting the Agent rung above only opens this
-                         flow; signing it is what turns the mode on. */
-                      update({ stepMode: "agent" });
+                         a claim. Save WHICH agent it is (so the mandate can be
+                         re-checked later), guard the self-heal against the read
+                         lag, and re-read the chain. */
+                      grantedRef.current = true;
+                      update({ stepMode: "agent", agentAddress: agentAddr });
+                      mandate.refetch();
                     }}
                     onCancel={() => setGrant(null)}
                   />
+                ) : mandate.active ? (
+                  <>
+                    <p className={s.delegateBody}>
+                      A live mandate delegates lending to{" "}
+                      <code>{settings.agentAddress}</code>
+                      {mandate.expiryUnix
+                        ? `, active until ${new Date(
+                            mandate.expiryUnix * 1000,
+                          ).toLocaleDateString()}`
+                        : ""}
+                      {mandate.remainingBudgetUsd != null
+                        ? `, $${mandate.remainingBudgetUsd.toLocaleString()} left this period`
+                        : ""}
+                      . It enforces your caps, health floor and allowed actions on
+                      chain.
+                    </p>
+                    <button
+                      className={s.delegateBtn}
+                      disabled={revoking}
+                      onClick={revoke}
+                    >
+                      {revoking ? "Revoking…" : "Revoke delegation"}
+                    </button>
+                    <p className={s.delegateNote}>
+                      Revoking is immediate and unconditional — the agent can act
+                      until the transaction lands, then not at all.
+                    </p>
+                  </>
                 ) : (
                   <>
                     <p className={s.delegateBody}>
