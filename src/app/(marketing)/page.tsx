@@ -694,7 +694,29 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        {/* ---- 2. What it can do -------------------------------------- */}
+        {/* ---- 2. Getting started -------------------------------------
+            The section this page did not have. See the STEPS docblock: the slot
+            held the three internal stages of plan construction, which explains
+            the machine to an engineer and never tells a visitor what to do. */}
+        <section id="start" className={s.section}>
+          <div className={s.head}>
+            <p className={s.eyebrow}>Getting started</p>
+            <h2 className={`${s.h2} k-display`}>Connect. Ask. Sign.</h2>
+          </div>
+
+          <ol className={s.steps}>
+            {STEPS.map((st) => (
+              <li key={st.n} className={s.stepCard}>
+                <StepArt n={st.n} />
+                <span className={s.stepNum}>{st.n}</span>
+                <h3 className={s.cardTitle}>{st.title}</h3>
+                <p className={s.cardBody}>{st.body}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* ---- 3. What it can do -------------------------------------- */}
         <section id="can" className={s.section}>
           <div className={s.head}>
             <p className={s.eyebrow}>Capabilities</p>
@@ -730,7 +752,7 @@ export default async function LandingPage() {
           <CapabilityTabs groups={capabilityGroups} />
         </section>
 
-        {/* ---- 3. The products underneath -----------------------------
+        {/* ---- 4. The products underneath -----------------------------
             A rail of five names beside one panel of detail, which is the shape
             the production page uses for its module grid and the best-working
             component on it. What was here was the live price chart in one column
@@ -755,28 +777,6 @@ export default async function LandingPage() {
           </div>
 
           <ProductRail />
-        </section>
-
-        {/* ---- 4. Getting started -------------------------------------
-            The section this page did not have. See the STEPS docblock: the slot
-            held the three internal stages of plan construction, which explains
-            the machine to an engineer and never tells a visitor what to do. */}
-        <section id="start" className={s.section}>
-          <div className={s.head}>
-            <p className={s.eyebrow}>Getting started</p>
-            <h2 className={`${s.h2} k-display`}>Connect. Ask. Sign.</h2>
-          </div>
-
-          <ol className={s.steps}>
-            {STEPS.map((st) => (
-              <li key={st.n} className={s.stepCard}>
-                <StepArt n={st.n} />
-                <span className={s.stepNum}>{st.n}</span>
-                <h3 className={s.cardTitle}>{st.title}</h3>
-                <p className={s.cardBody}>{st.body}</p>
-              </li>
-            ))}
-          </ol>
         </section>
 
         {/* ---- 5. Multichain, scoped ---------------------------------- */}
