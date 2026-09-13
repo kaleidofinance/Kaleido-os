@@ -1,6 +1,8 @@
 import "../(app)/tokens.css";
 import type { ReactNode } from "react";
 
+import s from "./layout.module.css";
+
 /**
  * The marketing shell — the front door at `/`.
  *
@@ -31,5 +33,9 @@ import type { ReactNode } from "react";
  * a connected and a disconnected state, and it should have exactly one.
  */
 export default function MarketingLayout({ children }: { children: ReactNode }) {
-  return <div className="kaleido-v2">{children}</div>;
+  return (
+    <div className="kaleido-v2">
+      <div className={s.shell}>{children}</div>
+    </div>
+  );
 }
