@@ -2700,9 +2700,16 @@ export async function auditPlan(opts: {
 
   /* The effective cap is the tighter of what the user asked for and what this
      server permits. `Math.min` and not `??`: a client that omits the field, or
-     sends a larger one, gets the ceiling either way. */
+     sends a larger one, gets the ceiling either way. The Number.isFinite guard is
+     load-bearing, not defensive dressing: a non-numeric maxPerAction made this
+     `Math.min(NaN, cap)` → NaN, and every `stepUsd > perAction` comparison below
+     is false against NaN, so a single bad field silently switched off the ceiling
+     this whole pass exists to enforce. A bad value falls back to HARD_MAX. */
   const perAction = Math.min(
-    limits.maxPerAction ?? HARD_MAX_NOTIONAL_USD,
+    typeof limits.maxPerAction === "number" &&
+      Number.isFinite(limits.maxPerAction)
+      ? limits.maxPerAction
+      : HARD_MAX_NOTIONAL_USD,
     HARD_MAX_NOTIONAL_USD,
   );
 

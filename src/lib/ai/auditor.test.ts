@@ -590,6 +590,27 @@ async function main() {
     }
 
     {
+      /* A non-numeric cap must fall BACK to the hard ceiling, not switch it off.
+         Math.min(NaN, cap) is NaN, and every `usd > NaN` is false, so before the
+         finiteness guard this exact 60k swap passed — the ceiling silently gone. */
+      const v = await audit(
+        [{ ...wellFormed, amountIn: "60000", amountOutMin: "19.8" }],
+        {
+          limits: {
+            ...LIMITS,
+            maxPerAction: "not-a-number" as never,
+            slippageBps: 200,
+          },
+        },
+      );
+      check(
+        "a non-numeric per-action cap falls back to the hard ceiling, not off",
+        !v.ok && v.blocked.some((b) => b.includes("per-action limit")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
       const v = await audit([wellFormed], {
         allowedActions: { ...ALL_ON, swap: false },
       });
