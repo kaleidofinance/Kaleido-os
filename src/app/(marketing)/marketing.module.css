@@ -829,17 +829,29 @@
  * width, which is right in the hero's button row and wrong for a single one.
  * ------------------------------------------------------------------ */
 .closing {
-  composes: k-glass from global;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   margin-top: 100px;
   border-radius: var(--k-r-xl);
   padding: 72px var(--k-s7);
   text-align: center;
+  background-color: #0b1411;
+  background-image:
+    radial-gradient(rgba(217, 197, 162, 0.08) 0.6px, transparent 0.9px),
+    linear-gradient(rgba(8, 15, 12, 0.68), rgba(8, 15, 12, 0.82)),
+    url("/colosseum.webp");
+  background-size: 5px 5px, cover, cover;
+  background-position: 0 0, center, center 34%;
+  background-repeat: repeat, no-repeat, no-repeat;
+  border: 1px solid rgba(217, 197, 162, 0.16);
 }
 
 .closeH {
   margin: 0;
   font-size: var(--k-fs-2xl);
   line-height: 1.2;
+  color: #f4ece0;
 }
 
 /* `auto` inline margins, because the 46ch measure would otherwise sit hard
@@ -847,7 +859,7 @@
 .closeSub {
   margin: var(--k-s4) auto var(--k-s6);
   max-width: 46ch;
-  color: var(--k-t2);
+  color: rgba(244, 236, 224, 0.78);
   font-size: var(--k-fs-lg);
   line-height: 1.55;
 }
@@ -1156,4 +1168,16 @@
   .scCaret {
     animation: none;
   }
+}
+
+
+/* The closing CTA is a dark image band in both themes, so its button is a light
+   sand pill rather than the theme's default (which is a dark pill in light mode
+   and would vanish on this ground). */
+.closing .primary {
+  background: #ecdfc6;
+  color: #17130c;
+}
+.closing .primary:hover {
+  background: #f5ecda;
 }
