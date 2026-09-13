@@ -81,6 +81,16 @@ export const envVars = {
   thirdwebClientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_KEY,
 
   /**
+   * Which wallet provider the app wires up — "thirdweb" (default) or a future
+   * adapter like "dynamic". Read once, in src/lib/wallet, to pick the active
+   * WalletAdapter; every wallet primitive the app uses (connect, switch, read,
+   * sign, batch, the root provider) resolves through that one selection, so
+   * moving off thirdweb is a new adapter plus this flag, not a rewrite of the
+   * feature code. Public because it only names a code path, never a secret.
+   */
+  walletProvider: process.env.NEXT_PUBLIC_WALLET_PROVIDER,
+
+  /**
    * Where the private-testnet waitlist form lives.
    *
    * Public on purpose, and the one part of the access gate that is: this is a
