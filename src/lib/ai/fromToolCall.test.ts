@@ -107,6 +107,72 @@ async function main() {
     check("an unknown token is a named error", r.errors.some((e) => e.includes("NOTATOKEN")), r.errors.join("; "));
   }
 
+  console.log("\n— an address must appear in the user's own words —");
+
+  const ADDR = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984";
+  const sendCall = { name: "send", args: { amount: "0.1", token: "ETH", to: ADDR } };
+  const kinds = (r: { plan: unknown[] }) =>
+    r.plan.map((i) => (i as { kind: string }).kind);
+
+  {
+    // No userText: unchanged behaviour, the send builds (tests/traces path).
+    const r = await planFromToolCalls([sendCall] as never, CHAIN, deps, OPTS);
+    check(
+      "with no user text the send is built (backward compatible)",
+      kinds(r).includes("transfer"),
+      kinds(r).join(","),
+    );
+  }
+
+  {
+    // The user typed the address: the send survives.
+    const r = await planFromToolCalls(
+      [sendCall] as never,
+      CHAIN,
+      deps,
+      OPTS,
+      `send 0.1 ETH to ${ADDR}`,
+    );
+    check(
+      "a recipient the user typed is kept",
+      kinds(r).includes("transfer") && r.errors.length === 0,
+      `${kinds(r).join(",")} | ${r.errors.join("; ")}`,
+    );
+  }
+
+  {
+    // The user never typed it — an injected recipient is dropped, with a reason.
+    const r = await planFromToolCalls(
+      [sendCall] as never,
+      CHAIN,
+      deps,
+      OPTS,
+      "send some eth to my friend",
+    );
+    check(
+      "a recipient the user never typed is dropped, not built",
+      !kinds(r).includes("transfer") &&
+        r.errors.some((e) => e.includes("typed yourself")),
+      `${kinds(r).join(",")} | ${r.errors.join("; ")}`,
+    );
+  }
+
+  {
+    // Case-insensitive: a lowercased address in the text still anchors it.
+    const r = await planFromToolCalls(
+      [sendCall] as never,
+      CHAIN,
+      deps,
+      OPTS,
+      `send to ${ADDR.toLowerCase()}`,
+    );
+    check(
+      "the match ignores case",
+      kinds(r).includes("transfer"),
+      kinds(r).join(","),
+    );
+  }
+
   console.log(`\n  ${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exit(1);
 }
