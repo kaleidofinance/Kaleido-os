@@ -26,42 +26,31 @@ interface ChatResponse {
   };
 }
 
-const KNOWN_KINDS: IntentKind[] = [
-  "approve",
-  "swap",
-  "stake",
-  "depositCollateral",
-  "withdrawCollateral",
-  "repayLoan",
-  "createLendingRequest",
-  "createLoanListing",
-  "borrowFromListing",
-  "fillRequest",
-  "closeListing",
-  "closeRequest",
-  "mintStable",
-  "redeemStable",
-  "lockStable",
-  "requestStableWithdrawal",
-  "completeStableWithdrawal",
-  "claimStableYield",
-  "compoundStableYield",
-  "collectPoolFees",
-  "decreasePoolLiquidity",
-  "mintPoolPosition",
-  "grantAgentPermission",
-  "claimTestTokens",
-  "claimAllTestTokens",
-];
-
+/**
+ * The one gate on an incoming plan step: does a resolver exist for its `kind`?
+ *
+ * `isRegistered` IS the authority — the same predicate registry.test.ts derives
+ * over every kind in the union — so a step whose kind can be rendered and signed
+ * survives, and nothing else does. It replaced a hand-written `KNOWN_KINDS`
+ * allow-list that sat here and rotted: it named 25 of the 35 registered kinds, so
+ * a model plan containing `swapMultiHop`, `transfer`, `bridge`, a limit order, an
+ * unstake step or a cross-chain route was silently dropped, and the user saw
+ * prose promising a plan with no steps to sign — the exact "silently shorter
+ * plan" the /api/chat route forbids on its own side. A second list of kinds is a
+ * second thing to keep in step with the union, and this one had already fallen
+ * ten behind. There is no longer a list: `fromChat.test.ts` asserts every kind in
+ * `ALL_INTENT_KINDS` survives this function, so a new kind is covered the day it
+ * reaches the union.
+ *
+ * The rest of the intent's shape is not checked here on purpose: the server
+ * audited the plan before sending it (lib/ai/auditor.ts), and re-validating every
+ * field against the union would be a third copy of the auditor. This gate answers
+ * only "can the UI render and resolve this kind at all".
+ */
 function looksLikeIntent(x: unknown): x is Intent {
   if (!x || typeof x !== "object") return false;
   const kind = (x as { kind?: unknown }).kind;
-  return (
-    typeof kind === "string" &&
-    (KNOWN_KINDS as string[]).includes(kind) &&
-    isRegistered(kind as IntentKind)
-  );
+  return typeof kind === "string" && isRegistered(kind as IntentKind);
 }
 
 export function intentsFromChat(data: unknown): Intent[] {
