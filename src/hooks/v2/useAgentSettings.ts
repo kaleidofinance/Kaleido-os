@@ -68,6 +68,16 @@ export interface AgentSettings {
    * would spend a metered request to find out.
    */
   model?: string;
+  /**
+   * The external agent the user delegated to on chain, if any — the address a
+   * live grant names. Persisted because the mandate is per (user, agent): without
+   * it, nothing outside the open settings panel knows WHICH agent to check a
+   * mandate for, so a stepMode left on "agent" could not be verified against the
+   * chain and would keep claiming a delegation that may have expired. Set when a
+   * grant is signed, cleared on revoke. Undefined means no delegation was ever
+   * set up from this browser.
+   */
+  agentAddress?: string;
 }
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
