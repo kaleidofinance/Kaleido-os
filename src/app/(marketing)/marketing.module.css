@@ -50,14 +50,13 @@
 /* ------------------------------------------------------------------
  * Header.
  *
- * Sticky and glass unconditionally, unlike Nav.module.css, which earns
- * its blur only once something is behind it. The difference is real: this
- * page is long, marketing-shaped and scrolls under the strip from the
- * first pixel, so there is never the "blurring an empty backdrop" state
- * that made a permanent blur wrong in the app.
+ * Transparent: no fill of its own, so the hero background - the page dither and
+ * the faint Colosseum wash - shows straight through it. It used to be glass
+ * (k-glass + a bottom hairline); the box read as a separate strip sitting on the
+ * page rather than part of it. Still sticky and thin, so with no backdrop it
+ * simply overlays whatever scrolls beneath.
  * ------------------------------------------------------------------ */
 .header {
-  composes: k-glass from global;
   position: sticky;
   top: 0;
   z-index: 30;
@@ -65,8 +64,7 @@
   align-items: center;
   gap: var(--k-s6);
   padding: 12px var(--k-s5);
-  border-width: 0 0 1px;
-  border-radius: 0;
+  background: transparent;
 }
 
 /* The wordmark used to live here, as `.brand` / `.brandFi` / `.mark`. It moved to
