@@ -280,6 +280,36 @@ const STEPS: ReadonlyArray<{ n: string; title: string; body: string }> = [
   },
 ];
 
+function StepArt({ n }: { n: string }) {
+  if (n === "01")
+    return (
+      <div className={s.showcase} aria-hidden="true">
+        <span className={s.scChip}>
+          <span className={s.scDot} />
+          0x1a2...beef
+        </span>
+        <span className={s.scTag}>read-only</span>
+      </div>
+    );
+  if (n === "02")
+    return (
+      <div className={s.showcase} aria-hidden="true">
+        <span className={s.scPrompt}>
+          swap 500 USDC to KLD<span className={s.scCaret} />
+        </span>
+      </div>
+    );
+  return (
+    <div className={s.showcase} aria-hidden="true">
+      <div className={s.scPlan}>
+        <span className={s.scStep}>Approve USDC</span>
+        <span className={s.scStep}>Swap -&gt; KLD</span>
+      </div>
+      <span className={s.scRun}>Sign &amp; run</span>
+    </div>
+  );
+}
+
 /**
  * `#chains` — the five chains the products open on, in display order.
  *
@@ -740,6 +770,7 @@ export default async function LandingPage() {
           <ol className={s.steps}>
             {STEPS.map((st) => (
               <li key={st.n} className={s.stepCard}>
+                <StepArt n={st.n} />
                 <span className={s.stepNum}>{st.n}</span>
                 <h3 className={s.cardTitle}>{st.title}</h3>
                 <p className={s.cardBody}>{st.body}</p>
