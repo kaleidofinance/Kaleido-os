@@ -237,7 +237,7 @@
   color: var(--k-btn-solid-fg);
   font-size: var(--k-fs-base);
   font-weight: var(--k-fw-med);
-  padding: var(--k-s3) var(--k-s6);
+  padding: var(--k-s4) var(--k-s7);
   text-decoration: none;
 }
 
@@ -252,7 +252,7 @@
   color: var(--k-t1);
   font-size: var(--k-fs-base);
   font-weight: var(--k-fw-med);
-  padding: var(--k-s3) var(--k-s6);
+  padding: var(--k-s4) var(--k-s7);
   text-decoration: none;
 }
 
@@ -345,7 +345,7 @@
  * Sections.
  * ------------------------------------------------------------------ */
 .section {
-  padding-top: 80px;
+  padding-top: 116px;
   /* Anchored from the header links, so the heading must not land under the
      sticky strip. scroll-margin rather than padding: it moves where the
      browser stops, not where the content sits. */
@@ -354,20 +354,22 @@
 
 .head {
   max-width: 68ch;
-  margin-bottom: var(--k-s6);
+  margin-bottom: var(--k-s7);
 }
 
 .h2 {
   margin: 0;
-  font-size: var(--k-fs-2xl);
-  line-height: 1.2;
+  font-size: clamp(1.9rem, 1.15rem + 2.4vw, 2.6rem);
+  line-height: 1.14;
+  letter-spacing: -0.01em;
 }
 
 .sub {
-  margin: var(--k-s4) 0 0;
+  margin: var(--k-s5) 0 0;
   color: var(--k-t2);
-  font-size: var(--k-fs-base);
+  font-size: var(--k-fs-lg);
   line-height: 1.6;
+  max-width: 62ch;
 }
 
 /* ------------------------------------------------------------------
@@ -390,7 +392,7 @@
 .grid3 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--k-s4);
+  gap: var(--k-s5);
 }
 
 /* One base class the panel shapes adopt, rather than
@@ -432,8 +434,8 @@
  * padding still belong there — they travel fine, and one place to tune them
  * is worth keeping. Only the global cannot make the trip. */
 .panel {
-  border-radius: var(--k-r-lg);
-  padding: var(--k-s5);
+  border-radius: 20px;
+  padding: var(--k-s6);
 }
 
 .card {
@@ -501,7 +503,7 @@
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--k-s4);
+  gap: var(--k-s5);
 }
 
 /* Tabular, because 01/02/03 in proportional figures sit at different
