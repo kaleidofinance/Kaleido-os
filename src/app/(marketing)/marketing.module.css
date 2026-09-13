@@ -153,14 +153,14 @@
  * keystroke that changes the plan's length, so the headline moves while someone
  * is reading it. Top-aligned, the copy never moves and only the panel extends.
  *
- * `position: relative` and `isolation: isolate` are for the dotted dome — see
- * _components/HeroArc.module.css, which positions itself against this box and
+ * `position: relative` and `isolation: isolate` are for the hero texture — see
+ * _components/HeroTexture.module.css, which positions itself against this box and
  * spans both columns. Isolation is the load-bearing half: without it a negative
  * z-index does not stop at this element — it escapes to the nearest ancestor that
  * established a stacking context and vanishes behind the page background. One
  * property here is the alternative to putting `position: relative; z-index: 1` on
  * the eyebrow, the h1, the lede, the CTAs, the stat row and the planner. It is
- * also why the arc must stay a child of this section: moved anywhere else it
+ * also why the texture must stay a child of this section: moved anywhere else it
  * loses both its containing block and its stacking context in one go.
  * ------------------------------------------------------------------ */
 .hero {

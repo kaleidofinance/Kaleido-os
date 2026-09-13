@@ -4,7 +4,7 @@ import ThemeToggle from "@/components/v2/ThemeToggle";
 import ChainIcon from "@/components/v2/ChainIcon";
 import Brand from "./_components/Brand";
 import CapabilityTabs from "./_components/CapabilityTabs";
-import HeroArc from "./_components/HeroArc";
+import HeroTexture from "./_components/HeroTexture";
 import LivePlanner from "./_components/LivePlanner";
 import ProductRail from "./_components/ProductRail";
 import { ALL_TOOLS, EXECUTE_COUNT, READS } from "./_components/capabilities";
@@ -561,29 +561,14 @@ export default async function LandingPage() {
             app", no frame means "the app" — and it is what stops two panels in
             a row reading as the same thing twice. */}
         <section className={s.hero}>
-          {/* The dotted dome across the foot of the hero. Artwork with no
-              content, so it says nothing to a screen reader and takes no clicks
-              aimed at the CTAs — both handled inside the component.
-
-              It is a client component, and the only one on this page besides the
-              planner and the theme toggle, because the dots are animated
-              individually on a canvas. The still SVG behind that canvas is what
-              paints before hydration, so the hero never arrives without its
-              artwork; HeroArc.tsx has the reasoning for both halves.
-
-              A child of the section, not of `.heroCopy`, because it spans both
-              columns — it was inside the copy column with its crown above the h1,
-              which put a shape behind the headline rather than a horizon under the
-              whole composition. It is absolutely positioned against `.hero`, so
-              being the first child of a two-column grid costs it no column and the
-              grid no row, and `.hero`'s `isolation: isolate` is what keeps its
-              negative z-index from escaping the section.
-
-              First in source order so that matches paint order. Nothing depends
-              on it — z-index: -1 does the work — but a decorative layer declared
-              after the text it sits behind is the kind of thing that gets read as
-              a mistake and "fixed". */}
-          <HeroArc />
+          {/* The hero's background texture - a duotone dithered cloud (SVG
+              turbulence posterised into bands, plus a fine dot grain), static
+              and theme-aware. It replaces the animated dotted-dome canvas
+              that stood here. Absolutely positioned against `.hero` on a
+              negative z-index and spanning both columns, which is what
+              `.hero`'s `isolation: isolate` exists for; first in source order
+              so paint order matches. */}
+          <HeroTexture />
 
           <div className={s.heroCopy}>
             {/* Just the name. This read "Kaleido DeFi-OS", which was the right
