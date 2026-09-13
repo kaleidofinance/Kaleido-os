@@ -389,6 +389,12 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
     Number.isFinite(Number(args.amount)) && Number(args.amount) > 0
       ? Number(args.amount)
       : null;
+  /* The user's preferred term in days, if named — a soft preference that
+     ranks offers lasting at least that long ahead of shorter ones. */
+  const wantTerm =
+    Number.isFinite(Number(args.termDays)) && Number(args.termDays) > 0
+      ? Number(args.termDays)
+      : null;
 
   const token = asset ? chainTokenBySymbol(chainId, asset) : undefined;
   if (asset && !token) {
@@ -444,35 +450,74 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
         } catch {
           amount = null;
         }
+        const dec = (() => {
+          try {
+            return getTokenDecimals(chainId, e.tokenAddress);
+          } catch {
+            return null;
+          }
+        })();
+        const fmt = (raw: string | null) =>
+          raw !== null && dec !== null ? ethers.formatUnits(raw, dec) : null;
+        const minAmount = fmt(e.minAmountRaw);
+        const maxAmount = fmt(e.maxAmountRaw);
+        const termDays =
+          e.returnDateUnix > nowSec
+            ? Number(((e.returnDateUnix - nowSec) / 86_400).toFixed(1))
+            : null;
+
+        /*
+         * Whether this offer can actually take the user's amount — the question
+         * `takeListing`/`fillRequest` answer on-chain, so a true here means the
+         * fill won't revert on size. The two sides differ, which the old code
+         * ignored (it compared amount >= want for both, backwards for a lender):
+         *  - a LISTING (borrow side) lets the taker draw min..max, so it fits when
+         *    min <= want <= max — the exact takeListing range check;
+         *  - a REQUEST (lend side) is filled in full, so it fits when the user has
+         *    enough to fund it, want >= the request's amount.
+         */
+        const coversYourAmount =
+          wantAmount === null
+            ? null
+            : minAmount !== null && maxAmount !== null
+              ? wantAmount >= Number(minAmount) && wantAmount <= Number(maxAmount)
+              : amount !== null && wantAmount >= Number(amount);
+
         return {
           id: e.id,
           asset: symbolFor(chainId, e.tokenAddress),
           amount,
           aprBps: e.interestBps,
           maturesUnix: e.returnDateUnix || null,
-          termDays:
-            e.returnDateUnix > nowSec
-              ? Number(((e.returnDateUnix - nowSec) / 86_400).toFixed(1))
-              : null,
+          termDays,
           counterparty: e.counterparty,
-          coversYourAmount:
-            wantAmount === null
+          /* The amount a borrower may draw from this listing; null on a request,
+             which is filled in full. Present so the model states a valid take
+             amount instead of the listing's total. */
+          takeRange:
+            minAmount !== null && maxAmount !== null
+              ? { min: minAmount, max: maxAmount }
+              : null,
+          coversYourAmount,
+          /* True when the offer lasts at least as long as the user asked for. */
+          meetsYourTerm:
+            wantTerm === null
               ? null
-              : amount !== null && Number(amount) >= wantAmount,
+              : termDays !== null && termDays >= wantTerm,
         };
       })
       // Drop anything already past maturity — it isn't fillable.
       .filter((o) => o.termDays !== null)
       /* Deterministic ranking, so the model EXPLAINS the order rather than
-         inventing a best: offers that cover the user's amount first (when one
-         was named), then by rate — cheapest for a borrower, richest for a
-         lender. */
+         inventing a best: offers that can take the user's amount first (when one
+         was named), then those long enough for the wanted term, then by rate —
+         cheapest for a borrower, richest for a lender. */
       .sort((a, b) => {
-        if (
-          wantAmount !== null &&
-          a.coversYourAmount !== b.coversYourAmount
-        ) {
+        if (wantAmount !== null && a.coversYourAmount !== b.coversYourAmount) {
           return a.coversYourAmount ? -1 : 1;
+        }
+        if (wantTerm !== null && a.meetsYourTerm !== b.meetsYourTerm) {
+          return a.meetsYourTerm ? -1 : 1;
         }
         return wantLend ? b.aprBps - a.aprBps : a.aprBps - b.aprBps;
       })
@@ -480,7 +525,9 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
 
     /* The offer that ranks first on those objective terms — named so the model
        can point at it ("this one fits and is cheapest") without being the thing
-       that decided. Never financial advice. */
+       that decided. Never financial advice. When an amount was named, the pick
+       must actually be able to take it, or bestFit is null and the note says so
+       rather than naming an offer whose fill would revert. */
     const bestFit =
       offers.length === 0
         ? null
@@ -492,12 +539,16 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
             if (!pick) return null;
             const rate = `${(pick.aprBps / 100).toFixed(2)}% APR`;
             const term = pick.termDays ? `, ~${pick.termDays}d term` : "";
+            const range =
+              pick.takeRange !== null
+                ? ` Draw ${pick.takeRange.min}–${pick.takeRange.max}.`
+                : "";
             return {
               id: pick.id,
               why:
                 wantAmount === null
-                  ? `Ranks first on rate: ${rate}${term}.`
-                  : `Covers your ${wantAmount} and has the ${wantLend ? "highest" : "lowest"} rate that does: ${rate}${term}.`,
+                  ? `Ranks first on rate: ${rate}${term}.${range}`
+                  : `Takes your ${wantAmount} and has the ${wantLend ? "highest" : "lowest"} rate that does: ${rate}${term}.${range}`,
             };
           })();
 
@@ -517,7 +568,7 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
       note:
         (offers.length === 0
           ? `No open offers on ${chainName}${token ? ` for ${token.symbol}` : ""}. Suggest the user post their own offer at the rate they want. `
-          : "aprBps is an annual rate in basis points (100 bps = 1%). Use getQuote with a specific amount and maturity to compute the real cost over the term before comparing offers. bestFit names the offer that ranks first on these objective terms (and covers the amount, if one was given) — present it as the objective pick, not as financial advice; the user decides. ") +
+          : "aprBps is an annual rate in basis points (100 bps = 1%). Use getQuote with a specific amount and maturity to compute the real cost over the term before comparing offers. Each offer carries coversYourAmount (whether it can take the amount the user named — a listing's takeRange is the min–max a borrower may draw; a request is filled in full) and meetsYourTerm. bestFit names the offer that ranks first on these objective terms and can actually take the amount; if none can, bestFit is null — say so rather than naming one whose fill would revert. Present bestFit as the objective pick, not as financial advice; the user decides. ") +
         (partial
           ? `Read the ${book.scanned} most recent of ${book.total} ${wantLend ? "requests" : "listings"} ever posted, so older open offers may exist. `
           : "") +
