@@ -242,6 +242,16 @@ export const TRACE_DEPS: PlanDeps = {
     },
   ],
   /*
+   * No open cooldown, so the `unstake` example shows the first of its three
+   * possible turns: the request that opens the vault's cooldown. That is the
+   * honest specimen for a landing page — a wallet that has never unstaked is
+   * where the verb starts, and the trace under it is one `requestStakeWithdrawal`
+   * step rather than a payout it has not earned. build.ts refuses `unstake`
+   * outright without this reader (it will not guess "no request" and risk a
+   * double request), so a missing fixture would render the refusal here.
+   */
+  stakingState: async () => ({ hasRequest: false, timeLeft: 0 }),
+  /*
    * Empty, and not for lack of a fixture: no trace on this page claims a faucet.
    * The faucet is an internal testing errand rather than one of the products
    * this section inventories — see the exclusion in capabilities.test.ts, which
