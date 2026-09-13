@@ -4,7 +4,6 @@ import ThemeToggle from "@/components/v2/ThemeToggle";
 import ChainIcon from "@/components/v2/ChainIcon";
 import Brand from "./_components/Brand";
 import CapabilityTabs from "./_components/CapabilityTabs";
-import HeroTexture from "./_components/HeroTexture";
 import LivePlanner from "./_components/LivePlanner";
 import ProductRail from "./_components/ProductRail";
 import { ALL_TOOLS, EXECUTE_COUNT, READS } from "./_components/capabilities";
@@ -561,15 +560,6 @@ export default async function LandingPage() {
             app", no frame means "the app" — and it is what stops two panels in
             a row reading as the same thing twice. */}
         <section className={s.hero}>
-          {/* The hero's background texture - a duotone dithered cloud (SVG
-              turbulence posterised into bands, plus a fine dot grain), static
-              and theme-aware. It replaces the animated dotted-dome canvas
-              that stood here. Absolutely positioned against `.hero` on a
-              negative z-index and spanning both columns, which is what
-              `.hero`'s `isolation: isolate` exists for; first in source order
-              so paint order matches. */}
-          <HeroTexture />
-
           <div className={s.heroCopy}>
             {/* Just the name. This read "Kaleido DeFi-OS", which was the right
                 eyebrow over a headline that named a behaviour — but the h1 below
