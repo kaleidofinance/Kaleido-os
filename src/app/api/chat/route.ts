@@ -25,6 +25,7 @@ import {
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
 import { splitActionsBlock } from "@/lib/ai/actionsBlock";
+import { logAgentTurn } from "@/lib/ai/turnLog";
 import type { ChatMessage } from "@/lib/ai/types";
 
 /**
@@ -185,6 +186,8 @@ export async function POST(request: NextRequest) {
        one backend degrades to the next instead of failing the turn. */
     const providers = getProviderChain(requested);
     const provider = providers[0] ?? null;
+    /* When the turn started, for the latency every ending records. */
+    const startedAt = Date.now();
     if (provider) {
       // Quota is spent here, at the point of dispatch, and nowhere earlier.
       // A turn the client answered locally never reaches this route at all, so
@@ -206,6 +209,21 @@ export async function POST(request: NextRequest) {
          * it should not show a user as spent when they are not.
          */
         const global = quota.refusedBy === "global";
+        /* A refused turn is still a turn worth counting — an exhausted global cap
+           is an operational event (the shared allowance ran dry), distinct from a
+           per-wallet or anonymous refusal. No provider ran, so no provider/model. */
+        await logAgentTurn({
+          status:
+            quota.refusedBy === "global"
+              ? "global_quota_exhausted"
+              : quota.refusedBy === "anonymous"
+                ? "quota_anonymous"
+                : "quota_exhausted",
+          latencyMs: Date.now() - startedAt,
+          chainId:
+            typeof body.chainId === "number" ? body.chainId : null,
+          address: body.address,
+        });
         return NextResponse.json(
           {
             response:
@@ -284,7 +302,7 @@ export async function POST(request: NextRequest) {
        * would be a second copy of the auditor call — and a copy that forgot it
        * would stream a plan nothing had checked.
        */
-      const settle = async (result: AgentRun) => {
+      const settle = async (result: AgentRun, streamed = false) => {
         /* The offered-actions block comes off the prose first, so every use of
            the reply below is the reader's version. Doing it here rather than at
            each of the three concatenations means a refusal, a build note and a
@@ -370,6 +388,23 @@ export async function POST(request: NextRequest) {
           ? `\n\n---\n\nI couldn't prepare some of that:\n${built.errors.map((e) => `• ${e}`).join("\n")}`
           : "";
 
+        /* The record of a turn that ran. `refused` is a turn the model answered
+           and the auditor then dropped its plan — a different fact from a clean
+           answer, and one worth being able to count. failed_over is the outage
+           signal: the answer came from a backend other than the primary. */
+        await logAgentTurn({
+          status: verdict.ok ? "ok" : "refused",
+          provider: result.provider,
+          model: result.model,
+          latencyMs: Date.now() - startedAt,
+          failedOver: !!provider && result.provider !== provider.id,
+          planSteps: verdict.ok ? built.plan.length : 0,
+          auditOk: built.plan.length > 0 ? verdict.ok : null,
+          stream: streamed,
+          chainId,
+          address: body.address,
+        });
+
         return {
           response: verdict.ok
             ? `${reply.text}${buildNotes}`
@@ -432,7 +467,7 @@ export async function POST(request: NextRequest) {
        * The turn failed. Works out whether it can ever succeed, hands back the
        * credit when it cannot, and returns the reply either way.
        */
-      const recover = async (aiError: any) => {
+      const recover = async (aiError: any, streamed = false) => {
         console.error("[chat] provider failed:", aiError);
         /*
          * "Try again shortly" is only true of a failure that might pass next
@@ -464,6 +499,20 @@ export async function POST(request: NextRequest) {
         const refunded = blocked
           ? await releaseModelRequest(body.address, quota)
           : null;
+
+        /* A failed turn, with a short error class rather than the raw message —
+           enough to tell a gateway content-block from a 5xx or a timeout when
+           reading the log, never a user's words. */
+        await logAgentTurn({
+          status: blocked ? "provider_blocked" : "provider_error",
+          provider: provider?.id ?? null,
+          latencyMs: Date.now() - startedAt,
+          stream: streamed,
+          chainId,
+          address: body.address,
+          error: String(aiError?.name ?? aiError?.code ?? "error").slice(0, 60),
+        });
+
         return {
           response: blocked
             ? "The model gateway refused that wording — it screens messages shaped like a transfer instruction. Say it as a command, like `swap 100 USDC to KLD`, and it runs here without a reasoning request. Questions about your positions or the markets are unaffected."
@@ -526,9 +575,9 @@ export async function POST(request: NextRequest) {
                   send({ t: "round", ...(note ? { note } : {}), reads });
                 },
               });
-              send({ t: "done", ...(await settle(result)) });
+              send({ t: "done", ...(await settle(result, true)) });
             } catch (aiError: any) {
-              send({ t: "error", ...(await recover(aiError)) });
+              send({ t: "error", ...(await recover(aiError, true)) });
             } finally {
               if (!closed) {
                 try {
