@@ -15,6 +15,7 @@ import {
 } from "@/lib/dex/orders";
 import { retryRpc } from "@/lib/dex/rpcRetry";
 import protocolAbi from "@/abi/ProtocolFacet.json";
+import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import {
   chainTokenByAddress,
   chainTokenBySymbol,
@@ -1142,6 +1143,142 @@ async function getPositions(args: Json, chainId: number): Promise<Json> {
   }
 }
 
+/*
+ * The action bitmask AgentPermissionFacet stores, decoded to the names a user
+ * would recognise. Mirrors LibAgentPermission.ACTION_* — kept as a literal here
+ * rather than imported because the frontend has the ABI, not the Solidity
+ * constants, and a wrong bit would mislabel what a delegate is allowed to do on
+ * the one screen where that matters. Lending-only by design: swaps, liquidity,
+ * staking and minting have no bit and an agent can never be granted them.
+ */
+const AGENT_ACTIONS: ReadonlyArray<[number, string]> = [
+  [1, "borrow"],
+  [2, "lend"],
+  [4, "repay"],
+  [8, "deposit collateral"],
+  [16, "withdraw collateral"],
+  [32, "close position"],
+];
+
+/**
+ * Reads an on-chain agent delegation — the mandate a user signed via
+ * AgentPermissionFacet.grantAgentPermission — so Luca can state exactly what an
+ * agent is (and is not) allowed to do, and how much budget is left this epoch.
+ *
+ * Read-only and honest about the common case: today the app has no autonomous
+ * agent address to act *as*, so a turn that does not name one gets a plain "no
+ * active delegation" rather than a guess. When an agent address is given, this
+ * is the source of truth the delegation UI should also read — the reads
+ * (getAgentPermission, agentRemainingBudget) already exist on-chain; this is the
+ * frontend half that useAgentSettings notes "isn't in the frontend ABI yet".
+ *
+ * It never enables anything. Granting is a signed action (grantAgentPermission);
+ * revoking is a signed action (revokeAgentPermission); nothing here moves funds
+ * or changes a mandate. It only lets the user and Luca see one.
+ */
+async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
+  const user = typeof args.address === "string" ? args.address : undefined;
+  const agent = typeof args.agent === "string" ? args.agent : undefined;
+  if (!user || !ethers.isAddress(user)) {
+    return { error: "getAgentMandate needs the user's wallet address." };
+  }
+  if (!agent) {
+    return {
+      configured: false,
+      note:
+        "No autonomous agent address was given, and the app has no default one — " +
+        "so there is no active delegation to report. Delegating is opt-in and " +
+        "revocable: the user signs grantAgentPermission to authorise a bounded, " +
+        "capped mandate, and revokeAgentPermission kills it instantly. Until then " +
+        "every action still needs the user's own signature.",
+    };
+  }
+  if (!ethers.isAddress(agent)) {
+    return { error: "getAgentMandate: agent is not a valid 0x address." };
+  }
+
+  try {
+    const provider = providerForChain(chainId);
+    const diamond = getContracts(chainId).diamond;
+    if (!provider || !diamond) {
+      return {
+        error: `No Kaleido deployment recorded for chain ${chainId}.`,
+      };
+    }
+    const facet = new ethers.Contract(diamond, agentPermissionAbi, provider);
+    const p = await facet.getAgentPermission(user, agent);
+
+    // expiry === 0 is the facet's "no grant was ever made" sentinel.
+    if (p.expiry === 0n || Number(p.expiry) === 0) {
+      return {
+        configured: false,
+        agent,
+        note:
+          `No delegation from this user to ${agent}. The user has not signed a ` +
+          "mandate for that agent, so it can do nothing on their behalf.",
+      };
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expiry = Number(p.expiry);
+    const revoked = Boolean(p.revoked);
+    const expired = nowSec > expiry;
+    const status = revoked
+      ? "revoked"
+      : expired
+        ? "expired"
+        : "active";
+
+    const bits = Number(p.allowedActions);
+    const allowedActions = AGENT_ACTIONS.filter(([b]) => (bits & b) !== 0).map(
+      ([, name]) => name,
+    );
+
+    // USD notional is 1e18-scaled on-chain, matching the grant's units.
+    const fmtUsd = (v: bigint) => Number(ethers.formatUnits(v, 18));
+    let remainingBudgetUsd: number | null = null;
+    try {
+      remainingBudgetUsd = fmtUsd(
+        await facet.agentRemainingBudget(user, agent),
+      );
+    } catch {
+      remainingBudgetUsd = null;
+    }
+
+    const daysLeft = expired
+      ? 0
+      : Number(((expiry - nowSec) / 86_400).toFixed(1));
+
+    return {
+      configured: true,
+      agent,
+      status,
+      allowedActions,
+      maxPerActionUsd: fmtUsd(p.maxNotionalPerAction),
+      maxPerEpochUsd: fmtUsd(p.maxNotionalPerEpoch),
+      spentThisEpochUsd: fmtUsd(p.spentInEpoch),
+      remainingBudgetUsd,
+      minHealthFactor: Number(p.minHealthFactorBps) / 10_000,
+      maxInterestBps: Number(p.maxInterestBps) || null,
+      expiryUnix: expiry,
+      daysUntilExpiry: daysLeft,
+      note:
+        status === "active"
+          ? "This is a live, revocable mandate. Amounts are USD. remainingBudgetUsd " +
+            "is what the agent may still spend this epoch; it does not refund on " +
+            "repayment. allowedActions is lending-only by design. The user can " +
+            "revoke it instantly with revokeAgentPermission — offer that if they " +
+            "sound unsure."
+          : status === "revoked"
+            ? "This mandate was revoked and does nothing. The agent cannot act."
+            : "This mandate has expired and does nothing. The user would need to " +
+              "sign a fresh grantAgentPermission to delegate again.",
+    };
+  } catch (err) {
+    return { error: `getAgentMandate failed: ${(err as Error).message}` };
+  }
+}
+
 const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
   {
     getQuote,
@@ -1154,6 +1291,7 @@ const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
     getChains,
     getBridgeRoute,
     getSwapRoute,
+    getAgentMandate,
   };
 
 export function isReadTool(name: string): boolean {

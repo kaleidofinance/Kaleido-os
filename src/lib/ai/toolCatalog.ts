@@ -701,6 +701,25 @@ export const TOOL_CATALOG: ToolSpec[] = [
     },
   },
   {
+    name: "getAgentMandate",
+    kind: "read",
+    description:
+      "Whether the user has delegated bounded, revocable authority to an autonomous agent, and if so what it may do and how much budget is left. Call this for 'what can my agent do', 'have I set up auto-trading', 'how much can it spend', or before discussing delegation. Delegation is opt-in and lending-only; when the user has none (the usual case), it says so. Pass agent only if the user named a specific delegate address; otherwise omit it and the tool reports that there is no active delegation. Read-only — it never grants or revokes anything.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "The user's wallet address" },
+        agent: {
+          type: "string",
+          description:
+            "0x address of the delegate to inspect, only if the user named one",
+        },
+      },
+      required: ["address"],
+    },
+  },
+  {
     name: "getBalances",
     kind: "read",
     description:
