@@ -26,6 +26,7 @@ import {
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
 import { splitActionsBlock } from "@/lib/ai/actionsBlock";
 import { logAgentTurn } from "@/lib/ai/turnLog";
+import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
 
 /**
@@ -52,7 +53,12 @@ export const maxDuration = 60;
  * would 403. Ids and labels only; no keys, no base URLs.
  */
 export async function GET(request: NextRequest) {
-  const wallet = request.nextUrl.searchParams.get("address") ?? undefined;
+  /* Validated to an address shape: a peek is a low-sensitivity read (a daily
+     count), but a malformed value should not reach the RPC, and an unowned one
+     gets the same empty default as no wallet. Proving ownership of the address
+     is the session-auth work deferred with the provider decision. */
+  const raw = request.nextUrl.searchParams.get("address") ?? "";
+  const wallet = /^0x[0-9a-fA-F]{40}$/.test(raw) ? raw.toLowerCase() : undefined;
   const usage = await peekModelUsage(wallet);
   const models = [
     ...(process.env.AGENTROUTER_API_KEY
@@ -166,6 +172,31 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    /*
+     * Per-IP rate limit, before anything else spends work or quota.
+     *
+     * The quota below is keyed on a wallet address the caller supplies and does
+     * not have to own, so on its own it lets a script POST a victim's address to
+     * lock them out, or rotate addresses to burn the shared daily ceiling for
+     * everyone. This is the floor that raises the cost of both: one IP cannot
+     * hammer the endpoint regardless of what identity it claims. It fails open
+     * (a limiter outage must not take the agent down) and sits in front of the
+     * per-wallet and deployment caps, not instead of them. Not a substitute for
+     * binding the quota to a signed session — that is the stronger fix, deferred
+     * with the wallet-provider decision — but it closes the cheap attacks now.
+     */
+    const ipRate = await checkIpRate(clientIp(request.headers));
+    if (!ipRate.allowed) {
+      return NextResponse.json(
+        {
+          response:
+            "You're sending requests faster than I can take them — give it a moment and try again. Direct commands like `swap 500 USDC to KLD` are unaffected.",
+          context: { status: "rate_limited" },
+        },
+        { status: 429 },
+      );
+    }
+
     // --- Provider-agnostic agent loop -----------------------------------
     // When an AI key is configured (Claude, OpenAI, …) Luca runs here: read
     // tools ground the reasoning, execute tools become the signable plan the
@@ -188,11 +219,19 @@ export async function POST(request: NextRequest) {
     const provider = providers[0] ?? null;
     /* When the turn started, for the latency every ending records. */
     const startedAt = Date.now();
+    /* The address the quota is keyed on, validated to an EIP-shaped address and
+       lower-cased. Anything else is treated as no wallet — the anonymous,
+       local-only branch — so a garbage string cannot become its own metered
+       identity, and the counter is keyed on a canonical form rather than on
+       whatever casing the caller sent. */
+    const meterAddress = /^0x[0-9a-fA-F]{40}$/.test(String(body.address ?? ""))
+      ? String(body.address).toLowerCase()
+      : undefined;
     if (provider) {
       // Quota is spent here, at the point of dispatch, and nowhere earlier.
       // A turn the client answered locally never reaches this route at all, so
       // routing locally first is what makes the allowance go far.
-      const quota = await consumeModelRequest(body.address);
+      const quota = await consumeModelRequest(meterAddress);
       if (!quota.allowed) {
         /*
          * Three refusals, three different things to say, and the difference
@@ -222,7 +261,7 @@ export async function POST(request: NextRequest) {
           latencyMs: Date.now() - startedAt,
           chainId:
             typeof body.chainId === "number" ? body.chainId : null,
-          address: body.address,
+          address: meterAddress,
         });
         return NextResponse.json(
           {
@@ -282,7 +321,7 @@ export async function POST(request: NextRequest) {
 
       const agentInput = {
         message: String(body.message ?? ""),
-        address: body.address,
+        address: meterAddress,
         chainId: body.chainId,
         limits: safeLimits,
         /* The conversation this message belongs to. Sanitised and bounded — see
@@ -402,7 +441,7 @@ export async function POST(request: NextRequest) {
           auditOk: built.plan.length > 0 ? verdict.ok : null,
           stream: streamed,
           chainId,
-          address: body.address,
+          address: meterAddress,
         });
 
         return {
@@ -497,7 +536,7 @@ export async function POST(request: NextRequest) {
            have generated tokens upstream, and handing those back would make the
            ceiling refundable by making the provider fail. */
         const refunded = blocked
-          ? await releaseModelRequest(body.address, quota)
+          ? await releaseModelRequest(meterAddress, quota)
           : null;
 
         /* A failed turn, with a short error class rather than the raw message —
@@ -509,7 +548,7 @@ export async function POST(request: NextRequest) {
           latencyMs: Date.now() - startedAt,
           stream: streamed,
           chainId,
-          address: body.address,
+          address: meterAddress,
           error: String(aiError?.name ?? aiError?.code ?? "error").slice(0, 60),
         });
 

@@ -170,6 +170,17 @@ const EXPECTED = [
     usedBy:
       "the durable per-turn record read by /api/health/agent (src/lib/ai/turnLog.ts)",
   },
+  {
+    migration: "20260914000000_agent_ip_rate.sql",
+    tables: {
+      agent_ip_rate: ["ip", "window_start", "count"],
+    },
+    /* The per-IP rate limit in front of /api/chat. Unapplied, checkIpRate fails
+       open (the bump_ip_rate RPC errors) and the endpoint has no rate floor —
+       back to the unauthenticated free-for-all this table was added to bound. */
+    usedBy:
+      "the /api/chat per-IP rate limit (src/lib/ai/ipRate.ts, bump_ip_rate RPC)",
+  },
 ];
 
 /* Replayed verbatim from the route files. If these two pass, the leaderboard
