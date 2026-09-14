@@ -136,7 +136,7 @@ const HTML = `<!doctype html>
 
 <section class="cover">
   <div class="wrap">
-    <div class="brand"><span class="glyph"></span>Kaleido<b>fi</b></div>
+    <div class="brand"><span class="glyph"></span><span>Kaleido<b>fi</b></span></div>
     <p class="eyebrow">Liquidity partnership · 2026</p>
     <h1>We bring the users and the flow. Partner with us for the depth.</h1>
     <p class="lead">Kaleido is an agentic DeFi operating system launching across new mainnets, starting with Arc on day one. The DEX needs blue-chip depth from the first block, and our agent routes real volume straight into it.</p>
