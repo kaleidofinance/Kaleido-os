@@ -1245,8 +1245,11 @@ export function CollateralModal({
         (c) => c.address.toLowerCase() === asset.address.toLowerCase(),
       )
     : undefined;
+  /* Capped on AVAILABLE, not deposited: collateral backing an open loan is
+     locked, and the contract reverts a withdrawal above the free balance even
+     though it is within the deposited total. See CollateralHolding.available. */
   const overWithdraw =
-    mode === "withdraw" && Number(amount) > (held?.amount ?? 0);
+    mode === "withdraw" && Number(amount) > (held?.available ?? 0);
   const ready = !!asset && Number(amount) > 0 && !overWithdraw;
 
   const submit = async () => {
@@ -1331,21 +1334,38 @@ export function CollateralModal({
             })}{" "}
             {symbol}
           </span>
-          {mode === "withdraw" && (held?.amount ?? 0) > 0 && (
+          {mode === "withdraw" && (held?.available ?? 0) > 0 && (
             <button
               type="button"
               className={s.maxBtn}
-              onClick={() => setAmount(exact(held?.amount ?? 0))}
+              onClick={() => setAmount(exact(held?.available ?? 0))}
             >
               Max
             </button>
           )}
         </div>
+        {/* When collateral is locked to a loan the free balance is below the
+            deposited total, and it is the number a withdrawal is capped on — so
+            it is shown, but only when the two differ. */}
+        {mode === "withdraw" &&
+          (held?.available ?? 0) < (held?.amount ?? 0) && (
+            <div className={s.balRow}>
+              <span>
+                Available to withdraw:{" "}
+                {(held?.available ?? 0).toLocaleString(undefined, {
+                  maximumFractionDigits: 6,
+                })}{" "}
+                {symbol}
+              </span>
+            </div>
+          )}
       </div>
 
       {overWithdraw && (
         <div className={s.warn}>
-          You only have {held?.amount ?? 0} {symbol} deposited.
+          {(held?.available ?? 0) < (held?.amount ?? 0)
+            ? `You can withdraw at most ${held?.available ?? 0} ${symbol} right now — the rest is backing an open loan.`
+            : `You only have ${held?.available ?? 0} ${symbol} to withdraw.`}
         </div>
       )}
       {mode === "withdraw" && borrow.loans.length > 0 && (
