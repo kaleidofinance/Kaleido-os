@@ -87,7 +87,7 @@ async function handle(req: Request): Promise<Response> {
 
   // Oldest pending signups first, so the queue drains fairly across runs.
   // x_*_at are the completed X tasks (link/follow/retweet), each worth X_TASK;
-  // they are credited in full here regardless of the app-side 24h display hold.
+  // they are credited in full here regardless of the app-side 5h display hold.
   // (Requires the 20260914030000 X-tasks migration to be applied.)
   const { data: pending, error: pendErr } = await admin
     .from("waitlist")

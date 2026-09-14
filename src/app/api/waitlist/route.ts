@@ -24,7 +24,7 @@ const REFERRAL_CAP = 5000; // matches the referral source cap in the points sche
 const X_TASK = 100; // kPoint per X task (link, follow, retweet)
 // X-task kPoint is held this long before it counts toward the balance — a nudge
 // to actually do the task, since the tasks are attested, not API-verified.
-const X_HOLD_MS = 24 * 60 * 60 * 1000;
+const X_HOLD_MS = 5 * 60 * 60 * 1000;
 
 // Referral codes: 8 chars from a lowercase, unambiguous base32 alphabet (no
 // 0/1/l/o) — short, case-insensitively shareable, and stored lowercase to match
@@ -48,7 +48,7 @@ const joinMessage = (address: string) =>
 const isAddress = (a: unknown): a is string =>
   typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a);
 
-/** A single X task's state for the UI: whether it's done, and its 24h hold. */
+/** A single X task's state for the UI: whether it's done, and its 5h hold. */
 function xTaskState(at: string | null, now: number) {
   if (!at) return { done: false, counted: false, countsAt: null as string | null };
   const countsAtMs = new Date(at).getTime() + X_HOLD_MS;

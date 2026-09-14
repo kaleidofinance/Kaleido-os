@@ -241,6 +241,11 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  /* The card centers text (.card text-align:center) and these flex-stretched
+     spans inherit it, so a line shorter than its row's widest line centers
+     inside its box — which floated the short "Link your X account" title into
+     the middle of its wide "Linked … counts" meta. Pin the task text left. */
+  text-align: left;
 }
 .taskTitle {
   color: var(--k-t1);
