@@ -89,6 +89,18 @@ const HTML = `<!doctype html>
   td.q{color:var(--t2); text-align:right; white-space:nowrap}
   .quote{color:var(--sand)}
   .foot-note{font-family:var(--mono); font-size:11.5px; color:var(--t3); margin-top:14px; line-height:1.5}
+  .ltable{display:flex; flex-direction:column; margin-top:6px}
+  .lrow{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--line)}
+  .lrow:last-child{border-bottom:0}
+  .lhead{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--t3); padding:0 0 8px}
+  .pair{display:flex; align-items:center; gap:12px; font-family:var(--mono); font-size:13.5px; color:var(--t1)}
+  .badges{display:inline-flex; flex:none}
+  .tok{width:22px; height:22px; border-radius:50%; background:var(--c,#888); border:2px solid var(--panel); display:inline-block}
+  .tok + .tok{margin-left:-8px}
+  .amt{font-family:var(--mono); font-size:13.5px; color:var(--sand); font-variant-numeric:tabular-nums; white-space:nowrap}
+  .ltotal{border-top:1px solid var(--line2)}
+  .ltotal .lbl{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--t3)}
+  .ltotal .amt{color:var(--t1)}
 
   .gets{list-style:none; padding:0; margin:36px 0 0; display:grid; gap:2px}
   .gets li{display:grid; grid-template-columns:180px 1fr; gap:20px;
@@ -164,30 +176,33 @@ const HTML = `<!doctype html>
   <div class="wrap">
     <p class="eyebrow">The ask</p>
     <h2>Seed blue-chip depth in the core pairs.</h2>
-    <p style="margin-top:18px">We are bootstrapping the DEX's core-pair liquidity ahead of a raise. Each chain's pairs use that chain's own canonical assets, because the depth has to be where the flow is.</p>
+    <p style="margin-top:18px">We are bootstrapping the DEX's core-pair liquidity ahead of a raise. Each chain's pairs use that chain's own canonical assets, and the target is the concentrated V3 depth we are looking for on each.</p>
     <div class="grid g2">
       <div class="chaincol">
-        <div class="head"><h3>Arc</h3><span class="when">greenfield · Sep 16</span></div>
-        <table>
-          <tr><td>ETH</td><td class="q"><span class="quote">USDC</span></td></tr>
-          <tr><td>Bridged BTC</td><td class="q"><span class="quote">USDC</span></td></tr>
-          <tr><td>Stable (EURC / USDG)</td><td class="q"><span class="quote">USDC</span></td></tr>
-        </table>
-        <p class="foot-note">Arc is USDC-native (USDC is the gas token). No incumbent depth at launch, so these are the first-mover pairs. Priority chain.</p>
+        <div class="head"><h3>Arc</h3><span class="when">greenfield &middot; Sep 16</span></div>
+        <div class="ltable">
+          <div class="lrow lhead"><span>Pair</span><span>Target</span></div>
+          <div class="lrow"><span class="pair"><span class="badges"><i class="tok" style="--c:#627eea"></i><i class="tok" style="--c:#2775ca"></i></span>ETH / USDC</span><span class="amt">$500k</span></div>
+          <div class="lrow"><span class="pair"><span class="badges"><i class="tok" style="--c:#f7931a"></i><i class="tok" style="--c:#2775ca"></i></span>BTC / USDC</span><span class="amt">$500k</span></div>
+          <div class="lrow"><span class="pair"><span class="badges"><i class="tok" style="--c:#5b8def"></i><i class="tok" style="--c:#2775ca"></i></span>EURC / USDC</span><span class="amt">$150k</span></div>
+          <div class="lrow ltotal"><span class="lbl">Target total</span><span class="amt">~$1.15M</span></div>
+        </div>
+        <p class="foot-note">USDC-native chain (USDC is the gas token). No incumbent depth at launch, so these are first-mover pairs. Priority chain.</p>
       </div>
       <div class="chaincol">
         <div class="head"><h3>Robinhood Chain</h3><span class="when">established</span></div>
-        <table>
-          <tr><td>WETH</td><td class="q"><span class="quote">USDG</span></td></tr>
-          <tr><td>Equity tokens (AAPL, TSLA, NVDA)</td><td class="q"><span class="quote">USDG</span></td></tr>
-          <tr><td>Bridged BTC</td><td class="q"><span class="quote">USDG</span></td></tr>
-        </table>
-        <p class="foot-note">USDG (Global Dollar) is the chain's stable and WETH/USDG is already deep on incumbents. Our depth targets what the agent needs to route, including Robinhood-native equity tokens, not a head-on fight for WETH/USDG.</p>
+        <div class="ltable">
+          <div class="lrow lhead"><span>Pair</span><span>Target</span></div>
+          <div class="lrow"><span class="pair"><span class="badges"><i class="tok" style="--c:#8a92b2"></i><i class="tok" style="--c:#16a34a"></i></span>WETH / USDG</span><span class="amt">$350k</span></div>
+          <div class="lrow"><span class="pair"><span class="badges"><i class="tok" style="--c:#f7931a"></i><i class="tok" style="--c:#16a34a"></i></span>BTC / USDG</span><span class="amt">$200k</span></div>
+          <div class="lrow"><span class="pair"><span class="badges"><i class="tok" style="--c:#b0b6bd"></i><i class="tok" style="--c:#16a34a"></i></span>AAPL / USDG</span><span class="amt">$100k</span></div>
+          <div class="lrow ltotal"><span class="lbl">Target total</span><span class="amt">~$650k</span></div>
+        </div>
+        <p class="foot-note">USDG (Global Dollar) is the chain's stable. WETH/USDG is already deep on incumbents, so our targets focus on routing depth and Robinhood-native equity tokens, not a head-on fight for WETH/USDG.</p>
       </div>
     </div>
-    <p class="foot-note" style="margin-top:18px">Indicative sizing: roughly $250k to $500k per anchor pair and $50k to $150k per secondary pair, in concentrated V3 ranges. Scales from a single pair to a full chain; we size to your book.</p>
-  </div>
-</section>
+    <p class="foot-note" style="margin-top:18px">All figures are concentrated V3 depth and scale to your book. A partner can take a single pair or a full chain.</p>
+  </section>
 
 <section>
   <div class="wrap">
