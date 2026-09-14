@@ -167,12 +167,34 @@ console.log("\n— a loan open —");
     }),
     { connected: true },
   );
-  const health = card(a, "stats").rows.find((r) => r.label === "Health factor");
-  check("health joins the breakdown", !!health, kinds(a));
-  check("as the number, not a band", health?.value === "1.12");
-  check("tinted by the same bands as the FAQ card", health?.tone === "warn");
+  const g = card(a, "gauge");
+  check("health leads as a gauge", g?.kind === "gauge", kinds(a));
+  check("as the number, not a band", g?.value === "1.12");
+  check("tinted by the same bands as the FAQ card", g?.tone === "warn");
   check(
-    "prose names the debt and the collateral behind it",
+    "the fill places 1.12 low on the 1.0–3.0 track",
+    typeof g?.fraction === "number" && g.fraction > 0 && g.fraction < 0.1,
+    String(g?.fraction),
+  );
+  check(
+    "the gauge takes the first card from the net-value metric",
+    !a.cards.some((c) => c.kind === "metric"),
+    kinds(a),
+  );
+  check(
+    "the gauge survives the validator, within the card budget",
+    (() => {
+      const out = localCards(a.cards);
+      return out.length <= 3 && out.some((c) => c.kind === "gauge");
+    })(),
+    JSON.stringify(localCards(a.cards).map((c) => c.kind)),
+  );
+  check(
+    "health is no longer a stats row",
+    !card(a, "stats")?.rows.some((r) => r.label === "Health factor"),
+  );
+  check(
+    "prose still names the debt and the collateral behind it",
     a.text.includes("$700.00 borrowed against $1,500.00"),
     a.text,
   );

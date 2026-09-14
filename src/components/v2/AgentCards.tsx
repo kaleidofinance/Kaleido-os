@@ -106,6 +106,46 @@ export default function AgentCards({ cards, onPrompt }: Props) {
               </div>
             );
 
+          case "gauge": {
+            /* Percent for the fill width and the meter's value. The card's
+               `fraction` is geometry in [0,1]; the value the reader reads is the
+               string beside it, not this. */
+            const pct = Math.max(0, Math.min(1, card.fraction)) * 100;
+            return (
+              <div key={i} className={s.card}>
+                <div className={s.mLabel}>{card.label}</div>
+                <div className={s.mValue}>
+                  <span className="tabular">{card.value}</span>
+                  {card.unit && <span className={s.mUnit}>{card.unit}</span>}
+                </div>
+                <div
+                  className={s.gauge}
+                  role="meter"
+                  aria-label={card.label}
+                  aria-valuenow={Math.round(pct)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  {/* The fill takes its colour from the tone class (which sets
+                      `color`) via `background: currentColor` — the same three
+                      readings the rest of the card uses, so a bar and a number
+                      never disagree about whether a figure is healthy. */}
+                  <div
+                    className={`${s.gaugeFill} ${s[card.tone]}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                {(card.min || card.max) && (
+                  <div className={s.gaugeEnds}>
+                    <span>{card.min ?? ""}</span>
+                    <span>{card.max ?? ""}</span>
+                  </div>
+                )}
+                {card.note && <div className={s.mNote}>{card.note}</div>}
+              </div>
+            );
+          }
+
           case "stats":
             return (
               <div key={i} className={s.card}>

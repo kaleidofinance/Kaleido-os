@@ -44,6 +44,7 @@ const KNOWN_KINDS: CardKind[] = [
   "balance",
   "notice",
   "actions",
+  "gauge",
 ];
 
 const TONES: CardTone[] = ["neutral", "good", "warn", "bad"];
@@ -62,6 +63,7 @@ const LIMITS = {
   note: 140,
   body: 280,
   prompt: 120,
+  caption: 16,
 } as const;
 
 /**
@@ -163,6 +165,35 @@ function validate(raw: unknown): AgentCard | null {
         tone: tone(c.tone),
         title: t,
         ...(body ? { body } : {}),
+      };
+    }
+
+    case "gauge": {
+      const label = str(c.label, LIMITS.label);
+      const value = str(c.value, LIMITS.value);
+      if (!label || !value) return null;
+      /* The one numeric field in the union, and the one thing the frame cannot
+         reconstruct from a string. A non-number is a malformed gauge, not a
+         zero-filled one — drop it rather than draw an empty bar that looks
+         measured. A finite number is clamped: `fraction` is geometry in [0,1],
+         and an emitter that computed 1.3 meant "full", not "overflow the track". */
+      const f = c.fraction;
+      if (typeof f !== "number" || !Number.isFinite(f)) return null;
+      const fraction = Math.min(1, Math.max(0, f));
+      const unit = str(c.unit, LIMITS.unit);
+      const min = str(c.min, LIMITS.caption);
+      const max = str(c.max, LIMITS.caption);
+      const note = str(c.note, LIMITS.note);
+      return {
+        kind: "gauge",
+        label,
+        value,
+        fraction,
+        tone: tone(c.tone),
+        ...(unit ? { unit } : {}),
+        ...(min ? { min } : {}),
+        ...(max ? { max } : {}),
+        ...(note ? { note } : {}),
       };
     }
 

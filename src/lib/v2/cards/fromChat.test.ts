@@ -215,6 +215,51 @@ console.log("\n— the FAQ's own static cards survive their own validator —");
   );
 }
 
+console.log("\n— gauge: the one card with a number, so the number is guarded —");
+{
+  const ok = wire([
+    {
+      kind: "gauge",
+      label: "Health factor",
+      value: "1.62",
+      fraction: 0.31,
+      tone: "good",
+      min: "1.0",
+      max: "3.0+",
+      note: "higher is safer",
+      onClick: "steal()",
+    },
+  ]);
+  check("a valid gauge survives", ok.length === 1 && ok[0].kind === "gauge", JSON.stringify(ok));
+  check(
+    "its fields are rebuilt, the stray one dropped",
+    ok[0].fraction === 0.31 &&
+      ok[0].value === "1.62" &&
+      ok[0].tone === "good" &&
+      ok[0].min === "1.0" &&
+      ok[0].max === "3.0+" &&
+      !("onClick" in ok[0]),
+    JSON.stringify(ok[0]),
+  );
+
+  // fraction is geometry in [0,1] and the only number a card carries. A value
+  // outside the range is clamped, not honoured — an emitter that computed 1.3
+  // meant "full", not "overflow the track".
+  check("fraction above 1 clamps to 1", wire([{ kind: "gauge", label: "x", value: "1", fraction: 1.3, tone: "good" }])[0].fraction === 1);
+  check("fraction below 0 clamps to 0", wire([{ kind: "gauge", label: "x", value: "1", fraction: -5, tone: "bad" }])[0].fraction === 0);
+
+  // A non-number fraction is a malformed gauge, not a zero-filled one: dropped,
+  // so a bar that was never measured never draws.
+  check("NaN fraction drops the card", wire([{ kind: "gauge", label: "x", value: "1", fraction: NaN, tone: "good" }]).length === 0);
+  check("a string fraction drops the card", wire([{ kind: "gauge", label: "x", value: "1", fraction: "0.5", tone: "good" }]).length === 0);
+  check("a missing fraction drops the card", wire([{ kind: "gauge", label: "x", value: "1", tone: "good" }]).length === 0);
+
+  // Same required-field discipline as every other kind.
+  check("no label drops it", wire([{ kind: "gauge", value: "1", fraction: 0.5 }]).length === 0);
+  check("no value drops it", wire([{ kind: "gauge", label: "x", fraction: 0.5 }]).length === 0);
+  check("an unknown tone falls back to neutral", wire([{ kind: "gauge", label: "x", value: "1", fraction: 0.5, tone: "evil" }])[0].tone === "neutral");
+}
+
 console.log("\n— localCards applies the same gate —");
 check(
   "local cards pass through the validator",
