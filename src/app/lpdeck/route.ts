@@ -241,6 +241,7 @@ const HTML = `<!doctype html>
       <p>Arc goes live day one on Sep 16, and the earliest liquidity captures the launch. Twenty minutes to scope pairs, size and structure?</p>
       <div class="actions">
         <a class="btn primary" href="mailto:official@kaleidofi.xyz">official@kaleidofi.xyz</a>
+        <a class="btn ghost" href="https://t.me/macrew15">Telegram @macrew15</a>
         <a class="btn ghost" href="https://kaleidofi.xyz">kaleidofi.xyz</a>
       </div>
     </div>
