@@ -46,7 +46,11 @@ type Leader = { rank: number; wallet: string; referrals: number };
 type XTaskKey = "link" | "follow" | "retweet";
 
 const X_HANDLE = "kaleido_finance";
-const ANNOUNCE_TWEET_ID = process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID;
+// The launch post users repost for +100 $kPoint. Defaulted to the live announce
+// tweet so the task works without a separate Vercel env step at launch; the
+// NEXT_PUBLIC var still overrides it if we ever point the task at a different post.
+const ANNOUNCE_TWEET_ID =
+  process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
 
 /** Must match the message the API rebuilds and verifies. */
 const joinMessage = (address: string) =>
