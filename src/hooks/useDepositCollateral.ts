@@ -90,7 +90,13 @@ const useDepositCollateral = () => {
           _weiAmount,
         );
 
-        await contract.depositCollateral.staticCall(asset.address, _weiAmount);
+        /* No `.staticCall` preflight here. It was an extra eth_call that Luca's
+           working deposit path never makes, and it is the prime suspect for a
+           call that stalls right after `ensureAllowance`'s approve — the approve
+           may not have propagated to the node the simulation reads, so it saw the
+           old allowance. It is redundant besides: `depositCollateral` below runs
+           its own gas estimation (also a simulation), which surfaces any real
+           revert into the same catch. */
         const transaction = await contract.depositCollateral(
           asset.address,
           _weiAmount,
@@ -149,6 +155,12 @@ const useDepositCollateral = () => {
         } else {
           toast.warning(`Error: ${errorText}`);
         }
+        /* Rethrow so the caller knows it failed. The catch used to swallow the
+           error and resolve, so the modal ran its success path — "Collateral
+           deposited", clear the field, close — on a deposit that never landed.
+           The specific message above still reaches the user; this just stops the
+           false success on top of it. */
+        throw error;
       }
     },
     [activeAccount, activeChain, chainId],
