@@ -383,6 +383,16 @@ export default function WaitlistPage() {
                 )}
               </li>
 
+              {/* Arc testnet is live today, but this stays a locked "Coming soon"
+                  teaser like the rest until it's wired to a real on-chain status. */}
+              <li className={s.task}>
+                <div className={s.taskText}>
+                  <span className={s.taskTitle}>Make 1st transaction on Arc Testnet</span>
+                  <span className={s.taskMeta}>+500 $kPoint · Coming soon</span>
+                </div>
+                <span className={s.taskLock}>🔒</span>
+              </li>
+
               {/* The big one: converting the pending balance happens on the first
                   real Arc mainnet action (see the waitlist migration). Shown as a
                   locked "Coming soon" teaser until mainnet is live and the action
