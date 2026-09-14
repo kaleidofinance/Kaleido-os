@@ -76,7 +76,7 @@ const HTML = `<!doctype html>
   .card .eg{display:block; margin-top:10px; color:var(--sand-dim); font-family:var(--mono); font-size:11.5px; line-height:1.5}
   .num{font-family:var(--mono); font-size:12px; color:var(--sand-dim); letter-spacing:.1em}
 
-  .stack{display:flex; flex-wrap:wrap; gap:10px; margin-top:32px}
+  .stack{display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:32px}
   .pill{font-family:var(--mono); font-size:13px; color:var(--t1);
     padding:9px 14px; border:1px solid var(--line2); border-radius:8px; background:var(--panel2)}
   .pill b{color:var(--sand); font-weight:500}
@@ -187,8 +187,8 @@ const HTML = `<!doctype html>
       <span class="pill"><b>Liquidity</b></span>
       <span class="pill"><b>Staking</b></span>
       <span class="pill"><b>Stables</b> · kfUSD</span>
+      <a class="btn primary" href="https://app.kaleidofi.xyz" style="margin-left:6px">Launch the app</a>
     </div>
-    <div style="margin-top:28px"><a class="btn primary" href="https://app.kaleidofi.xyz">Launch the app</a></div>
   </div>
 </section>
 
