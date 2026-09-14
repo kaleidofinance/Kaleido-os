@@ -177,6 +177,10 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
      left the wallet. A label saying "balances" on the one tool that does not read
      them sat next to getBalances in the same fold. */
   getPortfolio: () => "Checked your lending position",
+  /* The loans themselves — collateral, what is owed, due dates, health — where
+     getPortfolio reads only the collateral value and health. "loans" because that
+     is the noun the borrow page uses for the same rows. */
+  getLoans: () => "Checked your loans",
   getPositions: () => "Checked your liquidity positions",
   /* The delegation the user signed, if any — read only, never a grant. Its args
      are addresses, which `str` refuses at 42 characters, so this names no one. */

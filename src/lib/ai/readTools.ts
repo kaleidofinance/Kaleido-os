@@ -3,6 +3,7 @@ import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { getContracts, resolveUserToken } from "@/constants/registry";
 import { getChainMeta } from "@/constants/chains";
 import { readOpenBook } from "@/lib/lending/book";
+import { readBorrowPositions } from "@/lib/lending/positions";
 import { MULTICALL3_ADDRESS, readContracts } from "@/lib/chain/multicall";
 import { readOpenOrders } from "@/lib/dex/orderStore";
 import {
@@ -217,6 +218,73 @@ async function getPortfolio(args: Json, chainId: number): Promise<Json> {
   }
 }
 
+/** Trims a human number to a short, relayable form: 5000.000000 → 5000. */
+const trim6 = (n: number): number => Number(n.toFixed(6));
+const usd2 = (n: number | null): number | null =>
+  n === null ? null : Number(n.toFixed(2));
+
+/**
+ * The wallet's borrowing position on the connected chain — collateral posted,
+ * loans owed, and the health factor between them.
+ *
+ * getPortfolio reads collateral value and health only; it cannot enumerate the
+ * loans, so "what do I owe" and "which loan is due first" had no read, and a
+ * repay had no way to find its requestId except by asking the user for a number
+ * they never saw. This reads the chain's OWN registered collateral set and the
+ * wallet's active requests off the diamond (readBorrowPositions, the same reader
+ * the multichain portfolio uses), priced by the diamond's own oracle.
+ *
+ * Fails SOFT to an empty position rather than throwing: a chain with no diamond,
+ * a dead endpoint or a token with no feed each contributes nothing. `requestId`
+ * is carried on every loan because it is what `repay` targets; `usd: null` on a
+ * row means the token has no price feed, never zero, for the same reason
+ * getBalances splits `unread` out — a relayed zero built from a failed read is
+ * the class of answer that gets planned off.
+ */
+async function getLoans(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+
+  const provider = providerForChain(chainId);
+  if (!provider) return { error: `No RPC endpoint for chain ${chainId}` };
+
+  const pos = await readBorrowPositions(provider, chainId, address);
+  const hasDebt = pos.debts.length > 0;
+  /* Infinity is the no-debt sentinel and null is unread — both become a null
+     healthFactor, and the note below is what tells them apart for the model. */
+  const healthFactor =
+    pos.health === null || pos.health === Infinity
+      ? null
+      : Number(pos.health.toFixed(4));
+
+  const note = !hasDebt
+    ? "No open loans on this chain — say the user has no debt here. Collateral may still be deposited (see collateral). Do not quote a health factor and do not describe the position as safe by some margin."
+    : healthFactor === null
+      ? "There are open loans but the health factor could not be read. Say so rather than implying the position is fine."
+      : `Loans are per chain — this is chain ${chainId} only. Liquidation occurs at health factor 1.0. Each loan's requestId is what a repay targets, so the user never has to look it up. interestPct is a fixed rate set on the request, not an APY.`;
+
+  return {
+    chainId,
+    collateral: pos.collateral.map((c) => ({
+      symbol: c.symbol,
+      amount: trim6(c.amount),
+      usd: usd2(c.usd),
+    })),
+    collateralUsd: usd2(pos.collateralUsd),
+    loans: pos.debts.map((d) => ({
+      requestId: d.requestId,
+      symbol: d.symbol,
+      outstanding: trim6(d.outstanding),
+      interestPct: d.interestBps / 100,
+      dueDate: new Date(d.returnDate * 1000).toISOString().slice(0, 10),
+      usd: usd2(d.usd),
+    })),
+    debtUsd: usd2(pos.debtUsd),
+    healthFactor,
+    note,
+  };
+}
 
 const ERC20_BALANCE = new ethers.Interface([
   "function balanceOf(address owner) view returns (uint256)",
@@ -1357,6 +1425,7 @@ const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
   {
     getQuote,
     getPortfolio,
+    getLoans,
     getPositions,
     getBalances,
     getMarkets,
