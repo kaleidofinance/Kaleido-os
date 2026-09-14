@@ -297,7 +297,32 @@ export default function PlanReview({
         toast.info(message);
       } else {
         setStep(i, "failed");
-        toast.error(`${views[i].title} — ${message}`);
+        /* When the step that failed was preceded by an approval that actually
+           landed (not one that self-skipped because the allowance already
+           existed), that allowance is now standing at a spender for an action
+           that did not happen. Naming it is the honest thing: the user approved
+           it as part of one plan, and half of that plan reverted. A dangling
+           allowance is not dangerous on its own, but it is the user's to know
+           about and to leave or revoke. */
+        const prev =
+          i > 0
+            ? (intents[i - 1] as {
+                kind: string;
+                symbol?: string;
+                amount?: string;
+              })
+            : null;
+        const prevLanded =
+          i > 0 &&
+          !!settledRef.current[i - 1]?.hash &&
+          !settledRef.current[i - 1]?.skipped;
+        const allowanceNote =
+          prev?.kind === "approve" && prevLanded && prev.symbol
+            ? ` The ${prev.symbol} approval from the previous step is still in place${
+                prev.amount ? ` (up to ${prev.amount})` : ""
+              } — you can leave it or revoke it in your wallet.`
+            : "";
+        toast.error(`${views[i].title} — ${message}${allowanceNote}`);
       }
       return "failed";
     }
