@@ -5,7 +5,7 @@ import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 
 /**
  * Waitlist X (Twitter) tasks: link an X account to the wallet, then attest the
- * follow and retweet tasks. Each is +100 kPoint (held ~24h on the client as a
+ * follow and retweet tasks. Each is +100 kPoint (held ~5h on the client as a
  * nudge, then counted; converted to Season 1 only on Arc-mainnet activation).
  *
  * GET  -> the current X session from the httpOnly `twitter_user` cookie set by

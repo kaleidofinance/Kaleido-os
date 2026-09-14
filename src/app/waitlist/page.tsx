@@ -306,7 +306,7 @@ export default function WaitlistPage() {
               {status.rank ? ` · rank #${status.rank}` : ""}
             </p>
             {status.heldPoints > 0 ? (
-              <p className={s.held}>+{status.heldPoints} $kPoint from X tasks · counts within 24h</p>
+              <p className={s.held}>+{status.heldPoints} $kPoint from X tasks · counts within 5h</p>
             ) : null}
 
             <p className={s.refLabel}>Earn more $kPoint</p>
@@ -316,7 +316,7 @@ export default function WaitlistPage() {
                   <span className={s.taskTitle}>Link your X account</span>
                   <span className={s.taskMeta}>
                     {status.xTasks.linked.done
-                      ? `Linked${status.xHandle ? ` @${status.xHandle}` : ""}${status.xTasks.linked.counted ? "" : " · counts within 24h"}`
+                      ? `Linked${status.xHandle ? ` @${status.xHandle}` : ""}${status.xTasks.linked.counted ? "" : " · counts within 5h"}`
                       : "+100 $kPoint"}
                   </span>
                 </div>
@@ -336,7 +336,7 @@ export default function WaitlistPage() {
                     {status.xTasks.followed.done
                       ? status.xTasks.followed.counted
                         ? "Done"
-                        : "Done · counts within 24h"
+                        : "Done · counts within 5h"
                       : status.xTasks.linked.done
                         ? "+100 $kPoint"
                         : "Link X first"}
@@ -362,7 +362,7 @@ export default function WaitlistPage() {
                     {status.xTasks.retweeted.done
                       ? status.xTasks.retweeted.counted
                         ? "Done"
-                        : "Done · counts within 24h"
+                        : "Done · counts within 5h"
                       : !status.xTasks.linked.done
                         ? "Link X first"
                         : ANNOUNCE_TWEET_ID
