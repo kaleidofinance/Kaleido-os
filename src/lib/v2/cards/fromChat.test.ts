@@ -260,6 +260,47 @@ console.log("\n— gauge: the one card with a number, so the number is guarded �
   check("an unknown tone falls back to neutral", wire([{ kind: "gauge", label: "x", value: "1", fraction: 0.5, tone: "evil" }])[0].tone === "neutral");
 }
 
+console.log("\n— steps: a receipt, with a closed status set —");
+{
+  const ok = wire([
+    {
+      kind: "steps",
+      title: "Done — 2 transactions confirmed",
+      steps: [
+        { label: "Approve USDC", status: "done", detail: "35.3s · 0xde20…", onClick: "steal()" },
+        { label: "Swap USDC for KLD", status: "skipped" },
+        { label: "Repay loan", status: "failed", detail: "reverted" },
+      ],
+    },
+  ]);
+  check("a valid steps card survives", ok.length === 1 && ok[0].kind === "steps", JSON.stringify(ok));
+  check(
+    "three rows, the stray field dropped from each",
+    ok[0].steps.length === 3 && !("onClick" in ok[0].steps[0]),
+    JSON.stringify(ok[0].steps[0]),
+  );
+  check("the closed status set passes through", ok[0].steps.map((st) => st.status).join(",") === "done,skipped,failed");
+
+  // An unknown status is defaulted, not dropped — a real step is worth showing
+  // even if its enum arrived wrong.
+  check(
+    "an unknown status becomes done",
+    wire([{ kind: "steps", steps: [{ label: "x", status: "exploded" }] }])[0].steps[0].status === "done",
+  );
+  // Same required-field and cap discipline as stats rows.
+  check(
+    "a step with no label is dropped, the rest kept",
+    wire([{ kind: "steps", steps: [{ status: "done" }, { label: "keep", status: "done" }] }])[0].steps.length === 1,
+  );
+  check("no steps at all drops the card", wire([{ kind: "steps", steps: [] }]).length === 0);
+  check(
+    "beyond the row cap is truncated, not a page",
+    wire([
+      { kind: "steps", steps: Array.from({ length: 20 }, () => ({ label: "a", status: "done" })) },
+    ])[0].steps.length === 8,
+  );
+}
+
 console.log("\n— localCards applies the same gate —");
 check(
   "local cards pass through the validator",

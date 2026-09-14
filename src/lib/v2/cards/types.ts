@@ -126,12 +126,35 @@ export interface GaugeCard {
   note?: string;
 }
 
+/**
+ * The receipt for a plan that ran — one row per step, each with a mark for how
+ * it went. The transcript used to report a completed plan as a paragraph of
+ * text ("Approve USDC — done · 35.3s · 0xde20…"); this is that same record with
+ * a ✓ / – / ✗ on each line instead of the reader parsing a sentence per step.
+ *
+ * `status` is a small closed set, not a tone: `done` is a step that ran, `skipped`
+ * one that needed nothing sent (an allowance already in place), `failed` one that
+ * did not land. The renderer maps each to a mark and a colour. `detail` is the
+ * pre-formatted tail — a timing and a shortened hash, "13.3s · 0xc377…d7d3c" —
+ * carried as text because a card holds no link (a hash is shown, never followed).
+ */
+export interface StepsCard {
+  kind: "steps";
+  title?: string;
+  steps: {
+    label: string;
+    status: "done" | "skipped" | "failed";
+    detail?: string;
+  }[];
+}
+
 export type AgentCard =
   | MetricCard
   | StatsCard
   | BalanceCard
   | NoticeCard
   | ActionsCard
-  | GaugeCard;
+  | GaugeCard
+  | StepsCard;
 
 export type CardKind = AgentCard["kind"];
