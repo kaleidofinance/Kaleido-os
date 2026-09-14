@@ -308,6 +308,9 @@ export default function AgentPage() {
       {
         role: "assistant",
         text,
+        /* When this answer was produced, so a plan hanging off it knows how old
+           its quotes are. Harmless on a reply with no plan. */
+        ts: Date.now(),
         /* Attached here rather than at each call site: every answer is the end of
            some sequence of steps, and there is no reply this page can produce
            that shouldn't be able to say how it got there. Spread first, so a
@@ -911,7 +914,11 @@ export default function AgentPage() {
           }
           const extra: Partial<Msg> = {
             via: "model",
-            ...(plan.length ? { plan } : {}),
+            /* The moment the plan's quotes were priced — carried on the message
+               and re-checked at sign time (see PlanReview). On the patched-bubble
+               path below this is the only place ts is set, since that path does
+               not go through `say`. */
+            ...(plan.length ? { plan, ts: Date.now() } : {}),
             ...(cards.length ? { cards } : {}),
           };
           if (!live?.open) {
@@ -1464,6 +1471,9 @@ export default function AgentPage() {
                  wallet that switches networks before signing would sign the wrong
                  chain's addresses. */
               pinChain
+              /* When the plan's quotes were priced, so PlanReview refuses to sign
+                 a quote-bearing plan that has gone stale while it sat here. */
+              quotedAt={latest?.ts}
               onComplete={onComplete}
               onCancel={() => setPanel({ kind: "idle" })}
             />

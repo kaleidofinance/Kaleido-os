@@ -24,6 +24,14 @@ export interface Msg {
   text: string;
   /** Present when a turn produced a signable plan. Never persisted — see below. */
   plan?: Intent[];
+  /**
+   * When this turn was produced, epoch ms. Not persisted (dies with the plan on
+   * reload), and used for exactly one thing: a plan carries quotes and floors
+   * priced at this instant, so PlanReview can refuse to sign a quote-bearing plan
+   * that has since gone stale within the same session — the case the reload guard
+   * below does not cover, because the tab never reloaded.
+   */
+  ts?: number;
   /** Data frames for this turn. Never persisted, for the same reason as `plan`. */
   cards?: AgentCard[];
   /** Which path answered. Surfaced so the cheap path is visible, not implied. */

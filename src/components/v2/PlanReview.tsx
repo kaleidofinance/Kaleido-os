@@ -107,7 +107,31 @@ interface PlanReviewProps {
    * it, so a later switch is exactly the mistake to catch.
    */
   pinChain?: boolean;
+  /**
+   * When the plan's quotes were priced, epoch ms. A swap or a liquidity mint
+   * carries a `minOut`/floor computed against the pool's price at plan time; if
+   * the plan then sits unsigned while the market moves, that floor is stale — it
+   * either reverts at estimate (a floor too high for the new price) or accepts an
+   * execution worse than the user was shown. Given, the sign is refused past
+   * STALE_QUOTE_MS with a re-ask, so a stale quote is never signed silently.
+   * Omitted (or on a plan with no quoted step) means no staleness gate.
+   */
+  quotedAt?: number;
 }
+
+/* How long a priced plan may sit before it must be re-quoted. Long enough to
+   read a two-step plan without being rushed, short enough that a normal market
+   move has not invalidated the floor. */
+const STALE_QUOTE_MS = 90_000;
+
+/* The intent kinds whose plan carries a price-derived floor — the only ones a
+   stale quote can misprice. A send, stake, repay or approve has no quote. */
+const QUOTED_KINDS = new Set([
+  "swap",
+  "swapMultiHop",
+  "mintPoolPosition",
+  "increasePoolLiquidity",
+]);
 
 export default function PlanReview({
   intents,
@@ -116,6 +140,7 @@ export default function PlanReview({
   onComplete,
   onCancel,
   pinChain = false,
+  quotedAt,
 }: PlanReviewProps) {
   const getContext = useResolverContext();
   /* The chain the plan was prepared on, captured once. */
@@ -452,6 +477,23 @@ export default function PlanReview({
         `chain ${pinnedChain.current}`;
       toast.error(
         `This plan was prepared for ${name}. Switch your wallet back to it and try again, or re-ask on this network.`,
+      );
+      return;
+    }
+    /* A priced plan whose quotes have gone stale must not be signed silently: the
+       slippage floor was computed against a price that has since moved, so the
+       transaction either reverts at estimate or fills worse than the user was
+       shown. Refuse past the window and send them back to re-ask, which re-quotes
+       against now. Only for a plan that actually carries a quote — a send or a
+       stake has no floor to go stale. Checked at sign time, so age that accrued
+       while the panel sat open is caught regardless of when it last rendered. */
+    if (
+      quotedAt !== undefined &&
+      Date.now() - quotedAt > STALE_QUOTE_MS &&
+      intents.some((i) => QUOTED_KINDS.has(i.kind))
+    ) {
+      toast.error(
+        "This quote is over 90 seconds old — ask again for a fresh price before signing.",
       );
       return;
     }
