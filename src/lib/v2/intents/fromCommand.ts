@@ -1270,6 +1270,69 @@ function detectRate(
 }
 
 /**
+ * Fraction words a remove can carry — "remove half", "remove a quarter". A real
+ * partial-removal signal, but not one this grammar will invent a number for; a
+ * sentence that carries one is handed to the model, never rounded up to "all".
+ */
+const FRACTION_WORDS = new Set([
+  "half",
+  "quarter",
+  "third",
+  "portion",
+  "fraction",
+  "partial",
+  "partially",
+]);
+
+/**
+ * The share of a position a remove asks for, when it asks for less than all of
+ * it. A bare "remove position 7" names no share and means the whole thing — the
+ * safe reading of a bare verb. But "remove 50% of position 7" used to mean the
+ * whole thing TOO: the percentage was parsed (by detectRate, as if it were an
+ * interest rate) and then dropped, so a user who asked for half would have signed
+ * away all of it. That confidently-wrong amount is the one outcome this parser
+ * exists to prevent, so a partial signal is now honoured or escalated, never
+ * silently treated as everything.
+ *
+ * Returns a clean percent in (0,100) to carry on the command; `{ ambiguous }`
+ * when a share was clearly asked for but not as a number worth guessing (a
+ * fraction word, a nonsense percentage) so the caller escalates to the model; and
+ * null when no share was named at all, i.e. remove everything.
+ */
+function detectRemoveFraction(
+  words: string[],
+  rate: { pct: number } | null,
+): { percent: number } | { ambiguous: true } | null {
+  // "50%" — already tokenised by detectRate, which cannot tell a share from a
+  // rate. Here the verb settles it: on a remove it is a share.
+  if (rate) {
+    if (rate.pct > 0 && rate.pct < 100) return { percent: rate.pct };
+    // "100%" (or more) is just "all", the same as naming no share.
+    if (rate.pct >= 100) return null;
+    return { ambiguous: true };
+  }
+  // "50 percent" — a number beside the word, which detectRate does not catch.
+  const pIdx = words.findIndex(
+    (w) => w === "percent" || w === "percentage" || w === "pct",
+  );
+  if (pIdx !== -1) {
+    for (const j of [pIdx - 1, pIdx + 1]) {
+      const m = words[j]?.match(/^(\d+(?:\.\d+)?)$/);
+      if (m) {
+        const n = Number(m[1]);
+        if (n > 0 && n < 100) return { percent: n };
+        if (n >= 100) return null;
+        return { ambiguous: true };
+      }
+    }
+    return { ambiguous: true };
+  }
+  // "half", "a quarter" — a share, but not one to turn into a number here.
+  if (words.some((w) => FRACTION_WORDS.has(w))) return { ambiguous: true };
+  return null;
+}
+
+/**
  * Row reference: "listing 3", "request #7", "offer 12", "position 42".
  *
  * Its number is claimed like a rate or a term, so "borrow 500 from listing 3"
@@ -1630,11 +1693,33 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     // Always a position reference, never a marketplace one — "remove" here
     // never means cancelling a listing.
     if (!ref || ref.target !== "position" || !Number.isFinite(ref.id)) {
+      // A remove that named a partial share but no position — "remove half of my
+      // KLD/USDC position" — is beyond this grammar: it cannot carry the share
+      // through a slot prompt, and prompting for the position would then remove
+      // ALL of it. Hand it to the model, which can find the position and honour
+      // the share, rather than ask a question whose answer drops the "half".
+      if (verb.kind === "removePosition" && detectRemoveFraction(words, rate)) {
+        return { status: "unknown" };
+      }
       return incomplete({ kind: verb.kind }, "ref");
+    }
+    if (verb.kind === "removePosition") {
+      const share = detectRemoveFraction(words, rate);
+      // A share asked for as a word ("half") or a nonsense percentage: escalate
+      // rather than guess a number or quietly fall back to all of it.
+      if (share && "ambiguous" in share) return { status: "unknown" };
+      return {
+        status: "ok",
+        command: {
+          kind: "removePosition",
+          positionId: ref.id,
+          ...(share ? { percent: share.percent } : {}),
+        },
+      };
     }
     return {
       status: "ok",
-      command: { kind: verb.kind, positionId: ref.id },
+      command: { kind: "collectFees", positionId: ref.id },
     };
   }
 
