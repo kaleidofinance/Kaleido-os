@@ -24,7 +24,7 @@ type Status = {
 type Leader = { rank: number; wallet: string; referrals: number };
 type XTaskKey = "link" | "follow" | "retweet";
 
-const X_HANDLE = "kaleidofi";
+const X_HANDLE = "kaleido_finance";
 const ANNOUNCE_TWEET_ID = process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID;
 
 /** Must match the message the API rebuilds and verifies. */
