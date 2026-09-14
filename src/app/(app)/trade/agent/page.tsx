@@ -591,6 +591,19 @@ export default function AgentPage() {
     // so there is no chain-free answer to what "usdc" means.
     const vocabulary = chainTokens(chainId);
 
+    /*
+     * The last planned command, captured for THIS turn and then cleared. A
+     * follow-up ("now the same to USDe") is the immediately next message, so the
+     * chain lives exactly one turn: planLocally re-sets it whenever this turn
+     * plans something (a fresh command or a follow-up), and any other outcome —
+     * a question, a docs answer, an unresolved line — leaves it cleared. Without
+     * this it was set once and never cleared, so a lone "50" typed several
+     * messages after a swap silently re-priced that swap instead of being read
+     * fresh. See parseFollowUp for what continues a command.
+     */
+    const carriedCommand = lastCommand;
+    setLastCommand(null);
+
     setMessages((m) => [...m, { role: "user", text: content }]);
     setInput("");
     setBusy(true);
@@ -730,8 +743,8 @@ export default function AgentPage() {
          declined the sentence outright. Order matters: a sentence with its own
          verb is a fresh command and parseFollowUp refuses it anyway, so this
          can never re-point an instruction at the previous action. */
-      if (lastCommand) {
-        const followed = parseFollowUp(content, vocabulary, lastCommand);
+      if (carriedCommand) {
+        const followed = parseFollowUp(content, vocabulary, carriedCommand);
         if (followed.status !== "unknown") {
           note("Read it as a follow-up to the last plan");
           log(
