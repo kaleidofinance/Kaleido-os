@@ -143,22 +143,42 @@ export async function GET(req: Request) {
     // /api/auth/user, which is what the header's Link X control reads — see
     // src/components/v2/LinkX.tsx.
     //
-    // Land back where the flow started, when a same-origin returnTo was set (the
-    // waitlist uses this); otherwise keep the historical /portfolio default.
+    // Land back where the flow started. `twitter_return_to` is a full URL (set by
+    // the start route as origin + path); the callback host is fixed, so this is
+    // how we return to the originating subdomain. Accept it only when the host is
+    // kaleidofi.xyz or a *.kaleidofi.xyz subdomain (no open redirect); otherwise
+    // keep the historical /portfolio default on this host.
+    const host = new URL(req.url).hostname;
+    const isKaleido =
+      host === "kaleidofi.xyz" || host.endsWith(".kaleidofi.xyz");
     const returnToCookie = cookieStore.get("twitter_return_to")?.value;
-    const returnTo =
-      returnToCookie && /^\/(?!\/)/.test(returnToCookie)
-        ? returnToCookie
-        : "/portfolio";
-    const response = NextResponse.redirect(new URL(returnTo, req.url));
+    let target = new URL("/portfolio", req.url);
+    if (returnToCookie) {
+      try {
+        const u = new URL(returnToCookie);
+        if (u.hostname === "kaleidofi.xyz" || u.hostname.endsWith(".kaleidofi.xyz"))
+          target = u;
+      } catch {
+        /* not a URL (e.g. a legacy path) — keep the default */
+      }
+    }
+    const response = NextResponse.redirect(target);
 
-    response.cookies.delete("twitter_oauth_state");
-    response.cookies.delete("twitter_code_verifier");
-    response.cookies.delete("twitter_return_to");
+    // Clear the short-lived OAuth cookies, matching the domain they were set with
+    // so the domain-scoped copies actually expire.
+    const clear = {
+      path: "/",
+      maxAge: 0,
+      ...(isKaleido && { domain: ".kaleidofi.xyz" as const }),
+    };
+    response.cookies.set("twitter_oauth_state", "", clear);
+    response.cookies.set("twitter_code_verifier", "", clear);
+    response.cookies.set("twitter_return_to", "", clear);
 
     // Set user cookie. `id` is the stable X user id — the waitlist binds it to a
     // wallet (unique, so one X account enriches one wallet); the header control
-    // only reads username/name and ignores it.
+    // only reads username/name and ignores it. Domain-scoped so BOTH kaleidofi.xyz
+    // and app.kaleidofi.xyz can read the linked handle.
     response.cookies.set(
       "twitter_user",
       JSON.stringify({
@@ -168,9 +188,10 @@ export async function GET(req: Request) {
       }),
       {
         httpOnly: true,
-        secure: true,
+        secure: isKaleido,
         sameSite: "lax",
         path: "/",
+        ...(isKaleido && { domain: ".kaleidofi.xyz" }),
         /*
          * 30 days, up from 10 minutes.
          *
