@@ -146,8 +146,11 @@ export default function WaitlistPage() {
           </>
         ) : (
           <>
-            <p className={s.pLabel}>Your pending points</p>
-            <p className={s.big}>{status.pendingPoints.toLocaleString()}</p>
+            <p className={s.pLabel}>Your pending balance</p>
+            <p className={s.big}>
+              {status.pendingPoints.toLocaleString()}
+              <span className={s.unit}>$kPoint</span>
+            </p>
             <p className={s.split}>
               {status.welcomePoints} welcome
               {status.referralPoints > 0
