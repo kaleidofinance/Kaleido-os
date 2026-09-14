@@ -117,12 +117,22 @@ function RangeBar({
   tickLower,
   tickUpper,
   currentTick,
+  inRange,
   decimals0,
   decimals1,
 }: {
   tickLower: number;
   tickUpper: number;
   currentTick: number | null;
+  /* The AUTHORITATIVE in-range verdict, from the same tick-based, half-open
+     computation the badge and the portfolio use (useV3Positions). Passed in so
+     the label here cannot disagree with the badge above it: this bar used to
+     recompute in-range from its own, separately-read `currentTick` on a CLOSED
+     price interval, so at a tick boundary — or across a block skew between the
+     two reads — it said "in range" while the badge said "out". The tick below is
+     still this bar's own, but only for WHERE to draw the marker, never for the
+     verdict. */
+  inRange: boolean;
   decimals0: number;
   decimals1: number;
 }) {
@@ -150,7 +160,6 @@ function RangeBar({
   const bandLeft = pct(lo);
   const bandRight = 100 - pct(hi);
   const markerPct = cur !== null ? pct(cur) : null;
-  const inRange = cur !== null && cur >= lo && cur <= hi;
 
   const fmt = (v: number) =>
     v >= 1000 ? v.toFixed(0) : v >= 1 ? v.toFixed(4) : v.toFixed(6);
@@ -172,7 +181,7 @@ function RangeBar({
       <div className={s.rangeLabels}>
         <span>{fmt(lo)}</span>
         <span className={inRange ? "" : s.out}>
-          {cur !== null ? (inRange ? "in range" : "out of range") : "…"}
+          {inRange ? "in range" : "out of range"}
         </span>
         <span>{fmt(hi)}</span>
       </div>
@@ -428,6 +437,7 @@ function PositionCard({
         tickLower={p.tickLower}
         tickUpper={p.tickUpper}
         currentTick={poolState?.tick ?? null}
+        inRange={p.inRange}
         decimals0={decimalsFor(chainId, p.token0)}
         decimals1={decimalsFor(chainId, p.token1)}
       />
