@@ -143,14 +143,19 @@ export function useLendingAssets(targetChainId?: number): LendingAssets {
     Promise.all(
       sets.collateral.map(async (asset) => {
         try {
-          const raw: bigint = await diamond.gets_addressToCollateralDeposited(
-            address,
-            asset.address,
-          );
+          /* Deposited AND available in one pass: the deposited total is what the
+             UI shows, but a withdrawal is gated on the available (unlocked)
+             balance, which is lower whenever collateral backs an open loan. */
+          const [rawDeposited, rawAvailable]: [bigint, bigint] =
+            await Promise.all([
+              diamond.gets_addressToCollateralDeposited(address, asset.address),
+              diamond.gets_addressToAvailableBalance(address, asset.address),
+            ]);
           return {
             symbol: asset.symbol,
             address: asset.address,
-            amount: Number(ethers.formatUnits(raw, asset.decimals)),
+            amount: Number(ethers.formatUnits(rawDeposited, asset.decimals)),
+            available: Number(ethers.formatUnits(rawAvailable, asset.decimals)),
           };
         } catch {
           /* One unreadable asset must not blank the whole list, and a zero here

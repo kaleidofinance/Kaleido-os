@@ -78,7 +78,16 @@ export interface LendingAssetSets {
 export interface CollateralHolding {
   symbol: string;
   address: string;
+  /** Total deposited, display units — what the wallet has posted as collateral. */
   amount: number;
+  /**
+   * Free to withdraw, display units — `s_addressToAvailableBalance`, not the
+   * deposited total. Collateral backing an open loan is locked, so `available`
+   * is below `amount` whenever a loan is drawn against it. The withdraw form must
+   * cap on THIS, or a "within deposited" amount reverts
+   * `Protocol__InsufficientCollateralDeposited` at the contract.
+   */
+  available: number;
 }
 
 /**
