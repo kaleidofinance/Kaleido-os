@@ -100,6 +100,44 @@ export const HARD_MAX_NOTIONAL_USD = Number(
   process.env.AGENT_MAX_NOTIONAL_USD || 25_000,
 );
 
+/** The most an agent swap may quote as slippage, in bps (5%). */
+export const AGENT_MAX_SLIPPAGE_BPS = 500;
+
+/**
+ * Turns whatever a client posted as `limits` into tightening-only guardrails.
+ *
+ * `limits` is user input in the literal sense — it rides in the request body —
+ * and both entry points to the auditor (the model turn in /api/chat and the
+ * locally-built plan in /api/audit) have to clean it the same way, or a command
+ * typed to Luca and one reasoned by the model would be held to different
+ * ceilings. So it is one function, not a copy in each route.
+ *
+ * The `Number.isFinite` guard is load-bearing, not defensive dressing: a
+ * non-numeric `maxPerAction` reaches the auditor as NaN, `Math.min(NaN, cap)` is
+ * NaN, and every `stepUsd > NaN` is false — one bad field silently switched off
+ * the ceiling this whole pass exists to enforce. A bad numeric field becomes
+ * undefined (the auditor then applies its own HARD_MAX), and slippage is clamped
+ * into a sane band so a client cannot post a 100% tolerance that drives
+ * amountOutMin to ~0. `allowedActions` is the user's product switches, enforced
+ * separately, and is not cleaned here.
+ */
+export function sanitizeGuardrails(
+  raw: unknown,
+): Guardrails & { slippageBps: number } {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const finiteOrUndef = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  return {
+    maxPerAction: finiteOrUndef(r.maxPerAction),
+    maxPerDay: finiteOrUndef(r.maxPerDay),
+    minHealthFactor: finiteOrUndef(r.minHealthFactor),
+    slippageBps: Math.min(
+      Math.max(finiteOrUndef(r.slippageBps) ?? 50, 1),
+      AGENT_MAX_SLIPPAGE_BPS,
+    ),
+  };
+}
+
 /**
  * Which product each intent belongs to, for the user's `allowedActions`.
  *

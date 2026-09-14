@@ -560,6 +560,62 @@ export default function AgentPage() {
       return true;
     }
 
+    /*
+     * The auditor, before the plan is shown to sign — the gate a direct command
+     * used to miss.
+     *
+     * buildPlan produces the same intents the model path produces, but only the
+     * model path was ever audited: the per-action USD ceiling from Agent Settings
+     * was checked on a reasoned plan and silently skipped on a typed one, so a
+     * $1,000 cap did not stop a "swap 1500 USDC to KLD". /api/audit runs the same
+     * auditPlan server-side, where the cap is not the client's to edit, and a
+     * blocked plan is never rendered.
+     *
+     * Fails CLOSED. A ceiling that quietly stops being checked is the exact bug
+     * this closes, so if the audit cannot be reached the plan is not presented —
+     * the turn asks for a retry rather than putting up an unaudited plan.
+     */
+    let verdict: { ok: boolean; refusal: string | null };
+    try {
+      const res = await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal,
+        body: JSON.stringify({
+          plan: built.build.intents,
+          chainId,
+          limits: {
+            maxPerAction: settings.maxPerAction,
+            maxPerDay: settings.maxPerDay,
+            minHealthFactor: settings.minHealthFactor,
+            slippageBps: settings.slippageBps,
+            allowedActions: settings.allowedActions,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error(`audit ${res.status}`);
+      verdict = (await res.json()) as { ok: boolean; refusal: string | null };
+    } catch {
+      if (signal.aborted) return true;
+      note("Couldn't check it against your Agent Settings limits");
+      say(
+        "I built those steps, but couldn't check them against the limits in your Agent Settings just now — so I won't put them up to sign yet. Try again in a moment.",
+        { via: "local" },
+      );
+      return true;
+    }
+
+    if (signal.aborted) return true;
+
+    if (!verdict.ok) {
+      note("A limit in your Agent Settings stops this one");
+      say(
+        verdict.refusal ?? "That would cross a limit you set in Agent Settings.",
+        { via: "local" },
+      );
+      return true;
+    }
+
     const n = built.build.intents.length;
     note(`Built ${n} step${n === 1 ? "" : "s"} to sign`);
     say(built.build.summary, { via: "local", plan: built.build.intents });
