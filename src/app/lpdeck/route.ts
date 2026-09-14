@@ -108,6 +108,17 @@ const HTML = `<!doctype html>
   .ltotal{border-top:1px solid var(--line2)}
   .ltotal .lbl{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--t3)}
   .ltotal .amt{color:var(--t1)}
+  .asktotal{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:24px;
+    background:var(--panel2); border:1px solid var(--line2); border-radius:16px; padding:24px 28px; margin-top:28px}
+  .tt{display:flex; flex-direction:column; gap:6px; min-width:0}
+  .tlbl{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--sand-dim)}
+  .tbig{font-family:var(--serif); font-size:clamp(1.9rem,1.2rem+2.4vw,2.8rem); font-weight:600; color:var(--sand); line-height:1}
+  .tsub{color:var(--t2); font-size:.9rem; max-width:42ch}
+  .tbreak{display:flex; gap:14px; flex-wrap:wrap}
+  .tcell{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 18px; text-align:right; min-width:118px}
+  .tk{display:block; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--t3)}
+  .tv{display:block; font-family:var(--mono); font-size:1.2rem; color:var(--t1); font-variant-numeric:tabular-nums; margin-top:4px}
+  @media(max-width:600px){.asktotal{flex-direction:column; align-items:stretch}}
 
   .gets{list-style:none; padding:0; margin:36px 0 0; display:grid; gap:2px}
   .gets li{display:grid; grid-template-columns:180px 1fr; gap:20px;
@@ -186,6 +197,17 @@ const HTML = `<!doctype html>
     <p class="eyebrow">The ask</p>
     <h2>Seed blue-chip depth in the core pairs.</h2>
     <p style="margin-top:18px">We are bootstrapping the DEX's core-pair liquidity ahead of a raise. Each chain's pairs use that chain's own canonical assets, and the target is the concentrated V3 depth we are looking for on each.</p>
+    <div class="asktotal">
+      <div class="tt">
+        <span class="tlbl">Total we are seeking</span>
+        <span class="tbig">$1.0M to $1.3M</span>
+        <span class="tsub">Concentrated V3 depth across both chains, ahead of a raise. Scales from a lean start to the full set.</span>
+      </div>
+      <div class="tbreak">
+        <div class="tcell"><span class="tk">Arc</span><span class="tv">~$750k</span></div>
+        <div class="tcell"><span class="tk">Robinhood</span><span class="tv">~$550k</span></div>
+      </div>
+    </div>
     <div class="grid g2">
       <div class="chaincol">
         <div class="head"><h3>Arc</h3><span class="when">greenfield &middot; Sep 16</span></div>
