@@ -387,6 +387,14 @@ export default function WaitlistPage() {
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
+            {/* Always-visible referral scoreboard, even at zero, so the payoff of
+                sharing is on screen. The summary line under the balance only
+                surfaces referral points once there's at least one referral. */}
+            <p className={s.split}>
+              {status.referrals === 0
+                ? "No referrals yet — share your link to earn 50 $kPoint per friend."
+                : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined · ${status.referralPoints.toLocaleString()} $kPoint earned${status.referralPoints >= 5000 ? " (max)" : ""}`}
+            </p>
 
             <p className={s.note}>
               Points are pending. They convert to Season&nbsp;1 points on your
