@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("prompt", "consent");
 
-  const { origin } = new URL(req.url);
+  const { origin, searchParams } = new URL(req.url);
   const isProduction = origin.includes("kaleidofinance.xyz");
 
   const cookieOptions = {
@@ -37,6 +37,17 @@ export async function GET(req: Request) {
 
   response.cookies.set("twitter_oauth_state", state, cookieOptions);
   response.cookies.set("twitter_code_verifier", codeVerifier, cookieOptions);
+
+  /*
+   * Where to land after the callback. Only a same-origin path is honoured (must
+   * start with a single "/"), so this can't be turned into an open redirect. The
+   * callback defaults to /portfolio when this cookie is absent, so the header's
+   * Link X flow is unchanged; the waitlist passes ?returnTo=/waitlist.
+   */
+  const returnTo = searchParams.get("returnTo");
+  if (returnTo && /^\/(?!\/)/.test(returnTo)) {
+    response.cookies.set("twitter_return_to", returnTo, cookieOptions);
+  }
 
   /*
    * This used to log `{ state, codeVerifier, origin, isProduction }`.

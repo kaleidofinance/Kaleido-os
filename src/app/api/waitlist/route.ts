@@ -19,6 +19,10 @@ export const dynamic = "force-dynamic";
 const WELCOME = 100;
 const PER_REFERRAL = 50;
 const REFERRAL_CAP = 5000; // matches the referral source cap in the points schema
+const X_TASK = 100; // kPoint per X task (link, follow, retweet)
+// X-task kPoint is held this long before it counts toward the balance — a nudge
+// to actually do the task, since the tasks are attested, not API-verified.
+const X_HOLD_MS = 24 * 60 * 60 * 1000;
 
 /** The exact string the client signs. Rebuilt here from the posted address. */
 const joinMessage = (address: string) =>
@@ -29,11 +33,24 @@ const isAddress = (a: unknown): a is string =>
 
 const newCode = () => crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 
+/** A single X task's state for the UI: whether it's done, and its 24h hold. */
+function xTaskState(at: string | null, now: number) {
+  if (!at) return { done: false, counted: false, countsAt: null as string | null };
+  const countsAtMs = new Date(at).getTime() + X_HOLD_MS;
+  return {
+    done: true,
+    counted: now >= countsAtMs,
+    countsAt: new Date(countsAtMs).toISOString(),
+  };
+}
+
 async function standing(wallet: string) {
   const admin = supabaseAdmin!;
   const { data: row } = await admin
     .from("waitlist")
-    .select("ref_code, welcome_points, activated_at")
+    .select(
+      "ref_code, welcome_points, activated_at, x_handle, x_linked_at, x_followed_at, x_retweeted_at",
+    )
     .eq("wallet", wallet)
     .single();
   if (!row) return null;
@@ -47,14 +64,31 @@ async function standing(wallet: string) {
 
   const referrals = Number(lb?.referrals ?? 0);
   const referralPoints = Math.min(PER_REFERRAL * referrals, REFERRAL_CAP);
+
+  const now = Date.now();
+  const xTasks = {
+    linked: xTaskState(row.x_linked_at as string | null, now),
+    followed: xTaskState(row.x_followed_at as string | null, now),
+    retweeted: xTaskState(row.x_retweeted_at as string | null, now),
+  };
+  const xStates = [xTasks.linked, xTasks.followed, xTasks.retweeted];
+  const countedX = X_TASK * xStates.filter((s) => s.counted).length;
+  const heldPoints = X_TASK * xStates.filter((s) => s.done && !s.counted).length;
+
+  const welcomePoints = Number(row.welcome_points);
   return {
     wallet,
     refCode: row.ref_code as string,
     referrals,
     rank: lb?.rank ?? null,
-    pendingPoints: Number(row.welcome_points) + referralPoints,
-    welcomePoints: Number(row.welcome_points),
+    // The displayed balance: welcome + referral + X-task kPoint that has cleared
+    // its hold. heldPoints is the X-task kPoint still counting down.
+    points: welcomePoints + referralPoints + countedX,
+    heldPoints,
+    welcomePoints,
     referralPoints,
+    xHandle: (row.x_handle as string | null) ?? null,
+    xTasks,
     activated: Boolean(row.activated_at),
   };
 }
