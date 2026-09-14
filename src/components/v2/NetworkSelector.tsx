@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useActiveWallet,
   useActiveWalletChain,
@@ -24,9 +24,12 @@ import s from "./NetworkSelector.module.css";
 /**
  * NetworkSelector — global tier, same modal pattern as TokenSelector.
  *
- * Lists every chain in the registry grouped Mainnet/Testnet. Every chain is
- * switchable, because a wallet on a chain we have not deployed to can still
- * read its own balances and is a legitimate place to be.
+ * One list, mainnets or testnets, chosen by a toggle rather than both stacked
+ * with headers. The toggle OPENS on testnets while no mainnet is deployed —
+ * those are the networks that actually work — and flips to opening on mainnets
+ * the day one ships, driven off `isDeployed`, so nothing here changes at launch.
+ * Every chain is switchable either way, because a wallet on a chain we have not
+ * deployed to can still read its own balances and is a legitimate place to be.
  *
  * THE SUBLABEL IS DERIVED, NOT DECLARED. It used to read
  * `meta.tradable ? "Trading live" : "Balances only"`, which was wrong twice
@@ -94,13 +97,27 @@ export default function NetworkSelector({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const { mainnets, testnets } = useMemo(() => {
+  const { mainnets, testnets, anyMainnetLive } = useMemo(() => {
     const mainnets = CHAINS.filter((c) => c.network === "mainnet");
     const testnets = CHAINS.filter((c) => c.network === "testnet");
-    return { mainnets, testnets };
+    /* Whether ANY mainnet has contracts yet. It is what the toggle's default
+       tracks: until one is deployed, the networks that actually work are the
+       testnets, so the list opens on them. */
+    const anyMainnetLive = mainnets.some((c) => isDeployed(c.id));
+    return { mainnets, testnets, anyMainnetLive };
   }, []);
 
+  /* The toggle. On shows testnets, off shows mainnets, and it OPENS on testnets
+     for exactly as long as no mainnet is deployed — the day a mainnet ships,
+     `anyMainnetLive` turns true and the list defaults to mainnets on its own, no
+     code change here. A per-session choice after that: it lives in state, so it
+     resets to the deploy-derived default on reload rather than pinning a stale
+     preference across the very launch it is meant to follow. */
+  const [showTestnets, setShowTestnets] = useState<boolean>(!anyMainnetLive);
+
   if (!open) return null;
+
+  const shown = showTestnets ? testnets : mainnets;
 
   const handleSelect = async (meta: ChainMeta) => {
     const chain = defineChain(toThirdwebChainOptions(meta));
@@ -149,18 +166,29 @@ export default function NetworkSelector({
           </div>
 
           <div className={s.mb}>
+            <div className={s.toggleRow}>
+              <div className={s.toggleText}>
+                <div className={s.toggleLabel}>Testnets</div>
+                <div className={s.toggleHint}>
+                  {showTestnets
+                    ? "Showing test networks"
+                    : "Showing mainnet networks"}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showTestnets}
+                aria-label="Show testnets"
+                className={`${s.switch} ${showTestnets ? s.switchOn : ""}`}
+                onClick={() => setShowTestnets((v) => !v)}
+              >
+                <span className={s.knob} />
+              </button>
+            </div>
+
             <div className={s.list}>
-              <div className={s.group}>Mainnet</div>
-              {mainnets.map((m) => (
-                <ChainRow
-                  key={m.id}
-                  meta={m}
-                  active={activeChain?.id === m.id}
-                  onSelect={handleSelect}
-                />
-              ))}
-              <div className={s.group}>Testnet</div>
-              {testnets.map((m) => (
+              {shown.map((m) => (
                 <ChainRow
                   key={m.id}
                   meta={m}
