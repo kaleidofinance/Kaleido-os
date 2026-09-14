@@ -236,15 +236,21 @@ export default function WaitlistPage() {
       <header className={s.head}>
         <p className={s.eyebrow}>Kaleido Pre-Season 1 · Arc waitlist</p>
         <h1 className={`${s.h1} k-display`}>
-          Get in line for Arc.
+          {status ? "You're in line for Arc." : "Get in line for Arc."}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className={s.arcMark} src="/arc-mark.png" alt="Arc" width={64} height={64} />
         </h1>
-        <p className={s.lede}>
-          Agentic DeFi, live on Arc from Day&nbsp;1 (Sep&nbsp;16). Claim your
-          welcome points, refer friends to earn more, and climb the board before
-          mainnet. Points feed Season&nbsp;1, our pre-TGE points season.
-        </p>
+        {/* The hero pitch is for visitors who haven't registered yet. Once
+            someone has claimed (status set), the card below carries their
+            balance and tasks, so drop the long description rather than repeat
+            the sell — just confirm they're in. */}
+        {!status ? (
+          <p className={s.lede}>
+            Agentic DeFi, live on Arc from Day&nbsp;1 (Sep&nbsp;16). Claim your
+            welcome points, refer friends to earn more, and climb the board
+            before mainnet. Points feed Season&nbsp;1, our pre-TGE points season.
+          </p>
+        ) : null}
       </header>
 
       <section className={`${s.card} k-glass`}>
