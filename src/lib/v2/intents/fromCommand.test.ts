@@ -877,6 +877,33 @@ console.log("\n— stablecoin: complete withdrawal, claim, compound —");
     "bare 'claim' still resolves (no slot to miss)",
     bare.status === "ok" && bare.command.kind === "claimYield",
   );
+
+  // "claim" is also the plain word for points, staking rewards, an airdrop —
+  // none of them the kfUSD yield claim. A claim that names one escalates rather
+  // than planning a yield claim from a sentence about a different product.
+  for (const sentence of [
+    "claim my points",
+    "claim my rewards",
+    "claim my staking rewards",
+    "claim my airdrop",
+    "claim my referral rewards",
+    "claim my season points",
+  ]) {
+    const r = p(sentence);
+    check(
+      `"${sentence}" is not a kfUSD yield claim`,
+      r.status === "unknown",
+      r.status === "ok" ? r.command.kind : r.status,
+    );
+  }
+  // And the yield claim itself is untouched: unqualified, or naming "yield".
+  check(
+    "'claim my yield' is still the kfUSD claim",
+    (() => {
+      const r = p("claim my yield");
+      return r.status === "ok" && r.command.kind === "claimYield";
+    })(),
+  );
 }
 
 console.log("\n— the testnet faucet —");
