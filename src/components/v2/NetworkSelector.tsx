@@ -98,11 +98,22 @@ export default function NetworkSelector({
   }, [open, onClose]);
 
   const { mainnets, testnets, anyMainnetLive } = useMemo(() => {
-    const mainnets = CHAINS.filter((c) => c.network === "mainnet");
-    const testnets = CHAINS.filter((c) => c.network === "testnet");
-    /* Whether ANY mainnet has contracts yet. It is what the toggle's default
-       tracks: until one is deployed, the networks that actually work are the
-       testnets, so the list opens on them. */
+    /* Only the chains we are launching on — `tradable`, which is what draws the
+       "deploy pending" sublabel — or ones already live. A plain "Balances only"
+       chain we have no plans for (Polygon, Arbitrum, Hyperliquid, Abstract) is
+       hidden from the switcher; the multichain portfolio still reads its balances,
+       so nothing a wallet holds there disappears, it just is not a place to
+       switch TO. Deploying or marking a chain tradable reveals it here on its own. */
+    const shown = (c: ChainMeta) => Boolean(c.tradable) || isDeployed(c.id);
+    const mainnets = CHAINS.filter(
+      (c) => c.network === "mainnet" && shown(c),
+    );
+    const testnets = CHAINS.filter(
+      (c) => c.network === "testnet" && shown(c),
+    );
+    /* Whether ANY shown mainnet has contracts yet. It is what the toggle's
+       default tracks: until one is deployed, the networks that actually work are
+       the testnets, so the list opens on them. */
     const anyMainnetLive = mainnets.some((c) => isDeployed(c.id));
     return { mainnets, testnets, anyMainnetLive };
   }, []);
