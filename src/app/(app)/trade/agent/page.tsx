@@ -34,7 +34,11 @@ import { traceFromChat } from "@/lib/v2/agentTurn";
 import { readChatStream } from "@/lib/v2/chatStream";
 import { renderIntent } from "@/lib/v2/intents";
 import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
-import { portfolioAnswer } from "@/lib/v2/cards/portfolio";
+import {
+  portfolioAnswer,
+  healthAnswer,
+  isPersonalHealthQuestion,
+} from "@/lib/v2/cards/portfolio";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
 import { docsReply, groundingFor, MIN_ASK_SIMILARITY, outageReply, searchDocs } from "@/lib/ai/docsSearch";
 import { visibleProse } from "@/lib/ai/actionsBlock";
@@ -760,6 +764,24 @@ export default function AgentPage() {
        * either way a miss falls through to the other net before the model — so
        * "how do I swap" still opens a swap draft, which is the better answer.
        */
+      /*
+       * A question about the reader's OWN health factor gets the live number as
+       * a gauge, ahead of the FAQ. The FAQ owns the definitional "what IS health
+       * factor" and answers it well; it cannot know yours. See
+       * isPersonalHealthQuestion for the split — a personal marker plus a health
+       * term, so "what is health factor" still falls through to the FAQ below.
+       */
+      if (isPersonalHealthQuestion(content)) {
+        note("Reading your live health factor");
+        log("health");
+        const held = await readPortfolio(abort.signal);
+        if (abort.signal.aborted) return;
+        const answer = healthAnswer(held, { connected: Boolean(address) });
+        const cards = localCards(answer.cards);
+        say(answer.text, { via: "local", ...(cards.length ? { cards } : {}) });
+        return;
+      }
+
       const question = isQuestionShaped(content);
       if (question && answerFromFaq(content)) return;
 

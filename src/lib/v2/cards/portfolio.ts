@@ -85,6 +85,27 @@ const positive = (n: number | null): boolean => typeof n === "number" && n > 0;
 /** The prompt the empty state offers, which is also the answer to "no gas". */
 const FAUCET_PROMPT = "claim everything from the faucet";
 
+/**
+ * A question about the reader's OWN health factor, as opposed to the concept.
+ *
+ * "what is health factor" wants the definition — the static FAQ answers it well
+ * and cheaply. "what is MY health factor", "am I safe", "will I get liquidated"
+ * want the live number, which the FAQ cannot know. This is the split, and it is
+ * deliberately two conditions: a health/liquidation/safety term AND a personal
+ * marker. The personal marker is what keeps the definitional question on the FAQ,
+ * and the topic term is what keeps "is my swap safe" or "my balance" off this
+ * path — a personal sentence with no health word is not a health question.
+ */
+export function isPersonalHealthQuestion(text: string): boolean {
+  const t = ` ${text.toLowerCase()} `;
+  const personal =
+    /\bmy\b|\bam i\b|\bi'?m\b|\bwill i\b|\bcan i\b|\bi get\b|\bi be\b/.test(t);
+  if (!personal) return false;
+  return /health\s*factor|\bhealth\b|liquidat|\bhf\b|under\s?water|\bsafe\b/.test(
+    t,
+  );
+}
+
 export function portfolioAnswer(
   p: Portfolio,
   opts: { connected: boolean },
@@ -205,4 +226,54 @@ export function portfolioAnswer(
   }
 
   return { text: lines.join("\n\n"), cards };
+}
+
+/**
+ * "What's my health factor" — the live number as a gauge, not the definition.
+ *
+ * The focused sibling of portfolioAnswer: it answers only the health question,
+ * so it renders one card (the gauge) rather than the whole balance sheet. The
+ * FAQ still owns "what IS health factor"; this owns the possessive form, routed
+ * to by isPersonalHealthQuestion.
+ *
+ * Every not-a-number case is stated rather than drawn — a gauge is only built
+ * for a real reading. No wallet, no read, and no loan are three different facts
+ * and each gets its own sentence; an ∞ health factor in particular is not a
+ * failure to report but the correct answer to "am I safe" with nothing borrowed.
+ */
+export function healthAnswer(
+  p: Portfolio,
+  opts: { connected: boolean },
+): PortfolioAnswer {
+  if (!opts.connected) {
+    return {
+      text: "Health factor is read off your positions, and there's no wallet connected yet. Connect one — the button is top right — and ask me again.",
+      cards: [],
+    };
+  }
+  const h = p.health;
+  if (h === null) {
+    return {
+      text: "I couldn't read your health factor just now — the position read didn't come back. Try again in a moment.",
+      cards: [],
+    };
+  }
+  if (h === Infinity || !positive(p.debtUsd)) {
+    return {
+      text: "You have no loan open, so there's nothing that can be liquidated — your health factor is effectively infinite. It becomes a number to watch once you borrow against collateral.",
+      cards: [],
+    };
+  }
+  /* A live number, so the gauge draws. The sentence names the same reading the
+     gauge's tone shows, in the same three bands, so the two cannot disagree. */
+  const verdict =
+    h <= 1
+      ? "at or below 1.0, your collateral can be liquidated — add collateral or repay to lift it"
+      : h <= 1.4
+        ? "thin — a normal day's move could bring it toward 1.0"
+        : "comfortable — well above the 1.0 line where liquidation begins";
+  return {
+    text: `Your health factor is ${healthText(h)} — ${verdict}.`,
+    cards: [healthGauge(h)],
+  };
 }
