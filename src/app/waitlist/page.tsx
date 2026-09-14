@@ -382,6 +382,18 @@ export default function WaitlistPage() {
                   <button className={s.taskBtn} onClick={() => openIntent("retweet")}>Repost</button>
                 )}
               </li>
+
+              {/* The big one: converting the pending balance happens on the first
+                  real Arc mainnet action (see the waitlist migration). Shown as a
+                  locked "Coming soon" teaser until mainnet is live and the action
+                  is wired to a real status. */}
+              <li className={s.task}>
+                <div className={s.taskText}>
+                  <span className={s.taskTitle}>Perform 1st transaction on Arc Mainnet</span>
+                  <span className={s.taskMeta}>+500 $kPoint · Coming soon</span>
+                </div>
+                <span className={s.taskLock}>🔒</span>
+              </li>
             </ul>
 
             <p className={s.refLabel}>Your referral link — you both earn</p>
