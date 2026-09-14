@@ -187,3 +187,13 @@
   font-weight: var(--k-fw-med);
   font-size: var(--k-fs-sm);
 }
+
+/* The points unit shown after the balance, e.g. "1,250 $kPoint". Sized in
+   em so it tracks .big; dimmed so the number stays the hero. */
+.unit {
+  margin-left: 0.14em;
+  font-size: 0.4em;
+  font-weight: var(--k-fw-med);
+  letter-spacing: 0.01em;
+  opacity: 0.62;
+}

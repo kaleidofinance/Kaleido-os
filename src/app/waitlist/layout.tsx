@@ -12,7 +12,7 @@ const OG_DESC =
   "Claim your welcome points, refer friends to earn more, and get Day-1 access when Arc goes mainnet.";
 
 export const metadata: Metadata = {
-  title: "Kaleido Arc Waitlist",
+  title: "Kaleido Pre-Season 1 · Arc Waitlist",
   description: OG_DESC,
   // Referral links are the whole viral loop, so they must unfurl a rich card.
   openGraph: {

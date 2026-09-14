@@ -21,7 +21,7 @@ type Leader = { rank: number; wallet: string; referrals: number };
 
 /** Must match the message the API rebuilds and verifies. */
 const joinMessage = (address: string) =>
-  `Join the Kaleido Arc waitlist.\nWallet: ${address}`;
+  `Join the Kaleido Pre-Season 1 Arc waitlist.\nWallet: ${address}`;
 
 export default function WaitlistPage() {
   const account = useActiveAccount();
@@ -113,12 +113,12 @@ export default function WaitlistPage() {
   return (
     <main className={s.page}>
       <header className={s.head}>
-        <p className={s.eyebrow}>Arc waitlist</p>
+        <p className={s.eyebrow}>Kaleido Pre-Season 1 · Arc waitlist</p>
         <h1 className={`${s.h1} k-display`}>Get in line for Arc.</h1>
         <p className={s.lede}>
           Agentic DeFi, live on Arc from Day&nbsp;1 (Sep&nbsp;16). Claim your
           welcome points, refer friends to earn more, and climb the board before
-          mainnet.
+          mainnet. Points feed Season&nbsp;1, our pre-TGE points season.
         </p>
       </header>
 
@@ -146,8 +146,11 @@ export default function WaitlistPage() {
           </>
         ) : (
           <>
-            <p className={s.pLabel}>Your pending points</p>
-            <p className={s.big}>{status.pendingPoints.toLocaleString()}</p>
+            <p className={s.pLabel}>Your pending balance</p>
+            <p className={s.big}>
+              {status.pendingPoints.toLocaleString()}
+              <span className={s.unit}>$kPoint</span>
+            </p>
             <p className={s.split}>
               {status.welcomePoints} welcome
               {status.referralPoints > 0
