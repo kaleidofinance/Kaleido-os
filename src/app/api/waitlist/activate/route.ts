@@ -36,6 +36,7 @@ export const dynamic = "force-dynamic";
 // Must match the pending-points maths in api/waitlist/route.ts.
 const PER_REFERRAL = 50;
 const REFERRAL_CAP = 5000;
+const X_TASK = 100; // kPoint per completed X task (link, follow, retweet)
 const SEASON = 1; // Season 1 — pre-TGE (see point_seasons seed)
 const SOURCE = "waitlist";
 
@@ -85,9 +86,14 @@ async function handle(req: Request): Promise<Response> {
       : DEFAULT_LIMIT;
 
   // Oldest pending signups first, so the queue drains fairly across runs.
+  // x_*_at are the completed X tasks (link/follow/retweet), each worth X_TASK;
+  // they are credited in full here regardless of the app-side 24h display hold.
+  // (Requires the 20260914030000 X-tasks migration to be applied.)
   const { data: pending, error: pendErr } = await admin
     .from("waitlist")
-    .select("wallet, welcome_points")
+    .select(
+      "wallet, welcome_points, x_linked_at, x_followed_at, x_retweeted_at",
+    )
     .is("activated_at", null)
     .order("created_at", { ascending: true })
     .limit(limit);
@@ -121,7 +127,11 @@ async function handle(req: Request): Promise<Response> {
       .single();
     const referrals = Number(lb?.referrals ?? 0);
     const referralPoints = Math.min(PER_REFERRAL * referrals, REFERRAL_CAP);
-    const points = Number(row.welcome_points) + referralPoints;
+    const xTaskPoints =
+      X_TASK *
+      [row.x_linked_at, row.x_followed_at, row.x_retweeted_at].filter(Boolean)
+        .length;
+    const points = Number(row.welcome_points) + referralPoints + xTaskPoints;
 
     // 1) Canonical credit. Synthetic, stable tx_hash → credited at most once.
     const { error: actErr } = await admin.from("point_actions").insert({
