@@ -17,7 +17,7 @@ import {
 } from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
-import { auditPlan, refusalText } from "@/lib/ai/auditor";
+import { auditPlan, refusalText, sanitizeGuardrails } from "@/lib/ai/auditor";
 import {
   consumeModelRequest,
   peekModelUsage,
@@ -305,19 +305,10 @@ export async function POST(request: NextRequest) {
        * ~0. allowedActions is passed on untouched — it is the user's product
        * switches, enforced separately.
        */
-      const AGENT_MAX_SLIPPAGE_BPS = 500; // 5%, the most an agent swap may quote
-      const finiteOrUndef = (v: unknown) =>
-        typeof v === "number" && Number.isFinite(v) ? v : undefined;
-      const rawLimits = (body.limits ?? {}) as Record<string, unknown>;
-      const safeLimits = {
-        maxPerAction: finiteOrUndef(rawLimits.maxPerAction),
-        maxPerDay: finiteOrUndef(rawLimits.maxPerDay),
-        minHealthFactor: finiteOrUndef(rawLimits.minHealthFactor),
-        slippageBps: Math.min(
-          Math.max(finiteOrUndef(rawLimits.slippageBps) ?? 50, 1),
-          AGENT_MAX_SLIPPAGE_BPS,
-        ),
-      };
+      /* One sanitiser for both audit entry points — see sanitizeGuardrails. The
+         locally-built plan path (/api/audit) cleans limits the same way, so a
+         typed command and a reasoned one are held to the same ceiling. */
+      const safeLimits = sanitizeGuardrails(body.limits);
 
       const agentInput = {
         message: String(body.message ?? ""),

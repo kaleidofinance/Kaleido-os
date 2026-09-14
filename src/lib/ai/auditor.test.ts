@@ -125,8 +125,13 @@ async function load() {
   const { chainTokens } = await import("../../constants/tokens");
   const registry = await import("../../constants/registry");
   const { NATIVE_SENTINEL } = registry;
-  const { auditPlan, HARD_MAX_NOTIONAL_USD, ALL_INTENT_KINDS } =
-    await import("./auditor");
+  const {
+    auditPlan,
+    HARD_MAX_NOTIONAL_USD,
+    ALL_INTENT_KINDS,
+    sanitizeGuardrails,
+    AGENT_MAX_SLIPPAGE_BPS,
+  } = await import("./auditor");
   /* Same reason as everything else in here: a static import of either would
      evaluate before the DIAMOND assignment at the top of the file, and the
      send-into-our-own-diamond case would then be checked against an address
@@ -145,6 +150,8 @@ async function load() {
     auditPlan,
     HARD_MAX_NOTIONAL_USD,
     ALL_INTENT_KINDS,
+    sanitizeGuardrails,
+    AGENT_MAX_SLIPPAGE_BPS,
     stakingContracts,
     isKnownBridgeSpender,
   };
@@ -158,9 +165,64 @@ async function main() {
     auditPlan,
     HARD_MAX_NOTIONAL_USD,
     ALL_INTENT_KINDS,
+    sanitizeGuardrails,
+    AGENT_MAX_SLIPPAGE_BPS,
     stakingContracts,
     isKnownBridgeSpender,
   } = await load();
+
+  /* The shared limits sanitiser, used by both audit entry points (/api/chat for
+     a reasoned plan, /api/audit for a locally-built one). Its whole job is that
+     a bad field cannot loosen a cap — the regression that let a NaN maxPerAction
+     switch the ceiling off entirely. */
+  {
+    const clean = sanitizeGuardrails({
+      maxPerAction: 1000,
+      maxPerDay: 5000,
+      minHealthFactor: 1.4,
+      slippageBps: 50,
+    });
+    check(
+      "a well-formed limit set passes through unchanged",
+      clean.maxPerAction === 1000 &&
+        clean.maxPerDay === 5000 &&
+        clean.minHealthFactor === 1.4 &&
+        clean.slippageBps === 50,
+      JSON.stringify(clean),
+    );
+
+    const nan = sanitizeGuardrails({ maxPerAction: NaN, slippageBps: "lots" });
+    check(
+      "a NaN cap becomes undefined, never a ceiling that is off",
+      nan.maxPerAction === undefined,
+      String(nan.maxPerAction),
+    );
+    check(
+      "a non-numeric slippage falls back to the default, not NaN",
+      nan.slippageBps === 50,
+      String(nan.slippageBps),
+    );
+
+    const wild = sanitizeGuardrails({ slippageBps: 100000 });
+    check(
+      "slippage is clamped to the agent ceiling, so a plan cannot quote ~0 out",
+      wild.slippageBps === AGENT_MAX_SLIPPAGE_BPS,
+      String(wild.slippageBps),
+    );
+    const tiny = sanitizeGuardrails({ slippageBps: 0 });
+    check(
+      "and floored at 1 bp, never zero",
+      tiny.slippageBps === 1,
+      String(tiny.slippageBps),
+    );
+
+    const empty = sanitizeGuardrails(undefined);
+    check(
+      "no limits at all is not a crash — every cap is undefined, slippage default",
+      empty.maxPerAction === undefined && empty.slippageBps === 50,
+      JSON.stringify(empty),
+    );
+  }
 
   /* Read from the registry rather than pasted in. A pasted address passes the
      day it is copied and silently stops testing anything the day the market
