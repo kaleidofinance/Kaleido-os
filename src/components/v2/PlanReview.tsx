@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorDecoder } from "ethers-decode-error";
+import { getChainMeta } from "@/constants/chains";
 import { renderIntent, resolveIntent, type Intent } from "@/lib/v2/intents";
 import { encodeBatch, planRuns } from "@/lib/v2/intents/batch";
 import { useResolverContext } from "@/hooks/v2/useResolverContext";
@@ -92,6 +93,20 @@ interface PlanReviewProps {
    */
   onComplete?: (settled: SettledStep[]) => void;
   onCancel?: () => void;
+  /**
+   * Pin the plan to the chain it was prepared on, and refuse to sign it from any
+   * other. A plan's intents encode addresses that are only valid on one chain,
+   * and the same address is a different token across chains — USDe on BSC testnet
+   * is USDT on Arc — so a wallet that switched networks between reading the plan
+   * and signing it would approve or transfer the wrong asset. The connected chain
+   * at first render is captured as the plan's chain.
+   *
+   * Opt-in, because the flows that switch the wallet chain as a deliberate step
+   * before signing (the multichain Swap gate) would trip a naive pin. The agent
+   * passes it: there, the plan is built for the connected chain and reviewed on
+   * it, so a later switch is exactly the mistake to catch.
+   */
+  pinChain?: boolean;
 }
 
 export default function PlanReview({
@@ -100,8 +115,16 @@ export default function PlanReview({
   stepMode = "manual",
   onComplete,
   onCancel,
+  pinChain = false,
 }: PlanReviewProps) {
   const getContext = useResolverContext();
+  /* The chain the plan was prepared on, captured once. */
+  const pinnedChain = useRef<number | null>(null);
+  useEffect(() => {
+    if (!pinChain || pinnedChain.current != null) return;
+    const c = getContext();
+    if (c) pinnedChain.current = c.chainId;
+  }, [pinChain, getContext]);
   const { support: batch, send: sendBatch } = useBatchCalls();
   const views = useMemo(() => intents.map(renderIntent), [intents]);
   /**
@@ -387,6 +410,24 @@ export default function PlanReview({
     const ctx = getContext();
     if (!ctx) {
       toast.error("Connect a wallet to continue.");
+      return;
+    }
+    /* The plan is only valid on the chain it was prepared on — its addresses are
+       that chain's, and the same address is a different token elsewhere. Refuse
+       rather than sign the wrong asset; the user switches back, or re-asks on the
+       chain they're now on. */
+    if (
+      pinChain &&
+      pinnedChain.current != null &&
+      ctx.chainId !== pinnedChain.current
+    ) {
+      const name =
+        getChainMeta(pinnedChain.current)?.shortName ??
+        getChainMeta(pinnedChain.current)?.name ??
+        `chain ${pinnedChain.current}`;
+      toast.error(
+        `This plan was prepared for ${name}. Switch your wallet back to it and try again, or re-ask on this network.`,
+      );
       return;
     }
     setRunning(true);
