@@ -3,6 +3,17 @@ import crypto from "crypto";
 import { envVars } from "@/constants/envVars";
 
 export async function GET(req: Request) {
+  // Without a client id / redirect uri the authorize URL becomes
+  // `client_id=undefined`, which X rejects with a confusing "Something went
+  // wrong" page. Fail here with a clear message instead. (NEXT_PUBLIC_* is
+  // inlined at build time, so setting these needs a redeploy to take effect.)
+  if (!envVars.twitterClientId || !envVars.twitterRedirectUri) {
+    return NextResponse.json(
+      { error: "X sign-in isn't configured on this deployment." },
+      { status: 503 },
+    );
+  }
+
   const state = crypto.randomBytes(32).toString("hex");
   const codeVerifier = crypto.randomBytes(32).toString("base64url");
 

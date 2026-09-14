@@ -1,11 +1,32 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useActiveAccount, useConnectModal } from "thirdweb/react";
+import {
+  useActiveAccount,
+  useConnectModal,
+  useActiveWalletChain,
+  useSwitchActiveWalletChain,
+} from "thirdweb/react";
+import { defineChain } from "thirdweb/chains";
 
 import { client } from "@/config/client";
 import { WALLETS } from "@/config/wallets";
 import s from "./waitlist.module.css";
+
+/**
+ * The private/unofficial Arc mainnet — defined inline and scoped to this page on
+ * purpose. The waitlist join is a chain-agnostic signature, but we switch the
+ * wallet to Arc before signing so the act of joining happens on Arc. This is NOT
+ * wired into the app's global chain registry.
+ */
+const ARC_CHAIN_ID = 5042;
+const ARC_CHAIN = defineChain({
+  id: ARC_CHAIN_ID,
+  name: "Arc",
+  rpc: "https://rpc.arc-scan.org",
+  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+  blockExplorers: [{ name: "Arc Scan", url: "https://arc-scan.org" }],
+});
 
 type XTask = { done: boolean; counted: boolean; countsAt: string | null };
 type Status = {
@@ -40,6 +61,16 @@ const xTaskMessage = (address: string, task: XTaskKey) =>
 export default function WaitlistPage() {
   const account = useActiveAccount();
   const { connect, isConnecting } = useConnectModal();
+  const activeChain = useActiveWalletChain();
+  const switchChain = useSwitchActiveWalletChain();
+  const onArc = activeChain?.id === ARC_CHAIN_ID;
+
+  // Put the wallet on Arc before signing, so joining happens on Arc. Signing is
+  // chain-agnostic, but this makes "we run on Arc" real rather than cosmetic.
+  const ensureArc = useCallback(async () => {
+    if (activeChain?.id === ARC_CHAIN_ID) return;
+    await switchChain(ARC_CHAIN);
+  }, [activeChain, switchChain]);
 
   const [ref, setRef] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>(null);
@@ -110,6 +141,7 @@ export default function WaitlistPage() {
     setLoading(true);
     setError(null);
     try {
+      await ensureArc();
       const signature = await account.signMessage({
         message: joinMessage(account.address),
       });
@@ -123,11 +155,17 @@ export default function WaitlistPage() {
       else setStatus(d);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
-      setError(/reject|denied/i.test(msg) ? "Signature rejected." : "Could not register.");
+      setError(
+        /reject|denied/i.test(msg)
+          ? "Rejected. Approve the Arc switch and signature to claim."
+          : /chain|network|switch|4902/i.test(msg)
+            ? "Couldn't switch to Arc. Add the Arc network and try again."
+            : "Could not register.",
+      );
     } finally {
       setLoading(false);
     }
-  }, [account, ref]);
+  }, [account, ref, ensureArc]);
 
   // Sign the task message and record it. Refreshes standing on success.
   const postXTask = useCallback(
@@ -136,6 +174,7 @@ export default function WaitlistPage() {
       setXBusy(task);
       setError(null);
       try {
+        await ensureArc();
         const signature = await account.signMessage({
           message: xTaskMessage(account.address, task),
         });
@@ -154,7 +193,7 @@ export default function WaitlistPage() {
         setXBusy(null);
       }
     },
-    [account, loadStatus],
+    [account, loadStatus, ensureArc],
   );
 
   // Link X: start OAuth if no X session in this browser yet, otherwise the
@@ -226,8 +265,15 @@ export default function WaitlistPage() {
               deposit.{ref ? " Your referral bonus is applied." : ""}
             </p>
             <button className={s.primary} onClick={onClaim} disabled={loading}>
-              {loading ? "Claiming…" : "Claim my points"}
+              {loading
+                ? "Claiming…"
+                : onArc
+                  ? "Claim my points"
+                  : "Switch to Arc & claim"}
             </button>
+            {account && !onArc ? (
+              <p className={s.split}>You&rsquo;ll be switched to Arc mainnet to sign.</p>
+            ) : null}
             {error ? <p className={s.error}>{error}</p> : null}
           </>
         ) : (
