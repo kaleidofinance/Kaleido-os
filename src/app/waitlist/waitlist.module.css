@@ -197,3 +197,72 @@
   letter-spacing: 0.01em;
   opacity: 0.62;
 }
+
+/* X tasks -------------------------------------------------------------------*/
+.held {
+  margin: var(--k-s2) 0 0;
+  color: var(--k-brand);
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+}
+.tasks {
+  list-style: none;
+  margin: var(--k-s3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+.task {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  padding: var(--k-s3);
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-md);
+  background: var(--k-well);
+}
+.taskText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.taskTitle {
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  font-size: var(--k-fs-sm);
+}
+.taskMeta {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+}
+.taskBtn {
+  flex: none;
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-md);
+  background: var(--k-well2);
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  font-size: var(--k-fs-sm);
+  padding: var(--k-s2) var(--k-s4);
+  cursor: pointer;
+}
+.taskBtn:hover {
+  background: var(--k-hover);
+}
+.taskBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.taskDone {
+  flex: none;
+  color: var(--k-brand);
+  font-weight: var(--k-fw-med);
+}
+.taskLock {
+  flex: none;
+  opacity: 0.5;
+  font-size: var(--k-fs-sm);
+}

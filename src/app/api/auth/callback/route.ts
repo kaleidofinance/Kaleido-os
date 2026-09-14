@@ -142,15 +142,27 @@ export async function GET(req: Request) {
     // The legacy /verify page is gone. The cookie below still drives
     // /api/auth/user, which is what the header's Link X control reads — see
     // src/components/v2/LinkX.tsx.
-    const response = NextResponse.redirect(new URL("/portfolio", req.url));
+    //
+    // Land back where the flow started, when a same-origin returnTo was set (the
+    // waitlist uses this); otherwise keep the historical /portfolio default.
+    const returnToCookie = cookieStore.get("twitter_return_to")?.value;
+    const returnTo =
+      returnToCookie && /^\/(?!\/)/.test(returnToCookie)
+        ? returnToCookie
+        : "/portfolio";
+    const response = NextResponse.redirect(new URL(returnTo, req.url));
 
     response.cookies.delete("twitter_oauth_state");
     response.cookies.delete("twitter_code_verifier");
+    response.cookies.delete("twitter_return_to");
 
-    // Set user cookie
+    // Set user cookie. `id` is the stable X user id — the waitlist binds it to a
+    // wallet (unique, so one X account enriches one wallet); the header control
+    // only reads username/name and ignores it.
     response.cookies.set(
       "twitter_user",
       JSON.stringify({
+        id: userData.data.id,
         username: userData.data.username,
         name: userData.data.name,
       }),
