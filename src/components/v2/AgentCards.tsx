@@ -61,6 +61,55 @@ function ToneIcon({ tone, className }: { tone: CardTone; className?: string }) {
 }
 
 /**
+ * The mark on a settled step: a tick for one that ran, a dash for one that
+ * needed nothing sent, a cross for one that did not land. Same inline-SVG,
+ * `currentColor` treatment as ToneIcon — the colour comes from the status class
+ * beside it — and `aria-hidden`, because the detail text already names the
+ * outcome in words.
+ */
+function StepIcon({
+  status,
+  className,
+}: {
+  status: "done" | "skipped" | "failed";
+  className?: string;
+}) {
+  const common = {
+    className,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true as const,
+  };
+  if (status === "failed") {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M15 9l-6 6" />
+        <path d="M9 9l6 6" />
+      </svg>
+    );
+  }
+  if (status === "skipped") {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M8.5 12h7" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+    </svg>
+  );
+}
+
+/**
  * Renders the frames Luca uses to present data instead of stating it in prose.
  *
  * Cards render *inside* Luca's turn in the transcript, never as app chrome — so
@@ -159,6 +208,27 @@ export default function AgentCards({ cards, onPrompt }: Props) {
                       >
                         {row.value}
                       </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+
+          case "steps":
+            return (
+              <div key={i} className={s.card}>
+                {card.title && <div className={s.title}>{card.title}</div>}
+                <div className={s.rows}>
+                  {card.steps.map((st, j) => (
+                    <div key={j} className={`${s.row} ${s.stepRow}`}>
+                      <StepIcon
+                        status={st.status}
+                        className={`${s.stepIcon} ${s[`step_${st.status}`]}`}
+                      />
+                      <span className={s.stepLabel}>{st.label}</span>
+                      {st.detail && (
+                        <span className={s.stepDetail}>{st.detail}</span>
+                      )}
                     </div>
                   ))}
                 </div>

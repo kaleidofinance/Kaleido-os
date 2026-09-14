@@ -45,7 +45,10 @@ const KNOWN_KINDS: CardKind[] = [
   "notice",
   "actions",
   "gauge",
+  "steps",
 ];
+
+const STEP_STATUSES = ["done", "skipped", "failed"] as const;
 
 const TONES: CardTone[] = ["neutral", "good", "warn", "bad"];
 
@@ -64,6 +67,7 @@ const LIMITS = {
   body: 280,
   prompt: 120,
   caption: 16,
+  detail: 48,
 } as const;
 
 /**
@@ -195,6 +199,33 @@ function validate(raw: unknown): AgentCard | null {
         ...(max ? { max } : {}),
         ...(note ? { note } : {}),
       };
+    }
+
+    case "steps": {
+      if (!Array.isArray(c.steps)) return null;
+      const steps: {
+        label: string;
+        status: "done" | "skipped" | "failed";
+        detail?: string;
+      }[] = [];
+      for (const r of c.steps.slice(0, MAX_ROWS)) {
+        if (!r || typeof r !== "object") continue;
+        const row = r as Record<string, unknown>;
+        const label = str(row.label, LIMITS.label);
+        if (!label) continue;
+        /* An unknown status is not a guess to render — default it to `done`, the
+           same fail-safe the tone helper makes, rather than drop a real step
+           over a bad enum. */
+        const status =
+          typeof row.status === "string" &&
+          (STEP_STATUSES as readonly string[]).includes(row.status)
+            ? (row.status as "done" | "skipped" | "failed")
+            : "done";
+        const detail = str(row.detail, LIMITS.detail);
+        steps.push({ label, status, ...(detail ? { detail } : {}) });
+      }
+      if (!steps.length) return null;
+      return { kind: "steps", ...(title ? { title } : {}), steps };
     }
 
     case "actions": {

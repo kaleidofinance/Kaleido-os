@@ -185,6 +185,48 @@
   font-weight: var(--k-fw-body);
 }
 
+/* ---------- steps (a settled plan's receipt) ---------- */
+
+/* Mark, then what happened, then when and where. Centred on the mark like a
+   balance row rather than hung from a baseline, and it reuses `.row` for the same
+   hairline-between-rows treatment a stats card gets. */
+.stepRow {
+  align-items: center;
+  gap: 9px;
+}
+.stepIcon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+.stepLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-t1);
+}
+/* The timing and hash, quietest on the row: it is provenance, read second. */
+.stepDetail {
+  flex: none;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+/* The mark's colour, by outcome — a ran step reads positive, a skipped one is
+   muted (nothing happened, and nothing is wrong), a failed one is the neg the
+   rest of the card uses for a bad number. */
+.step_done {
+  color: var(--k-pos);
+}
+.step_skipped {
+  color: var(--k-t3);
+}
+.step_failed {
+  color: var(--k-neg);
+}
+
 /* ---------- notice ---------- */
 
 /* A left rule rather than a tinted fill. A filled panel at this width is a slab
