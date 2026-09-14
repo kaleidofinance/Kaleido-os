@@ -7,6 +7,18 @@ const HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Kaleido Liquidity Partnership</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Kaleido">
+<meta property="og:title" content="Kaleido Liquidity Partnership">
+<meta property="og:description" content="Agentic DeFi, live on Arc day one. We seed blue-chip depth in the core pairs.">
+<meta property="og:url" content="https://kaleidofi.xyz/lpdeck">
+<meta property="og:image" content="https://kaleidofi.xyz/lpdeck-og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kaleido Liquidity Partnership">
+<meta name="twitter:description" content="Agentic DeFi, live on Arc day one. We seed blue-chip depth in the core pairs.">
+<meta name="twitter:image" content="https://kaleidofi.xyz/lpdeck-og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -24,6 +36,7 @@ const HTML = `<!doctype html>
   *{box-sizing:border-box}
   body{
     margin:0; background:var(--ink); color:var(--t1);
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
     font-family:var(--sans); font-size:16px; line-height:1.6;
     -webkit-font-smoothing:antialiased;
     background-image:radial-gradient(rgba(217,197,162,.05) .6px, transparent .9px);
@@ -149,10 +162,22 @@ const HTML = `<!doctype html>
   a:focus-visible,.btn:focus-visible{outline:2px solid var(--sand); outline-offset:3px}
   @media(prefers-reduced-motion:no-preference){.card,.btn{transition:border-color .18s ease}}
   .card:hover{border-color:var(--line2)}
+  .pdfbtn{position:fixed; top:16px; right:16px; z-index:50; font-family:var(--sans);
+    font-size:13px; font-weight:600; color:var(--t1); background:rgba(17,29,24,.85);
+    border:1px solid var(--line2); border-radius:999px; padding:9px 16px; cursor:pointer;
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px)}
+  .pdfbtn:hover{border-color:var(--sand)}
+  .pdfbtn:focus-visible{outline:2px solid var(--sand); outline-offset:3px}
+  @media print{
+    .pdfbtn{display:none}
+    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important }
+    section{padding-block:40px}
+  }
 </style>
 </head>
 <body>
 
+<button class="pdfbtn" onclick="window.print()" aria-label="Export to PDF">Export PDF</button>
 <section class="cover">
   <div class="wrap">
     <div class="brand"><span class="glyph"></span><span>Kaleido<b>fi</b></span></div>
