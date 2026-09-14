@@ -68,6 +68,7 @@ const HTML = `<!doctype html>
   .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px}
   .card h3{margin-bottom:8px}
   .card p{font-size:.94rem}
+  .card .eg{display:block; margin-top:10px; color:var(--sand-dim); font-family:var(--mono); font-size:11.5px; line-height:1.5}
   .num{font-family:var(--mono); font-size:12px; color:var(--sand-dim); letter-spacing:.1em}
 
   .stack{display:flex; flex-wrap:wrap; gap:10px; margin-top:32px}
@@ -224,10 +225,10 @@ const HTML = `<!doctype html>
     <p class="eyebrow">Ways to engage</p>
     <h2>Pick the structure that fits your book.</h2>
     <div class="grid g2">
-      <div class="card"><h3 class="sand">Liquidity mining</h3><p>Bring blue-chip pairs, earn KLD emissions, points and fees. Fastest to stand up; no principal from us.</p></div>
-      <div class="card"><h3 class="sand">Token loan + option</h3><p>For market makers: we lend KLD against two-sided depth in the core pairs; you hold a call option. Activated at TGE.</p></div>
-      <div class="card"><h3 class="sand">Managed V3 (LaaS)</h3><p>Run concentrated positions on our V3 pools (Arrakis or Gamma style) so a smaller balance goes further. Fee or token terms.</p></div>
-      <div class="card"><h3 class="sand">Chain co-incentive</h3><p>We are securing matched incentives from the Arc and Robinhood ecosystem funds, so your rewards on these pairs can be doubled.</p></div>
+      <div class="card"><h3 class="sand">Liquidity mining</h3><p>Bring blue-chip pairs, earn KLD emissions, points and fees. Fastest to stand up; no principal from us.<span class="eg">Example: add $150k to EURC/USDC and earn ~20% APR in KLD and points (~$30k/yr) plus your share of fees, with no lockup.</span></p></div>
+      <div class="card"><h3 class="sand">Token loan + option</h3><p>For market makers: we lend KLD against two-sided depth in the core pairs; you hold a call option. Activated at TGE.<span class="eg">Example: run $500k two-sided on cirBTC/USDC; we lend the KLD leg and grant a call option on ~$75k of KLD struck at the TGE price.</span></p></div>
+      <div class="card"><h3 class="sand">Managed V3 (LaaS)</h3><p>Run concentrated positions on our V3 pools (Arrakis or Gamma style) so a smaller balance goes further. Fee or token terms.<span class="eg">Example: $200k in a tight range quotes like ~$1M full-range, holding a $10k swap under ~0.5% on a fifth of the capital.</span></p></div>
+      <div class="card"><h3 class="sand">Chain co-incentive</h3><p>We are securing matched incentives from the Arc and Robinhood ecosystem funds, so your rewards on these pairs can be doubled.<span class="eg">Example: a $100k emissions budget matched 1:1 by the Arc fund, so cirBTC/USDC LPs see ~40% APR instead of ~20%.</span></p></div>
     </div>
   </div>
 </section>
