@@ -394,6 +394,16 @@ export default function WaitlistPage() {
                 </div>
                 <span className={s.taskLock}>🔒</span>
               </li>
+
+              {/* The agent-trading capstone (Luca making the first agent tx) — the
+                  product's differentiator. Locked "Coming soon" teaser for now. */}
+              <li className={s.task}>
+                <div className={s.taskText}>
+                  <span className={s.taskTitle}>Make 1st Agent transaction on Kaleido</span>
+                  <span className={s.taskMeta}>+500 $kPoint · Coming soon</span>
+                </div>
+                <span className={s.taskLock}>🔒</span>
+              </li>
             </ul>
 
             <p className={s.refLabel}>Your referral link — you both earn</p>
