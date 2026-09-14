@@ -117,6 +117,27 @@ interface PlanReviewProps {
    * Omitted (or on a plan with no quoted step) means no staleness gate.
    */
   quotedAt?: number;
+  /**
+   * The step to resume execution at — the index of the first step NOT already
+   * settled in a prior mount. Default 0 (a fresh plan).
+   *
+   * This is the safety half of re-opening a partly executed plan. Within one
+   * mounted instance, a stop or a failure leaves `next` pointing past the steps
+   * that landed, so a resume never re-signs them. But closing the panel unmounts
+   * this component, and re-opening it used to mount a fresh one at step 0 —
+   * re-broadcasting an approve (which self-skips) and, worse, a swap or a stake
+   * (which do not). Given here, execution begins at `startFrom` and the earlier
+   * steps render as already done rather than being run again. The caller keeps
+   * this in step via {@link onHalt}.
+   */
+  startFrom?: number;
+  /**
+   * Reports the resume index whenever execution stops short of the end — a
+   * declined signature, a revert, or a manual-mode pause. The caller stores it on
+   * the plan so the next mount resumes there rather than from the top. Not called
+   * on completion; `onComplete` is the end.
+   */
+  onHalt?: (nextIndex: number) => void;
 }
 
 /* How long a priced plan may sit before it must be re-quoted. Long enough to
@@ -141,6 +162,8 @@ export default function PlanReview({
   onCancel,
   pinChain = false,
   quotedAt,
+  startFrom = 0,
+  onHalt,
 }: PlanReviewProps) {
   const getContext = useResolverContext();
   /* The chain the plan was prepared on, captured once. */
@@ -186,8 +209,10 @@ export default function PlanReview({
      and a setState would still be a render behind. Nothing renders from it. */
   const settledRef = useRef<SettledStep[]>([]);
 
+  /* Steps before `startFrom` settled in a prior mount, so they open as done and
+     are never run again — see the startFrom prop. */
   const [statuses, setStatuses] = useState<StepStatus[]>(() =>
-    intents.map(() => "idle"),
+    intents.map((_, i) => (i < startFrom ? "done" : "idle")),
   );
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
@@ -200,7 +225,15 @@ export default function PlanReview({
    * *fourth* step reverted would re-broadcast the swap in its second on retry.
    * Steps already on chain are not re-signed.
    */
-  const [next, setNext] = useState(0);
+  const [next, setNextState] = useState(startFrom);
+  /* A ref mirror of `next`, so the moment the loop halts its resume index can be
+     reported to the caller synchronously — a setNext is React state and would not
+     be readable in the same tick. Every setNext goes through here. */
+  const nextRef = useRef(startFrom);
+  const setNext = (n: number) => {
+    nextRef.current = n;
+    setNextState(n);
+  };
 
   /**
    * Set for the duration of one "run them all" press, and only that press.
@@ -538,15 +571,23 @@ export default function PlanReview({
         : undefined;
       if (bundle) {
         const settled = await runBundle(ctx, bundle.steps);
-        if (settled === "failed") return;
-        if (settled === "paused") return;
+        if (settled !== "done") {
+          /* nextRef was set by runBundle (or the sequential fallback inside it)
+             to where a resume should begin — report it so a re-open starts there
+             rather than re-signing the steps that landed. */
+          onHalt?.(nextRef.current);
+          return;
+        }
         /* The pair is done; skip the step the bundle covered. */
         i = bundle.steps[bundle.steps.length - 1];
         continue;
       }
 
       const outcome = await runStep(ctx, i);
-      if (outcome !== "done") return;
+      if (outcome !== "done") {
+        onHalt?.(nextRef.current);
+        return;
+      }
     }
     setRunning(false);
     setDone(true);
