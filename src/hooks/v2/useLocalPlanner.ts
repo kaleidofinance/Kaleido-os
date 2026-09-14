@@ -21,6 +21,8 @@ import {
   type LoanRef,
   type PoolPositionRef,
 } from "@/lib/v2/intents/build";
+import { outgoingLegs } from "@/lib/v2/intents/outgoing";
+import type { Intent } from "@/lib/v2/intents/types";
 import type { Command } from "@/lib/v2/intents/fromCommand";
 
 /**
@@ -97,13 +99,71 @@ async function browserFaucetAssets(
   return readFaucetAssets(provider, chainId, address ?? ethers.ZeroAddress);
 }
 
+const ERC20_BALANCE_ABI = ["function balanceOf(address) view returns (uint256)"];
+
+/**
+ * The first outgoing token this wallet cannot cover, as a ready-to-show refusal
+ * — or null when every leg is affordable, or cannot be checked.
+ *
+ * `buildIntents` prices a plan against the pools but never against the wallet,
+ * so "swap 999999 USDC" from a wallet holding 9,995 built a fully signable plan
+ * that could only fail at the wallet — a tester hit exactly that. This reads the
+ * balance of each token the plan spends (`outgoingLegs`) on the plan's own chain
+ * and compares in BASE UNITS, so the comparison is exact: it refuses only a
+ * shortfall it is certain of, and any balance it cannot read it lets through,
+ * leaving the chain the final arbiter rather than risk a false refusal.
+ */
+async function firstShortfall(
+  intents: readonly Intent[],
+  chainId: number | undefined,
+  address: string | undefined,
+): Promise<string | null> {
+  if (!address || chainId === undefined) return null;
+  const provider = providerForChain(chainId);
+  if (!provider) return null;
+
+  for (const leg of outgoingLegs(intents)) {
+    let need: bigint;
+    try {
+      need = ethers.parseUnits(leg.amount, leg.decimals);
+    } catch {
+      continue; // an amount that will not parse is one this gate will not judge
+    }
+    if (need <= 0n) continue;
+
+    let held: bigint;
+    try {
+      held = leg.isNative
+        ? await provider.getBalance(address)
+        : ((await new ethers.Contract(
+            leg.token,
+            ERC20_BALANCE_ABI,
+            provider,
+          ).balanceOf(address)) as bigint);
+    } catch {
+      continue; // a balance we cannot read is one the chain will check for us
+    }
+
+    if (need > held) {
+      const shown = Number(
+        ethers.formatUnits(held, leg.decimals),
+      ).toLocaleString(undefined, { maximumFractionDigits: 6 });
+      return (
+        `That would spend ${leg.amount} ${leg.symbol}, but this wallet holds ` +
+        `${shown} ${leg.symbol} on this chain. Lower the amount and I'll build it.`
+      );
+    }
+  }
+  return null;
+}
+
 export function useLocalPlanner() {
   const { getV3AmountOut, getV3MultiHopAmountOut } = useV3SwapRouter();
   const { chainId, address } = useWalletV2();
 
   const buildPlan = useCallback(
-    async (command: Command, opts: PlannerOptions): Promise<PlanResult> =>
-      buildIntents(
+    async (command: Command, opts: PlannerOptions): Promise<PlanResult> => {
+      const result = await buildIntents(
         command,
         { slippageBps: opts.slippageBps, deadlineMin: opts.deadlineMin },
         {
@@ -176,7 +236,19 @@ export function useLocalPlanner() {
                   userAddress: address ?? "",
                 }),
         },
-      ),
+      );
+      if (!result.ok) return result;
+      /* The wallet-balance gate. buildIntents priced this against the pools but
+         never against the wallet, so a spend larger than the balance still built
+         a signable plan (a tester typed one and reached Review). A shortfall is a
+         terminal refusal — no slot to re-ask, the amount itself is the problem. */
+      const shortfall = await firstShortfall(
+        result.build.intents,
+        chainId,
+        address,
+      );
+      return shortfall ? { ok: false, error: shortfall } : result;
+    },
     [getV3AmountOut, getV3MultiHopAmountOut, chainId, address],
   );
 
