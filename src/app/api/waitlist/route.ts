@@ -44,15 +44,35 @@ function xTaskState(at: string | null, now: number) {
   };
 }
 
+// Base columns, always present. X-task columns are added by 20260914030000; if
+// that migration has not been applied yet (e.g. a deploy landed first), selecting
+// them errors, so we fall back to the base row rather than break registration and
+// the balance for everyone. Once the migration is applied this fallback is dead.
+const BASE_COLS = "ref_code, welcome_points, activated_at";
+const X_COLS = "x_handle, x_linked_at, x_followed_at, x_retweeted_at";
+
 async function standing(wallet: string) {
   const admin = supabaseAdmin!;
-  const { data: row } = await admin
+  let row: Record<string, unknown> | null = null;
+  const full = await admin
     .from("waitlist")
-    .select(
-      "ref_code, welcome_points, activated_at, x_handle, x_linked_at, x_followed_at, x_retweeted_at",
-    )
+    .select(`${BASE_COLS}, ${X_COLS}`)
     .eq("wallet", wallet)
     .single();
+  if (!full.error) {
+    row = full.data as Record<string, unknown>;
+  } else if (full.error.code === "PGRST116") {
+    return null; // no such wallet (0 rows), not a schema problem
+  } else {
+    // Most likely the X-task columns don't exist yet — retry with base columns.
+    const base = await admin
+      .from("waitlist")
+      .select(BASE_COLS)
+      .eq("wallet", wallet)
+      .single();
+    if (base.error || !base.data) return null;
+    row = base.data as Record<string, unknown>;
+  }
   if (!row) return null;
 
   // referrals + rank come from the leaderboard view (one wallet, so filter it)

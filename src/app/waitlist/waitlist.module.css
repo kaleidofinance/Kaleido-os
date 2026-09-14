@@ -266,3 +266,12 @@
   opacity: 0.5;
   font-size: var(--k-fs-sm);
 }
+
+/* Arc mark inline with the hero heading; sized in em so it tracks the h1. */
+.arcMark {
+  display: inline-block;
+  height: 0.72em;
+  width: auto;
+  margin-left: 0.22em;
+  vertical-align: -0.04em;
+}
