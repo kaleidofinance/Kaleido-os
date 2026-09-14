@@ -181,6 +181,12 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
      getPortfolio reads only the collateral value and health. "loans" because that
      is the noun the borrow page uses for the same rows. */
   getLoans: () => "Checked your loans",
+  /* KLD staking — the stake, the vault totals, the withdrawal cooldown. */
+  getStaking: () => "Checked your staking",
+  /* The kfUSD/kafUSD stablecoin vault — held and yield-vault balances. */
+  getVault: () => "Checked your stablecoin vault",
+  /* The points leaderboard — off chain, so its arg is only an address. */
+  getPoints: () => "Checked your points standing",
   getPositions: () => "Checked your liquidity positions",
   /* The delegation the user signed, if any — read only, never a grant. Its args
      are addresses, which `str` refuses at 42 characters, so this names no one. */
