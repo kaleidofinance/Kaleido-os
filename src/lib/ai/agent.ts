@@ -315,7 +315,21 @@ export async function runAgent(
  * On the non-streaming path nothing is emitted until the end, so every provider
  * in the chain is genuinely tried. Retrying is safe because the model never sets
  * addresses or amounts — the deterministic builder does, after this returns.
+ *
+ * A HANG is failed over too, not just a fast error — which it was not before. A
+ * provider's own request timeout is 60s, the same as the whole function's budget
+ * (maxDuration), so waiting for a stalled primary to throw left no time for a
+ * backend that would have answered; the failover the doc-comment promised for a
+ * "timeout" never actually reached the second provider. So on the STREAMING path,
+ * each non-last provider is raced against a first-sign-of-life deadline: if it has
+ * emitted nothing within `STALL_MS`, it is treated as hung and the next backend is
+ * tried, while the stalled attempt is abandoned (its rejection swallowed). Gated
+ * to streaming because the JSON path emits nothing until the end and so cannot
+ * tell a hung provider from a slow-but-working one — there, the old behaviour
+ * (fail over only on a thrown error) stands.
  */
+const STALL_MS = Number(process.env.AGENT_STALL_MS) || 12_000;
+
 export async function runAgentWithFailover(
   providers: ChatProvider[],
   input: AgentInput,
@@ -341,12 +355,38 @@ export async function runAgentWithFailover(
 
   let lastError: unknown;
   for (let i = 0; i < providers.length; i++) {
+    const isLast = i === providers.length - 1;
+    const attempt = runAgent(providers[i], input, guarded);
     try {
-      return await runAgent(providers[i], input, guarded);
+      /* No watchdog on the last provider, or on the JSON path (no events): let it
+         run to its own timeout, since there is no backend left to fail over to and
+         no first-token signal to judge a stall by. */
+      if (isLast || !events) return await attempt;
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const stalled = new Promise<"stall">((resolve) => {
+        timer = setTimeout(() => resolve("stall"), STALL_MS);
+      });
+      const outcome = await Promise.race([
+        attempt.then((r) => ({ kind: "done" as const, r })),
+        stalled.then(() => ({ kind: "stall" as const })),
+      ]);
+      clearTimeout(timer);
+
+      if (outcome.kind === "done") return outcome.r;
+      /* The deadline fired. If the provider has shown any life it is slow, not
+         hung — wait for it to finish, and let a real error propagate. */
+      if (dirty) return await attempt;
+      /* Hung with nothing emitted: move on. Swallow the abandoned attempt's
+         eventual rejection so it cannot surface as an unhandled rejection. */
+      attempt.catch(() => {});
+      lastError = new Error(
+        `Provider ${providers[i].id} stalled (no output in ${STALL_MS}ms).`,
+      );
     } catch (err) {
       lastError = err;
       /* Last provider, or the client has already seen output — surface it. */
-      if (dirty || i === providers.length - 1) throw err;
+      if (dirty || isLast) throw err;
       /* Otherwise fall through to the next backend. */
     }
   }
