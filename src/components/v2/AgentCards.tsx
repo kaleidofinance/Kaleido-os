@@ -1,5 +1,64 @@
-import type { AgentCard } from "@/lib/v2/cards/types";
+import type { AgentCard, CardTone } from "@/lib/v2/cards/types";
+import TokenIcon from "./TokenIcon";
 import s from "./AgentCards.module.css";
+
+/**
+ * The tone glyph a notice carries beside its title.
+ *
+ * Drawn here as inline SVG rather than pulled from an icon package, the same way
+ * ChainIcon and SectionIcon are: four line marks on `currentColor` cost less than
+ * a dependency's tree-shaking bet, and inheriting the colour is what lets the
+ * tone classes below tint the glyph without the component knowing a palette. It
+ * is decoration in the strict sense — `aria-hidden`, because the notice's title
+ * already says in words what the mark says in shape, and a screen reader that
+ * announced "warning icon" before "warning:" would say it twice.
+ */
+function ToneIcon({ tone, className }: { tone: CardTone; className?: string }) {
+  const common = {
+    className,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true as const,
+  };
+  switch (tone) {
+    case "good":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+        </svg>
+      );
+    case "warn":
+      return (
+        <svg {...common}>
+          <path d="M12 3.5 2.5 20h19L12 3.5Z" />
+          <path d="M12 10v4" />
+          <path d="M12 17.4v.01" />
+        </svg>
+      );
+    case "bad":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M15 9l-6 6" />
+          <path d="M9 9l6 6" />
+        </svg>
+      );
+    case "neutral":
+    default:
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5" />
+          <path d="M12 8v.01" />
+        </svg>
+      );
+  }
+}
 
 /**
  * Renders the frames Luca uses to present data instead of stating it in prose.
@@ -72,8 +131,22 @@ export default function AgentCards({ cards, onPrompt }: Props) {
                 {card.title && <div className={s.title}>{card.title}</div>}
                 <div className={s.rows}>
                   {card.rows.map((row, j) => (
-                    <div key={j} className={s.row}>
-                      <span className={s.bSymbol}>{row.symbol}</span>
+                    <div key={j} className={`${s.row} ${s.rowBalance}`}>
+                      <span className={s.bSym}>
+                        {/* A build-time logo, keyed on the symbol the card
+                            already carries — the renderer supplies the art, the
+                            card stays pure data. The slot reserves its width even
+                            when a token has no logo, so a mixed list still aligns
+                            on the symbol beside it. */}
+                        <span className={s.bIcon}>
+                          <TokenIcon
+                            symbol={row.symbol}
+                            size={18}
+                            fallback={null}
+                          />
+                        </span>
+                        <span className={s.bSymbol}>{row.symbol}</span>
+                      </span>
                       <span className={`${s.rValue} tabular`}>
                         {row.amount}
                         {row.note && (
@@ -89,7 +162,10 @@ export default function AgentCards({ cards, onPrompt }: Props) {
           case "notice":
             return (
               <div key={i} className={`${s.card} ${s.notice} ${s[card.tone]}`}>
-                <div className={s.nTitle}>{card.title}</div>
+                <div className={s.nHead}>
+                  <ToneIcon tone={card.tone} className={s.nIcon} />
+                  <div className={s.nTitle}>{card.title}</div>
+                </div>
                 {card.body && <div className={s.nBody}>{card.body}</div>}
               </div>
             );

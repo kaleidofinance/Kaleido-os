@@ -117,6 +117,29 @@
   color: var(--k-t1);
   font-weight: var(--k-fw-med);
 }
+/* A balance row centres on the logo rather than the text baseline the stats rows
+   use: an 18px mark hung from a baseline sits low against its own symbol. */
+.rowBalance {
+  align-items: center;
+}
+/* Logo, then symbol. The identity of the row, read left to right. */
+.bSym {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* A fixed slot, so a token with a logo and one without still line their symbols
+   up. Empty when TokenIcon has no art for the symbol — the text names it either
+   way, which is the same bargain TokenIcon itself makes. */
+.bIcon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .bNote {
   color: var(--k-t3);
   font-size: var(--k-fs-xs);
@@ -132,6 +155,23 @@
 .notice {
   border-left: 2px solid var(--k-line);
   padding-left: 11px;
+}
+/* Glyph and title on one row, the glyph tinted by tone (below) and the title
+   held at reading weight. `flex-start` so a title that wraps to two lines keeps
+   the mark against its first line rather than centring on the block. */
+.nHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+.nIcon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  /* Nudged onto the title's cap line — an icon centred on the line-box floats
+     high against text this size. */
+  margin-top: 1px;
+  color: var(--k-t3);
 }
 .nTitle {
   font-size: var(--k-fs-sm);
@@ -209,6 +249,18 @@
 }
 .notice.bad {
   border-left-color: var(--k-neg);
+}
+/* The glyph carries the tone the rule does — the same three readings, so the
+   mark and the edge always agree. A neutral notice keeps the muted --k-t3 set on
+   .nIcon above: an info mark is not an alarm and should not borrow one's colour. */
+.notice.good .nIcon {
+  color: var(--k-pos);
+}
+.notice.warn .nIcon {
+  color: var(--k-alt);
+}
+.notice.bad .nIcon {
+  color: var(--k-neg);
 }
 /* The rule is toned; the words are not. A whole sentence in brand green reads as
    decoration and is harder to read than the same sentence in --k-t1. */
