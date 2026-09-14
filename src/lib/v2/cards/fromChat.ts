@@ -245,9 +245,20 @@ function validate(raw: unknown): AgentCard | null {
   }
 }
 
-export function cardsFromChat(data: unknown): AgentCard[] {
-  const chat = data as ChatResponse;
-  const raw = chat?.context?.cards;
+/**
+ * Card kinds a model may NOT emit over the wire.
+ *
+ * `steps` is a completed plan's receipt — its rows carry real transaction
+ * hashes, built locally by the page from what actually settled (see
+ * lib/v2/cards/receipt.ts). A model writing one would be inventing hashes and a
+ * result the chain never produced, dressed as a record. Every other kind is a
+ * claim the model is entitled to make, exactly as it is entitled to a sentence;
+ * this one is a forgery. Local producers emit the real receipt and keep it, which
+ * is why the ban lives on the wire, not in `validate`.
+ */
+const WIRE_FORBIDDEN: ReadonlySet<CardKind> = new Set(["steps"]);
+
+function collect(raw: unknown, opts: { allowSteps: boolean }): AgentCard[] {
   if (!Array.isArray(raw)) return [];
 
   const valid: AgentCard[] = [];
@@ -255,6 +266,18 @@ export function cardsFromChat(data: unknown): AgentCard[] {
     if (valid.length >= MAX_CARDS) {
       console.warn(
         `[cardsFromChat] dropped card beyond the ${MAX_CARDS}-card limit:`,
+        card,
+      );
+      continue;
+    }
+    const kind = (card as { kind?: unknown })?.kind;
+    if (
+      !opts.allowSteps &&
+      typeof kind === "string" &&
+      WIRE_FORBIDDEN.has(kind as CardKind)
+    ) {
+      console.warn(
+        "[cardsFromChat] dropped a card kind a model may not emit:",
         card,
       );
       continue;
@@ -267,13 +290,23 @@ export function cardsFromChat(data: unknown): AgentCard[] {
 }
 
 /**
+ * Validates cards that arrived over the wire (a model turn's `context.cards`).
+ * The `steps` receipt is forbidden here — see WIRE_FORBIDDEN.
+ */
+export function cardsFromChat(data: unknown): AgentCard[] {
+  const chat = data as ChatResponse;
+  return collect(chat?.context?.cards, { allowSteps: false });
+}
+
+/**
  * The same validation, for cards this app builds itself.
  *
- * Local emitters (the FAQ, the grammar, the planner) are trusted code, so this
- * is not a security boundary for them — it is the length and row caps, which a
- * local emitter can breach just as easily by interpolating a long token name.
- * Running everything through one gate also means the frames only ever receive
- * one shape, whoever built it.
+ * Local emitters (the FAQ, the grammar, the planner, the completion receipt) are
+ * trusted code, so this is not a security boundary for them — it is the length
+ * and row caps, which a local emitter can breach just as easily by interpolating
+ * a long token name. It allows every kind, `steps` included, because the receipt
+ * is one of these emitters. Running everything through one gate also means the
+ * frames only ever receive one shape, whoever built it.
  */
 export const localCards = (cards: AgentCard[]): AgentCard[] =>
-  cardsFromChat({ context: { cards } });
+  collect(cards, { allowSteps: true });

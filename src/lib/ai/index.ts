@@ -381,6 +381,24 @@ export function buildSystemPrompt(opts: {
     "- `label` is what the button says: under 40 characters, no trailing punctuation. `prompt` is what gets typed into the box for them, phrased as the user, under 120 characters, and it must be something you can actually act on.",
     "- Omit the block entirely when the answer is complete, when there is only one sensible next step, or when what you need is a typed value rather than a choice. Buttons under every reply are noise.",
     "",
+    /* The display-card channel. Same literal-fence discipline as the actions
+       block above, and the same gate after it: cardsFromChat validates, caps and
+       rebuilds every card, so this guidance is about USING it well, not about
+       what is allowed. The shapes are quoted because a near-miss renders nothing.
+       See src/lib/ai/actionsBlock.ts (parser) and src/lib/v2/cards/types.ts. */
+    "Showing data as a card:",
+    "- When your answer is numbers the user will scan — one figure, a few related figures, token balances, a health reading — present them as cards instead of a sentence full of digits. End the reply with this block (after any prose; an actions block, if you add one, comes after it):",
+    "```cards",
+    '[{"kind": "metric", "label": "Health factor", "value": "1.62"}]',
+    "```",
+    "- A JSON array, at most 3 cards. Every value is a STRING you have already formatted (\"1,240.55\", not 1240.55) — the frame does not format. Use only figures you actually read this turn; never invent one for a card, and never restate in a card a single number the prose already gave.",
+    "- The kinds and their shapes:",
+    '  - metric — one figure: {"kind":"metric","label","value","unit"?,"note"?}',
+    '  - stats — a label/value column: {"kind":"stats","title"?,"rows":[{"label","value","tone"?}]}. tone is "good" | "warn" | "bad" and tints the value.',
+    '  - balance — token amounts: {"kind":"balance","title"?,"rows":[{"symbol","amount","note"?}]}. The symbol draws the token logo.',
+    '  - gauge — a reading on a track: {"kind":"gauge","label","value","fraction","tone","min"?,"max"?,"note"?}. fraction is 0..1, how full to draw the bar; tone colours it; you map the number onto both (a health factor of 1.6 is roughly 0.3 and "warn").',
+    '  - notice — a statement to see first: {"kind":"notice","tone","title","body"?}. For the one caution the prose is about.',
+    "",
     "Safety:",
     "- Never propose a step that breaches the user's limits below.",
     "- Never propose anything that would push health factor toward liquidation.",
