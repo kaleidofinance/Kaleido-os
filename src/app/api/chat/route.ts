@@ -24,7 +24,7 @@ import {
   releaseModelRequest,
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
-import { splitActionsBlock } from "@/lib/ai/actionsBlock";
+import { splitCards } from "@/lib/ai/actionsBlock";
 import { logAgentTurn } from "@/lib/ai/turnLog";
 import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
@@ -333,11 +333,13 @@ export async function POST(request: NextRequest) {
        * would stream a plan nothing had checked.
        */
       const settle = async (result: AgentRun, streamed = false) => {
-        /* The offered-actions block comes off the prose first, so every use of
-           the reply below is the reader's version. Doing it here rather than at
-           each of the three concatenations means a refusal, a build note and a
-           clean answer cannot disagree about whether the block is still in. */
-        const reply = splitActionsBlock(result.text);
+        /* The model's card blocks — display cards and offered actions — come off
+           the prose first, so every use of the reply below is the reader's
+           version. Doing it here rather than at each of the three concatenations
+           means a refusal, a build note and a clean answer cannot disagree about
+           whether the blocks are still in. `reply.cards` is raw; the client's
+           cardsFromChat validates it and forbids a `steps` receipt. */
+        const reply = splitCards(result.text);
 
         /*
          * Verbs become intents here, before anything is audited.
@@ -417,9 +419,7 @@ export async function POST(request: NextRequest) {
               status: "build_error",
               provider: result.provider,
               model: result.model,
-              ...(reply.actions.length
-                ? { cards: [{ kind: "actions", actions: reply.actions }] }
-                : {}),
+              ...(reply.cards.length ? { cards: reply.cards } : {}),
               reads: result.trace,
               credits: {
                 used: quota.used,
@@ -471,17 +471,14 @@ export async function POST(request: NextRequest) {
             plan: verdict.ok ? built.plan : [],
             provider: result.provider,
             model: result.model,
-            /* The choices the answer offered, as the one card kind that can be
-               clicked. Sent unvalidated on purpose: `cardsFromChat` on the
-               client is the gate every card passes through, local or model, and
-               a second half-implementation of its caps here would be a second
-               thing to keep in step with it.
-
-               Omitted rather than sent empty, so a reply that offered nothing
-               does not carry a key implying it might have. */
-            ...(reply.actions.length
-              ? { cards: [{ kind: "actions", actions: reply.actions }] }
-              : {}),
+            /* The cards the answer carried — display cards and any offered
+               actions. Sent unvalidated on purpose: `cardsFromChat` on the client
+               is the gate every card passes through, local or model, and it is
+               where the caps, the rebuild and the `steps` ban live; a second
+               half-implementation here would be a second thing to keep in step
+               with it. Omitted rather than sent empty, so a reply that carried
+               nothing does not imply it might have. */
+            ...(reply.cards.length ? { cards: reply.cards } : {}),
             /* What the model read before answering, in the order it ran.
                Reported so the turn can show its own work: the frontend renders
                these as the thought process under the reply (traceFromChat in

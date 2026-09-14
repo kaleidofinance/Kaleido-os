@@ -260,9 +260,11 @@ console.log("\n— gauge: the one card with a number, so the number is guarded �
   check("an unknown tone falls back to neutral", wire([{ kind: "gauge", label: "x", value: "1", fraction: 0.5, tone: "evil" }])[0].tone === "neutral");
 }
 
-console.log("\n— steps: a receipt, with a closed status set —");
+console.log("\n— steps: a receipt, with a closed status set (local only) —");
 {
-  const ok = wire([
+  // steps is a LOCAL kind — a completed plan's receipt — so it is validated
+  // through localCards, not the wire (see the wire-ban section below).
+  const ok = localCards([
     {
       kind: "steps",
       title: "Done — 2 transactions confirmed",
@@ -273,7 +275,7 @@ console.log("\n— steps: a receipt, with a closed status set —");
       ],
     },
   ]);
-  check("a valid steps card survives", ok.length === 1 && ok[0].kind === "steps", JSON.stringify(ok));
+  check("a valid steps card survives locally", ok.length === 1 && ok[0].kind === "steps", JSON.stringify(ok));
   check(
     "three rows, the stray field dropped from each",
     ok[0].steps.length === 3 && !("onClick" in ok[0].steps[0]),
@@ -285,20 +287,38 @@ console.log("\n— steps: a receipt, with a closed status set —");
   // even if its enum arrived wrong.
   check(
     "an unknown status becomes done",
-    wire([{ kind: "steps", steps: [{ label: "x", status: "exploded" }] }])[0].steps[0].status === "done",
+    localCards([{ kind: "steps", steps: [{ label: "x", status: "exploded" }] }])[0].steps[0].status === "done",
   );
   // Same required-field and cap discipline as stats rows.
   check(
     "a step with no label is dropped, the rest kept",
-    wire([{ kind: "steps", steps: [{ status: "done" }, { label: "keep", status: "done" }] }])[0].steps.length === 1,
+    localCards([{ kind: "steps", steps: [{ status: "done" }, { label: "keep", status: "done" }] }])[0].steps.length === 1,
   );
-  check("no steps at all drops the card", wire([{ kind: "steps", steps: [] }]).length === 0);
+  check("no steps at all drops the card", localCards([{ kind: "steps", steps: [] }]).length === 0);
   check(
     "beyond the row cap is truncated, not a page",
-    wire([
+    localCards([
       { kind: "steps", steps: Array.from({ length: 20 }, () => ({ label: "a", status: "done" })) },
     ])[0].steps.length === 8,
   );
+}
+
+console.log("\n— a model may not forge a receipt over the wire —");
+{
+  const receipt = {
+    kind: "steps",
+    steps: [{ label: "Swap", status: "done", detail: "13.3s · 0xFAKE…hash" }],
+  };
+  // The wire gate drops it: a steps card carries real hashes and a settled
+  // result, and a model writing one is inventing them.
+  check("cardsFromChat drops a wire steps card", wire([receipt]).length === 0, JSON.stringify(wire([receipt])));
+  // Its display siblings still pass the wire — the ban is one kind, not a lockout.
+  check(
+    "a display card beside it still survives the wire",
+    wire([receipt, { kind: "metric", label: "HF", value: "1.6" }]).length === 1,
+  );
+  // Local producers keep the receipt — that is who builds the real one.
+  check("localCards keeps the steps receipt", localCards([receipt]).length === 1);
 }
 
 console.log("\n— localCards applies the same gate —");

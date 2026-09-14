@@ -11,7 +11,9 @@
  */
 import {
   ACTIONS_FENCE,
+  CARDS_FENCE,
   splitActionsBlock,
+  splitCards,
   visibleProse,
 } from "./actionsBlock.ts";
 
@@ -192,6 +194,66 @@ function main() {
       visibleProse("run `swap`") === "run `swap`",
       visibleProse("run `swap`"),
     );
+  }
+
+  const kindOf = (c: unknown) => (c as { kind?: string }).kind;
+
+  console.log("\n— the cards block: display cards from the model —");
+  {
+    const raw =
+      "Your position:\n\n" +
+      `${CARDS_FENCE}\n` +
+      '[{"kind":"metric","label":"Health factor","value":"1.62"},' +
+      '{"kind":"gauge","label":"HF","value":"1.62","fraction":0.3,"tone":"warn"}]\n' +
+      "```";
+    const r = splitCards(raw);
+    check("the prose is the answer alone", r.text === "Your position:", JSON.stringify(r.text));
+    check("no fence survives", !r.text.includes("```"), r.text);
+    check("both cards parsed as raw objects", r.cards.length === 2 && kindOf(r.cards[0]) === "metric", JSON.stringify(r.cards));
+
+    /* A cards block AND an actions block in one reply: both come out, the
+       actions wrapped as a card and appended after the display cards. */
+    const both = splitCards(
+      "Here.\n\n" +
+        `${CARDS_FENCE}\n[{"kind":"metric","label":"Net","value":"$10"}]\n\`\`\`\n\n` +
+        `${ACTIONS_FENCE}\n[{"label":"Swap","prompt":"swap 5 usdc to kld"}]\n\`\`\``,
+    );
+    check("cards then actions, prose clean", both.text === "Here." && both.cards.length === 2, JSON.stringify(both));
+    check(
+      "the last card is the wrapped actions",
+      kindOf(both.cards[1]) === "actions" &&
+        (both.cards[1] as { actions?: unknown[] }).actions?.length === 1,
+      JSON.stringify(both.cards[1]),
+    );
+
+    /* Malformed cards JSON loses the cards, keeps the prose, shows no JSON. */
+    const broken = splitCards(`You stand here.\n${CARDS_FENCE}\n[{"kind":,,]\n\`\`\``);
+    check("malformed cards keep the prose", broken.text === "You stand here." && broken.cards.length === 0, JSON.stringify(broken));
+    check("and leave no JSON on screen", !broken.text.includes("kind"), broken.text);
+
+    /* A {cards:[...]} wrapper is accepted, like the actions wrapper. */
+    const wrapped = splitCards(
+      `x\n${CARDS_FENCE}\n{"cards":[{"kind":"notice","tone":"warn","title":"Careful"}]}\n\`\`\``,
+    );
+    check("a {cards:[...]} wrapper is accepted", wrapped.cards.length === 1 && kindOf(wrapped.cards[0]) === "notice", JSON.stringify(wrapped.cards));
+
+    const plain = splitCards("You have $0 here.");
+    check("no block means no cards", plain.text === "You have $0 here." && plain.cards.length === 0);
+  }
+
+  console.log("\n— the live view suppresses a cards block too —");
+  {
+    const full = `Reading it.\n\n${CARDS_FENCE}\n[{"kind":"metric","label":"HF","value":"1.6"}]\n\`\`\``;
+    let leaked: string | null = null;
+    for (let i = 1; i <= full.length; i++) {
+      const shown = visibleProse(full.slice(0, i));
+      if (shown.includes("```") || shown.includes('{"kind"')) {
+        leaked = `at ${i}`;
+        break;
+      }
+    }
+    check("no prefix ever shows the cards block", leaked === null, leaked ?? "");
+    check("the answer shows in full", visibleProse(full) === "Reading it.", JSON.stringify(visibleProse(full)));
   }
 }
 
