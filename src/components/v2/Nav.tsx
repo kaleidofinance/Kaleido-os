@@ -10,7 +10,7 @@ import { useNotifications } from "@/context/NotificationsContext";
 import { getChainMeta } from "@/constants/chains";
 import { client } from "@/config/client";
 import { envVars } from "@/constants/envVars";
-import { WALLETS } from "@/config/wallets";
+import { WALLETS, APP_METADATA } from "@/config/wallets";
 import ChainIcon from "./ChainIcon";
 import Chevron from "./Chevron";
 import LinkX from "./LinkX";
@@ -356,7 +356,7 @@ export default function Nav() {
 
   const openConnect = async () => {
     try {
-      await connect({ client, wallets: WALLETS, size: "compact" });
+      await connect({ client, wallets: WALLETS, size: "compact", appMetadata: APP_METADATA });
     } catch {
       /* Closing the modal rejects, and so does a wallet declining. Neither is
          worth a toast — the user did it on purpose. The one case worth naming

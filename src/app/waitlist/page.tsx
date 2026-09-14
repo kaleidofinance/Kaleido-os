@@ -10,7 +10,7 @@ import {
 import { defineChain } from "thirdweb/chains";
 
 import { client } from "@/config/client";
-import { WALLETS } from "@/config/wallets";
+import { WALLETS, APP_METADATA } from "@/config/wallets";
 import s from "./waitlist.module.css";
 
 /**
@@ -134,9 +134,13 @@ export default function WaitlistPage() {
 
   const onConnect = useCallback(async () => {
     try {
-      await connect({ client, wallets: WALLETS });
-    } catch {
-      /* user closed the modal */
+      await connect({ client, wallets: WALLETS, appMetadata: APP_METADATA });
+    } catch (e) {
+      /* A user closing the modal also rejects here, so this isn't necessarily
+         an error — but a WalletConnect init failure lands here too and used to
+         be invisible (tap a wallet on mobile and nothing happens, no QR). Log
+         it so it can be read via remote debugging instead of swallowed. */
+      console.error("[waitlist] wallet connect:", e);
     }
   }, [connect]);
 

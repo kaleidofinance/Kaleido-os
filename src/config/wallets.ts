@@ -22,3 +22,20 @@ export const WALLETS = [
   createWallet("walletConnect"),
   // TEMPORARILY PULLED 2026-09-14 — thirdweb's embedded/social wallet service is down (paid plan not provisioned yet). Its connect modal features Social Login at the TOP regardless of array order, so leaving it in put a broken button first in front of every visitor. Re-add this call AND `inAppWallet` to the import above once thirdweb restores the plan: inAppWallet({ auth: { options: ["google", "email", "passkey"] } }),
 ];
+
+/**
+ * The app identity handed to WalletConnect when connecting an external wallet.
+ *
+ * WalletConnect needs dapp metadata to open a pairing session. Without it the
+ * session can fail to initialise — and because both connect() call sites catch
+ * and swallow the rejection, that surfaced on mobile as "tap MetaMask/Rainbow
+ * and nothing happens: no app, no QR." `name` and `url` are load-bearing; the
+ * logo is what the wallet shows on the approval screen. Passed to the connect
+ * modal, which propagates it to every wallet including the WC deep link.
+ */
+export const APP_METADATA = {
+  name: "Kaleido",
+  url: "https://kaleidofi.xyz",
+  description: "Agentic DeFi on Arc",
+  logoUrl: "https://kaleidofi.xyz/icon-192.png",
+};
