@@ -2,6 +2,23 @@
   max-width: 720px;
   margin: 0 auto;
   padding: 72px var(--k-s5) 96px;
+  position: relative;
+  isolation: isolate;
+}
+/* Immersive arena background: the page commits to a dark treatment in both
+   themes (it is a launch page), so on-arena text is forced light below and the
+   glass card supplies its own surface. Fixed so it stays put on scroll. */
+.page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(180deg, rgba(11, 20, 17, 0.72), rgba(11, 20, 17, 0.9)),
+    url("/waitlist-colosseum.webp");
+  background-size: cover;
+  background-position: center;
 }
 
 .head {
@@ -10,7 +27,7 @@
 }
 .eyebrow {
   margin: 0 0 var(--k-s3);
-  color: var(--k-t3);
+  color: #b6a179;
   font-size: var(--k-fs-xs);
   font-weight: var(--k-fw-med);
   text-transform: uppercase;
@@ -20,11 +37,12 @@
   margin: 0;
   font-size: var(--k-fs-hero);
   line-height: 1.08;
+  color: #f4ece0;
 }
 .lede {
   margin: var(--k-s4) auto 0;
   max-width: 52ch;
-  color: var(--k-t2);
+  color: rgba(244, 236, 224, 0.82);
   font-size: var(--k-fs-lg);
   line-height: 1.55;
 }
@@ -135,6 +153,7 @@
 .boardHead {
   margin: 0 0 var(--k-s4);
   font-size: var(--k-fs-lg);
+  color: #f4ece0;
 }
 .list {
   list-style: none;
@@ -147,19 +166,19 @@
   align-items: center;
   gap: var(--k-s4);
   padding: var(--k-s3) var(--k-s2);
-  border-top: 1px solid var(--k-line);
+  border-top: 1px solid rgba(244, 236, 224, 0.12);
 }
 .row:first-child {
   border-top: 0;
 }
 .rank {
   composes: tabular from global;
-  color: var(--k-t3);
+  color: rgba(244, 236, 224, 0.5);
   font-size: var(--k-fs-sm);
 }
 .addr {
   composes: tabular from global;
-  color: var(--k-t1);
+  color: #f4ece0;
   font-size: var(--k-fs-sm);
 }
 .count {
