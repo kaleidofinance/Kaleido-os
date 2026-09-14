@@ -1,7 +1,6 @@
 // Standalone liquidity-partner deck served at /lpdeck.
 // A route handler (not a page) so it bypasses the marketing layout and
-// theme entirely and renders as its own self-contained document - the
-// same markup published as the Claude artifact, now on our own domain.
+// theme entirely and renders as its own self-contained document.
 export const dynamic = "force-static";
 
 const HTML = `<!doctype html>
@@ -50,7 +49,6 @@ const HTML = `<!doctype html>
   strong{color:var(--t1); font-weight:600}
   .sand{color:var(--sand)}
 
-  /* cover */
   .cover{padding-block:96px 84px}
   .brand{display:flex; align-items:center; gap:10px; font-family:var(--serif);
     font-size:1.35rem; font-weight:600; letter-spacing:-.01em; margin-bottom:56px}
@@ -58,7 +56,7 @@ const HTML = `<!doctype html>
   .glyph{width:26px;height:26px;border-radius:7px;
     background:linear-gradient(135deg,var(--sand),var(--green)); flex:none}
   .cover h1{margin-bottom:22px}
-  .cover .lead{max-width:40ch}
+  .cover .lead{max-width:46ch}
   .chips{display:flex; flex-wrap:wrap; gap:10px; margin-top:40px}
   .chip{display:inline-flex; align-items:center; gap:8px; font-family:var(--mono);
     font-size:12.5px; letter-spacing:.02em; color:var(--t1);
@@ -66,7 +64,6 @@ const HTML = `<!doctype html>
   .dot{width:7px;height:7px;border-radius:50%;background:var(--green);
     box-shadow:0 0 9px var(--green); flex:none}
 
-  /* generic grids */
   .grid{display:grid; gap:16px; margin-top:36px}
   .g2{grid-template-columns:repeat(2,1fr)}
   .g3{grid-template-columns:repeat(3,1fr)}
@@ -76,13 +73,11 @@ const HTML = `<!doctype html>
   .card p{font-size:.94rem}
   .num{font-family:var(--mono); font-size:12px; color:var(--sand-dim); letter-spacing:.1em}
 
-  /* stack row */
   .stack{display:flex; flex-wrap:wrap; gap:10px; margin-top:32px}
   .pill{font-family:var(--mono); font-size:13px; color:var(--t1);
     padding:9px 14px; border:1px solid var(--line2); border-radius:8px; background:var(--panel2)}
   .pill b{color:var(--sand); font-weight:500}
 
-  /* pair tables */
   .chaincol{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:24px}
   .chaincol .head{display:flex; align-items:baseline; justify-content:space-between; gap:12px;
     padding-bottom:14px; margin-bottom:8px; border-bottom:1px solid var(--line)}
@@ -93,9 +88,8 @@ const HTML = `<!doctype html>
   tr:last-child td{border-bottom:0}
   td.q{color:var(--t2); text-align:right; white-space:nowrap}
   .quote{color:var(--sand)}
-  .foot-note{font-family:var(--mono); font-size:11.5px; color:var(--t3); margin-top:14px}
+  .foot-note{font-family:var(--mono); font-size:11.5px; color:var(--t3); margin-top:14px; line-height:1.5}
 
-  /* get list */
   .gets{list-style:none; padding:0; margin:36px 0 0; display:grid; gap:2px}
   .gets li{display:grid; grid-template-columns:180px 1fr; gap:20px;
     padding:18px 0; border-top:1px solid var(--line); align-items:baseline}
@@ -104,7 +98,6 @@ const HTML = `<!doctype html>
   .gets .v{color:var(--t2); font-size:.96rem}
   @media(max-width:600px){.gets li{grid-template-columns:1fr; gap:4px}}
 
-  /* cta */
   .cta{background:var(--panel2); border:1px solid var(--line2); border-radius:18px;
     padding:44px; text-align:center; margin-top:8px}
   .cta h2{margin-bottom:14px}
@@ -115,11 +108,11 @@ const HTML = `<!doctype html>
   .btn.primary{background:var(--sand); color:#17130c}
   .btn.ghost{border:1px solid var(--line2); color:var(--t1)}
 
-  footer{border-top:1px solid var(--line); padding-block:32px; color:var(--t3);
+  footer{border-top:1px solid var(--line); padding-block:32px}
+  .footrow{max-width:var(--wrap); margin:0 auto; padding-inline:24px; color:var(--t3);
     font-family:var(--mono); font-size:12px; display:flex; flex-wrap:wrap; gap:8px 24px; justify-content:space-between}
-  footer a{color:var(--sand-dim); text-decoration:none}
   a:focus-visible,.btn:focus-visible{outline:2px solid var(--sand); outline-offset:3px}
-  @media(prefers-reduced-motion:no-preference){.card,.btn{transition:border-color .18s ease, transform .18s ease}}
+  @media(prefers-reduced-motion:no-preference){.card,.btn{transition:border-color .18s ease}}
   .card:hover{border-color:var(--line2)}
 </style>
 </head>
@@ -129,11 +122,11 @@ const HTML = `<!doctype html>
   <div class="wrap">
     <div class="brand"><span class="glyph"></span>Kaleido<b>fi</b></div>
     <p class="eyebrow">Liquidity partnership · 2026</p>
-    <h1>We bring the users and the flow.<br>Partner with us for the depth.</h1>
-    <p class="lead">Kaleido is an agentic DeFi operating system going live on new mainnets — with a DEX that needs blue-chip depth from day one, and an agent that routes real volume into it.</p>
+    <h1>We bring the users and the flow. Partner with us for the depth.</h1>
+    <p class="lead">Kaleido is an agentic DeFi operating system launching across new mainnets, starting with Arc on day one. The DEX needs blue-chip depth from the first block, and our agent routes real volume straight into it.</p>
     <div class="chips">
-      <span class="chip"><span class="dot"></span>Live on Robinhood Chain</span>
-      <span class="chip">Arc — live Day&nbsp;1, Sep&nbsp;16</span>
+      <span class="chip"><span class="dot"></span>Arc: live day one, Sep 16</span>
+      <span class="chip">Robinhood Chain: agentic layer</span>
       <span class="chip">Full stack across 5 testnets</span>
     </div>
   </div>
@@ -142,11 +135,11 @@ const HTML = `<!doctype html>
 <section>
   <div class="wrap">
     <p class="eyebrow">Why now</p>
-    <h2>New mainnets, near-zero incumbent liquidity.</h2>
+    <h2>The window is the launch itself.</h2>
     <div class="grid g3">
-      <div class="card"><span class="num">01</span><h3>First-mover economics</h3><p>Robinhood Chain and Arc launch with almost no on-chain depth. Early LPs set the price of entry and capture fees before the crowd arrives.</p></div>
-      <div class="card"><span class="num">02</span><h3>Real flow, day one</h3><p>Kaleido isn't a testnet toy — the full stack (DEX, lending, liquidity, staking, a native stablecoin) is live at genesis, so swaps land in these pools from the first block.</p></div>
-      <div class="card"><span class="num">03</span><h3>An agent that routes to depth</h3><p>Luca, our agent, executes user intent in plain English and routes each swap to the pool with the best depth — your liquidity gets the volume.</p></div>
+      <div class="card"><span class="num">01</span><h3>First-mover on Arc</h3><p>Arc opens Sep 16 with no incumbent AMM depth. The earliest LPs set the entry price and capture fees before the crowd, right as Uniswap arrives on the same day.</p></div>
+      <div class="card"><span class="num">02</span><h3>Real flow, day one</h3><p>Kaleido ships the full stack at genesis: DEX, lending, liquidity, staking, and a native stablecoin. Swaps land in these pools immediately, not after a growth phase.</p></div>
+      <div class="card"><span class="num">03</span><h3>An agent that routes to depth</h3><p>Luca executes user intent in plain English and sends each swap to the deepest pool. The depth you provide is the depth that earns.</p></div>
     </div>
   </div>
 </section>
@@ -155,7 +148,7 @@ const HTML = `<!doctype html>
   <div class="wrap">
     <p class="eyebrow">What Kaleido is</p>
     <h2>An operating system for onchain finance, driven by one agent.</h2>
-    <p class="lead" style="margin-top:20px">You say what you want; Luca prices it, plans it, and you sign it. Non-custodial throughout, and open source — contracts, interface and agent in one public repository.</p>
+    <p class="lead" style="margin-top:20px">You say what you want; Luca prices it, plans it, and hands it back for you to sign. Non-custodial throughout, and open source: contracts, interface and agent in one public repository.</p>
     <div class="stack">
       <span class="pill"><b>Agent Trade</b></span>
       <span class="pill"><b>V3 DEX</b></span>
@@ -171,40 +164,41 @@ const HTML = `<!doctype html>
   <div class="wrap">
     <p class="eyebrow">The ask</p>
     <h2>Seed blue-chip depth in the core pairs.</h2>
-    <p style="margin-top:18px">We're bootstrapping the DEX's core-pair liquidity ahead of a raise. Each chain's pairs use that chain's own canonical assets — the depth has to be where the flow is.</p>
+    <p style="margin-top:18px">We are bootstrapping the DEX's core-pair liquidity ahead of a raise. Each chain's pairs use that chain's own canonical assets, because the depth has to be where the flow is.</p>
     <div class="grid g2">
       <div class="chaincol">
-        <div class="head"><h3>Robinhood Chain</h3><span class="when">chain 4663 · live</span></div>
-        <table>
-          <tr><td>WETH</td><td class="q"><span class="quote">USDG</span></td></tr>
-          <tr><td>ETH</td><td class="q"><span class="quote">USDG</span></td></tr>
-          <tr><td>Bridged BTC</td><td class="q"><span class="quote">USDG</span></td></tr>
-        </table>
-        <p class="foot-note">Quote assets are WETH (0x0bd7…) and USDG, the Global Dollar (0x5fc5…, 6dp) — the canonical pair on Robinhood, not USDC. Bridged-BTC asset to be confirmed.</p>
-      </div>
-      <div class="chaincol">
-        <div class="head"><h3>Arc</h3><span class="when">live Day 1 · Sep 16</span></div>
+        <div class="head"><h3>Arc</h3><span class="when">greenfield · Sep 16</span></div>
         <table>
           <tr><td>ETH</td><td class="q"><span class="quote">USDC</span></td></tr>
           <tr><td>Bridged BTC</td><td class="q"><span class="quote">USDC</span></td></tr>
-          <tr><td>WUSDC</td><td class="q"><span class="quote">USDC</span></td></tr>
+          <tr><td>Stable (EURC / USDG)</td><td class="q"><span class="quote">USDC</span></td></tr>
         </table>
-        <p class="foot-note">Arc is USDC-native (USDC is the gas token, 18dp); WUSDC (0x911b…) is what pools hold. USDC pairs are the natural core here.</p>
+        <p class="foot-note">Arc is USDC-native (USDC is the gas token). No incumbent depth at launch, so these are the first-mover pairs. Priority chain.</p>
+      </div>
+      <div class="chaincol">
+        <div class="head"><h3>Robinhood Chain</h3><span class="when">established</span></div>
+        <table>
+          <tr><td>WETH</td><td class="q"><span class="quote">USDG</span></td></tr>
+          <tr><td>Equity tokens (AAPL, TSLA, NVDA)</td><td class="q"><span class="quote">USDG</span></td></tr>
+          <tr><td>Bridged BTC</td><td class="q"><span class="quote">USDG</span></td></tr>
+        </table>
+        <p class="foot-note">USDG (Global Dollar) is the chain's stable and WETH/USDG is already deep on incumbents. Our depth targets what the agent needs to route, including Robinhood-native equity tokens, not a head-on fight for WETH/USDG.</p>
       </div>
     </div>
+    <p class="foot-note" style="margin-top:18px">Indicative sizing: roughly $250k to $500k per anchor pair and $50k to $150k per secondary pair, in concentrated V3 ranges. Scales from a single pair to a full chain; we size to your book.</p>
   </div>
 </section>
 
 <section>
   <div class="wrap">
     <p class="eyebrow">What partners get</p>
-    <h2>Aligned upside, not a fee we can't yet pay.</h2>
+    <h2>Aligned upside, not a fee we cannot yet pay.</h2>
     <ul class="gets">
-      <li><span class="k">Token allocation</span><span class="v">A KLD allocation on a loan / call-option basis at TGE (late September) — the standard early-stage structure, aligned to the pairs you seed.</span></li>
-      <li><span class="k">LP incentives</span><span class="v">KLD emissions plus our live points &amp; leaderboard program directed at the core pairs, on top of native trading fees.</span></li>
-      <li><span class="k">Agent-routed volume</span><span class="v">Luca routes user swaps to the deepest pool — depth you provide is depth that earns.</span></li>
-      <li><span class="k">Co-marketing</span><span class="v">Named partner in the Day-1 launch across both chains, with the chains' own ecosystem teams co-promoting.</span></li>
-      <li><span class="k">First-mover fees</span><span class="v">Fee capture on chains with no incumbent AMM depth, at the entry price you set.</span></li>
+      <li><span class="k">Token allocation</span><span class="v">A KLD allocation on a loan or call-option basis at TGE (late September), aligned to the pairs you seed.</span></li>
+      <li><span class="k">LP incentives</span><span class="v">KLD emissions plus our live points and leaderboard program directed at the core pairs, on top of native trading fees.</span></li>
+      <li><span class="k">Agent-routed volume</span><span class="v">Luca routes user swaps to the deepest pool. Depth you provide is depth that earns.</span></li>
+      <li><span class="k">Co-marketing</span><span class="v">Named partner in the launch across both chains, with the chains' own ecosystem teams co-promoting.</span></li>
+      <li><span class="k">First-mover fees</span><span class="v">On Arc, fee capture on a chain with no incumbent AMM depth, at the entry price you set.</span></li>
     </ul>
   </div>
 </section>
@@ -214,10 +208,10 @@ const HTML = `<!doctype html>
     <p class="eyebrow">Ways to engage</p>
     <h2>Pick the structure that fits your book.</h2>
     <div class="grid g2">
-      <div class="card"><h3 class="sand">Liquidity mining</h3><p>Bring blue-chip pairs, earn KLD emissions + points + fees. Fastest to stand up; no principal from us.</p></div>
+      <div class="card"><h3 class="sand">Liquidity mining</h3><p>Bring blue-chip pairs, earn KLD emissions, points and fees. Fastest to stand up; no principal from us.</p></div>
       <div class="card"><h3 class="sand">Token loan + option</h3><p>For market makers: we lend KLD against two-sided depth in the core pairs; you hold a call option. Activated at TGE.</p></div>
-      <div class="card"><h3 class="sand">Managed V3 (LaaS)</h3><p>Run concentrated positions on our V3 pools — Arrakis / Gamma-style — so a smaller balance goes further. Fee or token terms.</p></div>
-      <div class="card"><h3 class="sand">Chain co-incentive</h3><p>We're securing matched incentives from the Robinhood and Arc ecosystem funds — your rewards on these pairs can be doubled.</p></div>
+      <div class="card"><h3 class="sand">Managed V3 (LaaS)</h3><p>Run concentrated positions on our V3 pools (Arrakis or Gamma style) so a smaller balance goes further. Fee or token terms.</p></div>
+      <div class="card"><h3 class="sand">Chain co-incentive</h3><p>We are securing matched incentives from the Arc and Robinhood ecosystem funds, so your rewards on these pairs can be doubled.</p></div>
     </div>
   </div>
 </section>
@@ -226,8 +220,8 @@ const HTML = `<!doctype html>
   <div class="wrap">
     <div class="cta">
       <p class="eyebrow" style="margin-bottom:14px">Let's talk</p>
-      <h2>Depth on the 14th, and again on the 16th.</h2>
-      <p>Robinhood is live now and Arc is Day 1 on Sep 16 — the earliest liquidity captures the launch. Twenty minutes to scope pairs, size and structure?</p>
+      <h2>Depth on Arc for Sep 16.</h2>
+      <p>Arc goes live day one on Sep 16, and the earliest liquidity captures the launch. Twenty minutes to scope pairs, size and structure?</p>
       <div class="actions">
         <a class="btn primary" href="mailto:official@kaleidofi.xyz">official@kaleidofi.xyz</a>
         <a class="btn ghost" href="https://kaleidofi.xyz">kaleidofi.xyz</a>
@@ -237,7 +231,7 @@ const HTML = `<!doctype html>
 </section>
 
 <footer>
-  <div class="wrap" style="display:flex; flex-wrap:wrap; gap:8px 24px; justify-content:space-between; width:100%; padding:0 24px; margin:0 auto; max-width:var(--wrap)">
+  <div class="footrow">
     <span>Kaleido · agentic DeFi OS</span>
     <span>Prepared for prospective liquidity partners. Figures are targets, not historical performance.</span>
   </div>
