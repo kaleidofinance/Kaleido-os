@@ -1,3 +1,5 @@
+import { randomInt } from "node:crypto";
+
 import { verifyMessage } from "ethers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
@@ -23,6 +25,21 @@ const X_TASK = 100; // kPoint per X task (link, follow, retweet)
 // X-task kPoint is held this long before it counts toward the balance — a nudge
 // to actually do the task, since the tasks are attested, not API-verified.
 const X_HOLD_MS = 24 * 60 * 60 * 1000;
+
+// Referral codes: 8 chars from a lowercase, unambiguous base32 alphabet (no
+// 0/1/l/o) — short, case-insensitively shareable, and stored lowercase to match
+// the lookup below. Deliberately NOT the wallet: a referral link is shared
+// publicly, so a random slug keeps the sharer's address out of it. (#189 had
+// briefly used the wallet as the code; this restores generated codes, which the
+// X-first flow also needs since an X-only user has no wallet to use as an id.)
+// 32^8 ≈ 1e12, so the rare collision is caught by the insert retry, not avoided
+// by length alone.
+const REF_ALPHABET = "23456789abcdefghijkmnpqrstuvwxyz";
+const genRefCode = (len = 8): string => {
+  let out = "";
+  for (let i = 0; i < len; i++) out += REF_ALPHABET[randomInt(REF_ALPHABET.length)];
+  return out;
+};
 
 /** The exact string the client signs. Rebuilt here from the posted address. */
 const joinMessage = (address: string) =>
@@ -152,10 +169,11 @@ export async function POST(req: Request) {
   const existing = await standing(wallet);
   if (existing) return Response.json({ ...existing, new: false });
 
-  // Resolve the referrer. `ref` is the referrer's id — their wallet on new links,
-  // or an old generated code on links shared before the switch; both are stored as
-  // ref_code. Lowercased so a wallet ref matches the stored (lowercased) value.
-  // Must exist and not be this wallet.
+  // Resolve the referrer. `ref` is the referrer's ref_code — a generated slug on
+  // current links, or a wallet on links shared during the brief #189 window when
+  // the wallet was the code; both are stored as ref_code and resolve here.
+  // Lowercased so either form matches the stored (lowercased) value. Must exist
+  // and not be this wallet.
   let referredBy: string | null = null;
   if (typeof ref === "string" && ref.trim().length > 0) {
     const { data: r } = await admin
@@ -166,19 +184,26 @@ export async function POST(req: Request) {
     if (r && r.wallet !== wallet) referredBy = r.ref_code as string;
   }
 
-  // The wallet IS the referral id: ref_code = wallet. It's unique like the PK, so
-  // there is no code-collision to retry; only a concurrent same-wallet insert
-  // (23505 on the wallet PK) needs handling.
-  const { error: insErr } = await admin
-    .from("waitlist")
-    .insert({ wallet, ref_code: wallet, referred_by: referredBy });
-  if (insErr) {
-    if (insErr.code === "23505") {
-      const s = await standing(wallet);
-      if (s) return Response.json({ ...s, new: false });
+  // Insert with a freshly minted code. A 23505 is either a slug collision (remint
+  // and retry) or a concurrent same-wallet insert (the wallet PK) — in the latter
+  // the wallet now exists, so return its standing. The existence check up top makes
+  // the wallet race rare; the slug retry makes a code collision a non-event.
+  let insertedOk = false;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { error: insErr } = await admin
+      .from("waitlist")
+      .insert({ wallet, ref_code: genRefCode(), referred_by: referredBy });
+    if (!insErr) {
+      insertedOk = true;
+      break;
     }
-    return Response.json({ error: "insert failed" }, { status: 500 });
+    if (insErr.code !== "23505")
+      return Response.json({ error: "insert failed" }, { status: 500 });
+    const raced = await standing(wallet);
+    if (raced) return Response.json({ ...raced, new: false });
   }
+  if (!insertedOk)
+    return Response.json({ error: "insert failed" }, { status: 500 });
 
   const s = await standing(wallet);
   return Response.json({ ...(s ?? { wallet }), new: true });
