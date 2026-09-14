@@ -1459,6 +1459,11 @@ export default function AgentPage() {
                  a plan IS on screen under it, the user is signing this one
                  themselves and has asked not to be stopped between steps. */
               stepMode={settings.stepMode === "manual" ? "manual" : "auto"}
+              /* Pin to the chain the plan was built for: a model plan is prepared
+                 for the connected chain and read for the first time here, so a
+                 wallet that switches networks before signing would sign the wrong
+                 chain's addresses. */
+              pinChain
               onComplete={onComplete}
               onCancel={() => setPanel({ kind: "idle" })}
             />
