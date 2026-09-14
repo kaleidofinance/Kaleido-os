@@ -109,6 +109,7 @@ const HTML = `<!doctype html>
   .gets li:first-child{border-top:0}
   .gets .k{font-family:var(--mono); font-size:12.5px; letter-spacing:.04em; color:var(--sand)}
   .gets .v{color:var(--t2); font-size:.96rem}
+  .gets .eg{display:block; margin-top:8px; color:var(--sand-dim); font-family:var(--mono); font-size:11.5px; line-height:1.5}
   @media(max-width:600px){.gets li{grid-template-columns:1fr; gap:4px}}
 
   .cta{background:var(--panel2); border:1px solid var(--line2); border-radius:18px;
@@ -209,11 +210,11 @@ const HTML = `<!doctype html>
     <p class="eyebrow">What partners get</p>
     <h2>Aligned upside, not a fee we cannot yet pay.</h2>
     <ul class="gets">
-      <li><span class="k">Token allocation</span><span class="v">A KLD allocation on a loan or call-option basis at TGE (late September), aligned to the pairs you seed.</span></li>
-      <li><span class="k">LP incentives</span><span class="v">KLD emissions plus our live points and leaderboard program directed at the core pairs, on top of native trading fees.</span></li>
-      <li><span class="k">Agent-routed volume</span><span class="v">Luca routes user swaps to the deepest pool. Depth you provide is depth that earns.</span></li>
-      <li><span class="k">Co-marketing</span><span class="v">Named partner in the launch across both chains, with the chains' own ecosystem teams co-promoting.</span></li>
-      <li><span class="k">First-mover fees</span><span class="v">On Arc, fee capture on a chain with no incumbent AMM depth, at the entry price you set.</span></li>
+      <li><span class="k">Token allocation</span><span class="v">A KLD allocation on a loan or call-option basis at TGE (late September), aligned to the pairs you seed.<span class="eg">e.g. a KLD call option on tokens worth ~10-20% of the liquidity you seed, struck at the TGE price.</span></span></li>
+      <li><span class="k">LP incentives</span><span class="v">KLD emissions plus our live points and leaderboard program directed at the core pairs, on top of native trading fees.<span class="eg">e.g. +15-30% APR from emissions and points on a core pair, on top of ~0.3% swap fees.</span></span></li>
+      <li><span class="k">Agent-routed volume</span><span class="v">Luca routes user swaps to the deepest pool. Depth you provide is depth that earns.<span class="eg">e.g. first call on every agent swap in your pair, ahead of Uniswap routing.</span></span></li>
+      <li><span class="k">Co-marketing</span><span class="v">Named partner in the launch across both chains, with the chains' own ecosystem teams co-promoting.<span class="eg">e.g. named liquidity partner in the Arc day-one launch, a joint post, and a slot on kaleidofi.xyz.</span></span></li>
+      <li><span class="k">First-mover fees</span><span class="v">On Arc, fee capture on a chain with no incumbent AMM depth, at the entry price you set.<span class="eg">e.g. sole meaningful depth on cirBTC/USDC at genesis earns the full fee on early Arc volume.</span></span></li>
     </ul>
   </div>
 </section>
