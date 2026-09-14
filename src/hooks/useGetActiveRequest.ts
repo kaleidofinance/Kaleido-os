@@ -1,7 +1,7 @@
 "use client";
 
 import { getKaleidoContract } from "@/config/contracts";
-import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { Request } from "@/constants/types";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 
@@ -12,15 +12,21 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 const useGetActiveRequest = () => {
   const [activeReq, setActiveReq] = useState<Request[] | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const { address } = useWalletV2();
+  const { address, chainId } = useWalletV2();
+  /* The WALLET's chain, not a pinned read chain — a loan is written on the
+     chain the wallet is on, so its read has to follow the wallet the way the
+     write does. Pinning to READ_ONLY_CHAIN_ID showed "0 loans" to anyone whose
+     loans were on any other chain (e.g. Base Sepolia), while the portfolio,
+     which sweeps every chain, showed them — the mismatch a tester reported.
+     Falls back to the read chain only when walletless. */
+  const readChain = chainId ?? READ_ONLY_CHAIN_ID;
 
   useEffect(() => {
     const fetchUserStatus = async () => {
       try {
-        const contract = getKaleidoContract(
-          readOnlyProvider,
-          READ_ONLY_CHAIN_ID,
-        );
+        const provider = providerForChain(readChain);
+        if (!provider) return;
+        const contract = getKaleidoContract(provider, readChain);
         const res = await contract.getUserActiveRequests(address);
 
         // console.log("RESPONSE", res);
@@ -44,13 +50,13 @@ const useGetActiveRequest = () => {
           interest: Number(req[4]), // from index 4
           totalRepayment: ethers.formatUnits(
             req[5],
-            // READ_ONLY_CHAIN_ID, not the wallet chain: `res` came from the
-            // diamond on the read chain two lines up, so req[8] is a read-chain
-            // token address and only the read chain can say what it is. It also
-            // has to match useBorrowV2, which parseUnits() this same string back
-            // into base units to build the repay transaction — if the two chose
-            // different decimals the round trip would silently scale the amount.
-            getTokenDecimals(READ_ONLY_CHAIN_ID, req[8]),
+            // `readChain`, the wallet's chain: `res` came from the diamond on
+            // that chain, so req[8] is a token address on it and only it can say
+            // what the token is. useBorrowV2 parseUnits() this same string back
+            // into base units for the repay, reading decimals on the SAME wallet
+            // chain — the two must agree or the round trip rescales the amount
+            // (Arc's USDC is 18-dec where every other chain's is 6).
+            getTokenDecimals(readChain, req[8]),
           ), // from index 5
           returnDate: Number(req[6]), // from index 6
           lender: req[7], // from index 7
@@ -67,7 +73,7 @@ const useGetActiveRequest = () => {
     if (address) {
       fetchUserStatus();
     }
-  }, [address, refreshNonce]);
+  }, [address, readChain, refreshNonce]);
 
   // Function to parse status from the contract's Status enum
   const parseStatus = (status: number): string => {

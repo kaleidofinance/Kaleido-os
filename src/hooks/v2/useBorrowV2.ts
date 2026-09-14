@@ -216,13 +216,15 @@ export const useBorrowV2 = (formChainId?: number): BorrowV2 => {
 
   const loans: ActiveLoan[] = useMemo(() => {
     const now = Math.floor(Date.now() / 1000);
+    /* The wallet's chain — the same one useGetActiveRequest now reads and
+       formats on. Both must agree: the parseUnits below is the inverse of that
+       hook's formatUnits, and a mismatched decimals would rescale the repay
+       amount (Arc's USDC is 18-dec where every other chain's is 6). */
+    const readChain = activeChain?.id ?? READ_ONLY_CHAIN_ID;
     return (activeRequests ?? [])
       .filter((r) => Number(r.totalRepayment) > 0)
       .map((r) => {
-        // Must be the same chain useGetActiveRequest used to format
-        // `r.totalRepayment` — this parseUnits is the inverse of that
-        // formatUnits, and a mismatch would rescale the repay amount.
-        const decimals = getTokenDecimals(READ_ONLY_CHAIN_ID, r.tokenAddress);
+        const decimals = getTokenDecimals(readChain, r.tokenAddress);
         let raw = "0";
         try {
           raw = ethers
@@ -246,12 +248,12 @@ export const useBorrowV2 = (formChainId?: number): BorrowV2 => {
              until the address cutover, and that table held Abstract literals —
              so after the cutover every row on every deployed chain rendered its
              currency as "—". */
-          symbol: declaredSymbol(READ_ONLY_CHAIN_ID, r.tokenAddress) ?? "—",
+          symbol: declaredSymbol(readChain, r.tokenAddress) ?? "—",
           status: r.status,
           overdue: Number(r.returnDate) > 0 && Number(r.returnDate) < now,
         };
       });
-  }, [activeRequests]);
+  }, [activeRequests, activeChain?.id]);
 
   /*
    * Deposited collateral now comes from useLendingAssets, which reads
