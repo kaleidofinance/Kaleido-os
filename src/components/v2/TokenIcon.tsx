@@ -4,6 +4,7 @@ import TokenBNB from "@web3icons/react/icons/tokens/TokenBNB";
 import TokenBTC from "@web3icons/react/icons/tokens/TokenBTC";
 import TokenDAI from "@web3icons/react/icons/tokens/TokenDAI";
 import TokenETH from "@web3icons/react/icons/tokens/TokenETH";
+import TokenEURC from "@web3icons/react/icons/tokens/TokenEURC";
 import TokenHYPE from "@web3icons/react/icons/tokens/TokenHYPE";
 import TokenPOL from "@web3icons/react/icons/tokens/TokenPOL";
 import TokenUSDC from "@web3icons/react/icons/tokens/TokenUSDC";
@@ -62,6 +63,7 @@ const ICONS: Record<string, IconComponent> = {
   BTC: TokenBTC,
   DAI: TokenDAI,
   ETH: TokenETH,
+  EURC: TokenEURC,
   HYPE: TokenHYPE,
   POL: TokenPOL,
   USDC: TokenUSDC,
@@ -87,6 +89,7 @@ const ICONS: Record<string, IconComponent> = {
  */
 const ALIASES: Record<string, string> = {
   WETH: "ETH",
+  WUSDC: "USDC",
   WBNB: "BNB",
   TBNB: "BNB",
   WPOL: "POL",
@@ -96,9 +99,11 @@ const ALIASES: Record<string, string> = {
 };
 
 /**
- * Our own tokens, drawn from files we ship.
+ * Tokens we ship as files (same-origin), never hotlinked — see the header's
+ * logoURI note. Our own KLD / kfUSD / kafUSD, plus a couple of third-party marks
+ * @web3icons has no asset for (USDG, cirBTC), sourced once and committed here.
  *
- * All three are square art on a circular subject, so one CSS rule covers them
+ * These are all square art on a circular subject, so one CSS rule covers them
  * and the map is just a path. `/kld.png` is a 300px crop of `/newklogo2.png`,
  * the mark Nav and the agent avatar already draw: that file is a 500px render
  * whose glyph sits small and off-centre, which those two work around with
@@ -115,6 +120,8 @@ const RASTER: Record<string, string> = {
   KFUSD: "/stable/kfUSD.png",
   KAFUSD: "/stable/kafUSD.png",
   KLD: "/kld.png",
+  USDG: "/tokens/usdg.png",
+  CIRBTC: "/tokens/cirbtc.png",
 };
 
 /** True when we can draw a real logo. Callers use it to skip the monogram. */
