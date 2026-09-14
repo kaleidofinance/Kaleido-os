@@ -147,6 +147,19 @@
   line-height: 1.55;
 }
 
+/* The card is a translucent white panel over the dark arena, so its effective
+   background is darker and muddier than a solid light page. --k-t3, the most
+   muted token, was tuned for a solid light surface and washes out here (the
+   uppercase labels, the task meta and the pending note all read as barely-there
+   grey in light mode). Step them up one tier to --k-t2 in light mode only; dark
+   mode already has enough contrast and is left untouched. */
+:global(:root[data-theme="light"]) .pLabel,
+:global(:root[data-theme="light"]) .refLabel,
+:global(:root[data-theme="light"]) .taskMeta,
+:global(:root[data-theme="light"]) .note {
+  color: var(--k-t2);
+}
+
 .board {
   margin-top: var(--k-s7);
 }
