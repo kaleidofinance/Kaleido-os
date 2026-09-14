@@ -1052,6 +1052,91 @@ console.log("\n— pool: collect fees, remove position —");
   );
 }
 
+console.log("\n— remove a share, not always all of it —");
+{
+  /* The bug this section pins: "remove 50%" used to parse the 50 (as if it were
+     an interest rate) and then drop it, so a half-remove signed away the whole
+     position. A share is now carried, or the sentence escalates — it is never
+     silently rounded up to all. */
+  const half = p("remove 50% of position 7");
+  check(
+    "a percentage is carried, not dropped",
+    half.status === "ok" &&
+      half.command.kind === "removePosition" &&
+      half.command.percent === 50 &&
+      half.command.positionId === 7,
+    half.status === "ok" ? String(half.command.percent) : half.status,
+  );
+  const worded = p("remove 25 percent of position 7");
+  check(
+    "'N percent' reads the same as 'N%'",
+    worded.status === "ok" && worded.command.percent === 25,
+    worded.status === "ok" ? String(worded.command.percent) : worded.status,
+  );
+  const bare = p("remove position 7");
+  check(
+    "a bare remove still means all of it (no percent carried)",
+    bare.status === "ok" &&
+      bare.command.kind === "removePosition" &&
+      bare.command.percent === undefined,
+    bare.status === "ok" ? String(bare.command.percent) : bare.status,
+  );
+  const hundred = p("remove 100% of position 7");
+  check(
+    "'100%' is all of it, carried as no percent",
+    hundred.status === "ok" && hundred.command.percent === undefined,
+    hundred.status === "ok" ? String(hundred.command.percent) : hundred.status,
+  );
+
+  /* A share asked for as a WORD is a real signal but not a number this grammar
+     will invent — it escalates rather than guessing 50 for "half", and never
+     falls back to all. */
+  check(
+    "'remove half' escalates rather than removing everything",
+    p("remove half of position 7").status === "unknown",
+    p("remove half of position 7").status,
+  );
+  check(
+    "a nonsense share escalates rather than rounding to all",
+    p("remove 0% of position 7").status === "unknown",
+    p("remove 0% of position 7").status,
+  );
+  check(
+    "'150%' is not a share, so it just means all of it",
+    (() => {
+      const r = p("remove 150% of position 7");
+      return r.status === "ok" && r.command.percent === undefined;
+    })(),
+  );
+
+  /* A partial share with no position id can't be held through the "which
+     position?" prompt — the answer would drop the share and remove all — so it
+     goes to the model, which can find the position and honour the share. */
+  check(
+    "a partial share with no position id escalates, never prompts",
+    p("remove 50% of my KLD/USDC position").status === "unknown",
+    p("remove 50% of my KLD/USDC position").status,
+  );
+  check(
+    "a bare remove with no id still just asks which position",
+    (() => {
+      const r = p("remove my KLD/USDC position");
+      return r.status === "incomplete" && r.missing === "ref";
+    })(),
+  );
+
+  /* collectFees has no partial form — you collect the fees owed, all of them —
+     so the share machinery must not touch it. */
+  const collect = p("collect fees from position 3");
+  check(
+    "collectFees is unaffected and carries no percent",
+    collect.status === "ok" &&
+      collect.command.kind === "collectFees" &&
+      collect.command.percent === undefined,
+    collect.status,
+  );
+}
+
 // The one command that is a destination rather than a transaction. The tests
 // that matter are the refusals: this branch runs ahead of the verb table, so a
 // sentence it takes wrongly is a sentence the correct verb never sees.
