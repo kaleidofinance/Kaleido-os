@@ -94,11 +94,44 @@ export interface ActionsCard {
   actions: { label: string; prompt: string }[];
 }
 
+/**
+ * A reading on a track — a figure you glance at rather than parse. Health
+ * factor, a collateral ratio, how much of a range a position still sits in.
+ *
+ * `fraction` is the ONE number any card in this union carries, and it is
+ * geometry, not domain: 0 draws an empty track, 1 a full one, and the emitter is
+ * what maps a health factor or a ratio onto it. The figure the reader actually
+ * reads is still `value`, a pre-formatted string, so the frame draws the fill and
+ * prints the string and interprets neither. Keeping the two separate is what lets
+ * a gauge show "1.62" over a bar that is 31% full without the renderer knowing
+ * that 1.62 is a health factor or that its safe range runs to 3.
+ *
+ * `tone` colours the fill — the reading's own verdict (a health factor of 1.05 is
+ * `bad` however full its bar). `min`/`max` are optional end captions under the
+ * track ("1.0" … "safe"), pre-formatted like everything else.
+ */
+export interface GaugeCard {
+  kind: "gauge";
+  label: string;
+  value: string;
+  /** How full the track is drawn, 0..1. Geometry; the validator clamps it. */
+  fraction: number;
+  tone: CardTone;
+  /** Rendered beside the value: "%", "HF", "days". */
+  unit?: string;
+  /** End captions under the track, left and right. */
+  min?: string;
+  max?: string;
+  /** One line under the track, for the caveat the reading needs. */
+  note?: string;
+}
+
 export type AgentCard =
   | MetricCard
   | StatsCard
   | BalanceCard
   | NoticeCard
-  | ActionsCard;
+  | ActionsCard
+  | GaugeCard;
 
 export type CardKind = AgentCard["kind"];

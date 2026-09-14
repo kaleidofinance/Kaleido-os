@@ -1,6 +1,6 @@
 import type { Portfolio } from "@/hooks/usePortfolio";
 import { DASH, usd } from "@/lib/format/figures";
-import type { AgentCard, CardTone } from "./types";
+import type { AgentCard, CardTone, GaugeCard } from "./types";
 
 /**
  * "What are my balances" — answered from the app's own portfolio, not the model.
@@ -49,6 +49,36 @@ const healthTone = (h: number | null): CardTone =>
 /** Matches /portfolio's own header: ∞ where there is no debt to divide by. */
 const healthText = (h: number | null): string =>
   h === null ? DASH : h === Infinity ? "∞" : h.toFixed(2);
+
+/**
+ * Health as a gauge — full and green when safe, a red sliver near liquidation.
+ *
+ * The track is a reading, not a scale: 1.0 (liquidation) sits at empty, 3.0 at
+ * full, and anything above 3 is simply full — past there the exact number stops
+ * being the thing you act on. `fraction` is that mapping; the number the reader
+ * reads is `value`, and the tone is the same `healthTone` the FAQ card and
+ * /portfolio use, so the bar and the figure can never disagree.
+ *
+ * Only ever built when there is debt, so `h` is a finite number here — a wallet
+ * with no loan has health ∞, which is not a reading a gauge can place.
+ */
+function healthGauge(h: number | null): GaugeCard {
+  const known = typeof h === "number" && Number.isFinite(h);
+  return {
+    kind: "gauge",
+    label: "Health factor",
+    value: healthText(h),
+    /* (h − 1) / 2: 1.0 → 0, 3.0 → 1, clamped. */
+    fraction: known ? Math.min(1, Math.max(0, (h! - 1) / 2)) : 0,
+    tone: healthTone(h),
+    min: "1.0",
+    max: "3.0+",
+    note:
+      known && h! <= 1.4
+        ? "Below 1.0 your collateral can be liquidated. Add collateral or repay to lift it."
+        : "Above 1.0 you are solvent; higher is safer.",
+  };
+}
 
 const positive = (n: number | null): boolean => typeof n === "number" && n > 0;
 
@@ -117,29 +147,31 @@ export function portfolioAnswer(
   }
 
   const cards: AgentCard[] = [
-    {
-      kind: "metric",
-      label: "Net value",
-      value: usd(p.netValue, 2),
-      ...(unpricedNote ? { note: unpricedNote } : {}),
-    },
+    /*
+     * With a loan open, health is the headline risk, so it leads as a gauge
+     * rather than a stat — and it takes the first card from the net-value metric,
+     * which the prose above already opens with, to stay inside the three-card
+     * budget the validator enforces. With no debt there is nothing for a health
+     * gauge to place (health is ∞), so the net figure keeps the slot.
+     */
+    positive(p.debtUsd)
+      ? healthGauge(p.health)
+      : {
+          kind: "metric",
+          label: "Net value",
+          value: usd(p.netValue, 2),
+          ...(unpricedNote ? { note: unpricedNote } : {}),
+        },
   ];
 
   /*
    * The five subtotals, in the hook's order, which is /portfolio's order. Health
-   * joins them only when there is debt for it to describe: with no loan open it
-   * is ∞, and a row reading "Health factor ∞" is a number that answers a question
-   * nobody asked.
+   * is no longer one of them: it is the gauge above when there is a loan to
+   * describe, and ∞ — a number answering a question nobody asked — when there is
+   * not.
    */
   const rows: { label: string; value: string; tone?: CardTone }[] =
     p.groups.map((g) => ({ label: g.title, value: usd(g.subtotalUsd, 2) }));
-  if (positive(p.debtUsd)) {
-    rows.push({
-      label: "Health factor",
-      value: healthText(p.health),
-      tone: healthTone(p.health),
-    });
-  }
   cards.push({ kind: "stats", title: "Positions", rows });
 
   /*

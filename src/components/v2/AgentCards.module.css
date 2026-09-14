@@ -76,6 +76,44 @@
   margin-top: 5px;
 }
 
+/* ---------- gauge ---------- */
+
+/* The track: the same recess a card is, at the height of a rule. A dent, so the
+   fill reads as sitting IN the surface rather than on it — consistent with every
+   other frame here, and it means an empty track is still legibly a track. */
+.gauge {
+  margin-top: 10px;
+  height: 8px;
+  border-radius: var(--k-r-pill);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  overflow: hidden;
+}
+/* The fill takes its colour from the tone class applied beside it — `.good` etc.
+   set `color`, and `currentColor` turns that into the bar. A nonzero reading
+   keeps a 3px minimum so a low-but-real figure never renders as an empty track,
+   which would read as no data rather than as a small number. */
+.gaugeFill {
+  height: 100%;
+  min-width: 3px;
+  background: currentColor;
+  border-radius: var(--k-r-pill);
+  transition: width 0.35s ease;
+}
+.gaugeEnds {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gaugeFill {
+    transition: none;
+  }
+}
+
 /* ---------- stats and balance rows ---------- */
 
 .rows {
