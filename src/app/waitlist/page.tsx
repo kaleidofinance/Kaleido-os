@@ -196,7 +196,11 @@ export default function WaitlistPage() {
     <main className={s.page}>
       <header className={s.head}>
         <p className={s.eyebrow}>Kaleido Pre-Season 1 · Arc waitlist</p>
-        <h1 className={`${s.h1} k-display`}>Get in line for Arc.</h1>
+        <h1 className={`${s.h1} k-display`}>
+          Get in line for Arc.
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className={s.arcMark} src="/arc-mark.png" alt="Arc" width={64} height={64} />
+        </h1>
         <p className={s.lede}>
           Agentic DeFi, live on Arc from Day&nbsp;1 (Sep&nbsp;16). Claim your
           welcome points, refer friends to earn more, and climb the board before
