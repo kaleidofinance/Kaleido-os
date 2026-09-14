@@ -257,6 +257,11 @@ export default function WaitlistPage() {
             <button className={s.primary} onClick={onConnect} disabled={isConnecting}>
               {isConnecting ? "Connecting…" : "Connect wallet"}
             </button>
+            <p className={s.split}>
+              On mobile? Tap <strong>WalletConnect</strong> to open your
+              MetaMask, Coinbase, or Rainbow app, or open this page in a
+              desktop browser.
+            </p>
           </>
         ) : !status ? (
           <>
