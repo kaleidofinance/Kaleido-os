@@ -31,8 +31,6 @@ const joinMessage = (address: string) =>
 const isAddress = (a: unknown): a is string =>
   typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a);
 
-const newCode = () => crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-
 /** A single X task's state for the UI: whether it's done, and its 24h hold. */
 function xTaskState(at: string | null, now: number) {
   if (!at) return { done: false, counted: false, countsAt: null as string | null };
@@ -154,30 +152,32 @@ export async function POST(req: Request) {
   const existing = await standing(wallet);
   if (existing) return Response.json({ ...existing, new: false });
 
-  // Resolve the referrer by code: must exist and not be this wallet.
+  // Resolve the referrer. `ref` is the referrer's id — their wallet on new links,
+  // or an old generated code on links shared before the switch; both are stored as
+  // ref_code. Lowercased so a wallet ref matches the stored (lowercased) value.
+  // Must exist and not be this wallet.
   let referredBy: string | null = null;
-  if (typeof ref === "string" && ref.length > 0) {
+  if (typeof ref === "string" && ref.trim().length > 0) {
     const { data: r } = await admin
       .from("waitlist")
       .select("wallet, ref_code")
-      .eq("ref_code", ref)
+      .eq("ref_code", ref.trim().toLowerCase())
       .single();
     if (r && r.wallet !== wallet) referredBy = r.ref_code as string;
   }
 
-  // Insert, retrying only on a ref_code collision.
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const { error } = await admin
-      .from("waitlist")
-      .insert({ wallet, ref_code: newCode(), referred_by: referredBy });
-    if (!error) break;
-    // 23505 = unique_violation. On wallet it means a race registered us; return it.
-    if (error.code === "23505" && error.message.includes("wallet")) {
+  // The wallet IS the referral id: ref_code = wallet. It's unique like the PK, so
+  // there is no code-collision to retry; only a concurrent same-wallet insert
+  // (23505 on the wallet PK) needs handling.
+  const { error: insErr } = await admin
+    .from("waitlist")
+    .insert({ wallet, ref_code: wallet, referred_by: referredBy });
+  if (insErr) {
+    if (insErr.code === "23505") {
       const s = await standing(wallet);
       if (s) return Response.json({ ...s, new: false });
     }
-    if (attempt === 3)
-      return Response.json({ error: "insert failed" }, { status: 500 });
+    return Response.json({ error: "insert failed" }, { status: 500 });
   }
 
   const s = await standing(wallet);
