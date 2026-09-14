@@ -21,8 +21,11 @@ export const dynamic = "force-dynamic";
 type Task = "link" | "follow" | "retweet";
 const TASKS: Task[] = ["link", "follow", "retweet"];
 
-/** The exact strings the client signs, rebuilt here from the posted address. */
-export const xTaskMessage = (address: string, task: Task) =>
+/** The exact strings the client signs, rebuilt here from the posted address.
+ * Not exported: a route module may only export HTTP handlers + route config, and
+ * a stray export fails `next build` (tsc does not catch it). The client keeps its
+ * own copy of this in the waitlist page — they must stay in sync. */
+const xTaskMessage = (address: string, task: Task) =>
   task === "link"
     ? `Link my X account to the Kaleido waitlist wallet ${address}.`
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
