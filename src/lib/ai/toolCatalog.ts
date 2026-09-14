@@ -701,6 +701,48 @@ export const TOOL_CATALOG: ToolSpec[] = [
     },
   },
   {
+    name: "getStaking",
+    kind: "read",
+    description:
+      "The user's KLD staking on the connected chain: how much KLD they have staked (held as the stKLD receipt), the vault's total staked and staker count, and any withdrawal in progress with the cooldown left on it. Call this for 'how much have I staked', 'what are my staking rewards', 'can I unstake yet', or 'when does my unstake unlock'. Staking earns by the stKLD/KLD value rising, not an APY — do not quote a percentage. Per chain — staking is deployed independently on each. Not the kfUSD/kafUSD vault (getVault) and not lending collateral (getLoans).",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getVault",
+    kind: "read",
+    description:
+      "The user's stablecoin-vault position on the connected chain: how much kfUSD they hold (the stablecoin, minted 1:1 against collateral) and how much kafUSD (the yield vault — locking kfUSD mints it and its value rises as yield accrues), plus any kafUSD withdrawal in progress with the cooldown left on it. Call this for 'how much kfUSD do I have', 'what's in my kafUSD vault', 'is my vault earning', or 'can I withdraw from the vault yet'. kafUSD earns by appreciating, not an APY — do not quote a percentage. Per chain. Not KLD staking (getStaking) and not lending (getLoans).",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getPoints",
+    kind: "read",
+    description:
+      "The user's standing in the points program: their rank (or a percentile when they are outside the public top ranks), total points, the breakdown into time/action/bonus, and how many wallets are on the board. Call this for 'how many points do I have', 'what's my rank', or 'am I on the leaderboard'. Points are off chain and span every chain — do NOT pass or mention a chain. They are earned by using the protocol over time; they are not a token and nothing is claimable. When a wallet's exact rank is masked, give the percentile — never imply an exact rank you were not given.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
     name: "getPositions",
     kind: "read",
     description:

@@ -653,6 +653,30 @@ export const READS: Group = {
       prompt: "what do I owe, and when is it due?",
     },
     {
+      name: "getStaking",
+      params: ["address"],
+      /* The staked KLD (held as stKLD), the vault totals, and any withdrawal
+         cooldown. The question pairs the stake with the unstake lifecycle, which
+         is the pair this read answers. */
+      prompt: "how much KLD have I staked, and can I unstake yet?",
+    },
+    {
+      name: "getVault",
+      params: ["address"],
+      /* kfUSD held and the kafUSD yield-vault position, with any withdrawal
+         cooldown. Phrased for the yield question, which is the one the vault is
+         for — the value rises rather than paying an APY. */
+      prompt: "is my kafUSD vault earning, and can I withdraw yet?",
+    },
+    {
+      name: "getPoints",
+      params: ["address"],
+      /* The masked leaderboard standing — rank or percentile, total, breakdown.
+         Off chain and cross-season; the question is the plain "where am I", which
+         is exactly what the read answers. */
+      prompt: "how many points do I have, and what's my rank?",
+    },
+    {
       name: "getPositions",
       params: ["address"],
       /* A different read from getPortfolio, which is the lending position — this

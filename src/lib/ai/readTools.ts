@@ -1,6 +1,14 @@
 import { ethers } from "ethers";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
-import { getContracts, resolveUserToken } from "@/constants/registry";
+import {
+  getContracts,
+  resolveUserToken,
+  stakingContracts,
+  stableContracts,
+} from "@/constants/registry";
+import KLDVaultAbi from "@/abi/KLDVaultAbi.json";
+import StKLDAbi from "@/abi/StKLDAbi.json";
+import { supabase } from "@/lib/supabase/supabaseClient";
 import { getChainMeta } from "@/constants/chains";
 import { readOpenBook } from "@/lib/lending/book";
 import { readBorrowPositions } from "@/lib/lending/positions";
@@ -283,6 +291,266 @@ async function getLoans(args: Json, chainId: number): Promise<Json> {
     debtUsd: usd2(pos.debtUsd),
     healthFactor,
     note,
+  };
+}
+
+/* Raw fragment arrays, the same JSONs config/contracts hands to `new
+   ethers.Contract` — Interface takes the identical shape. */
+const KLD_VAULT_IFACE = new ethers.Interface(
+  KLDVaultAbi as unknown as ethers.InterfaceAbi,
+);
+const STKLD_IFACE = new ethers.Interface(
+  StKLDAbi as unknown as ethers.InterfaceAbi,
+);
+
+/**
+ * The user's KLD staking on the connected chain.
+ *
+ * The server port of useStakingData: six vault/stKLD views in one Multicall3
+ * round — the vault's pooled total and staker count, and the caller's stake,
+ * withdrawal cooldown and whether one is open. Staking is deployed independently
+ * on each chain and a stake is written on the wallet's chain, so this reads the
+ * wallet's chain the way the write does — the exact bug useStakingData was built
+ * to fix (a stake on BSC read as "0" against Sepolia's totals).
+ *
+ * `staked` is the caller's stKLD balance, which IS their KLD claim: stKLD rebases,
+ * so its value rises as yield is harvested rather than paying a separate reward.
+ * That is why there is no APY to report — the number to watch is the stake's KLD
+ * value, not a percentage. A failed view is null (unread), never a fabricated 0.
+ */
+async function getStaking(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+
+  const staking = stakingContracts(chainId);
+  if (!staking.supported) {
+    return {
+      chainId,
+      supported: false,
+      note: "KLD staking is not deployed on this chain. Say it is not available here rather than reporting an empty stake; the user can switch to a chain where it is.",
+    };
+  }
+
+  const vault = staking.kldVault!;
+  const stKld = staking.stKLD!;
+  const kld = staking.kld!;
+
+  const r = await readContracts(chainId, [
+    { target: vault, iface: KLD_VAULT_IFACE, method: "getTotalPooledKld", args: [kld] },
+    { target: vault, iface: KLD_VAULT_IFACE, method: "getTotalStakers" },
+    { target: stKld, iface: STKLD_IFACE, method: "balanceOf", args: [address] },
+    { target: vault, iface: KLD_VAULT_IFACE, method: "getWithdrawalTimeLeft", args: [address] },
+    { target: vault, iface: KLD_VAULT_IFACE, method: "hasWithdrawalRequest", args: [address] },
+  ]);
+
+  const num18 = (x: { success: boolean; value: unknown }): number | null =>
+    x.success && x.value !== null
+      ? Number(ethers.formatUnits(x.value as bigint, 18))
+      : null;
+
+  const totalStaked = num18(r[0]);
+  const stakers = r[1].success && r[1].value !== null ? Number(r[1].value) : null;
+  const staked = num18(r[2]);
+  const cooldownLeft =
+    r[3].success && r[3].value !== null ? Math.max(0, Number(r[3].value)) : 0;
+  const hasRequest = r[4].success ? Boolean(r[4].value) : false;
+
+  const withdrawal = !hasRequest
+    ? { status: "none" as const }
+    : cooldownLeft > 0
+      ? {
+          status: "cooling_down" as const,
+          secondsLeft: cooldownLeft,
+          hoursLeft: Math.round(cooldownLeft / 360) / 10,
+        }
+      : { status: "claimable" as const };
+
+  const nothing = (staked === null || staked === 0) && !hasRequest;
+  const note = nothing
+    ? "No active stake on this chain — say the user has nothing staked here."
+    : `Staking is per chain — this is chain ${chainId} only. 'staked' is the KLD the user's stKLD is worth now; it rises as yield accrues, so there is no APY to quote — point at the value, not a percentage. To unstake they request a withdrawal (starts the cooldown), wait it out, then withdraw; withdrawal.status says where in that lifecycle they are.`;
+
+  return {
+    chainId,
+    staked: staked === null ? null : trim6(staked),
+    totalStaked: totalStaked === null ? null : trim6(totalStaked),
+    stakers,
+    withdrawal,
+    note,
+  };
+}
+
+/* kfUSD and kafUSD are both ERC20s; only kafUSD carries the withdrawal views, and
+   the cooldown is derived from the request time and the period rather than read
+   from getWithdrawalTime, whose meaning the ABI does not pin down. */
+const STABLE_VAULT_IFACE = new ethers.Interface([
+  "function balanceOf(address) view returns (uint256)",
+  "function withdrawalAmount(address) view returns (uint256)",
+  "function withdrawalRequestTime(address) view returns (uint256)",
+  "function cooldownPeriod() view returns (uint256)",
+]);
+
+/**
+ * The user's kfUSD / kafUSD vault position on the connected chain.
+ *
+ * kfUSD is the stablecoin, minted 1:1 against collateral and held like any token;
+ * kafUSD is the yield vault — lock kfUSD to mint kafUSD, whose value rises as
+ * yield accrues, exited through a request → cooldown → complete lifecycle. This
+ * reads what the user holds of each and where any kafUSD withdrawal sits.
+ *
+ * The cooldown is DERIVED (`withdrawalRequestTime + cooldownPeriod − now`), not
+ * read from the ambiguous getWithdrawalTime, so the "unlocks in" figure is one
+ * this code can stand behind. A failed view is null (unread), never a
+ * fabricated 0. Distinct from KLD staking (getStaking), which is a different vault.
+ */
+async function getVault(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+
+  const { kfUSD, kafUSD } = stableContracts(chainId);
+  if (!kfUSD || !kafUSD) {
+    return {
+      chainId,
+      supported: false,
+      note: "The kfUSD/kafUSD vault is not deployed on this chain. Say it is not available here rather than reporting an empty position.",
+    };
+  }
+
+  const r = await readContracts(chainId, [
+    { target: kfUSD, iface: STABLE_VAULT_IFACE, method: "balanceOf", args: [address] },
+    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "balanceOf", args: [address] },
+    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "withdrawalAmount", args: [address] },
+    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "withdrawalRequestTime", args: [address] },
+    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "cooldownPeriod" },
+  ]);
+
+  const num18 = (x: { success: boolean; value: unknown }): number | null =>
+    x.success && x.value !== null
+      ? Number(ethers.formatUnits(x.value as bigint, 18))
+      : null;
+  const asInt = (x: { success: boolean; value: unknown }): number =>
+    x.success && x.value !== null ? Number(x.value) : 0;
+
+  const kfusdHeld = num18(r[0]);
+  const kafusdHeld = num18(r[1]);
+  const pendingKaf = num18(r[2]);
+  const requestTime = asInt(r[3]);
+  const cooldown = asInt(r[4]);
+
+  const hasPending = pendingKaf !== null && pendingKaf > 0 && requestTime > 0;
+  const secondsLeft = hasPending
+    ? Math.max(0, requestTime + cooldown - Math.floor(Date.now() / 1000))
+    : 0;
+  const withdrawal = !hasPending
+    ? { status: "none" as const }
+    : secondsLeft > 0
+      ? {
+          status: "cooling_down" as const,
+          kafUSD: trim6(pendingKaf!),
+          secondsLeft,
+          hoursLeft: Math.round(secondsLeft / 360) / 10,
+        }
+      : { status: "claimable" as const, kafUSD: trim6(pendingKaf!) };
+
+  const nothing = !kfusdHeld && !kafusdHeld && !hasPending;
+  const note = nothing
+    ? "No kfUSD held and nothing in the kafUSD vault on this chain — say the user has no vault position here."
+    : `The stablecoin vault, chain ${chainId} only. kfUSD is minted 1:1 against collateral and held as a stablecoin; kafUSD is the yield vault — locking kfUSD mints it, and its value rises as yield accrues, so there is no APY to quote. Exiting kafUSD is request → cooldown → complete; withdrawal.status says where in that lifecycle they are. This is not KLD staking (getStaking).`;
+
+  return {
+    chainId,
+    kfUSD: kfusdHeld === null ? null : trim6(kfusdHeld),
+    kafUSD: kafusdHeld === null ? null : trim6(kafusdHeld),
+    withdrawal,
+    note,
+  };
+}
+
+/**
+ * The user's standing in the points program — off chain, not per chain.
+ *
+ * Points accrue in Supabase from protocol use, and the ONLY read is the masked
+ * `point_leaderboard` view the public board reads: a wallet outside the season's
+ * public rank limit gets a percentile and no exact rank. This relays exactly what
+ * the view gives and NEVER more — the moment it returned an exact rank for any
+ * `?address=` it would be an oracle that de-masks the whole book, which is the
+ * hazard /api/leaderboard/me is written around. Tier-2 exact standing needs a
+ * signature this has no way to check, so it does not serve it.
+ *
+ * Takes no chainId: a season spans every chain, and the season shown is the one
+ * flagged `is_default`, the same one the /points board resolves.
+ */
+async function getPoints(args: Json): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+  const wallet = address.toLowerCase();
+
+  const seasonRes = await supabase
+    .from("point_seasons")
+    .select("id, label")
+    .eq("is_default", true)
+    .maybeSingle<{ id: number; label: string }>();
+  if (seasonRes.error || !seasonRes.data) {
+    return { error: "Could not read the current points season." };
+  }
+  const season = seasonRes.data;
+
+  const [row, count] = await Promise.all([
+    supabase
+      .from("point_leaderboard")
+      .select(
+        "rank, percentile, total, time_points, action_points, bonus_points",
+      )
+      .eq("season", season.id)
+      .eq("wallet", wallet)
+      .maybeSingle<{
+        rank: number | null;
+        percentile: number | null;
+        total: number | string | null;
+        time_points: number | string | null;
+        action_points: number | string | null;
+        bonus_points: number | string | null;
+      }>(),
+    supabase
+      .from("point_leaderboard")
+      .select("wallet", { count: "exact", head: true })
+      .eq("season", season.id),
+  ]);
+
+  if (row.error) return { error: "Could not read your points standing." };
+  const participants = count.error ? null : (count.count ?? null);
+
+  /* Postgres `numeric` arrives as a string over PostgREST — parse, don't assume. */
+  const num = (v: number | string | null): number | null =>
+    v === null ? null : Number.isFinite(Number(v)) ? Number(v) : null;
+
+  if (!row.data) {
+    return {
+      season: season.label,
+      participants,
+      earned: false,
+      note: "This wallet has no points on the board for the current season — say the user has not earned points yet. Do not speculate about why (a missing row can also be a flagged wallet, which must never be disclosed). Points come from using the protocol: a swap, a deposit, or providing liquidity all earn.",
+    };
+  }
+
+  const r = row.data;
+  return {
+    season: season.label,
+    participants,
+    /* Null when the wallet is outside the season's public rank limit — the view
+       masks it and gives the percentile instead. Relayed as-is; never de-masked. */
+    rank: r.rank,
+    percentile: r.percentile,
+    total: num(r.total),
+    breakdown: {
+      time: num(r.time_points),
+      action: num(r.action_points),
+      bonus: num(r.bonus_points),
+    },
+    note: `Points for the ${season.label} season, across all chains — not per chain.${r.rank === null ? " Outside the public top ranks, so the exact rank is masked; give the percentile instead." : ""} Points are earned by using the protocol over time; they are not a token balance and nothing is claimable here.`,
   };
 }
 
@@ -1426,6 +1694,8 @@ const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
     getQuote,
     getPortfolio,
     getLoans,
+    getStaking,
+    getVault,
     getPositions,
     getBalances,
     getMarkets,
@@ -1435,6 +1705,7 @@ const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
     getBridgeRoute,
     getSwapRoute,
     getAgentMandate,
+    getPoints,
   };
 
 export function isReadTool(name: string): boolean {
