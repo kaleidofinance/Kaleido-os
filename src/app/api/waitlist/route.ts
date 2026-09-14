@@ -22,7 +22,7 @@ const REFERRAL_CAP = 5000; // matches the referral source cap in the points sche
 
 /** The exact string the client signs. Rebuilt here from the posted address. */
 const joinMessage = (address: string) =>
-  `Join the Kaleido Arc waitlist.\nWallet: ${address}`;
+  `Join the Kaleido Pre-Season 1 Arc waitlist.\nWallet: ${address}`;
 
 const isAddress = (a: unknown): a is string =>
   typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a);
