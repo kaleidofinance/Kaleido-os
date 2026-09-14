@@ -290,6 +290,76 @@ export function mintMinimums(args: {
   };
 }
 
+/**
+ * Slippage floors for REMOVING liquidity — the least each token a
+ * decreaseLiquidity must return, or it reverts. The mirror of {@link mintMinimums}
+ * and it exists for the same reason: with a floor of 0 a remove accepts whatever
+ * split the pool gives at execution, so the price can be moved, the user's
+ * withdrawal skewed, and the price moved back — a sandwich on the way out.
+ *
+ * Conservative BY DESIGN, and that is the safety property. It is a floating-point
+ * estimate of the amounts the position holds (the Uniswap getAmountsForLiquidity
+ * identity, in the pool's native token0<token1 frame — the frame the position's
+ * own ticks and slot0's sqrtPriceX96 are already in, so no re-ordering), cut by
+ * the user's slippage AND an extra margin. So a small numerical error can never
+ * set a floor ABOVE what the pool actually returns and brick a legitimate
+ * removal. Anything non-finite or non-positive — an overflowing tick, a dust
+ * position, a missing price — falls back to 0, the old unprotected behaviour,
+ * which is strictly no worse than today. This is protection against a LARGE
+ * adverse move, not a wei-exact bound.
+ *
+ * Returns base-unit strings, the units decreaseLiquidity's amount0Min/amount1Min
+ * take (getAmountsForLiquidity is decimal-agnostic — it works in raw units
+ * throughout), so no token decimals are needed.
+ */
+export function removeMinimums(args: {
+  /** Raw uint128 being removed. */
+  liquidity: string;
+  /** The pool's native slot0 value; omitted disables the floor. */
+  sqrtPriceX96: string | undefined;
+  /** The position's own ticks, native frame. */
+  tickLower: number;
+  tickUpper: number;
+  slippageBps: number;
+}): { amount0Min: string; amount1Min: string } {
+  const ZERO = { amount0Min: "0", amount1Min: "0" };
+  const L = Number(args.liquidity);
+  if (
+    args.sqrtPriceX96 === undefined ||
+    !Number.isFinite(L) ||
+    L <= 0 ||
+    !Number.isInteger(args.tickLower) ||
+    !Number.isInteger(args.tickUpper) ||
+    args.tickUpper <= args.tickLower
+  ) {
+    return ZERO;
+  }
+
+  const Q96 = 2 ** 96;
+  const sqrtP0 = Number(args.sqrtPriceX96) / Q96; // native sqrt(token1/token0), raw
+  const sqrtAt = (tick: number) => Math.pow(1.0001, tick / 2);
+  const sA = sqrtAt(args.tickLower);
+  const sB = sqrtAt(args.tickUpper);
+  if (!Number.isFinite(sqrtP0) || sqrtP0 <= 0 || !(sB > sA) || sA <= 0) {
+    return ZERO;
+  }
+
+  /* Clamp the price into the range: a position whose range is entirely below or
+     above the current price holds only one token, which the clamp yields (sP = sB
+     gives amount0 = 0; sP = sA gives amount1 = 0). */
+  const sP = Math.min(Math.max(sqrtP0, sA), sB);
+  const amount0 = (L * (sB - sP)) / (sP * sB);
+  const amount1 = L * (sP - sA);
+
+  const keep = Math.max(0, 1 - args.slippageBps / 10_000);
+  const MARGIN = 0.99; // absorbs float error so the floor stays below the truth
+  const floor = (a: number) =>
+    Number.isFinite(a) && a > 0
+      ? BigInt(Math.floor(a * keep * MARGIN)).toString()
+      : "0";
+  return { amount0Min: floor(amount0), amount1Min: floor(amount1) };
+}
+
 export interface MintParams {
   token0: string;
   token1: string;

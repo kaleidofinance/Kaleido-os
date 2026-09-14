@@ -54,6 +54,19 @@ export interface PoolState {
   price: number | null;
   /** Raw uint128 in-range liquidity. A pool can exist with none. */
   liquidity: string;
+  /**
+   * The pool's sqrtPriceX96 exactly as slot0 reports it — the NATIVE value, in
+   * the pool's own `token0 < token1` (by address) frame, never negated into a
+   * caller's order the way `tick` above is. Given raw so a caller computing the
+   * token amounts a position holds (getAmountsForLiquidity) pairs it with the
+   * position's own ticks, which are stored in the same native frame. A string,
+   * because it is a uint160 that overflows a JS number.
+   *
+   * Optional so a fixture PoolState (the capability traces, the planner tests)
+   * need not synthesise one; a caller that has no sqrtPriceX96 computes no floor
+   * and falls back to the unprotected 0, which is those fixtures' existing shape.
+   */
+  sqrtPriceX96?: string;
 }
 
 /**
@@ -116,6 +129,8 @@ export async function readPoolState(
         ? null
         : tickToPrice(tick, decimalsA, decimalsB),
       liquidity: BigInt(liquidity).toString(),
+      /* The native value, un-negated — see the field's note. */
+      sqrtPriceX96: BigInt(slot0.sqrtPriceX96).toString(),
     };
   } catch {
     return null;

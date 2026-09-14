@@ -17,6 +17,7 @@ import {
   FEE_TIERS,
   isTradedTier,
   mintMinimums,
+  removeMinimums,
   shareOfLiquidity,
   ticksForRange,
 } from "@/lib/dex/liquidity";
@@ -2588,6 +2589,30 @@ export async function buildIntents(
         ? "all liquidity"
         : `${percent}% of the liquidity`;
 
+    /* Slippage floors for the withdrawal — the least of each token the pool must
+       return, or it reverts. decreaseLiquidity sent 0/0, so a remove accepted any
+       split the pool gave at execution and was sandwichable on the way out. The
+       floor is computed conservatively from the position's amounts at the current
+       price (see removeMinimums), and degrades to 0 — the old behaviour — when the
+       pool cannot be read, so it can never brick a legitimate removal. This is the
+       one read this branch makes, and a failed read is not a reason to refuse a
+       removal, only to skip its floor. */
+    /* The decimals only feed poolState's `price`, which this branch does not use
+       — the floor reads sqrtPriceX96, which is raw and decimal-agnostic — so an
+       unknown-decimals token falls back to 18 here without affecting the floor. */
+    const dec0 = declaredDecimals(chainId, pos.token0) ?? 18;
+    const dec1 = declaredDecimals(chainId, pos.token1) ?? 18;
+    const state = await deps
+      .poolState(pos.token0, pos.token1, pos.fee, dec0, dec1)
+      .catch(() => null);
+    const mins = removeMinimums({
+      liquidity,
+      sqrtPriceX96: state?.sqrtPriceX96,
+      tickLower: pos.tickLower,
+      tickUpper: pos.tickUpper,
+      slippageBps: opts.slippageBps,
+    });
+
     return {
       ok: true,
       build: {
@@ -2598,6 +2623,8 @@ export async function buildIntents(
             positionManager,
             tokenId: pos.tokenId,
             liquidity,
+            amount0Min: mins.amount0Min,
+            amount1Min: mins.amount1Min,
             pairLabel,
             /* Dropped at 100 as well as when absent, so a full removal is one
                intent shape however it was asked for. Carrying `percent: 100`

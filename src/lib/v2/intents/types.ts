@@ -586,6 +586,14 @@ export type Intent =
       tokenId: string;
       liquidity: string;
       pairLabel: string;
+      /**
+       * The least of each token the withdrawal must return, base units — the
+       * slippage floor decreaseLiquidity enforces. "0"/absent is no floor (the old
+       * behaviour, and what the builder falls back to when the pool cannot be read
+       * to price one). See removeMinimums.
+       */
+      amount0Min?: string;
+      amount1Min?: string;
       /** 1–100. Absent means the whole position. Display only — see above. */
       percent?: number;
     }

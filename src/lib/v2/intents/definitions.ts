@@ -979,10 +979,12 @@ register("decreasePoolLiquidity", {
     const tx = await posManager.decreaseLiquidity({
       tokenId: BigInt(i.tokenId),
       liquidity: BigInt(i.liquidity),
-      // No slippage floor, matching useV3Positions.ts's own removeLiquidity —
-      // not a protection this file is weakening relative to the live button.
-      amount0Min: BigInt(0),
-      amount1Min: BigInt(0),
+      // The floors the builder computed from the position's amounts at the pool's
+      // current price (removeMinimums), so a remove reverts on a large adverse
+      // move rather than accepting any split. Absent (an unread pool) is BigInt(0)
+      // — the old unprotected behaviour, and no worse than the live button.
+      amount0Min: BigInt(i.amount0Min ?? "0"),
+      amount1Min: BigInt(i.amount1Min ?? "0"),
       deadline,
     });
     await tx.wait();
