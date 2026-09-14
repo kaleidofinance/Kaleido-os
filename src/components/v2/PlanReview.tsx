@@ -395,54 +395,81 @@ export default function PlanReview({
     if (!calls) return runSequential(ctx, steps);
 
     for (const i of steps) setStep(i, "pending");
+
+    /*
+     * A THROW and a `ok:false` are different outcomes and must not be treated the
+     * same, which the old code did — both ended in the sequential fallback.
+     *
+     * A throw is the bundle NEVER LANDING: a wallet that won't honour an
+     * atomicRequired bundle, or the user cancelling. atomicRequired forbids a
+     * half-execution, so nothing was sent and the steps are safe to offer one at
+     * a time from the top of the pair.
+     *
+     * `ok:false` is the bundle MINING AND REVERTING atomically. Nothing was
+     * applied, but re-running it per step would hit the same revert (a stale
+     * floor, a moved market) and charge gas for it — so it is reported as a
+     * failure, not silently re-prompted like a bundle that was never sent. A
+     * fresh plan is the fix, not a retry.
+     */
+    let result: { hashes: string[]; ok: boolean };
     try {
-      const { hashes, ok } = await sendBatch(calls);
-      if (!ok) throw new Error("The bundled transaction reverted.");
-
-      /*
-       * ONE HASH CAN COVER SEVERAL STEPS, which is the whole point of a bundle
-       * and the one thing the history has to be told about honestly. An atomic
-       * bundle reports a single receipt, so both steps are recorded against the
-       * same hash — and `recordTx` keys on the hash, replacing rather than
-       * appending, so a naive loop would leave the log showing only the last
-       * step. The rows are therefore merged into one entry titled for the whole
-       * pair, which is also what the user signed.
-       */
-      const hash = hashes[0];
-      /* Every step the bundle covered, against the one hash it produced. The
-         caller reports what settled, and a bundled plan that reported nothing
-         would read to the user as a plan that did nothing. */
-      for (const i of steps) {
-        settledRef.current[i] = {
-          title: views[i].title,
-          hash: hash ?? undefined,
-          skipped: false,
-          ms: Date.now() - bundleStartedAt,
-        };
-      }
-      if (hash) {
-        recordTx(ctx.chainId, ctx.address, {
-          hash,
-          kind: intents[steps[steps.length - 1]].kind,
-          title: views[steps[steps.length - 1]].title,
-          detail: `${steps.map((i) => views[i].title).join(", then ")} — signed together.`,
-          status: "confirmed",
-          at: Date.now(),
-        });
-      }
-      for (const i of steps) setStep(i, "done");
-
-      const last = steps[steps.length - 1];
-      if (pauseAfter(last, false)) return "paused";
-      return "done";
+      result = await sendBatch(calls);
     } catch (err) {
       console.warn(
-        "[PlanReview] bundle failed, falling back to one signature per step:",
+        "[PlanReview] bundle not sent, falling back to one signature per step:",
         err,
       );
       for (const i of steps) setStep(i, "idle");
       return runSequential(ctx, steps);
     }
+
+    if (!result.ok) {
+      console.warn("[PlanReview] bundle reverted on chain, not re-signing.");
+      for (const i of steps) setStep(i, "failed");
+      setRunning(false);
+      setNext(steps[0]);
+      toast.error(
+        "The bundled transaction reverted on chain — nothing was applied. Ask again for a fresh plan.",
+      );
+      return "failed";
+    }
+
+    /*
+     * ONE HASH CAN COVER SEVERAL STEPS, which is the whole point of a bundle and
+     * the one thing the history has to be told about honestly. An atomic bundle
+     * reports a single receipt, so both steps are recorded against the same
+     * hash — and `recordTx` keys on the hash, replacing rather than appending, so
+     * a naive loop would leave the log showing only the last step. The rows are
+     * merged into one entry titled for the whole pair, which is what the user
+     * signed. (Recorded outside any sendBatch try, so a throw HERE — a bundle
+     * that succeeded — cannot fall through to the sequential re-sign and double
+     * execute it.)
+     */
+    const { hashes } = result;
+    const hash = hashes[0];
+    for (const i of steps) {
+      settledRef.current[i] = {
+        title: views[i].title,
+        hash: hash ?? undefined,
+        skipped: false,
+        ms: Date.now() - bundleStartedAt,
+      };
+    }
+    if (hash) {
+      recordTx(ctx.chainId, ctx.address, {
+        hash,
+        kind: intents[steps[steps.length - 1]].kind,
+        title: views[steps[steps.length - 1]].title,
+        detail: `${steps.map((i) => views[i].title).join(", then ")} — signed together.`,
+        status: "confirmed",
+        at: Date.now(),
+      });
+    }
+    for (const i of steps) setStep(i, "done");
+
+    const last = steps[steps.length - 1];
+    if (pauseAfter(last, false)) return "paused";
+    return "done";
   };
 
   /**
