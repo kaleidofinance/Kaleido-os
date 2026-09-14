@@ -242,6 +242,7 @@ const HTML = `<!doctype html>
       <div class="actions">
         <a class="btn primary" href="mailto:official@kaleidofi.xyz">official@kaleidofi.xyz</a>
         <a class="btn ghost" href="https://t.me/macrew15">Telegram @macrew15</a>
+        <a class="btn ghost" href="https://x.com/0xmacking">X @0xmacking</a>
         <a class="btn ghost" href="https://kaleidofi.xyz">kaleidofi.xyz</a>
       </div>
     </div>
