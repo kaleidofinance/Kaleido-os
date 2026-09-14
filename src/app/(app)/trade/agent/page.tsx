@@ -1304,7 +1304,9 @@ export default function AgentPage() {
           : `Done — ${sent} transaction${sent === 1 ? "" : "s"} confirmed${totalMs ? ` in ${(totalMs / 1000).toFixed(1)}s` : ""}.`;
 
     setMessages((prev) => [
-      ...prev.map((m) => (m === latest ? { ...m, plan: undefined } : m)),
+      ...prev.map((m) =>
+        m === latest ? { ...m, plan: undefined, planFrom: undefined } : m,
+      ),
       {
         role: "assistant" as const,
         text: lines.length
@@ -1313,6 +1315,20 @@ export default function AgentPage() {
         via: "local" as const,
       },
     ]);
+  };
+
+  /*
+   * Where a stopped-short plan should resume. Recorded on the plan's message so
+   * that closing and re-opening the review panel — which unmounts and remounts
+   * PlanReview — resumes at the step after the ones that landed, instead of
+   * re-signing them from the top. The panel reports this on every halt (a
+   * decline, a revert, a manual-mode pause), and the mount below reads it back as
+   * `startFrom`.
+   */
+  const onHalt = (nextIndex: number) => {
+    setMessages((prev) =>
+      prev.map((m) => (m === latest ? { ...m, planFrom: nextIndex } : m)),
+    );
   };
 
   /*
@@ -1328,7 +1344,9 @@ export default function AgentPage() {
    * appears only when there is a plan to open.
    */
   const planLabel = plan
-    ? `Review and sign · ${plan.length} transaction${plan.length === 1 ? "" : "s"}`
+    ? latest?.planFrom
+      ? `Resume · step ${latest.planFrom + 1} of ${plan.length}`
+      : `Review and sign · ${plan.length} transaction${plan.length === 1 ? "" : "s"}`
     : "";
 
   return (
@@ -1474,6 +1492,10 @@ export default function AgentPage() {
               /* When the plan's quotes were priced, so PlanReview refuses to sign
                  a quote-bearing plan that has gone stale while it sat here. */
               quotedAt={latest?.ts}
+              /* Resume where a prior attempt stopped, so re-opening the panel
+                 never re-signs a step that already landed. */
+              startFrom={latest?.planFrom ?? 0}
+              onHalt={onHalt}
               onComplete={onComplete}
               onCancel={() => setPanel({ kind: "idle" })}
             />

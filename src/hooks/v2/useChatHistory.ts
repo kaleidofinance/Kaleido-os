@@ -25,6 +25,12 @@ export interface Msg {
   /** Present when a turn produced a signable plan. Never persisted — see below. */
   plan?: Intent[];
   /**
+   * The step to resume this plan at — set when the review panel stops part-way
+   * (a decline, a revert, a pause) so re-opening the plan does not re-sign the
+   * steps that already landed. Never persisted, for the same reason as `plan`.
+   */
+  planFrom?: number;
+  /**
    * When this turn was produced, epoch ms. Not persisted (dies with the plan on
    * reload), and used for exactly one thing: a plan carries quotes and floors
    * priced at this instant, so PlanReview can refuse to sign a quote-bearing plan
