@@ -148,7 +148,7 @@ const HTML = `<!doctype html>
     <h2>The window is the launch itself.</h2>
     <div class="grid g3">
       <div class="card"><span class="num">01</span><h3>First-mover on Arc</h3><p>Arc opens Sep 16 with no incumbent AMM depth. The earliest LPs set the entry price and capture fees before the crowd, right as Uniswap arrives on the same day.</p></div>
-      <div class="card"><span class="num">02</span><h3>Real flow, day one</h3><p>Kaleido ships the full stack at genesis: DEX, lending, liquidity, staking, and a native stablecoin. Swaps land in these pools immediately, not after a growth phase.</p></div>
+      <div class="card"><span class="num">02</span><h3>Every token, day one</h3><p>Kaleido ships the full stack at genesis and routes through Uniswap for any pair it has not pooled yet, so every Robinhood and Arc token is tradable from the first block. The depth you seed on the core pairs captures that flow instead of passing it to Uniswap.</p></div>
       <div class="card"><span class="num">03</span><h3>An agent that routes to depth</h3><p>Luca executes user intent in plain English and sends each swap to the deepest pool. The depth you provide is the depth that earns.</p></div>
     </div>
   </div>
