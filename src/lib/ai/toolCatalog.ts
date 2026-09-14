@@ -676,7 +676,21 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getPortfolio",
     kind: "read",
     description:
-      "The user's net value, health factor, collateral, debt and unclaimed vault yield on the connected chain. Call this first for any 'what should I do' request. For the user's liquidity (LP) positions and whether they are in range, call getPositions instead — those are not in this result.",
+      "The user's lending COLLATERAL value and health factor on the connected chain — how safe the borrowing position is, not net worth. Call this first for any 'what should I do' request that turns on safety. It is collateral and health ONLY: for the loans themselves (amounts owed, rates, due dates, the requestId a repay needs) call getLoans; for liquidity (LP) positions call getPositions; for wallet balances call getBalances. Do not present it as the whole portfolio.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getLoans",
+    kind: "read",
+    description:
+      "The user's borrowing position on the connected chain: collateral deposited, each open loan (amount still owed, interest rate, due date, and the requestId a repay targets), total debt, and the health factor. Call this for 'what do I owe', 'what are my loans', 'when is my loan due', 'am I close to liquidation', or before proposing a repay — so the user never has to look up a requestId. Distinct from getPortfolio, which is collateral value and health only; and from getPositions, which is liquidity, not loans. Per chain — the chain the wallet is on.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -723,7 +737,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getBalances",
     kind: "read",
     description:
-      "What the wallet actually holds on the chain it is connected to: the native gas asset plus every registered token, in token units. Use for 'what do I have', 'what is my balance', or to check the user can cover an amount before planning it. Distinct from getPortfolio, which reports positions - collateral, debt, staked KLD, pooled liquidity - that have LEFT the wallet; and from getChains, which takes one named symbol and looks for it across every chain.",
+      "What the wallet actually holds on the chain it is connected to: the native gas asset plus every registered token, in token units. Use for 'what do I have', 'what is my balance', or to check the user can cover an amount before planning it. Distinct from getPortfolio and getLoans, which report the lending position — collateral posted and loans owed, value that has LEFT the wallet; and from getChains, which takes one named symbol and looks for it across every chain.",
     parameters: {
       type: "object",
       additionalProperties: false,

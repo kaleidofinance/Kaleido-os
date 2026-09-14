@@ -645,6 +645,14 @@ export const READS: Group = {
       prompt: "how healthy is my position?",
     },
     {
+      name: "getLoans",
+      params: ["address"],
+      /* The borrowing position — collateral, each open loan with its due date and
+         the requestId a repay needs, and the health factor. getPortfolio is only
+         collateral value and health; this is the loans themselves. */
+      prompt: "what do I owe, and when is it due?",
+    },
+    {
       name: "getPositions",
       params: ["address"],
       /* A different read from getPortfolio, which is the lending position — this
