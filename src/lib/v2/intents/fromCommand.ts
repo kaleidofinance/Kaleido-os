@@ -634,6 +634,36 @@ const ZERO_SLOT_VERBS: Record<ZeroSlotKind, string[]> = {
 };
 
 /**
+ * Words that make "claim" NOT the kfUSD vault-yield claim.
+ *
+ * `claim` is the verb for collecting kfUSD/kafUSD yield, but it is also the
+ * ordinary word for collecting points, staking rewards, or an airdrop — none of
+ * which are that transaction. The zero-slot scan below reads "claim" anywhere in
+ * a sentence, so without this "claim my points" and "claim my staking rewards"
+ * both planned a kfUSD yield claim: the wrong product, built from a sentence that
+ * named a different one. A claim that names one of these is genuinely ambiguous
+ * (or simply not the yield claim), so it escalates to the model rather than being
+ * resolved to the closest guess — the same bargain the rest of this grammar
+ * makes. Unqualified "claim" and "claim yield" name none of these and still
+ * resolve locally; faucet claims are handled earlier still.
+ */
+const CLAIM_NOT_YIELD: ReadonlySet<string> = new Set([
+  "points",
+  "point",
+  "reward",
+  "rewards",
+  "airdrop",
+  "airdrops",
+  "staking",
+  "referral",
+  "referrals",
+  "quest",
+  "quests",
+  "leaderboard",
+  "season",
+]);
+
+/**
  * Whether the message names an action verb — the union of every command verb,
  * plus the liquidity words the grammar has no complete parse for (add / increase
  * / provide). The router uses it as the tie-breaker at the bottom of the local
@@ -1609,6 +1639,17 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
       status: "ok",
       command: { kind: "claimTestTokens", symbol: adjacent ?? loose },
     };
+  }
+
+  // A claim that names points, staking rewards or an airdrop is not the kfUSD
+  // yield claim — see CLAIM_NOT_YIELD. It escalates rather than being resolved to
+  // the closest zero-slot verb, so a sentence about one product never plans a
+  // transaction in another. (Faucet claims were already handled above.)
+  if (
+    words.some((w) => ZERO_SLOT_VERBS.claimYield.includes(w)) &&
+    words.some((w) => CLAIM_NOT_YIELD.has(w))
+  ) {
+    return { status: "unknown" };
   }
 
   // Checked ahead of the slotted verbs: these take no argument at all, so
