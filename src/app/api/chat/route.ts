@@ -369,49 +369,75 @@ export async function POST(request: NextRequest) {
             .map((m) => m.content),
         ].join("\n");
 
-        const built = await planFromToolCalls(
-          result.executes,
-          chainId,
-          serverPlanDeps(body.address, chainId),
-          {
-            slippageBps: safeLimits.slippageBps,
-            deadlineMin: 20,
-          },
-          userText,
-        );
-
         /*
-         * The auditor pass, on the path that actually serves turns.
+         * Build then audit, inside one try — because a throw HERE is ours, not
+         * the model's. The model answered; it is the builder or the auditor that
+         * failed. Letting it propagate sent it to `recover`, which tags it
+         * `provider_error` and puts "the model is unavailable" underneath a reply
+         * the model produced perfectly well. So this branch keeps the prose,
+         * reports a distinct `build_error`, and logs it under its own prefix, so a
+         * builder bug is triaged as a builder bug rather than a model outage.
          *
-         * This used to sit after the legacy AI-engine fetch below, which this
-         * branch returns before reaching — so a plan from Claude, OpenAI or
-         * AgentRouter was checked by nothing. The prompt states the user's
-         * limits; a prompt is a request, not an enforcement point.
-         *
-         * It audits the BUILT plan, not the model's tool calls. That ordering
-         * is what lets the rules keep checking real addresses and real
-         * amountOutMin values even though the model now supplies neither — the
-         * builder is trusted to construct, and the auditor still verifies what
-         * was constructed.
-         *
-         * A rejected plan is dropped WHOLE, and never trimmed to its passing
-         * steps. A plan is ordered and interdependent — an approve exists to
-         * enable the swap after it — so removing one step leaves a sequence
-         * that means something different from anything the model proposed or
-         * the user read. The prose survives, because the reasoning is often
-         * right even when a step is malformed, and the user can still act on it
-         * with a direct command.
-         *
-         * `body.limits` and `allowedActions` are client input. The auditor
-         * treats them as tightening-only against its own ceiling — a request
-         * cannot raise its own cap by claiming a larger one.
+         * (What each does: the builder fills in contract addresses, decimals, fee
+         * tiers, quotes and slippage floors from the registry and chain reads, the
+         * same way the typed path does; the auditor then verifies the BUILT plan —
+         * real addresses, real amountOutMin values — and drops a rejected plan
+         * whole, never trimmed to its passing steps, since the steps are ordered
+         * and interdependent. `limits`/`allowedActions` are client input, treated
+         * as tightening-only.)
          */
-        const verdict = await auditPlan({
-          plan: built.plan,
-          chainId,
-          limits: safeLimits,
-          allowedActions: body.limits?.allowedActions,
-        });
+        let built: Awaited<ReturnType<typeof planFromToolCalls>>;
+        let verdict: Awaited<ReturnType<typeof auditPlan>>;
+        try {
+          built = await planFromToolCalls(
+            result.executes,
+            chainId,
+            serverPlanDeps(body.address, chainId),
+            {
+              slippageBps: safeLimits.slippageBps,
+              deadlineMin: 20,
+            },
+            userText,
+          );
+          verdict = await auditPlan({
+            plan: built.plan,
+            chainId,
+            limits: safeLimits,
+            allowedActions: body.limits?.allowedActions,
+          });
+        } catch (buildErr) {
+          console.error("[chat] plan build/audit failed:", buildErr);
+          await logAgentTurn({
+            status: "build_error",
+            provider: result.provider,
+            model: result.model,
+            latencyMs: Date.now() - startedAt,
+            failedOver: !!provider && result.provider !== provider.id,
+            stream: streamed,
+            chainId,
+            address: meterAddress,
+            error: String(
+              (buildErr as { name?: string })?.name ?? "build_error",
+            ).slice(0, 60),
+          });
+          return {
+            response: `${reply.text}\n\n---\n\nI worked that out, but couldn't prepare the steps to sign — try again, or use a direct command like \`swap 500 USDC to KLD\`.`,
+            context: {
+              status: "build_error",
+              provider: result.provider,
+              model: result.model,
+              ...(reply.actions.length
+                ? { cards: [{ kind: "actions", actions: reply.actions }] }
+                : {}),
+              reads: result.trace,
+              credits: {
+                used: quota.used,
+                quota: quota.quota,
+                remaining: quota.remaining,
+              },
+            },
+          };
+        }
 
         if (!verdict.ok) {
           console.warn(
