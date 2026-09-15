@@ -10,14 +10,18 @@ import { useResolverContext } from "@/hooks/v2/useResolverContext";
 import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
 import { recordTx, txFromError } from "@/lib/v2/txLog";
 import { describeFailure, isRejection } from "@/lib/v2/txErrors";
+import { PROTOCOL_ERROR_ABI } from "@/lib/v2/protocolErrors";
 import SwapRoute from "./SwapRoute";
 import s from "./PlanReview.module.css";
 
-/* One decoder for every step. It carries no ABIs, so a bespoke Protocol__ error
-   is named generically rather than by its Solidity name — the RPC-level cases
-   (declined, out of gas, wrong network, pending nonce) and the contract's own
-   revert reason, which is what a user can act on, all resolve without one. */
-const errorDecoder = ErrorDecoder.create();
+/* One decoder for every step, carrying the union of the errors a plan can hit
+   (see protocolErrors). Without it a bespoke Protocol__ error matched nothing and
+   the decoder's `reason` became ethers' raw "…not found on ABI" complaint — which
+   is exactly what a tester saw when a borrow reverted with
+   Protocol__NoCollateralDeposited. With it, describeFailure names the error and
+   maps the actionable ones to a sentence. The RPC-level cases (declined, out of
+   gas, wrong network, pending nonce) still resolve without any ABI. */
+const errorDecoder = ErrorDecoder.create([PROTOCOL_ERROR_ABI]);
 
 /**
  * PlanReview — the one component that turns an intent[] into signable steps.
@@ -347,7 +351,7 @@ export default function PlanReview({
        * cancel. Either way the plan halts here.
        */
       const decoded = await errorDecoder.decode(err);
-      const message = describeFailure(decoded, err);
+      const message = describeFailure(decoded, err, PROTOCOL_ERROR_ABI);
       setRunning(false);
       setNext(i);
       if (isRejection(decoded)) {

@@ -22,6 +22,7 @@ import {
   namedRevert,
 } from "./txErrors.ts";
 import tokenFaucetAbi from "../../abi/TokenFaucet.json";
+import { PROTOCOL_ERROR_ABI, PROTOCOL_ERROR_HELP } from "./protocolErrors.ts";
 
 let pass = 0;
 let fail = 0;
@@ -335,6 +336,60 @@ async function run() {
       "a novel-length reason is clamped",
       r.message.length <= 160 && r.message.endsWith("…"),
       `len ${r.message.length}`,
+    );
+  }
+
+  /* -------------------------------------------------------------------------- */
+  console.log("\nprotocol errors decode to actionable sentences (the agent path)");
+  {
+    /* The exact tester failure: a borrow reverts with the bare selector for
+       Protocol__NoCollateralDeposited (0xd4030a2a). With the protocol error ABI
+       wired in — as PlanReview now does — it names AND explains it, instead of
+       leaking ethers' "…not found on ABI". */
+    const pIface = new ethers.Interface(PROTOCOL_ERROR_ABI);
+    const pDecoder = ErrorDecoder.create([PROTOCOL_ERROR_ABI]);
+    const NO_COLLATERAL = pIface.encodeErrorResult(
+      "Protocol__NoCollateralDeposited",
+      [],
+    );
+    check(
+      "the borrow selector is 0xd4030a2a",
+      NO_COLLATERAL.slice(0, 10) === "0xd4030a2a",
+      `got ${NO_COLLATERAL.slice(0, 10)}`,
+    );
+
+    const decoded = await pDecoder.decode(
+      makeError("execution reverted", "CALL_EXCEPTION", { data: NO_COLLATERAL }),
+    );
+    const message = describeFailure(
+      decoded,
+      makeError("execution reverted", "CALL_EXCEPTION", { data: NO_COLLATERAL }),
+      PROTOCOL_ERROR_ABI,
+    );
+    check(
+      "no-collateral borrow gets the friendly sentence",
+      message === PROTOCOL_ERROR_HELP.Protocol__NoCollateralDeposited,
+      `got ${message}`,
+    );
+    check(
+      "no-collateral borrow never leaks 'not found on ABI'",
+      !/not found on abi/i.test(message),
+      `got ${message}`,
+    );
+
+    /* An error in the ABI but not the friendly map is still named, not raw. */
+    const UNMAPPED = pIface.encodeErrorResult("Protocol__PositionHealthy", []);
+    const other = describeFailure(
+      await pDecoder.decode(
+        makeError("execution reverted", "CALL_EXCEPTION", { data: UNMAPPED }),
+      ),
+      makeError("execution reverted", "CALL_EXCEPTION", { data: UNMAPPED }),
+      PROTOCOL_ERROR_ABI,
+    );
+    check(
+      "an unmapped protocol error is named, not shown as a selector",
+      other.includes("Protocol__PositionHealthy") && !/0x/.test(other),
+      `got ${other}`,
     );
   }
 
