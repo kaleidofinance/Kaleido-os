@@ -472,8 +472,8 @@ export default function WaitlistPage() {
                 surfaces referral points once there's at least one referral. */}
             <p className={s.split}>
               {status.referrals === 0
-                ? "No referrals yet — share your link to earn 50 $kPoint per friend."
-                : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined · ${status.referralPoints.toLocaleString()} $kPoint earned${status.referralPoints >= 5000 ? " (max)" : ""}`}
+                ? "No referrals yet — earn 50 $kPoint for each friend who joins and links their X."
+                : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.referralPoints.toLocaleString()} $kPoint earned${status.referralPoints >= 5000 ? " (max)" : ""}`}
             </p>
 
             <p className={s.note}>
