@@ -38,12 +38,17 @@ type Status = {
   welcomePoints: number;
   referralPoints: number;
   xHandle: string | null;
-  xTasks: { linked: XTask; followed: XTask; retweeted: XTask };
+  xTasks: {
+    linked: XTask;
+    followed: XTask;
+    retweeted: XTask;
+    commented: XTask;
+  };
   activated: boolean;
 } | null;
 
 type Leader = { rank: number; wallet: string; referrals: number };
-type XTaskKey = "link" | "follow" | "retweet";
+type XTaskKey = "link" | "follow" | "retweet" | "comment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -83,9 +88,14 @@ export default function WaitlistPage() {
   const [copied, setCopied] = useState(false);
   const [leaders, setLeaders] = useState<Leader[]>([]);
   const [xLinkedCookie, setXLinkedCookie] = useState(false);
-  const [opened, setOpened] = useState<{ follow: boolean; retweet: boolean }>({
+  const [opened, setOpened] = useState<{
+    follow: boolean;
+    retweet: boolean;
+    comment: boolean;
+  }>({
     follow: false,
     retweet: false,
+    comment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
 
@@ -214,11 +224,13 @@ export default function WaitlistPage() {
     }
   }, [xLinkedCookie, postXTask]);
 
-  const openIntent = useCallback((task: "follow" | "retweet") => {
+  const openIntent = useCallback((task: "follow" | "retweet" | "comment") => {
     const url =
       task === "follow"
         ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
-        : `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`;
+        : task === "retweet"
+          ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
+          : `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`;
     window.open(url, "_blank", "noopener,noreferrer");
     setOpened((o) => ({ ...o, [task]: true }));
   }, []);
@@ -384,6 +396,34 @@ export default function WaitlistPage() {
                   </button>
                 ) : (
                   <button className={s.taskBtn} onClick={() => openIntent("retweet")}>Repost</button>
+                )}
+              </li>
+
+              <li className={s.task}>
+                <div className={s.taskText}>
+                  <span className={s.taskTitle}>Comment on the launch post</span>
+                  <span className={s.taskMeta}>
+                    {status.xTasks.commented.done
+                      ? status.xTasks.commented.counted
+                        ? "Done"
+                        : "Done · counts within 5h"
+                      : !status.xTasks.linked.done
+                        ? "Link X first"
+                        : ANNOUNCE_TWEET_ID
+                          ? "+50 $kPoint"
+                          : "Coming soon"}
+                  </span>
+                </div>
+                {status.xTasks.commented.done ? (
+                  <span className={s.taskDone}>✓</span>
+                ) : !status.xTasks.linked.done || !ANNOUNCE_TWEET_ID ? (
+                  <span className={s.taskLock}>🔒</span>
+                ) : opened.comment ? (
+                  <button className={s.taskBtn} onClick={() => postXTask("comment")} disabled={xBusy === "comment"}>
+                    {xBusy === "comment" ? "…" : "Claim"}
+                  </button>
+                ) : (
+                  <button className={s.taskBtn} onClick={() => openIntent("comment")}>Comment</button>
                 )}
               </li>
 
