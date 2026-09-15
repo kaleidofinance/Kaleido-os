@@ -2086,5 +2086,60 @@ console.log("\n— a guess is only ever offered —");
   check("clearing a slot clears the guess", !cleared.suggest);
 }
 
+console.log("\n— relative amounts escalate, they don't ask 'how much?' —");
+{
+  // The reported bug: both returned "How much?" instead of reading the balance.
+  for (const text of [
+    "swap half of my USDC to KLD",
+    "swap 50% of my USDC balance to KLD",
+    "swap all my USDC to KLD",
+    "swap most of my USDC to KLD",
+  ]) {
+    const r = p(text);
+    check(`"${text}" escalates to the model`, r.status === "unknown", r.status);
+  }
+}
+{
+  // Siblings: any amount verb whose amount can be relative.
+  const cases = [
+    "send half my WETH to 0x1111111111111111111111111111111111111111",
+    "stake all my KLD",
+    "deposit 50% of my USDC",
+    "withdraw half my collateral",
+    "borrow half of my USDC", // rate verb, but "half" is still a share
+  ];
+  for (const text of cases) {
+    const r = p(text);
+    check(`"${text}" escalates`, r.status === "unknown", r.status);
+  }
+}
+{
+  // Controls: absolute amounts still parse, and a rate is NOT a relative amount.
+  const swap = p("swap 5 USDC to KLD");
+  check(
+    "an absolute swap still parses",
+    swap.status === "ok" && swap.command.kind === "swap" && swap.command.amount === "5",
+    swap.status,
+  );
+  const noAmount = p("swap USDC to KLD");
+  check(
+    "a swap with no amount and no share still asks 'how much?'",
+    noAmount.status === "incomplete" && noAmount.missing === "amount",
+    noAmount.status,
+  );
+  const borrow = p("borrow 500 USDC at 8% for 30 days");
+  check(
+    "borrow at 8% reads the % as a rate, not a share",
+    borrow.status === "ok" && borrow.command.kind === "borrow" && borrow.command.amount === "500",
+    borrow.status,
+  );
+}
+{
+  // Replying "half" to "How much?" escalates rather than re-asking.
+  const draft = { kind: "swap", tokenIn: TOKENS[1], tokenOut: TOKENS[0] };
+  const r = fillSlot(draft, "amount", "half", TOKENS);
+  check("replying 'half' to 'how much?' escalates", r.status === "unknown", r.status);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

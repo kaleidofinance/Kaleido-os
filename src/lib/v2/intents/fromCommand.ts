@@ -1363,6 +1363,50 @@ function detectRemoveFraction(
 }
 
 /**
+ * Verbs that carry an interest rate, where a trailing-percent number ("8%") is
+ * that rate — not a share of a balance. Everywhere else a percentage can only be
+ * an amount.
+ */
+const RATE_VERBS: ReadonlySet<ActionKind> = new Set(["borrow", "lend"]);
+
+/**
+ * Verbs whose amount can be stated relative to a balance — "swap half my USDC",
+ * "send 50% of my ETH", "stake all my KLD".
+ *
+ * This grammar is pure and cannot read a balance, so it does not compute the
+ * number: it hands the sentence to the model, which can (getBalances). That is the
+ * same bargain `remove half` already makes (detectRemoveFraction escalates rather
+ * than guessing). What it replaces is worse — asking "How much?" at someone who
+ * just said "half", which a tester hit on "swap 50% of my USDC to KLD".
+ */
+const AMOUNT_VERBS: ReadonlySet<ActionKind> = new Set([
+  "swap", "send", "bridge", "deposit", "withdraw", "stake", "unstake",
+  "approve", "mint", "redeem", "lock", "unlock", "borrow", "lend", "takeListing",
+]);
+
+/** Words that mean "the most you can". */
+const MAX_WORDS: ReadonlySet<string> = new Set(["max", "most", "maximum"]);
+
+/**
+ * Whether the sentence states its amount as a share of a balance rather than a
+ * number: "half", "a quarter", "50%", "50 percent", "all", "max". `percentAmount`
+ * is false for the rate verbs, where a trailing-percent number is the interest
+ * rate, so a borrow/lend "at 8%" is never mistaken for a share.
+ */
+function hasRelativeAmount(words: string[], percentAmount: boolean): boolean {
+  return words.some(
+    (w) =>
+      FRACTION_WORDS.has(w) ||
+      ALL_WORDS.has(w) ||
+      MAX_WORDS.has(w) ||
+      w === "percent" ||
+      w === "percentage" ||
+      w === "pct" ||
+      (percentAmount && /^\d+(?:\.\d+)?%$/.test(w)),
+  );
+}
+
+/**
  * Row reference: "listing 3", "request #7", "offer 12", "position 42".
  *
  * Its number is claimed like a rate or a term, so "borrow 500 from listing 3"
@@ -1729,6 +1773,19 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
 
   const amount = detectAmount(words, claimed);
   const mentions = findTokenMentions(words, tokens);
+
+  /* A relative amount — "swap half my USDC", "stake all my KLD", "send 50% of my
+     ETH" — is a share of a balance this pure grammar cannot read. Rather than ask
+     "How much?" at someone who just told us, hand it to the model, which can read
+     the balance (getBalances) and compute it. Only when no absolute amount was also
+     named, and only for verbs whose amount can be relative. See AMOUNT_VERBS. */
+  if (
+    !amount &&
+    AMOUNT_VERBS.has(verb.kind) &&
+    hasRelativeAmount(words, !RATE_VERBS.has(verb.kind))
+  ) {
+    return { status: "unknown" };
+  }
 
   if (verb.kind === "collectFees" || verb.kind === "removePosition") {
     // Always a position reference, never a marketplace one — "remove" here
@@ -2531,7 +2588,14 @@ export function fillSlot(
 
   if (missing === "amount") {
     const amount = detectAmount(words);
-    if (!amount) return incomplete(draft, "amount");
+    if (!amount) {
+      // A relative reply ("half", "50%", "all") to "How much?" is still a share of
+      // a balance — escalate rather than re-ask, the same as the initial parse.
+      if (hasRelativeAmount(words, !RATE_VERBS.has(draft.kind))) {
+        return { status: "unknown" };
+      }
+      return incomplete(draft, "amount");
+    }
     next.amount = amount.amount;
   } else if (missing === "rate") {
     // A bare "8" is a rate here: the question established the units, so it
