@@ -29,9 +29,17 @@ import type { RangeChoice } from "@/lib/dex/liquidity";
  * moment swaps span chains.
  */
 
+export interface RelativeAmount {
+  num: number;
+  den: number;
+}
+
 export interface SwapCommand {
   kind: "swap";
-  amount: string;
+  /** The exact input amount. Present unless `relative` is - exactly one is. */
+  amount?: string;
+  /** A share of the tokenIn balance, resolved to `amount` by the planner. */
+  relative?: RelativeAmount;
   tokenIn: IToken;
   tokenOut: IToken;
 }
@@ -1387,6 +1395,46 @@ const AMOUNT_VERBS: ReadonlySet<ActionKind> = new Set([
 /** Words that mean "the most you can". */
 const MAX_WORDS: ReadonlySet<string> = new Set(["max", "most", "maximum"]);
 
+/** "50" / "33.5" -> an exact {num,den} out of 100 with no float; 33.5% = {335,1000}. */
+function percentToFraction(pct: string): RelativeAmount {
+  const dot = pct.indexOf(".");
+  if (dot === -1) return { num: Number(pct), den: 100 };
+  const fracLen = pct.length - dot - 1;
+  return { num: Number(pct.replace(".", "")), den: 100 * 10 ** fracLen };
+}
+
+/**
+ * The share a sentence names, as an exact fraction the planner multiplies a
+ * balance by; null when it names none or one too vague to resolve ("some", a
+ * nonsense "150%"). Distinct from hasRelativeAmount, which only asks *whether* a
+ * share was named. Only clean shares resolve: "half"/"quarter"/"third",
+ * "all"/"max", a percentage in (0,100].
+ */
+function detectRelativeAmount(words: string[]): RelativeAmount | null {
+  for (const w of words) {
+    if (w === "half") return { num: 1, den: 2 };
+    if (w === "quarter") return { num: 1, den: 4 };
+    if (w === "third") return { num: 1, den: 3 };
+    if (ALL_WORDS.has(w) || MAX_WORDS.has(w)) return { num: 1, den: 1 };
+    const pct = w.match(/^(\d+(?:\.\d+)?)%$/);
+    if (pct && Number(pct[1]) > 0 && Number(pct[1]) <= 100) {
+      return percentToFraction(pct[1]);
+    }
+  }
+  const pIdx = words.findIndex(
+    (w) => w === "percent" || w === "percentage" || w === "pct",
+  );
+  if (pIdx !== -1) {
+    for (const j of [pIdx - 1, pIdx + 1]) {
+      const m = words[j]?.match(/^(\d+(?:\.\d+)?)$/);
+      if (m && Number(m[1]) > 0 && Number(m[1]) <= 100) {
+        return percentToFraction(m[1]);
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Whether the sentence states its amount as a share of a balance rather than a
  * number: "half", "a quarter", "50%", "50 percent", "all", "max". `percentAmount`
@@ -1781,9 +1829,12 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
      named, and only for verbs whose amount can be relative. See AMOUNT_VERBS. */
   if (
     !amount &&
+    verb.kind !== "swap" &&
     AMOUNT_VERBS.has(verb.kind) &&
     hasRelativeAmount(words, !RATE_VERBS.has(verb.kind))
   ) {
+    // Swap is resolved deterministically below (parseSwap carries the share);
+    // the other amount verbs escalate to the model, which reads the balance.
     return { status: "unknown" };
   }
 
@@ -1871,7 +1922,13 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   }
 
   if (verb.kind === "swap") {
-    return parseSwap(words, amount, mentions, tokens);
+    return parseSwap(
+      words,
+      amount,
+      amount ? null : detectRelativeAmount(words),
+      mentions,
+      tokens,
+    );
   }
 
   if (verb.kind === "bridge") {
@@ -2270,6 +2327,7 @@ function isNegative(words: string[]): boolean {
 function parseSwap(
   words: string[],
   amount: { amount: string; index: number } | null,
+  relative: RelativeAmount | null,
   mentions: Mention[],
   tokens: IToken[],
 ): ParseResult {
@@ -2388,7 +2446,17 @@ function parseSwap(
     // ask for a slot that's already filled.
     return { status: "unknown" };
   }
-  if (!amount) return incomplete(draft, "amount");
+  if (!amount) {
+    // A share was named ("half", "50%") but no number: carry it for the planner
+    // to resolve against the balance, rather than ask "How much?".
+    if (relative) {
+      return {
+        status: "ok",
+        command: { kind: "swap", relative, tokenIn, tokenOut },
+      };
+    }
+    return incomplete(draft, "amount");
+  }
 
   return {
     status: "ok",

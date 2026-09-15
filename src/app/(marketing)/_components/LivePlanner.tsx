@@ -384,7 +384,10 @@ function settledOf(
         lines: [
           {
             label: "Left your wallet",
-            value: `${num(command.amount)} ${command.tokenIn.symbol}`,
+            /* amount is absent for a relative swap ("half my USDC"); those don't
+               build on the landing page's balance-less snapshot deps, so this
+               fallback is never shown here — it only satisfies the optional type. */
+            value: `${num(command.amount ?? "0")} ${command.tokenIn.symbol}`,
           },
           {
             label: "Arrived",

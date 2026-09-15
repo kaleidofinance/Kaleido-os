@@ -116,6 +116,8 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
        ERC20 case reads back `tokenAddress`, the field the resolver cross-checks
        against the provider's own idea of what the symbol resolves to. */
     bridge: [] as BridgeRouteRequest[],
+    /* Tokens whose balance a relative swap asked to read. */
+    balances: [] as string[],
   };
   const deps: PlanDeps = {
     chainId: over.chainId ?? CHAIN,
@@ -166,6 +168,12 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
     faucetAssets: async () => {
       calls.faucet++;
       return over.faucetAssets ? over.faucetAssets() : [];
+    },
+    /* Null by default (couldn't read), so a relative swap must state a balance
+       to resolve. A case wanting the resolved number overrides it. */
+    tokenBalance: async (token) => {
+      calls.balances.push(token);
+      return over.tokenBalance ? over.tokenBalance(token) : null;
     },
     /* Null by default, which is "no pool at this tier" and not "no answer" — the
        distinction the mint branch turns into either a full-range create or a
@@ -3323,6 +3331,45 @@ async function main() {
       kinds(cancelAll) === "cancelAllOrders",
       kinds(cancelAll),
     );
+  }
+
+  console.log("relative swap resolves against the balance");
+  {
+    const { deps, calls } = fakeDeps({
+      quote: async () => "1000",
+      tokenBalance: async () => 1000000000n,
+    });
+    const r = await build(
+      { kind: "swap", relative: { num: 1, den: 2 }, tokenIn: DEX_USDC, tokenOut: DEX_KLD },
+      deps,
+    );
+    check("a relative swap builds a swap", kinds(r).endsWith("swap"), kinds(r));
+    check(
+      "it read the tokenIn balance",
+      calls.balances.length === 1 && same(calls.balances[0], DEX_USDC.address),
+      JSON.stringify(calls.balances),
+    );
+    check(
+      "half of 1000 USDC is quoted as 500",
+      calls.quote[0]?.amountIn === "500.0",
+      String(calls.quote[0]?.amountIn),
+    );
+  }
+  {
+    const { deps } = fakeDeps({ tokenBalance: async () => 0n });
+    const r = await build(
+      { kind: "swap", relative: { num: 1, den: 1 }, tokenIn: DEX_USDC, tokenOut: DEX_KLD },
+      deps,
+    );
+    check("a zero balance refuses by name", !r.ok && /don't have any/i.test(r.error ?? ""), JSON.stringify(r));
+  }
+  {
+    const { deps } = fakeDeps({ tokenBalance: async () => null });
+    const r = await build(
+      { kind: "swap", relative: { num: 1, den: 2 }, tokenIn: DEX_USDC, tokenOut: DEX_KLD },
+      deps,
+    );
+    check("an unreadable balance refuses", !r.ok, JSON.stringify(r));
   }
 
   console.log(`\n${pass} passed, ${fail} failed\n`);
