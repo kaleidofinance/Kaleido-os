@@ -369,6 +369,24 @@ export interface PlanDeps {
    */
   collateralDeposits?(): Promise<string[] | null>;
   /**
+   * This wallet's balance of one token, in base units, or null when it cannot be
+   * read. Used to resolve a relative swap amount ("swap half my USDC") into a
+   * number — the grammar carries the share, this reads the balance and build.ts
+   * does the arithmetic, so "half" is exactly half with no model round trip.
+   *
+   * Base units (a bigint), not a formatted string: the share is computed as
+   * `balance * num / den` with integer math, so it can never exceed the balance
+   * the way a float round-trip could. `token` is the address the user holds — an
+   * ERC-20 address, or the native sentinel, which the implementation reads as the
+   * chain's own balance.
+   *
+   * Optional on the same precedent as `collateralDeposits`: an implementation
+   * with no wallet (the marketing snapshot, a test fixture) has no answer, and its
+   * absence makes the relative-amount branch refuse with a message rather than
+   * guess a number.
+   */
+  tokenBalance?(token: string): Promise<bigint | null>;
+  /**
    * What the faucet lists, including assets it has paused.
    *
    * Empty is a valid answer and the only one an implementation with no faucet
@@ -715,7 +733,43 @@ export async function buildIntents(
   }
 
   if (command.kind === "swap") {
-    const { amount, tokenIn, tokenOut } = command;
+    const { tokenIn, tokenOut } = command;
+
+    /*
+     * A relative amount ("swap half my USDC") carries a share of the balance, not
+     * a number — resolve it here, where the balance is readable, so "half" is
+     * exactly half with no model round trip. Integer math on base units means the
+     * result can never exceed what the wallet holds.
+     */
+    let amount = command.amount;
+    if (!amount && command.relative) {
+      if (!deps.tokenBalance) {
+        return {
+          ok: false,
+          error: `I can't read your ${tokenIn.symbol} balance to work out that share here. Tell me an amount instead.`,
+        };
+      }
+      const balance = await deps.tokenBalance(tokenIn.address);
+      if (balance === null) {
+        return {
+          ok: false,
+          error: `I couldn't read your ${tokenIn.symbol} balance just now. Try again, or tell me an amount.`,
+        };
+      }
+      const { num, den } = command.relative;
+      const wei = (balance * BigInt(num)) / BigInt(den);
+      if (wei <= 0n) {
+        return {
+          ok: false,
+          error: `You don't have any ${tokenIn.symbol} to swap.`,
+        };
+      }
+      amount = ethers.formatUnits(wei, tokenIn.decimals);
+    }
+    if (!amount) {
+      // A swap with neither an absolute amount nor a share is not buildable.
+      return { ok: false, error: "How much do you want to swap?" };
+    }
 
     /* Before quoting, not after: a chain with no router cannot fill this order
        however good the price is, and the quote is a network round trip. */

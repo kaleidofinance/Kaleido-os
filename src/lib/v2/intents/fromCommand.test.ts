@@ -2086,17 +2086,26 @@ console.log("\n— a guess is only ever offered —");
   check("clearing a slot clears the guess", !cleared.suggest);
 }
 
-console.log("\n— relative amounts escalate, they don't ask 'how much?' —");
+console.log("swap resolves relative amounts; other verbs escalate");
 {
-  // The reported bug: both returned "How much?" instead of reading the balance.
-  for (const text of [
-    "swap half of my USDC to KLD",
-    "swap 50% of my USDC balance to KLD",
-    "swap all my USDC to KLD",
-    "swap most of my USDC to KLD",
-  ]) {
+  // The reported bug: these returned "How much?". Swap now carries the exact
+  // share for the planner (build.ts) to resolve against the balance.
+  const expect = [
+    { text: "swap half of my USDC to KLD", num: 1, den: 2 },
+    { text: "swap 50% of my USDC balance to KLD", num: 50, den: 100 },
+    { text: "swap all my USDC to KLD", num: 1, den: 1 },
+    { text: "swap most of my USDC to KLD", num: 1, den: 1 },
+  ];
+  for (const { text, num, den } of expect) {
     const r = p(text);
-    check(`"${text}" escalates to the model`, r.status === "unknown", r.status);
+    const ok =
+      r.status === "ok" &&
+      r.command.kind === "swap" &&
+      !r.command.amount &&
+      !!r.command.relative &&
+      r.command.relative.num === num &&
+      r.command.relative.den === den;
+    check(`"${text}" carries a ${num}/${den} share`, ok, r.status);
   }
 }
 {

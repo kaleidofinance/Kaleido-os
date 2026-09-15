@@ -9,6 +9,7 @@ import { readMarketRow } from "@/lib/lending/book";
 import { readPoolState } from "@/lib/dex/pool";
 import { readStakingState } from "@/lib/staking/state";
 import { readCollateralDeposits } from "@/lib/lending/collateral";
+import { readTokenBalance } from "@/lib/chain/tokenBalance";
 import { encodeV3Path, type PathQuoter } from "@/lib/dex/route";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
 import type {
@@ -442,6 +443,9 @@ export function serverPlanDeps(
     /* Shared with useLocalPlanner for the same reason: a borrow the facet will
        refuse should be refused identically in the chat and on the page. */
     collateralDeposits: () => readCollateralDeposits(chainId, address),
+    /* Shared with useLocalPlanner so a relative swap ("half my USDC") resolves to
+       the same number in the chat and on the agent page. See chain/tokenBalance. */
+    tokenBalance: (token) => readTokenBalance(chainId, address, token),
     faucetAssets: () => serverFaucetAssets(chainId, address),
     /* Delegated to the same reader useLocalPlanner and the /pool/new range
        picker call. Sharing it is not tidiness here: a ±10% band that centres on
