@@ -5,8 +5,9 @@ import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 
 /**
  * Waitlist X (Twitter) tasks: link an X account to the wallet, then attest the
- * follow and retweet tasks. Each is +100 kPoint (held ~5h on the client as a
- * nudge, then counted; converted to Season 1 only on Arc-mainnet activation).
+ * follow, retweet and comment tasks. Follow/retweet are +100 kPoint and comment
+ * is +50 (held ~5h on the client as a nudge, then counted; converted to Season 1
+ * only on Arc-mainnet activation). Point values live in api/waitlist/route.ts.
  *
  * GET  -> the current X session from the httpOnly `twitter_user` cookie set by
  *         the OAuth callback: { linked, handle, id }.
@@ -18,8 +19,8 @@ import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet";
-const TASKS: Task[] = ["link", "follow", "retweet"];
+type Task = "link" | "follow" | "retweet" | "comment";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -79,7 +80,9 @@ export async function POST(req: Request) {
   // Must be a registered waitlister.
   const { data: row } = await admin
     .from("waitlist")
-    .select("wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at")
+    .select(
+      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at",
+    )
     .eq("wallet", wallet)
     .single();
   if (!row) return Response.json({ error: "not registered" }, { status: 404 });
@@ -116,12 +119,17 @@ export async function POST(req: Request) {
     return Response.json({ ok: true });
   }
 
-  // follow / retweet: X must be linked first.
+  // follow / retweet / comment: X must be linked first.
   if (!row.x_linked_at)
     return Response.json({ error: "link X first" }, { status: 409 });
 
-  const col = t === "follow" ? "x_followed_at" : "x_retweeted_at";
-  const existing = t === "follow" ? row.x_followed_at : row.x_retweeted_at;
+  const COL: Record<"follow" | "retweet" | "comment", string> = {
+    follow: "x_followed_at",
+    retweet: "x_retweeted_at",
+    comment: "x_commented_at",
+  };
+  const col = COL[t as "follow" | "retweet" | "comment"];
+  const existing = row[col as keyof typeof row];
   if (existing) return Response.json({ ok: true, already: true });
 
   const { error } = await admin

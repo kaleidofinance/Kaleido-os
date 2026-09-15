@@ -21,7 +21,14 @@ export const dynamic = "force-dynamic";
 const WELCOME = 100;
 const PER_REFERRAL = 50;
 const REFERRAL_CAP = 5000; // matches the referral source cap in the points schema
-const X_TASK = 100; // kPoint per X task (link, follow, retweet)
+// Per-task kPoint: comment is 50, the rest 100. Must match X_TASK_POINTS in
+// api/waitlist/activate/route.ts (both credit the same set of tasks).
+const X_TASK_POINTS = {
+  linked: 100,
+  followed: 100,
+  retweeted: 100,
+  commented: 50,
+} as const;
 // X-task kPoint is held this long before it counts toward the balance — a nudge
 // to actually do the task, since the tasks are attested, not API-verified.
 const X_HOLD_MS = 5 * 60 * 60 * 1000;
@@ -64,7 +71,8 @@ function xTaskState(at: string | null, now: number) {
 // them errors, so we fall back to the base row rather than break registration and
 // the balance for everyone. Once the migration is applied this fallback is dead.
 const BASE_COLS = "ref_code, welcome_points, activated_at";
-const X_COLS = "x_handle, x_linked_at, x_followed_at, x_retweeted_at";
+const X_COLS =
+  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at";
 
 async function standing(wallet: string) {
   const admin = supabaseAdmin!;
@@ -105,10 +113,23 @@ async function standing(wallet: string) {
     linked: xTaskState(row.x_linked_at as string | null, now),
     followed: xTaskState(row.x_followed_at as string | null, now),
     retweeted: xTaskState(row.x_retweeted_at as string | null, now),
+    commented: xTaskState(row.x_commented_at as string | null, now),
   };
-  const xStates = [xTasks.linked, xTasks.followed, xTasks.retweeted];
-  const countedX = X_TASK * xStates.filter((s) => s.counted).length;
-  const heldPoints = X_TASK * xStates.filter((s) => s.done && !s.counted).length;
+  // Each task's kPoint comes from X_TASK_POINTS by key, so comment (50) counts
+  // differently from the 100-point tasks. countedX is what's cleared its hold;
+  // heldPoints is still counting down.
+  const xEntries = Object.entries(xTasks) as [
+    keyof typeof X_TASK_POINTS,
+    (typeof xTasks)["linked"],
+  ][];
+  const countedX = xEntries.reduce(
+    (sum, [k, s]) => sum + (s.counted ? X_TASK_POINTS[k] : 0),
+    0,
+  );
+  const heldPoints = xEntries.reduce(
+    (sum, [k, s]) => sum + (s.done && !s.counted ? X_TASK_POINTS[k] : 0),
+    0,
+  );
 
   const welcomePoints = Number(row.welcome_points);
   return {
