@@ -1,4 +1,4 @@
-import { createWallet } from "thirdweb/wallets";
+import { createWallet, inAppWallet } from "thirdweb/wallets";
 
 /**
  * The wallets we offer, in the order the connect modal shows them.
@@ -20,7 +20,14 @@ export const WALLETS = [
   createWallet("com.coinbase.wallet"),
   createWallet("me.rainbow"),
   createWallet("walletConnect"),
-  // TEMPORARILY PULLED 2026-09-14 — thirdweb's embedded/social wallet service is down (paid plan not provisioned yet). Its connect modal features Social Login at the TOP regardless of array order, so leaving it in put a broken button first in front of every visitor. Re-add this call AND `inAppWallet` to the import above once thirdweb restores the plan: inAppWallet({ auth: { options: ["google", "email", "passkey"] } }),
+  /* RESTORED 2026-09-15 — thirdweb's paid plan is now provisioned, so the
+     embedded/social wallet service is back. Email or social sign-in producing a
+     real EOA, for someone with no browser extension. (The connect modal surfaces
+     Social Login at the top regardless of this array position; the top-of-file
+     note explains why the entry itself is kept last.) Under the current client id
+     7ae3508f the embedded address differs from the pre-switch one — see the
+     wallet-provider-abstraction memory. */
+  inAppWallet({ auth: { options: ["google", "email", "passkey"] } }),
 ];
 
 /**
