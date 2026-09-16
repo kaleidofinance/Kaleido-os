@@ -443,11 +443,20 @@ contracts were deployed anywhere. Two facts drive the whole ordering.
 | Legacy write lockdown                                  | `20260801000000_lock_activity_writes.sql`              | ✅     |
 | **Snapshotter** — time sources → `point_snapshots`     | —                                                      | ❌     |
 | **Verifier** — receipts → `point_actions`              | —                                                      | ❌     |
-| **Materializer** — epochs + actions → `point_balances` | —                                                      | ❌     |
-| **Read API + UI rewiring**                             | —                                                      | ❌     |
+| **Materializer** — epochs + actions → `point_balances` | `20260916020000_points_materializer.sql`               | ✅     |
+| **Read API + UI rewiring**                             | `src/app/api/leaderboard`, `src/app/(app)/leaderboard` | ✅     |
 
-The design half is done. What is missing is entirely runtime: nothing writes a
-snapshot, verifies a receipt, or materialises a balance.
+The materializer and the read path are done. The Season-1 default flip
+(`20260916000000`) and the ×10 earn-rate rescope (`20260916010000`) make the
+board resolve Season 1 at face value, and the materializer keeps
+`point_balances` live as `point_actions`/`point_epochs` rows land (a DB trigger,
+so activated waitlist credits and any future indexed action materialise with no
+app code in the path). What is still missing is the two ingesters upstream:
+nothing yet writes a snapshot or verifies a protocol receipt — so today the only
+`point_actions` rows are the waitlist activation credits, and the board reads
+empty until the activation cron is armed (`CRON_SECRET`, see the activation
+route). Once a testnet deploy exists, the snapshotter and verifier fill the
+ledgers and the same materializer lights up the rest of the board unchanged.
 
 ### 11b. Three facts that reorder the work
 
@@ -487,6 +496,13 @@ right trade while testnet is hypothetical. Once testnet is where everything
 starts, the materializer should refuse to write an epoch for an `is_testnet`
 chain into a season with `converts_to_tokens = true`, and fail loudly. Catching
 it in the view still works, but only after the bad rows exist.
+
+_Done (`20260916020000`)._ `materialize_point_balance(wallet, season)` scans its
+contributing epoch/action rows and raises if any sit on an `is_testnet` chain
+while the season's `converts_to_tokens` is true — the write-time twin of
+`point_conversion_violations`. Both seasons are non-converting today, so the
+scan short-circuits on a single `point_seasons` lookup; it arms itself the
+moment a season is flipped to convert.
 
 None of the three facts touches the schema, because chains and sources are
 registry rows rather than enums. All three are `UPDATE`s.
@@ -583,8 +599,8 @@ arithmetic, the caps and the disclosure tiers can all be rehearsed with no chain
 | Phase                                                   | Contract-coupled | Build                    |
 | ------------------------------------------------------- | ---------------- | ------------------------ |
 | 0 — Cleanup (§11g)                                      | No               | ✅ done                  |
-| 1 — Materializer: epochs + actions → `point_balances`   | No               | Now                      |
-| 2 — Read API: `/api/points/[address]`, leaderboard      | No               | Now                      |
+| 1 — Materializer: epochs + actions → `point_balances`   | No               | ✅ done (`20260916020000`) |
+| 2 — Read API: `/api/points/[address]`, leaderboard      | No               | ✅ done                  |
 | 3 — UI rewiring, kill the silent insert                 | No               | Now                      |
 | 4 — Verifier: receipt fetch, log decode, USD derivation | Yes              | **First testnet deploy** |
 | 5 — Snapshotter: six time sources, hourly, per chain    | Yes              | **First testnet deploy** |
