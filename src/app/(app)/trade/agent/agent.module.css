@@ -921,8 +921,8 @@
 /* Numbered by CSS rather than by the browser's list marker, which `list-style:
    none` above had to remove: the rows are flex, so a marker box would sit outside
    the line box and wrap text under the number. Ordered because the stages are —
-   this is the sequence the turn actually ran in — and because it makes the count
-   in the summary something you can check. */
+   this is the sequence the turn actually ran in, so a reader who opens "How I
+   answered" sees the work in the order it happened. */
 .thinkList .thinkLine::before {
   counter-increment: thinkstep;
   content: counter(thinkstep);

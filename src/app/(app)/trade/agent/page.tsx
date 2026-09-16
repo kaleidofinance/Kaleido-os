@@ -1664,7 +1664,7 @@ export default function AgentPage() {
                       {m.thinking && m.thinking.length >= 2 && (
                         <details className={s.think}>
                           <summary className={s.thinkHead}>
-                            {m.thinking.length} steps
+                            How I answered
                           </summary>
                           <ol className={s.thinkList}>
                             {m.thinking.map((line, k) => (

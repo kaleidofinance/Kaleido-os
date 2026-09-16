@@ -477,14 +477,17 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "morning",
     ],
     answer:
-      "Hey. I'm Luca - tell me what you want to do in plain language and I'll build the transactions for you to check and sign. Nothing goes on chain without your signature. If you're not sure where to start: \"what can I do here\", \"what's my balance\", or just name a trade like \"swap 50 USDC for KLD\".",
+      "Hey — I'm Luca. Tell me what you want to do in plain language and I'll build the transactions for you to review and sign; nothing goes on-chain without your signature. Not sure where to start? Try \"what can I do here\", \"what's my balance\", or just name a trade like \"swap 50 USDC for KLD\".",
   },
   {
     /*
      * "Who are you", "what is this", "how do I start". Static, asked by everyone
      * once, and currently a reasoning request each time. The product line mirrors
-     * the overview blurb in (marketing)/docs/docs.ts; the sequence is
-     * getting-started.md's, in its order, because that ordering is load-bearing.
+     * the overview blurb in (marketing)/docs/docs.ts; the getting-started sequence
+     * is kept mode-neutral — connect, fund with gas, one swap — so it reads true
+     * whether the testnet toggle is on or off, where naming the faucet page (which
+     * the mainnet-first default hides) would not. The full walk-through, faucet
+     * included, stays under Getting started in the docs.
      */
     id: "orientation",
     triggers: [
@@ -507,7 +510,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "i'm new",
     ],
     answer:
-      "I'm Luca, the agent inside Kaleido: tell me what you want in plain language and I build the transactions for you to review and sign. Nothing executes without your signature. Kaleido itself is five products behind one wallet connection — swaps, concentrated liquidity, peer-to-peer lending, the kfUSD stablecoin and KLD staking — across five networks. The shortest path from here: connect a wallet, get a little of the chain's gas token from its public faucet, claim the rest from the faucet page, then do one swap. That first ten minutes is written up under Getting started in the docs.",
+      "I'm Luca, the agent inside Kaleido — tell me what you want in plain language and I build the transactions for you to review and sign. Nothing executes without your signature. Kaleido itself is five products behind one wallet connection: swaps, concentrated liquidity, peer-to-peer lending, the kfUSD stablecoin and KLD staking, across five networks. The shortest path from here: connect a wallet, fund it with a little of the chain's gas token, then do one swap. That first ten minutes is written up under Getting started in the docs.",
   },
   {
     /*
@@ -531,8 +534,10 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "wallet safe",
       "seed phrase",
       "private key",
-      "add base sepolia",
+      "add arc",
       "add the network",
+      "add network",
+      "switch network",
       "wrong network",
     ],
     answer:
@@ -559,8 +564,10 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "when is tge",
       "is this a testnet",
       /* The skeptical newcomer's way of asking the same thing: whether there is
-         real value at stake. The answer — testnet funds, none of it real money —
-         is exactly the reassurance these want. */
+         real value at stake. The answer can't assume — Arc mainnet (the default)
+         has real value, the practice networks don't — so it points at the network
+         switcher and explains both rather than reassuring with a flat "it's all
+         testnet", which would be false the moment someone is on mainnet. */
       /* "is it safe" is deliberately NOT here — it already belongs to the
          audit-status topic. These are the ones unambiguously about whether real
          value is at stake. */
@@ -570,7 +577,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "the catch",
     ],
     answer:
-      "You are on a testnet. The five networks live today are Sepolia, Base Sepolia, BNB Smart Chain Testnet, Robinhood Chain Testnet and Arc Testnet; the tokens come from a faucet and none of it is real money, which is the point — you can borrow, get liquidated and find out what that feels like without risking anything. Mainnet is September 2026, with the token event by the end of the same month. That is the roadmap on the landing page.",
+      "Depends which network you've selected — the name in the network switcher tells you. Arc mainnet is live, with real value at stake. The testnet toggle also opens practice networks (Sepolia, Base Sepolia, BNB Smart Chain Testnet, Robinhood Chain Testnet and Arc Testnet), where the tokens come from a faucet and none of it is real money — that's the point, you can borrow, get liquidated and find out what that feels like without risking anything. The token event follows by the end of September 2026; that roadmap is on the landing page.",
   },
   {
     /*
