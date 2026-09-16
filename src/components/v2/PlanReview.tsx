@@ -9,6 +9,7 @@ import { encodeBatch, planRuns } from "@/lib/v2/intents/batch";
 import { useResolverContext } from "@/hooks/v2/useResolverContext";
 import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
 import { recordTx, txFromError } from "@/lib/v2/txLog";
+import { recordCctpBurn } from "@/lib/bridge/cctpPending";
 import { describeFailure, isRejection } from "@/lib/v2/txErrors";
 import { PROTOCOL_ERROR_ABI } from "@/lib/v2/protocolErrors";
 import SwapRoute from "./SwapRoute";
@@ -310,6 +311,25 @@ export default function PlanReview({
           at: Date.now(),
         });
       }
+      /* A CCTP burn is only half a transfer: the USDC is minted on the
+         destination by a later `receiveMessage`, once Circle attests. Record the
+         burn so the completion surface (and Luca) can offer to finish it. Inert
+         in production until CCTP_ENABLED — no `provider:"cctp"` bridge is built
+         while the corridor is off — so this costs nothing until go-live. */
+      if (result.hash && intents[i].kind === "bridge") {
+        const b = intents[i] as Extract<Intent, { kind: "bridge" }>;
+        if (b.provider === "cctp") {
+          recordCctpBurn(ctx.address, {
+            txHash: result.hash,
+            sourceChainId: b.fromChainId,
+            destChainId: b.toChainId,
+            destChainName: b.toChainName,
+            amount: b.amount,
+            symbol: b.symbol,
+            burnedAt: Date.now(),
+          });
+        }
+      }
       return pauseAfter(i, !!result.skipped) ? "paused" : "done";
     } catch (err) {
       console.error("[PlanReview] step failed:", intents[i].kind, err);
@@ -501,6 +521,24 @@ export default function PlanReview({
         status: "confirmed",
         at: Date.now(),
       });
+      /* Same CCTP burn record as the sequential path: a bundled burn confirms
+         under one hash and the bridge is the pair's last step. Inert until
+         CCTP_ENABLED — see runStep. */
+      const lastIntent = intents[steps[steps.length - 1]];
+      if (lastIntent.kind === "bridge") {
+        const b = lastIntent as Extract<Intent, { kind: "bridge" }>;
+        if (b.provider === "cctp") {
+          recordCctpBurn(ctx.address, {
+            txHash: hash,
+            sourceChainId: b.fromChainId,
+            destChainId: b.toChainId,
+            destChainName: b.toChainName,
+            amount: b.amount,
+            symbol: b.symbol,
+            burnedAt: Date.now(),
+          });
+        }
+      }
     }
     for (const i of steps) setStep(i, "done");
 
