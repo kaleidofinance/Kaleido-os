@@ -187,7 +187,13 @@ export async function resolveBridgeRoute(
   const dest = resolveChain(toChain);
   if (!dest) return { error: `I don't recognise the chain "${toChain}".` };
   if (dest.id === fromChainId)
-    return { error: "That's the chain you're already on — nothing to bridge." };
+    return {
+      error:
+        `A bridge moves funds FROM the chain your wallet is on TO another one, ` +
+        `and you're already on ${dest.shortName}. If you meant to bring ${asset} ` +
+        `here from somewhere else, switch your wallet to that source chain first, ` +
+        `then bridge to ${dest.shortName}.`,
+    };
 
   // Amount → base units at the asset's decimals, refused here so a bad value
   // never reaches a portal call or an aggregator.

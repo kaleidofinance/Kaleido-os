@@ -64,13 +64,46 @@ export interface BridgeQuote {
   note: string;
 }
 
-/** Resolve a chain by name, shortName or id, against the real registry. */
+/* Common names people use that the registry stores differently, keyed by the
+   lower-cased alias → chain id. The registry's own name/shortName are matched
+   first, so these only fill genuine gaps: Binance calls chain 56 "BNB Chain"
+   while the registry (and BscScan) call it "BNB Smart Chain" / "BSC", and it is
+   the label the app's own network switcher shows. No testnet aliases — a testnet
+   must be named explicitly so it can never be reached by a mainnet shorthand. */
+const CHAIN_ALIASES: Record<string, number> = {
+  bnb: 56,
+  "bnb chain": 56,
+  binance: 56,
+  "binance smart chain": 56,
+  eth: 1,
+  ether: 1,
+};
+
+/** Resolve a chain by name, shortName, id or common alias, against the registry. */
 export function resolveChain(input: string | number): ChainMeta | undefined {
   if (typeof input === "number") return CHAINS.find((c) => c.id === input);
   const q = String(input).trim().toLowerCase();
   if (/^\d+$/.test(q)) return CHAINS.find((c) => c.id === Number(q));
-  return CHAINS.find(
-    (c) => c.name.toLowerCase() === q || c.shortName.toLowerCase() === q,
+
+  const match = (s: string) =>
+    CHAINS.find(
+      (c) => c.name.toLowerCase() === s || c.shortName.toLowerCase() === s,
+    );
+  const byId = (id: number | undefined) =>
+    id === undefined ? undefined : CHAINS.find((c) => c.id === id);
+
+  /* People say "Arc chain" and "BNB network" as often as the bare name, and the
+     registry stores neither suffix. So try the input as given, then again with a
+     trailing generic word removed — but only the truly generic ones:
+     "mainnet"/"testnet" are NOT stripped, because "Arc testnet" and "Arc" are
+     different chains and dropping the word would resolve a testnet request to the
+     mainnet. Aliases are consulted last, on both spellings. */
+  const stripped = q.replace(/\s+(chain|network)$/, "").trim();
+  return (
+    match(q) ??
+    match(stripped) ??
+    byId(CHAIN_ALIASES[q]) ??
+    byId(CHAIN_ALIASES[stripped])
   );
 }
 
