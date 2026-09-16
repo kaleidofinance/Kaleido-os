@@ -11,6 +11,7 @@ import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import { getContracts } from "@/constants/registry";
 import { initialSqrtPriceX96, sortMintParams } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
+import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { register } from "./registry";
 
 /**
@@ -480,9 +481,55 @@ register("aggregatorSwap", {
     detail: `About ${i.amountOut} ${i.symbolOut}, at least ${i.amountOutMin} after slippage. Filled by ${i.venue}; the price floor is enforced on-chain.`,
   }),
   resolve: async (ctx, i) => {
+    let to = i.to;
+    let data = i.data;
+
+    /* Build-at-sign-time for an aggregator route.
+     *
+     * The router calldata built when the quote was shown is perishable: it bakes
+     * in the exact pool amounts at quote time and a fixed recipient. By the time
+     * the user signs — and the paired approve above has just mined a block, which
+     * on its own moves the chain forward — those amounts no longer match and
+     * KyberSwap's router reverts ("Invalid msg.value"); a recipient captured
+     * while the wallet was still connecting reverts "sender != recipient". So we
+     * discard the stale bytes and rebuild NOW, with the connected signer as both
+     * sender and recipient, the instant before we send. This is the same split
+     * 1inch/0x/Jupiter integrate on: the quote is indicative, the executable
+     * transaction is fetched at execution — never reused from quote time. */
+    if (i.venue === "kyberswap") {
+      const address = await ctx.signer.getAddress();
+      const fresh = await getKyberSwapExecution({
+        chainId: i.chainId,
+        tokenIn: i.tokenIn,
+        tokenOut: i.tokenOut,
+        amountUnits: ethers.parseUnits(i.amountIn, i.decimalsIn).toString(),
+        address,
+        slippageBps: i.slippageBps,
+      });
+      if (!fresh) {
+        throw new Error(
+          "The swap route expired before it could be signed. Close this and request a fresh quote.",
+        );
+      }
+      /* The router and the spender the approve authorised are the audited trust
+         boundary, and a fixed constant per chain. Refuse a rebuild that points
+         anywhere the paired approve did not authorise, rather than sign a call
+         to an unbounded target. The input approve above caps this at amountIn. */
+      if (
+        fresh.to.toLowerCase() !== i.to.toLowerCase() ||
+        fresh.spender.toLowerCase() !== i.spender.toLowerCase()
+      ) {
+        throw new Error(
+          "The swap router changed unexpectedly between quote and signing; the swap was not sent.",
+        );
+      }
+      to = fresh.to;
+      data = fresh.data;
+    }
+
     const tx = await ctx.signer.sendTransaction({
-      to: i.to,
-      data: i.data,
+      to,
+      data,
       value: BigInt(i.value),
     });
     await tx.wait();

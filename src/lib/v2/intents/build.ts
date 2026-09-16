@@ -948,6 +948,7 @@ export async function buildIntents(
         chainId,
         venue: route.venue,
         spender: route.spender,
+        slippageBps: opts.slippageBps,
       };
       return {
         ok: true,
