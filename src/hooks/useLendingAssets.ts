@@ -132,7 +132,11 @@ export function useLendingAssets(targetChainId?: number): LendingAssets {
    * WETH had no row for it and could not withdraw it from this surface. */
   useEffect(() => {
     if (MOCK_DATA) return;
-    if (!address || sets.collateral.length === 0) {
+    /* No diamond on this chain (Arc mainnet and the other coming-soon
+       mainnets have none yet) means getKaleidoContract below would throw —
+       guard it here like the sibling useLendingFees does, and show nothing
+       rather than crash the page. */
+    if (!address || sets.collateral.length === 0 || !isDeployed(readChain)) {
       setHoldings([]);
       return;
     }
