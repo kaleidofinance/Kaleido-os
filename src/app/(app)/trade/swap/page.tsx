@@ -486,7 +486,7 @@ export default function SwapPage() {
           setKyberRoute(null);
           setAmountOut(String(found.amountOut));
           setNoRoute(false);
-        } else if (hasKyberSwap(swapChainId) && tokenIn && tokenOut) {
+        } else if (hasKyberSwap(swapChainId) && address && tokenIn && tokenOut) {
           /* Our own pools returned nothing, but this chain routes through
              KyberSwap — the same fallback Luca uses. Quote it through
              /api/swap/quote (fee + key stay server-side).
@@ -499,10 +499,13 @@ export default function SwapPage() {
              makes. Wrong wrapper here was the "no quote": KyberSwap can't route
              0x8c6c.
 
-             A quote needs no wallet — pass a placeholder recipient when
-             disconnected so the price shows; `address` is in the deps, so
-             connecting re-quotes with the real recipient before anything is
-             signed (and the CTA is "Connect wallet" until then). */
+             The quote requires the CONNECTED `address`: KyberSwap's
+             /route/build bakes it into the calldata as BOTH sender and
+             recipient, and the router reverts with "sender != recipient" if the
+             signer differs. A placeholder recipient (used while disconnected)
+             leaks into an executable route the user then signs — the swap
+             fails. So gate on `address`: a disconnected visitor sees "Connect
+             wallet", not a route that can't be executed. */
           const sellTok = aggregatorToken(swapChainId, tokenIn);
           const buyTok = aggregatorToken(swapChainId, tokenOut);
           const units = ethers.parseUnits(amountIn, sellTok.decimals).toString();
@@ -511,7 +514,7 @@ export default function SwapPage() {
             tokenIn: sellTok.address,
             tokenOut: buyTok.address,
             amountUnits: units,
-            address: address ?? "0x0000000000000000000000000000000000000001",
+            address,
             slippageBps,
           });
           if (cancelled) return;
