@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useActiveAccount } from "thirdweb/react";
+import { CHAINS_BY_ID } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { getKaleidoContract } from "@/config/contracts";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { lendingChains } from "@/lib/lending/chain";
@@ -44,7 +46,14 @@ const STATUS_SERVICED = 1;
 
 export function useLenderPositionsAcrossChains(): LenderPositionsAcrossChains {
   const address = useActiveAccount()?.address;
-  const chains = useMemo(() => lendingChains(), []);
+  const { showTestnets } = useTestnetMode();
+  const chains = useMemo(
+    () =>
+      lendingChains().filter(
+        (id) => showTestnets || CHAINS_BY_ID[id]?.network === "mainnet",
+      ),
+    [showTestnets],
+  );
   const [state, setState] = useState<{
     offers: ChainLenderOffer[];
     loans: ChainFundedLoan[];

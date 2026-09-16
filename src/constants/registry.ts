@@ -261,6 +261,17 @@ export function isDeployed(chainId: number | undefined): boolean {
 }
 
 /**
+ * True where a DEX (v3Router) is deployed — swaps work here even without the
+ * full Diamond. Arc launched DEX-first (a v3Router, no Diamond), so isDeployed
+ * is false there while swaps are live; a "deploy pending" label off isDeployed
+ * alone reads wrong. The swap builder already gates on v3Router, not this; this
+ * is for the UI that wants to say "swaps live" rather than "deploy pending".
+ */
+export function hasSwaps(chainId: number | undefined): boolean {
+  return Boolean(getContracts(chainId).v3Router);
+}
+
+/**
  * True for a mainnet chain announced but not launched on yet — the "Coming soon"
  * gate. It reads the `comingSoon` flag from chains.ts but clears the moment the
  * Diamond actually ships: a chain going live needs no edit to that flag because
