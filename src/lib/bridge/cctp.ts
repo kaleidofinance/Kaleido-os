@@ -188,12 +188,17 @@ const TOKEN_MESSENGER_V2_ABI = [
 ];
 
 /**
- * Standard Transfer finality threshold (2000 = "finalized"). The alternative,
- * Fast Transfer, uses a lower threshold AND a nonzero `maxFee` charged by
- * Circle. We take Standard: no fee, hard finality of the source chain, and the
- * amount that mints on the destination equals the amount burned to the token.
+ * Circle's finality thresholds. Standard (2000 = "finalized") waits for the
+ * source chain's hard finality and is free. Fast (1000 = "confirmed") attests in
+ * seconds against Circle's Fast Transfer Allowance and charges a small `maxFee`,
+ * deducted from the amount at mint. Which one a burn asks for is the whole
+ * difference between the two speeds; resolveCctpFastFee reads the fee/allowance.
  */
 const FINALITY_THRESHOLD_STANDARD = 2000;
+const FINALITY_THRESHOLD_FAST = 1000;
+
+/** How fast the transfer settles — see the threshold note above. */
+export type CctpSpeed = "standard" | "fast";
 
 /**
  * Build the CCTP source burn leg, or an error to fall through on.
@@ -222,6 +227,10 @@ export function buildCctpBurnRoute(params: {
   isNative: boolean;
   tokenAddress?: string;
   userAddress: string;
+  /** "standard" (free, finality-bound) by default; "fast" needs `maxFeeUnits`. */
+  speed?: CctpSpeed;
+  /** The Fast Transfer fee cap in burn-token units — from resolveCctpFastFee. */
+  maxFeeUnits?: bigint;
 }): BridgeRoute | { error: string } {
   const {
     fromChainId,
@@ -232,6 +241,8 @@ export function buildCctpBurnRoute(params: {
     isNative,
     tokenAddress,
     userAddress,
+    speed = "standard",
+    maxFeeUnits = 0n,
   } = params;
 
   if (asset.toUpperCase() !== "USDC")
@@ -285,7 +296,14 @@ export function buildCctpBurnRoute(params: {
   // the completion PR will let the recipient be named for wallets that differ.
   const mintRecipient = ethers.zeroPadValue(userAddress, 32);
   // destinationCaller zero = anyone may complete the mint (permissionless
-  // receiveMessage). maxFee 0 = Standard Transfer, no Circle fee.
+  // receiveMessage). Standard: threshold 2000, maxFee 0 (free, finality-bound).
+  // Fast: threshold 1000, maxFee = the cap resolveCctpFastFee quoted (seconds,
+  // small fee deducted at mint).
+  const fast = speed === "fast";
+  const maxFee = fast ? maxFeeUnits : 0n;
+  const threshold = fast
+    ? FINALITY_THRESHOLD_FAST
+    : FINALITY_THRESHOLD_STANDARD;
   const data = new ethers.Interface(
     TOKEN_MESSENGER_V2_ABI,
   ).encodeFunctionData("depositForBurn", [
@@ -294,8 +312,8 @@ export function buildCctpBurnRoute(params: {
     mintRecipient,
     burnToken,
     ethers.ZeroHash,
-    0n,
-    FINALITY_THRESHOLD_STANDARD,
+    maxFee,
+    threshold,
   ]);
 
   return {

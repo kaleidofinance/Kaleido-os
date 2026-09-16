@@ -6,6 +6,7 @@ import {
   isCctpCorridor,
   isKnownCctpTarget,
 } from "@/lib/bridge/cctp";
+import { resolveCctpFastFee } from "@/lib/bridge/cctpFast";
 import type { BridgeRoute, BridgeRouteRequest } from "@/lib/v2/intents/build";
 
 /**
@@ -180,6 +181,7 @@ export async function resolveBridgeRoute(
     isNative,
     tokenAddress,
     userAddress,
+    speed,
   } = params;
 
   const dest = resolveChain(toChain);
@@ -209,6 +211,24 @@ export async function resolveBridgeRoute(
     asset.toUpperCase() === "USDC" &&
     isCctpCorridor(fromChainId, dest.id)
   ) {
+    /* Fast by default: settle in seconds for a small Circle fee (0 on some
+       corridors, e.g. Arc-outbound), quoting the fee cap + allowance from
+       Circle. A fast lane that is full or a corridor without one degrades to a
+       free Standard burn rather than refusing — the transfer still goes, just
+       finality-bound. `speed: "standard"` opts out of the fee entirely. */
+    let cctpSpeed: "standard" | "fast" = "standard";
+    let maxFeeUnits = 0n;
+    if ((speed ?? "fast") === "fast") {
+      const quote = await resolveCctpFastFee({
+        sourceChainId: fromChainId,
+        destChainId: dest.id,
+        units: BigInt(units),
+      });
+      if (quote.ok) {
+        cctpSpeed = "fast";
+        maxFeeUnits = quote.maxFeeUnits;
+      }
+    }
     const cctp = buildCctpBurnRoute({
       fromChainId,
       dest: { id: dest.id, shortName: dest.shortName },
@@ -218,6 +238,8 @@ export async function resolveBridgeRoute(
       isNative,
       tokenAddress,
       userAddress,
+      speed: cctpSpeed,
+      maxFeeUnits,
     });
     if (!("error" in cctp)) return cctp;
   }
