@@ -10,6 +10,8 @@ import {
   type BookRequestRow,
 } from "@/lib/lending/book";
 import { lendingChains } from "@/lib/lending/chain";
+import { CHAINS_BY_ID } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { MOCK_DATA, mockListings, mockRequests } from "@/lib/mock";
 
 /**
@@ -134,10 +136,21 @@ function useBook<T>(
   side: "listings" | "requests",
   enabled: boolean,
 ): { rows: T[]; loading: boolean; error: string | null; refetch: () => void } {
-  const chains = useMemo(() => lendingChains(), []);
+  /* Gated on the testnet toggle like the rest of the mainnet-first surfaces:
+     with it off, the P2P book sweeps only mainnet chains, so testnet offers
+     stop appearing in the market. showTestnets is in the query key so a flip
+     refetches instead of serving the cached cross-chain rows. */
+  const { showTestnets } = useTestnetMode();
+  const chains = useMemo(
+    () =>
+      lendingChains().filter(
+        (id) => showTestnets || CHAINS_BY_ID[id]?.network === "mainnet",
+      ),
+    [showTestnets],
+  );
 
   const query = useQuery<BookResult>({
-    queryKey: ["lendingBook", "all", side],
+    queryKey: ["lendingBook", "all", side, showTestnets],
     queryFn: async () => {
       const perChain = await Promise.all(
         chains.map(async (chainId) => {

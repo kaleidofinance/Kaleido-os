@@ -61,6 +61,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { getContracts, isSeededPool } from "@/constants/registry";
+import { CHAINS_BY_ID } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { ITradingPair } from "@/constants/types/dex";
 import { chainTokenByAddress } from "@/constants/tokens";
 import { readVolumeWindow } from "@/lib/dex/logWindow";
@@ -372,6 +374,10 @@ async function sweepChain(
 }
 
 export const usePoolData = () => {
+  /* Mainnet-first: the shared V2 sweep reads every deployed chain, but a viewer
+     with the testnet toggle off should not see testnet pools listed. Filtered
+     per consumer off the toggle, like the V3 table. */
+  const { showTestnets } = useTestnetMode();
   const [pools, setPools] = useState<ITradingPair[]>(() => store.snapshot());
   const [loading, setLoading] = useState(store.snapshot().length === 0);
   const [error, setError] = useState<string | null>(null);
@@ -431,7 +437,9 @@ export const usePoolData = () => {
   }, [fetchPools]);
 
   return {
-    pools,
+    pools: pools.filter(
+      (p) => showTestnets || CHAINS_BY_ID[p.chainId]?.network === "mainnet",
+    ),
     loading,
     error,
     refetch: () => fetchPools(true),
