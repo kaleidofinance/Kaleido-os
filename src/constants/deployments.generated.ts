@@ -49,6 +49,16 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     wrappedNative: "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd", // deployment-dex-bscTestnet.json
     yieldTreasury: "0xeFe21b46e9603A574c7aBd3a88976f9B456D832B", // deployment-stablecoin-bscTestnet-1788709839524.json
   },
+  5042: {
+    poolInitCodeHash:
+      "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcMainnet-1789547230687.json
+    v3Factory: "0xbB74f2319494461B2591F8fbF126654Dd4c2a649", // deployment-v3-arcMainnet-1789547230687.json
+    v3PositionDescriptor: "0xeaD30fFC226B58235813Be9d4CFE15Ae0711eF50", // deployment-v3-arcMainnet-1789547230687.json
+    v3PositionManager: "0x55879358eC7eDA609f2264b0348D1915ee8307e1", // deployment-v3-arcMainnet-1789547230687.json
+    v3Quoter: "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3", // deployment-v3-arcMainnet-1789547230687.json
+    v3Router: "0x51aCdcb394210db1bB4e2C8d4569cd734a374188", // deployment-v3-arcMainnet-1789547230687.json
+    wrappedNative: "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b", // deployment-v3-arcMainnet-1789547230687.json
+  },
   46630: {
     diamond: "0x3565904975AE169c0a48af085b9f786660875874", // deployment-diamond-robinhoodTestnet.json
     faucet: "0xD65927aF66B52E5a43C9C4Fb405D6F0823B65441", // deployment-faucet-robinhoodTestnet.json
@@ -311,7 +321,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-11T20:25:51.946Z",
+  generatedAt: "2026-09-16T08:30:04.457Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -374,6 +384,7 @@ export const GENERATED_META: {
     "deployment-tokens-bscTestnet.json",
     "deployment-tokens-robinhoodTestnet.json",
     "deployment-tokens-sepolia.json",
+    "deployment-v3-arcMainnet-1789547230687.json",
     "deployment-v3-arcTestnet-1787358306379.json",
     "deployment-v3-baseTestnet-1787327167156.json",
     "deployment-v3-bscTestnet-1787453320471.json",
