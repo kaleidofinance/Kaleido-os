@@ -5,6 +5,7 @@ import { useActiveWallet, useSwitchActiveWalletChain } from "thirdweb/react";
 import { defineChain } from "thirdweb/chains";
 import { toast } from "sonner";
 import { chainTokens, tokensAcrossChains } from "@/constants/tokens";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import {
   CHAINS,
   getChainMeta,
@@ -414,13 +415,17 @@ export default function TokenSelector({
   }, [open, onClose]);
 
   /* Mainnets first, then testnets, each in registry order — the same ordering
-     NetworkSelector uses, so the two lists never disagree about precedence. */
+     NetworkSelector uses, so the two lists never disagree about precedence.
+     Gated on the testnet toggle like every other multichain surface (#225/#232):
+     with it off, the network filter AND the "all networks" token list it feeds
+     show only mainnet, so a mainnet-first user never picks or sees a testnet. */
+  const { showTestnets } = useTestnetMode();
   const chains = useMemo(
     () => [
       ...CHAINS.filter((c) => c.network === "mainnet"),
-      ...CHAINS.filter((c) => c.network !== "mainnet"),
+      ...(showTestnets ? CHAINS.filter((c) => c.network !== "mainnet") : []),
     ],
-    [],
+    [showTestnets],
   );
 
   const available = useMemo(
