@@ -52,7 +52,11 @@ export function hasKyberSwap(chainId: number): boolean {
 }
 
 /** Whether `address` is the KyberSwap router the resolver would itself produce. */
-export function isKnownSwapRouter(chainId: number, address: string): boolean {
+export function isKnownSwapRouter(
+  chainId: number | undefined,
+  address: string,
+): boolean {
+  if (chainId === undefined) return false;
   const known = KYBERSWAP_ROUTERS[chainId];
   return Boolean(known && address && address.toLowerCase() === known.toLowerCase());
 }

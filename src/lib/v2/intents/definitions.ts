@@ -474,6 +474,22 @@ register("bridge", {
   },
 });
 
+register("aggregatorSwap", {
+  render: (i) => ({
+    title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
+    detail: `About ${i.amountOut} ${i.symbolOut}, at least ${i.amountOutMin} after slippage. Filled by ${i.venue}; the price floor is enforced on-chain.`,
+  }),
+  resolve: async (ctx, i) => {
+    const tx = await ctx.signer.sendTransaction({
+      to: i.to,
+      data: i.data,
+      value: BigInt(i.value),
+    });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
 /* ------------------------------------------------------------- lending -- */
 
 const pct = (n: number) => `${n}%`;

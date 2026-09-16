@@ -33,6 +33,7 @@ import {
   poolSide,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
+import { hasKyberSwap } from "@/lib/swap/kyberswap";
 import type { Intent } from "@/lib/v2/intents";
 import type { Command, Slot } from "@/lib/v2/intents/fromCommand";
 /* A value import, unlike the type above, and the only one in this file that
@@ -285,6 +286,36 @@ export interface BridgeRoute {
   gasLimit?: string;
 }
 
+/** A same-chain swap to resolve through an external aggregator (KyberSwap). */
+export interface SwapRouteRequest {
+  tokenIn: string;
+  tokenOut: string;
+  /** Human input amount. */
+  amount: string;
+  decimalsIn: number;
+  decimalsOut: number;
+  /** Slippage floor in basis points, applied to the displayed minimum. */
+  slippageBps: number;
+}
+
+/**
+ * A resolved aggregator swap — the trusted origin of an `aggregatorSwap`
+ * Intent’s `to`/`data`. From KyberSwap via the resolver, targeting a router the
+ * auditor whitelists. See lib/swap/route.ts.
+ */
+export interface AggregatorSwapRoute {
+  to: string;
+  data: string;
+  /** "0" — an ERC20 swap attaches no native value. */
+  value: string;
+  /** The router to approve; equal to `to` by construction. */
+  spender: string;
+  /** Expected output in the out-token’s base units. */
+  amountOut: string;
+  /** The venue that produced to/data, e.g. "kyberswap". */
+  venue: string;
+}
+
 /**
  * One asset the faucet lists, as the faucet itself reports it.
  *
@@ -422,6 +453,16 @@ export interface PlanDeps {
   bridgeRoute(
     req: BridgeRouteRequest,
   ): Promise<BridgeRoute | { error: string }>;
+
+  /**
+   * A same-chain swap on a chain where Kaleido runs no pools of its own, filled
+   * by an external aggregator. Optional like bridgeRoute: only the swap branch
+   * calls it, and only after `hasKyberSwap(chainId)`. Absent implementation
+   * makes that branch refuse rather than throw.
+   */
+  swapRoute?(
+    req: SwapRouteRequest,
+  ): Promise<AggregatorSwapRoute | { error: string }>;
 }
 
 /**
@@ -769,6 +810,69 @@ export async function buildIntents(
     if (!amount) {
       // A swap with neither an absolute amount nor a share is not buildable.
       return { ok: false, error: "How much do you want to swap?" };
+    }
+
+    /* Chains where Kaleido runs no pools of its own route through an external
+       aggregator (KyberSwap) rather than the V3 machinery below — Arc, whose
+       liquidity is Uniswap V3/V4 our fork quoter cannot read. Taken before the
+       poolSide/venue path because none of it applies: the aggregator handles
+       wrapping, discovery and the calldata, and we pair its router call with an
+       approve and our own fee (added server-side). */
+    if (
+      chainId !== undefined &&
+      !contracts.v3Router &&
+      fallbackVenues(chainId).length === 0 &&
+      hasKyberSwap(chainId) &&
+      deps.swapRoute
+    ) {
+      const route = await deps.swapRoute({
+        tokenIn: tokenIn.address,
+        tokenOut: tokenOut.address,
+        amount,
+        decimalsIn: tokenIn.decimals,
+        decimalsOut: tokenOut.decimals,
+        slippageBps: opts.slippageBps,
+      });
+      if ("error" in route) return { ok: false, error: route.error };
+
+      const out = ethers.formatUnits(route.amountOut, tokenOut.decimals);
+      const minOut = (Number(out) * (1 - opts.slippageBps / 10000)).toFixed(
+        tokenOut.decimals > 6 ? 6 : tokenOut.decimals,
+      );
+
+      const approve: Intent = {
+        kind: "approve",
+        token: tokenIn.address,
+        spender: route.spender,
+        amount,
+        decimals: tokenIn.decimals,
+        symbol: tokenIn.symbol,
+      };
+      const swap: Intent = {
+        kind: "aggregatorSwap",
+        to: route.to,
+        data: route.data,
+        value: "0",
+        tokenIn: tokenIn.address,
+        amountIn: amount,
+        decimalsIn: tokenIn.decimals,
+        symbolIn: tokenIn.symbol,
+        tokenOut: tokenOut.address,
+        amountOut: out,
+        amountOutMin: minOut,
+        decimalsOut: tokenOut.decimals,
+        symbolOut: tokenOut.symbol,
+        chainId,
+        venue: route.venue,
+        spender: route.spender,
+      };
+      return {
+        ok: true,
+        build: {
+          summary: `Swap ${amount} ${tokenIn.symbol} for about ${out} ${tokenOut.symbol} via ${route.venue}.`,
+          intents: [approve, swap],
+        },
+      };
     }
 
     /* Before quoting, not after: a chain with no router cannot fill this order

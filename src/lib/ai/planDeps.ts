@@ -12,6 +12,7 @@ import { readCollateralDeposits } from "@/lib/lending/collateral";
 import { readTokenBalance } from "@/lib/chain/tokenBalance";
 import { encodeV3Path, type PathQuoter } from "@/lib/dex/route";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
+import { resolveSwapRoute } from "@/lib/swap/route";
 import type {
   FaucetAssetRef,
   LoanRef,
@@ -476,5 +477,11 @@ export function serverPlanDeps(
             fromChainId: chainId,
             userAddress: address ?? "",
           }),
+    swapRoute: (req) =>
+      chainId === undefined
+        ? Promise.resolve({
+            error: "Connect a wallet to a supported chain to swap.",
+          })
+        : resolveSwapRoute({ ...req, chainId, userAddress: address ?? "" }),
   };
 }
