@@ -32,6 +32,11 @@ import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The scan probes each pending wallet on Arc mainnet; with bounded-
+// concurrency probing (see below) even a 500-wallet batch finishes well
+// inside this budget, and 60s is the Hobby-plan ceiling the keeper route
+// already relies on.
+export const maxDuration = 60;
 
 // Must match the pending-points maths in api/waitlist/route.ts.
 const PER_REFERRAL = 50;
@@ -50,6 +55,12 @@ const SOURCE = "waitlist";
 // How many pending wallets to check per invocation, bounding RPC load. A cron can
 // call this repeatedly; ?limit overrides (1..500).
 const DEFAULT_LIMIT = 50;
+
+// How many Arc-mainnet nonce probes to run at once. hasArcActivity is a
+// single stateless eth_getTransactionCount, safe to run concurrently; this
+// bounds the load on the (unofficial) Arc RPC while letting a run clear a
+// large batch inside maxDuration instead of one round-trip at a time.
+const PROBE_CONCURRENCY = 10;
 
 function secretMatches(offered: string | null, expected: string): boolean {
   if (!offered) return false;
@@ -92,7 +103,11 @@ async function handle(req: Request): Promise<Response> {
       ? Math.min(rawLimit, 500)
       : DEFAULT_LIMIT;
 
-  // Oldest pending signups first, so the queue drains fairly across runs.
+  // Least-recently-checked first (nulls — never probed — ahead of everything),
+  // then oldest signup. This rotates the scan through the WHOLE pending set:
+  // stamping last_checked_at on every probed wallet (below) means a run never
+  // re-checks the same unqualified front of the queue while deeper wallets that
+  // have actually transacted wait unseen. Requires 20260916030000.
   // x_*_at are the completed X tasks (link/follow/retweet/comment), each worth
   // its X_TASK_POINTS value; credited in full here regardless of the app-side 5h
   // display hold. (Requires the X-tasks migrations to be applied.)
@@ -102,29 +117,61 @@ async function handle(req: Request): Promise<Response> {
       "wallet, welcome_points, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at",
     )
     .is("activated_at", null)
+    .order("last_checked_at", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: true })
     .limit(limit);
   if (pendErr)
     return Response.json({ error: "query failed" }, { status: 500 });
 
+  const rows = pending ?? [];
   const now = new Date().toISOString();
-  let checked = 0;
   let activated = 0;
   const errors: string[] = [];
 
-  for (const row of pending ?? []) {
-    const wallet = row.wallet as string;
-    checked++;
+  // Phase 1 — probe every wallet in the batch on Arc mainnet, PROBE_CONCURRENCY
+  // at a time. hasArcActivity is a stateless read, so concurrency just overlaps
+  // round-trips; the batch either resolves well inside maxDuration or the run
+  // ends here having stamped nothing, which is safe — the same rows come back
+  // next run.
+  const probed: { active: boolean; errored: boolean }[] = new Array(rows.length);
+  let cursor = 0;
+  async function probeWorker() {
+    for (;;) {
+      const i = cursor++;
+      if (i >= rows.length) return;
+      try {
+        probed[i] = {
+          active: await hasArcActivity(rows[i].wallet as string),
+          errored: false,
+        };
+      } catch {
+        probed[i] = { active: false, errored: true };
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(PROBE_CONCURRENCY, rows.length) }, probeWorker),
+  );
 
-    let active = false;
-    try {
-      active = await hasArcActivity(wallet);
-    } catch {
-      // RPC hiccup: leave the wallet pending, it is picked up next run.
+  // Phase 2 — credit the wallets that have transacted. Sequential: these are the
+  // few that qualify and each is a small write. A genuine insert failure is left
+  // UNstamped so it is retried next run rather than rotated to the back.
+  const toRotate: string[] = []; // probed but not activated → stamp to advance the scan
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const wallet = row.wallet as string;
+    const p = probed[i];
+    if (p.errored) {
+      // RPC hiccup: record it, but still rotate — one bad wallet must not wedge
+      // the front of the queue; it is retried on the next rotation.
       errors.push(`rpc:${wallet}`);
+      toRotate.push(wallet);
       continue;
     }
-    if (!active) continue;
+    if (!p.active) {
+      toRotate.push(wallet);
+      continue;
+    }
 
     // Referral count → capped bonus, snapshotted now.
     const { data: lb } = await admin
@@ -160,10 +207,10 @@ async function handle(req: Request): Promise<Response> {
       continue;
     }
 
-    // 2) Stamp activated_at so it is not re-scanned (guarded on still-pending).
+    // 2) Stamp activated_at (and last_checked_at) so it leaves the pending set.
     const { error: updErr } = await admin
       .from("waitlist")
-      .update({ activated_at: now })
+      .update({ activated_at: now, last_checked_at: now })
       .eq("wallet", wallet)
       .is("activated_at", null);
     if (updErr) {
@@ -173,11 +220,25 @@ async function handle(req: Request): Promise<Response> {
     activated++;
   }
 
+  // Phase 3 — rotate every probed-but-not-activated wallet to the back by
+  // stamping last_checked_at in one write, so the next run advances to the
+  // least-recently-checked wallets instead of re-probing this same front.
+  if (toRotate.length > 0) {
+    const { error: rotErr } = await admin
+      .from("waitlist")
+      .update({ last_checked_at: now })
+      .in("wallet", toRotate)
+      .is("activated_at", null);
+    if (rotErr) errors.push(`rotate:${rotErr.code ?? "?"}`);
+  }
+
+  const checked = rows.length;
+
   return Response.json({
     ok: true,
     scanned: checked,
     activated,
-    remainingChecked: (pending ?? []).length,
+    remainingChecked: rows.length,
     limit,
     errors,
   });
