@@ -13,7 +13,7 @@ import {
   isKnownSwapRouter,
   resolveKyberSwap,
 } from "./kyberswap.ts";
-import { kyberFeeBody, swapFeeBps } from "./kyberswapServer.ts";
+import { kyberFeeParams, swapFeeBps } from "./kyberswapServer.ts";
 
 let pass = 0;
 let fail = 0;
@@ -69,16 +69,16 @@ console.log("\n— resolve refuses an unrouted chain without a network call —"
   check("an off-KyberSwap chain resolves to null", r === null);
 }
 
-console.log("\n— fee body is gated on a configured receiver —");
+console.log("\n— fee params are gated on a configured receiver —");
 {
   delete process.env.SWAP_FEE_RECEIVER;
-  check("no receiver → no fee fields", Object.keys(kyberFeeBody()).length === 0);
+  check("no receiver → no fee params", Object.keys(kyberFeeParams()).length === 0);
 
   process.env.SWAP_FEE_RECEIVER = "0x00000000000000000000000000000000000FEE01";
   process.env.SWAP_FEE_BPS = "20";
-  const body = kyberFeeBody();
+  const body = kyberFeeParams();
   check("receiver set → fee is charged on input", body.chargeFeeBy === "currency_in");
-  check("fee is 20 bps in bps mode", body.feeAmount === "20" && body.isInBps === true);
+  check("fee is 20 bps in bps mode", body.feeAmount === "20" && body.isInBps === "true");
   check("fee receiver is echoed", body.feeReceiver === process.env.SWAP_FEE_RECEIVER);
   check("swapFeeBps reads the env", swapFeeBps() === 20);
   delete process.env.SWAP_FEE_RECEIVER;

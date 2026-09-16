@@ -12,7 +12,7 @@
  * the caller. See lib/swap/kyberswapServer.ts and app/api/swap/quote/route.ts.
  */
 
-import { kyberFeeBody, kyberClientId } from "./kyberswapServer";
+import { kyberFeeParams, kyberClientId } from "./kyberswapServer";
 
 const KYBER_API = "https://aggregator-api.kyberswap.com";
 
@@ -101,14 +101,17 @@ export async function resolveKyberSwap(args: {
   const clientId = kyberClientId();
 
   try {
+    /* Our fee rides the ROUTES query, not the build body — KyberSwap computes it
+       into the route there and ignores it on build (see kyberFeeParams). */
     const routeQs = new URLSearchParams({
       tokenIn: args.tokenIn,
       tokenOut: args.tokenOut,
       amountIn: args.amountUnits,
+      ...kyberFeeParams(),
     });
     const routeRes = await fetch(
       `${KYBER_API}/${slug}/api/v1/routes?${routeQs}`,
-      { headers: { "x-client-id": clientId } },
+      { headers: { "x-client-id": clientId }, cache: "no-store" },
     );
     if (!routeRes.ok) return null;
     const routeJson = (await routeRes.json()) as {
@@ -120,12 +123,12 @@ export async function resolveKyberSwap(args: {
     const buildRes = await fetch(`${KYBER_API}/${slug}/api/v1/route/build`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-client-id": clientId },
+      cache: "no-store",
       body: JSON.stringify({
         routeSummary,
         sender: args.address,
         recipient: args.address,
         slippageTolerance: args.slippageBps,
-        ...kyberFeeBody(),
       }),
     });
     if (!buildRes.ok) return null;

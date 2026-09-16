@@ -34,17 +34,24 @@ export function kyberClientId(): string {
 }
 
 /**
- * The fee fields for KyberSwap's `/route/build` body, or an empty object when no
+ * Our fee as KyberSwap `/routes` query params, or an empty object when no
  * receiver is configured. `isInBps` + `chargeFeeBy: "currency_in"` means
  * `feeAmount` is read as basis points of the input token.
+ *
+ * These go on the ROUTES call, not `/route/build`. KyberSwap computes the fee
+ * into the route (it lands in `routeSummary.extraFee` and the built calldata as a
+ * transfer to `feeReceiver`); passed to build instead, they are silently ignored
+ * and no fee is collected. Measured on Arc: on /routes the output drops by exactly
+ * the bps set and the receiver appears in the calldata; on /build, neither.
+ * Values are strings because they ride a query string.
  */
-export function kyberFeeBody(): Record<string, unknown> {
+export function kyberFeeParams(): Record<string, string> {
   const receiver = swapFeeReceiver();
   if (!receiver) return {};
   return {
     feeReceiver: receiver,
     chargeFeeBy: "currency_in",
     feeAmount: String(swapFeeBps()),
-    isInBps: true,
+    isInBps: "true",
   };
 }
