@@ -684,6 +684,32 @@ export const TOKENS: Record<number, TokenEntry[]> = {
       tags: ["wrapped-btc"],
     },
     {
+      /* Our own wrapped-native for the Arc mainnet DEX — the address the V3
+       * periphery was constructed with (getContracts(5042).wrappedNative,
+       * deployment-v3-arcMainnet). It is a WETH9 (deploy-weth), so the CONTRACT
+       * hardcodes symbol "WETH" / name "Wrapped Ether" (verified on-chain: 18
+       * decimals, working deposit()/withdraw(), 0 supply so far). But Arc's
+       * native is USDC, so it wraps dollars, not ether — the exact mislabel the
+       * Arc Testnet note calls out, where a third-party contract reporting
+       * "WUSDC" was used instead. No such WUSDC exists on Arc MAINNET (the
+       * testnet's 0x911b has no code here; none in the KyberSwap/LI.FI lists),
+       * so we present OUR wrapper honestly as WUSDC here: the symbol/name are
+       * the display truth, the address is what pools and `intermediateTokens`
+       * match on. Registering it is also what lets the swap router use the
+       * wrapped-native as a middle leg at all — it resolves `wrapped` by this
+       * address, and an unregistered wrapper is invisible to routing.
+       *
+       * Making the on-chain symbol itself read WUSDC would need a fresh wrapper
+       * deployment and a V3 re-point (cheap while supply is 0, but a redeploy) —
+       * deferred; the label override here is the honest, low-risk fix. */
+      chainId: 5042,
+      address: "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b",
+      symbol: "WUSDC",
+      name: "Wrapped USDC",
+      decimals: 18,
+      tags: ["wrapped-native", "stablecoin"],
+    },
+    {
       chainId: 5042,
       address: "0xeCe5cA8bf9220718E5727754026757512212cb3c",
       symbol: "ARGUS",
