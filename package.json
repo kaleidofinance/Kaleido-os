@@ -33,6 +33,7 @@
     "test:fromchat": "tsx src/lib/v2/intents/fromChat.test.ts",
     "test:txlog": "tsx src/lib/v2/txLog.test.ts",
     "test:txerrors": "tsx src/lib/v2/txErrors.test.ts",
+    "test:kyberswap": "tsx src/lib/swap/kyberswap.test.ts",
     "test:suggestions": "tsx \"src/app/(app)/trade/agent/suggestions.test.ts\"",
     "test:turn": "tsx src/lib/v2/agentTurn.test.ts",
     "test:chatstream": "tsx src/lib/v2/chatStream.test.ts",
