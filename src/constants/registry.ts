@@ -650,6 +650,195 @@ export const TOKENS: Record<number, TokenEntry[]> = {
     },
   ],
 
+  /* -- Arc MAINNET (5042) ----------------------------------------------- *
+   * Arc’s own tradable set, and the reason the picker showed only USDC before:
+   * this chain had no TOKENS entry at all. Every address, symbol and decimal
+   * below was read off Arc mainnet (rpc.mainnet.arc.io) on 2026-09-16 — symbol()
+   * and decimals() matched and code was present for each — and taken from the
+   * KyberSwap whitelisted Arc list (the curated set the aggregator we route
+   * through actually quotes), cross-checked against LI.FI’s Arc list.
+   *
+   * USDC is deliberately NOT listed here: Arc's native gas token IS USDC, so
+   * `chainTokens` already prepends it (nativeCurrency, 18 decimals) and listing
+   * the 0x3600 6-decimal ERC20 face beside it would show the same dollar twice
+   * in the picker — the native-alias the swap router and Luca's balances already
+   * drop for that reason (see the Arc Testnet note). EURC and cirBTC are Circle's
+   * other Arc assets. The rest are the ecosystem majors and memes with real
+   * liquidity, ordered by market cap at capture. Third-party contracts, listed
+   * because they are tradable here — listing is not endorsement. */
+  [5042]: [
+    {
+      chainId: 5042,
+      address: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+      symbol: "EURC",
+      name: "Euro Coin",
+      decimals: 6,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 5042,
+      address: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+      symbol: "cirBTC",
+      name: "Circle Wrapped Bitcoin",
+      decimals: 8,
+      tags: ["wrapped-btc"],
+    },
+    {
+      chainId: 5042,
+      address: "0xeCe5cA8bf9220718E5727754026757512212cb3c",
+      symbol: "ARGUS",
+      name: "Argus",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xBc43CE8DEc648EA298C4275559b81D6261c90b67",
+      symbol: "TOLLY",
+      name: "Tolly",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x44B453D355835Ce1269fc11D3FA4161c0DcC0087",
+      symbol: "LIFT",
+      name: "lift.fun",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xEb64987643db71c76b2a2BE7E723DECC995E5b37",
+      symbol: "COOL",
+      name: "usdc is cool",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x2164bB17a2D38c1b5170E987b2c0416DF1EFc752",
+      symbol: "LONG",
+      name: "Long",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xA163d7624Da3B5d9182c50EaB5b8cd247Ae861bb",
+      symbol: "Minara",
+      name: "Minara",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x8bcb94279FC2c984EC34e0C1f2192df8c69EA4F0",
+      symbol: "Architects",
+      name: "Architects",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x07704B06981eA962b87296362a1281484d160000",
+      symbol: "ARCAT",
+      name: "Arcat",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x30aC39DeC8a854c5Fd03AA429E3BEF32a7E4c84a",
+      symbol: "PI",
+      name: "Pi",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x41c8A71f630c636294009fa4FB0CC4c3bBE674fe",
+      symbol: "BEANCAT",
+      name: "Bean Cat",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x2ba0f44BDfC17FbA30edA9cdBeCB908cA45B043B",
+      symbol: "CRCL",
+      name: "Circle Internet Group (Arc)",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xF3715bF5C2De299F08B81180ffb739A8372a175f",
+      symbol: "ARCANINE",
+      name: "Arcanine",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x1c98D896328C35A751Ce18323f47139A44188001",
+      symbol: "creo",
+      name: "creo.family",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x4753C45Fb550FECAA143A47968659117E6FFc2cE",
+      symbol: "BARC",
+      name: "Barc",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xc55A4468A3E1C2dfe58dDdaD0188c71D5dFFd740",
+      symbol: "BANCOR",
+      name: "Bancor",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x7f2293b6DF4934Aa5392d5Fef8eF9ca987B0393b",
+      symbol: "PCH",
+      name: "Peach",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xD626630Dc244e50272017Cc55A361d096c3a9062",
+      symbol: "PEG",
+      name: "peg",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x802D3166AD677d3AA993c85910598885568099bf",
+      symbol: "BEAN",
+      name: "Bean",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xf4cAa36a0B64d60DD1a909D502FaE9b30dfCa58b",
+      symbol: "ACTOR",
+      name: "Economic Actor",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xcDF59E06DCbC3A6AE662F66B35aAeBd8DECCCB2C",
+      symbol: "AROS",
+      name: "Aros",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x128cC466B61f542da60c70e3aA11c10e19B84EDB",
+      symbol: "WETH",
+      name: "Wrapped Ether",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x38DcCd1FEdd12F73737F6C1eE19B2D311e048909",
+      symbol: "XNAN",
+      name: "Nanite",
+      decimals: 18,
+    },
+  ],
+
   /* -- Arbitrum. Balances only; no Diamond planned here yet. ------------- */
   [42161]: [
     {
