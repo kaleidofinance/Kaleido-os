@@ -539,9 +539,21 @@ async function main() {
   }
 
 
-  /* ---- fund and approve ---- */
-  const needed0 = amount0 * 2n;
-  const needed1 = amount1 * 2n;
+  /* ---- which ranges to mint, and fund/approve for exactly those ----
+     Default is both (full-range floor + ±bandPct depth). ONLY=band mints just
+     the depth band — for topping up a pool whose full-range already landed but
+     whose band mint was interrupted (see the Arc estimateGas note on the mint
+     below); ONLY=full mints just the floor. The reserve scales with the count so
+     a band-only top-up doesn't demand double the tokens. */
+  const only = (process.env.ONLY ?? "").toLowerCase();
+  const wantFull = only !== "band";
+  const wantBand = only !== "full";
+  const rangeCount = BigInt((wantFull ? 1 : 0) + (wantBand ? 1 : 0));
+  if (rangeCount === 0n)
+    throw new Error(`ONLY="${process.env.ONLY}" selects no ranges — use "full" or "band"`);
+
+  const needed0 = amount0 * rangeCount;
+  const needed1 = amount1 * rangeCount;
   await ensureBalance(t0, me, needed0, s0, reg.wrappedNative);
   await ensureBalance(t1, me, needed1, s1, reg.wrappedNative);
   await ensureAllowance(t0, me, reg.v3PositionManager, needed0, s0);
@@ -559,13 +571,21 @@ async function main() {
   );
 
   const ranges = [
-    { label: "full range", lower: clampLo, upper: clampHi },
-    {
+    wantFull && { label: "full range", lower: clampLo, upper: clampHi },
+    wantBand && {
       label: `±${bandPct}%`,
       lower: Math.max(clampLo, align(liveTick) - bandTicks),
       upper: Math.min(clampHi, align(liveTick) + bandTicks),
     },
-  ];
+  ].filter(Boolean);
+
+  /* Explicit gasLimit so ethers does NOT call eth_estimateGas before each mint.
+     On Arc the estimate on the SECOND consecutive mint hangs — the RPC accepts
+     the call and never responds — which stalled the ±2% band mint forever after
+     the full-range one had already landed (verified: eth_call + a standalone
+     estimateGas both succeed; only the back-to-back estimate hangs). These mints
+     run ~460k gas; this ceiling clears them with headroom. Overridable. */
+  const mintGas = BigInt(process.env.MINT_GAS_LIMIT ?? "1500000");
 
   const minted = [];
   for (const r of ranges) {
@@ -588,7 +608,7 @@ async function main() {
       recipient: me,
       deadline: Math.floor(Date.now() / 1000) + 1800,
     };
-    const tx = await npm.mint(params);
+    const tx = await npm.mint(params, { gasLimit: mintGas });
     const receipt = await tx.wait();
     /* IncreaseLiquidity carries the token id; the return values of a state-
        changing call are not available to a caller off-chain. */
