@@ -36,7 +36,7 @@ import {
   poolSide,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
-import { hasKyberSwap } from "@/lib/swap/kyberswap";
+import { hasKyberSwap, aggregatorToken } from "@/lib/swap/kyberswap";
 import type { Intent } from "@/lib/v2/intents";
 import type { Command, Slot } from "@/lib/v2/intents/fromCommand";
 /* A value import, unlike the type above, and the only one in this file that
@@ -899,42 +899,52 @@ export async function buildIntents(
       if (chainId === undefined || !hasKyberSwap(chainId) || !deps.swapRoute) {
         return null;
       }
+      /* Trade the ERC20 the aggregator can actually pull. On Arc "USDC" is the
+         native gas token, whose sentinel has no ERC20 code — an approve on it
+         dies "could not decode result data" — so route and approve its 0x3600
+         mirror instead. The user still sees the symbol (USDC); everything else
+         uses the mirror's address and decimals. A native input with no mirror
+         cannot be approved, so bail rather than build a doomed approve. */
+      const inTok = aggregatorToken(chainId, tokenIn);
+      const outTok = aggregatorToken(chainId, tokenOut);
+      if (inTok.isNative) return null;
+
       const route = await deps.swapRoute({
-        tokenIn: tokenIn.address,
-        tokenOut: tokenOut.address,
+        tokenIn: inTok.address,
+        tokenOut: outTok.address,
         amount,
-        decimalsIn: tokenIn.decimals,
-        decimalsOut: tokenOut.decimals,
+        decimalsIn: inTok.decimals,
+        decimalsOut: outTok.decimals,
         slippageBps: opts.slippageBps,
       });
       if ("error" in route) return { ok: false, error: route.error };
 
-      const out = ethers.formatUnits(route.amountOut, tokenOut.decimals);
+      const out = ethers.formatUnits(route.amountOut, outTok.decimals);
       const minOut = (Number(out) * (1 - opts.slippageBps / 10000)).toFixed(
-        tokenOut.decimals > 6 ? 6 : tokenOut.decimals,
+        outTok.decimals > 6 ? 6 : outTok.decimals,
       );
       const approve: Intent = {
         kind: "approve",
-        token: tokenIn.address,
+        token: inTok.address,
         spender: route.spender,
         amount,
-        decimals: tokenIn.decimals,
-        symbol: tokenIn.symbol,
+        decimals: inTok.decimals,
+        symbol: inTok.symbol,
       };
       const swap: Intent = {
         kind: "aggregatorSwap",
         to: route.to,
         data: route.data,
         value: "0",
-        tokenIn: tokenIn.address,
+        tokenIn: inTok.address,
         amountIn: amount,
-        decimalsIn: tokenIn.decimals,
-        symbolIn: tokenIn.symbol,
-        tokenOut: tokenOut.address,
+        decimalsIn: inTok.decimals,
+        symbolIn: inTok.symbol,
+        tokenOut: outTok.address,
         amountOut: out,
         amountOutMin: minOut,
-        decimalsOut: tokenOut.decimals,
-        symbolOut: tokenOut.symbol,
+        decimalsOut: outTok.decimals,
+        symbolOut: outTok.symbol,
         chainId,
         venue: route.venue,
         spender: route.spender,

@@ -22,7 +22,7 @@ import {
   isKnownCctpTransmitter,
   isCctpDomainChain,
 } from "@/lib/bridge/cctp";
-import { isKnownSwapRouter } from "@/lib/swap/kyberswap";
+import { isKnownSwapRouter, nativeSwapErc20 } from "@/lib/swap/kyberswap";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
 import type { PlanStep } from "./types";
@@ -361,8 +361,15 @@ function knownToken(
     }
   }
   const t = chainTokenByAddress(chainId, address);
-  return t
-    ? { ok: true, symbol: t.symbol, decimals: t.decimals }
+  if (t) return { ok: true, symbol: t.symbol, decimals: t.decimals };
+  /* An aggregator's native-mirror ERC20 — Arc's 0x3600 USDC face — is a real,
+     tradable token the registry omits only so it doesn't double-count native in
+     balances. A swap that routes it (see aggregatorToken) must not be refused as
+     an unknown token, so recognise it here. */
+  const mirror =
+    chainId !== undefined ? nativeSwapErc20(chainId, address) : null;
+  return mirror
+    ? { ok: true, symbol: mirror.symbol, decimals: mirror.decimals }
     : { ok: false };
 }
 

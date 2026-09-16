@@ -12,6 +12,8 @@ import {
   hasKyberSwap,
   isKnownSwapRouter,
   resolveKyberSwap,
+  aggregatorToken,
+  nativeSwapErc20,
 } from "./kyberswap.ts";
 import { kyberFeeParams, swapFeeBps } from "./kyberswapServer.ts";
 
@@ -85,6 +87,36 @@ console.log("\n— fee params are gated on a configured receiver —");
   delete process.env.SWAP_FEE_BPS;
   check("default fee is 20 bps when unset", swapFeeBps() === 20);
 }
+
+console.log("\n— native USDC trades as its 0x3600 mirror —");
+const USDC_3600 = "0x3600000000000000000000000000000000000000";
+const nativeUsdc = {
+  address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+  symbol: "USDC",
+  decimals: 18,
+  isNative: true,
+};
+const inTok = aggregatorToken(ARC, nativeUsdc);
+check("Arc native USDC maps to the 0x3600 ERC20", inTok.address === USDC_3600);
+check("at the mirror's 6 decimals", inTok.decimals === 6);
+check("no longer flagged native (so it gets an approve)", inTok.isNative === false);
+check("the display symbol is preserved", inTok.symbol === "USDC");
+
+const cir = {
+  address: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+  symbol: "cirBTC",
+  decimals: 8,
+};
+const outTok = aggregatorToken(ARC, cir);
+check("a non-native token is unchanged", outTok.address === cir.address && outTok.decimals === 8);
+
+const noMirror = aggregatorToken(1, nativeUsdc);
+check("a native token on a chain with no mirror is unchanged", noMirror.isNative === true);
+
+check("the auditor recognises the 0x3600 mirror", !!nativeSwapErc20(ARC, USDC_3600));
+check("mirror lookup is case-insensitive", !!nativeSwapErc20(ARC, USDC_3600.toUpperCase()));
+check("a non-mirror address is not recognised", nativeSwapErc20(ARC, cir.address) === null);
+check("no mirror off Arc", nativeSwapErc20(1, USDC_3600) === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

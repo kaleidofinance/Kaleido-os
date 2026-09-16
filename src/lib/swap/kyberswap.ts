@@ -51,6 +51,81 @@ export function hasKyberSwap(chainId: number): boolean {
   return Boolean(KYBERSWAP_CHAIN_SLUG[chainId] && KYBERSWAP_ROUTERS[chainId]);
 }
 
+/**
+ * The ERC20 an aggregator trades for a token whose own form it cannot pull.
+ *
+ * Arc's native gas token IS USDC, so "USDC" resolves to the native sentinel —
+ * which has no ERC20 code, so an `approve`/`allowance` on it dies with "could
+ * not decode result data". KyberSwap quotes, and its router pulls, the `0x3600`
+ * ERC20 FACE of native USDC: a 6-decimal mirror whose `balanceOf` is the native
+ * balance and whose `transferFrom` moves it (verified on-chain). So a swap of
+ * native USDC must approve and route THAT, not the sentinel. Every other token
+ * trades as itself.
+ */
+const NATIVE_SWAP_ERC20: Record<
+  number,
+  { address: string; symbol: string; decimals: number }
+> = {
+  5042: {
+    address: "0x3600000000000000000000000000000000000000",
+    symbol: "USDC",
+    decimals: 6,
+  },
+};
+
+export interface AggregatorToken {
+  address: string;
+  symbol: string;
+  decimals: number;
+  isNative: boolean;
+}
+
+/**
+ * The form to approve and route for `token` on `chainId`: the native-mirror
+ * ERC20 where the token is native and the chain has one (Arc native USDC ->
+ * 0x3600), else the token unchanged. The symbol is kept for display, so the user
+ * still sees "USDC" while the plan approves and moves the mirror.
+ */
+export function aggregatorToken(
+  chainId: number,
+  token: {
+    address: string;
+    symbol: string;
+    decimals: number;
+    isNative?: boolean;
+  },
+): AggregatorToken {
+  const mirror = token.isNative ? NATIVE_SWAP_ERC20[chainId] : undefined;
+  return mirror
+    ? {
+        address: mirror.address,
+        symbol: token.symbol,
+        decimals: mirror.decimals,
+        isNative: false,
+      }
+    : {
+        address: token.address,
+        symbol: token.symbol,
+        decimals: token.decimals,
+        isNative: Boolean(token.isNative),
+      };
+}
+
+/**
+ * The meta for an aggregator's native-mirror ERC20 by address, so the auditor
+ * can recognise a `0x3600` tokenIn/out that the registry deliberately does not
+ * list (it would double-count native in balances). Null for any other address.
+ */
+export function nativeSwapErc20(
+  chainId: number,
+  address: string,
+): { symbol: string; decimals: number } | null {
+  const m = NATIVE_SWAP_ERC20[chainId];
+  return m && m.address.toLowerCase() === (address || "").toLowerCase()
+    ? { symbol: m.symbol, decimals: m.decimals }
+    : null;
+}
+
 /** Whether `address` is the KyberSwap router the resolver would itself produce. */
 export function isKnownSwapRouter(
   chainId: number | undefined,
