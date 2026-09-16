@@ -6,6 +6,7 @@ import NetworkSelector from "@/components/v2/NetworkSelector";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import { useFaucet, type FaucetAsset } from "@/hooks/v2/useFaucet";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { CHAINS, getChainMeta } from "@/constants/chains";
 import { faucetChains, isNativeSentinel } from "@/constants/registry";
 import {
@@ -91,6 +92,7 @@ export default function FaucetPage() {
   const faucet = useFaucet();
   const now = useNow();
   const [picker, setPicker] = useState(false);
+  const { showTestnets, setShowTestnets } = useTestnetMode();
 
   /*
    * The sponsored-fee request. Four states rather than a boolean because the
@@ -387,6 +389,43 @@ export default function FaucetPage() {
    */
   const batch = isConnected && faucet.claimable.length > 1;
 
+  /* The faucet is a testnet-only surface, so it rides the same switch the
+     network selector and the nav do. With testnets wound down for the mainnet
+     launch, reaching /faucet by URL lands here instead of on a table of assets
+     that cannot be claimed on mainnet. It is a wind-down, not a wall: the one
+     button turns testnets back on (the shared, persisted signal) and the page
+     below renders on the next pass. All hooks above have already run, so this
+     early return breaks none of them. */
+  if (!showTestnets) {
+    return (
+      <>
+        <Nav />
+        <main className={s.wrap}>
+          <header className={s.head}>
+            <h1 className={s.h1}>Test tokens</h1>
+            <p className={s.lede}>
+              Kaleido is on mainnet now, so the testnet faucet is wound down.
+              Nothing here has been removed — turn testnet networks back on to
+              claim test assets and keep exploring.
+            </p>
+          </header>
+          <div className={s.panel}>
+            <div className={s.panelTitle}>Testnets are wound down</div>
+            <p className={s.panelBody}>
+              The faucet only hands out testnet assets. Switch testnet networks
+              back on to reach it.
+            </p>
+            <button
+              className={s.panelCta}
+              onClick={() => setShowTestnets(true)}
+            >
+              Show testnet networks
+            </button>
+          </div>
+        </main>
+      </>
+    );
+  }
   return (
     <>
       <Nav />

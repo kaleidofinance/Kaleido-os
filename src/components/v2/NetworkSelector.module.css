@@ -187,6 +187,24 @@
   white-space: nowrap;
 }
 
+/* A mainnet on the roadmap but not launchable yet. Dimmed so it reads as a
+   preview of what is coming rather than a place to click, and paired with the
+   `disabled` the row already carries from `comingSoon`. */
+.rowSoon {
+  opacity: 0.55;
+}
+
+/* The "Coming soon" flag. Deliberately muted, not the brand-coloured `.current`
+   pill: that one says "you are here", this one says "not yet". */
+.soon {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  background: var(--k-well2);
+  padding: 4px 10px;
+  border-radius: var(--k-r-pill);
+  white-space: nowrap;
+}
+
 /* Frosted panel. The panel is blurred and the overlay is not: nested
    backdrop-filters do not compose and the GPU cost multiplies. The scrim sits
    behind the blur, so the sampled backdrop arrives darkened — which is what

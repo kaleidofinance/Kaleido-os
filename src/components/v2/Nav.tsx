@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useConnectModal } from "thirdweb/react";
 import { toast } from "sonner";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { useNotifications } from "@/context/NotificationsContext";
 import { getChainMeta } from "@/constants/chains";
 import { client } from "@/config/client";
@@ -330,6 +331,7 @@ function MoreSheet({
 export default function Nav() {
   const pathname = usePathname();
   const { chainId, chainName, isConnected } = useWalletV2();
+  const { showTestnets } = useTestnetMode();
   const [networkOpen, setNetworkOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const chainMeta = getChainMeta(chainId);
@@ -338,7 +340,16 @@ export default function Nav() {
      More sheet holds, and `moreActive` is what keeps the bar honest: standing on
      /stake with no tab lit would tell a reader the tab bar does not know where
      they are, which is worse than the crowding this whole arrangement fixes. */
-  const secondary = LINKS.filter((l) => !l.primary);
+  /* The faucet hands out testnet assets, so it rides the testnet switch:
+     with testnets wound down for the mainnet launch it drops out of every
+     rail here, and toggling testnets back on in the network switcher brings
+     it straight back. Filtered at render, not removed from LINKS — the const
+     stays the eight canonical sections products.test.ts checks; this only
+     hides one tab. */
+  const visibleLinks = showTestnets
+    ? LINKS
+    : LINKS.filter((l) => l.href !== "/faucet");
+  const secondary = visibleLinks.filter((l) => !l.primary);
   const moreActive = secondary.some((l) => isActive(l, pathname));
 
   /* Stable identity, and it is load-bearing rather than a tidiness point: it is a
@@ -418,7 +429,7 @@ export default function Nav() {
         </Link>
 
         <div className={styles.menu}>
-          {LINKS.map((l) => {
+          {visibleLinks.map((l) => {
             const active = isActive(l, pathname);
             return (
               <Link
@@ -495,7 +506,7 @@ export default function Nav() {
       {/* Bottom tab bar — phones only. Thumb-reachable, and it survives the
           top strip scrolling out of view. */}
       <div className={styles.tabbar} role="navigation" aria-label="Primary">
-        {LINKS.filter((l) => l.primary).map((l) => {
+        {visibleLinks.filter((l) => l.primary).map((l) => {
           const active = isActive(l, pathname);
           return (
             <Link
