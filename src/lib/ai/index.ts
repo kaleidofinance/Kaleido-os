@@ -347,8 +347,8 @@ export function buildSystemPrompt(opts: {
        user's screen.
 
        The frame is what makes the rule obvious rather than arbitrary: page.tsx
-       renders these as an <ol> under an "N steps" summary, so each line is a
-       list-item label. A clause fits that shape; a paragraph does not. The bound
+       renders these as an <ol> under a "How I answered" summary, so each line is
+       a list-item label. A clause fits that shape; a paragraph does not. The bound
        asked for here is well under MAX_THINKING_LINE in chatStream.ts so that the
        cap stays a safety net instead of becoming the editor — it truncates, and a
        sentence losing its ending is worse than one that was short to begin with.
