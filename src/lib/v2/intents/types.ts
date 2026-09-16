@@ -348,6 +348,44 @@ export type Intent =
       /** Source chain's display name, for the row ("from Arc"). */
       fromChainName: string;
     }
+  /* --------------------------------------------------------- wrap -- */
+  /*
+   * Wrap / unwrap the chain's native currency against its wrapped-native ERC20
+   * — WETH on most chains, WUSDC on Arc (native is USDC). A 1:1 deposit()/
+   * withdraw() on the wrapped-native contract: no pool, no route, no slippage,
+   * fully reversible. `to` is the chain's `wrappedNative` from the registry,
+   * re-checked by the auditor; there is no external address and no approve.
+   */
+  | {
+      kind: "wrapNative";
+      /** The chain's wrapped-native contract (deposit target), from the registry. */
+      to: string;
+      /** Human amount of native currency to wrap. */
+      amount: string;
+      /** Native currency decimals (the value attached), e.g. 18. */
+      decimals: number;
+      /** The native currency's symbol, for the row ("USDC"). */
+      symbol: string;
+      /** The wrapped form's symbol, for the row ("WUSDC"). */
+      wrappedSymbol: string;
+      /** The chain this is signed on. */
+      chainId: number;
+    }
+  | {
+      kind: "unwrapNative";
+      /** The chain's wrapped-native contract (withdraw target), from the registry. */
+      to: string;
+      /** Human amount of the wrapped token to unwrap back to native. */
+      amount: string;
+      /** The wrapped token's decimals, e.g. 18. */
+      decimals: number;
+      /** The wrapped token's symbol, for the row ("WUSDC"). */
+      symbol: string;
+      /** The native currency's symbol received, for the row ("USDC"). */
+      nativeSymbol: string;
+      /** The chain this is signed on. */
+      chainId: number;
+    }
   /* ---------------------------------------------------------- lending -- */
   /*
    * The P2P family. Each mirrors one ProtocolFacet call that previously only
