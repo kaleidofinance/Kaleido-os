@@ -156,6 +156,7 @@ export interface PoolStore {
     prepare: () => Promise<C>,
     perChain: (chain: DiscoveryChain, context: C) => Promise<ITradingPair[]>,
     force: boolean,
+    mainnetOnly: boolean,
   ): Promise<ITradingPair[]>;
 }
 
@@ -173,6 +174,7 @@ export function createPoolStore(ttlMs: number): PoolStore {
   const listeners = new Set<(pools: ITradingPair[]) => void>();
   let completedAt = 0;
   let inFlight: Promise<ITradingPair[]> | null = null;
+  let lastMainnetOnly: boolean | null = null;
 
   const snapshot = () =>
     discoveryChains().flatMap((c) => byChain.get(c.chainId) ?? []);
@@ -192,18 +194,35 @@ export function createPoolStore(ttlMs: number): PoolStore {
       };
     },
 
-    sweep(prepare, perChain, force) {
+    sweep(prepare, perChain, force, mainnetOnly) {
+      /* Mainnet-first: with testnets hidden (the Arc-launch default) the sweep
+         must not read testnet chains at all. Reading them anyway hammered five
+         testnet RPCs into 429s and stalled the whole table for 20s per chain —
+         for a viewer who could only ever see mainnet rows. A change of mode
+         forces a fresh sweep rather than serving a snapshot built for the other
+         set. */
+      const modeChanged =
+        lastMainnetOnly !== null && lastMainnetOnly !== mainnetOnly;
+      lastMainnetOnly = mainnetOnly;
+
       /* An in-flight sweep is joined rather than duplicated, force or not: two
          consumers mounting in the same tick would otherwise each read five
          chains. */
       if (inFlight) return inFlight;
-      if (!force && completedAt > 0 && Date.now() - completedAt < ttlMs) {
+      if (
+        !force &&
+        !modeChanged &&
+        completedAt > 0 &&
+        Date.now() - completedAt < ttlMs
+      ) {
         return Promise.resolve(snapshot());
       }
 
       const run = (async () => {
         const context = await prepare();
-        const chains = discoveryChains();
+        const chains = discoveryChains().filter(
+          (c) => !mainnetOnly || c.meta.network === "mainnet",
+        );
 
         const settled = await Promise.allSettled(
           chains.map(async (chain) => {
