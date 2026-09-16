@@ -79,6 +79,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
 
 import { getContracts, isSeededPool } from "@/constants/registry";
+import { CHAINS_BY_ID } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { chainTokens } from "@/constants/tokens";
 import type { IToken, ITradingPair } from "@/constants/types/dex";
 import { FEE_TIERS } from "@/lib/dex/liquidity";
@@ -423,6 +425,10 @@ export interface V3PoolsResult {
 }
 
 export function useV3Pools(): V3PoolsResult {
+  /* The shared sweep reads every deployed chain; a mainnet-first viewer should
+     not see testnet pools in the list. Filtered per consumer off the toggle so
+     the sweep stays shared and a flip re-renders without re-sweeping. */
+  const { showTestnets } = useTestnetMode();
   const [pools, setPools] = useState<ITradingPair[]>(() => store.snapshot());
   const [loading, setLoading] = useState(store.snapshot().length === 0);
   const [error, setError] = useState<string | null>(null);
@@ -476,5 +482,12 @@ export function useV3Pools(): V3PoolsResult {
     return () => clearInterval(interval);
   }, [fetchPools]);
 
-  return { pools, loading, error, refetch: () => fetchPools(true) };
+  return {
+    pools: pools.filter(
+      (p) => showTestnets || CHAINS_BY_ID[p.chainId]?.network === "mainnet",
+    ),
+    loading,
+    error,
+    refetch: () => fetchPools(true),
+  };
 }

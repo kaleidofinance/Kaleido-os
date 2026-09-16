@@ -6,7 +6,9 @@ import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { getKaleidoContract } from "@/config/contracts";
 import { providerForChain, readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { isDeployed } from "@/constants/registry";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { lendingChains } from "@/lib/lending/chain";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import {
   readLendingAssets,
   type CollateralHolding,
@@ -218,7 +220,18 @@ export interface LendingAssetsAcrossChains {
  * configuration, read read-only through providerForChain per chain.
  */
 export function useLendingAssetsAcrossChains(): LendingAssetsAcrossChains {
-  const chains = useMemo(() => lendingChains(), []);
+  /* Respect the testnet toggle: in mainnet mode the testnet lending chains are
+     noise, not markets. The positions hooks were gated in #220; the market
+     listing this feeds was missed, so testnet assets kept showing with the
+     toggle off. */
+  const { showTestnets } = useTestnetMode();
+  const chains = useMemo(
+    () =>
+      lendingChains().filter(
+        (id) => showTestnets || CHAINS_BY_ID[id]?.network === "mainnet",
+      ),
+    [showTestnets],
+  );
   const [state, setState] = useState<LendingAssetsAcrossChains>({
     loanable: [],
     collateral: [],
