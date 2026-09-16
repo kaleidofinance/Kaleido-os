@@ -39,9 +39,8 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 
 import Nav from "@/components/v2/Nav";
 import { Stat, StatStrip } from "@/components/v2/StatStrip";
-import { useMarketStats } from "@/hooks/market/useMarketStats";
 import { useLeaderboard, useStanding } from "@/hooks/points/useLeaderboard";
-import { DASH, qty, usd } from "@/lib/format/figures";
+import { DASH, qty } from "@/lib/format/figures";
 import type {
   LeaderboardPayload,
   LeaderboardRow,
@@ -95,7 +94,6 @@ export default function LeaderboardPage() {
   const [season, setSeason] = useState<number | null>(null);
 
   const board = useLeaderboard(season);
-  const market = useMarketStats();
   const { address } = useWalletV2();
   const wallet = address?.toLowerCase() ?? null;
 
@@ -103,7 +101,6 @@ export default function LeaderboardPage() {
   const resolvedSeason = payload?.season.id ?? null;
   const standing = useStanding(wallet, resolvedSeason);
 
-  const { stats } = market;
   const rows = payload?.rows ?? [];
   const full = payload?.season.disclosure === "full";
   const frozen = Boolean(payload?.season.frozenAt);
@@ -186,23 +183,16 @@ export default function LeaderboardPage() {
           ) : null}
         </div>
 
-        {/* Wallets ranked is season-scoped; the other three are protocol-wide and
-            carried over from /explore, which had nothing else left on it. Every
-            label names its own scope. KLD is counted in KLD, never dollars — it
-            has no market price before TGE (lib/points/prices.ts:53-58).
-
-            No `note` on any of the four. They carried one — "No positions indexed
-            yet", "Unavailable", a coverage caveat — and on a phone the strip is a
-            2×2 grid where those sentences wrapped to three and four lines each,
-            making a tile mostly explanation and pushing the figures apart. The
-            figure already says it: a dash reads as no data and $0 reads as zero.
-            The degraded/coverage state is still on `market` if a tile ever needs
-            to show it again. */}
+        {/* Points-scoped stats only. This strip used to also carry three
+            protocol-wide figures (Lending TVL, kfUSD supply, KLD staked) carried
+            over from the old /explore page; they rank nothing and don't belong on
+            a points leaderboard, so they were removed (a protocol/analytics
+            surface is their home). Season totals stay private at the rank_only
+            tier, so the honest points headline is the ranked-wallet count and the
+            season it is scoped to. */}
         <StatStrip>
           <Stat label="Wallets ranked" value={qty(payload?.participants)} />
-          <Stat label="Lending TVL" value={usd(stats?.lendingTvlUsd)} />
-          <Stat label="kfUSD supply" value={qty(stats?.kfUsdSupply)} />
-          <Stat label="KLD staked" value={qty(stats?.kldStaked)} />
+          <Stat label="Season" value={payload?.season.label ?? DASH} />
         </StatStrip>
 
         <YourStanding
