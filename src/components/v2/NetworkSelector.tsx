@@ -14,7 +14,7 @@ import {
   type ChainMeta,
 } from "@/constants/chains";
 import { defineChain } from "thirdweb/chains";
-import { isDeployed, isComingSoon } from "@/constants/registry";
+import { isDeployed, isComingSoon, hasSwaps } from "@/constants/registry";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { client } from "@/config/client";
 import { WALLETS } from "@/config/wallets";
@@ -79,9 +79,11 @@ function ChainRow({
             ? "Coming soon"
             : isDeployed(meta.id)
               ? "Trading live"
-              : meta.tradable
-                ? "Balances only · deploy pending"
-                : "Balances only"}
+              : hasSwaps(meta.id)
+                ? "Swaps live"
+                : meta.tradable
+                  ? "Balances only · deploy pending"
+                  : "Balances only"}
         </div>
       </div>
       {active ? (

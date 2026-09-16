@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import { useActiveAccount } from "thirdweb/react";
 
 import { CHAINS, CHAINS_BY_ID } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { nativeTokenOf, registeredTokens } from "@/constants/registry";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { readContracts, MULTICALL3_ADDRESS } from "@/lib/chain/multicall";
@@ -55,7 +56,18 @@ const MC3 = new ethers.Interface([
 
 export function useWalletBalancesAcrossChains(): WalletBalancesAcrossChains {
   const address = useActiveAccount()?.address;
-  const chains = useMemo(() => CHAINS.map((c) => c.id), []);
+  const { showTestnets } = useTestnetMode();
+  /* Respect the testnet toggle: in mainnet mode a wallet’s testnet balances
+     (Sepolia and the testnet Base/BNB/Robinhood) are noise, not assets. Every
+     surface reading this hook — the portfolio, the nav, Luca’s balance card —
+     then shows only what the toggle admits. */
+  const chains = useMemo(
+    () =>
+      CHAINS.filter((c) => showTestnets || c.network === "mainnet").map(
+        (c) => c.id,
+      ),
+    [showTestnets],
+  );
   const [state, setState] = useState<{
     holdings: ChainWalletHolding[];
     unread: string[];
