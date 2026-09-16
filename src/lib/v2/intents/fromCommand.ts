@@ -102,6 +102,14 @@ export interface BridgeCommand {
   token: IToken;
   /** Destination chain name, as typed (case-folded). Resolved downstream. */
   toChain: string;
+  /**
+   * Source chain named with "from X", if any. Optional: absent means the chain
+   * the wallet is connected to, the only source it could ever mean before this.
+   * When present and it resolves to a supported source the wallet is NOT on, the
+   * plan is built for that chain and the sign flow switches to it. Resolved and
+   * validated in buildIntents, never here — the same contract as `toChain`.
+   */
+  fromChain?: string;
 }
 export interface HelpCommand {
   kind: "help";
@@ -526,6 +534,9 @@ export interface Draft {
   to?: string;
   /** Bridge destination chain name, as typed. Resolved downstream. */
   toChain?: string;
+  /** Bridge source chain named with "from X", as typed. Optional — absent means
+      the connected chain. Resolved and validated downstream. */
+  fromChain?: string;
   interestPct?: number;
   days?: number;
   loanId?: number;
@@ -2492,9 +2503,29 @@ function parseBridge(
           .join(" ")
           .trim()
       : "";
+
+  /* An explicit source: "bridge X from <chain> to <dest>". A bridge is signed on
+     its source chain, so a named source the wallet is not on is a real request,
+     not noise to drop — buildIntents builds the plan for it and the sign flow
+     switches. "from" sits before the destination separator; the source is the
+     words between it and that separator (or the rest, with no separator). Only a
+     "from" that precedes the destination counts, so "to Arc from the swap" — were
+     that ever typed — cannot read the destination as a source. */
+  const fromAt = words.findIndex((w) => w === "from");
+  const sourceEnd = sepAt >= 0 ? sepAt : words.length;
+  const fromChain =
+    fromAt >= 0 && fromAt < sourceEnd
+      ? words.slice(fromAt + 1, sourceEnd).join(" ").trim()
+      : "";
+
+  /* Where the asset words stop: at "from" if a source was named, else at the
+     destination separator, else nowhere. Everything from there on is chain
+     names, which must never be read back as the token being bridged. */
+  const cut =
+    fromAt >= 0 && fromAt < sourceEnd ? fromAt : sepAt >= 0 ? sepAt : -1;
   const token =
-    sepAt >= 0
-      ? mentions.find((m) => m.index < sepAt)?.token
+    cut >= 0
+      ? mentions.find((m) => m.index < cut)?.token
       : mentions[0]?.token;
 
   return completeDraft({
@@ -2502,9 +2533,8 @@ function parseBridge(
     amount: amount?.amount,
     token,
     toChain: dest || undefined,
-    // Only the words before the separator. Everything after it is the
-    // destination, and a chain name must never be read back as a token.
-    ...suggestion(sepAt >= 0 ? words.slice(0, sepAt) : words, mentions, tokens),
+    fromChain: fromChain || undefined,
+    ...suggestion(cut >= 0 ? words.slice(0, cut) : words, mentions, tokens),
   });
 }
 
@@ -3056,6 +3086,7 @@ export function completeDraft(draft: Draft): ParseResult {
         amount: draft.amount,
         token: draft.token,
         toChain: draft.toChain,
+        ...(draft.fromChain ? { fromChain: draft.fromChain } : {}),
       },
     };
   }

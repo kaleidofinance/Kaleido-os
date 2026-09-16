@@ -1253,6 +1253,88 @@ async function main() {
       JSON.stringify(calls.bridge),
     );
   }
+  /* A "from X" bridge builds for the NAMED source, re-resolving the asset there
+     (BNB's USDC is a different address and decimals than the connected chain's).
+     The sign flow then switches the wallet to it. */
+  {
+    const { deps, calls } = fakeDeps({
+      bridgeRoute: async () => ({
+        to: "0x00000000000000000000000000000000000000a1",
+        data: "0x",
+        value: "0",
+        toChainId: 5042,
+        toChainName: "Arc",
+        provider: "lifi",
+        etaSeconds: null,
+        spender: "0x00000000000000000000000000000000000000a1",
+      }),
+    });
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "50",
+        token: DEX_USDC,
+        toChain: "Arc",
+        fromChain: "BNB Chain",
+      },
+      deps,
+    );
+    check(
+      "a from-chain bridge resolves the corridor for the named source (BNB = 56)",
+      r.ok && calls.bridge.length === 1 && calls.bridge[0].sourceChainId === 56,
+      r.ok ? String(calls.bridge[0]?.sourceChainId) : errorOf(r),
+    );
+    check(
+      "the asset is re-resolved on the source, not carried from the connected chain",
+      calls.bridge.length === 1 &&
+        (calls.bridge[0].tokenAddress ?? "").toLowerCase() !==
+          DEX_USDC.address.toLowerCase(),
+      JSON.stringify(calls.bridge[0]?.tokenAddress),
+    );
+    check(
+      "and the bridge intent leaves the named source",
+      r.ok && at(r, r.build.intents.length - 1).fromChainId === 56,
+      r.ok ? String(at(r, r.build.intents.length - 1).fromChainId) : errorOf(r),
+    );
+  }
+  /* A testnet source is refused before any corridor is resolved. */
+  {
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "50",
+        token: DEX_USDC,
+        toChain: "Arc",
+        fromChain: "Base Sepolia",
+      },
+      deps,
+    );
+    check(
+      "a testnet source is refused, resolving no corridor",
+      !r.ok && calls.bridge.length === 0,
+      errorOf(r) || JSON.stringify(calls.bridge),
+    );
+  }
+  /* An unknown source is refused by name. */
+  {
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "50",
+        token: DEX_USDC,
+        toChain: "Arc",
+        fromChain: "Wonderland",
+      },
+      deps,
+    );
+    check(
+      "an unknown source is refused",
+      !r.ok && calls.bridge.length === 0,
+      errorOf(r) || JSON.stringify(calls.bridge),
+    );
+  }
   {
     /* The resolver's own error becomes the plan's refusal, verbatim — build.ts
        does not paraphrase it. A stub stands in for the resolver here rather than

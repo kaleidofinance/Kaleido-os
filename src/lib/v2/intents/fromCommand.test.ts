@@ -2057,6 +2057,38 @@ console.log("\n— what must never become a token —");
   const b = p("bridge 100 usdcc to Base Sepolia");
   check("a bridge names the typo", b.status === "incomplete" && b.prompt.includes("did you mean USDC"), b.prompt || b.status);
   check("and keeps the destination", b.status === "incomplete" && (b.draft.toChain || "").toLowerCase() === "base sepolia", b.draft?.toChain);
+
+  /* An explicit source: "from X" is captured as fromChain, kept out of the token
+     and destination, and left unresolved for buildIntents. */
+  const src = p("bridge 50 USDC from BNB Chain to Arc");
+  check(
+    "a from-chain bridge builds",
+    src.status === "ok" && src.command.kind === "bridge",
+    src.status,
+  );
+  check(
+    "the source is captured",
+    src.status === "ok" && src.command.kind === "bridge" && src.command.fromChain === "bnb chain",
+    src.status === "ok" && src.command.kind === "bridge" ? src.command.fromChain : src.status,
+  );
+  check(
+    "the destination is still the 'to' chain",
+    src.status === "ok" && src.command.kind === "bridge" && src.command.toChain === "arc",
+    src.status === "ok" && src.command.kind === "bridge" ? src.command.toChain : src.status,
+  );
+  check(
+    "the asset is not read out of the source phrase",
+    src.status === "ok" && src.command.kind === "bridge" && src.command.token.symbol === "USDC",
+    src.status,
+  );
+
+  /* No "from" means no source — every existing bridge is unchanged. */
+  const noSrc = p("bridge 0.05 USDC to Base Sepolia");
+  check(
+    "a plain bridge has no source",
+    noSrc.status === "ok" && noSrc.command.kind === "bridge" && noSrc.command.fromChain === undefined,
+    noSrc.status,
+  );
 }
 
 console.log("\n— a guess is only ever offered —");
