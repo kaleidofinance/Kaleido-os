@@ -1894,6 +1894,50 @@ async function main() {
   }
 
   /* ---------------------------------------------------------------------- *
+   * Arc: a native-USDC swap routes the 0x3600 ERC20 mirror. The registry omits
+   * it from balances (it would double-count native), so the auditor must still
+   * recognise it as a known token or it would refuse every such swap.
+   * ---------------------------------------------------------------------- */
+  {
+    const KYBER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
+    const USDC_3600 = "0x3600000000000000000000000000000000000000";
+    const CIRBTC = "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0";
+    const arcSwap = {
+      kind: "aggregatorSwap",
+      to: KYBER,
+      data: "0x",
+      value: "0",
+      tokenIn: USDC_3600,
+      amountIn: "50",
+      decimalsIn: 6,
+      symbolIn: "USDC",
+      tokenOut: CIRBTC,
+      amountOut: "0.0006",
+      amountOutMin: "0.0005",
+      decimalsOut: 8,
+      symbolOut: "cirBTC",
+      chainId: 5042,
+      venue: "kyberswap",
+      spender: KYBER,
+    } as Step;
+    const okv = await audit([arcSwap], { chainId: 5042 });
+    check(
+      "an Arc aggregator swap of native USDC's 0x3600 mirror is accepted",
+      okv.blocked.length === 0,
+      okv.blocked.join("; ") || "(passed)",
+    );
+    const badv = await audit(
+      [{ ...arcSwap, tokenIn: "0x0000000000000000000000000000000000000dEaD" }],
+      { chainId: 5042 },
+    );
+    check(
+      "an unregistered input token is still refused",
+      badv.blocked.some((b) => /unrecognised input token/i.test(b)),
+      badv.blocked.join("; ") || "(passed)",
+    );
+  }
+
+  /* ---------------------------------------------------------------------- *
    * Lending
    *
    * Addresses here are checked against BORROW_CURRENCIES, not the chain token
