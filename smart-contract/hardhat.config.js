@@ -201,10 +201,16 @@ module.exports = {
       timeout: 120000,
     },
 
-    // --- Arc (Circle). Testnet only: mainnet has not launched. ---
+    // --- Arc (Circle). Mainnet live 2026-09-16; testnet paired. ---
     arcTestnet: {
       url: rpc("ARC_TESTNET_RPC", "https://rpc.testnet.arc.network"),
       chainId: 5042002,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+    arcMainnet: {
+      url: rpc("ARC_MAINNET_RPC", "https://rpc.mainnet.arc.io"),
+      chainId: 5042,
       accounts: accounts(),
       timeout: 120000,
     },
@@ -231,6 +237,7 @@ module.exports = {
       robinhoodTestnet: process.env.ROBINHOOD_EXPLORER_API_KEY || "blockscout",
       robinhood: process.env.ROBINHOOD_EXPLORER_API_KEY || "blockscout",
       arcTestnet: process.env.ARCSCAN_API_KEY || "blockscout",
+      arcMainnet: process.env.ARCSCAN_API_KEY || "blockscout",
     },
     customChains: [
       {
@@ -279,6 +286,14 @@ module.exports = {
         urls: {
           apiURL: "https://testnet.arcscan.app/api",
           browserURL: "https://testnet.arcscan.app/",
+        },
+      },
+      {
+        network: "arcMainnet",
+        chainId: 5042,
+        urls: {
+          apiURL: "https://arc-scan.org/api",
+          browserURL: "https://arc-scan.org/",
         },
       },
     ],
