@@ -28,6 +28,12 @@ import {
   type RoutedPath,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
+import { ethers } from "ethers";
+import {
+  hasKyberSwap,
+  aggregatorToken,
+  getKyberSwapExecution,
+} from "@/lib/swap/kyberswap";
 import s from "../trade.module.css";
 
 /*
@@ -149,7 +155,7 @@ function TokenPill({
 }
 
 export default function SwapPage() {
-  const { isConnected, chainId } = useWalletV2();
+  const { isConnected, chainId, address } = useWalletV2();
   /* Disconnected is a fixable state, not a dead end: /trade is the one shell
      without a ChainGate, so the CTA opens the connect modal itself rather than
      sitting disabled while the only way to connect lives up in the nav. */
@@ -351,6 +357,19 @@ export default function SwapPage() {
    * transaction disagree.
    */
   const [route, setRoute] = useState<RoutedPath | null>(null);
+  /* The KyberSwap fallback route, when our own pools returned nothing on a chain
+     that routes through the aggregator (Arc, no seeded pools yet). Carries the
+     aggregator token forms — Arc native USDC trades as its 0x3600 ERC20 mirror —
+     so the plan approves and swaps the token the calldata actually names. */
+  const [kyberRoute, setKyberRoute] = useState<{
+    to: string;
+    data: string;
+    spender: string;
+    sellAddr: string;
+    sellDec: number;
+    buyAddr: string;
+    buyDec: number;
+  } | null>(null);
 
   /**
    * The two ends as a pool can hold them.
@@ -405,6 +424,7 @@ export default function SwapPage() {
       setAmountOut("");
       setNoRoute(false);
       setRoute(null);
+      setKyberRoute(null);
       return;
     }
     /* Wrap/unwrap is 1:1 with no route to quote — mirror the input to the output
@@ -413,6 +433,7 @@ export default function SwapPage() {
       setAmountOut(amountIn);
       setNoRoute(false);
       setRoute(null);
+      setKyberRoute(null);
       setQuoting(false);
       return;
     }
@@ -458,14 +479,58 @@ export default function SwapPage() {
            nonzero input with zero output, so a zero is a failure wearing a
            number's clothes, which is exactly what this page used to spend as
            `amountOutMin`. */
-        if (!cancelled) {
+        if (cancelled) return;
+        if (found) {
           setRoute(found);
-          setAmountOut(found ? String(found.amountOut) : "");
-          setNoRoute(!found);
+          setKyberRoute(null);
+          setAmountOut(String(found.amountOut));
+          setNoRoute(false);
+        } else if (hasKyberSwap(swapChainId) && address) {
+          /* Our own pools returned nothing, but this chain routes through
+             KyberSwap — the same fallback Luca uses. Quote it through
+             /api/swap/quote (fee + key stay server-side), trading the aggregator
+             token form so a native input (Arc USDC) becomes its 0x3600 mirror. */
+          const sellTok = aggregatorToken(swapChainId, sell.token);
+          const buyTok = aggregatorToken(swapChainId, buy.token);
+          const units = ethers.parseUnits(amountIn, sellTok.decimals).toString();
+          const exec = await getKyberSwapExecution({
+            chainId: swapChainId,
+            tokenIn: sellTok.address,
+            tokenOut: buyTok.address,
+            amountUnits: units,
+            address,
+            slippageBps,
+          });
+          if (cancelled) return;
+          if (exec) {
+            setRoute(null);
+            setKyberRoute({
+              to: exec.to,
+              data: exec.data,
+              spender: exec.spender,
+              sellAddr: sellTok.address,
+              sellDec: sellTok.decimals,
+              buyAddr: buyTok.address,
+              buyDec: buyTok.decimals,
+            });
+            setAmountOut(ethers.formatUnits(exec.amountOut, buyTok.decimals));
+            setNoRoute(false);
+          } else {
+            setRoute(null);
+            setKyberRoute(null);
+            setAmountOut("");
+            setNoRoute(true);
+          }
+        } else {
+          setRoute(null);
+          setKyberRoute(null);
+          setAmountOut("");
+          setNoRoute(true);
         }
       } catch {
         if (!cancelled) {
           setRoute(null);
+          setKyberRoute(null);
           setAmountOut("");
           setNoRoute(true);
         }
@@ -484,6 +549,8 @@ export default function SwapPage() {
     samePoolSide,
     swapChainId,
     v3Router,
+    address,
+    slippageBps,
   ]);
 
   /*
@@ -618,6 +685,41 @@ export default function SwapPage() {
       ];
     }
 
+    /* KyberSwap fallback: our own pools returned no route on this chain, so the
+       plan is the aggregator's [approve, aggregatorSwap] — the same shape Luca
+       builds. The sell/buy are the aggregator token forms (Arc native USDC ->
+       0x3600 mirror), so the input always has an ERC20 to approve. */
+    if (kyberRoute && sell && buy && amountIn && minOut) {
+      return [
+        {
+          kind: "approve",
+          token: kyberRoute.sellAddr,
+          spender: kyberRoute.spender,
+          amount: amountIn,
+          decimals: kyberRoute.sellDec,
+          symbol: sell.token.symbol,
+        },
+        {
+          kind: "aggregatorSwap",
+          to: kyberRoute.to,
+          data: kyberRoute.data,
+          value: "0",
+          tokenIn: kyberRoute.sellAddr,
+          amountIn,
+          decimalsIn: kyberRoute.sellDec,
+          symbolIn: sell.token.symbol,
+          tokenOut: kyberRoute.buyAddr,
+          amountOut: amountOut || "0",
+          amountOutMin: minOut,
+          decimalsOut: kyberRoute.buyDec,
+          symbolOut: buy.token.symbol,
+          chainId: swapChainId,
+          venue: "kyberswap",
+          spender: kyberRoute.spender,
+        },
+      ];
+    }
+
     /* The router that executes THIS route — ours for our own pools, the venue's
        for a fallback. A venue swap on a chain we have not deployed on has no
        v3Router of ours, so the gate is the route's router, not ours. The approve
@@ -691,6 +793,8 @@ export default function SwapPage() {
     minOut,
     deadlineMin,
     route,
+    kyberRoute,
+    amountOut,
     wrapMode,
     tokenIn,
     tokenOut,
@@ -707,6 +811,7 @@ export default function SwapPage() {
        stale one left here would let the next `plan` build against pools that
        were chosen for the previous trade's size. */
     setRoute(null);
+    setKyberRoute(null);
   };
 
   /* "Wrap"/"Unwrap" instead of "Review swap" once the card is in wrap mode. The
