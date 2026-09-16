@@ -90,19 +90,6 @@ export const envVars = {
    */
   walletProvider: process.env.NEXT_PUBLIC_WALLET_PROVIDER,
 
-  /**
-   * Where the private-testnet waitlist form lives.
-   *
-   * Public on purpose, and the one part of the access gate that is: this is a
-   * URL handed to anyone who reaches the card without a code. The code itself is
-   * `BETA_ACCESS_CODE`, server-only, read in src/app/api/beta/unlock/route.ts —
-   * a NEXT_PUBLIC_ form of that would ship the code to every visitor and there
-   * would be no gate.
-   *
-   * Unset means the gate renders without the link rather than with a broken one.
-   */
-  waitlistUrl: process.env.NEXT_PUBLIC_WAITLIST_URL,
-
   /* LI.FI's integrator string, fee and API key are NOT here on purpose. The API
      key that authorises the fee is a server secret, so all three are read from
      PLAIN (non-NEXT_PUBLIC) env in lib/bridge/lifiServer.ts and the browser
