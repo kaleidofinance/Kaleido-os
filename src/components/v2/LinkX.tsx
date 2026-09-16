@@ -1,75 +1,138 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useActiveAccount } from "thirdweb/react";
+import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { envVars } from "@/constants/envVars";
 import s from "./LinkX.module.css";
 
 /**
- * "Link X" — the header control that connects an X account to this session.
+ * "Link X" — the header control that ties an X account to the CONNECTED WALLET.
  *
- * This replaces the /verify page, which is gone. Its backend never was: the OAuth
- * start (/api/auth/twitter), the callback and /api/auth/user all survived, so
- * what was missing was somewhere to press. A page for one button was the wrong
- * shape for it anyway — linking X is an account action like connecting a wallet,
- * so it belongs beside the wallet rather than at a route you have to be sent to.
+ * It used to read link state from the `twitter_user` cookie alone (/api/auth/user),
+ * with no wallet dependency — so the handle showed whenever that cookie existed,
+ * even with the wallet disconnected or a different wallet connected. The link is
+ * meant to be a fact about the wallet (one X per wallet, the waitlist's rule), so
+ * this now derives its state from the connected wallet:
  *
- * `/api/auth/user` is the only source of link state, and it reads one httpOnly
- * cookie holding `{username, name}`. Deliberately not localStorage: httpOnly
- * means the browser cannot forge it, and the handle is displayed as a fact about
- * the session rather than a client-side preference.
+ *   - /api/x/for-wallet?address= gives the X bound to THIS wallet. No wallet, or a
+ *     wallet with no binding, shows "Link X"; the same wallet reconnecting brings
+ *     its handle back.
+ *   - Binding reuses the signature-gated api/waitlist/x (task "link"): the wallet
+ *     signs, the server reads the OAuth cookie and writes wallet↔X, enforcing one
+ *     X per wallet. So linking is: press → X OAuth → return → sign to confirm.
  *
- * Pressing it while already linked restarts the same flow, which is how you
- * switch accounts — /api/auth/twitter sends `prompt=consent`, so X asks again
- * rather than silently reusing the previous grant. There is no unlink, because
- * the cookie carries a public handle and no token, and it expires on its own.
- *
- * An <a> and not a <button>: this is a navigation to a route that 302s to x.com.
- * The click handler only intercepts the one case where navigating cannot work.
+ * The `twitter_user` cookie is now only the mid-flow proof that OAuth completed;
+ * it is not what the header trusts. The binding, and the handle shown, live in the
+ * table against the wallet.
  */
 export default function LinkX() {
+  const { address } = useWalletV2();
+  const account = useActiveAccount();
+  /** The X bound to the connected wallet (the table's truth). */
   const [handle, setHandle] = useState<string | null>(null);
+  /** An X from a just-finished OAuth (cookie) that is not yet bound to this wallet. */
+  const [pending, setPending] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/auth/user")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((u) => {
-        /* 401 is the ordinary "not linked" answer, not an error — the route
-           returns it whenever the cookie is absent. */
-        if (!cancelled) setHandle(u?.username ?? null);
-      })
-      .catch(() => {
-        /* Offline or the route is down. Unlinked is the safe reading: it offers
-           the flow, and the flow's own failure is legible. */
-      });
-    return () => {
-      cancelled = true;
-    };
+  const refresh = useCallback(async (addr?: string) => {
+    if (!addr) {
+      setHandle(null);
+      setPending(null);
+      return;
+    }
+    try {
+      const bound = await fetch(`/api/x/for-wallet?address=${addr}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (bound?.handle) {
+        setHandle(bound.handle);
+        setPending(null);
+        return;
+      }
+      setHandle(null);
+      /* Not bound to this wallet — but if an OAuth cookie is sitting there from a
+         just-finished link, offer to confirm it rather than restart OAuth. */
+      const sess = await fetch("/api/waitlist/x")
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      setPending(sess?.handle ?? null);
+    } catch {
+      /* Leave the last good state; the flow's own errors are legible. */
+    }
   }, []);
 
+  useEffect(() => {
+    refresh(address);
+  }, [address, refresh]);
+
+  const startOAuth = () => {
+    if (!envVars.twitterClientId) {
+      toast.error("X sign-in isn't configured on this deployment.");
+      return;
+    }
+    if (!address) {
+      toast.error("Connect your wallet first — your X link is bound to it.");
+      return;
+    }
+    window.location.href = "/api/auth/twitter";
+  };
+
+  const confirmLink = async () => {
+    if (!account || !address || busy) return;
+    setBusy(true);
+    try {
+      /* Same message and endpoint the waitlist signs — one binding path, one
+         one-X-per-wallet rule. */
+      const signature = await account.signMessage({
+        message: `Link my X account to the Kaleido waitlist wallet ${address}.`,
+      });
+      const res = await fetch("/api/waitlist/x", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address, signature, task: "link" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(
+          data?.error === "not registered"
+            ? "Join the waitlist to link X to this wallet."
+            : data?.error === "wallet already linked to a different X"
+              ? "This wallet is already linked to a different X account."
+              : data?.error === "this X is already linked to another wallet"
+                ? "That X account is already linked to another wallet."
+                : "Couldn't link X — try again.",
+        );
+      } else {
+        const linked = pending;
+        await refresh(address);
+        if (linked) toast.success(`Linked as @${linked}`);
+      }
+    } catch {
+      /* User rejected the signature, or the wallet threw. Not an error state. */
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const linked = Boolean(handle);
+  const canConfirm = !linked && Boolean(pending);
+  const label = linked ? `@${handle}` : canConfirm ? "Confirm X" : "Link X";
+  const title = linked
+    ? `X @${handle} is linked to this wallet`
+    : canConfirm
+      ? `Sign to link @${pending} to this wallet`
+      : "Link your X account to this wallet";
 
   return (
-    <a
-      href="/api/auth/twitter"
+    <button
+      type="button"
       className={`${s.btn} ${linked ? s.linked : ""}`}
-      title={
-        linked
-          ? `Linked as @${handle} — press to link a different account`
-          : "Link your X account"
-      }
-      aria-label={linked ? `Linked as @${handle}` : "Link X account"}
-      onClick={(e) => {
-        /* Without a client id the redirect reaches x.com as
-           `client_id=undefined` and the user lands on X's own error page, which
-           reads as our fault and gives them nothing to act on. Same guard, and
-           the same wording, as the Connect button in Nav.tsx. */
-        if (!envVars.twitterClientId) {
-          e.preventDefault();
-          toast.error("X sign-in isn't configured on this deployment.");
-        }
-      }}
+      title={title}
+      aria-label={title}
+      disabled={busy}
+      onClick={linked ? undefined : canConfirm ? confirmLink : startOAuth}
     >
       <svg className={s.mark} viewBox="0 0 24 24" aria-hidden="true">
         <path
@@ -77,7 +140,7 @@ export default function LinkX() {
           d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
         />
       </svg>
-      <span className={s.label}>{linked ? `@${handle}` : "Link X"}</span>
-    </a>
+      <span className={s.label}>{busy ? "Linking…" : label}</span>
+    </button>
   );
 }
