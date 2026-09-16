@@ -17,6 +17,7 @@ import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
+import { isKnownCctpTarget } from "@/lib/bridge/cctp";
 import { isKnownSwapRouter } from "@/lib/swap/kyberswap";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
@@ -1592,6 +1593,20 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         reasons.push(
           "a canonical portal deposit is native-currency only — this corridor cannot carry a token",
         );
+    } else if (provider === "cctp") {
+      /* CCTP's TokenMessengerV2 is a fixed address on every V2 chain, so a
+         `cctp` bridge's `to` is allow-listable exactly like a canonical target
+         — re-checked here against the same constant the resolver built it from.
+         USDC ERC20 only: a native flag would mean burning nothing, and the
+         token must actually be USDC. The value/spender checks below then hold it
+         to the ERC20 shape (no native value, spender === to === the messenger,
+         admitted through the same isKnownBridgeSpender the approve rule uses). */
+      if (!isKnownCctpTarget(str(s.to)))
+        reasons.push("the CCTP target is not TokenMessengerV2");
+      if (wantsNative)
+        reasons.push("a CCTP bridge burns the USDC token, not native currency");
+      if (tok.ok && (tok.symbol ?? "").toUpperCase() !== "USDC")
+        reasons.push("CCTP only carries USDC");
     } else if (provider !== "lifi" && provider !== "relay") {
       /* Fail closed: a canonical target is allow-listed and an aggregator's is
          bounded by the cap, so anything else is neither and is refused. */
