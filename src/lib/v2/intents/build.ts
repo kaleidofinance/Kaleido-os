@@ -812,19 +812,18 @@ export async function buildIntents(
       return { ok: false, error: "How much do you want to swap?" };
     }
 
-    /* Chains where Kaleido runs no pools of its own route through an external
-       aggregator (KyberSwap) rather than the V3 machinery below — Arc, whose
-       liquidity is Uniswap V3/V4 our fork quoter cannot read. Taken before the
-       poolSide/venue path because none of it applies: the aggregator handles
-       wrapping, discovery and the calldata, and we pair its router call with an
+    /* KyberSwap as a venue: builds an [approve, aggregatorSwap] plan from the
+       route the aggregator returns, `{ ok: false }` when it has no route for
+       the pair, or null where KyberSwap isn't wired for this chain. Used two
+       ways below — as the only venue on chains where Kaleido runs no pools of
+       its own, and as a fallback when our own pools exist but hold no
+       liquidity for this pair yet (Arc at launch). The aggregator handles
+       wrapping, discovery and the calldata; we pair its router call with an
        approve and our own fee (added server-side). */
-    if (
-      chainId !== undefined &&
-      !contracts.v3Router &&
-      fallbackVenues(chainId).length === 0 &&
-      hasKyberSwap(chainId) &&
-      deps.swapRoute
-    ) {
+    const tryKyberSwap = async (): Promise<PlanResult | null> => {
+      if (chainId === undefined || !hasKyberSwap(chainId) || !deps.swapRoute) {
+        return null;
+      }
       const route = await deps.swapRoute({
         tokenIn: tokenIn.address,
         tokenOut: tokenOut.address,
@@ -839,7 +838,6 @@ export async function buildIntents(
       const minOut = (Number(out) * (1 - opts.slippageBps / 10000)).toFixed(
         tokenOut.decimals > 6 ? 6 : tokenOut.decimals,
       );
-
       const approve: Intent = {
         kind: "approve",
         token: tokenIn.address,
@@ -873,6 +871,21 @@ export async function buildIntents(
           intents: [approve, swap],
         },
       };
+    };
+
+    /* Chains where Kaleido runs no pools of its own route through KyberSwap
+       rather than the V3 machinery below — Arc, whose liquidity is Uniswap
+       V3/V4 our fork quoter cannot read. Taken before the poolSide/venue path
+       because none of it applies. */
+    if (
+      chainId !== undefined &&
+      !contracts.v3Router &&
+      fallbackVenues(chainId).length === 0 &&
+      hasKyberSwap(chainId) &&
+      deps.swapRoute
+    ) {
+      const kyber = await tryKyberSwap();
+      if (kyber) return kyber;
     }
 
     /* Before quoting, not after: a chain with no router cannot fill this order
@@ -984,6 +997,13 @@ export async function buildIntents(
     );
 
     if (!path) {
+      /* Our own pools returned no route — at Arc's launch the fork's pools
+         exist but hold no liquidity yet. Fall back to KyberSwap before
+         refusing, so a swap still fills off external liquidity; once our own
+         pools are seeded they win above and this never runs. */
+      const kyber = await tryKyberSwap();
+      if (kyber?.ok) return kyber;
+
       return {
         ok: false,
         error:
