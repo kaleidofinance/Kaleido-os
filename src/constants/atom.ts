@@ -21,9 +21,18 @@ import { Ordertype, ActiveTable, AmountFilter } from "@/constants/types/index";
  * applies a beat later without a hydration mismatch. Consume it through
  * `useTestnetMode()` (hooks/v2), never by importing this atom into a component —
  * the hook is the seam a future settings surface writes through too.
+ *
+ * THE KEY IS VERSIONED (`.v2`), and that suffix is a one-time reset, not decoration.
+ * Testers who used the private testnet have `kaleido.showTestnets: true` saved in
+ * their browser from that phase, so they would keep landing on testnet after the
+ * mainnet launch — the opposite of the default. Bumping the key orphans that old
+ * value: every browser has no `.v2` entry yet, so everyone falls back to `false`
+ * (mainnet, toggle off) on their next load, and anyone who still wants testnet
+ * simply flips it again (now stored under `.v2`). Bump the suffix again only for
+ * another deliberate global reset of this preference.
  */
 export const showTestnetsAtom = atomWithStorage<boolean>(
-  "kaleido.showTestnets",
+  "kaleido.showTestnets.v2",
   false,
 );
 
