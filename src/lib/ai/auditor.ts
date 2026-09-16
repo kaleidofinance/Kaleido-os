@@ -17,6 +17,7 @@ import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
+import { isKnownSwapRouter } from "@/lib/swap/kyberswap";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
 import type { PlanStep } from "./types";
@@ -175,6 +176,9 @@ const ACTION_OF: Record<IntentKind, string> = {
   /* The same product toggle. A route through two pools is still a swap, and
      gating it separately would let a user who disabled swaps be shown one. */
   swapMultiHop: "swap",
+  /* An aggregator swap is a swap: the same product toggle, so a user who
+     disabled swaps is not shown one filled by KyberSwap either. */
+  aggregatorSwap: "swap",
   stake: "stake",
   /* The unstake lifecycle is the same product toggle as staking: a user who
      disabled staking should not be shown a withdrawal from the vault either. */
@@ -929,6 +933,11 @@ function spenderReasons(
       reasons: [],
       note: "this approves an external DEX router this app routes through as a fallback for a token not in Kaleido's own pools — from the venues allow-list, not a Kaleido contract",
     };
+  if (isKnownSwapRouter(chainId, spender))
+    return {
+      reasons: [],
+      note: "this approves an aggregator's swap router (KyberSwap) on a chain where Kaleido runs no pools of its own — one recognised external router, not a Kaleido contract, and only an aggregator swap should be pairing it",
+    };
 
   return {
     reasons: [
@@ -1651,6 +1660,63 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     }
 
     return { reasons, notes, ...priceIf(tok.symbol, amount) };
+  },
+
+  /* --------------------------------------------------- aggregator swap -- */
+  /**
+   * A same-chain swap filled by an external aggregator, on a chain where Kaleido
+   * runs no pools of its own. Sibling of `bridge`: the router’s calldata is
+   * opaque, so the per-action cap bounds it and these facts are what this holds —
+   * a router recognised on this chain, an allowance that goes to the contract the
+   * swap calls, a slippage floor present, and no native value riding along. The
+   * router enforces the output floor; the paired approve pulls the input.
+   */
+  aggregatorSwap: (s, chainId) => {
+    const reasons: string[] = [];
+    const tokenIn = str(s.tokenIn);
+    const tokenOut = str(s.tokenOut);
+    const inTok = knownToken(chainId, tokenIn);
+    const outTok = knownToken(chainId, tokenOut);
+    if (!inTok.ok)
+      reasons.push(`unrecognised input token ${tokenIn || "(none)"}`);
+    if (!outTok.ok)
+      reasons.push(`unrecognised output token ${tokenOut || "(none)"}`);
+    if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
+      reasons.push("input and output token are the same");
+
+    const amount = positive(s.amountIn);
+    if (amount === null)
+      reasons.push("swap amount is missing or not positive");
+
+    const decimals = num(s.decimalsIn);
+    if (decimals === null) reasons.push("input token decimals are missing");
+    else if (inTok.ok && decimals !== inTok.decimals)
+      reasons.push(
+        `decimals say ${decimals} but ${inTok.symbol} has ${inTok.decimals}`,
+      );
+
+    if (num(s.amountOutMin) === null)
+      reasons.push(
+        "no minimum output — the swap would execute at any price. Slippage protection is required.",
+      );
+
+    reasons.push(...requireAddresses(s, "to", "spender"));
+    if (chainId === undefined)
+      reasons.push("no chain to check the swap router against");
+    else if (!isKnownSwapRouter(chainId, str(s.to)))
+      reasons.push(
+        "the swap router is not one recognised on the chain this plan targets",
+      );
+    if (str(s.spender).toLowerCase() !== str(s.to).toLowerCase())
+      reasons.push("the approval address is not the contract the swap calls");
+
+    if (num(s.value) !== 0)
+      reasons.push("an aggregator swap must not attach native value");
+
+    const notes = [
+      "the aggregator's calldata is not parsed here — the router enforces the output floor, and the per-action USD cap bounds the input",
+    ];
+    return { reasons, notes, ...priceIf(inTok.symbol, amount) };
   },
 
   /* ------------------------------------------------------------ lending -- */

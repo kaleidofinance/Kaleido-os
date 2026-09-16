@@ -286,6 +286,43 @@ export type Intent =
       /** Gas floor for a canonical deposit, which underruns estimateGas. */
       gasLimit?: string;
     }
+  /* ---------------------------------------------------- aggregator swap -- */
+  /*
+   * A same-chain swap filled by an external aggregator (KyberSwap), for chains
+   * where Kaleido runs no pools of its own — Arc, whose liquidity is Uniswap
+   * V3/V4 the V3-fork quoter cannot read. Shaped like `bridge`: `to`/`data` are
+   * an opaque router call from the resolver, never the model, bounded by the
+   * auditor’s USD cap and paired with an approve whose spender equals `to`.
+   */
+  | {
+      kind: "aggregatorSwap";
+      /** Aggregator router on this chain, from the resolver — never the model. */
+      to: string;
+      /** The router’s own calldata. Opaque, bounded by the auditor’s USD cap. */
+      data: string;
+      /** Wei to send; "0" — an ERC20 swap attaches no native value. */
+      value: string;
+      /** The input token leaving the wallet. */
+      tokenIn: string;
+      /** Human input amount, for the row and the auditor’s pricing. */
+      amountIn: string;
+      decimalsIn: number;
+      symbolIn: string;
+      /** The output token, for the rendered row. */
+      tokenOut: string;
+      /** Expected human output, for the row. */
+      amountOut: string;
+      /** The slippage floor for the row; the router bakes its own into `data`. */
+      amountOutMin: string;
+      decimalsOut: number;
+      symbolOut: string;
+      /** The chain this is signed on. */
+      chainId: number;
+      /** The venue that produced to/data, e.g. "kyberswap". */
+      venue: string;
+      /** The router the paired approve authorises; equal to `to` by construction. */
+      spender: string;
+    }
   /* ---------------------------------------------------------- lending -- */
   /*
    * The P2P family. Each mirrors one ProtocolFacet call that previously only

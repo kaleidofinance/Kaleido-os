@@ -11,6 +11,7 @@ import { readCollateralDeposits } from "@/lib/lending/collateral";
 import { readTokenBalance } from "@/lib/chain/tokenBalance";
 import { readPoolState } from "@/lib/dex/pool";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
+import { resolveSwapRoute } from "@/lib/swap/route";
 import { providerForChain } from "@/config/provider";
 import { getContracts } from "@/constants/registry";
 import {
@@ -240,6 +241,12 @@ export function useLocalPlanner() {
                   fromChainId: chainId,
                   userAddress: address ?? "",
                 }),
+          swapRoute: (req) =>
+            chainId === undefined
+              ? Promise.resolve({
+                  error: "Connect a wallet to a supported chain to swap.",
+                })
+              : resolveSwapRoute({ ...req, chainId, userAddress: address ?? "" }),
         },
       );
       if (!result.ok) return result;
