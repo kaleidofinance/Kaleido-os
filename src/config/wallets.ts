@@ -22,6 +22,10 @@ export const WALLETS = [
      Bitget entry, shows it even when the extension is absent (with a download
      prompt on their metadata), and carries the icon. */
   createWallet("com.bitget.web3"),
+  /* Gate Web3 Wallet — partner integration (Gate BountyDrop campaign + DApp
+     Center listing). Kept in the top row alongside Bitget; thirdweb resolves the
+     id `net.gateweb3` to the Gate entry with its icon and download metadata. */
+  createWallet("net.gateweb3"),
   createWallet("com.coinbase.wallet"),
   createWallet("me.rainbow"),
   createWallet("walletConnect"),
