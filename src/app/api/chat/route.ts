@@ -24,7 +24,7 @@ import {
   releaseModelRequest,
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
-import { splitCards } from "@/lib/ai/actionsBlock";
+import { splitCards, splitReasoning } from "@/lib/ai/actionsBlock";
 import { logAgentTurn } from "@/lib/ai/turnLog";
 import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
@@ -339,7 +339,14 @@ export async function POST(request: NextRequest) {
            means a refusal, a build note and a clean answer cannot disagree about
            whether the blocks are still in. `reply.cards` is raw; the client's
            cardsFromChat validates it and forbids a `steps` receipt. */
-        const reply = splitCards(result.text);
+        /* The reasoning line comes off first, before the card blocks, so what
+           splitCards and every concatenation below see is prose with the model's
+           private "why" already lifted out. It travels in `context.reasoning`
+           and is rendered into the folded record (traceFromChat), never the
+           answer — see the "Showing your reasoning" section of the system prompt. */
+        const reasoned = splitReasoning(result.text);
+        const reply = splitCards(reasoned.text);
+        const reasoning = reasoned.reasoning;
 
         /*
          * Verbs become intents here, before anything is audited.
@@ -420,6 +427,7 @@ export async function POST(request: NextRequest) {
               provider: result.provider,
               model: result.model,
               ...(reply.cards.length ? { cards: reply.cards } : {}),
+              ...(reasoning ? { reasoning } : {}),
               reads: result.trace,
               credits: {
                 used: quota.used,
@@ -479,6 +487,12 @@ export async function POST(request: NextRequest) {
                with it. Omitted rather than sent empty, so a reply that carried
                nothing does not imply it might have. */
             ...(reply.cards.length ? { cards: reply.cards } : {}),
+            /* The distilled "why" behind this answer, when the model offered one.
+               Rendered as the lead line of the folded record (traceFromChat), not
+               the prose — so a turn's reasoning sits with the reads it made rather
+               than in the answer the reads produced. Omitted when the model wrote
+               none, which is the common case. */
+            ...(reasoning ? { reasoning } : {}),
             /* What the model read before answering, in the order it ran.
                Reported so the turn can show its own work: the frontend renders
                these as the thought process under the reply (traceFromChat in

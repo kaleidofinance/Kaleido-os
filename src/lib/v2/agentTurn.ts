@@ -272,6 +272,8 @@ interface ChatTrace {
     reads?: unknown;
     plan?: unknown;
     audit?: { ok?: unknown } | null;
+    /** The model's distilled "why", when it offered one — see traceFromChat. */
+    reasoning?: unknown;
     [k: string]: unknown;
   };
 }
@@ -288,6 +290,19 @@ interface ChatTrace {
 export function traceFromChat(data: unknown): string[] {
   const chat = data as ChatTrace;
   const lines: string[] = [];
+
+  /* The model's distilled reasoning, when it wrote a line. Emitted before the
+     reads so a reader opening the fold gets the "why" ahead of the "what it
+     looked at" — on the JSON path, at least; on the streaming path the reads
+     were already noted live, so this lands after them, which reads just as well
+     as a closing rationale. Already capped and flattened at the route
+     (splitReasoning), re-bounded here on the same defensive footing as every
+     other field this function reads from a reply it did not build. */
+  const reasoning = chat?.context?.reasoning;
+  if (typeof reasoning === "string") {
+    const line = reasoning.replace(/\s+/g, " ").trim().slice(0, 160);
+    if (line) lines.push(line);
+  }
 
   const reads = chat?.context?.reads;
   if (Array.isArray(reads)) {

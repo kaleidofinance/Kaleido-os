@@ -37,6 +37,22 @@
 export const ACTIONS_FENCE = "```actions";
 /** Opens the display-cards block. Same discipline as the fence above. */
 export const CARDS_FENCE = "```cards";
+/**
+ * Opens the reasoning block: one distilled line naming the single thing that
+ * decided the answer or plan. Same literal-fence discipline as the two above,
+ * and the same fate — lifted out of the prose so it never renders as an answer.
+ * Unlike them it does not become a card; it is a line for the folded record
+ * ("How I answered"), which is why `splitReasoning` returns a bare string and
+ * the route hands it to `traceFromChat` rather than to `cardsFromChat`.
+ */
+export const REASONING_FENCE = "```reasoning";
+
+/**
+ * Longest a reasoning line may be. The block is one clause for a fold that has
+ * room for one; a model that writes a paragraph has misused the channel, and
+ * the cap truncates it rather than letting it push the read labels off screen.
+ */
+export const MAX_REASONING_CHARS = 160;
 
 export interface OfferedAction {
   label: string;
@@ -66,13 +82,13 @@ export interface SplitReply {
  */
 export function visibleProse(partial: string): string {
   let cut = partial.length;
-  for (const fence of [CARDS_FENCE, ACTIONS_FENCE]) {
+  for (const fence of [CARDS_FENCE, ACTIONS_FENCE, REASONING_FENCE]) {
     const at = partial.indexOf(fence);
     if (at >= 0) cut = Math.min(cut, at);
   }
   if (cut < partial.length) return partial.slice(0, cut).trimEnd();
 
-  for (const fence of [CARDS_FENCE, ACTIONS_FENCE]) {
+  for (const fence of [CARDS_FENCE, ACTIONS_FENCE, REASONING_FENCE]) {
     for (let n = fence.length - 1; n >= 2; n--) {
       if (partial.endsWith(fence.slice(0, n))) {
         return partial.slice(0, partial.length - n).trimEnd();
@@ -187,4 +203,35 @@ export function splitCards(text: string): { text: string; cards: unknown[] } {
   }
 
   return { text: a.prose, cards };
+}
+
+/**
+ * Lifts the reasoning block out of a finished reply, returning the prose without
+ * it and the one distilled line it carried (or null when absent).
+ *
+ * Plain text, not JSON: the channel is a single clause for the fold, so the body
+ * is read as text — the first non-empty line, whitespace flattened, capped at
+ * MAX_REASONING_CHARS. A multi-line body is the model over-writing the channel,
+ * and taking the first line is a truncation with the same intent as the char cap.
+ * An empty block yields null, indistinguishable downstream from no block at all —
+ * both mean "no reasoning line to show", which is the common case.
+ *
+ * Run before splitCards at the route so the cards splitter sees prose with this
+ * block already gone; cutFence lifts a fence from anywhere, so the two are
+ * order-independent, but doing reasoning first keeps the fence set each splitter
+ * scans smaller and the intent legible.
+ */
+export function splitReasoning(text: string): {
+  text: string;
+  reasoning: string | null;
+} {
+  const { body, prose } = cutFence(text, REASONING_FENCE);
+  if (body === null) return { text, reasoning: null };
+  const line =
+    body
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) ?? "";
+  const reasoning = line ? line.replace(/\s+/g, " ").slice(0, MAX_REASONING_CHARS) : null;
+  return { text: prose, reasoning };
 }

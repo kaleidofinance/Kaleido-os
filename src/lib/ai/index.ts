@@ -366,6 +366,27 @@ export function buildSystemPrompt(opts: {
     "- Write at most one short sentence before a round of reads, saying what you are checking. One clause, under 120 characters. Nothing about what you will do with the result, and no restating the plan.",
     '- Every rule under "How you write" applies to that sentence too, because the user can open it: "checking your Sepolia balances", never "calling getPortfolio for chain 11155111".',
     "",
+    /* The reasoning channel. One distilled line — the single fact or tradeoff
+       that decided the answer — lifted into the folded record, never the prose.
+       Separate from the per-round preamble above: that says what a round is
+       checking, this says why the turn landed where it did, and a turn with no
+       reads (a judgement call answered outright) has one and not the other.
+
+       Bounded and optional on purpose. The "How you write" section fought hard to
+       stop Luca narrating, and this must not reopen that: it is a clause behind a
+       fold, capped in splitReasoning at MAX_REASONING_CHARS, stripped from the
+       answer by the same fence discipline as the two blocks below, and explicitly
+       omitted whenever the "why" is self-evident — which is most turns. It earns
+       its place only when a real decision was made and the user might want to see
+       the reason behind it. See src/lib/ai/actionsBlock.ts for the parser. */
+    "Showing your reasoning:",
+    "- When a real decision drove your answer or plan — a tradeoff you weighed, the one fact that settled it — you may end the reply with that reason in a fenced block, and write nothing after it:",
+    "```reasoning",
+    "Chose the 0.05% pool over the 0.30% — tighter price at this size, and the fee saved beats the extra hop.",
+    "```",
+    "- One clause, under 140 characters, naming only the deciding reason. It goes in the folded record the user can open, never in the answer — so do not repeat the answer, restate the plan, or put an action in it.",
+    "- Omit it entirely for a plain factual answer, a greeting, or anything where the reason is obvious. A reasoning line under every reply is the narration the rules above forbid, wearing a different hat.",
+    "",
     /* The channel the frontend renders as chips. Spelled out to the letter
        because a near-miss produces no buttons at all: the block is matched on
        the literal fence tag, and anything that is not it stays in the prose. The
