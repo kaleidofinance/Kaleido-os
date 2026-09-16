@@ -1,5 +1,11 @@
 import { ethers } from "ethers";
 import { getBridgeExecution, resolveChain } from "@/lib/ai/bridgeQuotes";
+import {
+  CCTP_ENABLED,
+  buildCctpBurnRoute,
+  isCctpCorridor,
+  isKnownCctpTarget,
+} from "@/lib/bridge/cctp";
 import type { BridgeRoute, BridgeRouteRequest } from "@/lib/v2/intents/build";
 
 /**
@@ -147,7 +153,11 @@ export function isKnownBridgeSpender(address: string): boolean {
   const lower = (address || "").toLowerCase();
   return (
     Boolean(address) &&
-    KNOWN_BRIDGE_SPENDERS.some((r) => r.toLowerCase() === lower)
+    (KNOWN_BRIDGE_SPENDERS.some((r) => r.toLowerCase() === lower) ||
+      // CCTP's TokenMessengerV2 is the ERC20 leg's spender AND its call target;
+      // one vetted fixed address on every V2 chain, read here so the approve
+      // rule and the bridge rule's spender===to check both admit it.
+      isKnownCctpTarget(address))
   );
 }
 
@@ -187,6 +197,30 @@ export async function resolveBridgeRoute(
   }
   if (BigInt(units) <= 0n)
     return { error: `A bridge needs a positive amount, not ${amount}.` };
+
+  // 0) CCTP — Circle's native USDC burn-and-mint, the best path for USDC into
+  //    and out of Arc (1:1, no pool, no slippage) and the one LI.FI's Arc
+  //    registry omits. Preferred over the aggregator for USDC on a CCTP
+  //    corridor, but OFF until the destination-mint completer ships (see
+  //    CCTP_ENABLED). Pure like the canonical branch — no network — so on a miss
+  //    it falls through to the aggregator rather than refusing.
+  if (
+    CCTP_ENABLED &&
+    asset.toUpperCase() === "USDC" &&
+    isCctpCorridor(fromChainId, dest.id)
+  ) {
+    const cctp = buildCctpBurnRoute({
+      fromChainId,
+      dest: { id: dest.id, shortName: dest.shortName },
+      asset,
+      amount,
+      decimals,
+      isNative,
+      tokenAddress,
+      userAddress,
+    });
+    if (!("error" in cctp)) return cctp;
+  }
 
   // 1) Canonical corridor — a fixed portal deposit, encoded here, no network.
   //    Native only; see the CANONICAL note in the header for why an ERC20 must
