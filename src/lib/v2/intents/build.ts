@@ -8,10 +8,13 @@ import {
   getContracts,
   isNativeSentinel,
   registeredLendingAssets,
+  resolveUserToken,
   stableContracts,
   stakingContracts,
   type LendingSide,
 } from "@/constants/registry";
+import { CHAINS_BY_ID } from "@/constants/chains";
+import { resolveChain } from "@/lib/ai/bridgeQuotes";
 import { symbolForAddress } from "@/constants/tokens";
 import {
   FEE_TIERS,
@@ -259,6 +262,13 @@ export interface BridgeRouteRequest {
    * authorise, and it cannot make that comparison without this.
    */
   tokenAddress?: string;
+  /**
+   * The chain to bridge FROM, when it is not the connected chain — set by the
+   * bridge branch when the user named "from X". The planner resolves the route
+   * for this chain; the sign flow then switches the wallet to it. Absent means
+   * the connected chain, the default every caller used before.
+   */
+  sourceChainId?: number;
   /**
    * CCTP settlement speed, honoured only on a CCTP corridor. "fast" (the
    * default) settles in seconds for a small Circle fee and falls back to
@@ -1541,7 +1551,7 @@ export async function buildIntents(
    * prices the notional against the per-action cap.
    */
   if (command.kind === "bridge") {
-    const { amount, token, toChain } = command;
+    const { amount, token, toChain, fromChain } = command;
 
     // A bridge is defined by the chain it leaves. Without one there is no
     // corridor to resolve and no `fromChainId` for the Intent, so refuse here
@@ -1553,26 +1563,68 @@ export async function buildIntents(
       };
     }
 
-    if (!isParsableAmount(amount, token.decimals)) {
+    /* The source chain. Default is the connected chain — the only source a bridge
+       could mean before an explicit "from X". When the user names one, resolve
+       and validate it: it must be a chain we can bridge from (a mainnet chain the
+       aggregator indexes), and — the subtlety — the asset must be RE-RESOLVED on
+       that chain, because the grammar matched `token` against the CONNECTED
+       chain's registry and BNB's USDC is a different address and decimals than
+       Arc's. Signing the source's own token is what makes the resolver's
+       cross-check pass; carrying the connected chain's would refuse. */
+    let sourceChainId = chainId;
+    /* Only the fields the route + intents read, so both the grammar's `IToken`
+       and the registry's `TokenEntry` (which the source lookup returns) fit. */
+    let srcToken: { address: string; symbol: string; decimals: number } = token;
+    if (fromChain) {
+      const src = resolveChain(fromChain);
+      if (!src) {
+        return {
+          ok: false,
+          error: `I don't recognise the source chain "${fromChain}".`,
+        };
+      }
+      if (src.network !== "mainnet") {
+        return {
+          ok: false,
+          error: `I can only bridge from a mainnet chain, and ${src.shortName} is a testnet. Switch to the mainnet you want to bridge from.`,
+        };
+      }
+      if (src.id !== chainId) {
+        const onSource =
+          resolveUserToken(CHAINS_BY_ID[src.id], token.symbol, "dex") ??
+          resolveUserToken(CHAINS_BY_ID[src.id], token.symbol, "lending");
+        if (!onSource) {
+          return {
+            ok: false,
+            error: `I couldn't find ${token.symbol} on ${src.shortName}, so there's nothing to bridge from there.`,
+          };
+        }
+        sourceChainId = src.id;
+        srcToken = onSource;
+      }
+    }
+
+    if (!isParsableAmount(amount, srcToken.decimals)) {
       return {
         ok: false,
-        error: `${amount} is more precision than ${token.symbol} has — it holds ${token.decimals} decimal places.`,
+        error: `${amount} is more precision than ${srcToken.symbol} has — it holds ${srcToken.decimals} decimal places.`,
       };
     }
 
     // Same either-sentinel test as send: native is a wallet fact here, not a
     // protocol convention, so both the DEX and lending sentinels count.
     const isNative =
-      isNativeSentinel(token.address, "dex") ||
-      isNativeSentinel(token.address, "lending");
+      isNativeSentinel(srcToken.address, "dex") ||
+      isNativeSentinel(srcToken.address, "lending");
 
     const route = await deps.bridgeRoute({
       toChain,
-      asset: token.symbol,
+      asset: srcToken.symbol,
       amount,
-      decimals: token.decimals,
+      decimals: srcToken.decimals,
       isNative,
-      tokenAddress: token.address,
+      tokenAddress: srcToken.address,
+      sourceChainId,
     });
     if ("error" in route) {
       return { ok: false, error: route.error };
@@ -1589,21 +1641,27 @@ export async function buildIntents(
       };
     }
 
+    const fromName =
+      sourceChainId !== chainId
+        ? (CHAINS_BY_ID[sourceChainId]?.shortName ?? `chain ${sourceChainId}`)
+        : null;
     return {
       ok: true,
       build: {
-        summary: `Bridge ${amount} ${token.symbol} to ${route.toChainName}.`,
+        summary: fromName
+          ? `Bridge ${amount} ${srcToken.symbol} from ${fromName} to ${route.toChainName}.`
+          : `Bridge ${amount} ${srcToken.symbol} to ${route.toChainName}.`,
         intents: [
           ...(isNative
             ? []
             : ([
                 {
                   kind: "approve",
-                  token: token.address,
+                  token: srcToken.address,
                   spender: route.spender!,
                   amount,
-                  decimals: token.decimals,
-                  symbol: token.symbol,
+                  decimals: srcToken.decimals,
+                  symbol: srcToken.symbol,
                 },
               ] as Intent[])),
           {
@@ -1611,11 +1669,11 @@ export async function buildIntents(
             to: route.to,
             data: route.data,
             value: route.value,
-            token: token.address,
+            token: srcToken.address,
             amount,
-            decimals: token.decimals,
-            symbol: token.symbol,
-            fromChainId: chainId,
+            decimals: srcToken.decimals,
+            symbol: srcToken.symbol,
+            fromChainId: sourceChainId,
             toChainId: route.toChainId,
             toChainName: route.toChainName,
             provider: route.provider,

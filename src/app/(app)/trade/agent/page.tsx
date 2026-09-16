@@ -581,6 +581,19 @@ export default function AgentPage() {
      * the turn asks for a retry rather than putting up an unaudited plan.
      */
     let verdict: { ok: boolean; refusal: string | null };
+    /* Audit against the chain the plan is FOR, not the wallet's current one. The
+       auditor checks every intent against one chainId, and a "from X" bridge (or
+       a CCTP mint) carries its own chain — so the connected chain would fail
+       every per-chain check for a cross-chain plan. Same derivation the sign flow
+       pins to; falls back to the connected chain for an ordinary plan. */
+    const auditChainId =
+      built.build.intents.reduce<number | null>((acc, it) => {
+        if (acc != null) return acc;
+        if (it.kind === "bridge") return it.fromChainId;
+        if (it.kind === "aggregatorSwap" || it.kind === "cctpReceive")
+          return it.chainId;
+        return null;
+      }, null) ?? chainId;
     try {
       const res = await fetch("/api/audit", {
         method: "POST",
@@ -588,7 +601,7 @@ export default function AgentPage() {
         signal,
         body: JSON.stringify({
           plan: built.build.intents,
-          chainId,
+          chainId: auditChainId,
           limits: {
             maxPerAction: settings.maxPerAction,
             maxPerDay: settings.maxPerDay,

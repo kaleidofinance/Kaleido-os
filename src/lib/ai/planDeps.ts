@@ -474,7 +474,9 @@ export function serverPlanDeps(
           })
         : resolveBridgeRoute({
             ...req,
-            fromChainId: chainId,
+            // A "from X" bridge names its own source; otherwise it leaves the
+            // connected chain, as every bridge did before.
+            fromChainId: req.sourceChainId ?? chainId,
             userAddress: address ?? "",
           }),
     swapRoute: (req) =>
