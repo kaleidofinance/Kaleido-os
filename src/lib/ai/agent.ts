@@ -86,6 +86,15 @@ export interface AgentInput {
  */
 export interface AgentRun extends ChatResult {
   trace: ReadCall[];
+  /**
+   * Read-rounds this turn ran — grounding passes where reads executed, their
+   * results were fed back, and the model was asked again. 0 for a turn answered
+   * outright with no tool calls; MAX_READ_ROUNDS is the ceiling. Distinct from
+   * `trace.length` (the total reads): one round can run several reads at once, so
+   * a four-read turn may be one round or four. Both travel to the turn log — see
+   * logAgentTurn — as the two numbers that say how hard the turn worked.
+   */
+  rounds: number;
 }
 
 /**
@@ -166,6 +175,11 @@ export async function runAgent(
 
   let result = await ask();
   const trace: ReadCall[] = [];
+  /* Grounding passes that ran. Incremented once per loop iteration that fed a
+     context block back and re-asked — so a turn answered on the first call
+     without a tool stays 0, and the count matches how many times the model was
+     handed fresh reads to reason over. Reported on the run for the turn log. */
+  let rounds = 0;
 
   /**
    * Every read this turn has already run, by `readKey`.
@@ -296,10 +310,11 @@ export async function runAgent(
           : ""),
     });
 
+    rounds++;
     result = await ask();
   }
 
-  return { ...result, trace };
+  return { ...result, trace, rounds };
 }
 
 /**
