@@ -428,5 +428,48 @@ console.log("\n— the outcome line —");
   );
 }
 
+console.log("\n— the reasoning line the model may offer —");
+{
+  /* It leads the fold, before the reads, and stands beside the outcome. */
+  const lines = traceFromChat({
+    context: {
+      reasoning: "Chose the 0.05% pool — tighter price at this size.",
+      reads: [{ name: "getSwapRoute", args: { tokenIn: "USDC", tokenOut: "KLD" } }],
+      plan: [{ kind: "swap" }],
+    },
+  });
+  check(
+    "the reasoning line leads the fold",
+    lines[0] === "Chose the 0.05% pool — tighter price at this size.",
+    lines.join(" | "),
+  );
+  check(
+    "the reads and outcome still follow it",
+    lines.some((l) => l.startsWith("Priced")) &&
+      lines[lines.length - 1] === "Built 1 step to sign",
+    lines.join(" | "),
+  );
+
+  /* A reasoning line alone is a real line — the >=2 fold gate lives in the page,
+     not here, so the producer reports exactly what it was given. */
+  const solo = traceFromChat({ context: { reasoning: "Because the rate flipped." } });
+  check("a lone reasoning line is reported", solo.length === 1, solo.join(" | "));
+
+  /* Whitespace is flattened and an over-long line capped, on the same defensive
+     footing as every other field this reads from a reply it did not build. */
+  const messy = traceFromChat({
+    context: { reasoning: `  keep  it   tidy\n\n${"y".repeat(400)}` },
+  });
+  check(
+    "reasoning is flattened and capped",
+    messy[0].length === 160 && !messy[0].includes("\n"),
+    String(messy[0]?.length),
+  );
+
+  /* Not a string: dropped, not coerced. */
+  const bad = traceFromChat({ context: { reasoning: { why: "nope" } } });
+  check("a non-string reasoning is ignored", bad.length === 0, bad.join(" | "));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
