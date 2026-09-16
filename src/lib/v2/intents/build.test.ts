@@ -609,11 +609,10 @@ async function main() {
     );
   }
   {
-    /* One asset held two ways, so in pool form both sides are one address. This
-       used to fall through to "I couldn't get a price", which is a claim about
-       liquidity — and it sends the user looking for the pool that would fix it.
-       There is no pool between a token and its own wrapper and there never will
-       be. */
+    /* Native against its own wrapper is a WRAP, not a swap: there is no pool
+       between a token and its wrapper and never will be, but there is a 1:1
+       deposit()/withdraw() on the wrapped-native. So it builds a wrap plan
+       rather than refusing, and costs no quote to do it. */
     const { deps, calls } = fakeDeps({ quote: async () => "1000" });
     const r = await build(
       {
@@ -625,16 +624,32 @@ async function main() {
       deps,
     );
     check(
-      "ETH for its own wrapper is refused as one asset, not as no liquidity",
-      !r.ok &&
-        errorOf(r).includes("same asset") &&
-        !errorOf(r).includes("couldn't get a price"),
-      errorOf(r),
+      "native for its own wrapper builds a wrap, not a swap or a refusal",
+      r.ok && kinds(r) === "wrapNative",
+      r.ok ? kinds(r) : errorOf(r),
     );
     check(
-      "and it costs no quotes to say so",
+      "and it costs no quotes to build",
       calls.quote.length === 0,
       String(calls.quote.length),
+    );
+  }
+  {
+    /* The reverse: the wrapper back to native is an unwrap. */
+    const { deps } = fakeDeps({ quote: async () => "1000" });
+    const r = await build(
+      {
+        kind: "swap",
+        amount: "1",
+        tokenIn: tk("WETH", 18, WRAPPED),
+        tokenOut: DEX_ETH,
+      },
+      deps,
+    );
+    check(
+      "the wrapper for native builds an unwrap",
+      r.ok && kinds(r) === "unwrapNative",
+      r.ok ? kinds(r) : errorOf(r),
     );
   }
 

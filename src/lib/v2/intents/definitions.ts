@@ -505,6 +505,48 @@ register("cctpReceive", {
   },
 });
 
+/* WETH9 surface — the wrapped-native contract on every chain (WUSDC on Arc). */
+const WRAPPED_NATIVE_ABI = [
+  "function deposit() payable",
+  "function withdraw(uint256 wad)",
+];
+
+register("wrapNative", {
+  render: (i) => ({
+    title: `Wrap ${i.amount} ${i.symbol} into ${i.wrappedSymbol}`,
+    detail: `Deposits ${i.amount} ${i.symbol} into ${i.wrappedSymbol} at 1:1. Reversible any time by unwrapping; no approval needed.`,
+  }),
+  resolve: async (ctx, i) => {
+    const data = new ethers.Interface(WRAPPED_NATIVE_ABI).encodeFunctionData(
+      "deposit",
+      [],
+    );
+    const tx = await ctx.signer.sendTransaction({
+      to: i.to,
+      data,
+      value: ethers.parseUnits(i.amount, i.decimals),
+    });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+register("unwrapNative", {
+  render: (i) => ({
+    title: `Unwrap ${i.amount} ${i.symbol} into ${i.nativeSymbol}`,
+    detail: `Withdraws ${i.amount} ${i.symbol} back to ${i.nativeSymbol} at 1:1. No approval needed — it burns your own ${i.symbol}.`,
+  }),
+  resolve: async (ctx, i) => {
+    const data = new ethers.Interface(WRAPPED_NATIVE_ABI).encodeFunctionData(
+      "withdraw",
+      [ethers.parseUnits(i.amount, i.decimals)],
+    );
+    const tx = await ctx.signer.sendTransaction({ to: i.to, data });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
 /* ------------------------------------------------------------- lending -- */
 
 const pct = (n: number) => `${n}%`;

@@ -238,6 +238,13 @@ const ACTION_OF: Record<IntentKind, string> = {
      target to MessageTransmitterV2. */
   cctpReceive: "",
 
+  /* Wrap / unwrap. Ungated like a send: no product toggle names "convert my own
+     native currency to its wrapped form and back", it moves only the signer's
+     own funds 1:1 and is reversible, and the AUDITORS rule pins the target to
+     the chain's own wrapped-native. Bounded by the per-action cap. */
+  wrapNative: "",
+  unwrapNative: "",
+
   /* Lending. Collateral is gated with borrowing because that is what it is
      for, and because withdrawing it is the one exit that can move a position
      TOWARD liquidation rather than away from it — the Borrow page remains the
@@ -1779,6 +1786,57 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
           ]
         : undefined;
     return { reasons, notes };
+  },
+
+  /* -------------------------------------------------------------- wrap -- */
+  /*
+   * Wrap / unwrap the native currency against the chain's wrapped-native. A 1:1
+   * deposit()/withdraw() on that one contract, so the whole check is: the target
+   * is the chain's registered `wrappedNative` (pinned, the same way orders and
+   * the faucet are), a positive amount, and the connected chain. No external
+   * address, no approve; priced by the amount so the per-action cap still bounds
+   * it, since it is the signer's own funds moving.
+   */
+  wrapNative: (s, chainId) => {
+    const reasons: string[] = [];
+    reasons.push(...requireAddresses(s, "to"));
+    reasons.push(
+      ...pinned(str(s.to), getContracts(chainId).wrappedNative, "wrapped-native"),
+    );
+    const amount = positive(s.amount);
+    if (amount === null) reasons.push("wrap amount is missing or not positive");
+    const signed = num(s.chainId);
+    if (chainId !== undefined && signed !== null && signed !== chainId)
+      reasons.push("the wrap's chain is not the connected chain");
+    const notes =
+      reasons.length === 0
+        ? [
+            "wrapping is a 1:1 deposit into the chain's wrapped-native — reversible any time by unwrapping",
+          ]
+        : undefined;
+    return { reasons, notes, ...priceIf(str(s.symbol), amount) };
+  },
+  unwrapNative: (s, chainId) => {
+    const reasons: string[] = [];
+    reasons.push(...requireAddresses(s, "to"));
+    reasons.push(
+      ...pinned(str(s.to), getContracts(chainId).wrappedNative, "wrapped-native"),
+    );
+    const amount = positive(s.amount);
+    if (amount === null)
+      reasons.push("unwrap amount is missing or not positive");
+    const signed = num(s.chainId);
+    if (chainId !== undefined && signed !== null && signed !== chainId)
+      reasons.push("the unwrap's chain is not the connected chain");
+    const notes =
+      reasons.length === 0
+        ? [
+            "unwrapping is a 1:1 withdraw of your own wrapped balance back to native",
+          ]
+        : undefined;
+    /* Priced by the native symbol received (the wrapped symbol may not be in the
+       price table); 1:1 with the wrapped amount either way. */
+    return { reasons, notes, ...priceIf(str(s.nativeSymbol), amount) };
   },
 
   /* ------------------------------------------------------------ lending -- */

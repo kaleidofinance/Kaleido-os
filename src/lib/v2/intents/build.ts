@@ -819,6 +819,64 @@ export async function buildIntents(
       return { ok: false, error: "How much do you want to swap?" };
     }
 
+    /* Native <-> wrapped-native is a wrap, not a swap. Selecting the chain's
+       native currency against its wrapped-native ERC20 (WETH elsewhere, WUSDC on
+       Arc) is a 1:1 deposit()/withdraw() on the wrapped-native contract — no
+       pool, no route, no slippage — so it is built here rather than sent to a
+       quoter that has no pool for the pair. Reached from the swap form and from
+       Luca's swap verb alike; the picker offers WUSDC once it is registered. */
+    if (chainId !== undefined && contracts.wrappedNative) {
+      const wrapped = contracts.wrappedNative;
+      const inNative =
+        isNativeSentinel(tokenIn.address, "dex") ||
+        isNativeSentinel(tokenIn.address, "lending");
+      const outNative =
+        isNativeSentinel(tokenOut.address, "dex") ||
+        isNativeSentinel(tokenOut.address, "lending");
+      const inWrapped = tokenIn.address.toLowerCase() === wrapped.toLowerCase();
+      const outWrapped =
+        tokenOut.address.toLowerCase() === wrapped.toLowerCase();
+
+      if (inNative && outWrapped) {
+        return {
+          ok: true,
+          build: {
+            summary: `Wrap ${amount} ${tokenIn.symbol} into ${tokenOut.symbol}.`,
+            intents: [
+              {
+                kind: "wrapNative",
+                to: wrapped,
+                amount,
+                decimals: tokenIn.decimals,
+                symbol: tokenIn.symbol,
+                wrappedSymbol: tokenOut.symbol,
+                chainId,
+              },
+            ],
+          },
+        };
+      }
+      if (inWrapped && outNative) {
+        return {
+          ok: true,
+          build: {
+            summary: `Unwrap ${amount} ${tokenIn.symbol} into ${tokenOut.symbol}.`,
+            intents: [
+              {
+                kind: "unwrapNative",
+                to: wrapped,
+                amount,
+                decimals: tokenIn.decimals,
+                symbol: tokenIn.symbol,
+                nativeSymbol: tokenOut.symbol,
+                chainId,
+              },
+            ],
+          },
+        };
+      }
+    }
+
     /* KyberSwap as a venue: builds an [approve, aggregatorSwap] plan from the
        route the aggregator returns, `{ ok: false }` when it has no route for
        the pair, or null where KyberSwap isn't wired for this chain. Used two

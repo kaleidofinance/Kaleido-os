@@ -1836,6 +1836,64 @@ async function main() {
   }
 
   /* ---------------------------------------------------------------------- *
+   * Wrap / unwrap
+   *
+   * One property: the target is PINNED to this chain's own wrapped-native, the
+   * same way the staking set is pinned above. A well-formed wrap to a stranger
+   * address is exactly the plan to refuse; a wrap of nothing is refused for its
+   * amount, not its target.
+   * ---------------------------------------------------------------------- */
+  {
+    const WRAPPED = registry.getContracts(CHAIN).wrappedNative;
+    const STRANGER = "0x000000000000000000000000000000000000dEaD";
+
+    let v = await audit([
+      { kind: "wrapNative", to: WRAPPED, amount: "0.1", decimals: 18, symbol: "ETH", wrappedSymbol: "WETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "a wrap to this chain's wrapped-native passes and is priced",
+      v.blocked.length === 0,
+      v.blocked.join("; "),
+    );
+
+    v = await audit([
+      { kind: "wrapNative", to: STRANGER, amount: "5", decimals: 18, symbol: "ETH", wrappedSymbol: "WETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "a wrap to an address that is not our wrapped-native is refused",
+      v.blocked.some((b) => /wrapped-native/i.test(b)),
+      v.blocked.join("; ") || "(passed)",
+    );
+
+    v = await audit([
+      { kind: "wrapNative", to: WRAPPED, amount: "0", decimals: 18, symbol: "ETH", wrappedSymbol: "WETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "a wrap of nothing is refused for its amount",
+      v.blocked.some((b) => /amount/i.test(b)),
+      v.blocked.join("; ") || "(passed)",
+    );
+
+    v = await audit([
+      { kind: "unwrapNative", to: WRAPPED, amount: "0.1", decimals: 18, symbol: "WETH", nativeSymbol: "ETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "an unwrap of the chain's wrapped-native passes",
+      v.blocked.length === 0,
+      v.blocked.join("; "),
+    );
+
+    v = await audit([
+      { kind: "unwrapNative", to: STRANGER, amount: "5", decimals: 18, symbol: "WETH", nativeSymbol: "ETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "an unwrap to a stranger address is refused",
+      v.blocked.some((b) => /wrapped-native/i.test(b)),
+      v.blocked.join("; ") || "(passed)",
+    );
+  }
+
+  /* ---------------------------------------------------------------------- *
    * Lending
    *
    * Addresses here are checked against BORROW_CURRENCIES, not the chain token
