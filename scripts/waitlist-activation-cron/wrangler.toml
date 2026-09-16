@@ -45,9 +45,13 @@ crons = ["*/5 * * * *"]
 # somewhere to send a bearer token.
 APP_URL = "https://kaleidofi.xyz"
 
-# WAITLIST_LIMIT intentionally unset: the route uses its own DEFAULT_LIMIT (50),
-# the size its author chose for repeated-cron usage. Set it here only if the
-# route's time budget is raised.
+# 250 per run. The route now probes Arc mainnet with bounded concurrency inside a
+# 60s budget (maxDuration) and rotates through the whole pending set by
+# last_checked_at, so a batch this size finishes well within budget and the
+# ~3k-signup backlog is swept in a handful of runs rather than trickling 50 at a
+# time. Kept below the route's hard cap (500) to stay gentle on the unofficial
+# Arc RPC; raise toward 500 if the drain needs to be faster.
+WAITLIST_LIMIT = "250"
 
 # On, because an activation drain that silently stops is a silent outage — the
 # waitlist points would never migrate. The scheduled handler rethrows on any
