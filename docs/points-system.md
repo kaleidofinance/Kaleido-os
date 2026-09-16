@@ -525,6 +525,14 @@ sits. Five chains need no per-chain pricing work.
 
 ### 11d. How each product earns
 
+> **Scale note (2026-09-16, `20260916010000_points_scale_x10`).** Season 1 rates
+> and point-caps were scaled **×10** so pre-TGE Arc waitlist balances migrate into
+> Season 1 at face value (a user's 100 stays 100). The tables below show the
+> original design *ratios* — multiply each rate and any `pts` cap by 10 for the
+> current absolute values (`swap` earns 10/$ with a 500k-pt cap; a $10 swap = 100
+> pts). USD floors, the 1.2× agent multiplier, and the anti-recursion 0 are
+> unchanged. The migration holds the authoritative numbers.
+
 Fifteen sources are registered — ten live, five pre-registered and disabled so
 shipping a product is an `UPDATE`, not a migration.
 
