@@ -143,6 +143,43 @@ export function isKnownCctpTarget(address: string): boolean {
   );
 }
 
+/**
+ * Whether an address is MessageTransmitterV2 — the contract the DESTINATION-leg
+ * `receiveMessage` calls, and the one the auditor allow-lists a `cctpReceive`
+ * intent's `to` against. Same fixed constant on every V2 chain.
+ */
+export function isKnownCctpTransmitter(address: string): boolean {
+  return (
+    Boolean(address) &&
+    address.toLowerCase() === MESSAGE_TRANSMITTER_V2.toLowerCase()
+  );
+}
+
+/** Circle's domain id for an EVM chain, or undefined if it is not a CCTP chain. */
+export function cctpDomainForChain(chainId: number | undefined): number | undefined {
+  return chainId === undefined ? undefined : CCTP_DOMAINS[chainId];
+}
+
+const MESSAGE_TRANSMITTER_V2_ABI = [
+  // CCTP V2 completion: submit the burn `message` and Circle's `attestation` on
+  // the destination chain to mint the USDC. Permissionless when the burn set a
+  // zero destinationCaller (as buildCctpBurnRoute does).
+  "function receiveMessage(bytes message, bytes attestation) returns (bool)",
+];
+
+/**
+ * The destination-mint calldata — `receiveMessage(message, attestation)` — for a
+ * `cctpReceive` intent. Pure: `message` and `attestation` come from Circle's
+ * attestation service (see cctpAttestation.ts), never the model, and the auditor
+ * pins the `to` this pairs with to {@link isKnownCctpTransmitter}.
+ */
+export function encodeCctpReceive(message: string, attestation: string): string {
+  return new ethers.Interface(MESSAGE_TRANSMITTER_V2_ABI).encodeFunctionData(
+    "receiveMessage",
+    [message, attestation],
+  );
+}
+
 const TOKEN_MESSENGER_V2_ABI = [
   // CCTP V2 depositForBurn — the 7-arg form (V1 took 5). Verified live on Arc:
   // a static call past the selector reverted at the USDC transfer, i.e. the

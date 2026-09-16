@@ -323,6 +323,31 @@ export type Intent =
       /** The router the paired approve authorises; equal to `to` by construction. */
       spender: string;
     }
+  /* --------------------------------------------------------- cctp mint -- */
+  /*
+   * The DESTINATION leg of a Circle CCTP transfer — `receiveMessage` on the
+   * destination chain's MessageTransmitterV2, which mints the USDC that a
+   * `bridge`/`cctp` burn released on the source chain. Signed on the DESTINATION
+   * chain (its `chainId`), minutes after the burn, once Circle has attested the
+   * source finality. `to`/`data` come from the resolver — the transmitter and
+   * Circle's attested bytes — never the model. No approve and no value: it moves
+   * nothing of the signer's, it submits an attested message that credits the
+   * recipient the burn named.
+   */
+  | {
+      kind: "cctpReceive";
+      /** MessageTransmitterV2 on the destination chain, from the resolver. */
+      to: string;
+      /** receiveMessage(message, attestation) calldata, from Circle's attestation. */
+      data: string;
+      /** The destination chain this is signed on. */
+      chainId: number;
+      /** Human amount minted, for the rendered row. */
+      amount: string;
+      symbol: string;
+      /** Source chain's display name, for the row ("from Arc"). */
+      fromChainName: string;
+    }
   /* ---------------------------------------------------------- lending -- */
   /*
    * The P2P family. Each mirrors one ProtocolFacet call that previously only

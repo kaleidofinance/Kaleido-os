@@ -490,6 +490,21 @@ register("aggregatorSwap", {
   },
 });
 
+register("cctpReceive", {
+  render: (i) => ({
+    title: `Complete ${i.amount} ${i.symbol} from ${i.fromChainName}`,
+    detail: `Mints the USDC Circle attested from your ${i.fromChainName} burn. Signed on this chain; no approval, nothing else leaves your wallet.`,
+    chain: `from ${i.fromChainName}`,
+  }),
+  resolve: async (ctx, i) => {
+    /* A plain call to MessageTransmitterV2 — no value, no approve. The bytes are
+       Circle's attested message + signature from the resolver. */
+    const tx = await ctx.signer.sendTransaction({ to: i.to, data: i.data });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
 /* ------------------------------------------------------------- lending -- */
 
 const pct = (n: number) => `${n}%`;

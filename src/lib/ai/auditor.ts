@@ -17,7 +17,11 @@ import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
-import { isKnownCctpTarget } from "@/lib/bridge/cctp";
+import {
+  isKnownCctpTarget,
+  isKnownCctpTransmitter,
+  isCctpDomainChain,
+} from "@/lib/bridge/cctp";
 import { isKnownSwapRouter } from "@/lib/swap/kyberswap";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
@@ -225,6 +229,14 @@ const ACTION_OF: Record<IntentKind, string> = {
    * lands, reached by a different route.
    */
   bridge: "",
+
+  /* The destination leg of a CCTP transfer. Ungated for the same reason as
+     bridge — it is the second half of the same cross-chain move, no product
+     toggle names it — but its risk is far smaller than bridge's: it moves
+     nothing of the signer's, it submits Circle's attested message to mint the
+     USDC the burn already released. Bounded by the AUDITORS rule that pins its
+     target to MessageTransmitterV2. */
+  cctpReceive: "",
 
   /* Lending. Collateral is gated with borrowing because that is what it is
      for, and because withdrawing it is the one exit that can move a position
@@ -1732,6 +1744,41 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       "the aggregator's calldata is not parsed here — the router enforces the output floor, and the per-action USD cap bounds the input",
     ];
     return { reasons, notes, ...priceIf(inTok.symbol, amount) };
+  },
+
+  /* ------------------------------------------------------------ cctp mint -- */
+  /**
+   * The destination leg of a CCTP transfer: `receiveMessage` on
+   * MessageTransmitterV2, minting the USDC a source-chain burn released. Unlike
+   * every debit in this table it moves nothing of the signer's — the attested
+   * message names the recipient and the amount, and the transmitter validates
+   * Circle's signature over both — so there is no notional to price. What this
+   * holds: the call goes to the transmitter this app recognises, on a CCTP
+   * chain, signed on that same (destination) chain, with attested calldata.
+   */
+  cctpReceive: (s, chainId) => {
+    const reasons: string[] = [];
+    reasons.push(...requireAddresses(s, "to"));
+    if (!isKnownCctpTransmitter(str(s.to)))
+      reasons.push("the CCTP target is not MessageTransmitterV2");
+
+    const signedChain = num(s.chainId);
+    if (signedChain === null || !isCctpDomainChain(signedChain))
+      reasons.push("the mint's destination is not a CCTP chain");
+    else if (chainId !== undefined && signedChain !== chainId)
+      reasons.push("the mint's chain is not the connected chain");
+
+    const data = str(s.data);
+    if (data === "" || data === "0x")
+      reasons.push("the attested message calldata is missing");
+
+    const notes =
+      reasons.length === 0
+        ? [
+            "this mints USDC Circle attested from your own burn — it debits nothing from this wallet, so no notional is priced",
+          ]
+        : undefined;
+    return { reasons, notes };
   },
 
   /* ------------------------------------------------------------ lending -- */
