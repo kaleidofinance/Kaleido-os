@@ -117,6 +117,12 @@ async function handle(req: Request): Promise<Response> {
       "wallet, welcome_points, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at",
     )
     .is("activated_at", null)
+    // X-verified only. Until the on-chain transaction task launches, linking X
+    // (x_user_id is UNIQUE — one X account per wallet) is the sole task a wallet
+    // can actually complete and have verified, so it is the credit gate: a bare
+    // gasless signup has earned nothing provable yet. Widen this when the
+    // transaction task ships and Arc activity becomes a qualifying task too.
+    .not("x_linked_at", "is", null)
     .order("last_checked_at", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: true })
     .limit(limit);

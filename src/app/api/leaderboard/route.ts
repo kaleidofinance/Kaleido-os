@@ -28,6 +28,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { supabase } from "@/lib/supabase/supabaseClient";
+import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import type {
   LeaderboardPayload,
   LeaderboardRow,
@@ -36,6 +37,21 @@ import type {
 } from "@/lib/points/leaderboard";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Read the board through the service-role client, not anon.
+ *
+ * The anon path was observed serving a stale copy of the database from
+ * production (Season 0 / 0 ranked) while the primary held the real data —
+ * a read-replica the app's functions were routed to. The service-role
+ * client reads the primary (the waitlist board, which uses it, stayed
+ * fresh throughout), so it is the reliable source. This does NOT widen what
+ * is exposed: the route still reads only point_leaderboard, and that view
+ * does all the disclosure masking itself keyed on the season tier — the key
+ * changes who the DB serves, not what the view returns. Falls back to the
+ * anon client when no service key is configured (dev), so nothing breaks.
+ */
+const db = isAdminConfigured && supabaseAdmin ? supabaseAdmin : supabase;
 
 /**
  * A ceiling on rows regardless of tier, including `full`.
@@ -111,8 +127,8 @@ async function resolveSeason(requested: number | null): Promise<{
 
   const query =
     requested === null
-      ? supabase.from("point_seasons").select(columns).eq("is_default", true)
-      : supabase.from("point_seasons").select(columns).eq("id", requested);
+      ? db.from("point_seasons").select(columns).eq("is_default", true)
+      : db.from("point_seasons").select(columns).eq("id", requested);
 
   const { data, error } = await query.maybeSingle<SeasonRecord>();
 
@@ -173,7 +189,7 @@ async function computeBoard(
      * never masked. nullsFirst is off so that if a null rank ever does reach this
      * slice it lands at the bottom instead of the top.
      */
-    supabase
+    db
       .from("point_leaderboard")
       .select(ROW_COLUMNS)
       .eq("season", season.id)
@@ -186,7 +202,7 @@ async function computeBoard(
      * limit, and "top 12%" computed against a truncated population is a wrong
      * number that looks right.
      */
-    supabase
+    db
       .from("point_leaderboard")
       .select("wallet", { count: "exact", head: true })
       .eq("season", season.id),
@@ -197,7 +213,7 @@ async function computeBoard(
      * default season" — an operator error §8's tiering depends on catching — into
      * a list this route quietly picked the first entry from.
      */
-    supabase
+    db
       .from("point_seasons")
       .select("id, label, frozen_at")
       .order("id", { ascending: true }),
