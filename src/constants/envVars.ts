@@ -103,5 +103,11 @@ export const envVars = {
    */
   waitlistUrl: process.env.NEXT_PUBLIC_WAITLIST_URL,
 
+  /* LI.FI's integrator string, fee and API key are NOT here on purpose. The API
+     key that authorises the fee is a server secret, so all three are read from
+     PLAIN (non-NEXT_PUBLIC) env in lib/bridge/lifiServer.ts and the browser
+     reaches them only through /api/bridge/quote — see getBridgeExecution. Putting
+     any of them in this NEXT_PUBLIC registry would inline them into the bundle. */
+
   // contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
 };

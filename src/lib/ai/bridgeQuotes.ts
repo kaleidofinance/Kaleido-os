@@ -29,6 +29,10 @@
  */
 
 import { CHAINS, type ChainMeta } from "@/constants/chains";
+import {
+  lifiMonetizationParams,
+  lifiAuthHeaders,
+} from "@/lib/bridge/lifiServer";
 
 const RELAY_API = "https://api.relay.link";
 const LIFI_API = "https://li.quest/v1";
@@ -292,15 +296,40 @@ export async function getBridgeExecution(args: {
   fromToken: { address: string | null; decimals: number | null };
 } | null> {
   try {
-    const qs = new URLSearchParams({
+    const params: Record<string, string> = {
       fromChain: String(args.fromChainId),
       toChain: String(args.toChainId),
       fromToken: args.asset,
       toToken: args.asset,
       fromAmount: args.units,
       fromAddress: args.address,
-    });
-    const res = await fetch(`${LIFI_API}/quote?${qs}`);
+      /* Swift by default. FASTEST picks a sub-minute route where one exists
+         — Arc’s Polymer Fast lands in ~10s — instead of the ~18-minute Standard
+         the unordered call returns. lifiIntents is denied because it is a
+         solver network whose spread runs ~2.7%, an order of magnitude over
+         Polymer’s ~0.26% for the sake of a few seconds; every Arc corridor
+         still has a Polymer route, so denying it costs availability nowhere
+         measured. */
+      order: "FASTEST",
+      denyBridges: "lifiIntents",
+    };
+
+    /* The integrator fee is authorised by an API key that is a server secret,
+       and this function runs in the browser too (useLocalPlanner). So the two
+       environments reach LI.FI by different doors: on the server we call
+       li.quest directly, adding our integrator + fee and the key header; in the
+       browser we call our own /api/bridge/quote, which adds all three
+       server-side so the key never ships in the bundle. Both return the same
+       quote shape parsed below — see src/app/api/bridge/quote/route.ts and
+       lib/bridge/lifiServer.ts. */
+    let res: Response;
+    if (typeof window === "undefined") {
+      const qs = new URLSearchParams({ ...params, ...lifiMonetizationParams() });
+      res = await fetch(`${LIFI_API}/quote?${qs}`, { headers: lifiAuthHeaders() });
+    } else {
+      const qs = new URLSearchParams(params);
+      res = await fetch(`/api/bridge/quote?${qs}`);
+    }
     if (!res.ok) return null;
 
     const data = (await res.json()) as {
