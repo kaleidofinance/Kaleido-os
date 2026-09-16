@@ -1,5 +1,6 @@
 import "./tokens.css";
 import type { ReactNode } from "react";
+import CctpCompletionBanner from "@/components/v2/CctpCompletionBanner";
 
 /**
  * The application shell.
@@ -24,6 +25,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="kaleido-v2">
       {children}
+
+      {/* Global CCTP "finish your transfer" bar — floats over the shell on every
+          app page (a mint is completed from wherever the user is), renders
+          nothing until there is a pending burn, which stays empty in production
+          until the CCTP corridor is enabled. */}
+      <CctpCompletionBanner />
 
       {/* Portal host for modals. See src/components/v2/Portal.tsx: a
           backdrop-filter ancestor becomes the containing block for

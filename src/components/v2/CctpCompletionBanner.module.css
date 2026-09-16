@@ -1,0 +1,127 @@
+/*
+ * The CCTP "finish your transfer" bar.
+ *
+ * A glass strip, not an error and not a toast: it persists (an unfinished
+ * transfer is real, standing state), but it is quiet — --k-glass, brand accent
+ * only on the dot and the button, no --k-danger. Sits at the top of the app
+ * content, full width, wrapping to two rows on a phone so the CTA never crowds
+ * the text.
+ */
+
+.bar {
+  /* Fixed and floating, not in document flow: it is mounted once in the app
+     shell and must coexist with section layouts that are height-locked to the
+     viewport (Trade), where a bar taking flow height would break the composed
+     screen. Bottom-centre keeps it clear of every section's top Nav. */
+  position: fixed;
+  left: 50%;
+  bottom: var(--k-s5);
+  transform: translateX(-50%);
+  z-index: 55;
+  width: calc(100% - 2 * var(--k-s4));
+  max-width: 560px;
+
+  display: flex;
+  align-items: center;
+  gap: var(--k-s3);
+  padding: var(--k-s3) var(--k-s4);
+
+  background: var(--k-glass-strong, var(--k-glass));
+  border: 1px solid var(--k-glass-line);
+  border-radius: var(--k-r-lg);
+  box-shadow: var(--k-shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.28));
+  backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));
+  -webkit-backdrop-filter: blur(var(--k-glass-blur))
+    saturate(var(--k-glass-sat));
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--k-brand);
+  box-shadow: 0 0 0 3px var(--k-brand-dim);
+}
+
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  line-height: 1.5;
+  color: var(--k-t2);
+}
+
+.text strong {
+  color: var(--k-t1);
+  font-weight: 600;
+}
+
+.more {
+  color: var(--k-t3, var(--k-t2));
+}
+
+.cta {
+  flex: none;
+  padding: var(--k-s2) var(--k-s5);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: 560;
+  color: var(--k-brand-fg);
+  background: var(--k-brand);
+  border: none;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.cta:hover:not(:disabled) {
+  background: var(--k-brand-hover);
+}
+
+.cta:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.cta:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cta:focus-visible {
+  outline: 2px solid var(--k-brand);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------- modal -- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--k-s4);
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  .bar {
+    flex-wrap: wrap;
+  }
+
+  .cta {
+    width: 100%;
+  }
+}
