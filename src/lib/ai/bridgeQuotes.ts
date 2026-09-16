@@ -29,7 +29,10 @@
  */
 
 import { CHAINS, type ChainMeta } from "@/constants/chains";
-import { envVars } from "@/constants/envVars";
+import {
+  lifiMonetizationParams,
+  lifiAuthHeaders,
+} from "@/lib/bridge/lifiServer";
 
 const RELAY_API = "https://api.relay.link";
 const LIFI_API = "https://li.quest/v1";
@@ -309,18 +312,24 @@ export async function getBridgeExecution(args: {
          measured. */
       order: "FASTEST",
       denyBridges: "lifiIntents",
-      /* Identify Kaleido on every quote. Harmless with no fee configured (the
-         quote is unchanged) and the account a fee attributes to once one is
-         set up at portal.li.fi. */
-      integrator: envVars.lifiIntegrator || "kaleido-route",
     };
-    /* Only sent once a fee wallet exists at portal.li.fi: LI.FI returns 400 for
-       a `fee` on an unconfigured integrator, which this function surfaces as
-       "no route", so an unset fee keeps every corridor working. See
-       envVars.lifiFee for the enablement steps and the whitelist caveat. */
-    if (envVars.lifiFee) params.fee = envVars.lifiFee;
-    const qs = new URLSearchParams(params);
-    const res = await fetch(`${LIFI_API}/quote?${qs}`);
+
+    /* The integrator fee is authorised by an API key that is a server secret,
+       and this function runs in the browser too (useLocalPlanner). So the two
+       environments reach LI.FI by different doors: on the server we call
+       li.quest directly, adding our integrator + fee and the key header; in the
+       browser we call our own /api/bridge/quote, which adds all three
+       server-side so the key never ships in the bundle. Both return the same
+       quote shape parsed below — see src/app/api/bridge/quote/route.ts and
+       lib/bridge/lifiServer.ts. */
+    let res: Response;
+    if (typeof window === "undefined") {
+      const qs = new URLSearchParams({ ...params, ...lifiMonetizationParams() });
+      res = await fetch(`${LIFI_API}/quote?${qs}`, { headers: lifiAuthHeaders() });
+    } else {
+      const qs = new URLSearchParams(params);
+      res = await fetch(`/api/bridge/quote?${qs}`);
+    }
     if (!res.ok) return null;
 
     const data = (await res.json()) as {
