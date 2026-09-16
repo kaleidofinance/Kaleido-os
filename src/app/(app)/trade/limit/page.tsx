@@ -71,7 +71,7 @@ const DEFAULT_FEE = 3000;
 const QUICK = [0.25, 0.5, 0.75, 1] as const;
 
 /** Display-only, before a wallet arrives. See PREVIEW_CHAIN_ID on /trade/swap. */
-const PREVIEW_CHAIN_ID = 1;
+const PREVIEW_CHAIN_ID = 5042;
 
 /**
  * Seeding order per side, most wanted first.
