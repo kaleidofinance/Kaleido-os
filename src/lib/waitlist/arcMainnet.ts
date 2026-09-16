@@ -13,8 +13,12 @@ import { JsonRpcProvider } from "ethers";
  * replace it later. chain_id 5042 is distinct from Arc Testnet 5042002.
  */
 export const ARC_MAINNET_CHAIN_ID = 5042;
+// rpc.mainnet.arc.io answers block reads reliably; rpc.arc-scan.org (the
+// explorer's node) returns the right chainId but was measured "unreachable" on
+// eth_blockNumber 2026-09-16, so it is no longer the default. Override with
+// ARC_MAINNET_RPC_URL if the official endpoint changes.
 export const ARC_MAINNET_RPC =
-  process.env.ARC_MAINNET_RPC_URL ?? "https://rpc.arc-scan.org";
+  process.env.ARC_MAINNET_RPC_URL ?? "https://rpc.mainnet.arc.io";
 
 let cached: JsonRpcProvider | null = null;
 function provider(): JsonRpcProvider {

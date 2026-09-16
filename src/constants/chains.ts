@@ -244,12 +244,32 @@ export const CHAINS: ChainMeta[] = [
     tradable: true,
   },
 
-  // ---- Arc (Circle's stablecoin L1 — testnet only, mainnet targeted summer 2026) ----
+  // ---- Arc (Circle's stablecoin L1) — mainnet live 2026-09-16, paired testnet ----
+  {
+    id: 5042,
+    name: "Arc",
+    shortName: "Arc",
+    network: "mainnet",
+    pairChainId: 5042002,
+    /* USDC is Arc's native gas token, 18-dec at the native slot; the 0x3600…
+       predeploy is its 6-dec ERC20 face. See the arc-usdc-is-the-gas-token note.
+       chainId 5042 confirmed on both endpoints (0x13b2). rpc.mainnet.arc.io is
+       [0] because it answers eth_blockNumber and getLogs; rpc.arc-scan.org (the
+       explorer's node) returns the right chainId but was measured "unreachable"
+       on a block read 2026-09-16, so it is the fallback, not the primary. */
+    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+    rpcUrls: ["https://rpc.mainnet.arc.io", "https://rpc.arc-scan.org"],
+    blockExplorer: { name: "ArcScan", url: "https://arc-scan.org" },
+    iconId: "arc",
+    color: "#5546ff",
+    tradable: true,
+  },
   {
     id: 5042002,
     name: "Arc Testnet",
     shortName: "Arc",
     network: "testnet",
+    pairChainId: 5042,
     nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
     rpcUrls: [
       "https://rpc.testnet.arc.network",
