@@ -40,6 +40,8 @@
 import { useEffect } from "react";
 import type { ContractEventName, Listener } from "ethers";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
+import { CHAINS_BY_ID } from "@/constants/chains";
 
 import { getKaleidoContract } from "@/config/contracts";
 import { getWssProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
@@ -51,9 +53,24 @@ import {
 
 const useProtocolEvents = () => {
   const { address } = useWalletV2();
+  const { showTestnets } = useTestnetMode();
 
   useEffect(() => {
     if (!address) return;
+
+    /* Mainnet-first: this subscribes to READ_ONLY_CHAIN_ID's diamond, which is a
+       testnet at launch (no mainnet lending diamond exists yet). With testnets
+       hidden, don't surface that chain's loan notifications — the user has hidden
+       it everywhere else, and a "your Sepolia loan was liquidated" toast on the
+       mainnet app is the same testnet bleed the stat strips were gated for. When
+       testnets are shown, or the read chain is itself a mainnet deployment, this
+       subscribes as normal. */
+    if (
+      !showTestnets &&
+      CHAINS_BY_ID[READ_ONLY_CHAIN_ID]?.network !== "mainnet"
+    ) {
+      return;
+    }
 
     /* Null when NEXT_PUBLIC_WEBSOCKET_RPC is unset. No socket, no events — and
      * the health-factor poll still covers the alert that matters most. */
@@ -145,7 +162,7 @@ const useProtocolEvents = () => {
       cancelled = true;
       detach();
     };
-  }, [address]);
+  }, [address, showTestnets]);
 };
 
 export default useProtocolEvents;
