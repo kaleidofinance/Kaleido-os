@@ -67,11 +67,12 @@ const QUICK = [0.25, 0.5, 0.75, 1] as const;
  * by `!isConnected`, and it is discarded the moment a wallet arrives, because
  * `available` changes and the seeding effect re-runs against the real chain.
  *
- * Ethereum because it is the one chain carrying both ETH and USDT, which is
- * what a swap form should open on: an empty pair reads as broken, and "Select
- * token" twice gives a first-time visitor nothing to look at.
+ * Arc (5042), the mainnet-first launch chain, so a disconnected visitor opens on
+ * the assets this app actually trades (USDC and the Arc ecosystem tokens) rather
+ * than on Ethereum's ETH/USDT, which read as "wrong chain" for an Arc launch. An
+ * empty pair reads as broken, so it still seeds a real pair — just this chain's.
  */
-const PREVIEW_CHAIN_ID = 1;
+const PREVIEW_CHAIN_ID = 5042;
 
 /**
  * Seeding order per side, most wanted first.
@@ -485,20 +486,32 @@ export default function SwapPage() {
           setKyberRoute(null);
           setAmountOut(String(found.amountOut));
           setNoRoute(false);
-        } else if (hasKyberSwap(swapChainId) && address) {
+        } else if (hasKyberSwap(swapChainId) && tokenIn && tokenOut) {
           /* Our own pools returned nothing, but this chain routes through
              KyberSwap — the same fallback Luca uses. Quote it through
-             /api/swap/quote (fee + key stay server-side), trading the aggregator
-             token form so a native input (Arc USDC) becomes its 0x3600 mirror. */
-          const sellTok = aggregatorToken(swapChainId, sell.token);
-          const buyTok = aggregatorToken(swapChainId, buy.token);
+             /api/swap/quote (fee + key stay server-side).
+
+             From the RAW selected tokens, not `sell`/`buy`: poolSide already
+             swaps native into our OWN wrapped-native (0x8c6c) for our pools,
+             which the aggregator has never heard of. The aggregator wants the
+             native's ERC20 MIRROR (Arc USDC -> 0x3600), which aggregatorToken
+             returns from the user's token — the same substitution the agent
+             makes. Wrong wrapper here was the "no quote": KyberSwap can't route
+             0x8c6c.
+
+             A quote needs no wallet — pass a placeholder recipient when
+             disconnected so the price shows; `address` is in the deps, so
+             connecting re-quotes with the real recipient before anything is
+             signed (and the CTA is "Connect wallet" until then). */
+          const sellTok = aggregatorToken(swapChainId, tokenIn);
+          const buyTok = aggregatorToken(swapChainId, tokenOut);
           const units = ethers.parseUnits(amountIn, sellTok.decimals).toString();
           const exec = await getKyberSwapExecution({
             chainId: swapChainId,
             tokenIn: sellTok.address,
             tokenOut: buyTok.address,
             amountUnits: units,
-            address,
+            address: address ?? "0x0000000000000000000000000000000000000001",
             slippageBps,
           });
           if (cancelled) return;
@@ -546,6 +559,8 @@ export default function SwapPage() {
     amountIn,
     sell,
     buy,
+    tokenIn,
+    tokenOut,
     samePoolSide,
     swapChainId,
     v3Router,
@@ -689,7 +704,11 @@ export default function SwapPage() {
        plan is the aggregator's [approve, aggregatorSwap] — the same shape Luca
        builds. The sell/buy are the aggregator token forms (Arc native USDC ->
        0x3600 mirror), so the input always has an ERC20 to approve. */
-    if (kyberRoute && sell && buy && amountIn && minOut) {
+    if (kyberRoute && tokenIn && tokenOut && amountIn && minOut) {
+      /* Symbols from the user's RAW tokens (tokenIn/tokenOut), not `sell`/`buy`:
+         those hold poolSide's wrapped-native (0x8c6c "WETH"), and the row should
+         read the asset the user chose (USDC), while the calldata names the
+         aggregator mirror kyberRoute already resolved. */
       return [
         {
           kind: "approve",
@@ -697,7 +716,7 @@ export default function SwapPage() {
           spender: kyberRoute.spender,
           amount: amountIn,
           decimals: kyberRoute.sellDec,
-          symbol: sell.token.symbol,
+          symbol: tokenIn.symbol,
         },
         {
           kind: "aggregatorSwap",
@@ -707,12 +726,12 @@ export default function SwapPage() {
           tokenIn: kyberRoute.sellAddr,
           amountIn,
           decimalsIn: kyberRoute.sellDec,
-          symbolIn: sell.token.symbol,
+          symbolIn: tokenIn.symbol,
           tokenOut: kyberRoute.buyAddr,
           amountOut: amountOut || "0",
           amountOutMin: minOut,
           decimalsOut: kyberRoute.buyDec,
-          symbolOut: buy.token.symbol,
+          symbolOut: tokenOut.symbol,
           chainId: swapChainId,
           venue: "kyberswap",
           spender: kyberRoute.spender,
