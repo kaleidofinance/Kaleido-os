@@ -223,12 +223,20 @@ const TOKEN_OVERRIDES = parseTokenOverrides(process.env.TOKENS);
  * nobody published is a gift to the first arbitrageur and a lie to every user
  * who reads the quote before they arrive.
  */
-async function priceOf(protocol, address, symbol, decimals) {
+async function priceOf(protocol, address, symbol, decimals, namedKey) {
   /* An explicit operator price wins over both feeds. This is the assertion the
      script will not make on its own — see parsePriceOverrides — so when the
      operator has made it, it is authoritative, and taking it first also gives a
-     pegged pair a clean exact ratio instead of the oracle's $0.9999 dust. */
-  const override = PRICE_OVERRIDES.get(symbol.toLowerCase());
+     pegged pair a clean exact ratio instead of the oracle's $0.9999 dust.
+
+     Matched by the TOKENS key the operator NAMED this address under FIRST, then
+     by the on-chain symbol. Key-first is deliberate: Arc's wrapped-native quote
+     asset is USDC ($1) carrying the stock WETH9 symbol "WETH", so the operator's
+     own name for it (STABLE_USD="usdc=1", matching TOKENS="usdc=0x8c6c…") must
+     price it — never the misleading symbol, which a feed reads as real ETH. */
+  const override =
+    (namedKey && PRICE_OVERRIDES.get(namedKey.toLowerCase())) ??
+    PRICE_OVERRIDES.get(symbol.toLowerCase());
   if (override !== undefined)
     return { usd: override, source: `operator override $${ethers.formatUnits(override, 18)}` };
 
@@ -385,10 +393,15 @@ async function main() {
      so a pair can name a chain's ecosystem tokens (Arc's EURC/cirBTC) and the
      exact USDC face the pool quotes against. Stated on its own line so the run
      records what it resolved rather than resolving silently. */
+  const namedByAddr = new Map();
   for (const [sym, addr] of TOKEN_OVERRIDES) {
     if (reg[sym] && reg[sym].toLowerCase() !== addr.toLowerCase())
       console.log(`  TOKENS override: ${sym} ${reg[sym]} -> ${addr}`);
     reg[sym] = addr;
+    /* Remember the operator's name for this address, so priceOf matches an
+       override by that name and the guard below can tell an operator-named token
+       from a plain registry one. */
+    namedByAddr.set(addr.toLowerCase(), sym);
   }
 
   const fee = num(process.env.FEE, 500);
@@ -429,12 +442,37 @@ async function main() {
   const protocol = reg.diamond
     ? new ethers.Contract(reg.diamond, PROTOCOL_ABI, ethers.provider)
     : null;
-  const p0 = await priceOf(protocol, a0, s0, d0);
-  const p1 = await priceOf(protocol, a1, s1, d1);
+  const p0 = await priceOf(protocol, a0, s0, d0, namedByAddr.get(a0.toLowerCase()));
+  const p1 = await priceOf(protocol, a1, s1, d1, namedByAddr.get(a1.toLowerCase()));
   const usd0 = p0.usd;
   const usd1 = p1.usd;
   if (usd0 === 0n || usd1 === 0n)
     throw new Error("a price came back zero; refusing to invent a ratio");
+
+  /* GUARD — a token the operator NAMED in TOKENS must be priced by an explicit
+     override, never a symbol-matched feed.
+
+     TOKENS names a chain's ecosystem/non-registry tokens (Arc's wrapped-native
+     USDC that reports symbol "WETH", plus EURC/cirBTC). Their on-chain symbol is
+     exactly what cannot be trusted to price them — feedFor("WETH") returns the
+     real ETH/USD feed, which once priced Arc's $1 wrapped-USDC at ~$2,400 and
+     opened the pool ~2,400x off, a gift to the first arbitrageur. So if a named
+     token's price did not come from an override, refuse and say how to price it.
+     Plain registry tokens (real WETH on Sepolia/Base) are not in TOKENS and are
+     unaffected — they price by feed as before. */
+  for (const [addr, sym, p] of [
+    [a0, s0, p0],
+    [a1, s1, p1],
+  ]) {
+    const key = namedByAddr.get(addr.toLowerCase());
+    if (key && !p.source.startsWith("operator override"))
+      throw new Error(
+        `${sym} (${addr}) was named in TOKENS as "${key}" but priced via ${p.source}, not an ` +
+          `explicit override. An operator-named token must be priced by STABLE_USD ` +
+          `(e.g. STABLE_USD="${key}=<usd>") — a symbol-matched feed priced Arc's wrapped-native ` +
+          `USDC as real ETH once and opened the pool ~2400x off. Add its price and re-run.`,
+      );
+  }
   console.log(`price: 1 ${s0} = $${ethers.formatUnits(usd0, 18)}  [${p0.source}]`);
   console.log(`price: 1 ${s1} = $${ethers.formatUnits(usd1, 18)}  [${p1.source}]`);
 
