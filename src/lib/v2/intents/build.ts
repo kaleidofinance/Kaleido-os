@@ -259,6 +259,13 @@ export interface BridgeRouteRequest {
    * authorise, and it cannot make that comparison without this.
    */
   tokenAddress?: string;
+  /**
+   * CCTP settlement speed, honoured only on a CCTP corridor. "fast" (the
+   * default) settles in seconds for a small Circle fee and falls back to
+   * "standard" when the fast lane has no allowance; "standard" is free but waits
+   * for the source chain's finality. Ignored by every other provider.
+   */
+  speed?: "standard" | "fast";
 }
 
 /**
