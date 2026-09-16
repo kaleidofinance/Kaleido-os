@@ -738,6 +738,7 @@ export default function SwapPage() {
           chainId: swapChainId,
           venue: "kyberswap",
           spender: kyberRoute.spender,
+          slippageBps,
         },
       ];
     }
@@ -822,6 +823,7 @@ export default function SwapPage() {
     tokenOut,
     wrappedNative,
     swapChainId,
+    slippageBps,
   ]);
 
   const onComplete = () => {

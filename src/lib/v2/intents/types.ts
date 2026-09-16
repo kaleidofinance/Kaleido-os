@@ -322,6 +322,13 @@ export type Intent =
       venue: string;
       /** The router the paired approve authorises; equal to `to` by construction. */
       spender: string;
+      /**
+       * The slippage tolerance the route was quoted at, in bps. Carried so the
+       * resolver can REBUILD the router calldata at sign time (aggregator routes
+       * bake in live pool amounts + a recipient and go stale within seconds), at
+       * the same tolerance the user reviewed.
+       */
+      slippageBps: number;
     }
   /* --------------------------------------------------------- cctp mint -- */
   /*

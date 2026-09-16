@@ -1919,6 +1919,7 @@ async function main() {
       chainId: 5042,
       venue: "kyberswap",
       spender: KYBER,
+      slippageBps: 50,
     } as Step;
     const okv = await audit([arcSwap], { chainId: 5042 });
     check(
