@@ -36,6 +36,7 @@ import {
   stakingContracts,
 } from "@/constants/registry";
 import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { readBookRows } from "@/lib/lending/book";
 import { getERC20Contract, getKLDVaultContract } from "@/config/contracts";
 import { getPrices } from "@/lib/points/prices";
@@ -289,9 +290,31 @@ async function kldStakedLeg(): Promise<number | null> {
   }
 }
 
-async function computeOverview(): Promise<MarketOverview> {
+/**
+ * The lending book lives on the read chain, which is a testnet at launch — no
+ * mainnet chain has a lending diamond yet (Arc is DEX-first). So a mainnet-first
+ * viewer must NOT be shown that testnet book's offers, requests and loans on the
+ * Borrow/Lend strip: it reads as a live mainnet market that does not exist. When
+ * testnets are hidden and the read chain is itself a testnet, the lending leg is
+ * the honest empty market — 0 offers, 0 requests, 0 loans, $0 book — until a
+ * mainnet lending deployment lands, at which point the read chain being mainnet
+ * flips `readLending` true on its own. kfUSD supply and pooled KLD are protocol
+ * tiles on /leaderboard, not the Borrow strip, and are left as-is.
+ */
+const EMPTY_LENDING = {
+  usd: 0,
+  coverage: EMPTY_COVERAGE,
+  openOffers: 0,
+  openRequests: 0,
+  loansOutstanding: 0,
+  degraded: [] as string[],
+};
+
+async function computeOverview(testnets: boolean): Promise<MarketOverview> {
+  const readLending =
+    testnets || CHAINS_BY_ID[READ_ONLY_CHAIN_ID]?.network === "mainnet";
   const [lending, kfUsdSupply, kldStaked] = await Promise.all([
-    lendingLeg(),
+    readLending ? lendingLeg() : Promise.resolve(EMPTY_LENDING),
     kfUsdSupplyLeg(),
     kldStakedLeg(),
   ]);
@@ -323,42 +346,56 @@ async function computeOverview(): Promise<MarketOverview> {
  * calls, three queries and a Hermes fetch.
  */
 const TTL_MS = 60_000;
-let cache: { at: number; data: MarketOverview } | null = null;
-let inflight: Promise<MarketOverview> | null = null;
+/* Keyed by the testnet flag — the mainnet and testnet views compute different
+   lending legs, so they cannot share one cache entry. Two keys, no eviction. */
+const cache = new Map<string, { at: number; data: MarketOverview }>();
+const inflight = new Map<string, Promise<MarketOverview>>();
 
-async function remember(): Promise<{ data: MarketOverview; stale: boolean }> {
-  if (cache && Date.now() - cache.at < TTL_MS) {
-    return { data: cache.data, stale: false };
+async function remember(
+  testnets: boolean,
+): Promise<{ data: MarketOverview; stale: boolean }> {
+  const key = testnets ? "testnet" : "mainnet";
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) {
+    return { data: hit.data, stale: false };
   }
 
-  if (!inflight) {
-    inflight = computeOverview()
-      .then((data) => {
-        cache = { at: Date.now(), data };
-        return data;
-      })
-      .finally(() => {
-        inflight = null;
-      });
+  if (!inflight.has(key)) {
+    inflight.set(
+      key,
+      computeOverview(testnets)
+        .then((data) => {
+          cache.set(key, { at: Date.now(), data });
+          return data;
+        })
+        .finally(() => {
+          inflight.delete(key);
+        }),
+    );
   }
 
   try {
-    return { data: await inflight, stale: false };
+    return { data: await inflight.get(key)!, stale: false };
   } catch (err) {
     /* Serve the last good figures rather than nothing, but flag them stale so
      * the caller can label them. With nothing cached, this is a 500 — an empty
      * strip is honest, a zeroed one is not. */
-    if (cache) {
+    const stale = cache.get(key);
+    if (stale) {
       console.error("[market/overview] recompute failed, serving stale:", err);
-      return { data: cache.data, stale: true };
+      return { data: stale.data, stale: true };
     }
     throw err;
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { data, stale } = await remember();
+    /* `?testnets=1` when the viewer has the testnet toggle on. Default (mainnet)
+       hides the testnet lending book — see EMPTY_LENDING above. */
+    const testnets =
+      new URL(request.url).searchParams.get("testnets") === "1";
+    const { data, stale } = await remember(testnets);
     return NextResponse.json(
       { success: true, data, stale },
       { headers: { "Cache-Control": "no-store" } },
