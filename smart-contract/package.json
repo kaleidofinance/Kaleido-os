@@ -7,6 +7,7 @@
     "deploy:oracle": "hardhat run scripts/deploy-oracle.js",
     "deploy:diamond": "hardhat run scripts/deploy.js",
     "deploy:weth": "hardhat run scripts/deploy-weth.js",
+    "seed:wrap": "hardhat run scripts/seed-wrap.js",
     "deploy:v3": "hardhat run scripts/deploy-v3.js",
     "deploy:v2": "hardhat run scripts/deploy-dex.js",
     "deploy:stablecoin": "hardhat run scripts/deploy-stablecoin.js",
