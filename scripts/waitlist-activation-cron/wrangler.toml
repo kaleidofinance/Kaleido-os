@@ -1,0 +1,56 @@
+# Cloudflare Worker config for the waitlist points activation clock.
+#
+# Deploy / redeploy:
+#
+#   npx wrangler deploy --config scripts/waitlist-activation-cron/wrangler.toml
+#
+# Arm it (the value must equal the Vercel project's CRON_SECRET — the same value
+# the keeper Worker holds as KEEPER_CRON_SECRET; the route compares them with
+# timingSafeEqual and answers 401 to anything else):
+#
+#   npx wrangler secret put WAITLIST_CRON_SECRET --config scripts/waitlist-activation-cron/wrangler.toml
+#
+# See waitlist-activation-cron-worker.js for why this is a Cloudflare Worker
+# rather than a Vercel cron (Hobby plan: once a day, useless for a backlog).
+
+name = "kaleido-waitlist-activation-cron"
+main = "waitlist-activation-cron-worker.js"
+compatibility_date = "2026-09-01"
+
+# The workers.dev hostname is only a manual trigger and refuses anything without
+# the same secret — see the fetch handler. No route and no custom domain: nothing
+# but Cloudflare's scheduler needs to reach this.
+#
+# Declared above every [table] header on purpose: a bare key after one belongs to
+# that table, and `workers_dev` under [triggers] is silently the wrong setting.
+workers_dev = true
+
+# No per-version preview hostnames. Each is another public URL that would trigger
+# a real activation run; the secret check means they are not a hole, but there is
+# nothing here worth previewing.
+preview_urls = false
+
+# Every 5 minutes. The route activates only wallets that have transacted on Arc
+# mainnet and is idempotent (synthetic tx_hash → credited at most once), so a
+# generous cadence costs only reads for wallets that have not qualified yet. Five
+# minutes drains a qualifying backlog roughly three times faster than the
+# keeper's 15m tick without hammering the private Arc RPC. If the route's per-run
+# throughput is later raised (an explicit maxDuration + a batch size via
+# WAITLIST_LIMIT), this can slow down.
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+# The apex, deliberately. `www.kaleidofi.xyz` answers 307, and a redirect is not
+# somewhere to send a bearer token.
+APP_URL = "https://kaleidofi.xyz"
+
+# WAITLIST_LIMIT intentionally unset: the route uses its own DEFAULT_LIMIT (50),
+# the size its author chose for repeated-cron usage. Set it here only if the
+# route's time budget is raised.
+
+# On, because an activation drain that silently stops is a silent outage — the
+# waitlist points would never migrate. The scheduled handler rethrows on any
+# non-200 so the invocation is marked failed and not just logged.
+[observability]
+enabled = true
