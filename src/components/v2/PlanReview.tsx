@@ -7,6 +7,7 @@ import { getChainMeta } from "@/constants/chains";
 import { renderIntent, resolveIntent, type Intent } from "@/lib/v2/intents";
 import { encodeBatch, planRuns } from "@/lib/v2/intents/batch";
 import { useResolverContext } from "@/hooks/v2/useResolverContext";
+import { useSwitchWalletChain } from "@/lib/wallet";
 import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
 import { recordTx, txFromError } from "@/lib/v2/txLog";
 import { recordCctpBurn } from "@/lib/bridge/cctpPending";
@@ -171,13 +172,40 @@ export default function PlanReview({
   onHalt,
 }: PlanReviewProps) {
   const getContext = useResolverContext();
-  /* The chain the plan was prepared on, captured once. */
+  const switchChain = useSwitchWalletChain();
+  /* The chain the plan must be signed on, captured once.
+     Prefer the chain the plan's OWN intents name over the connected chain: a
+     bridge carries its source `fromChainId`, an aggregator swap / CCTP mint its
+     `chainId`. For an ordinary plan these equal the connected chain, so this is a
+     no-op there; where they differ (a bridge built for a source the wallet is not
+     on) it is what lets the sign flow switch to the RIGHT chain rather than the
+     one the wallet happened to be on when review opened. */
   const pinnedChain = useRef<number | null>(null);
   useEffect(() => {
     if (!pinChain || pinnedChain.current != null) return;
+    const fromIntents = intents.reduce<number | null>((acc, it) => {
+      if (acc != null) return acc;
+      if (it.kind === "bridge") return it.fromChainId;
+      if (it.kind === "aggregatorSwap" || it.kind === "cctpReceive")
+        return it.chainId;
+      return null;
+    }, null);
+    if (fromIntents != null) {
+      pinnedChain.current = fromIntents;
+      return;
+    }
     const c = getContext();
     if (c) pinnedChain.current = c.chainId;
-  }, [pinChain, getContext]);
+  }, [pinChain, getContext, intents]);
+  /* The latest resolver context, in a ref so an in-flight run() can read the
+     wallet's CURRENT chain after an auto-switch. getContext is closed over at the
+     render run() started on, so it reports the OLD chain until a re-render — this
+     ref is what lets the sign flow wait for the switch to actually land and then
+     build the signer on the new chain. */
+  const ctxRef = useRef(getContext);
+  useEffect(() => {
+    ctxRef.current = getContext;
+  }, [getContext]);
   const { support: batch, send: sendBatch } = useBatchCalls();
   const views = useMemo(() => intents.map(renderIntent), [intents]);
   /**
@@ -559,28 +587,55 @@ export default function PlanReview({
    */
   const run = async (withoutStopping = false) => {
     noPauseRef.current = withoutStopping;
-    const ctx = getContext();
+    let ctx = getContext();
     if (!ctx) {
       toast.error("Connect a wallet to continue.");
       return;
     }
     /* The plan is only valid on the chain it was prepared on — its addresses are
-       that chain's, and the same address is a different token elsewhere. Refuse
-       rather than sign the wrong asset; the user switches back, or re-asks on the
-       chain they're now on. */
+       that chain's, and the same address is a different token elsewhere. Rather
+       than refuse when the wallet has moved, switch it BACK to the plan's chain
+       and sign there — the switch is the safety the pin wanted, so folding it
+       into the sign (the way the swap page folds it into startSwap) is strictly
+       safer than a dead end, never less. A declined or failed switch stops here,
+       so nothing is ever signed on the wrong chain. */
     if (
       pinChain &&
       pinnedChain.current != null &&
       ctx.chainId !== pinnedChain.current
     ) {
+      const target = pinnedChain.current;
       const name =
-        getChainMeta(pinnedChain.current)?.shortName ??
-        getChainMeta(pinnedChain.current)?.name ??
-        `chain ${pinnedChain.current}`;
-      toast.error(
-        `This plan was prepared for ${name}. Switch your wallet back to it and try again, or re-ask on this network.`,
-      );
-      return;
+        getChainMeta(target)?.shortName ??
+        getChainMeta(target)?.name ??
+        `chain ${target}`;
+      try {
+        await switchChain(target);
+      } catch {
+        toast.error(
+          `This plan is for ${name} — approve the network switch, or switch your wallet to it and try again.`,
+        );
+        return;
+      }
+      /* Wait for the switch to actually land: switchChain resolving is the
+         wallet accepting, but the React context and signer catch up a render
+         later, so poll the live ref until it reports the target chain (a few
+         seconds) before building a signer on it. */
+      const fresh = await (async () => {
+        for (let i = 0; i < 50; i += 1) {
+          const c = ctxRef.current();
+          if (c && c.chainId === target) return c;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        return null;
+      })();
+      if (!fresh) {
+        toast.error(
+          `Couldn't confirm the switch to ${name} — switch your wallet to it and try again.`,
+        );
+        return;
+      }
+      ctx = fresh;
     }
     /* A priced plan whose quotes have gone stale must not be signed silently: the
        slippage floor was computed against a price that has since moved, so the
