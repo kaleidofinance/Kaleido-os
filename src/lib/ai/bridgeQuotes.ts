@@ -29,6 +29,7 @@
  */
 
 import { CHAINS, type ChainMeta } from "@/constants/chains";
+import { envVars } from "@/constants/envVars";
 
 const RELAY_API = "https://api.relay.link";
 const LIFI_API = "https://li.quest/v1";
@@ -292,14 +293,33 @@ export async function getBridgeExecution(args: {
   fromToken: { address: string | null; decimals: number | null };
 } | null> {
   try {
-    const qs = new URLSearchParams({
+    const params: Record<string, string> = {
       fromChain: String(args.fromChainId),
       toChain: String(args.toChainId),
       fromToken: args.asset,
       toToken: args.asset,
       fromAmount: args.units,
       fromAddress: args.address,
-    });
+      /* Swift by default. FASTEST picks a sub-minute route where one exists
+         — Arc’s Polymer Fast lands in ~10s — instead of the ~18-minute Standard
+         the unordered call returns. lifiIntents is denied because it is a
+         solver network whose spread runs ~2.7%, an order of magnitude over
+         Polymer’s ~0.26% for the sake of a few seconds; every Arc corridor
+         still has a Polymer route, so denying it costs availability nowhere
+         measured. */
+      order: "FASTEST",
+      denyBridges: "lifiIntents",
+      /* Identify Kaleido on every quote. Harmless with no fee configured (the
+         quote is unchanged) and the account a fee attributes to once one is
+         set up at portal.li.fi. */
+      integrator: envVars.lifiIntegrator || "kaleido",
+    };
+    /* Only sent once a fee wallet exists at portal.li.fi: LI.FI returns 400 for
+       a `fee` on an unconfigured integrator, which this function surfaces as
+       "no route", so an unset fee keeps every corridor working. See
+       envVars.lifiFee for the enablement steps and the whitelist caveat. */
+    if (envVars.lifiFee) params.fee = envVars.lifiFee;
+    const qs = new URLSearchParams(params);
     const res = await fetch(`${LIFI_API}/quote?${qs}`);
     if (!res.ok) return null;
 

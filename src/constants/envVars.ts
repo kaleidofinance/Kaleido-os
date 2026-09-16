@@ -103,5 +103,24 @@ export const envVars = {
    */
   waitlistUrl: process.env.NEXT_PUBLIC_WAITLIST_URL,
 
+  /**
+   * LI.FI integrator identity for Luca's bridge quotes.
+   *
+   * `lifiIntegrator` names Kaleido on every quote — public, not a secret — and is
+   * the account any integrator fee attributes to once one is configured at
+   * portal.li.fi. Defaults to "kaleido" at the call site when unset.
+   *
+   * `lifiFee` is that fee as a decimal share (e.g. "0.002" = 0.2%). It is UNSET on
+   * purpose: LI.FI returns HTTP 400 for a `fee` on an integrator with no fee
+   * wallet configured, and getBridgeExecution turns a 400 into "no route" — so
+   * shipping a fee before the portal side is set up would break EVERY bridge
+   * quote. Set this only after registering the integrator AND a fee wallet at
+   * portal.li.fi, and re-verify the quote's `to`/approvalAddress still matches a
+   * router `isKnownBridgeSpender` allows before trusting the plan (see the note in
+   * lib/ai/bridgeQuotes.ts).
+   */
+  lifiIntegrator: process.env.NEXT_PUBLIC_LIFI_INTEGRATOR,
+  lifiFee: process.env.NEXT_PUBLIC_LIFI_FEE,
+
   // contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
 };
