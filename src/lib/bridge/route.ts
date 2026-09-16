@@ -113,22 +113,41 @@ export function isKnownBridgeAddress(
 const LIFI_DIAMOND = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
 
 /**
+ * LI.FI’s executor on Arc, where the deterministic diamond above is NOT
+ * deployed — measured: eth_getCode at 0x1231… on Arc mainnet returns 0x, while
+ * this address carries code. LI.FI names it as BOTH `transactionRequest.to` and
+ * `estimate.approvalAddress` for every Arc-source quote, verified stable across
+ * destinations, amounts and tools and always with `to === approvalAddress`, so an
+ * Arc→X token bridge routes through it rather than the diamond. Whitelisted under
+ * the same USD-cap bound as the diamond; the only difference is that this one is
+ * Arc-specific rather than the chain-blind constant.
+ */
+const LIFI_ARC_ROUTER = "0xA4072583658Fae592A3506A42431cb6316a8d40b";
+
+/** Every router LI.FI names as a spender/target across our corridors. */
+const KNOWN_BRIDGE_SPENDERS = [LIFI_DIAMOND, LIFI_ARC_ROUTER];
+
+/**
  * Whether an address is a bridge router this resolver would itself authorise an
  * approve to. The approve auditor calls this, exactly as it calls
  * `isKnownBridgeAddress` for a canonical `to`: one table, read by both the
  * builder that emits the step and the rule that admits it.
  *
- * Chain-blind on purpose, and worth being plain about what that costs. The
- * address is the same on every EVM chain, so there is no per-chain fact to
- * check; the honest consequence is that an approve naming it would be admitted
- * on a chain LI.FI does not index. Nothing can be *built* there — the resolver
- * refuses the corridor before an approve exists — so the residual exposure is a
- * hand-assembled plan granting an allowance to one fixed, widely-used contract,
- * bounded by the per-action USD cap like every other step.
+ * Chain-blind on purpose, and worth being plain about what that costs. LI.FI’s
+ * router is one deterministic address on every EVM chain it supports EXCEPT Arc,
+ * which runs a second fixed executor (LIFI_ARC_ROUTER) — so this checks a short
+ * list of fixed addresses, not a per-chain table. The honest consequence is that
+ * an approve naming either would be admitted on a chain LI.FI does not index.
+ * Nothing can be *built* there — the resolver refuses the corridor before an
+ * approve exists — so the residual exposure is a hand-assembled plan granting an
+ * allowance to one of two fixed, LI.FI-controlled contracts, bounded by the
+ * per-action USD cap like every other step.
  */
 export function isKnownBridgeSpender(address: string): boolean {
+  const lower = (address || "").toLowerCase();
   return (
-    Boolean(address) && address.toLowerCase() === LIFI_DIAMOND.toLowerCase()
+    Boolean(address) &&
+    KNOWN_BRIDGE_SPENDERS.some((r) => r.toLowerCase() === lower)
   );
 }
 
