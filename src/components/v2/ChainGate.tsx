@@ -5,6 +5,7 @@ import { CHAINS, getChainMeta } from "@/constants/chains";
 import { isDeployed, tradableChains } from "@/constants/registry";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useConnectWallet } from "@/hooks/v2/useChainAction";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { MOCK_DATA } from "@/lib/mock";
 
 import NetworkSelector from "./NetworkSelector";
@@ -129,10 +130,20 @@ export default function ChainGate({
 }) {
   const [picker, setPicker] = useState(false);
   const openConnect = useConnectWallet();
+  const { showTestnets } = useTestnetMode();
 
   /* Deployed AND intended. `tradable` alone is an intention, and reading it as a
-     fact is what put "Trading live" under nine chains with no contracts. */
-  const live = tradableChains(CHAINS);
+     fact is what put "Trading live" under nine chains with no contracts.
+
+     Gated on the testnet toggle: at mainnet launch a "switch to …" CTA must not
+     name the testnet chains a product happens to be deployed on (Sepolia, the
+     testnet Base/BNB/Robinhood) — a mainnet-first user was never shown them and
+     should not be sent there. With the toggle off, only mainnet chains are
+     offered; if none carries this product yet, `live` is empty and the plain
+     empty state below is shown instead of a testnet switch. */
+  const live = tradableChains(CHAINS).filter(
+    (c) => showTestnets || c.network === "mainnet",
+  );
 
   let title: string;
   let body: string;
