@@ -312,7 +312,7 @@ export async function getBridgeExecution(args: {
       /* Identify Kaleido on every quote. Harmless with no fee configured (the
          quote is unchanged) and the account a fee attributes to once one is
          set up at portal.li.fi. */
-      integrator: envVars.lifiIntegrator || "kaleido",
+      integrator: envVars.lifiIntegrator || "kaleido-route",
     };
     /* Only sent once a fee wallet exists at portal.li.fi: LI.FI returns 400 for
        a `fee` on an unconfigured integrator, which this function surfaces as

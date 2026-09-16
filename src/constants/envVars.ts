@@ -108,7 +108,8 @@ export const envVars = {
    *
    * `lifiIntegrator` names Kaleido on every quote — public, not a secret — and is
    * the account any integrator fee attributes to once one is configured at
-   * portal.li.fi. Defaults to "kaleido" at the call site when unset.
+   * portal.li.fi. Defaults to "kaleido-route" (our registered integrator) at the
+   * call site when unset.
    *
    * `lifiFee` is that fee as a decimal share (e.g. "0.002" = 0.2%). It is UNSET on
    * purpose: LI.FI returns HTTP 400 for a `fee` on an integrator with no fee
