@@ -3151,3 +3151,51 @@ export const COMMAND_HELP = [
   "collect fees position 42",
   "remove liquidity position 42",
 ].join("\n");
+
+/**
+ * The capability overview, grouped by product and formatted for the markdown
+ * renderer — what "what can you do" should return instead of a flat dump of
+ * every example on one list. Every phrasing here is the parser's own (the same
+ * verified shapes as COMMAND_HELP), rendered as inline code so a reader can copy
+ * one; the group headings are the products, so the list reads as a map of the
+ * app rather than a wall of commands.
+ *
+ * Testnet-aware: the faucet only exists on testnets, so its line is added only
+ * when the caller is in testnet mode — the same mainnet-first posture the rest
+ * of the app follows. Bridge and trade examples name mainnet chains and assets.
+ */
+export function capabilityHelp(opts: { showTestnets?: boolean } = {}): string {
+  const line = (heading: string, examples: string[]) =>
+    `**${heading}**  \n${examples.map((e) => `\`${e}\``).join(" · ")}`;
+
+  const groups: string[] = [
+    line("Trade", ["swap 500 USDC to KLD", "buy KLD with 500 USDC"]),
+    line("Bridge", ["bridge 50 USDC to Base", "bridge 100 USDC to Arbitrum"]),
+    line("Borrow & lend", [
+      "borrow 500 USDC at 8% for 30 days",
+      "lend 1000 USDC at 10% for 60 days",
+      "deposit 500 USDC",
+      "repay",
+    ]),
+    line("kfUSD stablecoin", [
+      "mint 500 USDC",
+      "redeem 500 kfUSD",
+      "lock 500",
+      "claim yield",
+    ]),
+    line("Staking", ["stake 100", "unstake 50"]),
+    line("Liquidity", [
+      "collect fees position 42",
+      "remove liquidity position 42",
+    ]),
+    line("Wallet & portfolio", [
+      "my portfolio",
+      "receive",
+      "send 50 USDC to 0x…",
+    ]),
+  ];
+  if (opts.showTestnets) {
+    groups.push(line("Testnet faucet", ["faucet USDC", "faucet all"]));
+  }
+  return groups.join("\n\n");
+}

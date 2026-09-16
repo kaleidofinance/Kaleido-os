@@ -50,12 +50,13 @@ import {
   fillSlot,
   clearSlot,
   draftFromCommand,
-  COMMAND_HELP,
+  capabilityHelp,
   type Command,
   type Draft,
   type ParseResult,
   type Slot,
 } from "@/lib/v2/intents/fromCommand";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { SUGGESTIONS } from "./suggestions";
 import s from "./agent.module.css";
 
@@ -149,6 +150,7 @@ export default function AgentPage() {
   const { chainId, address } = useWalletV2();
   const { settings } = useAgentSettings(address);
   const { buildPlan } = useLocalPlanner();
+  const { showTestnets } = useTestnetMode();
   // Open loans, so "repay" resolves on its own when there's only one.
   const { loans } = useBorrowV2();
   // V3 positions, so "collect fees position 42" / "remove position 42" can
@@ -371,8 +373,12 @@ export default function AgentPage() {
     if (result.command.kind === "help") {
       note("Answered from the command reference");
       say(
-        `Things I can do without using a reasoning request:\n\n${COMMAND_HELP}\n\n` +
-          "I can also answer common questions directly — health factor, kfUSD, staking, slippage, agent permissions, which chains are live.",
+        "Tell me what you want in plain language and I'll build the transaction " +
+          "for you to review and sign — nothing goes on-chain without your " +
+          "signature. Here's the range:\n\n" +
+          `${capabilityHelp({ showTestnets })}\n\n` +
+          "You can also just ask — I answer health factor, kfUSD, staking, " +
+          "slippage, agent permissions, and which chains are live directly.",
         {
           via: "local",
           /* Five of the list above as chips. The list is reference — you read it
@@ -1166,7 +1172,8 @@ export default function AgentPage() {
       // The model being unreachable is no longer a dead end: commands still
       // execute, so say what still works instead of only apologising.
       say(
-        `I can't think that through right now, but I can still act on commands:\n\n${COMMAND_HELP}`,
+        "I can't think that one through right now, but I can still act on any " +
+          `command directly:\n\n${capabilityHelp({ showTestnets })}`,
         { via: "local" },
       );
     } finally {
