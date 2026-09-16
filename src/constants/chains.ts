@@ -41,7 +41,15 @@ export interface ChainMeta {
    * ands the two together.
    */
   tradable?: boolean;
-  /** True for chains announced but not yet live on mainnet (e.g. Arc). */
+  /**
+   * True for a mainnet chain we have announced but not launched on yet. It is
+   * the "Coming soon" gate: such a chain shows in the switcher for the roadmap
+   * but cannot be switched to, and testnet-only surfaces stay hidden until it
+   * ships. Arc is the exception — the launch chain — so it carries no flag even
+   * though its Diamond is not deployed yet. Read it through `isComingSoon()` in
+   * registry.ts, which also clears the flag the moment `isDeployed()` turns true,
+   * so a chain going live needs no edit here.
+   */
   comingSoon?: boolean;
 }
 
@@ -51,66 +59,86 @@ export interface ChainMeta {
  * what a user reads top to bottom — which makes it a product decision, not a
  * filing convention.
  *
- * Priority order first (Arc, Base, Robinhood, BNB, Ethereum are where the
- * Diamond is going), then the read-only chains, then Abstract last. Abstract
- * used to lead this list from when it was the home chain; leaving it there
- * pointed every user at the one mainnet entry that says "Balances only" before
- * they reached a single tradable chain.
+ * Launch order first — Arc, Robinhood, Base, BNB, Ethereum, the five where the
+ * Diamond is going — then the read-only chains, then Abstract last. Arc leads
+ * because it is the mainnet we are launching on; the other four carry
+ * `comingSoon` until their Diamond ships (see the field's note), so they read as
+ * the roadmap below Arc rather than as places to switch to. Abstract used to
+ * lead this list from when it was the home chain; leaving it there pointed every
+ * user at the one mainnet entry that says "Balances only" before they reached a
+ * single tradable chain.
  */
 export const CHAINS: ChainMeta[] = [
-  // ---- Ethereum ----
+  // ---- Arc (Circle's stablecoin L1) — mainnet live 2026-09-16, paired testnet ----
   {
-    id: 1,
-    name: "Ethereum",
-    shortName: "Ethereum",
+    id: 5042,
+    name: "Arc",
+    shortName: "Arc",
     network: "mainnet",
-    pairChainId: 11155111,
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: ["https://eth.merkle.io", "https://cloudflare-eth.com"],
-    blockExplorer: { name: "Etherscan", url: "https://etherscan.io" },
-    iconId: "ethereum",
-    color: "#627eea",
+    pairChainId: 5042002,
+    /* USDC is Arc's native gas token, 18-dec at the native slot; the 0x3600…
+       predeploy is its 6-dec ERC20 face. See the arc-usdc-is-the-gas-token note.
+       chainId 5042 confirmed on both endpoints (0x13b2). rpc.mainnet.arc.io is
+       [0] because it answers eth_blockNumber and getLogs; rpc.arc-scan.org (the
+       explorer's node) returns the right chainId but was measured "unreachable"
+       on a block read 2026-09-16, so it is the fallback, not the primary. */
+    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+    rpcUrls: ["https://rpc.mainnet.arc.io", "https://rpc.arc-scan.org"],
+    blockExplorer: { name: "ArcScan", url: "https://arc-scan.org" },
+    iconId: "arc",
+    color: "#5546ff",
     tradable: true,
   },
   {
-    id: 11155111,
-    name: "Sepolia",
-    shortName: "Sepolia",
+    id: 5042002,
+    name: "Arc Testnet",
+    shortName: "Arc",
     network: "testnet",
-    pairChainId: 1,
-    nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
+    pairChainId: 5042,
+    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
     rpcUrls: [
-      /* publicnode is [0] since 2026-09-09, and that ordering came out of a
-         production outage rather than a preference.
-
-         The thirdweb endpoint below is UNKEYED, and thirdweb rate-limits its
-         public RPC by IP. From a browser that is one visitor's IP and invisible;
-         from Vercel it is ONE shared IP serving every request, and it answers
-         429 — "You are using a public RPC with rate limits, to lift those limits
-         you can obtain an api key". That took out every server-side read on this
-         chain at once: /api/market/overview's kfUSD-supply and pooled-KLD legs
-         and the whole lending book behind /borrow. It surfaced the day the book
-         started reading the chain (PR #56) because nothing server-side had asked
-         this endpoint for much before — the limit was always there.
-
-         Measured side by side that day, publicnode wins on every axis the app
-         uses: same chainId, same block height, same eth_call result, same
-         balance; faster on all four; and eth_getLogs serves a 10,000-block span
-         where thirdweb refuses anything over 1,000 with -32005, which is the
-         range ceiling this repo has had to chunk around elsewhere.
-
-         Was https://rpc.sepolia.org, which serves an Apache 404 to a JSON-RPC
-         POST rather than failing as a node — measured 2026-08-25. A fallback
-         that answers HTML is worse than no fallback: ethers reports a parse
-         error, not an unreachable endpoint. */
-      "https://ethereum-sepolia-rpc.publicnode.com",
-      /* Correct, just limited without a key — kept as the measured-good
-         alternate. Promoting it back means keying it first. */
-      "https://11155111.rpc.thirdweb.com",
+      "https://rpc.testnet.arc.network",
+      "https://rpc.quicknode.testnet.arc.network",
+      "https://rpc.blockdaemon.testnet.arc.network",
     ],
-    blockExplorer: { name: "Etherscan", url: "https://sepolia.etherscan.io" },
-    iconId: "sepolia",
-    color: "#627eea",
+    blockExplorer: { name: "ArcScan", url: "https://testnet.arcscan.app" },
+    iconId: "arc",
+    color: "#5546ff",
+    tradable: true,
+  },
+
+  // ---- Robinhood Chain (Arbitrum Orbit L2, launched 2025) ----
+  {
+    id: 4663,
+    name: "Robinhood Chain",
+    shortName: "Robinhood",
+    network: "mainnet",
+    pairChainId: 46630,
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
+    blockExplorer: {
+      name: "Blockscout",
+      url: "https://robinhoodchain.blockscout.com",
+    },
+    iconId: "robinhood",
+    color: "#00c805",
+    tradable: true,
+    comingSoon: true,
+  },
+  {
+    id: 46630,
+    name: "Robinhood Chain Testnet",
+    shortName: "Robinhood",
+    network: "testnet",
+    pairChainId: 4663,
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: ["https://rpc.testnet.chain.robinhood.com"],
+    blockExplorer: {
+      name: "Blockscout",
+      url: "https://explorer.testnet.chain.robinhood.com",
+    },
+    iconId: "robinhood",
+    color: "#00c805",
     tradable: true,
   },
 
@@ -127,6 +155,7 @@ export const CHAINS: ChainMeta[] = [
     iconId: "base",
     color: "#0052ff",
     tradable: true,
+    comingSoon: true,
   },
   {
     id: 84532,
@@ -155,6 +184,7 @@ export const CHAINS: ChainMeta[] = [
     iconId: "binance-smart-chain",
     color: "#f0b90b",
     tradable: true,
+    comingSoon: true,
   },
   {
     id: 97,
@@ -210,75 +240,60 @@ export const CHAINS: ChainMeta[] = [
     tradable: true,
   },
 
-  // ---- Robinhood Chain (Arbitrum Orbit L2, launched 2025) ----
+  // ---- Ethereum ----
   {
-    id: 4663,
-    name: "Robinhood Chain",
-    shortName: "Robinhood",
+    id: 1,
+    name: "Ethereum",
+    shortName: "Ethereum",
     network: "mainnet",
-    pairChainId: 46630,
+    pairChainId: 11155111,
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
-    blockExplorer: {
-      name: "Blockscout",
-      url: "https://robinhoodchain.blockscout.com",
-    },
-    iconId: "robinhood",
-    color: "#00c805",
+    rpcUrls: ["https://eth.merkle.io", "https://cloudflare-eth.com"],
+    blockExplorer: { name: "Etherscan", url: "https://etherscan.io" },
+    iconId: "ethereum",
+    color: "#627eea",
     tradable: true,
+    comingSoon: true,
   },
   {
-    id: 46630,
-    name: "Robinhood Chain Testnet",
-    shortName: "Robinhood",
+    id: 11155111,
+    name: "Sepolia",
+    shortName: "Sepolia",
     network: "testnet",
-    pairChainId: 4663,
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: ["https://rpc.testnet.chain.robinhood.com"],
-    blockExplorer: {
-      name: "Blockscout",
-      url: "https://explorer.testnet.chain.robinhood.com",
-    },
-    iconId: "robinhood",
-    color: "#00c805",
-    tradable: true,
-  },
-
-  // ---- Arc (Circle's stablecoin L1) — mainnet live 2026-09-16, paired testnet ----
-  {
-    id: 5042,
-    name: "Arc",
-    shortName: "Arc",
-    network: "mainnet",
-    pairChainId: 5042002,
-    /* USDC is Arc's native gas token, 18-dec at the native slot; the 0x3600…
-       predeploy is its 6-dec ERC20 face. See the arc-usdc-is-the-gas-token note.
-       chainId 5042 confirmed on both endpoints (0x13b2). rpc.mainnet.arc.io is
-       [0] because it answers eth_blockNumber and getLogs; rpc.arc-scan.org (the
-       explorer's node) returns the right chainId but was measured "unreachable"
-       on a block read 2026-09-16, so it is the fallback, not the primary. */
-    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-    rpcUrls: ["https://rpc.mainnet.arc.io", "https://rpc.arc-scan.org"],
-    blockExplorer: { name: "ArcScan", url: "https://arc-scan.org" },
-    iconId: "arc",
-    color: "#5546ff",
-    tradable: true,
-  },
-  {
-    id: 5042002,
-    name: "Arc Testnet",
-    shortName: "Arc",
-    network: "testnet",
-    pairChainId: 5042,
-    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+    pairChainId: 1,
+    nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: [
-      "https://rpc.testnet.arc.network",
-      "https://rpc.quicknode.testnet.arc.network",
-      "https://rpc.blockdaemon.testnet.arc.network",
+      /* publicnode is [0] since 2026-09-09, and that ordering came out of a
+         production outage rather than a preference.
+
+         The thirdweb endpoint below is UNKEYED, and thirdweb rate-limits its
+         public RPC by IP. From a browser that is one visitor's IP and invisible;
+         from Vercel it is ONE shared IP serving every request, and it answers
+         429 — "You are using a public RPC with rate limits, to lift those limits
+         you can obtain an api key". That took out every server-side read on this
+         chain at once: /api/market/overview's kfUSD-supply and pooled-KLD legs
+         and the whole lending book behind /borrow. It surfaced the day the book
+         started reading the chain (PR #56) because nothing server-side had asked
+         this endpoint for much before — the limit was always there.
+
+         Measured side by side that day, publicnode wins on every axis the app
+         uses: same chainId, same block height, same eth_call result, same
+         balance; faster on all four; and eth_getLogs serves a 10,000-block span
+         where thirdweb refuses anything over 1,000 with -32005, which is the
+         range ceiling this repo has had to chunk around elsewhere.
+
+         Was https://rpc.sepolia.org, which serves an Apache 404 to a JSON-RPC
+         POST rather than failing as a node — measured 2026-08-25. A fallback
+         that answers HTML is worse than no fallback: ethers reports a parse
+         error, not an unreachable endpoint. */
+      "https://ethereum-sepolia-rpc.publicnode.com",
+      /* Correct, just limited without a key — kept as the measured-good
+         alternate. Promoting it back means keying it first. */
+      "https://11155111.rpc.thirdweb.com",
     ],
-    blockExplorer: { name: "ArcScan", url: "https://testnet.arcscan.app" },
-    iconId: "arc",
-    color: "#5546ff",
+    blockExplorer: { name: "Etherscan", url: "https://sepolia.etherscan.io" },
+    iconId: "sepolia",
+    color: "#627eea",
     tradable: true,
   },
 
