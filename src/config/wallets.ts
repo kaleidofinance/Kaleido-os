@@ -17,6 +17,11 @@ import { createWallet, inAppWallet } from "thirdweb/wallets";
  */
 export const WALLETS = [
   createWallet("io.metamask"),
+  /* Bitget Wallet — partner integration (DApp Center listing + connect). Kept in
+     the top row per their listing requirement; thirdweb resolves the id to the
+     Bitget entry, shows it even when the extension is absent (with a download
+     prompt on their metadata), and carries the icon. */
+  createWallet("com.bitget.web3"),
   createWallet("com.coinbase.wallet"),
   createWallet("me.rainbow"),
   createWallet("walletConnect"),
