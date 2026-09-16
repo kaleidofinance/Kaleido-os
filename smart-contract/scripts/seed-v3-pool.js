@@ -170,6 +170,39 @@ function parsePriceOverrides(spec) {
 const PRICE_OVERRIDES = parsePriceOverrides(process.env.STABLE_USD);
 
 /**
+ * Operator-supplied token addresses, keyed by lowercased symbol, parsed from
+ * TOKENS once at load:
+ *
+ *   TOKENS="usdc=0x8c6c…,eurc=0xbEf5…,cirbtc=0x171A…"
+ *
+ * The generated registry carries our own deployed contracts and the stables it
+ * knows, not a chain's whole ecosystem — Arc's EURC and cirBTC are third-party,
+ * and its pool quote asset is the wrapped-native face of USDC (reg.wrappedNative),
+ * not the 0x3600 alias the registry lists under `usdc`. This is how the operator
+ * names those addresses explicitly; every one is validated as an address, logged,
+ * and OVERRIDES a registry key of the same name, so PAIR can point at the exact
+ * contract the pool should hold rather than whatever the registry defaulted to.
+ */
+function parseTokenOverrides(spec) {
+  const out = new Map();
+  if (!spec) return out;
+  for (const raw of spec.split(",")) {
+    const part = raw.trim();
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    if (eq < 0) throw new Error(`TOKENS entry "${part}" is not symbol=address`);
+    const sym = part.slice(0, eq).trim().toLowerCase();
+    const addr = part.slice(eq + 1).trim();
+    if (!sym) throw new Error(`TOKENS entry "${part}" has no symbol`);
+    if (!ethers.isAddress(addr))
+      throw new Error(`TOKENS ${sym}: "${addr}" is not an address`);
+    out.set(sym, ethers.getAddress(addr));
+  }
+  return out;
+}
+const TOKEN_OVERRIDES = parseTokenOverrides(process.env.TOKENS);
+
+/**
  * One whole token's worth of USD, at 18 decimals, with its provenance.
  *
  * The diamond's oracle answers first, because that is the price the protocol
@@ -199,11 +232,13 @@ async function priceOf(protocol, address, symbol, decimals) {
   if (override !== undefined)
     return { usd: override, source: `operator override $${ethers.formatUnits(override, 18)}` };
 
-  try {
-    const usd = await protocol.getUsdValue(address, 10n ** BigInt(decimals), decimals);
-    if (usd > 0n) return { usd, source: "diamond oracle" };
-  } catch {
-    /* No feed registered for this token on this chain. Fall through. */
+  if (protocol) {
+    try {
+      const usd = await protocol.getUsdValue(address, 10n ** BigInt(decimals), decimals);
+      if (usd > 0n) return { usd, source: "diamond oracle" };
+    } catch {
+      /* No feed registered for this token on this chain. Fall through. */
+    }
   }
 
   let feed;
@@ -346,6 +381,16 @@ async function main() {
   const chainId = Number((await ethers.provider.getNetwork()).chainId);
   const reg = registryFor(chainId);
 
+  /* Operator-named token addresses (TOKENS env) override the generated registry,
+     so a pair can name a chain's ecosystem tokens (Arc's EURC/cirBTC) and the
+     exact USDC face the pool quotes against. Stated on its own line so the run
+     records what it resolved rather than resolving silently. */
+  for (const [sym, addr] of TOKEN_OVERRIDES) {
+    if (reg[sym] && reg[sym].toLowerCase() !== addr.toLowerCase())
+      console.log(`  TOKENS override: ${sym} ${reg[sym]} -> ${addr}`);
+    reg[sym] = addr;
+  }
+
   const fee = num(process.env.FEE, 500);
   const usd = num(process.env.USD, 100000);
   const bandPct = num(process.env.BAND_PCT, 2);
@@ -354,8 +399,10 @@ async function main() {
     throw new Error(`PAIR ${keyA}/${keyB}: not both in the registry for chain ${chainId}`);
   if (!reg.v3Factory || !reg.v3PositionManager)
     throw new Error(`chain ${chainId} has no V3 factory or position manager`);
-  if (!reg.diamond)
-    throw new Error(`chain ${chainId} has no diamond, so no oracle to price the pool with`);
+  /* The diamond is the price oracle, but it is OPTIONAL: a DEX-only chain (Arc
+     has no diamond) can still seed a pool when every side is priced by an
+     explicit STABLE_USD override. A side with neither an oracle nor an override
+     still refuses below in priceOf, so nothing is invented. */
 
   /* token0/token1 is fixed by address order, not by the order they were named.
      Getting this backwards inverts the price. */
@@ -379,7 +426,9 @@ async function main() {
 
   /* ---- price, from the diamond's oracle where it has a feed, Hermes where it
          does not. Both sides must resolve; neither is defaulted. ---- */
-  const protocol = new ethers.Contract(reg.diamond, PROTOCOL_ABI, ethers.provider);
+  const protocol = reg.diamond
+    ? new ethers.Contract(reg.diamond, PROTOCOL_ABI, ethers.provider)
+    : null;
   const p0 = await priceOf(protocol, a0, s0, d0);
   const p1 = await priceOf(protocol, a1, s1, d1);
   const usd0 = p0.usd;
