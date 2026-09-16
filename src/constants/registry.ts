@@ -260,6 +260,22 @@ export function isDeployed(chainId: number | undefined): boolean {
   return Boolean(getContracts(chainId).diamond);
 }
 
+/**
+ * True for a mainnet chain announced but not launched on yet — the "Coming soon"
+ * gate. It reads the `comingSoon` flag from chains.ts but clears the moment the
+ * Diamond actually ships: a chain going live needs no edit to that flag because
+ * `isDeployed` wins here. Arc carries no flag (it is the launch chain), so it is
+ * never "coming soon" even while its Diamond is still pending.
+ *
+ * One rule, one home: the network switcher refuses a switch to such a chain and
+ * dims its row, and any page can ask the same question rather than re-deriving
+ * it from `comingSoon && !isDeployed` in five places that would drift apart.
+ */
+export function isComingSoon(chainId: number | undefined): boolean {
+  if (isDeployed(chainId)) return false;
+  return Boolean(getChainMeta(chainId)?.comingSoon);
+}
+
 /* ----------------------------------------------------------------- tokens -- */
 
 export interface TokenEntry {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import {
   useActiveWallet,
   useActiveWalletChain,
@@ -14,7 +14,8 @@ import {
   type ChainMeta,
 } from "@/constants/chains";
 import { defineChain } from "thirdweb/chains";
-import { isDeployed } from "@/constants/registry";
+import { isDeployed, isComingSoon } from "@/constants/registry";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { client } from "@/config/client";
 import { WALLETS } from "@/config/wallets";
 import ChainIcon from "./ChainIcon";
@@ -48,14 +49,21 @@ interface NetworkSelectorProps {
 function ChainRow({
   meta,
   active,
+  comingSoon,
   onSelect,
 }: {
   meta: ChainMeta;
   active: boolean;
+  comingSoon: boolean;
   onSelect: (m: ChainMeta) => void;
 }) {
   return (
-    <button className={s.row} onClick={() => onSelect(meta)} disabled={active}>
+    <button
+      className={`${s.row} ${comingSoon ? s.rowSoon : ""}`}
+      onClick={() => onSelect(meta)}
+      disabled={active || comingSoon}
+      aria-disabled={active || comingSoon}
+    >
       <span className={s.tki}>
         <ChainIcon
           id={meta.iconId}
@@ -67,14 +75,20 @@ function ChainRow({
       <div className={s.rb}>
         <div className={s.rn}>{meta.name}</div>
         <div className={s.rs}>
-          {isDeployed(meta.id)
-            ? "Trading live"
-            : meta.tradable
-              ? "Balances only · deploy pending"
-              : "Balances only"}
+          {comingSoon
+            ? "Coming soon"
+            : isDeployed(meta.id)
+              ? "Trading live"
+              : meta.tradable
+                ? "Balances only · deploy pending"
+                : "Balances only"}
         </div>
       </div>
-      {active && <span className={s.current}>Connected</span>}
+      {active ? (
+        <span className={s.current}>Connected</span>
+      ) : comingSoon ? (
+        <span className={s.soon}>Coming soon</span>
+      ) : null}
     </button>
   );
 }
@@ -97,7 +111,7 @@ export default function NetworkSelector({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const { mainnets, testnets, anyMainnetLive } = useMemo(() => {
+  const { mainnets, testnets } = useMemo(() => {
     /* Only the chains we are launching on — `tradable`, which is what draws the
        "deploy pending" sublabel — or ones already live. A plain "Balances only"
        chain we have no plans for (Polygon, Arbitrum, Hyperliquid, Abstract) is
@@ -111,26 +125,26 @@ export default function NetworkSelector({
     const testnets = CHAINS.filter(
       (c) => c.network === "testnet" && shown(c),
     );
-    /* Whether ANY shown mainnet has contracts yet. It is what the toggle's
-       default tracks: until one is deployed, the networks that actually work are
-       the testnets, so the list opens on them. */
-    const anyMainnetLive = mainnets.some((c) => isDeployed(c.id));
-    return { mainnets, testnets, anyMainnetLive };
+    return { mainnets, testnets };
   }, []);
 
-  /* The toggle. On shows testnets, off shows mainnets, and it OPENS on testnets
-     for exactly as long as no mainnet is deployed — the day a mainnet ships,
-     `anyMainnetLive` turns true and the list defaults to mainnets on its own, no
-     code change here. A per-session choice after that: it lives in state, so it
-     resets to the deploy-derived default on reload rather than pinning a stale
-     preference across the very launch it is meant to follow. */
-  const [showTestnets, setShowTestnets] = useState<boolean>(!anyMainnetLive);
+  /* The toggle. On shows testnets, off shows mainnets. It reads a shared,
+     persisted signal rather than local state, so this switch is the same one the
+     faucet tab and the /faucet page gate on — flipping it here turns the testnet
+     surfaces on everywhere at once. It opens on mainnet for the launch (see
+     showTestnetsAtom), and a tester who winds testnet back on stays there across
+     reloads, which is what makes the testnet button a real way back in. */
+  const { showTestnets, setShowTestnets } = useTestnetMode();
 
   if (!open) return null;
 
   const shown = showTestnets ? testnets : mainnets;
 
   const handleSelect = async (meta: ChainMeta) => {
+    /* A coming-soon mainnet is not a place to switch to yet: the row is disabled,
+       and this refuses the switch even if a click still lands (keyboard path, a
+       stale render). */
+    if (isComingSoon(meta.id)) return;
     const chain = defineChain(toThirdwebChainOptions(meta));
 
     /* Disconnected, this list is a chooser rather than a switcher: there is no
@@ -204,6 +218,7 @@ export default function NetworkSelector({
                   key={m.id}
                   meta={m}
                   active={activeChain?.id === m.id}
+                  comingSoon={isComingSoon(m.id)}
                   onSelect={handleSelect}
                 />
               ))}
