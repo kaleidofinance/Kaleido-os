@@ -413,6 +413,8 @@ export async function POST(request: NextRequest) {
             model: result.model,
             latencyMs: Date.now() - startedAt,
             failedOver: !!provider && result.provider !== provider.id,
+            rounds: result.rounds,
+            readCount: result.trace.length,
             stream: streamed,
             chainId,
             address: meterAddress,
@@ -464,6 +466,10 @@ export async function POST(request: NextRequest) {
           failedOver: !!provider && result.provider !== provider.id,
           planSteps: verdict.ok ? built.plan.length : 0,
           auditOk: built.plan.length > 0 ? verdict.ok : null,
+          /* How hard the turn worked, not just how it ended: the grounding passes
+             the loop ran and the reads they made. */
+          rounds: result.rounds,
+          readCount: result.trace.length,
           stream: streamed,
           chainId,
           address: meterAddress,

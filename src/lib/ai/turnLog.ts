@@ -25,6 +25,10 @@ export interface AgentTurnRecord {
   failedOver?: boolean | null;
   planSteps?: number | null;
   auditOk?: boolean | null;
+  /** Read-rounds the loop ran (0 for a direct answer). See runAgent. */
+  rounds?: number | null;
+  /** Total read-tool calls across the turn — the trace length. */
+  readCount?: number | null;
   stream?: boolean | null;
   chainId?: number | null;
   address?: string | null;
@@ -52,6 +56,8 @@ export async function logAgentTurn(rec: AgentTurnRecord): Promise<void> {
       failed_over: rec.failedOver ?? null,
       plan_steps: typeof rec.planSteps === "number" ? rec.planSteps : null,
       audit_ok: rec.auditOk ?? null,
+      rounds: typeof rec.rounds === "number" ? rec.rounds : null,
+      read_count: typeof rec.readCount === "number" ? rec.readCount : null,
       stream: rec.stream ?? null,
       chain_id: typeof rec.chainId === "number" ? rec.chainId : null,
       asker_hash: hashAddress(rec.address),
