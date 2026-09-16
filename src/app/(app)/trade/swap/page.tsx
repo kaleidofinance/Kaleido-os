@@ -386,12 +386,34 @@ export default function SwapPage() {
     !!buy &&
     sell.token.address.toLowerCase() === buy.token.address.toLowerCase();
 
+  /* Native against its own wrapped-native is not a swap but a 1:1 wrap: there is
+     no pool, so no quote, no route and no slippage. `samePoolSide` is exactly
+     that pair (both sides collapse to the wrapped address); the direction is
+     which side is the native currency. This drives the whole card into wrap mode
+     — the output mirrors the input, the panels that price a swap are hidden, and
+     the CTA and plan below build a deposit()/withdraw() instead. */
+  const wrappedNative = getContracts(swapChainId).wrappedNative;
+  const wrapMode: "wrap" | "unwrap" | null = samePoolSide
+    ? sell!.native
+      ? "wrap"
+      : "unwrap"
+    : null;
+
   useEffect(() => {
     const amount = parseFloat(amountIn);
-    if (!sell || !buy || !amount || amount <= 0 || samePoolSide) {
+    if (!sell || !buy || !amount || amount <= 0) {
       setAmountOut("");
       setNoRoute(false);
       setRoute(null);
+      return;
+    }
+    /* Wrap/unwrap is 1:1 with no route to quote — mirror the input to the output
+       and skip the quoter entirely. */
+    if (samePoolSide) {
+      setAmountOut(amountIn);
+      setNoRoute(false);
+      setRoute(null);
+      setQuoting(false);
       return;
     }
     let cancelled = false;
@@ -562,6 +584,40 @@ export default function SwapPage() {
   // from liquidity the transaction would never touch, which is a worse failure
   // than no floor at all because it looks correct.
   const plan: Intent[] = useMemo(() => {
+    /* Wrap/unwrap: a single deposit()/withdraw() on the chain's wrapped-native,
+       no approve and no route. Built from `tokenIn`/`tokenOut` (which hold the
+       user's own native + wrapped symbols) rather than the pool-side collapse. */
+    if (
+      wrapMode &&
+      tokenIn &&
+      tokenOut &&
+      wrappedNative &&
+      amountIn &&
+      parseFloat(amountIn) > 0
+    ) {
+      return [
+        wrapMode === "wrap"
+          ? {
+              kind: "wrapNative",
+              to: wrappedNative,
+              amount: amountIn,
+              decimals: tokenIn.decimals,
+              symbol: tokenIn.symbol,
+              wrappedSymbol: tokenOut.symbol,
+              chainId: swapChainId,
+            }
+          : {
+              kind: "unwrapNative",
+              to: wrappedNative,
+              amount: amountIn,
+              decimals: tokenIn.decimals,
+              symbol: tokenIn.symbol,
+              nativeSymbol: tokenOut.symbol,
+              chainId: swapChainId,
+            },
+      ];
+    }
+
     /* The router that executes THIS route — ours for our own pools, the venue's
        for a fallback. A venue swap on a chain we have not deployed on has no
        v3Router of ours, so the gate is the route's router, not ours. The approve
@@ -628,7 +684,19 @@ export default function SwapPage() {
           };
 
     return approve ? [approve, trade] : [trade];
-  }, [sell, buy, amountIn, minOut, deadlineMin, route]);
+  }, [
+    sell,
+    buy,
+    amountIn,
+    minOut,
+    deadlineMin,
+    route,
+    wrapMode,
+    tokenIn,
+    tokenOut,
+    wrappedNative,
+    swapChainId,
+  ]);
 
   const onComplete = () => {
     setReviewing(false);
@@ -641,29 +709,32 @@ export default function SwapPage() {
     setRoute(null);
   };
 
+  /* "Wrap"/"Unwrap" instead of "Review swap" once the card is in wrap mode. The
+     quote-related states (Fetching quote…, No route) never apply there — there is
+     no quote — so they are guarded out. `samePoolSide` always implies a wrapMode,
+     so the old "same asset" dead-end is gone. */
+  const reviewVerb =
+    wrapMode === "wrap" ? "Wrap" : wrapMode === "unwrap" ? "Unwrap" : "Review swap";
   const ctaLabel = !isConnected
     ? "Connect wallet"
     : !tokenIn || !tokenOut
       ? "Select a token"
-      : /* Both of these used to arrive as "No route", which is a claim about
-           liquidity. Neither is: one is a pair that can never have a pool, the
-           other is a gap in our own deployment record. */
-        samePoolSide
-        ? `${tokenIn.symbol} and ${tokenOut.symbol} are the same asset`
-        : !sell || !buy
-          ? `No wrapped ${(!sell ? tokenIn : tokenOut).symbol} on this chain`
-          : !amountIn || parseFloat(amountIn) <= 0
-            ? "Enter an amount"
-            : insufficientBalance
-              ? `Insufficient ${tokenIn.symbol}`
-              : quoting
-                ? "Fetching quote…"
-                : noRoute
-                  ? `No route for ${tokenIn.symbol} → ${tokenOut.symbol}`
-                  : switching
-                    ? "Switching…"
-                    : wrongChain
-                      ? `Review on ${getChainMeta(swapChainId)?.shortName ?? "its network"}`
+      : !sell || !buy
+        ? `No wrapped ${(!sell ? tokenIn : tokenOut).symbol} on this chain`
+        : !amountIn || parseFloat(amountIn) <= 0
+          ? "Enter an amount"
+          : insufficientBalance
+            ? `Insufficient ${tokenIn.symbol}`
+            : !wrapMode && quoting
+              ? "Fetching quote…"
+              : !wrapMode && noRoute
+                ? `No route for ${tokenIn.symbol} → ${tokenOut.symbol}`
+                : switching
+                  ? "Switching…"
+                  : wrongChain
+                    ? `${wrapMode ? reviewVerb : "Review"} on ${getChainMeta(swapChainId)?.shortName ?? "its network"}`
+                    : wrapMode
+                      ? reviewVerb
                       : "Review swap";
 
   const ctaDisabled =
@@ -691,7 +762,13 @@ export default function SwapPage() {
         <div className={s.box}>
           <PlanReview
             intents={plan}
-            submitLabel={`Sign & swap`}
+            submitLabel={
+              wrapMode === "wrap"
+                ? "Sign & wrap"
+                : wrapMode === "unwrap"
+                  ? "Sign & unwrap"
+                  : "Sign & swap"
+            }
             onComplete={onComplete}
             onCancel={() => setReviewing(false)}
           />
@@ -721,12 +798,17 @@ export default function SwapPage() {
               </button>
             ))}
           </div>
-          <SwapSettings
-            slippageBps={slippageBps}
-            onSlippage={setSlippageBps}
-            deadlineMin={deadlineMin}
-            onDeadline={setDeadlineMin}
-          />
+          {/* Slippage and deadline are meaningless for a 1:1 wrap — a deposit()/
+              withdraw() has no price to protect and no route to expire — so the
+              settings pill is hidden in wrap mode. */}
+          {!wrapMode && (
+            <SwapSettings
+              slippageBps={slippageBps}
+              onSlippage={setSlippageBps}
+              deadlineMin={deadlineMin}
+              onDeadline={setDeadlineMin}
+            />
+          )}
           {/* Between the settings pill and the chart toggle, which keeps the two
               ghost icon buttons together on the outside of the row. It answers
               "did that go through?" about the swaps signed on this card, so it
@@ -814,16 +896,23 @@ export default function SwapPage() {
         {rate && (
           <div className={s.quote}>
             <span className="tabular">{rate}</span>
-            {minOut && tokenOut && (
-              <span
-                className="tabular"
-                title={`The least you will receive at ${(slippageBps / 100).toFixed(2)}% max slippage`}
-              >
-                Min{" "}
-                <b>
-                  {minOut} {tokenOut.symbol}
-                </b>
+            {wrapMode ? (
+              <span title="Wrapping and unwrapping are 1:1 — no fee, no slippage, reversible any time">
+                1:1 · no fee
               </span>
+            ) : (
+              minOut &&
+              tokenOut && (
+                <span
+                  className="tabular"
+                  title={`The least you will receive at ${(slippageBps / 100).toFixed(2)}% max slippage`}
+                >
+                  Min{" "}
+                  <b>
+                    {minOut} {tokenOut.symbol}
+                  </b>
+                </span>
+              )
             )}
           </div>
         )}
