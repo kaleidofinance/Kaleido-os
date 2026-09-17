@@ -107,10 +107,18 @@ const MAX_BURN_UNITS = ethers.parseUnits("10000000", 6);
  * module builds only the source burn (see the file header). Turning corridors on
  * before the destination-mint completer exists would strand burned USDC. So this
  * is a code constant, not an env flag: identical in the browser and on the
- * server, flipped in the same PR that ships the completion path, reviewed as a
- * code change. Do not set it true until `receiveMessage` completion lands.
+ * server, reviewed as a code change.
+ *
+ * LIVE since 2026-09-17. The completion path it waited on has all shipped: the
+ * attestation reader + mint builder (`cctpAttestation.ts`, `resolveCctpCompletion`),
+ * the `cctpReceive` intent (types/definitions/auditor), the per-wallet pending-burn
+ * store (`cctpPending.ts`) recorded on burn in PlanReview, and the global
+ * `CctpCompletionBanner` that resolves the attestation and drives the destination
+ * mint. So a USDC burn on an Arc corridor is completable end-to-end, and this
+ * turns the routing preference on: USDC on a CCTP corridor now burns-and-mints
+ * 1:1 instead of falling through to the aggregator.
  */
-export const CCTP_ENABLED = false;
+export const CCTP_ENABLED = true;
 
 /** Whether a chain speaks CCTP V2 in a way this app can route. */
 export function isCctpDomainChain(chainId: number | undefined): boolean {
