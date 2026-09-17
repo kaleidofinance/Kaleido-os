@@ -90,7 +90,7 @@ export default function PoolsPage() {
      deployments — the table is cross-chain, so one chain being unreadable is a
      missing block of rows, not an empty page. The read chain is named only when
      that set is empty, which is when there is genuinely nothing to enumerate. */
-  const gate = useChainGate(discoveryChainIds()[0] ?? READ_ONLY_CHAIN_ID);
+  const gate = useChainGate(discoveryChainIds()[0] ?? READ_ONLY_CHAIN_ID, "dex");
 
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<PoolFilters>(NO_FILTERS);
@@ -130,7 +130,7 @@ export default function PoolsPage() {
   };
 
   /* After both hooks, never between them. */
-  if (!gate.ready) return <ChainGate product="pool list" state={gate} />;
+  if (!gate.ready) return <ChainGate product="pool list" state={gate} requires="dex" />;
 
   return (
     <>

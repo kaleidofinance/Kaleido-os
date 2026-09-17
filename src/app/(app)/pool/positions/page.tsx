@@ -599,7 +599,7 @@ export default function PositionsPage() {
   } = useV3Positions();
   const { chainId, isConnected } = useWalletV2();
   const poolStates = usePoolStates(positions, chainId);
-  const gate = useChainGate();
+  const gate = useChainGate(undefined, "dex");
 
   // Bound to this chain so a position's raw addresses resolve against the right
   // registry — the same address means a different token on a different chain.
@@ -615,7 +615,7 @@ export default function PositionsPage() {
      registry, so it is already known, and showing a loading state for a read
      that will never happen would be a fabricated wait. */
   if (!gate.ready) {
-    return <ChainGate product="liquidity positions" state={gate} />;
+    return <ChainGate product="liquidity positions" state={gate} requires="dex" />;
   }
 
   if (loading && positions.length === 0) {

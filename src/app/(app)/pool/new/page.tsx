@@ -114,7 +114,7 @@ export default function NewPositionPage() {
   const [switchingChain, setSwitchingChain] = useState(false);
   const { mintPosition, POSITION_MANAGER_ADDRESS: positionManager } =
     useV3PositionManager();
-  const gate = useChainGate();
+  const gate = useChainGate(undefined, "dex");
 
   /*
    * The pair and tier a link asked for, matching /pool/[address]'s own `chain`
@@ -722,7 +722,7 @@ export default function NewPositionPage() {
    * tokens on every line, so it cannot render either way.
    */
   if (!gate.ready) {
-    return <ChainGate product="liquidity position" state={gate} />;
+    return <ChainGate product="liquidity position" state={gate} requires="dex" />;
   }
 
   if (!token0 || !token1) {

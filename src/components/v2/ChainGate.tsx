@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CHAINS, getChainMeta } from "@/constants/chains";
-import { isDeployed, tradableChains } from "@/constants/registry";
+import { hasSwaps, isDeployed, tradableChains } from "@/constants/registry";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useConnectWallet } from "@/hooks/v2/useChainAction";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
@@ -84,11 +84,26 @@ export type ChainGateState =
  * misconfiguration that a fixture must not paper over. Delete the two `MOCK_DATA`
  * terms below with `src/lib/mock`.
  */
-export function useChainGate(readChainId?: number): ChainGateState {
+/**
+ * What a surface needs on the chain to have something to read.
+ *
+ * "protocol" — the Diamond (`isDeployed`), for lending/stable/staking. "dex" —
+ * a v3Router (`hasSwaps`), for the pool surfaces. They diverge on Arc, which
+ * launched DEX-first: its pools are live and seeded while its Diamond is still
+ * pending, so a pool page gated on the Diamond wrongly showed "nothing here yet"
+ * and locked its buttons. Gate the pool pages on the DEX they actually use.
+ */
+export type ChainGateCapability = "protocol" | "dex";
+
+export function useChainGate(
+  readChainId?: number,
+  requires: ChainGateCapability = "protocol",
+): ChainGateState {
   const { chainId: walletChainId, isConnected } = useWalletV2();
+  const present = requires === "dex" ? hasSwaps : isDeployed;
 
   if (readChainId !== undefined) {
-    if (MOCK_DATA || isDeployed(readChainId)) return { ready: true };
+    if (MOCK_DATA || present(readChainId)) return { ready: true };
     return {
       ready: false,
       reason: "undeployed",
@@ -102,7 +117,7 @@ export function useChainGate(readChainId?: number): ChainGateState {
   const meta = getChainMeta(walletChainId);
   if (!meta) return { ready: false, reason: "unknown-chain" };
 
-  if (!MOCK_DATA && !isDeployed(walletChainId)) {
+  if (!MOCK_DATA && !present(walletChainId)) {
     return {
       ready: false,
       reason: "undeployed",
@@ -124,9 +139,11 @@ export default function ChainGate({
   /** What the page is for, phrased to fit "Your {product} will appear here". */
   product,
   state,
+  requires = "protocol",
 }: {
   product: string;
   state: Exclude<ChainGateState, { ready: true }>;
+  requires?: ChainGateCapability;
 }) {
   const [picker, setPicker] = useState(false);
   const openConnect = useConnectWallet();
@@ -141,7 +158,11 @@ export default function ChainGate({
      should not be sent there. With the toggle off, only mainnet chains are
      offered; if none carries this product yet, `live` is empty and the plain
      empty state below is shown instead of a testnet switch. */
-  const live = tradableChains(CHAINS).filter(
+  const carries =
+    requires === "dex"
+      ? CHAINS.filter((c) => c.tradable && hasSwaps(c.id))
+      : tradableChains(CHAINS);
+  const live = carries.filter(
     (c) => showTestnets || c.network === "mainnet",
   );
 
