@@ -481,62 +481,73 @@ export default function SwapPage() {
            number's clothes, which is exactly what this page used to spend as
            `amountOutMin`. */
         if (cancelled) return;
-        if (found) {
-          setRoute(found);
-          setKyberRoute(null);
-          setAmountOut(String(found.amountOut));
-          setNoRoute(false);
-        } else if (hasKyberSwap(swapChainId) && address && tokenIn && tokenOut) {
-          /* Our own pools returned nothing, but this chain routes through
-             KyberSwap — the same fallback Luca uses. Quote it through
-             /api/swap/quote (fee + key stay server-side).
 
-             From the RAW selected tokens, not `sell`/`buy`: poolSide already
-             swaps native into our OWN wrapped-native (0x8c6c) for our pools,
-             which the aggregator has never heard of. The aggregator wants the
-             native's ERC20 MIRROR (Arc USDC -> 0x3600), which aggregatorToken
-             returns from the user's token — the same substitution the agent
-             makes. Wrong wrapper here was the "no quote": KyberSwap can't route
-             0x8c6c.
+        /* Best execution, not "our pool if it fills at all". Our Arc pools are
+           seed-shallow, so a trade larger than their depth is almost pure price
+           impact — 12k USDC through a ~$20 pool returns a handful of EURC, not a
+           fair quote. So we ALSO quote the aggregator and route to whichever
+           gives the user MORE output: small trades keep flowing through our pool
+           (and our fee), and a trade big enough to move our pool falls to
+           KyberSwap's deep Uniswap V4 liquidity automatically — no slippage
+           threshold to tune, the output comparison is the guard.
 
-             The quote requires the CONNECTED `address`: KyberSwap's
-             /route/build bakes it into the calldata as BOTH sender and
-             recipient, and the router reverts with "sender != recipient" if the
-             signer differs. A placeholder recipient (used while disconnected)
-             leaks into an executable route the user then signs — the swap
-             fails. So gate on `address`: a disconnected visitor sees "Connect
-             wallet", not a route that can't be executed. */
-          const sellTok = aggregatorToken(swapChainId, tokenIn);
-          const buyTok = aggregatorToken(swapChainId, tokenOut);
-          const units = ethers.parseUnits(amountIn, sellTok.decimals).toString();
-          const exec = await getKyberSwapExecution({
+           The aggregator is quoted from the RAW selected tokens, not `sell`/
+           `buy`: poolSide already swapped native into our OWN wrapped-native
+           (0x8c6c), which the aggregator has never heard of. `aggregatorToken`
+           maps the user's token to the native's ERC20 MIRROR (Arc USDC ->
+           0x3600) instead. It needs the CONNECTED `address` because KyberSwap's
+           /route/build bakes sender==recipient into the calldata; a disconnected
+           visitor keeps the pool quote and a "Connect wallet" CTA. */
+        let kyberExec: Awaited<ReturnType<typeof getKyberSwapExecution>> = null;
+        let kyberSell: ReturnType<typeof aggregatorToken> | null = null;
+        let kyberBuy: ReturnType<typeof aggregatorToken> | null = null;
+        if (hasKyberSwap(swapChainId) && address && tokenIn && tokenOut) {
+          kyberSell = aggregatorToken(swapChainId, tokenIn);
+          kyberBuy = aggregatorToken(swapChainId, tokenOut);
+          const units = ethers
+            .parseUnits(amountIn, kyberSell.decimals)
+            .toString();
+          kyberExec = await getKyberSwapExecution({
             chainId: swapChainId,
-            tokenIn: sellTok.address,
-            tokenOut: buyTok.address,
+            tokenIn: kyberSell.address,
+            tokenOut: kyberBuy.address,
             amountUnits: units,
             address,
             slippageBps,
           });
-          if (cancelled) return;
-          if (exec) {
-            setRoute(null);
-            setKyberRoute({
-              to: exec.to,
-              data: exec.data,
-              spender: exec.spender,
-              sellAddr: sellTok.address,
-              sellDec: sellTok.decimals,
-              buyAddr: buyTok.address,
-              buyDec: buyTok.decimals,
-            });
-            setAmountOut(ethers.formatUnits(exec.amountOut, buyTok.decimals));
-            setNoRoute(false);
-          } else {
-            setRoute(null);
-            setKyberRoute(null);
-            setAmountOut("");
-            setNoRoute(true);
-          }
+        }
+        if (cancelled) return;
+
+        /* Both sides output the same underlying asset (a non-native token is
+           itself either way; native USDC is 0x8c6c 18-dec for our pool vs 0x3600
+           6-dec for the aggregator — both $1), so the human amounts compare
+           directly. -1 means "no quote from this source". Ties go to our pool. */
+        const ourOut = found ? Number(found.amountOut) : -1;
+        const kyberOut =
+          kyberExec && kyberBuy
+            ? Number(ethers.formatUnits(kyberExec.amountOut, kyberBuy.decimals))
+            : -1;
+
+        if (found && ourOut >= kyberOut) {
+          setRoute(found);
+          setKyberRoute(null);
+          setAmountOut(String(found.amountOut));
+          setNoRoute(false);
+        } else if (kyberExec && kyberSell && kyberBuy) {
+          setRoute(null);
+          setKyberRoute({
+            to: kyberExec.to,
+            data: kyberExec.data,
+            spender: kyberExec.spender,
+            sellAddr: kyberSell.address,
+            sellDec: kyberSell.decimals,
+            buyAddr: kyberBuy.address,
+            buyDec: kyberBuy.decimals,
+          });
+          setAmountOut(
+            ethers.formatUnits(kyberExec.amountOut, kyberBuy.decimals),
+          );
+          setNoRoute(false);
         } else {
           setRoute(null);
           setKyberRoute(null);
