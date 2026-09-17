@@ -832,6 +832,23 @@ export default function AgentPage() {
       }
 
       const parsed = parseCommand(content, vocabulary);
+      /* A referential sentence that names the last plan's own verb — "do the
+         same swap once again", "swap again", "repeat that swap" — parses as a
+         Draft with an empty slot: the grammar reads the verb and finds no
+         token. Asking "which token do you want to spend?" there is the wrong
+         question about a sentence that said exactly what it wants. So before
+         accepting the ask, the follow-up reader gets the sentence against the
+         carried command: with the verb agreeing it is a repeat (plus whatever
+         the sentence changes) and resolves; otherwise the ask stands. */
+      if (parsed.status === "incomplete" && carriedCommand) {
+        const repeated = parseFollowUp(content, vocabulary, carriedCommand);
+        if (repeated.status === "ok") {
+          note("Read it as a repeat of the last plan");
+          log(`command:${repeated.command.kind}`);
+          await planLocally(repeated, abort.signal);
+          return;
+        }
+      }
       if (parsed.status !== "unknown") {
         note("Read it as a direct command — no reasoning request needed");
         log(parsed.status === "ok" ? `command:${parsed.command.kind}` : `asks:${parsed.missing}`);

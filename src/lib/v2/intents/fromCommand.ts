@@ -2578,7 +2578,13 @@ function parseBridge(
  * 1. A SENTENCE WITH ITS OWN VERB IS NOT A FOLLOW-UP. "now stake it" is a fresh
  *    instruction and belongs to the grammar; reading it as a modified swap
  *    would keep the previous verb and quietly change the action. Declined here,
- *    and the caller has already tried the parser anyway.
+ *    and the caller has already tried the parser anyway. ONE EXCEPTION: the
+ *    verb is the carried command's OWN, inside a repeat cue — "do the same swap
+ *    once again", "swap again", "repeat that swap". The grammar reads that verb,
+ *    finds no token and would ask "which token do you want to spend?" — a
+ *    generic question about a sentence that named exactly what it wants. With
+ *    the verb agreeing nothing is re-pointed, so it is read as a repeat, plus
+ *    whatever the sentence changes. See REPEAT_CUE.
  *
  * 2. DIRECTION IS READ, NEVER ASSUMED. This is the same trap `buy` set (see
  *    BUY_WORDS): for a swap, a lone token could plausibly mean either side, and
@@ -2601,7 +2607,19 @@ function parseBridge(
  * `detectRecipient` requires a literal address, so "send it to Bob" cannot
  * resolve to anybody. Changing who gets paid is not a thing to infer.
  */
-const SAME_PHRASES = ["same", "the same", "same amount", "same size", "again"];
+/**
+ * Words that point back at the previous action instead of naming a new one:
+ * "again", "once more", "the same", "same swap", "repeat that", "redo".
+ *
+ * Matching one is what makes a sentence a follow-up under rule 3 when it
+ * substitutes nothing else ("again" carries everything), and — with the verb
+ * agreeing — what lets rule 1 admit "do the same swap once again". Number
+ * words are safe inside these: parseAmount reads digits only, so "one more
+ * time" can never become an amount of 1.
+ */
+const REPEAT_CUE =
+  /\b(again|once more|one more time|repeat|redo|re-?run|(the )?same( (one|thing|action|amount|size|swap|trade|bridge|send|transfer|stake|unstake|borrow|lend|order))?|like (before|last time)|as (before|last time))\b/;
+const isRepeatCue = (lower: string): boolean => REPEAT_CUE.test(lower);
 
 export function parseFollowUp(
   text: string,
@@ -2617,7 +2635,14 @@ export function parseFollowUp(
   if (MODEL_ONLY.test(lower)) return { status: "unknown" };
 
   const words = normalise(raw);
-  if (detectVerb(words, { hasRef: detectRef(words) !== null })) {
+  /* Rule 1, with its one exception. A verb makes this a fresh command — unless
+     it is the carried command's OWN verb inside a repeat cue: "do the same swap
+     once again", "swap again", "repeat that swap". The verb agrees, so nothing
+     is being re-pointed; the sentence refers to the last plan and is read as
+     one, plus whatever it changes. "now stake it" after a swap still refuses,
+     and so does "same bridge again" — a different verb is a different action. */
+  const verb = detectVerb(words, { hasRef: detectRef(words) !== null });
+  if (verb && !(verb.kind === last.kind && isRepeatCue(lower))) {
     return { status: "unknown" };
   }
 
@@ -2631,7 +2656,7 @@ export function parseFollowUp(
   if (amount) {
     next.amount = amount.amount;
     named = true;
-  } else if (SAME_PHRASES.some((s) => lower === s || lower.includes(s))) {
+  } else if (isRepeatCue(lower)) {
     /* Rule 4: nothing to copy — the amount is already in the draft. This only
        records that the sentence said something, so it is not refused as empty. */
     named = true;
