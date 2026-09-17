@@ -88,7 +88,7 @@ function startOfUtcDay(at: Date): string {
   ).toISOString();
 }
 
-async function loadRate(
+export async function loadRate(
   source: string,
   season: number,
 ): Promise<SourceRate | null> {
@@ -119,7 +119,7 @@ async function loadRate(
  * The largest multiplier wins when windows overlap, rather than stacking, so two
  * campaigns can never silently compound into a runaway rate.
  */
-async function loadCampaignMultiplier(
+export async function loadCampaignMultiplier(
   source: string,
   season: number,
   occurredAt: string,
