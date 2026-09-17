@@ -404,16 +404,13 @@ export default function FaucetPage() {
           <header className={s.head}>
             <h1 className={s.h1}>Test tokens</h1>
             <p className={s.lede}>
-              Kaleido is on mainnet now, so the testnet faucet is wound down.
-              Nothing here has been removed — turn testnet networks back on to
-              claim test assets and keep exploring.
+              Testnet faucet is off on mainnet. Turn testnets on to claim.
             </p>
           </header>
           <div className={s.panel}>
             <div className={s.panelTitle}>Testnets are wound down</div>
             <p className={s.panelBody}>
-              The faucet only hands out testnet assets. Switch testnet networks
-              back on to reach it.
+              Testnet assets only — switch testnets on to reach it.
             </p>
             <button
               className={s.panelCta}
@@ -433,9 +430,7 @@ export default function FaucetPage() {
         <header className={s.head}>
           <h1 className={s.h1}>Test tokens</h1>
           <p className={s.lede}>
-            Claim the test assets Kaleido runs on {chainName}. Use them anywhere
-            in the app — swap them, post them as collateral, mint kfUSD against
-            them.
+            Test tokens for {chainName} — use them anywhere in the app.
           </p>
         </header>
 
@@ -692,36 +687,22 @@ export default function FaucetPage() {
                       it is asserted while the list is still loading. */}
                   <p className={s.gasBody}>
                     {!rowKnown ? (
-                      <>
-                        Claiming is a transaction, so it costs a fee. A wallet at
-                        exactly zero has to get its first {gasName} from outside
-                        the app before it can claim anything here.
-                      </>
+                      <>Claiming costs gas. Get {gasName} elsewhere first.</>
                     ) : gasRow ? (
                       <>
-                        Claiming is a transaction, so it costs a fee, and{" "}
-                        {gasRow.asset
-                          ? `the ${gasName} row above is out of stock`
-                          : `this faucet cannot stock ${gasName} — there is no ${gasName} row above`}
-                        . That row&rsquo;s Claim button goes to{" "}
-                        {gasRow.link.operator}&rsquo;s faucet instead; get{" "}
-                        {gasName} there first, then come back and claim the rest
-                        here.
+                        Claiming costs gas. Get {gasName} at{" "}
+                        {gasRow.link.operator}&rsquo;s faucet first.
                       </>
                     ) : hasNativeRow ? (
                       <>
-                        Claiming is a transaction, so it costs a fee. A wallet at
-                        exactly zero has to get its first {gasName} from outside
-                        the app — after that, the {gasName} row above tops you
-                        up.
+                        Claiming costs gas. Get your first {gasName} elsewhere;
+                        the {gasName} row tops you up after.
                       </>
                     ) : (
                       <>
-                        Claiming is a transaction, so it costs a fee, and this
-                        faucet stocks tokens only — there is no {gasName} row
-                        above. Get {gasName} from{" "}
+                        Claiming costs gas. Get {gasName} from{" "}
                         {leadLink ? `${leadLink.operator}'s faucet` : "elsewhere"}{" "}
-                        first, then come back and claim the tokens here.
+                        first.
                       </>
                     )}
                   </p>

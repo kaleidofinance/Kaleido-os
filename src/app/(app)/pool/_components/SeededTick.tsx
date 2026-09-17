@@ -46,7 +46,7 @@ export default function SeededTick({ label = false }: { label?: boolean }) {
   return (
     <span
       className={s.seededTick}
-      title="Opened and funded by the Kaleido deployer at an oracle price. Not a claim about this pool's price or depth today."
+      title="Seeded by the Kaleido deployer at an oracle price."
     >
       <svg
         width="13"

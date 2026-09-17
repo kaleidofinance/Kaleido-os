@@ -185,16 +185,14 @@ export default function PoolDetailPage() {
                  depends on how that is distributed across ticks, which this page
                  does not read. */
               <div className={s.chartEmpty}>
-                V3 liquidity is spread across tick ranges, so a single curve
-                cannot describe this pool&apos;s trade cost.
+                No single depth curve for a V3 pool.
               </div>
             ) : (
               /* Cost is fee plus curve, so without the fee there is no cost to
                  plot. The curve alone would understate every size by the fee,
                  which is the one direction a trader must not be misled in. */
               <div className={s.chartEmpty}>
-                This pair does not report a swap fee, so its trade cost cannot
-                be computed.
+                No swap fee reported — trade cost unavailable.
               </div>
             )}
           </div>
