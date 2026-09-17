@@ -52,6 +52,49 @@ export function hasKyberSwap(chainId: number): boolean {
 }
 
 /**
+ * A quote only — the aggregator's `amountOut` for a pair, no calldata built.
+ *
+ * For the read side (getSwapRoute): "is this tradable, and at what rate" on a
+ * chain whose liquidity our own quoter cannot see. It is the same /routes call
+ * resolveKyberSwap starts with, with the same fee parameters, so the rate this
+ * reports is the rate a plan would be built from. `fetchImpl` is a test seam.
+ * Returns null on any failure — the caller then says "no route", never guesses.
+ */
+export async function quoteKyberSwap(args: {
+  chainId: number;
+  tokenIn: string;
+  tokenOut: string;
+  amountUnits: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{ amountOut: string } | null> {
+  const slug = KYBERSWAP_CHAIN_SLUG[args.chainId];
+  if (!slug) return null;
+  const doFetch = args.fetchImpl ?? fetch;
+  try {
+    const qs = new URLSearchParams({
+      tokenIn: args.tokenIn,
+      tokenOut: args.tokenOut,
+      amountIn: args.amountUnits,
+      ...kyberFeeParams(),
+    });
+    const res = await doFetch(`${KYBER_API}/${slug}/api/v1/routes?${qs}`, {
+      headers: { "x-client-id": kyberClientId() },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      data?: { routeSummary?: { amountOut?: unknown } };
+    };
+    const out = json.data?.routeSummary?.amountOut;
+    return typeof out === "string" && /^\d+$/.test(out) && out !== "0"
+      ? { amountOut: out }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The ERC20 an aggregator trades for a token whose own form it cannot pull.
  *
  * Arc's native gas token IS USDC, so "USDC" resolves to the native sentinel —

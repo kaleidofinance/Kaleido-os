@@ -904,7 +904,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
      * KLD/USDC is the best-filled pair on two chains.
      */
     description:
-      "Whether a swap can be routed on Kaleido's DEX right now, at what rate, and through which pools — without proposing anything. Use this for any question about whether a pair is tradable, what an amount would get, or how a route goes; and before telling a user a pair is unsupported, because the router finds two-hop routes and most pairs here have no direct pool. Amount is optional: without it you get an indicative rate at one unit, with it you get that size's real fill. Either side may be the chain's own currency. This is a live pool quote and not a floor — the minimum output is set from the user's slippage setting when the swap is actually built.",
+      "Whether a swap can be routed right now — on Kaleido's DEX, or where a chain has one, through the KyberSwap aggregator — at what rate, and through which pools — without proposing anything. Use this for any question about whether a pair is tradable, what an amount would get, or how a route goes; and before telling a user a pair is unsupported, because the router finds two-hop routes and most pairs here have no direct pool. Amount is optional: without it you get an indicative rate at one unit, with it you get that size's real fill. Either side may be the chain's own currency. This is a live pool quote and not a floor — the minimum output is set from the user's slippage setting when the swap is actually built.",
     parameters: {
       type: "object",
       additionalProperties: false,
