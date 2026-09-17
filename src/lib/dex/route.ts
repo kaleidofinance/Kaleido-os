@@ -519,7 +519,10 @@ export async function findRouteAcrossSources(
 export function describeRoute(path: SwapPath): string {
   const symbols = [path.hops[0].symbolIn, ...path.hops.map((h) => h.symbolOut)];
   const tiers = path.fees.map((f) => `${String(Number((f / 10_000).toFixed(4)))}%`);
+  /* Terse: the two tokens are already named in the Sell/Buy fields, so a single
+     hop only needs its fee tier. A multi-hop names the path, since the token it
+     routes through is the one piece the fields don't show. */
   return path.hops.length === 1
-    ? `${symbols.join(" → ")} through the ${tiers[0]} pool`
-    : `${symbols.join(" → ")} through the ${tiers.join(" and ")} pools`;
+    ? `${tiers[0]} pool`
+    : `${symbols.join(" → ")} · ${tiers.join(" + ")}`;
 }

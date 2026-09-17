@@ -217,8 +217,7 @@ const FAUCET_ABI = [
 register("approve", {
   render: (i) => ({
     title: `Approve ${i.symbol}`,
-    detail:
-      "Lets the contract move this token on your behalf. One-time per token.",
+    detail: "One-time approval.",
   }),
   resolve: async (ctx, i) => {
     const token = new ethers.Contract(i.token, ERC20_ABI, ctx.signer);
@@ -239,7 +238,7 @@ register("approve", {
 register("swap", {
   render: (i) => ({
     title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
-    detail: `Minimum received ${i.amountOutMin} ${i.symbolOut} at the set slippage.`,
+    detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
     // `i.spender` is the V3 router for the chain this intent was built on
@@ -285,7 +284,7 @@ register("swapMultiHop", {
     /* The route is the whole reason this kind exists, so it leads the detail
        line: the user is being asked to sign a transaction that touches a token
        they never named, and the confirmation is the only place that says so. */
-    detail: `Through ${[i.hops[0].symbolIn, ...i.hops.map((h) => h.symbolOut)].join(" → ")}. Minimum received ${i.amountOutMin} ${i.symbolOut} at the set slippage.`,
+    detail: `Through ${[i.hops[0].symbolIn, ...i.hops.map((h) => h.symbolOut)].join(" → ")}. At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
     const router = new ethers.Contract(i.spender, V3_ROUTER_ABI, ctx.signer);
@@ -561,7 +560,7 @@ const WRAPPED_NATIVE_ABI = [
 register("wrapNative", {
   render: (i) => ({
     title: `Wrap ${i.amount} ${i.symbol} into ${i.wrappedSymbol}`,
-    detail: `Deposits ${i.amount} ${i.symbol} into ${i.wrappedSymbol} at 1:1. Reversible any time by unwrapping; no approval needed.`,
+    detail: "1:1, no fee.",
   }),
   resolve: async (ctx, i) => {
     const data = new ethers.Interface(WRAPPED_NATIVE_ABI).encodeFunctionData(
@@ -581,7 +580,7 @@ register("wrapNative", {
 register("unwrapNative", {
   render: (i) => ({
     title: `Unwrap ${i.amount} ${i.symbol} into ${i.nativeSymbol}`,
-    detail: `Withdraws ${i.amount} ${i.symbol} back to ${i.nativeSymbol} at 1:1. No approval needed — it burns your own ${i.symbol}.`,
+    detail: "1:1, no fee.",
   }),
   resolve: async (ctx, i) => {
     const data = new ethers.Interface(WRAPPED_NATIVE_ABI).encodeFunctionData(

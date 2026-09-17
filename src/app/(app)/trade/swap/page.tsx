@@ -1068,8 +1068,7 @@ export default function SwapPage() {
             as a warning. */}
         {route && (
           <div className={s.quote}>
-            <span title="The pools this swap is quoted through, in order">
-              {route.hops.length > 1 ? "Route " : "Pool "}
+            <span title="The pool this swap routes through">
               <b>{describeRoute(route)}</b>
               {/* Named only for a fallback venue — our own pools are the default
                   and need no label. "via Uniswap V3" tells the user this token
