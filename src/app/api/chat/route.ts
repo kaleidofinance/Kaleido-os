@@ -25,6 +25,7 @@ import {
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
 import { splitCards, splitReasoning } from "@/lib/ai/actionsBlock";
+import { simulatePlan, rpcCallFor } from "@/lib/ai/simulatePlan";
 import { logAgentTurn } from "@/lib/ai/turnLog";
 import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
@@ -454,6 +455,59 @@ export async function POST(request: NextRequest) {
           ? `\n\n---\n\nI couldn't prepare some of that:\n${built.errors.map((e) => `• ${e}`).join("\n")}`
           : "";
 
+        /*
+         * Simulate the built plan against the current block before offering it as
+         * signable — the propose-time counterpart to the sign-time preflight
+         * (withPreflight). It fakes each approve into the step it authorises and
+         * eth_calls the plan, so a first-time swap whose floor the market has moved
+         * past is called out here rather than at the wallet.
+         *
+         * Only when the auditor PASSED a plan we have a wallet to simulate from:
+         * simulating a refused or empty plan would report a revert on something the
+         * user is not being offered anyway. Bounded by a race so a slow or
+         * unreachable RPC cannot hold the turn — a timeout, like any other trouble
+         * inside simulatePlan, simply yields no warning. Surface only: a predicted
+         * revert is stated, the plan is still offered (the market may move again by
+         * signing, and the preflight re-checks each step against real state then),
+         * and anything short of a decoded, honoured revert says nothing.
+         */
+        let simNote = "";
+        if (
+          verdict.ok &&
+          built.plan.length > 0 &&
+          meterAddress &&
+          chainId !== undefined
+        ) {
+          const rpc = rpcCallFor(chainId);
+          if (rpc) {
+            try {
+              const sim = await Promise.race([
+                /* `built.plan` is PlanStep[] — the loose server shape of the very
+                   objects the client reads back as Intent[] via intentsFromChat, so
+                   the cast is the same identity the wire already relies on. */
+                simulatePlan(
+                  built.plan as unknown as Parameters<typeof simulatePlan>[0],
+                  chainId,
+                  meterAddress,
+                  rpc,
+                ),
+                new Promise<null>((r) => setTimeout(() => r(null), 5000)),
+              ]);
+              if (sim && !sim.ok && sim.firstFailure) {
+                const f = sim.firstFailure;
+                const where =
+                  built.plan.length > 1 ? `step ${f.index + 1}` : "this";
+                simNote =
+                  `\n\n---\n\nI simulated it against the chain as it stands and ${where} looks like it would revert` +
+                  (f.reason ? ` — ${f.reason}` : "") +
+                  `. The market may move again before you sign, so I've still prepared it and I re-check each step at signing; or ask me to rebuild it.`;
+              }
+            } catch {
+              /* Fail open — a simulation that throws is no reason to hold a plan. */
+            }
+          }
+        }
+
         /* The record of a turn that ran. `refused` is a turn the model answered
            and the auditor then dropped its plan — a different fact from a clean
            answer, and one worth being able to count. failed_over is the outage
@@ -477,7 +531,7 @@ export async function POST(request: NextRequest) {
 
         return {
           response: verdict.ok
-            ? `${reply.text}${buildNotes}`
+            ? `${reply.text}${buildNotes}${simNote}`
             : /* The model's own words, then the refusal. Dropping the prose
                  would hide the analysis the user paid a request for. */
               `${reply.text}${buildNotes}\n\n---\n\n${refusalText(verdict)}`,
