@@ -15,6 +15,7 @@ import {
 } from "@/constants/registry";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import { resolveChain } from "@/lib/ai/bridgeQuotes";
+import { CCTP_ENABLED, CCTP_USDC, isCctpCorridor } from "@/lib/bridge/cctp";
 import { symbolForAddress } from "@/constants/tokens";
 import {
   FEE_TIERS,
@@ -1693,6 +1694,29 @@ export async function buildIntents(
         sourceChainId = src.id;
         srcToken = onSource;
       }
+    }
+
+    /* Arc's USDC IS its native gas token, so `resolveUserToken` hands back the
+       18-decimal native sentinel. CCTP cannot burn that — it burns the 6-decimal
+       ERC20 face of the very same balance (the 0x3600 predeploy on Arc, the
+       `native-alias`). Left as the sentinel, the bridge branch below would take
+       the native path (no approve, a value-bearing tx) and the resolver's CCTP
+       leg would refuse a native-flagged USDC, dropping the most important
+       corridor — USDC out of Arc — through to an aggregator that does not carry
+       it. So on a genuine CCTP corridor, re-point the source asset at that ERC20
+       alias: the plan then approves and burns the token, at 6 decimals, exactly
+       what `buildCctpBurnRoute` expects. Scoped to a live CCTP corridor for USDC
+       so no other route's token choice changes, and inert while the flag is off. */
+    const cctpBurnAlias = CCTP_USDC[sourceChainId];
+    if (
+      CCTP_ENABLED &&
+      srcToken.symbol.toUpperCase() === "USDC" &&
+      cctpBurnAlias &&
+      (isNativeSentinel(srcToken.address, "dex") ||
+        isNativeSentinel(srcToken.address, "lending")) &&
+      isCctpCorridor(sourceChainId, resolveChain(toChain)?.id)
+    ) {
+      srcToken = { address: cctpBurnAlias, symbol: "USDC", decimals: 6 };
     }
 
     if (!isParsableAmount(amount, srcToken.decimals)) {
