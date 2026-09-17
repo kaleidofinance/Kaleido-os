@@ -1676,6 +1676,25 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   if (order) return order;
 
   if (MODEL_ONLY.test(lower)) return { status: "unknown" };
+
+  /*
+   * A question about WHERE, or on WHICH venue, a token trades is a read for the
+   * model — not a swap. But "trade" is a swap verb, so "where does EURC trade"
+   * and "where can I trade EURC" were caught by parseSwap and answered with a
+   * clarifying question ("which token to spend?") instead of the venue answer
+   * the user asked for. Decline the question shape to the model before verb
+   * detection runs. It needs "where"/"which venue" AND a trading word, so a real
+   * command ("trade EURC for USDC") — which has neither — is untouched.
+   */
+  if (
+    /\bwhere\b[\s\S]*\b(trade|traded|trades|trading|swap|swapped|swaps|buy|bought|sell|sold|list|listed)\b/i.test(
+      lower,
+    ) ||
+    /\bwhich (dex|chain|network|venue|exchange|pool|market|pair)\b/i.test(lower)
+  ) {
+    return { status: "unknown" };
+  }
+
   if (
     RECEIVE_PHRASES.some(
       (p) => lower === p || lower.startsWith(`${p} `) || lower === `${p}?`,
