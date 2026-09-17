@@ -39,6 +39,8 @@ async function main() {
     ESCALATE,
     NORMALIZER_MODELS,
     getNormalizerProvider,
+    getNormalizerProviders,
+    productFacts,
     isEscalation,
     normalizerAddendum,
     PRODUCT_STATE,
@@ -99,6 +101,25 @@ async function main() {
   delete process.env.AI_GATEWAY_API_KEY;
   check("only an expensive default configured → null, never the default", getNormalizerProvider() === null, getNormalizerProvider()?.model);
   delete process.env.AGENTROUTER_API_KEY;
+
+  console.log("\n— every cheap provider, in order —");
+  process.env.GEMINI_API_KEY = "test";
+  process.env.AI_GATEWAY_API_KEY = "test";
+  const both = getNormalizerProviders().map((p) => p.model);
+  check("both keys → both cheap models, Gemini first", both.join(",") === NORMALIZER_MODELS.join(","), both.join(","));
+  process.env.NORMALIZER_MODEL = "openai/gpt-5-mini";
+  const overridden = getNormalizerProviders().map((p) => p.model);
+  check("the override goes first and is not duplicated", overridden.join(",") === "openai/gpt-5-mini,gemini-flash-latest", overridden.join(","));
+  delete process.env.NORMALIZER_MODEL;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.AI_GATEWAY_API_KEY;
+  check("no keys → an empty list (the tier is skipped)", getNormalizerProviders().length === 0);
+
+  console.log("\n— the product facts for the full model —");
+  const facts = productFacts();
+  check("carries every product-state line", PRODUCT_STATE.every((l) => facts.includes(l)));
+  check("tells the full model never to recommend another protocol", facts.includes("never recommend another protocol"));
+  check("but none of the quick-read rules", !facts.includes("QUICK-READ MODE") && !facts.includes("ESCALATE"));
 
   console.log("\n— single-shot —");
   const seen: ChatInput[] = [];

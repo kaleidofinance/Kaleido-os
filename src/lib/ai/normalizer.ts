@@ -45,15 +45,30 @@ export const NORMALIZER_MODELS = [
  * behind it, and the default may be the expensive model. So a provider is
  * accepted only when it is actually the model asked for.
  */
-export function getNormalizerProvider(): ChatProvider | null {
+export function getNormalizerProviders(): ChatProvider[] {
   const wanted = [process.env.NORMALIZER_MODEL, ...NORMALIZER_MODELS].filter(
     (m): m is string => typeof m === "string" && m.length > 0,
   );
+  const out: ChatProvider[] = [];
+  const seen = new Set<string>();
   for (const id of wanted) {
+    if (seen.has(id)) continue;
+    seen.add(id);
     const p = getProvider(id);
-    if (p && p.model === id) return p;
+    if (p && p.model === id) out.push(p);
   }
-  return null;
+  return out;
+}
+
+/**
+ * The first configured cheap provider, or null. The route tries EVERY one in
+ * order (getNormalizerProviders) before giving the turn to the full model,
+ * because a cheap model's 503 — "high demand", measured on Gemini Flash
+ * 2026-09-17 for every action sentence in a row — is the commonest way this
+ * tier fails, and the expensive model is the wrong fallback for a transient.
+ */
+export function getNormalizerProvider(): ChatProvider | null {
+  return getNormalizerProviders()[0] ?? null;
 }
 
 export const ESCALATE = "ESCALATE";
@@ -130,5 +145,21 @@ export function normalizerAddendum(opts: { chainId?: number }): string {
     `2. If doing it right needs something you cannot see — a balance ('all my X', 'half', a percentage), a live price, rate, TVL or market figure, more than one step, or a judgement ('best yield', 'what should I do', 'is it worth it') — reply with exactly the word ${ESCALATE} and nothing else.`,
     "3. If the message is a QUESTION, answer it yourself, briefly, in Luca's voice, from the facts above and any reference you were given. You have read the reference so the user does not have to: never tell them to read the docs, never give a path or a link, never say 'see the documentation'. If neither the facts nor the reference answer it, reply with exactly the word ESCALATE.",
     "4. Never call a read tool in this mode. Never mention this mode, tools, models or escalation to the user.",
+  ].join("\n");
+}
+
+/**
+ * The product facts alone, for the FULL model's turn.
+ *
+ * The quick-read rules and the dialect glossary are the normalizer's; the
+ * facts are everyone's. A reasoning model that does not know KLD is unlaunched,
+ * or that the lending book is not on Arc, invents a product that is not there
+ * or reaches outside — measured 2026-09-17: asked what to do with idle USDC,
+ * the full model recommended Aave and Compound. Appended to every full turn.
+ */
+export function productFacts(): string {
+  return [
+    "What Kaleido is today. State these as fact, and answer about Kaleido's own products — never recommend another protocol, exchange or venue:",
+    ...PRODUCT_STATE.map((l) => `- ${l}`),
   ].join("\n");
 }
