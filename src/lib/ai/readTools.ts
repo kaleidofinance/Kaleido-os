@@ -2,6 +2,8 @@ import { ethers } from "ethers";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import {
   getContracts,
+  hasSwaps,
+  isNativeSentinel,
   resolveUserToken,
   stakingContracts,
   stableContracts,
@@ -46,6 +48,11 @@ import {
   poolSide,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
+import {
+  aggregatorToken,
+  hasKyberSwap,
+  quoteKyberSwap,
+} from "@/lib/swap/kyberswap";
 import { serverPathQuoter, serverQuote, serverPositions } from "./planDeps";
 import { readPoolState } from "@/lib/dex/pool";
 import { getBridgeQuote } from "./bridgeQuotes";
@@ -186,6 +193,26 @@ async function getPortfolio(args: Json, chainId: number): Promise<Json> {
   const address = String(args.address ?? "");
   if (!ethers.isAddress(address))
     return { error: "A valid wallet address is required" };
+
+  /* A chain we know that has no lending Diamond — Arc mainnet launched
+     DEX-first — is not an error to relay: it is "lending isn't here", said the
+     way getStaking and getVault say it, so the model tells the user which
+     products ARE on this chain instead of reporting a failure. (Measured: on
+     Arc this returned a bare error, and the full model answered a slippage
+     question with "that check failed".) Holdings stay readable via getBalances. */
+  const chainMeta = getChainMeta(chainId);
+  if (chainMeta && !getContracts(chainId).diamond) {
+    const here = chainMeta.shortName;
+    const products = hasSwaps(chainId)
+      ? `Swaps and bridging are available on ${here}; `
+      : "";
+    return {
+      chainId,
+      chain: here,
+      supported: false,
+      note: `Kaleido's lending book isn't deployed on ${here} yet, so there is no collateral or health factor to report — say lending isn't available here rather than reporting an error. ${products}wallet holdings are readable with getBalances.`,
+    };
+  }
 
   const { contract, error } = protocolOn(chainId);
   if (!contract) return { error };
@@ -1083,6 +1110,62 @@ async function getBridgeRoute(args: Json): Promise<Json> {
 }
 
 /**
+ * The aggregator's answer for a pair our own quoter cannot route, or null.
+ *
+ * Our quoter sees Kaleido's pools and the recorded venues — not an aggregator.
+ * On Arc, whose liquidity is Uniswap V3/V4 our fork cannot read, that made
+ * getSwapRoute say "not tradable" for pairs the swap action routes through
+ * KyberSwap every day: the read and the plan disagreed, and the user was told a
+ * token could not be bought when it could. Same token mapping as the plan
+ * (native USDC → its ERC20 mirror), same /routes call, same fee parameters.
+ */
+async function aggregatorQuote(
+  chainId: number,
+  inEntry: Parameters<typeof toIToken>[0],
+  outEntry: Parameters<typeof toIToken>[0],
+  amount: string,
+): Promise<Json | null> {
+  if (!hasKyberSwap(chainId)) return null;
+  const inI = toIToken(inEntry);
+  const outI = toIToken(outEntry);
+  const inTok = aggregatorToken(chainId, {
+    ...inI,
+    isNative: isNativeSentinel(inI.address, "dex"),
+  });
+  const outTok = aggregatorToken(chainId, {
+    ...outI,
+    isNative: isNativeSentinel(outI.address, "dex"),
+  });
+  // A native input with no ERC20 mirror cannot be approved; the plan bails too.
+  if (inTok.isNative) return null;
+  let units: string;
+  try {
+    units = ethers.parseUnits(amount, inTok.decimals).toString();
+  } catch {
+    return null;
+  }
+  const q = await quoteKyberSwap({
+    chainId,
+    tokenIn: inTok.address,
+    tokenOut: outTok.address,
+    amountUnits: units,
+  });
+  if (!q) return null;
+  const out = Number(ethers.formatUnits(q.amountOut, outTok.decimals));
+  const rate = out / Number(amount);
+  return {
+    routable: true,
+    via: "aggregator",
+    tokenIn: inTok.symbol,
+    tokenOut: outTok.symbol,
+    amountIn: amount,
+    amountOut: out,
+    rate: `1 ${inTok.symbol} ≈ ${Number(rate.toPrecision(6))} ${outTok.symbol}`,
+    note: "Routed through the KyberSwap aggregator across this chain's DEXes rather than a Kaleido pool — the swap action builds exactly this route. Indicative, not a floor: the minimum is set from the user's slippage at build time.",
+  };
+}
+
+/**
  * Whether a swap can be routed, and through what — without proposing it.
  *
  * WHY THIS TOOL HAD TO EXIST. Nothing in the catalog could answer "can I get KLD
@@ -1187,7 +1270,9 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
       { maxIntermediates: 2 },
     );
 
-    if (!path)
+    if (!path) {
+      const aggregator = await aggregatorQuote(chainId, inEntry, outEntry, amount);
+      if (aggregator) return aggregator;
       return {
         routable: false,
         tokenIn: sell.token.symbol,
@@ -1196,6 +1281,7 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
         triedVia: intermediateTokens(chainId).map((t) => t.symbol),
         note: "No pool at any tier and no two-hop route either. Report which tiers and intermediates were tried — a bare 'not supported' reads as a missing feature when it is missing liquidity.",
       };
+    }
 
     const rate = path.amountOut / Number(amount);
     return {
