@@ -830,6 +830,17 @@ const PORTFOLIO_PHRASES = [
 const PORTFOLIO_POSSESSIVE =
   /\bmy\b(?:\s+[a-z]+){0,3}?\s+(?:balances?|portfolios?|positions?|holdings?|assets|funds|net\s+worth)\b/;
 
+/**
+ * "how much USDC do I have", "how much do I own", "how much eth have I got" —
+ * the balance question asked around a token name. PORTFOLIO_PHRASES carries the
+ * bare "how much do i have"; this catches the far more common version with the
+ * asset in the middle, which was reaching the model. Anchored on "i have/own/
+ * hold/got" so "how much USDC do I NEED to lend" (an action, and claimed by its
+ * verb before the read runs anyway) is never read as a balance.
+ */
+const PORTFOLIO_HOWMUCH =
+  /\bhow much\b[\s\S]*?\bi\s+(?:have|own|hold|got|'?ve\s+got)\b/;
+
 /** Whole requests that mean this and nothing else. Compared, not searched. */
 const PORTFOLIO_ALONE = [
   "balance",
@@ -877,6 +888,14 @@ const PORTFOLIO_ACTION_VETO = new Set([
      Added after PORTFOLIO_POSSESSIVE began matching "... my holdings". */
   "diversify",
 ]);
+
+/**
+ * Movement words with no verb of their own that, WITH a named chain, mean a
+ * bridge — "move 100 USDC to Base", "transfer 50 EURC to Arc". Without a chain
+ * they stay portfolio-action vetoes ("move my funds to the best yield" is a
+ * strategy the model handles); the named chain is the whole discriminator.
+ */
+const MOVE_WORDS = new Set(["move", "transfer"]);
 
 /* ------------------------------------------------------- open liquidity -- */
 
@@ -2027,6 +2046,26 @@ export function parseCommand(
   }
 
   const verb = detectVerb(words, { hasRef: Boolean(ref) });
+
+  /* "move 100 USDC to Base", "transfer 50 EURC to Arc" — a movement word with a
+     token and a named chain is a bridge. None of these is a verb of its own:
+     "move" is a portfolio-action veto word, because "move my portfolio to best
+     yield" is a strategy for the model. A named chain is exactly what tells the
+     two apart — there is nothing to reason about when the destination is spelt
+     out — so this fires only when chainDestination confirms one, and delegates
+     to parseBridge so the amount, the "from X" source and the near-miss all read
+     the same as a plain "bridge …". Without a chain it falls through and still
+     escalates. (amount/mentions computed here — the shared ones below are scoped
+     to the has-verb path this never reaches.) */
+  if (words.some((w) => MOVE_WORDS.has(w)) && chainDestination(words, ctx)) {
+    return parseBridge(
+      words,
+      detectAmount(words),
+      findTokenMentions(words, tokens),
+      tokens,
+    );
+  }
+
   if (!verb) {
     /*
      * Nothing to do, so it may be something to read. Deliberately the last thing
@@ -2039,7 +2078,8 @@ export function parseCommand(
       !words.some((w) => PORTFOLIO_ACTION_VETO.has(w)) &&
       (PORTFOLIO_ALONE.includes(bare) ||
         PORTFOLIO_PHRASES.some((p) => lower.includes(p)) ||
-        PORTFOLIO_POSSESSIVE.test(lower))
+        PORTFOLIO_POSSESSIVE.test(lower) ||
+        PORTFOLIO_HOWMUCH.test(lower))
     ) {
       return { status: "ok", command: { kind: "portfolio" } };
     }
