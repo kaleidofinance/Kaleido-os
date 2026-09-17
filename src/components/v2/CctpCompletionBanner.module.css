@@ -101,19 +101,33 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* Above the bar (55) and the app chrome, matching every other portal modal
+     (AgentSettings, NetworkSelector) so the sign surface is never sat under a
+     nav or another panel. The scrim is the themed token, not a raw black, so it
+     dims correctly in light mode too. */
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--k-s4);
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--k-scrim, rgba(0, 0, 0, 0.5));
 }
 
+/* An opaque card, not a bare sizing box. PlanReview draws no background of its
+   own — it renders onto whatever surface its parent gives it (the agent card,
+   the settings modal). Here that parent is this wrapper, so without a fill the
+   whole sign panel was transparent and the chat behind it showed through. Same
+   card treatment as the app's other modals. */
 .modal {
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
   overflow-y: auto;
+  padding: var(--k-s5);
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-xl);
+  box-shadow: var(--k-shadow-modal, 0 8px 32px rgba(0, 0, 0, 0.28));
 }
 
 @media (max-width: 640px) {
