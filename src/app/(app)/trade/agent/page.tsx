@@ -57,7 +57,8 @@ import {
   type Slot,
 } from "@/lib/v2/intents/fromCommand";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
-import { SUGGESTIONS } from "./suggestions";
+import { useTxLog } from "@/hooks/v2/useTxLog";
+import { computeSuggestions } from "./suggestions";
 import s from "./agent.module.css";
 
 /**
@@ -151,6 +152,20 @@ export default function AgentPage() {
   const { settings } = useAgentSettings(address);
   const { buildPlan } = useLocalPlanner();
   const { showTestnets } = useTestnetMode();
+  /* Recent transaction kinds, newest first, so the starting-point chips lead with
+     the natural next step after what the wallet last did and don't offer back a
+     thing it just finished. Read here rather than in suggestions.ts because the tx
+     log is a wallet-bound React store; the chip logic itself stays a pure function
+     the test can exercise. */
+  const { entries: txEntries } = useTxLog();
+  const recentKinds = useMemo(
+    () => txEntries.slice(0, 6).map((e) => e.kind),
+    [txEntries],
+  );
+  const suggestions = useMemo(
+    () => computeSuggestions({ showTestnets, recentKinds }),
+    [showTestnets, recentKinds],
+  );
   // Open loans, so "repay" resolves on its own when there's only one.
   const { loans } = useBorrowV2();
   // V3 positions, so "collect fees position 42" / "remove position 42" can
@@ -377,42 +392,29 @@ export default function AgentPage() {
           "for you to review and sign — nothing goes on-chain without your " +
           "signature. Here's the range:\n\n" +
           `${capabilityHelp({ showTestnets })}\n\n` +
-          "You can also just ask — I answer health factor, kfUSD, staking, " +
-          "slippage, agent permissions, and which chains are live directly.",
+          "You can also just ask — I answer " +
+          (showTestnets
+            ? "health factor, kfUSD, staking, slippage, agent permissions, "
+            : "swaps, bridging, slippage, agent permissions, ") +
+          "and which chains are live directly.",
         {
           via: "local",
-          /* Five of the list above as chips. The list is reference — you read it
-             to find out what exists — and these are a way in, which is a
-             different job that a line of text cannot do.
-
-             Labels name the product, not the verb: "Swap" alone repeats the
-             word already sitting in the reference list above it, where "Swap
-             USDC to KLD" says which market. The prompts are the parser's own
-             phrasing and are verified against it — which is why mint's label
-             and prompt name different tokens: the parser binds mint's token as
-             the *collateral*, so "mint 500 kfUSD" resolves to kfUSD-as-
-             collateral and the planner rejects it. "mint 500 USDC" is the
-             phrasing that plans. The faucet's prompt asks for everything due
-             rather than a named asset, because which assets a faucet stocks
-             differs per chain and a card cannot know. Clicking fills the box;
-             nothing sends. */
+          /* A few of the list above as chips — the list is reference you read to
+             find out what exists, and these are a way in, which a line of text
+             cannot be. Drawn from computeSuggestions so they follow the same rules
+             as the empty card: dropped on mainnet when they need a testnet-only
+             surface, ranked by what the wallet last did, and each one parses to a
+             known command. Clicking fills the box; nothing sends. */
           cards: localCards([
             {
               kind: "actions",
               title: "Try one",
-              actions: [
-                {
-                  label: "Claim testnet tokens",
-                  prompt: "claim everything from the faucet",
-                },
-                { label: "Swap USDC to KLD", prompt: "swap 500 USDC to KLD" },
-                { label: "Stake KLD for stKLD", prompt: "stake 100 KLD" },
-                { label: "Mint kfUSD", prompt: "mint 500 USDC" },
-                {
-                  label: "Explain my health factor",
-                  prompt: "explain my health factor",
-                },
-              ],
+              /* The same mode-gated, activity-ranked chips the empty card shows, so
+                 the "what can I do" answer never offers a faucet or a KLD stake to a
+                 mainnet wallet that has neither. Label is the request itself —
+                 clicking fills the box with exactly it, and a second wording to
+                 maintain is a second thing to drift from what actually parses. */
+              actions: suggestions.map((p) => ({ label: p, prompt: p })),
             },
           ]),
         },
@@ -1620,7 +1622,7 @@ export default function AgentPage() {
               <div className={s.empty}>
                 <div className={s.emptyTitle}>Try one</div>
                 <div className={s.suggest}>
-                  {SUGGESTIONS.map((sug) => (
+                  {suggestions.map((sug) => (
                     <button
                       key={sug}
                       className={s.chip}

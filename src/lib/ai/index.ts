@@ -1,5 +1,6 @@
 import { ClaudeProvider } from "./providers/claude";
 import { OpenAIProvider } from "./providers/openai";
+import { getContracts } from "@/constants/registry";
 import type { ChatProvider } from "./types";
 
 export { TOOL_CATALOG, EXECUTE_TOOLS } from "./toolCatalog";
@@ -429,6 +430,32 @@ export function buildSystemPrompt(opts: {
 
   if (address) lines.push("", `User wallet: ${address}`);
   if (chainId) lines.push(`Current chain ID: ${chainId}`);
+
+  /* What this chain does NOT have, so the model does not propose it. The app
+     defaults to Arc mainnet, which is DEX-first: swaps (through the aggregator),
+     wrapping USDC and bridging work, but the lending diamond, KLD, staking and the
+     kfUSD stablecoin are not deployed there. Derived from the registry, not
+     hardcoded, so a chain gains a capability the moment it is deployed — and the
+     testnets, which have all of it, add no restriction. Fail-open: a registry that
+     cannot answer for a chain simply imposes no limit. */
+  if (chainId !== undefined) {
+    try {
+      const c = getContracts(chainId);
+      const absent: string[] = [];
+      if (!c.diamond) absent.push("peer-to-peer lending, borrowing and collateral");
+      if (!c.kldVault) absent.push("KLD staking");
+      if (!c.kfUSD) absent.push("the kfUSD / kafUSD stablecoin");
+      if (!c.kld) absent.push("KLD (do not offer to trade or stake it)");
+      if (absent.length) {
+        lines.push(
+          "",
+          `Not on the user's current chain — never propose these, and say plainly they aren't available here if asked: ${absent.join("; ")}. What works here: swaps, wrapping USDC, bridging, and reading the wallet.`,
+        );
+      }
+    } catch {
+      /* No registry entry for the chain — impose no capability restriction. */
+    }
+  }
 
   if (limits) {
     lines.push("", "User's limits:");

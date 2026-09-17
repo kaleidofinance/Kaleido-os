@@ -3160,42 +3160,68 @@ export const COMMAND_HELP = [
  * one; the group headings are the products, so the list reads as a map of the
  * app rather than a wall of commands.
  *
- * Testnet-aware: the faucet only exists on testnets, so its line is added only
- * when the caller is in testnet mode — the same mainnet-first posture the rest
- * of the app follows. Bridge and trade examples name mainnet chains and assets.
+ * Mode-aware, and not only for the faucet. Most of these surfaces — lending, the
+ * kfUSD stablecoin, staking, our own liquidity positions, KLD itself — are not
+ * deployed on the Arc mainnet the app defaults to, so listing them to a mainnet
+ * wallet is offering a map to rooms that aren't built. With the testnet toggle
+ * off, the overview is what Arc actually does: swap through the aggregator, wrap
+ * USDC, bridge out, read your wallet. The full set returns the moment testnets are
+ * on. Trade's examples switch with it too — KLD on a testnet, a real Arc pair and
+ * the wrap on mainnet.
  */
 export function capabilityHelp(opts: { showTestnets?: boolean } = {}): string {
   const line = (heading: string, examples: string[]) =>
     `**${heading}**  \n${examples.map((e) => `\`${e}\``).join(" · ")}`;
 
+  const testnets = !!opts.showTestnets;
+
   const groups: string[] = [
-    line("Trade", ["swap 500 USDC to KLD", "buy KLD with 500 USDC"]),
+    line(
+      "Trade",
+      testnets
+        ? ["swap 500 USDC to KLD", "buy KLD with 500 USDC"]
+        : ["swap 100 USDC to EURC", "swap 100 USDC to WUSDC"],
+    ),
     line("Bridge", ["bridge 50 USDC to Base", "bridge 100 USDC to Arbitrum"]),
-    line("Borrow & lend", [
-      "borrow 500 USDC at 8% for 30 days",
-      "lend 1000 USDC at 10% for 60 days",
-      "deposit 500 USDC",
-      "repay",
-    ]),
-    line("kfUSD stablecoin", [
-      "mint 500 USDC",
-      "redeem 500 kfUSD",
-      "lock 500",
-      "claim yield",
-    ]),
-    line("Staking", ["stake 100", "unstake 50"]),
-    line("Liquidity", [
-      "collect fees position 42",
-      "remove liquidity position 42",
-    ]),
+  ];
+
+  /* The testnet-only surfaces. Gated as a block because none of lending, kfUSD,
+     staking or our liquidity positions is on Arc mainnet — the app's default
+     network — so on mainnet the overview skips straight from Bridge to the wallet
+     reads that work everywhere. */
+  if (testnets) {
+    groups.push(
+      line("Borrow & lend", [
+        "borrow 500 USDC at 8% for 30 days",
+        "lend 1000 USDC at 10% for 60 days",
+        "deposit 500 USDC",
+        "repay",
+      ]),
+      line("kfUSD stablecoin", [
+        "mint 500 USDC",
+        "redeem 500 kfUSD",
+        "lock 500",
+        "claim yield",
+      ]),
+      line("Staking", ["stake 100", "unstake 50"]),
+      line("Liquidity", [
+        "collect fees position 42",
+        "remove liquidity position 42",
+      ]),
+    );
+  }
+
+  groups.push(
     line("Wallet & portfolio", [
       "my portfolio",
       "receive",
       "send 50 USDC to 0x…",
     ]),
-  ];
-  if (opts.showTestnets) {
+  );
+
+  if (testnets) {
     groups.push(line("Testnet faucet", ["faucet USDC", "faucet all"]));
   }
+
   return groups.join("\n\n");
 }
