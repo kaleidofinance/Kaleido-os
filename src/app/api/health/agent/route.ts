@@ -53,7 +53,9 @@ function authorised(request: NextRequest, secret: string): boolean {
 const HOUR_MS = 60 * 60 * 1000;
 
 async function handle(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
+  // Trimmed to match the trimmed bearer — a trailing newline in the Vercel env
+  // var would otherwise fail the length check and 401 forever.
+  const secret = process.env.CRON_SECRET?.trim();
   if (!secret) {
     return NextResponse.json(
       { error: "The agent health endpoint is not enabled." },

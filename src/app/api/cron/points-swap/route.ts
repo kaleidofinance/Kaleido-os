@@ -70,7 +70,9 @@ function authorised(req: Request, secret: string): boolean {
 }
 
 async function handle(req: Request): Promise<Response> {
-  const secret = process.env.CRON_SECRET;
+  // Trimmed: the bearer we compare against is trimmed too, and a Vercel env var
+  // pasted with a trailing newline would otherwise never match — a phantom 401.
+  const secret = process.env.CRON_SECRET?.trim();
   if (!secret) return Response.json({ error: "not enabled" }, { status: 503 });
   if (!authorised(req, secret))
     return Response.json({ error: "unauthorised" }, { status: 401 });
