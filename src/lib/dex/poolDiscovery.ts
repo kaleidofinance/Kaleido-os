@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { CHAINS, CHAINS_BY_ID, type ChainMeta } from "@/constants/chains";
-import { isDeployed, tradableChains } from "@/constants/registry";
+import { hasSwaps, isDeployed } from "@/constants/registry";
 import type { ITradingPair } from "@/constants/types/dex";
 
 /**
@@ -62,11 +62,13 @@ let discovered: DiscoveryChain[] | null = null;
 /**
  * The chains a pool sweep covers: everywhere we have deployed and intend to trade.
  *
- * `tradableChains` is the same set the network picker offers, so the table cannot
- * list a chain the user has no way to reach — it ands `chains.ts`'s `tradable`
- * intent against a real deployment record, which is why a chain we have not
- * deployed to contributes no requests at all rather than 84 calls into an empty
- * address.
+ * A chain is covered when it is `tradable` AND has a DEX (`hasSwaps` — a
+ * v3Router where pools live), NOT when its Diamond is deployed. Pools exist on
+ * the router, independent of lending: Arc launched DEX-first (v3Router + seeded
+ * pools, no Diamond), so gating on `isDeployed` hid Arc's own pools from the
+ * table. Anding in `tradable` still means a chain the user cannot reach never
+ * appears; a chain with no DEX contributes no requests rather than 84 calls into
+ * an empty address.
  *
  * The read chain leads the list when it is deployed, and is included even if it
  * were not marked tradable: it is the chain the rest of the app answers for, so a
@@ -80,7 +82,14 @@ export function discoveryChains(): DiscoveryChain[] {
 
   const ids: number[] = [];
   if (isDeployed(READ_ONLY_CHAIN_ID)) ids.push(READ_ONLY_CHAIN_ID);
-  for (const chain of tradableChains(CHAINS)) {
+  /* Chains with a DEX, not chains with a Diamond. Pools live on the v3Router,
+     and Arc launched DEX-first — v3Router + seeded pools, no Diamond yet. Gating
+     on `isDeployed` (what `tradableChains` does) hid Arc's OWN seeded pools from
+     the table: its pools exist, but the sweep never read the chain. `hasSwaps`
+     is the right predicate, and the swap builder already gates on v3Router the
+     same way. Still `tradable`, so a chain hidden from the switcher stays hidden
+     here too. */
+  for (const chain of CHAINS.filter((c) => c.tradable && hasSwaps(c.id))) {
     if (!ids.includes(chain.id)) ids.push(chain.id);
   }
 
