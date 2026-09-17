@@ -81,7 +81,9 @@ function authorised(req: Request, secret: string): boolean {
 }
 
 async function handle(req: Request): Promise<Response> {
-  const secret = process.env.CRON_SECRET;
+  // Trimmed to match the trimmed bearer — a trailing newline in the Vercel env
+  // var would otherwise fail the length check and 401 forever.
+  const secret = process.env.CRON_SECRET?.trim();
   if (!secret) {
     console.warn(
       "[waitlist/activate] CRON_SECRET is not set — refusing, as configured. " +
