@@ -2279,5 +2279,138 @@ console.log("swap resolves relative amounts; other verbs escalate");
   );
 }
 
+/* ---------------------------------------------------------------------------
+ * THE QUESTION NAMES THE REAL PROBLEM.
+ *
+ * Read from the agent_questions log (2026-09-13..17): 130 complete commands
+ * were asked "which token?" — "swap 100 USDC to EURC" on Sepolia, "swap 500
+ * USDC to KLD" on Ethereum — because the token named was not on the connected
+ * chain and the grammar dropped it silently; 28 more came with no wallet at
+ * all; "0.0001ETH" and "500kfusd" lost both amount and token; a pasted
+ * "/trade/agent" became a swap; "swap 50 usdc to sepolia" asked for a token
+ * where a chain was named; and "1,0" would have read as 10. Each case below is
+ * one of those, with the answer the grammar now gives instead.
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— the question names the real problem —");
+  const CTX = {
+    chainName: "Sepolia",
+    elsewhere: (s) => (s.toLowerCase() === "eurc" ? ["Arc"] : s.toLowerCase() === "cirbtc" ? ["Arc", "Base"] : []),
+    isChain: (p) => ["base", "sepolia", "arc", "base sepolia", "arc sepolia"].includes(p),
+  };
+  const pc = (text, ctx = CTX, tokens = TOKENS) => parseCommand(text, tokens, ctx);
+  const promptOf = (r) => (r.status === "incomplete" ? r.prompt : r.status);
+
+  /* A token known on another chain: named, located, never "did you mean". */
+  const abroad = pc("swap 100 usdc to eurc");
+  check(
+    "a token from another chain is asked about by name and place",
+    abroad.status === "incomplete" && abroad.missing === "tokenOut" && abroad.prompt.includes("EURC isn't on Sepolia") && abroad.prompt.includes("it's on Arc"),
+    promptOf(abroad),
+  );
+  check(
+    "and not as a near miss of USDC (two edits away)",
+    abroad.status === "incomplete" && !abroad.prompt.includes("did you mean"),
+    promptOf(abroad),
+  );
+  check(
+    "the side that resolved is kept",
+    abroad.status === "incomplete" && abroad.draft.tokenIn?.symbol === "USDC" && abroad.draft.amount === "100",
+    abroad.status === "incomplete" ? `${abroad.draft.tokenIn?.symbol} ${abroad.draft.amount}` : abroad.status,
+  );
+  const spent = pc("swap 100 eurc to usdc");
+  check(
+    "the same on the spent side",
+    spent.status === "incomplete" && spent.missing === "tokenIn" && spent.prompt.includes("EURC isn't on Sepolia"),
+    promptOf(spent),
+  );
+  const two = pc("swap 10 usdc to cirbtc");
+  check(
+    "several chains are listed",
+    two.status === "incomplete" && two.prompt.includes("it's on Arc and Base"),
+    promptOf(two),
+  );
+  /* Unknown everywhere: quoted back, with what IS here. */
+  const nowhere = pc("swap 100 usdc to zzzq");
+  check(
+    "a token known nowhere is named as unknown here, with options",
+    nowhere.status === "incomplete" && nowhere.missing === "tokenOut" && nowhere.prompt.includes("I don't know a token called ZZZQ on Sepolia") && nowhere.prompt.includes("USDC"),
+    promptOf(nowhere),
+  );
+  /* Without context the old answers stand — the marketing planner passes none. */
+  const plain = p("swap 100 usdc to eurc");
+  check(
+    "with no context the token is still named as unknown, with no chain",
+    plain.status === "incomplete" && plain.prompt.includes("I don't know a token called EURC") && !plain.prompt.includes(" on "),
+    promptOf(plain),
+  );
+  check("a complete command is untouched", pc("swap 100 usdc to kld").status === "ok", pc("swap 100 usdc to kld").status);
+  check("the near-miss answer is untouched", promptOf(pc("swap 100 usdcc to kld")).includes("did you mean USDC"), promptOf(pc("swap 100 usdcc to kld")));
+
+  /* A slot reply naming a token from elsewhere gets the same answer, and a
+     reply that is a whole command is not an answer at all. */
+  const seeded = p("swap 100 usdc to kld");
+  const draft = seeded.status === "ok" ? draftFromCommand(seeded.command) : null;
+  const replied = fillSlot({ ...draft, tokenOut: undefined }, "tokenOut", "eurc", TOKENS, CTX);
+  check(
+    "a reply naming a token from another chain says where it is",
+    replied.status === "incomplete" && replied.missing === "tokenOut" && replied.prompt.includes("EURC isn't on Sepolia"),
+    promptOf(replied),
+  );
+  const whole = fillSlot({ kind: "swap" }, "tokenIn", "swap 100 usdc to kld", TOKENS, CTX);
+  check("a reply with its own verb is a fresh command, not an answer", whole.status === "unknown", whole.status);
+
+  /* No wallet, no vocabulary: the question is the wallet, not the token. */
+  const nowallet = pc("swap 100 usdc to kld", {}, []);
+  check(
+    "no wallet asks for the wallet",
+    nowallet.status === "incomplete" && nowallet.prompt.includes("Connect a wallet first"),
+    promptOf(nowallet),
+  );
+  const nochain = pc("send 5 usdc to 0x74A9E2cC8E97DC56D4a337454AD4F62BFa1D63d7", { chainName: "Foo" }, []);
+  check(
+    "an unsupported chain is named",
+    nochain.status === "incomplete" && nochain.prompt.includes("tokens for Foo"),
+    promptOf(nochain),
+  );
+
+  /* Glued amounts. */
+  const lock = p("lock 500kfusd");
+  check("'lock 500kfusd' reads the amount", lock.status === "ok" && lock.command.kind === "lock" && lock.command.amount === "500", lock.status === "ok" ? `${lock.command.kind} ${lock.command.amount}` : lock.status);
+  const glued = p("swap 100usdc to kld");
+  check("'swap 100usdc to kld' reads amount and token", glued.status === "ok" && glued.command.kind === "swap" && glued.command.amount === "100" && glued.command.tokenIn.symbol === "USDC", glued.status);
+  const dec = p("swap 0.5weth to usdc");
+  check("'0.5weth' too", dec.status === "ok" && dec.command.kind === "swap" && dec.command.amount === "0.5" && dec.command.tokenIn.symbol === "WETH", dec.status);
+  const k = p("swap 10k usdc to kld");
+  check("'10k' keeps its multiplier", k.status === "ok" && k.command.kind === "swap" && k.command.amount === "10000", k.status === "ok" ? k.command.amount : k.status);
+
+  /* Links are not sentences. */
+  check("a pasted link with /trade in it is not a swap", p("check https://app.kaleidofi.xyz/trade/agent please").status === "unknown", p("check https://app.kaleidofi.xyz/trade/agent please").status);
+  check("a bare domain path is not a swap either", p("lu coba kasih saran app.kaleidofi.xyz/trade/agent").status === "unknown", p("lu coba kasih saran app.kaleidofi.xyz/trade/agent").status);
+  check("nor a bare path", p("see /trade/agent").status === "unknown", p("see /trade/agent").status);
+  check("control: the verb itself still works", p("trade 100 usdc to kld").status === "ok", p("trade 100 usdc to kld").status);
+
+  /* A chain where a token should be is a bridge. */
+  const br = pc("swap 50 usdc to sepolia");
+  check(
+    "'swap 50 usdc to sepolia' is read as a bridge",
+    br.status === "ok" && br.command.kind === "bridge" && br.command.amount === "50" && br.command.token.symbol === "USDC" && br.command.toChain === "sepolia",
+    br.status === "ok" ? `${br.command.kind} ${br.command.toChain}` : br.status,
+  );
+  const br2 = pc("swap 100 usdc to arc sepolia");
+  check("a two-word chain too", br2.status === "ok" && br2.command.kind === "bridge" && br2.command.toChain === "arc sepolia", br2.status === "ok" ? br2.command.toChain : br2.status);
+  check("without a chain oracle it stays a swap question", p("swap 50 usdc to sepolia").status === "incomplete", p("swap 50 usdc to sepolia").status);
+
+  /* Commas. */
+  const th = p("swap 1,000 usdc to kld");
+  check("'1,000' is a thousand", th.status === "ok" && th.command.kind === "swap" && th.command.amount === "1000", th.status === "ok" ? th.command.amount : th.status);
+  const thd = p("swap 1,000.50 usdc to kld");
+  check("'1,000.50' keeps its cents", thd.status === "ok" && thd.command.kind === "swap" && thd.command.amount === "1000.5", thd.status === "ok" ? thd.command.amount : thd.status);
+  const eu = p("lend 1,0 usdc at 8% for 30 days");
+  check("'1,0' is not read as 10 — the amount is asked for", eu.status === "incomplete" && eu.missing === "amount", eu.status === "incomplete" ? eu.missing : eu.status);
+  const eu2 = p("swap 12,5 usdc to kld");
+  check("'12,5' likewise", eu2.status === "incomplete" && eu2.missing === "amount", eu2.status === "incomplete" ? eu2.missing : eu2.status);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
