@@ -72,7 +72,7 @@ import {
 } from "@/lib/dex/poolDiscovery";
 import { retryRpc } from "@/lib/dex/rpcRetry";
 import {
-  fetchSpotPrices,
+  fetchSpotPricesSoon,
   priceLookup,
   type PriceLookup,
 } from "@/lib/market/spot";
@@ -411,7 +411,7 @@ export const usePoolData = () => {
          the table renders an em dash. */
       setPools(
         await store.sweep(
-          async () => priceLookup(await fetchSpotPrices()),
+          async () => priceLookup(await fetchSpotPricesSoon()),
           (chain, priceOf) => sweepChain(chain, priceOf),
           force,
           /* Mainnet-first: skip testnet RPCs when hidden — see PoolStore.sweep. */
