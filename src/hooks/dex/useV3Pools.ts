@@ -454,14 +454,39 @@ async function readSeededPools(
 }
 
 /** The O(N²) pair-probe — every registered pair × tier, best fill wins. */
+/** A base asset pools are quoted against — where a real pool actually is. */
+const isQuoteAsset = (t: IToken): boolean =>
+  (t.tags ?? []).some(
+    (tag) =>
+      tag === "wrapped-native" ||
+      tag === "stablecoin" ||
+      tag === "native-alias",
+  );
+
+/* Above this many pairs the exhaustive O(N²) probe is not worth its cost: a
+   chain with many tokens (Arc lists 26) is hundreds of getPool calls over a
+   rate-limited node, and nearly all of them return nothing because a real pool
+   quotes against a base asset, not against another arbitrary token. */
+const FULL_PROBE_MAX_PAIRS = 80;
+
 async function probePools(
   tokens: IToken[],
   chain: DiscoveryChain,
   priceOf: PriceLookup,
   window: VolumeWindow | null,
 ): Promise<ITradingPair[]> {
+  const allPairs = unorderedPairs(tokens);
+  /* Full probe while it is cheap; once it isn't, keep only pairs that include a
+     base asset (USDC / wrapped-native / a stablecoin). That finds every X/base
+     pool — which in practice is all of them — for a fraction of the calls, so
+     the table fills in seconds instead of timing out against the deadline. */
+  const pairs =
+    allPairs.length <= FULL_PROBE_MAX_PAIRS
+      ? allPairs
+      : allPairs.filter(([a, b]) => isQuoteAsset(a) || isQuoteAsset(b));
+
   const probed = await mapLimit(
-    unorderedPairs(tokens),
+    pairs,
     PROBE_CONCURRENCY,
     async ([tokenA, tokenB]) => {
       const tiers = await readPoolTiers(
