@@ -25,7 +25,7 @@ import {
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
 import { splitCards, splitReasoning } from "@/lib/ai/actionsBlock";
-import { simulatePlan, rpcCallFor } from "@/lib/ai/simulatePlan";
+import { simulatePlan, rpcCallFor, isStaleQuoteRevert } from "@/lib/ai/simulatePlan";
 import { logAgentTurn } from "@/lib/ai/turnLog";
 import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
@@ -448,13 +448,6 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        /* A verb that couldn't be built is reported, not swallowed. Returning
-           a quietly shorter plan would let the user believe the model's prose
-           described what they were about to sign. */
-        const buildNotes = built.errors.length
-          ? `\n\n---\n\nI couldn't prepare some of that:\n${built.errors.map((e) => `• ${e}`).join("\n")}`
-          : "";
-
         /*
          * Simulate the built plan against the current block before offering it as
          * signable — the propose-time counterpart to the sign-time preflight
@@ -462,14 +455,12 @@ export async function POST(request: NextRequest) {
          * eth_calls the plan, so a first-time swap whose floor the market has moved
          * past is called out here rather than at the wallet.
          *
-         * Only when the auditor PASSED a plan we have a wallet to simulate from:
-         * simulating a refused or empty plan would report a revert on something the
-         * user is not being offered anyway. Bounded by a race so a slow or
-         * unreachable RPC cannot hold the turn — a timeout, like any other trouble
-         * inside simulatePlan, simply yields no warning. Surface only: a predicted
-         * revert is stated, the plan is still offered (the market may move again by
-         * signing, and the preflight re-checks each step against real state then),
-         * and anything short of a decoded, honoured revert says nothing.
+         * Only when the auditor PASSED a plan we have a wallet to simulate from.
+         * Bounded by a race so a slow or unreachable RPC cannot hold the turn.
+         * Surface only, with one deterministic exception (the stale-quote retry
+         * below): a predicted revert is stated, the plan still offered — the market
+         * may move again by signing, and the preflight re-checks against real state
+         * then — and anything short of a decoded, honoured revert says nothing.
          */
         let simNote = "";
         if (
@@ -479,20 +470,73 @@ export async function POST(request: NextRequest) {
           chainId !== undefined
         ) {
           const rpc = rpcCallFor(chainId);
+          const from = meterAddress;
           if (rpc) {
-            try {
-              const sim = await Promise.race([
-                /* `built.plan` is PlanStep[] — the loose server shape of the very
-                   objects the client reads back as Intent[] via intentsFromChat, so
-                   the cast is the same identity the wire already relies on. */
+            /* One bounded simulation of a plan. The cast is the PlanStep↔Intent
+               identity the wire already relies on (intentsFromChat); the race caps
+               it so the RPC can never hold the turn. */
+            const simOnce = (plan: typeof built.plan) =>
+              Promise.race([
                 simulatePlan(
-                  built.plan as unknown as Parameters<typeof simulatePlan>[0],
+                  plan as unknown as Parameters<typeof simulatePlan>[0],
                   chainId,
-                  meterAddress,
+                  from,
                   rpc,
                 ),
                 new Promise<null>((r) => setTimeout(() => r(null), 5000)),
               ]);
+
+            try {
+              let sim = await simOnce(built.plan);
+
+              /* A slippage-floor revert is very often a quote that went stale in the
+                 beat between pricing and simulating: the pool moved and the same plan
+                 re-priced now would clear. On exactly that reason, rebuild ONCE with a
+                 fresh quote — which re-audits like any built plan — and re-simulate.
+                 No model call and no new quota: deterministic self-correction, bounded
+                 to a single retry. A second failure is surfaced, never chased. */
+              if (
+                sim &&
+                !sim.ok &&
+                sim.firstFailure &&
+                isStaleQuoteRevert(sim.firstFailure.reason)
+              ) {
+                try {
+                  const rebuilt = await planFromToolCalls(
+                    result.executes,
+                    chainId,
+                    serverPlanDeps(body.address, chainId),
+                    { slippageBps: safeLimits.slippageBps, deadlineMin: 20 },
+                    userText,
+                  );
+                  if (rebuilt.plan.length > 0) {
+                    const reverdict = await auditPlan({
+                      plan: rebuilt.plan,
+                      chainId,
+                      limits: safeLimits,
+                      allowedActions: body.limits?.allowedActions,
+                    });
+                    if (reverdict.ok) {
+                      const resim = await simOnce(rebuilt.plan);
+                      if (resim && resim.ok) {
+                        /* The fresh quote clears it — offer the re-priced plan, and
+                           say so rather than pretending nothing was wrong. */
+                        built = rebuilt;
+                        verdict = reverdict;
+                        sim = resim;
+                        simNote =
+                          "\n\n---\n\nThe first pricing would have slipped past your limit, so I re-priced it against the current market before offering it.";
+                      }
+                    }
+                  }
+                } catch {
+                  /* Fail open — keep the original plan and surface the prediction. */
+                }
+              }
+
+              /* Still predicted to revert — not a stale quote, or the re-price did
+                 not clear it. State it, keep the plan, let the preflight and the user
+                 take it from here. */
               if (sim && !sim.ok && sim.firstFailure) {
                 const f = sim.firstFailure;
                 const where =
@@ -507,6 +551,14 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+
+        /* A verb that couldn't be built is reported, not swallowed. Computed after
+           the simulation because a stale-quote retry above can replace `built` with
+           a freshly-priced plan, and these notes must describe the plan actually
+           offered — not the one the retry discarded. */
+        const buildNotes = built.errors.length
+          ? `\n\n---\n\nI couldn't prepare some of that:\n${built.errors.map((e) => `• ${e}`).join("\n")}`
+          : "";
 
         /* The record of a turn that ran. `refused` is a turn the model answered
            and the auditor then dropped its plan — a different fact from a clean
