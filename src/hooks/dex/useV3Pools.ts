@@ -78,7 +78,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
 
-import { getContracts, isSeededPool } from "@/constants/registry";
+import { SEEDED_POOLS, getContracts, isSeededPool } from "@/constants/registry";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { chainTokens } from "@/constants/tokens";
@@ -92,7 +92,7 @@ import {
   type DiscoveryChain,
 } from "@/lib/dex/poolDiscovery";
 import {
-  fetchSpotPrices,
+  fetchSpotPricesSoon,
   priceLookup,
   type PriceLookup,
 } from "@/lib/market/spot";
@@ -377,20 +377,89 @@ async function buildPool(
  * deployments have never had a pool opened on them, and probing 84 addresses to
  * learn that is a waste on every refresh.
  */
-async function sweepChain(
+/* token0/token1/fee off a pool address — enough to rebuild a row from a known
+   pool without rediscovering it through the pair-probe. */
+const POOL_META_ABI = [
+  "function token0() external view returns (address)",
+  "function token1() external view returns (address)",
+  "function fee() external view returns (uint24)",
+];
+
+/* How long the O(N²) pair-probe gets before the seeded pools are returned
+   without it. Comfortably under the chain deadline (poolDiscovery's 20s) so a
+   slow probe never drops the seeded rows by taking the whole budget. */
+const PROBE_BUDGET_MS = 9_000;
+
+/**
+ * Read OUR OWN seeded pools directly from their recorded addresses.
+ *
+ * The pair-probe below rediscovers every pool by asking `getPool` for each
+ * registered pair × tier. On a chain with many tokens over a rate-limited node
+ * that is hundreds of calls — Arc lists 26 tokens, ~900 probes — and the chain
+ * deadline truncates it long before it reaches the two pools we opened. So a
+ * pool we KNOW the address of would never list, which is exactly what happened.
+ * This reads them straight from SEEDED_POOLS in a handful of calls: the tokens
+ * come off the pool itself, mapped back to the registry for their display, and
+ * the state through the same `readPoolTiers`/`buildPool` path as a probed pool.
+ */
+async function readSeededPools(
   chain: DiscoveryChain,
   priceOf: PriceLookup,
+  window: VolumeWindow | null,
 ): Promise<ITradingPair[]> {
-  if (!getContracts(chain.chainId).v3Factory) return [];
+  const addresses = SEEDED_POOLS[chain.chainId] ?? [];
+  if (addresses.length === 0) return [];
 
-  const tokens = sweepTokens(chain.chainId);
-  if (tokens.length < 2) return [];
+  const byAddress = new Map(
+    chainTokens(chain.chainId).map((t) => [t.address.toLowerCase(), t]),
+  );
 
-  /* A window this chain's node will not give up is survivable: the pools still
-     list, with no volume rather than no pools. Volume is one column and it is
-     already nullable; the pools are the page. */
-  const window = await readVolumeWindow(chain.provider).catch(() => null);
+  const rows = await Promise.all(
+    addresses.map(async (address) => {
+      try {
+        const meta = new ethers.Contract(address, POOL_META_ABI, chain.provider);
+        const [t0, t1, fee] = await retryRpc(() =>
+          Promise.all([meta.token0(), meta.token1(), meta.fee()]),
+        );
+        const tokenA = byAddress.get(String(t0).toLowerCase());
+        const tokenB = byAddress.get(String(t1).toLowerCase());
+        /* A pool whose tokens this chain no longer lists can't be shown as a
+           pair — skip it rather than render half a row. */
+        if (!tokenA || !tokenB) return null;
 
+        const tiers = await readPoolTiers(
+          chain.provider,
+          chain.chainId,
+          tokenA.address,
+          tokenB.address,
+          [Number(fee)],
+          tokenA.decimals,
+          tokenB.decimals,
+        );
+        const state = tiers.get(Number(fee));
+        if (!state) return null;
+        return buildPool(
+          { state, fee: Number(fee), tokenA, tokenB },
+          chain,
+          priceOf,
+          window,
+        );
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return rows.filter((p): p is ITradingPair => p !== null);
+}
+
+/** The O(N²) pair-probe — every registered pair × tier, best fill wins. */
+async function probePools(
+  tokens: IToken[],
+  chain: DiscoveryChain,
+  priceOf: PriceLookup,
+  window: VolumeWindow | null,
+): Promise<ITradingPair[]> {
   const probed = await mapLimit(
     unorderedPairs(tokens),
     PROBE_CONCURRENCY,
@@ -415,6 +484,41 @@ async function sweepChain(
   );
 
   return built.filter((p): p is ITradingPair => p !== null);
+}
+
+async function sweepChain(
+  chain: DiscoveryChain,
+  priceOf: PriceLookup,
+): Promise<ITradingPair[]> {
+  if (!getContracts(chain.chainId).v3Factory) return [];
+
+  /* A window this chain's node will not give up is survivable: the pools still
+     list, with no volume rather than no pools. Volume is one column and it is
+     already nullable; the pools are the page. */
+  const window = await readVolumeWindow(chain.provider).catch(() => null);
+
+  /* Our own seeded pools first and unconditionally — see readSeededPools. */
+  const seeded = await readSeededPools(chain, priceOf, window);
+
+  /* Then the full probe for anything else, on its own budget: on a many-token
+     chain it cannot finish inside the deadline, and letting it run the deadline
+     out would drop the seeded pools with it. Keep whatever it returned in time. */
+  const tokens = sweepTokens(chain.chainId);
+  const probed =
+    tokens.length < 2
+      ? []
+      : await Promise.race([
+          probePools(tokens, chain, priceOf, window),
+          new Promise<ITradingPair[]>((resolve) =>
+            setTimeout(() => resolve([]), PROBE_BUDGET_MS),
+          ),
+        ]).catch(() => [] as ITradingPair[]);
+
+  const seen = new Set(seeded.map((p) => p.address.toLowerCase()));
+  return [
+    ...seeded,
+    ...probed.filter((p) => !seen.has(p.address.toLowerCase())),
+  ];
 }
 
 export interface V3PoolsResult {
@@ -459,7 +563,7 @@ export function useV3Pools(): V3PoolsResult {
          per-chain work would hit /api/prices/spot five times for one answer. */
       setPools(
         await store.sweep(
-          async () => priceLookup(await fetchSpotPrices()),
+          async () => priceLookup(await fetchSpotPricesSoon()),
           (chain, priceOf) => sweepChain(chain, priceOf),
           force,
           /* Mainnet-first: don't sweep testnet RPCs when they're hidden — see
