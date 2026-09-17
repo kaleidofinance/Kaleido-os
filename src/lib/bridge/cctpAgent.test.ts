@@ -24,6 +24,7 @@ import {
 } from "@/lib/bridge/cctp";
 import { auditPlan, type Pricer } from "@/lib/ai/auditor";
 import { resolveCctpCompletion } from "@/lib/bridge/cctpAttestation";
+import { getBridgeQuote } from "@/lib/ai/bridgeQuotes";
 import { chainTokens } from "@/constants/tokens";
 
 const ARC = 5042;
@@ -266,6 +267,24 @@ async function main() {
         v.ok ? "" : v.blocked.join("; "),
       );
     }
+  }
+
+  // ------------------------------------------------ quote matches the plan --
+  console.log("\n— read tool quote agrees with the plan (getBridgeQuote) —");
+  {
+    // No fetchImpl seam here, so if Circle's fee endpoint is unreachable the
+    // branch degrades to the free Standard lane — still provider CCTP, fee 0.
+    const q = await getBridgeQuote({
+      fromChain: "Arc",
+      toChain: "Base",
+      asset: "USDC",
+      amount: "10",
+    });
+    check(
+      "USDC Arc->Base quotes CCTP, not LI.FI/Relay",
+      !("error" in q) && q.provider === "CCTP",
+      "error" in q ? q.error : `provider=${q.provider} feeUsd=${q.feeUsd}`,
+    );
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

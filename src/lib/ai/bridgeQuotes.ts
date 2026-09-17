@@ -33,6 +33,8 @@ import {
   lifiMonetizationParams,
   lifiAuthHeaders,
 } from "@/lib/bridge/lifiServer";
+import { CCTP_ENABLED, isCctpCorridor } from "@/lib/bridge/cctp";
+import { resolveCctpFastFee } from "@/lib/bridge/cctpFast";
 
 const RELAY_API = "https://api.relay.link";
 const LIFI_API = "https://li.quest/v1";
@@ -50,7 +52,7 @@ const DECIMALS: Record<string, number> = {
 };
 
 export interface BridgeQuote {
-  provider: "RELAY" | "LIFI";
+  provider: "RELAY" | "LIFI" | "CCTP";
   fromChain: string;
   toChain: string;
   fromChainId: number;
@@ -244,6 +246,53 @@ export async function getBridgeQuote(args: {
   }
 
   const user = args.address ?? "0x0000000000000000000000000000000000000000";
+
+  /* CCTP first — for USDC on a CCTP corridor it is the path the executable plan
+     WILL take (resolveBridgeRoute prefers it over the aggregator). Quoting it
+     here keeps the read tool's answer honest: without this the model quotes a
+     LI.FI fee and tells the user to "complete it with LI.FI", then the bridge
+     action builds a CCTP burn — a different provider, a different cost, and a
+     completion Kaleido drives rather than hands off. Unlike Relay/LI.FI, both
+     legs are Kaleido's, so the note says so. Degrades to the free Standard lane
+     if Circle's fast-fee endpoint can't be read, and stays inert while the flag
+     is off. */
+  if (CCTP_ENABLED && asset === "USDC" && isCctpCorridor(from.id, to.id)) {
+    let feeUsd = 0;
+    let etaSeconds: number | null = null;
+    let lane = "Standard lane — free, waits for source-chain finality";
+    try {
+      const q = await resolveCctpFastFee({
+        sourceChainId: from.id,
+        destChainId: to.id,
+        units: BigInt(units),
+      });
+      if (q.ok) {
+        // maxFeeUnits is the fee cap in 6-decimal USDC units; USDC ≈ $1.
+        feeUsd = Number(q.maxFeeUnits) / 1e6;
+        // Fast Transfer attests in seconds against Circle's allowance.
+        etaSeconds = 20;
+        lane =
+          q.feeBps === 0
+            ? "Fast lane — free on this corridor, settles in seconds"
+            : `Fast lane — ${q.feeBps} bps, settles in seconds`;
+      }
+    } catch {
+      // Circle's fee endpoint unreachable — the burn still goes on the free
+      // Standard lane, so quote that rather than failing over to an aggregator.
+    }
+    return {
+      provider: "CCTP",
+      fromChain: from.name,
+      toChain: to.name,
+      fromChainId: from.id,
+      toChainId: to.id,
+      asset,
+      amount: args.amount,
+      feeUsd,
+      etaSeconds,
+      note: `Circle CCTP burn-and-mint — 1:1, no pool or slippage. ${lane}. Kaleido signs both legs: the burn on ${from.name} now, then the mint on ${to.name} once Circle attests (the completion banner submits it).`,
+    };
+  }
 
   try {
     const relay = await relayQuote(from, to, asset, args.amount, units, user);
