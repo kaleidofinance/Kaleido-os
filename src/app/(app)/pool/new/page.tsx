@@ -732,9 +732,7 @@ export default function NewPositionPage() {
         <div className={s.box}>
           <div className={s.bl}>No pools here yet</div>
           <p className={s.priceHint}>
-            Nothing pairable is registered
-            {here ? ` on ${here}` : ""} yet, so there is no pool to add
-            liquidity to.
+            No pairable tokens{here ? ` on ${here}` : ""} yet.
           </p>
         </div>
       </div>
@@ -849,9 +847,9 @@ export default function NewPositionPage() {
                   : ""}
               </>
             ) : poolPinned ? (
-              "This tier's pool has run to the far end of its price range: a trade took everything on one side of it, so it has no price to quote. Set explicit bounds around what you believe the pair is worth — until someone moves the price back, a deposit here is trading against that clamp."
+              "Pool price is pinned at its range end — set explicit bounds."
             ) : (
-              "No market price for this pair on this chain. Open it with full range, or set explicit bounds — the two amounts you deposit will set the starting price."
+              "No market yet — your deposit sets the opening price."
             )}
           </div>
           <div className={s.priceRow}>
@@ -972,11 +970,9 @@ export default function NewPositionPage() {
          */}
         {oneSided ? (
           <div className={s.priceHint} style={{ marginTop: 8 }} role="alert">
-            This range sits entirely {oneSided === "0" ? "above" : "below"} the
-            market, so it would take only{" "}
-            {oneSided === "0" ? token0.symbol : token1.symbol} and none of{" "}
-            {oneSided === "0" ? token1.symbol : token0.symbol}. Move a bound
-            across the current price to deposit into it.
+            Range is one-sided — takes only{" "}
+            {oneSided === "0" ? token0.symbol : token1.symbol}. Move a bound
+            across the price.
           </div>
         ) : ratio !== null && Number.isFinite(ratio) && ratio > 0 ? (
           <div className={s.priceHint} style={{ marginTop: 8 }}>
@@ -987,8 +983,7 @@ export default function NewPositionPage() {
           </div>
         ) : ticks && poolPrice === null ? (
           <div className={s.priceHint} style={{ marginTop: 8 }}>
-            No pool at this tier yet, so both amounts are yours to set: their
-            ratio is what opens the price.
+            No pool yet — your amounts set the opening price.
           </div>
         ) : null}
 

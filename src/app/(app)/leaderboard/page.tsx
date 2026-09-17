@@ -77,13 +77,13 @@ const points = (n: number | null) => qty(n);
 function tierNote(payload: LeaderboardPayload): string {
   const { disclosure, publicRankLimit } = payload.season;
   if (disclosure === "full") {
-    return "This season is frozen and published in full: every wallet, its exact rank, and the time, action and bonus components of its total. Published before any token moves, so an allocation can be audited and disputed.";
+    return "Frozen and published in full: every wallet, its rank, and its score breakdown.";
   }
-  const tail = `Exact ranks are published for the top ${publicRankLimit}; everyone below that gets a percentile band.`;
+  const tail = `Exact ranks for the top ${publicRankLimit}; a percentile band below.`;
   if (disclosure === "totals") {
-    return `${tail} The time, action and bonus split of each total stays private until the season freezes.`;
+    return `${tail} Score breakdowns stay private until the season freezes.`;
   }
-  return `${tail} Point totals stay private while the season is running — if the wallet at rank 50 visibly holds 48,000 points, everyone knows exactly how much to deposit to displace it. Rank and percentile keep the competition without publishing the threshold.`;
+  return `${tail} Totals stay private while the season runs.`;
 }
 
 export default function LeaderboardPage() {
@@ -115,12 +115,12 @@ export default function LeaderboardPage() {
 
     if (payload.truncated && payload.participants !== null) {
       out.push(
-        `Showing ${rows.length} of ${payload.participants} ranked wallets. A complete export is a separate surface and has to exist before any allocation is disputed.`,
+        `Showing ${rows.length} of ${payload.participants} ranked wallets.`,
       );
     }
     if (payload.degraded.length > 0) {
       out.push(
-        `Some reads failed and are shown as ${DASH}: ${payload.degraded.join(", ")}. A dash here is a missing measurement, never a zero.`,
+        `Some reads failed, shown as ${DASH}: ${payload.degraded.join(", ")} — a missing read, not a zero.`,
       );
     }
     if (board.stale) {
@@ -130,7 +130,7 @@ export default function LeaderboardPage() {
     }
     if (!payload.season.convertsToTokens) {
       out.push(
-        "This season does not convert to tokens. The points are a real record of participation; the allocation is not.",
+        "This season doesn't convert to tokens.",
       );
     }
     return out;
@@ -235,8 +235,7 @@ export default function LeaderboardPage() {
                yet (§11), or migrations that have not been pushed. */
             <div className={s.tEmpty}>
               <b>Nobody is ranked in this season yet</b>
-              Points accrue per epoch from verified on-chain activity. Nothing
-              has been credited to this season so far.
+              No points credited to this season yet.
             </div>
           ) : (
             rows.map((r) => {

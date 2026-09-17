@@ -197,10 +197,10 @@ function FeeCard({ fees, lender }: { fees: LendingFees; lender: boolean }) {
       </div>
       <p className={s.cardNote}>
         {interestFeeBps === null && liquidationPenaltyBps === null
-          ? "These rates couldn't be read from the protocol just now. Both are still charged — the interest fee out of the lender's interest, the penalty out of a liquidated borrower's collateral."
+          ? "Rates couldn't be read just now. Both still apply."
           : lender
-            ? "The interest fee is deducted from the interest paid to you at repayment; your principal is untouched. In a liquidation you are paid before anyone else — the penalty only comes out of collateral above your claim, so a shortfall costs the liquidator and the protocol, not you."
-            : "The interest fee is deducted from your lender's interest, not added to your repayment. The liquidation penalty is charged on the debt and taken from your collateral if your health factor breaks."}
+            ? "Taken from your interest, not your principal. In liquidation you're paid first."
+            : "Taken from your lender's interest. Penalty hits your collateral if health breaks."}
         {split &&
           ` Of the penalty, ${formatBps(split.liquidator)} goes to whoever closes the position and ${formatBps(split.protocol)} to the protocol.`}
       </p>

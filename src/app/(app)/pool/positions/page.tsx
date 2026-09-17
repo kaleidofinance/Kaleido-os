@@ -503,10 +503,8 @@ function PositionCard({
 
       {legs === null && (
         <p className={s.addNote}>
-          One of this position&apos;s tokens isn&apos;t in this chain&apos;s
-          registry, so its decimals are unknown — adding is disabled rather than
-          guessing at how much to send. Collecting and removing don&apos;t need
-          them.
+          A token isn&apos;t in this chain&apos;s registry — adding is disabled.
+          Collecting and removing still work.
         </p>
       )}
 
@@ -572,9 +570,8 @@ function PositionCard({
               L(amount1)) and the pool pulls only what that liquidity costs, so
               the surplus is never transferred — it stays in the wallet. */}
           <p className={s.addNote}>
-            Deposited into this position&apos;s own pool, {(p.fee / 10000).toFixed(2)}%
-            tier and range — the bounds don&apos;t move. Whichever side the range
-            doesn&apos;t need is left in your wallet.
+            Same pool, {(p.fee / 10000).toFixed(2)}% tier and range. Unused
+            tokens stay in your wallet.
           </p>
           <div className={s.actions}>
             <button
@@ -655,7 +652,7 @@ export default function PositionsPage() {
         <div className={s.emptySub}>
           {isConnected
             ? "Provide liquidity to a pool to start earning trading fees."
-            : "Positions are held as NFTs in your wallet, so there is nothing to read until one is connected."}{" "}
+            : "Connect a wallet to load them."}{" "}
           Browse{" "}
           <Link href="/pool" className={s.emptyLink}>
             all pools
