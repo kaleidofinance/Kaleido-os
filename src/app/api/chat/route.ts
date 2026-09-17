@@ -18,9 +18,10 @@ import {
 } from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
 import {
-  getNormalizerProvider,
+  getNormalizerProviders,
   isEscalation,
   normalizerAddendum,
+  productFacts,
 } from "@/lib/ai/normalizer";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText, sanitizeGuardrails } from "@/lib/ai/auditor";
@@ -332,6 +333,10 @@ export async function POST(request: NextRequest) {
            bare reply to something Luca itself said. */
         history: historyFromBody(body.history),
         grounding: groundingFromBody(body.grounding),
+        /* The product as it is today, for the full model too — so it never
+           recommends a competitor or a product that is not on this chain. The
+           normalizer tier below replaces this with its fuller addendum. */
+        systemAddendum: productFacts(),
       };
 
       /**
@@ -748,8 +753,12 @@ export async function POST(request: NextRequest) {
        * to stream.
        */
       if (tier === "normalize") {
-        const cheap = getNormalizerProvider();
-        if (cheap) {
+        /* Each configured cheap model in turn. A THROWN error (a 503, a
+           timeout) moves to the next cheap model — that is what the second one
+           is for. A considered decline — ESCALATE, an empty reply, a plan that
+           would not build — goes straight to the full model: the sentence was
+           read and judged, and a second cheap opinion is not worth a call. */
+        for (const cheap of getNormalizerProviders()) {
           try {
             const quick = await runAgent(cheap, {
               ...agentInput,
@@ -759,20 +768,21 @@ export async function POST(request: NextRequest) {
             const bail =
               quick.executes.length === 0 &&
               (isEscalation(quick.text, 0) || !quick.text.trim());
-            if (!bail) {
-              const settled = (await settle(quick)) as {
-                response: string;
-                context?: Record<string, unknown>;
-              };
-              if (settled.context?.status !== "build_error") {
-                return NextResponse.json({
-                  ...settled,
-                  context: { ...(settled.context ?? {}), tier: "normalize" },
-                });
-              }
-            }
+            if (bail) break;
+            const settled = (await settle(quick)) as {
+              response: string;
+              context?: Record<string, unknown>;
+            };
+            if (settled.context?.status === "build_error") break;
+            return NextResponse.json({
+              ...settled,
+              context: { ...(settled.context ?? {}), tier: "normalize" },
+            });
           } catch (quickError) {
-            console.warn("[chat] normalizer tier failed, escalating:", quickError);
+            console.warn(
+              `[chat] normalizer ${cheap.id}/${cheap.model} failed, trying next:`,
+              quickError,
+            );
           }
         }
       }
