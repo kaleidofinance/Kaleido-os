@@ -742,7 +742,14 @@ const FAUCET_FILLERS = new Set([
  */
 export const ALL_WORDS = new Set(["all", "everything", "every"]);
 
-const HELP_WORDS = ["help", "commands", "what can you do", "how do i use"];
+const HELP_WORDS = [
+  "help",
+  "commands",
+  "what can you do",
+  "what can luca do",
+  "what commands",
+  "how do i use",
+];
 
 /**
  * Phrases that open the receive panel. Matched as a *leading* phrase only, the
@@ -805,6 +812,23 @@ const PORTFOLIO_PHRASES = [
      and anything that does was claimed by its verb before this ran. */
   "do i have any",
 ];
+
+/**
+ * The possessive-plus-noun read, with room for a qualifier the phrase list
+ * cannot enumerate.
+ *
+ * "my balance" is in PORTFOLIO_PHRASES above; "my WALLET balance", "my LENDING
+ * positions" and "my CUMULATIVE balance across all assets" are the same read
+ * with a word in the middle — and each was sent to the model, because
+ * `includes("my balance")` needs the two words adjacent. This allows up to
+ * three words between the possessive and the noun, bounded and non-greedy so it
+ * stays inside one clause and takes the nearest noun. It is gated by exactly the
+ * same two vetoes as the phrase list, so "move my portfolio to best yield" (an
+ * action) and "add to my pool" (liquidity) are untouched — the read still runs
+ * last, after every verb has had its turn.
+ */
+const PORTFOLIO_POSSESSIVE =
+  /\bmy\b(?:\s+[a-z]+){0,3}?\s+(?:balances?|portfolios?|positions?|holdings?|assets|funds|net\s+worth)\b/;
 
 /** Whole requests that mean this and nothing else. Compared, not searched. */
 const PORTFOLIO_ALONE = [
@@ -1962,7 +1986,8 @@ export function parseCommand(
       !words.some((w) => PORTFOLIO_VETO.has(w)) &&
       !words.some((w) => PORTFOLIO_ACTION_VETO.has(w)) &&
       (PORTFOLIO_ALONE.includes(bare) ||
-        PORTFOLIO_PHRASES.some((p) => lower.includes(p)))
+        PORTFOLIO_PHRASES.some((p) => lower.includes(p)) ||
+        PORTFOLIO_POSSESSIVE.test(lower))
     ) {
       return { status: "ok", command: { kind: "portfolio" } };
     }

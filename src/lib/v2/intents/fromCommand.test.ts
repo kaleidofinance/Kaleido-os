@@ -2412,5 +2412,61 @@ console.log("swap resolves relative amounts; other verbs escalate");
   check("'12,5' likewise", eu2.status === "incomplete" && eu2.missing === "amount", eu2.status === "incomplete" ? eu2.missing : eu2.status);
 }
 
+/* ---------------------------------------------------------------------------
+ * A POSSESSIVE READ WITH A WORD IN THE MIDDLE.
+ *
+ * From the log: "whats my wallet balance?" (repeatedly), "Tell me all my
+ * lending positions", "Whats my cumulative balance across all assests" — all
+ * sent to the model, because the phrase list matched "my balance" as an exact
+ * substring and a qualifier between the two words broke it. Now a bounded gap
+ * is allowed, behind the same action and liquidity vetoes.
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— a possessive read with a qualifier in the middle —");
+  for (const text of [
+    "whats my wallet balance?",
+    "tell me all my lending positions",
+    "whats my cumulative balance across all assets",
+    "my total holdings",
+    "show my stablecoin balance",
+    "what is my usdc balance",
+    "how big is my portfolio",
+  ]) {
+    const r = p(text);
+    check(
+      `'${text}' is read as a portfolio question`,
+      r.status === "ok" && r.command.kind === "portfolio",
+      r.status === "ok" ? r.command.kind : r.status,
+    );
+  }
+  /* The vetoes still hold: an action on the portfolio is not a read of it, and
+     a pool question is not a balance sheet. */
+  check(
+    "'move my idle balance to best yield' is not a read (action veto)",
+    p("move my idle balance to best yield").status === "unknown",
+    p("move my idle balance to best yield").status,
+  );
+  check(
+    "'how much liquidity is in my pool' is not a read (liquidity veto)",
+    p("how much liquidity is in my pool").status !== "ok" ||
+      p("how much liquidity is in my pool").command.kind !== "portfolio",
+    p("how much liquidity is in my pool").status,
+  );
+  /* And a stated action that happens to name a balance still belongs to its
+     verb — the read runs last. */
+  check(
+    "'sell my balance of 5 kld for usdc' is still a swap",
+    (() => { const r = p("sell my balance of 5 kld for usdc"); return r.status === "ok" && r.command.kind === "swap"; })(),
+    p("sell my balance of 5 kld for usdc").status,
+  );
+  check("'my balance' still works", p("my balance").status === "ok" && p("my balance").command.kind === "portfolio", p("my balance").status);
+
+  /* Capability questions reach help, not the model. */
+  for (const text of ["what commands can i use", "what can luca do", "what commands are there"]) {
+    const r = p(text);
+    check(`'${text}' is answered as help`, r.status === "ok" && r.command.kind === "help", r.status === "ok" ? r.command.kind : r.status);
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
