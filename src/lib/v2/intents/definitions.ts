@@ -478,7 +478,7 @@ register("bridge", {
 register("aggregatorSwap", {
   render: (i) => ({
     title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
-    detail: `About ${i.amountOut} ${i.symbolOut}, at least ${i.amountOutMin} after slippage. Filled by ${i.venue}; the price floor is enforced on-chain.`,
+    detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
     let to = i.to;

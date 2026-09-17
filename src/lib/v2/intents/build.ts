@@ -895,7 +895,10 @@ export async function buildIntents(
        liquidity for this pair yet (Arc at launch). The aggregator handles
        wrapping, discovery and the calldata; we pair its router call with an
        approve and our own fee (added server-side). */
-    const tryKyberSwap = async (): Promise<PlanResult | null> => {
+    const tryKyberSwap = async (): Promise<{
+      plan: PlanResult;
+      out: number;
+    } | null> => {
       if (chainId === undefined || !hasKyberSwap(chainId) || !deps.swapRoute) {
         return null;
       }
@@ -917,7 +920,8 @@ export async function buildIntents(
         decimalsOut: outTok.decimals,
         slippageBps: opts.slippageBps,
       });
-      if ("error" in route) return { ok: false, error: route.error };
+      if ("error" in route)
+        return { plan: { ok: false, error: route.error }, out: 0 };
 
       const out = ethers.formatUnits(route.amountOut, outTok.decimals);
       const minOut = (Number(out) * (1 - opts.slippageBps / 10000)).toFixed(
@@ -951,11 +955,14 @@ export async function buildIntents(
         slippageBps: opts.slippageBps,
       };
       return {
-        ok: true,
-        build: {
-          summary: `Swap ${amount} ${tokenIn.symbol} for about ${out} ${tokenOut.symbol} via ${route.venue}.`,
-          intents: [approve, swap],
+        plan: {
+          ok: true,
+          build: {
+            summary: `Swap ${amount} ${tokenIn.symbol} for about ${out} ${tokenOut.symbol}.`,
+            intents: [approve, swap],
+          },
         },
+        out: Number(out),
       };
     };
 
@@ -971,7 +978,7 @@ export async function buildIntents(
       deps.swapRoute
     ) {
       const kyber = await tryKyberSwap();
-      if (kyber) return kyber;
+      if (kyber) return kyber.plan;
     }
 
     /* Before quoting, not after: a chain with no router cannot fill this order
@@ -1082,13 +1089,22 @@ export async function buildIntents(
       ],
     );
 
+    /* Best execution, not "our pool if it fills at all". Also quote the
+       aggregator, and route to whichever gives the user more output — the same
+       comparison the Swap page makes, so the card and the chat agree. Our Arc
+       pools are seed-shallow, so a trade larger than their depth is almost pure
+       price impact; KyberSwap's deep Uniswap V4 liquidity wins for those, our
+       pool + fee wins for the rest, with no slippage threshold to tune. Both
+       outputs are the same asset (a non-native token either way; native USDC is
+       0x8c6c 18-dec our-pool vs 0x3600 6-dec aggregator, both $1) so the human
+       amounts compare directly. */
+    const kyber = await tryKyberSwap();
+
     if (!path) {
       /* Our own pools returned no route — at Arc's launch the fork's pools
-         exist but hold no liquidity yet. Fall back to KyberSwap before
-         refusing, so a swap still fills off external liquidity; once our own
-         pools are seeded they win above and this never runs. */
-      const kyber = await tryKyberSwap();
-      if (kyber?.ok) return kyber;
+         exist but hold no liquidity yet. Fall back to the aggregator before
+         refusing, so a swap still fills off external liquidity. */
+      if (kyber?.plan.ok) return kyber.plan;
 
       return {
         ok: false,
@@ -1102,6 +1118,12 @@ export async function buildIntents(
               .join(" or ") || "another token"
           } either.`,
       };
+    }
+
+    /* Our pool filled, but if the aggregator gives strictly more, take it —
+       this is what stops a big order from draining a shallow pool. */
+    if (kyber?.plan.ok && kyber.out > Number(path.amountOut)) {
+      return kyber.plan;
     }
 
     const out = path.amountOut;
