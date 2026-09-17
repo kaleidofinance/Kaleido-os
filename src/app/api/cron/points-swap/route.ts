@@ -2,6 +2,8 @@ import { ethers } from "ethers";
 import { swapFeeReceiver } from "@/lib/swap/kyberswapServer";
 import { kyberSwapRouter } from "@/lib/swap/kyberswap";
 import { providerForChain } from "@/config/provider";
+import { planSpans } from "@/lib/keeper/candleIndex";
+import { retryRpc } from "@/lib/dex/rpcRetry";
 import {
   TRANSFER_TOPIC,
   decodeTransferLog,
@@ -43,10 +45,23 @@ const USDC_DECIMALS = 6;
 /** Blocks back from head to scan each run. Overlap is safe (idempotent), and this
  *  comfortably covers a fifteen-minute cron at Arc's block time. A few blocks of
  *  head are left off for reorg safety. */
-const WINDOW_BLOCKS = 10_000;
+const WINDOW_BLOCKS = Number(process.env.POINTS_SWAP_WINDOW ?? 10_000);
 const REORG_MARGIN = 5;
-/** Cap on transactions processed per run, bounding RPC load like the other crons. */
-const MAX_TXS = 200;
+/**
+ * Blocks per getLogs. Arc's RPC refuses a large range (-32012 at 10k) and rate-
+ * limits (-32005), so the window is scanned in chunks this wide with a pace
+ * between them — the same span/rate-limit fight candleIndex documents. 1000 is a
+ * safe default under Arc's ceiling; raise via env if the endpoint allows more.
+ */
+const SPAN = Number(process.env.POINTS_SWAP_SPAN ?? 1_000);
+/** Pace between RPC calls, so a run does not trip Arc's rate limiter. */
+const DELAY_MS = Number(process.env.POINTS_SWAP_DELAY_MS ?? 200);
+/** Cap on transactions processed per run — bounds RPC load and keeps a paced run
+ *  inside the 60s budget. Overlapping windows are idempotent, so anything over the
+ *  cap is picked up next run; raise via env if a window ever carries more swaps. */
+const MAX_TXS = Number(process.env.POINTS_SWAP_MAX_TXS ?? 100);
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function authorised(req: Request, secret: string): boolean {
   const header = req.headers.get("authorization");
@@ -74,15 +89,25 @@ async function handle(req: Request): Promise<Response> {
   const bump = (r: string) => (skips[r] = (skips[r] ?? 0) + 1);
 
   try {
-    const head = (await provider.getBlockNumber()) - REORG_MARGIN;
+    const head = (await retryRpc(() => provider.getBlockNumber())) - REORG_MARGIN;
     const fromBlock = Math.max(0, head - WINDOW_BLOCKS);
+    const feeTopic = ethers.zeroPadValue(receiver, 32);
 
-    // Every ERC-20 transfer TO the fee wallet in the window, any token.
-    const logs = await provider.getLogs({
-      fromBlock,
-      toBlock: head,
-      topics: [TRANSFER_TOPIC, null, ethers.zeroPadValue(receiver, 32)],
-    });
+    // Every ERC-20 transfer TO the fee wallet in the window, any token — scanned
+    // in SPAN-wide chunks (retried, paced) so Arc's getLogs range and rate limits
+    // do not refuse the run.
+    const logs: ethers.Log[] = [];
+    for (const { start, end } of planSpans(fromBlock, head, SPAN)) {
+      const page = await retryRpc(() =>
+        provider.getLogs({
+          fromBlock: start,
+          toBlock: end,
+          topics: [TRANSFER_TOPIC, null, feeTopic],
+        }),
+      );
+      for (const l of page) logs.push(l);
+      if (DELAY_MS) await sleep(DELAY_MS);
+    }
     scanned = logs.length;
 
     // One credit per transaction, even if a tx produced several fee transfers.
@@ -94,8 +119,8 @@ async function handle(req: Request): Promise<Response> {
     for (const txHash of txHashes) {
       try {
         const [tx, receipt] = await Promise.all([
-          provider.getTransaction(txHash),
-          provider.getTransactionReceipt(txHash),
+          retryRpc(() => provider.getTransaction(txHash)),
+          retryRpc(() => provider.getTransactionReceipt(txHash)),
         ]);
         if (!tx || !receipt) {
           bump("no-tx");
@@ -128,7 +153,7 @@ async function handle(req: Request): Promise<Response> {
         }
 
         const block = tx.blockNumber
-          ? await provider.getBlock(tx.blockNumber)
+          ? await retryRpc(() => provider.getBlock(tx.blockNumber!))
           : null;
         const occurredAt = block
           ? new Date(block.timestamp * 1000).toISOString()
@@ -149,6 +174,7 @@ async function handle(req: Request): Promise<Response> {
         // One bad transaction never aborts the batch.
         bump("tx-error");
       }
+      if (DELAY_MS) await sleep(DELAY_MS);
     }
   } catch (err) {
     return Response.json(
