@@ -22,6 +22,21 @@
   margin-top: 8px;
 }
 
+/* A restored turn's data, from an earlier session. Dimmed so it reads as a record
+   rather than a live reading — the figures are a snapshot, and the caption above
+   says as of when. Not `display:none` and not removed, because the whole point of
+   the change is that the history now shows what happened; muted is the honest
+   middle between "gone" and "presented as current". */
+.past {
+  opacity: 0.6;
+}
+.pastNote {
+  font-size: var(--k-fs-xs, 11px);
+  color: var(--k-t3);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .card {
   background: var(--k-glass-deep);
   box-shadow: var(--k-shadow-inset);

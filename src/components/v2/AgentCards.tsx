@@ -127,13 +127,33 @@ function StepIcon({
 interface Props {
   cards: AgentCard[];
   onPrompt: (text: string) => void;
+  /**
+   * Set for cards restored from storage — a past turn's data, not a reading of
+   * now. Present makes the group dimmed and captioned so a balance from earlier
+   * cannot be mistaken for the current one; `at` is when the turn was written.
+   */
+  historical?: { at?: number };
 }
 
-export default function AgentCards({ cards, onPrompt }: Props) {
+/** "earlier", or a coarse "Nm/Nh/Nd ago", for a restored card group's caption. */
+function whenLabel(at?: number): string {
+  if (!at) return "from earlier";
+  const mins = Math.max(0, Math.round((Date.now() - at) / 60000));
+  if (mins < 1) return "from moments ago";
+  if (mins < 60) return `from ${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `from ${hrs}h ago`;
+  return `from ${Math.round(hrs / 24)}d ago`;
+}
+
+export default function AgentCards({ cards, onPrompt, historical }: Props) {
   if (!cards.length) return null;
 
   return (
-    <div className={s.wrap}>
+    <div className={historical ? `${s.wrap} ${s.past}` : s.wrap}>
+      {historical && (
+        <div className={s.pastNote}>Snapshot {whenLabel(historical.at)}</div>
+      )}
       {cards.map((card, i) => {
         switch (card.kind) {
           case "metric":
