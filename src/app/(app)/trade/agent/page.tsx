@@ -835,7 +835,16 @@ export default function AgentPage() {
          bank deliberately carries no ask for it. */
       if (question) {
         const exact = searchDocs(content);
-        if (exact && exact.via === "ask" && exact.score >= MIN_ASK_SIMILARITY && (exact.shared ?? 0) >= 2) {
+        if (
+          exact &&
+          exact.via === "ask" &&
+          exact.score >= MIN_ASK_SIMILARITY &&
+          /* Two shared content words guard a loose match — but a near-verbatim
+             ask (score >= 0.9) needs no such guard, and requiring two words
+             was rejecting real short how-tos ("how do i stake", score 1.0,
+             one shared word) into the model. */
+          ((exact.shared ?? 0) >= 2 || exact.score >= 0.9)
+        ) {
           note("Read this as a question about the action, not the action");
           log(`docs:${exact.slug}`);
           const reply = docsReply(exact);
