@@ -16,7 +16,8 @@ import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { usePortfolio, type Portfolio } from "@/hooks/usePortfolio";
 import { useLocalPlanner } from "@/hooks/v2/useLocalPlanner";
 import { useChatHistory, type Msg } from "@/hooks/v2/useChatHistory";
-import { chainTokens } from "@/constants/tokens";
+import { chainTokens, chainsOffering } from "@/constants/tokens";
+import { resolveChain } from "@/lib/ai/bridgeQuotes";
 import AgentSettings from "@/components/v2/AgentSettings";
 import AgentCards from "@/components/v2/AgentCards";
 import Answer from "@/components/v2/Answer";
@@ -53,6 +54,7 @@ import {
   capabilityHelp,
   type Command,
   type Draft,
+  type ParseContext,
   type ParseResult,
   type Slot,
 } from "@/lib/v2/intents/fromCommand";
@@ -672,6 +674,16 @@ export default function AgentPage() {
     // the user is on. "swap 500 usdc" names a different contract on each chain,
     // so there is no chain-free answer to what "usdc" means.
     const vocabulary = chainTokens(chainId);
+    /* What the grammar needs to explain a miss rather than ask again: this
+       chain's name, which other chains carry a symbol it doesn't (kept to the
+       viewer's network), and whether a phrase names a chain — so "swap 50
+       USDC to Sepolia" is read as the bridge it is. */
+    const parseCtx: ParseContext = {
+      chainName: getChainMeta(chainId)?.shortName,
+      elsewhere: (symbol) =>
+        chainsOffering(symbol, showTestnets ? undefined : "mainnet"),
+      isChain: (phrase) => resolveChain(phrase) !== undefined,
+    };
 
     /*
      * The last planned command, captured for THIS turn and then cleared. A
@@ -737,6 +749,7 @@ export default function AgentPage() {
           pending.missing,
           content,
           vocabulary,
+          parseCtx,
         );
         if (filled.status !== "unknown") {
           note("Took this as the answer to what I asked");
@@ -831,7 +844,7 @@ export default function AgentPage() {
         }
       }
 
-      const parsed = parseCommand(content, vocabulary);
+      const parsed = parseCommand(content, vocabulary, parseCtx);
       /* A referential sentence that names the last plan's own verb — "do the
          same swap once again", "swap again", "repeat that swap" — parses as a
          Draft with an empty slot: the grammar reads the verb and finds no

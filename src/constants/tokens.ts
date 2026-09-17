@@ -1,5 +1,5 @@
 import type { IToken } from "./types/dex";
-import { getChainMeta } from "./chains";
+import { CHAINS, getChainMeta } from "./chains";
 import {
   isNativeSentinel,
   nativeTokenOf,
@@ -109,6 +109,28 @@ export function chainTokens(
   const native = nativeTokenOf(getChainMeta(chainId), protocol);
   const erc20s = registeredTokens(chainId);
   return (native ? [native, ...erc20s] : erc20s).map(toIToken);
+}
+
+/**
+ * Every chain that carries a symbol, by display name — so the grammar can say
+ * "EURC isn't on Sepolia, it's on Arc" instead of asking which token again.
+ *
+ * `network` narrows to the viewer's world (a mainnet viewer is not sent to a
+ * testnet) and falls back to every chain when nothing there carries it, since
+ * a true answer on the wrong network still beats "I don't know it".
+ */
+export function chainsOffering(
+  symbol: string,
+  network?: "mainnet" | "testnet",
+): string[] {
+  const s = symbol.toLowerCase();
+  const carrying = CHAINS.filter((c) =>
+    chainTokens(c.id).some((t) => t.symbol.toLowerCase() === s),
+  );
+  const narrowed = network
+    ? carrying.filter((c) => c.network === network)
+    : carrying;
+  return (narrowed.length > 0 ? narrowed : carrying).map((c) => c.shortName);
 }
 
 /**

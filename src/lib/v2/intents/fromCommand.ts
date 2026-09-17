@@ -1058,6 +1058,23 @@ function parseAmount(raw: string): string | null {
   const m = raw.match(/^([\d,]*\.?\d+)\s*([km])?$/i);
   if (!m) return null;
 
+  /* A comma is a thousands separator here — "1,000.50" — and only that. "1,0"
+     and "12,5" are decimals in half the world, and reading them as 10 and 125
+     built a plan for ten times the amount typed. Groups after the first must
+     be exactly three digits, or this is not an amount this grammar will read;
+     the amount gets asked for instead. */
+  const intPart = m[1].split(".")[0];
+  if (intPart.includes(",")) {
+    const groups = intPart.split(",");
+    if (
+      groups[0].length === 0 ||
+      groups[0].length > 3 ||
+      groups.slice(1).some((g) => g.length !== 3)
+    ) {
+      return null;
+    }
+  }
+
   const digits = m[1].replace(/,/g, "");
   const dot = digits.indexOf(".");
   let whole = dot === -1 ? digits : digits.slice(0, dot);
@@ -1179,14 +1196,127 @@ function incomplete(draft: Draft, missing: Slot): ParseResult {
   };
 }
 
+/* ---------------------------------------------------------------- context -- */
+
+/**
+ * What the caller knows about the world that the grammar, by design, does not.
+ *
+ * The grammar is chain-agnostic on purpose: it resolves symbols against the
+ * `tokens` it is handed and nothing else, which is what keeps it testable with
+ * a fixture. But the best answer to a miss often needs one more fact —
+ * "EURC isn't on Sepolia, it's on Arc" needs the chain's name and a lookup
+ * across the others; "swap 50 USDC to Sepolia" needs to know Sepolia is a
+ * chain. Each is optional, and a caller that supplies none gets the answers
+ * this grammar gave before.
+ */
+export interface ParseContext {
+  /** The connected chain's display name, for questions that name it. */
+  chainName?: string;
+  /** Other chains carrying a symbol this chain does not, by display name. */
+  elsewhere?: (symbol: string) => string[];
+  /** Whether a phrase names a chain — what turns a "swap to Sepolia" into the bridge it is. */
+  isChain?: (phrase: string) => boolean;
+}
+
+/** Verbs whose first question is which token, and so cannot start without a vocabulary. */
+const NEEDS_TOKENS: ReadonlySet<ActionKind> = new Set<ActionKind>([
+  "swap",
+  "bridge",
+  "send",
+  "lend",
+  "borrow",
+]);
+
+/** Words that sit around a token without ever being the token that is missing. */
+const STRAY_FILLERS = new Set([
+  "the", "a", "an", "some", "of", "all", "my", "worth", "in", "on", "from",
+  "with", "using", "please", "now", "then", "and", "it", "this", "that", "me",
+  "every", "each", "any", "available", "token", "tokens",
+]);
+
+/**
+ * The word sitting where a token should be, when nothing resolved there.
+ *
+ * Scans `words[from, to)` for the first plain word that is not grammar, not a
+ * filler and not a token this sentence already named. That word is what the
+ * user typed for the missing side, and the question should quote it back
+ * rather than ask which token — 130 complete commands in the log were asked
+ * "which token?" because the one they named was not on the connected chain.
+ */
+function strayWord(
+  words: string[],
+  from: number,
+  to: number,
+  placed: Mention[],
+): string | null {
+  const taken = new Set(placed.map((m) => m.index));
+  for (let i = Math.max(0, from); i < Math.min(words.length, to); i++) {
+    if (taken.has(i)) continue;
+    const w = words[i];
+    if (!/^[a-z][a-z0-9.]*$/.test(w)) continue;
+    if (NEVER_A_TOKEN.has(w) || STRAY_FILLERS.has(w)) continue;
+    return w;
+  }
+  return null;
+}
+
+/**
+ * The question for a token this chain does not carry.
+ *
+ * Says the one thing that resolves it: where the token IS, when the registry
+ * knows; otherwise that it is unknown here — and, either way, a few of the
+ * tokens that are here, so the next message can name one.
+ */
+function unknownTokenPrompt(
+  typed: string,
+  ctx: ParseContext,
+  tokens: IToken[],
+): string {
+  const shown = /^[a-z0-9.]{1,8}$/.test(typed) ? typed.toUpperCase() : typed;
+  const here = ctx.chainName ? ` on ${ctx.chainName}` : "";
+  const sample = tokens
+    .slice(0, 6)
+    .map((t) => t.symbol)
+    .join(", ");
+  const options = sample ? ` Here you can use ${sample}.` : "";
+  const elsewhere = ctx.elsewhere?.(typed) ?? [];
+  if (elsewhere.length > 0) {
+    const where =
+      elsewhere.length === 1
+        ? elsewhere[0]
+        : `${elsewhere.slice(0, -1).join(", ")} and ${elsewhere[elsewhere.length - 1]}`;
+    return `${shown} isn't${here} — it's on ${where}. Switch chain to use it, or name a token that's here.${options}`;
+  }
+  return `I don't know a token called ${shown}${here}.${options}`;
+}
+
 /* ------------------------------------------------------------------ parse -- */
 
 function normalise(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s.,%>→-]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
+  return (
+    text
+      /* A pasted link is not a sentence. "app.kaleidofi.xyz/trade/agent" split
+         on its slashes yields "trade" — a swap verb — and a message about the
+         project became a swap draft asking which token to spend. Links and
+         bare paths come out before anything is read. */
+      .replace(/https?:\/\/\S+/gi, " ")
+      .replace(/\b[\w-]+(?:\.[\w-]+)+\/\S*/g, " ")
+      .replace(/(^|\s)\/[\w./-]+/g, " ")
+      .toLowerCase()
+      .replace(/[^\w\s.,%>→-]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      /* "0.0001eth", "500kfusd", "30days": an amount glued to what it counts.
+         parseAmount reads digits only, so the word matched nothing and the
+         sentence lost both its amount and its token. Split when the letters
+         could be a symbol or a unit — two or more of them, so "10k" and "2.5m"
+         keep their multiplier — and never for an address, which "0x" starts. */
+      .flatMap((w) => {
+        if (w.startsWith("0x")) return [w];
+        const m = w.match(/^(\d[\d,]*(?:\.\d+)?)([a-z][a-z0-9]+)$/);
+        return m ? [m[1], m[2]] : [w];
+      })
+  );
 }
 
 /**
@@ -1632,7 +1762,11 @@ function detectDuration(
 const MODEL_ONLY =
   /\b(every (day|week|month|hour|\d+ (days|weeks|months|hours))|daily|weekly|monthly|recurring|dca|limit (order|buy|sell)|at a price of|when (the )?price|(?<!in )orders?|grant|permission|mandate|delegat(e|ion|ed))\b/i;
 
-export function parseCommand(text: string, tokens: IToken[]): ParseResult {
+export function parseCommand(
+  text: string,
+  tokens: IToken[],
+  ctx: ParseContext = {},
+): ParseResult {
   const raw = text.trim();
   if (!raw) return { status: "unknown" };
 
@@ -1951,6 +2085,22 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     return completeDraft(refDraft);
   }
 
+  /* No vocabulary means no chain: a wallet not connected, or one on a chain
+     this registry has no tokens for. Every token-naming verb would otherwise
+     open a Draft and ask "which token?" — the one question that cannot be
+     answered here — and 28 sessions in the log did exactly that. Say what is
+     actually missing. */
+  if (tokens.length === 0 && NEEDS_TOKENS.has(verb.kind)) {
+    return {
+      status: "incomplete",
+      draft: { kind: verb.kind },
+      missing: verb.kind === "swap" ? "tokenIn" : "token",
+      prompt: ctx.chainName
+        ? `I don't have any tokens for ${ctx.chainName} yet — switch to a supported chain and I'll build it.`
+        : "Connect a wallet first — which tokens you can use depends on the chain it's on.",
+    };
+  }
+
   if (verb.kind === "swap") {
     return parseSwap(
       words,
@@ -1958,6 +2108,7 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
       amount ? null : detectRelativeAmount(words),
       mentions,
       tokens,
+      ctx,
     );
   }
 
@@ -2360,6 +2511,7 @@ function parseSwap(
   relative: RelativeAmount | null,
   mentions: Mention[],
   tokens: IToken[],
+  ctx: ParseContext = {},
 ): ParseResult {
   /*
    * A purchase is the same transaction read from the other end, and every branch
@@ -2426,9 +2578,25 @@ function parseSwap(
    * keeps its meaning, so answering takes one word.
    */
   if (near) {
-    const suggest = { token: near.token, typed: near.typed };
+    /* A symbol the registry carries on ANOTHER chain is not a typo, however
+       close it lands to one here: "EURC" is two edits from "USDC" and a real
+       token on Arc, and "did you mean USDC?" sent people round the slot loop.
+       Known elsewhere wins over the near miss, and the question says where. */
+    const abroad = (ctx.elsewhere?.(near.typed) ?? []).length > 0;
+    const suggest = abroad
+      ? undefined
+      : { token: near.token, typed: near.typed };
+    const ask = (draft: Draft, missing: Slot): ParseResult =>
+      abroad
+        ? {
+            status: "incomplete",
+            draft,
+            missing,
+            prompt: unknownTokenPrompt(near.typed, ctx, tokens),
+          }
+        : incomplete(draft, missing);
     if (tokenIn === near.token) {
-      return incomplete(
+      return ask(
         { kind: "swap", amount: amount?.amount, tokenOut, suggest },
         "tokenIn",
       );
@@ -2437,10 +2605,26 @@ function parseSwap(
       // Same rule as the drop below: a purchase states what comes back, so its
       // number must not survive into the side that gets spent.
       const keep = buying && !tokenIn ? undefined : amount?.amount;
-      return incomplete(
-        { kind: "swap", amount: keep, tokenIn, suggest },
-        "tokenOut",
-      );
+      return ask({ kind: "swap", amount: keep, tokenIn, suggest }, "tokenOut");
+    }
+  }
+
+  /* "swap 50 USDC to Sepolia" names a chain where a token should be. There is
+     no such swap and exactly one thing it can mean, and the caller can tell a
+     chain from a token. Read it as the bridge it is: the plan says "Bridge",
+     and nothing is signed unread. */
+  if (!tokenOut && !inverted && sepAt >= 0 && ctx.isChain) {
+    const phrase = words
+      .slice(sepAt + 1)
+      .filter((w) => !STRAY_FILLERS.has(w))
+      .join(" ");
+    if (phrase && ctx.isChain(phrase)) {
+      return completeDraft({
+        kind: "bridge",
+        amount: amount?.amount,
+        token: tokenIn,
+        toChain: phrase,
+      });
     }
   }
 
@@ -2469,8 +2653,35 @@ function parseSwap(
     tokenOut,
   };
 
-  if (!tokenIn) return incomplete(draft, "tokenIn");
-  if (!tokenOut) return incomplete(draft, "tokenOut");
+  /* An empty side may not be unnamed at all — "swap 100 USDC to EURC" on a
+     chain without EURC names a token that simply isn't here, and "which token
+     do you want to receive?" hides the only fact that matters. Quote what was
+     typed and say what is wrong with it. The spent side sits after the amount
+     (or the verb) and before the separator; the received side after it; a
+     purchase reads the two the other way round. */
+  const verbAt = words.findIndex((w) => VERBS.swap.includes(w));
+  const start = amount ? amount.index + 1 : verbAt + 1;
+  const end = sepAt >= 0 ? sepAt : words.length;
+  const spentRange: [number, number] = inverted ? [sepAt + 1, words.length] : [start, end];
+  const gotRange: [number, number] | null =
+    sepAt < 0 ? null : inverted ? [start, sepAt] : [sepAt + 1, words.length];
+  const explain = (typed: string, missing: Slot): ParseResult => ({
+    status: "incomplete",
+    draft,
+    missing,
+    prompt: unknownTokenPrompt(typed, ctx, tokens),
+  });
+
+  if (!tokenIn) {
+    const typed = strayWord(words, spentRange[0], spentRange[1], placed);
+    return typed ? explain(typed, "tokenIn") : incomplete(draft, "tokenIn");
+  }
+  if (!tokenOut) {
+    const typed = gotRange
+      ? strayWord(words, gotRange[0], gotRange[1], placed)
+      : null;
+    return typed ? explain(typed, "tokenOut") : incomplete(draft, "tokenOut");
+  }
   if (tokenIn.address.toLowerCase() === tokenOut.address.toLowerCase()) {
     // Not an incomplete draft — it's contradictory, so restart rather than
     // ask for a slot that's already filled.
@@ -2724,8 +2935,16 @@ export function fillSlot(
   missing: Slot,
   reply: string,
   tokens: IToken[],
+  ctx: ParseContext = {},
 ): ParseResult {
   const words = normalise(reply);
+  /* A reply with its own verb is a new command, not an answer. "swap 100 USDC
+     to EURC" typed under "which token do you want to spend?" must be read
+     whole — filling one slot from it loses the rest and asks for what the
+     sentence already said. Same rule as parseFollowUp's first. */
+  if (detectVerb(words, { hasRef: detectRef(words) !== null })) {
+    return { status: "unknown" };
+  }
   const next: Draft = { ...draft };
 
   if (missing === "amount") {
@@ -2804,6 +3023,28 @@ export function fillSlot(
       // The answer can be a near miss too — "usdcc" typed twice is still
       // "usdcc", and the second one deserves the same named question.
       const near = findNearMiss(words, [], tokens);
+      /* The same two answers parseSwap gives: a symbol known on another chain
+         is named with its chain, and a short reply that resolves to nothing
+         is quoted back as unknown here — both keep the slot open. */
+      const abroad = near && (ctx.elsewhere?.(near.typed) ?? []).length > 0;
+      const stray =
+        !near && words.length <= 2
+          ? words.find(
+              (w) =>
+                /^[a-z][a-z0-9.]*$/.test(w) &&
+                !NEVER_A_TOKEN.has(w) &&
+                !STRAY_FILLERS.has(w),
+            )
+          : undefined;
+      const typed = abroad ? near.typed : stray;
+      if (typed && !isAffirmative(words) && !isNegative(words)) {
+        return {
+          status: "incomplete",
+          draft: { ...next, suggest: undefined },
+          missing,
+          prompt: unknownTokenPrompt(typed, ctx, tokens),
+        };
+      }
       return incomplete(
         {
           ...next,
