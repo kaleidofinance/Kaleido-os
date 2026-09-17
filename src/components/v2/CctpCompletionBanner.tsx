@@ -33,7 +33,7 @@ import s from "./CctpCompletionBanner.module.css";
  * surfaces once it clears.
  */
 export default function CctpCompletionBanner() {
-  const { pending, remove } = useCctpPending();
+  const { pending, remove, keeper } = useCctpPending();
   const [active, setActive] = useState<{ txHash: string; intents: Intent[] } | null>(
     null,
   );
@@ -90,6 +90,9 @@ export default function CctpCompletionBanner() {
             {next.amount} {next.symbol}
           </strong>{" "}
           from {sourceName} is waiting to finish on {next.destChainName}.
+          {keeper
+            ? " It completes for you once Circle attests — usually within a few minutes, no gas needed there. Or finish it now:"
+            : ""}
           {others > 0 && (
             <span className={s.more}>
               {" "}

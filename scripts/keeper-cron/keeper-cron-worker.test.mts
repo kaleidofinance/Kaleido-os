@@ -315,5 +315,45 @@ console.log("\n— candles are their own job, judged on their own —");
   check("scheduled() rethrows when only candles failed", threw !== null, String(threw));
 }
 
+
+console.log("\n— the two-minute tick is the CCTP keeper, alone —");
+{
+  calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(
+      JSON.stringify({ ok: true, minted: ["0xa"], wouldMint: [], stillPending: 1, failed: [], skipped: [], errors: [] }),
+      { status: 200 },
+    );
+  };
+  await worker.scheduled({ cron: "*/2 * * * *" }, ENV);
+  check("one call, to /api/keeper/cctp", calls.length === 1 && calls[0].url === "https://kaleidofi.xyz/api/keeper/cctp", JSON.stringify(calls.map((c) => c.url)));
+  check("with the bearer secret", calls[0]?.init?.headers?.authorization === `Bearer ${SECRET}`);
+  check("and neither push nor candles", pushCalls().length === 0 && candleCalls().length === 0);
+
+  calls = [];
+  await worker.scheduled({ cron: "*/2 * * * *" }, { ...ENV, CCTP_LIMIT: "3" });
+  check("CCTP_LIMIT becomes ?limit=", calls[0]?.url === "https://kaleidofi.xyz/api/keeper/cctp?limit=3", calls[0]?.url);
+
+  /* The fifteen-minute tick is unchanged: push and candles, no cctp. */
+  stub({ status: 200, body: REAL_200 });
+  await worker.scheduled({ cron: "*/15 * * * *" }, ENV);
+  check("the other tick still runs push + candles and not cctp", pushCalls().length === 1 && candleCalls().length === 1 && !calls.some((c) => c.url.includes("/api/keeper/cctp")), JSON.stringify(calls.map((c) => c.url)));
+
+  /* A failing cctp endpoint fails the invocation, so the dashboard shows it. */
+  calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ error: "The keeper route is not enabled." }), { status: 503 });
+  };
+  let threw = false;
+  try {
+    await worker.scheduled({ cron: "*/2 * * * *" }, ENV);
+  } catch (e) {
+    threw = String(e?.message ?? e).includes("not enabled");
+  }
+  check("a 503 from the keeper throws with its reason", threw);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail > 0 ? 1 : 0);

@@ -134,6 +134,20 @@ export function recordCctpBurn(
     return;
   }
   emit(key);
+
+
+  /* Tell the server too. The completion keeper (lib/keeper/cctpKeeper.ts)
+     reads that registry, not this browser, and it is what mints on the
+     destination for a wallet that has no gas there. Fire-and-forget with
+     keepalive, so a navigation does not cancel it and a failure cannot become
+     a visible one — the banner still works off localStorage regardless, and
+     the route verifies the burn on chain before it writes. */
+  void fetch("/api/cctp/record", {
+    method: "POST",
+    keepalive: true,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...entry, recipient: address }),
+  }).catch(() => {});
 }
 
 export function removeCctpPending(
