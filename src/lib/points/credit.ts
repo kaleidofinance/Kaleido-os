@@ -65,6 +65,21 @@ export function computeActionCredit(
   return { points: Math.min(points, room), multiplierApplied };
 }
 
+/**
+ * Fold a campaign boost into a source's rate: the campaign multiplier stacks on
+ * top of the base multiplier, and everything else (rate, floor, caps, decay
+ * limit) is untouched. Pure, so the arithmetic that decides how much a boost is
+ * worth is tested without a database. A multiplier of 1 returns the rate
+ * unchanged — no boost is the same as no campaign.
+ */
+export function withCampaignBoost(
+  rate: SourceRate,
+  campaignMultiplier: number,
+): SourceRate {
+  if (!(campaignMultiplier > 1)) return rate;
+  return { ...rate, multiplier: rate.multiplier * campaignMultiplier };
+}
+
 /** UTC start-of-day for a timestamp, so the daily cap resets on the UTC boundary
  *  the rest of the points system uses (seasons, campaign batches). */
 function startOfUtcDay(at: Date): string {
@@ -95,6 +110,37 @@ async function loadRate(
         ? null
         : Number(data.multiplier_action_limit),
   };
+}
+
+/**
+ * The active campaign multiplier for a (source, season) at a moment — the boost
+ * `creditAction` stacks onto the base rate. 1 when no campaign is running (the
+ * common case), so an action outside any window is credited exactly as before.
+ * The largest multiplier wins when windows overlap, rather than stacking, so two
+ * campaigns can never silently compound into a runaway rate.
+ */
+async function loadCampaignMultiplier(
+  source: string,
+  season: number,
+  occurredAt: string,
+): Promise<number> {
+  if (!supabaseAdmin) return 1;
+  const { data, error } = await supabaseAdmin
+    .from("point_campaigns")
+    .select("multiplier, starts_at, ends_at")
+    .eq("source_slug", source)
+    .eq("season", season)
+    .eq("active", true)
+    .lte("starts_at", occurredAt);
+  if (error || !data || data.length === 0) return 1;
+  let best = 1;
+  for (const row of data) {
+    // Half-open window [starts_at, ends_at): starts_at already filtered in SQL.
+    if (row.ends_at !== null && occurredAt >= row.ends_at) continue;
+    const m = Number(row.multiplier);
+    if (Number.isFinite(m) && m > best) best = m;
+  }
+  return best;
 }
 
 /** This wallet's action count and points sum today, for (source, season). */
@@ -128,10 +174,18 @@ export async function creditAction(input: CreditInput): Promise<CreditResult> {
   if (!supabaseAdmin) return { status: "skipped", reason: "no admin client" };
 
   const wallet = input.wallet.toLowerCase();
-  const rate = await loadRate(input.source, input.season);
-  if (!rate) return { status: "skipped", reason: "no rate for source/season" };
+  const baseRate = await loadRate(input.source, input.season);
+  if (!baseRate) return { status: "skipped", reason: "no rate for source/season" };
 
   const occurredAt = input.occurredAt ?? new Date().toISOString();
+  // Stack any active campaign boost onto the base rate. 1× (no campaign) leaves
+  // the credit exactly as it was before campaigns existed.
+  const campaignMultiplier = await loadCampaignMultiplier(
+    input.source,
+    input.season,
+    occurredAt,
+  );
+  const rate = withCampaignBoost(baseRate, campaignMultiplier);
   const since = startOfUtcDay(new Date(occurredAt));
   const { count, points: usedToday } = await todaySoFar(
     wallet,
