@@ -79,7 +79,7 @@ console.log("\n— fee params are gated on a configured receiver —");
   process.env.SWAP_FEE_RECEIVER = "0x00000000000000000000000000000000000FEE01";
   process.env.SWAP_FEE_BPS = "20";
   const body = kyberFeeParams();
-  check("receiver set → fee is charged on input", body.chargeFeeBy === "currency_in");
+  check("receiver set → fee is charged on output", body.chargeFeeBy === "currency_out");
   check("fee is 20 bps in bps mode", body.feeAmount === "20" && body.isInBps === "true");
   check("fee receiver is echoed", body.feeReceiver === process.env.SWAP_FEE_RECEIVER);
   check("swapFeeBps reads the env", swapFeeBps() === 20);
