@@ -41,7 +41,9 @@ preview_urls = false
 # change, and the arithmetic above is the thing to redo: the cadence needs to be
 # short enough that (bound / cadence) still leaves room for a missed run.
 [triggers]
-crons = ["*/15 * * * *"]
+# Two clocks: the price+candle keepers every fifteen minutes, the CCTP
+# completion keeper every two — see CCTP_CRON in the worker.
+crons = ["*/15 * * * *", "*/2 * * * *"]
 
 [vars]
 # The apex, deliberately. `www.kaleidofi.xyz` answers 307, and a redirect is not

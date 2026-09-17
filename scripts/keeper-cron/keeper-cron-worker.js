@@ -115,6 +115,33 @@ function pushUrl(env) {
   return url;
 }
 
+/* The CCTP completion keeper. Its own trigger (CCTP_CRON below), because
+   Fast Transfer attests in seconds and Standard in minutes: a fifteen-minute
+   tick would leave every user watching a "waiting" bar for most of it, while
+   running the price and candle keepers every two minutes would waste their
+   RPC budget for nothing. */
+const CCTP_CRON = "*/2 * * * *";
+function cctpUrl(env) {
+  const url = new URL(`${baseUrl(env)}/api/keeper/cctp`);
+  const limit = (env.CCTP_LIMIT ?? "").trim();
+  if (limit) url.searchParams.set("limit", limit);
+  return url;
+}
+function summariseCctp(status, body) {
+  if (status === 0) return body;
+  let parsed = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return `${status} non-JSON: ${body.slice(0, 200)}`;
+  }
+  if (parsed?.error) return `${status} ${parsed.error}`;
+  return (
+    `${status} minted=${parsed?.minted?.length ?? "?"} pending=${parsed?.stillPending ?? "?"} ` +
+    `failed=${parsed?.failed?.length ?? "?"} skipped=${parsed?.skipped?.length ?? "?"} ` +
+    `errors=${parsed?.errors?.length ?? "?"}`
+  );
+}
 function candlesUrl(env) {
   const chains = (env.CANDLE_CHAIN_IDS ?? DEFAULT_CANDLE_CHAIN_IDS).trim();
   const url = new URL(`${baseUrl(env)}/api/keeper/candles`);
@@ -275,9 +302,28 @@ async function runAll(env) {
   return results.map((r) => r.line).join(" | ");
 }
 
+async function runCctp(env) {
+  const secret = env.KEEPER_CRON_SECRET;
+  if (!secret) {
+    throw new Error(
+      "KEEPER_CRON_SECRET is not set, so there is nothing to authenticate with. " +
+        "Set it to the same value as the Vercel project's CRON_SECRET:\n" +
+        "  npx wrangler secret put KEEPER_CRON_SECRET --config scripts/keeper-cron/wrangler.toml",
+    );
+  }
+  const r = await attempt(cctpUrl(env), secret, summariseCctp);
+  (r.ok ? console.info : console.error)(r.line);
+  if (!r.ok) throw new Error(r.line);
+  return r.line;
+}
+
 export default {
-  /** The cron trigger. See wrangler.toml for the cadence and why. */
+  /** Two triggers, told apart by the expression Cloudflare hands back. */
   async scheduled(event, env) {
+    if (event?.cron === CCTP_CRON) {
+      await runCctp(env);
+      return;
+    }
     await runAll(env);
   },
 

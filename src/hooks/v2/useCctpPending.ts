@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import {
   cctpPendingKey,
@@ -24,9 +25,53 @@ export function useCctpPending(): {
   pending: PendingCctp[];
   remove: (txHash: string) => void;
   isConnected: boolean;
+  /** Whether the server completes mints for the user — see /api/cctp/status. */
+  keeper: boolean;
 } {
   const { address, isConnected } = useWalletV2();
   const [pending, setPending] = useState<PendingCctp[]>([]);
+  const [keeper, setKeeper] = useState(false);
+
+  /* The server's side of the story. While anything is pending, ask
+     /api/cctp/status every 30s whether the completion keeper has minted it;
+     a minted row leaves the local list with a word to the user, so the bar
+     never nags about a transfer that already finished. The same call reports
+     whether a keeper exists at all, which the banner's copy turns on. */
+  useEffect(() => {
+    if (!address || pending.length === 0) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const tx = pending.map((p) => p.txHash).join(",");
+        const res = await fetch(`/api/cctp/status?tx=${encodeURIComponent(tx)}`, { cache: "no-store" });
+        if (!res.ok || stopped) return;
+        const body = (await res.json()) as {
+          keeper?: boolean;
+          rows?: { txHash: string; status: string }[];
+        };
+        setKeeper(Boolean(body.keeper));
+        for (const row of body.rows ?? []) {
+          if (row.status !== "minted") continue;
+          const entry = pending.find(
+            (p) => p.txHash.toLowerCase() === row.txHash.toLowerCase(),
+          );
+          if (!entry) continue;
+          removeCctpPending(address, entry.txHash);
+          toast.success(
+            `${entry.amount} ${entry.symbol} minted on ${entry.destChainName} — completed for you.`,
+          );
+        }
+      } catch {
+        /* A status read that fails changes nothing on screen. */
+      }
+    };
+    void poll();
+    const timer = setInterval(poll, 30_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [address, pending]);
 
   useEffect(() => {
     if (!address) {
@@ -59,5 +104,5 @@ export function useCctpPending(): {
     [address],
   );
 
-  return { pending, remove, isConnected };
+  return { pending, remove, isConnected, keeper };
 }

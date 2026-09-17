@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import { toast } from "sonner";
 import { ErrorDecoder } from "ethers-decode-error";
 import { readTokenBalance } from "@/lib/chain/tokenBalance";
+import { providerForChain } from "@/config/provider";
 import { getChainMeta } from "@/constants/chains";
 import { renderIntent, resolveIntent, type Intent } from "@/lib/v2/intents";
 import { encodeBatch, planRuns } from "@/lib/v2/intents/batch";
@@ -255,6 +256,71 @@ export default function PlanReview({
     have: string;
     want: string;
   } | null>(null);
+
+  /**
+   * The other half of a CCTP transfer needs gas on the OTHER chain.
+   *
+   * A burn here mints there only when someone submits `receiveMessage` on the
+   * destination, and that costs gas the user may not hold — measured: 10 USDC
+   * burned on Arc by a wallet with no ETH on Base, unmintable. So before a
+   * CCTP burn is signed, read the destination balance. If it cannot cover a
+   * mint, ask the server whether the completion keeper will pay it: if so,
+   * say so and carry on (nothing is needed there); if not, block the sign the
+   * way a source-side shortfall blocks it — burning into a trap is the one
+   * outcome worse than not bridging. An unreadable destination blocks nothing:
+   * the guard exists to stop a known trap, not to add a new way to fail.
+   */
+  const [destGas, setDestGas] = useState<{
+    chain: string;
+    keeper: boolean;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const ctx = getContext();
+    const burn = intents.find(
+      (it) =>
+        it.kind === "bridge" && (it as { provider?: string }).provider === "cctp",
+    ) as (Extract<Intent, { kind: "bridge" }> & { toChainId: number; toChainName: string }) | undefined;
+    if (!ctx?.address || !burn) {
+      setDestGas(null);
+      return;
+    }
+    void (async () => {
+      const provider = providerForChain(burn.toChainId);
+      if (!provider) return;
+      try {
+        const [balance, fee] = await Promise.all([
+          provider.getBalance(ctx.address),
+          provider.getFeeData(),
+        ]);
+        if (cancelled) return;
+        const perGas = fee.maxFeePerGas ?? fee.gasPrice ?? 0n;
+        // receiveMessage V2 measured ~180–250k gas; a comfortable ceiling.
+        const need = perGas * 300_000n;
+        if (balance > 0n && balance >= need) {
+          setDestGas(null);
+          return;
+        }
+        let keeper = false;
+        try {
+          const res = await fetch("/api/cctp/status", { cache: "no-store" });
+          if (res.ok) keeper = Boolean(((await res.json()) as { keeper?: boolean }).keeper);
+        } catch {
+          /* Unknown reads as "no keeper" — the cautious reading. */
+        }
+        if (cancelled) return;
+        setDestGas({
+          chain: getChainMeta(burn.toChainId)?.shortName ?? burn.toChainName,
+          keeper,
+        });
+      } catch {
+        /* See above: an unreadable destination does not block the source. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [intents]);
   useEffect(() => {
     let cancelled = false;
     const ctx = getContext();
@@ -855,6 +921,20 @@ export default function PlanReview({
           {shortfall.want}.
         </div>
       )}
+      {destGas && !running && next === 0 && (
+        destGas.keeper ? (
+          <div className={s.stNote}>
+            No gas needed on {destGas.chain}: once Circle attests, the mint there
+            is completed for you.
+          </div>
+        ) : (
+          <div className={s.shortfall}>
+            You have no gas on {destGas.chain} to finish this transfer on the
+            other side, and nothing can pay it for you yet. Add a little{" "}
+            {destGas.chain} gas first — the mint there is what needs it.
+          </div>
+        )
+      )}
 
       <div className={s.actions}>
         {!done && onCancel && (
@@ -879,7 +959,7 @@ export default function PlanReview({
           <button
             className={s.primary}
             onClick={() => run()}
-            disabled={running || (next === 0 && !!shortfall)}
+            disabled={running || (next === 0 && (!!shortfall || (!!destGas && !destGas.keeper)))}
           >
             {running
               ? "Signing…"
@@ -903,7 +983,7 @@ export default function PlanReview({
         <button
           className={s.alt}
           onClick={() => run(true)}
-          disabled={running || (next === 0 && !!shortfall)}
+          disabled={running || (next === 0 && (!!shortfall || (!!destGas && !destGas.keeper)))}
         >
           {next > 0
             ? `Run the remaining ${intents.length - next} without stopping`
