@@ -2563,5 +2563,37 @@ console.log("swap resolves relative amounts; other verbs escalate");
   check("'how do points work' still falls through to the FAQ (unknown here)", p("how do points work").status === "unknown", p("how do points work").status);
 }
 
+/* ---------------------------------------------------------------------------
+ * TWO PHRASINGS THAT WERE PAYING THE MODEL FOR SOMETHING LOCAL.
+ *
+ * "move 100 usdc to base" (a bridge worded with a verb the table doesn't carry)
+ * and "how much usdc do i have" (a balance question with the asset in the
+ * middle) both escalated. Neither needs reasoning.
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— move/transfer to a chain is a bridge —");
+  const CHAINCTX = { isChain: (pp) => ["base", "arc", "ethereum", "sepolia", "base sepolia"].includes(pp) };
+  const pc = (t) => parseCommand(t, TOKENS, CHAINCTX);
+  const bridgeOf = (r) =>
+    r.status === "ok" && r.command.kind === "bridge"
+      ? `${r.command.amount} ${r.command.token?.symbol} -> ${r.command.toChain}${r.command.fromChain ? " (from " + r.command.fromChain + ")" : ""}`
+      : r.status === "ok" ? r.command.kind : r.status;
+
+  check("'move 100 usdc to base' is a bridge", bridgeOf(pc("move 100 usdc to base")) === "100 USDC -> base", bridgeOf(pc("move 100 usdc to base")));
+  check("'transfer 50 kld to arc' is a bridge", bridgeOf(pc("transfer 50 kld to arc")) === "50 KLD -> arc", bridgeOf(pc("transfer 50 kld to arc")));
+  check("'move 100 usdc from arc to base' keeps the source", bridgeOf(pc("move 100 usdc from arc to base")) === "100 USDC -> base (from arc)", bridgeOf(pc("move 100 usdc from arc to base")));
+  /* Without a chain it is NOT a bridge — a strategy for the model. */
+  check("'move my usdc to the best yield' is not a bridge", pc("move my usdc to the best yield").status !== "ok" || pc("move my usdc to the best yield").command.kind !== "bridge", pc("move my usdc to the best yield").status);
+  /* And with no chain oracle at all (marketing planner) it stays as it was. */
+  check("'move 100 usdc to base' without an oracle is not a bridge", p("move 100 usdc to base").status !== "ok" || p("move 100 usdc to base").command.kind !== "bridge", p("move 100 usdc to base").status);
+
+  console.log("\n— how much <token> do i have is a portfolio read —");
+  for (const t of ["how much usdc do i have", "how much eth do i own", "how much kld have i got", "how much do i hold"]) {
+    check(`'${t}' is a portfolio read`, p(t).status === "ok" && p(t).command.kind === "portfolio", p(t).status === "ok" ? p(t).command.kind : p(t).status);
+  }
+  /* "how much" of an ACTION is still its verb, and a how-to is still a question. */
+  check("'how much usdc should i swap' is not a portfolio read", p("how much usdc should i swap").status !== "ok" || p("how much usdc should i swap").command.kind !== "portfolio", p("how much usdc should i swap").status);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
