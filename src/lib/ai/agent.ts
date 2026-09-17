@@ -68,6 +68,18 @@ export interface AgentInput {
    * them into a prompt would spend tokens on our own rendering.
    */
   history?: ChatMessage[];
+  /**
+   * Cap on read rounds for this turn. 0 makes the call single-shot — the
+   * normalizer tier, which must never read the chain (see lib/ai/normalizer.ts).
+   * Defaults to MAX_READ_ROUNDS; never raises it.
+   */
+  maxReadRounds?: number;
+  /**
+   * Text appended after the base prompt and the docs reference — the
+   * normalizer's product facts, glossary and rules. Last, so its rules win
+   * where they narrow the base prompt's.
+   */
+  systemAddendum?: string;
 }
 
 /**
@@ -143,7 +155,7 @@ export async function runAgent(
      sometimes it is not and a model told otherwise will make it fit. */
   const systemWithDocs = input.grounding?.length
     ? system +
-      "\n\nReference from the docs, matched to this question. Prefer it to reconstructing the same facts from tool calls, quote it where it answers directly, and give the path so the user can read the rest. If it does not answer the question, ignore it.\n" +
+      "\n\nReference from the docs, matched to this question. Prefer it to reconstructing the same facts from tool calls, answer from it in your own words — you have read it so the user does not have to; do not send them to read it or hand them a path. If it does not answer the question, ignore it.\n" +
       input.grounding
         .map(
           (g) =>
@@ -157,6 +169,10 @@ export async function runAgent(
      to be in front of the current message or the round-trips would interleave
      with them and the model would read the tool results as answering an older
      question. */
+  const systemFinal = input.systemAddendum
+    ? `${systemWithDocs}\n\n${input.systemAddendum}`
+    : systemWithDocs;
+
   const messages: ChatMessage[] = [
     ...(input.history ?? []),
     { role: "user", content: input.message },
@@ -168,10 +184,10 @@ export async function runAgent(
   const ask = () =>
     events?.onText && provider.chatStream
       ? provider.chatStream(
-          { system: systemWithDocs, messages, tools: TOOL_CATALOG },
+          { system: systemFinal, messages, tools: TOOL_CATALOG },
           events.onText,
         )
-      : provider.chat({ system: systemWithDocs, messages, tools: TOOL_CATALOG });
+      : provider.chat({ system: systemFinal, messages, tools: TOOL_CATALOG });
 
   let result = await ask();
   const trace: ReadCall[] = [];
@@ -204,7 +220,11 @@ export async function runAgent(
    */
   const served = new Map<string, unknown>();
 
-  for (let round = 0; round < MAX_READ_ROUNDS; round++) {
+  const roundCap = Math.min(
+    MAX_READ_ROUNDS,
+    input.maxReadRounds ?? MAX_READ_ROUNDS,
+  );
+  for (let round = 0; round < roundCap; round++) {
     // Execute verbs mean it had what it needed — stop.
     if (result.executes.length > 0) break;
 
