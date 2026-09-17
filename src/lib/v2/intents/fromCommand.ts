@@ -873,6 +873,9 @@ const PORTFOLIO_VETO = new Set(["liquidity", "lp", "pool", "pools"]);
  */
 const PORTFOLIO_ACTION_VETO = new Set([
   "move", "put", "shift", "allocate", "rebalance", "deploy", "invest", "rotate",
+  /* "diversify my holdings" is a request to DO something, not a balance sheet.
+     Added after PORTFOLIO_POSSESSIVE began matching "... my holdings". */
+  "diversify",
 ]);
 
 /* ------------------------------------------------------- open liquidity -- */
@@ -1056,6 +1059,18 @@ const BUY_SEPARATORS = ["with", "using", "for", "->", "→", ">"];
  * effect on any other sentence in the grammar.
  */
 const BUY_FORWARD_SEPARATORS = ["of"];
+
+/*
+ * Forward separators that are unambiguous about direction — SEPARATORS without
+ * "for", which a buy reads BACKWARDS ("buy KLD for 100 USDC" spends the USDC).
+ * A buy-word inside a plain forward frame — "ape 50 USDC into ARGUS", a spend
+ * token and amount before the separator and a receive token after — is a
+ * forward swap, not a buy: the buy reading (an amount of the token RECEIVED,
+ * then ask what to spend) is for "ape ARGUS" / "buy 100 ARGUS", where only the
+ * target is named. Without this, "ape 50 USDC into ARGUS" dropped the 50 USDC
+ * and asked which token to spend — the sentence had already said.
+ */
+const FORWARD_SEPARATORS = ["to", "into", "->", "\u2192", ">"];
 
 /* ---------------------------------------------------------------- amounts -- */
 
@@ -1786,6 +1801,29 @@ function detectDuration(
 const MODEL_ONLY =
   /\b(every (day|week|month|hour|\d+ (days|weeks|months|hours))|daily|weekly|monthly|recurring|dca|limit (order|buy|sell)|at a price of|when (the )?price|(?<!in )orders?|grant|permission|mandate|delegat(e|ion|ed))\b/i;
 
+/**
+ * The chain named as a destination — "... to Base", "... to Arc Sepolia" — when
+ * a real chain sits after a forward separator, else null.
+ *
+ * This is what catches the cross-chain phrasings that lead with the wrong verb.
+ * "send 100 USDC to Base" is not a transfer to an address named "Base", and
+ * "withdraw 100 USDC to Base" is not a vault withdrawal that happens to mention
+ * a chain — both are bridges. Only a phrase the caller confirms is a chain
+ * counts, so a "to 0x…" recipient or a "to <token>" is never mistaken for one,
+ * and a caller with no chain oracle (the marketing planner) gets null and the
+ * old behaviour.
+ */
+function chainDestination(words: string[], ctx: ParseContext): string | null {
+  if (!ctx.isChain) return null;
+  const sepAt = words.findIndex((w) => w === "to" || w === "into");
+  if (sepAt < 0) return null;
+  const phrase = words
+    .slice(sepAt + 1)
+    .filter((w) => !STRAY_FILLERS.has(w))
+    .join(" ");
+  return phrase && ctx.isChain(phrase) ? phrase : null;
+}
+
 export function parseCommand(
   text: string,
   tokens: IToken[],
@@ -1849,6 +1887,20 @@ export function parseCommand(
       lower,
     ) ||
     /\bwhich (dex|chain|network|venue|exchange|pool|market|pair)\b/i.test(lower)
+  ) {
+    return { status: "unknown" };
+  }
+
+  /* A how-to question is not a command, even though it names a verb. "how do I
+     bridge", "how to stake", "how does lending work" must reach the docs and
+     FAQ as questions, not open a bridge/stake draft that then asks "which
+     token?". Bounded to the leading interrogative, so "how much do I have" (a
+     portfolio read) and "how many points" are untouched — neither begins with
+     "how do/to/does/can/should i". */
+  if (
+    /^how\s+(to\b|does\b|do\s+(i|we|you|they)\b|can\s+(i|we|you)\b|should\s+(i|we|you)\b|would\s+(i|we|you)\b)/i.test(
+      lower,
+    )
   ) {
     return { status: "unknown" };
   }
@@ -2148,6 +2200,18 @@ export function parseCommand(
      * swap between identical tokens — start over, rather than ask for a slot
      * that is already filled with the wrong thing.
      */
+    // "send 100 USDC to Base" names a chain, not an address — a bridge. Only
+    // when no literal recipient was given, so "send 100 USDC to 0x…" stays a
+    // send even on a chain whose name someone could also type.
+    const sendChain = recipient ? null : chainDestination(words, ctx);
+    if (sendChain) {
+      return completeDraft({
+        kind: "bridge",
+        amount: amount?.amount,
+        token: mentions[0]?.token,
+        toChain: sendChain,
+      });
+    }
     if (countAddresses(words) > 1) return { status: "unknown" };
 
     return completeDraft({
@@ -2229,6 +2293,21 @@ export function parseCommand(
       );
     }
     return { status: "ok", command: { kind: "completeWithdrawal", token } };
+  }
+
+  // "withdraw 100 USDC to Base" is a bridge, not a vault/collateral withdrawal
+  // that drops the destination. Only when a chain is actually named; a plain
+  // "withdraw 100 USDC" falls through to the generic amount+token below.
+  if (verb.kind === "withdraw") {
+    const withdrawChain = chainDestination(words, ctx);
+    if (withdrawChain) {
+      return completeDraft({
+        kind: "bridge",
+        amount: amount?.amount,
+        token: mentions[0]?.token,
+        toChain: withdrawChain,
+      });
+    }
   }
 
   // deposit, withdraw, approve, mint, redeem — all amount plus token.
@@ -2542,7 +2621,12 @@ function parseSwap(
    * A purchase is the same transaction read from the other end, and every branch
    * below has to know which end it is being read from. See BUY_WORDS.
    */
-  const buying = words.some((w) => BUY_WORDS.has(w));
+  const fwdFrameAt = words.findIndex((w) => FORWARD_SEPARATORS.includes(w));
+  const forwardFramed =
+    fwdFrameAt >= 0 &&
+    mentions.some((m) => m.index < fwdFrameAt) &&
+    mentions.some((m) => m.index > fwdFrameAt);
+  const buying = words.some((w) => BUY_WORDS.has(w)) && !forwardFramed;
   const backAt = buying
     ? words.findIndex((w) => BUY_SEPARATORS.includes(w))
     : -1;

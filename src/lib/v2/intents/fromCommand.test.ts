@@ -1737,13 +1737,19 @@ console.log("\n— degen and whale slang read as the trade a person meant —");
     JSON.stringify(cop),
   );
 
-  /* The phrasing where a buy synonym runs forward — amount and both tokens are
-     present, but "into" is not a spend marker, so the trade could be read two
-     ways. It must ask, not pick. */
+  /* A buy synonym in a plain forward frame — an explicit spend token and amount
+     before "into", a receive token after — is a forward swap, not a buy. Both
+     readings of "ape 500 USDC into KLD" mean spend the 500 USDC for KLD, so
+     asking which token to spend (the old behaviour) dropped what the sentence
+     had already said. See FORWARD_SEPARATORS. */
   const forwardApe = p("ape 500 USDC into KLD");
   check(
-    "an ambiguous 'ape … into' asks rather than inverting a trade",
-    forwardApe.status === "incomplete" && forwardApe.missing === "tokenIn",
+    "'ape … into' with a spend token+amount is a forward swap",
+    forwardApe.status === "ok" &&
+      forwardApe.command.kind === "swap" &&
+      forwardApe.command.tokenIn.symbol === "USDC" &&
+      forwardApe.command.tokenOut.symbol === "KLD" &&
+      forwardApe.command.amount === "500",
     JSON.stringify(forwardApe),
   );
 
@@ -2466,6 +2472,95 @@ console.log("swap resolves relative amounts; other verbs escalate");
     const r = p(text);
     check(`'${text}' is answered as help`, r.status === "ok" && r.command.kind === "help", r.status === "ok" ? r.command.kind : r.status);
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * WRONG ANSWERS THE GRAMMAR GAVE, from driving it as a trader would.
+ *
+ * Each below returned something misleading before: a vault withdrawal that
+ * dropped the chain, a send that asked for an address when a chain was named,
+ * a balance sheet in answer to "diversify", a dropped amount on "ape 50 usdc
+ * into argus", and a "which token?" command in answer to "how do i bridge".
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— cross-chain phrasings that led with the wrong verb —");
+  const CHAINCTX = { isChain: (pp) => ["base", "arc", "ethereum", "sepolia", "base sepolia", "arc sepolia"].includes(pp) };
+  const pc = (t) => parseCommand(t, TOKENS, CHAINCTX);
+  const bridgeOf = (r) =>
+    r.status === "ok" && r.command.kind === "bridge"
+      ? `${r.command.amount} ${r.command.token?.symbol} -> ${r.command.toChain}`
+      : r.status === "ok" ? r.command.kind : r.status;
+
+  check(
+    "'withdraw 100 usdc to base' is a bridge, not a vault withdrawal",
+    bridgeOf(pc("withdraw 100 usdc to base")) === "100 USDC -> base",
+    bridgeOf(pc("withdraw 100 usdc to base")),
+  );
+  check(
+    "'send 100 usdc to base' is a bridge, not a send-to-address",
+    bridgeOf(pc("send 100 usdc to base")) === "100 USDC -> base",
+    bridgeOf(pc("send 100 usdc to base")),
+  );
+  /* But the ordinary meanings survive when no chain is named. */
+  check(
+    "'withdraw 100 usdc' is still a plain withdrawal",
+    (() => { const r = pc("withdraw 100 usdc"); return r.status === "ok" && r.command.kind === "withdraw"; })(),
+    pc("withdraw 100 usdc").status,
+  );
+  check(
+    "'send 5 usdc to 0x…' is still a send to that address",
+    (() => { const r = pc("send 5 usdc to 0x74A9E2cC8E97DC56D4a337454AD4F62BFa1D63d7"); return r.status === "ok" && r.command.kind === "send"; })(),
+    pc("send 5 usdc to 0x74A9E2cC8E97DC56D4a337454AD4F62BFa1D63d7").status,
+  );
+  /* With no chain oracle (the marketing planner), nothing changes. */
+  check(
+    "'send 100 usdc to base' without a chain oracle stays a send question",
+    p("send 100 usdc to base").status !== "ok" || p("send 100 usdc to base").command.kind === "send",
+    p("send 100 usdc to base").status,
+  );
+
+  console.log("\n— a buy-word in a forward frame is a forward swap —");
+  const swapOf = (r) =>
+    r.status === "ok" && r.command.kind === "swap"
+      ? `${r.command.amount} ${r.command.tokenIn.symbol}->${r.command.tokenOut.symbol}`
+      : r.status;
+  check(
+    "'ape 50 usdc into kld' spends the 50 usdc",
+    swapOf(p("ape 50 usdc into kld")) === "50 USDC->KLD",
+    swapOf(p("ape 50 usdc into kld")),
+  );
+  check(
+    "'grab 100 usdc to weth' too",
+    swapOf(p("grab 100 usdc to weth")) === "100 USDC->WETH",
+    swapOf(p("grab 100 usdc to weth")),
+  );
+  /* The buy readings that must NOT change. */
+  check(
+    "'buy kld with 100 usdc' still spends the usdc",
+    swapOf(p("buy kld with 100 usdc")) === "100 USDC->KLD",
+    swapOf(p("buy kld with 100 usdc")),
+  );
+  check(
+    "'buy 100 kld' still drops the amount and asks what to spend",
+    (() => { const r = p("buy 100 kld"); return r.status === "incomplete" && r.missing === "tokenIn"; })(),
+    p("buy 100 kld").status,
+  );
+
+  console.log("\n— diversify is an action, not a balance read —");
+  check(
+    "'diversify my holdings' is not answered as a portfolio read",
+    p("diversify my holdings").status !== "ok" || p("diversify my holdings").command.kind !== "portfolio",
+    p("diversify my holdings").status,
+  );
+  check("'my holdings' alone is still a portfolio read", p("my holdings").status === "ok" && p("my holdings").command.kind === "portfolio", p("my holdings").status);
+
+  console.log("\n— a how-to question is not a command —");
+  for (const t of ["how do i bridge", "how to stake", "how does lending work", "how do i swap", "how can i borrow"]) {
+    check(`'${t}' does not open a command draft`, p(t).status === "unknown", p(t).status + (p(t).status === "incomplete" ? ":" + p(t).missing : ""));
+  }
+  /* But the reads that begin with "how" are untouched. */
+  check("'how much do i have' is still a portfolio read", p("how much do i have").status === "ok" && p("how much do i have").command.kind === "portfolio", p("how much do i have").status);
+  check("'how do points work' still falls through to the FAQ (unknown here)", p("how do points work").status === "unknown", p("how do points work").status);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
