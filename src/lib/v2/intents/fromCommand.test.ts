@@ -2182,5 +2182,102 @@ console.log("swap resolves relative amounts; other verbs escalate");
   check("replying 'half' to 'how much?' escalates", r.status === "unknown", r.status);
 }
 
+/* ---------------------------------------------------------------------------
+ * A REPEAT OF THE LAST PLAN, NAMED WITH ITS OWN VERB.
+ *
+ * "swap 1 usdc to eurc", signed, then "do same swap once again" — and Luca
+ * asked "which token do you want to spend?". The grammar read the verb, found
+ * no token and opened a Draft; the follow-up reader never saw the sentence,
+ * and would have refused it anyway under rule 1 (it has a verb). The exception
+ * admits a verb that AGREES with the carried command inside a repeat cue, and
+ * the page now offers an incomplete parse to the follow-up reader before it
+ * asks. What these cases protect: a repeat must be the SAME trade (or the same
+ * trade with the stated change); a different verb, an acknowledgement, and a
+ * token-for-itself must all still refuse — a wrong repeat is a wrong trade.
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— 'do the same swap once again' repeats the last plan —");
+  const seeded = parseCommand("swap 10 USDC to KLD", TOKENS);
+  const last = seeded.status === "ok" ? seeded.command : null;
+  check("the seed parses", last !== null, seeded.status);
+  const follow = (text) => parseFollowUp(text, TOKENS, last);
+  const swapOf = (r) =>
+    r.status === "ok" && r.command.kind === "swap"
+      ? `${r.command.amount} ${r.command.tokenIn.symbol}->${r.command.tokenOut.symbol}`
+      : r.status;
+
+  /* The grammar alone still opens a Draft asking for the token — that is the
+     exact sentence the page now hands to the follow-up reader instead. */
+  const alone = p("do same swap once again");
+  check(
+    "on its own the grammar asks for the token (the bug's shape)",
+    alone.status === "incomplete" && alone.missing === "tokenIn",
+    alone.status === "incomplete" ? alone.missing : alone.status,
+  );
+
+  for (const text of [
+    "do same swap once again",
+    "do the same swap again",
+    "same swap again",
+    "swap again",
+    "repeat that swap",
+    "swap once more",
+    "again",
+    "do it again",
+    "once more",
+    "one more time",
+    "the same",
+    "repeat",
+    "redo that",
+    "same as before",
+  ]) {
+    check(
+      `'${text}' rebuilds the identical swap`,
+      swapOf(follow(text)) === "10 USDC->KLD",
+      swapOf(follow(text)),
+    );
+  }
+
+  /* A repeat that changes something changes only that. */
+  check(
+    "'same swap but 5' keeps the pair, changes the amount",
+    swapOf(follow("same swap but 5")) === "5 USDC->KLD",
+    swapOf(follow("same swap but 5")),
+  );
+  check(
+    "'swap again to WETH' keeps the amount and input, changes the output",
+    swapOf(follow("swap again to WETH")) === "10 USDC->WETH",
+    swapOf(follow("swap again to WETH")),
+  );
+  check(
+    "'do the same swap again from WETH' changes only the input",
+    swapOf(follow("do the same swap again from WETH")) === "10 WETH->KLD",
+    swapOf(follow("do the same swap again from WETH")),
+  );
+
+  /* Rule 1 still holds for a DIFFERENT verb, however the sentence is cued. */
+  for (const text of ["stake again", "same bridge again", "now stake it", "repeat the send"]) {
+    check(
+      `'${text}' after a swap is not a repeat of the swap`,
+      follow(text).status === "unknown",
+      follow(text).status,
+    );
+  }
+  /* Rule 3 still holds: an acknowledgement repeats nothing. */
+  for (const text of ["ok", "thanks", "do it", "yes", "sure"]) {
+    check(
+      `'${text}' does not rebuild the swap`,
+      follow(text).status === "unknown",
+      follow(text).status,
+    );
+  }
+  /* And a repeat that would trade a token for itself is refused, not built. */
+  check(
+    "'sell 2 usdc again' (USDC for USDC) is refused",
+    follow("sell 2 usdc again").status === "unknown",
+    follow("sell 2 usdc again").status,
+  );
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
