@@ -209,9 +209,9 @@ export async function resolveBridgeRoute(
   // 0) CCTP — Circle's native USDC burn-and-mint, the best path for USDC into
   //    and out of Arc (1:1, no pool, no slippage) and the one LI.FI's Arc
   //    registry omits. Preferred over the aggregator for USDC on a CCTP
-  //    corridor, but OFF until the destination-mint completer ships (see
-  //    CCTP_ENABLED). Pure like the canonical branch — no network — so on a miss
-  //    it falls through to the aggregator rather than refusing.
+  //    corridor, and LIVE now that the destination-mint completer has shipped
+  //    (see CCTP_ENABLED). Pure like the canonical branch — no network — so on a
+  //    miss it falls through to the aggregator rather than refusing.
   if (
     CCTP_ENABLED &&
     asset.toUpperCase() === "USDC" &&

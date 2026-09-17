@@ -64,7 +64,7 @@ check(
 );
 
 console.log("\n— kill-switch —");
-check("CCTP corridors are OFF until the mint completer ships", CCTP_ENABLED === false);
+check("CCTP corridors are LIVE — the mint completer shipped", CCTP_ENABLED === true);
 
 console.log("\n— domain + corridor guards —");
 check("Arc is a CCTP chain", isCctpDomainChain(ARC));
