@@ -8,7 +8,7 @@
  * (`creditAction`) is thin glue over Supabase and idempotency, tested by the
  * indexer that drives it, not here.
  */
-import { computeActionCredit } from "./credit.ts";
+import { computeActionCredit, withCampaignBoost } from "./credit.ts";
 import type { SourceRate } from "./accrual.ts";
 
 let pass = 0;
@@ -60,6 +60,27 @@ console.log("\n— an uncapped source —");
   const uncapped: SourceRate = { ...rate, dailyCapPts: null };
   const r = computeActionCredit(100, uncapped, 0, 99999);
   check("with no cap, the full amount credits regardless of the day", r.points === 1200, String(r.points));
+}
+
+console.log("\n— withCampaignBoost: the campaign multiplier stacks on the base —");
+{
+  const boost2 = withCampaignBoost(rate, 2);
+  check("a 2× campaign doubles the multiplier (1.2 → 2.4)",
+    boost2.multiplier === 2.4, String(boost2.multiplier));
+  check("the boost leaves rate, floor, caps and decay limit untouched",
+    boost2.rate === rate.rate &&
+      boost2.minUsd === rate.minUsd &&
+      boost2.dailyCapPts === rate.dailyCapPts &&
+      boost2.multiplierActionLimit === rate.multiplierActionLimit, "");
+  check("a 1× campaign is a no-op (no campaign == no change)",
+    withCampaignBoost(rate, 1).multiplier === rate.multiplier, "");
+  check("a <1 multiplier can never dock the base reward",
+    withCampaignBoost(rate, 0.5).multiplier === rate.multiplier, "");
+  // The boost flows through the real credit arithmetic: 50 × 10 × (1.2×2) = 1200.
+  const uncapped: SourceRate = { ...rate, dailyCapPts: null };
+  const boosted = computeActionCredit(50, withCampaignBoost(uncapped, 2), 0, 0);
+  check("boosted credit is base × campaign through computeActionCredit",
+    boosted.points === 1200 && boosted.multiplierApplied === 2.4, JSON.stringify(boosted));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
