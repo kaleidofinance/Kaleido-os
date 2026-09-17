@@ -8,9 +8,12 @@ import {
   TRANSFER_TOPIC,
   decodeTransferLog,
   parseSwapInput,
-  valueInput,
+  usdcLegValue,
 } from "@/lib/points/swapCollector";
+import { dexTokenPrices } from "@/lib/swap/dexPrices";
 import { creditAction } from "@/lib/points/credit";
+
+const ERC20_DECIMALS_ABI = ["function decimals() view returns (uint8)"];
 
 /**
  * Credits Season-1 `swap` points for Arc-mainnet swaps, by indexing the 0.2% fee
@@ -25,9 +28,12 @@ import { creditAction } from "@/lib/points/credit";
  * never double-credit; there is no cursor to keep because the credit itself is the
  * checkpoint.
  *
- * PHASE 1: only USDC-input swaps credit (USDC is the Arc quote asset, so this is
- * the overwhelming majority and needs no pricing — valued 1:1). A non-USDC input
- * is skipped, not guessed at, until token pricing is wired.
+ * VALUATION: a trade is worth its USDC leg — the USDC the wallet moved, on
+ * whichever side it sits (USDC is the Arc quote asset, so almost every trade has
+ * one and it IS the dollar size, no price needed). A token↔token swap with no
+ * USDC leg is priced from its input token via the DEX (dexTokenPrices), so every
+ * swap credits, not just USDC-input ones. Only a token the DEX cannot route or
+ * whose decimals cannot be read is skipped — never guessed.
  *
  * Armed the same way the other crons are: a Cloudflare Worker calls it with
  * `Authorization: Bearer $CRON_SECRET`. With no CRON_SECRET, and with no
@@ -62,6 +68,28 @@ const DELAY_MS = Number(process.env.POINTS_SWAP_DELAY_MS ?? 200);
 const MAX_TXS = Number(process.env.POINTS_SWAP_MAX_TXS ?? 100);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** ERC-20 decimals, cached per run — needed only to value a token↔token swap's
+ *  input leg (the common USDC-paired trade is valued from its USDC leg, no read).
+ *  A token whose decimals cannot be read is treated as unpriceable, not guessed. */
+const decimalsCache = new Map<string, number>();
+async function tokenDecimals(
+  provider: ethers.Provider,
+  token: string,
+): Promise<number | null> {
+  const key = token.toLowerCase();
+  const hit = decimalsCache.get(key);
+  if (hit !== undefined) return hit;
+  try {
+    const c = new ethers.Contract(token, ERC20_DECIMALS_ABI, provider);
+    const d = Number(await retryRpc(() => c.decimals()));
+    if (!Number.isInteger(d) || d < 0 || d > 36) return null;
+    decimalsCache.set(key, d);
+    return d;
+  } catch {
+    return null;
+  }
+}
 
 function authorised(req: Request, secret: string): boolean {
   const header = req.headers.get("authorization");
@@ -142,15 +170,34 @@ async function handle(req: Request): Promise<Response> {
           continue;
         }
 
-        // Phase 1: USDC 1:1, everything else skipped (no pricer supplied).
-        const usdValue = valueInput(
-          parsed.inputToken,
-          parsed.inputAmount,
-          { usdc: USDC, usdcDecimals: USDC_DECIMALS },
-          () => null,
-        );
+        // Value the trade. First choice is the USDC leg the wallet moved — USDC
+        // is the Arc quote asset, so almost every swap has one and it IS the
+        // dollar size, no price needed. A token↔token swap (no USDC leg) is
+        // priced from its input token via the DEX, so ALL swaps credit, not just
+        // USDC-input ones. Only a token the DEX cannot route is skipped.
+        let usdValue = usdcLegValue({
+          wallet: parsed.wallet,
+          transfers,
+          usdc: USDC,
+          usdcDecimals: USDC_DECIMALS,
+        });
         if (usdValue === null) {
-          bump("non-usdc-input");
+          const dec = await tokenDecimals(provider, parsed.inputToken);
+          if (dec === null) {
+            bump("no-decimals");
+            continue;
+          }
+          const prices = await dexTokenPrices(ARC, [
+            { address: parsed.inputToken, decimals: dec },
+          ]);
+          const price = prices[parsed.inputToken.toLowerCase()];
+          if (price) {
+            usdValue = (Number(parsed.inputAmount) / 10 ** dec) * price;
+          }
+          if (DELAY_MS) await sleep(DELAY_MS);
+        }
+        if (usdValue === null || !(usdValue > 0)) {
+          bump("unpriced-input");
           continue;
         }
 

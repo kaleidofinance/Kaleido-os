@@ -119,3 +119,34 @@ export function valueInput(
   const v = priceUsd(norm(inputToken), inputAmount);
   return v !== null && v > 0 ? v : null;
 }
+
+/**
+ * The trade's USD notional from its USDC leg — the USDC the wallet itself moved
+ * in the swap, on whichever side USDC is. Pure.
+ *
+ * USDC is the Arc quote asset, so almost every trade has a USDC leg, and that leg
+ * IS the dollar size of the trade — no price needed. The wallet's own leg is used
+ * (`from === wallet` for a USDC input, `to === wallet` for a USDC output), never
+ * the fee transfer to the fee wallet, and the input leg is preferred when both
+ * exist because it is the exact amount in, before the 0.2% fee shaves the output.
+ * Returns null when no USDC touched the wallet — a token↔token swap the caller
+ * must price another way — so this never guesses.
+ */
+export function usdcLegValue(args: {
+  wallet: string;
+  transfers: TransferLog[];
+  usdc: string;
+  usdcDecimals: number;
+}): number | null {
+  const w = norm(args.wallet);
+  const u = norm(args.usdc);
+  let sent: bigint | null = null; // USDC the wallet put in (exact notional)
+  let received: bigint | null = null; // USDC the wallet got out (net of fee)
+  for (const t of args.transfers) {
+    if (norm(t.token) !== u || t.value <= 0n) continue;
+    if (t.from === w) sent = (sent ?? 0n) + t.value;
+    else if (t.to === w) received = (received ?? 0n) + t.value;
+  }
+  const v = sent ?? received;
+  return v === null ? null : Number(v) / 10 ** args.usdcDecimals;
+}
