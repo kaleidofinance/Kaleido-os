@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ethers } from "ethers";
 import { toast } from "sonner";
 import { ErrorDecoder } from "ethers-decode-error";
+import { readTokenBalance } from "@/lib/chain/tokenBalance";
 import { getChainMeta } from "@/constants/chains";
 import { renderIntent, resolveIntent, type Intent } from "@/lib/v2/intents";
 import { encodeBatch, planRuns } from "@/lib/v2/intents/batch";
@@ -160,6 +162,39 @@ const QUOTED_KINDS = new Set([
   "increasePoolLiquidity",
 ]);
 
+/**
+ * What the wallet SPENDS for one intent — the token leaving it and how much —
+ * or null when the intent spends nothing checkable here.
+ *
+ * Only the swap kinds, deliberately. It exists to stop a plan the wallet cannot
+ * afford (a 100 USDC swap on a 7 USDC balance) from reaching the signature, and
+ * a swap is where an absolute amount escapes the check: a RELATIVE amount ("half
+ * my USDC") was already capped at the balance in build.ts, but "swap 100 USDC"
+ * was not. A `swap` funded from native is skipped — the router wraps the native
+ * itself, so the ERC20 leg's balance is not what pays. `aggregatorSwap` carries
+ * the 0x3600 mirror as `tokenIn`, whose balanceOf reads the native balance, so
+ * that IS the check on Arc.
+ */
+function spendOf(
+  intent: Intent,
+): { token: string; amount: string; decimals: number; symbol: string } | null {
+  if (intent.kind === "aggregatorSwap")
+    return {
+      token: intent.tokenIn,
+      amount: intent.amountIn,
+      decimals: intent.decimalsIn,
+      symbol: intent.symbolIn,
+    };
+  if (intent.kind === "swap" && !intent.nativeIn)
+    return {
+      token: intent.tokenIn,
+      amount: intent.amountIn,
+      decimals: intent.decimalsIn,
+      symbol: intent.symbolIn,
+    };
+  return null;
+}
+
 export default function PlanReview({
   intents,
   submitLabel = "Sign & execute",
@@ -208,6 +243,72 @@ export default function PlanReview({
   }, [getContext]);
   const { support: batch, send: sendBatch } = useBatchCalls();
   const views = useMemo(() => intents.map(renderIntent), [intents]);
+
+  /* Not enough to spend it? A plan the wallet can't afford would build, read
+     fine through the steps, and revert at signing — the swap form guards this,
+     the agent's review did not. Sum what the wallet spends per token, read the
+     balance, and block the SIGNATURE (not the review, so the numbers still show)
+     when a token comes up short. A balance we cannot read never blocks: the
+     chain is the judge then, not a missing read. */
+  const [shortfall, setShortfall] = useState<{
+    symbol: string;
+    have: string;
+    want: string;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const ctx = getContext();
+    if (!ctx?.address) {
+      setShortfall(null);
+      return;
+    }
+    const chainId = pinnedChain.current ?? ctx.chainId;
+    const wantByToken = new Map<
+      string,
+      { symbol: string; decimals: number; total: bigint }
+    >();
+    for (const it of intents) {
+      const spend = spendOf(it);
+      if (!spend) continue;
+      let raw: bigint;
+      try {
+        raw = ethers.parseUnits(spend.amount, spend.decimals);
+      } catch {
+        continue;
+      }
+      const key = spend.token.toLowerCase();
+      const cur = wantByToken.get(key);
+      if (cur) cur.total += raw;
+      else
+        wantByToken.set(key, {
+          symbol: spend.symbol,
+          decimals: spend.decimals,
+          total: raw,
+        });
+    }
+    if (wantByToken.size === 0) {
+      setShortfall(null);
+      return;
+    }
+    void (async () => {
+      for (const [token, entry] of wantByToken) {
+        const have = await readTokenBalance(chainId, ctx.address, token);
+        if (cancelled) return;
+        if (have !== null && entry.total > have) {
+          setShortfall({
+            symbol: entry.symbol,
+            have: ethers.formatUnits(have, entry.decimals),
+            want: ethers.formatUnits(entry.total, entry.decimals),
+          });
+          return;
+        }
+      }
+      if (!cancelled) setShortfall(null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [intents, getContext]);
   /**
    * Which adjacent steps *could* share one signature, decided from the plan
    * alone — see lib/v2/intents/batch.ts. Computed whether or not the wallet can
@@ -745,6 +846,16 @@ export default function PlanReview({
         ))}
       </ol>
 
+      {/* Named before the buttons, so the reason the sign button is disabled sits
+          next to it. Hidden once the plan is under way — by then the balance was
+          enough to start, and a later step failing has its own message. */}
+      {shortfall && !running && next === 0 && (
+        <div className={s.shortfall}>
+          Not enough {shortfall.symbol}: you have {shortfall.have}, this needs{" "}
+          {shortfall.want}.
+        </div>
+      )}
+
       <div className={s.actions}>
         {!done && onCancel && (
           <button className={s.ghost} onClick={onCancel} disabled={running}>
@@ -765,7 +876,11 @@ export default function PlanReview({
           /* Wrapped, not passed by reference: `onClick={run}` would hand the
              click event in as `withoutStopping`, and an event object is
              truthy — every plan would run unstopped. */
-          <button className={s.primary} onClick={() => run()} disabled={running}>
+          <button
+            className={s.primary}
+            onClick={() => run()}
+            disabled={running || (next === 0 && !!shortfall)}
+          >
             {running
               ? "Signing…"
               : next > 0
@@ -785,7 +900,11 @@ export default function PlanReview({
           a pause offers what is left, not what it started with, and hidden once
           fewer than two steps remain — "run all 1" is the button above. */}
       {!done && stepMode === "manual" && intents.length - next > 1 && (
-        <button className={s.alt} onClick={() => run(true)} disabled={running}>
+        <button
+          className={s.alt}
+          onClick={() => run(true)}
+          disabled={running || (next === 0 && !!shortfall)}
+        >
           {next > 0
             ? `Run the remaining ${intents.length - next} without stopping`
             : `Run all ${intents.length} without stopping`}

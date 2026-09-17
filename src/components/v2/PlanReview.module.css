@@ -102,6 +102,12 @@
   color: var(--k-t3);
   margin-top: 3px;
 }
+.shortfall {
+  font-size: var(--k-fs-sm);
+  color: var(--k-danger, #d64545);
+  margin: 8px 0 4px;
+  line-height: 1.4;
+}
 .chain {
   font-size: var(--k-fs-xs);
   color: var(--k-t2);
