@@ -64,6 +64,12 @@ const ASSUMED_PAR: Record<string, number> = {
   USDR: 1,
   kfUSD: 1,
   kafUSD: 1,
+  /* Arc's wrapped-native — native USDC (the gas token) wrapped 1:1, so a dollar.
+     It is the quote asset of every Arc pool we seed, so pricing it is what gives
+     those pools a TVL: buildPool prices the WUSDC leg at par and derives the
+     other side (EURC, cirBTC — neither has a feed here) from the pool's own
+     price. Without this both legs are unpriced and the whole row reads "—". */
+  WUSDC: 1,
 };
 
 /**
