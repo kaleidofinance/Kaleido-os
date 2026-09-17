@@ -1,7 +1,7 @@
 /**
  * The V3 pool sweep, extracted from useV3Pools so it runs SERVER-SIDE too.
  *
- * Every function here is a plain async read — no React — so `/api/pools` can
+ * Every function here is a plain async read â€” no React â€” so `/api/pools` can
  * run the whole sweep once on the server and hand every browser a cached list,
  * instead of each client fanning out hundreds of slow calls at an Arc RPC. The
  * hook imports `sweepChain` from here and still runs it client-side as the
