@@ -167,6 +167,12 @@ export interface PoolStore {
     force: boolean,
     mainnetOnly: boolean,
   ): Promise<ITradingPair[]>;
+  /**
+   * Replace the cache with a pre-computed list — the server-swept pools from
+   * `/api/pools`. Groups by chain and publishes, so a subscriber receives the
+   * server result exactly the way it would a client sweep's.
+   */
+  replace(pools: ITradingPair[]): void;
 }
 
 /**
@@ -201,6 +207,21 @@ export function createPoolStore(ttlMs: number): PoolStore {
       return () => {
         listeners.delete(listener);
       };
+    },
+
+    replace(pools) {
+      /* The server already swept — group its flat list back by chain (the store's
+         native shape) and publish, so subscribers get it the same way they'd get a
+         client sweep. `completedAt` is stamped so a fallback sweep inside the TTL
+         serves this list rather than re-reading every chain. */
+      byChain.clear();
+      for (const p of pools) {
+        const list = byChain.get(p.chainId) ?? [];
+        list.push(p);
+        byChain.set(p.chainId, list);
+      }
+      completedAt = Date.now();
+      publish();
     },
 
     sweep(prepare, perChain, force, mainnetOnly) {
