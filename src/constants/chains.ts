@@ -83,7 +83,20 @@ export const CHAINS: ChainMeta[] = [
        explorer's node) returns the right chainId but was measured "unreachable"
        on a block read 2026-09-16, so it is the fallback, not the primary. */
     nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-    rpcUrls: ["https://rpc.mainnet.arc.io", "https://rpc.arc-scan.org"],
+    /* Several endpoints so FailoverJsonRpcProvider has a healthy node to rotate
+       to when one throttles — Arc's public RPCs rate-limit under the pool
+       sweep's fan-out, and one dead endpoint stalled the whole table. All five
+       below were verified live (chainId 0x13b2). rpc.mainnet.arc.io leads (the
+       official node); the third-party gateways (dRPC, publicnode, Tenderly,
+       thirdweb) follow; the flaky explorer node is demoted to last. */
+    rpcUrls: [
+      "https://rpc.mainnet.arc.io",
+      "https://arc.drpc.org",
+      "https://arc-rpc.publicnode.com",
+      "https://arc.gateway.tenderly.co",
+      "https://5042.rpc.thirdweb.com",
+      "https://rpc.arc-scan.org",
+    ],
     blockExplorer: { name: "ArcScan", url: "https://arc-scan.org" },
     iconId: "arc",
     color: "#5546ff",
