@@ -8,6 +8,8 @@ import { useStakingData } from "@/hooks/v2/useStakingData";
 import { useLenderPositionsAcrossChains } from "@/hooks/useLenderPositionsAcrossChains";
 import { useBorrowPositionsAcrossChains } from "@/hooks/useBorrowPositionsAcrossChains";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
+import { useDexPrices } from "@/hooks/useDexPrices";
+import { hasKyberSwap } from "@/lib/swap/kyberswap";
 import { useStablecoin } from "@/hooks/useStablecoin";
 import { useWalletBalancesAcrossChains } from "@/hooks/useWalletBalancesAcrossChains";
 import { CHAINS_BY_ID } from "@/constants/chains";
@@ -290,6 +292,30 @@ export const usePortfolio = (): Portfolio => {
   } = useWalletBalancesAcrossChains();
   const { priceOf, loading: pricesLoading } = useSpotPrices();
 
+  /* Arc's ecosystem — EURC, cirBTC, the meme tokens — is on no majors feed, so
+     `priceOf` returns null for them and the wallet showed a dash next to a real
+     balance. Price them from the DEX (the only place they trade) for the
+     holdings spot could not value on a KyberSwap chain, and use it as the
+     fallback under `priceOf` below. */
+  const dexTokens = useMemo(
+    () =>
+      holdings
+        .filter(
+          (h) =>
+            !h.isNative &&
+            hasKyberSwap(h.chainId) &&
+            ethers.isAddress(h.address) &&
+            priceOf(h.symbol) === null,
+        )
+        .map((h) => ({
+          chainId: h.chainId,
+          address: h.address,
+          decimals: h.decimals,
+        })),
+    [holdings, priceOf],
+  );
+  const dexPriceOf = useDexPrices(dexTokens);
+
   /*
    * Debt, priced by the diamond, per request and in total.
    *
@@ -349,7 +375,7 @@ export const usePortfolio = (): Portfolio => {
     const rows: Position[] = holdings
       .filter((h) => !WALLET_EXCLUDES.has(h.symbol))
       .map((h) => {
-        const price = priceOf(h.symbol);
+        const price = priceOf(h.symbol) ?? dexPriceOf(h.chainId, h.address);
         const chainName =
           CHAINS_BY_ID[h.chainId]?.shortName ?? `chain ${h.chainId}`;
         return {
@@ -383,7 +409,7 @@ export const usePortfolio = (): Portfolio => {
       empty: "No token balances in this wallet.",
       href: "/trade/swap",
     };
-  }, [holdings, unreadHoldings, priceOf]);
+  }, [holdings, unreadHoldings, priceOf, dexPriceOf]);
 
   // --- Lending ----------------------------------------------------------
   const lendingGroup = useMemo<PositionGroup>(() => {
