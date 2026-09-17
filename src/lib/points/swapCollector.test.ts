@@ -9,6 +9,7 @@ import {
   TRANSFER_TOPIC,
   decodeTransferLog,
   parseSwapInput,
+  usdcLegValue,
   valueInput,
   type TransferLog,
 } from "./swapCollector.ts";
@@ -91,6 +92,39 @@ console.log("\n— valueInput —");
     valueInput(EURC, 87_000000n, cfg, () => null) === null, "");
   check("a zero/negative price yields null",
     valueInput(EURC, 87_000000n, cfg, () => 0) === null, "");
+}
+
+console.log("\n— usdcLegValue: the trade's USDC notional, either side —");
+{
+  const cfg = { usdc: USDC, usdcDecimals: 6 };
+  // USDC in → EURC out: value is the exact USDC the wallet sent.
+  const usdcIn = [
+    t(USDC, WALLET, ROUTER, 100_000000n), // input from wallet
+    t(EURC, ROUTER, RECEIVER, 174_000n),  // fee to fee wallet
+    t(EURC, ROUTER, WALLET, 86_962000n),  // output to wallet
+  ];
+  check("USDC input leg is the notional (exact, before fee)",
+    usdcLegValue({ wallet: WALLET, transfers: usdcIn, ...cfg }) === 100, "");
+
+  // EURC in → USDC out: no USDC from the wallet, so the USDC it RECEIVES counts,
+  // and the USDC fee to the fee wallet must NOT be counted.
+  const usdcOut = [
+    t(EURC, WALLET, ROUTER, 90_000000n),   // input (non-USDC)
+    t(USDC, ROUTER, RECEIVER, 200000n),    // fee to fee wallet — excluded
+    t(USDC, ROUTER, WALLET, 99_800000n),   // output to wallet
+  ];
+  check("USDC output leg counts when there is no USDC input",
+    usdcLegValue({ wallet: WALLET, transfers: usdcOut, ...cfg }) === 99.8, "");
+  check("the USDC fee to the fee wallet is never counted",
+    usdcLegValue({ wallet: WALLET, transfers: usdcOut, ...cfg }) !== 100, "");
+
+  // token↔token: no USDC touches the wallet → null (caller must price it).
+  const tokenToToken = [
+    t(EURC, WALLET, ROUTER, 50_000000n),
+    t(OTHER, ROUTER, WALLET, 49_000000n),
+  ];
+  check("a token↔token swap yields null (no USDC leg to value)",
+    usdcLegValue({ wallet: WALLET, transfers: tokenToToken, ...cfg }) === null, "");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
