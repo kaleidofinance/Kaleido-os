@@ -11,11 +11,17 @@ import {
   GATEWAY_MODEL_IDS,
 } from "@/lib/ai";
 import {
+  runAgent,
   runAgentWithFailover,
   type AgentInput,
   type AgentRun,
 } from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
+import {
+  getNormalizerProvider,
+  isEscalation,
+  normalizerAddendum,
+} from "@/lib/ai/normalizer";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText, sanitizeGuardrails } from "@/lib/ai/auditor";
 import {
@@ -216,6 +222,10 @@ export async function POST(request: NextRequest) {
         : undefined;
     /* Primary provider, then the others as fall-backs, so a model outage on
        one backend degrades to the next instead of failing the turn. */
+    /* The page asks for the normalizer tier on every sentence its local nets
+       could not answer: a cheap single-shot read before the full model — see
+       lib/ai/normalizer.ts. Anything else is the full turn as before. */
+    const tier = body.tier === "normalize" ? "normalize" : "full";
     const providers = getProviderChain(requested);
     const provider = providers[0] ?? null;
     /* When the turn started, for the latency every ending records. */
@@ -720,6 +730,53 @@ export async function POST(request: NextRequest) {
        * quota check sits above this and not inside — a 429 has to be a real 429,
        * not an error frame inside a successful stream.
        */
+      /*
+       * THE NORMALIZER TIER.
+       *
+       * One cheap, single-shot call (no read rounds) with the product facts and
+       * the dialect glossary in its prompt. Three outcomes:
+       *  - it made an execute call → settled exactly like a full turn, through
+       *    planFromToolCalls and the auditor, so a cheap model's proposal is held
+       *    to the same checks as an expensive one's;
+       *  - it answered a question in prose → settled and returned;
+       *  - it said ESCALATE, said nothing, or the plan could not be built →
+       *    fall through to the full turn below, on the same already-consumed
+       *    credit, so one sentence never costs two.
+       * Skipped entirely when no cheap model is configured. Returned as plain
+       * JSON even to a streaming client: the client's JSON branch renders a
+       * plan, cards and credits identically, and a one-round answer has nothing
+       * to stream.
+       */
+      if (tier === "normalize") {
+        const cheap = getNormalizerProvider();
+        if (cheap) {
+          try {
+            const quick = await runAgent(cheap, {
+              ...agentInput,
+              maxReadRounds: 0,
+              systemAddendum: normalizerAddendum({ chainId }),
+            });
+            const bail =
+              quick.executes.length === 0 &&
+              (isEscalation(quick.text, 0) || !quick.text.trim());
+            if (!bail) {
+              const settled = (await settle(quick)) as {
+                response: string;
+                context?: Record<string, unknown>;
+              };
+              if (settled.context?.status !== "build_error") {
+                return NextResponse.json({
+                  ...settled,
+                  context: { ...(settled.context ?? {}), tier: "normalize" },
+                });
+              }
+            }
+          } catch (quickError) {
+            console.warn("[chat] normalizer tier failed, escalating:", quickError);
+          }
+        }
+      }
+
       if (body.stream === true) {
         const encoder = new TextEncoder();
         let closed = false;

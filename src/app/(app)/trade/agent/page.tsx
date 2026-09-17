@@ -833,6 +833,12 @@ export default function AgentPage() {
          balance question, which the grammar reads as a portfolio read. "how do I
          add liquidity" still opens the form - decided on purpose, and the
          bank deliberately carries no ask for it. */
+      /* Set by the docs-ask gate below when a question-shaped sentence names
+         an action ("can i repay part of my loan"). It used to be answered by
+         quoting the docs section with a link; now the quick model answers it
+         in Luca's own words from that same section — but the grammar must
+         still be kept off it, or "repay" reads as a repay. */
+      let askedAboutAction = false;
       if (question) {
         const exact = searchDocs(content);
         if (
@@ -847,13 +853,20 @@ export default function AgentPage() {
         ) {
           note("Read this as a question about the action, not the action");
           log(`docs:${exact.slug}`);
-          const reply = docsReply(exact);
-          say(reply.text, { via: "local", link: reply.link });
-          return;
+          if (!address) {
+            /* No wallet means no model turn (the route meters by wallet), so
+               the section is quoted as before. */
+            const reply = docsReply(exact);
+            say(reply.text, { via: "local", link: reply.link });
+            return;
+          }
+          askedAboutAction = true;
         }
       }
 
-      const parsed = parseCommand(content, vocabulary, parseCtx);
+      const parsed: ParseResult = askedAboutAction
+        ? { status: "unknown" }
+        : parseCommand(content, vocabulary, parseCtx);
       /* A referential sentence that names the last plan's own verb — "do the
          same swap once again", "swap again", "repeat that swap" — parses as a
          Draft with an empty slot: the grammar reads the verb and finds no
@@ -882,7 +895,7 @@ export default function AgentPage() {
          declined the sentence outright. Order matters: a sentence with its own
          verb is a fresh command and parseFollowUp refuses it anyway, so this
          can never re-point an instruction at the previous action. */
-      if (carriedCommand) {
+      if (carriedCommand && !askedAboutAction) {
         const followed = parseFollowUp(content, vocabulary, carriedCommand);
         if (followed.status !== "unknown") {
           note("Read it as a follow-up to the last plan");
@@ -915,9 +928,14 @@ export default function AgentPage() {
         if (hit) {
           note("Found the section of the docs that answers this");
           log(`docs:${hit.slug}`);
-          const reply = docsReply(hit);
-          say(reply.text, { via: "local", link: reply.link });
-          return;
+          if (!address) {
+            const reply = docsReply(hit);
+            say(reply.text, { via: "local", link: reply.link });
+            return;
+          }
+          /* With a wallet, not answered here: the fetch below carries this
+             section as grounding, and the quick model answers from it in
+             Luca's own words rather than handing over a link. */
         }
       }
       log("model");
@@ -979,6 +997,11 @@ export default function AgentPage() {
              a quota refusal, the legacy proxy and anything that fails before
              dispatch still reply in plain JSON, which is why the content type
              below decides how to read this and not the flag above. */
+          /* Ask for the normalizer tier first — a cheap single-shot read of
+             the sentence with the dialect glossary, which builds the plan or
+             answers the question itself and hands the turn to the full model
+             only when it says it cannot. See lib/ai/normalizer.ts. */
+          tier: "normalize",
           stream: true,
         }),
       });
