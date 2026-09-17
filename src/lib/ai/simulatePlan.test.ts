@@ -11,7 +11,7 @@
  * happy path and every fail-open branch are exercised offline.
  */
 import { ethers } from "ethers";
-import { simulatePlan } from "./simulatePlan.ts";
+import { simulatePlan, isStaleQuoteRevert } from "./simulatePlan.ts";
 import { allowanceSlot, _resetSlotCache, type RpcCall } from "./tokenSlots.ts";
 import type { Intent } from "../v2/intents/types.ts";
 
@@ -157,6 +157,45 @@ async function main() {
     const rpc = mockRpc({ onStep: () => { steps++; return { result: "0x" }; } });
     const sim = await simulatePlan([swap], 5042, OWNER, rpc);
     check("ok with one eth_call, no detection", sim.ok && steps === 1, `steps=${steps}`);
+  }
+
+  console.log("\n— the stale-quote classifier (what route.ts retries) —");
+  {
+    /* Slippage-floor reverts a fresh quote can clear — these trigger the rebuild. */
+    for (const r of ["Too little received", "Too much requested", "STF", "Price slippage check", "INSUFFICIENT_OUTPUT_AMOUNT"]) {
+      check(`retries "${r}"`, isStaleQuoteRevert(r), r);
+    }
+    /* Everything else is not a stale number — surface, do not retry. */
+    for (const r of ["NoCollateralDeposited", "Panic(0x11)", "HealthFactorTooLow", "ERC20: transfer amount exceeds balance"]) {
+      check(`does NOT retry "${r}"`, !isStaleQuoteRevert(r), r);
+    }
+    check("no reason is not retried", !isStaleQuoteRevert(undefined));
+  }
+
+  console.log("\n— D-b1: a stale-quote revert clears on a re-priced retry —");
+  {
+    /* First simulation of the swap reverts with a slippage message; the caller (in
+       route.ts) rebuilds and re-simulates. Here we prove the second simulation of
+       the SAME plan can come back clean when the mock's step result flips — i.e.
+       simulatePlan is a pure function of the RPC, so a re-priced retry that no
+       longer reverts is vouched for. */
+    _resetSlotCache();
+    let call = 0;
+    const rpc = mockRpc({
+      slotBase: 1,
+      onStep: (to) => {
+        if (to.toLowerCase() !== ROUTER.toLowerCase()) return { result: "0x" };
+        call += 1;
+        return call === 1
+          ? { error: revertError(errIface.encodeErrorResult("Error", ["Too little received"])) }
+          : { result: "0x" };
+      },
+    });
+    const first = await simulatePlan([approve, swap], 5042, OWNER, rpc);
+    check("first pass predicts the slippage revert", !first.ok && isStaleQuoteRevert(first.firstFailure?.reason), JSON.stringify(first.firstFailure));
+    _resetSlotCache();
+    const second = await simulatePlan([approve, swap], 5042, OWNER, rpc);
+    check("the re-priced retry is clean", second.ok, JSON.stringify(second));
   }
 }
 

@@ -102,6 +102,24 @@ function revertOf(error: { code?: number; message?: string; data?: string }): {
   return { reverts: true, reason: decoded };
 }
 
+/**
+ * Whether a predicted revert reads as a slippage floor — the one revert class a
+ * fresh quote can fix on its own, and so the only one route.ts retries.
+ *
+ * A swap's `amountOutMinimum` is set by the builder from a quote taken a beat
+ * before the simulation; if the pool moved in that beat, the same plan re-priced
+ * now would clear. Every other revert (a dead pool, an over-borrow, a balance
+ * short) is not a stale number, so it is surfaced rather than retried. Matched on
+ * the V3 router's own revert strings and the common synonyms, since the decoded
+ * reason from simulatePlan is what this is handed.
+ */
+export function isStaleQuoteRevert(reason?: string): boolean {
+  if (!reason) return false;
+  return /too little received|too much requested|slippage|insufficient[\s_]*output|amountoutmin|min[\s_]*out|price[\s_]*slippage|STF/i.test(
+    reason,
+  );
+}
+
 /** A JSON-RPC caller over a chain's first RPC URL, for production use. */
 export function rpcCallFor(chainId: number): RpcCall | null {
   const url = CHAINS_BY_ID[chainId]?.rpcUrls?.find((u) => !!u);
