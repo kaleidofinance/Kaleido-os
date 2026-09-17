@@ -117,12 +117,15 @@ async function handle(req: Request): Promise<Response> {
       "wallet, welcome_points, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at",
     )
     .is("activated_at", null)
-    // X-verified only. Until the on-chain transaction task launches, linking X
-    // (x_user_id is UNIQUE — one X account per wallet) is the sole task a wallet
-    // can actually complete and have verified, so it is the credit gate: a bare
-    // gasless signup has earned nothing provable yet. Widen this when the
-    // transaction task ships and Arc activity becomes a qualifying task too.
-    .not("x_linked_at", "is", null)
+    // X-verified only, keyed on x_user_id (the UNIQUE column — one real X account
+    // per wallet), NOT x_linked_at: a partial/failed OAuth can stamp x_linked_at
+    // without ever capturing a real account, which over-counts. Until the
+    // on-chain transaction task launches, linking a real X account is the sole
+    // task a wallet can complete and have verified, so it is the credit gate — a
+    // bare gasless signup has earned nothing provable. Matches the referral gate
+    // in waitlist_leaderboard (20260917000000). Widen when the transaction task
+    // ships and Arc activity becomes a qualifying task too.
+    .not("x_user_id", "is", null)
     .order("last_checked_at", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: true })
     .limit(limit);
