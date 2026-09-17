@@ -1027,11 +1027,13 @@ export default function AgentPage() {
           }
           const extra: Partial<Msg> = {
             via: "model",
-            /* The moment the plan's quotes were priced — carried on the message
-               and re-checked at sign time (see PlanReview). On the patched-bubble
-               path below this is the only place ts is set, since that path does
-               not go through `say`. */
-            ...(plan.length ? { plan, ts: Date.now() } : {}),
+            /* When this turn landed. Carried on the message for two readers: a
+               plan's quotes are re-checked against it at sign time (see PlanReview),
+               and a card restored from storage shows it as the "as of" of its
+               dimmed, historical rendering. Set unconditionally because this path
+               does not go through `say`, which stamps it otherwise. */
+            ts: Date.now(),
+            ...(plan.length ? { plan } : {}),
             ...(cards.length ? { cards } : {}),
           };
           if (!live?.open) {
@@ -1681,12 +1683,17 @@ export default function AgentPage() {
                       <Answer text={m.text} />
 
                       {/* Frames for the turn's data — rendered on every turn
-                          that carries them, not only the newest. Unlike a plan
-                          they can't be acted on, so an older one is a record of
-                          what was said rather than a control that has gone stale.
-                          They don't survive a reload; see revive() for why. */}
+                          that carries them, not only the newest. A turn restored
+                          from storage is marked `historical`: its cards survive the
+                          reload now, but rendered dimmed and dated so a balance from
+                          earlier reads as a snapshot, not a reading of now. See
+                          toStored/fromStored in useChatHistory for the rule. */}
                       {m.cards && m.cards.length > 0 && (
-                        <AgentCards cards={m.cards} onPrompt={fillPrompt} />
+                        <AgentCards
+                          cards={m.cards}
+                          onPrompt={fillPrompt}
+                          historical={m.historical ? { at: m.ts } : undefined}
+                        />
                       )}
 
                       {/* A route this turn offers. Rendered on every turn that
@@ -1741,6 +1748,27 @@ export default function AgentPage() {
                             ))}
                           </ol>
                         </>
+                      )}
+
+                      {/* A record of the plan a past turn proposed, kept when the
+                          signable plan itself was dropped on reload. Read-only by
+                          construction — there is no plan to act on, only the titles
+                          of the steps it offered — so it says what was proposed
+                          without re-arming a signature against a market that has
+                          since moved. Only historical turns carry planSummary, so
+                          this never competes with the live steps above. */}
+                      {m.planSummary && m.planSummary.length > 0 && (
+                        <div className={s.planPast}>
+                          <div className={s.planPastHead}>Proposed earlier</div>
+                          <ol className={s.planPastList}>
+                            {m.planSummary.map((t, j) => (
+                              <li key={j} className={s.planPastStep}>
+                                <span className={s.marker}>{j + 1}</span>
+                                <span>{t}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
                       )}
 
                       {/* Newest turn only. Tagging every local turn is more

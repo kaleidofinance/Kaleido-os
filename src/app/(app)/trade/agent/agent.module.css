@@ -363,6 +363,39 @@
   padding-top: 1px;
 }
 
+/* A past turn's proposed steps, restored read-only from storage. Dimmed and
+   captioned like the historical cards, because there is no plan object behind it
+   to sign — only the titles of what was once offered. Reuses `.marker` above. */
+.planPast {
+  margin-top: 8px;
+  opacity: 0.6;
+}
+.planPastHead {
+  font-size: var(--k-fs-xs, 11px);
+  color: var(--k-t3);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.planPastList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.planPastStep {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 6px 0;
+  font-size: var(--k-fs-sm);
+  line-height: 1.35;
+}
+.planPastStep + .planPastStep {
+  border-top: 1px solid var(--k-line);
+}
+
 /* Luca's prose is not styled here. It renders through <Answer>, which parses the
    markdown the model is writing in, so its blocks — paragraphs, lists, tables,
    code, the `---` /api/chat puts between an answer and its notes — live in

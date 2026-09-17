@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Intent } from "@/lib/v2/intents";
+import { renderIntent } from "@/lib/v2/intents";
 import type { AgentCard } from "@/lib/v2/cards/types";
+import { localCards } from "@/lib/v2/cards";
 import { MAX_THINKING_LINE } from "@/lib/v2/chatStream";
 
 /**
@@ -22,7 +24,11 @@ import { MAX_THINKING_LINE } from "@/lib/v2/chatStream";
 export interface Msg {
   role: "user" | "assistant";
   text: string;
-  /** Present when a turn produced a signable plan. Never persisted — see below. */
+  /**
+   * Present when a turn produced a signable plan. Never persisted — a stale
+   * signable is the one thing that must not come back (toStored keeps its step
+   * titles as `planSummary` instead).
+   */
   plan?: Intent[];
   /**
    * The step to resume this plan at — set when the review panel stops part-way
@@ -31,14 +37,17 @@ export interface Msg {
    */
   planFrom?: number;
   /**
-   * When this turn was produced, epoch ms. Not persisted (dies with the plan on
-   * reload), and used for exactly one thing: a plan carries quotes and floors
-   * priced at this instant, so PlanReview can refuse to sign a quote-bearing plan
-   * that has since gone stale within the same session — the case the reload guard
-   * below does not cover, because the tab never reloaded.
+   * When this turn was produced, epoch ms. Two readers: within a session, a plan
+   * carries quotes priced at this instant so PlanReview can refuse a quote that has
+   * since gone stale; and across a reload it is the "as of" a restored turn's
+   * dimmed cards are dated with. Persisted for the second reader.
    */
   ts?: number;
-  /** Data frames for this turn. Never persisted, for the same reason as `plan`. */
+  /**
+   * Data frames for this turn. Persisted now, but a restored turn is marked
+   * `historical` and its cards render dimmed and dated — a snapshot from earlier,
+   * not a reading of now. See toStored/fromStored.
+   */
   cards?: AgentCard[];
   /** Which path answered. Surfaced so the cheap path is visible, not implied. */
   via?: "local" | "model";
@@ -52,9 +61,9 @@ export interface Msg {
    * contract is that the renderer cannot tell a local card from a model one — a
    * card must therefore never carry a URL, and this is not a card.
    *
-   * Dropped on reload with `plan` and `cards`, by the allow-list in revive()
-   * below rather than by a rule of its own. Right for the same reason: it
-   * encodes a pair and a chain that were the wallet's when the turn was written.
+   * Dropped on reload by `toStored` — unlike `cards`, which now survive as a dated
+   * snapshot — because it encodes a pair and a chain that were the wallet's when
+   * the turn was written, and it opens a form, which a record should not.
    */
   link?: { href: string; label: string };
   /**
@@ -64,6 +73,24 @@ export interface Msg {
    * the same class of thing as the prose it sits under.
    */
   thinking?: string[];
+  /**
+   * The step titles a plan proposed, kept as a plain record when the signable
+   * `plan` itself is dropped on reload.
+   *
+   * This is the safe half of the plan: "Approve USDC", "Swap USDC → KLD" is a
+   * sentence about what was proposed, where the `Intent[]` is a transaction
+   * authorised against prices and a chain that have since moved. So the summary
+   * persists and the plan does not — a reloaded turn shows what it offered without
+   * offering to sign it again.
+   */
+  planSummary?: string[];
+  /**
+   * True for a turn read back from storage, false (absent) for one produced this
+   * session. The renderer reads it to mark a restored turn's cards as a snapshot
+   * from earlier rather than a reading of now — the distinction the old code drew
+   * by dropping the cards entirely.
+   */
+  historical?: boolean;
 }
 
 /**
@@ -85,33 +112,36 @@ const key = (address?: string) => `kaleido.v2.agentThread.${address ?? "anon"}`;
 const MAX_TURNS = 40;
 
 /**
- * Strips everything that must not come back from storage.
+ * What survives a reload, and in what form. The rule is one test: a reloaded turn
+ * may show what it SAID and what it DID, but must never re-present as CURRENT
+ * anything that was a reading of the moment.
  *
- * `plan` is the important one, and it is a security property rather than a size
- * one: an `Intent[]` is a signable transaction, authorised against prices, a
- * health factor and a chain that were true when it was proposed. Rehydrating one
- * would put a "Review and sign · 2 transactions" button in front of you for a
- * plan built against a market that has since moved. The plan dies with the page;
- * the CTA falls back to "Ask Luca", and asking again re-plans against now.
+ * `plan` — the signable `Intent[]` — never comes back: it is a transaction
+ * authorised against prices, a health factor and a chain that were true when it
+ * was proposed, and rehydrating one would put "Review and sign · 2 transactions"
+ * in front of a market that has since moved. Its step titles come back instead as
+ * `planSummary`: "Approve USDC", "Swap USDC → KLD" is a record of what was offered,
+ * not an offer to sign it again.
  *
- * `cards` go for the same reason, one step weaker but the same kind of wrong: a
- * balance card is a snapshot with a timestamp it does not display. Restored
- * after a reload it presents yesterday's number in the present tense, and a
- * frame around a figure is precisely what makes it look authoritative. The prose
- * survives, because a sentence about a number reads as something that was said;
- * a card reads as something that is true.
+ * `cards` DO come back now — the change that prompted this — but marked
+ * `historical`, so the renderer shows them dimmed and dated, a snapshot from
+ * earlier rather than a reading of now. The old code dropped them for the right
+ * reason (a restored balance card presents yesterday's number in the present
+ * tense); labelling them as past keeps the record without the lie. They pass
+ * through `localCards`, the same gate a live card does, so a hand-edited store
+ * cannot inject a shape the renderer has not vetted.
  *
- * `thinking` does survive, and the same test decides it: "Read your balances",
- * "Quoted USDC → KLD" describe steps that were taken at the time, and they read
- * as history however long ago they were written. Bounded here rather than
- * trusted, since one entry per tool call is a length the model influences.
+ * `thinking` and `ts` survive untouched: the trace reads as history however long
+ * ago, and `ts` is the "as of" the dimmed cards show. `link` does not — it encodes
+ * a pair and chain that were the wallet's then.
  *
- * The per-line bound is `MAX_THINKING_LINE`, imported rather than repeated: this
- * filter *drops* an over-long line instead of trimming it, so if it and the
- * writer's cap ever disagreed, the longer lines would render correctly right up
- * until a reload and then be gone.
+ * MAX_THINKING_LINE is imported rather than repeated: this filter DROPS an
+ * over-long line instead of trimming it, so a disagreement with the writer's cap
+ * would render right up until a reload and then vanish.
  */
 const MAX_THINKING = 12;
+const MAX_SUMMARY_STEPS = 10;
+const MAX_SUMMARY_LEN = 80;
 
 const reviveThinking = (raw: unknown): string[] | undefined => {
   if (!Array.isArray(raw)) return undefined;
@@ -122,20 +152,78 @@ const reviveThinking = (raw: unknown): string[] | undefined => {
   return lines.length ? lines.slice(0, MAX_THINKING) : undefined;
 };
 
-const revive = (raw: unknown): Msg[] => {
+const reviveSummary = (raw: unknown): string[] | undefined => {
+  if (!Array.isArray(raw)) return undefined;
+  const lines = raw
+    .filter((l): l is string => typeof l === "string" && l.length > 0)
+    .slice(0, MAX_SUMMARY_STEPS)
+    .map((l) => l.slice(0, MAX_SUMMARY_LEN));
+  return lines.length ? lines : undefined;
+};
+
+/** A plan's step titles — the record kept once the signable plan is dropped. */
+const summarize = (plan?: Intent[]): string[] | undefined => {
+  if (!plan?.length) return undefined;
+  try {
+    return plan
+      .slice(0, MAX_SUMMARY_STEPS)
+      .map((i) => renderIntent(i).title.slice(0, MAX_SUMMARY_LEN));
+  } catch {
+    return undefined;
+  }
+};
+
+/** The stored shape: what a turn said and did, never a live signable or a
+ *  present-tense reading. One writer for the storage effect and the anon hand-off,
+ *  so the two paths cannot drift. */
+interface StoredMsg {
+  role: "user" | "assistant";
+  text: string;
+  via?: "local" | "model";
+  thinking?: string[];
+  cards?: AgentCard[];
+  ts?: number;
+  planSummary?: string[];
+}
+
+const toStored = (messages: Msg[]): StoredMsg[] =>
+  messages.slice(-MAX_TURNS).map((m) => {
+    const kept = reviveThinking(m.thinking);
+    /* Already-historical turns carry a summary; live ones derive it from the plan
+       that is about to be dropped. */
+    const summary = m.planSummary ?? summarize(m.plan);
+    return {
+      role: m.role,
+      text: m.text,
+      ...(m.via === "local" || m.via === "model" ? { via: m.via } : {}),
+      ...(kept ? { thinking: kept } : {}),
+      ...(m.cards?.length ? { cards: m.cards } : {}),
+      ...(typeof m.ts === "number" ? { ts: m.ts } : {}),
+      ...(summary ? { planSummary: summary } : {}),
+    };
+  });
+
+const fromStored = (raw: unknown): Msg[] => {
   if (!Array.isArray(raw)) return [];
   const out: Msg[] = [];
   for (const m of raw) {
     if (!m || typeof m !== "object") continue;
-    const { role, text, via, thinking } = m as Partial<Msg>;
+    const { role, text, via, thinking, cards, ts, planSummary } =
+      m as Partial<Msg>;
     if (role !== "user" && role !== "assistant") continue;
     if (typeof text !== "string" || !text) continue;
     const kept = reviveThinking(thinking);
+    const revived = Array.isArray(cards) ? localCards(cards as AgentCard[]) : [];
+    const summary = reviveSummary(planSummary);
     out.push({
       role,
       text,
+      historical: true,
       ...(via === "local" || via === "model" ? { via } : {}),
       ...(kept ? { thinking: kept } : {}),
+      ...(revived.length ? { cards: revived } : {}),
+      ...(typeof ts === "number" ? { ts } : {}),
+      ...(summary ? { planSummary: summary } : {}),
     });
   }
   return out.slice(-MAX_TURNS);
@@ -174,7 +262,7 @@ export function useChatHistory(address?: string) {
     let next: Msg[] = [];
     try {
       const raw = sessionStorage.getItem(k);
-      if (raw) next = revive(JSON.parse(raw));
+      if (raw) next = fromStored(JSON.parse(raw));
     } catch {
       /* unavailable, disabled, or unparseable — start clean rather than throw */
     }
@@ -194,7 +282,10 @@ export function useChatHistory(address?: string) {
      * because the second one either has its own thread or starts clean.
      */
     if (wasAnon.current && address && next.length === 0) {
-      const carried = revive(live.current);
+      /* The in-memory thread, kept live — cards and plan intact — because the
+         connect is a step IN this conversation, not a reload of a past one. It is
+         re-serialized (and so reduced to its stored shape) on the next persist. */
+      const carried = live.current.slice(-MAX_TURNS);
       if (carried.length > 0) {
         next = carried;
         try {
@@ -217,7 +308,7 @@ export function useChatHistory(address?: string) {
     if (!hydrated || hydratedKey.current !== k) return;
     try {
       if (messages.length === 0) sessionStorage.removeItem(k);
-      else sessionStorage.setItem(k, JSON.stringify(revive(messages)));
+      else sessionStorage.setItem(k, JSON.stringify(toStored(messages)));
     } catch {
       /* storage full or unavailable — the thread stays in-memory */
     }
