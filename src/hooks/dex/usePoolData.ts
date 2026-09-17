@@ -414,6 +414,8 @@ export const usePoolData = () => {
           async () => priceLookup(await fetchSpotPrices()),
           (chain, priceOf) => sweepChain(chain, priceOf),
           force,
+          /* Mainnet-first: skip testnet RPCs when hidden — see PoolStore.sweep. */
+          !showTestnets,
         ),
       );
     } catch (err: any) {
@@ -424,7 +426,7 @@ export const usePoolData = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showTestnets]);
 
   useEffect(() => {
     fetchPools();

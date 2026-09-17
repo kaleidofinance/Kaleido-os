@@ -462,6 +462,10 @@ export function useV3Pools(): V3PoolsResult {
           async () => priceLookup(await fetchSpotPrices()),
           (chain, priceOf) => sweepChain(chain, priceOf),
           force,
+          /* Mainnet-first: don't sweep testnet RPCs when they're hidden — see
+             PoolStore.sweep. Reading them 429'd five testnet endpoints and hung
+             the table for a viewer who could only see mainnet rows anyway. */
+          !showTestnets,
         ),
       );
     } catch (err) {
@@ -474,7 +478,7 @@ export function useV3Pools(): V3PoolsResult {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showTestnets]);
 
   useEffect(() => {
     fetchPools();
