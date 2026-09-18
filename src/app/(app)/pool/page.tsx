@@ -195,6 +195,7 @@ export default function PoolsPage() {
           <span>Pool</span>
           <span className={s.right}>Price</span>
           <span className={s.right}>24h volume</span>
+          <span className={s.right}>24h fees</span>
           <span className={s.right}>TVL</span>
           <span className={s.right}>APR</span>
           {/* Deliberately unlabelled: the column holds one button that says what it
@@ -282,6 +283,15 @@ export default function PoolsPage() {
                 title={volumeTitle(p.volumeWindowSec)}
               >
                 {usd(p.volume24h)}
+              </span>
+              {/* Fees the pool earned over the same window: the 24h volume that
+                  crossed it times its fee rate (feeBps is basis points, so
+                  /10000 is the fraction). What an LP is actually paid, before
+                  it is annualised into APR two columns over. */}
+              <span className={`${s.right} tabular`}>
+                {p.volume24h !== null && p.feeBps !== null
+                  ? usd((p.volume24h * p.feeBps) / 10000)
+                  : DASH}
               </span>
               <span className={`${s.right} tabular`}>{usd(p.liquidity)}</span>
               <span className={`${s.right} tabular`}>{pct(p.apr)}</span>

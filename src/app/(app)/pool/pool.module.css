@@ -249,7 +249,7 @@
    own width (13px text in 15px of horizontal padding) with nothing spare. */
 .pools .thead,
 .pools .row {
-  grid-template-columns: 1.8fr 1fr 1fr 1fr 0.8fr 96px;
+  grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr 0.8fr 96px;
 }
 .row {
   display: grid;
@@ -1488,8 +1488,8 @@ a.txAction:hover {
      pool table sits at 760 for the same reason. */
   .pools .thead,
   .pools .row {
-    grid-template-columns: 240px 1fr 1fr 1fr 0.8fr 96px;
-    min-width: 760px;
+    grid-template-columns: 240px 1fr 1fr 1fr 1fr 0.8fr 96px;
+    min-width: 860px;
   }
   .pools .pairName {
     white-space: nowrap;
