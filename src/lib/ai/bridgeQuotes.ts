@@ -376,6 +376,13 @@ export async function getBridgeExecution(args: {
   txChainId: number | null;
   /** How LI.FI resolved the symbol on the source chain. Nulls where absent. */
   fromToken: { address: string | null; decimals: number | null };
+  /**
+   * `estimate.toAmount` / `toAmountMin` — the destination-token units the
+   * solver fills, and the floor after slippage. The differentiator against a
+   * 1:1 route: this is 1:1 minus the solver's spread. Null when absent.
+   */
+  toAmount: string | null;
+  toAmountMin: string | null;
 } | null> {
   try {
     const params: Record<string, string> = {
@@ -415,7 +422,12 @@ export async function getBridgeExecution(args: {
     if (!res.ok) return null;
 
     const data = (await res.json()) as {
-      estimate?: { executionDuration?: number; approvalAddress?: string };
+      estimate?: {
+        executionDuration?: number;
+        approvalAddress?: string;
+        toAmount?: string;
+        toAmountMin?: string;
+      };
       action?: { fromToken?: { address?: string; decimals?: number } };
       transactionRequest?: {
         to?: string;
@@ -445,6 +457,8 @@ export async function getBridgeExecution(args: {
         address: from?.address ?? null,
         decimals: typeof from?.decimals === "number" ? from.decimals : null,
       },
+      toAmount: data.estimate?.toAmount ?? null,
+      toAmountMin: data.estimate?.toAmountMin ?? null,
     };
   } catch {
     return null;

@@ -5,8 +5,11 @@
  * the local grammar path (parseCommand -> buildIntents) AND the cloud/model path
  * (planFromToolCalls -> buildIntents), that the auditor accepts it, and that the
  * destination-mint completion builds. Drives the REAL functions the app ships;
- * the only injected seams are speed:"standard" (skips Circle's fee network call,
- * deterministic) and a stub attestation/pricer. No transaction is ever sent.
+ * the injected seams are speed:"standard" (skips Circle's fee network call) and
+ * route:"exact" (forces the CCTP leg — since 2026-09-18 a USDC bridge DEFAULTS to
+ * the instant aggregator, a live LI.FI call whose choice this offline test must
+ * not depend on; the default selection itself is covered in routeSelect.test.ts),
+ * plus a stub attestation/pricer. No transaction is ever sent.
  *
  *   npx tsx src/lib/bridge/cctpAgent.check.ts
  */
@@ -69,6 +72,7 @@ function deps(chainId: number): PlanDeps {
         fromChainId: req.sourceChainId ?? chainId,
         userAddress: USER,
         speed: "standard",
+        route: "exact",
       }),
   };
 }
@@ -88,7 +92,7 @@ function approveIntentOf(build: { intents: unknown[] }) {
 
 async function main() {
   // ---------------------------------------------------------------- routes --
-  console.log("\n— resolveBridgeRoute: CCTP is chosen for USDC on every corridor —");
+  console.log("\n— resolveBridgeRoute: route:\"exact\" builds a CCTP burn for USDC on every corridor —");
   for (const [name, from, to, dest] of [
     ["Arc -> Base", ARC, BASE, "Base"],
     ["Base -> Arc", BASE, ARC, "Arc"],
@@ -106,6 +110,7 @@ async function main() {
       tokenAddress,
       userAddress: USER,
       speed: "standard",
+      route: "exact",
     });
     const ok =
       !("error" in r) &&
