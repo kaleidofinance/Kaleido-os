@@ -65,6 +65,28 @@ const provider = (id: string, behavior: Behavior): ChatProvider => ({
   },
 });
 
+/* Throws its first `failN` attempts, then answers — a transient backend, the
+   shape the gateway shows (~1 in 3) and what RETRY_PER_PROVIDER exists for. */
+const flaky = (id: string, failN: number): ChatProvider => {
+  let calls = 0;
+  const maybeFail = () => {
+    if (calls++ < failN) throw new Error(`${id} transient (${calls})`);
+  };
+  return {
+    id,
+    model: `${id}-model`,
+    chat: async () => {
+      maybeFail();
+      return result(id);
+    },
+    chatStream: async (_input, onText) => {
+      maybeFail();
+      onText(id);
+      return result(id);
+    },
+  };
+};
+
 async function main() {
   const { runAgentWithFailover } = await import("./agent.ts");
   // No address, so runAgent seeds no portfolio read and touches no chain.
@@ -140,6 +162,76 @@ async function main() {
       streaming,
     );
     check("a lone provider answers", r.provider === "only", r.provider);
+  }
+
+  console.log("\n— a transient error on the SAME provider is retried (RETRY_PER_PROVIDER) —");
+
+  {
+    // The single-provider chain — the production shape. One transient blip must
+    // not be the user's whole answer; the retry recovers it.
+    const r = await runAgentWithFailover([flaky("gw", 1)], input, streaming);
+    check(
+      "a lone provider that throws once then answers is retried, not surfaced",
+      r.provider === "gw",
+      `answered by ${r.provider}`,
+    );
+  }
+
+  {
+    // More failures than retries -> the error is finally surfaced.
+    let threw = false;
+    try {
+      await runAgentWithFailover([flaky("gw2", 5)], input, streaming);
+    } catch {
+      threw = true;
+    }
+    check("a lone provider failing past the retry budget still surfaces the error", threw);
+  }
+
+  {
+    // A transient primary is retried and answers BEFORE the chain reaches the
+    // fallback — the fallback is the safety net, not the first resort.
+    const r = await runAgentWithFailover(
+      [flaky("gw3", 1), provider("backup", "answer")],
+      input,
+      streaming,
+    );
+    check(
+      "a transient primary recovers on its own retry, without failing over",
+      r.provider === "gw3",
+      `answered by ${r.provider}`,
+    );
+  }
+
+  {
+    // Streamed, THEN errored: the reply is already partly on screen, so retrying
+    // would double it. It must surface, never retry or fail over.
+    let calls = 0;
+    let threw = false;
+    const dirtyThenThrow: ChatProvider = {
+      id: "dirty",
+      model: "dirty-model",
+      chat: async () => {
+        calls++;
+        throw new Error("dirty late");
+      },
+      chatStream: async (_input, onText) => {
+        calls++;
+        onText("partial");
+        await delay(1);
+        throw new Error("dirty late error");
+      },
+    };
+    try {
+      await runAgentWithFailover([dirtyThenThrow, provider("backup", "answer")], input, streaming);
+    } catch {
+      threw = true;
+    }
+    check(
+      "a provider that streamed then errored is surfaced, never retried or failed over",
+      threw && calls === 1,
+      `threw=${threw} calls=${calls}`,
+    );
   }
 
   console.log(`\n  ${pass} passed, ${fail} failed\n`);

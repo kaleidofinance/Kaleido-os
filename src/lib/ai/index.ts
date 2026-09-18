@@ -118,8 +118,12 @@ export const GEMINI_MODEL_IDS = Object.keys(GEMINI_MODELS) as GeminiModel[];
  *
  * Tiered like Gemini: on a free Gateway key the premium routes (Anthropic, some
  * Google) 403 "upgrade to paid credits", while OpenAI's GPT-5 line and DeepSeek
- * R1 answer 200 — so the catalogue is the confirmed free-tier reasoning set, and
- * the default is openai/gpt-5. Verified live 2026-09-12; add a row only after a
+ * R1 answer 200 — so the catalogue is the confirmed free-tier reasoning set. The
+ * default is openai/gpt-5-MINI, not gpt-5: the full reasoning model measured
+ * ~50s/call against the gateway (2026-09-17), which overruns the 60s serverless
+ * limit on any two-round turn — a strategy question timed out as
+ * FUNCTION_INVOCATION_TIMEOUT, surfaced to the user as a provider error. Mini
+ * answers the same turn in ~20s. Verified live 2026-09-12; add a row only after a
  * 200 from /chat/completions, not from the 376-long /models list (a listed id you
  * lack 403s, not 404s — the same trap as the AgentRouter note above).
  */
@@ -218,7 +222,7 @@ const buildGateway = (id?: string): ChatProvider | null =>
   process.env.AI_GATEWAY_API_KEY
     ? new OpenAIProvider(
         process.env.AI_GATEWAY_API_KEY,
-        id || process.env.AI_GATEWAY_MODEL || "openai/gpt-5",
+        id || process.env.AI_GATEWAY_MODEL || "openai/gpt-5-mini",
         {
           baseUrl:
             process.env.AI_GATEWAY_BASE_URL ||

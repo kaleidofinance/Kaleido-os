@@ -66,7 +66,8 @@ async function main() {
   check("KLD is stated as not launched", /KLD.*has NOT launched/.test(arc));
   check("and dated to the FAQ's own date", arc.includes("end of September 2026"));
   check("Arc mainnet is stated as live", arc.includes("Arc mainnet is live"));
-  check("the lending book is stated as testnet-only today", /lending book, kfUSD and KLD staking are NOT on Arc mainnet yet/.test(arc));
+  check("lending/staking/limit-orders stated as testnet-only", /lending book, kfUSD\/kafUSD, KLD staking, and limit orders run only on the testnets/.test(arc));
+  check("concentrated-liquidity pools stated as available on Arc", /concentrated-liquidity pools/.test(arc) && arc.includes("available today"));
   check("carries the escalate rule with the sentinel", arc.includes(`reply with exactly the word ${ESCALATE}`));
   check("forbids sending the user to the docs", arc.includes("never tell them to read the docs"));
   check("forbids read tools in this mode", arc.includes("Never call a read tool"));
