@@ -56,6 +56,7 @@
     "test:docs": "tsx \"src/app/(marketing)/docs/docs.test.ts\"",
     "test:poolcurve": "tsx \"src/app/(app)/pool/poolCurve.test.ts\"",
     "test:poolfilters": "tsx \"src/app/(app)/pool/filters.test.ts\"",
+    "test:poolsnapshot": "tsx src/lib/dex/poolSnapshot.test.ts",
     "test:deposit": "tsx src/lib/dex/deposit.test.ts",
     "test:removemin": "tsx src/lib/dex/removeMinimums.test.ts",
     "test:outgoing": "tsx src/lib/v2/intents/outgoing.test.ts",

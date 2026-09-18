@@ -4,6 +4,8 @@ import { sweepChain } from "@/lib/dex/poolSweep";
 import { priceLookup, type SpotPrices } from "@/lib/market/spot";
 import { PRICEABLE, getPrices } from "@/lib/points/prices";
 import type { ITradingPair } from "@/constants/types/dex";
+import { unstable_cache } from "next/cache";
+import { shouldAcceptPoolSnapshot } from "@/lib/dex/poolSnapshot";
 
 /**
  * GET /api/pools — the V3 pool list, swept once on the server.
@@ -23,7 +25,6 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const TTL_MS = 30_000;
-const MIN_ACCEPTED_POOL_ROWS = 1;
 /* Per-chain ceiling, so a hung endpoint can't hold the whole response. Wider
    than the client's own per-chain deadline because the server pays it once for
    everyone, not per tab. */
@@ -65,6 +66,12 @@ async function compute(): Promise<ITradingPair[]> {
   return pools;
 }
 
+/* Vercel's Data Cache is shared across serverless instances; module memory is
+   only a fast local layer and cannot be the source of truth in production. */
+const computeShared = unstable_cache(compute, ["kaleido-live-pools"], {
+  revalidate: 30,
+});
+
 export async function GET() {
   const now = Date.now();
   if (cache && now - cache.at < TTL_MS) {
@@ -72,7 +79,7 @@ export async function GET() {
   }
   try {
     if (!inflight) {
-      inflight = compute().finally(() => {
+      inflight = computeShared().finally(() => {
         inflight = null;
       });
     }
@@ -80,7 +87,7 @@ export async function GET() {
     /* A timeout-bounded sweep can legitimately finish with no rows when an RPC
        is throttled. Never let that transient result erase the last good market
        snapshot; callers can keep rendering it while the next refresh retries. */
-    if (cache && pools.length < MIN_ACCEPTED_POOL_ROWS) {
+    if (cache && !shouldAcceptPoolSnapshot(cache.pools, pools)) {
       return NextResponse.json({ pools: cache.pools, stale: true });
     }
     cache = { at: Date.now(), pools };
