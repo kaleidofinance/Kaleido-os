@@ -277,6 +277,15 @@ export interface BridgeRouteRequest {
    * for the source chain's finality. Ignored by every other provider.
    */
   speed?: "standard" | "fast";
+  /**
+   * Which of two good USDC routes to take on a CCTP corridor, when both
+   * exist: "instant" is the aggregator solver-fill (arrives in seconds, no
+   * claim, a small spread); "exact" is CCTP's 1:1 burn-and-mint (no spread,
+   * but the destination mint must be completed). Absent lets the resolver
+   * pick by amount — instant below INSTANT_PREFERRED_MAX_USDC, exact at or
+   * above it. Ignored off a CCTP corridor, where only one route exists.
+   */
+  route?: "instant" | "exact";
 }
 
 /**
@@ -302,6 +311,33 @@ export interface BridgeRoute {
   spender?: string;
   /** Set for a canonical deposit, which underruns estimateGas. */
   gasLimit?: string;
+  /**
+   * Destination-token base units the user is expected to receive. For an
+   * instant aggregator fill this is 1:1 minus the solver spread; for CCTP it
+   * is 1:1 minus the (often zero) Circle fast fee. Absent when the provider
+   * quoted no amount. Display-only — never a bound the auditor enforces.
+   */
+  receivedUnits?: string;
+  /**
+   * The route NOT taken, when a USDC/CCTP corridor offered both. Lets the
+   * agent and the UI show the trade-off and offer the switch (re-resolve with
+   * `route` set). Present only when a real second route resolved.
+   */
+  alternative?: BridgeRouteAlternative;
+}
+
+/**
+ * A one-line summary of the bridge route that was not chosen, for the
+ * agent/UI to offer as an alternative. See resolveBridgeRoute.
+ */
+export interface BridgeRouteAlternative {
+  /** "lifi" (instant fill) | "cctp" (1:1). */
+  provider: string;
+  /** The `route` preference that selects it. */
+  route: "instant" | "exact";
+  etaSeconds: number | null;
+  /** Destination units this route would deliver instead. Null if unquoted. */
+  receivedUnits: string | null;
 }
 
 /** A same-chain swap to resolve through an external aggregator (KyberSwap). */
