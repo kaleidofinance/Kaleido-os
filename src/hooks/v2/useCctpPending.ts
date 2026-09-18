@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import {
   cctpPendingKey,
+  dismissCctpPending,
   readCctpPending,
   removeCctpPending,
   subscribeCctpPending,
   type PendingCctp,
 } from "@/lib/bridge/cctpPending";
+import { isCctpMinted } from "@/lib/bridge/cctpAttestation";
 
 /**
  * The connected wallet's not-yet-completed CCTP transfers, live.
@@ -24,6 +26,8 @@ import {
 export function useCctpPending(): {
   pending: PendingCctp[];
   remove: (txHash: string) => void;
+  /** Hide one transfer's bar without deleting it (the user's close button). */
+  dismiss: (txHash: string) => void;
   isConnected: boolean;
   /** Whether the server completes mints for the user — see /api/cctp/status. */
   keeper: boolean;
@@ -32,37 +36,43 @@ export function useCctpPending(): {
   const [pending, setPending] = useState<PendingCctp[]>([]);
   const [keeper, setKeeper] = useState(false);
 
-  /* The server's side of the story. While anything is pending, ask
-     /api/cctp/status every 30s whether the completion keeper has minted it;
-     a minted row leaves the local list with a word to the user, so the bar
-     never nags about a transfer that already finished. The same call reports
-     whether a keeper exists at all, which the banner's copy turns on. */
+  /* The self-clear. A CCTP mint can be completed by the user, our keeper, OR a
+     public relayer (measured: a third party finished a real transfer for
+     free), so the bar cannot clear off our own records alone — it reads the
+     CHAIN. Every 30s, for each pending burn, isCctpMinted asks whether the
+     mint is already done on the destination; if so the row leaves the list —
+     with a word to the user unless they had dismissed it. The one server call
+     left is for the `keeper` flag the banner's copy turns on, not for
+     clearing. */
   useEffect(() => {
     if (!address || pending.length === 0) return;
     let stopped = false;
     const poll = async () => {
       try {
-        const tx = pending.map((p) => p.txHash).join(",");
-        const res = await fetch(`/api/cctp/status?tx=${encodeURIComponent(tx)}`, { cache: "no-store" });
-        if (!res.ok || stopped) return;
-        const body = (await res.json()) as {
-          keeper?: boolean;
-          rows?: { txHash: string; status: string }[];
-        };
-        setKeeper(Boolean(body.keeper));
-        for (const row of body.rows ?? []) {
-          if (row.status !== "minted") continue;
-          const entry = pending.find(
-            (p) => p.txHash.toLowerCase() === row.txHash.toLowerCase(),
-          );
-          if (!entry) continue;
-          removeCctpPending(address, entry.txHash);
-          toast.success(
-            `${entry.amount} ${entry.symbol} minted on ${entry.destChainName} — completed for you.`,
-          );
-        }
+        const res = await fetch(`/api/cctp/status`, { cache: "no-store" });
+        if (res.ok && !stopped)
+          setKeeper(Boolean(((await res.json()) as { keeper?: boolean }).keeper));
       } catch {
-        /* A status read that fails changes nothing on screen. */
+        /* the keeper flag only drives copy; a failed read leaves it as-is */
+      }
+      for (const entry of pending) {
+        if (stopped) return;
+        try {
+          const minted = await isCctpMinted({
+            sourceChainId: entry.sourceChainId,
+            destChainId: entry.destChainId,
+            txHash: entry.txHash,
+          });
+          if (minted && !stopped) {
+            removeCctpPending(address, entry.txHash);
+            if (!entry.dismissedAt)
+              toast.success(
+                `${entry.amount} ${entry.symbol} landed on ${entry.destChainName}.`,
+              );
+          }
+        } catch {
+          /* an inconclusive read leaves the transfer on the list */
+        }
       }
     };
     void poll();
@@ -103,6 +113,18 @@ export function useCctpPending(): {
     (txHash: string) => removeCctpPending(address, txHash),
     [address],
   );
+  const dismiss = useCallback(
+    (txHash: string) => dismissCctpPending(address, txHash),
+    [address],
+  );
 
-  return { pending, remove, isConnected, keeper };
+  /* The bar shows only what the user hasn't closed; the effect above still
+     polls the full list, so a dismissed transfer is cleaned from storage once
+     it mints. */
+  const visible = useMemo(
+    () => pending.filter((p) => !p.dismissedAt),
+    [pending],
+  );
+
+  return { pending: visible, remove, dismiss, isConnected, keeper };
 }

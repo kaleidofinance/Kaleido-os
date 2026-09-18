@@ -96,6 +96,35 @@
   outline-offset: 2px;
 }
 
+.close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: calc(-1 * var(--k-s2));
+  padding: 0;
+  color: var(--k-t3, var(--k-t2));
+  background: transparent;
+  border: none;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.close:hover {
+  color: var(--k-t1);
+  background: var(--k-glass-line);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--k-brand);
+  outline-offset: 2px;
+}
+
 /* ------------------------------------------------------------- modal -- */
 
 .overlay {

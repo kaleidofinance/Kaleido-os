@@ -33,7 +33,7 @@ import s from "./CctpCompletionBanner.module.css";
  * surfaces once it clears.
  */
 export default function CctpCompletionBanner() {
-  const { pending, remove, keeper } = useCctpPending();
+  const { pending, remove, dismiss, keeper } = useCctpPending();
   const [active, setActive] = useState<{ txHash: string; intents: Intent[] } | null>(
     null,
   );
@@ -112,6 +112,21 @@ export default function CctpCompletionBanner() {
               : gate.wrong
                 ? `Switch to ${next.destChainName}`
                 : `Complete on ${next.destChainName}`}
+        </button>
+        <button
+          className={s.close}
+          onClick={() => dismiss(next.txHash)}
+          aria-label="Dismiss this reminder"
+          title="Dismiss — your USDC is safe; it stays claimable and the bar clears itself once it lands"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path
+              d="M3 3l8 8M11 3l-8 8"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
         </button>
       </div>
 
