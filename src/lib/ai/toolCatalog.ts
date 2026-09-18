@@ -757,6 +757,31 @@ export const TOOL_CATALOG: ToolSpec[] = [
     },
   },
   {
+    name: "getLivePools",
+    kind: "read",
+    description:
+      "List the live Kaleido DEX liquidity pools on the connected chain. Use this for questions such as which liquidity pairs are live, what pools can I provide liquidity to, or show the current pool inventory. Return the actual pair names, fee tiers, liquidity and volume from the tool; never answer those questions from the static product description alone.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+    },
+  },
+  {
+    name: "getPoolMarket",
+    kind: "read",
+    description:
+      "Rank and summarize live Kaleido liquidity pools on the connected chain. Use for questions about the deepest pool, highest volume, highest APR, total live liquidity, or comparing pool opportunities. metric may be liquidity, volume, or apr; never call this for a specific swap quote, which belongs to getSwapRoute.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        metric: { type: "string", enum: ["liquidity", "volume", "apr"] },
+        limit: { type: "number", description: "Maximum ranked pools to return, 1–20" },
+      },
+    },
+  },
+  {
     name: "getAgentMandate",
     kind: "read",
     description:

@@ -56,6 +56,10 @@ import {
 import { serverPathQuoter, serverQuote, serverPositions } from "./planDeps";
 import { readPoolState } from "@/lib/dex/pool";
 import { getBridgeQuote } from "./bridgeQuotes";
+import { discoveryChains } from "@/lib/dex/poolDiscovery";
+import { sweepChain } from "@/lib/dex/poolSweep";
+import { priceLookup, type SpotPrices } from "@/lib/market/spot";
+import { PRICEABLE, getPrices } from "@/lib/points/prices";
 
 /**
  * Server-side execution of Luca's READ tools.
@@ -93,6 +97,61 @@ import { getBridgeQuote } from "./bridgeQuotes";
  */
 
 type Json = Record<string, unknown>;
+
+let livePoolsCache: { at: number; pools: Json[] } | null = null;
+let livePoolsInflight: Promise<Json[]> | null = null;
+const LIVE_POOLS_TIMEOUT_MS = 12_000;
+
+async function readLivePools(
+  chainId?: number,
+  mainnetOnly = true,
+): Promise<Json[]> {
+  const now = Date.now();
+  const select = (all: Json[]) =>
+    all.filter(
+      (p) =>
+        (!chainId || p.chainId === chainId) &&
+        (!mainnetOnly || getChainMeta(Number(p.chainId))?.network === "mainnet"),
+    );
+  if (livePoolsCache && now - livePoolsCache.at < 30_000) {
+    return select(livePoolsCache.pools);
+  }
+  if (!livePoolsInflight) {
+    livePoolsInflight = (async () => {
+      const results = await getPrices(PRICEABLE);
+      const usd: Record<string, number> = {};
+      results.forEach((r, symbol) => {
+        if (r.usd !== null && Number.isFinite(r.usd) && r.usd > 0) usd[symbol] = r.usd;
+      });
+      const priceOf = priceLookup({ usd, asOf: new Date().toISOString() } as SpotPrices);
+      const chains = discoveryChains();
+      const settled = await Promise.allSettled(chains.map((c) => sweepChain(c, priceOf)));
+      return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).map((p) => ({
+        chainId: p.chainId,
+        chain: chains.find((c) => c.chainId === p.chainId)?.meta.shortName ?? `chain ${p.chainId}`,
+        pair: `${p.token0.symbol}/${p.token1.symbol}`,
+        address: p.address,
+        version: p.version,
+        feePct: p.feeBps === null ? null : p.feeBps / 100,
+        liquidityUsd: p.liquidity,
+        volume24hUsd: p.volume24h,
+        fees24hUsd: p.fees24h,
+        aprPct: p.apr,
+        price: p.price,
+      }));
+    })().finally(() => {
+      livePoolsInflight = null;
+    });
+  }
+  const pools = await Promise.race([
+    livePoolsInflight,
+    new Promise<Json[]>((_, reject) =>
+      setTimeout(() => reject(new Error("Live pool discovery timed out.")), LIVE_POOLS_TIMEOUT_MS),
+    ),
+  ]);
+  livePoolsCache = { at: Date.now(), pools };
+  return select(pools);
+}
 
 const HEALTH_SCALE = 1e-18;
 /**
@@ -1623,6 +1682,50 @@ async function getPositions(args: Json, chainId: number): Promise<Json> {
   }
 }
 
+async function getLivePools(_args: Json, chainId: number, mainnetOnly = true): Promise<Json> {
+  try {
+    const pools = await readLivePools(chainId, mainnetOnly);
+    return {
+      chainId,
+      chain: getChainMeta(chainId)?.shortName ?? `chain ${chainId}`,
+      pools,
+      count: pools.length,
+      note: pools.length
+        ? "These are the live Kaleido liquidity pools currently discovered on this chain. Use the pair, fee tier and liquidity values as current snapshots; they can change between reads."
+        : "No live Kaleido liquidity pools were discovered on this chain. Do not invent a pair; say the current inventory is empty or unavailable.",
+    };
+  } catch (err) {
+    return { error: `Could not read live Kaleido liquidity pools: ${(err as Error).message}` };
+  }
+}
+
+async function getPoolMarket(args: Json, chainId: number, mainnetOnly = true): Promise<Json> {
+  try {
+    const all = await readLivePools(chainId, mainnetOnly);
+    const metric = args.metric === "volume" || args.metric === "apr" ? args.metric : "liquidity";
+    const limit = Math.min(20, Math.max(1, Number(args.limit) || 10));
+    const ranked = [...all].sort((a, b) => {
+      const av = Number(a[metric === "volume" ? "volume24hUsd" : metric === "apr" ? "aprPct" : "liquidityUsd"] ?? -1);
+      const bv = Number(b[metric === "volume" ? "volume24hUsd" : metric === "apr" ? "aprPct" : "liquidityUsd"] ?? -1);
+      return bv - av;
+    }).slice(0, limit);
+    const sum = (key: string) => all.reduce((n, p) => n + (Number(p[key] ?? 0) || 0), 0);
+    return {
+      chainId,
+      chain: getChainMeta(chainId)?.shortName ?? `chain ${chainId}`,
+      metric,
+      count: all.length,
+      totals: { liquidityUsd: sum("liquidityUsd"), volume24hUsd: sum("volume24hUsd"), fees24hUsd: sum("fees24hUsd") },
+      pools: ranked,
+      note: all.length
+        ? `Ranked live Kaleido pools on this chain by ${metric}. These are current snapshots, not guaranteed returns or execution prices.`
+        : "No live pools were discovered on this chain, so no ranking is available.",
+    };
+  } catch (err) {
+    return { error: `Could not read live pool market data: ${(err as Error).message}` };
+  }
+}
+
 /*
  * The action bitmask AgentPermissionFacet stores, decoded to the names a user
  * would recognise. Mirrors LibAgentPermission.ACTION_* — kept as a literal here
@@ -1795,6 +1898,8 @@ const HANDLERS: Record<
     getStaking,
     getVault,
     getPositions,
+    getLivePools,
+    getPoolMarket,
     getBalances,
     getMarkets,
     getOrders,

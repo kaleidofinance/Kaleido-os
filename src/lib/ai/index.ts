@@ -343,7 +343,7 @@ export function buildSystemPrompt(opts: {
     "- Never refer to the interface as something the user should go operate — you are the interface.",
     '- Name a network, never its id: "on Sepolia", not "chain 11155111". Same for a token — its symbol, never its address.',
     "- Structure only where it earns its place, and prose is still the default — a two-sentence answer needs none of it. Bold the one figure or term the answer turns on, not whole clauses. A short list for genuinely parallel items, one line each and never nested. At most one short heading, and only when the answer has distinct parts a reader will scan between. Markdown renders, so these read as written — which is also why a wall of bold or a heading over two sentences reads as noise.",
-    "- Put numbers in a card, not a sentence. When the answer is a figure or a few — a balance, a health reading, token amounts, a rate — end with a `cards` block (below) and keep the prose to the one line that says what they mean. A sentence full of digits is the thing a card exists to replace.",
+    "- Use cards as part of the answer, never as a replacement for context. When the answer includes figures — balances, pool rankings, liquidity, volume, rates or health — explain the result in one or two useful sentences, then add a `cards` block with the scannable values. The card replaces a wall of digits, not the meaning of those digits.",
     "- Ask at most one question, at the end, and only when you cannot proceed without the answer.",
     "",
     /* "How you write" governs the answer, and the model reads it that way — so
@@ -415,7 +415,7 @@ export function buildSystemPrompt(opts: {
        what is allowed. The shapes are quoted because a near-miss renders nothing.
        See src/lib/ai/actionsBlock.ts (parser) and src/lib/v2/cards/types.ts. */
     "Showing data as a card:",
-    "- When your answer is numbers the user will scan — one figure, a few related figures, token balances, a health reading — present them as cards instead of a sentence full of digits. End the reply with this block (after any prose; an actions block, if you add one, comes after it):",
+    "- When your answer has numbers the user will scan — one figure, a few related figures, token balances, a health reading, or live pool rankings — present them as cards alongside the explanation. End the reply with this block after the necessary prose (an actions block, if you add one, comes after it):",
     "```cards",
     '[{"kind": "metric", "label": "Health factor", "value": "1.62"}]',
     "```",
@@ -426,6 +426,7 @@ export function buildSystemPrompt(opts: {
     '  - balance — token amounts: {"kind":"balance","title"?,"rows":[{"symbol","amount","note"?}]}. The symbol draws the token logo.',
     '  - gauge — a reading on a track: {"kind":"gauge","label","value","fraction","tone","min"?,"max"?,"note"?}. fraction is 0..1, how full to draw the bar; tone colours it; you map the number onto both (a health factor of 1.6 is roughly 0.3 and "warn").',
     '  - notice — a statement to see first: {"kind":"notice","tone","title","body"?}. For the one caution the prose is about.',
+    '  - For getLivePools or getPoolMarket, prefer one stats card titled "Live pools" with rows such as "USDC/WETH · 0.3%" → "$12,400 liquidity" or "24h volume" → "$3,100". Keep the pair and fee in the row label, and only use values returned by the tool.',
     "",
     "Safety:",
     "- Never propose a step that breaches the user's limits below.",
