@@ -68,6 +68,10 @@ function rankText(row: LeaderboardRow): string {
 /** Points, formatted. Null means the tier withholds it, not that it is zero. */
 const points = (n: number | null) => qty(n);
 
+/** Trading volume in USD. 0 for waitlist credits; fills as volume-bearing
+ *  protocol actions land. Null means the read failed, not zero. */
+const vol = (n: number | null) => (n === null ? DASH : `$${qty(n)}`);
+
 /**
  * The footnote that explains a missing column.
  *
@@ -92,8 +96,9 @@ export default function LeaderboardPage() {
      here, because that would be this page guessing at a product decision the
      schema records. */
   const [season, setSeason] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
 
-  const board = useLeaderboard(season);
+  const board = useLeaderboard(season, page);
   const { address } = useWalletV2();
   const wallet = address?.toLowerCase() ?? null;
 
@@ -189,7 +194,10 @@ export default function LeaderboardPage() {
               className={s.seasonPick}
               aria-label="Season"
               value={payload.season.id}
-              onChange={(e) => setSeason(Number(e.target.value))}
+              onChange={(e) => {
+                setSeason(Number(e.target.value));
+                setPage(0);
+              }}
             >
               {payload.seasons.map((x) => (
                 <option key={x.id} value={x.id}>
@@ -225,6 +233,7 @@ export default function LeaderboardPage() {
             <span>Rank</span>
             <span>Wallet</span>
             <span className={s.right}>Points</span>
+            <span className={s.right}>Volume</span>
             {full ? (
               <>
                 <span className={s.right}>Time</span>
@@ -281,6 +290,9 @@ export default function LeaderboardPage() {
                   <span className={`${s.right} tabular`}>
                     {points(r.total)}
                   </span>
+                  <span className={`${s.right} tabular`}>
+                    {vol(r.volume)}
+                  </span>
                   {full ? (
                     <>
                       <span className={`${s.right} tabular`}>
@@ -299,6 +311,37 @@ export default function LeaderboardPage() {
             })
           )}
         </div>
+
+        {payload &&
+        payload.participants !== null &&
+        payload.participants > payload.pageSize ? (
+          <div className={s.pager}>
+            <button
+              type="button"
+              className={s.pageBtn}
+              disabled={payload.page <= 0 || board.loading}
+              onClick={() => setPage((prev) => Math.max(0, prev - 1))}
+            >
+              Previous
+            </button>
+            <span className={s.pageInfo}>
+              Page {payload.page + 1} of{" "}
+              {Math.ceil(payload.participants / payload.pageSize)}
+            </span>
+            <button
+              type="button"
+              className={s.pageBtn}
+              disabled={
+                payload.page + 1 >=
+                  Math.ceil(payload.participants / payload.pageSize) ||
+                board.loading
+              }
+              onClick={() => setPage((prev) => prev + 1)}
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
 
         {notes.length > 0 ? (
           <div className={s.notes}>
