@@ -45,6 +45,7 @@ async function main() {
     normalizerAddendum,
     PRODUCT_STATE,
     GLOSSARY,
+    MAINNET_DIRECTIVE,
   } = await import("./normalizer.ts");
   const { runAgent } = await import("./agent.ts");
 
@@ -66,6 +67,8 @@ async function main() {
   check("KLD is stated as not launched", /KLD.*has NOT launched/.test(arc));
   check("and dated to the FAQ's own date", arc.includes("end of September 2026"));
   check("Arc mainnet is stated as live", arc.includes("Arc mainnet is live"));
+  check("default addendum (testnets shown) carries no mainnet directive", !arc.includes("MAINNET MODE"));
+  check("mainnet-only addendum forbids testnet steering", normalizerAddendum({ chainId: 5042, mainnetOnly: true }).includes(MAINNET_DIRECTIVE));
   check("lending/staking/limit-orders stated as testnet-only", /lending book, kfUSD\/kafUSD, KLD staking, and limit orders run only on the testnets/.test(arc));
   check("concentrated-liquidity pools stated as available on Arc", /concentrated-liquidity pools/.test(arc) && arc.includes("available today"));
   check("carries the escalate rule with the sentinel", arc.includes(`reply with exactly the word ${ESCALATE}`));
@@ -121,6 +124,8 @@ async function main() {
   check("carries every product-state line", PRODUCT_STATE.every((l) => facts.includes(l)));
   check("tells the full model never to recommend another protocol", facts.includes("never recommend another protocol"));
   check("but none of the quick-read rules", !facts.includes("QUICK-READ MODE") && !facts.includes("ESCALATE"));
+  check("productFacts() is testnet-neutral by default (no steering directive)", !facts.includes("MAINNET MODE"));
+  check("productFacts(true) forbids testnet steering", productFacts(true).includes(MAINNET_DIRECTIVE) && productFacts(true).includes("MAINNET MODE"));
 
   console.log("\n— single-shot —");
   const seen: ChatInput[] = [];

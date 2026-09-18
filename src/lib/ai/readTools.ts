@@ -979,9 +979,18 @@ const INDEXED_CHAINS = [
  * case is a guard rather than a live path — the not-issued case is very much
  * live, and is the correct answer for "my ETH balance" on BSC.
  */
-async function getChains(args: Json): Promise<Json> {
+async function getChains(
+  args: Json,
+  _chainId: number,
+  mainnetOnly?: boolean,
+): Promise<Json> {
   const address = String(args.address ?? "");
   const asset = String(args.asset ?? "").toUpperCase();
+  /* Mainnet-first users have testnets hidden in the UI, so a cross-chain sweep
+     must not surface a testnet balance the app itself would not show. */
+  const chains = mainnetOnly
+    ? INDEXED_CHAINS.filter((id) => getChainMeta(id)?.network !== "testnet")
+    : INDEXED_CHAINS;
 
   if (!ethers.isAddress(address)) {
     return { error: "A valid wallet address is required" };
@@ -998,7 +1007,7 @@ async function getChains(args: Json): Promise<Json> {
    * indexedAssets() enumerates the same resolver fetchOmniAssetBalance uses, so
    * the advertised set and the readable set cannot disagree.
    */
-  const SUPPORTED = indexedAssets(INDEXED_CHAINS);
+  const SUPPORTED = indexedAssets(chains);
   const match = SUPPORTED.find((s) => s.toUpperCase() === asset);
   if (!match) {
     return {
@@ -1008,7 +1017,7 @@ async function getChains(args: Json): Promise<Json> {
   }
 
   try {
-    const result = await fetchOmniAssetBalance(address, match, INDEXED_CHAINS);
+    const result = await fetchOmniAssetBalance(address, match, chains);
     const byChain = result.chains.map((c) => ({
       chain: c.chainName,
       chainId: c.chainId,
@@ -1775,7 +1784,10 @@ async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
   }
 }
 
-const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
+const HANDLERS: Record<
+  string,
+  (args: Json, chainId: number, mainnetOnly?: boolean) => Promise<Json>
+> =
   {
     getQuote,
     getPortfolio,
@@ -1813,11 +1825,12 @@ export async function runReadTool(
   name: string,
   args: Json,
   chainId?: number,
+  mainnetOnly?: boolean,
 ): Promise<Json> {
   const handler = HANDLERS[name];
   if (!handler) return { error: `Unknown read tool: ${name}` };
   try {
-    return await handler(args, chainId ?? READ_ONLY_CHAIN_ID);
+    return await handler(args, chainId ?? READ_ONLY_CHAIN_ID, mainnetOnly);
   } catch (err) {
     return { error: `${name} threw: ${(err as Error).message}` };
   }

@@ -75,6 +75,12 @@ export interface AgentInput {
    */
   maxReadRounds?: number;
   /**
+   * The user has testnets hidden (mainnet-first default). Passed to the read
+   * tools so a cross-chain sweep (getChains) never surfaces a testnet balance
+   * to a mainnet user. Absent reads as mainnet-only, the app's default.
+   */
+  mainnetOnly?: boolean;
+  /**
    * Text appended after the base prompt and the docs reference — the
    * normalizer's product facts, glossary and rules. Last, so its rules win
    * where they narrow the base prompt's.
@@ -244,7 +250,7 @@ export async function runAgent(
         fresh.map(async (r) => {
           served.set(
             readKey(r.name, r.args),
-            await runReadTool(r.name, r.args, input.chainId),
+            await runReadTool(r.name, r.args, input.chainId, input.mainnetOnly),
           );
         }),
       );

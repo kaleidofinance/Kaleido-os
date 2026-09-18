@@ -321,6 +321,12 @@ export async function POST(request: NextRequest) {
          locally-built plan path (/api/audit) cleans limits the same way, so a
          typed command and a reasoned one are held to the same ceiling. */
       const safeLimits = sanitizeGuardrails(body.limits);
+      /* Testnets are hidden by default in the UI (mainnet-first). The page
+         sends the flag; absent reads as mainnet-only, so an older client or a
+         direct call is held to the same posture. Threads to the read tools
+         (no testnet balance surfaced) and the system facts (no testnet
+         steering). */
+      const mainnetOnly = body.showTestnets !== true;
 
       const agentInput = {
         message: String(body.message ?? ""),
@@ -336,7 +342,8 @@ export async function POST(request: NextRequest) {
         /* The product as it is today, for the full model too — so it never
            recommends a competitor or a product that is not on this chain. The
            normalizer tier below replaces this with its fuller addendum. */
-        systemAddendum: productFacts(),
+        systemAddendum: productFacts(mainnetOnly),
+        mainnetOnly,
       };
 
       /**
@@ -763,7 +770,7 @@ export async function POST(request: NextRequest) {
             const quick = await runAgent(cheap, {
               ...agentInput,
               maxReadRounds: 0,
-              systemAddendum: normalizerAddendum({ chainId }),
+              systemAddendum: normalizerAddendum({ chainId, mainnetOnly }),
             });
             const bail =
               quick.executes.length === 0 &&
