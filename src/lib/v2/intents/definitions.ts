@@ -510,7 +510,9 @@ register("aggregatorSwap", {
     detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
-    if (!i.nativeIn) {
+    /* Aggregator intents encode native input through the transaction value;
+       unlike the canonical swap shape they do not carry a nativeIn flag. */
+    if (i.value === "0") {
       await waitForAllowance(
         ctx.signer,
         ctx.address,
