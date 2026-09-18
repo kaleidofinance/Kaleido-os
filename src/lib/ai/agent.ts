@@ -365,6 +365,17 @@ export async function runAgent(
  */
 const STALL_MS = Number(process.env.AGENT_STALL_MS) || 12_000;
 
+/**
+ * Extra attempts against the SAME provider on a transient error before giving
+ * up or failing over. The gateway throws an intermittent reasoning-service
+ * error (~1 in 3 measured 2026-09-17) and in production the chain is often a
+ * single provider, so there is nothing to fail over TO — a lone blip became the
+ * user's whole answer. A retry is only ever taken when nothing has been
+ * streamed yet, so it can never double up a reply; the reads it re-runs are
+ * read-only. One retry turns ~33% failure into ~11%; two into ~4%.
+ */
+const RETRY_PER_PROVIDER = Number(process.env.AGENT_RETRY_PER_PROVIDER) || 1;
+
 export async function runAgentWithFailover(
   providers: ChatProvider[],
   input: AgentInput,
@@ -391,6 +402,11 @@ export async function runAgentWithFailover(
   let lastError: unknown;
   for (let i = 0; i < providers.length; i++) {
     const isLast = i === providers.length - 1;
+    /* Each provider gets RETRY_PER_PROVIDER extra attempts on a transient error,
+       as long as nothing has streamed yet (checked in the catch). A stall breaks
+       out to the next provider instead — a hung backend does not un-hang on a
+       retry. */
+    for (let retry = 0; ; retry++) {
     const attempt = runAgent(providers[i], input, guarded);
     try {
       /* No watchdog on the last provider, or on the JSON path (no events): let it
@@ -418,11 +434,18 @@ export async function runAgentWithFailover(
       lastError = new Error(
         `Provider ${providers[i].id} stalled (no output in ${STALL_MS}ms).`,
       );
+      break;
     } catch (err) {
       lastError = err;
-      /* Last provider, or the client has already seen output — surface it. */
-      if (dirty || isLast) throw err;
-      /* Otherwise fall through to the next backend. */
+      /* Already streamed — cannot retry or fail over without doubling the reply. */
+      if (dirty) throw err;
+      /* A transient error with nothing shown yet: try this provider again before
+         moving on. Cheap insurance for the common single-provider chain. */
+      if (retry < RETRY_PER_PROVIDER) continue;
+      /* Retries spent. Surface on the last provider; otherwise fail over. */
+      if (isLast) throw err;
+      break;
+    }
     }
   }
   throw lastError;
