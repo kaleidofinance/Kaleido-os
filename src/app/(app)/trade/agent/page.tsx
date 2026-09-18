@@ -980,6 +980,10 @@ export default function AgentPage() {
           // truth when no wallet is connected, and the server can say so.
           chainId,
           address,
+          /* Testnets hidden by default (useTestnetMode). Sent so the server's
+             reads and facts match the UI's posture — no testnet balances
+             surfaced, no steering to a testnet the user cannot see. */
+          showTestnets,
           // The model chosen in settings, when one is. Omitted rather than sent
           // empty so the server's own default answers — and re-checked there
           // against its allow-list either way, since this arrives from a client.

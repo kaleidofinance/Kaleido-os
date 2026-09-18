@@ -121,7 +121,20 @@ export const GLOSSARY: readonly string[] = [
  * dialects, the vocabulary of the connected chain, and the four rules that
  * bound what a single cheap call may do.
  */
-export function normalizerAddendum(opts: { chainId?: number }): string {
+/**
+ * Appended when the user has testnets hidden (the app's mainnet-first default,
+ * useTestnetMode().showTestnets === false). The product facts still describe
+ * the testnets so the model knows what exists, but a mainnet user must not be
+ * STEERED there — measured 2026-09-18, asked what to do with idle USDC, Luca
+ * offered to 'keep it on testnet to practise lending / mint kfUSD / stake KLD',
+ * which the UI deliberately hides. This forbids that.
+ */
+export const MAINNET_DIRECTIVE = "MAINNET MODE (testnets are hidden by default): do NOT mention the testnets, the faucet, or practising on one, and never suggest moving funds to a testnet. Treat any product not on Arc mainnet yet as coming soon, and steer only to what is live on Arc: token swaps, concentrated-liquidity pools, and bridging. Reference mainnet activity only. Answer plainly only if the user explicitly asks about a testnet; otherwise never raise one.";
+
+export function normalizerAddendum(opts: {
+  chainId?: number;
+  mainnetOnly?: boolean;
+}): string {
   const meta = getChainMeta(opts.chainId);
   const symbols = chainTokens(opts.chainId).map((t) => t.symbol);
   const where = meta ? meta.shortName : "this chain";
@@ -134,6 +147,7 @@ export function normalizerAddendum(opts: { chainId?: number }): string {
     "",
     "What Kaleido is today:",
     ...PRODUCT_STATE.map((l) => `- ${l}`),
+    ...(opts.mainnetOnly ? [MAINNET_DIRECTIVE] : []),
     "",
     "What people mean — read the message in the speaker's dialect:",
     ...GLOSSARY.map((l) => `- ${l}`),
@@ -157,9 +171,10 @@ export function normalizerAddendum(opts: { chainId?: number }): string {
  * or reaches outside — measured 2026-09-17: asked what to do with idle USDC,
  * the full model recommended Aave and Compound. Appended to every full turn.
  */
-export function productFacts(): string {
+export function productFacts(mainnetOnly = false): string {
   return [
     "What Kaleido is today. State these as fact, and answer about Kaleido's own products — never recommend another protocol, exchange or venue:",
     ...PRODUCT_STATE.map((l) => `- ${l}`),
+    ...(mainnetOnly ? [MAINNET_DIRECTIVE] : []),
   ].join("\n");
 }
