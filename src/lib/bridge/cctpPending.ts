@@ -36,6 +36,13 @@ export interface PendingCctp {
   symbol: string;
   /** When the burn confirmed (unix ms), for ordering and a "waiting" hint. */
   burnedAt: number;
+  /**
+   * Set when the user manually closes the completion bar for this transfer.
+   * The row is KEPT (the transfer may still be unfinished, and losing it would
+   * lose the way to complete it) but hidden from the bar. The on-chain
+   * self-clear still removes it entirely once it mints.
+   */
+  dismissedAt?: number;
 }
 
 const MAX_ENTRIES = 50;
@@ -63,7 +70,8 @@ function isPending(v: unknown): v is PendingCctp {
     typeof e.destChainName === "string" &&
     typeof e.amount === "string" &&
     typeof e.symbol === "string" &&
-    typeof e.burnedAt === "number"
+    typeof e.burnedAt === "number" &&
+    (e.dismissedAt === undefined || typeof e.dismissedAt === "number")
   );
 }
 
@@ -148,6 +156,34 @@ export function recordCctpBurn(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...entry, recipient: address }),
   }).catch(() => {});
+}
+
+/**
+ * Mark a transfer dismissed: keep the row, hide it from the bar. Idempotent;
+ * a no-op for an address or hash that isn't there.
+ */
+export function dismissCctpPending(
+  address: string | undefined,
+  txHash: string,
+): void {
+  if (typeof window === "undefined" || !address) return;
+  const key = cctpPendingKey(address);
+  const rows = readCctpPending(address);
+  let changed = false;
+  const next = rows.map((r) => {
+    if (r.txHash.toLowerCase() === txHash.toLowerCase() && !r.dismissedAt) {
+      changed = true;
+      return { ...r, dismissedAt: Date.now() };
+    }
+    return r;
+  });
+  if (!changed) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    return;
+  }
+  emit(key);
 }
 
 export function removeCctpPending(

@@ -4,6 +4,7 @@ import {
   isCctpDomainChain,
   cctpDomainForChain,
 } from "./cctp";
+import { providerForChain } from "@/config/provider";
 import type { Intent } from "@/lib/v2/intents/types";
 import type { PlanResult } from "@/lib/v2/intents/build";
 
@@ -158,4 +159,54 @@ export async function resolveCctpCompletion(params: {
       intents: [intent],
     },
   };
+}
+
+/** MessageTransmitterV2 reverts a second receive with this. */
+const USED_NONCE = /nonce already used|already (been )?(received|used)/i;
+
+/**
+ * Has this burn already been minted on the destination — by ANYONE?
+ *
+ * A CCTP burn sets destinationCaller = 0, so the mint can be completed by the
+ * user, our keeper, OR a public relayer (measured 2026-09-18: a third party
+ * completed a real Arc->Base transfer for free). The pending bar must clear on
+ * ALL of those, so it cannot rely on our own records — it has to read the
+ * chain. This does, without needing a nonce mapping key: once Circle attests,
+ * a read-only `receiveMessage` either would succeed (still mintable, NOT done)
+ * or reverts as a used nonce (already minted). Before attestation a mint is
+ * impossible, so that reads as not-minted too. Any other revert is
+ * inconclusive and also reads as not-minted, so a transient RPC or Circle
+ * hiccup never makes the bar vanish while funds are genuinely in flight.
+ *
+ * `callImpl` is injected in tests; by default it is a read-only eth_call on
+ * the destination chain's provider, which throws on revert.
+ */
+export async function isCctpMinted(params: {
+  sourceChainId: number;
+  destChainId: number;
+  txHash: string;
+  fetchImpl?: typeof fetch;
+  callImpl?: (chainId: number, to: string, data: string) => Promise<string>;
+}): Promise<boolean> {
+  const att = await fetchCctpAttestation({
+    sourceChainId: params.sourceChainId,
+    txHash: params.txHash,
+    fetchImpl: params.fetchImpl,
+  });
+  if ("error" in att || att.status !== "ready") return false;
+  const data = encodeCctpReceive(att.message, att.attestation);
+  const call =
+    params.callImpl ??
+    ((chainId, to, d) => {
+      const provider = providerForChain(chainId);
+      if (!provider) throw new Error(`No provider for chain ${chainId}.`);
+      return provider.call({ to, data: d });
+    });
+  try {
+    await call(params.destChainId, MESSAGE_TRANSMITTER_V2, data);
+    return false; // would still succeed → mintable, not yet minted
+  } catch (e) {
+    const msg = String((e as { message?: unknown })?.message ?? e);
+    return USED_NONCE.test(msg);
+  }
 }
