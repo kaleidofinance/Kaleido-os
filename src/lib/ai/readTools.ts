@@ -100,6 +100,7 @@ type Json = Record<string, unknown>;
 
 let livePoolsCache: { at: number; pools: Json[] } | null = null;
 let livePoolsInflight: Promise<Json[]> | null = null;
+const LIVE_POOLS_TIMEOUT_MS = 12_000;
 
 async function readLivePools(
   chainId?: number,
@@ -142,7 +143,12 @@ async function readLivePools(
       livePoolsInflight = null;
     });
   }
-  const pools = await livePoolsInflight;
+  const pools = await Promise.race([
+    livePoolsInflight,
+    new Promise<Json[]>((_, reject) =>
+      setTimeout(() => reject(new Error("Live pool discovery timed out.")), LIVE_POOLS_TIMEOUT_MS),
+    ),
+  ]);
   livePoolsCache = { at: Date.now(), pools };
   return select(pools);
 }
