@@ -28,6 +28,7 @@ const X_TASK_POINTS = {
   followed: 100,
   retweeted: 100,
   commented: 50,
+  bitget: 100,
 } as const;
 // X-task kPoint is held this long before it counts toward the balance — a nudge
 // to actually do the task, since the tasks are attested, not API-verified.
@@ -72,7 +73,7 @@ function xTaskState(at: string | null, now: number) {
 // the balance for everyone. Once the migration is applied this fallback is dead.
 const BASE_COLS = "ref_code, welcome_points, activated_at";
 const X_COLS =
-  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at";
+  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at";
 
 async function standing(wallet: string) {
   const admin = supabaseAdmin!;
@@ -114,6 +115,7 @@ async function standing(wallet: string) {
     followed: xTaskState(row.x_followed_at as string | null, now),
     retweeted: xTaskState(row.x_retweeted_at as string | null, now),
     commented: xTaskState(row.x_commented_at as string | null, now),
+    bitget: xTaskState(row.x_bitget_at as string | null, now),
   };
   // Each task's kPoint comes from X_TASK_POINTS by key, so comment (50) counts
   // differently from the 100-point tasks. countedX is what's cleared its hold;

@@ -43,12 +43,13 @@ type Status = {
     followed: XTask;
     retweeted: XTask;
     commented: XTask;
+    bitget: XTask;
   };
   activated: boolean;
 } | null;
 
 type Leader = { rank: number; wallet: string; referrals: number };
-type XTaskKey = "link" | "follow" | "retweet" | "comment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "bitget";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -56,6 +57,7 @@ const X_HANDLE = "kaleido_finance";
 // NEXT_PUBLIC var still overrides it if we ever point the task at a different post.
 const ANNOUNCE_TWEET_ID =
   process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
+const BITGET_TWEET_ID = "2101042491864629430";
 
 /** Must match the message the API rebuilds and verifies. */
 const joinMessage = (address: string) =>
@@ -92,10 +94,12 @@ export default function WaitlistPage() {
     follow: boolean;
     retweet: boolean;
     comment: boolean;
+    bitget: boolean;
   }>({
     follow: false,
     retweet: false,
     comment: false,
+    bitget: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
 
@@ -224,13 +228,15 @@ export default function WaitlistPage() {
     }
   }, [xLinkedCookie, postXTask]);
 
-  const openIntent = useCallback((task: "follow" | "retweet" | "comment") => {
+  const openIntent = useCallback((task: "follow" | "retweet" | "comment" | "bitget") => {
     const url =
       task === "follow"
         ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
         : task === "retweet"
           ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
-          : `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`;
+          : task === "comment"
+            ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
+            : `https://x.com/kaleido_finance/status/${BITGET_TWEET_ID}`;
     window.open(url, "_blank", "noopener,noreferrer");
     setOpened((o) => ({ ...o, [task]: true }));
   }, []);
@@ -424,6 +430,28 @@ export default function WaitlistPage() {
                   </button>
                 ) : (
                   <button className={s.taskBtn} onClick={() => openIntent("comment")}>Comment</button>
+                )}
+              </li>
+
+              <li className={s.task}>
+                <div className={s.taskText}>
+                  <span className={s.taskTitle}>Like &amp; repost the Bitget Wallet integration post</span>
+                  <span className={s.taskMeta}>
+                    {status.xTasks.bitget.done
+                      ? status.xTasks.bitget.counted ? "Done" : "Done · counts within 5h"
+                      : !status.xTasks.linked.done ? "Link X first" : "+100 $kPoint"}
+                  </span>
+                </div>
+                {status.xTasks.bitget.done ? (
+                  <span className={s.taskDone}>✓</span>
+                ) : !status.xTasks.linked.done ? (
+                  <span className={s.taskLock}>🔒</span>
+                ) : opened.bitget ? (
+                  <button className={s.taskBtn} onClick={() => postXTask("bitget")} disabled={xBusy === "bitget"}>
+                    {xBusy === "bitget" ? "…" : "Claim"}
+                  </button>
+                ) : (
+                  <button className={s.taskBtn} onClick={() => openIntent("bitget")}>Open post</button>
                 )}
               </li>
 
