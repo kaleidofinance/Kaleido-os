@@ -105,6 +105,26 @@ export default function LeaderboardPage() {
   const full = payload?.season.disclosure === "full";
   const frozen = Boolean(payload?.season.frozenAt);
 
+  /* The connected wallet's own figures, folded into the stat strip below (was
+     a second card). Own points are shown even at the rank_only tier: a wallet
+     reading its OWN total is its own data, not the public total §8 withholds. */
+  const myRow = standing.standing?.row ?? null;
+  const myStanding = !wallet
+    ? DASH
+    : standing.loading || standing.error
+      ? DASH
+      : myRow
+        ? rankText(myRow)
+        : "Unranked";
+  const myPoints = wallet && myRow ? points(myRow.total) : DASH;
+  const myNote = !wallet
+    ? "Connect a wallet to see your standing."
+    : standing.error
+      ? `Your standing could not be read: ${standing.error}`
+      : !standing.loading && !myRow
+        ? "No points in this season yet."
+        : null;
+
   /* Five extra columns at `full`, two otherwise. The tier decides the grid, so
      the template lives in a class name rather than in inline styles. */
   const gridClass = full ? s.t5 : s.t2;
@@ -190,18 +210,15 @@ export default function LeaderboardPage() {
             surface is their home). Season totals stay private at the rank_only
             tier, so the honest points headline is the ranked-wallet count and the
             season it is scoped to. */}
+        {/* One card: the board headline figures + the connected wallet's own
+            standing, merged from two strips into one. */}
         <StatStrip>
           <Stat label="Wallets ranked" value={qty(payload?.participants)} />
           <Stat label="Season" value={payload?.season.label ?? DASH} />
+          <Stat label="Your standing" value={myStanding} />
+          <Stat label="Your points" value={myPoints} />
         </StatStrip>
-
-        <YourStanding
-          connected={Boolean(wallet)}
-          loading={standing.loading}
-          error={standing.error}
-          row={standing.standing?.row ?? null}
-          tierWithholdsTotal={payload?.season.disclosure === "rank_only"}
-        />
+        {myNote ? <p className={s.stripNote}>{myNote}</p> : null}
 
         <div className={`${s.table} ${gridClass}`}>
           <div className={s.thead}>
@@ -292,92 +309,5 @@ export default function LeaderboardPage() {
         ) : null}
       </main>
     </>
-  );
-}
-
-/* -------------------------------------------------------- your standing -- */
-
-/**
- * The connected wallet's own row.
- *
- * Reads the same masked view the table does, so it adds convenience rather than
- * privilege — see api/leaderboard/me, which explains why serving §8's stricter
- * tier 2 needs a signed message and does not have one yet. What it genuinely
- * adds is finding yourself without scrolling: past `public_rank_limit` a wallet
- * is not in the published slice at all, and its percentile is the only answer it
- * gets.
- */
-function YourStanding({
-  connected,
-  loading,
-  error,
-  row,
-  tierWithholdsTotal,
-}: {
-  connected: boolean;
-  loading: boolean;
-  error: string | null;
-  row: LeaderboardRow | null;
-  tierWithholdsTotal: boolean;
-}) {
-  if (!connected) {
-    return (
-      <div className={s.you}>
-        <div className={s.youMain}>
-          <span className={s.youLabel}>Your standing</span>
-          <span className={s.youVal}>{DASH}</span>
-        </div>
-        {/* One clause. This was three sentences explaining that points are
-            credited server-side and never by the browser — true, and a
-            reassurance nobody had asked for yet, which on a phone rendered as a
-            six-line wall next to a dash. What the card has to do here is say why
-            it is empty and how to fill it. */}
-        <span className={s.youNote}>Connect a wallet to see its rank.</span>
-      </div>
-    );
-  }
-
-  const value = loading
-    ? DASH
-    : error
-      ? DASH
-      : row
-        ? rankText(row)
-        : "Unranked";
-
-  /* Terse, and only where the figure cannot speak for itself. An error has to be
-     said out loud. The two ordinary cases say nothing at all, because the card
-     already shows them — the rank is the value and the total is its own row —
-     and the sentences that used to restate them ("Ranked in Season 1 with 1,240
-     points", plus a paragraph on where points come from) were the bulk of the
-     card's height on a phone. The withheld case keeps one clause: its total row
-     is suppressed below, so without it a reader sees a rank and a missing number
-     with no reason given. The no-row case stays deliberately vague about why —
-     one of the two reasons is a sybil flag, and naming it would turn this lookup
-     into a flag detector. */
-  const note = error
-    ? `Your standing could not be read: ${error}`
-    : loading
-      ? null
-      : row
-        ? tierWithholdsTotal
-          ? "Point totals are private while the season runs."
-          : null
-        : "No points in this season yet.";
-
-  return (
-    <div className={s.you}>
-      <div className={s.youMain}>
-        <span className={s.youLabel}>Your standing</span>
-        <span className={`${s.youVal} tabular`}>{value}</span>
-      </div>
-      {row && !tierWithholdsTotal ? (
-        <div className={s.youMain}>
-          <span className={s.youLabel}>Your points</span>
-          <span className={`${s.youVal} tabular`}>{points(row.total)}</span>
-        </div>
-      ) : null}
-      {note ? <span className={s.youNote}>{note}</span> : null}
-    </div>
   );
 }

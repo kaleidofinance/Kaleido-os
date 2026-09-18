@@ -68,7 +68,10 @@ export function useLeaderboard(season: number | null): LeaderboardState {
         });
         return;
       }
-      const qs = season === null ? "" : `?season=${season}`;
+      // Ask for a full board (limit=500). The API clamps this to the season's
+      // own ceiling — public_rank_limit at the rank_only tier, HARD_MAX at full —
+      // so this fills the list rather than stopping at the default 50.
+      const qs = `?limit=500${season === null ? "" : `&season=${season}`}`;
       try {
         const res = await fetch(`/api/leaderboard${qs}`, {
           signal,
