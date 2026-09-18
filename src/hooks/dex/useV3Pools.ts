@@ -128,7 +128,10 @@ export function useV3Pools(): V3PoolsResult {
     }
 
     try {
-      setLoading(true);
+      /* Refresh in the background once a snapshot exists. Toggling loading here
+         makes the pool table visibly flash/rebuild every 30 seconds even when
+         the server returns the same cached snapshot. */
+      if (store.snapshot().length === 0) setLoading(true);
       setError(null);
 
       /* Mainnet-first is the default, and /api/pools serves exactly that set —
@@ -183,7 +186,7 @@ export function useV3Pools(): V3PoolsResult {
 
   useEffect(() => {
     fetchPools();
-    const interval = setInterval(() => fetchPools(true), CACHE_DURATION);
+    const interval = setInterval(() => void fetchPools(false), CACHE_DURATION);
     return () => clearInterval(interval);
   }, [fetchPools]);
 

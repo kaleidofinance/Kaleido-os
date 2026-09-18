@@ -23,6 +23,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const TTL_MS = 30_000;
+const MIN_ACCEPTED_POOL_ROWS = 1;
 /* Per-chain ceiling, so a hung endpoint can't hold the whole response. Wider
    than the client's own per-chain deadline because the server pays it once for
    everyone, not per tab. */
@@ -76,6 +77,12 @@ export async function GET() {
       });
     }
     const pools = await inflight;
+    /* A timeout-bounded sweep can legitimately finish with no rows when an RPC
+       is throttled. Never let that transient result erase the last good market
+       snapshot; callers can keep rendering it while the next refresh retries. */
+    if (cache && pools.length < MIN_ACCEPTED_POOL_ROWS) {
+      return NextResponse.json({ pools: cache.pools, stale: true });
+    }
     cache = { at: Date.now(), pools };
     return NextResponse.json({ pools, stale: false });
   } catch {
