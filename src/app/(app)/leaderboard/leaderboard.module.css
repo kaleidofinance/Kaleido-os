@@ -243,3 +243,11 @@
     gap: var(--k-s4);
   }
 }
+
+/* Caption under the merged stat strip: the connected wallet's note
+   (connect prompt / error / no-points), sitting just below the one card. */
+.stripNote {
+  margin: 8px 2px 0;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
