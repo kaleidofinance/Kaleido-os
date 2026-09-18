@@ -40,7 +40,10 @@ export interface LeaderboardState {
 /**
  * @param season Explicit season, or null for the one flagged `is_default`.
  */
-export function useLeaderboard(season: number | null): LeaderboardState {
+export function useLeaderboard(
+  season: number | null,
+  page = 0,
+): LeaderboardState {
   const [state, setState] = useState<LeaderboardState>({
     payload: null,
     loading: true,
@@ -68,10 +71,9 @@ export function useLeaderboard(season: number | null): LeaderboardState {
         });
         return;
       }
-      // Ask for a full board (limit=500). The API clamps this to the season's
-      // own ceiling — public_rank_limit at the rank_only tier, HARD_MAX at full —
-      // so this fills the list rather than stopping at the default 50.
-      const qs = `?limit=500${season === null ? "" : `&season=${season}`}`;
+      // Page through the full ranked list, one PAGE_SIZE slice at a time (the
+      // route owns the page size). Season is appended only when explicitly chosen.
+      const qs = `?page=${page}${season === null ? "" : `&season=${season}`}`;
       try {
         const res = await fetch(`/api/leaderboard${qs}`, {
           signal,
@@ -105,7 +107,7 @@ export function useLeaderboard(season: number | null): LeaderboardState {
         }));
       }
     },
-    [season],
+    [season, page],
   );
 
   useEffect(() => {

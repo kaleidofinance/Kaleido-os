@@ -54,22 +54,17 @@ export const dynamic = "force-dynamic";
 const db = isAdminConfigured && supabaseAdmin ? supabaseAdmin : supabase;
 
 /**
- * A ceiling on rows regardless of tier, including `full`.
- *
- * 20260817000000 says `public_rank_limit` is "ignored when disclosure = full: at
- * the freeze the complete table is published for audit", and this route does not
- * deliver on that — a season with 40,000 wallets would be a 40,000-row JSON
- * response on a cached public endpoint. `participants` and `truncated` are in the
- * payload so a caller can see it is being cut off rather than infer completeness
- * from a short array. A genuine paginated audit export is a separate surface and
- * has to exist before any allocation is disputed.
+ * Fixed page size. The board is paginated: each request returns one PAGE_SIZE
+ * slice of the full ranked list (`?page=`, 0-based) ordered by rank then wallet,
+ * rather than one capped response. `participants` (the exact unflagged total)
+ * drives how many pages exist. The final sort on `wallet` is what keeps the
+ * slices non-overlapping when many wallets share a rank.
  */
-const HARD_MAX = 500;
-const DEFAULT_LIMIT = 50;
+const PAGE_SIZE = 100;
 
 /** Columns as PostgREST spells them; the view is snake_case like its base table. */
 const ROW_COLUMNS =
-  "wallet, rank, percentile, total, time_points, action_points, bonus_points";
+  "wallet, rank, percentile, total, time_points, action_points, bonus_points, volume";
 
 interface SeasonRecord {
   id: number;
@@ -91,6 +86,7 @@ interface RowRecord {
   time_points: number | string | null;
   action_points: number | string | null;
   bonus_points: number | string | null;
+  volume: number | string | null;
 }
 
 /**
@@ -154,7 +150,7 @@ async function resolveSeason(requested: number | null): Promise<{
 
 async function computeBoard(
   seasonId: number | null,
-  limit: number,
+  page: number,
 ): Promise<{
   payload: LeaderboardPayload | null;
   error: string | null;
@@ -167,17 +163,11 @@ async function computeBoard(
   } = await resolveSeason(seasonId);
   if (!season) return { payload: null, error: seasonError, notFound };
 
-  /*
-   * Rows past `public_rank_limit` carry a null rank at every tier but `full`, so
-   * asking for more than the limit would return rows the reader cannot place —
-   * a table of blanks ordered by a column it cannot see. `full` is the audit
-   * tier and drops the limit, bounded only by HARD_MAX.
-   */
-  const ceiling =
-    season.disclosure === "full"
-      ? HARD_MAX
-      : Math.min(season.public_rank_limit, HARD_MAX);
-  const take = Math.min(limit, ceiling);
+  /* The page's slice of the full ranked list. There is no per-tier row ceiling
+     any more: the season's disclosure decides what each row REVEALS (the view
+     masks total and rank), not how many rows exist, and the list is walked a
+     page at a time. */
+  const offset = page * PAGE_SIZE;
 
   const degraded: string[] = [];
 
@@ -195,7 +185,8 @@ async function computeBoard(
       .eq("season", season.id)
       .order("rank", { ascending: true, nullsFirst: false })
       .order("percentile", { ascending: true })
-      .limit(take),
+      .order("wallet", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1),
     /*
      * The percentile denominator, read exactly rather than taken from
      * `rows.length`. Those two agree only while the board is shorter than the
@@ -246,6 +237,7 @@ async function computeBoard(
       timePoints: num(r.time_points),
       actionPoints: num(r.action_points),
       bonusPoints: num(r.bonus_points),
+      volume: num(r.volume),
     }),
   );
 
@@ -280,7 +272,10 @@ async function computeBoard(
       seasons: seasonRefs,
       rows: mapped,
       participants,
-      truncated: participants !== null && participants > mapped.length,
+      truncated:
+        participants !== null && participants > offset + mapped.length,
+      page,
+      pageSize: PAGE_SIZE,
       asOf: new Date().toISOString(),
       degraded,
     },
@@ -348,20 +343,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  /* `?limit=` with nothing after it is `""`, not null, so `?? DEFAULT_LIMIT` does
-     not fire and Number("") is 0 — which the clamp below would turn into a
-     one-row board. Treated as absent instead. */
-  const rawLimitParam = searchParams.get("limit");
-  const rawLimit = Number(
-    rawLimitParam === null || rawLimitParam.trim() === ""
-      ? DEFAULT_LIMIT
-      : rawLimitParam,
-  );
-  const limit = Number.isFinite(rawLimit)
-    ? Math.min(Math.max(Math.trunc(rawLimit), 1), HARD_MAX)
-    : DEFAULT_LIMIT;
+  /* Pagination: `?page=` is 0-based, each page is PAGE_SIZE rows. A non-integer
+     or negative page is treated as page 0 rather than answering a question the
+     caller did not ask. */
+  const rawPage = Number(searchParams.get("page") ?? 0);
+  const page =
+    Number.isFinite(rawPage) && rawPage > 0 ? Math.trunc(rawPage) : 0;
 
-  const key = `${seasonId ?? "default"}|${limit}`;
+  const key = `${seasonId ?? "default"}|p${page}`;
 
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) {
@@ -373,7 +362,7 @@ export async function GET(request: NextRequest) {
 
   let pending = inflight.get(key);
   if (!pending) {
-    pending = computeBoard(seasonId, limit).then(
+    pending = computeBoard(seasonId, page).then(
       ({ payload, error, notFound }) => {
         if (!payload) {
           const message = error ?? "leaderboard unavailable";

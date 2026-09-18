@@ -145,11 +145,11 @@
    one: it looks like data that failed to load. */
 .t2 .thead,
 .t2 .row {
-  grid-template-columns: 0.7fr 2fr 1fr;
+  grid-template-columns: 0.7fr 1.7fr 1fr 1fr;
 }
 .t5 .thead,
 .t5 .row {
-  grid-template-columns: 0.7fr 1.8fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: 0.7fr 1.6fr 1fr 1fr 1fr 1fr 1fr;
 }
 
 .rank {
@@ -250,4 +250,35 @@
   margin: 8px 2px 0;
   font-size: var(--k-fs-xs);
   color: var(--k-t3);
+}
+
+/* ---------- pagination ---------- */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-s3);
+  margin-top: var(--k-s3);
+}
+.pageBtn {
+  padding: var(--k-s1) var(--k-s3);
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: var(--k-glass-deep);
+  color: var(--k-t1);
+  font-size: var(--k-fs-sm);
+  cursor: pointer;
+}
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pageBtn:not(:disabled):hover {
+  background: var(--k-row-hover);
+}
+.pageInfo {
+  min-width: 110px;
+  text-align: center;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
 }
