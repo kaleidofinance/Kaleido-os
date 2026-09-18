@@ -830,8 +830,19 @@ export default function PlanReview({
        * re-bundling from there would re-sign a step that is already on chain.
        * `runs` is indexed by the plan, not by where this loop resumed.
        */
+      /* Approval + swap must stay sequential until the wallet provider exposes
+         an explicit, receipt-aware batch outcome. A batch rejection can arrive
+         after the wallet accepted/queued the calls; treating that throw as
+         "nothing was sent" and retrying sequentially can duplicate the approval
+         prompt or race the swap against the first request. */
       const bundle = batch.supported
-        ? runs.find((r) => r.bundled && r.steps[0] === i)
+        ? runs.find((r) => {
+            if (!r.bundled || r.steps[0] !== i) return false;
+            const kinds = r.steps.map((step) => intents[step]?.kind);
+            return !(kinds.includes("approve") && kinds.some((kind) =>
+              kind === "swap" || kind === "swapMultiHop" || kind === "aggregatorSwap",
+            ));
+          })
         : undefined;
       if (bundle) {
         const settled = await runBundle(ctx, bundle.steps);

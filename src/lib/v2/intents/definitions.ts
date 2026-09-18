@@ -214,6 +214,26 @@ const FAUCET_ABI = [
 ];
 
 /* ---------------------------------------------------------------- approve -- */
+async function waitForAllowance(
+  signer: ethers.Signer,
+  owner: string,
+  tokenAddress: string,
+  spender: string,
+  needed: bigint,
+): Promise<void> {
+  const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const allowance: bigint = await token.allowance(owner, spender);
+    if (allowance >= needed) return;
+    if (attempt === 9) {
+      throw new Error(
+        "The token approval is not visible on-chain yet. Wait a moment and try the swap again.",
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 register("approve", {
   render: (i) => ({
     title: `Approve ${i.symbol}`,
@@ -245,8 +265,14 @@ register("swap", {
     // (getContracts(chainId).v3Router). It equals the paired approve step's
     // spender by construction — see the Intent type.
     const router = new ethers.Contract(i.spender, V3_ROUTER_ABI, ctx.signer);
+    /* Approval and swap are deliberately sequential. Some wallet/RPC pairs
+       return the approval receipt before their read endpoint reflects the new
+       allowance; wait briefly for the state the swap depends on instead of
+       submitting a doomed transaction and making the user sign it again. */
+    const needed = ethers.parseUnits(i.amountIn, i.decimalsIn);
+    await waitForAllowance(ctx.signer, ctx.address, i.tokenIn, i.spender, needed);
     const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
-    const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
+    const amountIn = needed;
     const amountOutMinimum = ethers.parseUnits(i.amountOutMin, i.decimalsOut);
     /* `tokenIn`/`tokenOut` are already the wrapped addresses on a native swap —
        the substitution happens where the route is chosen, so the same two fields
@@ -288,6 +314,8 @@ register("swapMultiHop", {
   }),
   resolve: async (ctx, i) => {
     const router = new ethers.Contract(i.spender, V3_ROUTER_ABI, ctx.signer);
+    const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
+    await waitForAllowance(ctx.signer, ctx.address, i.tokenIn, i.spender, amountIn);
     const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
 
     /*
@@ -310,7 +338,6 @@ register("swapMultiHop", {
       );
     }
 
-    const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
     const amountOutMinimum = ethers.parseUnits(i.amountOutMin, i.decimalsOut);
     const tx = await sendSwap(
       router,
@@ -480,6 +507,15 @@ register("aggregatorSwap", {
     detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
+    if (!i.nativeIn) {
+      await waitForAllowance(
+        ctx.signer,
+        ctx.address,
+        i.tokenIn,
+        i.spender,
+        ethers.parseUnits(i.amountIn, i.decimalsIn),
+      );
+    }
     let to = i.to;
     let data = i.data;
 
