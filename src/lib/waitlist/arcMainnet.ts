@@ -1,5 +1,7 @@
 import { JsonRpcProvider } from "ethers";
 
+import { retryRpc } from "@/lib/dex/rpcRetry";
+
 /**
  * The private/unofficial Arc mainnet, used ONLY by the waitlist activation reader.
  *
@@ -42,6 +44,13 @@ function provider(): JsonRpcProvider {
  * Kaleido contracts on 5042" once Kaleido is deployed there.
  */
 export async function hasArcActivity(wallet: string): Promise<boolean> {
-  const nonce = await provider().getTransactionCount(wallet, "latest");
+  // rpc.mainnet.arc.io rate-limits (-32005) under the activation reader's batch
+  // of concurrent probes, and a throttled read is HTTP 200 with a JSON-RPC error
+  // — indistinguishable from "no activity" unless retried. Without this, most of
+  // a batch was counted as errors and rotated unchecked, so genuinely-active
+  // wallets could wait many runs to be seen. retryRpc backs off and asks again.
+  const nonce = await retryRpc(() =>
+    provider().getTransactionCount(wallet, "latest"),
+  );
   return nonce > 0;
 }

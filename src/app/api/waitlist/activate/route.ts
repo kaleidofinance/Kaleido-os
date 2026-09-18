@@ -59,8 +59,11 @@ const DEFAULT_LIMIT = 50;
 // How many Arc-mainnet nonce probes to run at once. hasArcActivity is a
 // single stateless eth_getTransactionCount, safe to run concurrently; this
 // bounds the load on the (unofficial) Arc RPC while letting a run clear a
-// large batch inside maxDuration instead of one round-trip at a time.
-const PROBE_CONCURRENCY = 10;
+// large batch inside maxDuration instead of one round-trip at a time. Kept low
+// because rpc.mainnet.arc.io rate-limits under load — hasArcActivity retries a
+// throttled probe (retryRpc), but a gentler concurrency means fewer throttles to
+// retry in the first place, which keeps the batch inside maxDuration.
+const PROBE_CONCURRENCY = Number(process.env.WAITLIST_PROBE_CONCURRENCY ?? 5);
 
 function secretMatches(offered: string | null, expected: string): boolean {
   if (!offered) return false;
