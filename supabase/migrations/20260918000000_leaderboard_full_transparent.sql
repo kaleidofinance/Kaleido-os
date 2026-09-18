@@ -13,7 +13,10 @@
 --    past any plausible wallet count so the view stops masking rank on the tail.
 update public.point_seasons
    set disclosure = 'totals',
-       public_rank_limit = 1000000
+       public_rank_limit = 1000000,
+       -- 'PreTGE' (one word) rather than 'pre-TGE': the hyphen wrapped
+       -- badly in the season stat card ("pre-" / "TGE" on two lines).
+       label = 'Season 1 — PreTGE'
  where id = 1;
 
 -- 2) Add per-wallet trading volume (Σ usd_value) to the public view. Waitlist
