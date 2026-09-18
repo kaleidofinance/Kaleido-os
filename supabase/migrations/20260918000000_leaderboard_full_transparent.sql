@@ -14,6 +14,10 @@
 update public.point_seasons
    set disclosure = 'totals',
        public_rank_limit = 1000000,
+       -- The waitlist/Season-1 points DO convert to KLD at TGE, so the season
+       -- is a converting one. Safe re: the materializer/point_conversion_violations
+       -- testnet guard — every Season-1 action is on Arc mainnet (5042, not testnet).
+       converts_to_tokens = true,
        -- 'PreTGE' (one word) rather than 'pre-TGE': the hyphen wrapped
        -- badly in the season stat card ("pre-" / "TGE" on two lines).
        label = 'Season 1 — PreTGE'

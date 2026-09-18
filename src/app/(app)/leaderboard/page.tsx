@@ -153,11 +153,11 @@ export default function LeaderboardPage() {
         "These are the last figures that loaded successfully; the most recent refresh failed.",
       );
     }
-    if (!payload.season.convertsToTokens) {
-      out.push(
-        "This season doesn't convert to tokens.",
-      );
-    }
+    out.push(
+      payload.season.convertsToTokens
+        ? "These points convert to KLD at TGE."
+        : "This season doesn't convert to tokens.",
+    );
     return out;
   }, [payload, rows.length, board.stale]);
 
