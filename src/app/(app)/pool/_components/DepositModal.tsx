@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ethers } from "ethers";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useActiveAccount,
   useActiveWalletChain,
@@ -117,6 +119,8 @@ export default function DepositModal({
   const [amounts, setAmounts] = useState({ a0: "", a1: "" });
   const [side, setSide] = useState<"0" | "1">("0");
   const [busy, setBusy] = useState(false);
+  const [wrapping, setWrapping] = useState(false);
+  const queryClient = useQueryClient();
   const [switching, setSwitching] = useState(false);
 
   /*
@@ -279,6 +283,71 @@ export default function DepositModal({
   const consumable = (which: "0" | "1") =>
     ratio === 0 ? which === "0" : ratio === Infinity ? which === "1" : true;
 
+  /* The wrapped-native leg (WUSDC on Arc, WETH elsewhere). A user holds the
+     native currency for gas but no wrapped-native by default, so a WUSDC pool
+     would send them off to the swap/agent surface just to get the token. The
+     wrapped-native contract is a WETH9 (verified 1:1 deposit/withdraw), so the
+     modal can mint it in place. */
+  const wrappedNative = contracts.wrappedNative?.toLowerCase();
+  const isWrapLeg = (which: "0" | "1") => {
+    const t = which === "0" ? token0 : token1;
+    return Boolean(wrappedNative) && t.address.toLowerCase() === wrappedNative;
+  };
+  /* How far short the wrapped-native leg is, in wei — parsed at the token's own
+     decimals so it is an exact integer, never a float subtraction of two
+     formatted strings. Native and wrapped-native share decimals (a WETH9 mints
+     msg.value 1:1), so this same wei is the value to send. */
+  const wrapShortfallWei = (which: "0" | "1"): bigint => {
+    const t = which === "0" ? token0 : token1;
+    const amt = which === "0" ? amounts.a0 : amounts.a1;
+    const bal = which === "0" ? balance0 : balance1;
+    if (!positive(amt)) return 0n;
+    try {
+      const need =
+        ethers.parseUnits(amt, t.decimals) -
+        ethers.parseUnits(bal || "0", t.decimals);
+      return need > 0n ? need : 0n;
+    } catch {
+      return 0n;
+    }
+  };
+  const canWrap = (which: "0" | "1") =>
+    onRightChain &&
+    isWrapLeg(which) &&
+    !unread0 &&
+    !unread1 &&
+    wrapShortfallWei(which) > 0n &&
+    !wrapping &&
+    !busy;
+
+  /* deposit() on the wrapped-native contract, for exactly the shortfall. The
+     user signs it in their own wallet, same as the deposit below. */
+  const wrap = async (which: "0" | "1") => {
+    if (!account || !chain || !canWrap(which)) return;
+    const t = which === "0" ? token0 : token1;
+    const need = wrapShortfallWei(which);
+    setWrapping(true);
+    try {
+      const signer = toEthersSigner(account, chain);
+      const data = new ethers.Interface([
+        "function deposit() payable",
+      ]).encodeFunctionData("deposit", []);
+      const tx = await signer.sendTransaction({
+        to: t.address,
+        value: need,
+        data,
+      });
+      await tx.wait();
+      toast.success(`Wrapped into ${t.symbol} — 1:1, no fee.`);
+      /* Clear the not-enough state without waiting on the 10s balance poll. */
+      queryClient.invalidateQueries({ queryKey: ["tokenBalance"] });
+    } catch (err) {
+      toast.error(`Couldn\u2019t wrap: ${(err as Error)?.message ?? "try again"}`);
+    } finally {
+      setWrapping(false);
+    }
+  };
+
   const venueReady =
     Boolean(spender) && (!isV3 || (tier !== null && isTradedTier(tier)));
   const bothPositive = positive(amounts.a0) && positive(amounts.a1);
@@ -430,6 +499,17 @@ export default function DepositModal({
                 onClick={() => maxLeg(which)}
               >
                 Max
+              </button>
+            )}
+            {canWrap(which) && (
+              <button
+                type="button"
+                className={s.maxChip}
+                onClick={() => wrap(which)}
+                disabled={wrapping}
+                title={`Wrap the ${token.symbol} you\u2019re short straight from your ${token.symbol.replace(/^W/, "")} — 1:1, no fee`}
+              >
+                {wrapping ? "Wrapping\u2026" : `Wrap ${token.symbol}`}
               </button>
             )}
           </div>
