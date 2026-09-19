@@ -138,9 +138,9 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
           <>
             <StatStrip>
               <Stat label="Pools" value={qty(poolCount)} />
-              <Stat label="Liquidity" value={usd(liquidity)} />
-              <Stat label="24h volume" value={usd(volume)} />
-              <Stat label="24h fees" value={usd(fees, 2)} />
+              <Stat label="TVL" value={usd(liquidity)} />
+              <Stat label="Total volume" value={usd(volume)} />
+              <Stat label="Total fees" value={usd(fees, 2)} />
             </StatStrip>
 
             <div className={s.tabs}>
