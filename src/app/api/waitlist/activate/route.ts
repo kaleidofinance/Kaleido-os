@@ -52,6 +52,7 @@ const X_TASK_POINTS = {
 } as const;
 const ARC_TX_POINTS = 300;
 const AGENT_TX_POINTS = 500;
+const BRIDGE_TX_POINTS = 500;
 const SEASON = 1; // Season 1 — pre-TGE (see point_seasons seed)
 const SOURCE = "waitlist";
 
@@ -122,7 +123,7 @@ async function handle(req: Request): Promise<Response> {
   const { data: pending, error: pendErr } = await admin
     .from("waitlist")
     .select(
-      "wallet, welcome_points, arc_mainnet_tx_at, agent_tx_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at",
+      "wallet, welcome_points, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at",
     )
     .is("activated_at", null)
     // X-verified only, keyed on x_user_id (the UNIQUE column — one real X account
@@ -205,7 +206,8 @@ async function handle(req: Request): Promise<Response> {
       (row.x_commented_at ? X_TASK_POINTS.commented : 0) +
       (row.x_bitget_at ? X_TASK_POINTS.bitget : 0) +
       (row.arc_mainnet_tx_at ? ARC_TX_POINTS : 0) +
-      (row.agent_tx_at ? AGENT_TX_POINTS : 0);
+      (row.agent_tx_at ? AGENT_TX_POINTS : 0) +
+      (row.bridge_tx_at ? BRIDGE_TX_POINTS : 0);
     const points = Number(row.welcome_points) + referralPoints + xTaskPoints;
 
     // 1) Canonical credit. Synthetic, stable tx_hash → credited at most once.

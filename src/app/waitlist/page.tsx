@@ -49,6 +49,7 @@ type Status = {
   transactionTasks: {
     arcMainnet: { done: boolean };
     agent: { done: boolean };
+    bridge: { done: boolean };
   };
 } | null;
 
@@ -72,10 +73,14 @@ const xTaskMessage = (address: string, task: XTaskKey) =>
   task === "link"
     ? `Link my X account to the Kaleido waitlist wallet ${address}.`
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
-const transactionTaskMessage = (address: string, task: "arcMainnet" | "agent", txHash?: string) =>
+const transactionTaskMessage = (address: string, task: "arcMainnet" | "agent" | "bridge", txHash?: string) =>
   task === "arcMainnet"
     ? `Confirm my Kaleido Arc mainnet transaction for wallet ${address}.`
-    : `Confirm my first Kaleido agent transaction ${txHash} for wallet ${address}.`;
+    : task === "agent"
+      ? txHash
+        ? `Confirm my first Kaleido agent transaction ${txHash} for wallet ${address}.`
+        : `Confirm my first Kaleido agent transaction for wallet ${address}.`
+      : `Confirm my first Kaleido bridge transaction for wallet ${address}.`;
 
 export default function WaitlistPage() {
   const account = useActiveAccount();
@@ -226,17 +231,15 @@ export default function WaitlistPage() {
     [account, loadStatus, ensureArc],
   );
 
-  const verifyTransactionTask = useCallback(async (task: "arcMainnet" | "agent") => {
+  const verifyTransactionTask = useCallback(async (task: "arcMainnet" | "agent" | "bridge") => {
     if (!account) return;
-    const txHash = task === "agent" ? window.prompt("Paste the successful agent transaction hash")?.trim() : undefined;
-    if (task === "agent" && !txHash) return;
     setError(null);
     try {
       if (task === "arcMainnet") await ensureArc();
-      const signature = await account.signMessage({ message: transactionTaskMessage(account.address, task, txHash) });
+      const signature = await account.signMessage({ message: transactionTaskMessage(account.address, task) });
       const res = await fetch("/api/waitlist/transaction", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ address: account.address, signature, task, txHash, chainId: activeChain?.id }),
+        body: JSON.stringify({ address: account.address, signature, task, chainId: activeChain?.id }),
       });
       const d = await res.json();
       if (!res.ok) setError(d.error || "Transaction not verified.");
@@ -507,6 +510,14 @@ export default function WaitlistPage() {
                   <span className={s.taskMeta}>{status.transactionTasks.agent.done ? "Done" : "+500 $kPoint · Verify successful tx"}</span>
                 </div>
                 {status.transactionTasks.agent.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("agent")}>Verify</button>}
+              </li>
+
+              <li className={s.task}>
+                <div className={s.taskText}>
+                  <span className={s.taskTitle}>Use Luca agent to Bridge assets in/out of Arc</span>
+                  <span className={s.taskMeta}>{status.transactionTasks.bridge.done ? "Done" : "+500 $kPoint · Verify on-chain"}</span>
+                </div>
+                {status.transactionTasks.bridge.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("bridge")}>Verify</button>}
               </li>
             </ul>
 

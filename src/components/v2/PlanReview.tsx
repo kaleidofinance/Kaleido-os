@@ -520,6 +520,13 @@ export default function PlanReview({
             }),
           }).catch(() => {});
         }
+        if (intents[i].kind === "bridge") {
+          void fetch("/api/waitlist/transaction", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ address: ctx.address, task: "bridge", txHash: result.hash, chainId: ctx.chainId }),
+          }).catch(() => {});
+        }
       }
       /* A CCTP burn is only half a transfer: the USDC is minted on the
          destination by a later `receiveMessage`, once Circle attests. Record the
@@ -737,6 +744,13 @@ export default function PlanReview({
       const lastIntent = intents[steps[steps.length - 1]];
       if (lastIntent.kind === "bridge") {
         const b = lastIntent as Extract<Intent, { kind: "bridge" }>;
+        if (hash) {
+          void fetch("/api/waitlist/transaction", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ address: ctx.address, task: "bridge", txHash: hash, chainId: ctx.chainId }),
+          }).catch(() => {});
+        }
         if (b.provider === "cctp") {
           recordCctpBurn(ctx.address, {
             txHash: hash,
