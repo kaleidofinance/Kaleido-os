@@ -6,6 +6,7 @@ import { useTxLog } from "@/hooks/v2/useTxLog";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { getChainTxUrl } from "@/constants/utils/getTxUrl";
 import { getChainMeta } from "@/constants/chains";
+import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import s from "./TxHistory.module.css";
 
 /**
@@ -163,10 +164,8 @@ export default function TxHistory({ className }: TxHistoryProps) {
                   list empties on a network switch, and without this line that
                   reads as data loss. */}
               <p className={s.note}>
-                Signed on this device
-                {chainName ? ` on ${chainName}` : ""}. Not a chain history —
-                transactions made elsewhere, or before this feature shipped,
-                aren&apos;t here.
+                Local activity
+                {chainName ? ` · ${chainName}` : ""} · signed on this device
               </p>
 
               <div className={s.list}>
@@ -183,6 +182,7 @@ export default function TxHistory({ className }: TxHistoryProps) {
                   <ul className={s.rows}>
                     {entries.map((e) => {
                       const url = getChainTxUrl(chainId, e.hash);
+                      const detail = displayTxDetail(e.detail);
                       return (
                         <li key={e.hash} className={s.row}>
                           <span
@@ -190,9 +190,11 @@ export default function TxHistory({ className }: TxHistoryProps) {
                             aria-hidden="true"
                           />
                           <div className={s.body}>
-                            <div className={s.rTitle}>{e.title}</div>
-                            {e.detail && (
-                              <div className={s.rDetail}>{e.detail}</div>
+                            <div className={s.rTitle}>
+                              {displayTxTitle(e.title)}
+                            </div>
+                            {detail && (
+                              <div className={s.rDetail}>{detail}</div>
                             )}
                             {/* The hash is the row's only verifiable claim, so
                                 it is always shown — as a link where the registry
