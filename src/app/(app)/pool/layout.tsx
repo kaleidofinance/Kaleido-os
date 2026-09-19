@@ -126,6 +126,15 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
     };
   }, [shell]);
 
+  /* The launch strip is intentionally a combined protocol total: Kaleido pool
+     activity plus the verified KyberSwap route that serves Arc liquidity. The
+     underlying sources remain separate in the server ledger, so external LP
+     fees are never mistaken for Kaleido fee revenue. */
+  const totalVolume = aggregator
+    ? (volume ?? 0) + aggregator.volumeUsd
+    : null;
+  const totalFees = aggregator ? (fees ?? 0) + aggregator.feesUsd : null;
+
   /* A count of 0 is a real measurement, unlike a total of 0 — but only once the
      first read has landed. Until then it is an em dash, not "0 pools". */
   const poolCount = loading && pools.length === 0 ? null : pools.length;
@@ -162,16 +171,9 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
             <StatStrip>
               <Stat label="Pools" value={qty(poolCount)} />
               <Stat label="TVL" value={usd(liquidity)} />
-              <Stat label="Pool volume (24h)" value={usd(volume)} />
-              <Stat label="Pool fees (24h)" value={usd(fees, 2)} />
+              <Stat label="Total volume" value={usd(totalVolume)} />
+              <Stat label="Total fees" value={usd(totalFees, 2)} />
             </StatStrip>
-
-            <p className={s.aggregatorNote}>
-              KyberSwap-routed launch volume: {aggregator ? usd(aggregator.volumeUsd) : "—"}
-              <span aria-hidden="true"> · </span>
-              Kaleido fees: {aggregator ? usd(aggregator.feesUsd, 2) : "—"}
-              {aggregator ? ` · ${aggregator.swapCount} verified swaps` : ""}
-            </p>
 
             <div className={s.tabs}>
               {TABS.map((t) => (
