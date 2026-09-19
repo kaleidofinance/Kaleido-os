@@ -75,6 +75,7 @@ const BASE_COLS = "ref_code, welcome_points, activated_at";
 const TRANSACTION_COLS = "arc_mainnet_tx_at, agent_tx_at, bridge_tx_at";
 const X_COLS =
   "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at";
+const LEGACY_COLS = `${BASE_COLS}, ${X_COLS}`;
 
 async function standing(wallet: string) {
   const admin = supabaseAdmin!;
@@ -89,14 +90,25 @@ async function standing(wallet: string) {
   } else if (full.error.code === "PGRST116") {
     return null; // no such wallet (0 rows), not a schema problem
   } else {
-    // Most likely the X-task columns don't exist yet — retry with base columns.
-    const base = await admin
+    // A transaction-task migration may be missing while the older X-task
+    // columns are already live. Preserve those task points instead of dropping
+    // back straight to core columns and making an established wallet look reset.
+    const legacy = await admin
       .from("waitlist")
-      .select(BASE_COLS)
+      .select(LEGACY_COLS)
       .eq("wallet", wallet)
       .single();
-    if (base.error || !base.data) return null;
-    row = base.data as Record<string, unknown>;
+    if (!legacy.error && legacy.data) {
+      row = legacy.data as Record<string, unknown>;
+    } else {
+      const base = await admin
+        .from("waitlist")
+        .select(BASE_COLS)
+        .eq("wallet", wallet)
+        .single();
+      if (base.error || !base.data) return null;
+      row = base.data as Record<string, unknown>;
+    }
   }
   if (!row) return null;
 
