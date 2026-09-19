@@ -40,7 +40,6 @@ export const maxDuration = 60;
 
 // Must match the pending-points maths in api/waitlist/route.ts.
 const PER_REFERRAL = 50;
-const REFERRAL_CAP = 5000;
 // Per-task kPoint: comment is 50, the rest 100. Must match X_TASK_POINTS in
 // api/waitlist/route.ts.
 const X_TASK_POINTS = {
@@ -198,7 +197,7 @@ async function handle(req: Request): Promise<Response> {
       .eq("wallet", wallet)
       .single();
     const referrals = Number(lb?.referrals ?? 0);
-    const referralPoints = Math.min(PER_REFERRAL * referrals, REFERRAL_CAP);
+    const referralPoints = PER_REFERRAL * referrals;
     const xTaskPoints =
       (row.x_linked_at ? X_TASK_POINTS.linked : 0) +
       (row.x_followed_at ? X_TASK_POINTS.followed : 0) +
