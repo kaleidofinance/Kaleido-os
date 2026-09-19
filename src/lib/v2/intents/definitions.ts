@@ -315,7 +315,10 @@ register("swapMultiHop", {
   resolve: async (ctx, i) => {
     const router = new ethers.Contract(i.spender, V3_ROUTER_ABI, ctx.signer);
     const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
-    await waitForAllowance(ctx.signer, ctx.address, i.tokenIn, i.spender, amountIn);
+    const tokenIn = i.hops[0]?.tokenIn;
+    if (tokenIn) {
+      await waitForAllowance(ctx.signer, ctx.address, tokenIn, i.spender, amountIn);
+    }
     const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
 
     /*
@@ -507,15 +510,17 @@ register("aggregatorSwap", {
     detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
-    if (!i.nativeIn) {
-      await waitForAllowance(
-        ctx.signer,
-        ctx.address,
-        i.tokenIn,
-        i.spender,
-        ethers.parseUnits(i.amountIn, i.decimalsIn),
-      );
-    }
+    /* Aggregator intents are normalised to an ERC20 input before they reach the
+       registry (Arc native USDC becomes its 0x3600 mirror), so every one has an
+       allowance to wait for. `aggregatorSwap` intentionally has no nativeIn
+       field; the transaction value is always zero. */
+    await waitForAllowance(
+      ctx.signer,
+      ctx.address,
+      i.tokenIn,
+      i.spender,
+      ethers.parseUnits(i.amountIn, i.decimalsIn),
+    );
     let to = i.to;
     let data = i.data;
 
