@@ -2,6 +2,7 @@ import {
   TRANSACTION_TASK_POINTS,
   transactionTaskColumn,
   transactionTaskCreditHash,
+  transactionTaskPointsFor,
 } from "./transactionTasks";
 
 const checks: [string, boolean][] = [
@@ -15,6 +16,13 @@ const checks: [string, boolean][] = [
   [
     "task credit hash is wallet-scoped and stable",
     transactionTaskCreditHash("0xABC", "agent") === "waitlist:task:agent:0xabc",
+  ],
+  [
+    "completed tasks stay visible after activation",
+    transactionTaskPointsFor({
+      arc_mainnet_tx_at: "2026-09-19T00:00:00Z",
+      agent_tx_at: "2026-09-19T00:00:00Z",
+    }) === 800,
   ],
 ];
 

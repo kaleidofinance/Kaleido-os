@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import { verifyMessage } from "ethers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
-import { TRANSACTION_TASK_POINTS } from "@/lib/waitlist/transactionTasks";
+import { transactionTaskPointsFor } from "@/lib/waitlist/transactionTasks";
 
 /**
  * The Arc waitlist API.
@@ -149,11 +149,7 @@ async function standing(wallet: string) {
   );
 
   const welcomePoints = Number(row.welcome_points);
-  const transactionPoints = !row.activated_at
-    ? (row.arc_mainnet_tx_at ? TRANSACTION_TASK_POINTS.arcMainnet : 0) +
-      (row.agent_tx_at ? TRANSACTION_TASK_POINTS.agent : 0) +
-      (row.bridge_tx_at ? TRANSACTION_TASK_POINTS.bridge : 0)
-    : 0;
+  const transactionPoints = transactionTaskPointsFor(row);
   return {
     wallet,
     refCode: row.ref_code as string,
