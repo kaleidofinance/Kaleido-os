@@ -69,13 +69,6 @@
   display: flex;
   gap: 7px;
 }
-.aggregatorNote {
-  margin: calc(var(--k-s5) * -0.45) 0 0;
-  color: var(--k-t3);
-  font-size: var(--k-fs-xs);
-  line-height: 1.45;
-  text-wrap: pretty;
-}
 /* Links, not buttons — the tabs navigate. `font: inherit` still matters: an <a>
    inherits the font but browsers colour and underline it. */
 .tab {
