@@ -53,7 +53,7 @@ export const dynamic = "force-dynamic";
 const db = isAdminConfigured && supabaseAdmin ? supabaseAdmin : supabase;
 
 const ROW_COLUMNS =
-  "wallet, rank, percentile, total, time_points, action_points, bonus_points";
+  "wallet, rank, percentile, total, time_points, action_points, bonus_points, volume";
 
 interface RowRecord {
   wallet: string;
@@ -63,6 +63,7 @@ interface RowRecord {
   time_points: number | string | null;
   action_points: number | string | null;
   bonus_points: number | string | null;
+  volume: number | string | null;
 }
 
 /** Same reason as the board route: Postgres `numeric` arrives as a string. */
@@ -151,6 +152,7 @@ export async function GET(request: NextRequest) {
         timePoints: num(row.data.time_points),
         actionPoints: num(row.data.action_points),
         bonusPoints: num(row.data.bonus_points),
+        volume: num(row.data.volume),
       }
     : null;
 

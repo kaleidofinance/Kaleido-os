@@ -43,12 +43,20 @@ type Status = {
     followed: XTask;
     retweeted: XTask;
     commented: XTask;
+    launch: XTask;
+    /** Legacy completion retained for balance compatibility; not rendered. */
+    bitget: XTask;
   };
   activated: boolean;
+  transactionTasks: {
+    arcMainnet: { done: boolean };
+    agent: { done: boolean };
+    bridge: { done: boolean };
+  };
 } | null;
 
 type Leader = { rank: number; wallet: string; referrals: number };
-type XTaskKey = "link" | "follow" | "retweet" | "comment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -56,6 +64,9 @@ const X_HANDLE = "kaleido_finance";
 // NEXT_PUBLIC var still overrides it if we ever point the task at a different post.
 const ANNOUNCE_TWEET_ID =
   process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
+const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
+const agentOpenedKey = (address: string) => `kaleido.waitlist.agent-opened:${address.toLowerCase()}`;
+const bridgeOpenedKey = (address: string) => `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
 /** Must match the message the API rebuilds and verifies. */
 const joinMessage = (address: string) =>
@@ -66,6 +77,14 @@ const xTaskMessage = (address: string, task: XTaskKey) =>
   task === "link"
     ? `Link my X account to the Kaleido waitlist wallet ${address}.`
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
+const transactionTaskMessage = (address: string, task: "arcMainnet" | "agent" | "bridge", txHash?: string) =>
+  task === "arcMainnet"
+    ? `Confirm my Kaleido Arc mainnet transaction for wallet ${address}.`
+    : task === "agent"
+      ? txHash
+        ? `Confirm my first Kaleido agent transaction ${txHash} for wallet ${address}.`
+        : `Confirm my first Kaleido agent transaction for wallet ${address}.`
+      : `Confirm my first Kaleido bridge transaction for wallet ${address}.`;
 
 export default function WaitlistPage() {
   const account = useActiveAccount();
@@ -83,6 +102,8 @@ export default function WaitlistPage() {
 
   const [ref, setRef] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>(null);
+  const [statusReady, setStatusReady] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -92,12 +113,17 @@ export default function WaitlistPage() {
     follow: boolean;
     retweet: boolean;
     comment: boolean;
+    launch: boolean;
   }>({
     follow: false,
     retweet: false,
     comment: false,
+    launch: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
+  const [transactionBusy, setTransactionBusy] = useState<"arcMainnet" | "agent" | "bridge" | null>(null);
+  const [agentOpened, setAgentOpened] = useState(false);
+  const [bridgeOpened, setBridgeOpened] = useState(false);
 
   useEffect(() => {
     try {
@@ -119,19 +145,41 @@ export default function WaitlistPage() {
     const addr = account?.address;
     if (!addr) {
       setStatus(null);
+      setStatusReady(false);
+      setStatusError(null);
       return;
     }
+    setStatusReady(false);
+    setStatusError(null);
     try {
-      const d = await fetch(`/api/waitlist?wallet=${addr}`).then((r) => r.json());
+      const res = await fetch(`/api/waitlist?wallet=${addr}`, { cache: "no-store" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d?.error || "Could not load waitlist.");
       setStatus(d && d.refCode ? d : null);
+      setStatusReady(true);
     } catch {
-      /* keep last */
+      // Never show a first-time claim button while an existing wallet's
+      // standing is unknown. Keep the last dashboard, if any, and let the
+      // caller retry instead of turning a transient API failure into a
+      // duplicate-registration flow.
+      setStatusReady(false);
+      setStatusError("Could not load your waitlist balance.");
     }
   }, [account?.address]);
 
   useEffect(() => {
     void loadStatus();
   }, [loadStatus]);
+
+  useEffect(() => {
+    if (!account?.address) {
+      setAgentOpened(false);
+      setBridgeOpened(false);
+      return;
+    }
+    setAgentOpened(window.localStorage.getItem(agentOpenedKey(account.address)) === "1");
+    setBridgeOpened(window.localStorage.getItem(bridgeOpenedKey(account.address)) === "1");
+  }, [account?.address]);
 
   // Is an X account linked in this browser (the OAuth cookie is set)? Drives
   // whether "Link X" starts OAuth or just needs the on-chain confirm signature.
@@ -214,6 +262,41 @@ export default function WaitlistPage() {
     [account, loadStatus, ensureArc],
   );
 
+  const verifyTransactionTask = useCallback(async (task: "arcMainnet" | "agent" | "bridge") => {
+    if (!account || transactionBusy) return;
+    setTransactionBusy(task);
+    setError(null);
+    try {
+      if (task === "arcMainnet") await ensureArc();
+      const signature = await account.signMessage({ message: transactionTaskMessage(account.address, task) });
+      const res = await fetch("/api/waitlist/transaction", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address: account.address, signature, task, chainId: activeChain?.id }),
+      });
+      const d = await res.json();
+      if (!res.ok) setError(d.error || "Transaction not verified.");
+      else await loadStatus();
+    } catch (e) {
+      setError(e instanceof Error && /reject|denied/i.test(e.message) ? "Signature rejected." : "Could not verify transaction.");
+    } finally {
+      setTransactionBusy(null);
+    }
+  }, [account, activeChain?.id, ensureArc, loadStatus, transactionBusy]);
+
+  const openKaleidoForAgentTask = useCallback(() => {
+    if (!account?.address) return;
+    window.localStorage.setItem(agentOpenedKey(account.address), "1");
+    setAgentOpened(true);
+    window.location.href = "/trade/agent";
+  }, [account?.address]);
+
+  const openKaleidoForBridgeTask = useCallback(() => {
+    if (!account?.address) return;
+    window.localStorage.setItem(bridgeOpenedKey(account.address), "1");
+    setBridgeOpened(true);
+    window.location.href = "/trade/agent";
+  }, [account?.address]);
+
   // Link X: start OAuth if no X session in this browser yet, otherwise the
   // account is known and we just need the wallet's confirming signature.
   const onLinkX = useCallback(() => {
@@ -224,13 +307,15 @@ export default function WaitlistPage() {
     }
   }, [xLinkedCookie, postXTask]);
 
-  const openIntent = useCallback((task: "follow" | "retweet" | "comment") => {
+  const openIntent = useCallback((task: "follow" | "retweet" | "comment" | "launch") => {
     const url =
       task === "follow"
         ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
         : task === "retweet"
           ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
-          : `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`;
+          : task === "comment"
+            ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
+            : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
     window.open(url, "_blank", "noopener,noreferrer");
     setOpened((o) => ({ ...o, [task]: true }));
   }, []);
@@ -254,9 +339,9 @@ export default function WaitlistPage() {
   return (
     <main className={s.page}>
       <header className={s.head}>
-        <p className={s.eyebrow}>Kaleido Pre-Season 1 · Arc waitlist</p>
+        <p className={s.eyebrow}>Kaleido Season 1 · Arc rewards</p>
         <h1 className={`${s.h1} k-display`}>
-          {status ? "You're in line for Arc." : "Get in line for Arc."}
+          {status ? "Your Arc rewards." : "Join Kaleido on Arc."}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className={s.arcMark} src="/arc-mark.png" alt="Arc" width={64} height={64} />
         </h1>
@@ -266,14 +351,22 @@ export default function WaitlistPage() {
             the sell — just confirm they're in. */}
         {!status ? (
           <p className={s.lede}>
-            Agentic DeFi, live on Arc from Day&nbsp;1 (Sep&nbsp;16). Claim your
-            welcome points, refer friends to earn more, and climb the board
-            before mainnet. Points feed Season&nbsp;1, our pre-TGE points season.
+            Kaleido is live on Arc. Claim your welcome points, complete launch
+            tasks, refer friends to earn more, and climb the Season&nbsp;1 board.
+            Points continue through our pre-TGE rewards season.
           </p>
         ) : null}
       </header>
 
       <section className={`${s.card} k-glass`}>
+        {account && !statusReady ? (
+          <>
+            <p className={s.cardLede}>{statusError ?? "Loading your waitlist balance…"}</p>
+            {statusError ? <button className={s.primary} onClick={() => void loadStatus()}>Retry</button> : null}
+          </>
+        ) : null}
+        {account && statusReady ? (
+        <>
         {!account ? (
           <>
             <p className={s.cardLede}>
@@ -326,6 +419,7 @@ export default function WaitlistPage() {
             ) : null}
 
             <p className={s.refLabel}>Earn more $kPoint</p>
+            {error ? <p className={s.error}>{error}</p> : null}
             <ul className={s.tasks}>
               <li className={s.task}>
                 <div className={s.taskText}>
@@ -427,6 +521,28 @@ export default function WaitlistPage() {
                 )}
               </li>
 
+              <li className={s.task}>
+                <div className={s.taskText}>
+                  <span className={s.taskTitle}>Like &amp; repost the Mainnet Launch post</span>
+                  <span className={s.taskMeta}>
+                    {status.xTasks.launch.done
+                      ? status.xTasks.launch.counted ? "Done" : "Done · counts within 5h"
+                      : !status.xTasks.linked.done ? "Link X first" : "+100 $kPoint"}
+                  </span>
+                </div>
+                {status.xTasks.launch.done ? (
+                  <span className={s.taskDone}>✓</span>
+                ) : !status.xTasks.linked.done ? (
+                  <span className={s.taskLock}>🔒</span>
+                ) : opened.launch ? (
+                  <button className={s.taskBtn} onClick={() => postXTask("launch")} disabled={xBusy === "launch"}>
+                    {xBusy === "launch" ? "…" : "Claim"}
+                  </button>
+                ) : (
+                  <button className={s.taskBtn} onClick={() => openIntent("launch")}>Open post</button>
+                )}
+              </li>
+
               {/* Arc testnet is live today, but this stays a locked "Coming soon"
                   teaser like the rest until it's wired to a real on-chain status. */}
               <li className={s.task}>
@@ -437,26 +553,28 @@ export default function WaitlistPage() {
                 <span className={s.taskLock}>🔒</span>
               </li>
 
-              {/* The big one: converting the pending balance happens on the first
-                  real Arc mainnet action (see the waitlist migration). Shown as a
-                  locked "Coming soon" teaser until mainnet is live and the action
-                  is wired to a real status. */}
               <li className={s.task}>
                 <div className={s.taskText}>
                   <span className={s.taskTitle}>Perform 1st transaction on Arc Mainnet</span>
-                  <span className={s.taskMeta}>+500 $kPoint · Coming soon</span>
+                  <span className={s.taskMeta}>{status.transactionTasks.arcMainnet.done ? "Done" : "+300 $kPoint · Verify on-chain"}</span>
                 </div>
-                <span className={s.taskLock}>🔒</span>
+                {status.transactionTasks.arcMainnet.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("arcMainnet")} disabled={transactionBusy !== null}>{transactionBusy === "arcMainnet" ? "Checking…" : "Verify"}</button>}
               </li>
 
-              {/* The agent-trading capstone (Luca making the first agent tx) — the
-                  product's differentiator. Locked "Coming soon" teaser for now. */}
               <li className={s.task}>
                 <div className={s.taskText}>
-                  <span className={s.taskTitle}>Make 1st Agent transaction on Kaleido</span>
-                  <span className={s.taskMeta}>+500 $kPoint · Coming soon</span>
+                  <span className={s.taskTitle}>Make 1st transaction on Kaleido</span>
+                  <span className={s.taskMeta}>{status.transactionTasks.agent.done ? "Done" : agentOpened ? "+500 $kPoint · Verify successful tx" : "+500 $kPoint · Make a trade in Kaleido first"}</span>
                 </div>
-                <span className={s.taskLock}>🔒</span>
+                {status.transactionTasks.agent.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={agentOpened ? () => void verifyTransactionTask("agent") : openKaleidoForAgentTask} disabled={transactionBusy !== null}>{transactionBusy === "agent" ? "Checking…" : agentOpened ? "Verify" : "Open Kaleido"}</button>}
+              </li>
+
+              <li className={s.task}>
+                <div className={s.taskText}>
+                  <span className={s.taskTitle}>Use Luca agent to Bridge assets in/out of Arc</span>
+                  <span className={s.taskMeta}>{status.transactionTasks.bridge.done ? "Done" : bridgeOpened ? "+500 $kPoint · Verify on-chain" : "+500 $kPoint · Bridge in/out of Arc first"}</span>
+                </div>
+                {status.transactionTasks.bridge.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={bridgeOpened ? () => void verifyTransactionTask("bridge") : openKaleidoForBridgeTask} disabled={transactionBusy !== null}>{transactionBusy === "bridge" ? "Checking…" : bridgeOpened ? "Verify" : "Open Kaleido"}</button>}
               </li>
             </ul>
 
@@ -473,7 +591,7 @@ export default function WaitlistPage() {
             <p className={s.split}>
               {status.referrals === 0
                 ? "No referrals yet — earn 50 $kPoint for each friend who joins and links their X."
-                : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.referralPoints.toLocaleString()} $kPoint earned${status.referralPoints >= 5000 ? " (max)" : ""}`}
+                : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.referralPoints.toLocaleString()} $kPoint earned`}
             </p>
 
             <p className={s.note}>
@@ -483,6 +601,24 @@ export default function WaitlistPage() {
             </p>
           </>
         )}
+        </>
+        ) : null}
+        {!account ? (
+          <>
+            <p className={s.cardLede}>
+              Connect a wallet to claim <strong>100 welcome points</strong>
+              {ref ? " (a friend referred you — you'll get a bonus)" : ""}.
+            </p>
+            <button className={s.primary} onClick={onConnect} disabled={isConnecting}>
+              {isConnecting ? "Connecting…" : "Connect wallet"}
+            </button>
+            <p className={s.split}>
+              On mobile? Tap <strong>WalletConnect</strong> to open your
+              MetaMask, Coinbase, or Rainbow app, or open this page in a
+              desktop browser.
+            </p>
+          </>
+        ) : null}
       </section>
 
       {leaders.length > 0 ? (

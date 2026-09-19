@@ -40,7 +40,6 @@ export const maxDuration = 60;
 
 // Must match the pending-points maths in api/waitlist/route.ts.
 const PER_REFERRAL = 50;
-const REFERRAL_CAP = 5000;
 // Per-task kPoint: comment is 50, the rest 100. Must match X_TASK_POINTS in
 // api/waitlist/route.ts.
 const X_TASK_POINTS = {
@@ -48,7 +47,12 @@ const X_TASK_POINTS = {
   followed: 100,
   retweeted: 100,
   commented: 50,
+  launch: 100,
+  bitget: 100,
 } as const;
+const ARC_TX_POINTS = 300;
+const AGENT_TX_POINTS = 500;
+const BRIDGE_TX_POINTS = 500;
 const SEASON = 1; // Season 1 — pre-TGE (see point_seasons seed)
 const SOURCE = "waitlist";
 
@@ -119,7 +123,7 @@ async function handle(req: Request): Promise<Response> {
   const { data: pending, error: pendErr } = await admin
     .from("waitlist")
     .select(
-      "wallet, welcome_points, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at",
+      "wallet, welcome_points, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_bitget_at",
     )
     .is("activated_at", null)
     // X-verified only, keyed on x_user_id (the UNIQUE column — one real X account
@@ -194,12 +198,17 @@ async function handle(req: Request): Promise<Response> {
       .eq("wallet", wallet)
       .single();
     const referrals = Number(lb?.referrals ?? 0);
-    const referralPoints = Math.min(PER_REFERRAL * referrals, REFERRAL_CAP);
+    const referralPoints = PER_REFERRAL * referrals;
     const xTaskPoints =
       (row.x_linked_at ? X_TASK_POINTS.linked : 0) +
       (row.x_followed_at ? X_TASK_POINTS.followed : 0) +
       (row.x_retweeted_at ? X_TASK_POINTS.retweeted : 0) +
-      (row.x_commented_at ? X_TASK_POINTS.commented : 0);
+      (row.x_commented_at ? X_TASK_POINTS.commented : 0) +
+      (row.x_launch_at ? X_TASK_POINTS.launch : 0) +
+      (row.x_bitget_at ? X_TASK_POINTS.bitget : 0) +
+      (row.arc_mainnet_tx_at ? ARC_TX_POINTS : 0) +
+      (row.agent_tx_at ? AGENT_TX_POINTS : 0) +
+      (row.bridge_tx_at ? BRIDGE_TX_POINTS : 0);
     const points = Number(row.welcome_points) + referralPoints + xTaskPoints;
 
     // 1) Canonical credit. Synthetic, stable tx_hash → credited at most once.

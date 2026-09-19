@@ -240,6 +240,15 @@ function main() {
     );
     check("a {cards:[...]} wrapper is accepted", wrapped.cards.length === 1 && kindOf(wrapped.cards[0]) === "notice", JSON.stringify(wrapped.cards));
 
+    const unfenced = splitCards(
+      'Five positions found.\ncards\n[{"kind":"stats","title":"Your positions","rows":[{"label":"ID 1","value":"in range"}]}]',
+    );
+    check(
+      "an unfenced cards tail is recovered",
+      unfenced.text === "Five positions found." && unfenced.cards.length === 1 && kindOf(unfenced.cards[0]) === "stats",
+      JSON.stringify(unfenced),
+    );
+
     const plain = splitCards("You have $0 here.");
     check("no block means no cards", plain.text === "You have $0 here." && plain.cards.length === 0);
   }

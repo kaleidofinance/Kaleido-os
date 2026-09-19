@@ -169,6 +169,20 @@ function parseCardArray(body: string): unknown[] {
   }
 }
 
+/* A few providers occasionally follow the instruction semantically but omit
+   the markdown fence, returning `cards` followed by a JSON array as plain text.
+   Recover only that unmistakable tail shape; arbitrary JSON in prose must stay
+   prose. The recovered objects still pass through cardsFromChat on the client. */
+function cutUnfencedCards(text: string): { text: string; cards: unknown[] } {
+  const match = text.match(
+    /(?:^|\n)\s*cards\s*\n\s*(\[[\s\S]*\]|\{\s*"cards"\s*:\s*\[[\s\S]*\]\s*\})\s*$/i,
+  );
+  if (!match || match.index === undefined) return { text, cards: [] };
+  const cards = parseCardArray(match[1]);
+  if (!cards.length) return { text, cards: [] };
+  return { text: text.slice(0, match.index).trimEnd(), cards };
+}
+
 /**
  * Splits a finished reply into prose and offered actions.
  *
@@ -195,8 +209,15 @@ export function splitCards(text: string): { text: string; cards: unknown[] } {
 
   const c = cutFence(text, CARDS_FENCE);
   if (c.body !== null) cards.push(...parseCardArray(c.body));
+  else {
+    const recovered = cutUnfencedCards(text);
+    if (recovered.cards.length) {
+      cards.push(...recovered.cards);
+      text = recovered.text;
+    }
+  }
 
-  const a = cutFence(c.prose, ACTIONS_FENCE);
+  const a = cutFence(c.body === null && cards.length ? text : c.prose, ACTIONS_FENCE);
   if (a.body !== null) {
     const actions = parseActions(a.body);
     if (actions.length) cards.push({ kind: "actions", actions });

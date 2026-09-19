@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Nav from "@/components/v2/Nav";
@@ -75,6 +75,12 @@ const sumOf = (values: (number | null)[]) => {
   return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
 };
 
+type AggregatorStats = {
+  swapCount: number;
+  volumeUsd: number;
+  feesUsd: number;
+};
+
 export default function PoolLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const shell = shellFor(pathname);
@@ -102,6 +108,32 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
   const liquidity = sumOf(pools.map((p) => p.liquidity));
   const volume = sumOf(pools.map((p) => p.volume24h));
   const fees = sumOf(pools.map((p) => p.fees24h));
+  const [aggregator, setAggregator] = useState<AggregatorStats | null>(null);
+
+  useEffect(() => {
+    if (shell !== "list") return;
+    let cancelled = false;
+    fetch("/api/stats/aggregator", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setAggregator(data);
+      })
+      .catch(() => {
+        /* The pool strip remains useful if the stats view has not migrated yet. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shell]);
+
+  /* The launch strip is intentionally a combined protocol total: Kaleido pool
+     activity plus the verified KyberSwap route that serves Arc liquidity. The
+     underlying sources remain separate in the server ledger, so external LP
+     fees are never mistaken for Kaleido fee revenue. */
+  const totalVolume = aggregator
+    ? (volume ?? 0) + aggregator.volumeUsd
+    : null;
+  const totalFees = aggregator ? (fees ?? 0) + aggregator.feesUsd : null;
 
   /* A count of 0 is a real measurement, unlike a total of 0 — but only once the
      first read has landed. Until then it is an em dash, not "0 pools". */
@@ -138,9 +170,9 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
           <>
             <StatStrip>
               <Stat label="Pools" value={qty(poolCount)} />
-              <Stat label="Liquidity" value={usd(liquidity)} />
-              <Stat label="24h volume" value={usd(volume)} />
-              <Stat label="24h fees" value={usd(fees, 2)} />
+              <Stat label="TVL" value={usd(liquidity)} />
+              <Stat label="Total volume" value={usd(totalVolume)} />
+              <Stat label="Total fees" value={usd(totalFees, 2)} />
             </StatStrip>
 
             <div className={s.tabs}>

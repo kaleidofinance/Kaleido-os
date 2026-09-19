@@ -9,26 +9,31 @@ import type { Metadata } from "next";
  * styles against.
  */
 const OG_DESC =
-  "Claim your welcome points, refer friends to earn more, and get Day-1 access when Arc goes mainnet.";
+  "Kaleido is live on Arc. Claim Season 1 welcome points, complete launch tasks, refer friends, and keep earning in the ongoing rewards program.";
 
 export const metadata: Metadata = {
-  title: "Kaleido Pre-Season 1 · Arc Waitlist",
+  title: "Kaleido Season 1 Rewards · Arc",
   description: OG_DESC,
   // Referral links are the whole viral loop, so they must unfurl a rich card.
   openGraph: {
     type: "website",
-    title: "Get in line for Arc — Kaleido",
+    title: "Kaleido Season 1 rewards — live on Arc",
     description: OG_DESC,
     url: "https://kaleidofi.xyz/waitlist",
     images: [
-      { url: "https://kaleidofi.xyz/waitlist-og.png", width: 1200, height: 630 },
+      {
+        url: "https://kaleidofi.xyz/kaleido-og.png",
+        width: 1200,
+        height: 630,
+        alt: "Kaleido — Agentic DeFi. Live on Arc.",
+      },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Get in line for Arc — Kaleido",
+    title: "Kaleido Season 1 rewards — live on Arc",
     description: OG_DESC,
-    images: ["https://kaleidofi.xyz/waitlist-og.png"],
+    images: ["https://kaleidofi.xyz/kaleido-og.png"],
   },
 };
 
