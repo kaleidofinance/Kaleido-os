@@ -15,6 +15,7 @@ import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
 import { recordTx, txFromError } from "@/lib/v2/txLog";
 import { recordCctpBurn } from "@/lib/bridge/cctpPending";
 import { describeFailure, isRejection } from "@/lib/v2/txErrors";
+import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { PROTOCOL_ERROR_ABI } from "@/lib/v2/protocolErrors";
 import SwapRoute from "./SwapRoute";
 import s from "./PlanReview.module.css";
@@ -928,8 +929,8 @@ export default function PlanReview({
           <li key={i} className={`${s.step} ${s[`st_${statuses[i]}`] ?? ""}`}>
             <span className={s.marker}>{mark(statuses[i], i + 1)}</span>
             <div className={s.body}>
-              <div className={s.stTitle}>{v.title}</div>
-              {v.detail && <div className={s.stDetail}>{v.detail}</div>}
+              <div className={s.stTitle}>{displayTxTitle(v.title)}</div>
+              {v.detail && <div className={s.stDetail}>{displayTxDetail(v.detail)}</div>}
               {statuses[i] === "skipped" && (
                 <div className={s.stNote}>
                   Already done — no transaction needed.

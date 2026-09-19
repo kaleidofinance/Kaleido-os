@@ -41,6 +41,7 @@ import {
   isPersonalHealthQuestion,
 } from "@/lib/v2/cards/portfolio";
 import { receiptFromSettled } from "@/lib/v2/cards/receipt";
+import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
 import { docsReply, groundingFor, MIN_ASK_SIMILARITY, outageReply, searchDocs } from "@/lib/ai/docsSearch";
 import { visibleProse } from "@/lib/ai/actionsBlock";
@@ -1800,10 +1801,10 @@ export default function AgentPage() {
                               <li key={j} className={s.step}>
                                 <span className={s.marker}>{j + 1}</span>
                                 <div className={s.stepBody}>
-                                  <div className={s.stepTitle}>{v.title}</div>
+                                  <div className={s.stepTitle}>{displayTxTitle(v.title)}</div>
                                   {v.detail && (
                                     <div className={s.stepDetail}>
-                                      {v.detail}
+                                      {displayTxDetail(v.detail)}
                                     </div>
                                   )}
                                 </div>

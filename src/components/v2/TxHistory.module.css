@@ -248,10 +248,13 @@
 }
 .rTitle {
   font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  line-height: 1.35;
   color: var(--k-t1);
 }
 .rDetail {
   font-size: var(--k-fs-xs);
+  line-height: 1.35;
   color: var(--k-t2);
   overflow-wrap: anywhere;
 }
