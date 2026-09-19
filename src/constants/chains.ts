@@ -105,7 +105,7 @@ export const CHAINS: ChainMeta[] = [
   {
     id: 5042002,
     name: "Arc Testnet",
-    shortName: "Arc",
+    shortName: "Arc Testnet",
     network: "testnet",
     pairChainId: 5042,
     nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
