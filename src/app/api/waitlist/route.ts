@@ -71,7 +71,7 @@ function xTaskState(at: string | null, now: number) {
 // that migration has not been applied yet (e.g. a deploy landed first), selecting
 // them errors, so we fall back to the base row rather than break registration and
 // the balance for everyone. Once the migration is applied this fallback is dead.
-const BASE_COLS = "ref_code, welcome_points, activated_at";
+const BASE_COLS = "ref_code, welcome_points, activated_at, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at";
 const X_COLS =
   "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at";
 
@@ -148,6 +148,11 @@ async function standing(wallet: string) {
     xHandle: (row.x_handle as string | null) ?? null,
     xTasks,
     activated: Boolean(row.activated_at),
+    transactionTasks: {
+      arcMainnet: { done: Boolean(row.arc_mainnet_tx_at) },
+      agent: { done: Boolean(row.agent_tx_at) },
+      bridge: { done: Boolean(row.bridge_tx_at) },
+    },
   };
 }
 
