@@ -124,7 +124,13 @@ export default function PoolDetailPage() {
   /* This pool's own chain once it is known, and the hint before that so a direct
      load gates on the chain the URL asked for rather than on the read chain.
      Neither is the wallet's, for the reason /pool's header gives. */
-  const gate = useChainGate(pool?.chainId ?? chainHint ?? READ_ONLY_CHAIN_ID);
+  /* Pool detail is a DEX read surface. Arc launched its pools before the
+     lending/stable Diamond, so the default protocol gate incorrectly treated
+     a live Arc pool as an empty undeployed page. */
+  const gate = useChainGate(
+    pool?.chainId ?? chainHint ?? READ_ONLY_CHAIN_ID,
+    "dex",
+  );
 
   /* V2 only — see the header. `version` is checked before the fee so that a V3
      pool takes the venue branch rather than reading as a pool with no fee. */
@@ -143,7 +149,7 @@ export default function PoolDetailPage() {
   }, [pool]);
 
   /* After every hook, never between them. */
-  if (!gate.ready) return <ChainGate product="pool" state={gate} />;
+  if (!gate.ready) return <ChainGate product="pool" state={gate} requires="dex" />;
 
   if (!pool) {
     /* Deliberately not `notFound()`. The pool list is fetched client-side and is
