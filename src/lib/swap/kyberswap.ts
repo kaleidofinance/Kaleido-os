@@ -13,6 +13,7 @@
  */
 
 import { kyberFeeParams, kyberClientId } from "./kyberswapServer";
+import { NATIVE_SENTINEL } from "@/constants/registry";
 
 const KYBER_API = "https://aggregator-api.kyberswap.com";
 
@@ -138,7 +139,14 @@ export function aggregatorToken(
     isNative?: boolean;
   },
 ): AggregatorToken {
-  const mirror = token.isNative ? NATIVE_SWAP_ERC20[chainId] : undefined;
+  /* Some planner/tool boundaries carry the native sentinel but omit the UI-only
+     `isNative` flag. Treat the canonical DEX sentinel as native too; otherwise
+     Arc USDC reaches the approval resolver as 0xEeee… and its allowance call
+     returns empty data. */
+  const native =
+    Boolean(token.isNative) ||
+    token.address.toLowerCase() === NATIVE_SENTINEL.dex.toLowerCase();
+  const mirror = native ? NATIVE_SWAP_ERC20[chainId] : undefined;
   return mirror
     ? {
         address: mirror.address,
@@ -150,7 +158,7 @@ export function aggregatorToken(
         address: token.address,
         symbol: token.symbol,
         decimals: token.decimals,
-        isNative: Boolean(token.isNative),
+        isNative: native,
       };
 }
 

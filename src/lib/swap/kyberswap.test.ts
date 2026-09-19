@@ -101,6 +101,14 @@ check("Arc native USDC maps to the 0x3600 ERC20", inTok.address === USDC_3600);
 check("at the mirror's 6 decimals", inTok.decimals === 6);
 check("no longer flagged native (so it gets an approve)", inTok.isNative === false);
 check("the display symbol is preserved", inTok.symbol === "USDC");
+const nativeWithoutFlag = aggregatorToken(ARC, {
+  ...nativeUsdc,
+  isNative: undefined,
+});
+check(
+  "the Arc native sentinel maps even when the UI flag is absent",
+  nativeWithoutFlag.address === USDC_3600 && nativeWithoutFlag.isNative === false,
+);
 
 const cir = {
   address: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",

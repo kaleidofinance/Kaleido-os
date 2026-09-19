@@ -13,8 +13,9 @@ import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
  *         the OAuth callback: { linked, handle, id }.
  * POST -> record a task for the wallet. Every task is signature-gated (the wallet
  *         must sign the exact task message), so a task can only be recorded by the
- *         wallet's holder. `link` also reads the X cookie to bind the account, and
- *         the X id is unique across wallets, so one X account enriches one wallet.
+ *         wallet's holder. `link` also reads the X cookie to bind the account. The
+ *         link action is available to all wallets; only follow/retweet/comment
+ *         require a waitlist row and award waitlist points.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,8 @@ const xTaskMessage = (address: string, task: Task) =>
   task === "link"
     ? `Link my X account to the Kaleido waitlist wallet ${address}.`
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
+const xAppLinkMessage = (address: string) =>
+  `Link my X account to the Kaleido wallet ${address}.`;
 
 const isAddress = (a: unknown): a is string =>
   typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a);
@@ -65,19 +68,27 @@ export async function POST(req: Request) {
     return Response.json({ error: "bad input" }, { status: 400 });
   const t = task as Task;
 
-  // The wallet must sign the exact task message.
+  // The wallet must sign the exact task message. Keep accepting the original
+  // waitlist wording so existing waitlist users do not need to reconnect.
   let recovered: string;
   try {
-    recovered = verifyMessage(xTaskMessage(address, t), signature);
+    recovered = verifyMessage(
+      t === "link" ? xAppLinkMessage(address) : xTaskMessage(address, t),
+      signature,
+    );
   } catch {
-    return Response.json({ error: "bad signature" }, { status: 401 });
+    if (t !== "link") return Response.json({ error: "bad signature" }, { status: 401 });
+    try {
+      recovered = verifyMessage(xTaskMessage(address, t), signature);
+    } catch {
+      return Response.json({ error: "bad signature" }, { status: 401 });
+    }
   }
   if (recovered.toLowerCase() !== address.toLowerCase())
     return Response.json({ error: "signature mismatch" }, { status: 401 });
 
   const wallet = address.toLowerCase();
 
-  // Must be a registered waitlister.
   const { data: row } = await admin
     .from("waitlist")
     .select(
@@ -85,8 +96,6 @@ export async function POST(req: Request) {
     )
     .eq("wallet", wallet)
     .single();
-  if (!row) return Response.json({ error: "not registered" }, { status: 404 });
-
   const now = new Date().toISOString();
 
   if (t === "link") {
@@ -96,9 +105,18 @@ export async function POST(req: Request) {
       return Response.json({ error: "link X first" }, { status: 409 });
 
     // Idempotent: already bound to this wallet → fine.
-    if (row.x_user_id && row.x_user_id === sess.id)
+    const { data: existing } = await admin
+      .from("wallet_x_links")
+      .select("wallet, x_user_id")
+      .or(`wallet.eq.${wallet},x_user_id.eq.${sess.id}`)
+      .maybeSingle();
+    if (existing?.wallet === wallet && existing.x_user_id === sess.id)
       return Response.json({ ok: true, already: true });
-    if (row.x_user_id && row.x_user_id !== sess.id)
+    if (existing?.wallet === wallet || existing?.x_user_id === sess.id)
+      return Response.json({ error: existing.wallet === wallet ? "wallet already linked to a different X" : "this X is already linked to another wallet" }, { status: 409 });
+    if (row?.x_user_id && row.x_user_id === sess.id)
+      return Response.json({ ok: true, already: true });
+    if (row?.x_user_id && row.x_user_id !== sess.id)
       return Response.json({ error: "wallet already linked to a different X" }, { status: 409 });
 
     // One X account → one wallet.
@@ -110,6 +128,17 @@ export async function POST(req: Request) {
     if (taken && taken.wallet !== wallet)
       return Response.json({ error: "this X is already linked to another wallet" }, { status: 409 });
 
+    const { error: linkError } = await admin.from("wallet_x_links").insert({
+      wallet,
+      x_user_id: sess.id,
+      x_handle: sess.handle ?? sess.id,
+      linked_at: now,
+    });
+    if (linkError && !String(linkError.message).toLowerCase().includes("duplicate"))
+      return Response.json({ error: "link failed" }, { status: 500 });
+
+    if (!row) return Response.json({ ok: true });
+
     const { error } = await admin
       .from("waitlist")
       .update({ x_user_id: sess.id, x_handle: sess.handle, x_linked_at: now })
@@ -119,7 +148,9 @@ export async function POST(req: Request) {
     return Response.json({ ok: true });
   }
 
-  // follow / retweet / comment: X must be linked first.
+  // follow / retweet / comment: X must be linked first and the wallet must be
+  // a waitlist member because these are waitlist point tasks.
+  if (!row) return Response.json({ error: "not registered" }, { status: 404 });
   if (!row.x_linked_at)
     return Response.json({ error: "link X first" }, { status: 409 });
 

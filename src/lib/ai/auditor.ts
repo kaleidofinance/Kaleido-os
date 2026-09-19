@@ -942,6 +942,18 @@ function spenderReasons(
 
   const spender = str(step.spender);
   const ours = ownContracts(chainId);
+
+  /* Bridge approvals are intentionally allowed on chains where Kaleido has no
+     product deployment (for example Base mainnet).  Check the fixed bridge
+     allowlist before the local-contract guard; otherwise a legitimate CCTP or
+     LI.FI approval is rejected with the misleading "no Kaleido contracts"
+     error before its vetted spender can be considered. */
+  if (isKnownBridgeSpender(spender))
+    return {
+      reasons: [],
+      note: "this approves a bridge provider's router, not a Kaleido contract — it is the one outside address this app authorises, and only a bridge step should be pairing it",
+    };
+
   if (ours.size === 0)
     return {
       reasons: [
@@ -950,11 +962,6 @@ function spenderReasons(
     };
 
   if (ours.get(spender.toLowerCase())) return { reasons: [] };
-  if (isKnownBridgeSpender(spender))
-    return {
-      reasons: [],
-      note: "this approves a bridge provider's router, not a Kaleido contract — it is the one outside address this app authorises, and only a bridge step should be pairing it",
-    };
   if (isFallbackVenueRouter(chainId, spender))
     return {
       reasons: [],
