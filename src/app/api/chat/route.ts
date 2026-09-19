@@ -23,6 +23,7 @@ import {
   normalizerAddendum,
   productFacts,
 } from "@/lib/ai/normalizer";
+import { classifyLucaRoute, jevMode } from "@/lib/ai/jev";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText, sanitizeGuardrails } from "@/lib/ai/auditor";
 import {
@@ -32,10 +33,15 @@ import {
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
 import { splitCards, splitReasoning } from "@/lib/ai/actionsBlock";
-import { simulatePlan, rpcCallFor, isStaleQuoteRevert } from "@/lib/ai/simulatePlan";
+import {
+  simulatePlan,
+  rpcCallFor,
+  isStaleQuoteRevert,
+} from "@/lib/ai/simulatePlan";
 import { logAgentTurn } from "@/lib/ai/turnLog";
 import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
+import { chainTokens } from "@/constants/tokens";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -66,7 +72,9 @@ export async function GET(request: NextRequest) {
      gets the same empty default as no wallet. Proving ownership of the address
      is the session-auth work deferred with the provider decision. */
   const raw = request.nextUrl.searchParams.get("address") ?? "";
-  const wallet = /^0x[0-9a-fA-F]{40}$/.test(raw) ? raw.toLowerCase() : undefined;
+  const wallet = /^0x[0-9a-fA-F]{40}$/.test(raw)
+    ? raw.toLowerCase()
+    : undefined;
   const usage = await peekModelUsage(wallet);
   const models = [
     ...(process.env.AGENTROUTER_API_KEY
@@ -164,7 +172,12 @@ function groundingFromBody(raw: unknown): AgentInput["grounding"] {
   for (const g of raw.slice(0, 3)) {
     if (!g || typeof g !== "object") continue;
     const { title, heading, href, text } = g as Record<string, unknown>;
-    if (typeof title !== "string" || typeof text !== "string" || typeof href !== "string") continue;
+    if (
+      typeof title !== "string" ||
+      typeof text !== "string" ||
+      typeof href !== "string"
+    )
+      continue;
     if (!/^\/docs\/[a-z0-9-]+(#[a-z0-9-]+)?$/.test(href)) continue;
     out.push({
       title: title.slice(0, 80),
@@ -271,8 +284,7 @@ export async function POST(request: NextRequest) {
                 ? "quota_anonymous"
                 : "quota_exhausted",
           latencyMs: Date.now() - startedAt,
-          chainId:
-            typeof body.chainId === "number" ? body.chainId : null,
+          chainId: typeof body.chainId === "number" ? body.chainId : null,
           address: meterAddress,
         });
         return NextResponse.json(
@@ -760,36 +772,63 @@ export async function POST(request: NextRequest) {
        * to stream.
        */
       if (tier === "normalize") {
-        /* Each configured cheap model in turn. A THROWN error (a 503, a
+        const jev = await classifyLucaRoute({
+          message: body.message,
+          chainId,
+          walletConnected: Boolean(meterAddress),
+          mainnetOnly,
+          visibleTokens: chainTokens(chainId).map((token) => token.symbol),
+        });
+        if (jev) {
+          console.info("[chat] Jev route:", {
+            mode: jevMode(),
+            route: jev.route,
+            confidence: jev.confidence,
+          });
+        }
+
+        /* In replace mode, Jev can skip the redundant cheap text model when it
+           already identifies a live-data or reasoning request. The full agent
+           still owns reads, tools, prose, auditing, and execution. Shadow mode
+           records the decision but preserves today's behavior for calibration. */
+        const skipNormalizer =
+          jevMode() === "replace" &&
+          jev !== null &&
+          (jev.route === "read_only" || jev.route === "full_reasoning");
+        if (skipNormalizer) {
+          // Continue directly to the existing full-agent path below.
+        } else {
+          /* Each configured cheap model in turn. A THROWN error (a 503, a
            timeout) moves to the next cheap model — that is what the second one
            is for. A considered decline — ESCALATE, an empty reply, a plan that
            would not build — goes straight to the full model: the sentence was
            read and judged, and a second cheap opinion is not worth a call. */
-        for (const cheap of getNormalizerProviders()) {
-          try {
-            const quick = await runAgent(cheap, {
-              ...agentInput,
-              maxReadRounds: 0,
-              systemAddendum: normalizerAddendum({ chainId, mainnetOnly }),
-            });
-            const bail =
-              quick.executes.length === 0 &&
-              (isEscalation(quick.text, 0) || !quick.text.trim());
-            if (bail) break;
-            const settled = (await settle(quick)) as {
-              response: string;
-              context?: Record<string, unknown>;
-            };
-            if (settled.context?.status === "build_error") break;
-            return NextResponse.json({
-              ...settled,
-              context: { ...(settled.context ?? {}), tier: "normalize" },
-            });
-          } catch (quickError) {
-            console.warn(
-              `[chat] normalizer ${cheap.id}/${cheap.model} failed, trying next:`,
-              quickError,
-            );
+          for (const cheap of getNormalizerProviders()) {
+            try {
+              const quick = await runAgent(cheap, {
+                ...agentInput,
+                maxReadRounds: 0,
+                systemAddendum: normalizerAddendum({ chainId, mainnetOnly }),
+              });
+              const bail =
+                quick.executes.length === 0 &&
+                (isEscalation(quick.text, 0) || !quick.text.trim());
+              if (bail) break;
+              const settled = (await settle(quick)) as {
+                response: string;
+                context?: Record<string, unknown>;
+              };
+              if (settled.context?.status === "build_error") break;
+              return NextResponse.json({
+                ...settled,
+                context: { ...(settled.context ?? {}), tier: "normalize" },
+              });
+            } catch (quickError) {
+              console.warn(
+                `[chat] normalizer ${cheap.id}/${cheap.model} failed, trying next:`,
+                quickError,
+              );
+            }
           }
         }
       }
