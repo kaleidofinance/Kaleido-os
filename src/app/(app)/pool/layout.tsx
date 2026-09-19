@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Nav from "@/components/v2/Nav";
@@ -75,6 +75,12 @@ const sumOf = (values: (number | null)[]) => {
   return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
 };
 
+type AggregatorStats = {
+  swapCount: number;
+  volumeUsd: number;
+  feesUsd: number;
+};
+
 export default function PoolLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const shell = shellFor(pathname);
@@ -102,6 +108,23 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
   const liquidity = sumOf(pools.map((p) => p.liquidity));
   const volume = sumOf(pools.map((p) => p.volume24h));
   const fees = sumOf(pools.map((p) => p.fees24h));
+  const [aggregator, setAggregator] = useState<AggregatorStats | null>(null);
+
+  useEffect(() => {
+    if (shell !== "list") return;
+    let cancelled = false;
+    fetch("/api/stats/aggregator", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setAggregator(data);
+      })
+      .catch(() => {
+        /* The pool strip remains useful if the stats view has not migrated yet. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shell]);
 
   /* A count of 0 is a real measurement, unlike a total of 0 — but only once the
      first read has landed. Until then it is an em dash, not "0 pools". */
@@ -139,9 +162,16 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
             <StatStrip>
               <Stat label="Pools" value={qty(poolCount)} />
               <Stat label="TVL" value={usd(liquidity)} />
-              <Stat label="Total volume" value={usd(volume)} />
-              <Stat label="Total fees" value={usd(fees, 2)} />
+              <Stat label="Pool volume (24h)" value={usd(volume)} />
+              <Stat label="Pool fees (24h)" value={usd(fees, 2)} />
             </StatStrip>
+
+            <p className={s.aggregatorNote}>
+              KyberSwap-routed launch volume: {aggregator ? usd(aggregator.volumeUsd) : "—"}
+              <span aria-hidden="true"> · </span>
+              Kaleido fees: {aggregator ? usd(aggregator.feesUsd, 2) : "—"}
+              {aggregator ? ` · ${aggregator.swapCount} verified swaps` : ""}
+            </p>
 
             <div className={s.tabs}>
               {TABS.map((t) => (

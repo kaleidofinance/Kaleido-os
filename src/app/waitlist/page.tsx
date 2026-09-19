@@ -337,9 +337,9 @@ export default function WaitlistPage() {
   return (
     <main className={s.page}>
       <header className={s.head}>
-        <p className={s.eyebrow}>Kaleido Pre-Season 1 · Arc waitlist</p>
+        <p className={s.eyebrow}>Kaleido Season 1 · Arc rewards</p>
         <h1 className={`${s.h1} k-display`}>
-          {status ? "You're in line for Arc." : "Get in line for Arc."}
+          {status ? "Your Arc rewards." : "Join Kaleido on Arc."}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className={s.arcMark} src="/arc-mark.png" alt="Arc" width={64} height={64} />
         </h1>
@@ -349,9 +349,9 @@ export default function WaitlistPage() {
             the sell — just confirm they're in. */}
         {!status ? (
           <p className={s.lede}>
-            Agentic DeFi, live on Arc from Day&nbsp;1 (Sep&nbsp;16). Claim your
-            welcome points, refer friends to earn more, and climb the board
-            before mainnet. Points feed Season&nbsp;1, our pre-TGE points season.
+            Kaleido is live on Arc. Claim your welcome points, complete launch
+            tasks, refer friends to earn more, and climb the Season&nbsp;1 board.
+            Points continue through our pre-TGE rewards season.
           </p>
         ) : null}
       </header>
