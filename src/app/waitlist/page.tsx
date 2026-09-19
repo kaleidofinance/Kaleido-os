@@ -43,6 +43,8 @@ type Status = {
     followed: XTask;
     retweeted: XTask;
     commented: XTask;
+    launch: XTask;
+    /** Legacy completion retained for balance compatibility; not rendered. */
     bitget: XTask;
   };
   activated: boolean;
@@ -54,7 +56,7 @@ type Status = {
 } | null;
 
 type Leader = { rank: number; wallet: string; referrals: number };
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "bitget";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -62,7 +64,7 @@ const X_HANDLE = "kaleido_finance";
 // NEXT_PUBLIC var still overrides it if we ever point the task at a different post.
 const ANNOUNCE_TWEET_ID =
   process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
-const BITGET_TWEET_ID = "2101042491864629430";
+const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 const agentOpenedKey = (address: string) => `kaleido.waitlist.agent-opened:${address.toLowerCase()}`;
 const bridgeOpenedKey = (address: string) => `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -111,12 +113,12 @@ export default function WaitlistPage() {
     follow: boolean;
     retweet: boolean;
     comment: boolean;
-    bitget: boolean;
+    launch: boolean;
   }>({
     follow: false,
     retweet: false,
     comment: false,
-    bitget: false,
+    launch: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"arcMainnet" | "agent" | "bridge" | null>(null);
@@ -305,7 +307,7 @@ export default function WaitlistPage() {
     }
   }, [xLinkedCookie, postXTask]);
 
-  const openIntent = useCallback((task: "follow" | "retweet" | "comment" | "bitget") => {
+  const openIntent = useCallback((task: "follow" | "retweet" | "comment" | "launch") => {
     const url =
       task === "follow"
         ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -313,7 +315,7 @@ export default function WaitlistPage() {
           ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
           : task === "comment"
             ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
-            : `https://x.com/kaleido_finance/status/${BITGET_TWEET_ID}`;
+            : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
     window.open(url, "_blank", "noopener,noreferrer");
     setOpened((o) => ({ ...o, [task]: true }));
   }, []);
@@ -337,9 +339,9 @@ export default function WaitlistPage() {
   return (
     <main className={s.page}>
       <header className={s.head}>
-        <p className={s.eyebrow}>Kaleido Pre-Season 1 · Arc waitlist</p>
+        <p className={s.eyebrow}>Kaleido Season 1 · Arc rewards</p>
         <h1 className={`${s.h1} k-display`}>
-          {status ? "You're in line for Arc." : "Get in line for Arc."}
+          {status ? "Your Arc rewards." : "Join Kaleido on Arc."}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className={s.arcMark} src="/arc-mark.png" alt="Arc" width={64} height={64} />
         </h1>
@@ -349,9 +351,9 @@ export default function WaitlistPage() {
             the sell — just confirm they're in. */}
         {!status ? (
           <p className={s.lede}>
-            Agentic DeFi, live on Arc from Day&nbsp;1 (Sep&nbsp;16). Claim your
-            welcome points, refer friends to earn more, and climb the board
-            before mainnet. Points feed Season&nbsp;1, our pre-TGE points season.
+            Kaleido is live on Arc. Claim your welcome points, complete launch
+            tasks, refer friends to earn more, and climb the Season&nbsp;1 board.
+            Points continue through our pre-TGE rewards season.
           </p>
         ) : null}
       </header>
@@ -521,23 +523,23 @@ export default function WaitlistPage() {
 
               <li className={s.task}>
                 <div className={s.taskText}>
-                  <span className={s.taskTitle}>Like &amp; repost the Bitget Wallet integration post</span>
+                  <span className={s.taskTitle}>Like &amp; repost the Mainnet Launch post</span>
                   <span className={s.taskMeta}>
-                    {status.xTasks.bitget.done
-                      ? status.xTasks.bitget.counted ? "Done" : "Done · counts within 5h"
+                    {status.xTasks.launch.done
+                      ? status.xTasks.launch.counted ? "Done" : "Done · counts within 5h"
                       : !status.xTasks.linked.done ? "Link X first" : "+100 $kPoint"}
                   </span>
                 </div>
-                {status.xTasks.bitget.done ? (
+                {status.xTasks.launch.done ? (
                   <span className={s.taskDone}>✓</span>
                 ) : !status.xTasks.linked.done ? (
                   <span className={s.taskLock}>🔒</span>
-                ) : opened.bitget ? (
-                  <button className={s.taskBtn} onClick={() => postXTask("bitget")} disabled={xBusy === "bitget"}>
-                    {xBusy === "bitget" ? "…" : "Claim"}
+                ) : opened.launch ? (
+                  <button className={s.taskBtn} onClick={() => postXTask("launch")} disabled={xBusy === "launch"}>
+                    {xBusy === "launch" ? "…" : "Claim"}
                   </button>
                 ) : (
-                  <button className={s.taskBtn} onClick={() => openIntent("bitget")}>Open post</button>
+                  <button className={s.taskBtn} onClick={() => openIntent("launch")}>Open post</button>
                 )}
               </li>
 
