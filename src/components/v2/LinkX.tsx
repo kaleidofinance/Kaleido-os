@@ -21,7 +21,9 @@ import s from "./LinkX.module.css";
  *     its handle back.
  *   - Binding reuses the signature-gated api/waitlist/x (task "link"): the wallet
  *     signs, the server reads the OAuth cookie and writes wallet↔X, enforcing one
- *     X per wallet. So linking is: press → X OAuth → return → sign to confirm.
+ *     X per wallet. This works for ordinary dapp users as well as waitlisters;
+ *     linking never creates a waitlist row. So linking is: press → X OAuth →
+ *     return → sign to confirm.
  *
  * The `twitter_user` cookie is now only the mid-flow proof that OAuth completed;
  * it is not what the header trusts. The binding, and the handle shown, live in the
@@ -86,7 +88,7 @@ export default function LinkX() {
       /* Same message and endpoint the waitlist signs — one binding path, one
          one-X-per-wallet rule. */
       const signature = await account.signMessage({
-        message: `Link my X account to the Kaleido waitlist wallet ${address}.`,
+        message: `Link my X account to the Kaleido wallet ${address}.`,
       });
       const res = await fetch("/api/waitlist/x", {
         method: "POST",
@@ -96,9 +98,7 @@ export default function LinkX() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(
-          data?.error === "not registered"
-            ? "Join the waitlist to link X to this wallet."
-            : data?.error === "wallet already linked to a different X"
+          data?.error === "wallet already linked to a different X"
               ? "This wallet is already linked to a different X account."
               : data?.error === "this X is already linked to another wallet"
                 ? "That X account is already linked to another wallet."

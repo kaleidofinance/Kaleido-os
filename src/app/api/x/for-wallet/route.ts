@@ -9,18 +9,14 @@ const isAddress = (a: unknown): a is string =>
 /**
  * GET /api/x/for-wallet?address=0x… — the X handle bound to a wallet.
  *
- * The wallet↔X binding is the `waitlist` table's (api/waitlist/x writes it,
- * signature-gated, one X per wallet). The main-app LinkX reads THIS, keyed by the
- * CONNECTED wallet, rather than the raw `twitter_user` cookie — so the link is a
- * fact about the wallet, not the browser session: disconnect the wallet and the
- * handle clears, reconnect the same wallet and it returns. That is the whole point
- * of the fix; the cookie-only read showed a handle with no wallet connected.
+ * The wallet↔X binding is wallet-scoped (api/waitlist/x writes it, signature-
+ * gated, one X per wallet). Waitlist members are mirrored into the standalone
+ * wallet_x_links table, while non-waitlisters can link without creating a
+ * waitlist row or receiving waitlist points.
  *
  * Read-only and public: `x_handle` is a public handle, the row carries no token.
  * A wallet with no row, or one that never linked, reads as `{ linked: false }`.
- * Reading only — the waitlist table cannot be written to from here (a new row
- * needs a ref_code and would mint welcome points, the sybil vector 20260914010000
- * guards); binding stays on the signature-gated api/waitlist/x path.
+ * Reading only — binding stays on the signature-gated api/waitlist/x path.
  */
 export async function GET(req: Request) {
   const address = new URL(req.url).searchParams.get("address");
@@ -28,6 +24,14 @@ export async function GET(req: Request) {
   if (!isAdminConfigured || !supabaseAdmin)
     return Response.json({ linked: false, handle: null });
 
+  const { data: link } = await supabaseAdmin
+    .from("wallet_x_links")
+    .select("x_handle")
+    .eq("wallet", address.toLowerCase())
+    .maybeSingle();
+  if (link?.x_handle) return Response.json({ linked: true, handle: link.x_handle });
+
+  // Compatibility for rows created before wallet_x_links was introduced.
   const { data } = await supabaseAdmin
     .from("waitlist")
     .select("x_handle, x_linked_at")
