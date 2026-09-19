@@ -117,6 +117,7 @@ export default function WaitlistPage() {
     bitget: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
+  const [transactionBusy, setTransactionBusy] = useState<"arcMainnet" | "agent" | "bridge" | null>(null);
 
   useEffect(() => {
     try {
@@ -246,7 +247,8 @@ export default function WaitlistPage() {
   );
 
   const verifyTransactionTask = useCallback(async (task: "arcMainnet" | "agent" | "bridge") => {
-    if (!account) return;
+    if (!account || transactionBusy) return;
+    setTransactionBusy(task);
     setError(null);
     try {
       if (task === "arcMainnet") await ensureArc();
@@ -260,8 +262,10 @@ export default function WaitlistPage() {
       else await loadStatus();
     } catch (e) {
       setError(e instanceof Error && /reject|denied/i.test(e.message) ? "Signature rejected." : "Could not verify transaction.");
+    } finally {
+      setTransactionBusy(null);
     }
-  }, [account, activeChain?.id, ensureArc, loadStatus]);
+  }, [account, activeChain?.id, ensureArc, loadStatus, transactionBusy]);
 
   // Link X: start OAuth if no X session in this browser yet, otherwise the
   // account is known and we just need the wallet's confirming signature.
@@ -385,6 +389,7 @@ export default function WaitlistPage() {
             ) : null}
 
             <p className={s.refLabel}>Earn more $kPoint</p>
+            {error ? <p className={s.error}>{error}</p> : null}
             <ul className={s.tasks}>
               <li className={s.task}>
                 <div className={s.taskText}>
@@ -523,7 +528,7 @@ export default function WaitlistPage() {
                   <span className={s.taskTitle}>Perform 1st transaction on Arc Mainnet</span>
                   <span className={s.taskMeta}>{status.transactionTasks.arcMainnet.done ? "Done" : "+300 $kPoint · Verify on-chain"}</span>
                 </div>
-                {status.transactionTasks.arcMainnet.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("arcMainnet")}>Verify</button>}
+                {status.transactionTasks.arcMainnet.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("arcMainnet")} disabled={transactionBusy !== null}>{transactionBusy === "arcMainnet" ? "Checking…" : "Verify"}</button>}
               </li>
 
               <li className={s.task}>
@@ -531,7 +536,7 @@ export default function WaitlistPage() {
                   <span className={s.taskTitle}>Make 1st transaction on Kaleido</span>
                   <span className={s.taskMeta}>{status.transactionTasks.agent.done ? "Done" : "+500 $kPoint · Verify successful tx"}</span>
                 </div>
-                {status.transactionTasks.agent.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("agent")}>Verify</button>}
+                {status.transactionTasks.agent.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("agent")} disabled={transactionBusy !== null}>{transactionBusy === "agent" ? "Checking…" : "Verify"}</button>}
               </li>
 
               <li className={s.task}>
@@ -539,7 +544,7 @@ export default function WaitlistPage() {
                   <span className={s.taskTitle}>Use Luca agent to Bridge assets in/out of Arc</span>
                   <span className={s.taskMeta}>{status.transactionTasks.bridge.done ? "Done" : "+500 $kPoint · Verify on-chain"}</span>
                 </div>
-                {status.transactionTasks.bridge.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("bridge")}>Verify</button>}
+                {status.transactionTasks.bridge.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("bridge")} disabled={transactionBusy !== null}>{transactionBusy === "bridge" ? "Checking…" : "Verify"}</button>}
               </li>
             </ul>
 
