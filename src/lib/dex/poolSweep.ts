@@ -43,6 +43,25 @@ const PROBE_CONCURRENCY = 4;
 const round2 = (n: number | null) =>
   n === null || !Number.isFinite(n) ? null : Number(n.toFixed(2));
 
+/**
+ * A V3 pool can have an initialized opening tick without any active
+ * liquidity. That tick is not a live market quote: an empty pool has no
+ * executable price, and showing it makes a newly-created pool look like it is
+ * trading at an arbitrary ratio. Keep the rule beside the sweep so the table,
+ * detail page and deposit flow all receive the same null.
+ */
+export function livePoolPrice(
+  price: number | null,
+  liquidity: string,
+): number | null {
+  if (price === null || !Number.isFinite(price) || price <= 0) return null;
+  try {
+    return BigInt(liquidity) > 0n ? price : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Every unordered pair of a list, each once. */
 function unorderedPairs<T>(items: readonly T[]): [T, T][] {
   const out: [T, T][] = [];
@@ -166,12 +185,13 @@ async function buildPool(
     const token1 = inverted ? found.tokenA : found.tokenB;
 
     const priceAB = found.state.price;
-    const price =
+    const rawPrice =
       priceAB === null || !Number.isFinite(priceAB) || priceAB <= 0
         ? null
         : inverted
           ? 1 / priceAB
           : priceAB;
+    const price = livePoolPrice(rawPrice, found.state.liquidity);
 
     const [balance0, balance1] = await retryRpc(() =>
       Promise.all(
