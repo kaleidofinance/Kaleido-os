@@ -503,7 +503,7 @@ export default function WaitlistPage() {
 
               <li className={s.task}>
                 <div className={s.taskText}>
-                  <span className={s.taskTitle}>Make 1st Agent transaction on Kaleido</span>
+                  <span className={s.taskTitle}>Make 1st transaction on Kaleido</span>
                   <span className={s.taskMeta}>{status.transactionTasks.agent.done ? "Done" : "+500 $kPoint · Verify successful tx"}</span>
                 </div>
                 {status.transactionTasks.agent.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("agent")}>Verify</button>}

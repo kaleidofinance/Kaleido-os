@@ -17,16 +17,19 @@ export async function POST(req: Request) {
   let body: { address?: string; signature?: string; task?: Task; txHash?: string; chainId?: number };
   try { body = await req.json(); } catch { return Response.json({ error: "bad body" }, { status: 400 }); }
   const { address, signature, task, txHash, chainId } = body;
-  if (!address || !isAddress(address) || typeof signature !== "string" || (task !== "arcMainnet" && task !== "agent")) {
+  const auto = signature === undefined;
+  if (!address || !isAddress(address) || (!auto && typeof signature !== "string") || (task !== "arcMainnet" && task !== "agent")) {
     return Response.json({ error: "bad input" }, { status: 400 });
   }
   if (task === "agent" && (!txHash || !isHexString(txHash, 32) || !Number.isInteger(chainId))) {
     return Response.json({ error: "agent transaction hash and chain are required" }, { status: 400 });
   }
-  try {
-    const recovered = verifyMessage(message(address, task, txHash), signature);
-    if (recovered.toLowerCase() !== address.toLowerCase()) return Response.json({ error: "signature mismatch" }, { status: 401 });
-  } catch { return Response.json({ error: "bad signature" }, { status: 401 }); }
+  if (!auto) {
+    try {
+      const recovered = verifyMessage(message(address, task, txHash), signature!);
+      if (recovered.toLowerCase() !== address.toLowerCase()) return Response.json({ error: "signature mismatch" }, { status: 401 });
+    } catch { return Response.json({ error: "bad signature" }, { status: 401 }); }
+  }
 
   const wallet = address.toLowerCase();
   const { data: row } = await supabaseAdmin.from("waitlist").select("wallet, arc_mainnet_tx_at, agent_tx_at").eq("wallet", wallet).single();
