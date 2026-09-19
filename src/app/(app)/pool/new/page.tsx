@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { ethers } from "ethers";
 import {
   useActiveAccount,
   useActiveWalletChain,
@@ -30,8 +32,10 @@ import {
 } from "@/lib/dex/liquidity";
 import { getV3AmountRatio } from "@/constants/utils/v3Math";
 import { chainTokens } from "@/constants/tokens";
+import { getContracts } from "@/constants/registry";
 import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
 import Chevron from "@/components/v2/Chevron";
+import TokenIcon from "@/components/v2/TokenIcon";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
 import type { IToken } from "@/constants/types/dex";
 import s from "../pool.module.css";
@@ -111,6 +115,7 @@ export default function NewPositionPage() {
   const account = useActiveAccount();
   const chain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
+  const queryClient = useQueryClient();
   const [switchingChain, setSwitchingChain] = useState(false);
   const { mintPosition, POSITION_MANAGER_ADDRESS: positionManager } =
     useV3PositionManager();
@@ -285,6 +290,60 @@ export default function NewPositionPage() {
 
   const { balance: balance0, unread: unread0 } = useTokenBalance(token0);
   const { balance: balance1, unread: unread1 } = useTokenBalance(token1);
+  const nativeToken = useMemo(
+    () => chainTokens(chainId).find((t) => t.isNative) ?? null,
+    [chainId],
+  );
+  const { balance: nativeBalance, unread: nativeUnread } =
+    useTokenBalance(nativeToken);
+  const wrappedNative = getContracts(chainId).wrappedNative?.toLowerCase();
+  const isWrapLeg = (which: "0" | "1") => {
+    const token = which === "0" ? token0 : token1;
+    return Boolean(token && wrappedNative && token.address.toLowerCase() === wrappedNative);
+  };
+  const wrapShortfallWei = (which: "0" | "1") => {
+    const token = which === "0" ? token0 : token1;
+    const amount = which === "0" ? amount0 : amount1;
+    const balance = which === "0" ? balance0 : balance1;
+    if (!token || !positive(amount)) return 0n;
+    try {
+      const shortfall =
+        ethers.parseUnits(amount, token.decimals) -
+        ethers.parseUnits(balance || "0", token.decimals);
+      return shortfall > 0n ? shortfall : 0n;
+    } catch {
+      return 0n;
+    }
+  };
+  const [wrapping, setWrapping] = useState(false);
+  const canWrap = (which: "0" | "1") => {
+    const need = wrapShortfallWei(which);
+    if (!isConnected || !account || !chain || nativeUnread || !nativeToken) return false;
+    if (!isWrapLeg(which) || need <= 0n) return false;
+    try {
+      return ethers.parseUnits(nativeBalance || "0", nativeToken.decimals) >= need;
+    } catch {
+      return false;
+    }
+  };
+  const wrap = async (which: "0" | "1") => {
+    const token = which === "0" ? token0 : token1;
+    const need = wrapShortfallWei(which);
+    if (!token || !account || !chain || !canWrap(which)) return;
+    setWrapping(true);
+    try {
+      const signer = toEthersSigner(account, chain);
+      const data = new ethers.Interface(["function deposit() payable"]).encodeFunctionData("deposit", []);
+      const tx = await signer.sendTransaction({ to: token.address, value: need, data });
+      await tx.wait();
+      toast.success(`Wrapped into ${token.symbol} — 1:1, no fee.`);
+      queryClient.invalidateQueries({ queryKey: ["tokenBalance"] });
+    } catch (err) {
+      toast.error(`Couldn’t wrap: ${(err as Error)?.message ?? "try again"}`);
+    } finally {
+      setWrapping(false);
+    }
+  };
 
   /**
    * Where this pair's market sits at a tier, on the chain the wallet is on.
@@ -746,9 +805,11 @@ export default function NewPositionPage() {
           <div className={s.bl}>Pair</div>
           <div className={s.pairRow}>
             <button className={s.pairPick} onClick={() => setPickerFor("0")}>
+              <TokenIcon symbol={token0.symbol} size={24} chainId={token0.chainId} chainLabel={false} fallback={token0.symbol.slice(0, 3)} />
               {token0.symbol} <Chevron />
             </button>
             <button className={s.pairPick} onClick={() => setPickerFor("1")}>
+              <TokenIcon symbol={token1.symbol} size={24} chainId={token1.chainId} chainLabel={false} fallback={token1.symbol.slice(0, 3)} />
               {token1.symbol} <Chevron />
             </button>
           </div>
@@ -901,7 +962,10 @@ export default function NewPositionPage() {
               placeholder="0"
               aria-label={`Amount of ${token0.symbol}`}
             />
-            <span className={s.tkPill}>{token0.symbol}</span>
+            <span className={s.tkPill}>
+              <TokenIcon symbol={token0.symbol} size={20} chainId={token0.chainId} chainLabel={false} fallback={token0.symbol.slice(0, 3)} />
+              {token0.symbol}
+            </span>
           </div>
           <div className={s.addBal}>
             <span>
@@ -921,6 +985,11 @@ export default function NewPositionPage() {
                 Max
               </button>
             )}
+            {canWrap("0") && (
+              <button type="button" className={s.maxChip} onClick={() => wrap("0")} disabled={wrapping}>
+                {wrapping ? "Wrapping…" : `Wrap ${token0.symbol}`}
+              </button>
+            )}
           </div>
         </div>
 
@@ -934,7 +1003,10 @@ export default function NewPositionPage() {
               placeholder="0"
               aria-label={`Amount of ${token1.symbol}`}
             />
-            <span className={s.tkPill}>{token1.symbol}</span>
+            <span className={s.tkPill}>
+              <TokenIcon symbol={token1.symbol} size={20} chainId={token1.chainId} chainLabel={false} fallback={token1.symbol.slice(0, 3)} />
+              {token1.symbol}
+            </span>
           </div>
           <div className={s.addBal}>
             <span>
@@ -952,6 +1024,11 @@ export default function NewPositionPage() {
                 onClick={() => maxLeg("1")}
               >
                 Max
+              </button>
+            )}
+            {canWrap("1") && (
+              <button type="button" className={s.maxChip} onClick={() => wrap("1")} disabled={wrapping}>
+                {wrapping ? "Wrapping…" : `Wrap ${token1.symbol}`}
               </button>
             )}
           </div>
