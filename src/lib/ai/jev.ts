@@ -23,6 +23,18 @@ export function jevMode(): "off" | "shadow" | "replace" {
   return mode === "replace" || mode === "shadow" ? mode : "off";
 }
 
+/**
+ * Minimum Jev confidence required before replace mode may alter the normalizer
+ * path. A missing or malformed value keeps the conservative default; shadow mode
+ * still records every classification for calibration.
+ */
+export function jevReplaceMinConfidence(): number {
+  const configured = Number(process.env.LUCA_JEV_REPLACE_MIN_CONFIDENCE);
+  return Number.isFinite(configured) && configured >= 0 && configured <= 1
+    ? configured
+    : 0.8;
+}
+
 function confidence(
   probabilities: Record<string, number> | undefined,
 ): number | null {

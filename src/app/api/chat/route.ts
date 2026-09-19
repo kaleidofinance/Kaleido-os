@@ -23,7 +23,11 @@ import {
   normalizerAddendum,
   productFacts,
 } from "@/lib/ai/normalizer";
-import { classifyLucaRoute, jevMode } from "@/lib/ai/jev";
+import {
+  classifyLucaRoute,
+  jevMode,
+  jevReplaceMinConfidence,
+} from "@/lib/ai/jev";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText, sanitizeGuardrails } from "@/lib/ai/auditor";
 import {
@@ -794,6 +798,8 @@ export async function POST(request: NextRequest) {
         const skipNormalizer =
           jevMode() === "replace" &&
           jev !== null &&
+          jev.confidence !== null &&
+          jev.confidence >= jevReplaceMinConfidence() &&
           (jev.route === "read_only" || jev.route === "full_reasoning");
         if (skipNormalizer) {
           // Continue directly to the existing full-agent path below.
