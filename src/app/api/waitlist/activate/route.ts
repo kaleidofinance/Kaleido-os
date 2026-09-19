@@ -50,7 +50,7 @@ const X_TASK_POINTS = {
   commented: 50,
   bitget: 100,
 } as const;
-const ARC_TX_POINTS = 500;
+const ARC_TX_POINTS = 300;
 const AGENT_TX_POINTS = 500;
 const SEASON = 1; // Season 1 — pre-TGE (see point_seasons seed)
 const SOURCE = "waitlist";

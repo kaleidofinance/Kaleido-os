@@ -496,7 +496,7 @@ export default function WaitlistPage() {
               <li className={s.task}>
                 <div className={s.taskText}>
                   <span className={s.taskTitle}>Perform 1st transaction on Arc Mainnet</span>
-                  <span className={s.taskMeta}>{status.transactionTasks.arcMainnet.done ? "Done" : "+500 $kPoint · Verify on-chain"}</span>
+                  <span className={s.taskMeta}>{status.transactionTasks.arcMainnet.done ? "Done" : "+300 $kPoint · Verify on-chain"}</span>
                 </div>
                 {status.transactionTasks.arcMainnet.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("arcMainnet")}>Verify</button>}
               </li>
