@@ -33,6 +33,7 @@ import { chainTokens } from "@/constants/tokens";
 import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
 import Chevron from "@/components/v2/Chevron";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
+import { useDexPrices } from "@/hooks/useDexPrices";
 import type { IToken } from "@/constants/types/dex";
 import s from "../pool.module.css";
 
@@ -380,15 +381,30 @@ export default function NewPositionPage() {
    * which source it is quoting.
    */
   const { priceOf } = useSpotPrices();
+  /* The generic spot table does not carry Arc ecosystem tokens such as ARGUS.
+     Ask the existing KyberSwap-backed DEX price route for those addresses so a
+     new pool can still open at a sensible reference price. */
+  const dexPriceTokens = useMemo(
+    () =>
+      [token0, token1]
+        .filter((t): t is IToken => t !== null)
+        .map((t) => ({
+          chainId: t.chainId,
+          address: t.address,
+          decimals: t.decimals,
+        })),
+    [token0, token1],
+  );
+  const dexPriceOf = useDexPrices(dexPriceTokens);
   const feedPrice = useMemo(() => {
     if (!token0 || !token1) return null;
-    const usd0 = priceOf(token0.symbol);
-    const usd1 = priceOf(token1.symbol);
+    const usd0 = priceOf(token0.symbol) ?? dexPriceOf(chainId, token0.address);
+    const usd1 = priceOf(token1.symbol) ?? dexPriceOf(chainId, token1.address);
     if (!usd0 || !usd1) return null;
     /* token1 per token0, matching every other price in this form. */
     const ratio = usd0 / usd1;
     return Number.isFinite(ratio) && ratio > 0 ? ratio : null;
-  }, [priceOf, token0, token1]);
+  }, [chainId, dexPriceOf, priceOf, token0, token1]);
 
   /**
    * The price to show, preferring the pool's own over the feed's.
@@ -424,6 +440,16 @@ export default function NewPositionPage() {
 
   /** A band can only be centred on a pool. See `MarketPrice`. */
   const bandsAvailable = poolPrice !== null;
+
+  /* A new pool has no slot0 yet, so use the live KyberSwap reference only to
+     pair the two opening amounts. Existing pools continue to use their own
+     slot0, and a pinned pool remains explicit rather than guessed. */
+  const amountPrice =
+    poolPrice !== null
+      ? poolPrice
+      : !poolLoading && pool === null
+        ? feedPrice
+        : null;
 
   const applyPreset = (p: (typeof RANGE_PRESETS)[number]) => {
     if (!token0 || !token1) return;
@@ -551,15 +577,15 @@ export default function NewPositionPage() {
    * `ticks` and moves when a preset is clicked.
    */
   const ratio = useMemo(() => {
-    if (!token0 || !token1 || !ticks || poolPrice === null) return null;
+    if (!token0 || !token1 || !ticks || amountPrice === null) return null;
     return getV3AmountRatio(
-      poolPrice,
+      amountPrice,
       ticks.lowerPrice,
       ticks.upperPrice,
       token0.decimals,
       token1.decimals,
     );
-  }, [ticks, poolPrice, token0, token1]);
+  }, [amountPrice, ticks, token0, token1]);
 
   /* A range wholly on one side of the market takes one token and none of the
      other — a legitimate position, and not one this can mint, because
@@ -722,7 +748,9 @@ export default function NewPositionPage() {
    * tokens on every line, so it cannot render either way.
    */
   if (!gate.ready) {
-    return <ChainGate product="liquidity position" state={gate} requires="dex" />;
+    return (
+      <ChainGate product="liquidity position" state={gate} requires="dex" />
+    );
   }
 
   if (!token0 || !token1) {
@@ -757,8 +785,8 @@ export default function NewPositionPage() {
           {linkChain ? (
             <div className={s.priceHint} style={{ marginTop: 8 }}>
               That pool is on{" "}
-              {getChainMeta(linkChain)?.name ?? `chain ${linkChain}`} — switch to
-              it to open this form on its pair.{" "}
+              {getChainMeta(linkChain)?.name ?? `chain ${linkChain}`} — switch
+              to it to open this form on its pair.{" "}
               <button
                 type="button"
                 className={s.switchLink}
@@ -976,8 +1004,7 @@ export default function NewPositionPage() {
           </div>
         ) : ratio !== null && Number.isFinite(ratio) && ratio > 0 ? (
           <div className={s.priceHint} style={{ marginTop: 8 }}>
-            This range takes{" "}
-            <span className="tabular">{showPrice(ratio)}</span>{" "}
+            This range takes <span className="tabular">{showPrice(ratio)}</span>{" "}
             {token1.symbol} per {token0.symbol} — the second amount follows the
             first.
           </div>
