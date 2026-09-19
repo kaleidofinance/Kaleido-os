@@ -64,6 +64,7 @@ const ANNOUNCE_TWEET_ID =
   process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
 const BITGET_TWEET_ID = "2101042491864629430";
 const agentOpenedKey = (address: string) => `kaleido.waitlist.agent-opened:${address.toLowerCase()}`;
+const bridgeOpenedKey = (address: string) => `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
 /** Must match the message the API rebuilds and verifies. */
 const joinMessage = (address: string) =>
@@ -120,6 +121,7 @@ export default function WaitlistPage() {
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"arcMainnet" | "agent" | "bridge" | null>(null);
   const [agentOpened, setAgentOpened] = useState(false);
+  const [bridgeOpened, setBridgeOpened] = useState(false);
 
   useEffect(() => {
     try {
@@ -170,9 +172,11 @@ export default function WaitlistPage() {
   useEffect(() => {
     if (!account?.address) {
       setAgentOpened(false);
+      setBridgeOpened(false);
       return;
     }
     setAgentOpened(window.localStorage.getItem(agentOpenedKey(account.address)) === "1");
+    setBridgeOpened(window.localStorage.getItem(bridgeOpenedKey(account.address)) === "1");
   }, [account?.address]);
 
   // Is an X account linked in this browser (the OAuth cookie is set)? Drives
@@ -281,6 +285,13 @@ export default function WaitlistPage() {
     if (!account?.address) return;
     window.localStorage.setItem(agentOpenedKey(account.address), "1");
     setAgentOpened(true);
+    window.location.href = "/trade/agent";
+  }, [account?.address]);
+
+  const openKaleidoForBridgeTask = useCallback(() => {
+    if (!account?.address) return;
+    window.localStorage.setItem(bridgeOpenedKey(account.address), "1");
+    setBridgeOpened(true);
     window.location.href = "/trade/agent";
   }, [account?.address]);
 
@@ -559,9 +570,9 @@ export default function WaitlistPage() {
               <li className={s.task}>
                 <div className={s.taskText}>
                   <span className={s.taskTitle}>Use Luca agent to Bridge assets in/out of Arc</span>
-                  <span className={s.taskMeta}>{status.transactionTasks.bridge.done ? "Done" : "+500 $kPoint · Verify on-chain"}</span>
+                  <span className={s.taskMeta}>{status.transactionTasks.bridge.done ? "Done" : bridgeOpened ? "+500 $kPoint · Verify on-chain" : "+500 $kPoint · Bridge in/out of Arc first"}</span>
                 </div>
-                {status.transactionTasks.bridge.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("bridge")} disabled={transactionBusy !== null}>{transactionBusy === "bridge" ? "Checking…" : "Verify"}</button>}
+                {status.transactionTasks.bridge.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={bridgeOpened ? () => void verifyTransactionTask("bridge") : openKaleidoForBridgeTask} disabled={transactionBusy !== null}>{transactionBusy === "bridge" ? "Checking…" : bridgeOpened ? "Verify" : "Open Kaleido"}</button>}
               </li>
             </ul>
 
