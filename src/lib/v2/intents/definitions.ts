@@ -513,15 +513,13 @@ register("aggregatorSwap", {
     detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
-    if (!i.nativeIn) {
-      await waitForAllowance(
-        ctx.signer,
-        ctx.address,
-        i.tokenIn,
-        i.spender,
-        ethers.parseUnits(i.amountIn, i.decimalsIn),
-      );
-    }
+    await waitForAllowance(
+      ctx.signer,
+      ctx.address,
+      i.tokenIn,
+      i.spender,
+      ethers.parseUnits(i.amountIn, i.decimalsIn),
+    );
     let to = i.to;
     let data = i.data;
 
