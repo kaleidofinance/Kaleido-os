@@ -43,7 +43,9 @@ export default function LinkX() {
       return;
     }
     try {
-      const bound = await fetch(`/api/x/for-wallet?address=${addr}`)
+      const bound = await fetch(`/api/x/for-wallet?address=${addr}`, {
+        cache: "no-store",
+      })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null);
       if (bound?.handle) {
@@ -54,7 +56,7 @@ export default function LinkX() {
       setHandle(null);
       /* Not bound to this wallet — but if an OAuth cookie is sitting there from a
          just-finished link, offer to confirm it rather than restart OAuth. */
-      const sess = await fetch("/api/waitlist/x")
+      const sess = await fetch("/api/waitlist/x", { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null);
       setPending(sess?.handle ?? null);
@@ -65,6 +67,23 @@ export default function LinkX() {
 
   useEffect(() => {
     refresh(address);
+  }, [address, refresh]);
+
+  // The waitlist and the dapp are commonly open in separate tabs. A wallet/X
+  // link completed in the waitlist tab does not change the connected wallet, so
+  // an address-only effect would leave this pill stale until a full reload.
+  // Revalidate when this tab becomes visible or regains focus; the endpoint is
+  // explicitly no-store above so this observes the newly written binding.
+  useEffect(() => {
+    const revalidate = () => {
+      if (document.visibilityState === "visible") void refresh(address);
+    };
+    window.addEventListener("focus", revalidate);
+    document.addEventListener("visibilitychange", revalidate);
+    return () => {
+      window.removeEventListener("focus", revalidate);
+      document.removeEventListener("visibilitychange", revalidate);
+    };
   }, [address, refresh]);
 
   const startOAuth = () => {
