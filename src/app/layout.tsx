@@ -18,47 +18,10 @@ export const metadata: Metadata = {
    * localhost:3000, which silently ships link previews that only work on the
    * developer's machine.
    */
-  metadataBase: new URL("https://app.kaleidofinance.xyz"),
-  /*
-   * No `icons` key, and no `openGraph.images` / `twitter.images` either. All
-   * three come from files instead:
-   *
-   *   src/app/favicon.ico            -> <link rel="icon">
-   *   src/app/apple-icon.png         -> <link rel="apple-touch-icon">
-   *   src/app/opengraph-image.png    -> og:image, with width/height/type read
-   *   src/app/opengraph-image.alt.txt   off the real file
-   *
-   * Do not add an `icons` key back. It does not merely lose to the files, it
-   * suppresses them: accumulateMetadata only attaches the collected apple icon
-   * `if (!resolvedMetadata.icons)`, so any declared `icons` — at this segment or
-   * a child — silently deletes <link rel="apple-touch-icon"> from every page.
-   * The favicon survives because Next special-cases it, which is what made the
-   * old bug so quiet: `icons: "./favicon.ico"` pointed at a path with no file
-   * (the real one was buried in src/app/favicons/) and emitted a second, broken
-   * icon link while killing the apple one, and both image arrays pointed at
-   * /logo.png, deleted in the redesign — so link previews and the PWA install
-   * prompt were both broken, each failing silently.
-   *
-   * There is deliberately no twitter-image file. Next already fills twitter's
-   * image from the openGraph one — postProcessMetadata copies og:image across
-   * whenever `twitter` declares no `images` of its own — so the emitted head
-   * carries twitter:image, its width, height and type without a second file. A
-   * duplicate 1200x630 PNG would add 64 KB to the repo and change no output.
-   *
-   * The alt text comes from opengraph-image.alt.txt, which the image loader
-   * reads with existsSync at loader time *without* registering it as a webpack
-   * dependency (next-metadata-image-loader.js:126-131). Editing the alt file
-   * alone therefore invalidates nothing: touch opengraph-image.png to make a
-   * running dev server pick up a new one. A cold `next build` always reads it.
-   *
-   * The rasters are generated and committed, not hand-exported:
-   * scripts/generate-brand-assets.mjs composes them from the --k-* tokens
-   * around the real logo (public/newklogo2.png, the file the nav draws) and
-   * writes all five in one pass, so the favicon, the apple icon, the PWA pair
-   * and the OG card cannot drift apart. Read that file's header before
-   * regenerating; it explains why this is a script rather than the idiomatic
-   * runtime `opengraph-image.tsx` route.
-   */
+  metadataBase: new URL("https://kaleidofi.xyz"),
+  /* Keep the share image explicit and on the public domain. The old file-based
+     fallback pointed crawlers at app.kaleidofinance.xyz, which is not the host
+     users share and can be protected separately from the public site. */
   /*
    * Required for web push, and specifically required on iOS: Safari only
    * delivers push to a site the user has added to their Home Screen, and it
@@ -100,12 +63,21 @@ export const metadata: Metadata = {
       "Kaleido OS — the DeFi operating system with an agent that transacts",
     description:
       "An agent that performs transactions across the whole stack, moves funds, and plans a money strategy. Every plan is yours to sign.",
+    images: [
+      {
+        url: "https://kaleidofi.xyz/kaleido-og.png",
+        width: 1200,
+        height: 630,
+        alt: "Kaleido — Agentic DeFi. Live on Arc.",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Kaleido OS — an agent that transacts across the whole DeFi stack",
     description:
       "Tell it what you want. It builds the plan — swaps, lending, liquidity, staking, stablecoins — prices and audits every step, and hands it to you to sign.",
+    images: ["https://kaleidofi.xyz/kaleido-og.png"],
   },
 };
 
