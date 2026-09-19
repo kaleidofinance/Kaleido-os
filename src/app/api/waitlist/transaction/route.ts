@@ -39,7 +39,18 @@ export async function POST(req: Request) {
   }
 
   const wallet = address.toLowerCase();
-  const { data: row } = await supabaseAdmin.from("waitlist").select("wallet, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at").eq("wallet", wallet).single();
+  const { data: row, error: rowError } = await supabaseAdmin
+    .from("waitlist")
+    .select("wallet, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at")
+    .eq("wallet", wallet)
+    .single();
+  if (rowError) {
+    // A missing task column must not be reported as a missing wallet. Confirm
+    // the core row separately so production schema drift is diagnosable.
+    const { data: walletRow } = await supabaseAdmin.from("waitlist").select("wallet").eq("wallet", wallet).single();
+    if (!walletRow) return Response.json({ error: "not registered" }, { status: 404 });
+    return Response.json({ error: "waitlist transaction tasks are not enabled yet" }, { status: 503 });
+  }
   if (!row) return Response.json({ error: "not registered" }, { status: 404 });
   const col = taskColumn(task);
   if (row[col]) return Response.json({ ok: true, already: true });
