@@ -20,7 +20,6 @@ export const dynamic = "force-dynamic";
 
 const WELCOME = 100;
 const PER_REFERRAL = 50;
-const REFERRAL_CAP = 5000; // matches the referral source cap in the points schema
 // Per-task kPoint: comment is 50, the rest 100. Must match X_TASK_POINTS in
 // api/waitlist/activate/route.ts (both credit the same set of tasks).
 const X_TASK_POINTS = {
@@ -120,7 +119,7 @@ async function standing(wallet: string) {
     .single();
 
   const referrals = Number(lb?.referrals ?? 0);
-  const referralPoints = Math.min(PER_REFERRAL * referrals, REFERRAL_CAP);
+  const referralPoints = PER_REFERRAL * referrals;
 
   const now = Date.now();
   const xTasks = {
