@@ -1567,6 +1567,34 @@ async function main() {
             JSON.stringify({ blocked: v.blocked, notes: v.notes }),
           );
         }
+
+        {
+          /* Base mainnet has no Kaleido product deployment, but it is a valid
+             CCTP source for a bridge into Arc. The bridge allowlist must be
+             evaluated before the local-deployment guard. */
+          const { CCTP_USDC, TOKEN_MESSENGER_V2 } = await import(
+            "../bridge/cctp"
+          );
+          const v = await audit(
+            [
+              {
+                kind: "approve",
+                token: CCTP_USDC[8453],
+                spender: TOKEN_MESSENGER_V2,
+                amount: "1",
+                decimals: 6,
+                symbol: "USDC",
+              },
+            ],
+            { chainId: 8453 },
+          );
+          check(
+            "a CCTP approval passes on Base even without Kaleido deployments",
+            v.ok &&
+              !v.blocked.some((b) => b.includes("no Kaleido contracts")),
+            JSON.stringify({ blocked: v.blocked, notes: v.notes }),
+          );
+        }
       }
     }
   }
