@@ -3,6 +3,7 @@ import { randomInt } from "node:crypto";
 import { verifyMessage } from "ethers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
+import { TRANSACTION_TASK_POINTS } from "@/lib/waitlist/transactionTasks";
 
 /**
  * The Arc waitlist API.
@@ -44,7 +45,8 @@ const X_HOLD_MS = 5 * 60 * 60 * 1000;
 const REF_ALPHABET = "23456789abcdefghijkmnpqrstuvwxyz";
 const genRefCode = (len = 8): string => {
   let out = "";
-  for (let i = 0; i < len; i++) out += REF_ALPHABET[randomInt(REF_ALPHABET.length)];
+  for (let i = 0; i < len; i++)
+    out += REF_ALPHABET[randomInt(REF_ALPHABET.length)];
   return out;
 };
 
@@ -57,7 +59,8 @@ const isAddress = (a: unknown): a is string =>
 
 /** A single X task's state for the UI: whether it's done, and its 5h hold. */
 function xTaskState(at: string | null, now: number) {
-  if (!at) return { done: false, counted: false, countsAt: null as string | null };
+  if (!at)
+    return { done: false, counted: false, countsAt: null as string | null };
   const countsAtMs = new Date(at).getTime() + X_HOLD_MS;
   return {
     done: true,
@@ -146,6 +149,11 @@ async function standing(wallet: string) {
   );
 
   const welcomePoints = Number(row.welcome_points);
+  const transactionPoints = !row.activated_at
+    ? (row.arc_mainnet_tx_at ? TRANSACTION_TASK_POINTS.arcMainnet : 0) +
+      (row.agent_tx_at ? TRANSACTION_TASK_POINTS.agent : 0) +
+      (row.bridge_tx_at ? TRANSACTION_TASK_POINTS.bridge : 0)
+    : 0;
   return {
     wallet,
     refCode: row.ref_code as string,
@@ -153,7 +161,7 @@ async function standing(wallet: string) {
     rank: lb?.rank ?? null,
     // The displayed balance: welcome + referral + X-task kPoint that has cleared
     // its hold. heldPoints is the X-task kPoint still counting down.
-    points: welcomePoints + referralPoints + countedX,
+    points: welcomePoints + referralPoints + countedX + transactionPoints,
     heldPoints,
     welcomePoints,
     referralPoints,
