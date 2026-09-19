@@ -3,6 +3,7 @@ import { randomInt } from "node:crypto";
 import { verifyMessage } from "ethers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
+import { transactionTaskPointsFor } from "@/lib/waitlist/transactionTasks";
 
 /**
  * The Arc waitlist API.
@@ -20,7 +21,6 @@ export const dynamic = "force-dynamic";
 
 const WELCOME = 100;
 const PER_REFERRAL = 50;
-const REFERRAL_CAP = 5000; // matches the referral source cap in the points schema
 // Per-task kPoint: comment is 50, the rest 100. Must match X_TASK_POINTS in
 // api/waitlist/activate/route.ts (both credit the same set of tasks).
 const X_TASK_POINTS = {
@@ -28,6 +28,7 @@ const X_TASK_POINTS = {
   followed: 100,
   retweeted: 100,
   commented: 50,
+  bitget: 100,
 } as const;
 // X-task kPoint is held this long before it counts toward the balance — a nudge
 // to actually do the task, since the tasks are attested, not API-verified.
@@ -44,7 +45,8 @@ const X_HOLD_MS = 5 * 60 * 60 * 1000;
 const REF_ALPHABET = "23456789abcdefghijkmnpqrstuvwxyz";
 const genRefCode = (len = 8): string => {
   let out = "";
-  for (let i = 0; i < len; i++) out += REF_ALPHABET[randomInt(REF_ALPHABET.length)];
+  for (let i = 0; i < len; i++)
+    out += REF_ALPHABET[randomInt(REF_ALPHABET.length)];
   return out;
 };
 
@@ -57,7 +59,8 @@ const isAddress = (a: unknown): a is string =>
 
 /** A single X task's state for the UI: whether it's done, and its 5h hold. */
 function xTaskState(at: string | null, now: number) {
-  if (!at) return { done: false, counted: false, countsAt: null as string | null };
+  if (!at)
+    return { done: false, counted: false, countsAt: null as string | null };
   const countsAtMs = new Date(at).getTime() + X_HOLD_MS;
   return {
     done: true,
@@ -66,20 +69,22 @@ function xTaskState(at: string | null, now: number) {
   };
 }
 
-// Base columns, always present. X-task columns are added by 20260914030000; if
-// that migration has not been applied yet (e.g. a deploy landed first), selecting
-// them errors, so we fall back to the base row rather than break registration and
-// the balance for everyone. Once the migration is applied this fallback is dead.
+// Core columns, always present. X-task and transaction columns were added by
+// later migrations; the fallback must stay genuinely core-only so an older
+// production database can still find an existing wallet instead of attempting a
+// duplicate insert and surfacing the misleading generic "insert failed" error.
 const BASE_COLS = "ref_code, welcome_points, activated_at";
+const TRANSACTION_COLS = "arc_mainnet_tx_at, agent_tx_at, bridge_tx_at";
 const X_COLS =
-  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at";
+  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at";
+const LEGACY_COLS = `${BASE_COLS}, ${X_COLS}`;
 
 async function standing(wallet: string) {
   const admin = supabaseAdmin!;
   let row: Record<string, unknown> | null = null;
   const full = await admin
     .from("waitlist")
-    .select(`${BASE_COLS}, ${X_COLS}`)
+    .select(`${BASE_COLS}, ${TRANSACTION_COLS}, ${X_COLS}`)
     .eq("wallet", wallet)
     .single();
   if (!full.error) {
@@ -87,14 +92,25 @@ async function standing(wallet: string) {
   } else if (full.error.code === "PGRST116") {
     return null; // no such wallet (0 rows), not a schema problem
   } else {
-    // Most likely the X-task columns don't exist yet — retry with base columns.
-    const base = await admin
+    // A transaction-task migration may be missing while the older X-task
+    // columns are already live. Preserve those task points instead of dropping
+    // back straight to core columns and making an established wallet look reset.
+    const legacy = await admin
       .from("waitlist")
-      .select(BASE_COLS)
+      .select(LEGACY_COLS)
       .eq("wallet", wallet)
       .single();
-    if (base.error || !base.data) return null;
-    row = base.data as Record<string, unknown>;
+    if (!legacy.error && legacy.data) {
+      row = legacy.data as Record<string, unknown>;
+    } else {
+      const base = await admin
+        .from("waitlist")
+        .select(BASE_COLS)
+        .eq("wallet", wallet)
+        .single();
+      if (base.error || !base.data) return null;
+      row = base.data as Record<string, unknown>;
+    }
   }
   if (!row) return null;
 
@@ -106,7 +122,7 @@ async function standing(wallet: string) {
     .single();
 
   const referrals = Number(lb?.referrals ?? 0);
-  const referralPoints = Math.min(PER_REFERRAL * referrals, REFERRAL_CAP);
+  const referralPoints = PER_REFERRAL * referrals;
 
   const now = Date.now();
   const xTasks = {
@@ -114,6 +130,7 @@ async function standing(wallet: string) {
     followed: xTaskState(row.x_followed_at as string | null, now),
     retweeted: xTaskState(row.x_retweeted_at as string | null, now),
     commented: xTaskState(row.x_commented_at as string | null, now),
+    bitget: xTaskState(row.x_bitget_at as string | null, now),
   };
   // Each task's kPoint comes from X_TASK_POINTS by key, so comment (50) counts
   // differently from the 100-point tasks. countedX is what's cleared its hold;
@@ -132,6 +149,7 @@ async function standing(wallet: string) {
   );
 
   const welcomePoints = Number(row.welcome_points);
+  const transactionPoints = transactionTaskPointsFor(row);
   return {
     wallet,
     refCode: row.ref_code as string,
@@ -139,13 +157,18 @@ async function standing(wallet: string) {
     rank: lb?.rank ?? null,
     // The displayed balance: welcome + referral + X-task kPoint that has cleared
     // its hold. heldPoints is the X-task kPoint still counting down.
-    points: welcomePoints + referralPoints + countedX,
+    points: welcomePoints + referralPoints + countedX + transactionPoints,
     heldPoints,
     welcomePoints,
     referralPoints,
     xHandle: (row.x_handle as string | null) ?? null,
     xTasks,
     activated: Boolean(row.activated_at),
+    transactionTasks: {
+      arcMainnet: { done: Boolean(row.arc_mainnet_tx_at) },
+      agent: { done: Boolean(row.agent_tx_at) },
+      bridge: { done: Boolean(row.bridge_tx_at) },
+    },
   };
 }
 

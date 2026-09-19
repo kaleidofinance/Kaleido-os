@@ -315,13 +315,10 @@ register("swapMultiHop", {
   resolve: async (ctx, i) => {
     const router = new ethers.Contract(i.spender, V3_ROUTER_ABI, ctx.signer);
     const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
-    await waitForAllowance(
-      ctx.signer,
-      ctx.address,
-      i.hops[0].tokenIn,
-      i.spender,
-      amountIn,
-    );
+    const tokenIn = i.hops[0]?.tokenIn;
+    if (tokenIn) {
+      await waitForAllowance(ctx.signer, ctx.address, tokenIn, i.spender, amountIn);
+    }
     const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
 
     /*
@@ -513,13 +510,17 @@ register("aggregatorSwap", {
     detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
-    await waitForAllowance(
-      ctx.signer,
-      ctx.address,
-      i.tokenIn,
-      i.spender,
-      ethers.parseUnits(i.amountIn, i.decimalsIn),
-    );
+    /* Aggregator intents encode native input through the transaction value;
+       unlike the canonical swap shape they do not carry a nativeIn flag. */
+    if (i.value === "0") {
+      await waitForAllowance(
+        ctx.signer,
+        ctx.address,
+        i.tokenIn,
+        i.spender,
+        ethers.parseUnits(i.amountIn, i.decimalsIn),
+      );
+    }
     let to = i.to;
     let data = i.data;
 

@@ -39,6 +39,9 @@ export interface LeaderboardRow {
   actionPoints: number | null;
   /** Discretionary credit — Season 0 participation. Not a measurement. */
   bonusPoints: number | null;
+  /** Cumulative USD trading volume (Σ point_actions.usd_value). 0 for waitlist
+   *  credits; fills as volume-bearing protocol actions land. */
+  volume: number | null;
 }
 
 /**
@@ -82,8 +85,12 @@ export interface LeaderboardPayload {
    * nothing about any wallet.
    */
   participants: number | null;
-  /** True when `participants` exceeds the rows returned. See the route's HARD_MAX. */
+  /** True when `participants` exceeds the rows returned. See the route's PAGE_SIZE. */
   truncated: boolean;
+  /** Zero-based page index of `rows` within the full ranked list. */
+  page: number;
+  /** Rows per page (the board paginates the full list at this size). */
+  pageSize: number;
   asOf: string;
   /** Names each leg that failed, so a null is never mistaken for "still loading". */
   degraded: string[];
