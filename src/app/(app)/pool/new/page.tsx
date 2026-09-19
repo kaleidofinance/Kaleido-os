@@ -387,9 +387,9 @@ export default function NewPositionPage() {
   const dexPriceTokens = useMemo(
     () =>
       [token0, token1]
-        .filter((t): t is IToken => t !== null)
+        .filter((t): t is IToken => t !== null && t.chainId !== undefined)
         .map((t) => ({
-          chainId: t.chainId,
+          chainId: t.chainId!,
           address: t.address,
           decimals: t.decimals,
         })),
@@ -397,7 +397,7 @@ export default function NewPositionPage() {
   );
   const dexPriceOf = useDexPrices(dexPriceTokens);
   const feedPrice = useMemo(() => {
-    if (!token0 || !token1) return null;
+    if (!token0 || !token1 || chainId === undefined) return null;
     const usd0 = priceOf(token0.symbol) ?? dexPriceOf(chainId, token0.address);
     const usd1 = priceOf(token1.symbol) ?? dexPriceOf(chainId, token1.address);
     if (!usd0 || !usd1) return null;
