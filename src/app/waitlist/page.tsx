@@ -46,6 +46,10 @@ type Status = {
     bitget: XTask;
   };
   activated: boolean;
+  transactionTasks: {
+    arcMainnet: { done: boolean };
+    agent: { done: boolean };
+  };
 } | null;
 
 type Leader = { rank: number; wallet: string; referrals: number };
@@ -68,6 +72,10 @@ const xTaskMessage = (address: string, task: XTaskKey) =>
   task === "link"
     ? `Link my X account to the Kaleido waitlist wallet ${address}.`
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
+const transactionTaskMessage = (address: string, task: "arcMainnet" | "agent", txHash?: string) =>
+  task === "arcMainnet"
+    ? `Confirm my Kaleido Arc mainnet transaction for wallet ${address}.`
+    : `Confirm my first Kaleido agent transaction ${txHash} for wallet ${address}.`;
 
 export default function WaitlistPage() {
   const account = useActiveAccount();
@@ -217,6 +225,26 @@ export default function WaitlistPage() {
     },
     [account, loadStatus, ensureArc],
   );
+
+  const verifyTransactionTask = useCallback(async (task: "arcMainnet" | "agent") => {
+    if (!account) return;
+    const txHash = task === "agent" ? window.prompt("Paste the successful agent transaction hash")?.trim() : undefined;
+    if (task === "agent" && !txHash) return;
+    setError(null);
+    try {
+      if (task === "arcMainnet") await ensureArc();
+      const signature = await account.signMessage({ message: transactionTaskMessage(account.address, task, txHash) });
+      const res = await fetch("/api/waitlist/transaction", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address: account.address, signature, task, txHash, chainId: activeChain?.id }),
+      });
+      const d = await res.json();
+      if (!res.ok) setError(d.error || "Transaction not verified.");
+      else await loadStatus();
+    } catch (e) {
+      setError(e instanceof Error && /reject|denied/i.test(e.message) ? "Signature rejected." : "Could not verify transaction.");
+    }
+  }, [account, activeChain?.id, ensureArc, loadStatus]);
 
   // Link X: start OAuth if no X session in this browser yet, otherwise the
   // account is known and we just need the wallet's confirming signature.
@@ -465,26 +493,20 @@ export default function WaitlistPage() {
                 <span className={s.taskLock}>🔒</span>
               </li>
 
-              {/* The big one: converting the pending balance happens on the first
-                  real Arc mainnet action (see the waitlist migration). Shown as a
-                  locked "Coming soon" teaser until mainnet is live and the action
-                  is wired to a real status. */}
               <li className={s.task}>
                 <div className={s.taskText}>
                   <span className={s.taskTitle}>Perform 1st transaction on Arc Mainnet</span>
-                  <span className={s.taskMeta}>+500 $kPoint · Coming soon</span>
+                  <span className={s.taskMeta}>{status.transactionTasks.arcMainnet.done ? "Done" : "+500 $kPoint · Verify on-chain"}</span>
                 </div>
-                <span className={s.taskLock}>🔒</span>
+                {status.transactionTasks.arcMainnet.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("arcMainnet")}>Verify</button>}
               </li>
 
-              {/* The agent-trading capstone (Luca making the first agent tx) — the
-                  product's differentiator. Locked "Coming soon" teaser for now. */}
               <li className={s.task}>
                 <div className={s.taskText}>
                   <span className={s.taskTitle}>Make 1st Agent transaction on Kaleido</span>
-                  <span className={s.taskMeta}>+500 $kPoint · Coming soon</span>
+                  <span className={s.taskMeta}>{status.transactionTasks.agent.done ? "Done" : "+500 $kPoint · Verify successful tx"}</span>
                 </div>
-                <span className={s.taskLock}>🔒</span>
+                {status.transactionTasks.agent.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("agent")}>Verify</button>}
               </li>
             </ul>
 
