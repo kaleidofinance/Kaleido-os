@@ -98,6 +98,8 @@ export default function WaitlistPage() {
 
   const [ref, setRef] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>(null);
+  const [statusReady, setStatusReady] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -136,13 +138,25 @@ export default function WaitlistPage() {
     const addr = account?.address;
     if (!addr) {
       setStatus(null);
+      setStatusReady(false);
+      setStatusError(null);
       return;
     }
+    setStatusReady(false);
+    setStatusError(null);
     try {
-      const d = await fetch(`/api/waitlist?wallet=${addr}`).then((r) => r.json());
+      const res = await fetch(`/api/waitlist?wallet=${addr}`, { cache: "no-store" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d?.error || "Could not load waitlist.");
       setStatus(d && d.refCode ? d : null);
+      setStatusReady(true);
     } catch {
-      /* keep last */
+      // Never show a first-time claim button while an existing wallet's
+      // standing is unknown. Keep the last dashboard, if any, and let the
+      // caller retry instead of turning a transient API failure into a
+      // duplicate-registration flow.
+      setStatusReady(false);
+      setStatusError("Could not load your waitlist balance.");
     }
   }, [account?.address]);
 
@@ -311,6 +325,14 @@ export default function WaitlistPage() {
       </header>
 
       <section className={`${s.card} k-glass`}>
+        {account && !statusReady ? (
+          <>
+            <p className={s.cardLede}>{statusError ?? "Loading your waitlist balance…"}</p>
+            {statusError ? <button className={s.primary} onClick={() => void loadStatus()}>Retry</button> : null}
+          </>
+        ) : null}
+        {account && statusReady ? (
+        <>
         {!account ? (
           <>
             <p className={s.cardLede}>
@@ -544,6 +566,24 @@ export default function WaitlistPage() {
             </p>
           </>
         )}
+        </>
+        ) : null}
+        {!account ? (
+          <>
+            <p className={s.cardLede}>
+              Connect a wallet to claim <strong>100 welcome points</strong>
+              {ref ? " (a friend referred you — you'll get a bonus)" : ""}.
+            </p>
+            <button className={s.primary} onClick={onConnect} disabled={isConnecting}>
+              {isConnecting ? "Connecting…" : "Connect wallet"}
+            </button>
+            <p className={s.split}>
+              On mobile? Tap <strong>WalletConnect</strong> to open your
+              MetaMask, Coinbase, or Rainbow app, or open this page in a
+              desktop browser.
+            </p>
+          </>
+        ) : null}
       </section>
 
       {leaders.length > 0 ? (
