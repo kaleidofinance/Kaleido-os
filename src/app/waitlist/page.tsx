@@ -63,6 +63,7 @@ const X_HANDLE = "kaleido_finance";
 const ANNOUNCE_TWEET_ID =
   process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
 const BITGET_TWEET_ID = "2101042491864629430";
+const agentOpenedKey = (address: string) => `kaleido.waitlist.agent-opened:${address.toLowerCase()}`;
 
 /** Must match the message the API rebuilds and verifies. */
 const joinMessage = (address: string) =>
@@ -118,6 +119,7 @@ export default function WaitlistPage() {
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"arcMainnet" | "agent" | "bridge" | null>(null);
+  const [agentOpened, setAgentOpened] = useState(false);
 
   useEffect(() => {
     try {
@@ -164,6 +166,14 @@ export default function WaitlistPage() {
   useEffect(() => {
     void loadStatus();
   }, [loadStatus]);
+
+  useEffect(() => {
+    if (!account?.address) {
+      setAgentOpened(false);
+      return;
+    }
+    setAgentOpened(window.localStorage.getItem(agentOpenedKey(account.address)) === "1");
+  }, [account?.address]);
 
   // Is an X account linked in this browser (the OAuth cookie is set)? Drives
   // whether "Link X" starts OAuth or just needs the on-chain confirm signature.
@@ -266,6 +276,13 @@ export default function WaitlistPage() {
       setTransactionBusy(null);
     }
   }, [account, activeChain?.id, ensureArc, loadStatus, transactionBusy]);
+
+  const openKaleidoForAgentTask = useCallback(() => {
+    if (!account?.address) return;
+    window.localStorage.setItem(agentOpenedKey(account.address), "1");
+    setAgentOpened(true);
+    window.location.href = "/trade/agent";
+  }, [account?.address]);
 
   // Link X: start OAuth if no X session in this browser yet, otherwise the
   // account is known and we just need the wallet's confirming signature.
@@ -534,9 +551,9 @@ export default function WaitlistPage() {
               <li className={s.task}>
                 <div className={s.taskText}>
                   <span className={s.taskTitle}>Make 1st transaction on Kaleido</span>
-                  <span className={s.taskMeta}>{status.transactionTasks.agent.done ? "Done" : "+500 $kPoint · Verify successful tx"}</span>
+                  <span className={s.taskMeta}>{status.transactionTasks.agent.done ? "Done" : agentOpened ? "+500 $kPoint · Verify successful tx" : "+500 $kPoint · Make a trade in Kaleido first"}</span>
                 </div>
-                {status.transactionTasks.agent.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("agent")} disabled={transactionBusy !== null}>{transactionBusy === "agent" ? "Checking…" : "Verify"}</button>}
+                {status.transactionTasks.agent.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={agentOpened ? () => void verifyTransactionTask("agent") : openKaleidoForAgentTask} disabled={transactionBusy !== null}>{transactionBusy === "agent" ? "Checking…" : agentOpened ? "Verify" : "Open Kaleido"}</button>}
               </li>
 
               <li className={s.task}>
