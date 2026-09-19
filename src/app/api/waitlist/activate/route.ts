@@ -48,6 +48,7 @@ const X_TASK_POINTS = {
   followed: 100,
   retweeted: 100,
   commented: 50,
+  bitget: 100,
 } as const;
 const SEASON = 1; // Season 1 — pre-TGE (see point_seasons seed)
 const SOURCE = "waitlist";
@@ -119,7 +120,7 @@ async function handle(req: Request): Promise<Response> {
   const { data: pending, error: pendErr } = await admin
     .from("waitlist")
     .select(
-      "wallet, welcome_points, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at",
+      "wallet, welcome_points, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at",
     )
     .is("activated_at", null)
     // X-verified only, keyed on x_user_id (the UNIQUE column — one real X account
@@ -199,7 +200,8 @@ async function handle(req: Request): Promise<Response> {
       (row.x_linked_at ? X_TASK_POINTS.linked : 0) +
       (row.x_followed_at ? X_TASK_POINTS.followed : 0) +
       (row.x_retweeted_at ? X_TASK_POINTS.retweeted : 0) +
-      (row.x_commented_at ? X_TASK_POINTS.commented : 0);
+      (row.x_commented_at ? X_TASK_POINTS.commented : 0) +
+      (row.x_bitget_at ? X_TASK_POINTS.bitget : 0);
     const points = Number(row.welcome_points) + referralPoints + xTaskPoints;
 
     // 1) Canonical credit. Synthetic, stable tx_hash → credited at most once.
