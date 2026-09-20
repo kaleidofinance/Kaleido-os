@@ -13,14 +13,20 @@ import { SEEDED_POOLS, getContracts, isSeededPool } from "@/constants/registry";
 import { chainTokens } from "@/constants/tokens";
 import type { IToken, ITradingPair } from "@/constants/types/dex";
 import { FEE_TIERS } from "@/lib/dex/liquidity";
-import { readPoolTiers, type PoolState } from "@/lib/dex/pool";
+import {
+  hasActiveLiquidity,
+  readPoolTiers,
+  type PoolState,
+} from "@/lib/dex/pool";
 import { poolOrderInverted } from "@/constants/utils/v3Math";
 import { readVolumeWindow, type VolumeWindow } from "@/lib/dex/logWindow";
 import type { DiscoveryChain } from "@/lib/dex/poolDiscovery";
 import type { PriceLookup } from "@/lib/market/spot";
 import { retryRpc } from "@/lib/dex/rpcRetry";
 
-const ERC20_ABI = ["function balanceOf(address) external view returns (uint256)"];
+const ERC20_ABI = [
+  "function balanceOf(address) external view returns (uint256)",
+];
 
 const POOL_ABI = [
   "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
@@ -62,11 +68,19 @@ export function livePoolPrice(
   }
 }
 
+/** A discovered pool is publishable only when its raw V3 liquidity is active. */
+export function shouldPublishV3Pool(
+  state: Pick<PoolState, "liquidity">,
+): boolean {
+  return hasActiveLiquidity(state);
+}
+
 /** Every unordered pair of a list, each once. */
 function unorderedPairs<T>(items: readonly T[]): [T, T][] {
   const out: [T, T][] = [];
   for (let i = 0; i < items.length; i += 1) {
-    for (let j = i + 1; j < items.length; j += 1) out.push([items[i], items[j]]);
+    for (let j = i + 1; j < items.length; j += 1)
+      out.push([items[i], items[j]]);
   }
   return out;
 }
@@ -169,6 +183,7 @@ async function buildPool(
   window: VolumeWindow | null,
 ): Promise<ITradingPair | null> {
   try {
+    if (!shouldPublishV3Pool(found.state)) return null;
     const provider = chain.provider;
 
     /* Pool order, which is address order — the only order the contracts know.
@@ -235,7 +250,8 @@ async function buildPool(
     /* The priced leg for volume must come from spot, not from the derivation
      * above: pricing a leg off the pool and then measuring the pool's volume in
      * that unit would report volume in terms of itself. */
-    const pricedLeg: 0 | 1 | null = spot0 !== null ? 0 : spot1 !== null ? 1 : null;
+    const pricedLeg: 0 | 1 | null =
+      spot0 !== null ? 0 : spot1 !== null ? 1 : null;
     if (window && pricedLeg !== null) {
       const windowUsd = await readWindowVolumeUsd(
         found.state.address,
@@ -350,7 +366,11 @@ async function readSeededPools(
   const rows = await Promise.all(
     addresses.map(async (address) => {
       try {
-        const meta = new ethers.Contract(address, POOL_META_ABI, chain.provider);
+        const meta = new ethers.Contract(
+          address,
+          POOL_META_ABI,
+          chain.provider,
+        );
         const [t0, t1, fee] = await retryRpc(() =>
           Promise.all([meta.token0(), meta.token1(), meta.fee()]),
         );

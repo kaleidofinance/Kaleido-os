@@ -1,4 +1,4 @@
-import { livePoolPrice } from "./poolSweep";
+import { livePoolPrice, shouldPublishV3Pool } from "./poolSweep";
 
 let passed = 0;
 let failed = 0;
@@ -23,6 +23,14 @@ check(
 check(
   "invalid liquidity fails closed",
   livePoolPrice(1, "not-a-number") === null,
+);
+check(
+  "an empty discovered pool is not published",
+  !shouldPublishV3Pool({ liquidity: "0" }),
+);
+check(
+  "a funded discovered pool is published",
+  shouldPublishV3Pool({ liquidity: "1" }),
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);
