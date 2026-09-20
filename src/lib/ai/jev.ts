@@ -106,7 +106,7 @@ export async function classifyLucaRoute(input: {
             transaction_plan:
               "The user clearly asks Luca to perform a DeFi action and supplies enough explicit arguments for the existing tool/parser path.",
             read_only:
-              "The user asks for live wallet, pool, price, route, position, bridge, or other chain data.",
+              "The user asks for live wallet, pool, price, route, position, bridge, or other chain data. This includes requests to list which liquidity pools or markets are currently live, pool TVL/volume/fees, current prices, balances, or positions; these are read-only even when the answer needs a chain read tool.",
             faq: "The message is a static product or documentation question answerable without current chain data.",
             clarification:
               "The user intent is understandable but a required token, amount, chain, or choice is missing or ambiguous.",
