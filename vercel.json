@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/points-swap",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/health/agent",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

@@ -52,6 +52,9 @@ function authorised(request: NextRequest, secret: string): boolean {
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+const FAILURE_ALERT_RATE = 0.05;
+const LOW_CONFIDENCE_ALERT = 0.8;
+const MIN_CLASSIFIED_FOR_CONFIDENCE_ALERT = 5;
 
 async function handle(request: NextRequest) {
   // Trimmed to match the trimmed bearer — a trailing newline in the Vercel env
@@ -198,7 +201,20 @@ async function handle(request: NextRequest) {
     }
   }
 
-  const ok = chain.length > 0 && metered;
+  const alerts: string[] = [];
+  if (window1h && window1h.total >= 5 && window1h.failureRate > FAILURE_ALERT_RATE) {
+    alerts.push("agent_failure_rate_high");
+  }
+  if (
+    jev &&
+    jev.classified >= MIN_CLASSIFIED_FOR_CONFIDENCE_ALERT &&
+    jev.averageConfidence !== null &&
+    jev.averageConfidence < LOW_CONFIDENCE_ALERT
+  ) {
+    alerts.push("jev_confidence_low");
+  }
+
+  const ok = chain.length > 0 && metered && alerts.length === 0;
 
   return NextResponse.json({
     ok,
@@ -208,8 +224,9 @@ async function handle(request: NextRequest) {
     lastGoodTurnAt,
     window1h,
     jev,
+    alerts,
     checkedAt: new Date().toISOString(),
-  });
+  }, { status: ok ? 200 : 500 });
 }
 
 export async function GET(request: NextRequest) {
