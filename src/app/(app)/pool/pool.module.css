@@ -611,6 +611,31 @@
   gap: var(--k-s2);
   margin-top: 14px;
 }
+
+@media (min-width: 721px) {
+  /* Give the position card a second desktop column: the position facts and
+     removal presets stay on the left, while the three position actions occupy
+     the open space on the right instead of forming a fourth row underneath. */
+  .card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--k-s5);
+  }
+  .card > .cardTop,
+  .card > .range,
+  .card > .addNote,
+  .card > .addForm {
+    grid-column: 1 / -1;
+  }
+  .card > .actions {
+    grid-column: 2;
+    grid-row: 3 / span 2;
+    align-self: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    margin-top: 0;
+  }
+}
 /* Recessed, like `.qk` on the trade card: these now sit inside a glass card, and
    an opaque --k-well2 reads as a solid tablet floating in the blur. */
 .actBtn {
