@@ -142,7 +142,7 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
   return (
     <>
       <Nav />
-      <main className={s.wrap}>
+      <main className={`${s.wrap} ${pathname === "/pool" ? s.listWrap : ""}`}>
         {/* The pair's own breadcrumb and title stand in for this head on a detail
             route, so it is dropped rather than duplicated. */}
         {shell !== "detail" && (
@@ -168,12 +168,14 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
             same reason. */}
         {shell === "list" && (
           <>
-            <StatStrip>
-              <Stat label="Pools" value={qty(poolCount)} />
-              <Stat label="TVL" value={usd(liquidity)} />
-              <Stat label="Total volume" value={usd(totalVolume)} />
-              <Stat label="Total fees" value={usd(totalFees, 2)} />
-            </StatStrip>
+            <div className={s.statStrip}>
+              <StatStrip>
+                <Stat label="Pools" value={qty(poolCount)} />
+                <Stat label="TVL" value={usd(liquidity)} />
+                <Stat label="Total volume" value={usd(totalVolume)} />
+                <Stat label="Total fees" value={usd(totalFees, 2)} />
+              </StatStrip>
+            </div>
 
             <div className={s.tabs}>
               {TABS.map((t) => (

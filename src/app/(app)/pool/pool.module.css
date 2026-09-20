@@ -7,6 +7,30 @@
   gap: var(--k-s5);
 }
 
+/* On the pools landing page the tabs and table controls are one toolbar: the
+   tabs stay at the left while search and Filters use the remaining width. The
+   positions route keeps the normal stacked shell. */
+@media (min-width: 721px) {
+  .listWrap {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .listWrap > .head,
+  .listWrap > .statStrip,
+  .listWrap > .table {
+    grid-column: 1 / -1;
+  }
+  .listWrap > .tabs {
+    grid-column: 1;
+    align-self: center;
+  }
+  .listWrap > .toolbar {
+    grid-column: 2;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+}
+
 .head {
   display: flex;
   align-items: center;
