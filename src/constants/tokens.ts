@@ -108,7 +108,23 @@ export function chainTokens(
 ): IToken[] {
   const native = nativeTokenOf(getChainMeta(chainId), protocol);
   const erc20s = registeredTokens(chainId);
-  return (native ? [native, ...erc20s] : erc20s).map(toIToken);
+  /* On Arc, native USDC and canonical ERC20 USDC share a ticker but not
+     decimals or an address. The DEX picker must expose the ERC20 market asset
+     without offering an ambiguous duplicate native row. Other protocols keep
+     the native row because they may intentionally transact native value. */
+  const nativeForList =
+    native &&
+    !(
+      protocol === "dex" &&
+      chainId === 5042 &&
+      erc20s.some(
+        (t) =>
+          t.symbol.toLowerCase() === native.symbol.toLowerCase() && !t.isNative,
+      )
+    )
+      ? [native]
+      : [];
+  return [...nativeForList, ...erc20s].map(toIToken);
 }
 
 /**
