@@ -27,6 +27,7 @@ import {
   classifyLucaRoute,
   jevMode,
   jevReplaceMinConfidence,
+  shouldSkipNormalizer,
 } from "@/lib/ai/jev";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText, sanitizeGuardrails } from "@/lib/ai/auditor";
@@ -795,12 +796,12 @@ export async function POST(request: NextRequest) {
            already identifies a live-data or reasoning request. The full agent
            still owns reads, tools, prose, auditing, and execution. Shadow mode
            records the decision but preserves today's behavior for calibration. */
-        const skipNormalizer =
-          jevMode() === "replace" &&
-          jev !== null &&
-          jev.confidence !== null &&
-          jev.confidence >= jevReplaceMinConfidence() &&
-          (jev.route === "read_only" || jev.route === "full_reasoning");
+        const skipNormalizer = shouldSkipNormalizer({
+          mode: jevMode(),
+          route: jev?.route ?? null,
+          confidence: jev?.confidence ?? null,
+          minimum: jevReplaceMinConfidence(),
+        });
         if (skipNormalizer) {
           // Continue directly to the existing full-agent path below.
         } else {

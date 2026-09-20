@@ -13,6 +13,14 @@ export type JevRouteResult = {
   probabilities: Record<string, number> | null;
 };
 
+const JEV_ROUTES: readonly JevRoute[] = [
+  "transaction_plan",
+  "read_only",
+  "faq",
+  "clarification",
+  "full_reasoning",
+];
+
 /**
  * Jev is deliberately a routing signal, not a replacement for Luca's parser,
  * read tools, auditor, or answer-writing model. Keep it server-only and fail
@@ -33,6 +41,27 @@ export function jevReplaceMinConfidence(): number {
   return Number.isFinite(configured) && configured >= 0 && configured <= 1
     ? configured
     : 0.8;
+}
+
+/**
+ * The only behavior-changing Jev gate. Keeping this pure makes the rollout
+ * policy testable without a gateway call: shadow mode never changes routing,
+ * and replace mode only bypasses the cheap normalizer for high-confidence
+ * live-data or reasoning requests.
+ */
+export function shouldSkipNormalizer(input: {
+  mode: "off" | "shadow" | "replace";
+  route: JevRoute | null;
+  confidence: number | null;
+  minimum: number;
+}): boolean {
+  return (
+    input.mode === "replace" &&
+    input.route !== null &&
+    input.confidence !== null &&
+    input.confidence >= input.minimum &&
+    (input.route === "read_only" || input.route === "full_reasoning")
+  );
 }
 
 function confidence(
@@ -92,15 +121,7 @@ export async function classifyLucaRoute(input: {
 
     const answer = result.answers.route;
     const route = answer.choice as JevRoute;
-    if (
-      ![
-        "transaction_plan",
-        "read_only",
-        "faq",
-        "clarification",
-        "full_reasoning",
-      ].includes(route)
-    ) {
+    if (!JEV_ROUTES.includes(route)) {
       return null;
     }
     return {

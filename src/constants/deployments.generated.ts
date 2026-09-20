@@ -51,13 +51,13 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
   },
   5042: {
     poolInitCodeHash:
-      "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcMainnet-1789547230687.json
-    v3Factory: "0xbB74f2319494461B2591F8fbF126654Dd4c2a649", // deployment-v3-arcMainnet-1789547230687.json
-    v3PositionDescriptor: "0xeaD30fFC226B58235813Be9d4CFE15Ae0711eF50", // deployment-v3-arcMainnet-1789547230687.json
-    v3PositionManager: "0x55879358eC7eDA609f2264b0348D1915ee8307e1", // deployment-v3-arcMainnet-1789547230687.json
-    v3Quoter: "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3", // deployment-v3-arcMainnet-1789547230687.json
-    v3Router: "0x51aCdcb394210db1bB4e2C8d4569cd734a374188", // deployment-v3-arcMainnet-1789547230687.json
-    wrappedNative: "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b", // deployment-v3-arcMainnet-1789547230687.json
+      "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcMainnet-1789855914870.json
+    v3Factory: "0xbB74f2319494461B2591F8fbF126654Dd4c2a649", // deployment-v3-arcMainnet-1789855914870.json
+    v3PositionDescriptor: "0xeaD30fFC226B58235813Be9d4CFE15Ae0711eF50", // deployment-v3-arcMainnet-1789855914870.json
+    v3PositionManager: "0x55879358eC7eDA609f2264b0348D1915ee8307e1", // deployment-v3-arcMainnet-1789855914870.json
+    v3Quoter: "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3", // deployment-v3-arcMainnet-1789855914870.json
+    v3Router: "0x98D4f47b6F06d30527b61ea3d68656f7Da9B442E", // deployment-v3-arcMainnet-1789855914870.json
+    wrappedNative: "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b", // deployment-v3-arcMainnet-1789855914870.json
   },
   46630: {
     diamond: "0x3565904975AE169c0a48af085b9f786660875874", // deployment-diamond-robinhoodTestnet.json
@@ -325,7 +325,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-16T22:30:25.810Z",
+  generatedAt: "2026-09-19T22:14:21.882Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -390,7 +390,7 @@ export const GENERATED_META: {
     "deployment-tokens-bscTestnet.json",
     "deployment-tokens-robinhoodTestnet.json",
     "deployment-tokens-sepolia.json",
-    "deployment-v3-arcMainnet-1789547230687.json",
+    "deployment-v3-arcMainnet-1789855914870.json",
     "deployment-v3-arcTestnet-1787358306379.json",
     "deployment-v3-baseTestnet-1787327167156.json",
     "deployment-v3-bscTestnet-1787453320471.json",
