@@ -305,21 +305,17 @@
 .rewards {
   composes: k-glass from global;
   border-radius: var(--k-r-lg);
-  padding: var(--k-s4);
+  padding: var(--k-s3);
   display: flex;
   flex-direction: column;
-  gap: var(--k-s4);
+  gap: var(--k-s3);
 }
 .rewardsHead,
 .rewardsGrid {
   display: grid;
-  gap: var(--k-s4);
+  gap: var(--k-s3);
 }
 .rewardsHead {
-  grid-template-columns: 1fr;
-}
-.rewardsHead {
-  grid-template-columns: 1fr auto;
   align-items: center;
 }
 .rewardsHead h2,
@@ -362,18 +358,18 @@
 }
 .rewardTasks {
   list-style: none;
-  margin: var(--k-s3) 0 0;
+  margin: var(--k-s2) 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--k-s2);
+  gap: 6px;
 }
 .rewardTask {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--k-s3);
-  padding: var(--k-s3);
+  gap: var(--k-s2);
+  padding: 9px 10px;
   border-radius: var(--k-r-md);
   background: var(--k-glass-deep);
 }
