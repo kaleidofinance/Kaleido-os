@@ -518,6 +518,8 @@ export default function PlanReview({
               task: "agent",
               txHash: result.hash,
               chainId: ctx.chainId,
+              operation: intents[i].kind,
+              provider: intents[i].kind === "aggregatorSwap" ? "kyberswap" : "kaleido",
             }),
           }).catch(() => {});
         }
@@ -525,7 +527,14 @@ export default function PlanReview({
           void fetch("/api/waitlist/transaction", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ address: ctx.address, task: "bridge", txHash: result.hash, chainId: ctx.chainId }),
+            body: JSON.stringify({
+              address: ctx.address,
+              task: "bridge",
+              txHash: result.hash,
+              chainId: ctx.chainId,
+              operation: "bridge",
+              provider: (intents[i] as Extract<Intent, { kind: "bridge" }>).provider,
+            }),
           }).catch(() => {});
         }
       }
@@ -749,7 +758,14 @@ export default function PlanReview({
           void fetch("/api/waitlist/transaction", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ address: ctx.address, task: "bridge", txHash: hash, chainId: ctx.chainId }),
+            body: JSON.stringify({
+              address: ctx.address,
+              task: "bridge",
+              txHash: hash,
+              chainId: ctx.chainId,
+              operation: "bridge",
+              provider: (lastIntent as Extract<Intent, { kind: "bridge" }>).provider,
+            }),
           }).catch(() => {});
         }
         if (b.provider === "cctp") {

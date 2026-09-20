@@ -2,6 +2,10 @@ import { verifyMessage, JsonRpcProvider, isAddress, isHexString } from "ethers";
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { hasArcActivity } from "@/lib/waitlist/arcMainnet";
 import { providerForChain } from "@/config/provider";
+import { getContracts } from "@/constants/registry";
+import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
+import { isKnownCctpTarget } from "@/lib/bridge/cctp";
+import { isKnownSwapRouter } from "@/lib/swap/kyberswap";
 import {
   TRANSACTION_TASK_POINTS,
   transactionTaskColumn,
@@ -13,6 +17,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Task = TransactionTask;
+type Operation = "swap" | "swapMultiHop" | "aggregatorSwap" | "bridge";
 const message = (address: string, task: Task, txHash?: string) =>
   task === "arcMainnet"
     ? `Confirm my Kaleido Arc mainnet transaction for wallet ${address}.`
@@ -52,13 +57,15 @@ export async function POST(req: Request) {
     task?: Task;
     txHash?: string;
     chainId?: number;
+    operation?: Operation;
+    provider?: string;
   };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: "bad body" }, { status: 400 });
   }
-  const { address, signature, task, txHash, chainId } = body;
+  const { address, signature, task, txHash, chainId, operation, provider } = body;
   const auto = signature === undefined;
   if (
     !address ||
@@ -71,7 +78,9 @@ export async function POST(req: Request) {
   if (
     (task === "agent" || task === "bridge") &&
     txHash &&
-    (!isHexString(txHash, 32) || !Number.isInteger(chainId))
+    (!isHexString(txHash, 32) || !Number.isInteger(chainId) ||
+      (task === "agent" && !["swap", "swapMultiHop", "aggregatorSwap"].includes(operation ?? "")) ||
+      (task === "bridge" && operation !== "bridge"))
   ) {
     return Response.json(
       { error: "transaction hash and chain are required" },
@@ -140,12 +149,35 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, already: true });
   }
 
+  let evidence: { task: Task; txHash: string; chainId: number; operation: Operation; provider: string; target: string | null } | null = null;
+
+  if (!txHash && (task === "agent" || task === "bridge")) {
+    const { data: priorEvidence } = await supabaseAdmin
+      .from("waitlist_transaction_evidence")
+      .select("task, tx_hash, chain_id, operation, provider, target")
+      .eq("wallet", wallet)
+      .eq("task", task)
+      .maybeSingle();
+    if (priorEvidence) {
+      evidence = {
+        task,
+        txHash: String(priorEvidence.tx_hash),
+        chainId: Number(priorEvidence.chain_id),
+        operation: priorEvidence.operation as Operation,
+        provider: String(priorEvidence.provider),
+        target: priorEvidence.target ? String(priorEvidence.target) : null,
+      };
+    }
+  }
+
   if (task === "arcMainnet") {
     if (!(await hasArcActivity(wallet)))
       return Response.json(
         { error: "no Arc mainnet transaction found" },
         { status: 409 },
       );
+  } else if (evidence) {
+    // A prior automatic verification already left durable evidence.
   } else if (txHash) {
     const provider = providerForChain(chainId!);
     if (!provider)
@@ -168,6 +200,34 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+    const target = (tx.to ?? "").toLowerCase();
+    let verifiedProvider: string | null = null;
+    if (task === "agent") {
+      if (operation === "aggregatorSwap" && isKnownSwapRouter(chainId!, target)) {
+        verifiedProvider = "kyberswap";
+      } else if (
+        (operation === "swap" || operation === "swapMultiHop") &&
+        getContracts(chainId!).v3Router?.toLowerCase() === target
+      ) {
+        verifiedProvider = "kaleido";
+      }
+      if (!verifiedProvider)
+        return Response.json({ error: "transaction is not a recognized Kaleido swap" }, { status: 409 });
+    } else {
+      if (provider === "cctp" && isKnownCctpTarget(target)) verifiedProvider = "cctp";
+      else if (provider === "canonical" && isKnownBridgeAddress(chainId!, target)) verifiedProvider = "canonical";
+      else if (provider === "lifi" && isKnownBridgeSpender(target) && !isKnownCctpTarget(target)) verifiedProvider = "lifi";
+      if (!verifiedProvider)
+        return Response.json({ error: "transaction is not a recognized bridge route" }, { status: 409 });
+    }
+    evidence = {
+      task,
+      txHash: txHash!,
+      chainId: chainId!,
+      operation: operation!,
+      provider: verifiedProvider,
+      target: tx.to ?? null,
+    };
   } else if (task === "agent") {
     // Manual swaps are `swap`; Luca swaps are `agent_swap`. Both satisfy the
     // waitlist's single "Make 1st transaction on Kaleido" task.
@@ -193,6 +253,27 @@ export async function POST(req: Request) {
         { error: "no qualifying bridge found" },
         { status: 409 },
       );
+  }
+
+  if (evidence) {
+    const { error: evidenceError } = await supabaseAdmin
+      .from("waitlist_transaction_evidence")
+      .upsert(
+        {
+          wallet,
+          task: evidence.task,
+          tx_hash: evidence.txHash.toLowerCase(),
+          chain_id: evidence.chainId,
+          operation: evidence.operation,
+          provider: evidence.provider,
+          target: evidence.target,
+        },
+        { onConflict: "task,wallet", ignoreDuplicates: true },
+      );
+    if (evidenceError) {
+      console.error("[waitlist/transaction] evidence insert failed:", evidenceError.message);
+      return Response.json({ error: "transaction evidence unavailable" }, { status: 503 });
+    }
   }
   const verifiedAt = new Date().toISOString();
 
