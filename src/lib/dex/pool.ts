@@ -47,9 +47,9 @@ export interface PoolState {
   tick: number;
   /**
    * token1 per token0, as the CALLER named them, in human units. Null when the
-   * tick is pinned at the clamp a drained pool stops at, because there is no
-   * price there to report — see `isTickPinned`, and the note on this function
-   * about what callers may not do with a missing price.
+   * tick is pinned at the clamp a drained pool stops at, or when the pool has
+   * zero active liquidity. In both cases there is no live market price to
+   * report — see `isTickPinned` and `hasUsablePoolPrice`.
    */
   price: number | null;
   /** Raw uint128 in-range liquidity. A pool can exist with none. */
@@ -67,6 +67,19 @@ export interface PoolState {
    * and falls back to the unprotected 0, which is those fixtures' existing shape.
    */
   sqrtPriceX96?: string;
+}
+
+/**
+ * Whether a pool has an actual market price that can centre an LP range.
+ *
+ * An initialized V3 pool can have a slot0 tick while holding zero active
+ * liquidity. That tick is only the pool's opening/stale price; it is not a
+ * tradable market and must not override an external reference price.
+ */
+export function hasUsablePoolPrice(
+  pool: Pick<PoolState, "price" | "liquidity"> | null,
+): boolean {
+  return pool !== null && pool.price !== null && pool.liquidity !== "0";
 }
 
 /**
@@ -116,6 +129,8 @@ export async function readPoolState(
     const tick = inverted ? -Number(slot0.tick) : Number(slot0.tick);
     if (!Number.isFinite(tick)) return null;
 
+    const rawLiquidity = BigInt(liquidity).toString();
+
     return {
       address,
       tick,
@@ -125,10 +140,10 @@ export async function readPoolState(
          that band, and the all-pools sweep would value the pool's unpriced leg
          off it — which is how one drained testnet pool published a $6.47e48
          headline. One refusal at the read covers all four. */
-      price: isTickPinned(tick, fee)
+      price: rawLiquidity === "0" || isTickPinned(tick, fee)
         ? null
         : tickToPrice(tick, decimalsA, decimalsB),
-      liquidity: BigInt(liquidity).toString(),
+      liquidity: rawLiquidity,
       /* The native value, un-negated — see the field's note. */
       sqrtPriceX96: BigInt(slot0.sqrtPriceX96).toString(),
     };
