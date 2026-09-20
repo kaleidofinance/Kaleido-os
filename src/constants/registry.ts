@@ -658,15 +658,25 @@ export const TOKENS: Record<number, TokenEntry[]> = {
    * KyberSwap whitelisted Arc list (the curated set the aggregator we route
    * through actually quotes), cross-checked against LI.FI’s Arc list.
    *
-   * USDC is deliberately NOT listed here: Arc's native gas token IS USDC, so
-   * `chainTokens` already prepends it (nativeCurrency, 18 decimals) and listing
-   * the 0x3600 6-decimal ERC20 face beside it would show the same dollar twice
-   * in the picker — the native-alias the swap router and Luca's balances already
-   * drop for that reason (see the Arc Testnet note). EURC and cirBTC are Circle's
-   * other Arc assets. The rest are the ecosystem majors and memes with real
-   * liquidity, ordered by market cap at capture. Third-party contracts, listed
-   * because they are tradable here — listing is not endorsement. */
+   * Arc's native gas balance and the canonical 6-decimal ERC20 face are both
+   * USDC, but they are different interfaces. DEX swaps and V3 positions must use
+   * the ERC20 face at 0x3600; native USDC remains the gas/transfer asset. The
+   * token picker and resolver therefore prefer this ERC20 for the DEX protocol
+   * while keeping the native sentinel available to non-DEX flows. EURC and cirBTC
+   * are Circle's other Arc assets. The rest are the ecosystem majors and memes
+   * with real liquidity, ordered by market cap at capture. Third-party contracts,
+   * listed because they are tradable here — listing is not endorsement. */
   [5042]: [
+    {
+      chainId: 5042,
+      /* Arc's canonical USDC ERC20 face. It shares the native currency's ticker
+       * but is the 6-decimal token contract that Uniswap and other AMMs trade. */
+      address: "0x3600000000000000000000000000000000000000",
+      symbol: "USDC",
+      name: "USD Coin",
+      decimals: 6,
+      tags: ["stablecoin", "native-alias"],
+    },
     {
       chainId: 5042,
       address: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
@@ -1039,9 +1049,22 @@ export function resolveUserToken(
   protocol: Protocol,
 ): TokenEntry | undefined {
   const native = nativeTokenOf(meta, protocol);
+  const erc20 = findTokenBySymbol(meta?.id, input);
+  /* Arc exposes USDC twice: native 18-decimal gas value and canonical 6-decimal
+     ERC20 face. DEX callers mean the ERC20 market asset; lending/transfer callers
+     retain the native-first behavior until those flows explicitly choose a face. */
+  if (
+    protocol === "dex" &&
+    meta?.id === 5042 &&
+    erc20 &&
+    native &&
+    erc20.symbol.toLowerCase() === native.symbol.toLowerCase()
+  ) {
+    return erc20;
+  }
   if (native && native.symbol.toLowerCase() === input.toLowerCase())
     return native;
-  return findTokenBySymbol(meta?.id, input);
+  return erc20;
 }
 
 /* -------------------------------------------------------- our own tokens -- */
