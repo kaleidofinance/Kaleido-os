@@ -179,14 +179,14 @@ export async function POST(req: Request) {
   } else if (evidence) {
     // A prior automatic verification already left durable evidence.
   } else if (txHash) {
-    const provider = providerForChain(chainId!);
-    if (!provider)
+    const rpc = providerForChain(chainId!);
+    if (!rpc)
       return Response.json(
         { error: "unsupported transaction chain" },
         { status: 400 },
       );
-    const tx = await (provider as JsonRpcProvider).getTransaction(txHash!);
-    const receipt = await (provider as JsonRpcProvider).getTransactionReceipt(
+    const tx = await (rpc as JsonRpcProvider).getTransaction(txHash!);
+    const receipt = await (rpc as JsonRpcProvider).getTransactionReceipt(
       txHash!,
     );
     if (
