@@ -84,6 +84,48 @@ export function isTradedTier(fee: number): boolean {
 }
 
 /**
+ * Relative difference between the opening amount ratio and a trusted market
+ * reference. Both amounts are human-unit strings in the caller's token order,
+ * so the result is token1-per-token0 just like the price feed.
+ *
+ * A null result means the check cannot be made. Callers opening a pool should
+ * refuse that case rather than silently letting the first deposit define an
+ * unpriced market.
+ */
+export function initialPriceDeviation(
+  amount0: string,
+  amount1: string,
+  referencePrice: number | null,
+): number | null {
+  const a0 = Number(amount0);
+  const a1 = Number(amount1);
+  if (
+    referencePrice === null ||
+    !Number.isFinite(referencePrice) ||
+    referencePrice <= 0 ||
+    !Number.isFinite(a0) ||
+    !Number.isFinite(a1) ||
+    a0 <= 0 ||
+    a1 <= 0
+  ) {
+    return null;
+  }
+  const ratio = a1 / a0;
+  return Number.isFinite(ratio) ? Math.abs(ratio / referencePrice - 1) : null;
+}
+
+/** Whether a first pool's opening ratio is within the allowed reference band. */
+export function isInitialPriceWithinTolerance(
+  amount0: string,
+  amount1: string,
+  referencePrice: number | null,
+  tolerance = 0.1,
+): boolean {
+  const deviation = initialPriceDeviation(amount0, amount1, referencePrice);
+  return deviation !== null && deviation <= tolerance;
+}
+
+/**
  * The tick range a choice resolves to, snapped to the tier's spacing.
  *
  * `spot` is token1 per token0 in the caller's order, or null when the pool does
@@ -146,7 +188,10 @@ export function ticksForRange(
   }
 
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo <= 0 || hi <= lo) {
-    return { error: "That range isn't a valid price band — the maximum has to be above the minimum, and both above zero." };
+    return {
+      error:
+        "That range isn't a valid price band — the maximum has to be above the minimum, and both above zero.",
+    };
   }
 
   const rawLower = priceToTick(lo, decimals0, decimals1);
