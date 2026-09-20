@@ -439,9 +439,7 @@
   white-space: nowrap;
 }
 .pairName > span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 /* The identity line under a pair name: fee, venue and now the chain tag. A flex
