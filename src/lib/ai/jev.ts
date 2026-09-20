@@ -104,12 +104,12 @@ export async function classifyLucaRoute(input: {
             "Choose the single best Luca processing path for this message.",
           criteria: {
             transaction_plan:
-              "The user clearly asks Luca to perform a DeFi action and supplies enough explicit arguments for the existing tool/parser path.",
+              "The user clearly asks Luca to perform a DeFi action and supplies enough explicit arguments for the existing tool/parser path. This includes swapping or bridging a stated amount and token, adding or removing liquidity for a stated pair, opening or closing a position, or collecting fees. Never use this route for a question about what is live or what an action would cost.",
             read_only:
               "The user asks for live wallet, pool, price, route, position, bridge, or other chain data. This includes requests to list which liquidity pools or markets are currently live, pool TVL/volume/fees, current prices, balances, or positions; these are read-only even when the answer needs a chain read tool.",
             faq: "The message is a static product or documentation question answerable without current chain data.",
             clarification:
-              "The user intent is understandable but a required token, amount, chain, or choice is missing or ambiguous.",
+              "The user intent is understandable but a required token, amount, chain, or choice is missing or ambiguous. Use this for incomplete swaps, bridges with an unclear source or destination, and liquidity requests without a pair or amount; it must remain on the normalizer/planner path until the missing detail is supplied.",
             full_reasoning:
               "The message needs strategy, comparison, multi-step reasoning, or a judgment that the quick path should not attempt.",
           },
