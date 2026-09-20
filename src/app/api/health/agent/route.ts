@@ -51,6 +51,7 @@ function authorised(request: NextRequest, secret: string): boolean {
 }
 
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 async function handle(request: NextRequest) {
   // Trimmed to match the trimmed bearer — a trailing newline in the Vercel env
@@ -83,6 +84,15 @@ async function handle(request: NextRequest) {
   let lastGoodTurnAt: string | null = null;
   let window1h: { total: number; failures: number; failureRate: number } | null =
     null;
+  let jev: {
+    windowHours: number;
+    total: number;
+    classified: number;
+    averageConfidence: number | null;
+    skippedNormalizer: number;
+    skippedRate: number;
+    routes: Record<string, number>;
+  } | null = null;
 
   if (supabaseAdmin) {
     try {
@@ -141,6 +151,51 @@ async function handle(request: NextRequest) {
     } catch {
       /* null. */
     }
+
+    try {
+      /* Jev is operational telemetry, so aggregate it here rather than
+         exposing individual turns. The endpoint is already CRON_SECRET-gated
+         and this keeps the response free of prompts, plans, and wallet data. */
+      const since = new Date(Date.now() - DAY_MS).toISOString();
+      const { data } = await supabaseAdmin
+        .from("agent_turns")
+        .select("jev_route,jev_confidence,jev_normalizer_skipped")
+        .gte("created_at", since);
+      if (Array.isArray(data)) {
+        const routes: Record<string, number> = {};
+        let classified = 0;
+        let confidenceTotal = 0;
+        let confidenceCount = 0;
+        let skippedNormalizer = 0;
+        for (const row of data) {
+          const route =
+            typeof row.jev_route === "string" ? row.jev_route : null;
+          if (route) {
+            classified += 1;
+            routes[route] = (routes[route] ?? 0) + 1;
+          }
+          const confidence = Number(row.jev_confidence);
+          if (Number.isFinite(confidence)) {
+            confidenceTotal += confidence;
+            confidenceCount += 1;
+          }
+          if (row.jev_normalizer_skipped === true) skippedNormalizer += 1;
+        }
+        jev = {
+          windowHours: 24,
+          total: data.length,
+          classified,
+          averageConfidence:
+            confidenceCount > 0 ? confidenceTotal / confidenceCount : null,
+          skippedNormalizer,
+          skippedRate:
+            data.length > 0 ? skippedNormalizer / data.length : 0,
+          routes,
+        };
+      }
+    } catch {
+      /* Migration missing or unreachable — null, without degrading health. */
+    }
   }
 
   const ok = chain.length > 0 && metered;
@@ -152,6 +207,7 @@ async function handle(request: NextRequest) {
     globalQuota,
     lastGoodTurnAt,
     window1h,
+    jev,
     checkedAt: new Date().toISOString(),
   });
 }
