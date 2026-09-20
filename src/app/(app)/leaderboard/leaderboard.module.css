@@ -285,7 +285,7 @@
 
 .contentGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 350px);
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
   align-items: start;
   gap: var(--k-s5);
 }

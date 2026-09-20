@@ -221,16 +221,19 @@ export default function LeaderboardPage() {
             season it is scoped to. */}
         {/* One card: the board headline figures + the connected wallet's own
             standing, merged from two strips into one. */}
-        <StatStrip>
-          <Stat label="Wallets ranked" value={qty(payload?.participants)} />
-          <Stat label="Season" value={payload?.season.label ?? DASH} />
-          <Stat label="Your standing" value={myStanding} />
-          <Stat label="Your points" value={myPoints} />
-        </StatStrip>
-        {myNote ? <p className={s.stripNote}>{myNote}</p> : null}
-
         <div className={s.contentGrid}>
           <div className={s.boardColumn}>
+            <StatStrip>
+              <Stat label="Wallets ranked" value={qty(payload?.participants)} />
+              <Stat label="Your standing" value={myStanding} />
+              <Stat
+                label="Your points"
+                value={myPoints}
+                icon="/email-logo.png"
+              />
+            </StatStrip>
+            {myNote ? <p className={s.stripNote}>{myNote}</p> : null}
+
             <div className={`${s.table} ${gridClass}`}>
               <div className={s.thead}>
                 <span>Rank</span>
