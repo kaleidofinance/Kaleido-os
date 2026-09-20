@@ -277,6 +277,9 @@
   color: inherit;
   text-decoration: none;
 }
+.pairCell > div:last-child {
+  min-width: 0;
+}
 .pairCell:hover .pairName {
   text-decoration: underline;
 }
@@ -431,6 +434,15 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.pairName > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* The identity line under a pair name: fee, venue and now the chain tag. A flex
    row rather than plain text because the tag carries a 14px logo that has to sit
