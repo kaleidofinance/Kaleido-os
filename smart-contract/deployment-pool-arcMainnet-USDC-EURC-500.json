@@ -1,0 +1,38 @@
+{
+  "network": "arcMainnet",
+  "chainId": 5042,
+  "timestamp": "2026-09-20T11:38:30.753Z",
+  "pool": "0x2D3a8369C1406E12756D69304e133c73E2555cd9",
+  "fee": 500,
+  "token0": {
+    "address": "0x3600000000000000000000000000000000000000",
+    "symbol": "USDC",
+    "decimals": 6
+  },
+  "token1": {
+    "address": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+    "symbol": "EURC",
+    "decimals": 6
+  },
+  "openedAt": {
+    "sqrtPriceX96": "74009466343927975022195927964",
+    "tick": -1363,
+    "liveTick": -1363
+  },
+  "oracle": {
+    "usd0": "1000000000000000000",
+    "usd1": "1146000000000000000",
+    "source0": "operator override $1.0",
+    "source1": "operator override $1.146"
+  },
+  "positions": [
+    {
+      "label": "full range",
+      "tickLower": -887270,
+      "tickUpper": 887270,
+      "tokenId": "14",
+      "tx": "0x3af374e3154963d6dcc16f1defc5d95b0f9cb33551f8cdc7369f98344d891867"
+    }
+  ],
+  "feeProtocol": null
+}
