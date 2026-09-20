@@ -17,7 +17,11 @@ import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3PositionManager } from "@/hooks/dex/useV3PositionManager";
-import { readPoolState, type PoolState } from "@/lib/dex/pool";
+import {
+  hasUsablePoolPrice,
+  readPoolState,
+  type PoolState,
+} from "@/lib/dex/pool";
 import { providerForChain } from "@/config/provider";
 import {
   SLIPPAGE_BPS,
@@ -482,14 +486,18 @@ export default function NewPositionPage() {
    * except fifty orders of magnitude out rather than four.
    */
   const poolPrice =
-    pool && pool.price !== null && pool.price > 0 ? pool.price : null;
+    hasUsablePoolPrice(pool) && pool?.price !== null && (pool?.price ?? 0) > 0
+      ? pool?.price ?? null
+      : null;
 
   /**
    * A pool that exists and declines to quote, which is a different sentence to
-   * say than "there is no pool here". `readPoolState` nulls `price` only for a
-   * pinned tick, so this is that case and no other.
+   * say than "there is no pool here". Empty initialized pools and pinned pools
+   * both decline to provide a market centre, but only the latter is a drained
+   * range-end condition.
    */
-  const poolPinned = pool !== null && pool.price === null;
+  const poolEmpty = pool !== null && pool.liquidity === "0";
+  const poolPinned = pool !== null && pool.price === null && !poolEmpty;
 
   const market: MarketPrice | null = useMemo(() => {
     if (poolPrice !== null) return { price: poolPrice, source: "pool" };
@@ -506,7 +514,7 @@ export default function NewPositionPage() {
   const amountPrice =
     poolPrice !== null
       ? poolPrice
-      : !poolLoading && pool === null
+      : !poolLoading && (pool === null || poolEmpty)
         ? feedPrice
         : null;
 
@@ -932,7 +940,9 @@ export default function NewPositionPage() {
                 {market.source === "feed"
                   ? poolPinned
                     ? " — from price feeds. This tier's pool has run to the far end of its range, so bands are unavailable"
-                    : " — from price feeds; no pool at this tier yet, so bands are unavailable"
+                    : poolEmpty
+                      ? " — from price feeds; this tier has no active liquidity, so bands are unavailable"
+                      : " — from price feeds; no pool at this tier yet, so bands are unavailable"
                   : ""}
               </>
             ) : poolPinned ? (
