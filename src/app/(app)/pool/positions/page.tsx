@@ -299,6 +299,10 @@ function PositionCard({
   const owedTotal = Number(fee0) + Number(fee1);
   const feeAmount0 = feeAmountToNumber(BigInt(fee0), decimalsFor(chainId, p.token0));
   const feeAmount1 = feeAmountToNumber(BigInt(fee1), decimalsFor(chainId, p.token1));
+  /* A wallet can still own an NFT after its pool has been drained. Keep that
+     position visible so its liquidity can be removed, but do not describe it as
+     merely out of range: a zero-liquidity pool has no active market at all. */
+  const inactive = poolState?.liquidity === "0";
   const canAdd =
     legs !== null &&
     account !== undefined &&
@@ -428,8 +432,10 @@ function PositionCard({
             V3 · {(p.fee / 10000).toFixed(2)}% fee · #{p.tokenId}
           </div>
         </div>
-        <span className={`${s.badge} ${p.inRange ? "" : s.out}`}>
-          {p.inRange ? "In range" : "Out of range"}
+        <span
+          className={`${s.badge} ${inactive ? s.inactive : p.inRange ? "" : s.out}`}
+        >
+          {inactive ? "Inactive" : p.inRange ? "In range" : "Out of range"}
         </span>
       </div>
 
