@@ -31,6 +31,7 @@ import {
 } from "@/lib/dex/deposit";
 import {
   FEE_TIERS as TRADED_TIERS,
+  isInitialPriceWithinTolerance,
   isTradedTier,
   ticksForRange,
 } from "@/lib/dex/liquidity";
@@ -304,7 +305,9 @@ export default function NewPositionPage() {
   const wrappedNative = getContracts(chainId).wrappedNative?.toLowerCase();
   const isWrapLeg = (which: "0" | "1") => {
     const token = which === "0" ? token0 : token1;
-    return Boolean(token && wrappedNative && token.address.toLowerCase() === wrappedNative);
+    return Boolean(
+      token && wrappedNative && token.address.toLowerCase() === wrappedNative,
+    );
   };
   const wrapShortfallWei = (which: "0" | "1") => {
     const token = which === "0" ? token0 : token1;
@@ -323,10 +326,13 @@ export default function NewPositionPage() {
   const [wrapping, setWrapping] = useState(false);
   const canWrap = (which: "0" | "1") => {
     const need = wrapShortfallWei(which);
-    if (!isConnected || !account || !chain || nativeUnread || !nativeToken) return false;
+    if (!isConnected || !account || !chain || nativeUnread || !nativeToken)
+      return false;
     if (!isWrapLeg(which) || need <= 0n) return false;
     try {
-      return ethers.parseUnits(nativeBalance || "0", nativeToken.decimals) >= need;
+      return (
+        ethers.parseUnits(nativeBalance || "0", nativeToken.decimals) >= need
+      );
     } catch {
       return false;
     }
@@ -338,8 +344,14 @@ export default function NewPositionPage() {
     setWrapping(true);
     try {
       const signer = toEthersSigner(account, chain);
-      const data = new ethers.Interface(["function deposit() payable"]).encodeFunctionData("deposit", []);
-      const tx = await signer.sendTransaction({ to: token.address, value: need, data });
+      const data = new ethers.Interface([
+        "function deposit() payable",
+      ]).encodeFunctionData("deposit", []);
+      const tx = await signer.sendTransaction({
+        to: token.address,
+        value: need,
+        data,
+      });
       await tx.wait();
       toast.success(`Wrapped into ${token.symbol} — 1:1, no fee.`);
       queryClient.invalidateQueries({ queryKey: ["tokenBalance"] });
@@ -487,7 +499,7 @@ export default function NewPositionPage() {
    */
   const poolPrice =
     hasUsablePoolPrice(pool) && pool?.price !== null && (pool?.price ?? 0) > 0
-      ? pool?.price ?? null
+      ? (pool?.price ?? null)
       : null;
 
   /**
@@ -736,6 +748,16 @@ export default function NewPositionPage() {
     !short1 &&
     ticks !== null;
 
+  const firstPoolNeedsReference = pool === null && feedPrice === null;
+  const firstPoolPriceOffMarket =
+    pool === null &&
+    feedPrice !== null &&
+    positive(amount0) &&
+    positive(amount1) &&
+    !isInitialPriceWithinTolerance(amount0, amount1, feedPrice);
+  const blockedByPoolSafety =
+    poolEmpty || firstPoolNeedsReference || firstPoolPriceOffMarket;
+
   const submit = async () => {
     if (
       !ready ||
@@ -747,6 +769,24 @@ export default function NewPositionPage() {
       !ticks
     )
       return;
+    if (poolEmpty) {
+      toast.error(
+        "This pool is initialized but has no active liquidity. Deposits are temporarily disabled while its opening price is retired.",
+      );
+      return;
+    }
+    if (firstPoolNeedsReference) {
+      toast.error(
+        "We cannot safely initialize this pair until a live market reference is available.",
+      );
+      return;
+    }
+    if (firstPoolPriceOffMarket) {
+      toast.error(
+        "The opening amounts are more than 10% away from the live market price. Adjust the pair before creating its first pool.",
+      );
+      return;
+    }
     setBusy(true);
     try {
       const signer = toEthersSigner(account, chain);
@@ -841,11 +881,23 @@ export default function NewPositionPage() {
           <div className={s.bl}>Pair</div>
           <div className={s.pairRow}>
             <button className={s.pairPick} onClick={() => setPickerFor("0")}>
-              <TokenIcon symbol={token0.symbol} size={24} chainId={token0.chainId} chainLabel={false} fallback={token0.symbol.slice(0, 3)} />
+              <TokenIcon
+                symbol={token0.symbol}
+                size={24}
+                chainId={token0.chainId}
+                chainLabel={false}
+                fallback={token0.symbol.slice(0, 3)}
+              />
               {token0.symbol} <Chevron />
             </button>
             <button className={s.pairPick} onClick={() => setPickerFor("1")}>
-              <TokenIcon symbol={token1.symbol} size={24} chainId={token1.chainId} chainLabel={false} fallback={token1.symbol.slice(0, 3)} />
+              <TokenIcon
+                symbol={token1.symbol}
+                size={24}
+                chainId={token1.chainId}
+                chainLabel={false}
+                fallback={token1.symbol.slice(0, 3)}
+              />
               {token1.symbol} <Chevron />
             </button>
           </div>
@@ -1001,7 +1053,13 @@ export default function NewPositionPage() {
               aria-label={`Amount of ${token0.symbol}`}
             />
             <span className={s.tkPill}>
-              <TokenIcon symbol={token0.symbol} size={20} chainId={token0.chainId} chainLabel={false} fallback={token0.symbol.slice(0, 3)} />
+              <TokenIcon
+                symbol={token0.symbol}
+                size={20}
+                chainId={token0.chainId}
+                chainLabel={false}
+                fallback={token0.symbol.slice(0, 3)}
+              />
               {token0.symbol}
             </span>
           </div>
@@ -1024,7 +1082,12 @@ export default function NewPositionPage() {
               </button>
             )}
             {canWrap("0") && (
-              <button type="button" className={s.maxChip} onClick={() => wrap("0")} disabled={wrapping}>
+              <button
+                type="button"
+                className={s.maxChip}
+                onClick={() => wrap("0")}
+                disabled={wrapping}
+              >
                 {wrapping ? "Wrapping…" : `Wrap ${token0.symbol}`}
               </button>
             )}
@@ -1042,7 +1105,13 @@ export default function NewPositionPage() {
               aria-label={`Amount of ${token1.symbol}`}
             />
             <span className={s.tkPill}>
-              <TokenIcon symbol={token1.symbol} size={20} chainId={token1.chainId} chainLabel={false} fallback={token1.symbol.slice(0, 3)} />
+              <TokenIcon
+                symbol={token1.symbol}
+                size={20}
+                chainId={token1.chainId}
+                chainLabel={false}
+                fallback={token1.symbol.slice(0, 3)}
+              />
               {token1.symbol}
             </span>
           </div>
@@ -1065,7 +1134,12 @@ export default function NewPositionPage() {
               </button>
             )}
             {canWrap("1") && (
-              <button type="button" className={s.maxChip} onClick={() => wrap("1")} disabled={wrapping}>
+              <button
+                type="button"
+                className={s.maxChip}
+                onClick={() => wrap("1")}
+                disabled={wrapping}
+              >
                 {wrapping ? "Wrapping…" : `Wrap ${token1.symbol}`}
               </button>
             )}
@@ -1101,7 +1175,11 @@ export default function NewPositionPage() {
           </div>
         ) : null}
 
-        <button className={s.cta} disabled={!ready || busy} onClick={submit}>
+        <button
+          className={s.cta}
+          disabled={!ready || busy || blockedByPoolSafety}
+          onClick={submit}
+        >
           {!isConnected
             ? "Connect wallet"
             : busy
@@ -1110,9 +1188,15 @@ export default function NewPositionPage() {
                 ? `Not enough ${token0.symbol}`
                 : short1
                   ? `Not enough ${token1.symbol}`
-                  : !ready
-                    ? "Enter an amount and range"
-                    : "Add liquidity"}
+                  : poolEmpty
+                    ? "Pool temporarily unavailable"
+                    : firstPoolNeedsReference
+                      ? "Market reference unavailable"
+                      : firstPoolPriceOffMarket
+                        ? "Adjust opening price"
+                        : !ready
+                          ? "Enter an amount and range"
+                          : "Add liquidity"}
         </button>
       </div>
 
