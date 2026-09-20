@@ -249,7 +249,7 @@
    own width (13px text in 15px of horizontal padding) with nothing spare. */
 .pools .thead,
 .pools .row {
-  grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr 0.8fr 96px;
+  grid-template-columns: minmax(260px, 1.8fr) 1fr 1fr 1fr 1fr 0.8fr 96px;
 }
 .row {
   display: grid;
@@ -274,6 +274,7 @@
   align-items: center;
   gap: var(--k-s3);
   min-width: 0;
+  overflow: hidden;
   color: inherit;
   text-decoration: none;
 }
@@ -1467,7 +1468,7 @@ a.txAction:hover {
      rather than universal. A pair name on two lines reads as two separate assets,
      and naming one pool is the whole job of this column.
 
-     WHY 240px
+     WHY 280px
 
      The identity line under the name has to clear the same bar, and it is the
      wider of the two: `0.30% · V3`, then the chain logo and its shortName.
@@ -1476,29 +1477,28 @@ a.txAction:hover {
      "BSC Testnet" and 168.9 on "Base Sepolia" — the widest of the fourteen labels
      in chains.ts, and this table lists every chain we deployed to, so that is a
      row we serve rather than a hypothetical. A 132px text box wrapped four of six
-     rows and 156px still wrapped two; 240px gives 182px, which clears the worst
-     case with 13px left over for the fallback face during the font swap. Wrapping
-     is still the graceful failure — `.pairFee` keeps its flex-wrap — but it should
-     not be the normal case, and on desktop it never was.
+     rows and 156px still wrapped two; 280px leaves room for the complete pair
+     label, both token marks and the verification tick without intruding into the
+     price column. Wrapping is still the graceful failure for the fee line —
+     `.pairFee` keeps its flex-wrap — but the pair identity itself stays intact.
 
      Fixed px rather than a wider fr because a fr track only stays aligned with the
      header's while neither hits a content minimum: pin the pair column and the
      header cannot drift no matter what a row holds. The row minimum rises by the
      same 50px the column gained, so the four figure columns stay exactly where
      they were at 87.9px each — enough for a 4dp price like `1234.5678` — and the
-     whole cost of both fixes is 90px of scroll distance, not legibility.
+     whole cost of this wider identity column is paid in horizontal scroll, not
+     legibility.
 
-     WHY 760 AND NOT 650
+     WHY 800 AND NOT 650
 
-     The Deposit button added a sixth track. 650 was 240 + four figure columns +
-     five 12px gaps; the button's 96px and its own gap take the total to 758, so
-     760. Left at 650 the six tracks would have divided the old width and taken
-     22px off each figure column, which is the price column's last two digits — the
-     scroll distance is cheap here and the columns are not. Uniswap's own mobile
-     pool table sits at 760 for the same reason. */
+     The Deposit button is still the fixed final track; 280px gives the pair cell
+     enough room for the full identity row, while the figures retain their own
+     readable tracks. The extra width is cheap horizontal scroll on mobile and
+     avoids letting the identity paint over price. */
   .pools .thead,
   .pools .row {
-    grid-template-columns: 240px 1fr 1fr 1fr 1fr 0.8fr 96px;
+    grid-template-columns: 280px 1fr 1fr 1fr 1fr 0.8fr 96px;
     min-width: 860px;
   }
   .pools .pairName {
