@@ -28,6 +28,7 @@ import {
   jevMode,
   jevReplaceMinConfidence,
   shouldSkipNormalizer,
+  type JevRoute,
 } from "@/lib/ai/jev";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
 import { auditPlan, refusalText, sanitizeGuardrails } from "@/lib/ai/auditor";
@@ -249,6 +250,9 @@ export async function POST(request: NextRequest) {
     const provider = providers[0] ?? null;
     /* When the turn started, for the latency every ending records. */
     const startedAt = Date.now();
+    let jevRoute: JevRoute | null = null;
+    let jevConfidence: number | null = null;
+    let jevNormalizerSkipped = false;
     /* The address the quota is keyed on, validated to an EIP-shaped address and
        lower-cased. Anything else is treated as no wallet — the anonymous,
        local-only branch — so a garbage string cannot become its own metered
@@ -447,7 +451,7 @@ export async function POST(request: NextRequest) {
           });
         } catch (buildErr) {
           console.error("[chat] plan build/audit failed:", buildErr);
-          await logAgentTurn({
+        await logAgentTurn({
             status: "build_error",
             provider: result.provider,
             model: result.model,
@@ -457,7 +461,10 @@ export async function POST(request: NextRequest) {
             readCount: result.trace.length,
             stream: streamed,
             chainId,
-            address: meterAddress,
+          address: meterAddress,
+          jevRoute,
+          jevConfidence,
+          jevNormalizerSkipped,
             error: String(
               (buildErr as { name?: string })?.name ?? "build_error",
             ).slice(0, 60),
@@ -603,7 +610,7 @@ export async function POST(request: NextRequest) {
            and the auditor then dropped its plan — a different fact from a clean
            answer, and one worth being able to count. failed_over is the outage
            signal: the answer came from a backend other than the primary. */
-        await logAgentTurn({
+          await logAgentTurn({
           status: verdict.ok ? "ok" : "refused",
           provider: result.provider,
           model: result.model,
@@ -617,7 +624,10 @@ export async function POST(request: NextRequest) {
           readCount: result.trace.length,
           stream: streamed,
           chainId,
-          address: meterAddress,
+            address: meterAddress,
+            jevRoute,
+            jevConfidence,
+            jevNormalizerSkipped,
         });
 
         return {
@@ -728,6 +738,9 @@ export async function POST(request: NextRequest) {
           stream: streamed,
           chainId,
           address: meterAddress,
+          jevRoute,
+          jevConfidence,
+          jevNormalizerSkipped,
           error: String(aiError?.name ?? aiError?.code ?? "error").slice(0, 60),
         });
 
@@ -785,6 +798,8 @@ export async function POST(request: NextRequest) {
           visibleTokens: chainTokens(chainId).map((token) => token.symbol),
         });
         if (jev) {
+          jevRoute = jev.route;
+          jevConfidence = jev.confidence;
           console.info("[chat] Jev route:", {
             mode: jevMode(),
             route: jev.route,
@@ -802,6 +817,7 @@ export async function POST(request: NextRequest) {
           confidence: jev?.confidence ?? null,
           minimum: jevReplaceMinConfidence(),
         });
+        jevNormalizerSkipped = skipNormalizer;
         if (skipNormalizer) {
           // Continue directly to the existing full-agent path below.
         } else {

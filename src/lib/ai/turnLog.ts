@@ -34,6 +34,12 @@ export interface AgentTurnRecord {
   address?: string | null;
   /** A short error class, never a raw message or user data. */
   error?: string | null;
+  /** Jev's typed route, when the request passed through the Jev classifier. */
+  jevRoute?: string | null;
+  /** Highest Jev route probability, not a user-visible confidence claim. */
+  jevConfidence?: number | null;
+  /** Whether replace mode bypassed the cheap normalizer for this turn. */
+  jevNormalizerSkipped?: boolean | null;
 }
 
 const hashAddress = (address?: string | null): string | null =>
@@ -62,6 +68,10 @@ export async function logAgentTurn(rec: AgentTurnRecord): Promise<void> {
       chain_id: typeof rec.chainId === "number" ? rec.chainId : null,
       asker_hash: hashAddress(rec.address),
       error: rec.error ? rec.error.slice(0, 200) : null,
+      jev_route: rec.jevRoute ?? null,
+      jev_confidence:
+        typeof rec.jevConfidence === "number" ? rec.jevConfidence : null,
+      jev_normalizer_skipped: rec.jevNormalizerSkipped ?? null,
     });
     if (error) console.error("[turnLog] insert failed:", error.message);
   } catch (err) {
