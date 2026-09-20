@@ -59,13 +59,29 @@ export async function POST(req: Request) {
     chainId?: number;
     operation?: Operation;
     provider?: string;
+    amount?: string;
+    symbol?: string;
+    sourceChainId?: number;
+    destinationChainId?: number;
   };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: "bad body" }, { status: 400 });
   }
-  const { address, signature, task, txHash, chainId, operation, provider } = body;
+  const {
+    address,
+    signature,
+    task,
+    txHash,
+    chainId,
+    operation,
+    provider,
+    amount,
+    symbol,
+    sourceChainId,
+    destinationChainId,
+  } = body;
   const auto = signature === undefined;
   if (
     !address ||
@@ -149,12 +165,25 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, already: true });
   }
 
-  let evidence: { task: Task; txHash: string; chainId: number; operation: Operation; provider: string; target: string | null } | null = null;
+  let evidence: {
+    task: Task;
+    txHash: string;
+    chainId: number;
+    operation: Operation;
+    provider: string;
+    target: string | null;
+    amount: string | null;
+    symbol: string | null;
+    sourceChainId: number | null;
+    destinationChainId: number | null;
+  } | null = null;
 
   if (!txHash && (task === "agent" || task === "bridge")) {
     const { data: priorEvidence } = await supabaseAdmin
       .from("waitlist_transaction_evidence")
-      .select("task, tx_hash, chain_id, operation, provider, target")
+      .select(
+        "task, tx_hash, chain_id, operation, provider, target, amount, symbol, source_chain_id, destination_chain_id",
+      )
       .eq("wallet", wallet)
       .eq("task", task)
       .maybeSingle();
@@ -166,6 +195,14 @@ export async function POST(req: Request) {
         operation: priorEvidence.operation as Operation,
         provider: String(priorEvidence.provider),
         target: priorEvidence.target ? String(priorEvidence.target) : null,
+        amount: priorEvidence.amount ? String(priorEvidence.amount) : null,
+        symbol: priorEvidence.symbol ? String(priorEvidence.symbol) : null,
+        sourceChainId: priorEvidence.source_chain_id
+          ? Number(priorEvidence.source_chain_id)
+          : null,
+        destinationChainId: priorEvidence.destination_chain_id
+          ? Number(priorEvidence.destination_chain_id)
+          : null,
       };
     }
   }
@@ -227,6 +264,10 @@ export async function POST(req: Request) {
       operation: operation!,
       provider: verifiedProvider,
       target: tx.to ?? null,
+      amount: amount ?? null,
+      symbol: symbol ?? null,
+      sourceChainId: sourceChainId ?? (task === "bridge" ? chainId! : null),
+      destinationChainId: destinationChainId ?? null,
     };
   } else if (task === "agent") {
     // Manual swaps are `swap`; Luca swaps are `agent_swap`. Both satisfy the
@@ -267,6 +308,10 @@ export async function POST(req: Request) {
           operation: evidence.operation,
           provider: evidence.provider,
           target: evidence.target,
+          amount: evidence.amount,
+          symbol: evidence.symbol,
+          source_chain_id: evidence.sourceChainId,
+          destination_chain_id: evidence.destinationChainId,
         },
         { onConflict: "task,wallet", ignoreDuplicates: true },
       );

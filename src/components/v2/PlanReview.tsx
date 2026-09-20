@@ -534,6 +534,10 @@ export default function PlanReview({
               chainId: ctx.chainId,
               operation: "bridge",
               provider: (intents[i] as Extract<Intent, { kind: "bridge" }>).provider,
+              amount: (intents[i] as Extract<Intent, { kind: "bridge" }>).amount,
+              symbol: (intents[i] as Extract<Intent, { kind: "bridge" }>).symbol,
+              sourceChainId: (intents[i] as Extract<Intent, { kind: "bridge" }>).fromChainId,
+              destinationChainId: (intents[i] as Extract<Intent, { kind: "bridge" }>).toChainId,
             }),
           }).catch(() => {});
         }
@@ -765,6 +769,10 @@ export default function PlanReview({
               chainId: ctx.chainId,
               operation: "bridge",
               provider: (lastIntent as Extract<Intent, { kind: "bridge" }>).provider,
+              amount: (lastIntent as Extract<Intent, { kind: "bridge" }>).amount,
+              symbol: (lastIntent as Extract<Intent, { kind: "bridge" }>).symbol,
+              sourceChainId: (lastIntent as Extract<Intent, { kind: "bridge" }>).fromChainId,
+              destinationChainId: (lastIntent as Extract<Intent, { kind: "bridge" }>).toChainId,
             }),
           }).catch(() => {});
         }
