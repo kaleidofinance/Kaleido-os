@@ -84,6 +84,7 @@ import { createPoolStore } from "@/lib/dex/poolDiscovery";
 import { fetchSpotPricesSoon, priceLookup } from "@/lib/market/spot";
 import { MOCK_DATA } from "@/lib/mock";
 import { sweepChain } from "@/lib/dex/poolSweep";
+import { hasActiveLiquidity } from "@/lib/dex/pool";
 
 const CACHE_DURATION = 30_000;
 
@@ -92,7 +93,6 @@ const CACHE_DURATION = 30_000;
  * Keyed by chain inside, so one chain's pools can land while another is still
  * being read — see createPoolStore. */
 const store = createPoolStore(CACHE_DURATION);
-
 
 export interface V3PoolsResult {
   pools: ITradingPair[];
@@ -116,73 +116,76 @@ export function useV3Pools(): V3PoolsResult {
      hold the first chain's rows while the rest arrived for someone else. */
   useEffect(() => store.subscribe(setPools), []);
 
-  const fetchPools = useCallback(async (force = false) => {
-    /* Demo mode has no V3 fixtures. Returning nothing rather than borrowing
+  const fetchPools = useCallback(
+    async (force = false) => {
+      /* Demo mode has no V3 fixtures. Returning nothing rather than borrowing
        MOCK_POOLS: those are V2 pairs with V2 addresses, and relabelling them
        would put the same pool on the table twice under two badges. */
-    if (MOCK_DATA) {
-      setPools([]);
-      setError(null);
-      setLoading(false);
-      return;
-    }
+      if (MOCK_DATA) {
+        setPools([]);
+        setError(null);
+        setLoading(false);
+        return;
+      }
 
-    try {
-      /* Refresh in the background once a snapshot exists. Toggling loading here
+      try {
+        /* Refresh in the background once a snapshot exists. Toggling loading here
          makes the pool table visibly flash/rebuild every 30 seconds even when
          the server returns the same cached snapshot. */
-      if (store.snapshot().length === 0) setLoading(true);
-      setError(null);
+        if (store.snapshot().length === 0) setLoading(true);
+        setError(null);
 
-      /* Mainnet-first is the default, and /api/pools serves exactly that set —
+        /* Mainnet-first is the default, and /api/pools serves exactly that set —
          swept once on the server and shared across every tab, instead of every
          browser fanning hundreds of getPool calls into Arc's rate-limited RPC.
          Try it first; on any failure (or a testnet viewer, whom the endpoint does
          not serve) fall through to the client sweep below, unchanged. */
-      if (!showTestnets && !MOCK_DATA) {
-        try {
-          const res = await fetch("/api/pools", { cache: "no-store" });
-          if (res.ok) {
-            const body = (await res.json()) as {
-              pools?: ITradingPair[];
-              error?: string;
-            };
-            if (Array.isArray(body.pools) && !body.error) {
-              store.replace(body.pools);
-              setPools(store.snapshot());
-              return;
+        if (!showTestnets && !MOCK_DATA) {
+          try {
+            const res = await fetch("/api/pools", { cache: "no-store" });
+            if (res.ok) {
+              const body = (await res.json()) as {
+                pools?: ITradingPair[];
+                error?: string;
+              };
+              if (Array.isArray(body.pools) && !body.error) {
+                store.replace(body.pools);
+                setPools(store.snapshot());
+                return;
+              }
             }
+          } catch {
+            /* Endpoint unreachable — fall through to the client sweep. */
           }
-        } catch {
-          /* Endpoint unreachable — fall through to the client sweep. */
         }
-      }
 
-      /* Prices once for the whole sweep, then one call per chain. The price table
+        /* Prices once for the whole sweep, then one call per chain. The price table
          is keyed by symbol and has no cache of its own, so fetching it inside the
          per-chain work would hit /api/prices/spot five times for one answer. */
-      setPools(
-        await store.sweep(
-          async () => priceLookup(await fetchSpotPricesSoon()),
-          (chain, priceOf) => sweepChain(chain, priceOf),
-          force,
-          /* Mainnet-first: don't sweep testnet RPCs when they're hidden — see
+        setPools(
+          await store.sweep(
+            async () => priceLookup(await fetchSpotPricesSoon()),
+            (chain, priceOf) => sweepChain(chain, priceOf),
+            force,
+            /* Mainnet-first: don't sweep testnet RPCs when they're hidden — see
              PoolStore.sweep. Reading them 429'd five testnet endpoints and hung
              the table for a viewer who could only see mainnet rows anyway. */
-          !showTestnets,
-        ),
-      );
-    } catch (err) {
-      /* Only reached when every chain failed — see PoolStore.sweep. A single dead
+            !showTestnets,
+          ),
+        );
+      } catch (err) {
+        /* Only reached when every chain failed — see PoolStore.sweep. A single dead
          endpoint is logged there and leaves the other chains' rows on screen. */
-      console.error("Error fetching V3 pools:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch V3 pools",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [showTestnets]);
+        console.error("Error fetching V3 pools:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch V3 pools",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [showTestnets],
+  );
 
   useEffect(() => {
     fetchPools();
@@ -192,7 +195,9 @@ export function useV3Pools(): V3PoolsResult {
 
   return {
     pools: pools.filter(
-      (p) => showTestnets || CHAINS_BY_ID[p.chainId]?.network === "mainnet",
+      (p) =>
+        hasActiveLiquidity(p) &&
+        (showTestnets || CHAINS_BY_ID[p.chainId]?.network === "mainnet"),
     ),
     loading,
     error,

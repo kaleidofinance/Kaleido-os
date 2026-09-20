@@ -82,6 +82,13 @@ export function hasUsablePoolPrice(
   return pool !== null && pool.price !== null && pool.liquidity !== "0";
 }
 
+/** Whether a discovered pool has active in-range liquidity. */
+export function hasActiveLiquidity(
+  pool: Pick<PoolState, "liquidity"> | { liquidity: number | null },
+): boolean {
+  return pool.liquidity !== "0" && pool.liquidity !== 0;
+}
+
 /**
  * The pool for a pair and fee tier, or `null` when there isn't one.
  *
@@ -140,9 +147,10 @@ export async function readPoolState(
          that band, and the all-pools sweep would value the pool's unpriced leg
          off it — which is how one drained testnet pool published a $6.47e48
          headline. One refusal at the read covers all four. */
-      price: rawLiquidity === "0" || isTickPinned(tick, fee)
-        ? null
-        : tickToPrice(tick, decimalsA, decimalsB),
+      price:
+        rawLiquidity === "0" || isTickPinned(tick, fee)
+          ? null
+          : tickToPrice(tick, decimalsA, decimalsB),
       liquidity: rawLiquidity,
       /* The native value, un-negated — see the field's note. */
       sqrtPriceX96: BigInt(slot0.sqrtPriceX96).toString(),
