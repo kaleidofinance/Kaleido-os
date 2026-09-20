@@ -287,6 +287,7 @@ export const GENERATED_SEEDED_POOLS: Record<number, string[]> = {
     "0xE52C6AaBe6B6C0E2cfA8A589ad7182FD65fBe04d",
   ],
   5042: [
+    "0x2D3a8369C1406E12756D69304e133c73E2555cd9",
     "0x542E6E2256270215d667ED43e65d4def8295164a",
     "0x8a02d189B74cC725A632107Ef3A850F3cDd942Ca",
   ],
@@ -325,7 +326,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-19T22:14:21.882Z",
+  generatedAt: "2026-09-20T11:39:36.945Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -357,6 +358,7 @@ export const GENERATED_META: {
     "deployment-orders-bscTestnet.json",
     "deployment-orders-robinhoodTestnet.json",
     "deployment-orders-sepolia.json",
+    "deployment-pool-arcMainnet-USDC-EURC-500.json",
     "deployment-pool-arcMainnet-WETH-EURC-3000.json",
     "deployment-pool-arcMainnet-cirBTC-WETH-3000.json",
     "deployment-pool-arcTestnet-USDT-KLD-3000.json",
