@@ -360,8 +360,8 @@
   list-style: none;
   margin: var(--k-s2) 0 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 .rewardTask {
@@ -370,6 +370,7 @@
   justify-content: space-between;
   gap: var(--k-s2);
   padding: 9px 10px;
+  min-height: 64px;
   border-radius: var(--k-r-md);
   background: var(--k-glass-deep);
 }
@@ -382,6 +383,7 @@
 .rewardTask strong {
   font-size: var(--k-fs-sm);
   font-weight: var(--k-fw-med);
+  line-height: 1.2;
   color: var(--k-t1);
 }
 .rewardTask span {
@@ -448,4 +450,7 @@
 }
 
 @media (max-width: 720px) {
+  .rewardTasks {
+    grid-template-columns: 1fr;
+  }
 }

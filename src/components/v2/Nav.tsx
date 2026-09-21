@@ -367,7 +367,12 @@ export default function Nav() {
 
   const openConnect = async () => {
     try {
-      await connect({ client, wallets: WALLETS, size: "compact", appMetadata: APP_METADATA });
+      await connect({
+        client,
+        wallets: WALLETS,
+        size: "compact",
+        appMetadata: APP_METADATA,
+      });
     } catch {
       /* Closing the modal rejects, and so does a wallet declining. Neither is
          worth a toast — the user did it on purpose. The one case worth naming
@@ -447,9 +452,6 @@ export default function Nav() {
         </div>
 
         <div className={styles.right}>
-          <button className={styles.icon} aria-label="Search">
-            ⌕
-          </button>
           <NotificationBell />
           <ThemeToggle />
           {/* Disconnected, this button names no chain and draws no mark: it is
@@ -506,22 +508,24 @@ export default function Nav() {
       {/* Bottom tab bar — phones only. Thumb-reachable, and it survives the
           top strip scrolling out of view. */}
       <div className={styles.tabbar} role="navigation" aria-label="Primary">
-        {visibleLinks.filter((l) => l.primary).map((l) => {
-          const active = isActive(l, pathname);
-          return (
-            <Link
-              key={l.href}
-              href={l.href}
-              className={`${styles.tab} ${active ? styles.tabOn : ""}`}
-              aria-current={active ? "page" : undefined}
-            >
-              <span className={styles.tabIcon}>
-                <SectionIcon kind={l.icon} />
-              </span>
-              <span className={styles.tabLabel}>{l.label}</span>
-            </Link>
-          );
-        })}
+        {visibleLinks
+          .filter((l) => l.primary)
+          .map((l) => {
+            const active = isActive(l, pathname);
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={`${styles.tab} ${active ? styles.tabOn : ""}`}
+                aria-current={active ? "page" : undefined}
+              >
+                <span className={styles.tabIcon}>
+                  <SectionIcon kind={l.icon} />
+                </span>
+                <span className={styles.tabLabel}>{l.label}</span>
+              </Link>
+            );
+          })}
         {/* The sixth column, and it is conditional on there being something to
             put in it: with every link marked `primary` this would open an empty
             sheet, and a bar of six where one does nothing is worse than a bar of
