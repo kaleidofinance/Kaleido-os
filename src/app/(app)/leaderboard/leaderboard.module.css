@@ -407,6 +407,20 @@
   font-size: var(--k-fs-xs);
   cursor: pointer;
 }
+.taskHashInput {
+  width: 132px;
+  min-width: 0;
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-pill);
+  padding: 7px 9px;
+  background: var(--k-glass);
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+}
+.taskHashInput::placeholder {
+  color: var(--k-t3);
+}
 .taskButton:disabled {
   opacity: 0.55;
   cursor: default;
