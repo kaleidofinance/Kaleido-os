@@ -2595,5 +2595,49 @@ console.log("swap resolves relative amounts; other verbs escalate");
   check("'how much usdc should i swap' is not a portfolio read", p("how much usdc should i swap").status !== "ok" || p("how much usdc should i swap").command.kind !== "portfolio", p("how much usdc should i swap").status);
 }
 
+console.log("\n— wrap / unwrap as a local verb —");
+{
+  /* A chain that HAS a wrap concept: a native token and a wrapped-native one. */
+  const WRAP_TOKENS = [
+    { address: "0xnat", name: "USD Coin", symbol: "USDC", decimals: 18, chainId: 5042, isNative: true },
+    { address: "0xwusdc", name: "Wrapped USDC", symbol: "WUSDC", decimals: 18, chainId: 5042, tags: ["wrapped-native"] },
+    { address: "0xeurc", name: "Euro Coin", symbol: "EURC", decimals: 6, chainId: 5042, tags: ["stablecoin"] },
+  ];
+  const pw = (text) => parseCommand(text, WRAP_TOKENS);
+
+  {
+    const r = pw("wrap 10 usdc");
+    check("'wrap 10 usdc' is a native->wrapped swap", r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn.symbol === "USDC" && r.command.tokenOut.symbol === "WUSDC", r.status === "ok" ? `${r.command.tokenIn?.symbol}->${r.command.tokenOut?.symbol}` : r.status);
+    check("'wrap 10 usdc' keeps the amount", r.status === "ok" && r.command.amount === "10");
+  }
+  {
+    const r = pw("wrap 5");
+    check("'wrap 5' (no token) still wraps native->wrapped", r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn.symbol === "USDC" && r.command.tokenOut.symbol === "WUSDC" && r.command.amount === "5");
+  }
+  {
+    const r = pw("unwrap 7 wusdc");
+    check("'unwrap 7 wusdc' is a wrapped->native swap", r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn.symbol === "WUSDC" && r.command.tokenOut.symbol === "USDC" && r.command.amount === "7", r.status === "ok" ? `${r.command.tokenIn?.symbol}->${r.command.tokenOut?.symbol}` : r.status);
+  }
+  {
+    /* Relative / no amount needs the balance - left to the model, not a local dead end. */
+    const r = pw("wrap all my usdc");
+    check("'wrap all my usdc' is not caught locally (needs the balance)", !(r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn?.symbol === "USDC" && r.command.tokenOut?.symbol === "WUSDC"), r.status);
+  }
+  {
+    /* A normal swap on the same chain is untouched by parseWrap. */
+    const r = pw("swap 500 usdc to eurc");
+    check("a plain swap is unaffected", r.status === "ok" && r.command.kind === "swap" && r.command.tokenOut.symbol === "EURC", r.status);
+  }
+  {
+    check("a how-to question is not a wrap command", pw("how do i wrap usdc").status !== "ok" || pw("how do i wrap usdc").command.kind !== "swap");
+  }
+  {
+    /* A chain with no wrapped-native token: wrap falls through to the model. */
+    const NO_WRAP = [{ address: "0xk", name: "Kaleido", symbol: "KLD", decimals: 18, chainId: 1 }];
+    const r = parseCommand("wrap 10 kld", NO_WRAP);
+    check("no wrapped-native on the chain -> not a local wrap", !(r.status === "ok" && r.command.kind === "swap"), r.status);
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
