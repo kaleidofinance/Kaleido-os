@@ -559,6 +559,21 @@ export default function PlanReview({
             symbol: b.symbol,
             burnedAt: Date.now(),
           });
+        } else if (b.provider === "lifi") {
+          /* Log the routed (LI.FI) bridge so its volume and our integrator fee
+             reach the pool page's platform totals. Fire-and-forget, chain-
+             verified server-side; a failure never touches the completed bridge. */
+          void fetch("/api/bridge/record", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              txHash: result.hash,
+              sourceChainId: b.fromChainId,
+              wallet: ctx.address,
+              amount: b.amount,
+              symbol: b.symbol,
+            }),
+          }).catch(() => {});
         }
       }
       return pauseAfter(i, !!result.skipped) ? "paused" : "done";
@@ -786,6 +801,21 @@ export default function PlanReview({
             symbol: b.symbol,
             burnedAt: Date.now(),
           });
+        } else if (b.provider === "lifi") {
+          /* Log the routed (LI.FI) bridge so its volume and our integrator fee
+             reach the pool page's platform totals. Fire-and-forget, chain-
+             verified server-side; a failure never touches the completed bridge. */
+          void fetch("/api/bridge/record", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              txHash: hash,
+              sourceChainId: b.fromChainId,
+              wallet: ctx.address,
+              amount: b.amount,
+              symbol: b.symbol,
+            }),
+          }).catch(() => {});
         }
       }
     }
