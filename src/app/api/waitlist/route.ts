@@ -72,6 +72,41 @@ function xTaskState(at: string | null, now: number) {
   };
 }
 
+/**
+ * Activated wallets can earn additional referrals or X tasks after their first
+ * waitlist credit. Reconcile the positive delta into the canonical Season 1
+ * ledger so the waitlist card and leaderboard cannot drift apart.
+ */
+async function reconcileActivatedPoints(wallet: string, eligible: number) {
+  const admin = supabaseAdmin!;
+  const { data, error } = await admin
+    .from("point_actions")
+    .select("points")
+    .eq("wallet", wallet)
+    .eq("source_slug", "waitlist")
+    .eq("season", 1);
+  if (error) return;
+  const credited = (data ?? []).reduce(
+    (sum, row) => sum + Number(row.points ?? 0),
+    0,
+  );
+  const delta = eligible - credited;
+  if (delta <= 0) return;
+
+  await admin.from("point_actions").insert({
+    wallet,
+    source_slug: "waitlist",
+    season: 1,
+    tx_hash: `waitlist:reconcile:${wallet}:${eligible}`,
+    chain_id: 5042,
+    usd_value: 0,
+    multiplier_applied: 1.0,
+    points: delta,
+    is_agent_initiated: false,
+    occurred_at: new Date().toISOString(),
+  });
+}
+
 // Core columns, always present. X-task and transaction columns were added by
 // later migrations; the fallback must stay genuinely core-only so an older
 // production database can still find an existing wallet instead of attempting a
@@ -158,6 +193,9 @@ async function standing(wallet: string) {
 
   const welcomePoints = Number(row.welcome_points);
   const transactionPoints = transactionTaskPointsFor(row);
+  const eligiblePoints =
+    welcomePoints + referralPoints + countedX + transactionPoints;
+  if (row.activated_at) await reconcileActivatedPoints(wallet, eligiblePoints);
   return {
     wallet,
     refCode: row.ref_code as string,
@@ -165,7 +203,7 @@ async function standing(wallet: string) {
     rank: lb?.rank ?? null,
     // The displayed balance: welcome + referral + X-task kPoint that has cleared
     // its hold. heldPoints is the X-task kPoint still counting down.
-    points: welcomePoints + referralPoints + countedX + transactionPoints,
+    points: eligiblePoints,
     heldPoints,
     welcomePoints,
     referralPoints,

@@ -251,6 +251,12 @@
   font-size: var(--k-fs-xs);
   color: var(--k-t3);
 }
+.pendingPoints {
+  margin: -4px 2px 0;
+  color: var(--k-brand);
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+}
 
 /* ---------- pagination ---------- */
 .pager {

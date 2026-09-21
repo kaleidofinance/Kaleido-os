@@ -45,7 +45,7 @@ import type {
   LeaderboardPayload,
   LeaderboardRow,
 } from "@/lib/points/leaderboard";
-import RewardsPanel from "./RewardsPanel";
+import RewardsPanel, { PendingPoints } from "./RewardsPanel";
 import s from "./leaderboard.module.css";
 
 /** Enough of an address to recognise, on a page that is a list of them. */
@@ -232,6 +232,7 @@ export default function LeaderboardPage() {
                 icon="/email-logo.png"
               />
             </StatStrip>
+            <PendingPoints />
             {myNote ? <p className={s.stripNote}>{myNote}</p> : null}
 
             <div className={`${s.table} ${gridClass}`}>

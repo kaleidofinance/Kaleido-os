@@ -39,6 +39,38 @@ type Status = {
   >;
 } | null;
 
+export function PendingPoints() {
+  const account = useActiveAccount();
+  const [held, setHeld] = useState(0);
+
+  const loadPending = useCallback(async () => {
+    if (!account?.address) {
+      setHeld(0);
+      return;
+    }
+    const res = await fetch(`/api/waitlist?wallet=${account.address}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    setHeld(Number(data?.heldPoints ?? 0));
+  }, [account?.address]);
+
+  useEffect(() => {
+    void loadPending();
+    const refresh = () => void loadPending();
+    window.addEventListener("kaleido:tasks-updated", refresh);
+    return () => window.removeEventListener("kaleido:tasks-updated", refresh);
+  }, [loadPending]);
+
+  if (held <= 0) return null;
+  return (
+    <p className={s.pendingPoints}>
+      +{held.toLocaleString()} points pending · available after the 5-hour hold
+    </p>
+  );
+}
+
 const announceTweet = "2101296214293500009";
 const xMessage = (address: string, task: string) =>
   task === "link"
@@ -137,6 +169,7 @@ export default function RewardsPanel() {
       if (!res.ok) throw new Error(data?.error || "Could not enable tasks.");
       setRegistered(true);
       setStatus(data);
+      window.dispatchEvent(new Event("kaleido:tasks-updated"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not enable tasks.");
     } finally {
@@ -162,6 +195,7 @@ export default function RewardsPanel() {
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Could not verify X task.");
         await load();
+        window.dispatchEvent(new Event("kaleido:tasks-updated"));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not verify X task.");
       } finally {
@@ -195,6 +229,7 @@ export default function RewardsPanel() {
         if (!res.ok)
           throw new Error(data?.error || "Transaction not verified.");
         await load();
+        window.dispatchEvent(new Event("kaleido:tasks-updated"));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Transaction not verified.");
       } finally {
