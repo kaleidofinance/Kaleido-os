@@ -12,6 +12,7 @@ import { defineChain } from "thirdweb/chains";
 import { client } from "@/config/client";
 import { APP_METADATA, WALLETS } from "@/config/wallets";
 import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
+import { readTxLog, type TxLogEntry } from "@/lib/v2/txLog";
 import s from "./leaderboard.module.css";
 
 const ARC_CHAIN = defineChain(toThirdwebChainOptions(CHAINS_BY_ID[5042]));
@@ -71,11 +72,17 @@ const xMessage = (address: string, task: string) =>
   task === "link"
     ? `Link my X account to the Kaleido wallet ${address}.`
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
-const txMessage = (address: string, task: "arcMainnet" | "agent" | "bridge") =>
+const txMessage = (
+  address: string,
+  task: "arcMainnet" | "agent" | "bridge",
+  txHash?: string,
+) =>
   task === "arcMainnet"
     ? `Confirm my Kaleido Arc mainnet transaction for wallet ${address}.`
     : task === "agent"
-      ? `Confirm my first Kaleido agent transaction for wallet ${address}.`
+      ? txHash
+        ? `Confirm my first Kaleido agent transaction ${txHash} for wallet ${address}.`
+        : `Confirm my first Kaleido agent transaction for wallet ${address}.`
       : `Confirm my first Kaleido bridge transaction for wallet ${address}.`;
 
 export default function RewardsPanel() {
@@ -89,6 +96,8 @@ export default function RewardsPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   const [txOpened, setTxOpened] = useState({ agent: false, bridge: false });
+  const [txHashInputs, setTxHashInputs] = useState({ agent: "", bridge: "" });
+  const [txLog, setTxLog] = useState<TxLogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const address = account?.address;
@@ -136,6 +145,31 @@ export default function RewardsPanel() {
         ) === "1",
     });
   }, [address]);
+
+  useEffect(() => {
+    setTxLog(readTxLog(activeChain?.id, address));
+  }, [activeChain?.id, address]);
+
+  const txCandidates = useMemo(() => {
+    const find = (task: "agent" | "bridge") => {
+      const entry = txLog.find((item) => {
+        if (item.status !== "confirmed") return false;
+        if (task === "bridge") return item.kind === "bridge";
+        return (
+          item.kind === "swap" ||
+          item.kind === "swapMultiHop" ||
+          item.kind === "aggregatorSwap"
+        );
+      });
+      return entry
+        ? {
+            hash: entry.hash,
+            operation: task === "bridge" ? "bridge" : entry.kind,
+          }
+        : null;
+    };
+    return { agent: find("agent"), bridge: find("bridge") } as const;
+  }, [txLog]);
 
   const ensureArc = useCallback(async () => {
     if (activeChain?.id !== 5042) await switchChain(ARC_CHAIN);
@@ -212,8 +246,17 @@ export default function RewardsPanel() {
       setError(null);
       try {
         if (task === "arcMainnet") await ensureArc();
+        const inputHash = task === "arcMainnet" ? "" : txHashInputs[task];
+        const candidate = task === "arcMainnet" ? null : txCandidates[task];
+        const txHash = inputHash.trim() || candidate?.hash;
+        const operation =
+          task === "agent"
+            ? (candidate?.operation ?? "swap")
+            : task === "bridge"
+              ? "bridge"
+              : undefined;
         const signature = await account.signMessage({
-          message: txMessage(account.address, task),
+          message: txMessage(account.address, task, txHash),
         });
         const res = await fetch("/api/waitlist/transaction", {
           method: "POST",
@@ -223,6 +266,7 @@ export default function RewardsPanel() {
             signature,
             task,
             chainId: activeChain?.id,
+            ...(txHash ? { txHash, operation } : {}),
           }),
         });
         const data = await res.json();
@@ -236,7 +280,15 @@ export default function RewardsPanel() {
         setBusy(null);
       }
     },
-    [account, activeChain?.id, connectWallet, ensureArc, load],
+    [
+      account,
+      activeChain?.id,
+      connectWallet,
+      ensureArc,
+      load,
+      txCandidates,
+      txHashInputs,
+    ],
   );
 
   const refLink = useMemo(() => {
@@ -283,13 +335,34 @@ export default function RewardsPanel() {
       {done ? (
         <span className={s.taskDone}>✓</span>
       ) : (
-        <button
-          className={s.taskButton}
-          onClick={action}
-          disabled={busy !== null}
-        >
-          {busy === id ? "Checking…" : label}
-        </button>
+        <>
+          {id === "agent" || id === "bridge" ? (
+            <input
+              className={s.taskHashInput}
+              value={txHashInputs[id]}
+              onChange={(event) =>
+                setTxHashInputs((current) => ({
+                  ...current,
+                  [id]: event.target.value,
+                }))
+              }
+              placeholder={
+                txCandidates[id]
+                  ? "Using latest tx"
+                  : "Paste tx hash (optional)"
+              }
+              aria-label={`${title} transaction hash`}
+              spellCheck={false}
+            />
+          ) : null}
+          <button
+            className={s.taskButton}
+            onClick={action}
+            disabled={busy !== null}
+          >
+            {busy === id ? "Checking…" : label}
+          </button>
+        </>
       )}
     </li>
   );

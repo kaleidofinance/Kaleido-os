@@ -12,6 +12,7 @@ import { defineChain } from "thirdweb/chains";
 import { client } from "@/config/client";
 import { WALLETS, APP_METADATA } from "@/config/wallets";
 import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
+import { readTxLog, type TxLogEntry } from "@/lib/v2/txLog";
 import s from "./waitlist.module.css";
 
 /**
@@ -20,7 +21,9 @@ import s from "./waitlist.module.css";
  * chain comes from the same global registry as the rest of the app.
  */
 const ARC_CHAIN_ID = 5042;
-const ARC_CHAIN = defineChain(toThirdwebChainOptions(CHAINS_BY_ID[ARC_CHAIN_ID]));
+const ARC_CHAIN = defineChain(
+  toThirdwebChainOptions(CHAINS_BY_ID[ARC_CHAIN_ID]),
+);
 
 type XTask = { done: boolean; counted: boolean; countsAt: string | null };
 type Status = {
@@ -59,8 +62,10 @@ const X_HANDLE = "kaleido_finance";
 const ANNOUNCE_TWEET_ID =
   process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
 const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
-const agentOpenedKey = (address: string) => `kaleido.waitlist.agent-opened:${address.toLowerCase()}`;
-const bridgeOpenedKey = (address: string) => `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
+const agentOpenedKey = (address: string) =>
+  `kaleido.waitlist.agent-opened:${address.toLowerCase()}`;
+const bridgeOpenedKey = (address: string) =>
+  `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
 /** Must match the message the API rebuilds and verifies. */
 const joinMessage = (address: string) =>
@@ -71,7 +76,11 @@ const xTaskMessage = (address: string, task: XTaskKey) =>
   task === "link"
     ? `Link my X account to the Kaleido waitlist wallet ${address}.`
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
-const transactionTaskMessage = (address: string, task: "arcMainnet" | "agent" | "bridge", txHash?: string) =>
+const transactionTaskMessage = (
+  address: string,
+  task: "arcMainnet" | "agent" | "bridge",
+  txHash?: string,
+) =>
   task === "arcMainnet"
     ? `Confirm my Kaleido Arc mainnet transaction for wallet ${address}.`
     : task === "agent"
@@ -115,9 +124,13 @@ export default function WaitlistPage() {
     launch: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
-  const [transactionBusy, setTransactionBusy] = useState<"arcMainnet" | "agent" | "bridge" | null>(null);
+  const [transactionBusy, setTransactionBusy] = useState<
+    "arcMainnet" | "agent" | "bridge" | null
+  >(null);
   const [agentOpened, setAgentOpened] = useState(false);
   const [bridgeOpened, setBridgeOpened] = useState(false);
+  const [txHashInputs, setTxHashInputs] = useState({ agent: "", bridge: "" });
+  const [txLog, setTxLog] = useState<TxLogEntry[]>([]);
 
   useEffect(() => {
     try {
@@ -146,7 +159,9 @@ export default function WaitlistPage() {
     setStatusReady(false);
     setStatusError(null);
     try {
-      const res = await fetch(`/api/waitlist?wallet=${addr}`, { cache: "no-store" });
+      const res = await fetch(`/api/waitlist?wallet=${addr}`, {
+        cache: "no-store",
+      });
       const d = await res.json();
       if (!res.ok) throw new Error(d?.error || "Could not load waitlist.");
       setStatus(d && d.refCode ? d : null);
@@ -162,6 +177,10 @@ export default function WaitlistPage() {
   }, [account?.address]);
 
   useEffect(() => {
+    setTxLog(readTxLog(activeChain?.id, account?.address));
+  }, [activeChain?.id, account?.address]);
+
+  useEffect(() => {
     void loadStatus();
   }, [loadStatus]);
 
@@ -171,8 +190,12 @@ export default function WaitlistPage() {
       setBridgeOpened(false);
       return;
     }
-    setAgentOpened(window.localStorage.getItem(agentOpenedKey(account.address)) === "1");
-    setBridgeOpened(window.localStorage.getItem(bridgeOpenedKey(account.address)) === "1");
+    setAgentOpened(
+      window.localStorage.getItem(agentOpenedKey(account.address)) === "1",
+    );
+    setBridgeOpened(
+      window.localStorage.getItem(bridgeOpenedKey(account.address)) === "1",
+    );
   }, [account?.address]);
 
   // Is an X account linked in this browser (the OAuth cookie is set)? Drives
@@ -253,7 +276,11 @@ export default function WaitlistPage() {
         else await loadStatus();
       } catch (e) {
         const msg = e instanceof Error ? e.message : "";
-        setError(/reject|denied/i.test(msg) ? "Signature rejected." : "Something went wrong.");
+        setError(
+          /reject|denied/i.test(msg)
+            ? "Signature rejected."
+            : "Something went wrong.",
+        );
       } finally {
         setXBusy(null);
       }
@@ -261,26 +288,76 @@ export default function WaitlistPage() {
     [account, loadStatus, ensureArc],
   );
 
-  const verifyTransactionTask = useCallback(async (task: "arcMainnet" | "agent" | "bridge") => {
-    if (!account || transactionBusy) return;
-    setTransactionBusy(task);
-    setError(null);
-    try {
-      if (task === "arcMainnet") await ensureArc();
-      const signature = await account.signMessage({ message: transactionTaskMessage(account.address, task) });
-      const res = await fetch("/api/waitlist/transaction", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ address: account.address, signature, task, chainId: activeChain?.id }),
-      });
-      const d = await res.json();
-      if (!res.ok) setError(d.error || "Transaction not verified.");
-      else await loadStatus();
-    } catch (e) {
-      setError(e instanceof Error && /reject|denied/i.test(e.message) ? "Signature rejected." : "Could not verify transaction.");
-    } finally {
-      setTransactionBusy(null);
-    }
-  }, [account, activeChain?.id, ensureArc, loadStatus, transactionBusy]);
+  const verifyTransactionTask = useCallback(
+    async (task: "arcMainnet" | "agent" | "bridge") => {
+      if (!account || transactionBusy) return;
+      setTransactionBusy(task);
+      setError(null);
+      try {
+        if (task === "arcMainnet") await ensureArc();
+        const inputHash = task === "arcMainnet" ? "" : txHashInputs[task];
+        const candidate =
+          task === "agent"
+            ? txLog.find(
+                (entry) =>
+                  entry.status === "confirmed" &&
+                  ["swap", "swapMultiHop", "aggregatorSwap"].includes(
+                    entry.kind,
+                  ),
+              )
+            : task === "bridge"
+              ? txLog.find(
+                  (entry) =>
+                    entry.status === "confirmed" && entry.kind === "bridge",
+                )
+              : undefined;
+        const txHash = inputHash.trim() || candidate?.hash;
+        const operation =
+          task === "agent"
+            ? candidate?.kind === "swapMultiHop" ||
+              candidate?.kind === "aggregatorSwap"
+              ? candidate.kind
+              : "swap"
+            : task === "bridge"
+              ? "bridge"
+              : undefined;
+        const signature = await account.signMessage({
+          message: transactionTaskMessage(account.address, task, txHash),
+        });
+        const res = await fetch("/api/waitlist/transaction", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            address: account.address,
+            signature,
+            task,
+            chainId: activeChain?.id,
+            ...(txHash ? { txHash, operation } : {}),
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) setError(d.error || "Transaction not verified.");
+        else await loadStatus();
+      } catch (e) {
+        setError(
+          e instanceof Error && /reject|denied/i.test(e.message)
+            ? "Signature rejected."
+            : "Could not verify transaction.",
+        );
+      } finally {
+        setTransactionBusy(null);
+      }
+    },
+    [
+      account,
+      activeChain?.id,
+      ensureArc,
+      loadStatus,
+      transactionBusy,
+      txHashInputs,
+      txLog,
+    ],
+  );
 
   const openKaleidoForAgentTask = useCallback(() => {
     if (!account?.address) return;
@@ -306,18 +383,21 @@ export default function WaitlistPage() {
     }
   }, [xLinkedCookie, postXTask]);
 
-  const openIntent = useCallback((task: "follow" | "retweet" | "comment" | "launch") => {
-    const url =
-      task === "follow"
-        ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
-        : task === "retweet"
-          ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
-          : task === "comment"
-            ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
-            : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    setOpened((o) => ({ ...o, [task]: true }));
-  }, []);
+  const openIntent = useCallback(
+    (task: "follow" | "retweet" | "comment" | "launch") => {
+      const url =
+        task === "follow"
+          ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
+          : task === "retweet"
+            ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
+            : task === "comment"
+              ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
+              : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+      setOpened((o) => ({ ...o, [task]: true }));
+    },
+    [],
+  );
 
   const link =
     status && typeof window !== "undefined"
@@ -342,7 +422,13 @@ export default function WaitlistPage() {
         <h1 className={`${s.h1} k-display`}>
           {status ? "Your Arc rewards." : "Join Kaleido on Arc."}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className={s.arcMark} src="/arc-mark.png" alt="Arc" width={64} height={64} />
+          <img
+            className={s.arcMark}
+            src="/arc-mark.png"
+            alt="Arc"
+            width={64}
+            height={64}
+          />
         </h1>
         {/* The hero pitch is for visitors who haven't registered yet. Once
             someone has claimed (status set), the card below carries their
@@ -351,8 +437,8 @@ export default function WaitlistPage() {
         {!status ? (
           <p className={s.lede}>
             Kaleido is live on Arc. Claim your welcome points, complete launch
-            tasks, refer friends to earn more, and climb the Season&nbsp;1 board.
-            Points continue through our pre-TGE rewards season.
+            tasks, refer friends to earn more, and climb the Season&nbsp;1
+            board. Points continue through our pre-TGE rewards season.
           </p>
         ) : null}
       </header>
@@ -360,247 +446,428 @@ export default function WaitlistPage() {
       <section className={`${s.card} k-glass`}>
         {account && !statusReady ? (
           <>
-            <p className={s.cardLede}>{statusError ?? "Loading your waitlist balance…"}</p>
-            {statusError ? <button className={s.primary} onClick={() => void loadStatus()}>Retry</button> : null}
+            <p className={s.cardLede}>
+              {statusError ?? "Loading your waitlist balance…"}
+            </p>
+            {statusError ? (
+              <button className={s.primary} onClick={() => void loadStatus()}>
+                Retry
+              </button>
+            ) : null}
           </>
         ) : null}
         {account && statusReady ? (
-        <>
-        {!account ? (
           <>
-            <p className={s.cardLede}>
-              Connect a wallet to claim <strong>100 welcome points</strong>
-              {ref ? " (a friend referred you — you'll get a bonus)" : ""}.
-            </p>
-            <button className={s.primary} onClick={onConnect} disabled={isConnecting}>
-              {isConnecting ? "Connecting…" : "Connect wallet"}
-            </button>
-            <p className={s.split}>
-              On mobile? Tap <strong>WalletConnect</strong> to open your
-              MetaMask, Coinbase, or Rainbow app, or open this page in a
-              desktop browser.
-            </p>
-          </>
-        ) : !status ? (
-          <>
-            <p className={s.cardLede}>
-              You&rsquo;re one signature away. It&rsquo;s free — no gas, no
-              deposit.{ref ? " Your referral bonus is applied." : ""}
-            </p>
-            <button className={s.primary} onClick={onClaim} disabled={loading}>
-              {loading
-                ? "Claiming…"
-                : onArc
-                  ? "Claim my points"
-                  : "Switch to Arc & claim"}
-            </button>
-            {account && !onArc ? (
-              <p className={s.split}>You&rsquo;ll be switched to Arc mainnet to sign.</p>
-            ) : null}
-            {error ? <p className={s.error}>{error}</p> : null}
-          </>
-        ) : (
-          <>
-            <p className={s.pLabel}>Your pending balance</p>
-            <p className={s.big}>
-              {status.points.toLocaleString()}
-              <span className={s.unit}>$kPoint</span>
-            </p>
-            <p className={s.split}>
-              {status.welcomePoints} welcome
-              {status.referralPoints > 0
-                ? ` · ${status.referralPoints} from ${status.referrals} referral${status.referrals === 1 ? "" : "s"}`
-                : ""}
-              {status.rank ? ` · rank #${status.rank}` : ""}
-            </p>
-            {status.heldPoints > 0 ? (
-              <p className={s.held}>+{status.heldPoints} $kPoint from X tasks · counts within 5h</p>
-            ) : null}
+            {!account ? (
+              <>
+                <p className={s.cardLede}>
+                  Connect a wallet to claim <strong>100 welcome points</strong>
+                  {ref ? " (a friend referred you — you'll get a bonus)" : ""}.
+                </p>
+                <button
+                  className={s.primary}
+                  onClick={onConnect}
+                  disabled={isConnecting}
+                >
+                  {isConnecting ? "Connecting…" : "Connect wallet"}
+                </button>
+                <p className={s.split}>
+                  On mobile? Tap <strong>WalletConnect</strong> to open your
+                  MetaMask, Coinbase, or Rainbow app, or open this page in a
+                  desktop browser.
+                </p>
+              </>
+            ) : !status ? (
+              <>
+                <p className={s.cardLede}>
+                  You&rsquo;re one signature away. It&rsquo;s free — no gas, no
+                  deposit.{ref ? " Your referral bonus is applied." : ""}
+                </p>
+                <button
+                  className={s.primary}
+                  onClick={onClaim}
+                  disabled={loading}
+                >
+                  {loading
+                    ? "Claiming…"
+                    : onArc
+                      ? "Claim my points"
+                      : "Switch to Arc & claim"}
+                </button>
+                {account && !onArc ? (
+                  <p className={s.split}>
+                    You&rsquo;ll be switched to Arc mainnet to sign.
+                  </p>
+                ) : null}
+                {error ? <p className={s.error}>{error}</p> : null}
+              </>
+            ) : (
+              <>
+                <p className={s.pLabel}>Your pending balance</p>
+                <p className={s.big}>
+                  {status.points.toLocaleString()}
+                  <span className={s.unit}>$kPoint</span>
+                </p>
+                <p className={s.split}>
+                  {status.welcomePoints} welcome
+                  {status.referralPoints > 0
+                    ? ` · ${status.referralPoints} from ${status.referrals} referral${status.referrals === 1 ? "" : "s"}`
+                    : ""}
+                  {status.rank ? ` · rank #${status.rank}` : ""}
+                </p>
+                {status.heldPoints > 0 ? (
+                  <p className={s.held}>
+                    +{status.heldPoints} $kPoint from X tasks · counts within 5h
+                  </p>
+                ) : null}
 
-            <p className={s.refLabel}>Earn more $kPoint</p>
-            {error ? <p className={s.error}>{error}</p> : null}
-            <ul className={s.tasks}>
-              <li className={s.task}>
-                <div className={s.taskText}>
-                  <span className={s.taskTitle}>Link your X account</span>
-                  <span className={s.taskMeta}>
-                    {status.xTasks.linked.done
-                      ? `Linked${status.xHandle ? ` @${status.xHandle}` : ""}${status.xTasks.linked.counted ? "" : " · counts within 5h"}`
-                      : "+100 $kPoint"}
-                  </span>
-                </div>
-                {status.xTasks.linked.done ? (
-                  <span className={s.taskDone}>✓</span>
-                ) : (
-                  <button className={s.taskBtn} onClick={onLinkX} disabled={xBusy === "link"}>
-                    {xBusy === "link" ? "…" : xLinkedCookie ? "Confirm" : "Link X"}
-                  </button>
-                )}
-              </li>
+                <p className={s.refLabel}>Earn more $kPoint</p>
+                {error ? <p className={s.error}>{error}</p> : null}
+                <ul className={s.tasks}>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Link your X account</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.linked.done
+                          ? `Linked${status.xHandle ? ` @${status.xHandle}` : ""}${status.xTasks.linked.counted ? "" : " · counts within 5h"}`
+                          : "+100 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.linked.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={onLinkX}
+                        disabled={xBusy === "link"}
+                      >
+                        {xBusy === "link"
+                          ? "…"
+                          : xLinkedCookie
+                            ? "Confirm"
+                            : "Link X"}
+                      </button>
+                    )}
+                  </li>
 
-              <li className={s.task}>
-                <div className={s.taskText}>
-                  <span className={s.taskTitle}>Follow @{X_HANDLE}</span>
-                  <span className={s.taskMeta}>
-                    {status.xTasks.followed.done
-                      ? status.xTasks.followed.counted
-                        ? "Done"
-                        : "Done · counts within 5h"
-                      : status.xTasks.linked.done
-                        ? "+100 $kPoint"
-                        : "Link X first"}
-                  </span>
-                </div>
-                {status.xTasks.followed.done ? (
-                  <span className={s.taskDone}>✓</span>
-                ) : !status.xTasks.linked.done ? (
-                  <span className={s.taskLock}>🔒</span>
-                ) : opened.follow ? (
-                  <button className={s.taskBtn} onClick={() => postXTask("follow")} disabled={xBusy === "follow"}>
-                    {xBusy === "follow" ? "…" : "Claim"}
-                  </button>
-                ) : (
-                  <button className={s.taskBtn} onClick={() => openIntent("follow")}>Follow</button>
-                )}
-              </li>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Follow @{X_HANDLE}</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.followed.done
+                          ? status.xTasks.followed.counted
+                            ? "Done"
+                            : "Done · counts within 5h"
+                          : status.xTasks.linked.done
+                            ? "+100 $kPoint"
+                            : "Link X first"}
+                      </span>
+                    </div>
+                    {status.xTasks.followed.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : !status.xTasks.linked.done ? (
+                      <span className={s.taskLock}>🔒</span>
+                    ) : opened.follow ? (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => postXTask("follow")}
+                        disabled={xBusy === "follow"}
+                      >
+                        {xBusy === "follow" ? "…" : "Claim"}
+                      </button>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => openIntent("follow")}
+                      >
+                        Follow
+                      </button>
+                    )}
+                  </li>
 
-              <li className={s.task}>
-                <div className={s.taskText}>
-                  <span className={s.taskTitle}>Repost the launch post</span>
-                  <span className={s.taskMeta}>
-                    {status.xTasks.retweeted.done
-                      ? status.xTasks.retweeted.counted
-                        ? "Done"
-                        : "Done · counts within 5h"
-                      : !status.xTasks.linked.done
-                        ? "Link X first"
-                        : ANNOUNCE_TWEET_ID
-                          ? "+100 $kPoint"
-                          : "Coming soon"}
-                  </span>
-                </div>
-                {status.xTasks.retweeted.done ? (
-                  <span className={s.taskDone}>✓</span>
-                ) : !status.xTasks.linked.done || !ANNOUNCE_TWEET_ID ? (
-                  <span className={s.taskLock}>🔒</span>
-                ) : opened.retweet ? (
-                  <button className={s.taskBtn} onClick={() => postXTask("retweet")} disabled={xBusy === "retweet"}>
-                    {xBusy === "retweet" ? "…" : "Claim"}
-                  </button>
-                ) : (
-                  <button className={s.taskBtn} onClick={() => openIntent("retweet")}>Repost</button>
-                )}
-              </li>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        Repost the launch post
+                      </span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.retweeted.done
+                          ? status.xTasks.retweeted.counted
+                            ? "Done"
+                            : "Done · counts within 5h"
+                          : !status.xTasks.linked.done
+                            ? "Link X first"
+                            : ANNOUNCE_TWEET_ID
+                              ? "+100 $kPoint"
+                              : "Coming soon"}
+                      </span>
+                    </div>
+                    {status.xTasks.retweeted.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : !status.xTasks.linked.done || !ANNOUNCE_TWEET_ID ? (
+                      <span className={s.taskLock}>🔒</span>
+                    ) : opened.retweet ? (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => postXTask("retweet")}
+                        disabled={xBusy === "retweet"}
+                      >
+                        {xBusy === "retweet" ? "…" : "Claim"}
+                      </button>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => openIntent("retweet")}
+                      >
+                        Repost
+                      </button>
+                    )}
+                  </li>
 
-              <li className={s.task}>
-                <div className={s.taskText}>
-                  <span className={s.taskTitle}>Comment on the launch post</span>
-                  <span className={s.taskMeta}>
-                    {status.xTasks.commented.done
-                      ? status.xTasks.commented.counted
-                        ? "Done"
-                        : "Done · counts within 5h"
-                      : !status.xTasks.linked.done
-                        ? "Link X first"
-                        : ANNOUNCE_TWEET_ID
-                          ? "+50 $kPoint"
-                          : "Coming soon"}
-                  </span>
-                </div>
-                {status.xTasks.commented.done ? (
-                  <span className={s.taskDone}>✓</span>
-                ) : !status.xTasks.linked.done || !ANNOUNCE_TWEET_ID ? (
-                  <span className={s.taskLock}>🔒</span>
-                ) : opened.comment ? (
-                  <button className={s.taskBtn} onClick={() => postXTask("comment")} disabled={xBusy === "comment"}>
-                    {xBusy === "comment" ? "…" : "Claim"}
-                  </button>
-                ) : (
-                  <button className={s.taskBtn} onClick={() => openIntent("comment")}>Comment</button>
-                )}
-              </li>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        Comment on the launch post
+                      </span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.commented.done
+                          ? status.xTasks.commented.counted
+                            ? "Done"
+                            : "Done · counts within 5h"
+                          : !status.xTasks.linked.done
+                            ? "Link X first"
+                            : ANNOUNCE_TWEET_ID
+                              ? "+50 $kPoint"
+                              : "Coming soon"}
+                      </span>
+                    </div>
+                    {status.xTasks.commented.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : !status.xTasks.linked.done || !ANNOUNCE_TWEET_ID ? (
+                      <span className={s.taskLock}>🔒</span>
+                    ) : opened.comment ? (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => postXTask("comment")}
+                        disabled={xBusy === "comment"}
+                      >
+                        {xBusy === "comment" ? "…" : "Claim"}
+                      </button>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => openIntent("comment")}
+                      >
+                        Comment
+                      </button>
+                    )}
+                  </li>
 
-              <li className={s.task}>
-                <div className={s.taskText}>
-                  <span className={s.taskTitle}>Like &amp; repost the Mainnet Launch post</span>
-                  <span className={s.taskMeta}>
-                    {status.xTasks.launch.done
-                      ? status.xTasks.launch.counted ? "Done" : "Done · counts within 5h"
-                      : !status.xTasks.linked.done ? "Link X first" : "+100 $kPoint"}
-                  </span>
-                </div>
-                {status.xTasks.launch.done ? (
-                  <span className={s.taskDone}>✓</span>
-                ) : !status.xTasks.linked.done ? (
-                  <span className={s.taskLock}>🔒</span>
-                ) : opened.launch ? (
-                  <button className={s.taskBtn} onClick={() => postXTask("launch")} disabled={xBusy === "launch"}>
-                    {xBusy === "launch" ? "…" : "Claim"}
-                  </button>
-                ) : (
-                  <button className={s.taskBtn} onClick={() => openIntent("launch")}>Open post</button>
-                )}
-              </li>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        Like &amp; repost the Mainnet Launch post
+                      </span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.launch.done
+                          ? status.xTasks.launch.counted
+                            ? "Done"
+                            : "Done · counts within 5h"
+                          : !status.xTasks.linked.done
+                            ? "Link X first"
+                            : "+100 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.launch.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : !status.xTasks.linked.done ? (
+                      <span className={s.taskLock}>🔒</span>
+                    ) : opened.launch ? (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => postXTask("launch")}
+                        disabled={xBusy === "launch"}
+                      >
+                        {xBusy === "launch" ? "…" : "Claim"}
+                      </button>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => openIntent("launch")}
+                      >
+                        Open post
+                      </button>
+                    )}
+                  </li>
 
-              {/* Arc testnet is live today, but this stays a locked "Coming soon"
+                  {/* Arc testnet is live today, but this stays a locked "Coming soon"
                   teaser like the rest until it's wired to a real on-chain status. */}
-              <li className={s.task}>
-                <div className={s.taskText}>
-                  <span className={s.taskTitle}>Make 1st transaction on Arc Testnet</span>
-                  <span className={s.taskMeta}>+500 $kPoint · Coming soon</span>
-                </div>
-                <span className={s.taskLock}>🔒</span>
-              </li>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        Make 1st transaction on Arc Testnet
+                      </span>
+                      <span className={s.taskMeta}>
+                        +500 $kPoint · Coming soon
+                      </span>
+                    </div>
+                    <span className={s.taskLock}>🔒</span>
+                  </li>
 
-              <li className={s.task}>
-                <div className={s.taskText}>
-                  <span className={s.taskTitle}>Perform 1st transaction on Arc Mainnet</span>
-                  <span className={s.taskMeta}>{status.transactionTasks.arcMainnet.done ? "Done" : "+300 $kPoint · Verify on-chain"}</span>
-                </div>
-                {status.transactionTasks.arcMainnet.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={() => void verifyTransactionTask("arcMainnet")} disabled={transactionBusy !== null}>{transactionBusy === "arcMainnet" ? "Checking…" : "Verify"}</button>}
-              </li>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        Perform 1st transaction on Arc Mainnet
+                      </span>
+                      <span className={s.taskMeta}>
+                        {status.transactionTasks.arcMainnet.done
+                          ? "Done"
+                          : "+300 $kPoint · Verify on-chain"}
+                      </span>
+                    </div>
+                    {status.transactionTasks.arcMainnet.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => void verifyTransactionTask("arcMainnet")}
+                        disabled={transactionBusy !== null}
+                      >
+                        {transactionBusy === "arcMainnet"
+                          ? "Checking…"
+                          : "Verify"}
+                      </button>
+                    )}
+                  </li>
 
-              <li className={s.task}>
-                <div className={s.taskText}>
-                  <span className={s.taskTitle}>Make 1st transaction on Kaleido</span>
-                  <span className={s.taskMeta}>{status.transactionTasks.agent.done ? "Done" : agentOpened ? "+500 $kPoint · Verify successful tx" : "+500 $kPoint · Make a trade in Kaleido first"}</span>
-                </div>
-                {status.transactionTasks.agent.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={agentOpened ? () => void verifyTransactionTask("agent") : openKaleidoForAgentTask} disabled={transactionBusy !== null}>{transactionBusy === "agent" ? "Checking…" : agentOpened ? "Verify" : "Open Kaleido"}</button>}
-              </li>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        Make 1st transaction on Kaleido
+                      </span>
+                      <span className={s.taskMeta}>
+                        {status.transactionTasks.agent.done
+                          ? "Done"
+                          : agentOpened
+                            ? "+500 $kPoint · Verify successful tx"
+                            : "+500 $kPoint · Make a trade in Kaleido first"}
+                      </span>
+                      {!status.transactionTasks.agent.done && agentOpened ? (
+                        <input
+                          className={s.taskHashInput}
+                          value={txHashInputs.agent}
+                          onChange={(event) =>
+                            setTxHashInputs((current) => ({
+                              ...current,
+                              agent: event.target.value,
+                            }))
+                          }
+                          placeholder="Paste tx hash (optional)"
+                          aria-label="Kaleido transaction hash"
+                          spellCheck={false}
+                        />
+                      ) : null}
+                    </div>
+                    {status.transactionTasks.agent.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={
+                          agentOpened
+                            ? () => void verifyTransactionTask("agent")
+                            : openKaleidoForAgentTask
+                        }
+                        disabled={transactionBusy !== null}
+                      >
+                        {transactionBusy === "agent"
+                          ? "Checking…"
+                          : agentOpened
+                            ? "Verify"
+                            : "Open Kaleido"}
+                      </button>
+                    )}
+                  </li>
 
-              <li className={s.task}>
-                <div className={s.taskText}>
-                  <span className={s.taskTitle}>Use Luca agent to Bridge assets in/out of Arc</span>
-                  <span className={s.taskMeta}>{status.transactionTasks.bridge.done ? "Done" : bridgeOpened ? "+500 $kPoint · Verify on-chain" : "+500 $kPoint · Bridge in/out of Arc first"}</span>
-                </div>
-                {status.transactionTasks.bridge.done ? <span className={s.taskDone}>✓</span> : <button className={s.taskBtn} onClick={bridgeOpened ? () => void verifyTransactionTask("bridge") : openKaleidoForBridgeTask} disabled={transactionBusy !== null}>{transactionBusy === "bridge" ? "Checking…" : bridgeOpened ? "Verify" : "Open Kaleido"}</button>}
-              </li>
-            </ul>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        Use Luca agent to Bridge assets in/out of Arc
+                      </span>
+                      <span className={s.taskMeta}>
+                        {status.transactionTasks.bridge.done
+                          ? "Done"
+                          : bridgeOpened
+                            ? "+500 $kPoint · Verify on-chain"
+                            : "+500 $kPoint · Bridge in/out of Arc first"}
+                      </span>
+                      {!status.transactionTasks.bridge.done && bridgeOpened ? (
+                        <input
+                          className={s.taskHashInput}
+                          value={txHashInputs.bridge}
+                          onChange={(event) =>
+                            setTxHashInputs((current) => ({
+                              ...current,
+                              bridge: event.target.value,
+                            }))
+                          }
+                          placeholder="Paste tx hash (optional)"
+                          aria-label="Bridge transaction hash"
+                          spellCheck={false}
+                        />
+                      ) : null}
+                    </div>
+                    {status.transactionTasks.bridge.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={
+                          bridgeOpened
+                            ? () => void verifyTransactionTask("bridge")
+                            : openKaleidoForBridgeTask
+                        }
+                        disabled={transactionBusy !== null}
+                      >
+                        {transactionBusy === "bridge"
+                          ? "Checking…"
+                          : bridgeOpened
+                            ? "Verify"
+                            : "Open Kaleido"}
+                      </button>
+                    )}
+                  </li>
+                </ul>
 
-            <p className={s.refLabel}>Your referral link — you both earn</p>
-            <div className={s.refRow}>
-              <input className={s.refInput} readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
-              <button className={s.copy} onClick={copy}>
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            {/* Always-visible referral scoreboard, even at zero, so the payoff of
+                <p className={s.refLabel}>Your referral link — you both earn</p>
+                <div className={s.refRow}>
+                  <input
+                    className={s.refInput}
+                    readOnly
+                    value={link}
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <button className={s.copy} onClick={copy}>
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                {/* Always-visible referral scoreboard, even at zero, so the payoff of
                 sharing is on screen. The summary line under the balance only
                 surfaces referral points once there's at least one referral. */}
-            <p className={s.split}>
-              {status.referrals === 0
-                ? "No referrals yet — earn 50 $kPoint for each friend who joins and links their X."
-                : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.referralPoints.toLocaleString()} $kPoint earned`}
-            </p>
+                <p className={s.split}>
+                  {status.referrals === 0
+                    ? "No referrals yet — earn 50 $kPoint for each friend who joins and links their X."
+                    : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.referralPoints.toLocaleString()} $kPoint earned`}
+                </p>
 
-            <p className={s.note}>
-              Points are pending. They convert to Season&nbsp;1 points on your
-              first trade on Arc mainnet — so they can&rsquo;t be farmed, and
-              they&rsquo;re waiting for you at launch.
-            </p>
+                <p className={s.note}>
+                  Points are pending. They convert to Season&nbsp;1 points on
+                  your first trade on Arc mainnet — so they can&rsquo;t be
+                  farmed, and they&rsquo;re waiting for you at launch.
+                </p>
+              </>
+            )}
           </>
-        )}
-        </>
         ) : null}
         {!account ? (
           <>
@@ -608,13 +875,17 @@ export default function WaitlistPage() {
               Connect a wallet to claim <strong>100 welcome points</strong>
               {ref ? " (a friend referred you — you'll get a bonus)" : ""}.
             </p>
-            <button className={s.primary} onClick={onConnect} disabled={isConnecting}>
+            <button
+              className={s.primary}
+              onClick={onConnect}
+              disabled={isConnecting}
+            >
               {isConnecting ? "Connecting…" : "Connect wallet"}
             </button>
             <p className={s.split}>
               On mobile? Tap <strong>WalletConnect</strong> to open your
-              MetaMask, Coinbase, or Rainbow app, or open this page in a
-              desktop browser.
+              MetaMask, Coinbase, or Rainbow app, or open this page in a desktop
+              browser.
             </p>
           </>
         ) : null}

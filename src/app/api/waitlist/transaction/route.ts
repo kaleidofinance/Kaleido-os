@@ -82,6 +82,10 @@ export async function POST(req: Request) {
     sourceChainId,
     destinationChainId,
   } = body;
+  let verifiedTxHash = txHash;
+  let verifiedChainId = chainId;
+  let verifiedOperation = operation;
+  let verifiedProvider = provider;
   const auto = signature === undefined;
   if (
     !address ||
@@ -94,8 +98,12 @@ export async function POST(req: Request) {
   if (
     (task === "agent" || task === "bridge") &&
     txHash &&
-    (!isHexString(txHash, 32) || !Number.isInteger(chainId) ||
-      (task === "agent" && !["swap", "swapMultiHop", "aggregatorSwap"].includes(operation ?? "")) ||
+    (!isHexString(txHash, 32) ||
+      !Number.isInteger(chainId) ||
+      (task === "agent" &&
+        !["swap", "swapMultiHop", "aggregatorSwap"].includes(
+          operation ?? "",
+        )) ||
       (task === "bridge" && operation !== "bridge"))
   ) {
     return Response.json(
@@ -178,7 +186,7 @@ export async function POST(req: Request) {
     destinationChainId: number | null;
   } | null = null;
 
-  if (!txHash && (task === "agent" || task === "bridge")) {
+  if (!verifiedTxHash && (task === "agent" || task === "bridge")) {
     const { data: priorEvidence } = await supabaseAdmin
       .from("waitlist_transaction_evidence")
       .select(
@@ -207,6 +215,42 @@ export async function POST(req: Request) {
     }
   }
 
+  // Legacy indexed rows are only candidates. They must still pass the same
+  // receipt, sender, and allow-listed target checks below before any points
+  // are granted; a timestamp alone is never evidence.
+  if (!verifiedTxHash && !evidence && task === "agent") {
+    const { data } = await supabaseAdmin
+      .from("point_actions")
+      .select("tx_hash, chain_id")
+      .eq("wallet", wallet)
+      .in("source_slug", ["swap", "agent_swap"])
+      .not("tx_hash", "is", null)
+      .order("occurred_at", { ascending: true })
+      .limit(1);
+    const legacy = data?.[0];
+    if (legacy?.tx_hash && Number.isInteger(Number(legacy.chain_id))) {
+      verifiedTxHash = String(legacy.tx_hash);
+      verifiedChainId = Number(legacy.chain_id);
+      verifiedOperation = "swap";
+    }
+  }
+  if (!verifiedTxHash && !evidence && task === "bridge") {
+    const { data } = await supabaseAdmin
+      .from("cctp_transfers")
+      .select("tx_hash, source_chain_id")
+      .ilike("recipient", wallet)
+      .not("tx_hash", "is", null)
+      .order("created_at", { ascending: true })
+      .limit(1);
+    const legacy = data?.[0];
+    if (legacy?.tx_hash && Number.isInteger(Number(legacy.source_chain_id))) {
+      verifiedTxHash = String(legacy.tx_hash);
+      verifiedChainId = Number(legacy.source_chain_id);
+      verifiedOperation = "bridge";
+      verifiedProvider = "cctp";
+    }
+  }
+
   if (task === "arcMainnet") {
     if (!(await hasArcActivity(wallet)))
       return Response.json(
@@ -215,16 +259,18 @@ export async function POST(req: Request) {
       );
   } else if (evidence) {
     // A prior automatic verification already left durable evidence.
-  } else if (txHash) {
-    const rpc = providerForChain(chainId!);
+  } else if (verifiedTxHash) {
+    if (!Number.isInteger(verifiedChainId))
+      return Response.json({ error: "transaction chain is required" }, { status: 400 });
+    const rpc = providerForChain(verifiedChainId!);
     if (!rpc)
       return Response.json(
         { error: "unsupported transaction chain" },
         { status: 400 },
       );
-    const tx = await (rpc as JsonRpcProvider).getTransaction(txHash!);
+    const tx = await (rpc as JsonRpcProvider).getTransaction(verifiedTxHash!);
     const receipt = await (rpc as JsonRpcProvider).getTransactionReceipt(
-      txHash!,
+      verifiedTxHash!,
     );
     if (
       !tx ||
@@ -240,28 +286,51 @@ export async function POST(req: Request) {
     const target = (tx.to ?? "").toLowerCase();
     let verifiedProvider: string | null = null;
     if (task === "agent") {
-      if (operation === "aggregatorSwap" && isKnownSwapRouter(chainId!, target)) {
+      if (
+        verifiedOperation === "aggregatorSwap" &&
+        isKnownSwapRouter(verifiedChainId!, target)
+      ) {
         verifiedProvider = "kyberswap";
       } else if (
-        (operation === "swap" || operation === "swapMultiHop") &&
-        getContracts(chainId!).v3Router?.toLowerCase() === target
+        (verifiedOperation === "swap" || verifiedOperation === "swapMultiHop") &&
+        getContracts(verifiedChainId!).v3Router?.toLowerCase() === target
       ) {
         verifiedProvider = "kaleido";
       }
       if (!verifiedProvider)
-        return Response.json({ error: "transaction is not a recognized Kaleido swap" }, { status: 409 });
+        return Response.json(
+          { error: "transaction is not a recognized Kaleido swap" },
+          { status: 409 },
+        );
     } else {
-      if (provider === "cctp" && isKnownCctpTarget(target)) verifiedProvider = "cctp";
-      else if (provider === "canonical" && isKnownBridgeAddress(chainId!, target)) verifiedProvider = "canonical";
-      else if (provider === "lifi" && isKnownBridgeSpender(target) && !isKnownCctpTarget(target)) verifiedProvider = "lifi";
+      // The client may not know which bridge provider executed a route (and a
+      // user may paste a hash from another session), so derive it from the
+      // verified transaction target. A supplied provider is only an optional
+      // hint; it can never widen the allow-list.
+      if (isKnownCctpTarget(target) && (!verifiedProvider || verifiedProvider === "cctp"))
+        verifiedProvider = "cctp";
+      else if (
+        isKnownBridgeAddress(verifiedChainId!, target) &&
+        (!verifiedProvider || verifiedProvider === "canonical")
+      )
+        verifiedProvider = "canonical";
+      else if (
+        isKnownBridgeSpender(target) &&
+        !isKnownCctpTarget(target) &&
+        (!verifiedProvider || verifiedProvider === "lifi")
+      )
+        verifiedProvider = "lifi";
       if (!verifiedProvider)
-        return Response.json({ error: "transaction is not a recognized bridge route" }, { status: 409 });
+        return Response.json(
+          { error: "transaction is not a recognized bridge route" },
+          { status: 409 },
+        );
     }
     evidence = {
       task,
-      txHash: txHash!,
-      chainId: chainId!,
-      operation: operation!,
+      txHash: verifiedTxHash!,
+      chainId: verifiedChainId!,
+      operation: verifiedOperation!,
       provider: verifiedProvider,
       target: tx.to ?? null,
       amount: amount ?? null,
@@ -269,31 +338,11 @@ export async function POST(req: Request) {
       sourceChainId: sourceChainId ?? (task === "bridge" ? chainId! : null),
       destinationChainId: destinationChainId ?? null,
     };
-  } else if (task === "agent") {
-    // Manual swaps are `swap`; Luca swaps are `agent_swap`. Both satisfy the
-    // waitlist's single "Make 1st transaction on Kaleido" task.
-    const { data } = await supabaseAdmin
-      .from("point_actions")
-      .select("tx_hash")
-      .eq("wallet", wallet)
-      .in("source_slug", ["swap", "agent_swap"])
-      .limit(1);
-    if (!data?.length)
-      return Response.json(
-        { error: "no qualifying Kaleido trade found" },
-        { status: 409 },
-      );
   } else {
-    const { data } = await supabaseAdmin
-      .from("cctp_transfers")
-      .select("tx_hash")
-      .ilike("recipient", wallet)
-      .limit(1);
-    if (!data?.length)
-      return Response.json(
-        { error: "no qualifying bridge found" },
-        { status: 409 },
-      );
+    return Response.json(
+      { error: task === "agent" ? "no qualifying Kaleido trade found" : "no qualifying bridge found" },
+      { status: 409 },
+    );
   }
 
   if (evidence) {
@@ -316,8 +365,14 @@ export async function POST(req: Request) {
         { onConflict: "task,wallet", ignoreDuplicates: true },
       );
     if (evidenceError) {
-      console.error("[waitlist/transaction] evidence insert failed:", evidenceError.message);
-      return Response.json({ error: "transaction evidence unavailable" }, { status: 503 });
+      console.error(
+        "[waitlist/transaction] evidence insert failed:",
+        evidenceError.message,
+      );
+      return Response.json(
+        { error: "transaction evidence unavailable" },
+        { status: 503 },
+      );
     }
   }
   const verifiedAt = new Date().toISOString();

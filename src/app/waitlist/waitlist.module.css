@@ -256,6 +256,19 @@
   color: var(--k-t3);
   font-size: var(--k-fs-xs);
 }
+.taskHashInput {
+  width: min(100%, 250px);
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-sm);
+  background: var(--k-well2);
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  padding: 6px 8px;
+}
+.taskHashInput::placeholder {
+  color: var(--k-t3);
+}
 .taskBtn {
   flex: none;
   border: 1px solid var(--k-line2);
