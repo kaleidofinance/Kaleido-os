@@ -4,11 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useConnectModal } from "thirdweb/react";
+import { defineChain } from "thirdweb/chains";
 import { toast } from "sonner";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { useNotifications } from "@/context/NotificationsContext";
-import { getChainMeta } from "@/constants/chains";
+import {
+  CHAINS_BY_ID,
+  getChainMeta,
+  toThirdwebChainOptions,
+} from "@/constants/chains";
 import { client } from "@/config/client";
 import { envVars } from "@/constants/envVars";
 import { WALLETS, APP_METADATA } from "@/config/wallets";
@@ -23,6 +28,8 @@ import ThemeToggle from "./ThemeToggle";
 import WalletMenu from "./WalletMenu";
 import Portal from "./Portal";
 import styles from "./Nav.module.css";
+
+const ARC_MAINNET = defineChain(toThirdwebChainOptions(CHAINS_BY_ID[5042]));
 
 /**
  * Trade leads: it is the front door and the reason most people arrive.
@@ -370,6 +377,7 @@ export default function Nav() {
       await connect({
         client,
         wallets: WALLETS,
+        chain: ARC_MAINNET,
         size: "compact",
         appMetadata: APP_METADATA,
       });

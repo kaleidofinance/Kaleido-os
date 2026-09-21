@@ -11,15 +11,10 @@ import { defineChain } from "thirdweb/chains";
 
 import { client } from "@/config/client";
 import { APP_METADATA, WALLETS } from "@/config/wallets";
+import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
 import s from "./leaderboard.module.css";
 
-const ARC_CHAIN = defineChain({
-  id: 5042,
-  name: "Arc",
-  rpc: "https://rpc.arc-scan.org",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  blockExplorers: [{ name: "Arc Scan", url: "https://arc-scan.org" }],
-});
+const ARC_CHAIN = defineChain(toThirdwebChainOptions(CHAINS_BY_ID[5042]));
 
 type XState = { done: boolean; counted: boolean; countsAt: string | null };
 type Status = {
@@ -147,7 +142,12 @@ export default function RewardsPanel() {
   }, [activeChain?.id, switchChain]);
 
   const connectWallet = useCallback(async () => {
-    await connect({ client, wallets: WALLETS, appMetadata: APP_METADATA });
+    await connect({
+      client,
+      wallets: WALLETS,
+      chain: ARC_CHAIN,
+      appMetadata: APP_METADATA,
+    });
   }, [connect]);
 
   const join = useCallback(async () => {
