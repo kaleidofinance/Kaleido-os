@@ -75,8 +75,9 @@ const sumOf = (values: (number | null)[]) => {
   return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
 };
 
-type AggregatorStats = {
-  swapCount: number;
+/* The shape /api/stats/platform returns — see lib/stats/platform.ts. Only
+   the two headline totals are read here; the breakdown is for other callers. */
+type PlatformTotals = {
   volumeUsd: number;
   feesUsd: number;
 };
@@ -108,32 +109,34 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
   const liquidity = sumOf(pools.map((p) => p.liquidity));
   const volume = sumOf(pools.map((p) => p.volume24h));
   const fees = sumOf(pools.map((p) => p.fees24h));
-  const [aggregator, setAggregator] = useState<AggregatorStats | null>(null);
+  const [platform, setPlatform] = useState<PlatformTotals | null>(null);
 
   useEffect(() => {
     if (shell !== "list") return;
     let cancelled = false;
-    fetch("/api/stats/aggregator", { cache: "no-store" })
+    fetch("/api/stats/platform", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
-        if (!cancelled && data) setAggregator(data);
+        if (!cancelled && data) setPlatform(data);
       })
       .catch(() => {
-        /* The pool strip remains useful if the stats view has not migrated yet. */
+        /* The strip falls back to the pool 24h sums below if this is down. */
       });
     return () => {
       cancelled = true;
     };
   }, [shell]);
 
-  /* The launch strip is intentionally a combined protocol total: Kaleido pool
-     activity plus the verified KyberSwap route that serves Arc liquidity. The
-     underlying sources remain separate in the server ledger, so external LP
-     fees are never mistaken for Kaleido fee revenue. */
-  const totalVolume = aggregator
-    ? (volume ?? 0) + aggregator.volumeUsd
-    : null;
-  const totalFees = aggregator ? (fees ?? 0) + aggregator.feesUsd : null;
+  /* The strip's headline totals are PLATFORM-WIDE and CUMULATIVE — every
+     Kaleido product summed (routed swaps from the agent and the manual UI,
+     over native and external pools, plus CCTP bridge volume) — from
+     /api/stats/platform, which keeps the sources separate server-side so a
+     24h pool sample is never mistaken for all-time revenue. Deliberately a
+     different scope from the table's per-pool 24h columns below, which is why
+     it does not equal their sum. When the platform ledger is unavailable the
+     tiles fall back to the measured pool 24h sums rather than blanking. */
+  const totalVolume = platform ? platform.volumeUsd : (volume ?? null);
+  const totalFees = platform ? platform.feesUsd : (fees ?? null);
 
   /* A count of 0 is a real measurement, unlike a total of 0 — but only once the
      first read has landed. Until then it is an em dash, not "0 pools". */
