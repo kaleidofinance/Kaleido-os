@@ -282,3 +282,175 @@
   color: var(--k-t2);
   font-size: var(--k-fs-sm);
 }
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
+  align-items: start;
+  gap: var(--k-s5);
+}
+.boardColumn {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s5);
+}
+.rewardRail {
+  min-width: 0;
+  position: sticky;
+  top: 18px;
+}
+
+/* ---------- Arc rewards moved from the waitlist ---------- */
+.rewards {
+  composes: k-glass from global;
+  border-radius: var(--k-r-lg);
+  padding: var(--k-s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s3);
+}
+.rewardsHead,
+.rewardsGrid {
+  display: grid;
+  gap: var(--k-s3);
+}
+.rewardsHead {
+  align-items: center;
+}
+.rewardsHead h2,
+.rewardCard h3 {
+  margin: 0;
+  font-size: var(--k-fs-lg);
+  font-weight: var(--k-fw-med);
+}
+.rewardsHead p,
+.rewardMuted {
+  margin: 5px 0 0;
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+  line-height: 1.45;
+}
+.enableTasks {
+  width: 100%;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  padding: 10px 14px;
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  cursor: pointer;
+}
+.enableTasks:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.rewardsGrid {
+  grid-template-columns: 1fr;
+}
+.rewardCard {
+  padding: 0;
+}
+.rewardCard + .rewardCard {
+  border-top: 1px solid var(--k-line2);
+  padding-top: var(--k-s5);
+}
+.rewardTasks {
+  list-style: none;
+  margin: var(--k-s2) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.rewardTask {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-s2);
+  padding: 9px 10px;
+  min-height: 64px;
+  border-radius: var(--k-r-md);
+  background: var(--k-glass-deep);
+}
+.rewardTask > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rewardTask strong {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  line-height: 1.2;
+  color: var(--k-t1);
+}
+.rewardTask span {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+}
+.taskButton {
+  flex: none;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  padding: 8px 13px;
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  cursor: pointer;
+}
+.taskButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.taskDone {
+  color: var(--k-pos) !important;
+  font-size: var(--k-fs-lg) !important;
+}
+.rewardError {
+  margin: 0;
+  color: var(--k-neg);
+  font-size: var(--k-fs-sm);
+}
+.referralBig {
+  margin: var(--k-s5) 0 0;
+  font-size: var(--k-fs-2xl);
+  color: var(--k-brand);
+}
+.referralBig span {
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+}
+.referralRow {
+  display: flex;
+  gap: var(--k-s2);
+  margin-top: var(--k-s5);
+}
+.referralRow input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  border-radius: var(--k-r-md);
+  background: var(--k-glass-deep);
+  color: var(--k-t1);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+}
+
+@media (max-width: 900px) {
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+  .rewardRail {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .rewardTasks {
+    grid-template-columns: 1fr;
+  }
+}

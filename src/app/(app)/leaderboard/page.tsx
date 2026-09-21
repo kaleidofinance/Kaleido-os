@@ -45,6 +45,7 @@ import type {
   LeaderboardPayload,
   LeaderboardRow,
 } from "@/lib/points/leaderboard";
+import RewardsPanel from "./RewardsPanel";
 import s from "./leaderboard.module.css";
 
 /** Enough of an address to recognise, on a page that is a list of them. */
@@ -220,136 +221,147 @@ export default function LeaderboardPage() {
             season it is scoped to. */}
         {/* One card: the board headline figures + the connected wallet's own
             standing, merged from two strips into one. */}
-        <StatStrip>
-          <Stat label="Wallets ranked" value={qty(payload?.participants)} />
-          <Stat label="Season" value={payload?.season.label ?? DASH} />
-          <Stat label="Your standing" value={myStanding} />
-          <Stat label="Your points" value={myPoints} />
-        </StatStrip>
-        {myNote ? <p className={s.stripNote}>{myNote}</p> : null}
+        <div className={s.contentGrid}>
+          <div className={s.boardColumn}>
+            <StatStrip>
+              <Stat label="Wallets ranked" value={qty(payload?.participants)} />
+              <Stat label="Your standing" value={myStanding} />
+              <Stat
+                label="Your points"
+                value={myPoints}
+                icon="/email-logo.png"
+              />
+            </StatStrip>
+            {myNote ? <p className={s.stripNote}>{myNote}</p> : null}
 
-        <div className={`${s.table} ${gridClass}`}>
-          <div className={s.thead}>
-            <span>Rank</span>
-            <span>Wallet</span>
-            <span className={s.right}>Points</span>
-            <span className={s.right}>Volume</span>
-            {full ? (
-              <>
-                <span className={s.right}>Time</span>
-                <span className={s.right}>Action</span>
-                <span className={s.right}>Bonus</span>
-              </>
-            ) : null}
-          </div>
-
-          {board.loading && rows.length === 0 ? (
-            Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className={s.rowSkeleton}>
-                <span className={s.skLine} />
+            <div className={`${s.table} ${gridClass}`}>
+              <div className={s.thead}>
+                <span>Rank</span>
+                <span>Wallet</span>
+                <span className={s.right}>Points</span>
+                <span className={s.right}>Volume</span>
+                {full ? (
+                  <>
+                    <span className={s.right}>Time</span>
+                    <span className={s.right}>Action</span>
+                    <span className={s.right}>Bonus</span>
+                  </>
+                ) : null}
               </div>
-            ))
-          ) : board.error && rows.length === 0 ? (
-            <div className={s.tEmpty}>
-              <b>The board could not be loaded</b>
-              {board.error}
-            </div>
-          ) : rows.length === 0 ? (
-            /* Why, not just "no results". An empty board has three quite
+
+              {board.loading && rows.length === 0 ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className={s.rowSkeleton}>
+                    <span className={s.skLine} />
+                  </div>
+                ))
+              ) : board.error && rows.length === 0 ? (
+                <div className={s.tEmpty}>
+                  <b>The board could not be loaded</b>
+                  {board.error}
+                </div>
+              ) : rows.length === 0 ? (
+                /* Why, not just "no results". An empty board has three quite
                different causes and the reader cannot distinguish them: a season
                that has not started accruing, a points runtime that does not exist
                yet (§11), or migrations that have not been pushed. */
-            <div className={s.tEmpty}>
-              <b>Nobody is ranked in this season yet</b>
-              No points credited to this season yet.
-            </div>
-          ) : (
-            rows.map((r) => {
-              const mine = wallet !== null && r.wallet.toLowerCase() === wallet;
-              return (
-                <div
-                  key={r.wallet}
-                  className={`${s.row} ${mine ? s.rowYou : ""}`}
-                >
-                  <span
-                    className={r.rank !== null ? s.rankTop : s.rank}
-                    /* The masked case needs saying: a percentile where a
-                       neighbour has a number looks like a missing number. */
-                    title={
-                      r.rank === null
-                        ? "Exact rank is published for the top ranks only"
-                        : undefined
-                    }
-                  >
-                    {rankText(r)}
-                  </span>
-                  <span className={`${s.addr} tabular`}>
-                    {short(r.wallet)}
-                    {mine ? <span className={s.youTag}>You</span> : null}
-                  </span>
-                  <span className={`${s.right} tabular`}>
-                    {points(r.total)}
-                  </span>
-                  <span className={`${s.right} tabular`}>
-                    {vol(r.volume)}
-                  </span>
-                  {full ? (
-                    <>
-                      <span className={`${s.right} tabular`}>
-                        {points(r.timePoints)}
-                      </span>
-                      <span className={`${s.right} tabular`}>
-                        {points(r.actionPoints)}
-                      </span>
-                      <span className={`${s.right} tabular`}>
-                        {points(r.bonusPoints)}
-                      </span>
-                    </>
-                  ) : null}
+                <div className={s.tEmpty}>
+                  <b>Nobody is ranked in this season yet</b>
+                  No points credited to this season yet.
                 </div>
-              );
-            })
-          )}
+              ) : (
+                rows.map((r) => {
+                  const mine =
+                    wallet !== null && r.wallet.toLowerCase() === wallet;
+                  return (
+                    <div
+                      key={r.wallet}
+                      className={`${s.row} ${mine ? s.rowYou : ""}`}
+                    >
+                      <span
+                        className={r.rank !== null ? s.rankTop : s.rank}
+                        /* The masked case needs saying: a percentile where a
+                       neighbour has a number looks like a missing number. */
+                        title={
+                          r.rank === null
+                            ? "Exact rank is published for the top ranks only"
+                            : undefined
+                        }
+                      >
+                        {rankText(r)}
+                      </span>
+                      <span className={`${s.addr} tabular`}>
+                        {short(r.wallet)}
+                        {mine ? <span className={s.youTag}>You</span> : null}
+                      </span>
+                      <span className={`${s.right} tabular`}>
+                        {points(r.total)}
+                      </span>
+                      <span className={`${s.right} tabular`}>
+                        {vol(r.volume)}
+                      </span>
+                      {full ? (
+                        <>
+                          <span className={`${s.right} tabular`}>
+                            {points(r.timePoints)}
+                          </span>
+                          <span className={`${s.right} tabular`}>
+                            {points(r.actionPoints)}
+                          </span>
+                          <span className={`${s.right} tabular`}>
+                            {points(r.bonusPoints)}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {payload &&
+            payload.participants !== null &&
+            payload.participants > payload.pageSize ? (
+              <div className={s.pager}>
+                <button
+                  type="button"
+                  className={s.pageBtn}
+                  disabled={payload.page <= 0 || board.loading}
+                  onClick={() => setPage((prev) => Math.max(0, prev - 1))}
+                >
+                  Previous
+                </button>
+                <span className={s.pageInfo}>
+                  Page {payload.page + 1} of{" "}
+                  {Math.ceil(payload.participants / payload.pageSize)}
+                </span>
+                <button
+                  type="button"
+                  className={s.pageBtn}
+                  disabled={
+                    payload.page + 1 >=
+                      Math.ceil(payload.participants / payload.pageSize) ||
+                    board.loading
+                  }
+                  onClick={() => setPage((prev) => prev + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
+
+            {notes.length > 0 ? (
+              <div className={s.notes}>
+                {notes.map((n, i) => (
+                  <span key={i}>{n}</span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <aside className={s.rewardRail}>
+            <RewardsPanel />
+          </aside>
         </div>
-
-        {payload &&
-        payload.participants !== null &&
-        payload.participants > payload.pageSize ? (
-          <div className={s.pager}>
-            <button
-              type="button"
-              className={s.pageBtn}
-              disabled={payload.page <= 0 || board.loading}
-              onClick={() => setPage((prev) => Math.max(0, prev - 1))}
-            >
-              Previous
-            </button>
-            <span className={s.pageInfo}>
-              Page {payload.page + 1} of{" "}
-              {Math.ceil(payload.participants / payload.pageSize)}
-            </span>
-            <button
-              type="button"
-              className={s.pageBtn}
-              disabled={
-                payload.page + 1 >=
-                  Math.ceil(payload.participants / payload.pageSize) ||
-                board.loading
-              }
-              onClick={() => setPage((prev) => prev + 1)}
-            >
-              Next
-            </button>
-          </div>
-        ) : null}
-
-        {notes.length > 0 ? (
-          <div className={s.notes}>
-            {notes.map((n, i) => (
-              <span key={i}>{n}</span>
-            ))}
-          </div>
-        ) : null}
       </main>
     </>
   );

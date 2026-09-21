@@ -187,7 +187,25 @@ export async function GET(req: Request) {
   if (!isAddress(wallet))
     return Response.json({ error: "bad wallet" }, { status: 400 });
   const s = await standing(wallet.toLowerCase());
-  return Response.json(s ?? { registered: false });
+  if (s) return Response.json(s);
+
+  // `standing()` intentionally collapses the legacy-column fallbacks into a
+  // null result, but a database outage must not look like a new wallet. Probe
+  // the core row once more so the client can distinguish “not registered” from
+  // “could not read the waitlist” and never offers an opt-in that will fail.
+  const { data, error } = await supabaseAdmin
+    .from("waitlist")
+    .select("wallet")
+    .eq("wallet", wallet.toLowerCase())
+    .maybeSingle();
+  if (error)
+    return Response.json(
+      { error: "Could not read waitlist status" },
+      { status: 503 },
+    );
+  return Response.json(
+    data ? { error: "Could not load waitlist status" } : { registered: false },
+  );
 }
 
 export async function POST(req: Request) {

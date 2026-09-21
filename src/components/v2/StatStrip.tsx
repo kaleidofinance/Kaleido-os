@@ -59,6 +59,7 @@ export function StatStrip({ children }: { children: ReactNode }) {
 export function Stat({
   label,
   value,
+  icon,
 }: {
   label: string;
   /**
@@ -68,11 +69,18 @@ export function Stat({
    * would be a second place for "$0" to creep back in.
    */
   value: string;
+  /** Optional mark shown before the value for a token-branded figure. */
+  icon?: string;
 }) {
   return (
     <div className={s.tile}>
       <span className={s.label}>{label}</span>
-      <span className={`${s.value} tabular`}>{value}</span>
+      <span className={`${s.valueLine} tabular`}>
+        {icon ? (
+          <img className={s.valueIcon} src={icon} alt="" aria-hidden="true" />
+        ) : null}
+        <span className={s.value}>{value}</span>
+      </span>
     </div>
   );
 }
