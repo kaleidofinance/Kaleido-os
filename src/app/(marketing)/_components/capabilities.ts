@@ -742,6 +742,21 @@ export const READS: Group = {
       optional: ["agent"],
       prompt: "what can my agent do on my behalf right now?",
     },
+    {
+      name: "getLivePools",
+      params: [],
+      /* No params: it lists the connected chain's live pools. Phrased as a
+         question so the parser does not read it as a pool action. */
+      prompt: "which liquidity pools are live right now?",
+    },
+    {
+      name: "getPoolMarket",
+      params: [],
+      /* metric is liquidity/volume/apr, limit caps the ranking — both optional,
+         so a bare 'which pool has the most volume' is a valid ask. */
+      optional: ["metric", "limit"],
+      prompt: "which pool has the most 24h volume?",
+    },
   ],
 };
 

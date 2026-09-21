@@ -242,6 +242,11 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
       ? `Priced the ${from} → ${to} route`
       : "Looked for a swap route";
   },
+  getLivePools: () => "Checked the live Kaleido pools",
+  getPoolMarket: (a) => {
+    const metric = str(a.metric);
+    return metric ? `Ranked the pools by ${metric}` : "Ranked the top Kaleido pools";
+  },
 };
 
 /**

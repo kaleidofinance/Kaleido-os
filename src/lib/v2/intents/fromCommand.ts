@@ -583,15 +583,14 @@ export type ParseResult =
  *   wallet's cooldown state (lib/staking/state.ts) and emits the one that
  *   applies. "withdraw my stake" still reads as a collateral withdrawal — the
  *   `withdraw` verb wins that sentence — which is the remaining seam.
- * - "wrap" / "unwrap" — no intent exists, so the model's answer (which can send
- *   the user to the right control) beats a local dead end.
+ * - "wrap" / "unwrap" — a first-class verb now, `parseWrap` below. The intent,
+ *   builder, auditor rule and executor all shipped (native <-> wrapped-native is
+ *   a 1:1 deposit()/withdraw()), so the grammar emits a swap of the native
+ *   currency against its wrapped-native ERC20 — WUSDC on Arc — which build.ts
+ *   turns into wrapNative/unwrapNative. Only the clean `[un]wrap <amount>` case
+ *   is caught; a relative amount or a bare verb still falls to the model, which
+ *   reads the balance the grammar cannot.
  * - "pay" — see `send` below. Two readings, one of them a repayment.
- *
- * Wrap/unwrap is a gap in the *protocol* surface, not in this grammar, and
- * closing it starts with an intent, a builder and an auditor rule — the same
- * three things unstake needed. Liquidity was never one of those: the intent, the
- * builder and the rule all exist, and the form does too — which is what made the
- * handoff the cheaper half to close first.
  */
 const VERBS: Record<ActionKind, string[]> = {
   /* "buy" (and its degen synonyms below) is here rather than absent, and these
@@ -1843,6 +1842,42 @@ function chainDestination(words: string[], ctx: ParseContext): string | null {
   return phrase && ctx.isChain(phrase) ? phrase : null;
 }
 
+/**
+ * Wrap / unwrap as a first-class local verb.
+ *
+ * The capability has always been reachable as a swap of the native currency
+ * against its wrapped-native ERC20 (build.ts collapses that pair to a 1:1
+ * deposit()/withdraw()), but the WORDS were not verbs, so "wrap 10 usdc" fell
+ * to the model. This recognises a plain `[un]wrap <amount> [token]` and emits
+ * exactly that swap, so the reflex is instant and free. It resolves the two
+ * sides from the connected chain's own token list — the native token by
+ * `isNative`, the wrapped-native by its `wrapped-native` tag — so a chain with
+ * no wrap concept (neither present) returns null and the model answers instead.
+ * A relative amount ("half", "all", a percentage) or a bare verb also returns
+ * null: those need the balance, which the model reads and the grammar does not.
+ */
+function parseWrap(raw: string, tokens: IToken[]): ParseResult | null {
+  const m = raw.trim().match(/^(un)?wrap\b\s*(.*)$/i);
+  if (!m) return null;
+
+  const wrapped = tokens.find((t) => t.tags?.includes("wrapped-native"));
+  const native = tokens.find((t) => t.isNative);
+  if (!wrapped || !native) return null;
+
+  const isUnwrap = Boolean(m[1]);
+  // A concrete amount only. `normalise` splits the same way the rest of the
+  // grammar does; the first token that parses as an amount is the size.
+  const amountWord = normalise(m[2]).find((w) => parseAmount(w) !== null);
+  const amount = amountWord ? parseAmount(amountWord) : null;
+  if (!amount) return null;
+
+  // The swap command carries IToken objects; build.ts reads their addresses to
+  // spot the native<->wrapped pair and emit the wrap.
+  const tokenIn = isUnwrap ? wrapped : native;
+  const tokenOut = isUnwrap ? native : wrapped;
+  return { status: "ok", command: { kind: "swap", amount, tokenIn, tokenOut } };
+}
+
 export function parseCommand(
   text: string,
   tokens: IToken[],
@@ -1889,6 +1924,12 @@ export function parseCommand(
      everything it does not handle, so the backstop still catches those. */
   const order = parseOrder(raw, tokens);
   if (order) return order;
+
+  /* wrap/unwrap, before the model-only gate: a native<->wrapped-native swap the
+     builder turns into wrapNative/unwrapNative. null for anything but the clean
+     `[un]wrap <amount>` case, so the model still handles the rest. */
+  const wrap = parseWrap(raw, tokens);
+  if (wrap) return wrap;
 
   if (MODEL_ONLY.test(lower)) return { status: "unknown" };
 
