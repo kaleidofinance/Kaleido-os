@@ -88,7 +88,9 @@ export function useWalletBalancesAcrossChains(): WalletBalancesAcrossChains {
        page has holdings to render without a live sweep. Delete with src/lib/mock. */
     if (MOCK_DATA) {
       const native = nativeTokenOf(CHAINS_BY_ID[READ_ONLY_CHAIN_ID], "lending");
-      const tokens = registeredTokens(READ_ONLY_CHAIN_ID);
+      const tokens = registeredTokens(READ_ONLY_CHAIN_ID).filter(
+        (t) => !t.tags?.includes("native-alias"),
+      );
       const rows: ChainWalletHolding[] = [
         ...(native ? [native] : []),
         ...tokens,
@@ -122,7 +124,14 @@ export function useWalletBalancesAcrossChains(): WalletBalancesAcrossChains {
     ): Promise<{ holdings: ChainWalletHolding[]; unread: string[] }> => {
       if (!providerForChain(chainId)) return { holdings: [], unread: [] };
       const native = nativeTokenOf(CHAINS_BY_ID[chainId], "lending");
-      const tokens = registeredTokens(chainId);
+      /* Arc's 6-decimal USDC entry is the ERC20 face of the native USDC
+         balance, not a second holding. Keep the native row for the portfolio
+         and omit the tagged alias here; otherwise the same dollars appear as
+         both "Arc · Native" and "Arc · Wallet" and are counted twice. The
+         registry entry remains available to swap/lending resolvers. */
+      const tokens = registeredTokens(chainId).filter(
+        (t) => !t.tags?.includes("native-alias"),
+      );
 
       /* Native first (Multicall3's own getEthBalance, batched with the ERC20s),
          then one balanceOf per registered token. */

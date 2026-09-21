@@ -52,7 +52,7 @@ export function useLeaderboard(
   });
 
   const load = useCallback(
-    async (signal: AbortSignal) => {
+    async (signal: AbortSignal, force = false) => {
       /* Fixture board, before the fetch: nothing has ever written to
          `point_balances`, so the real route answers with an empty rows array and
          the page renders "Nobody is ranked in this season yet". Substituted here
@@ -73,7 +73,7 @@ export function useLeaderboard(
       }
       // Page through the full ranked list, one PAGE_SIZE slice at a time (the
       // route owns the page size). Season is appended only when explicitly chosen.
-      const qs = `?page=${page}${season === null ? "" : `&season=${season}`}`;
+      const qs = `?page=${page}${season === null ? "" : `&season=${season}`}${force ? `&refresh=${Date.now()}` : ""}`;
       try {
         const res = await fetch(`/api/leaderboard${qs}`, {
           signal,
@@ -121,10 +121,15 @@ export function useLeaderboard(
     const interval = setInterval(() => {
       if (!controller.signal.aborted) load(controller.signal);
     }, REFRESH_MS);
+    const refreshAfterTask = () => {
+      if (!controller.signal.aborted) void load(controller.signal, true);
+    };
+    window.addEventListener("kaleido:tasks-updated", refreshAfterTask);
 
     return () => {
       controller.abort();
       clearInterval(interval);
+      window.removeEventListener("kaleido:tasks-updated", refreshAfterTask);
     };
   }, [load]);
 

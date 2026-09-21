@@ -272,8 +272,7 @@ async function computeBoard(
       seasons: seasonRefs,
       rows: mapped,
       participants,
-      truncated:
-        participants !== null && participants > offset + mapped.length,
+      truncated: participants !== null && participants > offset + mapped.length,
       page,
       pageSize: PAGE_SIZE,
       asOf: new Date().toISOString(),
@@ -351,9 +350,10 @@ export async function GET(request: NextRequest) {
     Number.isFinite(rawPage) && rawPage > 0 ? Math.trunc(rawPage) : 0;
 
   const key = `${seasonId ?? "default"}|p${page}`;
+  const forceRefresh = searchParams.has("refresh");
 
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL_MS) {
+  if (!forceRefresh && hit && Date.now() - hit.at < TTL_MS) {
     return NextResponse.json(
       { success: true, data: hit.payload, stale: false },
       { headers: { "Cache-Control": "no-store" } },

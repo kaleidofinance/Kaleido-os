@@ -23,7 +23,11 @@ import { toast } from "sonner";
 
 import { client } from "@/config/client";
 import { WALLETS } from "@/config/wallets";
-import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
+import {
+  CHAINS_BY_ID,
+  getChainMeta,
+  toThirdwebChainOptions,
+} from "@/constants/chains";
 import type { BatchCall } from "@/lib/v2/intents/batch";
 import type {
   BatchResult,
@@ -46,6 +50,11 @@ import type {
  */
 
 type ToEthersArgs = Parameters<typeof ethers6Adapter.signer.toEthers>[0];
+
+/* New connections should land on Kaleido's live home chain. Passing this to
+ * thirdweb is important: its omitted-chain default is Ethereum. Existing
+ * sessions are restored by AutoConnect and keep the wallet's current chain. */
+const ARC_MAINNET = defineChain(toThirdwebChainOptions(CHAINS_BY_ID[5042]));
 
 /* ---------------------------------------------------------------- signing -- */
 
@@ -184,7 +193,12 @@ export const thirdwebAdapter: WalletAdapter = {
   useConnect: () => {
     const { connect } = useConnectModal();
     return () => {
-      connect({ client, wallets: WALLETS, size: "compact" }).catch(() => {
+      connect({
+        client,
+        wallets: WALLETS,
+        chain: ARC_MAINNET,
+        size: "compact",
+      }).catch(() => {
         /* Dismissing the modal rejects — a choice, not a fault. */
       });
     };

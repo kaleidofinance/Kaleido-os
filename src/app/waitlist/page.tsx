@@ -11,22 +11,16 @@ import { defineChain } from "thirdweb/chains";
 
 import { client } from "@/config/client";
 import { WALLETS, APP_METADATA } from "@/config/wallets";
+import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
 import s from "./waitlist.module.css";
 
 /**
- * The private/unofficial Arc mainnet — defined inline and scoped to this page on
- * purpose. The waitlist join is a chain-agnostic signature, but we switch the
- * wallet to Arc before signing so the act of joining happens on Arc. This is NOT
- * wired into the app's global chain registry.
+ * The waitlist join is a chain-agnostic signature, but we switch the wallet to
+ * the live Arc mainnet before signing so the act of joining happens on Arc. The
+ * chain comes from the same global registry as the rest of the app.
  */
 const ARC_CHAIN_ID = 5042;
-const ARC_CHAIN = defineChain({
-  id: ARC_CHAIN_ID,
-  name: "Arc",
-  rpc: "https://rpc.arc-scan.org",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  blockExplorers: [{ name: "Arc Scan", url: "https://arc-scan.org" }],
-});
+const ARC_CHAIN = defineChain(toThirdwebChainOptions(CHAINS_BY_ID[ARC_CHAIN_ID]));
 
 type XTask = { done: boolean; counted: boolean; countsAt: string | null };
 type Status = {
@@ -192,7 +186,12 @@ export default function WaitlistPage() {
 
   const onConnect = useCallback(async () => {
     try {
-      await connect({ client, wallets: WALLETS, appMetadata: APP_METADATA });
+      await connect({
+        client,
+        wallets: WALLETS,
+        chain: ARC_CHAIN,
+        appMetadata: APP_METADATA,
+      });
     } catch (e) {
       /* A user closing the modal also rejects here, so this isn't necessarily
          an error — but a WalletConnect init failure lands here too and used to
