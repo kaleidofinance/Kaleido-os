@@ -39,7 +39,11 @@ import {
   fetchOmniAssetBalance,
   indexedAssets,
 } from "@/constants/utils/omniChainBalances";
-import { getSpotPrice, PRICED_SYMBOLS } from "@/lib/v2/prices/spot";
+import {
+  getSpotPrice,
+  PRICED_SYMBOLS,
+  SUPPORTED_ASSET_SYMBOLS,
+} from "@/lib/v2/prices/spot";
 import { FEE_TIERS } from "@/lib/dex/liquidity";
 import {
   describeRoute,
@@ -60,6 +64,7 @@ import { discoveryChains } from "@/lib/dex/poolDiscovery";
 import { sweepChain } from "@/lib/dex/poolSweep";
 import { priceLookup, type SpotPrices } from "@/lib/market/spot";
 import { PRICEABLE, getPrices } from "@/lib/points/prices";
+import { readWaitlistRewardState } from "@/lib/waitlist/rewards";
 
 /**
  * Server-side execution of Luca's READ tools.
@@ -605,6 +610,7 @@ async function getPoints(args: Json): Promise<Json> {
       .select("wallet", { count: "exact", head: true })
       .eq("season", season.id),
   ]);
+  const waitlistRewards = await readWaitlistRewardState(wallet);
 
   if (row.error) return { error: "Could not read your points standing." };
   const participants = count.error ? null : (count.count ?? null);
@@ -618,7 +624,20 @@ async function getPoints(args: Json): Promise<Json> {
       season: season.label,
       participants,
       earned: false,
-      note: "This wallet has no points on the board for the current season — say the user has not earned points yet. Do not speculate about why (a missing row can also be a flagged wallet, which must never be disclosed). Points come from using the protocol: a swap, a deposit, or providing liquidity all earn.",
+      rewards: waitlistRewards
+        ? {
+            settledPoints: 0,
+            pendingPoints: waitlistRewards.pendingPoints,
+            availableNow: waitlistRewards.availablePoints,
+            totalAfterPending:
+              waitlistRewards.pendingPoints + waitlistRewards.availablePoints,
+            referrals: waitlistRewards.referrals,
+            referralPoints: waitlistRewards.referralPoints,
+            welcomePoints: waitlistRewards.welcomePoints,
+            tasks: waitlistRewards.tasks,
+          }
+        : null,
+      note: "This wallet has no settled row on the board for the current season. If rewards are present, report them as waitlist points and distinguish available from pending; do not say the user has earned nothing. Do not speculate about why a settled row is missing (a missing row can also be a flagged wallet, which must never be disclosed). Points come from using the protocol: a swap, a deposit, or providing liquidity all earn.",
     };
   }
 
@@ -636,7 +655,22 @@ async function getPoints(args: Json): Promise<Json> {
       action: num(r.action_points),
       bonus: num(r.bonus_points),
     },
-    note: `Points for the ${season.label} season, across all chains — not per chain.${r.rank === null ? " Outside the public top ranks, so the exact rank is masked; give the percentile instead." : ""} Points are earned by using the protocol over time; they are not a token balance and nothing is claimable here.`,
+    rewards: waitlistRewards
+      ? {
+          settledPoints: num(r.total),
+          pendingPoints: waitlistRewards.pendingPoints,
+          availableNow: waitlistRewards.availablePoints,
+          totalAfterPending:
+            (num(r.total) ?? 0) +
+            waitlistRewards.availablePoints +
+            waitlistRewards.pendingPoints,
+          referrals: waitlistRewards.referrals,
+          referralPoints: waitlistRewards.referralPoints,
+          welcomePoints: waitlistRewards.welcomePoints,
+          tasks: waitlistRewards.tasks,
+        }
+      : null,
+    note: `Points for the ${season.label} season, across all chains — not per chain.${r.rank === null ? " Outside the public top ranks, so the exact rank is masked; give the percentile instead." : ""} Points are not a token balance and nothing is claimable here. If rewards.pendingPoints or rewards.availableNow are present, explain that waitlist/task points are pending or awaiting ledger reconciliation rather than presenting them as already settled.`,
   };
 }
 
@@ -1113,10 +1147,11 @@ async function getChains(
  * round replaces all of it.
  *
  * Priced off the chart's own allowlist, so there is exactly one place that
- * decides what Kaleido claims to know a price for. KLD, kfUSD, kafUSD and stKLD
- * are deliberately absent from it — they have no market because they have no
- * deployment — and this returns the "no feed" answer for them rather than a
- * number, which is the honest result and the one the model can relay.
+ * decides what Kaleido claims to know a price for. The supported-asset list is
+ * separately derived from the canonical token registry: an asset can be valid
+ * for the app without having a verified USD market feed. This returns the "no
+ * feed" answer for those assets rather than a number, which is the honest
+ * result and the one the model can relay.
  */
 async function getPrice(args: Json): Promise<Json> {
   const asset = String(args.asset ?? "").trim();
@@ -1133,7 +1168,8 @@ async function getPrice(args: Json): Promise<Json> {
         asset: asset.toUpperCase(),
         priced: false,
         pricedAssets: PRICED_SYMBOLS,
-        note: `No price feed for "${asset.toUpperCase()}". Kaleido's own tokens (KLD, kfUSD, kafUSD, stKLD) have no market price to read. Say so plainly — do not estimate one, do not substitute a different asset's price, and do not speculate about why.`,
+        supportedAssets: SUPPORTED_ASSET_SYMBOLS,
+        note: `No verified USD price feed for "${asset.toUpperCase()}". It may still be a supported Kaleido asset for balances or execution, but Luca must not estimate a price, substitute a different asset, or speculate. Only report a USD value when priced is true.`,
       };
     }
 

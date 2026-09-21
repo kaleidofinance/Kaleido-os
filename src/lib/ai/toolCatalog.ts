@@ -732,7 +732,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getPoints",
     kind: "read",
     description:
-      "The user's standing in the points program: their rank (or a percentile when they are outside the public top ranks), total points, the breakdown into time/action/bonus, and how many wallets are on the board. Call this for 'how many points do I have', 'what's my rank', or 'am I on the leaderboard'. Points are off chain and span every chain — do NOT pass or mention a chain. They are earned by using the protocol over time; they are not a token and nothing is claimable. When a wallet's exact rank is masked, give the percentile — never imply an exact rank you were not given.",
+      "The user's standing in the points program: their settled total, rank (or a percentile when they are outside the public top ranks), the time/action/bonus breakdown, and how many wallets are on the board. It also reports waitlist task status, points pending the five-hour hold, points available from verified tasks, referrals, and the projected total after pending points settle. Call this for 'how many points do I have', 'what's pending', 'which tasks did I complete', 'when will my points unlock', 'what's my rank', or 'am I on the leaderboard'. Points are off chain and span every chain — do NOT pass or mention a chain. They are not a token and nothing is claimable. When a wallet's exact rank is masked, give the percentile — never imply an exact rank you were not given.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -866,7 +866,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getPrice",
     kind: "read",
     description:
-      "The current USD price of an asset, with its 24h change. Use this for any question about what something is worth or how it has moved — it is the only tool that returns a market price, and it answers in one call. Do not try to infer a price from getMarkets (an order book of loan offers) or getPortfolio (position values); neither carries one. Covers ETH, BTC, BNB, POL, HYPE, USDC, USDT, DAI and their wrapped forms. Kaleido's own tokens (KLD, kfUSD, kafUSD, stKLD) are not priced — the tool says so and you relay that rather than estimating. Reference only: never size a swap or a collateral amount from this number.",
+      "The current USD price of an asset, with its 24h change, when a verified feed exists. Use this for any question about what something is worth or how it has moved — it is the only tool that returns a market price, and it answers in one call. The supported asset universe is derived from Kaleido's canonical token registry, including crypto, stablecoins, Arc/community assets, own tokens, and tokenized equities; assets without a verified feed are returned as unpriced. Do not infer a price from getMarkets or getPortfolio, and never size a swap or collateral amount from this reference number.",
     parameters: {
       type: "object",
       additionalProperties: false,
