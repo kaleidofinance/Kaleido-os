@@ -167,11 +167,21 @@ const HTML = `<!doctype html>
     border:1px solid var(--line2); border-radius:999px; padding:9px 16px; cursor:pointer;
     -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px)}
   .pdfbtn:hover{border-color:var(--sand)}
+  @page{size:A4 portrait; margin:0}
   .pdfbtn:focus-visible{outline:2px solid var(--sand); outline-offset:3px}
   @media print{
     .pdfbtn{display:none}
     *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important }
-    section{padding-block:40px}
+    html,body{width:210mm; min-width:210mm; margin:0; background:var(--ink)}
+    .wrap{width:100%; max-width:none; padding-inline:16mm}
+    section{
+      width:210mm; min-height:297mm; padding:20mm 0;
+      break-after:page; page-break-after:always; break-inside:avoid;
+    }
+    section.cover{min-height:297mm; padding-block:24mm}
+    section:last-of-type{break-after:auto; page-break-after:auto}
+    footer{width:210mm; padding:10mm 16mm}
+    .footrow{max-width:none; padding-inline:0}
   }
 </style>
 </head>
