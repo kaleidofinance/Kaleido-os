@@ -77,7 +77,11 @@ function xTaskState(at: string | null, now: number) {
  * waitlist credit. Reconcile the positive delta into the canonical Season 1
  * ledger so the waitlist card and leaderboard cannot drift apart.
  */
-async function reconcileActivatedPoints(wallet: string, eligible: number) {
+async function reconcileWaitlistPoints(
+  wallet: string,
+  eligible: number,
+  activated: boolean,
+) {
   const admin = supabaseAdmin!;
   const { data, error } = await admin
     .from("point_actions")
@@ -90,6 +94,10 @@ async function reconcileActivatedPoints(wallet: string, eligible: number) {
     (sum, row) => sum + Number(row.points ?? 0),
     0,
   );
+  // Bulk credits can predate activated_at. Once a wallet already has a
+  // waitlist ledger row, reconcile later task/referral deltas even if that
+  // legacy flag was never stamped.
+  if (!activated && credited <= 0) return;
   const delta = eligible - credited;
   if (delta <= 0) return;
 
@@ -195,7 +203,11 @@ async function standing(wallet: string) {
   const transactionPoints = transactionTaskPointsFor(row);
   const eligiblePoints =
     welcomePoints + referralPoints + countedX + transactionPoints;
-  if (row.activated_at) await reconcileActivatedPoints(wallet, eligiblePoints);
+  await reconcileWaitlistPoints(
+    wallet,
+    eligiblePoints,
+    Boolean(row.activated_at),
+  );
   return {
     wallet,
     refCode: row.ref_code as string,
