@@ -5,6 +5,8 @@ import Nav from "@/components/v2/Nav";
 import { StatStrip, Stat } from "@/components/v2/StatStrip";
 import { usd, qty, pct } from "@/lib/format/figures";
 import type { AnalyticsOverview } from "@/lib/analytics/overview";
+import type { DailyPoint } from "@/lib/analytics/timeseries";
+import { TimeChart } from "./_components/TimeChart";
 import s from "./analytics.module.css";
 
 /**
@@ -25,6 +27,19 @@ export default function AnalyticsPage() {
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
+
+  const { data: ts } = useQuery<{ days: number; series: DailyPoint[] | null }>({
+    queryKey: ["analytics-timeseries"],
+    queryFn: async () => {
+      const res = await fetch("/api/analytics/timeseries?days=30", { cache: "no-store" });
+      if (!res.ok) throw new Error(`timeseries ${res.status}`);
+      return (await res.json()) as { days: number; series: DailyPoint[] | null };
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const series = ts?.series ?? [];
+  const sum = (f: (d: DailyPoint) => number) => series.reduce((a, d) => a + f(d), 0);
 
   const t = data?.trading;
   const g = data?.growth;
@@ -108,6 +123,17 @@ export default function AnalyticsPage() {
             <p className={s.empty}>No points recorded yet.</p>
           )}
         </section>
+        {series.length > 0 ? (
+          <section className={s.section}>
+            <h2 className={s.h2}>Trends · last 30 days</h2>
+            <div className={s.charts}>
+              <TimeChart label="Volume" hint="30d" summary={usd(sum((d) => d.volumeUsd))} points={series.map((d) => d.volumeUsd)} />
+              <TimeChart label="Fees" hint="30d" summary={usd(sum((d) => d.feesUsd), 2)} points={series.map((d) => d.feesUsd)} />
+              <TimeChart label="Swaps" hint="30d" summary={qty(sum((d) => d.swaps))} points={series.map((d) => d.swaps)} />
+              <TimeChart label="New wallets" hint="30d" summary={qty(sum((d) => d.newWallets))} points={series.map((d) => d.newWallets)} />
+            </div>
+          </section>
+        ) : null}
       </main>
     </>
   );
