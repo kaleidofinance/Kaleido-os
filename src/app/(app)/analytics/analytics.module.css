@@ -87,3 +87,9 @@
   font-size: var(--k-fs-sm);
   color: var(--k-t3, var(--k-t2));
 }
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--k-s3);
+}
