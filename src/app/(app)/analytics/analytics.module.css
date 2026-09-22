@@ -1,0 +1,89 @@
+.wrap {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--k-s5) var(--k-s4) var(--k-s7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s6);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+
+.h1 {
+  margin: 0;
+  font-size: var(--k-fs-xl, 1.6rem);
+  font-weight: 600;
+  color: var(--k-t1);
+}
+
+.sub {
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t3, var(--k-t2));
+}
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--k-brand);
+  box-shadow: 0 0 0 3px var(--k-brand-dim);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s3);
+}
+
+.h2 {
+  margin: 0;
+  font-size: var(--k-fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--k-t3, var(--k-t2));
+}
+
+/* The per-source points breakdown: a compact label/value list under the tiles. */
+.breakdown {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--k-s2) var(--k-s4);
+  padding: var(--k-s3) var(--k-s4);
+  background: var(--k-glass, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--k-glass-line);
+  border-radius: var(--k-r-lg);
+}
+.brow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  font-size: var(--k-fs-sm);
+}
+.blabel {
+  color: var(--k-t2);
+  text-transform: capitalize;
+}
+.bvalue {
+  color: var(--k-t1);
+  font-weight: 560;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: var(--k-s4);
+  font-size: var(--k-fs-sm);
+  color: var(--k-t3, var(--k-t2));
+}
