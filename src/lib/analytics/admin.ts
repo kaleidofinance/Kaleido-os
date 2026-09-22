@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
+import { isErrorStatus } from "@/lib/analytics/agentStatus";
 
 /**
  * Admin-only ops metrics for /analytics/admin — the signals that don't belong on
@@ -25,15 +26,6 @@ export interface AdminMetrics {
   } | null;
 }
 
-/** Statuses that are real failures, as opposed to a correct refusal or a normal
- *  handled turn. Kept explicit so the rate is honest. */
-const ERROR_STATUSES = new Set([
-  "provider_error",
-  "provider_blocked",
-  "build_error",
-  "quota_exhausted",
-]);
-
 export interface HealthRow {
   status?: string | null;
   latency_ms?: number | null;
@@ -54,7 +46,7 @@ export function summarizeHealth(rows: ReadonlyArray<HealthRow>): NonNullable<Adm
     const st = r.status ?? "unknown";
     byStatus[st] = (byStatus[st] ?? 0) + 1;
     if (st === "ok") ok++;
-    if (ERROR_STATUSES.has(st)) errors++;
+    if (isErrorStatus(st)) errors++;
     if (r.failed_over === true) failovers++;
     const prov = r.provider ?? "unknown";
     providerMix[prov] = (providerMix[prov] ?? 0) + 1;

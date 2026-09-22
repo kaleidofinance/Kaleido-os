@@ -44,16 +44,17 @@ console.log("\n— summarizeTurns: count, success rate, avg latency —");
   const r = summarizeTurns([
     { status: "ok", latency_ms: 1000 },
     { status: "ok", latency_ms: 3000 },
-    { status: "provider_error", latency_ms: null },
-    { status: "build_error", latency_ms: 500 },
+    { status: "refused", latency_ms: 800 }, // a correct decline → HANDLED, not a failure
+    { status: "provider_error", latency_ms: null }, // real error
+    { status: "build_error", latency_ms: 500 }, // real error
   ]);
-  check("turns = row count", r.turns === 4);
-  check("success rate = ok / total", r.successRate === 0.5, r.successRate);
-  check("avg latency ignores null, averages the rest", r.avgLatencyMs === 1500, r.avgLatencyMs);
+  check("turns = row count", r.turns === 5);
+  check("handled rate counts refused as handled: (5 - 2 errors) / 5", Math.abs(r.handledRate - 0.6) < 1e-9, r.handledRate);
+  check("avg latency ignores null, averages the rest", r.avgLatencyMs === 1325, r.avgLatencyMs);
 }
 {
   const r = summarizeTurns([]);
-  check("no turns → rate 0, latency null", r.turns === 0 && r.successRate === 0 && r.avgLatencyMs === null);
+  check("no turns → rate 0, latency null", r.turns === 0 && r.handledRate === 0 && r.avgLatencyMs === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -95,8 +95,8 @@ export default function AnalyticsPage() {
           <StatStrip>
             <Stat label="Turns" value={qty(l?.turns ?? null)} />
             <Stat
-              label="Success rate"
-              value={pct(l ? l.successRate * 100 : null, 1)}
+              label="Handled rate"
+              value={pct(l ? l.handledRate * 100 : null, 1)}
             />
             <Stat label="Avg latency" value={l?.avgLatencyMs != null ? `${(l.avgLatencyMs / 1000).toFixed(1)}s` : "—"} />
           </StatStrip>

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import { readPlatformTotals } from "@/lib/stats/platform";
+import { isErrorStatus } from "@/lib/analytics/agentStatus";
 
 /**
  * The /analytics overview — headline KPIs across every Kaleido product, for the
@@ -27,7 +28,9 @@ export interface AnalyticsOverview {
   } | null;
   luca: {
     turns: number;
-    successRate: number; // 0..1
+    /** 1 - error rate: ok + refused + any non-error outcome. A safe decline is
+     *  the agent working, not failing, so it counts as handled. */
+    handledRate: number; // 0..1
     avgLatencyMs: number | null;
   } | null;
   points: {
@@ -65,17 +68,17 @@ export function summarizeActions(
   return { uniqueWallets: wallets.size, totalPoints, bySource };
 }
 
-/** Fold agent_turns rows into count, success rate and average latency. A turn is
- *  a success when its status is "ok"; anything else (provider_error, build_error,
- *  throttled, …) is not. Pure. */
+/** Fold agent_turns rows into count, HANDLED rate and average latency. Handled
+ *  = 1 - error rate, so a `refused` (a correct decline) counts as handled, not a
+ *  failure — see agentStatus.ts. Pure. */
 export function summarizeTurns(
   rows: ReadonlyArray<{ status?: string | null; latency_ms?: number | null }>,
-): { turns: number; successRate: number; avgLatencyMs: number | null } {
-  let ok = 0;
+): { turns: number; handledRate: number; avgLatencyMs: number | null } {
+  let errors = 0;
   let latencySum = 0;
   let latencyN = 0;
   for (const r of rows) {
-    if ((r?.status ?? "") === "ok") ok++;
+    if (isErrorStatus(r?.status)) errors++;
     const l = Number(r?.latency_ms);
     if (Number.isFinite(l) && l > 0) {
       latencySum += l;
@@ -85,7 +88,7 @@ export function summarizeTurns(
   const turns = rows.length;
   return {
     turns,
-    successRate: turns > 0 ? ok / turns : 0,
+    handledRate: turns > 0 ? (turns - errors) / turns : 0,
     avgLatencyMs: latencyN > 0 ? Math.round(latencySum / latencyN) : null,
   };
 }
