@@ -4,6 +4,7 @@ import { verifyMessage } from "ethers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { transactionTaskPointsFor } from "@/lib/waitlist/transactionTasks";
+import { HELD_TASKS } from "@/lib/waitlist/rewards";
 
 /**
  * The Arc waitlist API.
@@ -98,8 +99,12 @@ async function reconcileWaitlistPoints(
   // waitlist ledger row, reconcile later task/referral deltas even if that
   // legacy flag was never stamped.
   if (!activated && credited <= 0) return;
+  // Bidirectional now: a NEGATIVE delta (eligible dropped — e.g. retweet/comment
+  // moved to HELD_TASKS) claws the difference back, so an already-credited wallet
+  // converges to the new eligible on its next visit. The eligible-keyed tx_hash
+  // keeps it idempotent, so concurrent calls at one eligible cannot double-apply.
   const delta = eligible - credited;
-  if (delta <= 0) return;
+  if (delta === 0) return;
 
   await admin.from("point_actions").insert({
     wallet,
@@ -191,7 +196,13 @@ async function standing(wallet: string) {
     (typeof xTasks)["linked"],
   ][];
   const countedX = xEntries.reduce(
-    (sum, [k, s]) => sum + (s.counted ? X_TASK_POINTS[k] : 0),
+    (sum, [k, s]) => sum + (s.counted && !HELD_TASKS.has(k) ? X_TASK_POINTS[k] : 0),
+    0,
+  );
+  // The counted-but-HELD X points, surfaced so the UI can say "pending
+  // verification" rather than silently dropping them.
+  const heldUnverified = xEntries.reduce(
+    (sum, [k, s]) => sum + (s.counted && HELD_TASKS.has(k) ? X_TASK_POINTS[k] : 0),
     0,
   );
   const heldPoints = xEntries.reduce(
@@ -217,6 +228,7 @@ async function standing(wallet: string) {
     // its hold. heldPoints is the X-task kPoint still counting down.
     points: eligiblePoints,
     heldPoints,
+    heldUnverified,
     welcomePoints,
     referralPoints,
     xHandle: (row.x_handle as string | null) ?? null,

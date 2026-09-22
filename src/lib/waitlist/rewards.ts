@@ -13,6 +13,17 @@ export const WAITLIST_TASK_POINTS = {
   bridge: 500,
 } as const;
 
+/**
+ * X tasks whose points are HELD out of Season 1 until real (API) verification.
+ * They are attested, not verified, and an audit against the real X counts on
+ * 2026-09-22 showed ~half of the retweet and comment claims were false (3,757
+ * vs ~2,000 real retweets; 3,543 vs ~1,600 real comments). Follow is NOT held —
+ * its claim count matched the real follower count — and `linked` is OAuth-
+ * verified. A held task still shows as completed; its points just do not count
+ * toward the Season-1 balance until they can be proven.
+ */
+export const HELD_TASKS: ReadonlySet<string> = new Set(["retweeted", "commented"]);
+
 export interface WaitlistRewardRow {
   welcome_points: number | string | null;
   activated_at?: string | null;
@@ -27,10 +38,13 @@ export interface WaitlistRewardRow {
 }
 
 export interface WaitlistTaskReward {
+  key: string;
   task: string;
   points: number;
   status: "pending" | "available" | "settled";
   availableAt: string | null;
+  /** Completed but held out of the point totals until verified — see HELD_TASKS. */
+  held: boolean;
 }
 
 export interface WaitlistRewardProjection {
@@ -50,22 +64,26 @@ function numberValue(value: number | string | null | undefined): number {
 }
 
 function heldTask(
+  key: string,
   task: string,
   points: number,
   completedAt: string | null | undefined,
   now: number,
 ): WaitlistTaskReward {
+  const held = HELD_TASKS.has(key);
   if (!completedAt) {
-    return { task, points, status: "available", availableAt: null };
+    return { key, task, points, status: "available", availableAt: null, held };
   }
   const availableAt = new Date(
     new Date(completedAt).getTime() + X_HOLD_MS,
   ).toISOString();
   return {
+    key,
     task,
     points,
     status: now >= new Date(availableAt).getTime() ? "available" : "pending",
     availableAt,
+    held,
   };
 }
 
@@ -79,36 +97,42 @@ export function projectWaitlistRewards(
   const referralCount = Math.max(0, Math.floor(Number(referrals) || 0));
   const referralPoints = referralCount * 50;
   const tasks: WaitlistTaskReward[] = [
-    heldTask("Link your X account", WAITLIST_TASK_POINTS.linked, row.x_linked_at, now),
-    heldTask("Follow @kaleido_finance", WAITLIST_TASK_POINTS.followed, row.x_followed_at, now),
-    heldTask("Repost the Mainnet Launch post", WAITLIST_TASK_POINTS.retweeted, row.x_retweeted_at, now),
-    heldTask("Comment on the launch post", WAITLIST_TASK_POINTS.commented, row.x_commented_at, now),
-    heldTask("Like and repost the Mainnet Launch post", WAITLIST_TASK_POINTS.launch, row.x_launch_at, now),
+    heldTask("linked", "Link your X account", WAITLIST_TASK_POINTS.linked, row.x_linked_at, now),
+    heldTask("followed", "Follow @kaleido_finance", WAITLIST_TASK_POINTS.followed, row.x_followed_at, now),
+    heldTask("retweeted", "Repost the Mainnet Launch post", WAITLIST_TASK_POINTS.retweeted, row.x_retweeted_at, now),
+    heldTask("commented", "Comment on the launch post", WAITLIST_TASK_POINTS.commented, row.x_commented_at, now),
+    heldTask("launch", "Like and repost the Mainnet Launch post", WAITLIST_TASK_POINTS.launch, row.x_launch_at, now),
     {
+      key: "arcMainnet",
       task: "First Arc mainnet transaction",
       points: WAITLIST_TASK_POINTS.arcMainnet,
       status: row.arc_mainnet_tx_at ? "settled" : "available",
       availableAt: null,
+      held: false,
     },
     {
+      key: "agent",
       task: "First Kaleido transaction",
       points: WAITLIST_TASK_POINTS.agent,
       status: row.agent_tx_at ? "settled" : "available",
       availableAt: null,
+      held: false,
     },
     {
+      key: "bridge",
       task: "Bridge assets in or out of Arc with Luca",
       points: WAITLIST_TASK_POINTS.bridge,
       status: row.bridge_tx_at ? "settled" : "available",
       availableAt: null,
+      held: false,
     },
   ];
 
   const pendingPoints = tasks
-    .filter((task) => task.status === "pending")
+    .filter((task) => task.status === "pending" && !task.held)
     .reduce((sum, task) => sum + task.points, 0);
   const availableTaskPoints = tasks
-    .filter((task) => task.status === "available" && task.availableAt !== null)
+    .filter((task) => task.status === "available" && task.availableAt !== null && !task.held)
     .reduce((sum, task) => sum + task.points, 0);
 
   return {
@@ -116,7 +140,7 @@ export function projectWaitlistRewards(
     settledWaitlistPoints: Boolean(row.activated_at)
       ? welcomePoints + referralPoints +
         tasks
-          .filter((task) => task.status === "settled" || task.status === "available")
+          .filter((task) => (task.status === "settled" || task.status === "available") && !task.held)
           .reduce((sum, task) => sum + task.points, 0)
       : 0,
     // Pending means the five-hour hold only. Welcome/referral points and

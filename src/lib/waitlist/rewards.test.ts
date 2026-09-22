@@ -40,5 +40,34 @@ check("activated settled task is marked settled", activated.tasks[5].status === 
 check("an expired X hold is available for reconciliation", activated.availablePoints === 100);
 check("an activated X hold is no longer pending", activated.pendingPoints === 0);
 
+const held = projectWaitlistRewards(
+  {
+    welcome_points: 100,
+    activated_at: "2026-01-01T00:00:00.000Z",
+    x_followed_at: "2026-01-01T00:00:00.000Z", // follow counts (expired hold)
+    x_retweeted_at: "2026-01-01T00:00:00.000Z", // HELD
+    x_commented_at: "2026-01-01T00:00:00.000Z", // HELD
+  },
+  0,
+  now,
+);
+check("retweet is flagged held", held.tasks.find((x) => x.key === "retweeted")?.held === true);
+check("comment is flagged held", held.tasks.find((x) => x.key === "commented")?.held === true);
+check("follow is not held", held.tasks.find((x) => x.key === "followed")?.held === false);
+check("held retweet+comment are excluded; only follow (100) is available", held.availablePoints === 100);
+
+const heldOnly = projectWaitlistRewards(
+  {
+    welcome_points: 100,
+    activated_at: "2026-01-01T00:00:00.000Z",
+    x_retweeted_at: "2026-01-01T00:00:00.000Z", // HELD
+    x_commented_at: "2026-01-01T00:00:00.000Z", // HELD
+  },
+  0,
+  now,
+);
+check("a wallet whose only X tasks are held earns 0 available X points", heldOnly.availablePoints === 0);
+check("held-only tasks are not pending either", heldOnly.pendingPoints === 0);
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
