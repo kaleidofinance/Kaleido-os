@@ -93,3 +93,29 @@
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--k-s3);
 }
+
+.verifyBt {
+  align-self: flex-start;
+  padding: var(--k-s2) var(--k-s5);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  font-weight: 560;
+  color: var(--k-brand-fg);
+  background: var(--k-brand);
+  border: none;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.verifyBt:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.linkBt {
+  font: inherit;
+  color: var(--k-brand);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
