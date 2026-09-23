@@ -37,7 +37,7 @@ function decode(data: string) {
   const inputs: string[] = parsed.args[1];
   const [actions, params] = coder.decode(["bytes", "bytes[]"], inputs[0]) as [string, string[]];
   const [p0] = coder.decode(
-    ["tuple(tuple(address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks) poolKey,bool zeroForOne,uint128 amountIn,uint128 amountOutMinimum,bytes hookData)"],
+    ["tuple(tuple(address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks) poolKey,bool zeroForOne,uint128 amountIn,uint128 amountOutMinimum,uint160 sqrtPriceLimitX96,bytes hookData)"],
     params[0],
   ) as any;
   const [settleCur, settleAmt] = coder.decode(["address", "uint256"], params[1]) as [string, bigint];
@@ -61,6 +61,7 @@ console.log("\n— BUY (quote→token) round-trips to ground-truth encoding —"
   check("poolKey fee/spacing/hook correct", Number(d.p0.poolKey.fee) === 10000 && Number(d.p0.poolKey.tickSpacing) === 200 && d.p0.poolKey.hooks.toLowerCase() === HOOK.toLowerCase());
   check("buy → zeroForOne true (token is currency1)", d.p0.zeroForOne === true);
   check("amountIn + minOut carried into swap params", BigInt(d.p0.amountIn) === amtIn && BigInt(d.p0.amountOutMinimum) === minOut);
+  check("sqrtPriceLimitX96 present and 0 (Argus router's older struct — the fix)", BigInt(d.p0.sqrtPriceLimitX96) === 0n);
   check("SETTLE_ALL settles the INPUT (USDC, amountIn)", d.settleCur.toLowerCase() === USDC && d.settleAmt === amtIn);
   check("TAKE_ALL takes the OUTPUT (token, minOut)", d.takeCur.toLowerCase() === TOKEN.toLowerCase() && d.takeAmt === minOut);
   check("meta flags the input for Permit2 approval", tx.meta.approvalNeededFor.toLowerCase() === USDC);

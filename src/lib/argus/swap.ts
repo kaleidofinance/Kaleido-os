@@ -90,11 +90,16 @@ export function buildArgusSwapTx(params: {
 
   const actions = "0x" + ACTION_SWAP_EXACT_IN_SINGLE + ACTION_SETTLE_ALL + ACTION_TAKE_ALL;
 
+  // Argus's DEPLOYED v4 router (Arc) is an older build whose ExactInputSingleParams
+  // still carries `sqrtPriceLimitX96` (uint160) between amountOutMinimum and
+  // hookData. Omitting it makes the router mis-decode the tail and revert bare.
+  // Verified 2026-09-23 by byte-diffing a real successful swap + estimateGas.
+  // 0 = no price limit (single-range fill; slippage is enforced by minOut/TAKE_ALL).
   const swapParam = coder.encode(
     [
-      "tuple(tuple(address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks) poolKey,bool zeroForOne,uint128 amountIn,uint128 amountOutMinimum,bytes hookData)",
+      "tuple(tuple(address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks) poolKey,bool zeroForOne,uint128 amountIn,uint128 amountOutMinimum,uint160 sqrtPriceLimitX96,bytes hookData)",
     ],
-    [[[poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks], zeroForOne, amountInRaw, amountOutMinimum, "0x"]],
+    [[[poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks], zeroForOne, amountInRaw, amountOutMinimum, 0n, "0x"]],
   );
   const settleParam = coder.encode(["address", "uint256"], [inputCurrency, amountInRaw]);
   const takeParam = coder.encode(["address", "uint256"], [outputCurrency, amountOutMinimum]);
