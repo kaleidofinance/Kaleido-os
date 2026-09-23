@@ -6,7 +6,7 @@
  * the page's numbers are pure and are what is tested here.
  */
 
-import { summarizeActions, summarizeTurns } from "@/lib/analytics/overview";
+import { summarizeActions, summarizeQuestionRoutes, summarizeTurns } from "@/lib/analytics/overview";
 
 let pass = 0;
 let fail = 0;
@@ -51,6 +51,25 @@ console.log("\n— summarizeTurns: count, success rate, avg latency —");
   check("turns = row count", r.turns === 5);
   check("handled rate counts refused as handled: (5 - 2 errors) / 5", Math.abs(r.handledRate - 0.6) < 1e-9, r.handledRate);
   check("avg latency ignores null, averages the rest", r.avgLatencyMs === 1325, r.avgLatencyMs);
+}
+
+console.log("\n— summarizeQuestionRoutes: local intent versus model turns —");
+{
+  const r = summarizeQuestionRoutes([
+    { route: "local-intent:follow_up" },
+    { route: "local-intent:follow_up" },
+    { route: "local-intent:fresh" },
+    { route: "local-intent:question" },
+    { route: "model" },
+    { route: "faq:slippage" },
+  ]);
+  check("local intent count includes all local classifications", r.localIntentTurns === 4, r);
+  check("follow-up count is isolated", r.localFollowUps === 2, r);
+  check("model count is isolated", r.modelTurns === 1, r);
+}
+{
+  const r = summarizeQuestionRoutes([]);
+  check("no route rows → zero counts", r.localIntentTurns === 0 && r.localFollowUps === 0 && r.modelTurns === 0, r);
 }
 {
   const r = summarizeTurns([]);
