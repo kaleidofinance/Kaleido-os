@@ -41,6 +41,12 @@ import {
   isPersonalHealthQuestion,
 } from "@/lib/v2/cards/portfolio";
 import { receiptFromSettled } from "@/lib/v2/cards/receipt";
+import {
+  asksAboutLastResult,
+  followThroughReply,
+  reviveFollowThrough,
+  type FollowThrough,
+} from "@/lib/v2/agentFollowThrough";
 import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
 import { docsReply, groundingFor, MIN_ASK_SIMILARITY, outageReply, searchDocs } from "@/lib/ai/docsSearch";
@@ -227,6 +233,7 @@ export default function AgentPage() {
    * plan the user completed. See parseFollowUp.
    */
   const [lastCommand, setLastCommand] = useState<Command | null>(null);
+  const [lastOutcome, setLastOutcome] = useState<FollowThrough | null>(null);
   const localIntentModelRef = useRef<ReturnType<typeof createBrowserLocalIntentModel> | null>(null);
   const localIntentDisabledRef = useRef(false);
   const [contextHydrated, setContextHydrated] = useState(false);
@@ -239,17 +246,22 @@ export default function AgentPage() {
     const key = `kaleido.v2.agentContext.${address ?? "anon"}`;
     setContextHydrated(false);
     let restored: Command | null = null;
+    let restoredOutcome: FollowThrough | null = null;
     try {
       const raw = sessionStorage.getItem(key);
       const parsed = raw ? (JSON.parse(raw) as Partial<Command>) : null;
       if (parsed && typeof parsed === "object" && typeof parsed.kind === "string") {
         restored = parsed as Command;
       }
+      const outcomeRaw = sessionStorage.getItem(`${key}.outcome`);
+      restoredOutcome = outcomeRaw ? reviveFollowThrough(JSON.parse(outcomeRaw)) : null;
     } catch {
       restored = null;
+      restoredOutcome = null;
     }
     contextKeyRef.current = key;
     setLastCommand(restored);
+    setLastOutcome(restoredOutcome);
     setContextHydrated(true);
   }, [address]);
   useEffect(() => {
@@ -262,6 +274,16 @@ export default function AgentPage() {
       /* unavailable storage leaves the context in memory */
     }
   }, [lastCommand, address, contextHydrated]);
+  useEffect(() => {
+    const key = `kaleido.v2.agentContext.${address ?? "anon"}`;
+    if (!contextHydrated || contextKeyRef.current !== key) return;
+    try {
+      if (lastOutcome) sessionStorage.setItem(`${key}.outcome`, JSON.stringify(lastOutcome));
+      else sessionStorage.removeItem(`${key}.outcome`);
+    } catch {
+      /* unavailable storage leaves the outcome in memory */
+    }
+  }, [lastOutcome, address, contextHydrated]);
   /** Remaining model requests today. Null until known, or when unmetered. */
   const [credits, setCredits] = useState<{
     remaining: number;
@@ -704,6 +726,19 @@ export default function AgentPage() {
   const send = async (text: string) => {
     const content = text.trim();
     if (!content || busy) return;
+
+    /* A receipt is structured context, not a model question. Keep result
+       follow-through local so Luca reports the actual hash it observed rather
+       than guessing from the previous prose. */
+    if (lastOutcome && asksAboutLastResult(content)) {
+      setMessages((m) => [
+        ...m,
+        { role: "user", text: content },
+        { role: "assistant", text: followThroughReply(lastOutcome), via: "local" },
+      ]);
+      setInput("");
+      return;
+    }
 
     // The vocabulary the parser resolves symbols against, scoped to the chain
     // the user is on. "swap 500 usdc" names a different contract on each chain,
@@ -1523,6 +1558,11 @@ export default function AgentPage() {
    */
   const onComplete = (settled: SettledStep[] = []) => {
     setPanel({ kind: "idle" });
+    setLastOutcome({
+      kind: settled.some((step) => step.hash && !step.skipped) ? "confirmed" : "nothing",
+      steps: settled,
+      at: Date.now(),
+    });
 
     /* The headline as prose, the per-step outcome as a receipt card with a mark
        on each line — see receiptFromSettled. The timing stays in each step's
