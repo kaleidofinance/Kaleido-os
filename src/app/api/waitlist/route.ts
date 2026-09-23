@@ -179,13 +179,14 @@ async function standing(wallet: string) {
 
   const now = Date.now();
   // Which capped tasks have closed at the cap, so the UI can grey them out.
+  // Only `commented` is capped now; the repost tasks stay open (see xCap.ts).
   const closedX = await getClosedXTasks();
   const xTasks = {
     linked: xTaskState(row.x_linked_at as string | null, now),
     followed: xTaskState(row.x_followed_at as string | null, now),
-    retweeted: xTaskState(row.x_retweeted_at as string | null, now, closedX.retweeted),
+    retweeted: xTaskState(row.x_retweeted_at as string | null, now),
     commented: xTaskState(row.x_commented_at as string | null, now, closedX.commented),
-    launch: xTaskState(row.x_launch_at as string | null, now, closedX.launch),
+    launch: xTaskState(row.x_launch_at as string | null, now),
     // Kept in the response for compatibility with an older deployed client;
     // the current UI does not render or claim this disabled task.
     bitget: xTaskState(row.x_bitget_at as string | null, now),
