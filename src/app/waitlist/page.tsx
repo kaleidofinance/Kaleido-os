@@ -25,7 +25,7 @@ const ARC_CHAIN = defineChain(
   toThirdwebChainOptions(CHAINS_BY_ID[ARC_CHAIN_ID]),
 );
 
-type XTask = { done: boolean; counted: boolean; countsAt: string | null };
+type XTask = { done: boolean; counted: boolean; countsAt: string | null; closed?: boolean };
 type Status = {
   refCode: string;
   referrals: number;
@@ -595,15 +595,19 @@ export default function WaitlistPage() {
                           ? status.xTasks.retweeted.counted
                             ? "Done"
                             : "Done · counts within 5h"
-                          : !status.xTasks.linked.done
-                            ? "Link X first"
-                            : ANNOUNCE_TWEET_ID
-                              ? "+100 $kPoint"
-                              : "Coming soon"}
+                          : status.xTasks.retweeted.closed
+                            ? "Closed"
+                            : !status.xTasks.linked.done
+                              ? "Link X first"
+                              : ANNOUNCE_TWEET_ID
+                                ? "+100 $kPoint"
+                                : "Coming soon"}
                       </span>
                     </div>
                     {status.xTasks.retweeted.done ? (
                       <span className={s.taskDone}>✓</span>
+                    ) : status.xTasks.retweeted.closed ? (
+                      <span className={s.taskLock}>🔒</span>
                     ) : !status.xTasks.linked.done || !ANNOUNCE_TWEET_ID ? (
                       <span className={s.taskLock}>🔒</span>
                     ) : opened.retweet ? (
@@ -634,15 +638,19 @@ export default function WaitlistPage() {
                           ? status.xTasks.commented.counted
                             ? "Done"
                             : "Done · counts within 5h"
-                          : !status.xTasks.linked.done
-                            ? "Link X first"
-                            : ANNOUNCE_TWEET_ID
-                              ? "+50 $kPoint"
-                              : "Coming soon"}
+                          : status.xTasks.commented.closed
+                            ? "Closed"
+                            : !status.xTasks.linked.done
+                              ? "Link X first"
+                              : ANNOUNCE_TWEET_ID
+                                ? "+50 $kPoint"
+                                : "Coming soon"}
                       </span>
                     </div>
                     {status.xTasks.commented.done ? (
                       <span className={s.taskDone}>✓</span>
+                    ) : status.xTasks.commented.closed ? (
+                      <span className={s.taskLock}>🔒</span>
                     ) : !status.xTasks.linked.done || !ANNOUNCE_TWEET_ID ? (
                       <span className={s.taskLock}>🔒</span>
                     ) : opened.comment ? (
@@ -673,13 +681,17 @@ export default function WaitlistPage() {
                           ? status.xTasks.launch.counted
                             ? "Done"
                             : "Done · counts within 5h"
-                          : !status.xTasks.linked.done
-                            ? "Link X first"
-                            : "+100 $kPoint"}
+                          : status.xTasks.launch.closed
+                            ? "Closed"
+                            : !status.xTasks.linked.done
+                              ? "Link X first"
+                              : "+100 $kPoint"}
                       </span>
                     </div>
                     {status.xTasks.launch.done ? (
                       <span className={s.taskDone}>✓</span>
+                    ) : status.xTasks.launch.closed ? (
+                      <span className={s.taskLock}>🔒</span>
                     ) : !status.xTasks.linked.done ? (
                       <span className={s.taskLock}>🔒</span>
                     ) : opened.launch ? (
