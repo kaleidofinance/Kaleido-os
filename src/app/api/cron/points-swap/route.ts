@@ -12,6 +12,8 @@ import {
 } from "@/lib/points/swapCollector";
 import { dexTokenPrices } from "@/lib/swap/dexPrices";
 import { creditAction } from "@/lib/points/credit";
+import { computeCursorAdvance } from "@/lib/points/swapCursor";
+import { supabaseAdmin } from "@/lib/supabase/serverClient";
 
 const ERC20_DECIMALS_ABI = ["function decimals() view returns (uint8)"];
 
@@ -65,7 +67,49 @@ const DELAY_MS = Number(process.env.POINTS_SWAP_DELAY_MS ?? 200);
 /** Cap on transactions processed per run — bounds RPC load and keeps a paced run
  *  inside the 60s budget. Overlapping windows are idempotent, so anything over the
  *  cap is picked up next run; raise via env if a window ever carries more swaps. */
-const MAX_TXS = Number(process.env.POINTS_SWAP_MAX_TXS ?? 100);
+const MAX_TXS = Number(process.env.POINTS_SWAP_MAX_TXS ?? 500);
+
+/**
+ * Blocks scanned per run, bounding the getLogs work inside the 60s budget. The
+ * persistent cursor (points_swap_cursor) means this NO LONGER bounds coverage —
+ * a run that cannot reach `head` leaves the rest for the next run, so nothing is
+ * missed however far behind the cursor is; this only caps one run's RPC load.
+ */
+const MAX_BLOCKS_PER_RUN = Number(
+  process.env.POINTS_SWAP_MAX_BLOCKS ?? WINDOW_BLOCKS,
+);
+
+const ARC_CHAIN_ID = ARC;
+
+/**
+ * The indexer's resume point. Fail-OPEN: if the cursor row (or its table) can't
+ * be read, fall back to the legacy "last WINDOW_BLOCKS" window so a missing
+ * migration or a DB hiccup never stops crediting — it just can't advance a
+ * cursor that run. Returns null when no cursor exists yet (bootstrap).
+ */
+async function readCursor(): Promise<number | null> {
+  if (!supabaseAdmin) return null;
+  const { data, error } = await supabaseAdmin
+    .from("points_swap_cursor")
+    .select("last_block")
+    .eq("chain_id", ARC_CHAIN_ID)
+    .maybeSingle();
+  if (error || !data) return null;
+  const n = Number(data.last_block);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Persist how far this run fully drained. Best-effort: a write error just means
+ *  the next run re-scans the same range, which is idempotent. */
+async function writeCursor(lastBlock: number): Promise<void> {
+  if (!supabaseAdmin) return;
+  await supabaseAdmin
+    .from("points_swap_cursor")
+    .upsert(
+      { chain_id: ARC_CHAIN_ID, last_block: lastBlock, updated_at: new Date().toISOString() },
+      { onConflict: "chain_id" },
+    );
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -118,16 +162,44 @@ async function handle(req: Request): Promise<Response> {
   const skips: Record<string, number> = {};
   const bump = (r: string) => (skips[r] = (skips[r] ?? 0) + 1);
 
+  const cursor = await readCursor();
+  // Write the cursor whenever we have a client — even on the bootstrap run, so
+  // subsequent runs resume from where this one stopped. With no client at all we
+  // stay in the pure legacy window and never checkpoint.
+  const usingCursor = !!supabaseAdmin;
+  let advancedTo: number | null = null;
+
   try {
     const head = (await retryRpc(() => provider.getBlockNumber())) - REORG_MARGIN;
-    const fromBlock = Math.max(0, head - WINDOW_BLOCKS);
+    // Resume from the cursor; bootstrap (no cursor) or a fail-open read falls
+    // back to the legacy WINDOW_BLOCKS lookback for this one run.
+    const fromBlock =
+      cursor !== null
+        ? Math.max(0, cursor + 1)
+        : Math.max(0, head - WINDOW_BLOCKS);
+    // Bound one run's block span; the cursor carries any remainder to the next
+    // run, so this caps RPC load without ever capping coverage.
+    const scanTo = Math.min(head, fromBlock + MAX_BLOCKS_PER_RUN - 1);
+    if (scanTo < fromBlock) {
+      // Cursor is already at head — nothing new since the last run.
+      return Response.json({
+        scanned: 0,
+        credited: 0,
+        skips,
+        fromBlock,
+        scanTo: head,
+        head,
+        cursor,
+        advancedTo: cursor,
+      });
+    }
     const feeTopic = ethers.zeroPadValue(receiver, 32);
 
-    // Every ERC-20 transfer TO the fee wallet in the window, any token — scanned
-    // in SPAN-wide chunks (retried, paced) so Arc's getLogs range and rate limits
-    // do not refuse the run.
+    // Every ERC-20 transfer TO the fee wallet in [fromBlock, scanTo], any token —
+    // scanned in SPAN-wide chunks (retried, paced) so Arc's getLogs range and
+    // rate limits do not refuse the run.
     const logs: ethers.Log[] = [];
-    for (const { start, end } of planSpans(fromBlock, head, SPAN)) {
+    for (const { start, end } of planSpans(fromBlock, scanTo, SPAN)) {
       const page = await retryRpc(() =>
         provider.getLogs({
           fromBlock: start,
@@ -140,11 +212,32 @@ async function handle(req: Request): Promise<Response> {
     }
     scanned = logs.length;
 
-    // One credit per transaction, even if a tx produced several fee transfers.
-    const txHashes = [...new Set(logs.map((l) => l.transactionHash))].slice(
-      0,
-      MAX_TXS,
+    // Unique tx hashes in block order (oldest first), so a MAX_TXS-capped run
+    // always drains the oldest blocks and the cursor advances to the last block
+    // it fully drained — the remainder is picked up next run.
+    const ordered = [...logs].sort(
+      (a, b) => a.blockNumber - b.blockNumber || a.index - b.index,
     );
+    const seen = new Set<string>();
+    const uniqueTx: { hash: string; block: number }[] = [];
+    for (const l of ordered) {
+      if (seen.has(l.transactionHash)) continue;
+      seen.add(l.transactionHash);
+      uniqueTx.push({ hash: l.transactionHash, block: l.blockNumber });
+    }
+    const txHashes = uniqueTx.slice(0, MAX_TXS).map((t) => t.hash);
+
+    // How far this run may advance the cursor (only past fully drained blocks).
+    if (usingCursor) {
+      const adv = computeCursorAdvance({
+        fromBlock,
+        scanTo,
+        uniqueTxBlocks: uniqueTx.map((t) => t.block),
+        maxTxs: MAX_TXS,
+      });
+      advancedTo = adv.advancedTo;
+      if (adv.blockCapOverflow) bump("block-cap-overflow");
+    }
 
     for (const txHash of txHashes) {
       try {
@@ -232,7 +325,11 @@ async function handle(req: Request): Promise<Response> {
     );
   }
 
-  return Response.json({ scanned, credited, skips });
+  // Checkpoint AFTER the scan+credit loop succeeded, so a mid-run failure re-runs
+  // the same range rather than skipping it. Best-effort (idempotent re-scan).
+  if (usingCursor && advancedTo !== null) await writeCursor(advancedTo);
+
+  return Response.json({ scanned, credited, skips, cursor, advancedTo });
 }
 
 export const GET = handle;
