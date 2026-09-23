@@ -32,6 +32,10 @@ export interface AnalyticsOverview {
      *  the agent working, not failing, so it counts as handled. */
     handledRate: number; // 0..1
     avgLatencyMs: number | null;
+    /** Counts from the client-side route log; null when that table is unavailable. */
+    localIntentTurns: number | null;
+    localFollowUps: number | null;
+    modelTurns: number | null;
   } | null;
   points: {
     totalPoints: number;
@@ -93,6 +97,27 @@ export function summarizeTurns(
   };
 }
 
+/** Fold the privacy-preserving route log into the Luca usage split shown on
+ * analytics. The log contains route labels only here; question text and wallet
+ * hashes never leave this server-side aggregation. */
+export function summarizeQuestionRoutes(
+  rows: ReadonlyArray<{ route?: string | null }>,
+): { localIntentTurns: number; localFollowUps: number; modelTurns: number } {
+  let localIntentTurns = 0;
+  let localFollowUps = 0;
+  let modelTurns = 0;
+  for (const row of rows) {
+    const route = row?.route ?? "";
+    if (route.startsWith("local-intent:")) {
+      localIntentTurns++;
+      if (route === "local-intent:follow_up") localFollowUps++;
+    } else if (route === "model") {
+      modelTurns++;
+    }
+  }
+  return { localIntentTurns, localFollowUps, modelTurns };
+}
+
 function sumField(
   rows: ReadonlyArray<Record<string, unknown>>,
   field: string,
@@ -151,12 +176,19 @@ async function readGrowth(): Promise<AnalyticsOverview["growth"]> {
 async function readLuca(): Promise<AnalyticsOverview["luca"]> {
   if (!supabaseAdmin) return null;
   try {
-    const { data, error } = await supabaseAdmin
+    const [{ data, error }, routes] = await Promise.all([
+      supabaseAdmin
       .from("agent_turns")
       .select("status, latency_ms")
-      .limit(READ_CAP);
+      .limit(READ_CAP),
+      supabaseAdmin.from("agent_questions").select("route").limit(READ_CAP),
+    ]);
     if (error || !data) return null;
-    return summarizeTurns(data as { status?: string | null; latency_ms?: number | null }[]);
+    const turns = summarizeTurns(data as { status?: string | null; latency_ms?: number | null }[]);
+    const routeSummary = routes.error
+      ? { localIntentTurns: null, localFollowUps: null, modelTurns: null }
+      : summarizeQuestionRoutes(routes.data ?? []);
+    return { ...turns, ...routeSummary };
   } catch {
     return null;
   }

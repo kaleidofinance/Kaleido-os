@@ -93,7 +93,9 @@ export default function AnalyticsPage() {
         <section className={s.section}>
           <h2 className={s.h2}>Luca (agent)</h2>
           <StatStrip>
-            <Stat label="Turns" value={qty(l?.turns ?? null)} />
+            <Stat label="Cloud turns" value={qty(l?.turns ?? null)} />
+            <Stat label="Local intent" value={qty(l?.localIntentTurns ?? null)} />
+            <Stat label="Follow-ups" value={qty(l?.localFollowUps ?? null)} />
             <Stat
               label="Handled rate"
               value={pct(l ? l.handledRate * 100 : null, 1)}
