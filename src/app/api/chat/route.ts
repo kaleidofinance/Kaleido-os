@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           response:
-            "You're sending requests faster than I can take them — give it a moment and try again. Direct commands like `swap 500 USDC to KLD` are unaffected.",
+            "You're sending requests faster than I can take them — give it a moment and try again. Direct commands like `swap 500 USDC to EURC` are unaffected.",
           context: { status: "rate_limited" },
         },
         { status: 429 },
@@ -301,9 +301,9 @@ export async function POST(request: NextRequest) {
           {
             response:
               quota.refusedBy === "anonymous"
-                ? "Connect your wallet and I can work on your positions. Direct commands like `swap 500 USDC to KLD` work without it."
+                ? "Connect your wallet and I can work on your positions. Direct commands like `swap 500 USDC to EURC` work without it."
                 : global
-                  ? `The reasoning allowance shared across everyone on the testnet is spent for today — it resets at 00:00 UTC. Your own ${quota.remaining} questions are untouched and will still be there. Direct commands like \`swap 500 USDC to KLD\` work right now.`
+                  ? `The shared reasoning allowance is spent for today — it resets at 00:00 UTC. Your own ${quota.remaining} questions are untouched and will still be there. Direct commands like \`swap 500 USDC to EURC\` work right now.`
                   : `You've asked me all ${quota.quota} questions for today. Direct commands still work, and the allowance resets at 00:00 UTC.`,
             context: {
               status: global ? "global_quota_exhausted" : "quota_exhausted",
@@ -480,7 +480,7 @@ export async function POST(request: NextRequest) {
             ).slice(0, 60),
           });
           return {
-            response: `${reply.text}\n\n---\n\nI worked that out, but couldn't prepare the steps to sign — try again, or use a direct command like \`swap 500 USDC to KLD\`.`,
+            response: `${reply.text}\n\n---\n\nI worked that out, but couldn't prepare the steps to sign — try again, or use a direct command like \`swap 500 USDC to EURC\`.`,
             context: {
               status: "build_error",
               provider: result.provider,
@@ -756,7 +756,7 @@ export async function POST(request: NextRequest) {
 
         return {
           response: blocked
-            ? "The model gateway refused that wording — it screens messages shaped like a transfer instruction. Say it as a command, like `swap 100 USDC to KLD`, and it runs here without a reasoning request. Questions about your positions or the markets are unaffected."
+            ? "The model gateway refused that wording — it screens messages shaped like a transfer instruction. Say it as a command, like `swap 100 USDC to EURC`, and it runs here without a reasoning request. Questions about your positions or the markets are unaffected."
             : "I couldn't complete that just now — the reasoning service returned an error. Try again shortly.",
           context: {
             status: blocked ? "provider_blocked" : "provider_error",

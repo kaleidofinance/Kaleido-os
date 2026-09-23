@@ -78,7 +78,7 @@ const POOL: Suggestion[] = [
   { prompt: "show my address", testnetOnly: false },
   /* ---- testnet-only surfaces (faucet, KLD, staking, kfUSD, lending) ---- */
   { prompt: "claim everything from the faucet", testnetOnly: true, kind: "claimTestTokens" },
-  { prompt: "swap 500 USDC to KLD", testnetOnly: true, kind: "swap", follows: ["claimTestTokens"] },
+  { prompt: "swap 500 USDC to EURC", testnetOnly: true, kind: "swap", follows: ["claimTestTokens"] },
   { prompt: "stake 100 KLD", testnetOnly: true, kind: "stake", follows: ["swap", "claimTestTokens"] },
   { prompt: "mint 500 USDC", testnetOnly: true, kind: "mintStable" },
   { prompt: "lend 1,000 USDC at 10% for 60 days", testnetOnly: true },

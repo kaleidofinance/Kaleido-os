@@ -295,7 +295,7 @@ function StepArt({ n }: { n: string }) {
     return (
       <div className={s.showcase} aria-hidden="true">
         <span className={s.scPrompt}>
-          swap 500 USDC to KLD<span className={s.scCaret} />
+          swap 500 USDC to EURC<span className={s.scCaret} />
         </span>
       </div>
     );

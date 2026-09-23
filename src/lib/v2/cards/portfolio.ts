@@ -133,7 +133,7 @@ export function portfolioAnswer(
           title: "Get funded",
           actions: [
             { label: "Claim testnet tokens", prompt: FAUCET_PROMPT },
-            { label: "Then one swap", prompt: "swap 500 USDC to KLD" },
+            { label: "Then one swap", prompt: "swap 500 USDC to EURC" },
           ],
         },
       ],

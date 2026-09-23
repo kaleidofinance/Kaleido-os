@@ -210,7 +210,7 @@ const FIELDS: ReadonlyArray<{ key: string; label: string }> = [
  * that actually needs a model.
  */
 const EXAMPLES: ReadonlyArray<{ text: string; chip: string }> = [
-  { text: "swap 500 USDC to KLD", chip: "swap 500 USDC to KLD" },
+  { text: "swap 500 USDC to EURC", chip: "swap 500 USDC to EURC" },
   { text: "stake 250 KLD", chip: "stake 250 KLD" },
   {
     text: "lend 1000 USDC at 6% for 30 days",

@@ -60,7 +60,7 @@ const WIDE = [
   "Plan your money market with Luca",
   "Lend and borrow with Luca",
   "Mint kfUSD with Luca",
-  "Stake KLD with Luca",
+  "Manage liquidity with Luca",
   "Ask Luca about your positions",
 ];
 

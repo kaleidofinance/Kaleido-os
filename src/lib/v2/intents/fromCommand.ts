@@ -3738,11 +3738,8 @@ export const COMMAND_HELP = [
   // is an unrecoverable loss.
   "send 50 USDC to 0x…",
   "bridge 0.05 ETH to Base Sepolia",
-  "swap 500 USDC to KLD",
-  /* The purchase form, shown with the spent side named. "buy KLD" works too and
-     asks two questions; this is the shape that resolves in one line, which is
-     what a reference list is for. */
-  "buy KLD with 500 USDC",
+  "swap 100 USDC to EURC",
+  "swap 100 USDC to WUSDC",
   "stake 100",
   "deposit 500 USDC",
   "withdraw 200 USDC",
@@ -3788,9 +3785,7 @@ export function capabilityHelp(opts: { showTestnets?: boolean } = {}): string {
   const groups: string[] = [
     line(
       "Trade",
-      testnets
-        ? ["swap 500 USDC to KLD", "buy KLD with 500 USDC"]
-        : ["swap 100 USDC to EURC", "swap 100 USDC to WUSDC"],
+      ["swap 100 USDC to EURC", "swap 100 USDC to WUSDC"],
     ),
     line("Bridge", ["bridge 50 USDC to Base", "bridge 100 USDC to Arbitrum"]),
   ];
