@@ -45,6 +45,8 @@ import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
 import { docsReply, groundingFor, MIN_ASK_SIMILARITY, outageReply, searchDocs } from "@/lib/ai/docsSearch";
 import { visibleProse } from "@/lib/ai/actionsBlock";
+import { createBrowserLocalIntentModel } from "@/lib/ai/browserLocalIntent";
+import { canUseBrowserLocalModel, type LocalIntentClassification } from "@/lib/ai/localIntent";
 import {
   parseCommand,
   parseFollowUp,
@@ -219,15 +221,47 @@ export default function AgentPage() {
     missing: Slot;
   } | null>(null);
   /*
-   * The last command that planned successfully, so the NEXT sentence can
-   * continue it. "swap 10 USDC to USDT" then "now the same to USDe" is one
-   * thought in two messages, and without this the second half reached the
-   * model as an unparseable fragment - a reasoning request for a sentence the
-   * grammar already had every part of. `pending` is the other half of this and
-   * they are not the same thing: that one resumes a draft LUCA asked about,
-   * this one continues a plan the USER completed. See parseFollowUp.
+   * The last command that planned successfully, so later referential messages
+   * can continue it. `pending` is the other half of this and they are not the
+   * same thing: that one resumes a draft Luca asked about, this one continues a
+   * plan the user completed. See parseFollowUp.
    */
   const [lastCommand, setLastCommand] = useState<Command | null>(null);
+  const localIntentModelRef = useRef<ReturnType<typeof createBrowserLocalIntentModel> | null>(null);
+  const localIntentDisabledRef = useRef(false);
+  const [contextHydrated, setContextHydrated] = useState(false);
+  const contextKeyRef = useRef<string | null>(null);
+  /* The transcript hook persists the visible conversation. This companion
+     snapshot persists the structured command Luca needs for references such as
+     "double it" after a route change or reload. It is session-scoped and wallet
+     scoped, matching the transcript's privacy boundary. */
+  useEffect(() => {
+    const key = `kaleido.v2.agentContext.${address ?? "anon"}`;
+    setContextHydrated(false);
+    let restored: Command | null = null;
+    try {
+      const raw = sessionStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as Partial<Command>) : null;
+      if (parsed && typeof parsed === "object" && typeof parsed.kind === "string") {
+        restored = parsed as Command;
+      }
+    } catch {
+      restored = null;
+    }
+    contextKeyRef.current = key;
+    setLastCommand(restored);
+    setContextHydrated(true);
+  }, [address]);
+  useEffect(() => {
+    const key = `kaleido.v2.agentContext.${address ?? "anon"}`;
+    if (!contextHydrated || contextKeyRef.current !== key) return;
+    try {
+      if (lastCommand) sessionStorage.setItem(key, JSON.stringify(lastCommand));
+      else sessionStorage.removeItem(key);
+    } catch {
+      /* unavailable storage leaves the context in memory */
+    }
+  }, [lastCommand, address, contextHydrated]);
   /** Remaining model requests today. Null until known, or when unmetered. */
   const [credits, setCredits] = useState<{
     remaining: number;
@@ -686,18 +720,11 @@ export default function AgentPage() {
       isChain: (phrase) => resolveChain(phrase) !== undefined,
     };
 
-    /*
-     * The last planned command, captured for THIS turn and then cleared. A
-     * follow-up ("now the same to USDe") is the immediately next message, so the
-     * chain lives exactly one turn: planLocally re-sets it whenever this turn
-     * plans something (a fresh command or a follow-up), and any other outcome —
-     * a question, a docs answer, an unresolved line — leaves it cleared. Without
-     * this it was set once and never cleared, so a lone "50" typed several
-     * messages after a swap silently re-priced that swap instead of being read
-     * fresh. See parseFollowUp for what continues a command.
-     */
+    /* Structured agent context survives turns and reloads. parseFollowUp requires
+       an explicit reference before applying an old amount, so a lone "50" cannot
+       silently re-price a stale swap. A complete fresh command still wins and
+       replaces this context. */
     const carriedCommand = lastCommand;
-    setLastCommand(null);
 
     setMessages((m) => [...m, { role: "user", text: content }]);
     setInput("");
@@ -939,6 +966,34 @@ export default function AgentPage() {
              Luca's own words rather than handing over a link. */
         }
       }
+
+      /* Optional local semantic pass. The grammar remains authoritative: this
+       * classifier never creates a command, amount, token, route, or calldata.
+       * It only gives the server model a bounded hint when the deterministic
+       * parser and local docs/FAQ paths could not decide the turn. The worker is
+       * lazy, so ordinary commands and known questions never download a model. */
+      let localIntent: LocalIntentClassification | null = null;
+      if (!askedAboutAction && !localIntentDisabledRef.current && canUseBrowserLocalModel()) {
+        if (!localIntentModelRef.current) {
+          localIntentModelRef.current = createBrowserLocalIntentModel();
+          if (!localIntentModelRef.current) localIntentDisabledRef.current = true;
+        }
+        if (localIntentModelRef.current) {
+          try {
+            localIntent = await localIntentModelRef.current.classify(content, {
+              lastKind: carriedCommand?.kind,
+              hasActiveTask: Boolean(pending),
+              chainId,
+            });
+            if (localIntent.kind !== "unknown") note("Used local context to interpret this turn");
+          } catch {
+            /* A weak device, blocked WebGPU, or a failed model download must
+             * never block Luca. Disable this session and use the normal route. */
+            localIntentDisabledRef.current = true;
+            localIntent = null;
+          }
+        }
+      }
       log("model");
 
       /* Only genuine questions reach the model.
@@ -965,6 +1020,9 @@ export default function AgentPage() {
              with nothing to attach it to. Bounded and re-sanitised server-side
              (historyFromBody), since a client is sending it. */
           history: historyForModel(messages),
+          ...(localIntent && localIntent.kind !== "unknown"
+            ? { localIntent }
+            : {}),
           /* The two docs sections closest to the question, so the model can
              answer from the protocol's own text instead of reconstructing it
              from tool calls. Re-checked server-side like everything else that

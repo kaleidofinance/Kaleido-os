@@ -447,7 +447,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
      * market where it earns nothing and nothing reverts to say so.
      */
     description:
-      "Open a new liquidity position in a Uniswap-V3-style pool, or create the pool if it doesn't exist yet. Both amounts are supplied by the user; the exact split the position consumes is worked out server-side, so give what the user said. Range: omit bandPct and the prices for a full-range position (the widest, always valid, and the only option on a pool that doesn't exist yet); pass bandPct for a symmetric band around the current price (5 means ±5%); or pass both minPrice and maxPrice for explicit bounds in token1-per-token0. Never guess a narrow range — a position outside the market earns nothing. Omit fee and the server picks whichever tier already has a pool; it will ask for one only when no pool exists at any tier, since that choice is permanent. Native ETH is not accepted — the pool takes the wrapped token.",
+      "Open a new liquidity position in a Uniswap-V3-style pool, or create the pool if it doesn't exist yet. Give both amounts when you are setting a new pool's opening price. For an existing priced pool, either amount is enough: call getPrice/read the live pair price and calculate the other side at that price; never ask the user to repeat the missing side. Range: omit bandPct and the prices for a full-range position (the widest, always valid, and the only option on a pool that doesn't exist yet); pass bandPct for a symmetric band around the current price (5 means ±5%); or pass both minPrice and maxPrice for explicit bounds in token1-per-token0. Never guess a narrow range — a position outside the market earns nothing. Omit fee and the server picks whichever tier already has a pool; it will ask for one only when no pool exists at any tier, since that choice is permanent. Native ETH is not accepted — the pool takes the wrapped token.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -482,7 +482,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
           description: "Upper bound, in token1 per token0. Needs minPrice too.",
         },
       },
-      required: ["token0", "amount0", "token1", "amount1"],
+      required: ["token0", "token1"],
     },
   },
 

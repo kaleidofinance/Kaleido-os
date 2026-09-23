@@ -2244,6 +2244,26 @@ async function main() {
     );
   }
   {
+    const { deps } = fakeDeps({ poolState: async () => pool("9000") });
+    const r = await build(
+      {
+        kind: "provideLiquidity",
+        token0: DEX_WETH,
+        amount0: "1.5",
+        token1: DEX_USDC,
+        fee: 3000,
+        range: { kind: "full" },
+      },
+      deps,
+    );
+    const m = at(r, 2);
+    check(
+      "one-sided liquidity uses the live price for the missing side",
+      r.ok && m.kind === "mintPoolPosition" && m.amount0 === "1.5" && m.amount1 === "2751.915",
+      `${errorOf(r)} ${JSON.stringify(m)}`,
+    );
+  }
+  {
     /* No pool at the named tier. The mint still builds — that is the point of
        the branch — but only at full range, and the summary has to say it is
        creating the pool rather than joining one. */
