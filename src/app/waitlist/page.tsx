@@ -44,7 +44,10 @@ type Status = {
     /** Legacy completion retained for balance compatibility; not rendered. */
     bitget: XTask;
   };
-  swapVolume: {
+  // Optional so an API/bundle version skew (a cached old client vs a newer API,
+  // or vice-versa) degrades gracefully instead of throwing "reading X of
+  // undefined" — the reads below all guard with ?. and defaults.
+  swapVolume?: {
     /** Cumulative Kaleido swap volume in USD. */
     volumeUsd: number;
     tiers: {
@@ -60,9 +63,8 @@ type Status = {
     points: number;
   };
   activated: boolean;
-  transactionTasks: {
-    agent: { done: boolean };
-    bridge: { done: boolean };
+  transactionTasks?: {
+    bridge?: { done: boolean };
   };
 } | null;
 
@@ -76,8 +78,6 @@ const X_HANDLE = "kaleido_finance";
 const ANNOUNCE_TWEET_ID =
   process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
 const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
-const agentOpenedKey = (address: string) =>
-  `kaleido.waitlist.agent-opened:${address.toLowerCase()}`;
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -90,16 +90,8 @@ const xTaskMessage = (address: string, task: XTaskKey) =>
   task === "link"
     ? `Link my X account to the Kaleido waitlist wallet ${address}.`
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
-const transactionTaskMessage = (
-  address: string,
-  task: "agent" | "bridge",
-  txHash?: string,
-) =>
-  task === "agent"
-    ? txHash
-      ? `Confirm my first Kaleido agent transaction ${txHash} for wallet ${address}.`
-      : `Confirm my first Kaleido agent transaction for wallet ${address}.`
-    : `Confirm my first Kaleido bridge transaction for wallet ${address}.`;
+const transactionTaskMessage = (address: string) =>
+  `Confirm my first Kaleido bridge transaction for wallet ${address}.`;
 
 export default function WaitlistPage() {
   const account = useActiveAccount();
@@ -136,12 +128,9 @@ export default function WaitlistPage() {
     launch: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
-  const [transactionBusy, setTransactionBusy] = useState<
-    "agent" | "bridge" | null
-  >(null);
-  const [agentOpened, setAgentOpened] = useState(false);
+  const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
   const [bridgeOpened, setBridgeOpened] = useState(false);
-  const [txHashInputs, setTxHashInputs] = useState({ agent: "", bridge: "" });
+  const [txHashInputs, setTxHashInputs] = useState({ bridge: "" });
   const [txLog, setTxLog] = useState<TxLogEntry[]>([]);
 
   useEffect(() => {
@@ -198,13 +187,9 @@ export default function WaitlistPage() {
 
   useEffect(() => {
     if (!account?.address) {
-      setAgentOpened(false);
       setBridgeOpened(false);
       return;
     }
-    setAgentOpened(
-      window.localStorage.getItem(agentOpenedKey(account.address)) === "1",
-    );
     setBridgeOpened(
       window.localStorage.getItem(bridgeOpenedKey(account.address)) === "1",
     );
@@ -301,35 +286,18 @@ export default function WaitlistPage() {
   );
 
   const verifyTransactionTask = useCallback(
-    async (task: "agent" | "bridge") => {
+    async () => {
       if (!account || transactionBusy) return;
-      setTransactionBusy(task);
+      setTransactionBusy("bridge");
       setError(null);
       try {
-        const inputHash = txHashInputs[task];
-        const candidate =
-          task === "agent"
-            ? txLog.find(
-                (entry) =>
-                  entry.status === "confirmed" &&
-                  ["swap", "swapMultiHop", "aggregatorSwap"].includes(
-                    entry.kind,
-                  ),
-              )
-            : txLog.find(
-                (entry) =>
-                  entry.status === "confirmed" && entry.kind === "bridge",
-              );
+        const inputHash = txHashInputs.bridge;
+        const candidate = txLog.find(
+          (entry) => entry.status === "confirmed" && entry.kind === "bridge",
+        );
         const txHash = inputHash.trim() || candidate?.hash;
-        const operation =
-          task === "agent"
-            ? candidate?.kind === "swapMultiHop" ||
-              candidate?.kind === "aggregatorSwap"
-              ? candidate.kind
-              : "swap"
-            : "bridge";
         const signature = await account.signMessage({
-          message: transactionTaskMessage(account.address, task, txHash),
+          message: transactionTaskMessage(account.address),
         });
         const res = await fetch("/api/waitlist/transaction", {
           method: "POST",
@@ -337,9 +305,9 @@ export default function WaitlistPage() {
           body: JSON.stringify({
             address: account.address,
             signature,
-            task,
+            task: "bridge",
             chainId: activeChain?.id,
-            ...(txHash ? { txHash, operation } : {}),
+            ...(txHash ? { txHash, operation: "bridge" } : {}),
           }),
         });
         const d = await res.json();
@@ -364,13 +332,6 @@ export default function WaitlistPage() {
       txLog,
     ],
   );
-
-  const openKaleidoForAgentTask = useCallback(() => {
-    if (!account?.address) return;
-    window.localStorage.setItem(agentOpenedKey(account.address), "1");
-    setAgentOpened(true);
-    window.location.href = "/trade/agent";
-  }, [account?.address]);
 
   const openKaleidoForBridgeTask = useCallback(() => {
     if (!account?.address) return;
@@ -724,7 +685,7 @@ export default function WaitlistPage() {
                   lights up once the swaps are indexed. Highest reached tier pays;
                   lower completed tiers read "included" so shown points match the
                   credited total. */}
-                  {status.swapVolume.tiers.map((tier) => (
+                  {(status.swapVolume?.tiers ?? []).map((tier) => (
                     <li key={tier.key} className={s.task}>
                       <div className={s.taskText}>
                         <span className={s.taskTitle}>
@@ -735,7 +696,7 @@ export default function WaitlistPage() {
                             ? tier.superseded
                               ? "Done · included in higher tier"
                               : `Done · +${tier.points} $kPoint`
-                            : `+${tier.points} $kPoint · $${status.swapVolume.volumeUsd.toLocaleString(
+                            : `+${tier.points} $kPoint · $${(status.swapVolume?.volumeUsd ?? 0).toLocaleString(
                                 undefined,
                                 { maximumFractionDigits: 2 },
                               )} / $${tier.threshold}`}
@@ -759,65 +720,16 @@ export default function WaitlistPage() {
                   <li className={s.task}>
                     <div className={s.taskText}>
                       <span className={s.taskTitle}>
-                        Make 1st transaction on Kaleido
-                      </span>
-                      <span className={s.taskMeta}>
-                        {status.transactionTasks.agent.done
-                          ? "Done"
-                          : agentOpened
-                            ? "+500 $kPoint · Verify successful tx"
-                            : "+500 $kPoint · Make a trade in Kaleido first"}
-                      </span>
-                      {!status.transactionTasks.agent.done && agentOpened ? (
-                        <input
-                          className={s.taskHashInput}
-                          value={txHashInputs.agent}
-                          onChange={(event) =>
-                            setTxHashInputs((current) => ({
-                              ...current,
-                              agent: event.target.value,
-                            }))
-                          }
-                          placeholder="Paste tx hash (optional)"
-                          aria-label="Kaleido transaction hash"
-                          spellCheck={false}
-                        />
-                      ) : null}
-                    </div>
-                    {status.transactionTasks.agent.done ? (
-                      <span className={s.taskDone}>✓</span>
-                    ) : (
-                      <button
-                        className={s.taskBtn}
-                        onClick={
-                          agentOpened
-                            ? () => void verifyTransactionTask("agent")
-                            : openKaleidoForAgentTask
-                        }
-                        disabled={transactionBusy !== null}
-                      >
-                        {transactionBusy === "agent"
-                          ? "Checking…"
-                          : agentOpened
-                            ? "Verify"
-                            : "Open Kaleido"}
-                      </button>
-                    )}
-                  </li>
-
-                  <li className={s.task}>
-                    <div className={s.taskText}>
-                      <span className={s.taskTitle}>
                         Use Luca agent to Bridge assets in/out of Arc
                       </span>
                       <span className={s.taskMeta}>
-                        {status.transactionTasks.bridge.done
+                        {status.transactionTasks?.bridge?.done
                           ? "Done"
                           : bridgeOpened
                             ? "+500 $kPoint · Verify on-chain"
                             : "+500 $kPoint · Bridge in/out of Arc first"}
                       </span>
-                      {!status.transactionTasks.bridge.done && bridgeOpened ? (
+                      {!status.transactionTasks?.bridge?.done && bridgeOpened ? (
                         <input
                           className={s.taskHashInput}
                           value={txHashInputs.bridge}
@@ -833,14 +745,14 @@ export default function WaitlistPage() {
                         />
                       ) : null}
                     </div>
-                    {status.transactionTasks.bridge.done ? (
+                    {status.transactionTasks?.bridge?.done ? (
                       <span className={s.taskDone}>✓</span>
                     ) : (
                       <button
                         className={s.taskBtn}
                         onClick={
                           bridgeOpened
-                            ? () => void verifyTransactionTask("bridge")
+                            ? () => void verifyTransactionTask()
                             : openKaleidoForBridgeTask
                         }
                         disabled={transactionBusy !== null}

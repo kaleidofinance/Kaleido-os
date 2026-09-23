@@ -21,6 +21,15 @@ type Proof = { address: string; signature: string; ts: number };
 const secs = (ms: number | null | undefined) =>
   typeof ms === "number" ? `${(ms / 1000).toFixed(1)}s` : "—";
 
+/** Human-readable age from a second count. */
+const dur = (sec: number | null | undefined) => {
+  if (typeof sec !== "number" || !Number.isFinite(sec)) return "—";
+  if (sec < 90) return `${sec}s`;
+  if (sec < 5400) return `${Math.round(sec / 60)}m`;
+  if (sec < 172800) return `${Math.round(sec / 3600)}h`;
+  return `${Math.round(sec / 86400)}d`;
+};
+
 function Breakdown({ rows }: { rows: [string, number][] }) {
   return (
     <div className={s.breakdown}>
@@ -76,6 +85,7 @@ export default function AdminAnalyticsPage() {
 
   const h = data?.agentHealth;
   const q = data?.quota;
+  const p = data?.swapPipeline;
 
   return (
     <>
@@ -108,6 +118,38 @@ export default function AdminAnalyticsPage() {
           </section>
         ) : (
           <>
+            <section className={s.section}>
+              <h2 className={s.h2}>Swap-credit pipeline</h2>
+              {p ? (
+                <>
+                  {!p.feeArmed ? (
+                    <p className={s.empty}>
+                      ⚠️ SWAP_FEE_RECEIVER not armed — swaps are not being credited.
+                    </p>
+                  ) : p.lastCreditAgeSec !== null && p.lastCreditAgeSec > 3 * 3600 ? (
+                    <p className={s.empty}>
+                      ⚠️ No swap credited in {dur(p.lastCreditAgeSec)} — check the
+                      points-swap cron.
+                    </p>
+                  ) : null}
+                  <StatStrip>
+                    <Stat label="Last credit" value={p.lastCreditAt ? `${dur(p.lastCreditAgeSec)} ago` : "never"} />
+                    <Stat label="Credits · 24h" value={qty(p.credits24h)} />
+                    <Stat label="Volume · 24h" value={`$${qty(p.volume24hUsd)}`} />
+                    <Stat label="Credits · 7d" value={qty(p.credits7d)} />
+                  </StatStrip>
+                  <StatStrip>
+                    <Stat label="Cursor block" value={qty(p.cursorBlock)} />
+                    <Stat label="Blocks behind" value={qty(p.blocksBehind)} />
+                    <Stat label="Cursor ran" value={p.cursorUpdatedAt ? `${dur(p.cursorAgeSec)} ago` : "never"} />
+                    <Stat label="Fee armed" value={p.feeArmed ? "yes" : "no"} />
+                  </StatStrip>
+                </>
+              ) : (
+                <p className={s.empty}>Swap pipeline metrics unavailable.</p>
+              )}
+            </section>
+
             <section className={s.section}>
               <h2 className={s.h2}>Agent health</h2>
               <StatStrip>

@@ -173,6 +173,23 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, already: true });
   }
 
+  // The "Make 1st transaction on Kaleido" (agent) task was retired 2026-09-23:
+  // it could not distinguish a real trade from a cent-sized or no-op router call,
+  // and the swap-volume tasks now cover real trading. Existing completions keep
+  // their points (they short-circuit above); only NEW agent claims are refused,
+  // so the task can no longer be farmed. arcMainnet was likewise retired from the
+  // UI in #394.
+  // Non-narrowing membership check (a string[] .includes does not narrow `task`),
+  // so the existing multi-task code below still type-checks while these two are
+  // refused at runtime.
+  const RETIRED_TASKS: string[] = ["agent", "arcMainnet"];
+  if (RETIRED_TASKS.includes(task)) {
+    return Response.json(
+      { error: "this task has been retired", retired: true },
+      { status: 410 },
+    );
+  }
+
   let evidence: {
     task: Task;
     txHash: string;
