@@ -5,6 +5,10 @@ import { verifyMessage } from "ethers";
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { transactionTaskPointsFor } from "@/lib/waitlist/transactionTasks";
 import { getClosedXTasks } from "@/lib/waitlist/xCap";
+import {
+  swapVolumeStanding,
+  walletSwapVolumeUsd,
+} from "@/lib/waitlist/swapVolume";
 
 /**
  * The Arc waitlist API.
@@ -209,8 +213,16 @@ async function standing(wallet: string) {
 
   const welcomePoints = Number(row.welcome_points);
   const transactionPoints = transactionTaskPointsFor(row);
+  // Swap-volume milestones, derived live from the wallet's credited `swap`
+  // volume. Folded into `eligible` so reconcileWaitlistPoints tops the kPoint up
+  // forward-only as the wallet trades higher — no stored column (see swapVolume).
+  const swapVolume = swapVolumeStanding(await walletSwapVolumeUsd(admin, wallet));
   const eligiblePoints =
-    welcomePoints + referralPoints + countedX + transactionPoints;
+    welcomePoints +
+    referralPoints +
+    countedX +
+    transactionPoints +
+    swapVolume.points;
   await reconcileWaitlistPoints(
     wallet,
     eligiblePoints,
@@ -229,9 +241,11 @@ async function standing(wallet: string) {
     referralPoints,
     xHandle: (row.x_handle as string | null) ?? null,
     xTasks,
+    swapVolume,
     activated: Boolean(row.activated_at),
     transactionTasks: {
-      arcMainnet: { done: Boolean(row.arc_mainnet_tx_at) },
+      // arcMainnet was retired 2026-09-23 (removed from the UI); wallets that
+      // already earned it keep the points via transactionTaskPointsFor.
       agent: { done: Boolean(row.agent_tx_at) },
       bridge: { done: Boolean(row.bridge_tx_at) },
     },
