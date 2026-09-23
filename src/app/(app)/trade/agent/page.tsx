@@ -70,7 +70,6 @@ import {
 } from "@/lib/v2/intents/fromCommand";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { useTxLog } from "@/hooks/v2/useTxLog";
-import { providerForChain } from "@/config/provider";
 import { computeSuggestions } from "./suggestions";
 import s from "./agent.module.css";
 
@@ -733,6 +732,10 @@ export default function AgentPage() {
        follow-through local so Luca reports the actual hash it observed rather
        than guessing from the previous prose. */
     if (lastOutcome && asksAboutLastResult(content)) {
+      /* Load the RPC adapter only for an explicit status check. Keeping this
+         browser-only path lazy avoids constructing the read provider while the
+         agent page is being prerendered. */
+      const { providerForChain } = await import("@/config/provider");
       const provider = providerForChain(chainId);
       const currentOutcome = provider
         ? await reconcileFollowThrough(lastOutcome, async (hash) => provider.getTransactionReceipt(hash))
