@@ -6,6 +6,8 @@ export type FollowThrough = {
   at: number;
 };
 
+export type ReceiptStatus = "pending" | "confirmed" | "reverted";
+
 const RESULT_WORDS = /\b(what happened|status|result|did it work|did that work|transaction|hash|tx hash|receipt)\b/i;
 
 /** Only answer from a receipt when the user is explicitly asking about it. */
@@ -18,6 +20,23 @@ export function followThroughReply(outcome: FollowThrough): string {
   if (sent.length === 0) return "The last plan completed without broadcasting a transaction.";
   const lines = sent.map((step) => `${step.title}: ${step.hash}`);
   return `The last plan completed successfully.\n\n${lines.join("\n")}`;
+}
+
+export async function reconcileFollowThrough(
+  outcome: FollowThrough,
+  readReceipt: (hash: string) => Promise<{ status?: number } | null>,
+): Promise<FollowThrough> {
+  const steps = await Promise.all(outcome.steps.map(async (step) => {
+    if (!step.hash || step.skipped) return step;
+    try {
+      const receipt = await readReceipt(step.hash);
+      if (!receipt) return step;
+      return { ...step, status: receipt.status === 0 ? "reverted" : "confirmed" };
+    } catch {
+      return step;
+    }
+  }));
+  return { ...outcome, steps };
 }
 
 export function reviveFollowThrough(raw: unknown): FollowThrough | null {

@@ -44,6 +44,7 @@ import { receiptFromSettled } from "@/lib/v2/cards/receipt";
 import {
   asksAboutLastResult,
   followThroughReply,
+  reconcileFollowThrough,
   reviveFollowThrough,
   type FollowThrough,
 } from "@/lib/v2/agentFollowThrough";
@@ -69,6 +70,7 @@ import {
 } from "@/lib/v2/intents/fromCommand";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { useTxLog } from "@/hooks/v2/useTxLog";
+import { providerForChain } from "@/config/provider";
 import { computeSuggestions } from "./suggestions";
 import s from "./agent.module.css";
 
@@ -731,10 +733,15 @@ export default function AgentPage() {
        follow-through local so Luca reports the actual hash it observed rather
        than guessing from the previous prose. */
     if (lastOutcome && asksAboutLastResult(content)) {
+      const provider = providerForChain(chainId);
+      const currentOutcome = provider
+        ? await reconcileFollowThrough(lastOutcome, async (hash) => provider.getTransactionReceipt(hash))
+        : lastOutcome;
+      setLastOutcome(currentOutcome);
       setMessages((m) => [
         ...m,
         { role: "user", text: content },
-        { role: "assistant", text: followThroughReply(lastOutcome), via: "local" },
+        { role: "assistant", text: followThroughReply(currentOutcome), via: "local" },
       ]);
       setInput("");
       return;
