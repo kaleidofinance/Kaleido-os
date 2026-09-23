@@ -4,6 +4,11 @@ import { verifyMessage } from "ethers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { transactionTaskPointsFor } from "@/lib/waitlist/transactionTasks";
+import { getClosedXTasks } from "@/lib/waitlist/xCap";
+import {
+  swapVolumeStanding,
+  walletSwapVolumeUsd,
+} from "@/lib/waitlist/swapVolume";
 
 /**
  * The Arc waitlist API.
@@ -60,15 +65,19 @@ const joinMessage = (address: string) =>
 const isAddress = (a: unknown): a is string =>
   typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a);
 
-/** A single X task's state for the UI: whether it's done, and its 5h hold. */
-function xTaskState(at: string | null, now: number) {
+/** A single X task's state for the UI: whether it's done, its 5h hold, and —
+ *  for the capped self-attested tasks — whether the task has closed at the cap
+ *  (see lib/waitlist/xCap). `closed` never applies to a task this wallet has
+ *  already done; the lock only blocks new claimants. */
+function xTaskState(at: string | null, now: number, closed = false) {
   if (!at)
-    return { done: false, counted: false, countsAt: null as string | null };
+    return { done: false, counted: false, countsAt: null as string | null, closed };
   const countsAtMs = new Date(at).getTime() + X_HOLD_MS;
   return {
     done: true,
     counted: now >= countsAtMs,
     countsAt: new Date(countsAtMs).toISOString(),
+    closed: false,
   };
 }
 
@@ -173,11 +182,14 @@ async function standing(wallet: string) {
   const referralPoints = PER_REFERRAL * referrals;
 
   const now = Date.now();
+  // Which capped tasks have closed at the cap, so the UI can grey them out.
+  // Only `commented` is capped now; the repost tasks stay open (see xCap.ts).
+  const closedX = await getClosedXTasks();
   const xTasks = {
     linked: xTaskState(row.x_linked_at as string | null, now),
     followed: xTaskState(row.x_followed_at as string | null, now),
     retweeted: xTaskState(row.x_retweeted_at as string | null, now),
-    commented: xTaskState(row.x_commented_at as string | null, now),
+    commented: xTaskState(row.x_commented_at as string | null, now, closedX.commented),
     launch: xTaskState(row.x_launch_at as string | null, now),
     // Kept in the response for compatibility with an older deployed client;
     // the current UI does not render or claim this disabled task.
@@ -201,8 +213,16 @@ async function standing(wallet: string) {
 
   const welcomePoints = Number(row.welcome_points);
   const transactionPoints = transactionTaskPointsFor(row);
+  // Swap-volume milestones, derived live from the wallet's credited `swap`
+  // volume. Folded into `eligible` so reconcileWaitlistPoints tops the kPoint up
+  // forward-only as the wallet trades higher — no stored column (see swapVolume).
+  const swapVolume = swapVolumeStanding(await walletSwapVolumeUsd(admin, wallet));
   const eligiblePoints =
-    welcomePoints + referralPoints + countedX + transactionPoints;
+    welcomePoints +
+    referralPoints +
+    countedX +
+    transactionPoints +
+    swapVolume.points;
   await reconcileWaitlistPoints(
     wallet,
     eligiblePoints,
@@ -221,9 +241,11 @@ async function standing(wallet: string) {
     referralPoints,
     xHandle: (row.x_handle as string | null) ?? null,
     xTasks,
+    swapVolume,
     activated: Boolean(row.activated_at),
     transactionTasks: {
-      arcMainnet: { done: Boolean(row.arc_mainnet_tx_at) },
+      // arcMainnet was retired 2026-09-23 (removed from the UI); wallets that
+      // already earned it keep the points via transactionTaskPointsFor.
       agent: { done: Boolean(row.agent_tx_at) },
       bridge: { done: Boolean(row.bridge_tx_at) },
     },

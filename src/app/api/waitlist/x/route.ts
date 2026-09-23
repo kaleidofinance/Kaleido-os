@@ -2,6 +2,7 @@ import { verifyMessage } from "ethers";
 import { cookies } from "next/headers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
+import { X_TASK_CAP, isCappedColumn } from "@/lib/waitlist/xCap";
 
 /**
  * Waitlist X (Twitter) tasks: link an X account to the wallet, then attest the
@@ -163,6 +164,24 @@ export async function POST(req: Request) {
   const col = COL[t as "follow" | "retweet" | "comment" | "launch"];
   const existing = row[col as keyof typeof row];
   if (existing) return Response.json({ ok: true, already: true });
+
+  // Cap the self-attested tasks: once X_TASK_CAP wallets have completed one it
+  // auto-closes, so an unverifiable task can't be farmed without bound. This
+  // runs AFTER the already-done short-circuit above, so the lock only blocks a
+  // NEW claim — it never revokes a wallet that already earned the task. Counted
+  // live (not cached) so enforcement can't lag. Fail-open: a count error lets
+  // the claim through rather than falsely locking a legitimate task.
+  if (isCappedColumn(col)) {
+    const { count, error: capErr } = await admin
+      .from("waitlist")
+      .select("wallet", { count: "exact", head: true })
+      .not(col, "is", null);
+    if (!capErr && (count ?? 0) >= X_TASK_CAP)
+      return Response.json(
+        { error: "task closed", closed: true },
+        { status: 409 },
+      );
+  }
 
   const { error } = await admin
     .from("waitlist")

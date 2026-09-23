@@ -25,7 +25,7 @@ const ARC_CHAIN = defineChain(
   toThirdwebChainOptions(CHAINS_BY_ID[ARC_CHAIN_ID]),
 );
 
-type XTask = { done: boolean; counted: boolean; countsAt: string | null };
+type XTask = { done: boolean; counted: boolean; countsAt: string | null; closed?: boolean };
 type Status = {
   refCode: string;
   referrals: number;
@@ -44,9 +44,23 @@ type Status = {
     /** Legacy completion retained for balance compatibility; not rendered. */
     bitget: XTask;
   };
+  swapVolume: {
+    /** Cumulative Kaleido swap volume in USD. */
+    volumeUsd: number;
+    tiers: {
+      key: string;
+      threshold: number;
+      points: number;
+      /** Volume has met this tier's threshold. */
+      done: boolean;
+      /** A higher tier is also met, so this tier's points don't add (highest-only). */
+      superseded: boolean;
+    }[];
+    /** kPoint credited for swap volume (highest reached tier). */
+    points: number;
+  };
   activated: boolean;
   transactionTasks: {
-    arcMainnet: { done: boolean };
     agent: { done: boolean };
     bridge: { done: boolean };
   };
@@ -78,16 +92,14 @@ const xTaskMessage = (address: string, task: XTaskKey) =>
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
 const transactionTaskMessage = (
   address: string,
-  task: "arcMainnet" | "agent" | "bridge",
+  task: "agent" | "bridge",
   txHash?: string,
 ) =>
-  task === "arcMainnet"
-    ? `Confirm my Kaleido Arc mainnet transaction for wallet ${address}.`
-    : task === "agent"
-      ? txHash
-        ? `Confirm my first Kaleido agent transaction ${txHash} for wallet ${address}.`
-        : `Confirm my first Kaleido agent transaction for wallet ${address}.`
-      : `Confirm my first Kaleido bridge transaction for wallet ${address}.`;
+  task === "agent"
+    ? txHash
+      ? `Confirm my first Kaleido agent transaction ${txHash} for wallet ${address}.`
+      : `Confirm my first Kaleido agent transaction for wallet ${address}.`
+    : `Confirm my first Kaleido bridge transaction for wallet ${address}.`;
 
 export default function WaitlistPage() {
   const account = useActiveAccount();
@@ -125,7 +137,7 @@ export default function WaitlistPage() {
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<
-    "arcMainnet" | "agent" | "bridge" | null
+    "agent" | "bridge" | null
   >(null);
   const [agentOpened, setAgentOpened] = useState(false);
   const [bridgeOpened, setBridgeOpened] = useState(false);
@@ -289,13 +301,12 @@ export default function WaitlistPage() {
   );
 
   const verifyTransactionTask = useCallback(
-    async (task: "arcMainnet" | "agent" | "bridge") => {
+    async (task: "agent" | "bridge") => {
       if (!account || transactionBusy) return;
       setTransactionBusy(task);
       setError(null);
       try {
-        if (task === "arcMainnet") await ensureArc();
-        const inputHash = task === "arcMainnet" ? "" : txHashInputs[task];
+        const inputHash = txHashInputs[task];
         const candidate =
           task === "agent"
             ? txLog.find(
@@ -305,12 +316,10 @@ export default function WaitlistPage() {
                     entry.kind,
                   ),
               )
-            : task === "bridge"
-              ? txLog.find(
-                  (entry) =>
-                    entry.status === "confirmed" && entry.kind === "bridge",
-                )
-              : undefined;
+            : txLog.find(
+                (entry) =>
+                  entry.status === "confirmed" && entry.kind === "bridge",
+              );
         const txHash = inputHash.trim() || candidate?.hash;
         const operation =
           task === "agent"
@@ -318,9 +327,7 @@ export default function WaitlistPage() {
               candidate?.kind === "aggregatorSwap"
               ? candidate.kind
               : "swap"
-            : task === "bridge"
-              ? "bridge"
-              : undefined;
+            : "bridge";
         const signature = await account.signMessage({
           message: transactionTaskMessage(account.address, task, txHash),
         });
@@ -351,7 +358,6 @@ export default function WaitlistPage() {
     [
       account,
       activeChain?.id,
-      ensureArc,
       loadStatus,
       transactionBusy,
       txHashInputs,
@@ -595,15 +601,19 @@ export default function WaitlistPage() {
                           ? status.xTasks.retweeted.counted
                             ? "Done"
                             : "Done · counts within 5h"
-                          : !status.xTasks.linked.done
-                            ? "Link X first"
-                            : ANNOUNCE_TWEET_ID
-                              ? "+100 $kPoint"
-                              : "Coming soon"}
+                          : status.xTasks.retweeted.closed
+                            ? "Closed"
+                            : !status.xTasks.linked.done
+                              ? "Link X first"
+                              : ANNOUNCE_TWEET_ID
+                                ? "+100 $kPoint"
+                                : "Coming soon"}
                       </span>
                     </div>
                     {status.xTasks.retweeted.done ? (
                       <span className={s.taskDone}>✓</span>
+                    ) : status.xTasks.retweeted.closed ? (
+                      <span className={s.taskLock}>🔒</span>
                     ) : !status.xTasks.linked.done || !ANNOUNCE_TWEET_ID ? (
                       <span className={s.taskLock}>🔒</span>
                     ) : opened.retweet ? (
@@ -634,15 +644,19 @@ export default function WaitlistPage() {
                           ? status.xTasks.commented.counted
                             ? "Done"
                             : "Done · counts within 5h"
-                          : !status.xTasks.linked.done
-                            ? "Link X first"
-                            : ANNOUNCE_TWEET_ID
-                              ? "+50 $kPoint"
-                              : "Coming soon"}
+                          : status.xTasks.commented.closed
+                            ? "Closed"
+                            : !status.xTasks.linked.done
+                              ? "Link X first"
+                              : ANNOUNCE_TWEET_ID
+                                ? "+50 $kPoint"
+                                : "Coming soon"}
                       </span>
                     </div>
                     {status.xTasks.commented.done ? (
                       <span className={s.taskDone}>✓</span>
+                    ) : status.xTasks.commented.closed ? (
+                      <span className={s.taskLock}>🔒</span>
                     ) : !status.xTasks.linked.done || !ANNOUNCE_TWEET_ID ? (
                       <span className={s.taskLock}>🔒</span>
                     ) : opened.comment ? (
@@ -673,13 +687,17 @@ export default function WaitlistPage() {
                           ? status.xTasks.launch.counted
                             ? "Done"
                             : "Done · counts within 5h"
-                          : !status.xTasks.linked.done
-                            ? "Link X first"
-                            : "+100 $kPoint"}
+                          : status.xTasks.launch.closed
+                            ? "Closed"
+                            : !status.xTasks.linked.done
+                              ? "Link X first"
+                              : "+100 $kPoint"}
                       </span>
                     </div>
                     {status.xTasks.launch.done ? (
                       <span className={s.taskDone}>✓</span>
+                    ) : status.xTasks.launch.closed ? (
+                      <span className={s.taskLock}>🔒</span>
                     ) : !status.xTasks.linked.done ? (
                       <span className={s.taskLock}>🔒</span>
                     ) : opened.launch ? (
@@ -700,45 +718,43 @@ export default function WaitlistPage() {
                     )}
                   </li>
 
-                  {/* Arc testnet is live today, but this stays a locked "Coming soon"
-                  teaser like the rest until it's wired to a real on-chain status. */}
-                  <li className={s.task}>
-                    <div className={s.taskText}>
-                      <span className={s.taskTitle}>
-                        Make 1st transaction on Arc Testnet
-                      </span>
-                      <span className={s.taskMeta}>
-                        +500 $kPoint · Coming soon
-                      </span>
-                    </div>
-                    <span className={s.taskLock}>🔒</span>
-                  </li>
-
-                  <li className={s.task}>
-                    <div className={s.taskText}>
-                      <span className={s.taskTitle}>
-                        Perform 1st transaction on Arc Mainnet
-                      </span>
-                      <span className={s.taskMeta}>
-                        {status.transactionTasks.arcMainnet.done
-                          ? "Done"
-                          : "+300 $kPoint · Verify on-chain"}
-                      </span>
-                    </div>
-                    {status.transactionTasks.arcMainnet.done ? (
-                      <span className={s.taskDone}>✓</span>
-                    ) : (
-                      <button
-                        className={s.taskBtn}
-                        onClick={() => void verifyTransactionTask("arcMainnet")}
-                        disabled={transactionBusy !== null}
-                      >
-                        {transactionBusy === "arcMainnet"
-                          ? "Checking…"
-                          : "Verify"}
-                      </button>
-                    )}
-                  </li>
+                  {/* Swap-volume milestones. Completion is derived on-chain from
+                  the wallet's credited Kaleido swap volume (see lib/waitlist/
+                  swapVolume), so there is nothing to verify by hand — a tier
+                  lights up once the swaps are indexed. Highest reached tier pays;
+                  lower completed tiers read "included" so shown points match the
+                  credited total. */}
+                  {status.swapVolume.tiers.map((tier) => (
+                    <li key={tier.key} className={s.task}>
+                      <div className={s.taskText}>
+                        <span className={s.taskTitle}>
+                          {`Make min $${tier.threshold} swap volume on Kaleido`}
+                        </span>
+                        <span className={s.taskMeta}>
+                          {tier.done
+                            ? tier.superseded
+                              ? "Done · included in higher tier"
+                              : `Done · +${tier.points} $kPoint`
+                            : `+${tier.points} $kPoint · $${status.swapVolume.volumeUsd.toLocaleString(
+                                undefined,
+                                { maximumFractionDigits: 2 },
+                              )} / $${tier.threshold}`}
+                        </span>
+                      </div>
+                      {tier.done ? (
+                        <span className={s.taskDone}>✓</span>
+                      ) : (
+                        <button
+                          className={s.taskBtn}
+                          onClick={() => {
+                            window.location.href = "/trade/swap";
+                          }}
+                        >
+                          Trade
+                        </button>
+                      )}
+                    </li>
+                  ))}
 
                   <li className={s.task}>
                     <div className={s.taskText}>

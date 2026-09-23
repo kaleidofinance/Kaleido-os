@@ -2,6 +2,10 @@ import { timingSafeEqual } from "node:crypto";
 
 import { hasArcActivity, ARC_MAINNET_CHAIN_ID } from "@/lib/waitlist/arcMainnet";
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
+import {
+  swapVolumePoints,
+  walletSwapVolumeUsd,
+} from "@/lib/waitlist/swapVolume";
 
 /**
  * The waitlist activation reader.
@@ -209,7 +213,11 @@ async function handle(req: Request): Promise<Response> {
       (row.arc_mainnet_tx_at ? ARC_TX_POINTS : 0) +
       (row.agent_tx_at ? AGENT_TX_POINTS : 0) +
       (row.bridge_tx_at ? BRIDGE_TX_POINTS : 0);
-    const points = Number(row.welcome_points) + referralPoints + xTaskPoints;
+    // Swap-volume milestone (highest reached tier). Derived from the wallet's
+    // credited `swap` volume, matching standing() in api/waitlist/route.ts.
+    const swapPoints = swapVolumePoints(await walletSwapVolumeUsd(admin, wallet));
+    const points =
+      Number(row.welcome_points) + referralPoints + xTaskPoints + swapPoints;
 
     // 1) Canonical credit. Synthetic, stable tx_hash → credited at most once.
     const { error: actErr } = await admin.from("point_actions").insert({
