@@ -291,9 +291,10 @@ export interface IncreasePositionCommand {
  */
 export interface ProvideLiquidityCommand {
   kind: "provideLiquidity";
-  amount0: string;
+  /** At least one side is required; the builder derives the other at live pool price. */
+  amount0?: string;
   token0: IToken;
-  amount1: string;
+  amount1?: string;
   token1: IToken;
   fee?: number;
   range: RangeChoice;
@@ -527,6 +528,8 @@ export type Slot =
 export interface Draft {
   kind: ActionKind;
   amount?: string;
+  /** A balance share carried by a follow-up such as "swap half of it". */
+  relative?: RelativeAmount;
   tokenIn?: IToken;
   tokenOut?: IToken;
   token?: IToken;
@@ -1861,7 +1864,24 @@ function parseWrap(raw: string, tokens: IToken[]): ParseResult | null {
   if (!m) return null;
 
   const wrapped = tokens.find((t) => t.tags?.includes("wrapped-native"));
-  const native = tokens.find((t) => t.isNative);
+  /* Arc's DEX vocabulary intentionally hides native USDC when canonical ERC20
+     USDC is also registered, otherwise ordinary USDC swaps become ambiguous.
+     An explicit wrap/unwrap is the one place where that hidden sentinel is
+     unambiguous: WUSDC's chain is 5042 and its native counterpart is 18-decimal
+     USDC, not the 6-decimal ERC20 entry. */
+  const native =
+    tokens.find((t) => t.isNative) ??
+    (wrapped?.chainId === 5042 && wrapped.symbol.toUpperCase() === "WUSDC"
+      ? {
+          address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          name: "Arc native USDC",
+          symbol: "USDC",
+          decimals: 18,
+          chainId: 5042,
+          verified: true,
+          isNative: true,
+        }
+      : undefined);
   if (!wrapped || !native) return null;
 
   const isUnwrap = Boolean(m[1]);
@@ -3022,6 +3042,61 @@ const REPEAT_CUE =
   /\b(again|once more|one more time|repeat|redo|re-?run|(the )?same( (one|thing|action|amount|size|swap|trade|bridge|send|transfer|stake|unstake|borrow|lend|order))?|like (before|last time)|as (before|last time))\b/;
 const isRepeatCue = (lower: string): boolean => REPEAT_CUE.test(lower);
 
+/** Follow-up-only wording for the entire currently available balance. */
+const REST_CUE = /\b(rest|remaining|remainder|left)\b/;
+const followUpRelative = (words: string[]): RelativeAmount | null =>
+  detectRelativeAmount(words) ??
+  (REST_CUE.test(words.join(" ")) ? { num: 1, den: 1 } : null);
+
+/* Exact decimal arithmetic for amount edits. Amounts are already normalized
+   decimal strings by parseAmount; keeping them as scaled integers avoids the
+   rounding a Number would introduce into a signed token amount. */
+function decimalParts(value: string): { whole: bigint; scale: number } | null {
+  const m = value.match(/^(\d+)(?:\.(\d+))?$/);
+  if (!m) return null;
+  const fraction = m[2] ?? "";
+  return { whole: BigInt(m[1] + fraction), scale: fraction.length };
+}
+function decimalFormat(whole: bigint, scale: number): string {
+  if (whole < 0n) return "";
+  let raw = whole.toString().padStart(scale + 1, "0");
+  if (!scale) return raw;
+  const at = raw.length - scale;
+  const out = `${raw.slice(0, at)}.${raw.slice(at)}`.replace(/\.?0+$/, "");
+  return out || "0";
+}
+function decimalEdit(base: string, delta: { op: "add" | "sub" | "mul" | "div"; n: number }): string | null {
+  const a = decimalParts(base);
+  if (!a || !Number.isInteger(delta.n) || delta.n <= 0) return null;
+  const b = a.whole;
+  if (delta.op === "mul") return decimalFormat(b * BigInt(delta.n), a.scale);
+  if (delta.op === "div") {
+    const divisor = BigInt(delta.n);
+    if (b % divisor !== 0n) {
+      const expanded = b * 10n ** 18n;
+      return decimalFormat(expanded / divisor, a.scale + 18);
+    }
+    return decimalFormat(b / divisor, a.scale);
+  }
+  const amount = BigInt(delta.n) * 10n ** BigInt(a.scale);
+  const next = delta.op === "add" ? b + amount : b - amount;
+  return next >= 0n ? decimalFormat(next, a.scale) : null;
+}
+function arithmeticFollowUp(words: string[], last: Command): string | null {
+  if (last.kind !== "swap" || !last.amount) return null;
+  const amount = detectAmount(words)?.amount;
+  if (words.includes("double")) return decimalEdit(last.amount, { op: "mul", n: 2 });
+  if (words.includes("triple")) return decimalEdit(last.amount, { op: "mul", n: 3 });
+  if (words.includes("half") && (words.includes("reduce") || words.includes("halve")))
+    return decimalEdit(last.amount, { op: "div", n: 2 });
+  if (!amount) return null;
+  if (words.includes("add") || words.includes("increase") || words.includes("more"))
+    return decimalEdit(last.amount, { op: "add", n: Number(amount) });
+  if (words.includes("subtract") || words.includes("decrease") || words.includes("less") || words.includes("off"))
+    return decimalEdit(last.amount, { op: "sub", n: Number(amount) });
+  return null;
+}
+
 export function parseFollowUp(
   text: string,
   tokens: IToken[],
@@ -3042,8 +3117,30 @@ export function parseFollowUp(
      is being re-pointed; the sentence refers to the last plan and is read as
      one, plus whatever it changes. "now stake it" after a swap still refuses,
      and so does "same bridge again" — a different verb is a different action. */
+  const arithmetic = arithmeticFollowUp(words, last);
+  const mentionedHere = findTokenMentions(words, tokens).length;
+  const hasFreshBalanceContext =
+    mentionedHere > 0 && /\b(my|mine|wallet|balance|balances)\b/.test(lower);
+  const hasFreshPairContext =
+    arithmetic !== null &&
+    mentionedHere > 0 &&
+    !isRepeatCue(lower) &&
+    !/\b(it|that|this)\b/.test(lower);
+  /* A complete pair or an explicit wallet/balance phrase belongs to this
+     sentence. Never let arithmetic or relative wording pull it back onto an
+     older command when the fresh parser could not complete it locally. */
+  if (hasFreshBalanceContext || hasFreshPairContext) return { status: "unknown" };
   const verb = detectVerb(words, { hasRef: detectRef(words) !== null });
-  if (verb && !(verb.kind === last.kind && isRepeatCue(lower))) {
+  const relative = followUpRelative(words);
+  const refersToPriorAction =
+    relative !== null &&
+    last.kind === "swap" &&
+    (/\b(it|that|this|transaction|trade|swap)\b/.test(lower) ||
+      REST_CUE.test(lower));
+  if (
+    verb &&
+    !(verb.kind === last.kind && (isRepeatCue(lower) || refersToPriorAction || arithmetic !== null))
+  ) {
     return { status: "unknown" };
   }
 
@@ -3052,10 +3149,48 @@ export function parseFollowUp(
 
   const next: Draft = { ...draft };
   let named = false;
+  const mentions = findTokenMentions(words, tokens);
+  const explicitReference =
+    isRepeatCue(lower) ||
+    /\b(it|that|this|transaction|trade|swap|more|less)\b/.test(lower);
+
+  /* Wrap/unwrap is represented as the same swap command internally. Preserve
+     that representation, but honour an explicit direction word in a follow-up
+     when the carried pair is native versus its wrapped token. */
+  const wrapWord = words.includes("wrap") || words.includes("unwrap");
+  if (wrapWord && next.kind === "swap" && next.tokenIn && next.tokenOut) {
+    const native = next.tokenIn.isNative ? next.tokenIn : next.tokenOut.isNative ? next.tokenOut : null;
+    const wrapped = native === next.tokenIn ? next.tokenOut : native === next.tokenOut ? next.tokenIn : null;
+    if (native && wrapped && wrapped.tags?.includes("wrapped-native")) {
+      if (words.includes("unwrap")) {
+        next.tokenIn = wrapped;
+        next.tokenOut = native;
+      } else {
+        next.tokenIn = native;
+        next.tokenOut = wrapped;
+      }
+      named = true;
+    }
+  }
 
   const amount = detectAmount(words);
-  if (amount) {
+  /* Once context can live beyond one turn, a bare number is too easy to apply
+     to an old trade accidentally. It must either name a side, or explicitly
+     refer back to the prior action. */
+  if (amount && mentions.length === 0 && !explicitReference && arithmetic === null) {
+    return { status: "unknown" };
+  }
+  if (arithmetic !== null) {
+    next.amount = arithmetic;
+    next.relative = undefined;
+    named = true;
+  } else if (amount) {
     next.amount = amount.amount;
+    next.relative = undefined;
+    named = true;
+  } else if (relative && next.kind === "swap") {
+    next.amount = undefined;
+    next.relative = relative;
     named = true;
   } else if (isRepeatCue(lower)) {
     /* Rule 4: nothing to copy — the amount is already in the draft. This only
@@ -3077,7 +3212,6 @@ export function parseFollowUp(
    * can read and the model gets it.
    */
   const DIRECTIONAL = new Set(["to", "into", "for", "from", "with", "using"]);
-  const mentions = findTokenMentions(words, tokens);
   const covered = new Set(mentions.map((m) => m.index));
   for (let w = 0; w < words.length - 1; w++) {
     if (!DIRECTIONAL.has(words[w])) continue;
@@ -3294,6 +3428,7 @@ export function draftFromCommand(command: Command): Draft | null {
       return {
         kind: "swap",
         amount: command.amount,
+        relative: command.relative,
         tokenIn: command.tokenIn,
         tokenOut: command.tokenOut,
       };
@@ -3428,12 +3563,12 @@ export function completeDraft(draft: Draft): ParseResult {
     ) {
       return { status: "unknown" };
     }
-    if (!draft.amount) return incomplete(draft, "amount");
+    if (!draft.amount && !draft.relative) return incomplete(draft, "amount");
     return {
       status: "ok",
       command: {
         kind: "swap",
-        amount: draft.amount,
+        ...(draft.amount ? { amount: draft.amount } : { relative: draft.relative }),
         tokenIn: draft.tokenIn,
         tokenOut: draft.tokenOut,
       },

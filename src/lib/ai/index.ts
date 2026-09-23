@@ -5,6 +5,18 @@ import type { ChatProvider } from "./types";
 
 export { TOOL_CATALOG, EXECUTE_TOOLS } from "./toolCatalog";
 export { isReadTool, runReadTool } from "./readTools";
+export {
+  canUseBrowserLocalModel,
+  browserLocalIntentOptions,
+  DEFAULT_BROWSER_LOCAL_INTENT_MODEL,
+  validateLocalClassification,
+} from "./localIntent";
+export type {
+  BrowserLocalIntentModel,
+  LocalIntentClassification,
+  LocalIntentContext,
+  LocalTurnKind,
+} from "./localIntent";
 export type {
   ChatInput,
   ChatMessage,
