@@ -158,7 +158,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
             label: "Claim testnet tokens",
             prompt: "claim everything from the faucet",
           },
-          { label: "Then one swap", prompt: "swap 500 USDC to KLD" },
+          { label: "Then one swap", prompt: "swap 500 USDC to EURC" },
         ],
       },
     ],
@@ -427,7 +427,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "no more requests",
     ],
     answer:
-      'Reasoning requests (turns that need the AI model, not a stated command) are rationed per wallet per day — that limit exists to protect the shared model bill, not to restrict your trading. A command like "swap 500 USDC to KLD" is parsed locally and never touches that quota, so you can keep trading even after it\'s used up for the day.',
+      'Reasoning requests (turns that need the AI model, not a stated command) are rationed per wallet per day — that limit exists to protect the shared model bill, not to restrict your trading. A command like "swap 500 USDC to EURC" is parsed locally and never touches that quota, so you can keep trading even after it\'s used up for the day.',
     figure: "credits",
   },
   {
@@ -620,7 +620,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
             label: "Claim KLD from the faucet",
             prompt: "claim everything from the faucet",
           },
-          { label: "Buy KLD with USDC", prompt: "buy KLD with 500 USDC" },
+          { label: "Try a live Arc swap", prompt: "swap 100 USDC to EURC" },
         ],
       },
     ],
