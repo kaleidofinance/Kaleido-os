@@ -24,7 +24,8 @@ export const runtime = "nodejs";
  * strings. An optional chain and address; the address is hashed before it is
  * stored and the hash is short on purpose.
  */
-const ROUTE = /^(faq|docs|command|asks):[a-zA-Z0-9_-]{1,32}$|^model$/;
+const ROUTE =
+  /^(faq|docs|command|asks):[a-zA-Z0-9_-]{1,32}$|^model$|^local-intent:(fresh|follow_up|question)$/;
 
 export async function POST(req: NextRequest) {
   try {
