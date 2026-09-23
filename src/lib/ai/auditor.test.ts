@@ -3163,6 +3163,48 @@ async function main() {
     }
   }
 
+  /* ---------------------------------------------------- argus swap rules -- */
+  {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const ARC = 5042;
+    const ROUTER = "0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1"; // Argus UniversalRouter
+    const USDC = "0x3600000000000000000000000000000000000000";
+    const TOKEN = "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71";
+    const HOOK = "0x19B58A4555760558763D62f16250bb1890182044";
+    const argAudit = (plan: Step[]) =>
+      auditPlan({ plan: plan as never, chainId: ARC, limits: LIMITS, allowedActions: ALL_ON, pricer: stubPricer });
+    const goodSwap = {
+      kind: "argusSwap", to: ROUTER, data: "0xdead", value: "0",
+      tokenIn: USDC, amountIn: "1", decimalsIn: 6, symbolIn: "USDC",
+      tokenOut: TOKEN, amountOut: "2000", amountOutMin: "1900", decimalsOut: 18, symbolOut: "ARG", chainId: ARC, hook: HOOK,
+    };
+    {
+      const v = await argAudit([goodSwap]);
+      check("argusSwap: a well-formed buy passes", v.ok, JSON.stringify(v.blocked));
+      check("argusSwap: priced by the USDC leg (cap applies)", v.totalUsd > 0, String(v.totalUsd));
+    }
+    {
+      const v = await argAudit([{ ...goodSwap, to: "0x000000000000000000000000000000000000dEaD" }]);
+      check("argusSwap: a non-Argus router is blocked", !v.ok && v.blocked.some((b) => /UniversalRouter/i.test(b)), JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ ...goodSwap, value: "1000" }]);
+      check("argusSwap: native value is blocked", !v.ok && v.blocked.some((b) => /native value/i.test(b)), JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ ...goodSwap, amountOutMin: undefined }]);
+      check("argusSwap: missing min-out is blocked (slippage required)", !v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 1800 }]);
+      check("permit2Approve: authorising the Argus router passes", v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: "0x000000000000000000000000000000000000dEaD", amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 1800 }]);
+      check("permit2Approve: a non-router spender is blocked", !v.ok && v.blocked.some((b) => /UniversalRouter/i.test(b)), JSON.stringify(v.blocked));
+    }
+  }
+
   console.log(
     `\n${pass} passed, ${fail} failed${skipped ? `, ${skipped} skipped` : ""}\n`,
   );

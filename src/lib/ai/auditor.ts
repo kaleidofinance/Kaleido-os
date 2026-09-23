@@ -17,6 +17,7 @@ import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
+import { ARGUS_CHAIN_ID, ARGUS_V4, ARC_USDC } from "@/lib/argus/addresses";
 import {
   isKnownCctpTarget,
   isKnownCctpTransmitter,
@@ -184,6 +185,11 @@ const ACTION_OF: Record<IntentKind, string> = {
   /* An aggregator swap is a swap: the same product toggle, so a user who
      disabled swaps is not shown one filled by KyberSwap either. */
   aggregatorSwap: "swap",
+  /* An Argus-launchpad swap is a swap too — same product toggle. */
+  argusSwap: "swap",
+  /* Permit2 authorisation is the enabling step for an Argus swap, like `approve`
+     — not a product; the swap it precedes carries the permission check. */
+  permit2Approve: "",
   stake: "stake",
   /* The unstake lifecycle is the same product toggle as staking: a user who
      disabled staking should not be shown a withdrawal from the vault either. */
@@ -1765,6 +1771,70 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       "the aggregator's calldata is not parsed here — the router enforces the output floor, and the per-action USD cap bounds the input",
     ];
     return { reasons, notes, ...priceIf(inTok.symbol, amount) };
+  },
+
+  /* An Argus-launchpad swap: direct v4 through the UniversalRouter. Argus tokens
+     are NOT in the static registry, so — unlike the swap rules above — this does
+     NOT call knownToken (which would reject them). Instead it validates the
+     structure, pins the router to Argus's UniversalRouter constant, and prices
+     the notional by the USDC (quote) leg so the per-action USD cap still binds.
+     The v4 calldata itself is opaque here; amountOutMin (baked into it) enforces
+     the output floor at the router, exactly as for aggregatorSwap. */
+  argusSwap: (s, chainId) => {
+    const reasons: string[] = [];
+    const tokenIn = str(s.tokenIn);
+    const tokenOut = str(s.tokenOut);
+    reasons.push(...requireAddresses(s, "to", "tokenIn", "tokenOut", "hook"));
+    if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
+      reasons.push("input and output token are the same");
+    if (positive(s.amountIn) === null)
+      reasons.push("swap amount is missing or not positive");
+    if (num(s.decimalsIn) === null)
+      reasons.push("input token decimals are missing");
+    if (num(s.amountOutMin) === null)
+      reasons.push(
+        "no minimum output — the swap would execute at any price. Slippage protection is required.",
+      );
+    if (num(s.value) !== 0)
+      reasons.push("an Argus swap must not attach native value");
+    if (chainId !== ARGUS_CHAIN_ID)
+      reasons.push("Argus swaps run only on Arc mainnet (5042)");
+    if (str(s.to).toLowerCase() !== ARGUS_V4.universalRouter.toLowerCase())
+      reasons.push("the swap router is not the Argus UniversalRouter");
+    /* Price by whichever leg is USDC — the quote asset — so the USD cap applies
+       to a buy (USDC in) and a sell (USDC out) alike. */
+    const usdc = ARC_USDC.toLowerCase();
+    const usdcLeg =
+      tokenIn.toLowerCase() === usdc
+        ? positive(s.amountIn)
+        : tokenOut.toLowerCase() === usdc
+          ? positive(s.amountOut)
+          : null;
+    const notes = [
+      "the Argus v4 calldata is not parsed here — the router enforces the output floor via amountOutMin, and the per-action USD cap bounds the USDC leg",
+    ];
+    return { reasons, notes, ...priceIf("USDC", usdcLeg) };
+  },
+
+  /* Permit2 authorisation for an Argus swap — grants the UniversalRouter the
+     Permit2 allowance the v4 swap spends. Moves nothing itself; the paired swap
+     carries the notional. Pinned to Argus's router constant so it can never
+     authorise an arbitrary spender. */
+  permit2Approve: (s, chainId) => {
+    const reasons: string[] = [];
+    reasons.push(...requireAddresses(s, "token", "spender"));
+    if (chainId !== ARGUS_CHAIN_ID)
+      reasons.push("Permit2 authorisation here is only for Arc mainnet (5042)");
+    if (str(s.spender).toLowerCase() !== ARGUS_V4.universalRouter.toLowerCase())
+      reasons.push(
+        "Permit2 would authorise a spender that is not the Argus UniversalRouter",
+      );
+    return {
+      reasons,
+      notes: [
+        "authorises the UniversalRouter to pull the input via Permit2; it moves nothing on its own — the paired Argus swap carries the notional and the USD cap",
+      ],
+    };
   },
 
   /* ------------------------------------------------------------ cctp mint -- */

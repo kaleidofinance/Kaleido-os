@@ -330,6 +330,60 @@ export type Intent =
        */
       slippageBps: number;
     }
+  /* ------------------------------------------------------------- argus -- */
+  /*
+   * A swap of an Argus-launchpad token on Arc, executed DIRECTLY against its
+   * Uniswap-v4 pool through the UniversalRouter — not through KyberSwap — so it
+   * pays no aggregator overhead and works on a launch's first block, before any
+   * aggregator has indexed it. Argus tokens are not in the static registry, so
+   * the auditor prices this by its USDC leg and validates structure rather than
+   * calling knownToken (which would reject it). Carries pre-built calldata: the
+   * v4 bytes bake no recipient (TAKE_ALL pays msg.sender) and carry a generous
+   * deadline, so — unlike a KyberSwap route — they do not go stale within the
+   * review window and are NOT rebuilt at sign time. Input is pulled via Permit2,
+   * so the plan pairs this with `approve` (ERC20→Permit2) + `permit2Approve`
+   * (Permit2→UniversalRouter). See src/lib/argus.
+   */
+  | {
+      kind: "argusSwap";
+      /** The UniversalRouter this signs against (a fixed Arc constant). */
+      to: string;
+      /** v4 `execute` calldata, built at plan time by src/lib/argus/swap.ts. */
+      data: string;
+      /** "0" — the quote asset is ERC20 USDC, pulled via Permit2. */
+      value: string;
+      tokenIn: string;
+      amountIn: string;
+      decimalsIn: number;
+      symbolIn: string;
+      tokenOut: string;
+      amountOut: string;
+      amountOutMin: string;
+      decimalsOut: number;
+      symbolOut: string;
+      chainId: number;
+      /** The launch's hook, for the rendered row + provenance. */
+      hook: string;
+    }
+  /* -------------------------------------------------- permit2 approve -- */
+  /*
+   * Authorise a spender (the UniversalRouter) to pull `token` from the user on
+   * Permit2 (AllowanceTransfer). Its own signed, audited step: the paired
+   * `approve` only grants the ERC20 allowance to Permit2 itself; this grants the
+   * router the Permit2 allowance the v4 swap then spends. Not a product.
+   */
+  | {
+      kind: "permit2Approve";
+      /** The ERC20 being authorised (e.g. USDC). */
+      token: string;
+      /** The spender authorised on Permit2 — the UniversalRouter. */
+      spender: string;
+      amount: string;
+      decimals: number;
+      symbol: string;
+      /** Unix expiration for the Permit2 allowance. */
+      expiration: number;
+    }
   /* --------------------------------------------------------- cctp mint -- */
   /*
    * The DESTINATION leg of a Circle CCTP transfer — `receiveMessage` on the

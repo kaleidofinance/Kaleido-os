@@ -12,6 +12,7 @@ import { getContracts } from "@/constants/registry";
 import { initialSqrtPriceX96, sortMintParams } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
+import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
 
 /**
@@ -570,6 +571,49 @@ register("aggregatorSwap", {
     const tx = await ctx.signer.sendTransaction({
       to,
       data,
+      value: BigInt(i.value),
+    });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/* Permit2 authorisation for an Argus swap: Permit2.approve(token, router,
+   amount, expiration). Its own signed step — the paired `approve` only granted
+   the ERC20 allowance to Permit2; this grants the router the Permit2 allowance
+   the v4 swap spends. Moves nothing. */
+register("permit2Approve", {
+  render: (i) => ({
+    title: `Authorise the router to spend ${i.amount} ${i.symbol}`,
+    detail: `On Permit2, so the Argus swap can pull it. Nothing leaves your wallet here.`,
+  }),
+  resolve: async (ctx, i) => {
+    const permit2 = new ethers.Contract(
+      PERMIT2,
+      ["function approve(address token, address spender, uint160 amount, uint48 expiration)"],
+      ctx.signer,
+    );
+    const amount = ethers.parseUnits(i.amount, i.decimals);
+    const tx = await permit2.approve(i.token, i.spender, amount, i.expiration);
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/* An Argus-launchpad swap: send the pre-built UniversalRouter v4 calldata. Unlike
+   aggregatorSwap this is NOT rebuilt at sign time — the v4 bytes bake no recipient
+   (TAKE_ALL pays msg.sender) and carry a generous deadline, so they do not go
+   stale within the review window. The paired approve + permit2Approve steps have
+   already set the allowances by the time this runs. */
+register("argusSwap", {
+  render: (i) => ({
+    title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
+    detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage · Argus (Uniswap v4).`,
+  }),
+  resolve: async (ctx, i) => {
+    const tx = await ctx.signer.sendTransaction({
+      to: i.to,
+      data: i.data,
       value: BigInt(i.value),
     });
     await tx.wait();
