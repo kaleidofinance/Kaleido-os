@@ -1905,6 +1905,11 @@ console.log("\n— unstake parses like stake: one amount, the step decided later
     follow("same to WETH every week").status === "unknown",
     follow("same to WETH every week").status,
   );
+  check(
+    "a bare amount does not reuse an old command without a reference",
+    follow("50").status === "unknown",
+    follow("50").status,
+  );
 }
 
 console.log("\n— resting orders: sell-framed limit + cancel-all —");
@@ -2250,6 +2255,68 @@ console.log("swap resolves relative amounts; other verbs escalate");
     swapOf(follow("same swap but 5")) === "5 USDC->KLD",
     swapOf(follow("same swap but 5")),
   );
+  check(
+    "'redo the transaction' repeats the last swap",
+    swapOf(follow("redo the transaction")) === "10 USDC->KLD",
+    swapOf(follow("redo the transaction")),
+  );
+  check(
+    "'repeat the transaction' repeats the last swap",
+    swapOf(follow("repeat the transaction")) === "10 USDC->KLD",
+    swapOf(follow("repeat the transaction")),
+  );
+  const half = follow("swap half of it");
+  check(
+    "'swap half of it' keeps the pair and carries a half balance share",
+    half.status === "ok" &&
+      half.command.kind === "swap" &&
+      !half.command.amount &&
+      half.command.relative?.num === 1 &&
+      half.command.relative?.den === 2,
+    half.status,
+  );
+  for (const text of ["swap the rest", "swap the remaining balance", "swap what's left"]) {
+    const r = follow(text);
+    check(
+      `'${text}' uses the remaining balance of the previous input`,
+      r.status === "ok" && r.command.kind === "swap" && !r.command.amount && r.command.relative?.num === 1 && r.command.relative?.den === 1,
+      r.status,
+    );
+  }
+  for (const [text, expected] of [["double it", "20"], ["triple it", "30"], ["add another 5", "15"], ["use 5 more", "15"], ["reduce it by half", "5"]]) {
+    const r = follow(text);
+    check(
+      `'${text}' changes the previous exact amount to ${expected}`,
+      r.status === "ok" && r.command.kind === "swap" && r.command.amount === expected,
+      r.status === "ok" && r.command.kind === "swap" ? String(r.command.amount) : r.status,
+    );
+  }
+  for (const text of ["swap half of my USDC to WETH", "add another 5 USDC to KLD"]) {
+    check(
+      `'${text}' stays a fresh command instead of inheriting the previous swap`,
+      follow(text).status === "unknown",
+      follow(text).status,
+    );
+  }
+  const wrapSeed = parseCommand("wrap 10 usdc", [
+    { address: "0xnat", name: "USD Coin", symbol: "USDC", decimals: 18, chainId: 5042, isNative: true },
+    { address: "0xwusdc", name: "Wrapped USDC", symbol: "WUSDC", decimals: 18, chainId: 5042, tags: ["wrapped-native"] },
+  ]);
+  if (wrapSeed.status === "ok") {
+    const wrapFollow = (text) => parseFollowUp(text, [], wrapSeed.command);
+    const halfWrap = wrapFollow("wrap half of it");
+    check(
+      "'wrap half of it' keeps the native-to-wrapped direction",
+      halfWrap.status === "ok" && halfWrap.command.kind === "swap" && halfWrap.command.tokenIn.isNative === true && halfWrap.command.tokenOut.symbol === "WUSDC" && halfWrap.command.relative?.num === 1 && halfWrap.command.relative?.den === 2,
+      halfWrap.status,
+    );
+    const restUnwrap = wrapFollow("unwrap the rest");
+    check(
+      "'unwrap the rest' reverses the direction and uses the remaining balance",
+      restUnwrap.status === "ok" && restUnwrap.command.kind === "swap" && restUnwrap.command.tokenIn.symbol === "WUSDC" && restUnwrap.command.tokenOut.isNative === true && restUnwrap.command.relative?.num === 1 && restUnwrap.command.relative?.den === 1,
+      restUnwrap.status,
+    );
+  }
   check(
     "'swap again to WETH' keeps the amount and input, changes the output",
     swapOf(follow("swap again to WETH")) === "10 USDC->WETH",
@@ -2617,6 +2684,21 @@ console.log("\n— wrap / unwrap as a local verb —");
   {
     const r = pw("unwrap 7 wusdc");
     check("'unwrap 7 wusdc' is a wrapped->native swap", r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn.symbol === "WUSDC" && r.command.tokenOut.symbol === "USDC" && r.command.amount === "7", r.status === "ok" ? `${r.command.tokenIn?.symbol}->${r.command.tokenOut?.symbol}` : r.status);
+  }
+  {
+    /* Arc's DEX list also contains canonical ERC20 USDC, so native USDC is
+       intentionally omitted there to avoid an ambiguous duplicate. Wrap still
+       needs to recover the native sentinel for this explicit verb. */
+    const ARC_DEX_TOKENS = [
+      { address: "0xerc20usdc", name: "USD Coin", symbol: "USDC", decimals: 6, chainId: 5042 },
+      { address: "0xwusdc", name: "Wrapped USDC", symbol: "WUSDC", decimals: 18, chainId: 5042, tags: ["wrapped-native"] },
+    ];
+    const r = parseCommand("wrap 10 usdc", ARC_DEX_TOKENS);
+    check(
+      "Arc wrap resolves native USDC even when the canonical ERC20 USDC is listed",
+      r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn.isNative === true && r.command.tokenOut.symbol === "WUSDC",
+      r.status,
+    );
   }
   {
     /* Relative / no amount needs the balance - left to the model, not a local dead end. */

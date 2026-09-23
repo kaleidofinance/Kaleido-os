@@ -414,10 +414,8 @@ function toCommand(
         return `provideLiquidity: I don't know a token called ${sym0 || "(none)"} on this chain`;
       if (!token1)
         return `provideLiquidity: I don't know a token called ${sym1 || "(none)"} on this chain`;
-      if (!amount0)
-        return `provideLiquidity: no amount given for ${token0.symbol}`;
-      if (!amount1)
-        return `provideLiquidity: no amount given for ${token1.symbol}`;
+      if (!amount0 && !amount1)
+        return `provideLiquidity: give an amount for ${token0.symbol} or ${token1.symbol}`;
 
       /*
        * The range. A model may name a band or two prices; it may not name ticks,
@@ -456,9 +454,9 @@ function toCommand(
       const feeBps = numOf(a.fee);
       return {
         kind: "provideLiquidity",
-        amount0,
+        ...(amount0 ? { amount0 } : {}),
         token0,
-        amount1,
+        ...(amount1 ? { amount1 } : {}),
         token1,
         ...(feeBps === null ? {} : { fee: feeBps }),
         range,

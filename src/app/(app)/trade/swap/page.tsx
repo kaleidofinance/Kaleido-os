@@ -8,8 +8,8 @@ import TxHistory from "@/components/v2/TxHistory";
 import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import Chevron from "@/components/v2/Chevron";
-import { chainTokens } from "@/constants/tokens";
-import { getContracts } from "@/constants/registry";
+import { chainTokens, toIToken } from "@/constants/tokens";
+import { getContracts, nativeTokenOf } from "@/constants/registry";
 import { getChainMeta } from "@/constants/chains";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
@@ -186,7 +186,27 @@ export default function SwapPage() {
      always share a chain and this is unambiguous. */
   const swapChainId =
     tokenIn?.chainId ?? tokenOut?.chainId ?? chainId ?? PREVIEW_CHAIN_ID;
-  const available = useMemo(() => chainTokens(swapChainId), [swapChainId]);
+  const available = useMemo(() => {
+    const listed = chainTokens(swapChainId);
+    /* Arc's canonical ERC20 USDC and native USDC share a ticker, so the normal
+       DEX list keeps only the canonical token. The wrap card needs an explicit
+       native choice, however; expose it with a disambiguated name only when the
+       chain also has WUSDC, leaving ordinary USDC/EURC routing unchanged. */
+    if (
+      swapChainId === 5042 &&
+      listed.some((t) => t.symbol.toUpperCase() === "WUSDC") &&
+      !listed.some((t) => t.isNative)
+    ) {
+      const native = nativeTokenOf(getChainMeta(swapChainId), "dex");
+      if (native) {
+        return [
+          ...listed,
+          { ...toIToken(native), name: "Arc native USDC" },
+        ];
+      }
+    }
+    return listed;
+  }, [swapChainId]);
   const v3Router = getContracts(swapChainId).v3Router;
   /* Wallet on the wrong chain for a signature: quotes are read-only, so this
      gates execution only, behind a one-click switch. The gate is the shared

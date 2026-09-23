@@ -2615,9 +2615,39 @@ export async function buildIntents(
       };
     }
 
-    /* null price, not zero. A pool that does not exist has no market, and the two
-       amounts below will set its opening price — which is exactly why a band is
-       refused in that case rather than centred on something. */
+    /* A priced pool can size the omitted side at the current market price. A
+       pool with no price cannot: both amounts are needed to establish its
+       opening ratio, so keep that case explicit and safe. */
+    let resolvedAmount0 = amount0;
+    let resolvedAmount1 = amount1;
+    if (!resolvedAmount0 && !resolvedAmount1) {
+      return { ok: false, error: `Tell me how much ${token0.symbol} or ${token1.symbol} to add.` };
+    }
+    if (!resolvedAmount0 || !resolvedAmount1) {
+      if (!state || state.price === null || !Number.isFinite(state.price) || state.price <= 0) {
+        return {
+          ok: false,
+          error: `I can calculate the other side only from a live ${token0.symbol}/${token1.symbol} price. This pool has no price yet, so give me both amounts to set its opening price.`,
+        };
+      }
+      const trim = (n: number, decimals: number) =>
+        n.toFixed(Math.min(decimals, 18)).replace(/\.?0+$/, "");
+      if (resolvedAmount0)
+        resolvedAmount1 = trim(Number(resolvedAmount0) * state.price, token1.decimals);
+      else
+        resolvedAmount0 = trim(Number(resolvedAmount1) / state.price, token0.decimals);
+    }
+
+    /* The branch above fills the missing side from the live price, but TypeScript
+       correctly keeps the original optional types after mutation. Establish a
+       local invariant before handing values to the intent builder so no partial
+       approve or mint can ever be emitted. */
+    if (!resolvedAmount0 || !resolvedAmount1) {
+      return { ok: false, error: `Tell me both ${token0.symbol} and ${token1.symbol} amounts.` };
+    }
+    const finalAmount0 = resolvedAmount0;
+    const finalAmount1 = resolvedAmount1;
+
     const spot = state ? state.price : null;
 
     const ticks = ticksForRange(
@@ -2630,8 +2660,8 @@ export async function buildIntents(
     if ("error" in ticks) return { ok: false, error: ticks.error };
 
     const floors = mintMinimums({
-      amount0,
-      amount1,
+      amount0: finalAmount0,
+      amount1: finalAmount1,
       decimals0: token0.decimals,
       decimals1: token1.decimals,
       tickLower: ticks.tickLower,
@@ -2646,14 +2676,14 @@ export async function buildIntents(
       n >= 1000 ? n.toFixed(2) : n.toPrecision(6).replace(/\.?0+$/, "");
     const where = state
       ? `between ${priced(ticks.lowerPrice)} and ${priced(ticks.upperPrice)} ${token1.symbol} per ${token0.symbol}`
-      : `across the full range, opening the pool at ${priced(Number(amount1) / Number(amount0))} ${token1.symbol} per ${token0.symbol}`;
+      : `across the full range, opening the pool at ${priced(Number(finalAmount1) / Number(finalAmount0))} ${token1.symbol} per ${token0.symbol}`;
 
     return {
       ok: true,
       build: {
         summary: state
-          ? `Add ${amount0} ${token0.symbol} and ${amount1} ${token1.symbol} to the ${pair} ${fee / 10_000}% pool, ${where}.`
-          : `Create the ${pair} ${fee / 10_000}% pool with ${amount0} ${token0.symbol} and ${amount1} ${token1.symbol}, ${where}.`,
+          ? `Add ${finalAmount0} ${token0.symbol} and ${finalAmount1} ${token1.symbol} to the ${pair} ${fee / 10_000}% pool, ${where}.`
+          : `Create the ${pair} ${fee / 10_000}% pool with ${finalAmount0} ${token0.symbol} and ${finalAmount1} ${token1.symbol}, ${where}.`,
         intents: [
           /* Two approves, because two tokens leave the wallet. Both authorise the
              position manager and not the router — a mint is not a swap, and an
@@ -2662,7 +2692,7 @@ export async function buildIntents(
             kind: "approve",
             token: token0.address,
             spender: positionManager,
-            amount: amount0,
+            amount: finalAmount0,
             decimals: token0.decimals,
             symbol: token0.symbol,
           },
@@ -2670,7 +2700,7 @@ export async function buildIntents(
             kind: "approve",
             token: token1.address,
             spender: positionManager,
-            amount: amount1,
+            amount: finalAmount1,
             decimals: token1.decimals,
             symbol: token1.symbol,
           },
@@ -2686,8 +2716,8 @@ export async function buildIntents(
             fee,
             tickLower: ticks.tickLower,
             tickUpper: ticks.tickUpper,
-            amount0,
-            amount1,
+            amount0: finalAmount0,
+            amount1: finalAmount1,
             amount0Min: floors.amount0Min,
             amount1Min: floors.amount1Min,
             lowerPrice: ticks.lowerPrice,

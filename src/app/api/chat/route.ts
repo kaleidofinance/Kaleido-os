@@ -48,6 +48,7 @@ import { logAgentTurn } from "@/lib/ai/turnLog";
 import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
 import { chainTokens } from "@/constants/tokens";
+import { validateLocalClassification } from "@/lib/ai/localIntent";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -342,6 +343,7 @@ export async function POST(request: NextRequest) {
          locally-built plan path (/api/audit) cleans limits the same way, so a
          typed command and a reasoned one are held to the same ceiling. */
       const safeLimits = sanitizeGuardrails(body.limits);
+      const localIntent = validateLocalClassification(body.localIntent);
       /* Testnets are hidden by default in the UI (mainnet-first). The page
          sends the flag; absent reads as mainnet-only, so an older client or a
          direct call is held to the same posture. Threads to the read tools
@@ -363,7 +365,15 @@ export async function POST(request: NextRequest) {
         /* The product as it is today, for the full model too — so it never
            recommends a competitor or a product that is not on this chain. The
            normalizer tier below replaces this with its fuller addendum. */
-        systemAddendum: productFacts(mainnetOnly),
+        systemAddendum: [
+          productFacts(mainnetOnly),
+          ...(localIntent.kind !== "unknown"
+            ? [
+                "A browser-local classifier supplied a non-authoritative context hint. Treat it only as a tie-breaker for conversation reference; verify the user's words and history yourself. Never use it for transaction arguments.",
+                `Local hint: kind=${localIntent.kind}; reference=${localIntent.reference ?? "none"}.`,
+              ]
+            : []),
+        ].join("\n"),
         mainnetOnly,
       };
 
