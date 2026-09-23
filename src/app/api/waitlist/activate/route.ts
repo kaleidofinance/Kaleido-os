@@ -202,9 +202,8 @@ async function handle(req: Request): Promise<Response> {
     const xTaskPoints =
       (row.x_linked_at ? X_TASK_POINTS.linked : 0) +
       (row.x_followed_at ? X_TASK_POINTS.followed : 0) +
-      // retweet + comment are HELD out of Season 1 (attested, not verified; ~half
-      // were false against the real X counts, 2026-09-22). See HELD_TASKS in
-      // lib/waitlist/rewards.ts. Follow stays (its count matched reality).
+      (row.x_retweeted_at ? X_TASK_POINTS.retweeted : 0) +
+      (row.x_commented_at ? X_TASK_POINTS.commented : 0) +
       (row.x_launch_at ? X_TASK_POINTS.launch : 0) +
       (row.x_bitget_at ? X_TASK_POINTS.bitget : 0) +
       (row.arc_mainnet_tx_at ? ARC_TX_POINTS : 0) +

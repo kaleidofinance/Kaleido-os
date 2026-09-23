@@ -4,7 +4,7 @@ import { verifyMessage } from "ethers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { transactionTaskPointsFor } from "@/lib/waitlist/transactionTasks";
-import { HELD_TASKS } from "@/lib/waitlist/rewards";
+import { getClosedXTasks } from "@/lib/waitlist/xCap";
 
 /**
  * The Arc waitlist API.
@@ -61,15 +61,19 @@ const joinMessage = (address: string) =>
 const isAddress = (a: unknown): a is string =>
   typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a);
 
-/** A single X task's state for the UI: whether it's done, and its 5h hold. */
-function xTaskState(at: string | null, now: number) {
+/** A single X task's state for the UI: whether it's done, its 5h hold, and —
+ *  for the capped self-attested tasks — whether the task has closed at the cap
+ *  (see lib/waitlist/xCap). `closed` never applies to a task this wallet has
+ *  already done; the lock only blocks new claimants. */
+function xTaskState(at: string | null, now: number, closed = false) {
   if (!at)
-    return { done: false, counted: false, countsAt: null as string | null };
+    return { done: false, counted: false, countsAt: null as string | null, closed };
   const countsAtMs = new Date(at).getTime() + X_HOLD_MS;
   return {
     done: true,
     counted: now >= countsAtMs,
     countsAt: new Date(countsAtMs).toISOString(),
+    closed: false,
   };
 }
 
@@ -99,12 +103,8 @@ async function reconcileWaitlistPoints(
   // waitlist ledger row, reconcile later task/referral deltas even if that
   // legacy flag was never stamped.
   if (!activated && credited <= 0) return;
-  // Bidirectional now: a NEGATIVE delta (eligible dropped — e.g. retweet/comment
-  // moved to HELD_TASKS) claws the difference back, so an already-credited wallet
-  // converges to the new eligible on its next visit. The eligible-keyed tx_hash
-  // keeps it idempotent, so concurrent calls at one eligible cannot double-apply.
   const delta = eligible - credited;
-  if (delta === 0) return;
+  if (delta <= 0) return;
 
   await admin.from("point_actions").insert({
     wallet,
@@ -178,12 +178,14 @@ async function standing(wallet: string) {
   const referralPoints = PER_REFERRAL * referrals;
 
   const now = Date.now();
+  // Which capped tasks have closed at the cap, so the UI can grey them out.
+  const closedX = await getClosedXTasks();
   const xTasks = {
     linked: xTaskState(row.x_linked_at as string | null, now),
     followed: xTaskState(row.x_followed_at as string | null, now),
-    retweeted: xTaskState(row.x_retweeted_at as string | null, now),
-    commented: xTaskState(row.x_commented_at as string | null, now),
-    launch: xTaskState(row.x_launch_at as string | null, now),
+    retweeted: xTaskState(row.x_retweeted_at as string | null, now, closedX.retweeted),
+    commented: xTaskState(row.x_commented_at as string | null, now, closedX.commented),
+    launch: xTaskState(row.x_launch_at as string | null, now, closedX.launch),
     // Kept in the response for compatibility with an older deployed client;
     // the current UI does not render or claim this disabled task.
     bitget: xTaskState(row.x_bitget_at as string | null, now),
@@ -196,13 +198,7 @@ async function standing(wallet: string) {
     (typeof xTasks)["linked"],
   ][];
   const countedX = xEntries.reduce(
-    (sum, [k, s]) => sum + (s.counted && !HELD_TASKS.has(k) ? X_TASK_POINTS[k] : 0),
-    0,
-  );
-  // The counted-but-HELD X points, surfaced so the UI can say "pending
-  // verification" rather than silently dropping them.
-  const heldUnverified = xEntries.reduce(
-    (sum, [k, s]) => sum + (s.counted && HELD_TASKS.has(k) ? X_TASK_POINTS[k] : 0),
+    (sum, [k, s]) => sum + (s.counted ? X_TASK_POINTS[k] : 0),
     0,
   );
   const heldPoints = xEntries.reduce(
@@ -228,7 +224,6 @@ async function standing(wallet: string) {
     // its hold. heldPoints is the X-task kPoint still counting down.
     points: eligiblePoints,
     heldPoints,
-    heldUnverified,
     welcomePoints,
     referralPoints,
     xHandle: (row.x_handle as string | null) ?? null,
