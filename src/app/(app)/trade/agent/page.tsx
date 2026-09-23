@@ -985,7 +985,10 @@ export default function AgentPage() {
               hasActiveTask: Boolean(pending),
               chainId,
             });
-            if (localIntent.kind !== "unknown") note("Used local context to interpret this turn");
+            if (localIntent.kind !== "unknown") {
+              note("Used local context to interpret this turn");
+              log(`local-intent:${localIntent.kind}`);
+            }
           } catch {
             /* A weak device, blocked WebGPU, or a failed model download must
              * never block Luca. Disable this session and use the normal route. */
