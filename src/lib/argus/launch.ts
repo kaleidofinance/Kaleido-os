@@ -4,6 +4,7 @@ import {
   ARGUS_CHAIN_ID,
   ARGUS_V4,
   ARGUS_V4_11WORD_PORTALS,
+  ARGUS_POOL_FEE,
   argusEnabled,
 } from "./addresses";
 import {
@@ -29,6 +30,7 @@ import {
 
 const PORTAL_ABI = [
   "function launches(address) view returns (address creator, int24 tickStart, bool tokenIsToken0, address locker, address hook, address splitter, uint16 buyTaxBps, uint16 sellTaxBps, uint256 positionId, int24 tickBond, address quoteAsset)",
+  "function POOL_FEE() view returns (uint24)",
 ];
 const HOOK_ABI = [
   "function currentSnipeTaxBps() view returns (uint256)",
@@ -56,6 +58,10 @@ export interface ArgusLaunch {
   currency0: string;
   currency1: string;
   poolId: string;
+  /** The pool's actual PoolKey fee (v4 units). Read from the launch's Portal —
+   *  NOT assumed 10000; Argus/Uniswap docs warn the observed key can differ.
+   *  Optional so hand-built test fixtures can omit it (defaults to the family fee). */
+  poolFee?: number;
 }
 
 export interface ArgusPoolState {
@@ -93,10 +99,18 @@ export async function readArgusLaunch(token: string): Promise<ArgusLaunch | null
       if (hook === ZeroAddress) continue; // not launched by this Portal
       const quoteAsset = getAddress(String(r.quoteAsset));
       const tokenIsToken0 = Boolean(r.tokenIsToken0);
+      // The pool's real fee comes from the Portal, not an assumption. Fall back
+      // to the family default only if the getter is absent.
+      let poolFee = ARGUS_POOL_FEE;
+      try {
+        poolFee = Number(await portal.POOL_FEE());
+      } catch {
+        /* keep the family default */
+      }
       // Reconstruct the pool key ordering from the record.
       const currency0 = tokenIsToken0 ? addr : quoteAsset;
       const currency1 = tokenIsToken0 ? quoteAsset : addr;
-      const poolId = computePoolId(currency0, currency1, hook);
+      const poolId = computePoolId(currency0, currency1, hook, poolFee);
       return {
         token: addr,
         portal: getAddress(portalAddr),
@@ -113,6 +127,7 @@ export async function readArgusLaunch(token: string): Promise<ArgusLaunch | null
         currency0,
         currency1,
         poolId,
+        poolFee,
       };
     } catch {
       // A Portal that doesn't know this token (or a transient RPC error) is not
