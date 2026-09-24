@@ -14,6 +14,7 @@ import { useSwitchWalletChain } from "@/lib/wallet";
 import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
 import { recordTx, txFromError } from "@/lib/v2/txLog";
 import { recordCctpBurn } from "@/lib/bridge/cctpPending";
+import { recordLifiPending } from "@/lib/bridge/lifiPending";
 import { describeFailure, isRejection } from "@/lib/v2/txErrors";
 import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { PROTOCOL_ERROR_ABI } from "@/lib/v2/protocolErrors";
@@ -585,6 +586,15 @@ export default function PlanReview({
             burnedAt: Date.now(),
           });
         } else if (b.provider === "lifi") {
+          recordLifiPending(ctx.address, {
+            txHash: result.hash,
+            sourceChainId: b.fromChainId,
+            destinationChainId: b.toChainId,
+            destinationChainName: b.toChainName,
+            amount: b.amount,
+            symbol: b.symbol,
+            createdAt: Date.now(),
+          });
           /* Log the routed (LI.FI) bridge so its volume and our integrator fee
              reach the pool page's platform totals. Fire-and-forget, chain-
              verified server-side; a failure never touches the completed bridge. */
@@ -827,6 +837,15 @@ export default function PlanReview({
             burnedAt: Date.now(),
           });
         } else if (b.provider === "lifi") {
+          recordLifiPending(ctx.address, {
+            txHash: hash,
+            sourceChainId: b.fromChainId,
+            destinationChainId: b.toChainId,
+            destinationChainName: b.toChainName,
+            amount: b.amount,
+            symbol: b.symbol,
+            createdAt: Date.now(),
+          });
           /* Log the routed (LI.FI) bridge so its volume and our integrator fee
              reach the pool page's platform totals. Fire-and-forget, chain-
              verified server-side; a failure never touches the completed bridge. */
