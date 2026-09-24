@@ -225,6 +225,14 @@ export default function TxHistory({ className }: TxHistoryProps) {
                                 Reverted
                               </span>
                             )}
+                            {e.status === "pending" && (
+                              <span
+                                className={s.pendingBadge}
+                                title="Broadcast, waiting for a chain receipt"
+                              >
+                                Pending
+                              </span>
+                            )}
                           </div>
                         </li>
                       );

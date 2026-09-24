@@ -30,7 +30,7 @@ import type { IntentKind } from "./intents";
  */
 
 /** What became of it. See the note above on why "pending" is absent. */
-export type TxStatus = "confirmed" | "reverted";
+export type TxStatus = "pending" | "confirmed" | "reverted";
 
 export interface TxLogEntry {
   hash: string;
@@ -91,7 +91,7 @@ function isEntry(v: unknown): v is TxLogEntry {
     typeof e.kind === "string" &&
     typeof e.title === "string" &&
     (e.detail === undefined || typeof e.detail === "string") &&
-    (e.status === "confirmed" || e.status === "reverted") &&
+    (e.status === "pending" || e.status === "confirmed" || e.status === "reverted") &&
     typeof e.at === "number" &&
     Number.isFinite(e.at)
   );
