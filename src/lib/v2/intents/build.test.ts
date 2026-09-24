@@ -574,6 +574,7 @@ async function main() {
         bps: feeReceiver ? 20 : 0,
       },
       swapAmountRaw: feeReceiver ? "9980000" : "10000000",
+      totalInRaw: "10000000",
       to: ROUTER,
       data: "0xdeadbeef",
       value: "0",
@@ -588,37 +589,43 @@ async function main() {
         { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
         { ...deps, argusPlan: okPlan(FEE_RCVR) },
       );
+      /* The fee rides INSIDE the swap transaction (PERMIT2_TRANSFER_FROM in the
+         server's calldata), so the plan has no fee step of its own — nothing
+         for the review to list as a separate send. */
       check(
-        "argus buy assembles approve→permit2Approve→transfer→argusSwap",
-        kinds(r) === "approve,permit2Approve,transfer,argusSwap",
+        "argus buy assembles approve→permit2Approve→argusSwap (no fee step)",
+        kinds(r) === "approve,permit2Approve,argusSwap",
         kinds(r),
       );
       check(
-        "approve authorises Permit2 for the swapped USDC only (net of fee)",
+        "no step sends anything to the fee receiver",
+        (r.ok ? r.build.intents : []).every(
+          (i) => !same((i as { to?: string }).to ?? "", FEE_RCVR),
+        ),
+        kinds(r),
+      );
+      check(
+        "approve authorises Permit2 for the whole input (swap + in-tx fee)",
         same(at(r, 0).spender, PERMIT2) &&
           same(at(r, 0).token, ARC_USDC) &&
-          at(r, 0).amount === "9.98",
+          at(r, 0).amount === "10.0",
         JSON.stringify(at(r, 0)),
       );
       check(
-        "permit2Approve authorises the UniversalRouter",
-        same(at(r, 1).spender, ROUTER) && same(at(r, 1).token, ARC_USDC),
+        "permit2Approve authorises the UniversalRouter for the whole input",
+        same(at(r, 1).spender, ROUTER) &&
+          same(at(r, 1).token, ARC_USDC) &&
+          at(r, 1).amount === "10.0",
         JSON.stringify(at(r, 1)),
       );
       check(
-        "the fee is a USDC transfer to the server-chosen receiver",
-        same(at(r, 2).to, FEE_RCVR) &&
-          at(r, 2).amount === "0.02" &&
-          same(at(r, 2).token, ARC_USDC),
+        "argusSwap carries the server's calldata unrebuilt, spending the whole input",
+        same(at(r, 2).to, ROUTER) &&
+          at(r, 2).data === "0xdeadbeef" &&
+          at(r, 2).amountIn === "10.0" &&
+          at(r, 2).amountOutMin === "1000.0" &&
+          same(at(r, 2).symbolIn, "usdc"),
         JSON.stringify(at(r, 2)),
-      );
-      check(
-        "argusSwap carries the server's calldata unrebuilt",
-        same(at(r, 3).to, ROUTER) &&
-          at(r, 3).data === "0xdeadbeef" &&
-          at(r, 3).amountOutMin === "1000.0" &&
-          same(at(r, 3).symbolIn, "usdc"),
-        JSON.stringify(at(r, 3)),
       );
     }
 
@@ -630,7 +637,7 @@ async function main() {
         { ...deps, argusPlan: okPlan(null) },
       );
       check(
-        "no fee receiver → no transfer leg",
+        "no fee receiver → the same three steps",
         kinds(r) === "approve,permit2Approve,argusSwap" &&
           at(r, 0).amount === "10.0",
         kinds(r),

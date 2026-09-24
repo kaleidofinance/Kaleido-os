@@ -22,10 +22,11 @@ export const dynamic = "force-dynamic";
  * (c) builds the UniversalRouter calldata. buildIntents (client) calls this via
  * the injected `argusPlan` dep and assembles the signable steps.
  *
- * BUY (USDC → launch token): the fee is skimmed from the USDC input as a separate
- * transfer before the swap. SELL (launch token → USDC): the USDC only exists after
- * the swap, so the fee is taken IN-SWAP from the output via TAKE_PORTION — one
- * transaction, aggregator-style (the older Arc router supports it; probed 2026-09-24).
+ * Both sides take the fee INSIDE the one swap transaction, aggregator-style — never
+ * as a step of its own. BUY (USDC → launch token): a PERMIT2_TRANSFER_FROM command
+ * pulls the fee from the USDC input ahead of the V4_SWAP. SELL (launch token →
+ * USDC): the USDC only exists after the swap, so TAKE_PORTION takes it from the
+ * output. The older Arc router supports both (probed 2026-09-24).
  * USDC must be one side, or we return `{argus:false}` and the caller routes normally.
  * Inert unless ARGUS_ENABLED.
  */
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
      same way and are handled once at the call sites. */
 
   if (side === "buy") {
-    // Fee skimmed from the USDC input; swap the remainder. (Unchanged, verified path.)
+    // Fee taken from the USDC input in the same tx (PERMIT2_TRANSFER_FROM); swap the rest.
     const feeAmount = (amountIn * BigInt(feeBps)) / 10_000n;
     const swapAmount = amountIn - feeAmount;
     if (swapAmount <= 0n) return Response.json({ error: "amount too small after fee" }, { status: 400 });
@@ -108,14 +109,19 @@ export async function POST(req: Request) {
     const amountOutMinimum = (outRaw * (10_000n - slip)) / 10_000n;
     if (amountOutMinimum <= 0n) return Response.json({ error: "min-out is zero" }, { status: 400 });
 
-    const swap = buildArgusSwapTx({ launch, side: "buy", amountInRaw: swapAmount, amountOutMinimum });
+    const swap = buildArgusSwapTx({
+      launch, side: "buy", amountInRaw: swapAmount, amountOutMinimum,
+      ...(feeReceiver && feeAmount > 0n ? { inputFee: { receiver: feeReceiver, amountRaw: feeAmount } } : {}),
+    });
     if (!swap) return Response.json({ error: "swap build failed" }, { status: 500 });
 
     return Response.json({
       argus: true, blocked: false, side: "buy",
       tokenOut: tokenInfo,
-      fee: { receiver: feeReceiver, amountRaw: feeAmount.toString(), bps: feeBps },
+      fee: { receiver: feeReceiver, amountRaw: feeAmount.toString(), bps: feeBps, inSwap: true },
       swapAmountRaw: swapAmount.toString(),
+      // What Permit2 must let the router pull: the swap plus the in-tx fee.
+      totalInRaw: amountIn.toString(),
       to: swap.to, data: swap.data, value: swap.value.toString(), hook: launch.hook,
       amountOut: quote.amountOut,
       amountOutMinimum: amountOutMinimum.toString(),

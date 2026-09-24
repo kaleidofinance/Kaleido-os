@@ -35,14 +35,15 @@ function decode(data: string) {
   const parsed = iface.parseTransaction({ data })!;
   const commands: string = parsed.args[0];
   const inputs: string[] = parsed.args[1];
-  const [actions, params] = coder.decode(["bytes", "bytes[]"], inputs[0]) as [string, string[]];
+  // The V4_SWAP input is always the LAST one (an input-fee command may precede it).
+  const [actions, params] = coder.decode(["bytes", "bytes[]"], inputs[inputs.length - 1]) as [string, string[]];
   const [p0] = coder.decode(
     ["tuple(tuple(address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks) poolKey,bool zeroForOne,uint128 amountIn,uint128 amountOutMinimum,uint160 sqrtPriceLimitX96,bytes hookData)"],
     params[0],
   ) as any;
   const [settleCur, settleAmt] = coder.decode(["address", "uint256"], params[1]) as [string, bigint];
   const [takeCur, takeAmt] = coder.decode(["address", "uint256"], params[2]) as [string, bigint];
-  return { commands, nInputs: inputs.length, actions, nParams: params.length, p0, settleCur, settleAmt, takeCur, takeAmt };
+  return { commands, inputs, nInputs: inputs.length, actions, nParams: params.length, p0, settleCur, settleAmt, takeCur, takeAmt };
 }
 
 console.log("\n— BUY (quote→token) round-trips to ground-truth encoding —");
@@ -98,6 +99,30 @@ console.log("\n— SELL with in-swap fee (TAKE_PORTION) —");
   const [taCur, taMin] = coder.decode(["address", "uint256"], params[3]) as [string, bigint];
   check("TAKE_ALL floors the USER's USDC at minOut net of fee", taCur.toLowerCase() === USDC && taMin === (minOut * 9980n) / 10000n, `${taMin}`);
   check("meta carries the fee", tx.meta.feeBps === 20 && (tx.meta.feeReceiver ?? "").toLowerCase() === FEE.toLowerCase());
+}
+
+console.log("\n— BUY with in-tx fee (PERMIT2_TRANSFER_FROM from the USDC input) —");
+{
+  const FEE_TO = "0x00000000000000000000000000000000000FEE00";
+  const swapAmt = 9_980_000n; // 10 USDC − 0.2%
+  const feeAmt = 20_000n;
+  const minOut = 3_000_000n * 10n ** 18n;
+  const tx = buildArgusSwapTx({
+    launch: launch(), side: "buy", amountInRaw: swapAmt, amountOutMinimum: minOut,
+    inputFee: { receiver: FEE_TO, amountRaw: feeAmt }, deadlineSec: 111,
+  })!;
+  const d = decode(tx.data);
+  check("commands = 0x02 0x10 (PERMIT2_TRANSFER_FROM, then V4_SWAP)", d.commands === "0x0210", d.commands);
+  check("two inputs", d.nInputs === 2);
+  const [fTok, fTo, fAmt] = coder.decode(["address", "address", "uint160"], d.inputs[0]) as unknown as [string, string, bigint];
+  check(
+    "the fee pulls USDC (the input currency) to the receiver, exact amount",
+    fTok.toLowerCase() === USDC && fTo.toLowerCase() === FEE_TO.toLowerCase() && fAmt === feeAmt,
+    `${fTok} ${fTo} ${fAmt}`,
+  );
+  check("the swap itself is the plain 3-action buy on the remainder", d.actions === "0x060c0f" && d.p0.amountIn === swapAmt && d.settleAmt === swapAmt, d.actions);
+  check("the user's floor is untouched (fee came off the input, not the output)", d.takeAmt === minOut, `${d.takeAmt}`);
+  check("meta carries the input fee", tx.meta.inputFeeRaw === feeAmt);
 }
 
 console.log("\n— no fee → the verified 3-action path is byte-unchanged —");

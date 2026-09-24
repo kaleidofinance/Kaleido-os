@@ -34,7 +34,13 @@ const ACTION_TAKE_ALL = "0f";
 // read-only action-dispatch probe (an unknown action reverts UnsupportedAction; this
 // one dispatches). 2026-09-24.
 const ACTION_TAKE_PORTION = "10";
-const COMMAND_V4_SWAP = "0x10";
+const COMMAND_V4_SWAP = "10";
+// UniversalRouter command: Permit2.transferFrom(msg.sender → recipient). Used to
+// take a BUY's fee from the USDC input inside the same execute() as the swap —
+// the input-side twin of TAKE_PORTION. Confirmed dispatched on Argus's Arc router
+// by a read-only probe (reached Permit2 → AllowanceExpired, while an invalid
+// command reverts InvalidCommandType). 2026-09-24.
+const COMMAND_PERMIT2_TRANSFER_FROM = "02";
 
 /** Canonical Permit2 — defined in ./addresses, re-exported for existing callers. */
 export { PERMIT2 };
@@ -64,6 +70,8 @@ export interface ArgusSwapTx {
     /** In-swap fee taken from the output, if any (bps + recipient). */
     feeBps: number;
     feeReceiver: string | null;
+    /** In-tx fee pulled from the INPUT via PERMIT2_TRANSFER_FROM (buys), raw units. */
+    inputFeeRaw: bigint;
   };
   unverified: true;
 }
@@ -83,6 +91,12 @@ export function buildArgusSwapTx(params: {
    *  for sells (fee in USDC out). Omitted → the verified plain SWAP→SETTLE→TAKE_ALL
    *  path (buys skim their fee from the USDC input instead), byte-identical to before. */
   fee?: { receiver: string; bps: number };
+  /** Optional fee taken from the INPUT in the same transaction: a
+   *  PERMIT2_TRANSFER_FROM of `amountRaw` of the input currency to `receiver`,
+   *  ahead of the V4_SWAP. Used for buys (fee in USDC in), so the fee is part of
+   *  the one swap transaction rather than a separate transfer step. The Permit2
+   *  allowance must cover amountInRaw + amountRaw. */
+  inputFee?: { receiver: string; amountRaw: bigint };
   deadlineSec?: number;
 }): ArgusSwapTx | null {
   if (!argusEnabled()) return null;
@@ -139,7 +153,25 @@ export function buildArgusSwapTx(params: {
 
   const v4Input = coder.encode(["bytes", "bytes[]"], [actions, [swapParam, settleParam, ...takeParams]]);
   const deadline = params.deadlineSec ?? Math.floor(Date.now() / 1000) + 600;
-  const data = routerIface.encodeFunctionData("execute", [COMMAND_V4_SWAP, [v4Input], deadline]);
+
+  // An input-side fee rides as a first command: Permit2 pulls it from the user to
+  // the receiver, then V4_SWAP runs on the rest. Without one, the command list is
+  // the verified single V4_SWAP, byte-identical to before.
+  const inputFeeRaw =
+    params.inputFee && params.inputFee.amountRaw > 0n ? params.inputFee.amountRaw : 0n;
+  const commands =
+    "0x" + (inputFeeRaw > 0n ? COMMAND_PERMIT2_TRANSFER_FROM : "") + COMMAND_V4_SWAP;
+  const inputs =
+    inputFeeRaw > 0n
+      ? [
+          coder.encode(
+            ["address", "address", "uint160"],
+            [inputCurrency, getAddress(params.inputFee!.receiver), inputFeeRaw],
+          ),
+          v4Input,
+        ]
+      : [v4Input];
+  const data = routerIface.encodeFunctionData("execute", [commands, inputs, deadline]);
 
   return {
     to: getAddress(ARGUS_V4.universalRouter),
@@ -158,6 +190,7 @@ export function buildArgusSwapTx(params: {
       approvalNeededFor: inputCurrency,
       feeBps,
       feeReceiver,
+      inputFeeRaw,
     },
     unverified: true,
   };
