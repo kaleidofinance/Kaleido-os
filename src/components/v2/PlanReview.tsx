@@ -395,6 +395,13 @@ export default function PlanReview({
     }
     return map;
   }, [runs]);
+  /* First step of each bundle → how many steps it covers, for the note on that
+     row. A pair and the Argus run of three say it differently. */
+  const bundleSize = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const r of runs) if (r.bundled) map.set(r.steps[0], r.steps.length);
+    return map;
+  }, [runs]);
   /**
    * Whether to SAY anything about batching.
    *
@@ -753,6 +760,20 @@ export default function PlanReview({
     try {
       result = await sendBatch(calls);
     } catch (err) {
+      /* ACCEPTED BUT UNCONFIRMED is the one throw that must NOT fall back. The
+         wallet took the bundle (the adapter marks the error `sent`) and only the
+         receipt wait failed — the calls may yet land, and re-signing them one by
+         one could execute the swap twice. Stop and say so instead. */
+      if ((err as { sent?: boolean } | null)?.sent) {
+        console.warn("[PlanReview] bundle accepted but unconfirmed, not re-signing:", err);
+        for (const i of steps) setStep(i, "failed");
+        setRunning(false);
+        setNext(steps[0]);
+        toast.error(
+          "Your wallet accepted the transaction but we couldn't confirm it. Check your wallet activity before signing again.",
+        );
+        return "failed";
+      }
       console.warn(
         "[PlanReview] bundle not sent, falling back to one signature per step:",
         err,
@@ -963,10 +984,16 @@ export default function PlanReview({
          after the wallet accepted/queued the calls; treating that throw as
          "nothing was sent" and retrying sequentially can duplicate the approval
          prompt or race the swap against the first request. */
+      /* The Argus run (approve → permit2Approve → argusSwap) is the exception:
+         runBundle no longer falls back after a wallet ACCEPTED a bundle (the
+         adapter marks that error `sent`), which is exactly the race described
+         above, so the duplicate-swap risk it guards against is closed for it.
+         The other swap kinds stay sequential until they are moved over too. */
       const bundle = batch.supported
         ? runs.find((r) => {
             if (!r.bundled || r.steps[0] !== i) return false;
             const kinds = r.steps.map((step) => intents[step]?.kind);
+            if (kinds.includes("argusSwap")) return true;
             return !(kinds.includes("approve") && kinds.some((kind) =>
               kind === "swap" || kind === "swapMultiHop" || kind === "aggregatorSwap",
             ));
@@ -1042,7 +1069,9 @@ export default function PlanReview({
                   about a prompt already answered is noise. */}
               {batchable && !running && !done && bundledWith.get(i) === i + 1 && (
                 <div className={s.stNote}>
-                  Signed together with the next step, in one transaction.
+                  {(bundleSize.get(i) ?? 2) > 2
+                    ? `Signed together with the next ${(bundleSize.get(i) ?? 2) - 1} steps, in one transaction.`
+                    : "Signed together with the next step, in one transaction."}
                 </div>
               )}
             </div>

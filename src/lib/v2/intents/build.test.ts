@@ -612,6 +612,11 @@ async function main() {
         JSON.stringify(at(r, 0)),
       );
       check(
+        "buy approvals are one-time (unlimited to Permit2, 30-day router grant)",
+        at(r, 0).unlimited === true && at(r, 1).unlimited === true,
+        JSON.stringify([at(r, 0), at(r, 1)]),
+      );
+      check(
         "permit2Approve authorises the UniversalRouter for the whole input",
         same(at(r, 1).spender, ROUTER) &&
           same(at(r, 1).token, ARC_USDC) &&
@@ -739,6 +744,11 @@ async function main() {
           at(r, 2).amountOut === "19.96" &&
           at(r, 2).amountOutMin === "19.5",
         JSON.stringify(at(r, 2)),
+      );
+      check(
+        "sell approvals are one-time (unlimited to Permit2, 30-day router grant)",
+        at(r, 0).unlimited === true && at(r, 1).unlimited === true,
+        JSON.stringify([at(r, 0), at(r, 1)]),
       );
       check(
         "sell summary reads as a sell",

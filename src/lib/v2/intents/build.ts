@@ -1087,6 +1087,7 @@ export async function buildIntents(
             amount: totalHuman,
             decimals: ARC_USDC_DECIMALS,
             symbol: "USDC",
+            unlimited: true,
           },
           // 2. Permit2 → UniversalRouter allowance the swap transaction spends.
           {
@@ -1097,6 +1098,7 @@ export async function buildIntents(
             decimals: ARC_USDC_DECIMALS,
             symbol: "USDC",
             expiration,
+            unlimited: true,
           },
         ];
         // 3. The swap — pre-built calldata, NOT rebuilt at sign time. Carries the
@@ -1182,6 +1184,7 @@ export async function buildIntents(
             amount,
             decimals: inTok.decimals,
             symbol: inTok.symbol,
+            unlimited: true,
           },
           // 2. Permit2 → UniversalRouter allowance the v4 swap spends.
           {
@@ -1192,6 +1195,7 @@ export async function buildIntents(
             decimals: inTok.decimals,
             symbol: inTok.symbol,
             expiration,
+            unlimited: true,
           },
           // 3. The v4 swap — pre-built calldata; the 0.2% fee is TAKE_PORTION'd
           //    from the USDC output in this same tx (no transfer step).

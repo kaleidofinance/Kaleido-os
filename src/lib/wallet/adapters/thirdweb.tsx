@@ -153,7 +153,19 @@ function useBatch() {
         atomicRequired: true,
       });
 
-      const receipt = await waitForCallsReceipt(result);
+      /* From here the wallet has ACCEPTED the bundle, so a failure is not
+         "nothing was sent" — the calls may still land. Mark it, so the caller
+         stops instead of re-signing the steps one by one (which could run a
+         swap twice). A throw above this line is a refusal: nothing was sent. */
+      let receipt: Awaited<ReturnType<typeof waitForCallsReceipt>>;
+      try {
+        receipt = await waitForCallsReceipt(result);
+      } catch (err) {
+        throw Object.assign(
+          err instanceof Error ? err : new Error(String(err)),
+          { sent: true },
+        );
+      }
       return {
         hashes: (receipt.receipts ?? []).map((r) => r.transactionHash),
         ok: receipt.status === "success",

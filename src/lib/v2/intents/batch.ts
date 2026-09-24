@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 
 import { encodeV3Path } from "@/lib/dex/route";
+import { ARGUS_V4, PERMIT2 } from "@/lib/argus/addresses";
 import type { Intent, IntentKind } from "./types";
 
 /**
@@ -91,7 +92,11 @@ const IFACE = new ethers.Interface([
   "function serviceRequest(uint96 requestId, address token) external payable",
   "function mint(address to, uint256 kfUsdAmount, address collateralToken, uint256 collateralAmount) external",
   "function lockAssets(address assetToken, uint256 amount) external",
+  "function approve(address token, address spender, uint160 amount, uint48 expiration) external",
 ]);
+
+/** Permit2's allowance width — its `amount` is a uint160. */
+const MAX_UINT160 = (1n << 160n) - 1n;
 
 /** One EIP-5792 call. Value is a bigint so the caller hexes it once, at the edge. */
 export interface BatchCall {
@@ -118,11 +123,37 @@ const ENCODERS: Partial<Record<IntentKind, BatchEncoder>> = {
     const i = raw as Extract<Intent, { kind: "approve" }>;
     return {
       to: i.token,
-      data: IFACE.encodeFunctionData("approve", [
+      data: IFACE.encodeFunctionData("approve(address,uint256)", [
         i.spender,
-        ethers.parseUnits(i.amount, i.decimals),
+        i.unlimited ? ethers.MaxUint256 : ethers.parseUnits(i.amount, i.decimals),
       ]),
     };
+  },
+
+  /* Permit2.approve(token, router, amount, expiration) — the Argus run's middle
+     step. Same arguments the resolver sends (definitions.ts), restated here for
+     the reason the header gives. */
+  permit2Approve: (raw) => {
+    const i = raw as Extract<Intent, { kind: "permit2Approve" }>;
+    return {
+      to: PERMIT2,
+      data: IFACE.encodeFunctionData(
+        "approve(address,address,uint160,uint48)",
+        [
+          i.token,
+          i.spender,
+          i.unlimited ? MAX_UINT160 : ethers.parseUnits(i.amount, i.decimals),
+          i.expiration,
+        ],
+      ),
+    };
+  },
+
+  /* The Argus swap is pre-built calldata (the server's, audited as bytes), so
+     its "encoding" is the call it already is — exactly what its resolver sends. */
+  argusSwap: (raw) => {
+    const i = raw as Extract<Intent, { kind: "argusSwap" }>;
+    return { to: i.to, data: i.data, value: BigInt(i.value || "0") };
   },
 
   /*
@@ -334,9 +365,40 @@ export interface PlanRun {
   bundled: boolean;
 }
 
+/**
+ * The one run of THREE: an Argus trade's `approve → permit2Approve → argusSwap`.
+ *
+ * It is the pair rule applied twice, link by link, plus the token held constant
+ * — so it authorises one coherent action exactly as a pair does:
+ *   • the approve's spender is Permit2, which is what the permit2Approve calls;
+ *   • the permit2Approve's spender is the router the swap calls, and that router
+ *     is Argus's UniversalRouter;
+ *   • all three move the same token.
+ * Anything else — a different spender, a swapped token, a stray router — fails
+ * one link and the steps fall back to the ordinary rules below.
+ */
+export function argusRun(a: Intent, b: Intent | undefined, c: Intent | undefined): boolean {
+  if (!b || !c) return false;
+  if (a.kind !== "approve" || b.kind !== "permit2Approve" || c.kind !== "argusSwap")
+    return false;
+  const eq = (x: string, y: string) => x.toLowerCase() === y.toLowerCase();
+  return (
+    eq(a.spender, PERMIT2) &&
+    eq(a.token, b.token) &&
+    eq(b.spender, c.to) &&
+    eq(c.to, ARGUS_V4.universalRouter) &&
+    eq(c.tokenIn, a.token)
+  );
+}
+
 export function planRuns(intents: Intent[]): PlanRun[] {
   const runs: PlanRun[] = [];
   for (let i = 0; i < intents.length; i++) {
+    if (argusRun(intents[i], intents[i + 1], intents[i + 2])) {
+      runs.push({ steps: [i, i + 1, i + 2], bundled: true });
+      i += 2;
+      continue;
+    }
     const next = intents[i + 1];
     if (next && pairsWith(intents[i], next)) {
       runs.push({ steps: [i, i + 1], bundled: true });

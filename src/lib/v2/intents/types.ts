@@ -19,10 +19,17 @@ export type Intent =
       kind: "approve";
       token: string;
       spender: string;
-      /** Human amount; resolver parses with `decimals`. */
+      /** Human amount; resolver parses with `decimals`. What the plan NEEDS —
+       *  the skip check, the review row and the auditor's price all use it. */
       amount: string;
       decimals: number;
       symbol: string;
+      /** Grant an unlimited allowance instead of `amount` when one is needed,
+       *  so later trades of this token skip the step. Only ever to Permit2 on
+       *  Arc (the auditor enforces it): Permit2 then limits and expires what
+       *  each router may pull, so the open-ended grant is to the gate, not to
+       *  a router. */
+      unlimited?: boolean;
     }
   | {
       kind: "swap";
@@ -383,6 +390,10 @@ export type Intent =
       symbol: string;
       /** Unix expiration for the Permit2 allowance. */
       expiration: number;
+      /** Authorise the maximum (uint160) until `expiration` rather than
+       *  `amount`, so trades inside that window skip this step. Bounded by the
+       *  expiration, which the auditor caps at ~30 days. */
+      unlimited?: boolean;
     }
   /* --------------------------------------------------------- cctp mint -- */
   /*

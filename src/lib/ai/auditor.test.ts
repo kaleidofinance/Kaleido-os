@@ -3270,6 +3270,37 @@ async function main() {
       check("approve to Permit2 OFF Arc is still blocked", !v.ok, JSON.stringify(v.blocked));
     }
     {
+      const v = await argAudit([
+        { kind: "approve", token: USDC, spender: PERMIT2, amount: "1", decimals: 6, symbol: "USDC", unlimited: true },
+        { kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 30 * 86400, unlimited: true },
+      ]);
+      check("an unlimited approval to Permit2 + a 30-day router grant pass on Arc", v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ kind: "approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", unlimited: true }]);
+      check(
+        "an unlimited approval to anything but Permit2 is blocked",
+        !v.ok && v.blocked.some((b) => /unlimited approval/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 90 * 86400, unlimited: true }]);
+      check(
+        "a Permit2 router grant longer than 30 days is blocked",
+        !v.ok && v.blocked.some((b) => /longer than 30 days/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec - 10 }]);
+      check(
+        "an expired Permit2 grant is blocked",
+        !v.ok && v.blocked.some((b) => /future expiry/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+    {
       const v = await argAudit([{ kind: "approve", token: TOKEN, spender: ROUTER, amount: "1", decimals: 18, symbol: "ARG" }]);
       check(
         "an unverified token approved to an unpinned spender is still blocked (the spender is the guard)",

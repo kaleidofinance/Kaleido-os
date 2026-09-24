@@ -238,7 +238,9 @@ async function waitForAllowance(
 register("approve", {
   render: (i) => ({
     title: `Approve ${i.symbol}`,
-    detail: "One-time approval.",
+    detail: i.unlimited
+      ? "One-time approval to Permit2, so later trades of this token skip this step. Permit2 still limits what each router can spend."
+      : "One-time approval.",
   }),
   resolve: async (ctx, i) => {
     const token = new ethers.Contract(i.token, ERC20_ABI, ctx.signer);
@@ -249,7 +251,10 @@ register("approve", {
     const current: bigint = await token.allowance(ctx.address, i.spender);
     if (current >= needed) return { hash: null, skipped: true };
 
-    const tx = await token.approve(i.spender, needed);
+    const tx = await token.approve(
+      i.spender,
+      i.unlimited ? ethers.MaxUint256 : needed,
+    );
     await tx.wait();
     return { hash: tx.hash };
   },
@@ -578,23 +583,51 @@ register("aggregatorSwap", {
   },
 });
 
+/** Permit2's allowance width — its `amount` is a uint160. */
+export const MAX_UINT160 = (1n << 160n) - 1n;
+
 /* Permit2 authorisation for an Argus swap: Permit2.approve(token, router,
    amount, expiration). Its own signed step — the paired `approve` only granted
    the ERC20 allowance to Permit2; this grants the router the Permit2 allowance
    the v4 swap spends. Moves nothing. */
 register("permit2Approve", {
   render: (i) => ({
-    title: `Authorise the router to spend ${i.amount} ${i.symbol}`,
-    detail: `On Permit2, so the Argus swap can pull it. Nothing leaves your wallet here.`,
+    title: i.unlimited
+      ? `Authorise the Argus router for ${i.symbol}`
+      : `Authorise the router to spend ${i.amount} ${i.symbol}`,
+    detail: i.unlimited
+      ? `On Permit2, for 30 days, so trades in that window skip this step. Nothing leaves your wallet here.`
+      : `On Permit2, so the Argus swap can pull it. Nothing leaves your wallet here.`,
   }),
   resolve: async (ctx, i) => {
     const permit2 = new ethers.Contract(
       PERMIT2,
-      ["function approve(address token, address spender, uint160 amount, uint48 expiration)"],
+      [
+        "function approve(address token, address spender, uint160 amount, uint48 expiration)",
+        "function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)",
+      ],
       ctx.signer,
     );
     const amount = ethers.parseUnits(i.amount, i.decimals);
-    const tx = await permit2.approve(i.token, i.spender, amount, i.expiration);
+    /* No-op when the router already holds enough Permit2 allowance that won't
+       lapse mid-review — the same rule as `approve`, and what makes a repeat
+       trade one transaction. Two minutes of headroom on the expiry so a grant
+       about to lapse is renewed rather than trusted. */
+    const [have, expires] = (await permit2.allowance(
+      ctx.address,
+      i.token,
+      i.spender,
+    )) as [bigint, bigint, bigint];
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (have >= amount && expires > now + 120n) {
+      return { hash: null, skipped: true };
+    }
+    const tx = await permit2.approve(
+      i.token,
+      i.spender,
+      i.unlimited ? MAX_UINT160 : amount,
+      i.expiration,
+    );
     await tx.wait();
     return { hash: tx.hash };
   },

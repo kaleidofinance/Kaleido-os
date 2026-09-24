@@ -21,6 +21,7 @@
 import { ethers } from "ethers";
 
 import {
+  argusRun,
   encodeBatch,
   isBatchable,
   pairsWith,
@@ -394,6 +395,71 @@ console.log("\n— the multi-hop path is re-derived, not trusted —");
   ]);
   check("a path that disagrees with the hops does NOT", one(route(swapped)) === null);
   check("nor an empty one", one(route("0x")) === null);
+}
+
+console.log("\n— the Argus run: approve → permit2Approve → argusSwap, one prompt —");
+{
+  const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+  const UR = "0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1";
+  const ARC_USDC = "0x3600000000000000000000000000000000000000";
+  const exp = Math.floor(Date.now() / 1000) + 30 * 86400;
+  const a: Intent = { kind: "approve", token: ARC_USDC, spender: PERMIT2, amount: "10", decimals: 6, symbol: "USDC", unlimited: true };
+  const b: Intent = { kind: "permit2Approve", token: ARC_USDC, spender: UR, amount: "10", decimals: 6, symbol: "USDC", expiration: exp, unlimited: true };
+  const c = {
+    kind: "argusSwap", to: UR, data: "0x3593564c", value: "0",
+    tokenIn: ARC_USDC, amountIn: "10", decimalsIn: 6, symbolIn: "USDC",
+    tokenOut: "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71", amountOut: "1", amountOutMin: "0.9",
+    decimalsOut: 18, symbolOut: "GLITCH", chainId: 5042, hook: "",
+  } as Intent;
+
+  const runs = planRuns([a, b, c]);
+  check(
+    "the three steps are ONE bundled run",
+    runs.length === 1 && runs[0].bundled && runs[0].steps.join(",") === "0,1,2",
+    JSON.stringify(runs),
+  );
+  const calls = encodeBatch([a, b, c], [0, 1, 2], USER);
+  check("all three encode", calls !== null && calls.length === 3);
+  if (calls) {
+    const ap = ERC20_IFACE.decodeFunctionData("approve", calls[0].data);
+    check(
+      "call 1: the token approves Permit2 for the max (one-time)",
+      calls[0].to.toLowerCase() === ARC_USDC && ap[0].toLowerCase() === PERMIT2.toLowerCase() && ap[1] === ethers.MaxUint256,
+    );
+    const P2 = new ethers.Interface(["function approve(address token, address spender, uint160 amount, uint48 expiration)"]);
+    const p2 = P2.decodeFunctionData("approve", calls[1].data);
+    check(
+      "call 2: Permit2 authorises the Argus router, max amount, with the plan's expiry",
+      calls[1].to.toLowerCase() === PERMIT2.toLowerCase() &&
+        p2[0].toLowerCase() === ARC_USDC &&
+        p2[1].toLowerCase() === UR.toLowerCase() &&
+        p2[2] === (1n << 160n) - 1n &&
+        Number(p2[3]) === exp,
+    );
+    check(
+      "call 3: the server's swap calldata, unchanged",
+      calls[2].to.toLowerCase() === UR.toLowerCase() && calls[2].data === "0x3593564c" && calls[2].value === 0n,
+    );
+  }
+  const exact = encodeBatch([{ ...a, unlimited: undefined } as Intent], [0], USER);
+  check(
+    "without `unlimited` the approve stays the exact amount",
+    exact !== null && ERC20_IFACE.decodeFunctionData("approve", exact[0].data)[1] === 10_000_000n,
+  );
+
+  /* Each link is load-bearing: break any one and it is not an Argus run. */
+  const STRANGER = "0x9999999999999999999999999999999999999999";
+  check("approve to someone other than Permit2 → not a run", !argusRun({ ...a, spender: STRANGER } as Intent, b, c));
+  check("Permit2 authorising a router the swap doesn't call → not a run", !argusRun(a, { ...b, spender: STRANGER } as Intent, c));
+  check("a swap to a router that isn't Argus's → not a run", !argusRun(a, { ...b, spender: STRANGER } as Intent, { ...c, to: STRANGER } as Intent));
+  check("a different token in the middle → not a run", !argusRun(a, { ...b, token: WETH } as Intent, c));
+  check("a swap spending a different token → not a run", !argusRun(a, b, { ...c, tokenIn: WETH } as Intent));
+  const broken = planRuns([a, { ...b, spender: STRANGER } as Intent, c]);
+  check(
+    "a broken run is never bundled as three",
+    broken.every((r) => r.steps.length < 3) && broken.flatMap((r) => r.steps).join(",") === "0,1,2",
+    JSON.stringify(broken),
+  );
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

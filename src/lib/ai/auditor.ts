@@ -1492,6 +1492,20 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const spender = spenderReasons(s, chainId);
     reasons.push(...spender.reasons);
 
+    /* An UNLIMITED grant is only ever to Permit2 on Arc. Permit2 is a gate, not
+       a spender: it moves nothing unless a separate, expiring Permit2 allowance
+       names a router (the `permit2Approve` rule caps that at ~30 days and pins
+       it to Argus's router). An open-ended allowance to anything else is a
+       standing right to drain the token, and no plan here needs one. */
+    if (
+      s.unlimited === true &&
+      !(
+        chainId === ARGUS_CHAIN_ID &&
+        str(s.spender).toLowerCase() === PERMIT2.toLowerCase()
+      )
+    )
+      reasons.push("an unlimited approval is only granted to Permit2 on Arc");
+
     const amount = num(s.amount);
     if (amount === null || amount <= 0)
       reasons.push("approval amount is missing or not positive");
@@ -1931,6 +1945,15 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       reasons.push(
         "Permit2 would authorise a spender that is not the Argus UniversalRouter",
       );
+    /* The expiry is what bounds this grant (it may be the uint160 maximum — see
+       `unlimited`), so it must be real and short: in the future, and no more
+       than ~30 days out. */
+    const expiration = num(s.expiration);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (expiration === null || expiration <= nowSec)
+      reasons.push("the Permit2 authorisation has no future expiry");
+    else if (expiration > nowSec + 31 * 24 * 60 * 60)
+      reasons.push("the Permit2 authorisation lasts longer than 30 days");
     return {
       reasons,
       notes: [
