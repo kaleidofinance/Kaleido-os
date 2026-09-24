@@ -9,6 +9,7 @@ import {
   swapVolumeStanding,
   walletSwapVolumeUsd,
 } from "@/lib/waitlist/swapVolume";
+import type { WaitlistStatus } from "@/lib/waitlist/status";
 
 /**
  * The Arc waitlist API.
@@ -136,7 +137,7 @@ const LEGACY_X_COLS =
   "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at";
 const LEGACY_COLS = `${BASE_COLS}, ${LEGACY_X_COLS}`;
 
-async function standing(wallet: string) {
+async function standing(wallet: string): Promise<WaitlistStatus | null> {
   const admin = supabaseAdmin!;
   let row: Record<string, unknown> | null = null;
   const full = await admin

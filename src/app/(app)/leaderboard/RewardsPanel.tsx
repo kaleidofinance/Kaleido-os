@@ -13,24 +13,15 @@ import { client } from "@/config/client";
 import { APP_METADATA, WALLETS } from "@/config/wallets";
 import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
 import { readTxLog, type TxLogEntry } from "@/lib/v2/txLog";
+import type { WaitlistStatus } from "@/lib/waitlist/status";
 import s from "./leaderboard.module.css";
 
 const ARC_CHAIN = defineChain(toThirdwebChainOptions(CHAINS_BY_ID[5042]));
 
-type XState = { done: boolean; counted: boolean; countsAt: string | null };
-type Status = {
-  refCode: string;
-  referrals: number;
-  points: number;
-  referralPoints: number;
-  heldPoints: number;
-  xHandle: string | null;
-  xTasks: Record<
-    "linked" | "followed" | "retweeted" | "commented" | "launch",
-    XState
-  >;
-  transactionTasks?: Partial<Record<"agent" | "bridge", { done: boolean }>>;
-} | null;
+// The task-status shape is shared with the /api/waitlist route and the /waitlist
+// page (one source of truth — see lib/waitlist/status.ts). tsc now flags any
+// reader that touches a task key the payload doesn't carry (the arcMainnet crash).
+type Status = WaitlistStatus | null;
 
 export function PendingPoints() {
   const account = useActiveAccount();

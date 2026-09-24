@@ -13,6 +13,7 @@ import { client } from "@/config/client";
 import { WALLETS, APP_METADATA } from "@/config/wallets";
 import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
 import { readTxLog, type TxLogEntry } from "@/lib/v2/txLog";
+import type { WaitlistStatus } from "@/lib/waitlist/status";
 import s from "./waitlist.module.css";
 
 /**
@@ -25,48 +26,11 @@ const ARC_CHAIN = defineChain(
   toThirdwebChainOptions(CHAINS_BY_ID[ARC_CHAIN_ID]),
 );
 
-type XTask = { done: boolean; counted: boolean; countsAt: string | null; closed?: boolean };
-type Status = {
-  refCode: string;
-  referrals: number;
-  rank: number | null;
-  points: number;
-  heldPoints: number;
-  welcomePoints: number;
-  referralPoints: number;
-  xHandle: string | null;
-  xTasks: {
-    linked: XTask;
-    followed: XTask;
-    retweeted: XTask;
-    commented: XTask;
-    launch: XTask;
-    /** Legacy completion retained for balance compatibility; not rendered. */
-    bitget: XTask;
-  };
-  // Optional so an API/bundle version skew (a cached old client vs a newer API,
-  // or vice-versa) degrades gracefully instead of throwing "reading X of
-  // undefined" — the reads below all guard with ?. and defaults.
-  swapVolume?: {
-    /** Cumulative Kaleido swap volume in USD. */
-    volumeUsd: number;
-    tiers: {
-      key: string;
-      threshold: number;
-      points: number;
-      /** Volume has met this tier's threshold. */
-      done: boolean;
-      /** A higher tier is also met, so this tier's points don't add (highest-only). */
-      superseded: boolean;
-    }[];
-    /** kPoint credited for swap volume (highest reached tier). */
-    points: number;
-  };
-  activated: boolean;
-  transactionTasks?: {
-    bridge?: { done: boolean };
-  };
-} | null;
+// Task-status shape shared with the /api/waitlist route and the /leaderboard
+// RewardsPanel — one source of truth (lib/waitlist/status.ts) so the two task
+// surfaces can't drift out of sync with the payload (the arcMainnet crash). The
+// reads below stay defensively optional-chained for API/bundle version skew.
+type Status = WaitlistStatus | null;
 
 type Leader = { rank: number; wallet: string; referrals: number };
 type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch";
