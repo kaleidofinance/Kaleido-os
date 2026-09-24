@@ -44,6 +44,8 @@ import {
 } from "@/lib/v2/cards/portfolio";
 import { receiptFromSettled } from "@/lib/v2/cards/receipt";
 import { readLifiPending } from "@/lib/bridge/lifiPending";
+import { readCctpPending } from "@/lib/bridge/cctpPending";
+import { isCctpMinted } from "@/lib/bridge/cctpAttestation";
 import {
   asksAboutLastResult,
   followThroughReply,
@@ -738,8 +740,26 @@ export default function AgentPage() {
         /\b(status|complete|completed|arrived|landed|finish|finished|where)\b/i.test(content) &&
         address) {
       const routes = readLifiPending(address);
+      const cctpRoutes = readCctpPending(address);
       setMessages((m) => [...m, { role: "user", text: content }]);
       setInput("");
+      if (routes.length === 0 && cctpRoutes.length > 0) {
+        const route = cctpRoutes[0];
+        try {
+          const minted = await isCctpMinted({
+            sourceChainId: route.sourceChainId,
+            destChainId: route.destChainId,
+            txHash: route.txHash,
+          });
+          const status = minted
+            ? `completed — your ${route.amount} ${route.symbol} has been minted on ${route.destChainName}`
+            : `source-confirmed and waiting for Circle attestation or destination minting on ${route.destChainName}`;
+          setMessages((m) => [...m, { role: "assistant", text: `Your CCTP bridge is ${status}.`, via: "local" }]);
+        } catch {
+          setMessages((m) => [...m, { role: "assistant", text: `Your CCTP burn is source-confirmed, but I couldn't read the destination mint status right now. It remains pending for ${route.destChainName}.`, via: "local" }]);
+        }
+        return;
+      }
       if (routes.length === 0) {
         setMessages((m) => [...m, { role: "assistant", text: "I don't have an active LI.FI route saved for this wallet. If you bridged elsewhere, share the source transaction hash and I can check it.", via: "local" }]);
         return;
