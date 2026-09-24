@@ -2761,6 +2761,15 @@ console.log("\n— wrap / unwrap as a local verb —");
     fwd.status,
   );
 
+  /* A SELL: the address is the SPEND side ("sell 0x… for usdc"). The build layer
+     routes this through the Argus sell path. */
+  const sell = ac(`sell 100 ${LAUNCH} for usdc`);
+  check(
+    "a sell resolves the address on the spend side and USDC on the receive side",
+    sell.status === "ok" && sell.command.kind === "swap" && sell.command.amount === "100" && sell.command.tokenIn.address.toLowerCase() === LAUNCH.toLowerCase() && sell.command.tokenIn.tags?.includes("argus") && sell.command.tokenOut.symbol === "USDC",
+    sell.status === "ok" ? `${sell.command.amount} ${sell.command.tokenIn?.address}->${sell.command.tokenOut?.symbol}` : sell.status,
+  );
+
   /* Without the hook (every non-Arc chain) the address is not a token, so the
      command does not silently become a swap. */
   const noHook = parseCommand(`buy ${LAUNCH} with 10 usdc`, TOKENS);

@@ -29,6 +29,11 @@ import type { ArgusLaunch } from "./launch";
 const ACTION_SWAP_EXACT_IN_SINGLE = "06";
 const ACTION_SETTLE_ALL = "0c";
 const ACTION_TAKE_ALL = "0f";
+// Takes a bps portion of the settled output to a recipient, in the SAME swap tx —
+// the aggregator-style fee. Confirmed supported on Argus's (older) Arc router by a
+// read-only action-dispatch probe (an unknown action reverts UnsupportedAction; this
+// one dispatches). 2026-09-24.
+const ACTION_TAKE_PORTION = "10";
 const COMMAND_V4_SWAP = "0x10";
 
 /** Canonical Permit2 (same address across chains). Verify on Arc before enabling. */
@@ -56,6 +61,9 @@ export interface ArgusSwapTx {
     deadline: number;
     /** The input token that must have a Permit2 → UniversalRouter allowance. */
     approvalNeededFor: string;
+    /** In-swap fee taken from the output, if any (bps + recipient). */
+    feeBps: number;
+    feeReceiver: string | null;
   };
   unverified: true;
 }
@@ -65,15 +73,23 @@ export function buildArgusSwapTx(params: {
   side: "buy" | "sell";
   /** Input amount in smallest units (quote units for buy, token units for sell). */
   amountInRaw: bigint;
-  /** Minimum acceptable output in smallest units — from the quoter × (1 − slippage).
-   *  This is the ONLY on-chain protection against price impact + tax, so it must
-   *  never be left at 0 for a real trade. */
+  /** Minimum acceptable TOTAL output in smallest units — from the quoter ×
+   *  (1 − slippage). The ONLY on-chain protection against price impact + tax, so
+   *  it must never be 0 for a real trade. When a fee is taken, the user's own
+   *  floor is this minus the fee (computed below); this stays the whole-swap min. */
   amountOutMinimum: bigint;
+  /** Optional in-swap fee: take `bps` of the OUTPUT to `receiver` via TAKE_PORTION,
+   *  the rest to the user via TAKE_ALL — one transaction, aggregator-style. Used
+   *  for sells (fee in USDC out). Omitted → the verified plain SWAP→SETTLE→TAKE_ALL
+   *  path (buys skim their fee from the USDC input instead), byte-identical to before. */
+  fee?: { receiver: string; bps: number };
   deadlineSec?: number;
 }): ArgusSwapTx | null {
   if (!argusEnabled()) return null;
   const { launch, side, amountInRaw, amountOutMinimum } = params;
   if (amountInRaw <= 0n) return null;
+  const feeBps = params.fee && params.fee.bps > 0 ? params.fee.bps : 0;
+  const feeReceiver = feeBps > 0 ? getAddress(params.fee!.receiver) : null;
 
   const { zeroForOne } = swapDirection(side, launch.tokenIsToken0);
   const fee = launch.poolFee ?? ARGUS_POOL_FEE;
@@ -88,7 +104,14 @@ export function buildArgusSwapTx(params: {
   const inputCurrency = zeroForOne ? poolKey.currency0 : poolKey.currency1;
   const outputCurrency = zeroForOne ? poolKey.currency1 : poolKey.currency0;
 
-  const actions = "0x" + ACTION_SWAP_EXACT_IN_SINGLE + ACTION_SETTLE_ALL + ACTION_TAKE_ALL;
+  // With a fee, split the output: TAKE_PORTION(fee → receiver) then TAKE_ALL(rest →
+  // user). Without, the plain single TAKE_ALL — byte-identical to the verified path.
+  const actions =
+    "0x" +
+    ACTION_SWAP_EXACT_IN_SINGLE +
+    ACTION_SETTLE_ALL +
+    (feeReceiver ? ACTION_TAKE_PORTION : "") +
+    ACTION_TAKE_ALL;
 
   // Argus's DEPLOYED v4 router (Arc) is an older build whose ExactInputSingleParams
   // still carries `sqrtPriceLimitX96` (uint160) between amountOutMinimum and
@@ -102,9 +125,19 @@ export function buildArgusSwapTx(params: {
     [[[poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks], zeroForOne, amountInRaw, amountOutMinimum, 0n, "0x"]],
   );
   const settleParam = coder.encode(["address", "uint256"], [inputCurrency, amountInRaw]);
-  const takeParam = coder.encode(["address", "uint256"], [outputCurrency, amountOutMinimum]);
+  // TAKE_ALL's floor is what the USER must receive. With a fee that is the whole-swap
+  // min minus the fee's cut of it, so a real trade still can't slip below its floor.
+  const userMinOut = feeBps > 0
+    ? (amountOutMinimum * BigInt(10_000 - feeBps)) / 10_000n
+    : amountOutMinimum;
+  const takeParams = feeReceiver
+    ? [
+        coder.encode(["address", "address", "uint256"], [outputCurrency, feeReceiver, BigInt(feeBps)]),
+        coder.encode(["address", "uint256"], [outputCurrency, userMinOut]),
+      ]
+    : [coder.encode(["address", "uint256"], [outputCurrency, userMinOut])];
 
-  const v4Input = coder.encode(["bytes", "bytes[]"], [actions, [swapParam, settleParam, takeParam]]);
+  const v4Input = coder.encode(["bytes", "bytes[]"], [actions, [swapParam, settleParam, ...takeParams]]);
   const deadline = params.deadlineSec ?? Math.floor(Date.now() / 1000) + 600;
   const data = routerIface.encodeFunctionData("execute", [COMMAND_V4_SWAP, [v4Input], deadline]);
 
@@ -123,6 +156,8 @@ export function buildArgusSwapTx(params: {
       hook: poolKey.hooks,
       deadline,
       approvalNeededFor: inputCurrency,
+      feeBps,
+      feeReceiver,
     },
     unverified: true,
   };

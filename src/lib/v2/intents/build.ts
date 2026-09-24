@@ -548,17 +548,25 @@ export interface ArgusPlanResult {
   /** True when it IS an Argus launch but can't be traded right now. */
   blocked?: boolean;
   reason?: string;
+  /** Which direction the server resolved. Absent on old buy-only responses → buy. */
+  side?: "buy" | "sell";
+  /** BUY: the launch token received. SELL: USDC received. */
   tokenOut?: { address: string; symbol: string; decimals: number };
+  /** SELL only: the launch token being spent (to approve + swap). */
+  tokenIn?: { address: string; symbol: string; decimals: number };
+  /** The fee cut. BUY: USDC skimmed from input (a separate transfer). SELL: USDC
+   *  taken from the output in-swap (already reflected in amountOut/min — no transfer). */
   fee?: { receiver: string | null; amountRaw: string; bps: number };
-  /** USDC actually swapped (input − fee), base units. */
+  /** The amount actually swapped, base units. BUY: USDC in (after fee). SELL: the
+   *  full launch-token amount in (the fee is on the output, not the input). */
   swapAmountRaw?: string;
   to?: string;
   data?: string;
   value?: string;
   hook?: string;
-  /** Expected token out, human units. */
+  /** Expected output the USER receives, human units (BUY: token; SELL: USDC, net of fee). */
   amountOut?: number;
-  /** On-chain minimum out, base units. */
+  /** The user's on-chain minimum out, base units (net of fee on a sell). */
   amountOutMinimum?: string;
   priceImpactBps?: number;
   totalCostBps?: number;
@@ -1079,6 +1087,101 @@ export async function buildIntents(
           ok: true,
           build: {
             summary: `Buy about ${ap.amountOut ?? "?"} ${out.symbol} with ${amount} USDC on Argus (Uniswap v4).`,
+            intents,
+          },
+        };
+      }
+      // ap null / argus:false → not an Argus launch; fall through to normal routing.
+    }
+
+    /* Argus SELL: the launch token is the SPEND side (grammar `argus`-tagged on
+       tokenIn). Same direct-v4 path, but the fee is taken IN-SWAP from the USDC
+       output (TAKE_PORTION) — so there's no separate transfer and the input isn't
+       reduced; the plan is [approve token→Permit2, permit2Approve token→router,
+       argusSwap]. USDC-out only for the pilot. */
+    if (
+      chainId === ARGUS_CHAIN_ID &&
+      deps.argusPlan &&
+      tokenIn.tags?.includes("argus")
+    ) {
+      const outIsUsdc =
+        tokenOut.address.toLowerCase() === ARC_USDC.toLowerCase() ||
+        isNativeSentinel(tokenOut.address, "dex") ||
+        isNativeSentinel(tokenOut.address, "lending");
+      if (!outIsUsdc) {
+        return {
+          ok: false,
+          error: `Selling an Argus launch is USDC-only for now — receive USDC, not ${tokenOut.symbol}.`,
+        };
+      }
+      // Argus clones a fixed 1e18-supply LaunchToken, so launch tokens are 18-dec;
+      // the grammar's synthetic token carries that and the server confirms it.
+      const amountInRaw = ethers.parseUnits(amount, tokenIn.decimals).toString();
+      const ap = await deps.argusPlan({
+        tokenIn: tokenIn.address,
+        tokenOut: ARC_USDC,
+        amountInRaw,
+        slippageBps: opts.slippageBps,
+      });
+      if (ap && ap.argus) {
+        if (ap.blocked || !ap.to || !ap.data || !ap.tokenIn || !ap.tokenOut) {
+          return {
+            ok: false,
+            error: ap.reason ?? "This Argus launch can't be traded right now.",
+          };
+        }
+        const inTok = ap.tokenIn; // launch token, server-confirmed symbol/decimals
+        const outTok = ap.tokenOut; // USDC
+        const minOutHuman = ethers.formatUnits(
+          ap.amountOutMinimum ?? "0",
+          outTok.decimals,
+        );
+        const expiration = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+        const intents: Intent[] = [
+          // 1. Allowance to Permit2 on the LAUNCH TOKEN — the whole amount, since
+          //    the fee comes off the output, not the input.
+          {
+            kind: "approve",
+            token: inTok.address,
+            spender: PERMIT2,
+            amount,
+            decimals: inTok.decimals,
+            symbol: inTok.symbol,
+          },
+          // 2. Permit2 → UniversalRouter allowance the v4 swap spends.
+          {
+            kind: "permit2Approve",
+            token: inTok.address,
+            spender: ap.to,
+            amount,
+            decimals: inTok.decimals,
+            symbol: inTok.symbol,
+            expiration,
+          },
+          // 3. The v4 swap — pre-built calldata; the 0.2% fee is TAKE_PORTION'd
+          //    from the USDC output in this same tx (no transfer step).
+          {
+            kind: "argusSwap",
+            to: ap.to,
+            data: ap.data,
+            value: ap.value ?? "0",
+            tokenIn: inTok.address,
+            amountIn: amount,
+            decimalsIn: inTok.decimals,
+            symbolIn: inTok.symbol,
+            tokenOut: outTok.address,
+            amountOut: String(ap.amountOut ?? 0),
+            amountOutMin: minOutHuman,
+            decimalsOut: outTok.decimals,
+            symbolOut: outTok.symbol,
+            chainId,
+            hook: ap.hook ?? "",
+          },
+        ];
+        return {
+          ok: true,
+          build: {
+            summary: `Sell ${amount} ${inTok.symbol} for about ${ap.amountOut ?? "?"} USDC on Argus (Uniswap v4).`,
             intents,
           },
         };
