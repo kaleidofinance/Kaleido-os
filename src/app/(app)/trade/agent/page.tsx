@@ -735,7 +735,7 @@ export default function AgentPage() {
        locally instead of sending "continue" to the model, which could invent a
        fresh plan and re-sign a step that already landed. */
     if (/\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(content) &&
-        latest && typeof latest.planFrom === "number" && latest.planFrom > 0) {
+        latest?.plan && typeof latest.planFrom === "number" && latest.planFrom > 0) {
       // Capture the narrowed number in a const: TS drops control-flow narrowing of
       // a property access (latest.planFrom) inside the setMessages closure below,
       // which is the "possibly undefined" build error. A const local keeps `number`.
@@ -865,6 +865,18 @@ export default function AgentPage() {
     // A fresh controller per request. The old one (if any) is already spent.
     const abort = new AbortController();
     abortRef.current = abort;
+
+    /* After reload, the old signable plan is intentionally gone, but the
+       persisted command remains safe to rebuild. Re-run the local planner so
+       balances, quotes, allowances, and bridge routes are read fresh before a
+       new review appears. */
+    if (/\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(content) &&
+        latest && typeof latest.planFrom === "number" && latest.planFrom > 0 &&
+        !latest.plan && lastCommand) {
+      note("Rebuilding the expired plan from your original command");
+      await planLocally({ status: "ok", command: lastCommand }, abort.signal);
+      return;
+    }
 
     /*
      * The bubble a streamed answer is being written into, when there is one.
