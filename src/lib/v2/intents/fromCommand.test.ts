@@ -1935,6 +1935,18 @@ console.log("\n— resting orders: sell-framed limit + cancel-all —");
   check("no price is a spot swap", spot.status === "ok" && spot.command.kind === "swap", spot.status);
   const buy = p("buy 100 KLD at 0.02 USDC");
   check("buy-framed is not a local order", buy.status !== "ok" || buy.command.kind !== "placeOrder", buy.status);
+
+  /* SAFETY: a conditional or market-cap trade must REFUSE, never fall through to
+     a market swap with the condition dropped (the "sell now at $17M mcap" bug). */
+  const mcap = p("sell 100% of KLD for USDC when marketcap hits 17m");
+  check("market-cap trade is refused, not market-sold", mcap.status === "refused", mcap.status);
+  check("…with the market-cap reason", mcap.status === "refused" && /market cap/i.test(mcap.message), mcap.status === "refused" ? mcap.message.slice(0,40) : "");
+  const cond = p("sell 500 KLD when the price reaches 0.05 USDC");
+  check("a 'when it reaches' trade is refused", cond.status === "refused", cond.status);
+  const condBuy = p("buy 100 KLD when it drops to 0.02 USDC");
+  check("a conditional buy is refused too", condBuy.status === "refused", condBuy.status);
+  check("a plain market swap is untouched by the guard", p("swap 500 USDC to KLD").status === "ok", "");
+  check("a plain 'at <price>' order is still a placeOrder (no false refusal)", p("sell 500 KLD at 0.05 USDC").status === "ok", "");
   check("recurring reaches the model", p("sell 50 KLD every week at 0.05 USDC").status === "unknown", "");
   for (const q of ["cancel all my orders", "cancel every order", "cancel all orders"]) {
     const r = p(q);

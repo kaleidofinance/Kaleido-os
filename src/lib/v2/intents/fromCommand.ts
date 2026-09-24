@@ -558,6 +558,11 @@ export type ParseResult =
   | { status: "ok"; command: Command }
   /** Understood the verb, still missing a slot. Ask, don't guess, don't escalate. */
   | { status: "incomplete"; draft: Draft; missing: Slot; prompt: string }
+  /** Understood the INTENT but it is one we will not build from a sentence —
+   *  a conditional/market-cap trade. Refused with a message shown as-is, and
+   *  deliberately NOT escalated to a model: escalating drops the condition and
+   *  builds a market order, which is the exact footgun this prevents. */
+  | { status: "refused"; message: string }
   /** Not a command. This is the only case that should reach a model. */
   | { status: "unknown" };
 
@@ -1722,6 +1727,14 @@ const DAY_UNITS: Record<string, number> = {
 /* Words that mark a swap sentence as a resting order rather than a spot trade. */
 const ORDER_MARKERS = ["limit", "resting", "gtc"];
 
+/* A future-condition clause — "sell X WHEN it REACHES $Y", "buy when it drops".
+   The signal that the user wants a resting order, not a trade now. */
+const TRIGGER =
+  /\b(when|whenever|once|as soon as)\b[\s\S]*\b(reach|reaches|reached|hit|hits|hits|drop|drops|dips?|falls?|rises?|goes?|climbs?|above|below|over|under|crosses?|>=?|<=?)\b/i;
+/* A market-cap target. Orders trigger on PRICE (minOut), not market cap, so this
+   is refused specifically rather than silently read as a price. */
+const MCAP = /\bmarket\s*cap\b|\bmarketcap\b|\bmcap\b|\bfdv\b/i;
+
 /* A recurring cadence. Present means v1 declines to the model - a schedule needs
    a fill count the grammar does not yet read, and the model handles it. */
 const RECURRING = /\b(every|each|daily|weekly|monthly|recurring|dca|repeat)\b/;
@@ -1770,6 +1783,31 @@ function parseOrder(raw: string, tokens: IToken[]): ParseResult | null {
   const isSell = words.some((w) => ["sell", "dump", "unload"].includes(w));
   const isLimit = words.some((w) => ORDER_MARKERS.includes(w));
   const priceAt = words.findIndex((w) => w === "at" || w === "@");
+
+  /* SAFETY: a conditional or market-cap trade must never fall through to a
+     market swap with the condition dropped. v1 orders trigger on a price stated
+     as "at <price>"; a "when it reaches …" / "at $17M marketcap" phrasing is not
+     that, so refuse it here rather than let parseSwap sell now. A market order
+     that silently ignores "when it hits $17M" is worse than any refusal. */
+  const isTrade =
+    isSell ||
+    isLimit ||
+    words.some((w) => BUY_WORDS.has(w)) ||
+    /\b(swap|trade|buy)\b/i.test(lower);
+  const conditional = TRIGGER.test(lower) || MCAP.test(lower);
+  if (isTrade && conditional) {
+    return {
+      status: "refused",
+      message: MCAP.test(lower)
+        ? "I can't trigger an order on market cap yet — orders trigger on price. " +
+          "Work out the token's price at that market cap and say it as a price, " +
+          "e.g. \u201csell 100 KLD at 0.05 USDC\u201d, or set it on the Limit tab."
+        : "I can't set a conditional order from a sentence yet. Give me a price — " +
+          "\u201csell 100 KLD at 0.05 USDC\u201d rests an order at that price — " +
+          "or use the Limit tab. Without a condition I can only trade at the current price.",
+    };
+  }
+
   if (!(isSell || isLimit) || priceAt < 0) return null;
 
   /* Anything v1 cannot price correctly is handed on rather than half-read. */
