@@ -114,6 +114,10 @@ const LINKS: {
     icon: "leaderboard",
     primary: false,
   },
+  /* The Season 1 task hub — X tasks, swap-volume milestones, referrals. Moved
+     in-app from the standalone /waitlist page (retired 2026-09-24); a prominent
+     tab because completing tasks is the point of the campaign. */
+  { href: "/rewards", label: "Rewards", icon: "gift", primary: true },
   { href: "/portfolio", label: "Portfolio", icon: "portfolio", primary: true },
   /* Last in the array and first in a tester's day. It is the one destination here
      that exists because of the phase we are in rather than because of the product
