@@ -1,7 +1,15 @@
-import { verifyMessage, JsonRpcProvider, isAddress, isHexString } from "ethers";
+import {
+  verifyMessage,
+  JsonRpcProvider,
+  isAddress,
+  isHexString,
+  type TransactionResponse,
+  type TransactionReceipt,
+} from "ethers";
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { hasArcActivity } from "@/lib/waitlist/arcMainnet";
 import { providerForChain } from "@/config/provider";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { getContracts } from "@/constants/registry";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
 import { isKnownCctpTarget } from "@/lib/bridge/cctp";
@@ -45,6 +53,51 @@ async function creditActivatedTask(
     occurred_at: occurredAt,
   });
   if (error && error.code !== "23505") return error.message;
+  return null;
+}
+
+/**
+ * Locate a wallet's successful transaction by hash, WITHOUT trusting the client's
+ * idea of which chain it is on.
+ *
+ * A bridge's source transaction lives on whatever chain the user bridged FROM —
+ * which, for a bridge INTO Arc, is not the chain their wallet is connected to
+ * when they verify. The client sends its active chain, so the old single-chain
+ * lookup rejected every legitimate inbound bridge (except CCTP found via
+ * cctp_transfers) with "successful wallet transaction not found". We instead try
+ * the preferred chain first (the fast path for an outbound bridge / a swap on the
+ * connected chain) and then fall back across the other supported chains. A match
+ * still has to be the wallet's own successful tx AND, back in the caller, hit the
+ * allow-listed bridge/swap target — so probing more chains never widens what
+ * counts, it only stops rejecting a real tx for being on the "wrong" chain.
+ */
+async function locateWalletTx(
+  txHash: string,
+  preferredChainId: number | undefined,
+  wallet: string,
+): Promise<{
+  chainId: number;
+  tx: TransactionResponse;
+  receipt: TransactionReceipt;
+} | null> {
+  const all = Object.keys(CHAINS_BY_ID).map(Number);
+  const order = [preferredChainId, ...all].filter(
+    (c, i, a): c is number =>
+      Number.isInteger(c) && a.indexOf(c) === i,
+  );
+  for (const chainId of order) {
+    const rpc = providerForChain(chainId) as JsonRpcProvider | null;
+    if (!rpc) continue;
+    try {
+      const tx = await rpc.getTransaction(txHash);
+      // Cheap gate before the second round trip: it must be the wallet's own tx.
+      if (!tx || tx.from.toLowerCase() !== wallet) continue;
+      const receipt = await rpc.getTransactionReceipt(txHash);
+      if (receipt && receipt.status === 1) return { chainId, tx, receipt };
+    } catch {
+      // A chain whose RPC errors is skipped, not fatal — try the next.
+    }
+  }
   return null;
 }
 
@@ -277,29 +330,17 @@ export async function POST(req: Request) {
   } else if (evidence) {
     // A prior automatic verification already left durable evidence.
   } else if (verifiedTxHash) {
-    if (!Number.isInteger(verifiedChainId))
-      return Response.json({ error: "transaction chain is required" }, { status: 400 });
-    const rpc = providerForChain(verifiedChainId!);
-    if (!rpc)
-      return Response.json(
-        { error: "unsupported transaction chain" },
-        { status: 400 },
-      );
-    const tx = await (rpc as JsonRpcProvider).getTransaction(verifiedTxHash!);
-    const receipt = await (rpc as JsonRpcProvider).getTransactionReceipt(
-      verifiedTxHash!,
-    );
-    if (
-      !tx ||
-      !receipt ||
-      receipt.status !== 1 ||
-      tx.from.toLowerCase() !== wallet
-    ) {
+    // Find the tx on whatever supported chain it actually landed on — the client's
+    // active chain is only a hint (wrong for a bridge INTO Arc). See locateWalletTx.
+    const found = await locateWalletTx(verifiedTxHash, verifiedChainId, wallet);
+    if (!found) {
       return Response.json(
         { error: "successful wallet transaction not found" },
         { status: 409 },
       );
     }
+    verifiedChainId = found.chainId;
+    const { tx } = found;
     const target = (tx.to ?? "").toLowerCase();
     let verifiedProvider: string | null = null;
     if (task === "agent") {
