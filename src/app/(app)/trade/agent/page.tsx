@@ -733,6 +733,25 @@ export default function AgentPage() {
     const content = text.trim();
     if (!content || busy) return;
 
+    /* A halted plan already carries its safe resume index. Reopen that review
+       locally instead of sending "continue" to the model, which could invent a
+       fresh plan and re-sign a step that already landed. */
+    if (/\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(content) &&
+        latest?.plan && typeof latest.planFrom === "number" && latest.planFrom > 0) {
+      // Capture the narrowed number in a const: TS drops control-flow narrowing of
+      // a property access (latest.planFrom) inside the setMessages closure below,
+      // which is the "possibly undefined" build error. A const local keeps `number`.
+      const resumeFrom = latest.planFrom;
+      setMessages((m) => [...m, { role: "user", text: content }, {
+        role: "assistant",
+        text: `I kept the completed steps. Reopen the review to resume from step ${resumeFrom + 1}.`,
+        via: "local",
+      }]);
+      setPanel({ kind: "plan" });
+      setInput("");
+      return;
+    }
+
     /* Bridge status is a live route question, not a generic model prompt.
        Read the persisted LI.FI route and ask the status proxy so Luca never
        calls a source-chain confirmation the same thing as destination arrival. */
