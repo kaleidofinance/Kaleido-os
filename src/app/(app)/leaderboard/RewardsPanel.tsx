@@ -29,10 +29,7 @@ type Status = {
     "linked" | "followed" | "retweeted" | "commented" | "launch",
     XState
   >;
-  transactionTasks: Record<
-    "arcMainnet" | "agent" | "bridge",
-    { done: boolean }
-  >;
+  transactionTasks?: Partial<Record<"agent" | "bridge", { done: boolean }>>;
 } | null;
 
 export function PendingPoints() {
@@ -396,7 +393,7 @@ export default function RewardsPanel() {
                 "link",
                 "Link your X account",
                 "+100 points",
-                Boolean(status.xTasks.linked.done),
+                Boolean(status.xTasks?.linked?.done),
                 () =>
                   xSession
                     ? void recordX("link")
@@ -408,7 +405,7 @@ export default function RewardsPanel() {
                 "follow",
                 "Follow @kaleido_finance",
                 "+100 points",
-                Boolean(status.xTasks.followed.done),
+                Boolean(status.xTasks?.followed?.done),
                 () =>
                   opened.follow ? void recordX("follow") : openX("follow"),
                 opened.follow ? "Verify" : "Follow",
@@ -417,7 +414,7 @@ export default function RewardsPanel() {
                 "retweet",
                 "Repost the Mainnet Launch post",
                 "+100 points",
-                Boolean(status.xTasks.retweeted.done),
+                Boolean(status.xTasks?.retweeted?.done),
                 () =>
                   opened.retweet ? void recordX("retweet") : openX("retweet"),
                 opened.retweet ? "Verify" : "Repost",
@@ -426,7 +423,7 @@ export default function RewardsPanel() {
                 "comment",
                 "Comment on the launch post",
                 "+50 points",
-                Boolean(status.xTasks.commented.done),
+                Boolean(status.xTasks?.commented?.done),
                 () =>
                   opened.comment ? void recordX("comment") : openX("comment"),
                 opened.comment ? "Verify" : "Comment",
@@ -435,24 +432,19 @@ export default function RewardsPanel() {
                 "launch",
                 "Like & repost the Mainnet Launch post",
                 "+100 points",
-                Boolean(status.xTasks.launch.done),
+                Boolean(status.xTasks?.launch?.done),
                 () =>
                   opened.launch ? void recordX("launch") : openX("launch"),
                 opened.launch ? "Verify" : "Open post",
               )}
-              {task(
-                "arcMainnet",
-                "Perform your first Arc Mainnet transaction",
-                "+300 points · Verify on-chain",
-                status.transactionTasks.arcMainnet.done,
-                () => void verifyTx("arcMainnet"),
-                "Verify",
-              )}
+              {/* arcMainnet was retired 2026-09-23 (farmable) — the API no longer
+                  returns transactionTasks.arcMainnet, so rendering it here read
+                  `.done` off undefined and crashed the whole page. */}
               {task(
                 "agent",
                 "Make your first transaction on Kaleido",
                 "+500 points · Verify a swap",
-                status.transactionTasks.agent.done,
+                Boolean(status.transactionTasks?.agent?.done),
                 () =>
                   txOpened.agent
                     ? void verifyTx("agent")
@@ -463,7 +455,7 @@ export default function RewardsPanel() {
                 "bridge",
                 "Use Luca to bridge assets in/out of Arc",
                 "+500 points · Verify on-chain",
-                status.transactionTasks.bridge.done,
+                Boolean(status.transactionTasks?.bridge?.done),
                 () =>
                   txOpened.bridge
                     ? void verifyTx("bridge")
