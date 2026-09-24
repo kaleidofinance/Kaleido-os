@@ -18,6 +18,8 @@ import { useLocalPlanner } from "@/hooks/v2/useLocalPlanner";
 import { useChatHistory, type Msg } from "@/hooks/v2/useChatHistory";
 import { chainTokens, chainsOffering } from "@/constants/tokens";
 import { resolveChain } from "@/lib/ai/bridgeQuotes";
+import { argusAddressToken } from "@/lib/argus/token";
+import { ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
 import AgentSettings from "@/components/v2/AgentSettings";
 import AgentCards from "@/components/v2/AgentCards";
 import Answer from "@/components/v2/Answer";
@@ -753,6 +755,12 @@ export default function AgentPage() {
       elsewhere: (symbol) =>
         chainsOffering(symbol, showTestnets ? undefined : "mainnet"),
       isChain: (phrase) => resolveChain(phrase) !== undefined,
+      /* On Arc, let a bare token address be a swap side so an Argus launch named
+         by address reaches the build branch. Chain-gated here; the real arming
+         switch is the SERVER's ARGUS_ENABLED (the plan route refuses when off),
+         so this is inert until the pilot is turned on. */
+      addressToken:
+        chainId === ARGUS_CHAIN_ID ? (w) => argusAddressToken(w) : undefined,
     };
 
     /* Structured agent context survives turns and reloads. parseFollowUp requires

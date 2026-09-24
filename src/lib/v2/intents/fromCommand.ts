@@ -1276,6 +1276,16 @@ export interface ParseContext {
   elsewhere?: (symbol: string) => string[];
   /** Whether a phrase names a chain — what turns a "swap to Sepolia" into the bridge it is. */
   isChain?: (phrase: string) => boolean;
+  /**
+   * Resolve a bare token ADDRESS the registry doesn't carry into a provisional
+   * `IToken`, or null. Injected (and gated) by the caller — the pilot wires it
+   * only on Arc with ARGUS_ENABLED, so a "buy 0x… with 10 USDC" of an Argus
+   * launch reaches the swap branch. The returned token only needs the address to
+   * be trustworthy; its symbol/decimals are provisional and the server's launch
+   * read (build.ts's argusPlan) supplies the real ones. Keeps this file
+   * dependency-free: no env, no getAddress, no chain check leaks in here.
+   */
+  addressToken?: (word: string) => IToken | null;
 }
 
 /** Verbs whose first question is which token, and so cannot start without a vocabulary. */
@@ -2714,10 +2724,31 @@ function parseSwap(
   words: string[],
   amount: { amount: string; index: number } | null,
   relative: RelativeAmount | null,
-  mentions: Mention[],
+  mentions0: Mention[],
   tokens: IToken[],
   ctx: ParseContext = {},
 ): ParseResult {
+  /*
+   * A bare token address the registry never carried becomes a provisional
+   * mention here, so an Argus launch named by address ("buy 0x… with 10 USDC")
+   * has a side to land on. Only positions the registry didn't already claim are
+   * offered to the hook, and only the caller (gated on Arc + ARGUS_ENABLED)
+   * resolves one — everywhere else `addressToken` is absent and this is a no-op.
+   */
+  let mentions = mentions0;
+  if (ctx.addressToken) {
+    const claimed = new Set(mentions.map((m) => m.index));
+    const extra: Mention[] = [];
+    for (let i = 0; i < words.length; i++) {
+      if (claimed.has(i)) continue;
+      const token = ctx.addressToken(words[i]);
+      if (token) extra.push({ token, index: i });
+    }
+    if (extra.length > 0) {
+      mentions = [...mentions, ...extra].sort((a, b) => a.index - b.index);
+    }
+  }
+
   /*
    * A purchase is the same transaction read from the other end, and every branch
    * below has to know which end it is being read from. See BUY_WORDS.
