@@ -8,12 +8,14 @@ import {
   TRANSFER_TOPIC,
   decodeTransferLog,
   parseSwapInput,
+  userOpSenders,
   usdcLegValue,
 } from "@/lib/points/swapCollector";
 import { dexTokenPrices } from "@/lib/swap/dexPrices";
 import { creditAction } from "@/lib/points/credit";
 import { computeCursorAdvance } from "@/lib/points/swapCursor";
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
+import { ARGUS_V4 } from "@/lib/argus/addresses";
 
 const ERC20_DECIMALS_ABI = ["function decimals() view returns (uint8)"];
 
@@ -253,10 +255,15 @@ async function handle(req: Request): Promise<Response> {
           .map((l) => decodeTransferLog(l))
           .filter((t): t is NonNullable<typeof t> => t !== null);
 
+        // Venues + account senders so Argus trades and bundled (EIP-5792 /
+        // 7702 / 4337) trades are credited to the trader — see parseSwapInput.
         const parsed = parseSwapInput({
           tx: { to: tx.to, from: tx.from },
           transfers,
           kyberRouter: router,
+          venues: [ARGUS_V4.poolManager],
+          accountSenders: userOpSenders(receipt.logs),
+          feeReceiver: receiver,
         });
         if ("skip" in parsed) {
           bump(parsed.skip);
