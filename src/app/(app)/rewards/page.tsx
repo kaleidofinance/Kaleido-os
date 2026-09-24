@@ -427,18 +427,57 @@ export default function WaitlistPage() {
               </>
             ) : (
               <>
-                <p className={s.pLabel}>Your pending balance</p>
-                <p className={s.big}>
-                  {status.points.toLocaleString()}
-                  <span className={s.unit}>$kPoint</span>
-                </p>
-                <p className={s.split}>
-                  {status.welcomePoints} welcome
-                  {status.referralPoints > 0
-                    ? ` · ${status.referralPoints} from ${status.referrals} referral${status.referrals === 1 ? "" : "s"}`
-                    : ""}
-                  {status.rank ? ` · rank #${status.rank}` : ""}
-                </p>
+                {/* Once the wallet has a Season 1 balance, the headline IS the
+                    leaderboard number (point_balances.total) — tasks plus
+                    trading plus liquidity — so the two pages always agree.
+                    Before activation there is no Season 1 balance yet, and the
+                    card shows the pending task total it will convert. */}
+                {status.season1 ? (
+                  <>
+                    <p className={s.pLabel}>Your Season&nbsp;1 points</p>
+                    <p className={s.big}>
+                      {Math.floor(status.season1.total).toLocaleString()}
+                      <span className={s.unit}>$kPoint</span>
+                    </p>
+                    <p className={s.split}>
+                      {[
+                        `${Math.floor(status.season1.tasks).toLocaleString()} from tasks`,
+                        status.season1.trading >= 1
+                          ? `${Math.floor(status.season1.trading).toLocaleString()} from trading`
+                          : null,
+                        status.season1.liquidity >= 1
+                          ? `${Math.floor(status.season1.liquidity).toLocaleString()} from liquidity`
+                          : null,
+                        status.season1.other >= 1
+                          ? `${Math.floor(status.season1.other).toLocaleString()} bonus`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    {status.points > status.season1.tasks ? (
+                      <p className={s.held}>
+                        +{(status.points - status.season1.tasks).toLocaleString()} $kPoint
+                        from tasks · added to your total within a few minutes
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <p className={s.pLabel}>Your pending balance</p>
+                    <p className={s.big}>
+                      {status.points.toLocaleString()}
+                      <span className={s.unit}>$kPoint</span>
+                    </p>
+                    <p className={s.split}>
+                      {status.welcomePoints} welcome
+                      {status.referralPoints > 0
+                        ? ` · ${status.referralPoints} from ${status.referrals} referral${status.referrals === 1 ? "" : "s"}`
+                        : ""}
+                      {status.rank ? ` · rank #${status.rank}` : ""}
+                    </p>
+                  </>
+                )}
                 {status.heldPoints > 0 ? (
                   <p className={s.held}>
                     +{status.heldPoints} $kPoint from X tasks · counts within 5h
@@ -745,11 +784,13 @@ export default function WaitlistPage() {
                     : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.referralPoints.toLocaleString()} $kPoint earned`}
                 </p>
 
-                <p className={s.note}>
-                  Points are pending. They convert to Season&nbsp;1 points on
-                  your first trade on Arc mainnet — so they can&rsquo;t be
-                  farmed, and they&rsquo;re waiting for you at launch.
-                </p>
+                {status.season1 ? null : (
+                  <p className={s.note}>
+                    Points are pending. They convert to Season&nbsp;1 points on
+                    your first trade on Arc mainnet — so they can&rsquo;t be
+                    farmed, and they&rsquo;re waiting for you at launch.
+                  </p>
+                )}
               </>
             )}
           </>

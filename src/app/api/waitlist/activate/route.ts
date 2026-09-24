@@ -6,6 +6,9 @@ import {
   swapVolumePoints,
   walletSwapVolumeUsd,
 } from "@/lib/waitlist/swapVolume";
+import { PER_REFERRAL, X_TASK_POINTS } from "@/lib/waitlist/eligible";
+import { TRANSACTION_TASK_POINTS } from "@/lib/waitlist/transactionTasks";
+import { syncWaitlistCredits } from "@/lib/waitlist/sync";
 
 /**
  * The waitlist activation reader.
@@ -42,21 +45,13 @@ export const dynamic = "force-dynamic";
 // already relies on.
 export const maxDuration = 60;
 
-// Must match the pending-points maths in api/waitlist/route.ts.
-const PER_REFERRAL = 50;
-// Per-task kPoint: comment is 50, the rest 100. Must match X_TASK_POINTS in
-// api/waitlist/route.ts.
-const X_TASK_POINTS = {
-  linked: 100,
-  followed: 100,
-  retweeted: 100,
-  commented: 50,
-  launch: 100,
-  bitget: 100,
-} as const;
-const ARC_TX_POINTS = 300;
-const AGENT_TX_POINTS = 500;
-const BRIDGE_TX_POINTS = 500;
+// PER_REFERRAL / X_TASK_POINTS / the transaction-task table are the shared ones
+// in lib/waitlist (eligible.ts, transactionTasks.ts) — the same numbers the
+// /rewards card shows. Activation credits X tasks in full regardless of the
+// card's 5h display hold; the sync below never claws that back (forward-only).
+const ARC_TX_POINTS = TRANSACTION_TASK_POINTS.arcMainnet;
+const AGENT_TX_POINTS = TRANSACTION_TASK_POINTS.agent;
+const BRIDGE_TX_POINTS = TRANSACTION_TASK_POINTS.bridge;
 const SEASON = 1; // Season 1 — pre-TGE (see point_seasons seed)
 const SOURCE = "waitlist";
 
@@ -265,6 +260,19 @@ async function handle(req: Request): Promise<Response> {
 
   const checked = rows.length;
 
+  // Phase 4 — keep every credited wallet's Season 1 task credit level with its
+  // /rewards card (new referrals, cleared X holds, swap-volume tiers). Before
+  // this, the ledger only caught up when that wallet opened Rewards, so the
+  // leaderboard lagged the card. DB-only and bulk (lib/waitlist/sync.ts), so it
+  // fits beside the probe inside maxDuration; a failure here never undoes the
+  // activations above.
+  let sync: Awaited<ReturnType<typeof syncWaitlistCredits>> | { error: string };
+  try {
+    sync = await syncWaitlistCredits(admin);
+  } catch (err) {
+    sync = { error: String((err as Error)?.message ?? err).slice(0, 120) };
+  }
+
   return Response.json({
     ok: true,
     scanned: checked,
@@ -272,6 +280,7 @@ async function handle(req: Request): Promise<Response> {
     remainingChecked: rows.length,
     limit,
     errors,
+    sync,
   });
 }
 

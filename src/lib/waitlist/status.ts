@@ -37,6 +37,20 @@ export interface XTaskState {
   closed?: boolean;
 }
 
+/** The wallet's Season 1 balance as the leaderboard counts it, by source. */
+export interface Season1Balance {
+  /** Exactly the leaderboard total (point_balances.total). */
+  total: number;
+  /** Task program credits (welcome, referrals, X, transaction, volume tiers). */
+  tasks: number;
+  /** Swap points — 1 per USD traded. */
+  trading: number;
+  /** Time points from liquidity and other positions held. */
+  liquidity: number;
+  /** Anything else (bonuses, campaigns). */
+  other: number;
+}
+
 export interface WaitlistStatus {
   wallet: string;
   refCode: string;
@@ -50,5 +64,7 @@ export interface WaitlistStatus {
   xTasks: Record<XTaskKey, XTaskState>;
   swapVolume: SwapVolumeStanding;
   activated: boolean;
+  /** Null until the wallet has a Season 1 balance (i.e. before activation). */
+  season1: Season1Balance | null;
   transactionTasks: Record<TxTaskKey, { done: boolean }>;
 }
