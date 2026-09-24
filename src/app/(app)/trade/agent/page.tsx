@@ -874,6 +874,18 @@ export default function AgentPage() {
     const abort = new AbortController();
     abortRef.current = abort;
 
+    /* After reload, the old signable plan is intentionally gone, but the
+       persisted command remains safe to rebuild. Re-run the local planner so
+       balances, quotes, allowances, and bridge routes are read fresh before a
+       new review appears. */
+    if (/\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(content) &&
+        latest && typeof latest.planFrom === "number" && latest.planFrom > 0 &&
+        !latest.plan && lastCommand) {
+      note("Rebuilding the expired plan from your original command");
+      await planLocally({ status: "ok", command: lastCommand }, abort.signal);
+      return;
+    }
+
     /*
      * The bubble a streamed answer is being written into, when there is one.
      *
