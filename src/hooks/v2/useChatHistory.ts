@@ -33,7 +33,8 @@ export interface Msg {
   /**
    * The step to resume this plan at — set when the review panel stops part-way
    * (a decline, a revert, a pause) so re-opening the plan does not re-sign the
-   * steps that already landed. Never persisted, for the same reason as `plan`.
+   * steps that already landed. Unlike `plan`, this IS persisted (see toStored):
+   * it's a safe resume MARKER — an index, not signable intents.
    */
   planFrom?: number;
   /**
@@ -184,6 +185,7 @@ interface StoredMsg {
   cards?: AgentCard[];
   ts?: number;
   planSummary?: string[];
+  planFrom?: number;
 }
 
 const toStored = (messages: Msg[]): StoredMsg[] =>
@@ -200,6 +202,7 @@ const toStored = (messages: Msg[]): StoredMsg[] =>
       ...(m.cards?.length ? { cards: m.cards } : {}),
       ...(typeof m.ts === "number" ? { ts: m.ts } : {}),
       ...(summary ? { planSummary: summary } : {}),
+      ...(typeof m.planFrom === "number" ? { planFrom: m.planFrom } : {}),
     };
   });
 
@@ -208,7 +211,7 @@ const fromStored = (raw: unknown): Msg[] => {
   const out: Msg[] = [];
   for (const m of raw) {
     if (!m || typeof m !== "object") continue;
-    const { role, text, via, thinking, cards, ts, planSummary } =
+    const { role, text, via, thinking, cards, ts, planSummary, planFrom } =
       m as Partial<Msg>;
     if (role !== "user" && role !== "assistant") continue;
     if (typeof text !== "string" || !text) continue;
@@ -224,6 +227,7 @@ const fromStored = (raw: unknown): Msg[] => {
       ...(revived.length ? { cards: revived } : {}),
       ...(typeof ts === "number" ? { ts } : {}),
       ...(summary ? { planSummary: summary } : {}),
+      ...(typeof planFrom === "number" && planFrom > 0 ? { planFrom } : {}),
     });
   }
   return out.slice(-MAX_TURNS);
