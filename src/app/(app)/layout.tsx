@@ -1,6 +1,7 @@
 import "./tokens.css";
 import type { ReactNode } from "react";
 import CctpCompletionBanner from "@/components/v2/CctpCompletionBanner";
+import LifiLifecycleWatcher from "@/components/v2/LifiLifecycleWatcher";
 
 /**
  * The application shell.
@@ -31,6 +32,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           nothing until there is a pending burn, which stays empty in production
           until the CCTP corridor is enabled. */}
       <CctpCompletionBanner />
+      <LifiLifecycleWatcher />
 
       {/* Portal host for modals. See src/components/v2/Portal.tsx: a
           backdrop-filter ancestor becomes the containing block for
