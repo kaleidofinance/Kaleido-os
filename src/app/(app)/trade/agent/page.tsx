@@ -82,6 +82,8 @@ import {
 } from "@/lib/v2/intents/fromCommand";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { useTxLog } from "@/hooks/v2/useTxLog";
+import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
+import { planRuns } from "@/lib/v2/intents/batch";
 import { computeSuggestions } from "./suggestions";
 import s from "./agent.module.css";
 
@@ -1620,6 +1622,18 @@ export default function AgentPage() {
 
   const plan = latest?.plan;
   const steps = useMemo(() => (plan ? plan.map(renderIntent) : []), [plan]);
+  /* What the handoff counts is wallet CONFIRMATIONS, not steps: on a wallet that
+     signs a bundle as one (EIP-5792), an approve-and-swap is one confirmation. */
+  const { support: batchSupport } = useBatchCalls();
+  const confirmations = useMemo(
+    () =>
+      !plan
+        ? 0
+        : batchSupport.supported
+          ? planRuns(plan).length
+          : plan.length,
+    [plan, batchSupport.supported],
+  );
 
   /*
    * What the chart beside this card follows.
@@ -1758,7 +1772,9 @@ export default function AgentPage() {
   const planLabel = plan
     ? latest?.planFrom
       ? `Resume · step ${latest.planFrom + 1} of ${plan.length}`
-      : `Review and sign · ${plan.length} transaction${plan.length === 1 ? "" : "s"}`
+      : confirmations > 1
+        ? `Review and sign · ${confirmations} confirmations`
+        : "Review and sign"
     : "";
 
   return (

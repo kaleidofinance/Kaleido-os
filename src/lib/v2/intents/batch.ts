@@ -149,6 +149,16 @@ const ENCODERS: Partial<Record<IntentKind, BatchEncoder>> = {
     };
   },
 
+  /* An aggregator swap's calldata is the router's own. It is perishable, so the
+     bundled path swaps in a FRESH build (freshAggregatorCall) before encoding —
+     this encoder just carries whichever call the intent holds. A native-input
+     swap attaches value and has no approve to pair with, so it never bundles. */
+  aggregatorSwap: (raw) => {
+    const i = raw as Extract<Intent, { kind: "aggregatorSwap" }>;
+    if (i.value !== "0") return null;
+    return { to: i.to, data: i.data };
+  },
+
   /* The Argus swap is pre-built calldata (the server's, audited as bytes), so
      its "encoding" is the call it already is — exactly what its resolver sends. */
   argusSwap: (raw) => {

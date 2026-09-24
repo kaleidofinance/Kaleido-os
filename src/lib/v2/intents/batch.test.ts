@@ -397,6 +397,28 @@ console.log("\n— the multi-hop path is re-derived, not trusted —");
   check("nor an empty one", one(route("0x")) === null);
 }
 
+console.log("\n— an aggregator swap bundles with its approve —");
+{
+  const KYBER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
+  const agg = (over: Record<string, unknown> = {}): Intent =>
+    ({
+      kind: "aggregatorSwap", to: KYBER, spender: KYBER, data: "0xe21fd0e9", value: "0",
+      tokenIn: USDC, amountIn: "50", decimalsIn: 6, symbolIn: "USDC",
+      tokenOut: WETH, amountOut: "0.02", amountOutMin: "0.019", decimalsOut: 18, symbolOut: "WETH",
+      chainId: 5042, venue: "kyberswap", slippageBps: 50, ...over,
+    }) as Intent;
+  check("approve(KYBER) → aggregatorSwap pairs", pairsWith(approve(KYBER), agg()));
+  const runs = planRuns([approve(KYBER), agg()]);
+  check("…as one bundled run", runs.length === 1 && runs[0].bundled, JSON.stringify(runs));
+  const calls = encodeBatch([approve(KYBER), agg()], [0, 1], USER);
+  check(
+    "…carrying the router's calldata unchanged, no value",
+    calls !== null && calls[1].to === KYBER && calls[1].data === "0xe21fd0e9" && !calls[1].value,
+  );
+  check("an approve to a different router does not pair", !pairsWith(approve(ROUTER), agg()));
+  check("a native-input aggregator swap never bundles", !pairsWith(approve(KYBER), agg({ value: "1000" })));
+}
+
 console.log("\n— the Argus run: approve → permit2Approve → argusSwap, one prompt —");
 {
   const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";

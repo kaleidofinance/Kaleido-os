@@ -14,6 +14,7 @@ import { encodeV3Path } from "@/lib/dex/route";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
+import type { Intent } from "./types";
 
 /**
  * Intent definitions. Each pairs a pure renderer with a resolver that builds an
@@ -559,6 +560,44 @@ register("bridge", {
   },
 });
 
+/**
+ * The executable call for an aggregator swap, fetched NOW.
+ *
+ * The calldata captured at quote time is perishable (see the resolver below), so
+ * both the one-step resolver and the bundled path build it at signing through
+ * this one function — one place for the rebuild and for the refusal to sign a
+ * rebuild that points anywhere the paired approve did not authorise. Non-Kyber
+ * venues return the intent's own call unchanged.
+ */
+export async function freshAggregatorCall(
+  i: Extract<Intent, { kind: "aggregatorSwap" }>,
+  address: string,
+): Promise<{ to: string; data: string }> {
+  if (i.venue !== "kyberswap") return { to: i.to, data: i.data };
+  const fresh = await getKyberSwapExecution({
+    chainId: i.chainId,
+    tokenIn: i.tokenIn,
+    tokenOut: i.tokenOut,
+    amountUnits: ethers.parseUnits(i.amountIn, i.decimalsIn).toString(),
+    address,
+    slippageBps: i.slippageBps,
+  });
+  if (!fresh) {
+    throw new Error(
+      "The swap route expired before it could be signed. Close this and request a fresh quote.",
+    );
+  }
+  if (
+    fresh.to.toLowerCase() !== i.to.toLowerCase() ||
+    fresh.spender.toLowerCase() !== i.spender.toLowerCase()
+  ) {
+    throw new Error(
+      "The swap router changed unexpectedly between quote and signing; the swap was not sent.",
+    );
+  }
+  return { to: fresh.to, data: fresh.data };
+}
+
 register("aggregatorSwap", {
   render: (i) => ({
     title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
@@ -576,8 +615,7 @@ register("aggregatorSwap", {
         ethers.parseUnits(i.amountIn, i.decimalsIn),
       );
     }
-    let to = i.to;
-    let data = i.data;
+    const address = await ctx.signer.getAddress();
 
     /* Build-at-sign-time for an aggregator route.
      *
@@ -591,36 +629,10 @@ register("aggregatorSwap", {
      * sender and recipient, the instant before we send. This is the same split
      * 1inch/0x/Jupiter integrate on: the quote is indicative, the executable
      * transaction is fetched at execution — never reused from quote time. */
-    if (i.venue === "kyberswap") {
-      const address = await ctx.signer.getAddress();
-      const fresh = await getKyberSwapExecution({
-        chainId: i.chainId,
-        tokenIn: i.tokenIn,
-        tokenOut: i.tokenOut,
-        amountUnits: ethers.parseUnits(i.amountIn, i.decimalsIn).toString(),
-        address,
-        slippageBps: i.slippageBps,
-      });
-      if (!fresh) {
-        throw new Error(
-          "The swap route expired before it could be signed. Close this and request a fresh quote.",
-        );
-      }
-      /* The router and the spender the approve authorised are the audited trust
-         boundary, and a fixed constant per chain. Refuse a rebuild that points
-         anywhere the paired approve did not authorise, rather than sign a call
-         to an unbounded target. The input approve above caps this at amountIn. */
-      if (
-        fresh.to.toLowerCase() !== i.to.toLowerCase() ||
-        fresh.spender.toLowerCase() !== i.spender.toLowerCase()
-      ) {
-        throw new Error(
-          "The swap router changed unexpectedly between quote and signing; the swap was not sent.",
-        );
-      }
-      to = fresh.to;
-      data = fresh.data;
-    }
+    /* The router and the spender the approve authorised are the audited trust
+       boundary, and a fixed constant per chain — freshAggregatorCall refuses a
+       rebuild that points anywhere else. */
+    const { to, data } = await freshAggregatorCall(i, address);
 
     const tx = await ctx.signer.sendTransaction({
       to,
