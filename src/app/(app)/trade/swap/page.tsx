@@ -275,11 +275,21 @@ export default function SwapPage() {
     const outOk = validHere(tokenOut);
     if (inOk && outOk) return;
 
+    /* The SAME ASSET, not just the same address. On Arc native USDC and its
+       6-dec ERC20 face (0x3600, `native-alias`) are two addresses for one
+       balance, both ticker "USDC" — excluding by address alone seeded native
+       USDC → USDC, a pair that can never quote. A shared ticker is the same
+       asset in this registry, so a default pair never repeats one. */
+    const sameAsset = (a: IToken | null | undefined, b: IToken | null | undefined) =>
+      !!a &&
+      !!b &&
+      (a.address.toLowerCase() === b.address.toLowerCase() ||
+        a.symbol.toUpperCase() === b.symbol.toUpperCase());
     const pick = (prefs: readonly string[], not?: IToken | null) =>
       prefs.reduce<IToken | undefined>(
         (found, sym) =>
           found ??
-          available.find((t) => t.symbol === sym && t.address !== not?.address),
+          available.find((t) => t.symbol === sym && !sameAsset(t, not)),
         undefined,
       );
 
@@ -323,9 +333,9 @@ export default function SwapPage() {
     const first =
       inOk ??
       askedIn ??
-      available.find((t) => t.isNative && t.address !== outOk?.address) ??
+      available.find((t) => t.isNative && !sameAsset(t, outOk)) ??
       pick(PREFER_SELL, outOk) ??
-      available.find((t) => t.address !== outOk?.address) ??
+      available.find((t) => !sameAsset(t, outOk)) ??
       null;
     /* Excluding `first` by address, not by index: with the native asset first
        in the list, index 0 and 1 can be the same asset by symbol (native USDC
@@ -335,9 +345,9 @@ export default function SwapPage() {
        rather than opening a pair that cannot quote. */
     const second =
       outOk ??
-      (askedOut && askedOut.address !== first?.address ? askedOut : null) ??
+      (askedOut && !sameAsset(askedOut, first) ? askedOut : null) ??
       pick(PREFER_BUY, first) ??
-      available.find((t) => t.address !== first?.address) ??
+      available.find((t) => !sameAsset(t, first)) ??
       null;
 
     if (!inOk) setTokenIn(first);
