@@ -46,6 +46,7 @@ const KNOWN_KINDS: CardKind[] = [
   "actions",
   "gauge",
   "steps",
+  "token",
 ];
 
 const STEP_STATUSES = ["done", "skipped", "failed"] as const;
@@ -242,6 +243,64 @@ function validate(raw: unknown): AgentCard | null {
       if (!actions.length) return null;
       return { kind: "actions", ...(title ? { title } : {}), actions };
     }
+
+    case "token": {
+      const symbol = str(c.symbol, LIMITS.value);
+      const address = str(c.address, LIMITS.value);
+      if (!symbol || !address) return null;
+      const name = str(c.name, LIMITS.title);
+      const price = str(c.price, LIMITS.value);
+      const note = str(c.note, LIMITS.note);
+      const rows: { label: string; value: string; tone?: CardTone }[] = [];
+      if (Array.isArray(c.rows)) {
+        for (const r of c.rows.slice(0, MAX_ROWS)) {
+          if (!r || typeof r !== "object") continue;
+          const row = r as Record<string, unknown>;
+          const label = str(row.label, LIMITS.label);
+          const value = str(row.value, LIMITS.value);
+          if (!label || !value) continue;
+          rows.push({
+            label,
+            value,
+            ...(row.tone !== undefined ? { tone: tone(row.tone) } : {}),
+          });
+        }
+      }
+      /* Buttons carry a command that a tap SENDS (this kind is local-only —
+         see WIRE_FORBIDDEN), so the command is capped like a prompt and
+         rebuilt field by field like everything else here. */
+      const buttons = (raw: unknown, allowDisabled: boolean) => {
+        const out: { label: string; command: string; disabled?: boolean }[] = [];
+        if (!Array.isArray(raw)) return out;
+        for (const b of raw.slice(0, MAX_ACTIONS)) {
+          if (!b || typeof b !== "object") continue;
+          const item = b as Record<string, unknown>;
+          const label = str(item.label, LIMITS.label);
+          const command = str(item.command, LIMITS.prompt);
+          if (!label || !command) continue;
+          out.push({
+            label,
+            command,
+            ...(allowDisabled && item.disabled === true ? { disabled: true } : {}),
+          });
+        }
+        return out;
+      };
+      const badgeRaw = c.badge as Record<string, unknown> | undefined;
+      const badgeText = badgeRaw ? str(badgeRaw.text, LIMITS.label) : null;
+      return {
+        kind: "token",
+        symbol,
+        address,
+        ...(name ? { name } : {}),
+        ...(price ? { price } : {}),
+        ...(badgeText ? { badge: { text: badgeText, tone: tone(badgeRaw!.tone) } } : {}),
+        rows,
+        ...(note ? { note } : {}),
+        buys: buttons(c.buys, true),
+        sells: buttons(c.sells, false).map(({ label, command }) => ({ label, command })),
+      };
+    }
   }
 }
 
@@ -255,10 +314,15 @@ function validate(raw: unknown): AgentCard | null {
  * claim the model is entitled to make, exactly as it is entitled to a sentence;
  * this one is a forgery. Local producers emit the real receipt and keep it, which
  * is why the ban lives on the wire, not in `validate`.
+ *
+ * `token` is banned for a different reason: it is the one card whose buttons
+ * SEND their command rather than prefill it. That is only safe because this app
+ * composes the command from a token it resolved itself; a model-emitted token
+ * card would be a model choosing what a tap trades.
  */
-const WIRE_FORBIDDEN: ReadonlySet<CardKind> = new Set(["steps"]);
+const WIRE_FORBIDDEN: ReadonlySet<CardKind> = new Set(["steps", "token"]);
 
-function collect(raw: unknown, opts: { allowSteps: boolean }): AgentCard[] {
+function collect(raw: unknown, opts: { allowLocalOnly: boolean }): AgentCard[] {
   if (!Array.isArray(raw)) return [];
 
   const valid: AgentCard[] = [];
@@ -272,7 +336,7 @@ function collect(raw: unknown, opts: { allowSteps: boolean }): AgentCard[] {
     }
     const kind = (card as { kind?: unknown })?.kind;
     if (
-      !opts.allowSteps &&
+      !opts.allowLocalOnly &&
       typeof kind === "string" &&
       WIRE_FORBIDDEN.has(kind as CardKind)
     ) {
@@ -295,7 +359,7 @@ function collect(raw: unknown, opts: { allowSteps: boolean }): AgentCard[] {
  */
 export function cardsFromChat(data: unknown): AgentCard[] {
   const chat = data as ChatResponse;
-  return collect(chat?.context?.cards, { allowSteps: false });
+  return collect(chat?.context?.cards, { allowLocalOnly: false });
 }
 
 /**
@@ -309,4 +373,4 @@ export function cardsFromChat(data: unknown): AgentCard[] {
  * frames only ever receive one shape, whoever built it.
  */
 export const localCards = (cards: AgentCard[]): AgentCard[] =>
-  collect(cards, { allowSteps: true });
+  collect(cards, { allowLocalOnly: true });

@@ -36,7 +36,14 @@ import { intentsFromChat } from "@/lib/v2/intents/fromChat";
 import { traceFromChat } from "@/lib/v2/agentTurn";
 import { readChatStream } from "@/lib/v2/chatStream";
 import { renderIntent } from "@/lib/v2/intents";
-import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
+import {
+  cardsFromChat,
+  figureCards,
+  localCards,
+  pastedTokenAddress,
+  tokenCardFrom,
+  type TokenFacts,
+} from "@/lib/v2/cards";
 import {
   portfolioAnswer,
   healthAnswer,
@@ -919,6 +926,48 @@ export default function AgentPage() {
         // The reply didn't answer the question, so drop the draft and let the
         // message be read fresh rather than trapping the user in a slot loop.
         setPending(null);
+      }
+
+      /*
+       * Paste-a-contract net. A message that is ONLY a contract (or a chart /
+       * explorer link to one) is a request to see the token, not a command —
+       * answer with its live card, whose buttons send ready-made buy/sell
+       * commands back through this same path (grammar → plan → audit → review
+       * → signature). After a pending slot, since a pasted address may be the
+       * answer to "which token?"; before the FAQ and grammar, which have
+       * nothing to say about a bare address. pastedTokenAddress refuses
+       * anything with a space, so "buy 0x… with 5 usdc" still reaches the
+       * parser.
+       */
+      const pasted = pastedTokenAddress(content);
+      if (pasted) {
+        note("Looking up the token you pasted");
+        log("token-card");
+        let facts: TokenFacts;
+        try {
+          const res = await fetch(
+            `/api/token/card?chainId=${chainId ?? ""}&address=${pasted}`,
+            { signal: abort.signal, cache: "no-store" },
+          );
+          facts = (await res.json()) as TokenFacts;
+        } catch {
+          if (abort.signal.aborted) return;
+          facts = {
+            ok: false,
+            address: pasted,
+            reason: "Couldn't reach the token lookup — try again in a moment.",
+          };
+        }
+        if (abort.signal.aborted) return;
+        const tradable =
+          facts.ok && !facts.isQuote && (facts.source === "argus" || facts.source === "listed");
+        say(
+          tradable
+            ? `Here's ${facts.symbol ?? "that token"}. Tap a size to get a plan — you review and sign before anything moves.`
+            : "Here's what I found for that contract.",
+          { via: "local", cards: localCards([tokenCardFrom(facts)]) },
+        );
+        return;
       }
 
       // Second local net: static questions with a fixed, known answer. Checked
@@ -1956,6 +2005,7 @@ export default function AgentPage() {
                         <AgentCards
                           cards={m.cards}
                           onPrompt={fillPrompt}
+                          onSend={(t) => void send(t)}
                           historical={m.historical ? { at: m.ts } : undefined}
                         />
                       )}
