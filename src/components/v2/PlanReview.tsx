@@ -484,8 +484,33 @@ export default function PlanReview({
   ): Promise<"done" | "failed" | "paused"> => {
     setStep(i, "pending");
     const startedAt = Date.now();
+    /* Every intent resolver sends through this signer seam. Record the hash as
+       soon as the wallet broadcasts it, before waiting for a block, so a route
+       change or reload can truthfully show that the transaction is pending. */
+    const executionCtx = {
+      ...ctx,
+      signer: new Proxy(ctx.signer, {
+        get(target, property, receiver) {
+          if (property !== "sendTransaction") return Reflect.get(target, property, receiver);
+          return async (...args: Parameters<typeof target.sendTransaction>) => {
+            const tx = await target.sendTransaction(...args);
+            if (tx?.hash) {
+              recordTx(ctx.chainId, ctx.address, {
+                hash: tx.hash,
+                kind: intents[i].kind,
+                title: views[i].title,
+                detail: views[i].detail,
+                status: "pending",
+                at: Date.now(),
+              });
+            }
+            return tx;
+          };
+        },
+      }),
+    };
     try {
-      const result = await resolveIntent(ctx, intents[i]);
+      const result = await resolveIntent(executionCtx, intents[i]);
       setStep(i, result.skipped ? "skipped" : "done");
       settledRef.current[i] = {
         title: views[i].title,

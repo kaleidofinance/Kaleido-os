@@ -291,6 +291,12 @@ a.hash:hover {
   cursor: help;
 }
 
+.pendingBadge {
+  color: var(--text-muted, #9ca3af);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .empty {
   padding: 22px 8px 26px;
   text-align: center;
