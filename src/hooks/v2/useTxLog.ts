@@ -6,6 +6,7 @@ import { MOCK_DATA, mockTxLog, mockTxLogClear } from "@/lib/mock";
 import {
   clearTxLog,
   readTxLog,
+  recordTx,
   subscribeTxLog,
   txLogKey,
   type TxLogEntry,
@@ -60,6 +61,40 @@ export function useTxLog() {
        strings had to be gated for. The first client render sees an empty log and
        the effect fills it a tick later. */
   }, [chainId, address]);
+
+  /* A pending row can outlive the page that created it. Reconcile it after
+     reconnect/reload so the history does not remain stuck on Pending forever.
+     The provider is loaded lazily because this hook also renders disconnected
+     states where no chain RPC is needed. */
+  useEffect(() => {
+    if (!chainId || !address || MOCK_DATA || entries.every((entry) => entry.status !== "pending")) return;
+    let cancelled = false;
+    const reconcile = async () => {
+      const { providerForChain } = await import("@/config/provider");
+      const provider = providerForChain(chainId);
+      if (!provider || cancelled) return;
+      const pending = entries.filter((entry) => entry.status === "pending");
+      await Promise.all(pending.map(async (entry) => {
+        try {
+          const receipt = await provider.getTransactionReceipt(entry.hash);
+          if (cancelled || !receipt || (receipt.status !== 0 && receipt.status !== 1)) return;
+          recordTx(chainId, address, {
+            ...entry,
+            status: receipt.status === 1 ? "confirmed" : "reverted",
+            at: Date.now(),
+          });
+        } catch {
+          /* A temporary RPC failure leaves the row pending for the next poll. */
+        }
+      }));
+    };
+    void reconcile();
+    const timer = window.setInterval(() => void reconcile(), 12_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [entries, chainId, address]);
 
   const clear = useCallback(() => {
     /* One line, deleted with the seam above. `clearTxLog` still runs and still
