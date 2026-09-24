@@ -736,9 +736,13 @@ export default function AgentPage() {
        fresh plan and re-sign a step that already landed. */
     if (/\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(content) &&
         latest?.plan && typeof latest.planFrom === "number" && latest.planFrom > 0) {
+      // Capture the narrowed number in a const: TS drops control-flow narrowing of
+      // a property access (latest.planFrom) inside the setMessages closure below,
+      // which is the "possibly undefined" build error. A const local keeps `number`.
+      const resumeFrom = latest.planFrom;
       setMessages((m) => [...m, { role: "user", text: content }, {
         role: "assistant",
-        text: `I kept the completed steps. Reopen the review to resume from step ${latest.planFrom + 1}.`,
+        text: `I kept the completed steps. Reopen the review to resume from step ${resumeFrom + 1}.`,
         via: "local",
       }]);
       setPanel({ kind: "plan" });
