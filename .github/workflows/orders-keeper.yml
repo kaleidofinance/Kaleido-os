@@ -93,13 +93,17 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # Optional per-chain overrides for the public endpoints in chains.ts,
           # which rate-limit — and this runs every five minutes. Same names
-          # push-watcher uses: 11155111 Sepolia, 84532 Base Sepolia, 5042002 Arc,
-          # 46630 Robinhood, 97 BSC.
+          # push-watcher uses: 11155111 Sepolia, 84532 Base Sepolia, 5042002 Arc
+          # testnet, 46630 Robinhood, 97 BSC, 5042 Arc MAINNET.
           RPC_URL_11155111: ${{ secrets.RPC_URL_11155111 }}
           RPC_URL_84532: ${{ secrets.RPC_URL_84532 }}
           RPC_URL_5042002: ${{ secrets.RPC_URL_5042002 }}
           RPC_URL_46630: ${{ secrets.RPC_URL_46630 }}
           RPC_URL_97: ${{ secrets.RPC_URL_97 }}
+          # Arc mainnet — KaleidoOrders is live at 0x92571BFd… (chain 5042). Unset,
+          # the keeper falls back to the public rpc.mainnet.arc.io, which throttles
+          # at a 5-minute cadence; set the secret to a dedicated endpoint.
+          RPC_URL_5042: ${{ secrets.RPC_URL_5042 }}
           ORDERS_CHAINS: ${{ inputs.chains }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: npm run keeper:orders
