@@ -50,13 +50,14 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     yieldTreasury: "0xeFe21b46e9603A574c7aBd3a88976f9B456D832B", // deployment-stablecoin-bscTestnet-1788709839524.json
   },
   5042: {
+    orders: "0x92571BFdF7c5B66E44c05513855D1d145acFD960", // deployment-orders-arcMainnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcMainnet-1789855914870.json
     v3Factory: "0xbB74f2319494461B2591F8fbF126654Dd4c2a649", // deployment-v3-arcMainnet-1789855914870.json
     v3PositionDescriptor: "0xeaD30fFC226B58235813Be9d4CFE15Ae0711eF50", // deployment-v3-arcMainnet-1789855914870.json
     v3PositionManager: "0x55879358eC7eDA609f2264b0348D1915ee8307e1", // deployment-v3-arcMainnet-1789855914870.json
     v3Quoter: "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3", // deployment-v3-arcMainnet-1789855914870.json
-    v3Router: "0x98D4f47b6F06d30527b61ea3d68656f7Da9B442E", // deployment-v3-arcMainnet-1789855914870.json
+    v3Router: "0x98D4f47b6F06d30527b61ea3d68656f7Da9B442E", // deployment-orders-arcMainnet.json
     wrappedNative: "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b", // deployment-v3-arcMainnet-1789855914870.json
   },
   46630: {
@@ -326,7 +327,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-20T11:39:36.945Z",
+  generatedAt: "2026-09-24T23:20:46.558Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -353,6 +354,7 @@ export const GENERATED_META: {
     "deployment-oracle-bscTestnet.json",
     "deployment-oracle-robinhoodTestnet.json",
     "deployment-oracle-sepolia.json",
+    "deployment-orders-arcMainnet.json",
     "deployment-orders-arcTestnet.json",
     "deployment-orders-baseTestnet.json",
     "deployment-orders-bscTestnet.json",
