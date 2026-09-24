@@ -83,6 +83,31 @@ console.log("\n— pool fee is NOT hardcoded (comes from the launch) —");
   check("fee=0 launch → poolKey.fee 0 (validated key, not assumed 10000)", Number(decode(tx.data).p0.poolKey.fee) === 0);
 }
 
+console.log("\n— SELL with in-swap fee (TAKE_PORTION) —");
+{
+  const FEE = "0x000000000000000000000000000000000000dEaD";
+  const amtIn = 1000n * 10n ** 18n;
+  const minOut = 1_000_000n; // 1 USDC total floor
+  const tx = buildArgusSwapTx({ launch: launch(), side: "sell", amountInRaw: amtIn, amountOutMinimum: minOut, fee: { receiver: FEE, bps: 20 } })!;
+  const parsed = iface.parseTransaction({ data: tx.data })!;
+  const [actions, params] = coder.decode(["bytes", "bytes[]"], (parsed.args[1] as string[])[0]) as [string, string[]];
+  check("actions add TAKE_PORTION before TAKE_ALL (0x06 0x0c 0x10 0x0f)", actions === "0x060c100f", actions);
+  check("four params (swap, settle, take_portion, take_all)", params.length === 4);
+  const [tpCur, tpTo, tpBips] = coder.decode(["address", "address", "uint256"], params[2]) as [string, string, bigint];
+  check("TAKE_PORTION takes USDC to the fee receiver at 20 bps", tpCur.toLowerCase() === USDC && tpTo.toLowerCase() === FEE.toLowerCase() && tpBips === 20n, `${tpCur} ${tpTo} ${tpBips}`);
+  const [taCur, taMin] = coder.decode(["address", "uint256"], params[3]) as [string, bigint];
+  check("TAKE_ALL floors the USER's USDC at minOut net of fee", taCur.toLowerCase() === USDC && taMin === (minOut * 9980n) / 10000n, `${taMin}`);
+  check("meta carries the fee", tx.meta.feeBps === 20 && (tx.meta.feeReceiver ?? "").toLowerCase() === FEE.toLowerCase());
+}
+
+console.log("\n— no fee → the verified 3-action path is byte-unchanged —");
+{
+  const tx = buildArgusSwapTx({ launch: launch(), side: "sell", amountInRaw: 5n, amountOutMinimum: 2n })!;
+  const d = decode(tx.data);
+  check("actions stay 0x06 0x0c 0x0f (no TAKE_PORTION)", d.actions === "0x060c0f", d.actions);
+  check("meta feeBps 0, no receiver", tx.meta.feeBps === 0 && tx.meta.feeReceiver === null);
+}
+
 console.log("\n— gated off —");
 {
   const prev = process.env.ARGUS_ENABLED;

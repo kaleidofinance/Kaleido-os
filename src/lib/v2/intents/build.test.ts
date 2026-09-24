@@ -688,6 +688,72 @@ async function main() {
         kinds(r),
       );
     }
+
+    {
+      // SELL: argus token on the spend side, USDC out. Fee is in-swap (no transfer),
+      // so the plan is approve → permit2Approve → argusSwap on the LAUNCH token.
+      const sellPlan = async () => ({
+        argus: true,
+        blocked: false,
+        side: "sell" as const,
+        tokenIn: { address: LAUNCH, symbol: "PEPE", decimals: 18 },
+        tokenOut: { address: ARC_USDC, symbol: "USDC", decimals: 6 },
+        fee: { receiver: FEE_RCVR, amountRaw: "40000", bps: 20 },
+        swapAmountRaw: "5000000000000000000",
+        to: ROUTER,
+        data: "0xbeef",
+        value: "0",
+        hook: "0x00000000000000000000000000000000000ABC00",
+        amountOut: 19.96,
+        amountOutMinimum: "19500000",
+      });
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "5", tokenIn: argusOut, tokenOut: usdcArc },
+        { ...deps, argusPlan: sellPlan },
+      );
+      check(
+        "an argus sell assembles approve→permit2Approve→argusSwap (no transfer — fee is in-swap)",
+        kinds(r) === "approve,permit2Approve,argusSwap",
+        kinds(r),
+      );
+      check(
+        "sell approves the LAUNCH token to Permit2 for the full amount",
+        same(at(r, 0).token, LAUNCH) &&
+          same(at(r, 0).spender, PERMIT2) &&
+          at(r, 0).amount === "5",
+        JSON.stringify(at(r, 0)),
+      );
+      check(
+        "sell's argusSwap spends the token and receives USDC (net of fee)",
+        same(at(r, 2).tokenIn, LAUNCH) &&
+          same(at(r, 2).tokenOut, ARC_USDC) &&
+          same(at(r, 2).symbolOut, "usdc") &&
+          at(r, 2).amountOut === "19.96" &&
+          at(r, 2).amountOutMin === "19.5",
+        JSON.stringify(at(r, 2)),
+      );
+      check(
+        "sell summary reads as a sell",
+        r.ok && /^Sell 5 /.test(summaryOf(r)),
+        summaryOf(r),
+      );
+    }
+
+    {
+      // Selling an argus token for a NON-USDC asset is out of the pilot.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const notUsdcOut: IToken = { ...usdcArc, address: DEX_KLD.address, symbol: "KLD", decimals: 18 };
+      const r = await build(
+        { kind: "swap", amount: "5", tokenIn: argusOut, tokenOut: notUsdcOut },
+        { ...deps, argusPlan: okPlan(FEE_RCVR) },
+      );
+      check(
+        "an argus sell is USDC-only for now",
+        !r.ok && /USDC-only/i.test(errorOf(r)),
+        kinds(r),
+      );
+    }
   }
 
   console.log("\n— swapping the chain's own currency —");
