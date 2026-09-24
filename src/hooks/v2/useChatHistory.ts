@@ -33,7 +33,8 @@ export interface Msg {
   /**
    * The step to resume this plan at — set when the review panel stops part-way
    * (a decline, a revert, a pause) so re-opening the plan does not re-sign the
-   * steps that already landed. Never persisted, for the same reason as `plan`.
+   * steps that already landed. Unlike `plan`, this IS persisted (see toStored):
+   * it's a safe resume MARKER — an index, not signable intents.
    */
   planFrom?: number;
   /**
@@ -84,8 +85,6 @@ export interface Msg {
    * offering to sign it again.
    */
   planSummary?: string[];
-  /** Safe resume marker only; signable intents are never persisted. */
-  planFrom?: number;
   /**
    * True for a turn read back from storage, false (absent) for one produced this
    * session. The renderer reads it to mark a restored turn's cards as a snapshot
