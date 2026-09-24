@@ -24,7 +24,7 @@ export function followThroughReply(outcome: FollowThrough): string {
 
 export async function reconcileFollowThrough(
   outcome: FollowThrough,
-  readReceipt: (hash: string) => Promise<{ status?: number } | null>,
+  readReceipt: (hash: string) => Promise<{ status?: number | null } | null>,
 ): Promise<FollowThrough> {
   const steps = await Promise.all(outcome.steps.map(async (step) => {
     if (!step.hash || step.skipped) return step;
