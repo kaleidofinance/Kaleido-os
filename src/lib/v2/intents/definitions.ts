@@ -14,6 +14,7 @@ import { encodeV3Path } from "@/lib/dex/route";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
+import type { Intent } from "./types";
 
 /**
  * Intent definitions. Each pairs a pure renderer with a resolver that builds an
@@ -223,22 +224,73 @@ async function waitForAllowance(
   needed: bigint,
 ): Promise<void> {
   const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  await pollUntil(async () => {
     const allowance: bigint = await token.allowance(owner, spender);
-    if (allowance >= needed) return;
-    if (attempt === 9) {
-      throw new Error(
-        "The token approval is not visible on-chain yet. Wait a moment and try the swap again.",
-      );
+    return allowance >= needed;
+  }, "The token approval is not visible on-chain yet. Wait a moment and try the swap again.");
+}
+
+/**
+ * Poll `ready` until it holds, for up to ~20s, then throw `message`.
+ *
+ * Why so long: "Run all without stopping" sends the next step the instant the
+ * previous receipt lands, and the read node can trail the node that mined it
+ * by several seconds (publicnode and Arc's public RPCs both do, under load).
+ * The old 5s window was shorter than that lag on a slow block, so the step
+ * threw "approval is not visible" for an approval that was already on chain —
+ * a failure stepping manually never showed, because the click was the delay.
+ * Backs off 500ms → 2s. A read that throws counts as "not yet": a transient RPC
+ * error mid-wait must not fail a step whose precondition is simply arriving.
+ */
+async function pollUntil(ready: () => Promise<boolean>, message: string): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  let delay = 500;
+  for (;;) {
+    try {
+      if (await ready()) return;
+    } catch {
+      /* transient read failure — keep waiting */
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (Date.now() + delay > deadline) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    delay = Math.min(delay * 2, 2_000);
   }
+}
+
+/**
+ * Both allowances an Argus swap spends through: the ERC20 → Permit2 allowance and
+ * Permit2's own grant to the router, unexpired. The Argus twin of
+ * waitForAllowance — without it, running the plan without stopping could send
+ * the swap before a lagging node sees the approvals just mined, and the wallet's
+ * gas estimate reverts on a trade that would have succeeded a second later.
+ */
+async function waitForPermit2Allowance(
+  signer: ethers.Signer,
+  owner: string,
+  tokenAddress: string,
+  router: string,
+  needed: bigint,
+): Promise<void> {
+  const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+  const permit2 = new ethers.Contract(
+    PERMIT2,
+    ["function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)"],
+    signer,
+  );
+  await pollUntil(async () => {
+    const erc: bigint = await token.allowance(owner, PERMIT2);
+    if (erc < needed) return false;
+    const [amount, expiration] = (await permit2.allowance(owner, tokenAddress, router)) as [bigint, bigint, bigint];
+    return amount >= needed && expiration > BigInt(Math.floor(Date.now() / 1000));
+  }, "The approvals for this swap are not visible on-chain yet. Wait a moment and try the swap again.");
 }
 
 register("approve", {
   render: (i) => ({
     title: `Approve ${i.symbol}`,
-    detail: "One-time approval.",
+    detail: i.unlimited
+      ? "One-time approval to Permit2, so later trades of this token skip this step. Permit2 still limits what each router can spend."
+      : "One-time approval.",
   }),
   resolve: async (ctx, i) => {
     const token = new ethers.Contract(i.token, ERC20_ABI, ctx.signer);
@@ -249,7 +301,10 @@ register("approve", {
     const current: bigint = await token.allowance(ctx.address, i.spender);
     if (current >= needed) return { hash: null, skipped: true };
 
-    const tx = await token.approve(i.spender, needed);
+    const tx = await token.approve(
+      i.spender,
+      i.unlimited ? ethers.MaxUint256 : needed,
+    );
     await tx.wait();
     return { hash: tx.hash };
   },
@@ -505,6 +560,44 @@ register("bridge", {
   },
 });
 
+/**
+ * The executable call for an aggregator swap, fetched NOW.
+ *
+ * The calldata captured at quote time is perishable (see the resolver below), so
+ * both the one-step resolver and the bundled path build it at signing through
+ * this one function — one place for the rebuild and for the refusal to sign a
+ * rebuild that points anywhere the paired approve did not authorise. Non-Kyber
+ * venues return the intent's own call unchanged.
+ */
+export async function freshAggregatorCall(
+  i: Extract<Intent, { kind: "aggregatorSwap" }>,
+  address: string,
+): Promise<{ to: string; data: string }> {
+  if (i.venue !== "kyberswap") return { to: i.to, data: i.data };
+  const fresh = await getKyberSwapExecution({
+    chainId: i.chainId,
+    tokenIn: i.tokenIn,
+    tokenOut: i.tokenOut,
+    amountUnits: ethers.parseUnits(i.amountIn, i.decimalsIn).toString(),
+    address,
+    slippageBps: i.slippageBps,
+  });
+  if (!fresh) {
+    throw new Error(
+      "The swap route expired before it could be signed. Close this and request a fresh quote.",
+    );
+  }
+  if (
+    fresh.to.toLowerCase() !== i.to.toLowerCase() ||
+    fresh.spender.toLowerCase() !== i.spender.toLowerCase()
+  ) {
+    throw new Error(
+      "The swap router changed unexpectedly between quote and signing; the swap was not sent.",
+    );
+  }
+  return { to: fresh.to, data: fresh.data };
+}
+
 register("aggregatorSwap", {
   render: (i) => ({
     title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
@@ -522,8 +615,7 @@ register("aggregatorSwap", {
         ethers.parseUnits(i.amountIn, i.decimalsIn),
       );
     }
-    let to = i.to;
-    let data = i.data;
+    const address = await ctx.signer.getAddress();
 
     /* Build-at-sign-time for an aggregator route.
      *
@@ -537,36 +629,10 @@ register("aggregatorSwap", {
      * sender and recipient, the instant before we send. This is the same split
      * 1inch/0x/Jupiter integrate on: the quote is indicative, the executable
      * transaction is fetched at execution — never reused from quote time. */
-    if (i.venue === "kyberswap") {
-      const address = await ctx.signer.getAddress();
-      const fresh = await getKyberSwapExecution({
-        chainId: i.chainId,
-        tokenIn: i.tokenIn,
-        tokenOut: i.tokenOut,
-        amountUnits: ethers.parseUnits(i.amountIn, i.decimalsIn).toString(),
-        address,
-        slippageBps: i.slippageBps,
-      });
-      if (!fresh) {
-        throw new Error(
-          "The swap route expired before it could be signed. Close this and request a fresh quote.",
-        );
-      }
-      /* The router and the spender the approve authorised are the audited trust
-         boundary, and a fixed constant per chain. Refuse a rebuild that points
-         anywhere the paired approve did not authorise, rather than sign a call
-         to an unbounded target. The input approve above caps this at amountIn. */
-      if (
-        fresh.to.toLowerCase() !== i.to.toLowerCase() ||
-        fresh.spender.toLowerCase() !== i.spender.toLowerCase()
-      ) {
-        throw new Error(
-          "The swap router changed unexpectedly between quote and signing; the swap was not sent.",
-        );
-      }
-      to = fresh.to;
-      data = fresh.data;
-    }
+    /* The router and the spender the approve authorised are the audited trust
+       boundary, and a fixed constant per chain — freshAggregatorCall refuses a
+       rebuild that points anywhere else. */
+    const { to, data } = await freshAggregatorCall(i, address);
 
     const tx = await ctx.signer.sendTransaction({
       to,
@@ -578,23 +644,51 @@ register("aggregatorSwap", {
   },
 });
 
+/** Permit2's allowance width — its `amount` is a uint160. */
+export const MAX_UINT160 = (1n << 160n) - 1n;
+
 /* Permit2 authorisation for an Argus swap: Permit2.approve(token, router,
    amount, expiration). Its own signed step — the paired `approve` only granted
    the ERC20 allowance to Permit2; this grants the router the Permit2 allowance
    the v4 swap spends. Moves nothing. */
 register("permit2Approve", {
   render: (i) => ({
-    title: `Authorise the router to spend ${i.amount} ${i.symbol}`,
-    detail: `On Permit2, so the Argus swap can pull it. Nothing leaves your wallet here.`,
+    title: i.unlimited
+      ? `Authorise the Argus router for ${i.symbol}`
+      : `Authorise the router to spend ${i.amount} ${i.symbol}`,
+    detail: i.unlimited
+      ? `On Permit2, for 30 days, so trades in that window skip this step. Nothing leaves your wallet here.`
+      : `On Permit2, so the Argus swap can pull it. Nothing leaves your wallet here.`,
   }),
   resolve: async (ctx, i) => {
     const permit2 = new ethers.Contract(
       PERMIT2,
-      ["function approve(address token, address spender, uint160 amount, uint48 expiration)"],
+      [
+        "function approve(address token, address spender, uint160 amount, uint48 expiration)",
+        "function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)",
+      ],
       ctx.signer,
     );
     const amount = ethers.parseUnits(i.amount, i.decimals);
-    const tx = await permit2.approve(i.token, i.spender, amount, i.expiration);
+    /* No-op when the router already holds enough Permit2 allowance that won't
+       lapse mid-review — the same rule as `approve`, and what makes a repeat
+       trade one transaction. Two minutes of headroom on the expiry so a grant
+       about to lapse is renewed rather than trusted. */
+    const [have, expires] = (await permit2.allowance(
+      ctx.address,
+      i.token,
+      i.spender,
+    )) as [bigint, bigint, bigint];
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (have >= amount && expires > now + 120n) {
+      return { hash: null, skipped: true };
+    }
+    const tx = await permit2.approve(
+      i.token,
+      i.spender,
+      i.unlimited ? MAX_UINT160 : amount,
+      i.expiration,
+    );
     await tx.wait();
     return { hash: tx.hash };
   },
@@ -611,6 +705,13 @@ register("argusSwap", {
     detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage · Argus (Uniswap v4).`,
   }),
   resolve: async (ctx, i) => {
+    await waitForPermit2Allowance(
+      ctx.signer,
+      ctx.address,
+      i.tokenIn,
+      i.to,
+      ethers.parseUnits(i.amountIn, i.decimalsIn),
+    );
     const tx = await ctx.signer.sendTransaction({
       to: i.to,
       data: i.data,

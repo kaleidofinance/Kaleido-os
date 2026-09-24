@@ -128,6 +128,12 @@ interface Props {
   cards: AgentCard[];
   onPrompt: (text: string) => void;
   /**
+   * Sends a command as if typed and submitted. Only the local-only `token`
+   * card uses it (its buttons act; see TokenCard). Absent → those buttons fall
+   * back to prefilling via `onPrompt`, which is always safe.
+   */
+  onSend?: (text: string) => void;
+  /**
    * Set for cards restored from storage — a past turn's data, not a reading of
    * now. Present makes the group dimmed and captioned so a balance from earlier
    * cannot be mistaken for the current one; `at` is when the turn was written.
@@ -146,7 +152,7 @@ function whenLabel(at?: number): string {
   return `from ${Math.round(hrs / 24)}d ago`;
 }
 
-export default function AgentCards({ cards, onPrompt, historical }: Props) {
+export default function AgentCards({ cards, onPrompt, onSend, historical }: Props) {
   if (!cards.length) return null;
 
   return (
@@ -299,6 +305,96 @@ export default function AgentCards({ cards, onPrompt, historical }: Props) {
                 {card.body && <div className={s.nBody}>{card.body}</div>}
               </div>
             );
+
+          case "token": {
+            /* A restored token card is a snapshot: its price and surcharge are
+               from then, so its buttons are inert. A live one sends. */
+            const act = (command: string) =>
+              historical ? undefined : () => (onSend ?? onPrompt)(command);
+            return (
+              <div key={i} className={s.card}>
+                <div className={s.tokHead}>
+                  <div className={s.tokId}>
+                    <span className={s.tokSym}>{card.symbol}</span>
+                    {card.name && <span className={s.tokName}>{card.name}</span>}
+                  </div>
+                  {card.badge && (
+                    <span className={`${s.tokBadge} ${s[card.badge.tone]}`}>
+                      {card.badge.text}
+                    </span>
+                  )}
+                </div>
+                <div className={`${s.tokAddr} tabular`}>{card.address}</div>
+                {card.price && (
+                  <div className={s.mValue}>
+                    <span className="tabular">{card.price}</span>
+                  </div>
+                )}
+                {card.rows.length > 0 && (
+                  /* One header row of labels over one row of values — the
+                     facts read across at a glance, like a ticker strip. */
+                  <table className={s.tokTable}>
+                    <thead>
+                      <tr>
+                        {card.rows.map((row, j) => (
+                          <th key={j} scope="col">
+                            {row.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        {card.rows.map((row, j) => (
+                          <td
+                            key={j}
+                            className={`${s[row.tone ?? "neutral"]} tabular`}
+                          >
+                            {row.value}
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+                {card.note && <div className={s.mNote}>{card.note}</div>}
+                {card.buys.length > 0 && (
+                  <div className={s.tokBtns}>
+                    <span className={s.tokSide}>Buy</span>
+                    {card.buys.map((b, j) => (
+                      <button
+                        key={j}
+                        type="button"
+                        className={`${s.chip} ${s.tokBuy}`}
+                        aria-label={`Buy with ${b.label} of your USDC`}
+                        disabled={Boolean(b.disabled) || Boolean(historical)}
+                        onClick={b.disabled ? undefined : act(b.command)}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {card.sells.length > 0 && (
+                  <div className={s.tokBtns}>
+                    <span className={s.tokSide}>Sell</span>
+                    {card.sells.map((b, j) => (
+                      <button
+                        key={j}
+                        type="button"
+                        className={`${s.chip} ${s.tokSell}`}
+                        aria-label={`Sell ${b.label} of your ${card.symbol}`}
+                        disabled={Boolean(historical)}
+                        onClick={act(b.command)}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
 
           case "actions":
             return (

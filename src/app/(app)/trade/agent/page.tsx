@@ -36,7 +36,14 @@ import { intentsFromChat } from "@/lib/v2/intents/fromChat";
 import { traceFromChat } from "@/lib/v2/agentTurn";
 import { readChatStream } from "@/lib/v2/chatStream";
 import { renderIntent } from "@/lib/v2/intents";
-import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
+import {
+  cardsFromChat,
+  figureCards,
+  localCards,
+  pastedTokenAddress,
+  tokenCardFrom,
+  type TokenFacts,
+} from "@/lib/v2/cards";
 import {
   portfolioAnswer,
   healthAnswer,
@@ -75,6 +82,8 @@ import {
 } from "@/lib/v2/intents/fromCommand";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { useTxLog } from "@/hooks/v2/useTxLog";
+import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
+import { planRuns } from "@/lib/v2/intents/batch";
 import { computeSuggestions } from "./suggestions";
 import s from "./agent.module.css";
 
@@ -933,6 +942,48 @@ export default function AgentPage() {
         setPending(null);
       }
 
+      /*
+       * Paste-a-contract net. A message that is ONLY a contract (or a chart /
+       * explorer link to one) is a request to see the token, not a command —
+       * answer with its live card, whose buttons send ready-made buy/sell
+       * commands back through this same path (grammar → plan → audit → review
+       * → signature). After a pending slot, since a pasted address may be the
+       * answer to "which token?"; before the FAQ and grammar, which have
+       * nothing to say about a bare address. pastedTokenAddress refuses
+       * anything with a space, so "buy 0x… with 5 usdc" still reaches the
+       * parser.
+       */
+      const pasted = pastedTokenAddress(content);
+      if (pasted) {
+        note("Looking up the token you pasted");
+        log("token-card");
+        let facts: TokenFacts;
+        try {
+          const res = await fetch(
+            `/api/token/card?chainId=${chainId ?? ""}&address=${pasted}`,
+            { signal: abort.signal, cache: "no-store" },
+          );
+          facts = (await res.json()) as TokenFacts;
+        } catch {
+          if (abort.signal.aborted) return;
+          facts = {
+            ok: false,
+            address: pasted,
+            reason: "Couldn't reach the token lookup — try again in a moment.",
+          };
+        }
+        if (abort.signal.aborted) return;
+        const tradable =
+          facts.ok && !facts.isQuote && (facts.source === "argus" || facts.source === "listed");
+        say(
+          tradable
+            ? `Here's ${facts.symbol ?? "that token"}. Tap a size to get a plan — you review and sign before anything moves.`
+            : "Here's what I found for that contract.",
+          { via: "local", cards: localCards([tokenCardFrom(facts)]) },
+        );
+        return;
+      }
+
       // Second local net: static questions with a fixed, known answer. Checked
       // against the parser rather than after it — see the ordering below — and
       // before the model, since "what is slippage" has one correct answer that
@@ -1583,6 +1634,18 @@ export default function AgentPage() {
 
   const plan = latest?.plan;
   const steps = useMemo(() => (plan ? plan.map(renderIntent) : []), [plan]);
+  /* What the handoff counts is wallet CONFIRMATIONS, not steps: on a wallet that
+     signs a bundle as one (EIP-5792), an approve-and-swap is one confirmation. */
+  const { support: batchSupport } = useBatchCalls();
+  const confirmations = useMemo(
+    () =>
+      !plan
+        ? 0
+        : batchSupport.supported
+          ? planRuns(plan).length
+          : plan.length,
+    [plan, batchSupport.supported],
+  );
 
   /*
    * What the chart beside this card follows.
@@ -1721,7 +1784,9 @@ export default function AgentPage() {
   const planLabel = plan
     ? latest?.planFrom
       ? `Resume · step ${latest.planFrom + 1} of ${plan.length}`
-      : `Review and sign · ${plan.length} transaction${plan.length === 1 ? "" : "s"}`
+      : confirmations > 1
+        ? `Review and sign · ${confirmations} confirmations`
+        : "Review and sign"
     : "";
 
   return (
@@ -1968,6 +2033,7 @@ export default function AgentPage() {
                         <AgentCards
                           cards={m.cards}
                           onPrompt={fillPrompt}
+                          onSend={(t) => void send(t)}
                           historical={m.historical ? { at: m.ts } : undefined}
                         />
                       )}

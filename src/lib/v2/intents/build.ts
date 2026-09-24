@@ -554,9 +554,11 @@ export interface ArgusPlanResult {
   tokenOut?: { address: string; symbol: string; decimals: number };
   /** SELL only: the launch token being spent (to approve + swap). */
   tokenIn?: { address: string; symbol: string; decimals: number };
-  /** The fee cut. BUY: USDC skimmed from input (a separate transfer). SELL: USDC
+  /** The fee cut, always taken inside the swap tx. BUY: USDC pulled from the input (PERMIT2_TRANSFER_FROM). SELL: USDC
    *  taken from the output in-swap (already reflected in amountOut/min — no transfer). */
-  fee?: { receiver: string | null; amountRaw: string; bps: number };
+  fee?: { receiver: string | null; amountRaw: string; bps: number; inSwap?: boolean };
+  /** BUY: the whole USDC input the router pulls via Permit2 — swap + in-tx fee. */
+  totalInRaw?: string;
   /** The amount actually swapped, base units. BUY: USDC in (after fee). SELL: the
    *  full launch-token amount in (the fee is on the output, not the input). */
   swapAmountRaw?: string;
@@ -827,6 +829,30 @@ async function borrowBlockedByCollateral(
   };
 }
 
+/** How much of the gas token a relative spend ("all my USDC") leaves behind. */
+export const USDC_GAS_RESERVE = "0.25";
+
+/**
+ * The reserve to hold back when `token` is what the chain pays gas in, else 0.
+ * Only USDC-gas chains (Arc mainnet + testnet): there the spend asset and the
+ * fee asset are one balance, so a relative spend of it has to stop short. The
+ * native sentinel and the 6-dec ERC20 face (`native-alias`) both count. ETH-gas
+ * chains are unchanged — a 0.25 reserve means nothing there.
+ */
+function gasTokenReserve(
+  chainId: number | undefined,
+  token: { address: string; decimals: number; tags?: string[] },
+): bigint {
+  if (chainId === undefined) return 0n;
+  if (CHAINS_BY_ID[chainId]?.nativeCurrency.symbol !== "USDC") return 0n;
+  const isGas =
+    token.tags?.includes("native-alias") ||
+    token.address.toLowerCase() === ARC_USDC.toLowerCase() ||
+    isNativeSentinel(token.address, "dex") ||
+    isNativeSentinel(token.address, "lending");
+  return isGas ? ethers.parseUnits(USDC_GAS_RESERVE, token.decimals) : 0n;
+}
+
 export async function buildIntents(
   command: Command,
   opts: PlannerOptions,
@@ -905,7 +931,22 @@ export async function buildIntents(
         };
       }
       const { num, den } = command.relative;
-      const wei = (balance * BigInt(num)) / BigInt(den);
+      let wei = (balance * BigInt(num)) / BigInt(den);
+      /* Where the spend token IS the gas token (USDC on Arc — the 0x3600 ERC20 is
+         a face of the native balance), "all of it" to the last unit leaves nothing
+         to pay for the approvals and the swap that follow, and the plan fails at
+         signing. Hold a small reserve back whenever the share would dip into it;
+         a 10% or 50% share on a funded wallet is never touched. */
+      const reserve = gasTokenReserve(chainId, tokenIn);
+      if (reserve > 0n && wei > balance - reserve) {
+        wei = balance - reserve;
+        if (wei <= 0n) {
+          return {
+            ok: false,
+            error: `You need more than ${ethers.formatUnits(reserve, tokenIn.decimals)} ${tokenIn.symbol} for that — this much stays in your wallet to pay the network fee.`,
+          };
+        }
+      }
       if (wei <= 0n) {
         return {
           ok: false,
@@ -1024,7 +1065,13 @@ export async function buildIntents(
           };
         }
         const out = ap.tokenOut;
-        const swapHuman = ethers.formatUnits(ap.swapAmountRaw, ARC_USDC_DECIMALS);
+        /* The fee is taken inside the swap transaction (PERMIT2_TRANSFER_FROM
+           ahead of the V4_SWAP), so the user's whole input is what Permit2 must
+           allow and what the swap step spends — there is no separate fee step. */
+        const totalHuman = ethers.formatUnits(
+          ap.totalInRaw ?? amountInRaw,
+          ARC_USDC_DECIMALS,
+        );
         const minOutHuman = ethers.formatUnits(
           ap.amountOutMinimum ?? "0",
           out.decimals,
@@ -1032,47 +1079,37 @@ export async function buildIntents(
         // Permit2 allowance window: 30 days, the router's usual default.
         const expiration = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
         const intents: Intent[] = [
-          // 1. ERC20 allowance to Permit2 (only the swapped amount; the fee is a
-          //    plain transfer that needs no allowance).
+          // 1. ERC20 allowance to Permit2 for the whole input (swap + in-tx fee).
           {
             kind: "approve",
             token: ARC_USDC,
             spender: PERMIT2,
-            amount: swapHuman,
+            amount: totalHuman,
             decimals: ARC_USDC_DECIMALS,
             symbol: "USDC",
+            unlimited: true,
           },
-          // 2. Permit2 → UniversalRouter allowance the v4 swap then spends.
+          // 2. Permit2 → UniversalRouter allowance the swap transaction spends.
           {
             kind: "permit2Approve",
             token: ARC_USDC,
             spender: ap.to,
-            amount: swapHuman,
+            amount: totalHuman,
             decimals: ARC_USDC_DECIMALS,
             symbol: "USDC",
             expiration,
+            unlimited: true,
           },
         ];
-        // 3. Kaleido's fee, skimmed from the USDC input to the server-only
-        //    receiver. Omitted when no receiver is configured (fee 0).
-        if (ap.fee?.receiver && ap.fee.amountRaw && ap.fee.amountRaw !== "0") {
-          intents.push({
-            kind: "transfer",
-            token: ARC_USDC,
-            to: ap.fee.receiver,
-            amount: ethers.formatUnits(ap.fee.amountRaw, ARC_USDC_DECIMALS),
-            decimals: ARC_USDC_DECIMALS,
-            symbol: "USDC",
-          });
-        }
-        // 4. The v4 swap itself — pre-built calldata, NOT rebuilt at sign time.
+        // 3. The swap — pre-built calldata, NOT rebuilt at sign time. Carries the
+        //    fee pull and the v4 swap in one execute().
         intents.push({
           kind: "argusSwap",
           to: ap.to,
           data: ap.data,
           value: ap.value ?? "0",
           tokenIn: ARC_USDC,
-          amountIn: swapHuman,
+          amountIn: totalHuman,
           decimalsIn: ARC_USDC_DECIMALS,
           symbolIn: "USDC",
           tokenOut: out.address,
@@ -1147,6 +1184,7 @@ export async function buildIntents(
             amount,
             decimals: inTok.decimals,
             symbol: inTok.symbol,
+            unlimited: true,
           },
           // 2. Permit2 → UniversalRouter allowance the v4 swap spends.
           {
@@ -1157,6 +1195,7 @@ export async function buildIntents(
             decimals: inTok.decimals,
             symbol: inTok.symbol,
             expiration,
+            unlimited: true,
           },
           // 3. The v4 swap — pre-built calldata; the 0.2% fee is TAKE_PORTION'd
           //    from the USDC output in this same tx (no transfer step).

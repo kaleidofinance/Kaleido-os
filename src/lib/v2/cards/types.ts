@@ -148,6 +148,41 @@ export interface StepsCard {
   }[];
 }
 
+/**
+ * A pasted token, framed as a trading surface — the one card whose buttons act.
+ *
+ * LOCAL-ONLY, and that is what makes acting safe: it is wire-forbidden (see
+ * WIRE_FORBIDDEN in fromChat.ts), so a model can never emit one. This app builds
+ * it from on-chain reads when a user pastes a contract, and composes every
+ * button's `command` here from the resolved token. A tap SENDS that command —
+ * unlike `actions`, which only prefills — and the command still passes through
+ * the grammar, the auditor, the plan review and the wallet signature, so the
+ * real consent gate is unchanged: the tap saves typing, not a decision.
+ *
+ * Still data, per rule 1: the address is a display string ("0x08Ad…2A71"),
+ * never a link; figures are pre-formatted; `disabled` is how the opening
+ * surcharge greys the buys out without the renderer knowing what one is.
+ */
+export interface TokenCard {
+  kind: "token";
+  symbol: string;
+  name?: string;
+  /** Short display form of the contract. Shown, never followed. */
+  address: string;
+  /** Headline price, pre-formatted ("$0.0000412"). Absent when unknown. */
+  price?: string;
+  /** Source/status tag: "Argus launch", "Listed on Arc". */
+  badge?: { text: string; tone: CardTone };
+  /** Label/value facts: market cap, buy tax, sell tax, status. */
+  rows: { label: string; value: string; tone?: CardTone }[];
+  /** One line of caveat under the facts. */
+  note?: string;
+  /** Buy presets; `disabled` greys one out (e.g. opening surcharge active). */
+  buys: { label: string; command: string; disabled?: boolean }[];
+  /** Sell presets, as a share of the wallet's balance. */
+  sells: { label: string; command: string }[];
+}
+
 export type AgentCard =
   | MetricCard
   | StatsCard
@@ -155,6 +190,7 @@ export type AgentCard =
   | NoticeCard
   | ActionsCard
   | GaugeCard
-  | StepsCard;
+  | StepsCard
+  | TokenCard;
 
 export type CardKind = AgentCard["kind"];

@@ -9,6 +9,7 @@ import { providerForChain } from "@/config/provider";
 import { getChainMeta } from "@/constants/chains";
 import { renderIntent, resolveIntent, type Intent } from "@/lib/v2/intents";
 import { encodeBatch, planRuns } from "@/lib/v2/intents/batch";
+import { freshAggregatorCall } from "@/lib/v2/intents/definitions";
 import { useResolverContext } from "@/hooks/v2/useResolverContext";
 import { useSwitchWalletChain } from "@/lib/wallet";
 import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
@@ -395,6 +396,14 @@ export default function PlanReview({
     }
     return map;
   }, [runs]);
+  /* Step index → the bundled run it belongs to. Used to show a bundle as ONE
+     row when the wallet will sign it as one: the user asked for a trade, and
+     the approvals inside it are how that trade is signed, not separate asks. */
+  const runOf = useMemo(() => {
+    const map = new Map<number, (typeof runs)[number]>();
+    for (const r of runs) if (r.bundled) for (const st of r.steps) map.set(st, r);
+    return map;
+  }, [runs]);
   /**
    * Whether to SAY anything about batching.
    *
@@ -729,7 +738,23 @@ export default function PlanReview({
     steps: number[],
   ): Promise<"done" | "failed" | "paused"> => {
     const bundleStartedAt = Date.now();
-    const calls = encodeBatch(intents, steps, ctx.address);
+    /* An aggregator swap's calldata expires, so build it fresh now — the same
+       rebuild (and the same refusal of a changed router) its one-step resolver
+       does. A failure here falls back to the steps one at a time, where the
+       resolver reports it against the swap row with its own message. */
+    let toEncode = intents;
+    try {
+      toEncode = await Promise.all(
+        intents.map(async (it, idx) =>
+          steps.includes(idx) && it.kind === "aggregatorSwap"
+            ? { ...it, ...(await freshAggregatorCall(it, ctx.address)) }
+            : it,
+        ),
+      );
+    } catch {
+      return runSequential(ctx, steps);
+    }
+    const calls = encodeBatch(toEncode, steps, ctx.address);
     if (!calls) return runSequential(ctx, steps);
 
     for (const i of steps) setStep(i, "pending");
@@ -753,6 +778,20 @@ export default function PlanReview({
     try {
       result = await sendBatch(calls);
     } catch (err) {
+      /* ACCEPTED BUT UNCONFIRMED is the one throw that must NOT fall back. The
+         wallet took the bundle (the adapter marks the error `sent`) and only the
+         receipt wait failed — the calls may yet land, and re-signing them one by
+         one could execute the swap twice. Stop and say so instead. */
+      if ((err as { sent?: boolean } | null)?.sent) {
+        console.warn("[PlanReview] bundle accepted but unconfirmed, not re-signing:", err);
+        for (const i of steps) setStep(i, "failed");
+        setRunning(false);
+        setNext(steps[0]);
+        toast.error(
+          "Your wallet accepted the transaction but we couldn't confirm it. Check your wallet activity before signing again.",
+        );
+        return "failed";
+      }
       console.warn(
         "[PlanReview] bundle not sent, falling back to one signature per step:",
         err,
@@ -963,14 +1002,13 @@ export default function PlanReview({
          after the wallet accepted/queued the calls; treating that throw as
          "nothing was sent" and retrying sequentially can duplicate the approval
          prompt or race the swap against the first request. */
+      /* Swaps bundle too now. They were held sequential because a wallet could
+         reject a bundle AFTER accepting it, and the sequential fallback could
+         then run the swap twice. runBundle no longer falls back once the wallet
+         has accepted (the adapter marks that error `sent`) — it stops and says
+         so — which closes that race for every swap kind. */
       const bundle = batch.supported
-        ? runs.find((r) => {
-            if (!r.bundled || r.steps[0] !== i) return false;
-            const kinds = r.steps.map((step) => intents[step]?.kind);
-            return !(kinds.includes("approve") && kinds.some((kind) =>
-              kind === "swap" || kind === "swapMultiHop" || kind === "aggregatorSwap",
-            ));
-          })
+        ? runs.find((r) => r.bundled && r.steps[0] === i)
         : undefined;
       if (bundle) {
         const settled = await runBundle(ctx, bundle.steps);
@@ -1023,32 +1061,56 @@ export default function PlanReview({
       <SwapRoute intents={intents} />
 
       <ol className={s.steps}>
-        {views.map((v, i) => (
-          <li key={i} className={`${s.step} ${s[`st_${statuses[i]}`] ?? ""}`}>
-            <span className={s.marker}>{mark(statuses[i], i + 1)}</span>
-            <div className={s.body}>
-              <div className={s.stTitle}>{displayTxTitle(v.title)}</div>
-              {v.detail && <div className={s.stDetail}>{displayTxDetail(v.detail)}</div>}
-              {statuses[i] === "skipped" && (
-                <div className={s.stNote}>
-                  Already done — no transaction needed.
+        {(() => {
+          /* When the wallet signs a bundle as one confirmation, the bundle is
+             shown as ONE row — its last step, the action the user asked for —
+             with the approvals it carries named underneath. Rows are numbered
+             by what is shown, so "2" means the second thing you'll confirm. */
+          let shown = 0;
+          return views.map((v, i) => {
+            const run = batchable ? runOf.get(i) : undefined;
+            if (run && i !== run.steps[run.steps.length - 1]) return null;
+            shown += 1;
+            const st: StepStatus = run
+              ? run.steps.some((x) => statuses[x] === "failed")
+                ? "failed"
+                : run.steps.some((x) => statuses[x] === "pending")
+                  ? "pending"
+                  : run.steps.every((x) => statuses[x] === "done" || statuses[x] === "skipped")
+                    ? "done"
+                    : "idle"
+              : statuses[i];
+            const approvals = run
+              ? run.steps
+                  .slice(0, -1)
+                  .map((x) => intents[x] as { kind: string; symbol?: string; unlimited?: boolean })
+              : [];
+            const oneTime = approvals.some((a) => a.unlimited);
+            const sym = approvals.find((a) => a.symbol)?.symbol;
+            return (
+              <li key={i} className={`${s.step} ${s[`st_${st}`] ?? ""}`}>
+                <span className={s.marker}>{mark(st, shown)}</span>
+                <div className={s.body}>
+                  <div className={s.stTitle}>{displayTxTitle(v.title)}</div>
+                  {v.detail && <div className={s.stDetail}>{displayTxDetail(v.detail)}</div>}
+                  {st === "skipped" && (
+                    <div className={s.stNote}>
+                      Already done — no transaction needed.
+                    </div>
+                  )}
+                  {run && !done && (
+                    <div className={s.stNote}>
+                      {oneTime
+                        ? `Includes a one-time ${sym ?? "token"} approval — one confirmation in your wallet.`
+                        : `Includes the ${sym ?? "token"} approval — one confirmation in your wallet.`}
+                    </div>
+                  )}
                 </div>
-              )}
-              {/* Said on the FIRST row of a pair only, and phrased as what will
-                  happen to this step rather than as a feature. A note on both
-                  rows would read as two facts about two signatures, which is the
-                  opposite of what it is telling them. Hidden once the plan is
-                  running: by then the markers show what happened, and a promise
-                  about a prompt already answered is noise. */}
-              {batchable && !running && !done && bundledWith.get(i) === i + 1 && (
-                <div className={s.stNote}>
-                  Signed together with the next step, in one transaction.
-                </div>
-              )}
-            </div>
-            {v.chain && <span className={s.chain}>{v.chain}</span>}
-          </li>
-        ))}
+                {v.chain && <span className={s.chain}>{v.chain}</span>}
+              </li>
+            );
+          });
+        })()}
       </ol>
 
       {/* Named before the buttons, so the reason the sign button is disabled sits

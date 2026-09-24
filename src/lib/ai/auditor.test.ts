@@ -591,8 +591,8 @@ async function main() {
         },
       ]);
       check(
-        "a hallucinated token address is rejected",
-        !v.ok && v.blocked.some((b) => b.includes("unrecognised output token")),
+        "a hallucinated (bad-checksum) token address is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("output is not a token address")),
         JSON.stringify(v.blocked),
       );
     }
@@ -1955,14 +1955,51 @@ async function main() {
       okv.blocked.length === 0,
       okv.blocked.join("; ") || "(passed)",
     );
+    /* The registry lists VERIFIED tokens; it is not a whitelist of what a user
+       may trade. An unverified token (any real address) trades, priced by the
+       verified side; only a malformed address, or a trade with no verified
+       side to price it by, is refused. */
+    const UNVERIFIED = "0x08adbf431569a1aacac2606d2adcd18f4ebf2a71";
+    const buyUnv = await audit([{ ...arcSwap, tokenOut: UNVERIFIED, decimalsOut: 18, symbolOut: "GLITCH" }], { chainId: 5042 });
+    check(
+      "buying an unverified token with USDC is accepted",
+      buyUnv.blocked.length === 0,
+      buyUnv.blocked.join("; ") || "(passed)",
+    );
+    check("…and priced by the USDC input", buyUnv.totalUsd > 0, String(buyUnv.totalUsd));
+    const sellUnv = await audit(
+      [{ ...arcSwap, tokenIn: UNVERIFIED, decimalsIn: 18, symbolIn: "GLITCH", amountIn: "1000000", tokenOut: USDC_3600, decimalsOut: 6, symbolOut: "USDC", amountOut: "40", amountOutMin: "39" }],
+      { chainId: 5042 },
+    );
+    check(
+      "selling an unverified token for USDC is accepted",
+      sellUnv.blocked.length === 0,
+      sellUnv.blocked.join("; ") || "(passed)",
+    );
+    check("…and priced by the USDC floor", sellUnv.totalUsd > 0, String(sellUnv.totalUsd));
+    const bothUnv = await audit(
+      [{ ...arcSwap, tokenIn: UNVERIFIED, decimalsIn: 18, tokenOut: "0x1111111111111111111111111111111111111111", decimalsOut: 18 }],
+      { chainId: 5042 },
+    );
+    check(
+      "a trade with no verified side is refused (nothing to price the cap by)",
+      bothUnv.blocked.some((b) => /neither side/i.test(b)),
+      bothUnv.blocked.join("; ") || "(passed)",
+    );
     const badv = await audit(
       [{ ...arcSwap, tokenIn: "0x0000000000000000000000000000000000000dEaD" }],
       { chainId: 5042 },
     );
     check(
-      "an unregistered input token is still refused",
-      badv.blocked.some((b) => /unrecognised input token/i.test(b)),
+      "a malformed (bad-checksum) input address is still refused",
+      badv.blocked.some((b) => /not a token address/i.test(b)),
       badv.blocked.join("; ") || "(passed)",
+    );
+    const badRouter = await audit([{ ...arcSwap, tokenOut: UNVERIFIED, to: "0x2222222222222222222222222222222222222222", spender: "0x2222222222222222222222222222222222222222" }], { chainId: 5042 });
+    check(
+      "an unverified token does not loosen the router pin",
+      badRouter.blocked.some((b) => /router/i.test(b)),
+      badRouter.blocked.join("; ") || "(passed)",
     );
   }
 
@@ -3202,6 +3239,74 @@ async function main() {
     {
       const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: "0x000000000000000000000000000000000000dEaD", amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 1800 }]);
       check("permit2Approve: a non-router spender is blocked", !v.ok && v.blocked.some((b) => /UniversalRouter/i.test(b)), JSON.stringify(v.blocked));
+    }
+    /* The WHOLE plan, as build.ts emits it. Every rule above passed on its own
+       while a real Argus buy failed closed at step 1 — the ERC20 approve to
+       Permit2 hit "spender is not a Kaleido contract". Pin the sequence. */
+    const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+    const FEE_TO = "0x0ce7f8aeaad60b9e19acbe9803518182adc351bc";
+    {
+      const v = await argAudit([
+        { kind: "approve", token: USDC, spender: PERMIT2, amount: "0.998", decimals: 6, symbol: "USDC" },
+        { kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "0.998", decimals: 6, symbol: "USDC", expiration: nowSec + 30 * 86400 },
+        { kind: "transfer", token: USDC, to: FEE_TO, amount: "0.002", decimals: 6, symbol: "USDC" },
+        { ...goodSwap, amountIn: "0.998" },
+      ]);
+      check("argus BUY plan (approve→permit2→fee→swap) passes end to end", v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([
+        { kind: "approve", token: TOKEN, spender: PERMIT2, amount: "2000", decimals: 18, symbol: "ARG" },
+        { kind: "permit2Approve", token: TOKEN, spender: ROUTER, amount: "2000", decimals: 18, symbol: "ARG", expiration: nowSec + 30 * 86400 },
+        { ...goodSwap, tokenIn: TOKEN, amountIn: "2000", decimalsIn: 18, symbolIn: "ARG", tokenOut: USDC, amountOut: "0.9", amountOutMin: "0.85", decimalsOut: 6, symbolOut: "USDC" },
+      ]);
+      check("argus SELL plan (approve→permit2→swap) passes end to end", v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await auditPlan({
+        plan: [{ kind: "approve", token: USDC, spender: PERMIT2, amount: "1", decimals: 6, symbol: "USDC" }] as never,
+        chainId: 11155111, limits: LIMITS, allowedActions: ALL_ON, pricer: stubPricer,
+      });
+      check("approve to Permit2 OFF Arc is still blocked", !v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([
+        { kind: "approve", token: USDC, spender: PERMIT2, amount: "1", decimals: 6, symbol: "USDC", unlimited: true },
+        { kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 30 * 86400, unlimited: true },
+      ]);
+      check("an unlimited approval to Permit2 + a 30-day router grant pass on Arc", v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ kind: "approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", unlimited: true }]);
+      check(
+        "an unlimited approval to anything but Permit2 is blocked",
+        !v.ok && v.blocked.some((b) => /unlimited approval/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 90 * 86400, unlimited: true }]);
+      check(
+        "a Permit2 router grant longer than 30 days is blocked",
+        !v.ok && v.blocked.some((b) => /longer than 30 days/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec - 10 }]);
+      check(
+        "an expired Permit2 grant is blocked",
+        !v.ok && v.blocked.some((b) => /future expiry/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+    {
+      const v = await argAudit([{ kind: "approve", token: TOKEN, spender: ROUTER, amount: "1", decimals: 18, symbol: "ARG" }]);
+      check(
+        "an unverified token approved to an unpinned spender is still blocked (the spender is the guard)",
+        !v.ok && v.blocked.some((b) => /spender/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
     }
   }
 

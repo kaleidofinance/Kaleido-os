@@ -9,6 +9,8 @@ import {
   TRANSFER_TOPIC,
   decodeTransferLog,
   parseSwapInput,
+  userOpSenders,
+  USER_OPERATION_EVENT_TOPIC,
   usdcLegValue,
   valueInput,
   type TransferLog,
@@ -70,14 +72,77 @@ console.log("\n— parseSwapInput: a real swap —");
 console.log("\n— parseSwapInput: the holes —");
 {
   const transfers = [t(EURC, ROUTER, RECEIVER, 174_000n)]; // a fee to the shared wallet
-  /* Same wallet, but the tx called something else — a bridge, say. NOT a swap. */
-  const bridge = parseSwapInput({ tx: { to: OTHER, from: WALLET }, transfers, kyberRouter: ROUTER });
-  check("a fee from a non-router tx is skipped as not-a-swap",
+  /* A bridge's integrator fee: it arrives from the bridge's own contract and the
+     tx touches no swap venue. NOT a swap. */
+  const bridge = parseSwapInput({
+    tx: { to: OTHER, from: WALLET },
+    transfers: [t(USDC, WALLET, OTHER, 50_000000n), t(USDC, OTHER, RECEIVER, 100_000n)],
+    kyberRouter: ROUTER,
+  });
+  check("a bridge fee (no swap venue touched) is skipped as not-a-swap",
     "skip" in bridge && bridge.skip === "not-a-swap", j(bridge));
   /* A router call with no transfer FROM the user — nothing to size the swap on. */
   const noInput = parseSwapInput({ tx: { to: ROUTER, from: WALLET }, transfers, kyberRouter: ROUTER });
   check("a router tx with no user input leg is skipped",
     "skip" in noInput && noInput.skip === "no-input-leg", j(noInput));
+}
+
+console.log("\n— bundled trades (EIP-5792) credit the USER, not the relayer —");
+{
+  const RELAYER = "0x7777777777777777777777777777777777777777";
+  const ENTRYPOINT = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
+  const ACCOUNT = "0x5555555555555555555555555555555555555555";
+  const kyber = (user: string) => [
+    t(USDC, user, ROUTER, 100_000000n),
+    t(EURC, ROUTER, RECEIVER, 174_000n),
+    t(EURC, ROUTER, user, 86_962000n),
+  ];
+  /* EIP-7702, self-sent: the tx goes to the user's own (delegated) address. */
+  const selfSent = parseSwapInput({ tx: { to: WALLET, from: WALLET }, transfers: kyber(WALLET), kyberRouter: ROUTER, feeReceiver: RECEIVER });
+  check("7702 self-sent bundle → credits the user", "wallet" in selfSent && selfSent.wallet === WALLET.toLowerCase(), j(selfSent));
+  /* EIP-7702 via a relayer: from = relayer (sends no tokens), to = the user. */
+  const relayed = parseSwapInput({ tx: { to: WALLET, from: RELAYER }, transfers: kyber(WALLET), kyberRouter: ROUTER, feeReceiver: RECEIVER });
+  check("7702 relayed bundle → credits the user, never the relayer",
+    "wallet" in relayed && relayed.wallet === WALLET.toLowerCase(), j(relayed));
+  /* ERC-4337: bundler → EntryPoint; the account is named by UserOperationEvent. */
+  const senders = userOpSenders([
+    { address: ENTRYPOINT, topics: [USER_OPERATION_EVENT_TOPIC, "0x" + "ab".repeat(32), pad(ACCOUNT), pad(RELAYER)], data: "0x" },
+    transferLog(USDC, ACCOUNT, ROUTER, 1n),
+  ]);
+  check("userOpSenders reads the smart account from UserOperationEvent", senders.join() === ACCOUNT.toLowerCase(), senders.join());
+  const aa = parseSwapInput({ tx: { to: ENTRYPOINT, from: RELAYER }, transfers: kyber(ACCOUNT), kyberRouter: ROUTER, accountSenders: senders, feeReceiver: RECEIVER });
+  check("4337 bundle → credits the smart account", "wallet" in aa && aa.wallet === ACCOUNT.toLowerCase(), j(aa));
+}
+
+console.log("\n— Argus trades (Uniswap v4 via the PoolManager) are swaps too —");
+{
+  const PM = "0x8366a39CC670B4001A1121B8F6A443A643e40951";
+  const UR = "0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1";
+  const GLITCH = "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71";
+  /* BUY: Permit2 pulls the fee user → receiver and the settle user → PoolManager
+     (tx.to is the UniversalRouter, which moves no tokens itself). */
+  const buy = [
+    t(USDC, WALLET, RECEIVER, 20_000n),
+    t(USDC, WALLET, PM, 9_980_000n),
+    t(GLITCH, PM, WALLET, 240_000n * 10n ** 18n),
+  ];
+  const b = parseSwapInput({ tx: { to: UR, from: WALLET }, transfers: buy, kyberRouter: ROUTER, venues: [PM], feeReceiver: RECEIVER });
+  check("an Argus buy is a swap, credited to the trader", "wallet" in b && b.wallet === WALLET.toLowerCase(), j(b));
+  const bv = usdcLegValue({ wallet: WALLET, transfers: buy, usdc: USDC, usdcDecimals: 6 });
+  check("…sized at the whole USDC input (swap + fee = $10)", bv === 10, String(bv));
+  /* SELL: token user → PoolManager; TAKE_PORTION pays the fee and the rest out of it. */
+  const sell = [
+    t(GLITCH, WALLET, PM, 240_000n * 10n ** 18n),
+    t(USDC, PM, RECEIVER, 19_000n),
+    t(USDC, PM, WALLET, 9_481_000n),
+  ];
+  const s = parseSwapInput({ tx: { to: UR, from: WALLET }, transfers: sell, kyberRouter: ROUTER, venues: [PM], feeReceiver: RECEIVER });
+  check("an Argus sell is a swap, credited to the trader", "wallet" in s && s.wallet === WALLET.toLowerCase(), j(s));
+  const sv = usdcLegValue({ wallet: WALLET, transfers: sell, usdc: USDC, usdcDecimals: 6 });
+  check("…sized at the USDC received", sv === 9.481, String(sv));
+  /* Without the PoolManager as a venue it would not count — the old behaviour. */
+  const old = parseSwapInput({ tx: { to: UR, from: WALLET }, transfers: buy, kyberRouter: ROUTER });
+  check("(control) without the Argus venue, the same tx is not-a-swap", "skip" in old && old.skip === "not-a-swap", j(old));
 }
 
 console.log("\n— valueInput —");

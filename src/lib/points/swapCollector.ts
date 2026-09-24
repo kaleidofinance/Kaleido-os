@@ -75,27 +75,80 @@ export type ParsedSwap =
   | { wallet: string; inputToken: string; inputAmount: bigint }
   | { skip: string };
 
+/** keccak256 of ERC-4337's UserOperationEvent — topic[2] is the smart account. */
+export const USER_OPERATION_EVENT_TOPIC =
+  "0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f";
+
+/** The smart accounts a receipt's ERC-4337 UserOperationEvents name. Pure. */
+export function userOpSenders(logs: readonly RawLog[]): string[] {
+  const out: string[] = [];
+  for (const l of logs) {
+    if (norm(l.topics[0]) !== USER_OPERATION_EVENT_TOPIC) continue;
+    const sender = addressFromTopic(l.topics[2]);
+    if (sender) out.push(sender);
+  }
+  return out;
+}
+
 /**
  * Who to credit and for which input, from a swap transaction's transfers — or a
  * reason to skip. Pure.
+ *
+ * NOT keyed on `tx.to` / `tx.from` alone any more, because a trade signed as a
+ * bundle (EIP-5792) is not a direct call from the user to the router:
+ *   • an EIP-7702 account sends the tx to ITSELF (to = the user), sometimes via
+ *     a relayer (from = the relayer);
+ *   • an ERC-4337 smart wallet's tx goes from a bundler to the EntryPoint, and
+ *     the user is the account its UserOperationEvent names.
+ * Keyed that way, every bundled trade was either skipped or credited to the
+ * relayer. So:
+ *
+ * Hole 1 (swap vs. bridge — the fee wallet is shared with the bridge
+ * integrator): it is a swap when tokens moved THROUGH a swap venue we route —
+ * the KyberSwap router, or Argus's v4 PoolManager — or the tx called the router
+ * directly. A bridge's integrator fee arrives from the bridge's contracts and
+ * touches neither.
+ *
+ * Hole 2 (who swapped): the first of tx.from, tx.to, then any 4337 account that
+ * SENT an input leg in this tx. Never a venue or the fee wallet, and a relayer
+ * or the EntryPoint sends no tokens, so neither can be credited.
  */
 export function parseSwapInput(args: {
   tx: SwapTx;
   transfers: TransferLog[];
   kyberRouter: string;
+  /** Other swap venues whose token movements prove a swap (Argus's PoolManager). */
+  venues?: string[];
+  /** ERC-4337 accounts named by the receipt (see userOpSenders). */
+  accountSenders?: string[];
+  /** The fee wallet — never a candidate for credit. */
+  feeReceiver?: string;
 }): ParsedSwap {
   const { tx, transfers, kyberRouter } = args;
+  const venues = new Set([kyberRouter, ...(args.venues ?? [])].map(norm).filter(Boolean));
 
-  // Hole 1: only a call to the KyberSwap router is a swap; a shared-wallet fee
-  // from the bridge (or anything else) is not.
-  if (!tx.to || norm(tx.to) !== norm(kyberRouter)) return { skip: "not-a-swap" };
+  const viaVenue =
+    venues.has(norm(tx.to)) ||
+    transfers.some((t) => venues.has(t.from) || venues.has(t.to));
+  if (!viaVenue) return { skip: "not-a-swap" };
 
-  const wallet = norm(tx.from);
-  if (!wallet) return { skip: "no-sender" };
+  const excluded = new Set([...venues, norm(args.feeReceiver)]);
+  const candidates = [tx.from, tx.to, ...(args.accountSenders ?? [])]
+    .map(norm)
+    .filter((a) => a && !excluded.has(a));
+  if (candidates.length === 0) return { skip: "no-sender" };
 
-  // Hole 2: the size is the user's input leg — the transfer the user themselves
-  // sent. The fee transfer and the output are FROM the router, not the user.
-  const input = transfers.find((t) => t.from === wallet && t.value > 0n);
+  // The size is the user's input leg — the transfer the user themselves sent.
+  // The fee transfer and the output come FROM the router / pool, not the user.
+  let wallet = "";
+  let input: TransferLog | undefined;
+  for (const c of candidates) {
+    input = transfers.find((t) => t.from === c && t.value > 0n);
+    if (input) {
+      wallet = c;
+      break;
+    }
+  }
   if (!input) return { skip: "no-input-leg" };
 
   return { wallet, inputToken: input.token, inputAmount: input.value };

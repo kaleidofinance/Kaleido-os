@@ -574,6 +574,7 @@ async function main() {
         bps: feeReceiver ? 20 : 0,
       },
       swapAmountRaw: feeReceiver ? "9980000" : "10000000",
+      totalInRaw: "10000000",
       to: ROUTER,
       data: "0xdeadbeef",
       value: "0",
@@ -588,37 +589,48 @@ async function main() {
         { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
         { ...deps, argusPlan: okPlan(FEE_RCVR) },
       );
+      /* The fee rides INSIDE the swap transaction (PERMIT2_TRANSFER_FROM in the
+         server's calldata), so the plan has no fee step of its own — nothing
+         for the review to list as a separate send. */
       check(
-        "argus buy assembles approve→permit2Approve→transfer→argusSwap",
-        kinds(r) === "approve,permit2Approve,transfer,argusSwap",
+        "argus buy assembles approve→permit2Approve→argusSwap (no fee step)",
+        kinds(r) === "approve,permit2Approve,argusSwap",
         kinds(r),
       );
       check(
-        "approve authorises Permit2 for the swapped USDC only (net of fee)",
+        "no step sends anything to the fee receiver",
+        (r.ok ? r.build.intents : []).every(
+          (i) => !same((i as { to?: string }).to ?? "", FEE_RCVR),
+        ),
+        kinds(r),
+      );
+      check(
+        "approve authorises Permit2 for the whole input (swap + in-tx fee)",
         same(at(r, 0).spender, PERMIT2) &&
           same(at(r, 0).token, ARC_USDC) &&
-          at(r, 0).amount === "9.98",
+          at(r, 0).amount === "10.0",
         JSON.stringify(at(r, 0)),
       );
       check(
-        "permit2Approve authorises the UniversalRouter",
-        same(at(r, 1).spender, ROUTER) && same(at(r, 1).token, ARC_USDC),
+        "buy approvals are one-time (unlimited to Permit2, 30-day router grant)",
+        at(r, 0).unlimited === true && at(r, 1).unlimited === true,
+        JSON.stringify([at(r, 0), at(r, 1)]),
+      );
+      check(
+        "permit2Approve authorises the UniversalRouter for the whole input",
+        same(at(r, 1).spender, ROUTER) &&
+          same(at(r, 1).token, ARC_USDC) &&
+          at(r, 1).amount === "10.0",
         JSON.stringify(at(r, 1)),
       );
       check(
-        "the fee is a USDC transfer to the server-chosen receiver",
-        same(at(r, 2).to, FEE_RCVR) &&
-          at(r, 2).amount === "0.02" &&
-          same(at(r, 2).token, ARC_USDC),
+        "argusSwap carries the server's calldata unrebuilt, spending the whole input",
+        same(at(r, 2).to, ROUTER) &&
+          at(r, 2).data === "0xdeadbeef" &&
+          at(r, 2).amountIn === "10.0" &&
+          at(r, 2).amountOutMin === "1000.0" &&
+          same(at(r, 2).symbolIn, "usdc"),
         JSON.stringify(at(r, 2)),
-      );
-      check(
-        "argusSwap carries the server's calldata unrebuilt",
-        same(at(r, 3).to, ROUTER) &&
-          at(r, 3).data === "0xdeadbeef" &&
-          at(r, 3).amountOutMin === "1000.0" &&
-          same(at(r, 3).symbolIn, "usdc"),
-        JSON.stringify(at(r, 3)),
       );
     }
 
@@ -630,7 +642,7 @@ async function main() {
         { ...deps, argusPlan: okPlan(null) },
       );
       check(
-        "no fee receiver → no transfer leg",
+        "no fee receiver → the same three steps",
         kinds(r) === "approve,permit2Approve,argusSwap" &&
           at(r, 0).amount === "10.0",
         kinds(r),
@@ -732,6 +744,11 @@ async function main() {
           at(r, 2).amountOut === "19.96" &&
           at(r, 2).amountOutMin === "19.5",
         JSON.stringify(at(r, 2)),
+      );
+      check(
+        "sell approvals are one-time (unlimited to Permit2, 30-day router grant)",
+        at(r, 0).unlimited === true && at(r, 1).unlimited === true,
+        JSON.stringify([at(r, 0), at(r, 1)]),
       );
       check(
         "sell summary reads as a sell",
@@ -3710,6 +3727,50 @@ async function main() {
       deps,
     );
     check("an unreadable balance refuses", !r.ok, JSON.stringify(r));
+  }
+
+  console.log("a relative spend of Arc's gas token keeps a reserve");
+  /* On Arc USDC IS the gas token, so the token card's "Buy 100%" must not spend
+     the fee money for its own approvals and swap. */
+  {
+    const ARC = 5042;
+    const usdcArc: IToken = {
+      address: "0x3600000000000000000000000000000000000000",
+      name: "USDC", symbol: "USDC", decimals: 6, chainId: ARC,
+      tags: ["stablecoin", "native-alias"],
+    };
+    const launch: IToken = {
+      address: "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71",
+      name: "0x08Ad…2A71", symbol: "0x08Ad…2A71", decimals: 18, chainId: ARC,
+      verified: false, tags: ["argus"],
+    };
+    const spent = async (num: number, den: number, balance: bigint) => {
+      const seen: string[] = [];
+      const { deps } = fakeDeps({ chainId: ARC, tokenBalance: async () => balance });
+      const r = await build(
+        { kind: "swap", relative: { num, den }, tokenIn: usdcArc, tokenOut: launch },
+        {
+          ...deps,
+          argusPlan: async (req) => {
+            seen.push(req.amountInRaw);
+            return { argus: false };
+          },
+        },
+      );
+      return { r, raw: seen[0] };
+    };
+    const all = await spent(100, 100, 10_000_000n);
+    check("100% of 10 USDC spends 9.75 (0.25 kept for gas)", all.raw === "9750000", String(all.raw));
+    const half = await spent(50, 100, 10_000_000n);
+    check("50% of 10 USDC is untouched by the reserve", half.raw === "5000000", String(half.raw));
+    const most = await spent(99, 100, 10_000_000n);
+    check("99% that would dip into the reserve is trimmed to it", most.raw === "9750000", String(most.raw));
+    const dust = await spent(100, 100, 200_000n);
+    check(
+      "a balance under the reserve refuses, naming the fee",
+      !dust.r.ok && /network fee/i.test(dust.r.error ?? "") && dust.raw === undefined,
+      JSON.stringify(dust.r),
+    );
   }
 
   console.log(`\n${pass} passed, ${fail} failed\n`);

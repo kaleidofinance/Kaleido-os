@@ -17,7 +17,7 @@ import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
-import { ARGUS_CHAIN_ID, ARGUS_V4, ARC_USDC } from "@/lib/argus/addresses";
+import { ARGUS_CHAIN_ID, ARGUS_V4, ARC_USDC, PERMIT2 } from "@/lib/argus/addresses";
 import {
   isKnownCctpTarget,
   isKnownCctpTransmitter,
@@ -377,6 +377,72 @@ function knownToken(
   return mirror
     ? { ok: true, symbol: mirror.symbol, decimals: mirror.decimals }
     : { ok: false };
+}
+
+/**
+ * A token a TRADE may name: a verified one (in the registry, with its symbol and
+ * decimals), or any well-formed address as an UNVERIFIED one.
+ *
+ * The registry is the list of tokens Kaleido has verified — it is not a
+ * whitelist of what a user may trade. Users trade tokens we have never listed (an
+ * Argus launch pasted by address, a token they added themselves), and refusing
+ * them here refused the trade, not the risk. The risk in a trade step is who
+ * gets the allowance and which contract is called, and those stay pinned
+ * (spenderReasons / routerReasons / the Argus router constant) whatever the
+ * token. What an unverified token loses is a price: its leg can't carry the USD
+ * cap, so a trade must have at least one verified side to be priced by — see
+ * `tradePriced`.
+ */
+function tradeToken(
+  chainId: number | undefined,
+  address: string,
+): { ok: boolean; verified: boolean; symbol?: string; decimals?: number } {
+  const t = knownToken(chainId, address);
+  if (t.ok) return { ...t, verified: true };
+  return { ok: ethers.isAddress(address), verified: false };
+}
+
+/**
+ * Price a trade by its verified side so the per-action USD cap still binds: the
+ * input when it is verified, else the output's floor (`amountOutMin` — a lower
+ * bound on what the trade is worth). Neither side verified means nothing to
+ * price it by, which is a block rather than an unpriced pass.
+ */
+function tradePriced(
+  inTok: { verified: boolean; symbol?: string },
+  outTok: { verified: boolean; symbol?: string },
+  amountIn: number | null,
+  minOut: number | null,
+): {
+  reasons: string[];
+  notes: string[];
+  priced?: { symbol: string; amount: string };
+} {
+  const notes: string[] = [];
+  if (!inTok.verified || !outTok.verified)
+    notes.push(
+      "one side of this trade is an unverified token (not in Kaleido's verified list) — its contract is not vetted; the trade is priced by the verified side",
+    );
+  if (inTok.verified && amountIn !== null && amountIn > 0)
+    return {
+      reasons: [],
+      notes,
+      priced: { symbol: inTok.symbol!, amount: String(amountIn) },
+    };
+  if (outTok.verified && minOut !== null && minOut > 0)
+    return {
+      reasons: [],
+      notes,
+      priced: { symbol: outTok.symbol!, amount: String(minOut) },
+    };
+  if (!inTok.verified && !outTok.verified)
+    return {
+      reasons: [
+        "neither side of this trade is a verified token, so it can't be priced against your per-action limit",
+      ],
+      notes,
+    };
+  return { reasons: [], notes };
 }
 
 /**
@@ -960,6 +1026,21 @@ function spenderReasons(
       note: "this approves a bridge provider's router, not a Kaleido contract — it is the one outside address this app authorises, and only a bridge step should be pairing it",
     };
 
+  /* An Argus trade's first step approves the input token to Uniswap's canonical
+     Permit2, which no Kaleido deployment contains. Admitted on Arc only, and
+     only as a hop: Permit2 moves nothing by itself — the `permit2Approve` rule
+     pins the one spender it may then authorise to Argus's UniversalRouter, and
+     the paired `argusSwap` carries the notional and the USD cap. Without this
+     every Argus buy and sell failed closed at its very first step. */
+  if (
+    chainId === ARGUS_CHAIN_ID &&
+    spender.toLowerCase() === PERMIT2.toLowerCase()
+  )
+    return {
+      reasons: [],
+      note: "this approves Uniswap's Permit2, the allowance hub an Argus v4 swap pulls from — not a Kaleido contract; the next step can only hand that allowance to the Argus UniversalRouter",
+    };
+
   if (ours.size === 0)
     return {
       reasons: [
@@ -1108,13 +1189,13 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const reasons: string[] = [];
     const tokenIn = str(s.tokenIn);
     const tokenOut = str(s.tokenOut);
-    const inTok = knownToken(chainId, tokenIn);
-    const outTok = knownToken(chainId, tokenOut);
+    const inTok = tradeToken(chainId, tokenIn);
+    const outTok = tradeToken(chainId, tokenOut);
 
     if (!inTok.ok)
-      reasons.push(`unrecognised input token ${tokenIn || "(none)"}`);
+      reasons.push(`input is not a token address: ${tokenIn || "(none)"}`);
     if (!outTok.ok)
-      reasons.push(`unrecognised output token ${tokenOut || "(none)"}`);
+      reasons.push(`output is not a token address: ${tokenOut || "(none)"}`);
     if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
       reasons.push("input and output token are the same");
 
@@ -1157,18 +1238,20 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       ...nativeFlagReasons(s, chainId, { in: tokenIn, out: tokenOut }),
     );
 
+    const price = tradePriced(inTok, outTok, amountIn, minOut);
+    reasons.push(...price.reasons);
+
     return {
       reasons,
-      ...(inTok.ok && amountIn !== null && amountIn > 0
-        ? { priced: { symbol: inTok.symbol!, amount: String(amountIn) } }
-        : {}),
+      ...(price.notes.length > 0 ? { notes: price.notes } : {}),
+      ...(price.priced ? { priced: price.priced } : {}),
       /* Handed up for the slippage check, which needs both sides priced and so
          cannot run here. Only when the step is otherwise sound — checking the
          rate on a malformed swap would report a second failure caused by the
          first. */
       ...(reasons.length === 0 &&
-      inTok.ok &&
-      outTok.ok &&
+      inTok.verified &&
+      outTok.verified &&
       amountIn !== null &&
       minOut !== null
         ? {
@@ -1376,8 +1459,19 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
   approve: (s, chainId) => {
     const reasons: string[] = [];
     const token = str(s.token);
-    const tok = knownToken(chainId, token);
-    if (!tok.ok) reasons.push(`unrecognised token ${token || "(none)"}`);
+    /* Any token the user holds may be approved — an unverified one (not in the
+       registry) included, which is how a sell of a token we never listed gets
+       its allowance. The token is the user's own; what an approve can get wrong
+       is the SPENDER, pinned below. An unverified approve is unpriced: the trade
+       it precedes carries the USD cap (see tradePriced). */
+    const tok = tradeToken(chainId, token);
+    if (!tok.ok) reasons.push(`not a token address: ${token || "(none)"}`);
+    const unverifiedNote =
+      tok.ok && !tok.verified
+        ? [
+            "this approves an unverified token (not in Kaleido's verified list) — only the spender is vetted",
+          ]
+        : [];
 
     /* The spender is the address that gains the right to move the user's funds,
        so it is pinned to the set of contracts THIS chain deploys rather than
@@ -1398,15 +1492,30 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const spender = spenderReasons(s, chainId);
     reasons.push(...spender.reasons);
 
+    /* An UNLIMITED grant is only ever to Permit2 on Arc. Permit2 is a gate, not
+       a spender: it moves nothing unless a separate, expiring Permit2 allowance
+       names a router (the `permit2Approve` rule caps that at ~30 days and pins
+       it to Argus's router). An open-ended allowance to anything else is a
+       standing right to drain the token, and no plan here needs one. */
+    if (
+      s.unlimited === true &&
+      !(
+        chainId === ARGUS_CHAIN_ID &&
+        str(s.spender).toLowerCase() === PERMIT2.toLowerCase()
+      )
+    )
+      reasons.push("an unlimited approval is only granted to Permit2 on Arc");
+
     const amount = num(s.amount);
     if (amount === null || amount <= 0)
       reasons.push("approval amount is missing or not positive");
     if (num(s.decimals) === null) reasons.push("token decimals are missing");
 
+    const notes = [...(spender.note ? [spender.note] : []), ...unverifiedNote];
     return {
       reasons,
-      ...(spender.note ? { notes: [spender.note] } : {}),
-      ...(tok.ok && amount !== null && amount > 0
+      ...(notes.length > 0 ? { notes } : {}),
+      ...(tok.verified && amount !== null && amount > 0
         ? { priced: { symbol: tok.symbol!, amount: String(amount) } }
         : {}),
     };
@@ -1729,12 +1838,12 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const reasons: string[] = [];
     const tokenIn = str(s.tokenIn);
     const tokenOut = str(s.tokenOut);
-    const inTok = knownToken(chainId, tokenIn);
-    const outTok = knownToken(chainId, tokenOut);
+    const inTok = tradeToken(chainId, tokenIn);
+    const outTok = tradeToken(chainId, tokenOut);
     if (!inTok.ok)
-      reasons.push(`unrecognised input token ${tokenIn || "(none)"}`);
+      reasons.push(`input is not a token address: ${tokenIn || "(none)"}`);
     if (!outTok.ok)
-      reasons.push(`unrecognised output token ${tokenOut || "(none)"}`);
+      reasons.push(`output is not a token address: ${tokenOut || "(none)"}`);
     if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
       reasons.push("input and output token are the same");
 
@@ -1744,7 +1853,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
 
     const decimals = num(s.decimalsIn);
     if (decimals === null) reasons.push("input token decimals are missing");
-    else if (inTok.ok && decimals !== inTok.decimals)
+    else if (inTok.verified && decimals !== inTok.decimals)
       reasons.push(
         `decimals say ${decimals} but ${inTok.symbol} has ${inTok.decimals}`,
       );
@@ -1767,10 +1876,17 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     if (num(s.value) !== 0)
       reasons.push("an aggregator swap must not attach native value");
 
+    const price = tradePriced(inTok, outTok, amount, num(s.amountOutMin));
+    reasons.push(...price.reasons);
     const notes = [
-      "the aggregator's calldata is not parsed here — the router enforces the output floor, and the per-action USD cap bounds the input",
+      "the aggregator's calldata is not parsed here — the router enforces the output floor, and the per-action USD cap bounds the trade",
+      ...price.notes,
     ];
-    return { reasons, notes, ...priceIf(inTok.symbol, amount) };
+    return {
+      reasons,
+      notes,
+      ...(price.priced ? { priced: price.priced } : {}),
+    };
   },
 
   /* An Argus-launchpad swap: direct v4 through the UniversalRouter. Argus tokens
@@ -1829,6 +1945,15 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       reasons.push(
         "Permit2 would authorise a spender that is not the Argus UniversalRouter",
       );
+    /* The expiry is what bounds this grant (it may be the uint160 maximum — see
+       `unlimited`), so it must be real and short: in the future, and no more
+       than ~30 days out. */
+    const expiration = num(s.expiration);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (expiration === null || expiration <= nowSec)
+      reasons.push("the Permit2 authorisation has no future expiry");
+    else if (expiration > nowSec + 31 * 24 * 60 * 60)
+      reasons.push("the Permit2 authorisation lasts longer than 30 days");
     return {
       reasons,
       notes: [
