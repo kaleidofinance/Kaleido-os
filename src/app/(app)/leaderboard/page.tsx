@@ -45,7 +45,6 @@ import type {
   LeaderboardPayload,
   LeaderboardRow,
 } from "@/lib/points/leaderboard";
-import RewardsPanel, { PendingPoints } from "./RewardsPanel";
 import s from "./leaderboard.module.css";
 
 /** Enough of an address to recognise, on a page that is a list of them. */
@@ -221,8 +220,7 @@ export default function LeaderboardPage() {
             season it is scoped to. */}
         {/* One card: the board headline figures + the connected wallet's own
             standing, merged from two strips into one. */}
-        <div className={s.contentGrid}>
-          <div className={s.boardColumn}>
+        <div className={s.boardColumn}>
             <StatStrip>
               <Stat label="Wallets ranked" value={qty(payload?.participants)} />
               <Stat label="Your standing" value={myStanding} />
@@ -232,7 +230,6 @@ export default function LeaderboardPage() {
                 icon="/email-logo.png"
               />
             </StatStrip>
-            <PendingPoints />
             {myNote ? <p className={s.stripNote}>{myNote}</p> : null}
 
             <div className={`${s.table} ${gridClass}`}>
@@ -359,10 +356,6 @@ export default function LeaderboardPage() {
               </div>
             ) : null}
           </div>
-          <aside className={s.rewardRail}>
-            <RewardsPanel />
-          </aside>
-        </div>
       </main>
     </>
   );

@@ -1,12 +1,12 @@
-import "../(app)/tokens.css";
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
 
 /**
- * The waitlist lives at the root (not in the (app) or (marketing) groups), so it
- * gets the root layout's ClientProviders (thirdweb) but neither group's chrome.
- * It only needs the design tokens and the .kaleido-v2 scope the rest of the app
- * styles against.
+ * /rewards is the in-app home for the Season 1 task program (moved out of the
+ * standalone /waitlist page, 2026-09-24). It lives in the (app) group, so the
+ * group layout already provides the `.kaleido-v2` scope + tokens — this layout
+ * only carries the OG/Twitter card, because referral links (now /rewards?ref=…)
+ * are the whole viral loop and must unfurl richly.
  */
 const OG_DESC =
   "Kaleido is live on Arc. Claim Season 1 welcome points, complete launch tasks, refer friends, and keep earning in the ongoing rewards program.";
@@ -14,12 +14,11 @@ const OG_DESC =
 export const metadata: Metadata = {
   title: "Kaleido Season 1 Rewards · Arc",
   description: OG_DESC,
-  // Referral links are the whole viral loop, so they must unfurl a rich card.
   openGraph: {
     type: "website",
     title: "Kaleido Season 1 rewards — live on Arc",
     description: OG_DESC,
-    url: "https://kaleidofi.xyz/waitlist",
+    url: "https://kaleidofi.xyz/rewards",
     images: [
       {
         url: "https://kaleidofi.xyz/kaleido-og.png",
@@ -37,6 +36,6 @@ export const metadata: Metadata = {
   },
 };
 
-export default function WaitlistLayout({ children }: { children: ReactNode }) {
-  return <div className="kaleido-v2">{children}</div>;
+export default function RewardsLayout({ children }: { children: ReactNode }) {
+  return <>{children}</>;
 }
