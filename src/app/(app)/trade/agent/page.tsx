@@ -43,6 +43,7 @@ import {
   isPersonalHealthQuestion,
 } from "@/lib/v2/cards/portfolio";
 import { receiptFromSettled } from "@/lib/v2/cards/receipt";
+import { readLifiPending } from "@/lib/bridge/lifiPending";
 import {
   asksAboutLastResult,
   followThroughReply,
@@ -729,6 +730,35 @@ export default function AgentPage() {
   const send = async (text: string) => {
     const content = text.trim();
     if (!content || busy) return;
+
+    /* Bridge status is a live route question, not a generic model prompt.
+       Read the persisted LI.FI route and ask the status proxy so Luca never
+       calls a source-chain confirmation the same thing as destination arrival. */
+    if (/\b(bridge|route|transfer)\b/i.test(content) &&
+        /\b(status|complete|completed|arrived|landed|finish|finished|where)\b/i.test(content) &&
+        address) {
+      const routes = readLifiPending(address);
+      setMessages((m) => [...m, { role: "user", text: content }]);
+      setInput("");
+      if (routes.length === 0) {
+        setMessages((m) => [...m, { role: "assistant", text: "I don't have an active LI.FI route saved for this wallet. If you bridged elsewhere, share the source transaction hash and I can check it.", via: "local" }]);
+        return;
+      }
+      const route = routes[0];
+      try {
+        const response = await fetch(`/api/bridge/status?tx=${route.txHash}&from=${route.sourceChainId}&to=${route.destinationChainId}`, { cache: "no-store" });
+        const data = (await response.json()) as { status?: string; destinationTxHash?: string | null };
+        const status = data.status === "DONE"
+          ? `completed — your ${route.amount} ${route.symbol} arrived on ${route.destinationChainName}`
+          : data.status === "FAILED"
+            ? `failed on the route to ${route.destinationChainName}; the source transaction was confirmed, but the destination leg needs attention`
+            : `still processing after the source transaction; it has not yet arrived on ${route.destinationChainName}`;
+        setMessages((m) => [...m, { role: "assistant", text: `Your LI.FI bridge is ${status}.`, via: "local" }]);
+      } catch {
+        setMessages((m) => [...m, { role: "assistant", text: `The source transaction is recorded, but I couldn't read LI.FI's destination status right now. The route to ${route.destinationChainName} remains pending; try again shortly.`, via: "local" }]);
+      }
+      return;
+    }
 
     /* A receipt is structured context, not a model question. Keep result
        follow-through local so Luca reports the actual hash it observed rather
