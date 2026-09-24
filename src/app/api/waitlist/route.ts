@@ -3,13 +3,20 @@ import { randomInt } from "node:crypto";
 import { verifyMessage } from "ethers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
-import { transactionTaskPointsFor } from "@/lib/waitlist/transactionTasks";
 import { getClosedXTasks } from "@/lib/waitlist/xCap";
 import {
   swapVolumeStanding,
   walletSwapVolumeUsd,
 } from "@/lib/waitlist/swapVolume";
-import type { WaitlistStatus } from "@/lib/waitlist/status";
+import type { Season1Balance, WaitlistStatus } from "@/lib/waitlist/status";
+import {
+  PER_REFERRAL,
+  X_HOLD_MS,
+  X_TASK_POINTS,
+  eligibleTaskPoints,
+  topUpOwed,
+  topUpRow,
+} from "@/lib/waitlist/eligible";
 
 /**
  * The Arc waitlist API.
@@ -26,22 +33,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const WELCOME = 100;
-const PER_REFERRAL = 50;
-// Per-task kPoint: comment is 50, the rest 100. Must match X_TASK_POINTS in
-// api/waitlist/activate/route.ts (both credit the same set of tasks).
-const X_TASK_POINTS = {
-  linked: 100,
-  followed: 100,
-  retweeted: 100,
-  commented: 50,
-  launch: 100,
-  // Legacy Bitget completions remain part of historical balances, but the task
-  // is no longer accepted or shown to new users.
-  bitget: 100,
-} as const;
-// X-task kPoint is held this long before it counts toward the balance — a nudge
-// to actually do the task, since the tasks are attested, not API-verified.
-const X_HOLD_MS = 5 * 60 * 60 * 1000;
+// PER_REFERRAL, X_TASK_POINTS and X_HOLD_MS come from lib/waitlist/eligible —
+// the one task-points table the card, the activation credit and the background
+// sync all read, so the card and the leaderboard cannot differ by definition.
 
 // Referral codes: 8 chars from a lowercase, unambiguous base32 alphabet (no
 // 0/1/l/o) — short, case-insensitively shareable, and stored lowercase to match
@@ -106,23 +100,54 @@ async function reconcileWaitlistPoints(
   );
   // Bulk credits can predate activated_at. Once a wallet already has a
   // waitlist ledger row, reconcile later task/referral deltas even if that
-  // legacy flag was never stamped.
-  if (!activated && credited <= 0) return;
-  const delta = eligible - credited;
+  // legacy flag was never stamped. Same rule the background sync applies.
+  const delta = topUpOwed({ eligible, credited, activated });
   if (delta <= 0) return;
 
-  await admin.from("point_actions").insert({
-    wallet,
-    source_slug: "waitlist",
-    season: 1,
-    tx_hash: `waitlist:reconcile:${wallet}:${eligible}`,
-    chain_id: 5042,
-    usd_value: 0,
-    multiplier_applied: 1.0,
-    points: delta,
-    is_agent_initiated: false,
-    occurred_at: new Date().toISOString(),
-  });
+  await admin
+    .from("point_actions")
+    .insert(topUpRow(wallet, eligible, delta, new Date().toISOString()));
+}
+
+/**
+ * The wallet's Season 1 balance — the SAME number the leaderboard shows
+ * (point_balances.total, which the leaderboard view ranks on) — split by where
+ * it came from. Read with the service role, after the reconcile above, so it
+ * already includes any top-up that call just wrote and never lags a replica.
+ * Null when the wallet has no Season 1 balance yet (not activated).
+ */
+async function season1Balance(wallet: string): Promise<Season1Balance | null> {
+  const admin = supabaseAdmin!;
+  const [{ data: bal }, { data: acts }] = await Promise.all([
+    admin
+      .from("point_balances")
+      .select("total, time_points")
+      .eq("wallet", wallet)
+      .eq("season", 1)
+      .maybeSingle(),
+    admin
+      .from("point_actions")
+      .select("source_slug, points")
+      .eq("wallet", wallet)
+      .eq("season", 1)
+      .in("source_slug", ["waitlist", "swap"]),
+  ]);
+  if (!bal) return null;
+  const sum = (slug: string) =>
+    (acts ?? [])
+      .filter((a) => a.source_slug === slug)
+      .reduce((s, a) => s + Number(a.points ?? 0), 0);
+  const total = Number(bal.total ?? 0);
+  const tasks = sum("waitlist");
+  const trading = sum("swap");
+  const liquidity = Number(bal.time_points ?? 0);
+  return {
+    total,
+    tasks,
+    trading,
+    liquidity,
+    other: Math.max(0, total - tasks - trading - liquidity),
+  };
 }
 
 // Core columns, always present. X-task and transaction columns were added by
@@ -197,38 +222,34 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
     bitget: xTaskState(row.x_bitget_at as string | null, now),
   };
   // Each task's kPoint comes from X_TASK_POINTS by key, so comment (50) counts
-  // differently from the 100-point tasks. countedX is what's cleared its hold;
-  // heldPoints is still counting down.
+  // differently from the 100-point tasks. heldPoints is what is still counting
+  // down its hold (the cleared part is inside eligibleTaskPoints).
   const xEntries = Object.entries(xTasks) as [
     keyof typeof X_TASK_POINTS,
     (typeof xTasks)["linked"],
   ][];
-  const countedX = xEntries.reduce(
-    (sum, [k, s]) => sum + (s.counted ? X_TASK_POINTS[k] : 0),
-    0,
-  );
   const heldPoints = xEntries.reduce(
     (sum, [k, s]) => sum + (s.done && !s.counted ? X_TASK_POINTS[k] : 0),
     0,
   );
 
   const welcomePoints = Number(row.welcome_points);
-  const transactionPoints = transactionTaskPointsFor(row);
   // Swap-volume milestones, derived live from the wallet's credited `swap`
   // volume. Folded into `eligible` so reconcileWaitlistPoints tops the kPoint up
   // forward-only as the wallet trades higher — no stored column (see swapVolume).
   const swapVolume = swapVolumeStanding(await walletSwapVolumeUsd(admin, wallet));
-  const eligiblePoints =
-    welcomePoints +
-    referralPoints +
-    countedX +
-    transactionPoints +
-    swapVolume.points;
+  const eligiblePoints = eligibleTaskPoints({
+    row: row as Parameters<typeof eligibleTaskPoints>[0]["row"],
+    referrals,
+    swapVolumeUsd: swapVolume.volumeUsd,
+    now,
+  });
   await reconcileWaitlistPoints(
     wallet,
     eligiblePoints,
     Boolean(row.activated_at),
   );
+  const season1 = await season1Balance(wallet);
   return {
     wallet,
     refCode: row.ref_code as string,
@@ -244,6 +265,7 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
     xTasks,
     swapVolume,
     activated: Boolean(row.activated_at),
+    season1,
     transactionTasks: {
       // arcMainnet was retired 2026-09-23 (removed from the UI); wallets that
       // already earned it keep the points via transactionTaskPointsFor.
