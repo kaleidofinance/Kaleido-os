@@ -44,6 +44,7 @@ import { receiptFromSettled } from "@/lib/v2/cards/receipt";
 import {
   asksAboutLastResult,
   followThroughReply,
+  reconcileFollowThrough,
   reviveFollowThrough,
   type FollowThrough,
 } from "@/lib/v2/agentFollowThrough";
@@ -731,10 +732,19 @@ export default function AgentPage() {
        follow-through local so Luca reports the actual hash it observed rather
        than guessing from the previous prose. */
     if (lastOutcome && asksAboutLastResult(content)) {
+      /* Load the RPC adapter only for an explicit status check. Keeping this
+         browser-only path lazy avoids constructing the read provider while the
+         agent page is being prerendered. */
+      const { providerForChain } = await import("@/config/provider");
+      const provider = providerForChain(chainId);
+      const currentOutcome = provider
+        ? await reconcileFollowThrough(lastOutcome, async (hash) => provider.getTransactionReceipt(hash))
+        : lastOutcome;
+      setLastOutcome(currentOutcome);
       setMessages((m) => [
         ...m,
         { role: "user", text: content },
-        { role: "assistant", text: followThroughReply(lastOutcome), via: "local" },
+        { role: "assistant", text: followThroughReply(currentOutcome), via: "local" },
       ]);
       setInput("");
       return;
