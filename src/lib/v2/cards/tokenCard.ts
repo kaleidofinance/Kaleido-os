@@ -6,7 +6,7 @@ import type { AgentCard, CardTone, NoticeCard, TokenCard } from "./types";
  * The Telegram-bot loop, as an agent surface: a user drops a contract (or a
  * chart / explorer link to one) into Luca and gets a live card — price, market
  * cap, the launch's taxes and status — with one-tap Buy / Sell presets. Each
- * button SENDS a pre-composed command (`buy 0x… with 5 usdc`) that runs the same
+ * button SENDS a pre-composed command (`buy 0x… with 25% of my usdc`) that runs the same
  * grammar → plan → audit → review → signature path as a typed one, so a tap
  * saves typing, never a decision. See TokenCard in types.ts for why this kind
  * may act at all (it is local-only, wire-forbidden).
@@ -40,9 +40,12 @@ export interface TokenFacts {
   isQuote?: boolean;
 }
 
-/** Default one-tap sizes. USDC for buys; share of balance for sells. */
-export const DEFAULT_BUY_USDC = [1, 5, 25] as const;
-export const DEFAULT_SELL_PCT = [25, 50, 100] as const;
+/** Default one-tap sizes, both as a share of balance: buys spend that share of
+ *  the wallet's USDC, sells that share of the token. The planner resolves the
+ *  share against the live balance at build time (and keeps a gas reserve back
+ *  on Arc, where USDC is the gas token — see gasTokenReserve in build.ts). */
+export const DEFAULT_BUY_PCT = [10, 25, 50, 75, 100] as const;
+export const DEFAULT_SELL_PCT = [10, 25, 50, 75, 100] as const;
 
 const ADDRESS = /0x[0-9a-fA-F]{40}/g;
 const BARE_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -143,15 +146,14 @@ export function tokenCardFrom(
   /* An Argus launch is traded by address (the grammar resolves it on Arc); a
      listed token by its symbol, so it takes the same route a typed command does. */
   const ref = facts.source === "argus" ? facts.address : symbol;
-  const buys = (presets.buys ?? DEFAULT_BUY_USDC).map((n) => ({
-    label: `Buy ${n}`,
-    command: `buy ${ref} with ${n} usdc`,
+  const buys = (presets.buys ?? DEFAULT_BUY_PCT).map((pct) => ({
+    label: `${pct}%`,
+    command: `buy ${ref} with ${pct}% of my usdc`,
     ...(facts.snipeActive ? { disabled: true } : {}),
   }));
   const sells = (presets.sells ?? DEFAULT_SELL_PCT).map((pct) => ({
-    label: pct >= 100 ? "Sell all" : `Sell ${pct}%`,
-    command:
-      pct >= 100 ? `sell all ${ref} for usdc` : `sell ${pct}% of ${ref} for usdc`,
+    label: `${pct}%`,
+    command: `sell ${pct}% of ${ref} for usdc`,
   }));
 
   const rows: TokenCard["rows"] = [];

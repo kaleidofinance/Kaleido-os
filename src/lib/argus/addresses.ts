@@ -27,6 +27,13 @@ export const ARGUS_V4 = {
 export const ARC_USDC = "0x3600000000000000000000000000000000000000";
 export const ARC_USDC_DECIMALS = 6;
 
+/** Uniswap's canonical Permit2 — the allowance hub the UniversalRouter pulls a
+ *  v4 swap's input from. Same address on every chain; on Arc it is the ERC20
+ *  spender of every Argus buy and sell (approve token → Permit2, then Permit2 →
+ *  router). Lives here, not in swap.ts, so the auditor can pin it without
+ *  importing the calldata builder. */
+export const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+
 /**
  * Every Argus Portal (launch factory), newest first. A newer Portal never
  * replaces earlier ones' tokens, so discovery MUST index them all. `words` is

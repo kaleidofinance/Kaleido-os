@@ -1,5 +1,5 @@
 import { AbiCoder, Interface, getAddress } from "ethers";
-import { ARGUS_V4, ARGUS_POOL_FEE, ARGUS_TICK_SPACING, argusEnabled } from "./addresses";
+import { ARGUS_V4, ARGUS_POOL_FEE, ARGUS_TICK_SPACING, PERMIT2, argusEnabled } from "./addresses";
 import { swapDirection } from "./poolMath";
 import type { ArgusLaunch } from "./launch";
 
@@ -36,8 +36,8 @@ const ACTION_TAKE_ALL = "0f";
 const ACTION_TAKE_PORTION = "10";
 const COMMAND_V4_SWAP = "0x10";
 
-/** Canonical Permit2 (same address across chains). Verify on Arc before enabling. */
-export const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+/** Canonical Permit2 — defined in ./addresses, re-exported for existing callers. */
+export { PERMIT2 };
 
 const routerIface = new Interface([
   "function execute(bytes commands, bytes[] inputs, uint256 deadline)",

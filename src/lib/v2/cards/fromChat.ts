@@ -58,6 +58,9 @@ const MAX_CARDS = 3;
 /** Rows in one stats/balance card. Beyond this it wants to be a page. */
 const MAX_ROWS = 8;
 const MAX_ACTIONS = 4;
+/** Presets per side on a token card (10/25/50/75/100%). Local-only, so this is
+ *  a layout ceiling, not a wire one. */
+const MAX_TOKEN_BUTTONS = 6;
 
 const LIMITS = {
   label: 40,
@@ -272,7 +275,7 @@ function validate(raw: unknown): AgentCard | null {
       const buttons = (raw: unknown, allowDisabled: boolean) => {
         const out: { label: string; command: string; disabled?: boolean }[] = [];
         if (!Array.isArray(raw)) return out;
-        for (const b of raw.slice(0, MAX_ACTIONS)) {
+        for (const b of raw.slice(0, MAX_TOKEN_BUTTONS)) {
           if (!b || typeof b !== "object") continue;
           const item = b as Record<string, unknown>;
           const label = str(item.label, LIMITS.label);

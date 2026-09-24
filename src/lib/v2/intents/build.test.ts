@@ -3712,6 +3712,50 @@ async function main() {
     check("an unreadable balance refuses", !r.ok, JSON.stringify(r));
   }
 
+  console.log("a relative spend of Arc's gas token keeps a reserve");
+  /* On Arc USDC IS the gas token, so the token card's "Buy 100%" must not spend
+     the fee money for its own approvals and swap. */
+  {
+    const ARC = 5042;
+    const usdcArc: IToken = {
+      address: "0x3600000000000000000000000000000000000000",
+      name: "USDC", symbol: "USDC", decimals: 6, chainId: ARC,
+      tags: ["stablecoin", "native-alias"],
+    };
+    const launch: IToken = {
+      address: "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71",
+      name: "0x08Ad…2A71", symbol: "0x08Ad…2A71", decimals: 18, chainId: ARC,
+      verified: false, tags: ["argus"],
+    };
+    const spent = async (num: number, den: number, balance: bigint) => {
+      const seen: string[] = [];
+      const { deps } = fakeDeps({ chainId: ARC, tokenBalance: async () => balance });
+      const r = await build(
+        { kind: "swap", relative: { num, den }, tokenIn: usdcArc, tokenOut: launch },
+        {
+          ...deps,
+          argusPlan: async (req) => {
+            seen.push(req.amountInRaw);
+            return { argus: false };
+          },
+        },
+      );
+      return { r, raw: seen[0] };
+    };
+    const all = await spent(100, 100, 10_000_000n);
+    check("100% of 10 USDC spends 9.75 (0.25 kept for gas)", all.raw === "9750000", String(all.raw));
+    const half = await spent(50, 100, 10_000_000n);
+    check("50% of 10 USDC is untouched by the reserve", half.raw === "5000000", String(half.raw));
+    const most = await spent(99, 100, 10_000_000n);
+    check("99% that would dip into the reserve is trimmed to it", most.raw === "9750000", String(most.raw));
+    const dust = await spent(100, 100, 200_000n);
+    check(
+      "a balance under the reserve refuses, naming the fee",
+      !dust.r.ok && /network fee/i.test(dust.r.error ?? "") && dust.raw === undefined,
+      JSON.stringify(dust.r),
+    );
+  }
+
   console.log(`\n${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exit(1);
 }

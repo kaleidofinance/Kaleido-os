@@ -331,27 +331,42 @@ export default function AgentCards({ cards, onPrompt, onSend, historical }: Prop
                   </div>
                 )}
                 {card.rows.length > 0 && (
-                  <div className={s.rows}>
-                    {card.rows.map((row, j) => (
-                      <div key={j} className={s.row}>
-                        <span className={s.rLabel}>{row.label}</span>
-                        <span
-                          className={`${s.rValue} ${s[row.tone ?? "neutral"]} tabular`}
-                        >
-                          {row.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  /* One header row of labels over one row of values — the
+                     facts read across at a glance, like a ticker strip. */
+                  <table className={s.tokTable}>
+                    <thead>
+                      <tr>
+                        {card.rows.map((row, j) => (
+                          <th key={j} scope="col">
+                            {row.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        {card.rows.map((row, j) => (
+                          <td
+                            key={j}
+                            className={`${s[row.tone ?? "neutral"]} tabular`}
+                          >
+                            {row.value}
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
                 )}
                 {card.note && <div className={s.mNote}>{card.note}</div>}
                 {card.buys.length > 0 && (
                   <div className={s.tokBtns}>
+                    <span className={s.tokSide}>Buy</span>
                     {card.buys.map((b, j) => (
                       <button
                         key={j}
                         type="button"
                         className={`${s.chip} ${s.tokBuy}`}
+                        aria-label={`Buy with ${b.label} of your USDC`}
                         disabled={Boolean(b.disabled) || Boolean(historical)}
                         onClick={b.disabled ? undefined : act(b.command)}
                       >
@@ -362,11 +377,13 @@ export default function AgentCards({ cards, onPrompt, onSend, historical }: Prop
                 )}
                 {card.sells.length > 0 && (
                   <div className={s.tokBtns}>
+                    <span className={s.tokSide}>Sell</span>
                     {card.sells.map((b, j) => (
                       <button
                         key={j}
                         type="button"
                         className={`${s.chip} ${s.tokSell}`}
+                        aria-label={`Sell ${b.label} of your ${card.symbol}`}
                         disabled={Boolean(historical)}
                         onClick={act(b.command)}
                       >

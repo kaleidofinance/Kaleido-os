@@ -412,11 +412,50 @@
   color: var(--k-t3);
   margin-top: 2px;
 }
+.tokTable {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--k-fs-sm);
+}
+.tokTable th,
+.tokTable td {
+  padding: 6px 8px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tokTable th {
+  font-weight: var(--k-fw-reg, 400);
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  border-bottom: 1px solid var(--k-line);
+}
+/* A value may wrap ("Opening surcharge" on a phone); a label may not. */
+.tokTable td {
+  font-weight: var(--k-fw-med);
+  white-space: normal;
+}
+.tokTable th + th,
+.tokTable td + td {
+  border-left: 1px solid var(--k-line);
+}
 .tokBtns {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--k-s2);
+  align-items: center;
+  gap: 6px;
   margin-top: 10px;
+}
+.tokSide {
+  width: 32px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.tokBtns .chip {
+  padding: 5px 10px;
 }
 .tokBtns + .tokBtns {
   margin-top: 6px;

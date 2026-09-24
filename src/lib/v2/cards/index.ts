@@ -15,7 +15,7 @@ export { portfolioAnswer, type PortfolioAnswer } from "./portfolio";
 export {
   tokenCardFrom,
   pastedTokenAddress,
-  DEFAULT_BUY_USDC,
+  DEFAULT_BUY_PCT,
   DEFAULT_SELL_PCT,
   type TokenFacts,
 } from "./tokenCard";

@@ -88,11 +88,15 @@ console.log("\n— an Argus launch gets the full card —");
     const labels = card.rows.map((r) => r.label).join(",");
     check("rows: market cap, taxes, status", labels === "Market cap,Buy tax,Sell tax,Status", labels);
     check("1% taxes are not a warning", card.rows.every((r) => r.tone !== "warn"));
-    check("3 buy presets, none disabled", card.buys.length === 3 && card.buys.every((b) => !b.disabled));
-    check("buy command uses the address", card.buys[1].command === `buy ${GLITCH} with 5 usdc`, card.buys[1].command);
     check(
-      "sell presets: 25%, 50%, all",
-      card.sells.map((s) => s.label).join(",") === "Sell 25%,Sell 50%,Sell all",
+      "buy presets: 10/25/50/75/100%, none disabled",
+      card.buys.map((b) => b.label).join(",") === "10%,25%,50%,75%,100%" && card.buys.every((b) => !b.disabled),
+      card.buys.map((b) => b.label).join(","),
+    );
+    check("buy command spends a share of USDC, by address", card.buys[1].command === `buy ${GLITCH} with 25% of my usdc`, card.buys[1].command);
+    check(
+      "sell presets: 10/25/50/75/100%",
+      card.sells.map((s) => s.label).join(",") === "10%,25%,50%,75%,100%",
     );
     check("no surcharge note when clear", card.note === undefined);
   }
@@ -103,7 +107,7 @@ console.log("\n— the opening surcharge greys the buys —");
   const card = tokenCardFrom({ ...ARGUS, snipeActive: true });
   if (card.kind === "token") {
     check("every buy disabled", card.buys.every((b) => b.disabled === true));
-    check("sells stay live (exits aren't surcharged here)", card.sells.length === 3);
+    check("sells stay live (exits aren't surcharged here)", card.sells.length === 5 && card.sells.every((s) => !("disabled" in s)));
     check("status row reads bad", card.rows.some((r) => r.label === "Status" && r.tone === "bad"));
     check("note explains the wait", Boolean(card.note?.includes("surcharge")));
   } else check("still a token card", false, card.kind);
@@ -128,7 +132,7 @@ console.log("\n— a listed token trades by symbol —");
     priceUsd: null,
   });
   if (card.kind === "token") {
-    check("buy command uses the symbol", card.buys[0].command === "buy EURC with 1 usdc", card.buys[0].command);
+    check("buy command uses the symbol", card.buys[0].command === "buy EURC with 10% of my usdc", card.buys[0].command);
     check("no price row invented", card.price === undefined);
     check("badge says Listed", card.badge?.text === "Listed");
   } else check("listed → token card", false, card.kind);
@@ -153,7 +157,7 @@ console.log("\n— local-only: the wire drops it, the local gate keeps it —");
   const local = localCards([card]);
   check("localCards keeps the token card", local.length === 1 && local[0].kind === "token");
   if (local[0]?.kind === "token") {
-    check("…with its buttons intact", local[0].buys.length === 3 && local[0].sells.length === 3);
+    check("…with its buttons intact", local[0].buys.length === 5 && local[0].sells.length === 5);
     check("…and the disabled flag survives validation", tokenCardFrom({ ...ARGUS, snipeActive: true }).kind === "token" &&
       (localCards([tokenCardFrom({ ...ARGUS, snipeActive: true })])[0] as { buys: { disabled?: boolean }[] }).buys.every((b) => b.disabled === true));
   }
@@ -177,32 +181,29 @@ console.log("\n— every button command parses into the trade its label says —
     for (const b of card.buys) {
       const r = parseCommand(b.command, TOKENS as never, ctx) as {
         status: string;
-        command?: { kind: string; amount?: string; tokenIn?: { symbol: string }; tokenOut?: { address: string } };
+        command?: { kind: string; amount?: string; relative?: { num: number; den: number }; tokenIn?: { symbol: string }; tokenOut?: { address: string } };
       };
-      const n = b.label.replace("Buy ", "");
+      const pct = Number(b.label.replace("%", ""));
       check(
-        `${b.label} → buy ${n} USDC of GLITCH`,
+        `Buy ${b.label} → spend ${pct}/100 of USDC on GLITCH`,
         r.status === "ok" &&
           r.command?.kind === "swap" &&
-          r.command.amount === n &&
+          r.command.amount === undefined &&
+          r.command.relative?.num === pct &&
+          r.command.relative?.den === 100 &&
           r.command.tokenIn?.symbol === "USDC" &&
           r.command.tokenOut?.address.toLowerCase() === GLITCH.toLowerCase(),
         JSON.stringify(r).slice(0, 160),
       );
     }
-    const want: Record<string, [number, number]> = {
-      "Sell 25%": [25, 100],
-      "Sell 50%": [50, 100],
-      "Sell all": [1, 1],
-    };
     for (const b of card.sells) {
       const r = parseCommand(b.command, TOKENS as never, ctx) as {
         status: string;
         command?: { kind: string; relative?: { num: number; den: number }; tokenIn?: { address: string }; tokenOut?: { symbol: string } };
       };
-      const [num, den] = want[b.label];
+      const [num, den] = [Number(b.label.replace("%", "")), 100];
       check(
-        `${b.label} → sell ${num}/${den} of GLITCH for USDC`,
+        `Sell ${b.label} → sell ${num}/${den} of GLITCH for USDC`,
         r.status === "ok" &&
           r.command?.kind === "swap" &&
           r.command.relative?.num === num &&

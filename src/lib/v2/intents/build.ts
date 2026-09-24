@@ -827,6 +827,30 @@ async function borrowBlockedByCollateral(
   };
 }
 
+/** How much of the gas token a relative spend ("all my USDC") leaves behind. */
+export const USDC_GAS_RESERVE = "0.25";
+
+/**
+ * The reserve to hold back when `token` is what the chain pays gas in, else 0.
+ * Only USDC-gas chains (Arc mainnet + testnet): there the spend asset and the
+ * fee asset are one balance, so a relative spend of it has to stop short. The
+ * native sentinel and the 6-dec ERC20 face (`native-alias`) both count. ETH-gas
+ * chains are unchanged — a 0.25 reserve means nothing there.
+ */
+function gasTokenReserve(
+  chainId: number | undefined,
+  token: { address: string; decimals: number; tags?: string[] },
+): bigint {
+  if (chainId === undefined) return 0n;
+  if (CHAINS_BY_ID[chainId]?.nativeCurrency.symbol !== "USDC") return 0n;
+  const isGas =
+    token.tags?.includes("native-alias") ||
+    token.address.toLowerCase() === ARC_USDC.toLowerCase() ||
+    isNativeSentinel(token.address, "dex") ||
+    isNativeSentinel(token.address, "lending");
+  return isGas ? ethers.parseUnits(USDC_GAS_RESERVE, token.decimals) : 0n;
+}
+
 export async function buildIntents(
   command: Command,
   opts: PlannerOptions,
@@ -905,7 +929,22 @@ export async function buildIntents(
         };
       }
       const { num, den } = command.relative;
-      const wei = (balance * BigInt(num)) / BigInt(den);
+      let wei = (balance * BigInt(num)) / BigInt(den);
+      /* Where the spend token IS the gas token (USDC on Arc — the 0x3600 ERC20 is
+         a face of the native balance), "all of it" to the last unit leaves nothing
+         to pay for the approvals and the swap that follow, and the plan fails at
+         signing. Hold a small reserve back whenever the share would dip into it;
+         a 10% or 50% share on a funded wallet is never touched. */
+      const reserve = gasTokenReserve(chainId, tokenIn);
+      if (reserve > 0n && wei > balance - reserve) {
+        wei = balance - reserve;
+        if (wei <= 0n) {
+          return {
+            ok: false,
+            error: `You need more than ${ethers.formatUnits(reserve, tokenIn.decimals)} ${tokenIn.symbol} for that — this much stays in your wallet to pay the network fee.`,
+          };
+        }
+      }
       if (wei <= 0n) {
         return {
           ok: false,
