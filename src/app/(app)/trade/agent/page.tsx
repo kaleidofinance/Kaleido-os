@@ -735,11 +735,20 @@ export default function AgentPage() {
        locally instead of sending "continue" to the model, which could invent a
        fresh plan and re-sign a step that already landed. */
     if (/\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(content) &&
-        latest?.plan && typeof latest.planFrom === "number" && latest.planFrom > 0) {
+        latest && typeof latest.planFrom === "number" && latest.planFrom > 0) {
       // Capture the narrowed number in a const: TS drops control-flow narrowing of
       // a property access (latest.planFrom) inside the setMessages closure below,
       // which is the "possibly undefined" build error. A const local keeps `number`.
       const resumeFrom = latest.planFrom;
+      if (!latest.plan) {
+        setMessages((m) => [...m, { role: "user", text: content }, {
+          role: "assistant",
+          text: `That plan was paused before step ${resumeFrom + 1}. I kept the safe checkpoint, but the old transaction data expired after reload. Ask me to build the action again for a fresh review.`,
+          via: "local",
+        }]);
+        setInput("");
+        return;
+      }
       setMessages((m) => [...m, { role: "user", text: content }, {
         role: "assistant",
         text: `I kept the completed steps. Reopen the review to resume from step ${resumeFrom + 1}.`,

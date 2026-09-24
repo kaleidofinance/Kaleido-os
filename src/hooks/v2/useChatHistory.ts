@@ -84,6 +84,8 @@ export interface Msg {
    * offering to sign it again.
    */
   planSummary?: string[];
+  /** Safe resume marker only; signable intents are never persisted. */
+  planFrom?: number;
   /**
    * True for a turn read back from storage, false (absent) for one produced this
    * session. The renderer reads it to mark a restored turn's cards as a snapshot
@@ -184,6 +186,7 @@ interface StoredMsg {
   cards?: AgentCard[];
   ts?: number;
   planSummary?: string[];
+  planFrom?: number;
 }
 
 const toStored = (messages: Msg[]): StoredMsg[] =>
@@ -200,6 +203,7 @@ const toStored = (messages: Msg[]): StoredMsg[] =>
       ...(m.cards?.length ? { cards: m.cards } : {}),
       ...(typeof m.ts === "number" ? { ts: m.ts } : {}),
       ...(summary ? { planSummary: summary } : {}),
+      ...(typeof m.planFrom === "number" ? { planFrom: m.planFrom } : {}),
     };
   });
 
@@ -208,7 +212,7 @@ const fromStored = (raw: unknown): Msg[] => {
   const out: Msg[] = [];
   for (const m of raw) {
     if (!m || typeof m !== "object") continue;
-    const { role, text, via, thinking, cards, ts, planSummary } =
+    const { role, text, via, thinking, cards, ts, planSummary, planFrom } =
       m as Partial<Msg>;
     if (role !== "user" && role !== "assistant") continue;
     if (typeof text !== "string" || !text) continue;
@@ -224,6 +228,7 @@ const fromStored = (raw: unknown): Msg[] => {
       ...(revived.length ? { cards: revived } : {}),
       ...(typeof ts === "number" ? { ts } : {}),
       ...(summary ? { planSummary: summary } : {}),
+      ...(typeof planFrom === "number" && planFrom > 0 ? { planFrom } : {}),
     });
   }
   return out.slice(-MAX_TURNS);
