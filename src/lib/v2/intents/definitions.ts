@@ -223,16 +223,65 @@ async function waitForAllowance(
   needed: bigint,
 ): Promise<void> {
   const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  await pollUntil(async () => {
     const allowance: bigint = await token.allowance(owner, spender);
-    if (allowance >= needed) return;
-    if (attempt === 9) {
-      throw new Error(
-        "The token approval is not visible on-chain yet. Wait a moment and try the swap again.",
-      );
+    return allowance >= needed;
+  }, "The token approval is not visible on-chain yet. Wait a moment and try the swap again.");
+}
+
+/**
+ * Poll `ready` until it holds, for up to ~20s, then throw `message`.
+ *
+ * Why so long: "Run all without stopping" sends the next step the instant the
+ * previous receipt lands, and the read node can trail the node that mined it
+ * by several seconds (publicnode and Arc's public RPCs both do, under load).
+ * The old 5s window was shorter than that lag on a slow block, so the step
+ * threw "approval is not visible" for an approval that was already on chain —
+ * a failure stepping manually never showed, because the click was the delay.
+ * Backs off 500ms → 2s. A read that throws counts as "not yet": a transient RPC
+ * error mid-wait must not fail a step whose precondition is simply arriving.
+ */
+async function pollUntil(ready: () => Promise<boolean>, message: string): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  let delay = 500;
+  for (;;) {
+    try {
+      if (await ready()) return;
+    } catch {
+      /* transient read failure — keep waiting */
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (Date.now() + delay > deadline) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    delay = Math.min(delay * 2, 2_000);
   }
+}
+
+/**
+ * Both allowances an Argus swap spends through: the ERC20 → Permit2 allowance and
+ * Permit2's own grant to the router, unexpired. The Argus twin of
+ * waitForAllowance — without it, running the plan without stopping could send
+ * the swap before a lagging node sees the approvals just mined, and the wallet's
+ * gas estimate reverts on a trade that would have succeeded a second later.
+ */
+async function waitForPermit2Allowance(
+  signer: ethers.Signer,
+  owner: string,
+  tokenAddress: string,
+  router: string,
+  needed: bigint,
+): Promise<void> {
+  const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+  const permit2 = new ethers.Contract(
+    PERMIT2,
+    ["function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)"],
+    signer,
+  );
+  await pollUntil(async () => {
+    const erc: bigint = await token.allowance(owner, PERMIT2);
+    if (erc < needed) return false;
+    const [amount, expiration] = (await permit2.allowance(owner, tokenAddress, router)) as [bigint, bigint, bigint];
+    return amount >= needed && expiration > BigInt(Math.floor(Date.now() / 1000));
+  }, "The approvals for this swap are not visible on-chain yet. Wait a moment and try the swap again.");
 }
 
 register("approve", {
@@ -644,6 +693,13 @@ register("argusSwap", {
     detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage · Argus (Uniswap v4).`,
   }),
   resolve: async (ctx, i) => {
+    await waitForPermit2Allowance(
+      ctx.signer,
+      ctx.address,
+      i.tokenIn,
+      i.to,
+      ethers.parseUnits(i.amountIn, i.decimalsIn),
+    );
     const tx = await ctx.signer.sendTransaction({
       to: i.to,
       data: i.data,
