@@ -2721,5 +2721,63 @@ console.log("\n— wrap / unwrap as a local verb —");
   }
 }
 
+{
+  console.log("\n— a bare token address is a swap side (argus) —");
+  /* The grammar resolves a registry token by symbol; an Argus launch is named by
+     ADDRESS, which the registry never carries. ctx.addressToken (wired only on
+     Arc, gated by the caller) turns that address into a provisional side so the
+     build branch can look it up. Here the hook is a plain 40-hex validator that
+     refuses USDC — the same contract lib/argus/token.ts implements. */
+  const LAUNCH = "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71";
+  const ARC_USDC = "0x3600000000000000000000000000000000000000";
+  const addressToken = (w) => {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(w)) return null;
+    if (w.toLowerCase() === ARC_USDC.toLowerCase()) return null;
+    return { address: w, name: w, symbol: w, decimals: 18, verified: false, tags: ["argus"] };
+  };
+  const ac = (text) => parseCommand(text, TOKENS, { addressToken });
+
+  const buy = ac(`buy ${LAUNCH} with 10 usdc`);
+  check(
+    "a buy of an address-named token resolves both sides",
+    buy.status === "ok" &&
+      buy.command.kind === "swap" &&
+      buy.command.tokenOut.address.toLowerCase() === LAUNCH.toLowerCase() &&
+      buy.command.tokenIn.symbol === "USDC" &&
+      buy.command.amount === "10",
+    buy.status === "ok" ? `${buy.command.tokenIn?.symbol}->${buy.command.tokenOut?.address} ${buy.command.amount}` : buy.status,
+  );
+  check(
+    "the synthetic side carries the argus tag for the build branch",
+    buy.status === "ok" && buy.command.tokenOut.tags?.includes("argus"),
+    buy.status,
+  );
+
+  /* "swap 10 usdc for 0x…" — the forward framing, same result. */
+  const fwd = ac(`swap 10 usdc for ${LAUNCH}`);
+  check(
+    "the forward framing resolves the address on the receive side",
+    fwd.status === "ok" && fwd.command.kind === "swap" && fwd.command.tokenOut.address.toLowerCase() === LAUNCH.toLowerCase() && fwd.command.tokenIn.symbol === "USDC",
+    fwd.status,
+  );
+
+  /* Without the hook (every non-Arc chain) the address is not a token, so the
+     command does not silently become a swap. */
+  const noHook = parseCommand(`buy ${LAUNCH} with 10 usdc`, TOKENS);
+  check(
+    "no addressToken -> the address is not a swap side",
+    !(noHook.status === "ok" && noHook.command.kind === "swap" && noHook.command.tokenOut?.address === LAUNCH),
+    noHook.status,
+  );
+
+  /* The hook never shadows an ordinary registry swap. */
+  const plain = ac("swap 10 usdc for kld");
+  check(
+    "a registry swap is unaffected by the hook",
+    plain.status === "ok" && plain.command.kind === "swap" && plain.command.tokenOut.symbol === "KLD" && !plain.command.tokenOut.tags?.includes("argus"),
+    plain.status,
+  );
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

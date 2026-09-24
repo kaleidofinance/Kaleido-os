@@ -38,6 +38,8 @@ import {
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { hasKyberSwap, aggregatorToken } from "@/lib/swap/kyberswap";
+import { ARC_USDC, ARC_USDC_DECIMALS, ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
+import { PERMIT2 } from "@/lib/argus/swap";
 import type { Intent } from "@/lib/v2/intents";
 import type { Command, Slot } from "@/lib/v2/intents/fromCommand";
 /* A value import, unlike the type above, and the only one in this file that
@@ -517,6 +519,49 @@ export interface PlanDeps {
   swapRoute?(
     req: SwapRouteRequest,
   ): Promise<AggregatorSwapRoute | { error: string }>;
+
+  /**
+   * Resolve an Argus-launchpad BUY (USDC → launch token, direct Uniswap v4) to
+   * signable calldata + a tax-aware quote, or report that the output isn't an
+   * Argus launch. Optional like `swapRoute`, and for the same reasons: it is a
+   * server round trip (reads the launch + pool over RPC) AND the fee it applies
+   * uses `SWAP_FEE_RECEIVER`, a server-only env the client must never see, so it
+   * is injected as a call to `/api/argus/plan` rather than run here. The marketing
+   * snapshot and test fixtures have no such dep, and its absence makes the Argus
+   * branch fall through to normal routing rather than throw. Only the swap branch
+   * calls it, and only on Arc for a USDC input. `argus:false` means "not an Argus
+   * launch — route it normally"; `blocked` means it IS one but can't trade now
+   * (opening surcharge / too large for the single-range pool).
+   */
+  argusPlan?(req: {
+    tokenIn: string;
+    tokenOut: string;
+    /** USDC input in base units (6-dec), as a decimal string. */
+    amountInRaw: string;
+    slippageBps: number;
+  }): Promise<ArgusPlanResult | null>;
+}
+
+/** What `deps.argusPlan` returns — the JSON shape of `/api/argus/plan`. */
+export interface ArgusPlanResult {
+  argus: boolean;
+  /** True when it IS an Argus launch but can't be traded right now. */
+  blocked?: boolean;
+  reason?: string;
+  tokenOut?: { address: string; symbol: string; decimals: number };
+  fee?: { receiver: string | null; amountRaw: string; bps: number };
+  /** USDC actually swapped (input − fee), base units. */
+  swapAmountRaw?: string;
+  to?: string;
+  data?: string;
+  value?: string;
+  hook?: string;
+  /** Expected token out, human units. */
+  amountOut?: number;
+  /** On-chain minimum out, base units. */
+  amountOutMinimum?: string;
+  priceImpactBps?: number;
+  totalCostBps?: number;
 }
 
 /**
@@ -922,6 +967,123 @@ export async function buildIntents(
           },
         };
       }
+    }
+
+    /* Argus launchpad (Arc): a BUY of a launch token routes DIRECT through
+       Uniswap v4 via our own argus libs, not KyberSwap. The pool is hooked and
+       taxed, and the aggregator can't reliably index a day-one launch, so we
+       read + quote + build the v4 calldata ourselves. Server-side (deps.argusPlan
+       → /api/argus/plan) because the fee receiver is a server-only env; here we
+       just assemble the signable steps. Pilot scope: BUYS only (USDC in), and
+       the branch is inert unless ARGUS_ENABLED (the route returns argus:false).
+       On a non-Argus token the route says so and we fall through to normal
+       routing below, so this never shadows an ordinary Arc swap. */
+    if (
+      chainId === ARGUS_CHAIN_ID &&
+      deps.argusPlan &&
+      tokenOut.tags?.includes("argus")
+    ) {
+      // Only a token named by address (the grammar's synthetic `argus`-tagged
+      // token) reaches here, so an ordinary "swap 10 USDC for KLD" on Arc never
+      // pays the launch-lookup round trip. Pilot is buys-only: the input must be
+      // USDC (on Arc the native gas token IS USDC), else refuse plainly rather
+      // than fall through to a confusing "no wrapped form" error.
+      const inIsUsdc =
+        tokenIn.address.toLowerCase() === ARC_USDC.toLowerCase() ||
+        isNativeSentinel(tokenIn.address, "dex") ||
+        isNativeSentinel(tokenIn.address, "lending");
+      if (!inIsUsdc) {
+        return {
+          ok: false,
+          error: `Buying an Argus launch is USDC-only for now — spend USDC, not ${tokenIn.symbol}.`,
+        };
+      }
+      // The pool's quote asset is the 6-dec ERC20 USDC (0x3600…), whatever
+      // representation the user picked. Approve, permit2, fee and swap all move
+      // that one address.
+      const amountInRaw = ethers.parseUnits(amount, ARC_USDC_DECIMALS).toString();
+      const ap = await deps.argusPlan({
+        tokenIn: ARC_USDC,
+        tokenOut: tokenOut.address,
+        amountInRaw,
+        slippageBps: opts.slippageBps,
+      });
+      if (ap && ap.argus) {
+        if (ap.blocked || !ap.to || !ap.data || !ap.tokenOut || !ap.swapAmountRaw) {
+          return {
+            ok: false,
+            error: ap.reason ?? "This Argus launch can't be traded right now.",
+          };
+        }
+        const out = ap.tokenOut;
+        const swapHuman = ethers.formatUnits(ap.swapAmountRaw, ARC_USDC_DECIMALS);
+        const minOutHuman = ethers.formatUnits(
+          ap.amountOutMinimum ?? "0",
+          out.decimals,
+        );
+        // Permit2 allowance window: 30 days, the router's usual default.
+        const expiration = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+        const intents: Intent[] = [
+          // 1. ERC20 allowance to Permit2 (only the swapped amount; the fee is a
+          //    plain transfer that needs no allowance).
+          {
+            kind: "approve",
+            token: ARC_USDC,
+            spender: PERMIT2,
+            amount: swapHuman,
+            decimals: ARC_USDC_DECIMALS,
+            symbol: "USDC",
+          },
+          // 2. Permit2 → UniversalRouter allowance the v4 swap then spends.
+          {
+            kind: "permit2Approve",
+            token: ARC_USDC,
+            spender: ap.to,
+            amount: swapHuman,
+            decimals: ARC_USDC_DECIMALS,
+            symbol: "USDC",
+            expiration,
+          },
+        ];
+        // 3. Kaleido's fee, skimmed from the USDC input to the server-only
+        //    receiver. Omitted when no receiver is configured (fee 0).
+        if (ap.fee?.receiver && ap.fee.amountRaw && ap.fee.amountRaw !== "0") {
+          intents.push({
+            kind: "transfer",
+            token: ARC_USDC,
+            to: ap.fee.receiver,
+            amount: ethers.formatUnits(ap.fee.amountRaw, ARC_USDC_DECIMALS),
+            decimals: ARC_USDC_DECIMALS,
+            symbol: "USDC",
+          });
+        }
+        // 4. The v4 swap itself — pre-built calldata, NOT rebuilt at sign time.
+        intents.push({
+          kind: "argusSwap",
+          to: ap.to,
+          data: ap.data,
+          value: ap.value ?? "0",
+          tokenIn: ARC_USDC,
+          amountIn: swapHuman,
+          decimalsIn: ARC_USDC_DECIMALS,
+          symbolIn: "USDC",
+          tokenOut: out.address,
+          amountOut: String(ap.amountOut ?? 0),
+          amountOutMin: minOutHuman,
+          decimalsOut: out.decimals,
+          symbolOut: out.symbol,
+          chainId,
+          hook: ap.hook ?? "",
+        });
+        return {
+          ok: true,
+          build: {
+            summary: `Buy about ${ap.amountOut ?? "?"} ${out.symbol} with ${amount} USDC on Argus (Uniswap v4).`,
+            intents,
+          },
+        };
+      }
+      // ap null / argus:false → not an Argus launch; fall through to normal routing.
     }
 
     /* KyberSwap as a venue: builds an [approve, aggregatorSwap] plan from the

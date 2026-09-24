@@ -533,6 +533,163 @@ async function main() {
     );
   }
 
+  console.log("\n— argus launchpad (arc) —");
+  /*
+   * A buy of an Argus launch token, named by address, on Arc. The grammar tags
+   * the synthetic token `argus`; the branch then calls deps.argusPlan (the server
+   * route, stubbed here) and assembles the four signable steps. This asserts the
+   * BUILDER's half — the ordering, the fee skim, and that the v4 calldata is
+   * carried through unrebuilt — not the on-chain encoding (that is test:argusswap).
+   */
+  {
+    const ARC = 5042;
+    const ARC_USDC = "0x3600000000000000000000000000000000000000";
+    const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+    const ROUTER = "0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1";
+    const LAUNCH = "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71";
+    const FEE_RCVR = "0x000000000000000000000000000000000000dEaD";
+    const argusOut: IToken = {
+      address: LAUNCH,
+      name: "0x08Ad…2A71",
+      symbol: "0x08Ad…2A71",
+      decimals: 18,
+      chainId: ARC,
+      verified: false,
+      tags: ["argus"],
+    };
+    const usdcArc: IToken = {
+      address: ARC_USDC,
+      name: "USDC",
+      symbol: "USDC",
+      decimals: 6,
+      chainId: ARC,
+    };
+    const okPlan = (feeReceiver: string | null) => async () => ({
+      argus: true,
+      blocked: false,
+      tokenOut: { address: LAUNCH, symbol: "PEPE", decimals: 18 },
+      fee: {
+        receiver: feeReceiver,
+        amountRaw: feeReceiver ? "20000" : "0",
+        bps: feeReceiver ? 20 : 0,
+      },
+      swapAmountRaw: feeReceiver ? "9980000" : "10000000",
+      to: ROUTER,
+      data: "0xdeadbeef",
+      value: "0",
+      hook: "0x00000000000000000000000000000000000ABC00",
+      amountOut: 1234.5,
+      amountOutMinimum: "1000000000000000000000",
+    });
+
+    {
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
+        { ...deps, argusPlan: okPlan(FEE_RCVR) },
+      );
+      check(
+        "argus buy assembles approve→permit2Approve→transfer→argusSwap",
+        kinds(r) === "approve,permit2Approve,transfer,argusSwap",
+        kinds(r),
+      );
+      check(
+        "approve authorises Permit2 for the swapped USDC only (net of fee)",
+        same(at(r, 0).spender, PERMIT2) &&
+          same(at(r, 0).token, ARC_USDC) &&
+          at(r, 0).amount === "9.98",
+        JSON.stringify(at(r, 0)),
+      );
+      check(
+        "permit2Approve authorises the UniversalRouter",
+        same(at(r, 1).spender, ROUTER) && same(at(r, 1).token, ARC_USDC),
+        JSON.stringify(at(r, 1)),
+      );
+      check(
+        "the fee is a USDC transfer to the server-chosen receiver",
+        same(at(r, 2).to, FEE_RCVR) &&
+          at(r, 2).amount === "0.02" &&
+          same(at(r, 2).token, ARC_USDC),
+        JSON.stringify(at(r, 2)),
+      );
+      check(
+        "argusSwap carries the server's calldata unrebuilt",
+        same(at(r, 3).to, ROUTER) &&
+          at(r, 3).data === "0xdeadbeef" &&
+          at(r, 3).amountOutMin === "1000.0" &&
+          same(at(r, 3).symbolIn, "usdc"),
+        JSON.stringify(at(r, 3)),
+      );
+    }
+
+    {
+      // No fee receiver configured → no transfer leg, three steps.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
+        { ...deps, argusPlan: okPlan(null) },
+      );
+      check(
+        "no fee receiver → no transfer leg",
+        kinds(r) === "approve,permit2Approve,argusSwap" &&
+          at(r, 0).amount === "10.0",
+        kinds(r),
+      );
+    }
+
+    {
+      // A blocked launch (opening surcharge / too large) refuses, no plan.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
+        {
+          ...deps,
+          argusPlan: async () => ({
+            argus: true,
+            blocked: true,
+            reason: "opening surcharge active",
+          }),
+        },
+      );
+      check(
+        "a blocked argus launch refuses with its reason",
+        !r.ok && /opening surcharge/.test(errorOf(r)),
+        kinds(r),
+      );
+    }
+
+    {
+      // Not actually a launch → argus:false → falls through to normal routing,
+      // which has no pool for this address on Arc and so refuses (not the argus
+      // branch's refusal — proves the fall-through happened).
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
+        { ...deps, argusPlan: async () => ({ argus: false }) },
+      );
+      check(
+        "argus:false falls through to normal routing (no argus plan)",
+        !r.ok && !/argus/i.test(errorOf(r)),
+        kinds(r),
+      );
+    }
+
+    {
+      // A non-USDC input to an argus target is out of the buys-only pilot.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const notUsdc: IToken = { ...usdcArc, address: DEX_KLD.address, symbol: "KLD", decimals: 18 };
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: notUsdc, tokenOut: argusOut },
+        { ...deps, argusPlan: okPlan(FEE_RCVR) },
+      );
+      check(
+        "an argus buy is USDC-only for now",
+        !r.ok && /USDC-only/i.test(errorOf(r)),
+        kinds(r),
+      );
+    }
+  }
+
   console.log("\n— swapping the chain's own currency —");
   /*
    * The default state of the Swap card, and until the wrapped substitution went

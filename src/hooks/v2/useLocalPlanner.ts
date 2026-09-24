@@ -12,6 +12,7 @@ import { readTokenBalance } from "@/lib/chain/tokenBalance";
 import { readPoolState } from "@/lib/dex/pool";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
 import { resolveSwapRoute } from "@/lib/swap/route";
+import { resolveArgusPlan } from "@/lib/argus/route";
 import { providerForChain } from "@/config/provider";
 import { getContracts } from "@/constants/registry";
 import {
@@ -249,6 +250,11 @@ export function useLocalPlanner() {
                   error: "Connect a wallet to a supported chain to swap.",
                 })
               : resolveSwapRoute({ ...req, chainId, userAddress: address ?? "" }),
+          /* Argus-launchpad buys: a server round trip (reads launch+pool, applies
+             the server-only fee, builds v4 calldata). The build.ts branch only
+             calls this on Arc for a USDC input, and the route is inert unless
+             ARGUS_ENABLED, so it costs nothing on any other chain or token. */
+          argusPlan: (req) => resolveArgusPlan(req),
         },
       );
       if (!result.ok) return result;
