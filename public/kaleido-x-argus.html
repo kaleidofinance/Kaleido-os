@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaleido × Argus — Partnership</title>
+<meta name="description" content="Kaleido has listed $ARGUS and integrated the Argus launchpad into Luca — every Argus launch is instantly tradable, with rich cards and AI trading intelligence. Here's the plan to co-market.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Kaleido × Argus — Partnership">
+<meta property="og:description" content="Their launchpad, our agent. Every Argus launch is instantly tradable in Luca. Here's what's live, and what we'd build together.">
+<meta property="og:image" content="https://kaleidofi.xyz/argus-partnership-og.png">
+<meta property="og:url" content="https://kaleidofi.xyz/kaleido-x-argus.html">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kaleido × Argus — Partnership">
+<meta name="twitter:description" content="Their launchpad, our agent. Every Argus launch is instantly tradable in Luca.">
+<meta name="twitter:image" content="https://kaleidofi.xyz/argus-partnership-og.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --ink:#0a1512;--ink2:#0c1a15;--panel:rgba(255,255,255,.04);--line:rgba(214,192,154,.18);
+    --text:#f4eee5;--muted:#c4cec5;--green:#35d18d;--sand:#e7d7b6;
+    --serif:"Lora",Georgia,serif;--sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ink);color:var(--text);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased}
+  a{color:inherit}
+  .wrap{max-width:920px;margin:0 auto;padding:0 22px 72px}
+
+  /* hero */
+  .hero{position:relative;isolation:isolate;overflow:hidden;margin:0 -22px;padding:64px 22px 44px;text-align:center}
+  .hero::before{content:"";position:absolute;inset:0;z-index:-1;
+    background:
+      linear-gradient(180deg, rgba(6,15,12,.6) 0%, rgba(6,15,12,.86) 55%, var(--ink) 100%),
+      radial-gradient(60% 40% at 50% 0%, rgba(53,209,141,.16), transparent 62%),
+      url("/waitlist-colosseum.webp") center top/cover no-repeat}
+  .kicker{color:var(--green);font-weight:700;font-size:13px;letter-spacing:.24em;text-transform:uppercase}
+  .lock{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:14px 30px;margin:20px 0 6px}
+  .co{display:flex;align-items:center;gap:14px}
+  .logo{width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none;
+    box-shadow:0 0 0 2px rgba(231,215,182,.3),0 0 30px rgba(53,209,141,.28)}
+  .kmark{background:var(--ink2) url("/newklogo2.png") center/cover no-repeat}
+  .name{font-family:var(--serif);font-weight:600;font-size:clamp(34px,7vw,52px);letter-spacing:-.02em;line-height:1;color:#fff}
+  .name i{font-style:normal;color:var(--green)}
+  .x{font-family:var(--serif);font-size:clamp(28px,6vw,44px);color:var(--green);opacity:.85}
+  .lede{color:var(--muted);font-size:clamp(17px,2.4vw,21px);line-height:1.5;max-width:60ch;margin:14px auto 0}
+  .lede b{color:#fff;font-weight:600}
+
+  section{margin-top:44px}
+  h2{font-family:var(--serif);font-weight:600;font-size:14px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--sand);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .rows{display:flex;flex-direction:column;gap:16px}
+  .row{display:flex;gap:15px;align-items:flex-start}
+  .tick{color:var(--green);font-size:20px;line-height:1.3;flex:none}
+  .num{width:28px;height:28px;border-radius:50%;background:var(--green);color:#06120c;font-weight:800;font-size:14px;
+    display:grid;place-items:center;flex:none;margin-top:1px}
+  .row .h{font-weight:600;font-size:19px;color:#fff}
+  .row .d{color:var(--muted);font-size:17px;line-height:1.5;margin-top:3px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px 34px}
+
+  .stats{margin-top:40px;display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);
+    border-radius:16px;background:var(--panel);overflow:hidden}
+  .stat{padding:22px 24px}
+  .stat + .stat{border-left:1px solid var(--line)}
+  .stat .n{font-family:var(--serif);font-weight:600;font-size:32px;color:var(--green)}
+  .stat .k{font-size:14px;color:var(--muted);margin-top:4px}
+
+  .cta{margin-top:40px;text-align:center;border-top:1px solid var(--line);padding-top:34px}
+  .cta .t{font-family:var(--serif);font-size:clamp(20px,3vw,26px);color:#fff;font-weight:600}
+  .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px}
+  .btn{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:13px 22px;font-weight:600;font-size:16px;text-decoration:none}
+  .btn.primary{background:var(--green);color:#06120c}
+  .btn.ghost{border:1px solid var(--line);color:var(--text);background:rgba(216,197,162,.04)}
+  .foot{margin-top:26px;text-align:center;color:#7d877d;font-size:13px}
+
+  /* ── live integration showcase: the real buy/sell card ── */
+  .showcase{margin-top:30px;display:flex;flex-direction:column;align-items:center;gap:16px}
+  .frame{width:100%;max-width:520px;border:1px solid var(--line);border-radius:20px;background:
+    linear-gradient(180deg, rgba(16,32,26,.9), rgba(10,21,18,.92));box-shadow:0 30px 80px -30px rgba(0,0,0,.8);
+    padding:18px;position:relative}
+  .luca{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px;margin-bottom:12px}
+  .luca .d{width:22px;height:22px;border-radius:50%;background:var(--ink2) url("/newklogo2.png") center/cover no-repeat;flex:none}
+  .paste{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--sand);
+    background:rgba(216,197,162,.06);border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-bottom:12px;
+    display:flex;align-items:center;gap:8px}
+  .paste .you{color:#7d877d}
+  .tcard{border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.03);padding:16px}
+  .thead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .tid{display:flex;align-items:center;gap:9px;min-width:0}
+  .tlogo{width:28px;height:28px;border-radius:50%;object-fit:cover;flex:none}
+  .tsym{font-weight:600;font-size:18px;color:#fff}
+  .tname{font-size:13px;color:#8a9389}
+  .tbadge{flex:none;font-size:11px;color:var(--sand);border:1px solid var(--line);border-radius:999px;padding:3px 9px;background:rgba(216,197,162,.05)}
+  .taddr{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#7d877d;margin-top:3px}
+  .tprice{font-family:var(--serif);font-size:30px;color:#fff;margin:8px 0 12px}
+  .ttable{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+  .ttable th{font-weight:500;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#7d877d;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  .ttable td{font-weight:600;color:var(--text);padding:7px 8px}
+  .ttable th+th,.ttable td+td{border-left:1px solid var(--line)}
+  .ttable td.good{color:var(--green)}
+  .tbtns{display:flex;align-items:center;gap:7px;margin-top:12px;flex-wrap:wrap}
+  .tbtns .side{width:30px;font-size:12px;color:#7d877d}
+  .chip{font-size:13px;border-radius:999px;padding:6px 12px;background:rgba(255,255,255,.05);border:0}
+  .chip.buy{color:var(--green)}
+  .chip.sell{color:#e0857e}
+  .shot-cap{color:var(--muted);font-size:16px;text-align:center;max-width:52ch}
+  .shot-cap b{color:#fff;font-weight:600}
+
+  @media (max-width:640px){
+    .two{grid-template-columns:1fr}
+    .stats{grid-template-columns:1fr}
+    .stat + .stat{border-left:0;border-top:1px solid var(--line)}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="kicker">Partnership proposal · Arc mainnet</div>
+      <div class="lock">
+        <div class="co"><span class="logo kmark"></span><span class="name">Kaleido<i>fi</i></span></div>
+        <span class="x">×</span>
+        <div class="co"><img class="logo" src="/tokens/argus.png" alt="Argus"><span class="name">Argus<i>Pad</i></span></div>
+      </div>
+      <p class="lede">Kaleido is agentic DeFi on Arc — our agent <b>Luca</b> lets anyone trade, bridge and manage positions in plain language, every action audited and signed by the user. We've already wired Argus in. Here's what's live, and what we'd build together.</p>
+    </header>
+
+    <div class="showcase">
+      <div class="frame">
+        <div class="luca"><span class="d"></span> Luca · Agent</div>
+        <div class="paste"><span class="you">you ›</span> 0xeCe5cA8bf9220718E5727754026757512212cb3c</div>
+        <div class="tcard">
+          <div class="thead">
+            <div class="tid"><img class="tlogo" src="/tokens/argus.png" alt=""><span class="tsym">$ARGUS</span><span class="tname">Argus</span></div>
+            <span class="tbadge">Listed on Kaleido</span>
+          </div>
+          <div class="taddr">0xeCe5…cb3c</div>
+          <div class="tprice">$0.0258</div>
+          <table class="ttable">
+            <thead><tr><th>Market cap</th><th>Chain</th><th>Status</th></tr></thead>
+            <tbody><tr><td>$24.7M</td><td>Arc</td><td class="good">Live</td></tr></tbody>
+          </table>
+          <div class="tbtns"><span class="side">Buy</span><button class="chip buy">10%</button><button class="chip buy">25%</button><button class="chip buy">50%</button><button class="chip buy">75%</button><button class="chip buy">100%</button></div>
+          <div class="tbtns"><span class="side">Sell</span><button class="chip sell">10%</button><button class="chip sell">25%</button><button class="chip sell">50%</button><button class="chip sell">75%</button><button class="chip sell">100%</button></div>
+        </div>
+      </div>
+      <div class="shot-cap">Paste a token's contract and <b>this appears</b> — real numbers, live from Arc, with one-tap buy &amp; sell.</div>
+    </div>
+
+    <section>
+      <h2>What's already live</h2>
+      <div class="rows">
+        <div class="row"><span class="tick">✓</span><div><div class="h">$ARGUS is listed and trading on Kaleido's DEX.</div></div></div>
+        <div class="row"><span class="tick">✓</span><div>
+          <div class="h">The Argus launchpad is integrated into Luca.</div>
+          <div class="d">Paste any Argus-launched token's contract and get an instant card — live price, market cap, buy/sell taxes, launch status — with one-tap Buy &amp; Sell (10–100%). Trades route directly through your Uniswap-v4 pools, are checked by our fail-closed auditor, and are non-custodial: the user signs, we never hold funds.</div>
+        </div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Why it's a win for Argus</h2>
+      <div class="two">
+        <div class="row"><span class="tick">→</span><div class="d"><b style="color:#fff">A second trading surface for every launch</b> — no lift on your side.</div></div>
+        <div class="row"><span class="tick">→</span><div class="d"><b style="color:#fff">Smarter than a Telegram bot</b> — research, price protection and planning built in.</div></div>
+        <div class="row"><span class="tick">→</span><div class="d"><b style="color:#fff">More reach and volume</b> for Argus tokens, inside an AI agent.</div></div>
+        <div class="row"><span class="tick">→</span><div class="d"><b style="color:#fff">Non-custodial &amp; audited</b> — safer UX reflects well on the pad.</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What we propose</h2>
+      <div class="rows">
+        <div class="row"><span class="num">1</span><div><div class="h">Co-market the integration.</div><div class="d">A joint announcement (assets ready), cross-posts, and Argus launches featured inside Kaleido.</div></div></div>
+        <div class="row"><span class="num">2</span><div><div class="h">A joint points / quest campaign.</div><div class="d">Kaleido Season 1 points for trading Argus launches, paired with rewards on your side.</div></div></div>
+        <div class="row"><span class="num">3</span><div><div class="h">A pipeline for future campaigns.</div><div class="d">Featured launches, co-branded pushes, and deeper launchpad features as they ship.</div></div></div>
+      </div>
+    </section>
+
+    <div class="stats">
+      <div class="stat"><div class="n">2.3M+</div><div class="k">$kPoint distributed</div></div>
+      <div class="stat"><div class="n">6,900+</div><div class="k">wallets earning</div></div>
+      <div class="stat"><div class="n">Live</div><div class="k">on Arc mainnet</div></div>
+    </div>
+
+    <div class="cta">
+      <div class="t">Let's align on the first announcement and campaign.</div>
+      <div class="btns">
+        <a class="btn primary" href="https://kaleidofi.xyz/trade">Try it on Kaleido ↗</a>
+        <a class="btn ghost" href="https://kaleidofi.xyz">kaleidofi.xyz</a>
+      </div>
+      <div class="foot">Kaleido · agentic DeFi on Arc mainnet</div>
+    </div>
+  </div>
+</body>
+</html>
