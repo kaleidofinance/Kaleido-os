@@ -3,6 +3,7 @@ import { ROBINHOOD_STOCK_TOKENS } from "./robinhoodTokens.generated";
 import {
   GENERATED_DEPLOYMENTS,
   GENERATED_LENDING_REGISTRATION,
+  GENERATED_POOL_PAIRS,
   GENERATED_SEEDED_POOLS,
 } from "./deployments.generated";
 
@@ -1508,6 +1509,18 @@ export function isSeededPool(
   if (!seeded) return false;
   const wanted = address.toLowerCase();
   return seeded.some((pool) => pool.toLowerCase() === wanted);
+}
+
+/**
+ * The token pairs that have a pool on this chain — [token0, token1] addresses,
+ * lowercased, from the deployer's pool records. A swap/limit form uses this to
+ * seed a default pair that actually has a market instead of guessing from a
+ * symbol list and opening on a pair with no pool (which quotes nothing). Empty
+ * for a chain we have opened no pools on.
+ */
+export function poolPairsFor(chainId: number | undefined): [string, string][] {
+  if (chainId === undefined) return [];
+  return GENERATED_POOL_PAIRS[chainId] ?? [];
 }
 
 /**

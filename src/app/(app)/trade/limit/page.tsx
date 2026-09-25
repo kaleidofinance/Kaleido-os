@@ -8,7 +8,7 @@ import TxHistory from "@/components/v2/TxHistory";
 import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import { providerForChain } from "@/config/provider";
-import { getContracts } from "@/constants/registry";
+import { getContracts, poolPairsFor } from "@/constants/registry";
 import { chainTokenByAddress, chainTokens } from "@/constants/tokens";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
@@ -486,14 +486,64 @@ export default function LimitPage() {
         undefined,
       );
 
+    /* The pairs that HAVE a pool on this chain, as resolvable tokens. Seeding
+       from these is what stops the form opening on a market that quotes nothing
+       — cirBTC/USDC has no pool, and the old symbol-list default landed there. */
+    const byAddr = (addr: string) =>
+      available.find((t) => !t.isNative && t.address.toLowerCase() === addr);
+    const isStable = (t: IToken) => /usd|eur/i.test(t.symbol);
+    const poolPairs = poolPairsFor(chainId ?? PREVIEW_CHAIN_ID)
+      .map(([a, b]) => [byAddr(a), byAddr(b)] as const)
+      .filter((p): p is readonly [IToken, IToken] => Boolean(p[0] && p[1]))
+      /* A limit order usually sells a volatile asset for a stable, so orient the
+         stable to the BUY side; a stable/stable or volatile/volatile pool keeps
+         the pool's own order. */
+      .map(([a, b]) =>
+        isStable(a) && !isStable(b) ? ([b, a] as const) : ([a, b] as const),
+      );
+    /* Prefer a neutral, deep-reading default: a stable→stable pool (USDC/EURC)
+       first, then any pool whose buy side is a stable, then any pool at all —
+       so the form never opens on "no market", and opens on a sensible pair when
+       it has the choice. */
+    const poolDefault =
+      poolPairs.find(([a, b]) => isStable(a) && isStable(b)) ??
+      poolPairs.find(([, b]) => isStable(b)) ??
+      poolPairs[0] ??
+      null;
+    /* A pool pair that contains `t`, to seed the OTHER side of a chosen token. */
+    const poolPartnerOf = (t: IToken | null): IToken | null => {
+      if (!t) return null;
+      for (const [a, b] of poolPairs) {
+        if (a.address.toLowerCase() === t.address.toLowerCase()) return b;
+        if (b.address.toLowerCase() === t.address.toLowerCase()) return a;
+      }
+      return null;
+    };
+
+    /* Neither side chosen → seed both from one real pool pair, so the form opens
+       on a market that quotes. */
+    if (!inOk && !outOk && poolDefault) {
+      setTokenIn(poolDefault[0]);
+      setTokenOut(poolDefault[1]);
+      return;
+    }
+
     const first =
-      inOk ?? pick(PREFER_SELL, outOk) ?? available.find(usable(outOk)) ?? null;
+      inOk ??
+      poolPartnerOf(outOk) ??
+      pick(PREFER_SELL, outOk) ??
+      available.find(usable(outOk)) ??
+      null;
     const second =
-      outOk ?? pick(PREFER_BUY, first) ?? available.find(usable(first)) ?? null;
+      outOk ??
+      poolPartnerOf(first) ??
+      pick(PREFER_BUY, first) ??
+      available.find(usable(first)) ??
+      null;
 
     if (!inOk) setTokenIn(first);
     if (!outOk) setTokenOut(second);
-  }, [available, tokenIn, tokenOut]);
+  }, [available, tokenIn, tokenOut, chainId]);
 
   usePublishChartPair(tokenIn?.symbol, tokenOut?.symbol);
 

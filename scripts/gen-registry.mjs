@@ -690,12 +690,32 @@ function build(chosen) {
   }
   for (const list of Object.values(seededPools)) list.sort();
 
+  /* The token PAIRS those pools hold, so the app can seed a swap/limit form on a
+     pair that actually has a pool instead of guessing from a symbol list and
+     landing on one with no market. Addresses only, lowercased, deduped per chain;
+     order sorted for a byte-stable emit. The token0/token1 come straight from the
+     pool record seed-v3-pool.js writes. */
+  const poolPairs = {};
+  for (const entry of ordered) {
+    if (entry.component !== POOL_COMPONENT) continue;
+    const a = entry.record?.token0?.address;
+    const b = entry.record?.token1?.address;
+    if (!a || !b) continue;
+    const pair = [String(a).toLowerCase(), String(b).toLowerCase()].sort();
+    const list = (poolPairs[entry.chainId] ??= []);
+    const key = pair.join("-");
+    if (!list.some((p) => p.join("-") === key)) list.push(pair);
+  }
+  for (const list of Object.values(poolPairs))
+    list.sort((x, y) => x.join("-").localeCompare(y.join("-")));
+
   return {
     deployments,
     provenance,
     registration,
     registrationProvenance,
     seededPools,
+    poolPairs,
     droppedKeys,
     warnings,
   };
@@ -707,6 +727,7 @@ function render(
   registration,
   registrationProvenance,
   seededPools,
+  poolPairs,
   sources,
 ) {
   const chainIds = Object.keys(deployments)
@@ -803,6 +824,19 @@ function render(
 
   const poolMap = poolIds.length ? `{\n${poolBody}\n}` : `{}`;
 
+  const pairIds = Object.keys(poolPairs)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const pairBody = pairIds
+    .map((id) => {
+      const items = (poolPairs[id] ?? [])
+        .map(([a, b]) => `    ["${a}", "${b}"],`)
+        .join("\n");
+      return `  ${id}: [\n${items}\n  ],`;
+    })
+    .join("\n");
+  const pairMap = pairIds.length ? `{\n${pairBody}\n}` : `{}`;
+
   const sourceList = sources.length
     ? sources.map((s) => `    "${s}",`).join("\n")
     : "";
@@ -885,6 +919,14 @@ export const GENERATED_LENDING_REGISTRATION: Record<
 export const GENERATED_SEEDED_POOLS: Record<number, string[]> = ${poolMap};
 
 /**
+ * The token PAIRS the deployer's pools hold, per chain — [token0, token1]
+ * addresses, lowercased. So a swap/limit form can seed a default pair that
+ * actually has a pool instead of guessing from a symbol list and landing on one
+ * with no market. Derived from the same pool records as GENERATED_SEEDED_POOLS.
+ */
+export const GENERATED_POOL_PAIRS: Record<number, [string, string][]> = ${pairMap};
+
+/**
  * What the generator last read, for debugging a wrong or missing address.
  */
 export const GENERATED_META: {
@@ -924,6 +966,7 @@ const {
   registration,
   registrationProvenance,
   seededPools,
+  poolPairs,
   droppedKeys,
   warnings,
 } = build(chosen);
@@ -942,6 +985,7 @@ writeFileSync(
     registration,
     registrationProvenance,
     seededPools,
+    poolPairs,
     sources,
   ),
   "utf8",

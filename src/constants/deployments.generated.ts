@@ -321,13 +321,58 @@ export const GENERATED_SEEDED_POOLS: Record<number, string[]> = {
 };
 
 /**
+ * The token PAIRS the deployer's pools hold, per chain — [token0, token1]
+ * addresses, lowercased. So a swap/limit form can seed a default pair that
+ * actually has a pool instead of guessing from a symbol list and landing on one
+ * with no market. Derived from the same pool records as GENERATED_SEEDED_POOLS.
+ */
+export const GENERATED_POOL_PAIRS: Record<number, [string, string][]> = {
+  97: [
+    ["0x0d6a6f10adecdc8a8b93aac0fa5210653de3511d", "0xf9e2a7ac9143ea0f25116009095d0b5700e2317f"],
+    ["0xa2e103934877fffbaec8ff0ea45cde017ab845f6", "0xf9e2a7ac9143ea0f25116009095d0b5700e2317f"],
+    ["0xeaee746b5edf09fa45b53f1e080b3ef9817cf6a2", "0xf9e2a7ac9143ea0f25116009095d0b5700e2317f"],
+  ],
+  5042: [
+    ["0x171a4217b86a807a64eb94757db6849fb4bdbaa0", "0x8c6c0a4c5500c2bc196383b4d85feb7f08a5c75b"],
+    ["0x3600000000000000000000000000000000000000", "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1"],
+    ["0x8c6c0a4c5500c2bc196383b4d85feb7f08a5c75b", "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1"],
+  ],
+  46630: [
+    ["0x5c95260ebd1dd21547528e73dc601d74b2793e0d", "0xcf00f8609deecce0a84e2a7b9d11210ac495938b"],
+    ["0x6f57844d0c6dcb7eb906d21c99195a3fc446e81d", "0xcf00f8609deecce0a84e2a7b9d11210ac495938b"],
+    ["0x7943e237c7f95da44e0301572d358911207852fa", "0xcb8a20e5d3ed3940678cc00e70f6cf307f5750df"],
+    ["0x7943e237c7f95da44e0301572d358911207852fa", "0xcf00f8609deecce0a84e2a7b9d11210ac495938b"],
+    ["0xcb8a20e5d3ed3940678cc00e70f6cf307f5750df", "0xcf00f8609deecce0a84e2a7b9d11210ac495938b"],
+  ],
+  84532: [
+    ["0x031d0127d14793b2b632f1eb25b57f66abd1de0b", "0x4200000000000000000000000000000000000006"],
+    ["0x031d0127d14793b2b632f1eb25b57f66abd1de0b", "0x688fc5d842f863d5da4a0e5d553a7be6524dabb9"],
+    ["0x4200000000000000000000000000000000000006", "0x688fc5d842f863d5da4a0e5d553a7be6524dabb9"],
+    ["0x42bea7b539ce0eb7368534c94e522f092f6a2bc9", "0x688fc5d842f863d5da4a0e5d553a7be6524dabb9"],
+    ["0x6140da1f66fcafa0b5197065ae91a00208f3cd86", "0x688fc5d842f863d5da4a0e5d553a7be6524dabb9"],
+  ],
+  5042002: [
+    ["0xa2e103934877fffbaec8ff0ea45cde017ab845f6", "0xc0f8d36ec1d96477f26228a629a31248c584f477"],
+    ["0xa2e103934877fffbaec8ff0ea45cde017ab845f6", "0xcf59972d09dbf9b37c1e3cda55c47d0253038d76"],
+  ],
+  11155111: [
+    ["0x0b485b9e120464f3de5dd7c3af96f7af3f8e9f70", "0x5dea1292cedd7ca24ace12dec727f00a6865bc55"],
+    ["0x0b485b9e120464f3de5dd7c3af96f7af3f8e9f70", "0x79c14246120369a98c4226a01158645a7a501f35"],
+    ["0x0b485b9e120464f3de5dd7c3af96f7af3f8e9f70", "0xfd58f8b21ddabf004f87ae9023c7cfd8700ba58b"],
+    ["0x0b485b9e120464f3de5dd7c3af96f7af3f8e9f70", "0xfff9976782d46cc05630d1f6ebab18b2324d6b14"],
+    ["0x5dea1292cedd7ca24ace12dec727f00a6865bc55", "0xfd58f8b21ddabf004f87ae9023c7cfd8700ba58b"],
+    ["0x5dea1292cedd7ca24ace12dec727f00a6865bc55", "0xfff9976782d46cc05630d1f6ebab18b2324d6b14"],
+  ],
+};
+
+/**
  * What the generator last read, for debugging a wrong or missing address.
  */
 export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-24T23:20:46.558Z",
+  generatedAt: "2026-09-25T10:13:28.751Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
