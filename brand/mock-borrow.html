@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="_mockbase.css">
+<style>
+  body{padding:34px;display:block}
+  .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  .top{display:flex;align-items:center;gap:16px}
+  .h1{font-family:var(--k-font-display);font-weight:400;letter-spacing:-.02em;font-size:var(--k-fs-2xl)}
+  .toggle{display:inline-flex;gap:4px;background:var(--k-card);border:1px solid var(--k-line);border-radius:var(--k-r-pill);padding:3px}
+  .tg{background:none;border:0;font:inherit;font-size:var(--k-fs-sm);color:var(--k-t2);padding:7px 16px;border-radius:var(--k-r-pill)}
+  .tg.on{background:var(--k-well2);color:var(--k-t1);font-weight:var(--k-fw-med)}
+  .strip{display:flex;margin-left:auto}
+  .st{padding:0 22px;border-left:1px solid var(--k-line);display:flex;flex-direction:column;gap:3px}
+  .st:first-child{border-left:0;padding-left:0}
+  .stL{font-size:var(--k-fs-xs);color:var(--k-t2)}
+  .stV{font-size:var(--k-fs-lg);letter-spacing:-.01em}
+  .stV.good{color:var(--k-pos)}
+
+  .table{background:var(--k-card);border:1px solid var(--k-line);border-radius:var(--k-r-lg);overflow:hidden}
+  .tr{display:grid;grid-template-columns:1.7fr 1fr 1.1fr 0.8fr 0.9fr;gap:16px;align-items:center;padding:14px 20px}
+  .tr:not(.thead):not(:last-child){border-bottom:1px solid var(--k-line)}
+  .thead{border-bottom:1px solid var(--k-line)}
+  .thead>*{font-size:var(--k-fs-xs);color:var(--k-t2);text-align:right}
+  .thead>:first-child{text-align:left}
+  .asset{display:flex;align-items:center;gap:14px;min-width:0}
+  .aImg{width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff}
+  .aName{font-size:var(--k-fs-base)}
+  .aSub{font-size:var(--k-fs-xs);color:var(--k-t2)}
+  .num{text-align:right;font-size:var(--k-fs-base)}
+  .num .sub{display:block;font-size:var(--k-fs-xs);color:var(--k-t2)}
+  .rateGood{color:var(--k-pos)}
+  .rateAlt{color:var(--k-alt)}
+  .badge{justify-self:end;font-size:var(--k-fs-xs);padding:4px 11px;border-radius:var(--k-r-pill);background:var(--k-glass-deep);color:var(--k-t2);white-space:nowrap}
+  .act{justify-self:end}
+  .actBtn{background:var(--k-brand);color:var(--k-brand-fg);border:0;font:inherit;font-size:var(--k-fs-sm);font-weight:var(--k-fw-med);padding:8px 18px;border-radius:var(--k-r-pill)}
+
+  /* health card */
+  .pos{background:var(--k-card);border:1px solid var(--k-line);border-radius:var(--k-r-lg);padding:16px 20px;display:flex;align-items:center;gap:26px}
+  .posT{font-size:var(--k-fs-base);font-weight:var(--k-fw-med)}
+  .hf{flex:1;min-width:0}
+  .hfHead{display:flex;justify-content:space-between;align-items:baseline;font-size:var(--k-fs-sm);color:var(--k-t2)}
+  .hfHead b{color:var(--k-pos);font-size:var(--k-fs-lg);font-weight:var(--k-fw-med)}
+  .gauge{margin-top:8px;height:8px;border-radius:999px;background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);overflow:hidden}
+  .gfill{height:100%;width:78%;background:var(--k-pos);border-radius:999px}
+  .kv{display:flex;flex-direction:column;gap:3px}
+  .kvL{font-size:var(--k-fs-xs);color:var(--k-t2)}
+  .kvV{font-size:var(--k-fs-lg);letter-spacing:-.01em}
+</style></head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <span class="h1">Borrow</span>
+      <span class="toggle"><span class="tg on">Borrow</span><span class="tg">Lend</span></span>
+      <div class="strip">
+        <div class="st"><span class="stL">Collateral</span><span class="stV tabular">$12,113</span></div>
+        <div class="st"><span class="stL">Borrowed</span><span class="stV tabular">$2,088</span></div>
+        <div class="st"><span class="stL">Net borrow APR</span><span class="stV good tabular">6.2%</span></div>
+      </div>
+    </div>
+
+    <div class="table">
+      <div class="tr thead"><span>Asset · offer</span><span>APR</span><span>Available</span><span>Term</span><span></span></div>
+      <div class="tr">
+        <div class="asset"><span class="aImg" style="background:#2775ca">$</span><div><div class="aName">USDC</div><div class="aSub">Lender 0x7cdc…5ccc</div></div></div>
+        <div class="num rateGood tabular">5.9%</div>
+        <div class="num tabular">42,500<span class="sub">$42,500</span></div>
+        <div class="num tabular">30d</div>
+        <div class="act"><button class="actBtn">Borrow</button></div>
+      </div>
+      <div class="tr">
+        <div class="asset"><span class="aImg" style="background:#2775ca">$</span><div><div class="aName">USDC</div><div class="aSub">Lender 0xade6…c949</div></div></div>
+        <div class="num rateGood tabular">6.2%</div>
+        <div class="num tabular">18,000<span class="sub">$18,000</span></div>
+        <div class="num tabular">60d</div>
+        <div class="act"><button class="actBtn">Borrow</button></div>
+      </div>
+      <div class="tr">
+        <div class="asset"><span class="aImg" style="background:var(--k-brand)">kf</span><div><div class="aName">kfUSD</div><div class="aSub">Lender 0x0ce7…51bc</div></div></div>
+        <div class="num rateGood tabular">4.1%</div>
+        <div class="num tabular">30,000<span class="sub">$30,000</span></div>
+        <div class="num tabular"><span class="badge">Open</span></div>
+        <div class="act"><button class="actBtn">Borrow</button></div>
+      </div>
+      <div class="tr">
+        <div class="asset"><span class="aImg" style="background:var(--k-brand)">K</span><div><div class="aName">KLD</div><div class="aSub">Lender 0x6996…56a4</div></div></div>
+        <div class="num rateAlt tabular">8.4%</div>
+        <div class="num tabular">120,000<span class="sub">$3,637</span></div>
+        <div class="num tabular">90d</div>
+        <div class="act"><button class="actBtn">Borrow</button></div>
+      </div>
+    </div>
+
+    <div class="pos">
+      <span class="posT">Your position</span>
+      <div class="kv"><span class="kvL">Collateral</span><span class="kvV tabular">13,700 USDC</span></div>
+      <div class="kv"><span class="kvL">Borrowed</span><span class="kvV tabular">68,900 KLD</span></div>
+      <div class="hf">
+        <div class="hfHead"><span>Health factor</span><b class="tabular">3.14</b></div>
+        <div class="gauge"><div class="gfill"></div></div>
+      </div>
+    </div>
+  </div>
+</body></html>

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="_mockbase.css">
+<style>
+  .tabs{display:flex;gap:4px;justify-content:center;margin-bottom:14px}
+  .tab{font-size:var(--k-fs-sm);color:var(--k-t2);padding:7px 15px;border-radius:var(--k-r-pill)}
+  .tab.on{background:var(--k-card);color:var(--k-t1);font-weight:var(--k-fw-med);box-shadow:var(--k-shadow-inset)}
+  .card{width:540px;background:var(--k-card);border:1px solid var(--k-line);border-radius:var(--k-r-xl);
+    box-shadow:inset 0 1px 0 rgba(250,249,245,.06),0 8px 32px rgba(0,0,0,.5);overflow:hidden}
+  .head{display:flex;align-items:center;gap:10px;padding:15px 17px;border-bottom:1px solid var(--k-line)}
+  .bot{width:22px;height:22px;border-radius:6px;border:2px solid var(--k-brand);position:relative;flex:none}
+  .bot::before{content:"";position:absolute;left:3px;top:6px;width:4px;height:4px;border-radius:50%;background:var(--k-brand);box-shadow:8px 0 0 var(--k-brand)}
+  .bot::after{content:"";position:absolute;left:9px;top:-6px;width:2px;height:5px;background:var(--k-brand)}
+  .htitle{font-weight:var(--k-fw-med);font-size:var(--k-fs-base);flex:1}
+  .hicons{display:flex;gap:6px;color:var(--k-t3)}
+  .hi{width:16px;height:16px}
+  .well{padding:16px 17px 18px;display:flex;flex-direction:column;gap:16px}
+  .who{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--k-t3);margin-bottom:5px}
+  .userMsg{font-size:var(--k-fs-base);color:var(--k-t1)}
+  .how{display:inline-flex;align-items:center;gap:5px;font-size:var(--k-fs-xs);color:var(--k-t3);margin-bottom:7px}
+  .reply{font-size:var(--k-fs-base);color:var(--k-t1);font-weight:var(--k-fw-med);line-height:1.5}
+  .via{display:inline-block;margin-top:8px;font-size:11px;color:var(--k-t3);background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);padding:3px 9px;border-radius:var(--k-r-pill)}
+  .acard{background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);border-radius:var(--k-r-md);padding:12px 13px}
+  .notice{border-left:2px solid var(--k-pos);padding-left:11px}
+  .nHead{display:flex;align-items:flex-start;gap:7px}
+  .nIcon{flex:none;width:15px;height:15px;margin-top:1px;color:var(--k-pos)}
+  .nTitle{font-size:var(--k-fs-sm);font-weight:var(--k-fw-med);color:var(--k-t1);line-height:1.4}
+  .nBody{font-size:var(--k-fs-sm);color:var(--k-t2);line-height:1.45;margin-top:3px}
+  .ctitle{font-size:var(--k-fs-xs);color:var(--k-t3);margin-bottom:8px}
+  .rows{display:flex;flex-direction:column}
+  .row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;font-size:var(--k-fs-sm)}
+  .row+.row{border-top:1px solid var(--k-line)}
+  .rLabel{color:var(--k-t2)}
+  .rValue{color:var(--k-t1);font-weight:var(--k-fw-med)}
+  .plan{display:flex;flex-direction:column;gap:var(--k-s3)}
+  .ptitle{font-size:var(--k-fs-lg);font-weight:var(--k-fw-med)}
+  .steps{list-style:none;display:flex;flex-direction:column}
+  .step{display:flex;align-items:flex-start;gap:var(--k-s3);padding:13px 0}
+  .step+.step{border-top:1px solid var(--k-line)}
+  .marker{width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:12px;
+    background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);color:var(--k-t2);margin-top:1px}
+  .body{flex:1;min-width:0}
+  .stTitle{font-size:var(--k-fs-base)}
+  .stDetail{font-size:var(--k-fs-xs);color:var(--k-t2);margin-top:2px;line-height:1.5}
+  .chain{font-size:var(--k-fs-xs);color:var(--k-t2);background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);padding:3px 9px;border-radius:var(--k-r-pill);flex:none}
+  .pactions{display:flex;gap:var(--k-s2)}
+  .ghost{background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);color:var(--k-t1);border:0;font:inherit;font-size:16px;padding:15px 20px;border-radius:var(--k-r-md)}
+  .primary{flex:1;background:var(--k-brand);color:var(--k-brand-fg);border:0;font:inherit;font-size:16px;font-weight:var(--k-fw-med);padding:15px;border-radius:var(--k-r-md)}
+  .foot{font-size:var(--k-fs-xs);color:var(--k-t3);text-align:center;line-height:1.5}
+</style></head>
+<body>
+  <div>
+    <div class="tabs">
+      <span class="tab on">Agent</span><span class="tab">Swap</span><span class="tab">Limit</span><span class="tab">Buy</span><span class="tab">Sell</span>
+    </div>
+    <div class="card">
+      <div class="head">
+        <span class="bot"></span><span class="htitle">Talk to Luca Agent</span>
+        <span class="hicons">
+          <svg class="hi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3H3v5M16 21h5v-5M21 3l-7 7M3 21l7-7"/></svg>
+          <svg class="hi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-8"/></svg>
+          <svg class="hi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+        </span>
+      </div>
+      <div class="well">
+        <div><div class="who">You</div><div class="userMsg">Bridge 2,000 USDC to Base</div></div>
+        <div>
+          <div class="who">Luca</div>
+          <div class="how">▸ How I answered</div>
+          <div class="reply">Bridging 2,000 USDC from Arc to Base via Circle CCTP — burned here, minted 1:1 on Base as native USDC. You don't need gas on Base; the completion keeper finishes the mint for you.</div>
+          <span class="via">Planned on Arc → Base</span>
+        </div>
+        <div class="acard notice">
+          <div class="nHead">
+            <svg class="nIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>
+            <div class="nTitle">Native USDC, 1:1 — Circle CCTP</div>
+          </div>
+          <div class="nBody">Burn-and-mint, not a wrapped IOU. No gas needed on Base: once Circle attests, the mint there is completed for you. Auditor pinned the destination to Base and the amount to what you asked.</div>
+        </div>
+        <div class="acard">
+          <div class="ctitle">Transfer</div>
+          <div class="rows">
+            <div class="row"><span class="rLabel">From</span><span class="rValue">Arc</span></div>
+            <div class="row"><span class="rLabel">To</span><span class="rValue">Base</span></div>
+            <div class="row"><span class="rLabel">Amount</span><span class="rValue tabular">2,000 USDC</span></div>
+            <div class="row"><span class="rLabel">You receive</span><span class="rValue tabular">2,000 USDC</span></div>
+          </div>
+        </div>
+        <div class="plan">
+          <div class="ptitle">Review and sign</div>
+          <ol class="steps">
+            <li class="step"><span class="marker">1</span><div class="body"><div class="stTitle">Approve USDC</div><div class="stDetail tabular">Let CCTP spend 2,000 USDC — exact amount.</div></div><span class="chain">Arc</span></li>
+            <li class="step"><span class="marker">2</span><div class="body"><div class="stTitle">Burn 2,000 USDC on Arc</div><div class="stDetail">Circle attests, then the keeper mints on Base.</div></div><span class="chain">Arc → Base</span></li>
+          </ol>
+          <div class="pactions"><button class="ghost">Cancel</button><button class="primary">Sign &amp; bridge</button></div>
+          <p class="foot">Each step is a separate signature. Nothing runs until you approve it, and a failure stops the rest.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>
