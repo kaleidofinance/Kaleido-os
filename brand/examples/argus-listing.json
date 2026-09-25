@@ -1,0 +1,16 @@
+{
+  "eyebrow": "New listing · Arc mainnet",
+  "tokenLogo": "tokens/argus.png",
+  "hero": "$ARGUS",
+  "sub": "Argus — the Arc launchpad token — is now trading on Kaleido. Swap it in seconds, or let **Luca** route the best price for you.",
+  "stats": [
+    "Live on Arc",
+    "Routed by Luca",
+    "Native pools + aggregator"
+  ],
+  "url": "kaleidofi.xyz/trade",
+  "background": "colosseum-dark",
+  "layout": "left",
+  "effect": "wash",
+  "arc": true
+}
