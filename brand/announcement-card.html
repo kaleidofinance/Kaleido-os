@@ -76,6 +76,12 @@
   .word{font-family:"KSerif",Georgia,serif;font-weight:600;font-size:42px;letter-spacing:-.01em}
   .word i{font-style:normal;color:var(--green)}
 
+  /* The token logo sits INLINE with the hero — [orb] $TICKER on one line. */
+  .heroRow{display:flex;align-items:center;gap:28px}
+  .card.center .heroRow{justify-content:center}
+  .card.right .heroRow{justify-content:flex-end}
+  .toklogo{width:120px;height:120px;border-radius:50%;object-fit:cover;flex:none;
+    box-shadow:0 0 0 2px rgba(53,209,141,.55),0 0 44px rgba(53,209,141,.4),0 8px 30px rgba(0,0,0,.5)}
   .mid{margin-top:auto;margin-bottom:auto;max-width:100%}
   .eyebrow{color:var(--green);font-weight:700;font-size:20px;letter-spacing:.2em;text-transform:uppercase;text-shadow:0 1px 12px rgba(0,0,0,.85)}
   .hero{font-family:"KSerif",Georgia,serif;font-weight:600;color:#fff;font-size:150px;line-height:.94;letter-spacing:-.035em;margin:18px 0 6px;text-shadow:0 3px 34px rgba(0,0,0,.55)}
@@ -97,6 +103,12 @@
   .arc{width:29px;height:29px;object-fit:contain;flex:none}
   .url{font-family:"KSerif",Georgia,serif;font-weight:700;font-size:34px;color:var(--green);letter-spacing:-.01em}
   .url:empty{display:none}
+  /* token-listing cards carry an extra element (the logo), so tighten the
+     vertical rhythm and cap the hero — otherwise the footer falls off a 630 card. */
+  .card.has-token .toklogo{width:118px;height:118px}
+  .card.has-token .hero{font-size:104px;margin:10px 0 2px}
+  .card.has-token .sub{margin-top:12px;font-size:25px}
+  .card.has-token .eyebrow{font-size:19px}
 </style>
 </head>
 <body>
@@ -104,7 +116,10 @@
     <div class="brand"><span class="badge"></span><span class="word">Kaleido<i>fi</i></span></div>
     <div class="mid">
       <div class="eyebrow" id="eyebrow"></div>
-      <div class="hero" id="hero"></div>
+      <div class="heroRow">
+        <img class="toklogo" id="toklogo" alt="" hidden>
+        <div class="hero" id="hero"></div>
+      </div>
       <div class="sub" id="sub"></div>
     </div>
     <div class="foot">
@@ -180,6 +195,7 @@
     if (bg) card.style.backgroundImage = `url("${bg}")`;
     else card.classList.add("plain");
 
+    if (C.tokenLogo) { const tl = document.getElementById("toklogo"); tl.src = "../public/" + C.tokenLogo; tl.hidden = false; card.classList.add("has-token"); }
     document.getElementById("eyebrow").textContent = C.eyebrow || "";
     const hero = document.getElementById("hero");
     hero.innerHTML = esc(C.hero || "") + (C.heroUnit ? `<span class="u">${esc(C.heroUnit)}</span>` : "");

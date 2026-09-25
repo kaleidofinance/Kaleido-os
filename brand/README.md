@@ -44,6 +44,7 @@ for assets — fonts and images come from `../src` and `../public`.
 | `background`| `colosseum-dark` \| `colosseum-bright` \| `colosseum-exterior` \| `plain` | the backdrop. `colosseum-dark` is the moody exterior (most legible, matches the site OG); `colosseum-bright` the sunlit interior; `colosseum-exterior` the sunlit exterior; `plain` is black + green glow, no photo |
 | `layout`    | `left` \| `center` \| `right` | posture. `left` is the safe default; `center` is a bold statement (auto-uses a dark backdrop); `right` is opt-in |
 | `effect`    | `wash` \| `spotlight` \| `bottom` \| `duotone` | backdrop treatment — directional dark wash, centre spotlight, bottom-weighted, or a green-ink tint |
+| `tokenLogo` | string (optional)            | a token logo shown inline **beside the hero** — a path under `public/`, e.g. `"tokens/argus.png"`. Best for a listing card with `hero: "$TICKER"`. Every Arc token has a logo in `public/tokens/` |
 | `arc`       | boolean (optional)           | show the purple Arc mark before the first stat |
 
 Only `hero` is really required; everything else is optional.
