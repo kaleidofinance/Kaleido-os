@@ -41,10 +41,28 @@ for assets — fonts and images come from `../src` and `../public`.
 | `sub`       | string (optional)            | one–two lines under the hero. `**bold**` is allowed and renders white |
 | `stats`     | array (optional)             | footer chips. Each item is either a plain string (`"Live on Arc"`) or `{ "v": "6,920", "k": "wallets earning" }` — `v` renders green, `k` muted |
 | `url`       | string (optional)            | green serif URL bottom-left, e.g. `"kaleidofi.xyz/rewards"` |
-| `background`| `colosseum-bright` \| `colosseum-dark` \| `colosseum` \| `plain` | default `colosseum-bright`. `plain` is black + green glow (no photo) |
+| `background`| `colosseum-dark` \| `colosseum-bright` \| `colosseum-exterior` \| `plain` | the backdrop. `colosseum-dark` is the moody exterior (most legible, matches the site OG); `colosseum-bright` the sunlit interior; `colosseum-exterior` the sunlit exterior; `plain` is black + green glow, no photo |
+| `layout`    | `left` \| `center` \| `right` | posture. `left` is the safe default; `center` is a bold statement (auto-uses a dark backdrop); `right` is opt-in |
+| `effect`    | `wash` \| `spotlight` \| `bottom` \| `duotone` | backdrop treatment — directional dark wash, centre spotlight, bottom-weighted, or a green-ink tint |
 | `arc`       | boolean (optional)           | show the purple Arc mark before the first stat |
 
 Only `hero` is really required; everything else is optional.
+
+### Variety & legibility (this is automatic)
+
+You don't have to pick `background` / `layout` / `effect` — **omit them and the kit
+varies them per card** (derived from the card's own text, so two announcements
+never look the same) while keeping text legible:
+
+- Centred text, spotlight and duotone auto-use the **dark** backdrop (text sits
+  over the middle, which only reads on dark).
+- Over a bright backdrop, auto layout stays **left** (text on the dark-washed
+  side, building on the right).
+- `right` is never auto-picked — these arena images put the building right/centre,
+  so it's opt-in for when your own backdrop leaves the right side clear.
+
+Pin any field to override. If you pin a combo that fights (e.g. `center` + a
+bright background), that's your call — check the PNG.
 
 ### Example — a feature launch
 
