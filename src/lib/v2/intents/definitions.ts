@@ -298,8 +298,21 @@ register("approve", {
 
     // No-op when the allowance already covers it — cheaper and clearer than a
     // redundant approval. The step shows as "already approved".
-    const current: bigint = await token.allowance(ctx.address, i.spender);
-    if (current >= needed) return { hash: null, skipped: true };
+    // Fail open on a flaky read. A rate-limited public RPC can answer this
+    // eth_call with ethers' SERVER_ERROR "missing response for request" (BSC's
+    // unkeyed nodes do under load). Left to throw, it aborted the whole approve
+    // before the wallet was ever prompted — the user saw the step fail and no
+    // signature request. So an unreadable allowance is treated as "unknown" and
+    // we fall through to the approval, the same stance pollUntil takes where a
+    // throwing read counts as not-yet. Worst case is a redundant approve when one
+    // was already in place, which is a dead end turned into a signable step.
+    let current: bigint | null = null;
+    try {
+      current = await token.allowance(ctx.address, i.spender);
+    } catch {
+      /* allowance unreadable right now — proceed to approve rather than dead-end */
+    }
+    if (current !== null && current >= needed) return { hash: null, skipped: true };
 
     const tx = await token.approve(
       i.spender,
