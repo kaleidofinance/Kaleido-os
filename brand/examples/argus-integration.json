@@ -1,0 +1,15 @@
+{
+  "eyebrow": "Argus launchpad · Arc mainnet",
+  "hero": "Paste. Tap. Trade.",
+  "sub": "Drop any Argus launch's contract into **Luca** and get an instant card — live price, market cap, taxes — with one-tap buy & sell. Routed, audited, and signed by you.",
+  "stats": [
+    "Instant token card",
+    "One-tap buy & sell",
+    "Non-custodial"
+  ],
+  "url": "kaleidofi.xyz/trade",
+  "background": "colosseum-exterior",
+  "layout": "left",
+  "effect": "wash",
+  "arc": true
+}

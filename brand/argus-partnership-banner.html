@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face{font-family:"KSerif";src:url("../src/app/fonts/lora-var.woff2") format("woff2");font-weight:100 900;font-display:block}
+  @font-face{font-family:"KSans";src:url("../src/app/fonts/GeistVF.woff") format("woff");font-weight:100 900;font-display:block}
+  :root{--ink:#0a1512;--text:#f4eee5;--muted:#d7e0d8;--green:#35d18d;--sand:#e7d7b6}
+  *{box-sizing:border-box;margin:0}
+  html,body{width:100%;height:100%;background:var(--ink)}
+  .card{position:relative;isolation:isolate;overflow:hidden;width:100vw;height:100vh;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;text-align:center;
+    padding:64px;font-family:"KSans",system-ui,sans-serif;color:var(--text);
+    background:var(--ink) center/cover no-repeat;background-image:url("../public/hero-colosseum.webp")}
+  /* symmetric scrim — centred text over the middle needs the dark to read */
+  .card::before{content:"";position:absolute;inset:0;z-index:0;background:
+    radial-gradient(72% 86% at 50% 50%, rgba(6,15,12,.5) 0%, rgba(6,15,12,.7) 55%, rgba(6,15,12,.95) 100%),
+    linear-gradient(180deg, rgba(6,15,12,.55) 0%, transparent 26%, transparent 70%, rgba(6,15,12,.7) 100%),
+    radial-gradient(50% 40% at 50% 4%, rgba(53,209,141,.16), transparent 60%)}
+  .card>*{position:relative;z-index:1}
+
+  .eyebrow{color:var(--green);font-weight:700;font-size:19px;letter-spacing:.24em;text-transform:uppercase;text-shadow:0 1px 12px rgba(0,0,0,.8)}
+
+  /* the co-brand lockup: [logo Kaleidofi]  ×  [logo ArgusPad] */
+  .lock{display:flex;align-items:center;justify-content:center;gap:40px}
+  .co{display:flex;align-items:center;gap:20px}
+  .logo{width:96px;height:96px;border-radius:50%;object-fit:cover;flex:none;
+    box-shadow:0 0 0 2px rgba(231,215,182,.35),0 0 40px rgba(53,209,141,.32),0 10px 30px rgba(0,0,0,.5)}
+  .kmark{background:#0c1a15 url("../public/newklogo2.png") center/cover no-repeat}
+  .name{font-family:"KSerif",Georgia,serif;font-weight:600;font-size:62px;letter-spacing:-.02em;line-height:1;color:#fff}
+  .name i{font-style:normal;color:var(--green)}
+  .x{font-family:"KSerif",Georgia,serif;font-weight:400;font-size:60px;color:var(--green);opacity:.9;line-height:1}
+
+  .sub{color:var(--muted);font-size:27px;line-height:1.4;max-width:70%;text-shadow:0 1px 12px rgba(0,0,0,.75)}
+  .sub b{color:#fff;font-weight:600}
+  .url{font-family:"KSerif",Georgia,serif;font-weight:700;font-size:30px;color:var(--green);letter-spacing:-.01em}
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="eyebrow">Partnership · Arc mainnet</div>
+    <div class="lock">
+      <div class="co"><span class="logo kmark"></span><span class="name">Kaleido<i>fi</i></span></div>
+      <span class="x">×</span>
+      <div class="co"><img class="logo" src="../public/tokens/argus.png" alt="Argus"><span class="name">Argus<i>Pad</i></span></div>
+    </div>
+    <div class="sub">Their launchpad, our agent — every Argus launch is instantly tradable in <b>Luca</b>, with rich cards and AI trading intelligence.</div>
+    <div class="url">kaleidofi.xyz</div>
+  </main>
+</body>
+</html>
