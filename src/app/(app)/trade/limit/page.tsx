@@ -27,6 +27,7 @@ import {
   swapInputFor,
   type StoredOrder,
 } from "@/lib/dex/orders";
+import { FEE_TIERS } from "@/lib/dex/liquidity";
 import s from "../trade.module.css";
 import d from "../deferred.module.css";
 import l from "./limit.module.css";
@@ -63,9 +64,6 @@ import l from "./limit.module.css";
  * The approve is to KaleidoOrders and covers `amountIn × maxFills`, since the
  * contract pulls the input per fill and one signature authorises all of them.
  */
-
-/** The tier the pair's own pool is on, and what this card quotes against. */
-const DEFAULT_FEE = 3000;
 
 /** Quick sell amounts, as fractions of the sell-side balance. */
 const QUICK = [0.25, 0.5, 0.75, 1] as const;
@@ -302,7 +300,26 @@ function OpenOrders({
       await Promise.all(
         rows.map(async (r) => {
           try {
-            const path = pathFor(r.order, DEFAULT_FEE);
+            /* Try each tier and keep the path that quotes best — the order's
+               pool may be on any tier (the keeper picks the same way). A fixed
+               tier misreported every non-0.3% pair as unfillable. */
+            const quotedFor = swapInputFor(BigInt(r.order.amountIn), feeBps);
+            let path = pathFor(r.order, FEE_TIERS[0]);
+            let bestOut = BigInt(0);
+            if (quoter) {
+              for (const fee of FEE_TIERS) {
+                const p = pathFor(r.order, fee);
+                try {
+                  const out: bigint = await quoter.quoteExactInput.staticCall(p, quotedFor);
+                  if (out > bestOut) {
+                    bestOut = out;
+                    path = p;
+                  }
+                } catch {
+                  /* no pool at this tier */
+                }
+              }
+            }
             const [ok, reason] = await view.checkFill(
               r.order,
               r.signature,
@@ -310,18 +327,8 @@ function OpenOrders({
             );
             let pct: number | null = null;
             const floor = BigInt(r.order.minOut);
-            if (quoter && floor > BigInt(0)) {
-              try {
-                const out: bigint = await quoter.quoteExactInput.staticCall(
-                  path,
-                  swapInputFor(BigInt(r.order.amountIn), feeBps),
-                );
-                pct =
-                  Number(((out - floor) * BigInt(10_000)) / floor) / 100;
-              } catch {
-                /* No pool at this tier, or not enough liquidity for this size.
-                   The terms verdict above still stands on its own. */
-              }
+            if (floor > BigInt(0) && bestOut > BigInt(0)) {
+              pct = Number(((bestOut - floor) * BigInt(10_000)) / floor) / 100;
             }
             next[r.hash] = { ok: Boolean(ok), reason: String(reason), pct };
           } catch {
@@ -540,15 +547,27 @@ export default function LimitPage() {
     setQuoting(true);
     const t = setTimeout(async () => {
       try {
-        const out = await getV3AmountOut(
-          tokenIn.address,
-          tokenOut.address,
-          size,
-          DEFAULT_FEE,
-          tokenIn.decimals,
-          tokenOut.decimals,
+        /* The pool can be on any tier — USDC/EURC is 0.05%, not the old
+           hardcoded 0.3% — so quote all of them and keep the best output, the
+           same tier discovery the keeper does before it fills. Quoting one
+           fixed tier showed "no quote" for every pair whose pool isn't 0.3%. */
+        const outs = await Promise.all(
+          FEE_TIERS.map((fee) =>
+            getV3AmountOut(
+              tokenIn.address,
+              tokenOut.address,
+              size,
+              fee,
+              tokenIn.decimals,
+              tokenOut.decimals,
+            ).catch(() => null),
+          ),
         );
-        const rate = Number(out) / Number(size);
+        const best = outs.reduce<number>((m, o) => {
+          const v = o === null ? 0 : Number(o);
+          return Number.isFinite(v) && v > m ? v : m;
+        }, 0);
+        const rate = best / Number(size);
         if (!cancelled) setMarket(Number.isFinite(rate) && rate > 0 ? rate : 0);
       } catch {
         if (!cancelled) setMarket(0);
