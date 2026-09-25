@@ -192,7 +192,18 @@ export const CHAINS: ChainMeta[] = [
     network: "mainnet",
     pairChainId: 97,
     nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
-    rpcUrls: ["https://rpc.ankr.com/bsc", "https://bsc-dataseed.bnbchain.org"],
+    /* publicnode leads. thirdweb and rpc.ankr.com are unkeyed and rate-limit
+       by IP, so from Vercel's shared egress they answer 429 rather than data —
+       the same failure that took out server reads on chains 11155111 and 97,
+       and what reached a BSC user as an approve dead-ending on ethers'
+       "missing response for request". publicnode is keyless but not throttled
+       that way; the two BNB-run nodes stay as failover. If a keyed BSC RPC is
+       ever provisioned, put it at [0]. */
+    rpcUrls: [
+      "https://bsc-rpc.publicnode.com",
+      "https://bsc-dataseed.bnbchain.org",
+      "https://rpc.ankr.com/bsc",
+    ],
     blockExplorer: { name: "BscScan", url: "https://bscscan.com" },
     iconId: "binance-smart-chain",
     color: "#f0b90b",
