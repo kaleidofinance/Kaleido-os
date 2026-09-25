@@ -73,3 +73,8 @@ smart-contract/snapshot-kafusd-*.json
 
 # Partial holder scans — progress only, deleted on success.
 smart-contract/.scan-progress-*.json
+
+# Rendered announcement cards — regenerate with brand/render-card.mjs.
+brand/out/
+brand/.render-cache/
+brand/.card-*.html
