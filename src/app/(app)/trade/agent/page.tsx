@@ -452,6 +452,12 @@ export default function AgentPage() {
       say(result.prompt, { via: "local" });
       return true;
     }
+    if (result.status === "refused") {
+      setPending(null);
+      note("Declined a conditional order it can't place from a sentence");
+      say(result.message, { via: "local" });
+      return true;
+    }
     if (result.status !== "ok") return false;
 
     setPending(null);
@@ -1106,6 +1112,15 @@ export default function AgentPage() {
           return;
         }
       }
+      /* A conditional/market-cap trade: refuse here, with the grammar's own
+         message, and do NOT escalate — the model would drop the condition and
+         build a market order. */
+      if (parsed.status === "refused") {
+        note("Declined a conditional order it can't place from a sentence");
+        log("refused:conditional");
+        say(parsed.message, { via: "local" });
+        return;
+      }
       if (parsed.status !== "unknown") {
         note("Read it as a direct command — no reasoning request needed");
         log(parsed.status === "ok" ? `command:${parsed.command.kind}` : `asks:${parsed.missing}`);
@@ -1124,7 +1139,9 @@ export default function AgentPage() {
           log(
             followed.status === "ok"
               ? `command:${followed.command.kind}`
-              : `asks:${followed.missing}`,
+              : followed.status === "refused"
+                ? "refused:conditional"
+                : `asks:${followed.missing}`,
           );
           await planLocally(followed, abort.signal);
           return;

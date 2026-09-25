@@ -864,7 +864,7 @@ export default function LivePlanner() {
       const parsed = parseCommand(text, vocabulary);
       const ms = (performance.now() - t0).toFixed(2);
 
-      if (parsed.status === "unknown") {
+      if (parsed.status === "unknown" || parsed.status === "refused") {
         setOut({
           text,
           ms,
