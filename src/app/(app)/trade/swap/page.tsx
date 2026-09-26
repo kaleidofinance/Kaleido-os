@@ -24,6 +24,7 @@ import {
   describeRoute,
   encodeV3Path,
   findRouteAcrossSources,
+  MAX_PRICE_IMPACT,
   poolSide,
   type RoutedPath,
 } from "@/lib/dex/route";
@@ -504,6 +505,7 @@ export default function SwapPage() {
               venue,
             })),
           ],
+          { impactCeiling: MAX_PRICE_IMPACT },
         );
         /* A quote is a positive number or it is nothing. `findBestRoute` already
            rejects null, zero and non-finite answers — a pool cannot fill a
