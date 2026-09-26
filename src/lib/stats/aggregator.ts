@@ -51,6 +51,6 @@ export async function readAggregatorStats(): Promise<AggregatorStats | null> {
     lastOccurredAt: data.last_occurred_at,
     source: "verified-kyberswap-ledger",
     note:
-      "Cumulative verified KyberSwap-routed volume on Arc. Fees are Kaleido fee revenue at the configured rate; external Kyber LP fees are excluded.",
+      "Cumulative verified swap volume on Arc — aggregator (KyberSwap) routes and direct native-pool trades. Fees are Kaleido fee revenue at the configured rate; external LP fees are excluded.",
   };
 }

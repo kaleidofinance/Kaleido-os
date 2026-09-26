@@ -145,6 +145,50 @@ console.log("\n— Argus trades (Uniswap v4 via the PoolManager) are swaps too �
   check("(control) without the Argus venue, the same tx is not-a-swap", "skip" in old && old.skip === "not-a-swap", j(old));
 }
 
+console.log("\n— direct native-pool trades (no fee) are swaps too —");
+{
+  /* A trade our own pool quoted better than KyberSwap runs direct through our v3
+     router and pays NO 0.2% fee, so there is no transfer to the fee wallet. The
+     pool address is the venue that proves the swap; the router (tx.to) is a venue
+     too, so it is never credited. */
+  const POOL = "0x542e6e2256270215d667ed43e65d4def8295164a"; // cirBTC/WUSDC
+  const V3ROUTER = "0x98d4f47b000000000000000000000000000000ab";
+  const CIRBTC = "0xc1a0000000000000000000000000000000000001";
+  /* USDC in → cirBTC out, straight through the pool. No fee transfer at all. */
+  const trade = [
+    t(USDC, WALLET, POOL, 50_000000n), // input from the trader to the pool
+    t(CIRBTC, POOL, WALLET, 900_000n), // output from the pool to the trader
+  ];
+  const r = parseSwapInput({
+    tx: { to: V3ROUTER, from: WALLET },
+    transfers: trade,
+    kyberRouter: ROUTER,
+    venues: [V3ROUTER, POOL],
+    feeReceiver: RECEIVER,
+  });
+  check("a direct native-pool trade is a swap, credited to the trader", "wallet" in r && r.wallet === WALLET.toLowerCase(), j(r));
+  check("…sized at the USDC input leg", usdcLegValue({ wallet: WALLET, transfers: trade, usdc: USDC, usdcDecimals: 6 }) === 50, j(r));
+  /* Without our pool/router as venues, a fee-less pool trade is invisible — the
+     exact gap that undercounted Total Volume. */
+  const before = parseSwapInput({ tx: { to: V3ROUTER, from: WALLET }, transfers: trade, kyberRouter: ROUTER, feeReceiver: RECEIVER });
+  check("(control) without our pool as a venue, the same trade is not-a-swap", "skip" in before && before.skip === "not-a-swap", j(before));
+
+  /* Our pools are quoted in the wrapped-native (0x8c6c), an 18-dec 1:1 face of
+     native USDC the aggregator can't price. The cron values such a leg 1:1 by
+     calling usdcLegValue with 0x8c6c as the USD token — so a WUSDC→cirBTC pool
+     trade is sized from the WUSDC leg, not skipped as unpriced. */
+  const WUSDC = "0x8c6c000000000000000000000000000000000000";
+  const wusdcTrade = [
+    t(WUSDC, WALLET, POOL, 5n * 10n ** 18n), // 5 WUSDC in ($5)
+    t(CIRBTC, POOL, WALLET, 90_000n),
+  ];
+  check(
+    "a wrapped-native leg is valued 1:1 at 18 decimals",
+    usdcLegValue({ wallet: WALLET, transfers: wusdcTrade, usdc: WUSDC, usdcDecimals: 18 }) === 5,
+    j(wusdcTrade),
+  );
+}
+
 console.log("\n— valueInput —");
 {
   const cfg = { usdc: USDC, usdcDecimals: 6 };

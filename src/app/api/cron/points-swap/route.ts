@@ -1,6 +1,8 @@
 import { ethers } from "ethers";
 import { swapFeeReceiver } from "@/lib/swap/kyberswapServer";
 import { kyberSwapRouter } from "@/lib/swap/kyberswap";
+import { getContracts } from "@/constants/registry";
+import { GENERATED_SEEDED_POOLS } from "@/constants/deployments.generated";
 import { providerForChain } from "@/config/provider";
 import { planSpans } from "@/lib/keeper/candleIndex";
 import { retryRpc } from "@/lib/dex/rpcRetry";
@@ -52,6 +54,23 @@ const SEASON = 1;
 /** Arc USDC — the 6-dec ERC20 face of the native gas token (see registry). */
 const USDC = "0x3600000000000000000000000000000000000000";
 const USDC_DECIMALS = 6;
+/** Arc's wrapped-native (0x8c6c) is an 18-dec WETH9 wrapper of native USDC. */
+const WRAPPED_NATIVE_DECIMALS = 18;
+/**
+ * Our own Arc V3 pools. A trade our pool quotes better than KyberSwap executes
+ * directly against one of these and pays NO 0.2% fee, so the fee-transfer scan
+ * below never sees it. We ALSO scan these pools' own `Swap` events, so every
+ * swap credits and counts toward volume — not only fee-paying aggregator routes.
+ * (User-created pools beyond the seeded set would need factory enumeration; the
+ * seeded set is where Arc's liquidity — and thus real volume — sits today.)
+ */
+const NATIVE_POOLS = (GENERATED_SEEDED_POOLS[ARC] ?? []).map((a) =>
+  a.toLowerCase(),
+);
+/** V3 `Swap(sender,recipient,amount0,amount1,sqrtPriceX96,liquidity,tick)`. */
+const V3_SWAP_TOPIC = ethers.id(
+  "Swap(address,address,int256,int256,uint160,uint128,int24)",
+);
 /** Blocks back from head to scan each run. Overlap is safe (idempotent), and this
  *  comfortably covers a fifteen-minute cron at Arc's block time. A few blocks of
  *  head are left off for reorg safety. */
@@ -158,6 +177,13 @@ async function handle(req: Request): Promise<Response> {
   const provider = providerForChain(ARC);
   if (!router || !provider)
     return Response.json({ skipped: "no-router-or-provider", credited: 0 });
+  /* Our own v3 router — a venue (so a direct pool trade is recognised) and, being
+     a venue, never a credit candidate. Empty string is harmless: parseSwapInput
+     lower-cases and drops falsy venue entries. */
+  const v3Router = (getContracts(ARC).v3Router ?? "").toLowerCase();
+  /* Wrapped-native (0x8c6c): the $1 leg our pools are quoted in — see the
+     valuation note below. Empty string disables the 1:1 shortcut harmlessly. */
+  const WRAPPED_NATIVE = (getContracts(ARC).wrappedNative ?? "").toLowerCase();
 
   let scanned = 0;
   let credited = 0;
@@ -197,9 +223,15 @@ async function handle(req: Request): Promise<Response> {
     }
     const feeTopic = ethers.zeroPadValue(receiver, 32);
 
-    // Every ERC-20 transfer TO the fee wallet in [fromBlock, scanTo], any token —
-    // scanned in SPAN-wide chunks (retried, paced) so Arc's getLogs range and
-    // rate limits do not refuse the run.
+    // Two discovery sources, unioned into ONE log array so the dedup + cursor
+    // below treat them as a single ordered set of transactions:
+    //   1. Every ERC-20 transfer TO the fee wallet — the aggregator (KyberSwap)
+    //      swaps, which pay the 0.2% fee.
+    //   2. Every `Swap` on our own Arc pools — the trades that our pool quoted
+    //      better than KyberSwap and so ran direct, paying no fee and appearing
+    //      in neither the fee scan nor `aggregator_swap_stats` until now.
+    // Both are scanned in SPAN-wide chunks (retried, paced) so Arc's getLogs
+    // range and rate limits do not refuse the run.
     const logs: ethers.Log[] = [];
     for (const { start, end } of planSpans(fromBlock, scanTo, SPAN)) {
       const page = await retryRpc(() =>
@@ -211,6 +243,19 @@ async function handle(req: Request): Promise<Response> {
       );
       for (const l of page) logs.push(l);
       if (DELAY_MS) await sleep(DELAY_MS);
+
+      if (NATIVE_POOLS.length > 0) {
+        const poolSwaps = await retryRpc(() =>
+          provider.getLogs({
+            fromBlock: start,
+            toBlock: end,
+            address: NATIVE_POOLS,
+            topics: [V3_SWAP_TOPIC],
+          }),
+        );
+        for (const l of poolSwaps) logs.push(l);
+        if (DELAY_MS) await sleep(DELAY_MS);
+      }
     }
     scanned = logs.length;
 
@@ -255,13 +300,16 @@ async function handle(req: Request): Promise<Response> {
           .map((l) => decodeTransferLog(l))
           .filter((t): t is NonNullable<typeof t> => t !== null);
 
-        // Venues + account senders so Argus trades and bundled (EIP-5792 /
-        // 7702 / 4337) trades are credited to the trader — see parseSwapInput.
+        // Venues + account senders so Argus trades, direct native-pool trades,
+        // and bundled (EIP-5792 / 7702 / 4337) trades are all credited to the
+        // trader — see parseSwapInput. Our own pools and v3 router are venues so
+        // a direct pool trade is recognised as a swap AND the router is never a
+        // credit candidate (only the trader who sent the input leg is).
         const parsed = parseSwapInput({
           tx: { to: tx.to, from: tx.from },
           transfers,
           kyberRouter: router,
-          venues: [ARGUS_V4.poolManager],
+          venues: [ARGUS_V4.poolManager, v3Router, ...NATIVE_POOLS],
           accountSenders: userOpSenders(receipt.logs),
           feeReceiver: receiver,
         });
@@ -281,6 +329,18 @@ async function handle(req: Request): Promise<Response> {
           usdc: USDC,
           usdcDecimals: USDC_DECIMALS,
         });
+        // Our native pools quote in the wrapped-native (0x8c6c), which is native
+        // USDC 1:1 = $1 but which the aggregator cannot price (see #443). Treat a
+        // wrapped-native leg as a USD leg too, so a direct pool trade quoted in it
+        // is valued from that leg rather than falling to a DEX price it has none.
+        if (usdValue === null && WRAPPED_NATIVE) {
+          usdValue = usdcLegValue({
+            wallet: parsed.wallet,
+            transfers,
+            usdc: WRAPPED_NATIVE,
+            usdcDecimals: WRAPPED_NATIVE_DECIMALS,
+          });
+        }
         if (usdValue === null) {
           const dec = await tokenDecimals(provider, parsed.inputToken);
           if (dec === null) {
