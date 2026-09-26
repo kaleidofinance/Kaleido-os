@@ -544,21 +544,38 @@ register("transfer", {
  * the slow direction is deferred, and nothing here forecloses adding it.
  */
 register("bridge", {
-  render: (i) => ({
-    title: `Bridge ${i.amount} ${i.symbol} to ${i.toChainName}`,
+  render: (i) => {
     /*
      * An ETA only when the resolver returned one. A canonical deposit has no
      * honest estimate, so it states the direction rather than inventing a
      * number — the sourcing rule this whole path is built under.
      */
-    detail:
+    const arrival =
       i.etaSeconds != null
         ? `Arrives on ${i.toChainName} in about ${Math.round(
             i.etaSeconds / 60,
           )} min. Signed on this chain; irreversible once sent.`
-        : `Signed on this chain and delivered to ${i.toChainName}. Irreversible once sent.`,
-    chain: `→ ${i.toChainName}`,
-  }),
+        : `Signed on this chain and delivered to ${i.toChainName}. Irreversible once sent.`;
+    /*
+     * A cross-asset bridge (BNB → USDC) swaps as it moves, so — exactly like an
+     * aggregator swap's row — the user must see what they will RECEIVE and the
+     * guaranteed floor, not just what leaves the wallet. The expected figure is
+     * the provider's quote; the floor is the minimum the route guarantees and the
+     * auditor requires. A same-asset bridge carries neither and reads as before.
+     */
+    const out =
+      i.toSymbol && i.amountOutMin
+        ? `Receive about ${i.amountOut ?? i.amountOutMin} ${i.toSymbol}, at least ${i.amountOutMin} ${i.toSymbol} after slippage. `
+        : "";
+    return {
+      title:
+        i.toSymbol && i.toSymbol.toUpperCase() !== i.symbol.toUpperCase()
+          ? `Bridge ${i.amount} ${i.symbol} to ${i.toSymbol} on ${i.toChainName}`
+          : `Bridge ${i.amount} ${i.symbol} to ${i.toChainName}`,
+      detail: out + arrival,
+      chain: `→ ${i.toChainName}`,
+    };
+  },
   resolve: async (ctx, i) => {
     /* The gas floor is set only for a canonical deposit, whose portal burns gas
        in a gasleft() loop that makes estimateGas underrun. */
