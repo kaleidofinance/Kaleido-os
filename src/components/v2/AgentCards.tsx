@@ -1,6 +1,57 @@
+import { useState } from "react";
 import type { AgentCard, CardTone } from "@/lib/v2/cards/types";
+import { customBuyCommand } from "@/lib/v2/cards/tokenCard";
 import TokenIcon from "./TokenIcon";
 import s from "./AgentCards.module.css";
+
+/**
+ * The token card's "Buy [amount] USDC" field — an exact amount beside the %
+ * presets. The amount is validated by customBuyCommand (digits only), and the
+ * command it sends takes the same grammar → plan → audit → review → signature
+ * path as a preset tap: typing saves a step, it never skips one.
+ */
+function CustomBuy({
+  tokenRef,
+  disabled,
+  onBuy,
+}: {
+  tokenRef: string;
+  disabled: boolean;
+  onBuy?: (command: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const command = customBuyCommand(tokenRef, value);
+  return (
+    <form
+      className={s.tokCustom}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!command || disabled || !onBuy) return;
+        onBuy(command);
+        setValue("");
+      }}
+    >
+      <input
+        className={`${s.tokAmt} tabular`}
+        inputMode="decimal"
+        autoComplete="off"
+        placeholder="Amount"
+        aria-label="USDC amount to spend"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <span className={s.tokUnit}>USDC</span>
+      <button
+        type="submit"
+        className={`${s.chip} ${s.tokBuy}`}
+        disabled={disabled || !command}
+      >
+        Buy
+      </button>
+    </form>
+  );
+}
 
 /**
  * The tone glyph a notice carries beside its title.
@@ -374,6 +425,17 @@ export default function AgentCards({ cards, onPrompt, onSend, historical }: Prop
                       </button>
                     ))}
                   </div>
+                )}
+                {card.ref && card.buys.length > 0 && (
+                  <CustomBuy
+                    tokenRef={card.ref}
+                    /* Greyed exactly when every preset is (the opening
+                       surcharge) or the card is a restored snapshot. */
+                    disabled={
+                      Boolean(historical) || card.buys.every((b) => b.disabled)
+                    }
+                    onBuy={historical ? undefined : (cmd) => (onSend ?? onPrompt)(cmd)}
+                  />
                 )}
                 {card.sells.length > 0 && (
                   <div className={s.tokBtns}>

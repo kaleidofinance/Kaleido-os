@@ -12,6 +12,8 @@ import {
   formatUsdPrice,
   formatUsdCompact,
   formatBps,
+  customBuyCommand,
+  cardFollowUp,
   type TokenFacts,
 } from "./tokenCard.ts";
 import { localCards, cardsFromChat } from "./fromChat.ts";
@@ -213,6 +215,61 @@ console.log("\n— every button command parses into the trade its label says —
         JSON.stringify(r).slice(0, 160),
       );
     }
+  }
+}
+
+console.log("\n— the card's own amount field and typed follow-ups —");
+{
+  const TOKENS = [
+    { address: "0x3600000000000000000000000000000000000000", name: "USD Coin", symbol: "USDC", decimals: 6, chainId: 5042, verified: true },
+  ];
+  const ctx = { addressToken: (w: string) => argusAddressToken(w) };
+  type Parsed = { status: string; command?: { kind: string; amount?: string; relative?: { num: number; den: number }; tokenIn?: { symbol: string; address: string }; tokenOut?: { symbol: string; address: string } } };
+  const parse = (t: string) => parseCommand(t, TOKENS as never, ctx) as Parsed;
+  const isGlitch = (a?: string) => (a ?? "").toLowerCase() === GLITCH.toLowerCase();
+
+  const card = tokenCardFrom(ARGUS);
+  check("an Argus card carries its command ref (the address)", card.kind === "token" && card.ref === GLITCH, JSON.stringify(card.kind === "token" ? card.ref : card.kind));
+  const listed = tokenCardFrom({ ...ARGUS, source: "listed", symbol: "EURC" });
+  check("a listed card's ref is its symbol", listed.kind === "token" && listed.ref === "EURC", JSON.stringify(listed.kind === "token" ? listed.ref : listed.kind));
+  const stored = localCards(JSON.parse(JSON.stringify([card])) as never);
+  check(
+    "the ref survives the storage validator (a 42-char address, over the 24-char value limit)",
+    Array.isArray(stored) && stored.some((c) => c.kind === "token" && c.ref === GLITCH),
+    JSON.stringify(stored).slice(0, 200),
+  );
+
+  // customBuyCommand: the field → a command that parses to exactly that buy.
+  const cmd = customBuyCommand(GLITCH, "12.5");
+  const r = cmd ? parse(cmd) : null;
+  check(
+    "typing 12.5 in the field buys GLITCH with exactly 12.5 USDC",
+    !!r && r.status === "ok" && r.command?.amount === "12.5" && r.command?.tokenIn?.symbol === "USDC" && isGlitch(r.command?.tokenOut?.address),
+    JSON.stringify(r).slice(0, 200),
+  );
+  check("'$1,000' is accepted as 1000", customBuyCommand(GLITCH, "$1,000") === `buy ${GLITCH} with 1000 usdc`);
+  for (const bad of ["", "0", "-5", "abc", "10; sell all", "1e3", "5 usdc"]) {
+    check(`the field refuses ${JSON.stringify(bad)} (never spliced into a command)`, customBuyCommand(GLITCH, bad) === null);
+  }
+
+  // cardFollowUp: bare buys/sells mean the card's token.
+  const ctxCard = { ref: GLITCH, symbol: "GLITCH" };
+  const follow = (t: string) => {
+    const rw = cardFollowUp(t, ctxCard);
+    return rw ? parse(rw) : null;
+  };
+  for (const t of ["buy 10 usdc", "buy with 10 usdc", "buy 10 usdc of GLITCH", "buy GLITCH with 10 usdc", "buy $10", "spend 10 usdc", "buy 10"]) {
+    const f = follow(t);
+    check(`'${t}' → buy GLITCH with 10 USDC`, !!f && f.status === "ok" && f.command?.amount === "10" && f.command?.tokenIn?.symbol === "USDC" && isGlitch(f.command?.tokenOut?.address), JSON.stringify(f).slice(0, 160));
+  }
+  const half = follow("sell half");
+  check("'sell half' → sell 50% of GLITCH for USDC", !!half && half.status === "ok" && half.command?.relative?.num === 50 && isGlitch(half.command?.tokenIn?.address) && half.command?.tokenOut?.symbol === "USDC", JSON.stringify(half).slice(0, 160));
+  const all = follow("sell all of it");
+  check("'sell all of it' → sell 100%", !!all && all.status === "ok" && all.command?.relative?.num === 100, JSON.stringify(all).slice(0, 160));
+  const pct = follow("buy 25%");
+  check("'buy 25%' → 25% of USDC", !!pct && pct.status === "ok" && pct.command?.relative?.num === 25 && isGlitch(pct.command?.tokenOut?.address), JSON.stringify(pct).slice(0, 160));
+  for (const t of ["buy 1000 GLITCH", "buy 10 kld", "how do i buy this", "sell 10 usdc worth", "buy 10 usdc and 5 usdc", `buy ${GLITCH} with 3 usdc`, "stake 10", "buy 150%"]) {
+    check(`'${t}' is left to the parser (not guessed)`, cardFollowUp(t, ctxCard) === null);
   }
 }
 

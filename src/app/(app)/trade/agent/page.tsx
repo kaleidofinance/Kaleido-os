@@ -42,6 +42,8 @@ import {
   localCards,
   pastedTokenAddress,
   tokenCardFrom,
+  cardFollowUp,
+  type CardTokenContext,
   type TokenFacts,
 } from "@/lib/v2/cards";
 import {
@@ -248,6 +250,12 @@ export default function AgentPage() {
    * plan the user completed. See parseFollowUp.
    */
   const [lastCommand, setLastCommand] = useState<Command | null>(null);
+  /* The token the last token card was about. A card is a display, not a
+     command, so without this nothing carried it into the next message: "buy 10
+     usdc" had no token and "buy 10 usdc of GLITCH" named a launch symbol the
+     registry doesn't carry. Read by cardFollowUp only when a message fails to
+     parse on its own; replaced by the next card, dropped on Clear. */
+  const [cardToken, setCardToken] = useState<CardTokenContext | null>(null);
   const [lastOutcome, setLastOutcome] = useState<FollowThrough | null>(null);
   const localIntentModelRef = useRef<ReturnType<typeof createBrowserLocalIntentModel> | null>(null);
   const localIntentDisabledRef = useRef(false);
@@ -1000,11 +1008,17 @@ export default function AgentPage() {
         if (abort.signal.aborted) return;
         const tradable =
           facts.ok && !facts.isQuote && (facts.source === "argus" || facts.source === "listed");
+        const tokenCard = tokenCardFrom(facts);
+        setCardToken(
+          tradable && tokenCard.kind === "token" && tokenCard.ref
+            ? { ref: tokenCard.ref, symbol: tokenCard.symbol }
+            : null,
+        );
         say(
           tradable
-            ? `Here's ${facts.symbol ?? "that token"}. Tap a size to get a plan — you review and sign before anything moves.`
+            ? `Here's ${facts.symbol ?? "that token"}. Tap a size or type an amount to get a plan — you review and sign before anything moves.`
             : "Here's what I found for that contract.",
-          { via: "local", cards: localCards([tokenCardFrom(facts)]) },
+          { via: "local", cards: localCards([tokenCard]) },
         );
         return;
       }
@@ -1128,6 +1142,24 @@ export default function AgentPage() {
           note("Read it as a repeat of the last plan");
           log(`command:${repeated.command.kind}`);
           await planLocally(repeated, abort.signal);
+          return;
+        }
+      }
+      /* A bare buy/sell typed while a token card is showing ("buy 10 usdc",
+         "sell half", "buy 10 usdc of GLITCH") is about that card's token. Only
+         when the message failed on its own, and only for a sentence that is
+         purely a buy/sell of it (cardFollowUp returns null otherwise); the
+         rewritten command is the card's own, so it takes the same plan →
+         audit → review → signature path as a tap. */
+      if (parsed.status !== "ok" && cardToken && !askedAboutAction) {
+        const rewritten = cardFollowUp(content, cardToken);
+        const onCard = rewritten
+          ? parseCommand(rewritten, vocabulary, parseCtx)
+          : null;
+        if (onCard?.status === "ok") {
+          note(`Read it as about ${cardToken.symbol} on the card`);
+          log(`command:${onCard.command.kind}:card`);
+          await planLocally(onCard, abort.signal);
           return;
         }
       }
@@ -1873,6 +1905,7 @@ export default function AgentPage() {
                 onClick={() => {
                   clearThread();
                   setPending(null);
+                  setCardToken(null);
                   setPanel({ kind: "idle" });
                 }}
                 title="Delete this conversation from this device"

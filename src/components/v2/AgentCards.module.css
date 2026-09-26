@@ -471,3 +471,37 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* "Buy [amount] USDC [Buy]" — indented to line up under the preset chips. */
+.tokCustom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding-left: 38px;
+}
+.tokAmt {
+  width: 96px;
+  min-width: 0;
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 0;
+  border-radius: var(--k-r-pill);
+  padding: 5px 10px;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+}
+.tokAmt:focus {
+  outline: 1px solid var(--k-brand-dim);
+}
+.tokAmt:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.tokUnit {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.tokCustom .chip {
+  padding: 5px 12px;
+}

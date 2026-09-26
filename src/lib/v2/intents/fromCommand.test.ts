@@ -2517,6 +2517,35 @@ console.log("swap resolves relative amounts; other verbs escalate");
     );
   }
 
+  console.log("\n— 'spend X on' and '$' amounts in a buy —");
+  {
+    const A = "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71";
+    const launch = { address: A, name: "Glitch", symbol: "GLITCH", decimals: 18, chainId: 5042 };
+    const LCTX = { addressToken: (w) => (w.toLowerCase() === A.toLowerCase() ? launch : null) };
+    const pl = (t) => parseCommand(t, TOKENS, LCTX);
+    const buysTen = (r) =>
+      r.status === "ok" && r.command.kind === "swap" && r.command.amount === "10" &&
+      r.command.tokenIn.symbol === "USDC" && r.command.tokenOut.address === A;
+    for (const t of [`spend 10 usdc on ${A}`, `buy $10 of ${A}`, `buy ${A} with $10`, `spend $10 on ${A}`, `buy ${A} with $10 usdc`]) {
+      const r = pl(t);
+      check(`'${t.replace(A, "<launch>")}' spends 10 USDC on it`, buysTen(r), JSON.stringify(r).slice(0, 200));
+    }
+    // "$" outside a buy/spend sentence is untouched: dollars there size the other token.
+    const swapDollars = p("swap $10 of usdc to kld");
+    check(
+      "'$' in a plain swap is left as a bare amount (not rewritten to USDC)",
+      swapDollars.status === "ok" && swapDollars.command.kind === "swap" && swapDollars.command.amount === "10" && swapDollars.command.tokenIn.symbol === "USDC",
+      JSON.stringify(swapDollars).slice(0, 200),
+    );
+    // "on" is only a separator after "spend": a plain swap's "on" is not.
+    const onChain = p("swap 10 usdc to kld on sepolia");
+    check(
+      "'on' does not split a swap that isn't 'spend'",
+      !(onChain.status === "ok" && onChain.command.kind === "swap" && onChain.command.tokenOut?.symbol === "SEPOLIA"),
+      JSON.stringify(onChain).slice(0, 200),
+    );
+  }
+
   console.log("\n— the question names the real problem —");
   const CTX = {
     chainName: "Sepolia",
