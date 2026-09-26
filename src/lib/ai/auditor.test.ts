@@ -1344,16 +1344,22 @@ async function main() {
       }
 
       {
-        /* Built for a chain the wallet is not on. The plan is signed on CHAIN; a
-           source that is not CHAIN means the route was resolved elsewhere. */
-        const v = await audit([{ ...bridge, fromChainId: 84532 }]);
+        /* Built for a chain the wallet is not on. No longer a refusal: the
+           multichain sign flow builds for a named source and switches the wallet
+           to it at signing (#242), so a cross-source bridge is by design — noted,
+           not blocked. Uses a `lifi` native leg so the only thing under test is
+           the source-chain handling, not the canonical portal allowlist. */
+        const v = await audit([
+          { ...bridge, provider: "lifi", fromChainId: 56 },
+        ]);
         check(
-          "a bridge whose source chain is not the connected chain is rejected",
-          !v.ok &&
-            v.blocked.some((b) =>
+          "a bridge from a non-connected source chain is allowed and noted, not rejected",
+          v.ok &&
+            !v.blocked.some((b) =>
               b.includes("source chain is not the connected chain"),
-            ),
-          JSON.stringify(v.blocked),
+            ) &&
+            v.notes.some((n) => n.includes("switches to it at signing")),
+          JSON.stringify({ blocked: v.blocked, notes: v.notes }),
         );
       }
 
@@ -1393,6 +1399,55 @@ async function main() {
             ),
           JSON.stringify(v.blocked),
         );
+      }
+
+      {
+        /* ---------------------------------------- the cross-asset leg -- *
+         * A bridge that DELIVERS a different token (ETH→USDC). The delivered
+         * side is opaque calldata like an aggregator swap, so the guard is the
+         * same: a required, positive minimum output. A `lifi` native leg so the
+         * only thing under test is the cross-asset output handling. `toToken` is
+         * an unverified address (a valid contract we have not listed), which is
+         * allowed — the trade is priced by the verified source side. */
+        const DEST_USDC = "0x00000000000000000000000000000000c0c0dec0";
+        const crossBridge: Step = {
+          ...bridge,
+          provider: "lifi",
+          to: RECIPIENT, // lifi does not allow-list `to`; any valid address
+          toToken: DEST_USDC,
+          toDecimals: 6,
+          toSymbol: "USDC",
+          amountOut: "150",
+          amountOutMin: "149",
+        };
+        {
+          const v = await audit([crossBridge]);
+          check(
+            "a cross-asset bridge with a positive floor passes, priced by the source side",
+            v.ok &&
+              v.notes.some((n) => n.includes("delivers a different token")),
+            JSON.stringify({ blocked: v.blocked, notes: v.notes }),
+          );
+        }
+        {
+          const { amountOutMin: _drop, ...noFloor } = crossBridge;
+          const v = await audit([noFloor]);
+          check(
+            "a cross-asset bridge with no minimum output is rejected",
+            !v.ok &&
+              v.blocked.some((b) => b.includes("no minimum output")),
+            JSON.stringify(v.blocked),
+          );
+        }
+        {
+          const v = await audit([{ ...crossBridge, amountOutMin: "0" }]);
+          check(
+            "a cross-asset bridge with a zero floor is rejected",
+            !v.ok &&
+              v.blocked.some((b) => b.includes("no minimum output")),
+            JSON.stringify(v.blocked),
+          );
+        }
       }
 
       if (usdc) {

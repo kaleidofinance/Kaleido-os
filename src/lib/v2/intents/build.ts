@@ -289,6 +289,18 @@ export interface BridgeRouteRequest {
    * above it. Ignored off a CCTP corridor, where only one route exists.
    */
   route?: "instant" | "exact";
+  /**
+   * Cross-asset bridge only: the symbol to DELIVER on the destination chain when
+   * it differs from `asset` (BNB→USDC). Absent means same-asset — the source
+   * token is delivered 1:1, the existing behaviour. A cross-asset request routes
+   * only through the aggregator (never CCTP/canonical, which are same-asset), and
+   * the resolver cross-checks the OUTPUT token the way `tokenAddress` guards the
+   * input. `toTokenAddress`/`toDecimals` are the destination-chain contract and
+   * scale to check the provider's delivered token against.
+   */
+  toAsset?: string;
+  toTokenAddress?: string;
+  toDecimals?: number;
 }
 
 /**
@@ -327,6 +339,22 @@ export interface BridgeRoute {
    * `route` set). Present only when a real second route resolved.
    */
   alternative?: BridgeRouteAlternative;
+  /**
+   * Cross-asset bridge only: the token the route DELIVERS on the destination
+   * chain, its decimals and symbol. Absent for a same-asset bridge, which
+   * delivers the source token. The resolver has already cross-checked these
+   * against the request's `toTokenAddress`/`toDecimals`.
+   */
+  toToken?: string;
+  toDecimals?: number;
+  toSymbol?: string;
+  /**
+   * The enforceable output FLOOR in destination base units (the provider's
+   * `toAmountMin`). Unlike `receivedUnits`, which is the display expectation,
+   * this is the minimum the trade guarantees and the number the auditor prices
+   * and requires. Present only for a cross-asset aggregator route.
+   */
+  minReceivedUnits?: string;
 }
 
 /**
@@ -2015,7 +2043,7 @@ export async function buildIntents(
    * prices the notional against the per-action cap.
    */
   if (command.kind === "bridge") {
-    const { amount, token, toChain, fromChain } = command;
+    const { amount, token, toChain, fromChain, toAsset } = command;
 
     // A bridge is defined by the chain it leaves. Without one there is no
     // corridor to resolve and no `fromChainId` for the Intent, so refuse here
@@ -2079,9 +2107,38 @@ export async function buildIntents(
        alias: the plan then approves and burns the token, at 6 decimals, exactly
        what `buildCctpBurnRoute` expects. Scoped to a live CCTP corridor for USDC
        so no other route's token choice changes, and inert while the flag is off. */
+    /* A cross-asset bridge (BNB→USDC): the destination token is a DIFFERENT
+       asset, resolved on the destination chain. Same-asset bridges leave this
+       undefined and behave exactly as before. Resolve it here so the branch can
+       gate CCTP/canonical (both same-asset) off it and hand the resolver an
+       output to cross-check. */
+    let destToken:
+      | { address: string; symbol: string; decimals: number }
+      | undefined;
+    if (toAsset) {
+      const dest = resolveChain(toChain);
+      if (!dest) {
+        return { ok: false, error: `I don't recognise the chain "${toChain}".` };
+      }
+      const onDest =
+        resolveUserToken(CHAINS_BY_ID[dest.id], toAsset, "dex") ??
+        resolveUserToken(CHAINS_BY_ID[dest.id], toAsset, "lending");
+      if (!onDest) {
+        return {
+          ok: false,
+          error: `I couldn't find ${toAsset} on ${dest.shortName} to receive into.`,
+        };
+      }
+      destToken = onDest;
+    }
+    const crossAsset =
+      !!destToken &&
+      destToken.symbol.toUpperCase() !== srcToken.symbol.toUpperCase();
+
     const cctpBurnAlias = CCTP_USDC[sourceChainId];
     if (
       CCTP_ENABLED &&
+      !crossAsset &&
       srcToken.symbol.toUpperCase() === "USDC" &&
       cctpBurnAlias &&
       (isNativeSentinel(srcToken.address, "dex") ||
@@ -2112,6 +2169,13 @@ export async function buildIntents(
       isNative,
       tokenAddress: srcToken.address,
       sourceChainId,
+      ...(crossAsset && destToken
+        ? {
+            toAsset: destToken.symbol,
+            toTokenAddress: destToken.address,
+            toDecimals: destToken.decimals,
+          }
+        : {}),
     });
     if ("error" in route) {
       return { ok: false, error: route.error };
@@ -2132,12 +2196,25 @@ export async function buildIntents(
       sourceChainId !== chainId
         ? (CHAINS_BY_ID[sourceChainId]?.shortName ?? `chain ${sourceChainId}`)
         : null;
+    /* A cross-asset route delivers a different token, so the row names both
+       sides and its expected output; the resolver returns the delivered token +
+       floor. A same-asset bridge keeps the 1:1 phrasing it always had. */
+    const outHuman =
+      crossAsset && route.toToken && route.receivedUnits && route.toDecimals
+        ? ethers.formatUnits(route.receivedUnits, route.toDecimals)
+        : null;
+    const srcPhrase = fromName
+      ? `${amount} ${srcToken.symbol} from ${fromName}`
+      : `${amount} ${srcToken.symbol}`;
     return {
       ok: true,
       build: {
-        summary: fromName
-          ? `Bridge ${amount} ${srcToken.symbol} from ${fromName} to ${route.toChainName}.`
-          : `Bridge ${amount} ${srcToken.symbol} to ${route.toChainName}.`,
+        summary:
+          crossAsset && route.toSymbol && outHuman
+            ? `Bridge ${srcPhrase} to about ${outHuman} ${route.toSymbol} on ${route.toChainName}.`
+            : fromName
+              ? `Bridge ${amount} ${srcToken.symbol} from ${fromName} to ${route.toChainName}.`
+              : `Bridge ${amount} ${srcToken.symbol} to ${route.toChainName}.`,
         intents: [
           ...(isNative
             ? []
@@ -2168,6 +2245,18 @@ export async function buildIntents(
             isNative,
             ...(route.spender ? { spender: route.spender } : {}),
             ...(route.gasLimit ? { gasLimit: route.gasLimit } : {}),
+            ...(crossAsset && route.toToken && route.toDecimals
+              ? {
+                  toToken: route.toToken,
+                  toDecimals: route.toDecimals,
+                  toSymbol: route.toSymbol,
+                  amountOut: outHuman ?? undefined,
+                  amountOutMin: route.minReceivedUnits
+                    ? ethers.formatUnits(route.minReceivedUnits, route.toDecimals)
+                    : undefined,
+                  minReceivedUnits: route.minReceivedUnits,
+                }
+              : {}),
           },
         ],
       },

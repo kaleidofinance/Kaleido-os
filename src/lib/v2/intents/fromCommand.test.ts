@@ -2377,6 +2377,77 @@ console.log("swap resolves relative amounts; other verbs escalate");
  * one of those, with the answer the grammar now gives instead.
  * ------------------------------------------------------------------------- */
 {
+  console.log("\n— cross-asset bridge: an abroad source + a delivered token —");
+  const bnb = {
+    address: "0xB0B0000000000000000000000000000000000001",
+    name: "BNB",
+    symbol: "BNB",
+    decimals: 18,
+    chainId: 56,
+  };
+  const XCTX = {
+    chainName: "Arc",
+    isChain: (pp) =>
+      ["arc", "base", "bsc", "bnb chain", "ethereum", "base sepolia"].includes(
+        pp.toLowerCase(),
+      ),
+    elsewhere: (s) => (s.toLowerCase() === "bnb" ? ["BSC"] : []),
+    sourceToken: (s) =>
+      s.toLowerCase() === "bnb" ? { token: bnb, chainName: "bsc" } : null,
+  };
+  const px = (t) => parseCommand(t, TOKENS, XCTX);
+  const asBridge = (r) =>
+    r.status === "ok" && r.command.kind === "bridge" ? r.command : null;
+
+  const one = asBridge(px("bridge $10 bnb to arc usdc"));
+  check(
+    "one-shot: BNB inferred as source (on BSC), dest split into arc + usdc",
+    !!one &&
+      one.amount === "10" &&
+      one.token.symbol === "BNB" &&
+      one.fromChain === "bsc" &&
+      one.toChain === "arc" &&
+      one.toAsset === "usdc",
+    JSON.stringify(one),
+  );
+
+  const same = asBridge(px("bridge 10 bnb to arc"));
+  check(
+    "an abroad source with no delivered token stays same-asset (no toAsset)",
+    !!same &&
+      same.token.symbol === "BNB" &&
+      same.fromChain === "bsc" &&
+      same.toChain === "arc" &&
+      same.toAsset === undefined,
+    JSON.stringify(same),
+  );
+
+  const twoWord = asBridge(px("bridge 10 bnb to base sepolia"));
+  check(
+    "a multi-word chain dest is not mis-split into chain + token",
+    !!twoWord && twoWord.toChain === "base sepolia" && twoWord.toAsset === undefined,
+    JSON.stringify(twoWord),
+  );
+
+  /* The exact regression from the screenshots: "which token?" then "bnb". The
+     reply must be taken as the bridge SOURCE, not refused as a swap token. */
+  const step1 = px("bridge $10 to arc usdc");
+  const filled =
+    step1.status === "incomplete"
+      ? fillSlot(step1.draft, step1.missing, "bnb", TOKENS, XCTX)
+      : step1;
+  const filledCmd = asBridge(filled);
+  check(
+    "fill-slot: a 'bnb' reply resolves the source instead of the swap-style refusal",
+    !!filledCmd &&
+      filledCmd.amount === "10" &&
+      filledCmd.token.symbol === "BNB" &&
+      filledCmd.fromChain === "bsc" &&
+      filledCmd.toChain === "arc" &&
+      filledCmd.toAsset === "usdc",
+    JSON.stringify(filled),
+  );
+
   console.log("\n— the question names the real problem —");
   const CTX = {
     chainName: "Sepolia",

@@ -292,6 +292,22 @@ export type Intent =
       spender?: string;
       /** Gas floor for a canonical deposit, which underruns estimateGas. */
       gasLimit?: string;
+      /**
+       * Cross-asset bridge only (source asset ≠ delivered asset, e.g. BNB→USDC).
+       * Absent for the ordinary same-asset bridge, which delivers the source
+       * token 1:1 and carries none of these. When present, the aggregator route
+       * swaps as it bridges, so — exactly like `aggregatorSwap` — the output is
+       * not 1:1 and must carry an enforceable floor the auditor prices against.
+       */
+      toToken?: string;
+      toDecimals?: number;
+      toSymbol?: string;
+      /** Human expected output, for the rendered row. */
+      amountOut?: string;
+      /** Human minimum output — the enforced floor the auditor requires and prices. */
+      amountOutMin?: string;
+      /** `amountOutMin` in the destination token's base units (the provider's toAmountMin). */
+      minReceivedUnits?: string;
     }
   /* ---------------------------------------------------- aggregator swap -- */
   /*

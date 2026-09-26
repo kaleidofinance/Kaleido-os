@@ -150,6 +150,37 @@ export function chainsOffering(
 }
 
 /**
+ * A bridge SOURCE named by a symbol the connected chain lacks: the token as the
+ * registry knows it on the first chain that carries it, plus that chain's
+ * display name to sign on. Returns null when no chain carries the symbol.
+ *
+ * The resolvable counterpart of `chainsOffering`, which returns display names
+ * for a refusal message. This lets the grammar accept an "abroad" token as a
+ * bridge source (BNB on BSC while connected to Arc) rather than refusing it the
+ * way a swap would. `network` narrows to the viewer's world; the first match
+ * wins, so a symbol on several chains resolves to one and the user disambiguates
+ * with an explicit "from <chain>". The builder re-resolves the token on the
+ * source chain by symbol before signing, so only the symbol + chain need be
+ * honest here.
+ */
+export function bridgeSourceToken(
+  symbol: string,
+  network?: "mainnet" | "testnet",
+): { token: IToken; chainName: string } | null {
+  const s = symbol.toLowerCase();
+  const carrying = CHAINS.filter((c) =>
+    chainTokens(c.id).some((t) => t.symbol.toLowerCase() === s),
+  );
+  const narrowed = network
+    ? carrying.filter((c) => c.network === network)
+    : carrying;
+  const chain = (narrowed.length > 0 ? narrowed : carrying)[0];
+  if (!chain) return null;
+  const token = chainTokenBySymbol(chain.id, symbol);
+  return token ? { token, chainName: chain.shortName } : null;
+}
+
+/**
  * Every known token across several chains, for the multichain token picker.
  *
  * A flat list is only safe here because `IToken` carries its own `chainId` and
