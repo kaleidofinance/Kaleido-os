@@ -28,6 +28,12 @@ export interface ActionRow {
   source_slug?: string | null;
   wallet?: string | null;
 }
+/** A swap_volume ledger row: every valued swap, points-eligible or not. */
+export interface SwapLedgerRow {
+  occurred_at?: string | null;
+  usd_value?: number | string | null;
+  fee_paid?: boolean | null;
+}
 export interface BridgeRow {
   created_at?: string | null;
   amount?: string | null; // CCTP: human USDC
@@ -52,6 +58,14 @@ function num(v: unknown): number {
  *  `now` (UTC). Pure. */
 export function bucketDaily(input: {
   actions: ReadonlyArray<ActionRow>;
+  /**
+   * The swap_volume ledger. When given, swap volume, counts and fees come from
+   * it — every swap, including those under the points floor, with fees on
+   * fee-paying swaps only. Absent (the ledger unreadable), swaps fall back to
+   * credited `point_actions` rows, the pre-ledger behaviour. `actions` still
+   * drives new-wallet counts either way.
+   */
+  swaps?: ReadonlyArray<SwapLedgerRow>;
   cctp: ReadonlyArray<BridgeRow>;
   route: ReadonlyArray<BridgeRow>;
   days: number;
@@ -68,12 +82,26 @@ export function bucketDaily(input: {
   const keys: string[] = [];
   const bucket = new Map<
     string,
-    { swapVol: number; cctpVol: number; routeVol: number; swaps: number; newWallets: number }
+    {
+      swapVol: number;
+      swapFeeVol: number;
+      cctpVol: number;
+      routeVol: number;
+      swaps: number;
+      newWallets: number;
+    }
   >();
   for (let i = days - 1; i >= 0; i--) {
     const key = new Date(end - i * DAY_MS).toISOString().slice(0, 10);
     keys.push(key);
-    bucket.set(key, { swapVol: 0, cctpVol: 0, routeVol: 0, swaps: 0, newWallets: 0 });
+    bucket.set(key, {
+      swapVol: 0,
+      swapFeeVol: 0,
+      cctpVol: 0,
+      routeVol: 0,
+      swaps: 0,
+      newWallets: 0,
+    });
   }
   const inWindow = keys.length ? keys[0] : todayUtc;
 
@@ -92,14 +120,29 @@ export function bucketDaily(input: {
     if (b) b.newWallets++;
   }
 
-  // Swaps → volume + count, on their day if in window.
-  for (const a of input.actions) {
-    if ((a.source_slug ?? "") !== "swap") continue;
-    const d = utcDay(a.occurred_at);
-    const b = d ? bucket.get(d) : undefined;
-    if (!b) continue;
-    b.swapVol += num(a.usd_value);
-    b.swaps++;
+  // Swaps → volume + count, on their day if in window. From the volume ledger
+  // when it was read; otherwise credited point_actions (every one fee-paying).
+  if (input.swaps) {
+    for (const r of input.swaps) {
+      const d = utcDay(r.occurred_at);
+      const b = d ? bucket.get(d) : undefined;
+      if (!b) continue;
+      const v = num(r.usd_value);
+      b.swapVol += v;
+      if (r.fee_paid !== false) b.swapFeeVol += v;
+      b.swaps++;
+    }
+  } else {
+    for (const a of input.actions) {
+      if ((a.source_slug ?? "") !== "swap") continue;
+      const d = utcDay(a.occurred_at);
+      const b = d ? bucket.get(d) : undefined;
+      if (!b) continue;
+      const v = num(a.usd_value);
+      b.swapVol += v;
+      b.swapFeeVol += v;
+      b.swaps++;
+    }
   }
   for (const r of input.cctp) {
     const d = utcDay(r.created_at);
@@ -117,7 +160,7 @@ export function bucketDaily(input: {
     return {
       date,
       volumeUsd: b.swapVol + b.cctpVol + b.routeVol,
-      feesUsd: b.swapVol * input.swapFeeRate + b.routeVol * input.lifiFeeRate,
+      feesUsd: b.swapFeeVol * input.swapFeeRate + b.routeVol * input.lifiFeeRate,
       swaps: b.swaps,
       newWallets: b.newWallets,
     };
@@ -136,6 +179,14 @@ export async function readTimeseries(days = 30): Promise<DailyPoint[] | null> {
     .limit(READ_CAP);
   if (actions.error || !actions.data) return null;
 
+  /* The volume ledger; unreadable (e.g. before its migration) falls back to
+     point_actions inside bucketDaily rather than blanking the chart. */
+  const ledger = await supabaseAdmin
+    .from("swap_volume")
+    .select("occurred_at, usd_value, fee_paid")
+    .eq("chain_id", 5042)
+    .limit(READ_CAP);
+
   const cctp = await supabaseAdmin
     .from("cctp_transfers")
     .select("created_at, amount")
@@ -148,6 +199,7 @@ export async function readTimeseries(days = 30): Promise<DailyPoint[] | null> {
 
   return bucketDaily({
     actions: actions.data as ActionRow[],
+    swaps: ledger.error || !ledger.data ? undefined : (ledger.data as SwapLedgerRow[]),
     cctp: cctp.error ? [] : ((cctp.data ?? []) as BridgeRow[]),
     route: route.error ? [] : ((route.data ?? []) as BridgeRow[]),
     days,

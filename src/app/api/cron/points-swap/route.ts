@@ -10,11 +10,13 @@ import {
   TRANSFER_TOPIC,
   decodeTransferLog,
   parseSwapInput,
+  classifySwap,
   userOpSenders,
   usdcLegValue,
 } from "@/lib/points/swapCollector";
 import { dexTokenPrices } from "@/lib/swap/dexPrices";
 import { creditAction } from "@/lib/points/credit";
+import { recordSwapVolume } from "@/lib/points/swapLedger";
 import {
   backfillNextFrom,
   computeCursorAdvance,
@@ -191,6 +193,9 @@ async function handle(req: Request): Promise<Response> {
 
   let scanned = 0;
   let credited = 0;
+  /* Swaps written to the volume ledger — every one the indexer can value, below
+     the points floor included. Counted apart from `credited` (points). */
+  let recorded = 0;
   const skips: Record<string, number> = {};
   const bump = (r: string) => (skips[r] = (skips[r] ?? 0) + 1);
 
@@ -213,6 +218,8 @@ async function handle(req: Request): Promise<Response> {
     wallet: string;
     usdValue: number;
     occurredAt: string;
+    venue: string;
+    feePaid: boolean;
   }[] = [];
 
   const cursor = backfill ? null : await readCursor();
@@ -278,7 +285,8 @@ async function handle(req: Request): Promise<Response> {
     const logs: ethers.Log[] = [];
     for (const { start, end } of planSpans(fromBlock, scanTo, SPAN)) {
       // A backfill re-reads only our pools; the fee history is the cursor's.
-      if (!backfill) {
+      // A backfill re-reads only the sources it names (pools by default).
+      if (!backfill || backfill.sources.fee) {
         const page = await retryRpc(() =>
           provider.getLogs({
             fromBlock: start,
@@ -290,7 +298,7 @@ async function handle(req: Request): Promise<Response> {
         if (DELAY_MS) await sleep(DELAY_MS);
       }
 
-      if (NATIVE_POOLS.length > 0) {
+      if (NATIVE_POOLS.length > 0 && (!backfill || backfill.sources.pools)) {
         const poolSwaps = await retryRpc(() =>
           provider.getLogs({
             fromBlock: start,
@@ -415,10 +423,46 @@ async function handle(req: Request): Promise<Response> {
           ? new Date(block.timestamp * 1000).toISOString()
           : new Date().toISOString();
 
+        /* Record the VOLUME first, for every valued swap — independent of the
+           points decision below, which skips anything under the rate's min_usd.
+           Fail-open: a ledger miss never blocks a credit, and a later backfill
+           re-records it (idempotent on chain + tx). */
+        const cls = classifySwap({
+          tx: { to: tx.to, from: tx.from },
+          transfers,
+          kyberRouter: router,
+          argusVenues: [ARGUS_V4.poolManager],
+          nativeVenues: [v3Router, ...NATIVE_POOLS],
+          feeReceiver: receiver,
+        });
+
         if (dryRun) {
           // Previewing a backfill: value it, report it, write nothing.
-          wouldCredit.push({ txHash, wallet: parsed.wallet, usdValue, occurredAt });
+          wouldCredit.push({
+            txHash,
+            wallet: parsed.wallet,
+            usdValue,
+            occurredAt,
+            venue: cls.venue,
+            feePaid: cls.feePaid,
+          });
         } else {
+          const ok = await recordSwapVolume({
+            chainId: ARC,
+            txHash,
+            wallet: parsed.wallet,
+            usdValue,
+            venue: cls.venue,
+            feePaid: cls.feePaid,
+            occurredAt,
+          });
+          if (ok) recorded++;
+          else bump("ledger-error");
+        }
+
+        // Points: skipped for a preview, and for a ledger-only backfill of
+        // history whose points were already decided.
+        if (!dryRun && !backfill?.ledgerOnly) {
           const res = await creditAction({
             wallet: parsed.wallet,
             source: "swap",
@@ -452,8 +496,11 @@ async function handle(req: Request): Promise<Response> {
     return Response.json({
       mode: "backfill",
       dryRun,
+      ledgerOnly: backfill.ledgerOnly,
+      sources: backfill.sources,
       scanned,
       credited,
+      recorded,
       skips,
       fromBlock: backfill.from,
       drainedTo: advancedTo,
@@ -461,7 +508,7 @@ async function handle(req: Request): Promise<Response> {
       ...(dryRun ? { wouldCredit } : {}),
     });
 
-  return Response.json({ scanned, credited, skips, cursor, advancedTo });
+  return Response.json({ scanned, credited, recorded, skips, cursor, advancedTo });
 }
 
 export const GET = handle;

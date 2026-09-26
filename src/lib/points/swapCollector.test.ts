@@ -9,6 +9,7 @@ import {
   TRANSFER_TOPIC,
   decodeTransferLog,
   parseSwapInput,
+  classifySwap,
   userOpSenders,
   USER_OPERATION_EVENT_TOPIC,
   usdcLegValue,
@@ -234,6 +235,34 @@ console.log("\n— usdcLegValue: the trade's USDC notional, either side —");
   ];
   check("a token↔token swap yields null (no USDC leg to value)",
     usdcLegValue({ wallet: WALLET, transfers: tokenToToken, ...cfg }) === null, "");
+}
+
+console.log("\n— classifySwap: venue + whether Kaleido's fee was paid —");
+{
+  const W = "0x1111111111111111111111111111111111111111";
+  const KY = "0x6131b5fae19ea4f9d964eac0408e4408b66337b5";
+  const PM = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
+  const POOL = "0x542e6e2256270215d667ed43e65d4def8295164a";
+  const FEE = "0x000000000000000000000000000000000000fee0";
+  const U = "0x3600000000000000000000000000000000000000";
+  const X = "0x2222222222222222222222222222222222222222";
+  const tr = (token: string, from: string, to: string, value: bigint): TransferLog => ({ token, from, to, value });
+  const base = { kyberRouter: KY, argusVenues: [PM], nativeVenues: [POOL], feeReceiver: FEE };
+
+  const kyber = classifySwap({ ...base, tx: { to: KY, from: W }, transfers: [tr(U, W, KY, 5_000000n), tr(X, KY, FEE, 10n), tr(X, KY, W, 99n)] });
+  check("a KyberSwap route with a fee transfer → aggregator, fee paid", kyber.venue === "aggregator" && kyber.feePaid, JSON.stringify(kyber));
+
+  const pool = classifySwap({ ...base, tx: { to: "0x98d4f47b000000000000000000000000000000ab", from: W }, transfers: [tr(U, W, POOL, 5_000000n), tr(X, POOL, W, 99n)] });
+  check("a direct pool trade → native-pool, NO fee (fees must not be charged on it)", pool.venue === "native-pool" && !pool.feePaid, JSON.stringify(pool));
+
+  const argus = classifySwap({ ...base, tx: { to: "0x4fca4a51ab4f23a7447b3284fbd7d73289a89fb1", from: W }, transfers: [tr(U, W, FEE, 2n), tr(U, W, PM, 100n), tr(X, PM, W, 9n)] });
+  check("an Argus trade → argus, fee paid in-swap", argus.venue === "argus" && argus.feePaid, JSON.stringify(argus));
+
+  const other = classifySwap({ ...base, tx: { to: X, from: W }, transfers: [tr(U, W, X, 1n)] });
+  check("no known venue → other", other.venue === "other" && !other.feePaid, JSON.stringify(other));
+
+  const zeroFee = classifySwap({ ...base, tx: { to: KY, from: W }, transfers: [tr(X, KY, FEE, 0n)] });
+  check("a zero-value transfer to the fee wallet is not a fee", !zeroFee.feePaid, JSON.stringify(zeroFee));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

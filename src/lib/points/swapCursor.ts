@@ -50,14 +50,29 @@ export function parseBackfillParams(params: {
   get(name: string): string | null;
 }):
   | { mode: "live" }
-  | { mode: "backfill"; from: number; to: number; dryRun: boolean }
+  | {
+      mode: "backfill";
+      from: number;
+      to: number;
+      dryRun: boolean;
+      /** Record volume only — credit no points. For re-scanning history whose
+       *  points were already decided, so a backfill never changes points. */
+      ledgerOnly: boolean;
+      /** Which discovery sources to re-scan: our pools' Swap events, the fee
+       *  wallet's transfers, or both. Defaults to pools only (#449's behaviour). */
+      sources: { pools: boolean; fee: boolean };
+    }
   | { mode: "invalid"; error: string } {
   const from = params.get("backfillFrom");
   const to = params.get("backfillTo");
   const dryRun = params.get("dryRun") === "1";
+  const ledgerOnly = params.get("ledgerOnly") === "1";
+  const src = params.get("sources");
   if (from === null && to === null) {
-    return dryRun
-      ? { mode: "invalid", error: "dryRun needs a backfill range (backfillFrom + backfillTo)" }
+    /* Every backfill-only flag is refused on a live run: a dry or ledger-only
+       LIVE run would still move the cursor past trades it did not credit. */
+    return dryRun || ledgerOnly || src !== null
+      ? { mode: "invalid", error: "dryRun / ledgerOnly / sources need a backfill range (backfillFrom + backfillTo)" }
       : { mode: "live" };
   }
   if (from === null || to === null || !/^\d+$/.test(from) || !/^\d+$/.test(to)) {
@@ -66,7 +81,16 @@ export function parseBackfillParams(params: {
   const f = Number(from);
   const t = Number(to);
   if (f > t) return { mode: "invalid", error: "backfillFrom must not be after backfillTo" };
-  return { mode: "backfill", from: f, to: t, dryRun };
+  let sources = { pools: true, fee: false };
+  if (src !== null) {
+    const parts = src.toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
+    const known = new Set(["pools", "fee", "all"]);
+    if (parts.length === 0 || parts.some((x) => !known.has(x)))
+      return { mode: "invalid", error: "sources must be pools, fee, or all (comma-separated)" };
+    const all = parts.includes("all");
+    sources = { pools: all || parts.includes("pools"), fee: all || parts.includes("fee") };
+  }
+  return { mode: "backfill", from: f, to: t, dryRun, ledgerOnly, sources };
 }
 
 /**
