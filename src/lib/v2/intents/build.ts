@@ -33,11 +33,12 @@ import {
   encodeV3Path,
   findBestRoute,
   findRouteAcrossSources,
+  truncDecimals,
   intermediateTokens,
   poolSide,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
-import { hasKyberSwap, aggregatorToken } from "@/lib/swap/kyberswap";
+import { hasKyberSwap, aggregatorToken, nativeSwapErc20 } from "@/lib/swap/kyberswap";
 import { ARC_USDC, ARC_USDC_DECIMALS, ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
 import { PERMIT2 } from "@/lib/argus/swap";
 import type { Intent } from "@/lib/v2/intents";
@@ -1249,14 +1250,33 @@ export async function buildIntents(
          mirror instead. The user still sees the symbol (USDC); everything else
          uses the mirror's address and decimals. A native input with no mirror
          cannot be approved, so bail rather than build a doomed approve. */
-      const inTok = aggregatorToken(chainId, tokenIn);
+      /* Selling the chain's own wrapped-native (Arc's 0x8c6c, a WETH9 wrapper of
+         native USDC): the aggregator has never heard of it and answers "token not
+         found", so a large trade falls to our thin native pool. Route it like the
+         native currency — quote/pull the 0x3600 mirror — and prepend an unwrap
+         below so the wrapped balance becomes the native the mirror pulls. */
+      const sellIsWrapped =
+        !!contracts.wrappedNative &&
+        tokenIn.address.toLowerCase() === contracts.wrappedNative.toLowerCase();
+      const inTok = aggregatorToken(
+        chainId,
+        sellIsWrapped ? { ...tokenIn, isNative: true } : tokenIn,
+      );
       const outTok = aggregatorToken(chainId, tokenOut);
       if (inTok.isNative) return null;
+      /* Both the unwrap and the aggregator leg run at the mirror's 6 decimals; a
+         Max sell of an 18-decimal wrapped balance has more fractional digits than
+         that, so parseUnits(amount, 6) would throw. Truncate DOWN once and use the
+         same value for both legs — the sub-6dp remainder stays wrapped as dust
+         rather than stranding native the route was quoted to pull. */
+      const aggAmount = sellIsWrapped
+        ? truncDecimals(amount, inTok.decimals)
+        : amount;
 
       const route = await deps.swapRoute({
         tokenIn: inTok.address,
         tokenOut: outTok.address,
-        amount,
+        amount: aggAmount,
         decimalsIn: inTok.decimals,
         decimalsOut: outTok.decimals,
         slippageBps: opts.slippageBps,
@@ -1272,7 +1292,7 @@ export async function buildIntents(
         kind: "approve",
         token: inTok.address,
         spender: route.spender,
-        amount,
+        amount: aggAmount,
         decimals: inTok.decimals,
         symbol: inTok.symbol,
       };
@@ -1282,7 +1302,7 @@ export async function buildIntents(
         data: route.data,
         value: "0",
         tokenIn: inTok.address,
-        amountIn: amount,
+        amountIn: aggAmount,
         decimalsIn: inTok.decimals,
         symbolIn: inTok.symbol,
         tokenOut: outTok.address,
@@ -1295,12 +1315,24 @@ export async function buildIntents(
         spender: route.spender,
         slippageBps: opts.slippageBps,
       };
+      const unwrap: Intent | null = sellIsWrapped
+        ? {
+            kind: "unwrapNative",
+            to: contracts.wrappedNative!,
+            amount: aggAmount,
+            decimals: tokenIn.decimals,
+            symbol: tokenIn.symbol,
+            nativeSymbol:
+              nativeSwapErc20(chainId, inTok.address)?.symbol ?? tokenIn.symbol,
+            chainId,
+          }
+        : null;
       return {
         plan: {
           ok: true,
           build: {
-            summary: `Swap ${amount} ${tokenIn.symbol} for about ${out} ${tokenOut.symbol}.`,
-            intents: [approve, swap],
+            summary: `Swap ${aggAmount} ${tokenIn.symbol} for about ${out} ${tokenOut.symbol}.`,
+            intents: unwrap ? [unwrap, approve, swap] : [approve, swap],
           },
         },
         out: Number(out),

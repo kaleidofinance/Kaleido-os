@@ -551,6 +551,23 @@ export async function findRouteAcrossSources(
 }
 
 /**
+ * Truncate a human decimal string to `dp` fractional digits, rounding DOWN.
+ *
+ * Rounding down (never up) matters where a token is converted between decimal
+ * scalings before it is spent — the wrapped-native (18-dec) unwrapped to native
+ * USDC and routed through the 6-dec 0x3600 mirror. A Max sell carries more than
+ * six fractional digits, and `parseUnits(amount, 6)` throws on the extra ones;
+ * truncating keeps the value the wallet can cover and leaves the sub-`dp`
+ * remainder wrapped as dust rather than stranding native the route was quoted to
+ * pull. See build.ts tryKyberSwap and the swap page's KyberSwap plan.
+ */
+export function truncDecimals(amount: string, dp: number): string {
+  const [whole, frac = ""] = amount.split(".");
+  if (frac.length <= dp) return amount;
+  return dp > 0 ? `${whole}.${frac.slice(0, dp)}` : whole;
+}
+
+/**
  * A route as a line of prose: "WETH → USDC → KLD through 0.3% and 0.3%".
  *
  * Here rather than in a component because both the swap card and the planner's
@@ -559,6 +576,7 @@ export async function findRouteAcrossSources(
  * this file is imported by the builder that produces it, so the formatting is
  * repeated rather than creating a cycle.
  */
+
 export function describeRoute(path: SwapPath): string {
   const symbols = [path.hops[0].symbolIn, ...path.hops.map((h) => h.symbolOut)];
   const tiers = path.fees.map((f) => `${String(Number((f / 10_000).toFixed(4)))}%`);

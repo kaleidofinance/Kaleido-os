@@ -417,6 +417,29 @@ console.log("\n— an aggregator swap bundles with its approve —");
   );
   check("an approve to a different router does not pair", !pairsWith(approve(ROUTER), agg()));
   check("a native-input aggregator swap never bundles", !pairsWith(approve(KYBER), agg({ value: "1000" })));
+
+  /* Selling Arc's wrapped-native routes as unwrapNative → approve → aggregatorSwap:
+     the unwrap must land on its own (it produces the native the swap then pulls),
+     so it is a lone run and only the approve+swap that follow bundle. */
+  const unwrap: Intent = {
+    kind: "unwrapNative",
+    to: "0x8c6c000000000000000000000000000000000000",
+    amount: "50",
+    decimals: 18,
+    symbol: "WETH",
+    nativeSymbol: "USDC",
+    chainId: 5042,
+  };
+  const withUnwrap = planRuns([unwrap, approve(KYBER), agg()]);
+  check(
+    "a leading unwrap is its own run, then the approve+swap bundle",
+    withUnwrap.length === 2 &&
+      !withUnwrap[0].bundled &&
+      withUnwrap[0].steps.join(",") === "0" &&
+      withUnwrap[1].bundled &&
+      withUnwrap[1].steps.join(",") === "1,2",
+    JSON.stringify(withUnwrap),
+  );
 }
 
 console.log("\n— the Argus run: approve → permit2Approve → argusSwap, one prompt —");

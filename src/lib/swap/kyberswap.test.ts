@@ -121,6 +121,24 @@ check("a non-native token is unchanged", outTok.address === cir.address && outTo
 const noMirror = aggregatorToken(1, nativeUsdc);
 check("a native token on a chain with no mirror is unchanged", noMirror.isNative === true);
 
+/* The wrapped-native (0x8c6c, 18-dec) is not native and KyberSwap can't price
+   it, so the builder/page force `isNative: true` to route it as the gas token.
+   That forcing must land on the 0x3600 mirror at 6 decimals, keeping the display
+   symbol — the whole mechanism the wrapped-native routing fix depends on. */
+const forcedWrapped = aggregatorToken(ARC, {
+  address: "0x8c6c000000000000000000000000000000000000",
+  symbol: "WETH",
+  decimals: 18,
+  isNative: true,
+});
+check(
+  "a wrapped-native forced isNative maps to the 0x3600 mirror at 6 decimals",
+  forcedWrapped.address === USDC_3600 &&
+    forcedWrapped.decimals === 6 &&
+    forcedWrapped.isNative === false &&
+    forcedWrapped.symbol === "WETH",
+);
+
 check("the auditor recognises the 0x3600 mirror", !!nativeSwapErc20(ARC, USDC_3600));
 check("mirror lookup is case-insensitive", !!nativeSwapErc20(ARC, USDC_3600.toUpperCase()));
 check("a non-mirror address is not recognised", nativeSwapErc20(ARC, cir.address) === null);
