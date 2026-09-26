@@ -173,6 +173,63 @@ async function main() {
     );
   }
 
+  console.log("\n— bridge: a source on another chain, and a different token to receive —");
+  {
+    /* The model's bridge tool used to resolve the asset on the CONNECTED chain
+       only, so "bridge BNB to Arc as USDC" from Arc failed with "I don't know a
+       token called BNB on this chain", and it had no way to ask for a different
+       token on arrival. The stub records the corridor the builder resolved from
+       the tool's command, which is exactly what this layer decides. */
+    const ARC = 5042;
+    const seen: Record<string, unknown>[] = [];
+    const bdeps = {
+      chainId: ARC,
+      quote: async () => null,
+      quotePath: async () => null,
+      bridgeRoute: async (req: Record<string, unknown>) => {
+        seen.push(req);
+        return { error: "stub: route not resolved in this test" };
+      },
+    } as never;
+    const run = (args: Record<string, unknown>) =>
+      planFromToolCalls([{ name: "bridge", args }] as never, ARC, bdeps, OPTS);
+
+    {
+      seen.length = 0;
+      const r = await run({ amount: "10", asset: "BNB", toChain: "Arc", toAsset: "USDC" });
+      const q = seen[0] ?? {};
+      check(
+        "an asset not on the connected chain is taken as the source (BNB -> BSC)",
+        seen.length === 1 && q.sourceChainId === 56 && q.asset === "BNB",
+        JSON.stringify({ q, errors: r.errors }),
+      );
+      check(
+        "toAsset reaches the corridor as the token to deliver",
+        q.toAsset === "USDC" && typeof q.toTokenAddress === "string",
+        JSON.stringify(q),
+      );
+    }
+    {
+      seen.length = 0;
+      await run({ amount: "10", asset: "BNB", toChain: "Arc", fromChain: "BSC" });
+      const q = seen[0] ?? {};
+      check(
+        "an explicit fromChain is honoured, and no toAsset means same-token",
+        seen.length === 1 && q.sourceChainId === 56 && q.toAsset === undefined,
+        JSON.stringify(q),
+      );
+    }
+    {
+      seen.length = 0;
+      const r = await run({ amount: "10", asset: "ZZZNOTATOKEN", toChain: "Arc" });
+      check(
+        "a symbol no chain carries is refused by name, resolving no corridor",
+        seen.length === 0 && r.errors.some((e) => /ZZZNOTATOKEN/i.test(e)),
+        JSON.stringify(r.errors),
+      );
+    }
+  }
+
   console.log(`\n  ${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exit(1);
 }

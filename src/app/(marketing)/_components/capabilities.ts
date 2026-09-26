@@ -188,6 +188,7 @@ export const GROUPS: readonly Group[] = [
       {
         name: "bridge",
         params: ["amount", "asset", "toChain"],
+        optional: ["fromChain", "toAsset"],
         prompt: "bridge 0.05 ETH to Base Sepolia",
         example: { amount: "0.05", asset: "ETH", toChain: "Base Sepolia" },
       },
