@@ -4,7 +4,11 @@
  * (never credited) or stalls the cursor (nothing ever credited), so it is worth
  * pinning down. Run with `npx tsx src/lib/points/swapCursor.test.ts`.
  */
-import { computeCursorAdvance } from "./swapCursor.ts";
+import {
+  backfillNextFrom,
+  computeCursorAdvance,
+  parseBackfillParams,
+} from "./swapCursor.ts";
 
 let pass = 0;
 let fail = 0;
@@ -52,6 +56,36 @@ console.log("\n— pathological: one block exceeds the cap → don't stall —")
   const r = computeCursorAdvance({ fromBlock: 100, scanTo: 200, uniqueTxBlocks: [100, 100, 100, 100], maxTxs: 2 });
   check("advances to the block (no stall)", r.advancedTo === 100, String(r.advancedTo));
   check("flags block-cap overflow", r.blockCapOverflow === true);
+}
+
+console.log("\n— backfill params: the gate on re-scanning history —");
+{
+  const q = (o: Record<string, string>) => ({ get: (k: string) => (k in o ? o[k] : null) });
+  check("no params → the live run", parseBackfillParams(q({})).mode === "live");
+  const ok = parseBackfillParams(q({ backfillFrom: "100", backfillTo: "200" }));
+  check(
+    "a whole range → backfill, not a dry run",
+    ok.mode === "backfill" && ok.from === 100 && ok.to === 200 && ok.dryRun === false,
+    JSON.stringify(ok),
+  );
+  const dry = parseBackfillParams(q({ backfillFrom: "1", backfillTo: "2", dryRun: "1" }));
+  check("dryRun=1 with a range → a dry backfill", dry.mode === "backfill" && dry.dryRun === true, JSON.stringify(dry));
+  check(
+    "dryRun alone is refused (a dry LIVE run would move the cursor past trades it did not credit)",
+    parseBackfillParams(q({ dryRun: "1" })).mode === "invalid",
+  );
+  check("one end missing is refused", parseBackfillParams(q({ backfillFrom: "100" })).mode === "invalid");
+  check("a non-integer end is refused", parseBackfillParams(q({ backfillFrom: "1e3", backfillTo: "2000" })).mode === "invalid");
+  check("a negative end is refused", parseBackfillParams(q({ backfillFrom: "-5", backfillTo: "10" })).mode === "invalid");
+  check("from after to is refused", parseBackfillParams(q({ backfillFrom: "300", backfillTo: "200" })).mode === "invalid");
+}
+
+console.log("\n— backfill resume point —");
+{
+  check("drained short of `to` → resume one past it", backfillNextFrom(150, 200) === 151);
+  check("drained exactly to `to` → done", backfillNextFrom(200, 200) === null);
+  check("drained past `to` (head clamp) → done", backfillNextFrom(250, 200) === null);
+  check("nothing drained → done, never loops", backfillNextFrom(null, 200) === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
