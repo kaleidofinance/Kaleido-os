@@ -773,6 +773,149 @@ async function main() {
     }
   }
 
+  console.log("\n— selling Arc's wrapped-native through the aggregator —");
+  /*
+   * Arc's wrapped-native (0x8c6c, a WETH9 wrapper of the native USDC gas token,
+   * mislabelled "WETH") is a token KyberSwap has never indexed: a route request
+   * for it answers "token not found", so a large sell used to fall to our own
+   * thin native pool and lose most of its value to price impact. The builder now
+   * routes it like the native currency — quotes/pulls the 0x3600 mirror — and
+   * prepends an unwrap so the user's wrapped balance becomes the native the
+   * mirror moves. Two failure modes are asserted together: the wrong VENUE (the
+   * pool instead of the aggregator) and the wrong DECIMALS (an 18-dec Max sell
+   * overflowing parseUnits at the mirror's 6).
+   */
+  {
+    const ARC = 5042;
+    const WUSDC = String(registry.getContracts(ARC).wrappedNative);
+    const MIRROR = "0x3600000000000000000000000000000000000000";
+    const ROUTER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
+    const wrapped: IToken = tk("WETH", 18, WUSDC);
+    const cirBTC: IToken = {
+      ...tk("cirBTC", 8, "0xc1a0000000000000000000000000000000000001"),
+    };
+    /* Records what the builder asked the aggregator to route, so a case can
+       prove the mirror address and the truncated amount reached the quote — not
+       0x8c6c (which would 404) nor the raw 18-dec string. */
+    const routed: { tokenIn: string; amount: string; decimalsIn: number }[] = [];
+    const swapRoute = async (req: SwapRouteRequest) => {
+      routed.push({
+        tokenIn: req.tokenIn,
+        amount: req.amount,
+        decimalsIn: req.decimalsIn,
+      });
+      return {
+        to: ROUTER,
+        data: "0xkyber",
+        value: "0",
+        spender: ROUTER,
+        amountOut: "50000000", // 0.5 cirBTC at 8 decimals
+        venue: "kyberswap",
+      };
+    };
+
+    {
+      const { deps } = fakeDeps({ chainId: ARC });
+      routed.length = 0;
+      const r = await build(
+        { kind: "swap", amount: "1.5", tokenIn: wrapped, tokenOut: cirBTC },
+        { ...deps, swapRoute },
+      );
+      check(
+        "selling wrapped-native prepends an unwrap: unwrapNative,approve,aggregatorSwap",
+        kinds(r) === "unwrapNative,approve,aggregatorSwap",
+        kinds(r),
+      );
+      check(
+        "the unwrap withdraws the wrapped token (0x8c6c) at its own 18 decimals",
+        same(at(r, 0).to, WUSDC) &&
+          at(r, 0).decimals === 18 &&
+          at(r, 0).amount === "1.5" &&
+          at(r, 0).nativeSymbol === "USDC",
+        JSON.stringify(at(r, 0)),
+      );
+      check(
+        "approve and the swap run on the 0x3600 mirror at 6 decimals",
+        same(at(r, 1).token, MIRROR) &&
+          at(r, 1).decimals === 6 &&
+          same(at(r, 2).tokenIn, MIRROR) &&
+          at(r, 2).decimalsIn === 6 &&
+          same(at(r, 2).tokenOut, cirBTC.address),
+        JSON.stringify([at(r, 1), at(r, 2)]),
+      );
+      check(
+        "the aggregator was quoted the mirror, not the un-indexed 0x8c6c",
+        routed.length === 1 &&
+          same(routed[0].tokenIn, MIRROR) &&
+          routed[0].amount === "1.5" &&
+          routed[0].decimalsIn === 6,
+        JSON.stringify(routed),
+      );
+    }
+
+    {
+      // A Max sell of an 18-decimal wrapped balance carries more than six
+      // fractional digits; the mirror legs run at 6, so the amount is truncated
+      // DOWN once (never rounded up past the balance) rather than overflowing
+      // parseUnits(amount, 6).
+      const { deps } = fakeDeps({ chainId: ARC });
+      routed.length = 0;
+      const r = await build(
+        {
+          kind: "swap",
+          amount: "1.123456789012345678",
+          tokenIn: wrapped,
+          tokenOut: cirBTC,
+        },
+        { ...deps, swapRoute },
+      );
+      check(
+        "an 18-dp Max sell truncates to 6 dp on every leg (no round-up, no throw)",
+        r.ok &&
+          at(r, 0).amount === "1.123456" &&
+          at(r, 2).amountIn === "1.123456" &&
+          routed[0]?.amount === "1.123456",
+        JSON.stringify([kinds(r), at(r, 0).amount, at(r, 2).amountIn]),
+      );
+    }
+
+    {
+      // A normal ERC20 seller (not native, not the wrapped-native) is untouched:
+      // no unwrap, and the amount is passed through as given.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const someUsdc: IToken = tk("USDC", 6, MIRROR);
+      routed.length = 0;
+      const r = await build(
+        { kind: "swap", amount: "0.5", tokenIn: cirBTC, tokenOut: someUsdc },
+        { ...deps, swapRoute },
+      );
+      check(
+        "a plain ERC20 sell stays approve,aggregatorSwap with no unwrap",
+        kinds(r) === "approve,aggregatorSwap" &&
+          same(at(r, 0).token, cirBTC.address) &&
+          routed[0]?.amount === "0.5",
+        kinds(r),
+      );
+    }
+
+    {
+      // Selling the native gas token itself still routes via the mirror without
+      // an unwrap (there is nothing to unwrap) — the pre-existing behaviour the
+      // wrapped-native case is modelled on, asserted here so it can't regress.
+      const { deps } = fakeDeps({ chainId: ARC });
+      routed.length = 0;
+      const r = await build(
+        { kind: "swap", amount: "0.5", tokenIn: DEX_ETH, tokenOut: cirBTC },
+        { ...deps, swapRoute },
+      );
+      check(
+        "selling native routes via the mirror with no unwrap leg",
+        kinds(r) === "approve,aggregatorSwap" && same(at(r, 0).token, MIRROR),
+        kinds(r),
+      );
+    }
+  }
+
   console.log("\n— swapping the chain's own currency —");
   /*
    * The default state of the Swap card, and until the wrapped substitution went

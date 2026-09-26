@@ -25,6 +25,7 @@ import {
   encodeV3Path,
   findRouteAcrossSources,
   MAX_PRICE_IMPACT,
+  truncDecimals,
   poolSide,
   type RoutedPath,
 } from "@/lib/dex/route";
@@ -34,6 +35,7 @@ import {
   hasKyberSwap,
   aggregatorToken,
   getKyberSwapExecution,
+  nativeSwapErc20,
 } from "@/lib/swap/kyberswap";
 import s from "../trade.module.css";
 
@@ -444,6 +446,13 @@ export default function SwapPage() {
      — the output mirrors the input, the panels that price a swap are hidden, and
      the CTA and plan below build a deposit()/withdraw() instead. */
   const wrappedNative = getContracts(swapChainId).wrappedNative;
+  /* Selling the wrapped-native to a non-native token: KyberSwap can't price
+     0x8c6c, so route it via the 0x3600 mirror with an unwrap leg (see the plan
+     memo). Not the native<->wrapped 1:1 case, which is wrapMode above. */
+  const sellIsWrapped =
+    !!wrappedNative &&
+    !!tokenIn &&
+    tokenIn.address.toLowerCase() === wrappedNative.toLowerCase();
   const wrapMode: "wrap" | "unwrap" | null = samePoolSide
     ? sell!.native
       ? "wrap"
@@ -534,10 +543,18 @@ export default function SwapPage() {
         let kyberSell: ReturnType<typeof aggregatorToken> | null = null;
         let kyberBuy: ReturnType<typeof aggregatorToken> | null = null;
         if (hasKyberSwap(swapChainId) && address && tokenIn && tokenOut) {
-          kyberSell = aggregatorToken(swapChainId, tokenIn);
+          kyberSell = aggregatorToken(
+            swapChainId,
+            sellIsWrapped ? { ...tokenIn, isNative: true } : tokenIn,
+          );
           kyberBuy = aggregatorToken(swapChainId, tokenOut);
           const units = ethers
-            .parseUnits(amountIn, kyberSell.decimals)
+            .parseUnits(
+              sellIsWrapped
+                ? truncDecimals(amountIn, kyberSell.decimals)
+                : amountIn,
+              kyberSell.decimals,
+            )
             .toString();
           kyberExec = await getKyberSwapExecution({
             chainId: swapChainId,
@@ -755,12 +772,32 @@ export default function SwapPage() {
          those hold poolSide's wrapped-native (0x8c6c "WETH"), and the row should
          read the asset the user chose (USDC), while the calldata names the
          aggregator mirror kyberRoute already resolved. */
+      /* Selling the wrapped-native: prepend an unwrap (0x8c6c -> native USDC)
+         so the 0x3600 route can pull it, and run both legs on the truncated 6-dec
+         amount the quote used. */
+      const aggIn = sellIsWrapped
+        ? truncDecimals(amountIn, kyberRoute.sellDec)
+        : amountIn;
+      const unwrap: Intent | null = sellIsWrapped
+        ? {
+            kind: "unwrapNative",
+            to: wrappedNative!,
+            amount: aggIn,
+            decimals: tokenIn.decimals,
+            symbol: tokenIn.symbol,
+            nativeSymbol:
+              nativeSwapErc20(swapChainId, kyberRoute.sellAddr)?.symbol ??
+              tokenIn.symbol,
+            chainId: swapChainId,
+          }
+        : null;
       return [
+        ...(unwrap ? [unwrap] : []),
         {
           kind: "approve",
           token: kyberRoute.sellAddr,
           spender: kyberRoute.spender,
-          amount: amountIn,
+          amount: aggIn,
           decimals: kyberRoute.sellDec,
           symbol: tokenIn.symbol,
         },
@@ -770,7 +807,7 @@ export default function SwapPage() {
           data: kyberRoute.data,
           value: "0",
           tokenIn: kyberRoute.sellAddr,
-          amountIn,
+          amountIn: aggIn,
           decimalsIn: kyberRoute.sellDec,
           symbolIn: tokenIn.symbol,
           tokenOut: kyberRoute.buyAddr,
