@@ -4,17 +4,20 @@ import { kyberSwapRouter } from "@/lib/swap/kyberswap";
 import { getContracts } from "@/constants/registry";
 import { GENERATED_SEEDED_POOLS } from "@/constants/deployments.generated";
 import { providerForChain } from "@/config/provider";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { planSpans } from "@/lib/keeper/candleIndex";
 import { retryRpc } from "@/lib/dex/rpcRetry";
 import {
   TRANSFER_TOPIC,
   decodeTransferLog,
   parseSwapInput,
+  classifySwap,
   userOpSenders,
   usdcLegValue,
 } from "@/lib/points/swapCollector";
 import { dexTokenPrices } from "@/lib/swap/dexPrices";
 import { creditAction } from "@/lib/points/credit";
+import { recordSwapVolume } from "@/lib/points/swapLedger";
 import {
   backfillNextFrom,
   computeCursorAdvance,
@@ -138,6 +141,25 @@ async function writeCursor(lastBlock: number): Promise<void> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * The provider a BACKFILL reads history through: Arc's official node alone.
+ *
+ * The live run uses the failover pool, which is right near the head. But that
+ * pool includes pruned gateways (publicnode): when the official node throttles
+ * and a call rotates onto one, an old getTransaction answers `null` and an old
+ * getLogs answers "pruned history unavailable" (code 4444) — measured
+ * 2026-09-26, when a fee-wallet history preview silently dropped 29 swaps as
+ * "no-tx" before failing outright. The official node served all 1.85M blocks of
+ * our pools' history with no failed window, so history is pinned to it; its rate
+ * limits are absorbed by retryRpc's backoff instead of by rotating away.
+ */
+function historyProvider(): ethers.JsonRpcProvider | null {
+  const url = CHAINS_BY_ID[ARC]?.rpcUrls?.[0];
+  return url
+    ? new ethers.JsonRpcProvider(url, ARC, { staticNetwork: true })
+    : null;
+}
+
 /** ERC-20 decimals, cached per run — needed only to value a token↔token swap's
  *  input leg (the common USDC-paired trade is valued from its USDC leg, no read).
  *  A token whose decimals cannot be read is treated as unpriceable, not guessed. */
@@ -178,7 +200,7 @@ async function handle(req: Request): Promise<Response> {
   if (!receiver)
     return Response.json({ skipped: "fee-not-armed", credited: 0 });
   const router = kyberSwapRouter(ARC);
-  const provider = providerForChain(ARC);
+  let provider = providerForChain(ARC);
   if (!router || !provider)
     return Response.json({ skipped: "no-router-or-provider", credited: 0 });
   /* Our own v3 router — a venue (so a direct pool trade is recognised) and, being
@@ -191,6 +213,9 @@ async function handle(req: Request): Promise<Response> {
 
   let scanned = 0;
   let credited = 0;
+  /* Swaps written to the volume ledger — every one the indexer can value, below
+     the points floor included. Counted apart from `credited` (points). */
+  let recorded = 0;
   const skips: Record<string, number> = {};
   const bump = (r: string) => (skips[r] = (skips[r] ?? 0) + 1);
 
@@ -207,12 +232,21 @@ async function handle(req: Request): Promise<Response> {
   if (bf.mode === "invalid")
     return Response.json({ error: bf.error }, { status: 400 });
   const backfill = bf.mode === "backfill" ? bf : null;
+  if (backfill) provider = historyProvider() ?? provider;
+  /* A backfill FAILS CLOSED on history it could not read: a transaction whose
+     body/receipt came back empty, or whose processing threw, is a gap — not a
+     skip — and a chunk with any gap reports failure so the caller retries the
+     same range. Live mode keeps skipping (near the head a tx can vanish in a
+     reorg, and the next run re-reads the window). */
+  let historyGaps = 0;
   const dryRun = backfill?.dryRun ?? false;
   const wouldCredit: {
     txHash: string;
     wallet: string;
     usdValue: number;
     occurredAt: string;
+    venue: string;
+    feePaid: boolean;
   }[] = [];
 
   const cursor = backfill ? null : await readCursor();
@@ -278,7 +312,8 @@ async function handle(req: Request): Promise<Response> {
     const logs: ethers.Log[] = [];
     for (const { start, end } of planSpans(fromBlock, scanTo, SPAN)) {
       // A backfill re-reads only our pools; the fee history is the cursor's.
-      if (!backfill) {
+      // A backfill re-reads only the sources it names (pools by default).
+      if (!backfill || backfill.sources.fee) {
         const page = await retryRpc(() =>
           provider.getLogs({
             fromBlock: start,
@@ -290,7 +325,7 @@ async function handle(req: Request): Promise<Response> {
         if (DELAY_MS) await sleep(DELAY_MS);
       }
 
-      if (NATIVE_POOLS.length > 0) {
+      if (NATIVE_POOLS.length > 0 && (!backfill || backfill.sources.pools)) {
         const poolSwaps = await retryRpc(() =>
           provider.getLogs({
             fromBlock: start,
@@ -340,7 +375,8 @@ async function handle(req: Request): Promise<Response> {
           retryRpc(() => provider.getTransactionReceipt(txHash)),
         ]);
         if (!tx || !receipt) {
-          bump("no-tx");
+          if (backfill) historyGaps++;
+          else bump("no-tx");
           continue;
         }
         const transfers = receipt.logs
@@ -415,10 +451,46 @@ async function handle(req: Request): Promise<Response> {
           ? new Date(block.timestamp * 1000).toISOString()
           : new Date().toISOString();
 
+        /* Record the VOLUME first, for every valued swap — independent of the
+           points decision below, which skips anything under the rate's min_usd.
+           Fail-open: a ledger miss never blocks a credit, and a later backfill
+           re-records it (idempotent on chain + tx). */
+        const cls = classifySwap({
+          tx: { to: tx.to, from: tx.from },
+          transfers,
+          kyberRouter: router,
+          argusVenues: [ARGUS_V4.poolManager],
+          nativeVenues: [v3Router, ...NATIVE_POOLS],
+          feeReceiver: receiver,
+        });
+
         if (dryRun) {
           // Previewing a backfill: value it, report it, write nothing.
-          wouldCredit.push({ txHash, wallet: parsed.wallet, usdValue, occurredAt });
+          wouldCredit.push({
+            txHash,
+            wallet: parsed.wallet,
+            usdValue,
+            occurredAt,
+            venue: cls.venue,
+            feePaid: cls.feePaid,
+          });
         } else {
+          const ok = await recordSwapVolume({
+            chainId: ARC,
+            txHash,
+            wallet: parsed.wallet,
+            usdValue,
+            venue: cls.venue,
+            feePaid: cls.feePaid,
+            occurredAt,
+          });
+          if (ok) recorded++;
+          else bump("ledger-error");
+        }
+
+        // Points: skipped for a preview, and for a ledger-only backfill of
+        // history whose points were already decided.
+        if (!dryRun && !backfill?.ledgerOnly) {
           const res = await creditAction({
             wallet: parsed.wallet,
             source: "swap",
@@ -432,8 +504,10 @@ async function handle(req: Request): Promise<Response> {
           else bump(res.reason);
         }
       } catch {
-        // One bad transaction never aborts the batch.
-        bump("tx-error");
+        // One bad transaction never aborts the batch — but in a backfill it is
+        // a gap, reported below so the chunk is retried rather than passed.
+        if (backfill) historyGaps++;
+        else bump("tx-error");
       }
       if (DELAY_MS) await sleep(DELAY_MS);
     }
@@ -444,6 +518,15 @@ async function handle(req: Request): Promise<Response> {
     );
   }
 
+  if (backfill && historyGaps > 0)
+    return Response.json(
+      {
+        error: "history-gap",
+        detail: `${historyGaps} transaction(s) in this range could not be read; retry the same range`,
+      },
+      { status: 502 },
+    );
+
   // Checkpoint AFTER the scan+credit loop succeeded, so a mid-run failure re-runs
   // the same range rather than skipping it. Best-effort (idempotent re-scan).
   if (usingCursor && advancedTo !== null) await writeCursor(advancedTo);
@@ -452,8 +535,11 @@ async function handle(req: Request): Promise<Response> {
     return Response.json({
       mode: "backfill",
       dryRun,
+      ledgerOnly: backfill.ledgerOnly,
+      sources: backfill.sources,
       scanned,
       credited,
+      recorded,
       skips,
       fromBlock: backfill.from,
       drainedTo: advancedTo,
@@ -461,7 +547,7 @@ async function handle(req: Request): Promise<Response> {
       ...(dryRun ? { wouldCredit } : {}),
     });
 
-  return Response.json({ scanned, credited, skips, cursor, advancedTo });
+  return Response.json({ scanned, credited, recorded, skips, cursor, advancedTo });
 }
 
 export const GET = handle;

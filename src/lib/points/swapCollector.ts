@@ -203,3 +203,45 @@ export function usdcLegValue(args: {
   const v = sent ?? received;
   return v === null ? null : Number(v) / 10 ** args.usdcDecimals;
 }
+
+/**
+ * Which venue a recognised swap ran through, and whether it paid Kaleido's fee —
+ * for the volume ledger (see swapLedger.ts). Pure.
+ *
+ * `feePaid` is read from the transfers, not inferred from the venue: a swap paid
+ * the fee exactly when some token moved TO the fee wallet in its transaction.
+ * That is what Total fees must be charged on — a direct native-pool trade pays
+ * none, and charging 20 bps on it overstated fee revenue.
+ *
+ * Venue precedence: Argus (its PoolManager), then the aggregator (KyberSwap
+ * router), then one of our own pools / our v3 router, else "other". A venue is
+ * "touched" when the tx calls it or any transfer moves tokens from or to it.
+ */
+export function classifySwap(args: {
+  tx: SwapTx;
+  transfers: TransferLog[];
+  kyberRouter: string;
+  argusVenues?: string[];
+  nativeVenues?: string[];
+  feeReceiver?: string;
+}): { venue: "aggregator" | "argus" | "native-pool" | "other"; feePaid: boolean } {
+  const touches = (addrs: readonly string[] | undefined): boolean => {
+    const set = new Set((addrs ?? []).map(norm).filter(Boolean));
+    if (set.size === 0) return false;
+    return (
+      set.has(norm(args.tx.to)) ||
+      args.transfers.some((t) => set.has(t.from) || set.has(t.to))
+    );
+  };
+  const fee = norm(args.feeReceiver);
+  const feePaid =
+    !!fee && args.transfers.some((t) => t.to === fee && t.value > 0n);
+  const venue = touches(args.argusVenues)
+    ? "argus"
+    : touches([args.kyberRouter])
+      ? "aggregator"
+      : touches(args.nativeVenues)
+        ? "native-pool"
+        : "other";
+  return { venue, feePaid };
+}

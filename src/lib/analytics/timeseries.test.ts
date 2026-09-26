@@ -65,5 +65,35 @@ console.log("\n— empty input → zero-filled window —");
   check("five zero days", e.length === 5 && e.every((d) => d.volumeUsd === 0 && d.newWallets === 0));
 }
 
+console.log("\n— the swap_volume ledger drives swap volume/count/fees —");
+{
+  const led = bucketDaily({
+    // point_actions still decide new wallets; the only credited swap is $100.
+    actions: [{ wallet: "0xA", source_slug: "swap", usd_value: 100, occurred_at: "2026-09-22T01:00:00Z" }],
+    swaps: [
+      { usd_value: 100, fee_paid: true, occurred_at: "2026-09-22T01:00:00Z" }, // the credited one
+      { usd_value: 4, fee_paid: true, occurred_at: "2026-09-22T02:00:00Z" }, // under the $10 floor — no credit
+      { usd_value: 20, fee_paid: false, occurred_at: "2026-09-22T03:00:00Z" }, // a direct pool trade — no fee
+    ],
+    cctp: [],
+    route: [],
+    days: 3,
+    swapFeeRate: 0.002,
+    lifiFeeRate: 0.001,
+    now: NOW,
+  });
+  const d = led[2];
+  check("volume counts every swap, sub-$10 included", approx(d.volumeUsd, 124), d.volumeUsd);
+  check("swap count is the ledger's, not the credits'", d.swaps === 3, d.swaps);
+  check("fees only on fee-paying volume (the pool trade pays none)", approx(d.feesUsd, 104 * 0.002), d.feesUsd);
+  check("new wallets still come from point_actions", d.newWallets === 1, d.newWallets);
+
+  const fallback = bucketDaily({
+    actions: [{ wallet: "0xA", source_slug: "swap", usd_value: 100, occurred_at: "2026-09-22T01:00:00Z" }],
+    cctp: [], route: [], days: 3, swapFeeRate: 0.002, lifiFeeRate: 0.001, now: NOW,
+  });
+  check("no ledger → falls back to credited swaps (unchanged behaviour)", approx(fallback[2].volumeUsd, 100) && fallback[2].swaps === 1, fallback[2]);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

@@ -14,7 +14,7 @@ import {
   type BridgeStats,
   type PlatformDeps,
 } from "@/lib/stats/platform";
-import type { AggregatorStats } from "@/lib/stats/aggregator";
+import { toAggregatorStats, type AggregatorStats } from "@/lib/stats/aggregator";
 
 let pass = 0;
 let fail = 0;
@@ -105,6 +105,16 @@ async function main() {
     const r = await readPlatformTotals(deps(null, null, bridge(500), 0.002));
     check("only route bridges → volume + fees from route", r?.volumeUsd === 500 && r?.feesUsd === 1);
     check("only route bridges → partial, only routeBridge available", r?.partial === true && r?.sources.routeBridge === true && r?.sources.swaps === false);
+  }
+
+  console.log("\n— swap fees are charged on fee-paying volume only —");
+  {
+    const row = { swap_count: 3, volume_usd: "124", fees_usd: "0.2", last_occurred_at: null, fee_volume_usd: "104" };
+    const s = toAggregatorStats(row, 20);
+    check("volume is all swaps", s.volumeUsd === 124, s.volumeUsd);
+    check("fees = fee-paying volume × rate (a direct pool trade pays none)", Math.abs(s.feesUsd - 104 * 0.002) < 1e-9, s.feesUsd);
+    const pre = toAggregatorStats({ swap_count: 1, volume_usd: 100, fees_usd: 0.2, last_occurred_at: null }, 20);
+    check("before the migration (no fee_volume_usd) fees fall back to total volume", Math.abs(pre.feesUsd - 0.2) < 1e-9, pre.feesUsd);
   }
 
   console.log("\n— every source down → null —");

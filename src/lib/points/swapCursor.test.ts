@@ -88,5 +88,26 @@ console.log("\n— backfill resume point —");
   check("nothing drained → done, never loops", backfillNextFrom(null, 200) === null);
 }
 
+console.log("\n— backfill sources + ledgerOnly —");
+{
+  const q = (o: Record<string, string>) => ({ get: (k: string) => (k in o ? o[k] : null) });
+  const r = { backfillFrom: "1", backfillTo: "2" };
+  const def = parseBackfillParams(q(r));
+  check(
+    "default: pools only, credits points (#449 behaviour unchanged)",
+    def.mode === "backfill" && def.sources.pools && !def.sources.fee && !def.ledgerOnly,
+    JSON.stringify(def),
+  );
+  const all = parseBackfillParams(q({ ...r, sources: "all", ledgerOnly: "1" }));
+  check("sources=all + ledgerOnly", all.mode === "backfill" && all.sources.pools && all.sources.fee && all.ledgerOnly, JSON.stringify(all));
+  const fee = parseBackfillParams(q({ ...r, sources: "fee" }));
+  check("sources=fee re-scans only the fee wallet", fee.mode === "backfill" && fee.sources.fee && !fee.sources.pools, JSON.stringify(fee));
+  const both = parseBackfillParams(q({ ...r, sources: "pools, fee" }));
+  check("a comma list is accepted", both.mode === "backfill" && both.sources.fee && both.sources.pools, JSON.stringify(both));
+  check("an unknown source is refused", parseBackfillParams(q({ ...r, sources: "bridge" })).mode === "invalid");
+  check("ledgerOnly without a range is refused", parseBackfillParams(q({ ledgerOnly: "1" })).mode === "invalid");
+  check("sources without a range is refused", parseBackfillParams(q({ sources: "fee" })).mode === "invalid");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

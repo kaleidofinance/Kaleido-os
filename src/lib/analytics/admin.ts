@@ -206,6 +206,20 @@ async function readSwapPipeline(): Promise<AdminMetrics["swapPipeline"]> {
       .limit(READ_CAP);
     const folded = summarizeSwapCredits((recent ?? []) as SwapCreditRow[], now);
 
+    /* 24h VOLUME from the volume ledger — every swap, not just credited ones
+       (a credit needs ≥ min_usd). Credit counts above stay on point_actions:
+       they measure the points pipeline. Ledger unreadable → credited volume. */
+    const { data: ledgerRows, error: ledgerErr } = await admin
+      .from("swap_volume")
+      .select("occurred_at, usd_value")
+      .eq("chain_id", ARC_CHAIN_ID)
+      .gte("occurred_at", since)
+      .limit(READ_CAP);
+    const volume24hUsd = ledgerErr
+      ? folded.volume24hUsd
+      : summarizeSwapCredits((ledgerRows ?? []) as SwapCreditRow[], now)
+          .volume24hUsd;
+
     // The absolute latest credit (may be older than 7d — that itself is a
     // signal), so "last credit age" is always accurate.
     const { data: last } = await admin
@@ -250,7 +264,7 @@ async function readSwapPipeline(): Promise<AdminMetrics["swapPipeline"]> {
       lastCreditAgeSec,
       credits24h: folded.credits24h,
       credits7d: folded.credits7d,
-      volume24hUsd: folded.volume24hUsd,
+      volume24hUsd,
       cursorBlock: cursorBlock !== null && Number.isFinite(cursorBlock) ? cursorBlock : null,
       cursorUpdatedAt,
       cursorAgeSec,
