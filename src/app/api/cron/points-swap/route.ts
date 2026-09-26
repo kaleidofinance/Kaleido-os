@@ -15,7 +15,11 @@ import {
 } from "@/lib/points/swapCollector";
 import { dexTokenPrices } from "@/lib/swap/dexPrices";
 import { creditAction } from "@/lib/points/credit";
-import { computeCursorAdvance } from "@/lib/points/swapCursor";
+import {
+  backfillNextFrom,
+  computeCursorAdvance,
+  parseBackfillParams,
+} from "@/lib/points/swapCursor";
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import { ARGUS_V4 } from "@/lib/argus/addresses";
 
@@ -190,25 +194,64 @@ async function handle(req: Request): Promise<Response> {
   const skips: Record<string, number> = {};
   const bump = (r: string) => (skips[r] = (skips[r] ?? 0) + 1);
 
-  const cursor = await readCursor();
+  /* BACKFILL MODE. The live run only moves forward from its cursor, so a direct
+     native-pool trade from before this scan learned to read pool Swap events
+     (#445) sits behind the cursor and was never credited or counted toward
+     volume. `?backfillFrom=&backfillTo=` re-scans an explicit historical range
+     for our pools ONLY — the fee-transfer history was already covered by the
+     cursor — through the exact per-transaction path below, and never reads or
+     writes the cursor. `dryRun=1` values every trade but credits none, so a
+     backfill is previewed before it writes. Credits are idempotent on the tx
+     hash, so overlapping the live run or re-running double-counts nothing. */
+  const bf = parseBackfillParams(new URL(req.url).searchParams);
+  if (bf.mode === "invalid")
+    return Response.json({ error: bf.error }, { status: 400 });
+  const backfill = bf.mode === "backfill" ? bf : null;
+  const dryRun = backfill?.dryRun ?? false;
+  const wouldCredit: {
+    txHash: string;
+    wallet: string;
+    usdValue: number;
+    occurredAt: string;
+  }[] = [];
+
+  const cursor = backfill ? null : await readCursor();
   // Write the cursor whenever we have a client — even on the bootstrap run, so
   // subsequent runs resume from where this one stopped. With no client at all we
   // stay in the pure legacy window and never checkpoint.
-  const usingCursor = !!supabaseAdmin;
+  const usingCursor = !backfill && !!supabaseAdmin;
   let advancedTo: number | null = null;
 
   try {
     const head = (await retryRpc(() => provider.getBlockNumber())) - REORG_MARGIN;
     // Resume from the cursor; bootstrap (no cursor) or a fail-open read falls
     // back to the legacy WINDOW_BLOCKS lookback for this one run.
-    const fromBlock =
-      cursor !== null
+    const fromBlock = backfill
+      ? backfill.from
+      : cursor !== null
         ? Math.max(0, cursor + 1)
         : Math.max(0, head - WINDOW_BLOCKS);
-    // Bound one run's block span; the cursor carries any remainder to the next
-    // run, so this caps RPC load without ever capping coverage.
-    const scanTo = Math.min(head, fromBlock + MAX_BLOCKS_PER_RUN - 1);
+    // Bound one run's block span; the cursor (or, backfilling, `nextFrom`)
+    // carries any remainder to the next run, so this caps RPC load without ever
+    // capping coverage.
+    const scanTo = Math.min(
+      head,
+      backfill ? backfill.to : Number.MAX_SAFE_INTEGER,
+      fromBlock + MAX_BLOCKS_PER_RUN - 1,
+    );
     if (scanTo < fromBlock) {
+      if (backfill)
+        return Response.json({
+          mode: "backfill",
+          dryRun,
+          scanned: 0,
+          credited: 0,
+          skips,
+          fromBlock,
+          drainedTo: null,
+          nextFrom: null,
+          head,
+        });
       // Cursor is already at head — nothing new since the last run.
       return Response.json({
         scanned: 0,
@@ -234,15 +277,18 @@ async function handle(req: Request): Promise<Response> {
     // range and rate limits do not refuse the run.
     const logs: ethers.Log[] = [];
     for (const { start, end } of planSpans(fromBlock, scanTo, SPAN)) {
-      const page = await retryRpc(() =>
-        provider.getLogs({
-          fromBlock: start,
-          toBlock: end,
-          topics: [TRANSFER_TOPIC, null, feeTopic],
-        }),
-      );
-      for (const l of page) logs.push(l);
-      if (DELAY_MS) await sleep(DELAY_MS);
+      // A backfill re-reads only our pools; the fee history is the cursor's.
+      if (!backfill) {
+        const page = await retryRpc(() =>
+          provider.getLogs({
+            fromBlock: start,
+            toBlock: end,
+            topics: [TRANSFER_TOPIC, null, feeTopic],
+          }),
+        );
+        for (const l of page) logs.push(l);
+        if (DELAY_MS) await sleep(DELAY_MS);
+      }
 
       if (NATIVE_POOLS.length > 0) {
         const poolSwaps = await retryRpc(() =>
@@ -275,7 +321,8 @@ async function handle(req: Request): Promise<Response> {
     const txHashes = uniqueTx.slice(0, MAX_TXS).map((t) => t.hash);
 
     // How far this run may advance the cursor (only past fully drained blocks).
-    if (usingCursor) {
+    // A backfill computes the same thing to say where the next call resumes.
+    if (usingCursor || backfill) {
       const adv = computeCursorAdvance({
         fromBlock,
         scanTo,
@@ -368,17 +415,22 @@ async function handle(req: Request): Promise<Response> {
           ? new Date(block.timestamp * 1000).toISOString()
           : new Date().toISOString();
 
-        const res = await creditAction({
-          wallet: parsed.wallet,
-          source: "swap",
-          season: SEASON,
-          chainId: ARC,
-          txHash,
-          usdValue,
-          occurredAt,
-        });
-        if (res.status === "credited") credited++;
-        else bump(res.reason);
+        if (dryRun) {
+          // Previewing a backfill: value it, report it, write nothing.
+          wouldCredit.push({ txHash, wallet: parsed.wallet, usdValue, occurredAt });
+        } else {
+          const res = await creditAction({
+            wallet: parsed.wallet,
+            source: "swap",
+            season: SEASON,
+            chainId: ARC,
+            txHash,
+            usdValue,
+            occurredAt,
+          });
+          if (res.status === "credited") credited++;
+          else bump(res.reason);
+        }
       } catch {
         // One bad transaction never aborts the batch.
         bump("tx-error");
@@ -395,6 +447,19 @@ async function handle(req: Request): Promise<Response> {
   // Checkpoint AFTER the scan+credit loop succeeded, so a mid-run failure re-runs
   // the same range rather than skipping it. Best-effort (idempotent re-scan).
   if (usingCursor && advancedTo !== null) await writeCursor(advancedTo);
+
+  if (backfill)
+    return Response.json({
+      mode: "backfill",
+      dryRun,
+      scanned,
+      credited,
+      skips,
+      fromBlock: backfill.from,
+      drainedTo: advancedTo,
+      nextFrom: backfillNextFrom(advancedTo, backfill.to),
+      ...(dryRun ? { wouldCredit } : {}),
+    });
 
   return Response.json({ scanned, credited, skips, cursor, advancedTo });
 }

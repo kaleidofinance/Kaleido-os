@@ -34,3 +34,50 @@ export function computeCursorAdvance(opts: {
   }
   return { advancedTo, blockCapOverflow };
 }
+
+/**
+ * The backfill range requested on the points-swap cron, or why it is invalid.
+ *
+ * The live run only moves forward from its cursor, so a direct native-pool trade
+ * from before that scan learned to read pool `Swap` events sits behind the cursor
+ * and was never credited or counted. A backfill re-scans an explicit historical
+ * range instead. Both ends are required and must be whole block numbers with
+ * from <= to; `dryRun` is only meaningful WITH a range (a dry live run would
+ * still move the cursor past trades it did not credit), so it is refused alone.
+ * Pure so the gate is tested without a request.
+ */
+export function parseBackfillParams(params: {
+  get(name: string): string | null;
+}):
+  | { mode: "live" }
+  | { mode: "backfill"; from: number; to: number; dryRun: boolean }
+  | { mode: "invalid"; error: string } {
+  const from = params.get("backfillFrom");
+  const to = params.get("backfillTo");
+  const dryRun = params.get("dryRun") === "1";
+  if (from === null && to === null) {
+    return dryRun
+      ? { mode: "invalid", error: "dryRun needs a backfill range (backfillFrom + backfillTo)" }
+      : { mode: "live" };
+  }
+  if (from === null || to === null || !/^\d+$/.test(from) || !/^\d+$/.test(to)) {
+    return { mode: "invalid", error: "backfillFrom and backfillTo must both be whole block numbers" };
+  }
+  const f = Number(from);
+  const t = Number(to);
+  if (f > t) return { mode: "invalid", error: "backfillFrom must not be after backfillTo" };
+  return { mode: "backfill", from: f, to: t, dryRun };
+}
+
+/**
+ * Where the next backfill call should resume, or null when the range is done.
+ * `drainedTo` is computeCursorAdvance's `advancedTo` for this call — the last
+ * block fully processed — so resuming one past it neither skips nor repeats.
+ */
+export function backfillNextFrom(
+  drainedTo: number | null,
+  to: number,
+): number | null {
+  if (drainedTo === null || drainedTo >= to) return null;
+  return drainedTo + 1;
+}
