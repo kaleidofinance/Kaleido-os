@@ -145,6 +145,35 @@ export function readTxLog(
   }
 }
 
+/**
+ * The newest confirmed entry of `kind` for this wallet across SEVERAL chains'
+ * logs, with the chain it was logged on — or null.
+ *
+ * The log is keyed per (chain, wallet), which is right for rendering a chain's
+ * history and wrong for "find my bridge": a bridge INTO Arc is logged under its
+ * SOURCE chain (Base, BSC), and by the time the user goes to verify it they have
+ * switched to Arc, whose log does not have it. The Rewards verifier read only the
+ * active chain's log, so every inbound bridge sent no hash and was refused —
+ * measured 2026-09-26: 202 of 218 verified bridges were outbound, 11 inbound.
+ * `read` is injectable so this is tested without localStorage.
+ */
+export function findLatestAcrossChains(
+  chainIds: readonly number[],
+  address: string | undefined,
+  kind: TxLogEntry["kind"],
+  read: (chainId: number, address: string) => TxLogEntry[] = readTxLog,
+): { chainId: number; entry: TxLogEntry } | null {
+  if (!address) return null;
+  let best: { chainId: number; entry: TxLogEntry } | null = null;
+  for (const chainId of chainIds) {
+    for (const entry of read(chainId, address)) {
+      if (entry.kind !== kind || entry.status !== "confirmed") continue;
+      if (!best || entry.at > best.entry.at) best = { chainId, entry };
+    }
+  }
+  return best;
+}
+
 /* ------------------------------------------------------------------- write -- */
 
 export function recordTx(

@@ -12,7 +12,7 @@ import { defineChain } from "thirdweb/chains";
 import { client } from "@/config/client";
 import { WALLETS, APP_METADATA } from "@/config/wallets";
 import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
-import { readTxLog, type TxLogEntry } from "@/lib/v2/txLog";
+import { findLatestAcrossChains } from "@/lib/v2/txLog";
 import type { WaitlistStatus } from "@/lib/waitlist/status";
 import Nav from "@/components/v2/Nav";
 import s from "./rewards.module.css";
@@ -92,7 +92,6 @@ export default function WaitlistPage() {
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
   const [bridgeOpened, setBridgeOpened] = useState(false);
   const [txHashInputs, setTxHashInputs] = useState({ bridge: "" });
-  const [txLog, setTxLog] = useState<TxLogEntry[]>([]);
 
   useEffect(() => {
     try {
@@ -131,10 +130,6 @@ export default function WaitlistPage() {
       setStatusError("Could not load your waitlist balance.");
     }
   }, [account?.address]);
-
-  useEffect(() => {
-    setTxLog(readTxLog(activeChain?.id, account?.address));
-  }, [activeChain?.id, account?.address]);
 
   useEffect(() => {
     void loadStatus();
@@ -246,11 +241,22 @@ export default function WaitlistPage() {
       setTransactionBusy("bridge");
       setError(null);
       try {
-        const inputHash = txHashInputs.bridge;
-        const candidate = txLog.find(
-          (entry) => entry.status === "confirmed" && entry.kind === "bridge",
-        );
-        const txHash = inputHash.trim() || candidate?.hash;
+        /* The bridge may be logged on ANY chain: a bridge into Arc is logged
+           under its source chain (Base, BSC), not the Arc chain the user is
+           on now. Reading only the active chain's log sent no hash for every
+           inbound bridge, and the server then refused it. Search every chain's
+           log for this wallet and send the chain the bridge actually left. A
+           pasted hash wins; the server locates it on any chain regardless. */
+        const inputHash = txHashInputs.bridge.trim();
+        const logged = inputHash
+          ? null
+          : findLatestAcrossChains(
+              Object.keys(CHAINS_BY_ID).map(Number),
+              account.address,
+              "bridge",
+            );
+        const txHash = inputHash || logged?.entry.hash;
+        const txChainId = logged?.chainId ?? activeChain?.id;
         const signature = await account.signMessage({
           message: transactionTaskMessage(account.address),
         });
@@ -261,7 +267,7 @@ export default function WaitlistPage() {
             address: account.address,
             signature,
             task: "bridge",
-            chainId: activeChain?.id,
+            chainId: txChainId,
             ...(txHash ? { txHash, operation: "bridge" } : {}),
           }),
         });
@@ -284,7 +290,6 @@ export default function WaitlistPage() {
       loadStatus,
       transactionBusy,
       txHashInputs,
-      txLog,
     ],
   );
 
