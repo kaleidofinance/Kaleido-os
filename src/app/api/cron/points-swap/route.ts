@@ -4,6 +4,7 @@ import { kyberSwapRouter } from "@/lib/swap/kyberswap";
 import { getContracts } from "@/constants/registry";
 import { GENERATED_SEEDED_POOLS } from "@/constants/deployments.generated";
 import { providerForChain } from "@/config/provider";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { planSpans } from "@/lib/keeper/candleIndex";
 import { retryRpc } from "@/lib/dex/rpcRetry";
 import {
@@ -140,6 +141,25 @@ async function writeCursor(lastBlock: number): Promise<void> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * The provider a BACKFILL reads history through: Arc's official node alone.
+ *
+ * The live run uses the failover pool, which is right near the head. But that
+ * pool includes pruned gateways (publicnode): when the official node throttles
+ * and a call rotates onto one, an old getTransaction answers `null` and an old
+ * getLogs answers "pruned history unavailable" (code 4444) — measured
+ * 2026-09-26, when a fee-wallet history preview silently dropped 29 swaps as
+ * "no-tx" before failing outright. The official node served all 1.85M blocks of
+ * our pools' history with no failed window, so history is pinned to it; its rate
+ * limits are absorbed by retryRpc's backoff instead of by rotating away.
+ */
+function historyProvider(): ethers.JsonRpcProvider | null {
+  const url = CHAINS_BY_ID[ARC]?.rpcUrls?.[0];
+  return url
+    ? new ethers.JsonRpcProvider(url, ARC, { staticNetwork: true })
+    : null;
+}
+
 /** ERC-20 decimals, cached per run — needed only to value a token↔token swap's
  *  input leg (the common USDC-paired trade is valued from its USDC leg, no read).
  *  A token whose decimals cannot be read is treated as unpriceable, not guessed. */
@@ -180,7 +200,7 @@ async function handle(req: Request): Promise<Response> {
   if (!receiver)
     return Response.json({ skipped: "fee-not-armed", credited: 0 });
   const router = kyberSwapRouter(ARC);
-  const provider = providerForChain(ARC);
+  let provider = providerForChain(ARC);
   if (!router || !provider)
     return Response.json({ skipped: "no-router-or-provider", credited: 0 });
   /* Our own v3 router — a venue (so a direct pool trade is recognised) and, being
@@ -212,6 +232,13 @@ async function handle(req: Request): Promise<Response> {
   if (bf.mode === "invalid")
     return Response.json({ error: bf.error }, { status: 400 });
   const backfill = bf.mode === "backfill" ? bf : null;
+  if (backfill) provider = historyProvider() ?? provider;
+  /* A backfill FAILS CLOSED on history it could not read: a transaction whose
+     body/receipt came back empty, or whose processing threw, is a gap — not a
+     skip — and a chunk with any gap reports failure so the caller retries the
+     same range. Live mode keeps skipping (near the head a tx can vanish in a
+     reorg, and the next run re-reads the window). */
+  let historyGaps = 0;
   const dryRun = backfill?.dryRun ?? false;
   const wouldCredit: {
     txHash: string;
@@ -348,7 +375,8 @@ async function handle(req: Request): Promise<Response> {
           retryRpc(() => provider.getTransactionReceipt(txHash)),
         ]);
         if (!tx || !receipt) {
-          bump("no-tx");
+          if (backfill) historyGaps++;
+          else bump("no-tx");
           continue;
         }
         const transfers = receipt.logs
@@ -476,8 +504,10 @@ async function handle(req: Request): Promise<Response> {
           else bump(res.reason);
         }
       } catch {
-        // One bad transaction never aborts the batch.
-        bump("tx-error");
+        // One bad transaction never aborts the batch — but in a backfill it is
+        // a gap, reported below so the chunk is retried rather than passed.
+        if (backfill) historyGaps++;
+        else bump("tx-error");
       }
       if (DELAY_MS) await sleep(DELAY_MS);
     }
@@ -487,6 +517,15 @@ async function handle(req: Request): Promise<Response> {
       { status: 502 },
     );
   }
+
+  if (backfill && historyGaps > 0)
+    return Response.json(
+      {
+        error: "history-gap",
+        detail: `${historyGaps} transaction(s) in this range could not be read; retry the same range`,
+      },
+      { status: 502 },
+    );
 
   // Checkpoint AFTER the scan+credit loop succeeded, so a mid-run failure re-runs
   // the same range rather than skipping it. Best-effort (idempotent re-scan).
