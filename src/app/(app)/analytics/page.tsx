@@ -79,6 +79,12 @@ export default function AnalyticsPage() {
             <Stat label="Swaps" value={qty(t?.swapCount ?? null)} />
             <Stat label="Bridges" value={qty(bridges)} />
           </StatStrip>
+          {t?.partial ? (
+            <p className={s.empty}>
+              A volume source is temporarily unavailable — these totals are a
+              lower bound until it recovers.
+            </p>
+          ) : null}
         </section>
 
         <section className={s.section}>

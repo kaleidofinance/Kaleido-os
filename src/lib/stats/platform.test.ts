@@ -63,6 +63,21 @@ async function main() {
     check("volume = swaps + cctp + route", r?.volumeUsd === 1800, r?.volumeUsd);
     check("fees = swap fees + route*feeRate", r?.feesUsd === 2 + 500 * 0.002, r?.feesUsd);
     check("breakdown carries route bridge + bridge fees", r?.breakdown.routeBridgeVolumeUsd === 500 && r?.breakdown.bridgeFeesUsd === 1);
+    check(
+      "all sources present → not partial",
+      r?.partial === false &&
+        r?.sources.swaps === true &&
+        r?.sources.cctpBridge === true &&
+        r?.sources.routeBridge === true,
+      JSON.stringify({ partial: r?.partial, sources: r?.sources }),
+    );
+  }
+
+  console.log("\n— a source reading 0 is available, not missing —");
+  {
+    const r = await readPlatformTotals(deps(swaps(0, 0, 0), bridge(0, 0), bridge(0, 0), 0.002));
+    check("all zero volume", r?.volumeUsd === 0);
+    check("a real 0 is not a gap → not partial", r?.partial === false, JSON.stringify(r?.sources));
   }
 
   console.log("\n— fee rate 0 → no bridge-fee revenue —");
@@ -77,10 +92,19 @@ async function main() {
     const r = await readPlatformTotals(deps(swaps(1000, 2), null, null, 0.002));
     check("only swaps → swaps-only volume", r?.volumeUsd === 1000);
     check("only swaps → cctp + route breakdown null", r?.breakdown.cctpBridgeVolumeUsd === null && r?.breakdown.routeBridgeVolumeUsd === null);
+    check(
+      "a missing source flags partial and names which answered",
+      r?.partial === true &&
+        r?.sources.swaps === true &&
+        r?.sources.cctpBridge === false &&
+        r?.sources.routeBridge === false,
+      JSON.stringify({ partial: r?.partial, sources: r?.sources }),
+    );
   }
   {
     const r = await readPlatformTotals(deps(null, null, bridge(500), 0.002));
     check("only route bridges → volume + fees from route", r?.volumeUsd === 500 && r?.feesUsd === 1);
+    check("only route bridges → partial, only routeBridge available", r?.partial === true && r?.sources.routeBridge === true && r?.sources.swaps === false);
   }
 
   console.log("\n— every source down → null —");

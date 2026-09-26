@@ -397,6 +397,14 @@
 .emptyLink:hover {
   color: var(--k-brand);
 }
+/* A one-line caveat under the headline strip when a cumulative volume source was
+   unavailable (see PlatformTotals.partial). Full width beneath the strip rather
+   than inside a tile — the strip's tiles deliberately carry no notes. */
+.partialNote {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  margin: 8px 2px 0;
+}
 
 .cards {
   display: flex;
