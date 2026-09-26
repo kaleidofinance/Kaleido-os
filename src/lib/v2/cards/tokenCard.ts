@@ -204,6 +204,104 @@ export function tokenCardFrom(
       : {}),
     buys,
     sells,
+    ref,
   };
   return card;
+}
+
+/**
+ * The command the card's own "Buy [amount] USDC" field sends, or null when the
+ * typed amount isn't a plain positive number. The amount is validated HERE —
+ * digits, an optional decimal part, an optional leading "$" or thousands
+ * commas — so free text can never be spliced into a command; the result goes
+ * through the same grammar → plan → audit → review → signature path as a tap.
+ */
+export function customBuyCommand(ref: string, raw: string): string | null {
+  const t = raw.trim().replace(/^\$\s*/, "").replace(/,/g, "");
+  if (!/^\d+(\.\d+)?$/.test(t)) return null;
+  if (!(Number(t) > 0) || t.length > 24) return null;
+  return `buy ${ref} with ${t} usdc`;
+}
+
+/** The token a card is about, for reading the next typed message against it. */
+export interface CardTokenContext {
+  ref: string;
+  symbol: string;
+}
+
+const CARD_BUY_VERBS = new Set(["buy", "ape", "get", "grab", "snag", "cop", "purchase", "spend"]);
+const CARD_SELL_VERBS = new Set(["sell", "dump", "unload"]);
+const CARD_USD_WORDS = new Set(["usdc", "usd", "dollar", "dollars", "bucks", "$"]);
+const CARD_FILLERS = new Set([
+  "of", "with", "for", "worth", "me", "some", "please", "pls", "now", "on",
+  "the", "token", "coin", "my", "into", "in", "more", "a", "bit",
+]);
+
+/**
+ * A message typed while a token card is showing, rewritten into the command the
+ * card's own buttons would send — or null to leave it to the parser.
+ *
+ * Without this the card set no context: "buy 10 usdc", "buy with 10 usdc" and
+ * "buy 10 usdc of GLITCH" all failed (no token named, or a launch symbol the
+ * registry doesn't carry), and the only way to pick an amount was the % buttons
+ * or retyping the contract address.
+ *
+ * Deliberately narrow: it only rewrites a sentence that is PURELY a buy or sell
+ * of this token — a verb, one amount or percentage, the token itself ("it",
+ * "this", its symbol) and filler. Any other word (another token, a chain, a
+ * question) returns null. A buy stated in TOKENS ("buy 1000 GLITCH" — the amount
+ * received, not USDC spent) is also left alone rather than read as USDC.
+ */
+export function cardFollowUp(
+  text: string,
+  card: CardTokenContext,
+): string | null {
+  const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
+  if (!t || t.includes(card.ref.toLowerCase())) return null;
+  const words = t.replace(/\$/g, " $ ").replace(/%/g, " % ").split(/\s+/).filter(Boolean);
+  const verb = words[0];
+  const buying = CARD_BUY_VERBS.has(verb);
+  if (!buying && !CARD_SELL_VERBS.has(verb)) return null;
+
+  const sym = card.symbol.toLowerCase();
+  let amount: string | null = null;
+  let pct: string | null = null;
+  let all = false;
+  let named = false;
+  let usd = false;
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i];
+    const n = /^(\d[\d,]*(?:\.\d+)?)$/.exec(w);
+    if (n) {
+      if (amount || pct) return null;
+      const v = n[1].replace(/,/g, "");
+      if (words[i + 1] === "%") {
+        pct = v;
+        i++;
+      } else amount = v;
+      continue;
+    }
+    if (CARD_USD_WORDS.has(w)) { usd = true; continue; }
+    if (w === sym || w === "it" || w === "this" || w === "that") { named = true; continue; }
+    if (w === "all" || w === "everything" || w === "max") { all = true; continue; }
+    if (w === "half") { if (amount || pct) return null; pct = "50"; continue; }
+    if (CARD_FILLERS.has(w)) continue;
+    return null;
+  }
+  if (pct !== null && !(Number(pct) > 0 && Number(pct) <= 100)) return null;
+  if (amount !== null && !(Number(amount) > 0)) return null;
+
+  if (buying) {
+    if (pct) return `buy ${card.ref} with ${pct}% of my usdc`;
+    if (all) return `buy ${card.ref} with 100% of my usdc`;
+    /* "buy 1000 GLITCH" names tokens to RECEIVE; only a USDC-marked amount, or a
+       bare one with the token unnamed ("buy 10"), is USDC to spend. */
+    if (amount && (usd || !named)) return `buy ${card.ref} with ${amount} usdc`;
+    return null;
+  }
+  if (pct) return `sell ${pct}% of ${card.ref} for usdc`;
+  if (all) return `sell 100% of ${card.ref} for usdc`;
+  /* "sell 10 usdc worth" states a USDC output — not a size this can read. */
+  if (amount && !usd) return `sell ${amount} ${card.ref} for usdc`;
+  return null;
 }

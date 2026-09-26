@@ -630,6 +630,9 @@ const VERBS: Record<ActionKind, string[]> = {
        the buy-side ones are safe even when a phrasing is genuinely ambiguous —
        parseSwap's guard asks which token to spend rather than guessing a trade. */
     "dump", "unload", "ape", "cop", "grab", "snag", "flip", "yeet",
+    /* "spend 10 USDC on X" — forward, like "swap": the named amount is spent.
+       Its separator is "on" (see parseSwap), which only it reads that way. */
+    "spend",
   ],
   stake: ["stake"],
   /* One word, matched whole, so "unstake" never reads as the `stake` verb with
@@ -1396,6 +1399,23 @@ function unknownTokenPrompt(
 
 /* ------------------------------------------------------------------ parse -- */
 
+/**
+ * "$10" in a BUY or SPEND sentence is 10 USDC to spend: "buy $10 of X", "buy X
+ * with $10", "spend $10 on X". normalise() strips every "$", so without this the
+ * amount survived as a bare number and a buy read it as tokens RECEIVED — and
+ * dropped it ("I price a swap by what you spend…"). Scoped to buy/spend verbs on
+ * purpose: in "swap $10 of ETH to USDC" the dollars are a size of ETH, not USDC,
+ * and that sentence is left exactly as before. A "$10 usdc" keeps its own unit.
+ */
+function dollarsAsUsdc(text: string): string {
+  if (!/\$\s?\d/.test(text)) return text;
+  if (!/\b(buy|purchase|ape|cop|grab|snag|spend)\b/i.test(text)) return text;
+  return text.replace(
+    /\$\s?(\d[\d,]*(?:\.\d+)?[km]?)(\s*usdc\b)?/gi,
+    (_m, n: string, unit?: string) => (unit ? `${n}${unit}` : `${n} usdc`),
+  );
+}
+
 function normalise(text: string): string[] {
   return (
     text
@@ -1790,7 +1810,7 @@ const RECURRING = /\b(every|each|daily|weekly|monthly|recurring|dca|repeat)\b/;
  * cancel also falls through.
  */
 function parseOrder(raw: string, tokens: IToken[]): ParseResult | null {
-  const words = normalise(raw);
+  const words = normalise(dollarsAsUsdc(raw));
   const lower = raw.toLowerCase();
 
   /* Cancel-all. Requires a plural/collective marker so "cancel order 5" and
@@ -2070,7 +2090,7 @@ export function parseCommand(
     return { status: "ok", command: { kind: "receive" } };
   }
 
-  const words = normalise(raw);
+  const words = normalise(dollarsAsUsdc(raw));
 
   /*
    * The faucet, checked ahead of the zero-slot verbs for one specific reason:
@@ -2833,7 +2853,11 @@ function parseSwap(
   const fwdAt = buying
     ? words.findIndex((w) => BUY_FORWARD_SEPARATORS.includes(w))
     : words.findIndex((w) => SEPARATORS.includes(w));
-  const sepAt = backAt >= 0 ? backAt : fwdAt;
+  /* "spend 10 USDC on X": "on" separates the sides, but only for "spend" —
+     everywhere else "on" names a chain ("swap 10 USDC to KLD on Base"). */
+  const spendOnAt =
+    !buying && fwdAt < 0 && words.includes("spend") ? words.indexOf("on") : -1;
+  const sepAt = backAt >= 0 ? backAt : fwdAt >= 0 ? fwdAt : spendOnAt;
   /** True when the separator we found puts the spent token on its right. */
   const inverted = backAt >= 0;
 
@@ -3282,7 +3306,7 @@ export function parseFollowUp(
      recurring buy or a delegation grant gets built after all. */
   if (MODEL_ONLY.test(lower)) return { status: "unknown" };
 
-  const words = normalise(raw);
+  const words = normalise(dollarsAsUsdc(raw));
   /* Rule 1, with its one exception. A verb makes this a fresh command — unless
      it is the carried command's OWN verb inside a repeat cue: "do the same swap
      once again", "swap again", "repeat that swap". The verb agrees, so nothing

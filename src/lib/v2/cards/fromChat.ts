@@ -302,6 +302,7 @@ function validate(raw: unknown): AgentCard | null {
         ...(note ? { note } : {}),
         buys: buttons(c.buys, true),
         sells: buttons(c.sells, false).map(({ label, command }) => ({ label, command })),
+        ...(str(c.ref, LIMITS.prompt) ? { ref: str(c.ref, LIMITS.prompt)! } : {}),
       };
     }
   }

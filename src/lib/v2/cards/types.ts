@@ -181,6 +181,13 @@ export interface TokenCard {
   buys: { label: string; command: string; disabled?: boolean }[];
   /** Sell presets, as a share of the wallet's balance. */
   sells: { label: string; command: string }[];
+  /**
+   * How a command names this token — an Argus launch by address, a listed token
+   * by symbol. Present on a tradable card, where it drives the card's own
+   * "Buy [amount] USDC" field (via customBuyCommand) and lets a typed follow-up
+   * ("buy 10 usdc") mean this token. Absent on older stored cards.
+   */
+  ref?: string;
 }
 
 export type AgentCard =
