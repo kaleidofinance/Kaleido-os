@@ -321,6 +321,28 @@ export async function POST(req: Request) {
     }
   }
 
+  /* The LI.FI ledger, written by /api/bridge/record at bridge time after it
+     checked the tx on chain. Consulted after CCTP so a routed bridge verifies
+     from any device — the client's tx log is per browser AND per chain, so a
+     bridge INTO Arc (logged under its source chain) used to reach here with no
+     hash and fail. Like the CCTP row it is only a candidate: it must still pass
+     the same receipt, sender and allow-listed router checks below. */
+  if (!verifiedTxHash && !evidence && task === "bridge") {
+    const { data } = await supabaseAdmin
+      .from("route_bridges")
+      .select("tx_hash, source_chain_id")
+      .eq("wallet", wallet)
+      .order("created_at", { ascending: true })
+      .limit(1);
+    const routed = data?.[0];
+    if (routed?.tx_hash && Number.isInteger(Number(routed.source_chain_id))) {
+      verifiedTxHash = String(routed.tx_hash);
+      verifiedChainId = Number(routed.source_chain_id);
+      verifiedOperation = "bridge";
+      verifiedProvider = "lifi";
+    }
+  }
+
   if (task === "arcMainnet") {
     if (!(await hasArcActivity(wallet)))
       return Response.json(

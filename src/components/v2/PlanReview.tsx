@@ -13,7 +13,8 @@ import { freshAggregatorCall } from "@/lib/v2/intents/definitions";
 import { useResolverContext } from "@/hooks/v2/useResolverContext";
 import { useSwitchWalletChain } from "@/lib/wallet";
 import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
-import { recordTx, txFromError } from "@/lib/v2/txLog";
+import { recordTx, txFromError } from "@/lib/v2/txLog";
+import { postWithRetry } from "@/lib/v2/postWithRetry";
 import { recordCctpBurn } from "@/lib/bridge/cctpPending";
 import { recordLifiPending } from "@/lib/bridge/lifiPending";
 import { describeFailure, isRejection } from "@/lib/v2/txErrors";
@@ -545,24 +546,17 @@ export default function PlanReview({
            the waitlist verifier opportunistically; a non-waitlisted wallet or a
            temporary API failure must never block a completed trade. */
         if (["swap", "swapMultiHop", "aggregatorSwap"].includes(intents[i].kind)) {
-          void fetch("/api/waitlist/transaction", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
+          void postWithRetry("/api/waitlist/transaction", {
               address: ctx.address,
               task: "agent",
               txHash: result.hash,
               chainId: ctx.chainId,
               operation: intents[i].kind,
               provider: intents[i].kind === "aggregatorSwap" ? "kyberswap" : "kaleido",
-            }),
-          }).catch(() => {});
+            });
         }
         if (intents[i].kind === "bridge") {
-          void fetch("/api/waitlist/transaction", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
+          void postWithRetry("/api/waitlist/transaction", {
               address: ctx.address,
               task: "bridge",
               txHash: result.hash,
@@ -573,8 +567,7 @@ export default function PlanReview({
               symbol: (intents[i] as Extract<Intent, { kind: "bridge" }>).symbol,
               sourceChainId: (intents[i] as Extract<Intent, { kind: "bridge" }>).fromChainId,
               destinationChainId: (intents[i] as Extract<Intent, { kind: "bridge" }>).toChainId,
-            }),
-          }).catch(() => {});
+            });
         }
       }
       /* A CCTP burn is only half a transfer: the USDC is minted on the
@@ -607,17 +600,13 @@ export default function PlanReview({
           /* Log the routed (LI.FI) bridge so its volume and our integrator fee
              reach the pool page's platform totals. Fire-and-forget, chain-
              verified server-side; a failure never touches the completed bridge. */
-          void fetch("/api/bridge/record", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
+          void postWithRetry("/api/bridge/record", {
               txHash: result.hash,
               sourceChainId: b.fromChainId,
               wallet: ctx.address,
               amount: b.amount,
               symbol: b.symbol,
-            }),
-          }).catch(() => {});
+            });
         }
       }
       return pauseAfter(i, !!result.skipped) ? "paused" : "done";
@@ -848,10 +837,7 @@ export default function PlanReview({
       if (lastIntent.kind === "bridge") {
         const b = lastIntent as Extract<Intent, { kind: "bridge" }>;
         if (hash) {
-          void fetch("/api/waitlist/transaction", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
+          void postWithRetry("/api/waitlist/transaction", {
               address: ctx.address,
               task: "bridge",
               txHash: hash,
@@ -862,8 +848,7 @@ export default function PlanReview({
               symbol: (lastIntent as Extract<Intent, { kind: "bridge" }>).symbol,
               sourceChainId: (lastIntent as Extract<Intent, { kind: "bridge" }>).fromChainId,
               destinationChainId: (lastIntent as Extract<Intent, { kind: "bridge" }>).toChainId,
-            }),
-          }).catch(() => {});
+            });
         }
         if (b.provider === "cctp") {
           recordCctpBurn(ctx.address, {
@@ -888,17 +873,13 @@ export default function PlanReview({
           /* Log the routed (LI.FI) bridge so its volume and our integrator fee
              reach the pool page's platform totals. Fire-and-forget, chain-
              verified server-side; a failure never touches the completed bridge. */
-          void fetch("/api/bridge/record", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
+          void postWithRetry("/api/bridge/record", {
               txHash: hash,
               sourceChainId: b.fromChainId,
               wallet: ctx.address,
               amount: b.amount,
               symbol: b.symbol,
-            }),
-          }).catch(() => {});
+            });
         }
       }
     }
