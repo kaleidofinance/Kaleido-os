@@ -78,7 +78,10 @@ const check = (name: string, cond: boolean, detail = "") => {
    populated token list AND all twelve deployment fields. */
 const CHAIN = 11155111;
 
-const OPTS = { slippageBps: 50, deadlineMin: 20 };
+/* impactCeiling: null — the fixtures' mock quoters return one output for any
+   size, which a real AMM cannot, so the price-impact probe would read them as
+   ~99% impact. The guard has its own cases below with size-aware quoters. */
+const OPTS = { slippageBps: 50, deadlineMin: 20, impactCeiling: null };
 
 /**
  * A PlanDeps that reads nothing and remembers everything asked of it.
@@ -370,6 +373,56 @@ async function main() {
     check("receive reads nothing", quiet(calls));
   }
 
+  console.log("\n— the price-impact guard (on by default) —");
+  /*
+   * A size-aware quoter, shaped like a real constant-product pool: output for
+   * `a` in is 2a / (1 + a/depth). Deep, it prices ~2 KLD per USDC at any size;
+   * shallow, a large order walks the curve and gets a small fraction of that —
+   * the dust-pool fill that cost a user 67% on Arc. The fixtures above use
+   * constant quoters with the guard off; these run it the way production does.
+   */
+  {
+    const pool = (depth: number) => async (req: QuoteRequest) => {
+      const a = Number(req.amountIn);
+      return String((2 * a) / (1 + a / depth));
+    };
+    const LIVE = { slippageBps: 50, deadlineMin: 20 };
+    const cmd = {
+      kind: "swap" as const,
+      amount: "500",
+      tokenIn: DEX_USDC,
+      tokenOut: DEX_KLD,
+    };
+
+    {
+      const { deps } = fakeDeps({ quote: pool(1e9) });
+      const r = await build(cmd, deps, LIVE);
+      check("a deep pool passes the guard", kinds(r) === "approve,swap", kinds(r));
+    }
+    {
+      const { deps } = fakeDeps({ quote: pool(10) });
+      const r = await build(cmd, deps, LIVE);
+      check(
+        "a shallow pool is refused, and says it is shallow rather than missing",
+        !r.ok && /too shallow/.test(errorOf(r)) && !/no pool/i.test(errorOf(r)),
+        errorOf(r) || kinds(r),
+      );
+    }
+    {
+      // Control: the same shallow pool with the guard explicitly off fills —
+      // proving it is the guard refusing, not the fixture failing to route.
+      const { deps } = fakeDeps({ quote: pool(10) });
+      const r = await build(cmd, deps, { ...LIVE, impactCeiling: null });
+      check("(control) with the guard off the shallow route is built", kinds(r) === "approve,swap", kinds(r));
+    }
+    {
+      // A small order in the same shallow pool is well inside the ceiling.
+      const { deps } = fakeDeps({ quote: pool(10) });
+      const r = await build({ ...cmd, amount: "0.1" }, deps, LIVE);
+      check("a small order still fills the shallow pool", kinds(r) === "approve,swap", kinds(r));
+    }
+  }
+
   console.log("\n— swap —");
   {
     const { deps, calls } = fakeDeps({ quote: async () => "1000" });
@@ -524,7 +577,7 @@ async function main() {
     const r = await build(
       { kind: "swap", amount: "1", tokenIn: DEX_KLD, tokenOut: DEX_USDC },
       deps,
-      { slippageBps: 100, deadlineMin: 5 },
+      { slippageBps: 100, deadlineMin: 5, impactCeiling: null },
     );
     check(
       "slippage and deadline come from the caller, not a constant",

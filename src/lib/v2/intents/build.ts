@@ -33,6 +33,7 @@ import {
   encodeV3Path,
   findBestRoute,
   findRouteAcrossSources,
+  MAX_PRICE_IMPACT,
   truncDecimals,
   intermediateTokens,
   poolSide,
@@ -145,6 +146,19 @@ export type PlanResult =
 export interface PlannerOptions {
   slippageBps: number;
   deadlineMin: number;
+  /**
+   * Refuse one of our own pool routes whose price impact exceeds this fraction.
+   * ON BY DEFAULT: unset means `MAX_PRICE_IMPACT` (15%), so every caller — the
+   * model route, the local planner, the marketing demo — is guarded without
+   * having to remember to opt in. `null` turns it off, and exists for test
+   * fixtures whose mock quoters return one output for any size (a real AMM
+   * cannot), which the impact probe would otherwise read as ~99% impact.
+   *
+   * The Swap page has carried this guard since #442; the agent path did not, so
+   * Luca could still walk a dust pool for a token KyberSwap cannot route — the
+   * same 67% loss the guard was written for.
+   */
+  impactCeiling?: number | null;
 }
 
 /**
@@ -1475,19 +1489,28 @@ export async function buildIntents(
               decimalsOut,
               quoter,
             });
+    const sources = [
+      { quote: quoterFor(), router: contracts.v3Router, venue: null },
+      ...fallbackVenues(chainId).map((venue) => ({
+        quote: quoterFor(venue.quoter),
+        router: venue.router,
+        venue,
+      })),
+    ];
+    /* The price-impact guard, on unless a caller explicitly turned it off. A
+       quote existing is not the pool being able to fill this size: a dust pool
+       returns a positive number while it walks to the end of its range. */
+    const impactCeiling =
+      opts.impactCeiling === null
+        ? undefined
+        : (opts.impactCeiling ?? MAX_PRICE_IMPACT);
     const path = await findRouteAcrossSources(
       chainId,
       sell.token,
       buy.token,
       amount,
-      [
-        { quote: quoterFor(), router: contracts.v3Router, venue: null },
-        ...fallbackVenues(chainId).map((venue) => ({
-          quote: quoterFor(venue.quoter),
-          router: venue.router,
-          venue,
-        })),
-      ],
+      sources,
+      impactCeiling !== undefined ? { impactCeiling } : {},
     );
 
     /* Best execution, not "our pool if it fills at all". Also quote the
@@ -1506,6 +1529,30 @@ export async function buildIntents(
          exist but hold no liquidity yet. Fall back to the aggregator before
          refusing, so a swap still fills off external liquidity. */
       if (kyber?.plan.ok) return kyber.plan;
+
+      /* Refused for impact, not absent: say so. "There's no pool" would be
+         false — the pool exists, it just can't fill this size — and the user's
+         next move (a smaller amount) is different from the one "no pool"
+         implies. Only paid on this refusal path, and only when the guard ran. */
+      if (impactCeiling !== undefined) {
+        const shallow = await findRouteAcrossSources(
+          chainId,
+          sell.token,
+          buy.token,
+          amount,
+          sources,
+        );
+        if (shallow) {
+          return {
+            ok: false,
+            error:
+              `The ${tokenIn.symbol}/${tokenOut.symbol} pool is too shallow for ` +
+              `${amount} ${tokenIn.symbol} — the trade would lose more than ` +
+              `${Math.round(impactCeiling * 100)}% to price impact, and no ` +
+              `aggregator route was found. Try a smaller amount.`,
+          };
+        }
+      }
 
       return {
         ok: false,
