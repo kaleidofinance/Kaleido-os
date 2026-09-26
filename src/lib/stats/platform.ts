@@ -46,6 +46,21 @@ export interface PlatformTotals {
     routeBridgeCount: number | null;
     bridgeFeesUsd: number;
   };
+  /**
+   * Which cumulative sources answered this read. A source that returned `null`
+   * — Supabase down, its table missing mid-migration, or a lagging read replica
+   * — contributed 0 to the totals above rather than blanking them, because one
+   * unavailable ledger should not hide the volume the others DID report. This
+   * names which were missing, so a consumer can mark the figure partial instead
+   * of presenting an understated sum as a complete one.
+   */
+  sources: { swaps: boolean; cctpBridge: boolean; routeBridge: boolean };
+  /**
+   * True when at least one source was unavailable, so `volumeUsd`/`feesUsd`
+   * understate the real totals. `false` means every source answered — the sum is
+   * whole (a `0` from a source that read successfully is a real zero, not a gap).
+   */
+  partial: boolean;
 }
 
 /** The integrator fee LI.FI attributes to us, as a share of routed volume.
@@ -144,6 +159,19 @@ export async function readPlatformTotals(
   const routeVolumeUsd = route?.volumeUsd ?? 0;
   const bridgeFeesUsd = routeVolumeUsd * deps.feeRate();
 
+  /* A source is "available" when its reader returned a value (even 0). Null is
+     unavailable — folded into the sum as 0 above so one dead ledger cannot blank
+     the rest, but surfaced here so the total is not presented as whole when it
+     is not. `partial` is any missing; the readers already returned null for the
+     failures they recognise, and readPlatformTotals returns null (503) only when
+     ALL three are missing, so reaching here means at least one answered. */
+  const sources = {
+    swaps: swaps !== null,
+    cctpBridge: cctp !== null,
+    routeBridge: route !== null,
+  };
+  const partial = !sources.swaps || !sources.cctpBridge || !sources.routeBridge;
+
   return {
     volumeUsd: swapVolumeUsd + cctpVolumeUsd + routeVolumeUsd,
     feesUsd: swapFeesUsd + bridgeFeesUsd,
@@ -157,5 +185,7 @@ export async function readPlatformTotals(
       routeBridgeCount: route ? route.count : null,
       bridgeFeesUsd,
     },
+    sources,
+    partial,
   };
 }

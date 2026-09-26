@@ -20,6 +20,9 @@ export interface AnalyticsOverview {
     swapCount: number | null;
     cctpBridgeCount: number | null;
     routeBridgeCount: number | null;
+    /** True when a volume source was unavailable, so the totals understate —
+     *  the page names it rather than showing an understated sum as complete. */
+    partial: boolean;
   } | null;
   growth: {
     uniqueWallets: number;
@@ -141,6 +144,7 @@ async function readTrading(): Promise<AnalyticsOverview["trading"]> {
     swapCount: totals.breakdown.swapCount,
     cctpBridgeCount: totals.breakdown.cctpBridgeCount,
     routeBridgeCount: totals.breakdown.routeBridgeCount,
+    partial: totals.partial,
   };
 }
 

@@ -80,6 +80,9 @@ const sumOf = (values: (number | null)[]) => {
 type PlatformTotals = {
   volumeUsd: number;
   feesUsd: number;
+  /** True when a cumulative source (swaps / CCTP / route bridges) was
+   *  unavailable, so the totals are a lower bound — see lib/stats/platform.ts. */
+  partial?: boolean;
 };
 
 export default function PoolLayout({ children }: { children: ReactNode }) {
@@ -178,6 +181,16 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
                 <Stat label="Total volume" value={usd(totalVolume)} />
                 <Stat label="Total fees" value={usd(totalFees, 2)} />
               </StatStrip>
+              {/* Named beneath the strip, full width, never inside a tile (the
+                  tiles carry no notes by design). Only when the platform ledger
+                  answered but partially — a total on the pool-sum fallback is a
+                  different scope, not a partial platform read. */}
+              {platform?.partial ? (
+                <p className={s.partialNote}>
+                  A volume source is temporarily unavailable — Total volume and
+                  fees are a lower bound until it recovers.
+                </p>
+              ) : null}
             </div>
 
             <div className={s.tabs}>
