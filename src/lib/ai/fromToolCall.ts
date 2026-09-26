@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import { getChainMeta } from "@/constants/chains";
 import { envVars } from "@/constants/envVars";
-import { bridgeSourceToken, toIToken } from "@/constants/tokens";
+import { bridgeSourceCandidates, toIToken } from "@/constants/tokens";
 import {
   findBorrowCurrency,
   getContracts,
@@ -255,16 +255,31 @@ function toCommand(
        * A bridge's asset may live on ANOTHER chain — BNB is on BSC, not Arc — and
        * that is its SOURCE, not an unknown token. Resolve it where it lives and
        * infer the source chain, the same rule the typed grammar follows
-       * (bridgeSourceToken). The builder re-resolves the token on the source
+       * (bridgeSourceCandidates). The builder re-resolves the token on the source
        * chain by symbol and validates it, so only the symbol + chain need be
        * honest here. Narrowed to the connected chain's network, so a mainnet
        * user is never routed from a testnet.
+       *
+       * Only ONE candidate is inferred. A symbol on several chains with no
+       * `fromChain` is asked back as a question (shown to the user as-is, and
+       * the model can re-call with fromChain) — the old first-match silently
+       * built "bridge ETH to Arc" on Robinhood because it is listed first.
        */
       if (!token) {
-        const src = bridgeSourceToken(sym, getChainMeta(chainId)?.network);
-        if (src) {
-          token = src.token;
-          fromChain = fromChain ?? src.chainName;
+        const cands = bridgeSourceCandidates(sym, getChainMeta(chainId)?.network);
+        if (cands.length === 1) {
+          token = cands[0].token;
+          fromChain = fromChain ?? cands[0].chainName;
+        } else if (cands.length > 1) {
+          if (!fromChain) {
+            const names = cands.map((c) => c.chainName);
+            const list = `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+            return `Which chain are you bridging ${sym.toUpperCase()} from? It's on ${list}.`;
+          }
+          const named = cands.find(
+            (c) => c.chainName.toLowerCase() === fromChain!.toLowerCase(),
+          );
+          token = (named ?? cands[0]).token;
         }
       }
       if (!token)

@@ -730,7 +730,7 @@ export const READS: Group = {
     {
       name: "getBridgeRoute",
       params: ["fromChain", "toChain", "asset", "amount"],
-      optional: ["address"],
+      optional: ["address", "toAsset"],
       prompt: "what would moving 1,000 USDC from Base to Arbitrum cost me?",
     },
     {

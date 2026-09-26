@@ -2392,8 +2392,8 @@ console.log("swap resolves relative amounts; other verbs escalate");
         pp.toLowerCase(),
       ),
     elsewhere: (s) => (s.toLowerCase() === "bnb" ? ["BSC"] : []),
-    sourceToken: (s) =>
-      s.toLowerCase() === "bnb" ? { token: bnb, chainName: "bsc" } : null,
+    sourceTokens: (s) =>
+      s.toLowerCase() === "bnb" ? [{ token: bnb, chainName: "bsc" }] : [],
   };
   const px = (t) => parseCommand(t, TOKENS, XCTX);
   const asBridge = (r) =>
@@ -2447,6 +2447,75 @@ console.log("swap resolves relative amounts; other verbs escalate");
       filledCmd.toAsset === "usdc",
     JSON.stringify(filled),
   );
+
+  console.log("\n— a source on SEVERAL chains is asked about, never guessed —");
+  {
+    const eth = (chainId) => ({ address: "0x000000000000000000000000000000000000eeee", name: "ETH", symbol: "ETH", decimals: 18, chainId });
+    const ACTX = {
+      ...XCTX,
+      // ETH exists on three chains; the page would pass all of them when the
+      // wallet holds it on none (or on several) of them.
+      sourceTokens: (s) =>
+        s.toLowerCase() === "eth"
+          ? [
+              { token: eth(46630), chainName: "Robinhood" },
+              { token: eth(8453), chainName: "Base" },
+              { token: eth(1), chainName: "Ethereum" },
+            ]
+          : [],
+      isChain: (pp) => ["arc", "base", "ethereum", "robinhood"].includes(pp.toLowerCase()),
+      // As the page supplies it: ETH is known to be on other chains.
+      elsewhere: (s) =>
+        s.toLowerCase() === "eth" ? ["Robinhood", "Base", "Ethereum"] : s.toLowerCase() === "bnb" ? ["BSC"] : [],
+    };
+    const pa = (t) => parseCommand(t, TOKENS, ACTX);
+
+    const asked = pa("bridge 0.1 eth to arc");
+    check(
+      "ambiguous source: asks which chain, naming every option — no first-match guess",
+      asked.status === "incomplete" &&
+        asked.missing === "fromChain" &&
+        asked.prompt === "ETH is on Robinhood, Base and Ethereum. Which chain are you bridging from?",
+      JSON.stringify(asked),
+    );
+    const answered = asked.status === "incomplete" ? fillSlot(asked.draft, asked.missing, "base", TOKENS, ACTX) : asked;
+    const cmd = answered.status === "ok" && answered.command.kind === "bridge" ? answered.command : null;
+    check(
+      "answering 'base' completes it from Base (option matched, case-insensitive)",
+      !!cmd && cmd.fromChain === "Base" && cmd.toChain === "arc" && cmd.token.symbol === "ETH" && cmd.amount === "0.1",
+      JSON.stringify(answered),
+    );
+    const fromWord = asked.status === "incomplete" ? fillSlot(asked.draft, asked.missing, "from Ethereum", TOKENS, ACTX) : asked;
+    check(
+      "'from Ethereum' is read as the Ethereum option",
+      fromWord.status === "ok" && fromWord.command.kind === "bridge" && fromWord.command.fromChain === "Ethereum",
+      JSON.stringify(fromWord),
+    );
+    const named = pa("bridge 0.1 eth from base to arc");
+    check(
+      "naming the source up front skips the question",
+      named.status === "ok" && named.command.kind === "bridge" && named.command.fromChain === "base",
+      JSON.stringify(named),
+    );
+    // The caller narrowed to the one chain the wallet holds ETH on → inferred.
+    const one = parseCommand("bridge 0.1 eth to arc", TOKENS, {
+      ...ACTX,
+      sourceTokens: (s) => (s.toLowerCase() === "eth" ? [{ token: eth(8453), chainName: "Base" }] : []),
+    });
+    check(
+      "a single candidate (e.g. the only chain holding it) is inferred without asking",
+      one.status === "ok" && one.command.kind === "bridge" && one.command.fromChain === "Base",
+      JSON.stringify(one),
+    );
+    // The same ambiguity through the "which token?" reply path.
+    const step = pa("bridge 0.1 to arc");
+    const viaFill = step.status === "incomplete" ? fillSlot(step.draft, step.missing, "eth", TOKENS, ACTX) : step;
+    check(
+      "a 'which token?' reply of a multi-chain token then asks which chain",
+      viaFill.status === "incomplete" && viaFill.missing === "fromChain",
+      JSON.stringify(viaFill),
+    );
+  }
 
   console.log("\n— the question names the real problem —");
   const CTX = {
