@@ -1126,7 +1126,7 @@ async function getChains(
         byChain.length === 0
           ? "No balance found for this asset on any indexed chain."
           : byChain.length > 1
-            ? "Holdings span multiple chains. Call getBridgeRoute for the real cost and time of moving them, then the bridge action can sign the move for a supported corridor (native assets today; getBridgeRoute says whether a corridor is available). Do not promise a bridge before getBridgeRoute confirms one exists."
+            ? "Holdings span multiple chains. Call getBridgeRoute for the real cost and time of moving them, then the bridge action can sign the move for a supported corridor — native currency or a token, from another chain, and optionally delivering a different token (toAsset); getBridgeRoute says whether a corridor is available. Do not promise a bridge before getBridgeRoute confirms one exists."
             : "All holdings for this asset are on a single chain.",
     };
   } catch (err) {
@@ -1209,6 +1209,7 @@ async function getBridgeRoute(args: Json): Promise<Json> {
     asset: String(args.asset ?? ""),
     amount: String(args.amount ?? ""),
     address: args.address ? String(args.address) : undefined,
+    toAsset: args.toAsset ? String(args.toAsset) : undefined,
   });
   return result as unknown as Json;
 }

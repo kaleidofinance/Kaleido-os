@@ -220,6 +220,29 @@ async function main() {
       );
     }
     {
+      /* ETH is on several mainnets. With no fromChain, the tool asks instead of
+         building the plan on whichever chain is listed first (it used to pick
+         Robinhood). The message is shown to the user as-is. */
+      seen.length = 0;
+      const r = await run({ amount: "0.1", asset: "ETH", toChain: "Arc" });
+      check(
+        "a multi-chain asset with no fromChain is asked about, resolving no corridor",
+        seen.length === 0 &&
+          r.errors.some((e) => /^Which chain are you bridging ETH from\? It's on .*Base.*Ethereum/.test(e)),
+        JSON.stringify(r.errors),
+      );
+    }
+    {
+      seen.length = 0;
+      await run({ amount: "0.1", asset: "ETH", toChain: "Arc", fromChain: "Base" });
+      const q = seen[0] ?? {};
+      check(
+        "the same asset WITH fromChain proceeds from that chain",
+        seen.length === 1 && q.sourceChainId === 8453 && q.asset === "ETH",
+        JSON.stringify(q),
+      );
+    }
+    {
       seen.length = 0;
       const r = await run({ amount: "10", asset: "ZZZNOTATOKEN", toChain: "Arc" });
       check(

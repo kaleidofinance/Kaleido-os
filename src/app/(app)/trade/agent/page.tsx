@@ -16,7 +16,7 @@ import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { usePortfolio, type Portfolio } from "@/hooks/usePortfolio";
 import { useLocalPlanner } from "@/hooks/v2/useLocalPlanner";
 import { useChatHistory, type Msg } from "@/hooks/v2/useChatHistory";
-import { chainTokens, chainsOffering, bridgeSourceToken } from "@/constants/tokens";
+import { chainTokens, chainsOffering, bridgeSourceCandidates } from "@/constants/tokens";
 import { resolveChain } from "@/lib/ai/bridgeQuotes";
 import { argusAddressToken } from "@/lib/argus/token";
 import { ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
@@ -857,11 +857,25 @@ export default function AgentPage() {
       chainName: getChainMeta(chainId)?.shortName,
       elsewhere: (symbol) =>
         chainsOffering(symbol, showTestnets ? undefined : "mainnet"),
-      /* The resolvable counterpart of `elsewhere`: a bridge source the connected
-         chain lacks (BNB on BSC) so the grammar can accept it as a source rather
-         than refuse it like a swap. Same network narrowing as `elsewhere`. */
-      sourceToken: (symbol) =>
-        bridgeSourceToken(symbol, showTestnets ? undefined : "mainnet"),
+      /* The chains a bridge source could be on, for a token the connected chain
+         lacks (BNB → BSC). Narrowed to chains the wallet actually HOLDS it on
+         when the balances are loaded, so one holding is inferred and several are
+         asked about — never the first chain in the list. With no known holding
+         every chain that has the token is offered. */
+      sourceTokens: (symbol) => {
+        const all = bridgeSourceCandidates(
+          symbol,
+          showTestnets ? undefined : "mainnet",
+        );
+        const s = symbol.toLowerCase();
+        const heldOn = new Set(
+          portfolio.walletHoldings
+            .filter((h) => h.symbol.toLowerCase() === s)
+            .map((h) => h.chainId),
+        );
+        const held = all.filter((c) => heldOn.has(c.chainId));
+        return held.length > 0 ? held : all;
+      },
       isChain: (phrase) => resolveChain(phrase) !== undefined,
       /* On Arc, let a bare token address be a swap side so an Argus launch named
          by address reaches the build branch. Chain-gated here; the real arming

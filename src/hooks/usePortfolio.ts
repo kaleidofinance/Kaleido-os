@@ -11,7 +11,10 @@ import { useSpotPrices } from "@/hooks/useSpotPrices";
 import { useDexPrices } from "@/hooks/useDexPrices";
 import { hasKyberSwap } from "@/lib/swap/kyberswap";
 import { useStablecoin } from "@/hooks/useStablecoin";
-import { useWalletBalancesAcrossChains } from "@/hooks/useWalletBalancesAcrossChains";
+import {
+  useWalletBalancesAcrossChains,
+  type ChainWalletHolding,
+} from "@/hooks/useWalletBalancesAcrossChains";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { positionAmounts, positionValueUsd } from "@/lib/dex/positionValue";
@@ -176,6 +179,13 @@ export interface Portfolio {
   groups: PositionGroup[];
   /** Sorted most urgent first. */
   alerts: Alert[];
+  /**
+   * The wallet's nonzero token balances on every chain, raw from
+   * useWalletBalancesAcrossChains. Exposed so the agent can tell which chains
+   * actually hold a token (e.g. which chain a bridge is FROM) without a second
+   * multichain read.
+   */
+  walletHoldings: ChainWalletHolding[];
   isLoading: boolean;
 }
 
@@ -956,6 +966,7 @@ export const usePortfolio = (): Portfolio => {
     unclaimedYieldUsd,
     groups,
     alerts,
+    walletHoldings: holdings,
     isLoading:
       Boolean(address) &&
       (stableLoading ||

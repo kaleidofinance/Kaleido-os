@@ -495,6 +495,9 @@ export const MOCK_PORTFOLIO: Portfolio = {
   health: 1.18,
   unclaimedYieldUsd: UNCLAIMED_USD,
   groups,
+  /* No cross-chain holdings in demo mode: the agent then offers every chain
+     that carries a bridge token rather than narrowing to held ones. */
+  walletHoldings: [],
 
   /* Sorted most urgent first, as the hook does: critical, warning, info. Each one
      is raised by a row above, so removing a row here without removing its alert

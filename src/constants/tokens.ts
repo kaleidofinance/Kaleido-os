@@ -150,23 +150,28 @@ export function chainsOffering(
 }
 
 /**
- * A bridge SOURCE named by a symbol the connected chain lacks: the token as the
- * registry knows it on the first chain that carries it, plus that chain's
- * display name to sign on. Returns null when no chain carries the symbol.
+ * Every chain that could be the SOURCE of a bridge named by `symbol`: the token
+ * as each chain's registry knows it, plus that chain's id and display name. In
+ * chain-list order; empty when no chain carries the symbol.
  *
  * The resolvable counterpart of `chainsOffering`, which returns display names
- * for a refusal message. This lets the grammar accept an "abroad" token as a
- * bridge source (BNB on BSC while connected to Arc) rather than refusing it the
- * way a swap would. `network` narrows to the viewer's world; the first match
- * wins, so a symbol on several chains resolves to one and the user disambiguates
- * with an explicit "from <chain>". The builder re-resolves the token on the
- * source chain by symbol before signing, so only the symbol + chain need be
- * honest here.
+ * for a refusal message. It lets the grammar and the model's bridge tool accept
+ * an "abroad" token as a bridge source (BNB on BSC while connected to Arc)
+ * rather than refusing it the way a swap would.
+ *
+ * It returns ALL candidates, not the first: a symbol on several chains (ETH on
+ * Robinhood, Base, Ethereum…) is a question for the user, never a guess — the
+ * first-match version silently built "bridge 0.1 ETH to Arc" on Robinhood, only
+ * because it is listed first. Callers infer the source only when exactly one
+ * candidate remains (after narrowing to chains the wallet holds it on, when
+ * known) and otherwise ask. `network` narrows to the viewer's world. The builder
+ * re-resolves the token on the chosen chain by symbol, so only the symbol and
+ * chain need be honest here.
  */
-export function bridgeSourceToken(
+export function bridgeSourceCandidates(
   symbol: string,
   network?: "mainnet" | "testnet",
-): { token: IToken; chainName: string } | null {
+): { token: IToken; chainName: string; chainId: number }[] {
   const s = symbol.toLowerCase();
   const carrying = CHAINS.filter((c) =>
     chainTokens(c.id).some((t) => t.symbol.toLowerCase() === s),
@@ -174,10 +179,12 @@ export function bridgeSourceToken(
   const narrowed = network
     ? carrying.filter((c) => c.network === network)
     : carrying;
-  const chain = (narrowed.length > 0 ? narrowed : carrying)[0];
-  if (!chain) return null;
-  const token = chainTokenBySymbol(chain.id, symbol);
-  return token ? { token, chainName: chain.shortName } : null;
+  const out: { token: IToken; chainName: string; chainId: number }[] = [];
+  for (const chain of narrowed.length > 0 ? narrowed : carrying) {
+    const token = chainTokenBySymbol(chain.id, symbol);
+    if (token) out.push({ token, chainName: chain.shortName, chainId: chain.id });
+  }
+  return out;
 }
 
 /**

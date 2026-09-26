@@ -28,6 +28,7 @@
  * approvals; the header of route.ts has it.
  */
 
+import { formatUnits } from "ethers";
 import { CHAINS, type ChainMeta } from "@/constants/chains";
 import {
   lifiMonetizationParams,
@@ -64,6 +65,14 @@ export interface BridgeQuote {
   /** Seconds, if reported. Null means unknown. */
   etaSeconds: number | null;
   note: string;
+  /**
+   * Cross-asset quotes only (send `asset`, receive `toAsset`): the token
+   * received, the expected human amount and the guaranteed minimum after
+   * slippage. Null amounts mean the provider reported none — never guessed.
+   */
+  toAsset?: string;
+  amountOut?: string | null;
+  amountOutMin?: string | null;
 }
 
 /* Common names people use that the registry stores differently, keyed by the
@@ -178,12 +187,14 @@ async function lifiQuote(
   amount: string,
   units: string,
   user: string,
+  /** Receive a different token (cross-asset). Absent = same asset. */
+  toAsset?: string,
 ): Promise<BridgeQuote | null> {
   const qs = new URLSearchParams({
     fromChain: String(from.id),
     toChain: String(to.id),
     fromToken: asset,
-    toToken: asset,
+    toToken: toAsset ?? asset,
     fromAmount: units,
     fromAddress: user,
   });
@@ -194,7 +205,10 @@ async function lifiQuote(
     estimate?: {
       feeCosts?: Array<{ amountUSD?: string }>;
       executionDuration?: number;
+      toAmount?: string;
+      toAmountMin?: string;
     };
+    action?: { toToken?: { decimals?: number } };
   };
 
   const fee = data.estimate?.feeCosts?.reduce(
@@ -214,6 +228,33 @@ async function lifiQuote(
     feeUsd: fee !== undefined && fee > 0 ? fee : null,
     etaSeconds: typeof dur === "number" ? dur : null,
     note: "Quote from LI.FI. Kaleido does not execute the bridge — the user completes it with the provider.",
+    ...(toAsset ? crossAssetOut(toAsset, data) : {}),
+  };
+}
+
+/** The received token + expected/minimum amounts from a LI.FI quote, in human
+ *  units. Null amounts when LI.FI omits them or their decimals — never guessed. */
+function crossAssetOut(
+  toAsset: string,
+  data: {
+    estimate?: { toAmount?: string; toAmountMin?: string };
+    action?: { toToken?: { decimals?: number } };
+  },
+): Pick<BridgeQuote, "toAsset" | "amountOut" | "amountOutMin" | "note"> {
+  const dec = data.action?.toToken?.decimals;
+  const human = (raw: string | undefined): string | null => {
+    if (!raw || typeof dec !== "number") return null;
+    try {
+      return formatUnits(BigInt(raw), dec);
+    } catch {
+      return null;
+    }
+  };
+  return {
+    toAsset,
+    amountOut: human(data.estimate?.toAmount),
+    amountOutMin: human(data.estimate?.toAmountMin),
+    note: "Quote from LI.FI — the provider Kaleido's bridge action executes a cross-asset bridge through, so this matches what the plan will build. amountOutMin is the guaranteed floor after slippage.",
   };
 }
 
@@ -228,6 +269,8 @@ export async function getBridgeQuote(args: {
   asset: string;
   amount: string;
   address?: string;
+  /** Receive a different token on arrival (cross-asset). Absent = same asset. */
+  toAsset?: string;
 }): Promise<BridgeQuote | { error: string }> {
   const from = resolveChain(args.fromChain);
   const to = resolveChain(args.toChain);
@@ -246,6 +289,8 @@ export async function getBridgeQuote(args: {
   }
 
   const user = args.address ?? "0x0000000000000000000000000000000000000000";
+  const toAsset = args.toAsset?.trim().toUpperCase() || undefined;
+  const crossAsset = !!toAsset && toAsset !== asset;
 
   /* CCTP first — for USDC on a CCTP corridor it is the path the executable plan
      WILL take (resolveBridgeRoute prefers it over the aggregator). Quoting it
@@ -256,7 +301,12 @@ export async function getBridgeQuote(args: {
      legs are Kaleido's, so the note says so. Degrades to the free Standard lane
      if Circle's fast-fee endpoint can't be read, and stays inert while the flag
      is off. */
-  if (CCTP_ENABLED && asset === "USDC" && isCctpCorridor(from.id, to.id)) {
+  if (
+    !crossAsset &&
+    CCTP_ENABLED &&
+    asset === "USDC" &&
+    isCctpCorridor(from.id, to.id)
+  ) {
     let feeUsd = 0;
     let etaSeconds: number | null = null;
     let lane = "Standard lane — free, waits for source-chain finality";
@@ -291,6 +341,23 @@ export async function getBridgeQuote(args: {
       feeUsd,
       etaSeconds,
       note: `Circle CCTP burn-and-mint — 1:1, no pool or slippage. ${lane}. Kaleido signs both legs: the burn on ${from.name} now, then the mint on ${to.name} once Circle attests (the completion banner submits it).`,
+    };
+  }
+
+  /* Cross-asset (send BNB, receive USDC): LI.FI only. It is the provider the
+     bridge action executes a cross-asset bridge through (resolveBridgeRoute
+     routes it via LI.FI, never CCTP or a portal), so quoting Relay here would
+     preview a different provider's price than the plan will sign — the same
+     reason CCTP is quoted first above for a USDC corridor. */
+  if (crossAsset) {
+    try {
+      const lifi = await lifiQuote(from, to, asset, args.amount, units, user, toAsset);
+      if (lifi) return lifi;
+    } catch {
+      // fall through to the error below
+    }
+    return {
+      error: `No route found to swap ${args.amount} ${asset} on ${from.name} into ${toAsset} on ${to.name}. Say so plainly rather than estimating.`,
     };
   }
 

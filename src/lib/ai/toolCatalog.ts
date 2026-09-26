@@ -921,6 +921,11 @@ export const TOOL_CATALOG: ToolSpec[] = [
           type: "string",
           description: "User wallet, improves quote accuracy",
         },
+        toAsset: {
+          type: "string",
+          description:
+            'Symbol to RECEIVE on the destination when it differs from `asset`, e.g. "USDC" for "how much USDC would 0.1 BNB get me on Arc?". Quoted from LI.FI with the expected amount and the guaranteed minimum. Omit for a same-token bridge.',
+        },
       },
       required: ["fromChain", "toChain", "asset", "amount"],
     },

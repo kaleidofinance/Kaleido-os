@@ -527,6 +527,7 @@ export type Slot =
   | "token"
   | "recipient"
   | "toChain"
+  | "fromChain"
   | "rate"
   | "days"
   | "ref";
@@ -550,6 +551,9 @@ export interface Draft {
   /** Bridge destination token symbol, as typed, when cross-asset. Resolved
       downstream; absent means same-asset. */
   toAsset?: string;
+  /** The chains a bridge's source token is on, when more than one could be
+      meant — the draft asks which before it completes. */
+  sourceOptions?: string[];
   interestPct?: number;
   days?: number;
   loanId?: number;
@@ -1232,6 +1236,7 @@ const PROMPTS: Record<Slot, string> = {
   token: "Which token?",
   recipient: "Which address should it go to? (0x…)",
   toChain: "Which chain should it go to? (e.g. Base Sepolia)",
+  fromChain: "Which chain are you bridging from?",
   rate: "What interest rate? (e.g. 8%)",
   days: "Over what term? (e.g. 30 days)",
   ref: "Which one? For example: listing 3, request 7, or position 42.",
@@ -1290,14 +1295,19 @@ export interface ParseContext {
   /** Other chains carrying a symbol this chain does not, by display name. */
   elsewhere?: (symbol: string) => string[];
   /**
-   * A bridge SOURCE the connected chain lacks: the source-chain token (as the
-   * registry knows it) and the chain to sign on, or null. Distinct from
-   * `elsewhere`, which returns display names for a refusal — this returns a
-   * resolvable token + chain so a bridge accepts an abroad token as its source
-   * ("bridge 10 BNB to Arc" while on Arc) instead of refusing it like a swap.
-   * Injected by the caller from the registry, so this file stays registry-free.
+   * The chains a bridge SOURCE could be on, for a symbol the connected chain
+   * lacks: each chain's token (as its registry knows it) and name. Distinct from
+   * `elsewhere`, which returns display names for a refusal — these are
+   * resolvable, so a bridge accepts an abroad token as its source ("bridge 10
+   * BNB to Arc" while on Arc) instead of refusing it like a swap.
+   *
+   * One candidate is inferred; several are ASKED about ("which chain are you
+   * bridging from?"), never guessed. The caller narrows the list to the chains
+   * the wallet actually holds the token on when it knows, so a wallet holding
+   * ETH only on Base is not asked at all. Injected by the caller from the
+   * registry, so this file stays registry-free.
    */
-  sourceToken?: (symbol: string) => { token: IToken; chainName: string } | null;
+  sourceTokens?: (symbol: string) => { token: IToken; chainName: string }[];
   /** Whether a phrase names a chain — what turns a "swap to Sepolia" into the bridge it is. */
   isChain?: (phrase: string) => boolean;
   /**
@@ -3018,6 +3028,17 @@ function parseSwap(
  * an unknown one by name. Without a separator it still collects the asset and
  * asks for the chain, rather than guessing a destination out of trailing words.
  */
+/** A chain name as the user might say it — case, a leading "from"/"on"/"the"
+ *  and a trailing "chain"/"network" ignored — for matching against the chains a
+ *  bridge source was offered on. */
+function normChainName(x: string): string {
+  return x
+    .toLowerCase()
+    .replace(/^(from|on|the)\s+/, "")
+    .replace(/\s+(chain|network)$/, "")
+    .trim();
+}
+
 function parseBridge(
   words: string[],
   amount: { amount: string; index: number } | null,
@@ -3088,12 +3109,28 @@ function parseBridge(
      chain, so "bridge 10 BNB to Arc" (BNB is on BSC) parses in one shot instead
      of asking "which token?" and then refusing it like a swap. Only when nothing
      resolved on the connected chain and no explicit "from" was typed. */
-  if (!token && !fromChain && ctx.sourceToken) {
+  let sourceOptions: string[] | undefined;
+  if (!token && ctx.sourceTokens) {
     const stray = strayWord(words, 0, cut >= 0 ? cut : words.length, mentions);
-    const src = stray ? ctx.sourceToken(stray) : null;
-    if (src) {
-      token = src.token;
-      fromChain = src.chainName;
+    const cands = stray ? ctx.sourceTokens(stray) : [];
+    if (fromChain && cands.length > 0) {
+      /* The user NAMED the source ("bridge 0.1 ETH from Base to Arc"): take the
+         token as that chain knows it when it is a candidate, else any
+         candidate's (the symbol is what matters — the builder re-resolves it on
+         the named chain and refuses by name if it isn't there). Before this, a
+         named source skipped the lookup entirely and an off-chain token fell
+         through to the connected chain's near-miss ("did you mean WETH?"). */
+      const n = normChainName(fromChain);
+      token = (cands.find((c) => normChainName(c.chainName) === n) ?? cands[0])
+        .token;
+    } else if (cands.length === 1) {
+      token = cands[0].token;
+      fromChain = cands[0].chainName;
+    } else if (cands.length > 1) {
+      /* Several chains carry it: keep the symbol (the builder re-resolves it on
+         whichever chain is chosen) and ASK which chain — never the first. */
+      token = cands[0].token;
+      sourceOptions = cands.map((c) => c.chainName);
     }
   }
 
@@ -3104,6 +3141,7 @@ function parseBridge(
     toChain: toChain || undefined,
     fromChain: fromChain || undefined,
     toAsset,
+    sourceOptions,
     /* Suggest a near-miss only when no source resolved — an inferred abroad
        source is a real token, not a guess to confirm. */
     ...(token
@@ -3450,6 +3488,19 @@ export function fillSlot(
       return incomplete(draft, "recipient");
     }
     next.to = answered.to;
+  } else if (missing === "fromChain") {
+    /* The answer to "which chain are you bridging from?". A chain name, taken
+       whole like toChain; matched to one of the chains we offered (ignoring
+       case and a leading "from"/"on" or trailing "chain"/"network") so "base"
+       reads as "Base", else passed through for the builder to resolve and
+       refuse by name. */
+    const answer = reply.trim();
+    if (!answer) return incomplete(draft, "fromChain");
+    const hit = (draft.sourceOptions ?? []).find(
+      (o) => normChainName(o) === normChainName(answer),
+    );
+    next.fromChain = hit ?? answer;
+    next.sourceOptions = undefined;
   } else if (missing === "toChain") {
     // A chain name, not a token or a number: take the whole reply. The resolver
     // matches it against the registry, so a wrong name comes back as a named
@@ -3506,13 +3557,14 @@ export function fillSlot(
         typed &&
         !isAffirmative(words) &&
         !isNegative(words) &&
-        ctx.sourceToken
+        ctx.sourceTokens
       ) {
-        const src = ctx.sourceToken(typed);
-        if (src) {
+        const cands = ctx.sourceTokens(typed);
+        if (cands.length > 0) {
           next.suggest = undefined;
-          next.token = src.token;
-          next.fromChain = src.chainName;
+          next.token = cands[0].token;
+          if (cands.length === 1) next.fromChain = cands[0].chainName;
+          else next.sourceOptions = cands.map((c) => c.chainName);
           return completeDraft(next);
         }
       }
@@ -3698,6 +3750,7 @@ export function clearSlot(draft: Draft, slot: Slot): Draft {
   else if (slot === "token") next.token = undefined;
   else if (slot === "recipient") next.to = undefined;
   else if (slot === "toChain") next.toChain = undefined;
+  else if (slot === "fromChain") next.fromChain = undefined;
   else if (slot === "rate") next.interestPct = undefined;
   else if (slot === "days") next.days = undefined;
   else if (slot === "ref") {
@@ -3840,6 +3893,22 @@ export function completeDraft(draft: Draft): ParseResult {
   if (draft.kind === "bridge") {
     if (!draft.token) return incomplete(draft, "token");
     if (!draft.amount) return incomplete(draft, "amount");
+    /* The source, when the token is on several chains and none was named: ask,
+       naming the options, rather than pick one — a guessed source builds the
+       plan on a chain the user may hold nothing on. */
+    if (!draft.fromChain && (draft.sourceOptions?.length ?? 0) > 1) {
+      const opts = draft.sourceOptions!;
+      const list =
+        opts.length === 2
+          ? `${opts[0]} and ${opts[1]}`
+          : `${opts.slice(0, -1).join(", ")} and ${opts[opts.length - 1]}`;
+      return {
+        status: "incomplete",
+        draft,
+        missing: "fromChain",
+        prompt: `${draft.token.symbol} is on ${list}. Which chain are you bridging from?`,
+      };
+    }
     /* Destination last, mirroring send's recipient: it is the slot the resolver
        can still reject, so it is answered against a question that already names
        the amount and asset. */
