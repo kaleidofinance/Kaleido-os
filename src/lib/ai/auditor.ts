@@ -1680,7 +1680,14 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
   bridge: (s, chainId) => {
     const reasons: string[] = [];
     const token = str(s.token);
-    const tok = knownToken(chainId, token);
+    /* Resolve the source token on the chain the bridge is SIGNED on, not the
+       connected chain: a cross-source bridge (BNB on BSC while connected to Arc)
+       carries the source token as its source chain knows it, and its decimals
+       and price must be read there. Falls back to the connected chain for an
+       ordinary same-chain source. */
+    const fromChainId = num(s.fromChainId);
+    const srcChain = fromChainId ?? chainId;
+    const tok = knownToken(srcChain, token);
     if (!tok.ok) reasons.push(`unrecognised token ${token || "(none)"}`);
 
     const amount = positive(s.amount);
@@ -1707,15 +1714,15 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
           : "isNative is set on a token that is not the native currency",
       );
 
-    /* Source must be the chain the plan is signed on; destination a different,
-       real chain. A source mismatch means the route was built for a chain the
-       wallet is not connected to. */
-    const fromChainId = num(s.fromChainId);
+    /* Source must be a real chain; destination a different, real chain. A source
+       that differs from the connected chain is NOT a refusal any more: the
+       multichain sign flow builds for a named source and switches the wallet to
+       it at signing (#242), so a cross-source bridge is by design — noted below,
+       not blocked. What still refuses is a missing source, a missing/invalid
+       destination, or the two being the same. */
     const toChainId = num(s.toChainId);
     if (fromChainId === null)
       reasons.push("the bridge is missing its source chain");
-    else if (chainId !== undefined && fromChainId !== chainId)
-      reasons.push("the bridge's source chain is not the connected chain");
     if (toChainId === null || toChainId <= 0)
       reasons.push("the bridge is missing its destination chain");
     else if (fromChainId !== null && toChainId === fromChainId)
@@ -1811,15 +1818,69 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
        for a token, that the amount inside the provider's calldata is the amount
        on the row. The approve caps it at the row's amount, which is a real bound
        and not the same as having read the number. */
+    /* Cross-asset bridge (BNB→USDC): the delivered asset differs from the source,
+       so the route swaps as it moves. Validate the OUTPUT the way a same-asset
+       bridge never had to — a real destination token on the destination chain,
+       matching decimals — and, the money-path guard, REQUIRE a positive minimum
+       output. A swap-as-you-bridge is bounded only by that floor, so its absence
+       is a refusal exactly as `aggregatorSwap` refuses a missing amountOutMin. */
+    const crossAsset = !!str(s.toToken);
+    const outTok = crossAsset
+      ? tradeToken(toChainId ?? undefined, str(s.toToken))
+      : null;
+    const minOut = num(s.amountOutMin);
+    if (crossAsset) {
+      if (!outTok!.ok)
+        reasons.push(
+          `the bridge output is not a token address: ${str(s.toToken) || "(none)"}`,
+        );
+      const outDec = num(s.toDecimals);
+      if (outDec === null)
+        reasons.push("the destination token decimals are missing");
+      else if (outTok!.verified && outDec !== outTok!.decimals)
+        reasons.push(
+          `output decimals say ${outDec} but ${outTok!.symbol} has ${outTok!.decimals}`,
+        );
+      if (minOut === null || minOut <= 0)
+        reasons.push(
+          "a cross-asset bridge has no minimum output — it would deliver at any rate, and a floor is required",
+        );
+    }
+
     const notes: string[] = [];
+    if (fromChainId !== null && chainId !== undefined && fromChainId !== chainId)
+      notes.push(
+        "this bridge is signed on its source chain, not the one you're connected to — the wallet switches to it at signing",
+      );
     if (reasons.length === 0) {
       notes.push(
         "a bridge leaves this chain and no on-chain permission bounds it, so the destination chain and amount are worth confirming",
       );
-      if (!wantsNative)
+      if (!wantsNative && !crossAsset)
         notes.push(
           `the amount is inside the provider's calldata, which this check does not read — the paired approval is what limits it to ${amount} ${tok.symbol ?? str(s.symbol)}`,
         );
+      if (crossAsset)
+        notes.push(
+          "a cross-asset bridge swaps as it moves and delivers a different token; the provider's calldata is not parsed here — the required minimum output is the floor and the per-action USD cap bounds it",
+        );
+    }
+
+    /* Price by the verified side. Same-asset stays on the source amount as
+       before; cross-asset uses `tradePriced`, which binds the cap to the source
+       amount when the source is verified, else to the output floor. */
+    if (crossAsset) {
+      const priced = tradePriced(
+        { verified: tok.ok, symbol: tok.symbol },
+        { verified: outTok!.verified, symbol: outTok!.symbol },
+        amount,
+        minOut,
+      );
+      return {
+        reasons: [...reasons, ...priced.reasons],
+        notes: [...notes, ...priced.notes],
+        ...(priced.priced ? { priced: priced.priced } : {}),
+      };
     }
 
     return { reasons, notes, ...priceIf(tok.symbol, amount) };

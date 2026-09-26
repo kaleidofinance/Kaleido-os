@@ -1733,6 +1733,92 @@ async function main() {
       errorOf(r) || JSON.stringify(calls.bridge),
     );
   }
+  /* Cross-asset: bridge ETH and RECEIVE a different token (USDC) on the far
+     chain. The delivered asset threads to the resolver and back onto the intent,
+     and the resolver's floor becomes the intent's enforceable amountOutMin. */
+  {
+    const XROUTER = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
+    const { deps, calls } = fakeDeps({
+      bridgeRoute: async (req) => ({
+        to: XROUTER,
+        data: "0xfeed",
+        value: "50000000000000000", // native ETH in rides as value
+        toChainId: 84532,
+        toChainName: "Base Sepolia",
+        provider: "lifi",
+        etaSeconds: 60,
+        // The delivered side — echoed from the request the builder resolved.
+        toToken: req.toTokenAddress,
+        toDecimals: req.toDecimals,
+        toSymbol: req.toAsset,
+        receivedUnits: "99000000", // 99 USDC (6dp) expected
+        minReceivedUnits: "98000000", // 98 USDC floor
+      }),
+    });
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "0.05",
+        token: DEX_ETH,
+        toChain: "Base Sepolia",
+        toAsset: "USDC",
+      },
+      deps,
+    );
+    check(
+      "a cross-asset native bridge is one step (ETH rides as value, nothing to approve)",
+      kinds(r) === "bridge",
+      kinds(r),
+    );
+    check(
+      "the corridor was resolved WITH the delivered asset (cross-asset request)",
+      calls.bridge.length === 1 &&
+        same(calls.bridge[0].asset, "ETH") &&
+        calls.bridge[0].toAsset === "USDC" &&
+        !!calls.bridge[0].toTokenAddress &&
+        calls.bridge[0].toDecimals === 6,
+      JSON.stringify(calls.bridge[0]),
+    );
+    const bx = at(r, 0);
+    check(
+      "the bridge intent carries the delivered token, its decimals and the enforced floor",
+      same(bx.toSymbol, "USDC") &&
+        bx.toDecimals === 6 &&
+        !!bx.toToken &&
+        bx.amountOut === "99.0" &&
+        bx.amountOutMin === "98.0" &&
+        bx.minReceivedUnits === "98000000",
+      JSON.stringify(bx),
+    );
+    check(
+      "the summary names both sides and the expected output",
+      /^Bridge 0\.05 ETH to about 99(\.0)? USDC on Base Sepolia\.$/.test(
+        summaryOf(r),
+      ),
+      summaryOf(r),
+    );
+  }
+  /* Fail-closed: a delivered asset that does not exist on the destination chain
+     refuses before any corridor is resolved — never a route to a token we can't
+     name. */
+  {
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "0.05",
+        token: DEX_ETH,
+        toChain: "Base Sepolia",
+        toAsset: "ZZZ",
+      },
+      deps,
+    );
+    check(
+      "an unknown delivered asset is refused, resolving no corridor",
+      !r.ok && /ZZZ/.test(errorOf(r)) && calls.bridge.length === 0,
+      errorOf(r) || JSON.stringify(calls.bridge),
+    );
+  }
   {
     /* The resolver's own error becomes the plan's refusal, verbatim — build.ts
        does not paraphrase it. A stub stands in for the resolver here rather than

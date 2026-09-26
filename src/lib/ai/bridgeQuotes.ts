@@ -360,6 +360,9 @@ export async function getBridgeExecution(args: {
   /** Smallest-unit amount, already scaled by the caller. */
   units: string;
   address: string;
+  /** Destination symbol for a CROSS-ASSET bridge (BNB→USDC). Absent = same
+   *  asset, where toToken == fromToken as before. */
+  toAsset?: string;
 }): Promise<{
   to: string;
   data: string;
@@ -383,13 +386,16 @@ export async function getBridgeExecution(args: {
    */
   toAmount: string | null;
   toAmountMin: string | null;
+  /** How LI.FI resolved the DESTINATION symbol, for a cross-asset output
+   *  cross-check. Same shape as `fromToken`; nulls where absent. */
+  toToken: { address: string | null; decimals: number | null };
 } | null> {
   try {
     const params: Record<string, string> = {
       fromChain: String(args.fromChainId),
       toChain: String(args.toChainId),
       fromToken: args.asset,
-      toToken: args.asset,
+      toToken: args.toAsset ?? args.asset,
       fromAmount: args.units,
       fromAddress: args.address,
       /* Swift by default. FASTEST picks a sub-minute route where one exists
@@ -428,7 +434,10 @@ export async function getBridgeExecution(args: {
         toAmount?: string;
         toAmountMin?: string;
       };
-      action?: { fromToken?: { address?: string; decimals?: number } };
+      action?: {
+        fromToken?: { address?: string; decimals?: number };
+        toToken?: { address?: string; decimals?: number };
+      };
       transactionRequest?: {
         to?: string;
         data?: string;
@@ -445,6 +454,7 @@ export async function getBridgeExecution(args: {
     const value = BigInt(tx.value ?? "0").toString();
     const dur = data.estimate?.executionDuration;
     const from = data.action?.fromToken;
+    const to = data.action?.toToken;
 
     return {
       to: tx.to,
@@ -459,6 +469,10 @@ export async function getBridgeExecution(args: {
       },
       toAmount: data.estimate?.toAmount ?? null,
       toAmountMin: data.estimate?.toAmountMin ?? null,
+      toToken: {
+        address: to?.address ?? null,
+        decimals: typeof to?.decimals === "number" ? to.decimals : null,
+      },
     };
   } catch {
     return null;

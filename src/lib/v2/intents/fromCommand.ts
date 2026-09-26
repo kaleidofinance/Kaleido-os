@@ -110,6 +110,13 @@ export interface BridgeCommand {
    * validated in buildIntents, never here — the same contract as `toChain`.
    */
   fromChain?: string;
+  /**
+   * Destination token symbol, as typed, when it differs from the source asset
+   * (a cross-asset bridge, e.g. BNB→USDC). Absent means same-asset — the source
+   * token is delivered 1:1. Resolved on the destination chain downstream, never
+   * here, the same free-text contract as `toChain`.
+   */
+  toAsset?: string;
 }
 export interface HelpCommand {
   kind: "help";
@@ -540,6 +547,9 @@ export interface Draft {
   /** Bridge source chain named with "from X", as typed. Optional — absent means
       the connected chain. Resolved and validated downstream. */
   fromChain?: string;
+  /** Bridge destination token symbol, as typed, when cross-asset. Resolved
+      downstream; absent means same-asset. */
+  toAsset?: string;
   interestPct?: number;
   days?: number;
   loanId?: number;
@@ -1279,6 +1289,15 @@ export interface ParseContext {
   chainName?: string;
   /** Other chains carrying a symbol this chain does not, by display name. */
   elsewhere?: (symbol: string) => string[];
+  /**
+   * A bridge SOURCE the connected chain lacks: the source-chain token (as the
+   * registry knows it) and the chain to sign on, or null. Distinct from
+   * `elsewhere`, which returns display names for a refusal — this returns a
+   * resolvable token + chain so a bridge accepts an abroad token as its source
+   * ("bridge 10 BNB to Arc" while on Arc) instead of refusing it like a swap.
+   * Injected by the caller from the registry, so this file stays registry-free.
+   */
+  sourceToken?: (symbol: string) => { token: IToken; chainName: string } | null;
   /** Whether a phrase names a chain — what turns a "swap to Sepolia" into the bridge it is. */
   isChain?: (phrase: string) => boolean;
   /**
@@ -2172,6 +2191,7 @@ export function parseCommand(
       detectAmount(words),
       findTokenMentions(words, tokens),
       tokens,
+      ctx,
     );
   }
 
@@ -2339,7 +2359,7 @@ export function parseCommand(
   }
 
   if (verb.kind === "bridge") {
-    return parseBridge(words, amount, mentions, tokens);
+    return parseBridge(words, amount, mentions, tokens, ctx);
   }
 
   if (verb.kind === "send") {
@@ -3003,15 +3023,41 @@ function parseBridge(
   amount: { amount: string; index: number } | null,
   mentions: Mention[],
   tokens: IToken[],
+  ctx: ParseContext,
 ): ParseResult {
   const sepAt = words.findIndex((w) => SEPARATORS.includes(w));
-  const dest =
+  const destPhrase =
     sepAt >= 0
       ? words
           .slice(sepAt + 1)
           .join(" ")
           .trim()
       : "";
+
+  /* Split the destination into a chain and, when cross-asset, the token to
+     receive. "arc" is a chain (same-asset); "arc usdc" is the Arc chain plus a
+     USDC leg to deliver. The longest chain-prefix wins, so a multi-word chain
+     ("base sepolia") is never misread as chain + token: only the LAST word may
+     be the asset, and only when it is a plausible symbol AND the words before it
+     are themselves a chain. An unknown destination stays whole and is refused by
+     name downstream, exactly as before. */
+  let toChain = destPhrase;
+  let toAsset: string | undefined;
+  if (destPhrase && ctx.isChain && !ctx.isChain(destPhrase)) {
+    const parts = destPhrase.split(/\s+/);
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      const prefix = parts.slice(0, -1).join(" ");
+      const looksToken =
+        /^[a-z][a-z0-9.]*$/.test(last) &&
+        !NEVER_A_TOKEN.has(last) &&
+        !STRAY_FILLERS.has(last);
+      if (looksToken && ctx.isChain(prefix)) {
+        toChain = prefix;
+        toAsset = last;
+      }
+    }
+  }
 
   /* An explicit source: "bridge X from <chain> to <dest>". A bridge is signed on
      its source chain, so a named source the wallet is not on is a real request,
@@ -3022,7 +3068,7 @@ function parseBridge(
      that ever typed — cannot read the destination as a source. */
   const fromAt = words.findIndex((w) => w === "from");
   const sourceEnd = sepAt >= 0 ? sepAt : words.length;
-  const fromChain =
+  let fromChain =
     fromAt >= 0 && fromAt < sourceEnd
       ? words.slice(fromAt + 1, sourceEnd).join(" ").trim()
       : "";
@@ -3032,18 +3078,37 @@ function parseBridge(
      names, which must never be read back as the token being bridged. */
   const cut =
     fromAt >= 0 && fromAt < sourceEnd ? fromAt : sepAt >= 0 ? sepAt : -1;
-  const token =
+  let token =
     cut >= 0
       ? mentions.find((m) => m.index < cut)?.token
       : mentions[0]?.token;
+
+  /* Abroad source: the asset names a token this chain lacks but another carries —
+     the valid SOURCE of a bridge, not an error. Accept it and infer the source
+     chain, so "bridge 10 BNB to Arc" (BNB is on BSC) parses in one shot instead
+     of asking "which token?" and then refusing it like a swap. Only when nothing
+     resolved on the connected chain and no explicit "from" was typed. */
+  if (!token && !fromChain && ctx.sourceToken) {
+    const stray = strayWord(words, 0, cut >= 0 ? cut : words.length, mentions);
+    const src = stray ? ctx.sourceToken(stray) : null;
+    if (src) {
+      token = src.token;
+      fromChain = src.chainName;
+    }
+  }
 
   return completeDraft({
     kind: "bridge",
     amount: amount?.amount,
     token,
-    toChain: dest || undefined,
+    toChain: toChain || undefined,
     fromChain: fromChain || undefined,
-    ...suggestion(cut >= 0 ? words.slice(0, cut) : words, mentions, tokens),
+    toAsset,
+    /* Suggest a near-miss only when no source resolved — an inferred abroad
+       source is a real token, not a guess to confirm. */
+    ...(token
+      ? {}
+      : suggestion(cut >= 0 ? words.slice(0, cut) : words, mentions, tokens)),
   });
 }
 
@@ -3430,6 +3495,27 @@ export function fillSlot(
             )
           : undefined;
       const typed = abroad ? near.typed : stray;
+      /* In a BRIDGE, a token this chain lacks is not an error — it is the SOURCE,
+         living on another chain. Accept it and infer the source chain, instead of
+         the swap-style refusal below. Guarded to kind "bridge" and the source
+         slot, so swap/send/lend keep refusing an off-chain token exactly as
+         today. */
+      if (
+        next.kind === "bridge" &&
+        missing === "token" &&
+        typed &&
+        !isAffirmative(words) &&
+        !isNegative(words) &&
+        ctx.sourceToken
+      ) {
+        const src = ctx.sourceToken(typed);
+        if (src) {
+          next.suggest = undefined;
+          next.token = src.token;
+          next.fromChain = src.chainName;
+          return completeDraft(next);
+        }
+      }
       if (typed && !isAffirmative(words) && !isNegative(words)) {
         return {
           status: "incomplete",
@@ -3766,6 +3852,7 @@ export function completeDraft(draft: Draft): ParseResult {
         token: draft.token,
         toChain: draft.toChain,
         ...(draft.fromChain ? { fromChain: draft.fromChain } : {}),
+        ...(draft.toAsset ? { toAsset: draft.toAsset } : {}),
       },
     };
   }

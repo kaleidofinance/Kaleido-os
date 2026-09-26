@@ -208,6 +208,14 @@ interface ResolveInput {
   userAddress: string;
   units: string;
   speed?: "standard" | "fast";
+  /** True when the delivered asset differs from `asset` (BNB→USDC). Cross-asset
+   *  routes only via the aggregator (never CCTP/canonical, which are 1:1). */
+  crossAsset: boolean;
+  /** Destination symbol / contract / decimals to request and OUTPUT-check, when
+   *  crossAsset. The output mirror of `asset`/`tokenAddress`/`decimals`. */
+  toAsset?: string;
+  toTokenAddress?: string;
+  toDecimals?: number;
 }
 
 /**
@@ -228,6 +236,7 @@ async function tryAggregatorRoute(
     asset: i.asset,
     units: i.units,
     address: i.userAddress,
+    toAsset: i.crossAsset ? i.toAsset : undefined,
   });
   if (!exec) return null;
 
@@ -241,6 +250,46 @@ async function tryAggregatorRoute(
 
   const receivedUnits = exec.toAmount ?? undefined;
 
+  /* Cross-asset OUTPUT cross-checks — the mirror of the ERC20 input checks
+     below, and required for a NATIVE source too (BNB is native), so they run
+     here ahead of the isNative branch rather than only on the token path. The
+     third has no input analog and is the core money-path guard: a swap-as-you-
+     bridge is bounded only by its floor, so a route with no positive `toAmountMin`
+     must never build — exactly as `aggregatorSwap` refuses a missing amountOutMin. */
+  if (i.crossAsset) {
+    if (
+      exec.toToken.address &&
+      i.toTokenAddress &&
+      exec.toToken.address.toLowerCase() !== i.toTokenAddress.toLowerCase()
+    )
+      return {
+        error: `The provider's ${i.toAsset} on ${i.dest.shortName} is ${exec.toToken.address}, not the ${i.toAsset} Kaleido would receive (${i.toTokenAddress}). Refusing rather than delivering a different token than the one shown.`,
+      };
+    if (
+      exec.toToken.decimals !== null &&
+      i.toDecimals !== undefined &&
+      exec.toToken.decimals !== i.toDecimals
+    )
+      return {
+        error: `The provider says ${i.toAsset} has ${exec.toToken.decimals} decimals and Kaleido scaled the output at ${i.toDecimals}. Refusing rather than showing the wrong size.`,
+      };
+    if (!exec.toAmountMin || BigInt(exec.toAmountMin) <= 0n)
+      return {
+        error: `That ${i.asset}→${i.toAsset} route came back with no guaranteed minimum output, so there's no floor to enforce. Nothing was sent.`,
+      };
+  }
+
+  /* The delivered-token fields, attached to whichever return path fires. Empty
+     for a same-asset bridge, which delivers `asset` 1:1 and carries none. */
+  const crossFields: Partial<BridgeRoute> = i.crossAsset
+    ? {
+        toToken: i.toTokenAddress,
+        toDecimals: i.toDecimals,
+        toSymbol: i.toAsset,
+        minReceivedUnits: exec.toAmountMin ?? undefined,
+      }
+    : {};
+
   if (i.isNative) {
     return {
       to: exec.to,
@@ -251,6 +300,7 @@ async function tryAggregatorRoute(
       provider: "lifi",
       etaSeconds: exec.etaSeconds,
       receivedUnits,
+      ...crossFields,
     };
   }
 
@@ -297,6 +347,7 @@ async function tryAggregatorRoute(
     provider: "lifi",
     etaSeconds: exec.etaSeconds,
     receivedUnits,
+    ...crossFields,
   };
 }
 
@@ -310,6 +361,7 @@ async function tryCctpRoute(i: ResolveInput): Promise<BridgeRoute | null> {
   if (
     !(
       CCTP_ENABLED &&
+      !i.crossAsset &&
       i.asset.toUpperCase() === "USDC" &&
       isCctpCorridor(i.fromChainId, i.dest.id)
     )
@@ -424,7 +476,14 @@ export async function resolveBridgeRoute(
     userAddress,
     speed,
     route,
+    toAsset,
+    toTokenAddress,
+    toDecimals,
   } = params;
+  /* Cross-asset when a distinct destination symbol was requested. Such a bridge
+     swaps as it moves, so it routes only through the aggregator — never the 1:1
+     CCTP/canonical corridors below, which are gated off this. */
+  const crossAsset = !!toAsset && toAsset.toUpperCase() !== asset.toUpperCase();
 
   const dest = resolveChain(toChain);
   if (!dest) return { error: `I don't recognise the chain "${toChain}".` };
@@ -459,6 +518,10 @@ export async function resolveBridgeRoute(
     userAddress,
     units,
     speed,
+    crossAsset,
+    toAsset,
+    toTokenAddress,
+    toDecimals,
   };
 
   // 0) USDC on a CCTP corridor — the one place two genuinely good routes exist:
@@ -471,6 +534,7 @@ export async function resolveBridgeRoute(
   //    whole decision and never falls through to the canonical path below.
   if (
     CCTP_ENABLED &&
+    !crossAsset &&
     asset.toUpperCase() === "USDC" &&
     isCctpCorridor(fromChainId, dest.id)
   ) {
@@ -510,9 +574,10 @@ export async function resolveBridgeRoute(
   // 1) Canonical corridor — a fixed portal deposit, encoded here, no network.
   //    Native only; see the CANONICAL note in the header for why an ERC20 must
   //    not take this branch rather than merely does not.
-  const canonical = isNative
-    ? CANONICAL_CORRIDORS[fromChainId]?.[dest.id]
-    : undefined;
+  const canonical =
+    isNative && !crossAsset
+      ? CANONICAL_CORRIDORS[fromChainId]?.[dest.id]
+      : undefined;
   if (canonical) {
     if (!ethers.isAddress(userAddress))
       return {
