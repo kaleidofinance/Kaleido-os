@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import { getChainMeta } from "@/constants/chains";
 import { envVars } from "@/constants/envVars";
-import { toIToken } from "@/constants/tokens";
+import { bridgeSourceToken, toIToken } from "@/constants/tokens";
 import {
   findBorrowCurrency,
   getContracts,
@@ -249,9 +249,26 @@ function toCommand(
        * reach the native-sentinel test as a non-match. An unknown symbol fails
        * by name here.
        */
-      const token = dexToken(chainId, sym);
+      let token: IToken | undefined = dexToken(chainId, sym) ?? undefined;
+      let fromChain = str(a.fromChain || a.sourceChain).trim() || undefined;
+      /*
+       * A bridge's asset may live on ANOTHER chain — BNB is on BSC, not Arc — and
+       * that is its SOURCE, not an unknown token. Resolve it where it lives and
+       * infer the source chain, the same rule the typed grammar follows
+       * (bridgeSourceToken). The builder re-resolves the token on the source
+       * chain by symbol and validates it, so only the symbol + chain need be
+       * honest here. Narrowed to the connected chain's network, so a mainnet
+       * user is never routed from a testnet.
+       */
+      if (!token) {
+        const src = bridgeSourceToken(sym, getChainMeta(chainId)?.network);
+        if (src) {
+          token = src.token;
+          fromChain = fromChain ?? src.chainName;
+        }
+      }
       if (!token)
-        return `bridge: I don't know a token called ${sym || "(none)"} on this chain`;
+        return `bridge: I don't know a token called ${sym || "(none)"} on any chain Kaleido supports`;
       /*
        * The destination travels as text, exactly as it does from the typed path:
        * the builder's resolver matches it against the real chain registry, so a
@@ -260,7 +277,17 @@ function toCommand(
        */
       const toChain = str(a.toChain || a.destinationChain).trim();
       if (!toChain) return "bridge: no destination chain given";
-      return { kind: "bridge", amount, token, toChain };
+      /* A different token to receive — a cross-asset bridge. Text, resolved on
+         the destination chain by the builder, exactly like `toChain`. */
+      const toAsset = str(a.toAsset || a.receiveAsset).trim() || undefined;
+      return {
+        kind: "bridge",
+        amount,
+        token,
+        toChain,
+        ...(fromChain ? { fromChain } : {}),
+        ...(toAsset ? { toAsset } : {}),
+      };
     }
 
     case "deposit":

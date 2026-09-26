@@ -183,7 +183,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
      * native currency is a single transaction.
      */
     description:
-      "Bridge an asset to another chain, signed on the chain the user is on now. Native currency is one transaction; a token is two, an approval and the bridge. `toChain` is a chain name or id; the server resolves the route from a trusted source and refuses, by name, any corridor it cannot build — bridge providers do not index every chain, so a refusal here is normal and getBridgeRoute can still quote a route the user completes with the provider.",
+      "Bridge an asset to another chain. Native currency is one transaction; a token is two, an approval and the bridge. `toChain` is a chain name or id. The asset may live on a chain other than the one the user is connected to (e.g. BNB is on BSC): name it and, if you know it, `fromChain` — the plan is built for that source and the wallet switches to it at signing. To RECEIVE a different token than the one sent (e.g. send BNB, receive USDC on Arc), set `toAsset`; the route swaps as it bridges and carries a guaranteed minimum output. The server resolves every route from a trusted source and refuses, by name, any corridor it cannot build — bridge providers do not index every chain, so a refusal here is normal and getBridgeRoute can still quote a route the user completes with the provider.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -194,6 +194,16 @@ export const TOOL_CATALOG: ToolSpec[] = [
           type: "string",
           description:
             'Destination chain name or id, e.g. "Base Sepolia" or "84532"',
+        },
+        fromChain: {
+          type: "string",
+          description:
+            'Source chain name or id when it is not the connected chain, e.g. "BSC". Optional: omitted, the connected chain is used — or, when the asset is not on it, the chain that carries it.',
+        },
+        toAsset: {
+          type: "string",
+          description:
+            'Symbol to RECEIVE on the destination when it differs from `asset`, e.g. "USDC" for "bridge BNB to Arc as USDC". Omit for an ordinary same-token bridge.',
         },
       },
       required: ["amount", "asset", "toChain"],
@@ -895,7 +905,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getBridgeRoute",
     kind: "read",
     description:
-      "Cost and time to bridge an asset between two chains, quoted from Relay and LI.FI. Use when the user's funds are on the wrong chain for what they want to do, or to preview a bridge before running one. Kaleido can execute a native-currency bridge itself with the bridge tool; for any other asset, report the quote and say the user completes it with the provider. If fee or time come back null they are genuinely unknown; say so rather than estimating.",
+      "Cost and time to bridge an asset between two chains, quoted from Relay and LI.FI. Use when the user's funds are on the wrong chain for what they want to do, or to preview a bridge before running one. Kaleido executes bridges itself with the bridge tool — native currency, tokens, a source on another chain, and a different token delivered on arrival (toAsset); only when the bridge tool refuses a corridor, report this quote and say the user completes it with the provider. If fee or time come back null they are genuinely unknown; say so rather than estimating.",
     parameters: {
       type: "object",
       additionalProperties: false,
