@@ -51,7 +51,7 @@
  * 6. REGISTRATION STATE. Before register-tokens.js this is empty and that is
  *    correct; after it, a token missing from the arrays means the lending market
  *    silently lacks that asset. Also flags the duplicate that addLoanableToken's
- *    missing guard allows.
+ *    missing guard allowed on diamonds cut before 2026-09-27.
  *
  * Exits non-zero on any failure, so it can gate a deploy sequence.
  */
@@ -78,6 +78,10 @@ const CUT_FACETS = [
   "OwnershipFacet",
   "ProtocolFacet",
   "AgentPermissionFacet",
+  /* Pause + setTokenFeed (2026-09-27, Arc mainnet hardening). Diamonds deployed
+   * before it report it unrouted — correctly: they have no pause. The same goes
+   * for OwnershipFacet's acceptOwnership/pendingOwner (two-step ownership). */
+  "LendingAdminFacet",
 ];
 
 const failures = [];
@@ -272,6 +276,35 @@ async function main() {
   }
   if (owner === ethers.ZeroAddress) {
     fail("owner is the zero address — the diamond can never be reconfigured again.");
+  }
+
+  /* Two-step ownership and the pause (both 2026-09-27). Read defensively: a
+   * diamond cut before these existed has neither selector, which the routing
+   * section above already reports as a failure. */
+  try {
+    const pending = ethers.getAddress(await ownership.pendingOwner());
+    console.log(`   pending ${pending === ethers.ZeroAddress ? "(none)" : pending}`);
+    if (pending !== ethers.ZeroAddress) {
+      warn(
+        `an ownership transfer to ${pending} is pending. Nothing changes until that ` +
+          "address calls acceptOwnership — confirm it is the intended multisig on THIS chain.",
+      );
+    }
+  } catch {
+    /* pendingOwner not routed — reported under selector routing */
+  }
+  try {
+    const admin = await ethers.getContractAt("LendingAdminFacet", diamondAddress);
+    const isPaused = await admin.paused();
+    console.log(`   paused  ${isPaused}`);
+    if (isPaused) {
+      warn(
+        "lending is PAUSED: requests, servicing, listings and borrowing are refused " +
+          "(repay, withdraw, deposit and liquidate still work). Unpause before announcing.",
+      );
+    }
+  } catch {
+    /* paused() not routed — reported under selector routing */
   }
 
   /* ── 4. Oracle reachability ───────────────────────────────────────────── */
@@ -533,7 +566,7 @@ async function main() {
   if (dupes.length) {
     fail(
       `loanable contains duplicates: ${[...new Set(dupes)].join(", ")}. ` +
-        "addLoanableToken pushes unconditionally, so it was called twice; " +
+        "addLoanableToken pushed unconditionally before 2026-09-27, so it was called twice; " +
         "getLoanableAssets returns the address twice and the UI renders it twice. " +
         "Nothing removes an entry from s_loanableToken.",
     );

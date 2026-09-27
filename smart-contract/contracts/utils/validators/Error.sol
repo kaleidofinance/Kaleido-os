@@ -51,6 +51,8 @@ error Protocol__InvalidFeeVault();
 error Protocol__PositionHealthy();
 error Protocol__LoanValueZero();
 error Protocol__TokenAlreadyExists();
+error Protocol__Paused();
+error Protocol__InvalidPriceFeed();
 error Protocol__CannotBorrowCollateralAsset();
 error Protocol__InvalidAddress();
 error Protocol__UplinerCannotBeDownliner();

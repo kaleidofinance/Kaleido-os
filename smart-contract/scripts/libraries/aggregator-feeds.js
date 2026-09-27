@@ -121,6 +121,8 @@ const { FEEDS } = require("./pyth-feeds.js");
  *           here is not the ~1800s-heartbeat feed set that Sepolia and BSC have.
  */
 const ORACLE_BACKEND = {
+  /* Arc MAINNET: Chainlink push feeds. See the 5042 entry in AGGREGATORS. */
+  5042: "aggregator-v3",
   11155111: "aggregator-v3",
   84532: "aggregator-v3",
   97: "aggregator-v3",
@@ -541,6 +543,70 @@ const AGGREGATORS = {
         "this file rests on. The USDC being priced here is a mock we mint: " +
         "Robinhood's canonical dollar is USDG and it exists on MAINNET ONLY.",
       descriptionHint: "USDC / USD",
+    },
+  },
+  /* ── Arc mainnet (5042) ──────────────────────────────────────────────────
+   * The first MAINNET entry in this file, 2026-09-27. Chainlink push feeds went
+   * live on Arc on 2026-09-09 (directory: reference-data-directory.vercel.app/
+   * feeds-arc-mainnet.json, 32 feeds). Each address below was verified ON CHAIN
+   * — description(), decimals(), latestRoundData(), and 40 rounds walked back —
+   * not taken from the directory.
+   *
+   * Why Chainlink and not Pyth on this chain: Pyth IS deployed on Arc mainnet
+   * (0x8250f4aF…487a, v1.4.6) but no feed has ever been pushed to it — every id
+   * returns PriceFeedNotFound — so using it means relaying ourselves, which needs
+   * a paid Hermes key. Stork (0xacC0a0cF…fd62) is the same: live, empty. Chainlink
+   * maintains these itself; no keeper, no key.
+   *
+   * Launch set only (decided 2026-09-27): USDC is the loanable (native, via
+   * NATIVE_FEED_SYMBOL=USDC); EURC and cirBTC are collateral. ETH/USD exists
+   * (0x50FCDD99…D364) but is deliberately absent — no ETH asset is registered,
+   * and this table is what the oracle maps, so every entry is a feed the market
+   * depends on. */
+  5042: {
+    USDC: {
+      aggregator: "0x84EA90AC252Dc437031461836DB5164219147905",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis:
+        "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 " +
+        "rounds on chain 2026-09-27: gaps 86,421s median, 86,487s max — heartbeat only. 97200 = 27h = heartbeat + 3h. " +
+        "Deviation-triggered, so an old answer is still within 0.5% of the market; " +
+        "the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to " +
+        "108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      descriptionHint: "USDC / USD",
+    },
+    EURC: {
+      aggregator: "0x361b95c10b76Ca3f35C686d423e43A951755Bf23",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis:
+        "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 " +
+        "rounds on chain 2026-09-27: gaps 86,404s median, 86,482s max — heartbeat only. 97200 = 27h = heartbeat + 3h. " +
+        "Deviation-triggered, so an old answer is still within 0.5% of the market; " +
+        "the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to " +
+        "108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      descriptionHint: "EURC / USD",
+    },
+    CIRBTC: {
+      aggregator: "0xa109B535C70C8Be9995be64Bb6751AcDB27e03De",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis:
+        "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 " +
+        "rounds on chain 2026-09-27: gaps 3,692s median, 83,853s max — deviation-driven, heartbeat in quiet markets. 97200 = 27h = heartbeat + 3h. " +
+        "Deviation-triggered, so an old answer is still within 0.5% of the market; " +
+        "the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to " +
+        "108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy." +
+        " cirBTC is Circle Wrapped Bitcoin (FiatToken, 1:1 BTC), priced off BTC/USD as " +
+        "WBTC is on Aave; the cirBTC Reserves PoR feed (0xEB0884a8…11fc) is for monitoring.",
+      descriptionHint: "BTC / USD",
     },
   },
 };

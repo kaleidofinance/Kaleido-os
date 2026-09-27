@@ -105,10 +105,15 @@ contract ProtocolTest is Test, IDiamondCut {
         //call a function
         DiamondLoupeFacet(address(diamond)).facetAddresses();
 
-        ///@notice set protocol constructor by the diamond
-        diamond.initialize(tokens, priceFeed);
-
         protocolFacet = ProtocolFacet(address(diamond));
+
+        ///@notice Diamond.initialize was removed (2026-09-27, it was immutable and
+        /// wrote one slot off). Register each token on both sides through the
+        /// facet's own setters, which is what initialize did — collateral first.
+        for (uint256 i = 0; i < tokens.length; i++) {
+            protocolFacet.addCollateralToken(tokens[i], priceFeed[i]);
+            protocolFacet.addLoanableToken(tokens[i], priceFeed[i]);
+        }
         // No setBotAddress: liquidation is permissionless, so switchSigner(botAddress)
         // further down is just an arbitrary caller rather than an authorised one.
         protocolFacet.setSwapRouter(swapRouterAddress);

@@ -11,15 +11,14 @@ import "../utils/validators/Error.sol";
 import "../model/Event.sol";
 import "../model/Protocol.sol";
 import "../interfaces/IUniswapV2Router02.sol";
-import {IPyth} from "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import {PythStructs} from "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
 import {IPythPriceOracle} from "../interfaces/IPythPriceFeed.sol";
 import "../utils/functions/Utils.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {LendingReentrancyGuard} from "../utils/LendingReentrancyGuard.sol";
 
 /// @title ProtocolFacet Contract
 /// @author Kaleido
-contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
+contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
     /* Every one of the six ERC20 calls in this file already checked the returned
      * bool, so unlike the stablecoin module this was never a silent-failure bug.
      * It is the opposite failure: solc's ABI decoder reverts on zero-length
@@ -48,12 +47,40 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
     using SafeERC20 for IERC20;
 
     LibAppStorage.Layout internal _appStorage;
-    IPyth public pyth;
-    IPythPriceOracle public pythPriceOracle;
+    /* `IPyth public pyth` and `IPythPriceOracle public pythPriceOracle` used to
+     * sit here. Nothing ever wrote either, so their getters always answered zero
+     * (the oracle is read through `getPythPriceOracle`, from AppStorage). Removed
+     * for bytecode; they were declared after the layout, so nothing moves. */
 
     //////////////////
     /// Modifiers ///
     ////////////////
+
+    /// @dev Whether `_token` is in the collateral set. The set is a handful of
+    ///      tokens, so a scan costs less than a mapping every add/remove path
+    ///      would have to keep in sync (and that existing diamonds lack).
+    function _isCollateralToken(address _token) internal view returns (bool) {
+        /* A feed too, which is what withdrawCollateral checks (_isTokenAllowed):
+         * deposit must never accept a token that withdraw would then refuse.
+         * Unreachable on a new diamond (a collateral token cannot get a zero feed
+         * any more) but possible on an older one. */
+        if (_appStorage.s_priceFeeds[_token] == bytes32(0)) return false;
+        address[] storage _tokens = _appStorage.s_collateralToken;
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            if (_tokens[i] == _token) return true;
+        }
+        return false;
+    }
+
+    /// @dev See LibAppStorage.Layout.paused for which calls this gates.
+    modifier _whenNotPaused() {
+        _requireNotPaused();
+        _;
+    }
+
+    function _requireNotPaused() internal view {
+        if (_appStorage.paused) revert Protocol__Paused();
+    }
 
     /**
      * @dev Ensures that the provided token is allowed by checking
@@ -130,9 +157,20 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
         external
         payable
         _valueMoreThanZero(_amountOfCollateral, _tokenCollateralAddress)
-        _isTokenAllowed(_tokenCollateralAddress)
         nonReentrant
     {
+        /* Deliberately NOT paused-gated: depositing collateral opens no risk, and
+         * during a pause it is how a borrower defends a position that liquidation
+         * (never paused) can still reach.
+         *
+         * And only a COLLATERAL token. This used `_isTokenAllowed`, which asks
+         * only whether the token has a price feed — and a loanable-only token has
+         * one too. On Arc, native USDC is loanable only, so a native deposit was
+         * accepted, valued at zero (it is not in s_collateralToken), and made the
+         * depositor fail CannotBorrowCollateralAsset until they withdrew it. */
+        if (!_isCollateralToken(_tokenCollateralAddress)) {
+            revert Protocol__TokenNotAllowed();
+        }
         if (_tokenCollateralAddress == Constants.NATIVE_TOKEN) {
             _amountOfCollateral = msg.value;
         }
@@ -185,7 +223,7 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
         uint16 _interest,
         uint256 _returnDate,
         address _loanCurrency
-    ) external _moreThanZero(_amount) nonReentrant {
+    ) external _whenNotPaused _moreThanZero(_amount) nonReentrant {
         if (!_appStorage.s_isLoanable[_loanCurrency]) {
             revert Protocol__TokenNotLoanable();
         }
@@ -298,7 +336,7 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
     function serviceRequest(
         uint96 _requestId,
         address _tokenAddress
-    ) external payable _nativeMoreThanZero(_tokenAddress) nonReentrant {
+    ) external payable _whenNotPaused _nativeMoreThanZero(_tokenAddress) nonReentrant {
         Request storage _foundRequest = _appStorage.request[_requestId];
         Request storage _Request = _appStorage.s_requests[_requestId - 1];
 
@@ -485,6 +523,7 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
             if (_appStorage.s_priceFeeds[_tokens[i]] != bytes32(0)) {
                 revert Protocol__TokenAlreadyExists();
             }
+            if (_priceFeeds[i] == bytes32(0)) revert Protocol__InvalidPriceFeed();
             _appStorage.s_priceFeeds[_tokens[i]] = _priceFeeds[i];
             _appStorage.s_collateralToken.push(_tokens[i]);
         }
@@ -499,6 +538,7 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
         if (_appStorage.s_priceFeeds[_token] != bytes32(0)) {
             revert Protocol__TokenAlreadyExists();
         }
+        if (_priceFeed == bytes32(0)) revert Protocol__InvalidPriceFeed();
         _appStorage.s_priceFeeds[_token] = _priceFeed;
         _appStorage.s_collateralToken.push(_token);
 
@@ -612,6 +652,20 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
     /// @param _priceFeed the address of the currency pair on chainlink
     function addLoanableToken(address _token, bytes32 _priceFeed) external {
         LibDiamond.enforceIsContractOwner();
+        /* Loanable registration has no inverse, so it is the one call here that
+         * must not be able to go wrong quietly. It used to accept anything: a
+         * second call pushed the token onto s_loanableToken again (a duplicate row
+         * forever), a zero feed registered an unpriceable token, and a token
+         * already registered as collateral had its feed silently OVERWRITTEN —
+         * repricing every deposit of it. Now: once only, a real feed, and the
+         * same feed the token is already priced by if it has one. Changing a
+         * feed on purpose is LendingAdminFacet.setTokenFeed. */
+        if (_appStorage.s_isLoanable[_token]) revert Protocol__TokenAlreadyExists();
+        bytes32 _existing = _appStorage.s_priceFeeds[_token];
+        if (
+            _priceFeed == bytes32(0) ||
+            (_existing != bytes32(0) && _existing != _priceFeed)
+        ) revert Protocol__InvalidPriceFeed();
         _appStorage.s_isLoanable[_token] = true;
         _appStorage.s_priceFeeds[_token] = _priceFeed;
         _appStorage.s_loanableToken.push(_token);
@@ -765,6 +819,7 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
     )
         external
         payable
+        _whenNotPaused
         _valueMoreThanZero(_amount, _loanCurrency)
         _moreThanZero(_amount)
         _moreThanZero(_max_amount)
@@ -929,7 +984,7 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
     function requestLoanFromListing(
         uint96 _listingId,
         uint256 _amount
-    ) public _moreThanZero(_amount) nonReentrant {
+    ) public _whenNotPaused _moreThanZero(_amount) nonReentrant {
         LoanListing storage _listing = _appStorage.loanListings[_listingId];
         if (_listing.listingStatus != ListingStatus.OPEN)
             revert Protocol__ListingNotOpen();
@@ -2217,7 +2272,7 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
     ///      chain entirely. Overriding the one slow feed leaves the strict bound
     ///      in force everywhere else, which a global loosening does not.
     ///
-    ///      Bounded by `MAX_FEED_PRICE_AGE` (25 hours), not `MAX_PRICE_AGE`
+    ///      Bounded by `MAX_FEED_PRICE_AGE` (30 hours), not `MAX_PRICE_AGE`
     ///      (one hour), because API3 offers a 24-hour heartbeat as its only
     ///      option and an hour-capped override could not cover the case it
     ///      exists for. That ceiling is the reason this is a separate function
@@ -2281,6 +2336,12 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
             uint256 _amount = _appStorage.s_addressToCollateralDeposited[_user][
                 _token
             ];
+            /* Skipped, not priced at zero. getUsdValue reads the oracle even for a
+             * zero amount, so pricing every registered token meant ONE stale feed
+             * reverted this for every user on the chain — and with it every
+             * borrow, withdrawal and liquidation, which all route through here.
+             * Now a stale feed only affects the users who hold that asset. */
+            if (_amount == 0) continue;
             uint8 _tokenDecimal = _getTokenDecimal(_token);
             _totalCollateralValueInUsd += getUsdValue(
                 _token,
@@ -2309,6 +2370,7 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
             uint256 _amount = _appStorage.s_addressToAvailableBalance[_user][
                 _token
             ];
+            if (_amount == 0) continue; // see getAccountCollateralValue
             uint8 _tokenDecimal = _getTokenDecimal(_token);
             _totalAvailableValueInUsd += getUsdValue(
                 _token,
@@ -2401,21 +2463,6 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
         return _request;
     }
 
-    /// @notice This gets the account info of any account
-    /// @param _user a parameter for the user account info you want to get
-    /// @return _totalBurrowInUsd returns the total amount of SC the  user has minted
-    /// @return _collateralValueInUsd returns the total collateral the user has deposited in USD
-    function _getAccountInfo(
-        address _user
-    )
-        private
-        view
-        returns (uint256 _totalBurrowInUsd, uint256 _collateralValueInUsd)
-    {
-        _totalBurrowInUsd = getLoanCollectedInUsd(_user);
-        _collateralValueInUsd = getAccountCollateralValue(_user);
-    }
-
     /// @notice Checks the health Factor which is a way to check if the user has enough collateral
     /// @param _user a parameter for the address to check
     /// @return uint256 returns the health factor which is supoose to be >= 1
@@ -2431,10 +2478,16 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
         address _user,
         uint256 _borrow_Value
     ) private view returns (uint256) {
-        (
-            uint256 _totalBurrowInUsd,
-            uint256 _collateralValueInUsd
-        ) = _getAccountInfo(_user);
+        /* Debt FIRST. With no debt and nothing being borrowed the answer is
+         * unbounded whatever the collateral is worth, so it is returned before
+         * the collateral is priced: a debt-free user withdrawing must never need
+         * a live oracle. It used to price collateral first, so a stale BTC/USD
+         * locked every debt-free cirBTC holder out of their own deposit. */
+        uint256 _totalBurrowInUsd = getLoanCollectedInUsd(_user);
+        if ((_totalBurrowInUsd == 0) && (_borrow_Value == 0))
+            return type(uint256).max;
+
+        uint256 _collateralValueInUsd = getAccountCollateralValue(_user);
         uint256 _collateralAdjustedForThreshold = (_collateralValueInUsd *
             Constants.LIQUIDATION_THRESHOLD) / 100;
 
@@ -2451,10 +2504,7 @@ contract ProtocolFacet is ReentrancyGuard, IKaleidoEvents {
          * _revertIfHealthFactorIsBroken: both origination checks pass a
          * non-zero _borrow_Value, and the liquidation gate only runs against a
          * SERVICED request, whose author therefore has non-zero
-         * getLoanCollectedInUsd. */
-        if ((_totalBurrowInUsd == 0) && (_borrow_Value == 0))
-            return type(uint256).max;
-
+         * getLoanCollectedInUsd. (The zero-debt early return is above.) */
         return
             (_collateralAdjustedForThreshold * Constants.PRECISION) /
             (_totalBurrowInUsd + _borrow_Value);
