@@ -964,6 +964,19 @@ async function main() {
     };
 
     {
+      /* A send pinned to another chain ("… on Base") carries that chain's token
+         address, so auditing it against this chain is checking the wrong
+         registry — refused, not waved through. Pinned to THIS chain, it passes. */
+      const elsewhere = await audit([{ ...send, chainId: CHAIN + 1 }]);
+      check(
+        "a send pinned to another chain is refused when audited against this one",
+        !elsewhere.ok,
+        JSON.stringify({ blocked: elsewhere.blocked }),
+      );
+      const here = await audit([{ ...send, chainId: CHAIN }]);
+      check("a send pinned to the audited chain passes", here.ok, JSON.stringify({ blocked: here.blocked }));
+    }
+    {
       const v = await audit([send]);
       check(
         "a well-formed send passes and says the address cannot be verified",

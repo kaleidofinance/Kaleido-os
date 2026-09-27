@@ -12,6 +12,7 @@ import {
   completeDraft,
   draftFromCommand,
   clearSlot,
+  correctVerbTypo,
 } from "./fromCommand.ts";
 
 let pass = 0;
@@ -2544,6 +2545,57 @@ console.log("swap resolves relative amounts; other verbs escalate");
       !(onChain.status === "ok" && onChain.command.kind === "swap" && onChain.command.tokenOut?.symbol === "SEPOLIA"),
       JSON.stringify(onChain).slice(0, 200),
     );
+  }
+
+  console.log("\n— a send on a named chain, and a misspelled verb —");
+  {
+    const A = "0xACF53eE33893FA6F9fc246b6a4261ceF95A9D77C";
+    const CCTX = { isChain: (w) => ["base", "arc", "bnb chain", "bsc", "ethereum"].includes(w.toLowerCase()) };
+    const pc = (t) => parseCommand(t, TOKENS, CCTX);
+    for (const t of [
+      `i want to sedn 5 $USDC to tthis address on Base ${A}`,
+      `send 5 USDC to ${A} on Base`,
+      `send 5 USDC on base to ${A}`,
+      `send 5 usdc via Base to ${A}`,
+    ]) {
+      const r = pc(t);
+      check(
+        `'${t.replace(A, "<addr>")}' → send 5 USDC to the address, on Base`,
+        r.status === "ok" && r.command.kind === "send" && r.command.amount === "5" &&
+          r.command.to === A && r.command.chain?.toLowerCase() === "base",
+        JSON.stringify(r).slice(0, 200),
+      );
+    }
+    const plain = pc(`send 5 USDC to ${A}`);
+    check("no chain named → no chain on the send", plain.status === "ok" && plain.command.chain === undefined, JSON.stringify(plain).slice(0, 200));
+    const onIt = pc(`send 5 USDC on it to ${A}`);
+    check("'on' before a non-chain word stays filler", onIt.status === "ok" && onIt.command.chain === undefined, JSON.stringify(onIt).slice(0, 200));
+    const toChain = pc("send 5 USDC to Base");
+    check("'send X to Base' with no address is still a bridge", toChain.status === "ok" && toChain.command.kind === "bridge", JSON.stringify(toChain).slice(0, 200));
+    const asked = pc("send 5 USDC on Base");
+    check(
+      "a send on Base with no address keeps the chain while asking for it",
+      asked.status === "incomplete" && asked.missing === "recipient" && asked.draft.fromChain?.toLowerCase() === "base",
+      JSON.stringify(asked).slice(0, 200),
+    );
+    const filled = asked.status === "incomplete" ? fillSlot(asked.draft, "recipient", A, TOKENS) : null;
+    check(
+      "…and answering with the address builds it on Base",
+      !!filled && filled.status === "ok" && filled.command.kind === "send" && filled.command.chain?.toLowerCase() === "base",
+      JSON.stringify(filled).slice(0, 200),
+    );
+
+    for (const [typo, kind] of [["sedn", "send"], ["swpa", "swap"], ["sned", "send"]]) {
+      const r = typo === "swpa" ? p("swpa 10 usdc to kld") : p(`${typo} 5 usdc to ${A}`);
+      check(`'${typo}' reads as ${kind}`, r.status === "ok" && r.command.kind === kind, JSON.stringify(r).slice(0, 160));
+    }
+    for (const t of [`i sent 5 usdc to ${A}`, "the state of 5 loans", "sedn usdc please", "hello 5"]) {
+      const r = p(t);
+      check(`'${t.replace(A, "<addr>")}' is not corrected into a command`, !(r.status === "ok" && (r.command.kind === "send" || r.command.kind === "stake")), JSON.stringify(r).slice(0, 160));
+    }
+    check("correctVerbTypo leaves a word the grammar knows alone", correctVerbTypo("send 5 usdc", TOKENS) === null);
+    check("correctVerbTypo needs a number in the sentence", correctVerbTypo("sedn usdc", TOKENS) === null);
+    check("correctVerbTypo fixes only the first slip", correctVerbTypo("sedn 5 usdc", TOKENS) === "send 5 usdc");
   }
 
   console.log("\n— the question names the real problem —");

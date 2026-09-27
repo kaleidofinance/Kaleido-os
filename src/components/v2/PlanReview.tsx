@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import { toast } from "sonner";
 import { ErrorDecoder } from "ethers-decode-error";
 import { readTokenBalance } from "@/lib/chain/tokenBalance";
+import { planChainOf } from "@/lib/v2/intents/planChain";
 import { providerForChain } from "@/config/provider";
 import { getChainMeta } from "@/constants/chains";
 import { renderIntent, resolveIntent, type Intent } from "@/lib/v2/intents";
@@ -223,13 +224,7 @@ export default function PlanReview({
   const pinnedChain = useRef<number | null>(null);
   useEffect(() => {
     if (!pinChain || pinnedChain.current != null) return;
-    const fromIntents = intents.reduce<number | null>((acc, it) => {
-      if (acc != null) return acc;
-      if (it.kind === "bridge") return it.fromChainId;
-      if (it.kind === "aggregatorSwap" || it.kind === "cctpReceive")
-        return it.chainId;
-      return null;
-    }, null);
+    const fromIntents = planChainOf(intents);
     if (fromIntents != null) {
       pinnedChain.current = fromIntents;
       return;

@@ -8,7 +8,7 @@ import { readFaucetAssets } from "@/hooks/v2/useFaucet";
 import { readMarketRow } from "@/lib/lending/book";
 import { readStakingState } from "@/lib/staking/state";
 import { readCollateralDeposits } from "@/lib/lending/collateral";
-import { readTokenBalance } from "@/lib/chain/tokenBalance";
+import { readBalanceOn, readTokenBalance } from "@/lib/chain/tokenBalance";
 import { readPoolState } from "@/lib/dex/pool";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
 import { resolveSwapRoute } from "@/lib/swap/route";
@@ -208,6 +208,10 @@ export function useLocalPlanner() {
              wallet's balance — the same reader the server planner uses, so both
              agree. See chain/tokenBalance. */
           tokenBalance: (token) => readTokenBalance(chainId, address, token),
+          /* Any chain: a send "on Base" is checked there, and a short one looks
+             for the token elsewhere to offer a bridge. Same reader as the server. */
+          balanceOn: (id, token, isNative) =>
+            readBalanceOn(id, address, token, isNative),
           /* Read here rather than passed in, and read lazily, which is the whole
              reason PlanDeps takes thunks: the faucet is one more eth_call, and
              an agent page that fired it on mount would pay for it on every visit

@@ -9,7 +9,7 @@ import { readMarketRow } from "@/lib/lending/book";
 import { readPoolState } from "@/lib/dex/pool";
 import { readStakingState } from "@/lib/staking/state";
 import { readCollateralDeposits } from "@/lib/lending/collateral";
-import { readTokenBalance } from "@/lib/chain/tokenBalance";
+import { readBalanceOn, readTokenBalance } from "@/lib/chain/tokenBalance";
 import { encodeV3Path, type PathQuoter } from "@/lib/dex/route";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
 import { resolveSwapRoute } from "@/lib/swap/route";
@@ -447,6 +447,9 @@ export function serverPlanDeps(
     /* Shared with useLocalPlanner so a relative swap ("half my USDC") resolves to
        the same number in the chat and on the agent page. See chain/tokenBalance. */
     tokenBalance: (token) => readTokenBalance(chainId, address, token),
+    /* Shared with useLocalPlanner: a send's chain check and the bridge offer. */
+    balanceOn: (id, token, isNative) =>
+      readBalanceOn(id, address, token, isNative),
     faucetAssets: () => serverFaucetAssets(chainId, address),
     /* Delegated to the same reader useLocalPlanner and the /pool/new range
        picker call. Sharing it is not tidiness here: a ±10% band that centres on

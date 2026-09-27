@@ -1600,6 +1600,12 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
    */
   transfer: (s, chainId) => {
     const reasons: string[] = [];
+    /* A send pinned to a chain is audited on that chain or not at all: its
+       token address is that chain's, and the registry checks below would be
+       asking the wrong chain. */
+    const pinned = num(s.chainId);
+    if (pinned !== null && pinned !== chainId)
+      reasons.push(`send is for chain ${pinned} but was checked against chain ${chainId}`);
     const token = str(s.token);
     const tok = knownToken(chainId, token);
     if (!tok.ok) reasons.push(`unrecognised token ${token || "(none)"}`);
