@@ -97,7 +97,50 @@ async function crossAsset() {
   }
 }
 
-crossAsset().then(() => {
+/* The amount each provider is asked for, in the SOURCE chain's decimals. A
+   symbol-keyed table quoted "10 USDT from BSC" (18 decimals there) as 10×10⁶
+   units — a quote for 0.00000001 USDT. */
+async function perChainDecimals() {
+  const ok = (name: string, cond: boolean, got = "") => {
+    if (cond) { pass++; console.log(`  ok   ${name}`); }
+    else { fail++; console.log(`  FAIL ${name} — ${got}`); }
+  };
+  const sent: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("relay")) {
+      sent.push(String(JSON.parse(String(init?.body ?? "{}")).amount));
+      return new Response(JSON.stringify({ fees: { relayer: { amountUsd: "0.01" } }, details: { timeEstimate: 30 } }), { status: 200 });
+    }
+    sent.push(new URL(url).searchParams.get("fromAmount") ?? "");
+    return new Response(JSON.stringify({ estimate: { executionDuration: 60 } }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    console.log("\n— amounts are scaled by the source chain's decimals —");
+    for (const [from, to, asset, amount, want] of [
+      ["BSC", "Base", "USDT", "10", "10000000000000000000"],
+      ["BSC", "Base", "USDC", "10", "10000000000000000000"],
+      ["Base", "BSC", "USDC", "10", "10000000"],
+      ["Ethereum", "Base", "USDT", "2.5", "2500000"],
+      ["Base", "Arc", "ETH", "0.0000001", "100000000000"],
+    ] as const) {
+      sent.length = 0;
+      const q = await getBridgeQuote({ fromChain: from, toChain: to, asset, amount });
+      ok(`${amount} ${asset} from ${from} is ${want} units`, !("error" in q) && sent[0] === want, `${sent[0]} ${JSON.stringify(q).slice(0, 120)}`);
+    }
+    const nope = await getBridgeQuote({ fromChain: "Base", toChain: "Arc", asset: "NOPE", amount: "1" });
+    ok("a token the source chain doesn't carry is refused, not guessed", "error" in nope && /isn't a token Kaleido knows on/.test(nope.error), JSON.stringify(nope));
+    const fine = await getBridgeQuote({ fromChain: "Base", toChain: "Arc", asset: "USDC", amount: "1.1234567" });
+    ok("more precision than the token holds is refused", "error" in fine && /6 decimals/.test(fine.error), JSON.stringify(fine));
+    const zero = await getBridgeQuote({ fromChain: "Base", toChain: "Arc", asset: "USDC", amount: "0" });
+    ok("zero is refused", "error" in zero, JSON.stringify(zero));
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+crossAsset().then(perChainDecimals).then(() => {
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail > 0) process.exit(1);
 });

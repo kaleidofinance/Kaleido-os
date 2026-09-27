@@ -2,7 +2,14 @@
  * The send a funding bridge exists for: where it must land, and when it has.
  * Run with `npm run test:afterbridge`.
  */
-import { arrivalTarget, waitForArrival } from "./afterBridge.ts";
+import {
+  arrivalTarget,
+  clearWatch,
+  loadWatch,
+  saveWatch,
+  waitForArrival,
+  type KeyValueStore,
+} from "./afterBridge.ts";
 
 let pass = 0;
 let fail = 0;
@@ -82,6 +89,64 @@ async function main() {
   {
     const out = await waitForArrival({ read: async () => 7n, need: 5n, intervalMs: 1, timeoutMs: 1, ...fakeClock() });
     check("an already-covered balance arrives on the first read", out === "arrived");
+  }
+
+  console.log("\n— surviving a reload —");
+  {
+    const mem = new Map<string, string>();
+    const store: KeyValueStore = {
+      getItem: (k) => mem.get(k) ?? null,
+      setItem: (k, v) => void mem.set(k, v),
+      removeItem: (k) => void mem.delete(k),
+    };
+    const W = "0x1111111111111111111111111111111111111111";
+    const OTHER = "0x2222222222222222222222222222222222222222";
+    saveWatch(store, W, { then: send(), deadline: 123 });
+    const back = loadWatch(store, W.toUpperCase().replace("0X", "0x"));
+    check(
+      "a saved watch comes back for the same wallet (address case ignored)",
+      !!back && back.deadline === 123 && back.then.kind === "send" &&
+        (back.then as { to: string }).to === TO && (back.then as { chain?: string }).chain === "Base" &&
+        (back.then as { amount: string }).amount === "5",
+      JSON.stringify(back),
+    );
+    check("…and it still resolves to the same arrival target", !!back && arrivalTarget(back.then)?.units === 5_000_000n);
+    check("another wallet never sees it", loadWatch(store, OTHER) === null);
+    clearWatch(store, W);
+    check("cleared means gone", loadWatch(store, W) === null);
+
+    const key = `kaleido:afterBridge:${W.toLowerCase()}`;
+    const good = JSON.parse(JSON.stringify({ then: send(), deadline: 1 }));
+    const tamper = (f: (v: any) => void) => {
+      const v = JSON.parse(JSON.stringify(good));
+      f(v);
+      mem.set(key, JSON.stringify(v));
+      return loadWatch(store, W);
+    };
+    check("a stored non-send is refused", tamper((v) => { v.then.kind = "bridge"; }) === null);
+    check("a malformed recipient is refused", tamper((v) => { v.then.to = "0x1234"; }) === null);
+    check("an amount that isn't a plain number is refused", tamper((v) => { v.then.amount = "5e3"; }) === null);
+    check("a send with no chain is refused", tamper((v) => { delete v.then.chain; }) === null);
+    check("bad token decimals are refused", tamper((v) => { v.then.token.decimals = 99; }) === null);
+    check("a missing deadline is refused", tamper((v) => { delete v.deadline; }) === null);
+    mem.set(key, "{not json");
+    check("garbage is refused, not thrown", loadWatch(store, W) === null);
+
+    const broken: KeyValueStore = {
+      getItem: () => { throw new Error("denied"); },
+      setItem: () => { throw new Error("quota"); },
+      removeItem: () => { throw new Error("denied"); },
+    };
+    let threw = false;
+    try {
+      saveWatch(broken, W, { then: send(), deadline: 1 });
+      clearWatch(broken, W);
+      loadWatch(broken, W);
+      saveWatch(null, W, { then: send(), deadline: 1 });
+    } catch {
+      threw = true;
+    }
+    check("a blocked or missing store never throws (the watch just won't survive a reload)", !threw && loadWatch(broken, W) === null);
   }
 
   console.log(`\n${pass} passed, ${fail} failed\n`);
