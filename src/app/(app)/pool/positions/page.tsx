@@ -31,6 +31,7 @@ import { pairedAmount } from "@/lib/dex/deposit";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import PairIcon from "../_components/PairIcon";
 import s from "../pool.module.css";
+import { isClosed, positionsToShow } from "@/lib/dex/visiblePositions";
 
 /**
  * Your positions — the wallet-scoped half of the Liquidity section.
@@ -303,6 +304,10 @@ function PositionCard({
      position visible so its liquidity can be removed, but do not describe it as
      merely out of range: a zero-liquidity pool has no active market at all. */
   const inactive = poolState?.liquidity === "0";
+  /* Liquidity already removed, but the collect that should have followed never
+     landed — the tokens and fees are still owed on the NFT. Collect is the only
+     thing left to do; adding to or removing from an empty position isn't. */
+  const closed = isClosed(p);
   const canAdd =
     legs !== null &&
     account !== undefined &&
@@ -433,9 +438,9 @@ function PositionCard({
           </div>
         </div>
         <span
-          className={`${s.badge} ${inactive ? s.inactive : p.inRange ? "" : s.out}`}
+          className={`${s.badge} ${closed || inactive ? s.inactive : p.inRange ? "" : s.out}`}
         >
-          {inactive ? "Inactive" : p.inRange ? "In range" : "Out of range"}
+          {closed ? "Closed" : inactive ? "Inactive" : p.inRange ? "In range" : "Out of range"}
         </span>
       </div>
 
@@ -465,6 +470,12 @@ function PositionCard({
       {/* Defaults to All, so the button below reads and behaves exactly as it did
           when full removal was the only thing it could do. Picking a share is
           additive: nobody has to notice this row to close a position. */}
+      {closed ? (
+        <p className={s.addNote}>
+          Liquidity removed. These tokens are still yours — collect them to
+          send them to your wallet.
+        </p>
+      ) : (
       <div className={s.shareRow}>
         <span className={s.shareLabel}>Remove</span>
         {SHARES.map((v) => (
@@ -478,6 +489,7 @@ function PositionCard({
           </button>
         ))}
       </div>
+      )}
 
       <div className={s.actions}>
         <button
@@ -487,34 +499,38 @@ function PositionCard({
         >
           {busy === "collect" ? "Collecting…" : "Collect fees"}
         </button>
-        <button
-          className={s.actBtn}
-          disabled={legs === null || busy !== null}
-          onClick={() => setAdding((v) => !v)}
-        >
-          {adding ? "Close" : "Add liquidity"}
-        </button>
-        <button
-          className={s.actBtn}
-          disabled={busy !== null}
-          onClick={onRemove}
-        >
-          {busy === "remove"
-            ? "Removing…"
-            : share === 100
-              ? "Remove liquidity"
-              : `Remove ${share}%`}
-        </button>
+        {!closed && (
+          <>
+            <button
+              className={s.actBtn}
+              disabled={legs === null || busy !== null}
+              onClick={() => setAdding((v) => !v)}
+            >
+              {adding ? "Close" : "Add liquidity"}
+            </button>
+            <button
+              className={s.actBtn}
+              disabled={busy !== null}
+              onClick={onRemove}
+            >
+              {busy === "remove"
+                ? "Removing…"
+                : share === 100
+                  ? "Remove liquidity"
+                  : `Remove ${share}%`}
+            </button>
+          </>
+        )}
       </div>
 
-      {legs === null && (
+      {legs === null && !closed && (
         <p className={s.addNote}>
           A token isn&apos;t in this chain&apos;s registry — adding is disabled.
           Collecting and removing still work.
         </p>
       )}
 
-      {adding && legs !== null && (
+      {adding && legs !== null && !closed && (
         <div className={s.addForm}>
           <div className={s.priceRow}>
             <label className={s.priceBox}>
@@ -611,7 +627,11 @@ export default function PositionsPage() {
   // registry — the same address means a different token on a different chain.
   const symbolFor = (address: string) => symbolForAddress(chainId, address);
 
-  const withActive = positions.filter((p) => Number(p.liquidity) > 0);
+  /* Open positions, plus closed ones that still hold tokens a collect would pay
+     (a 100% remove whose collect never landed). Filtering on liquidity alone hid
+     those — and their Collect button — while the Portfolio showed the fees as
+     ready to claim. See lib/dex/visiblePositions. */
+  const withActive = positionsToShow(positions);
 
   /* The third fact the two empty states below do not cover: a connected wallet
      on a chain with no PositionManager. `useV3Positions` reads nothing there, so
