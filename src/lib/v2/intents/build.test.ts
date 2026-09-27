@@ -4127,6 +4127,22 @@ async function main() {
           (next.draft.sourceOptions ?? []).includes(arcName) && /which chain/i.test(next.prompt),
         JSON.stringify(next),
       );
+      check(
+        "the bridge must deliver the send's amount, and the send waits behind it pinned to Base",
+        !!next && next.draft.receiveAtLeast === "5" && next.then?.kind === "send" &&
+          (next.then as { chain?: string }).chain === baseName && (next.then as { to?: string }).to === TO,
+        JSON.stringify(next),
+      );
+    }
+    {
+      const { deps } = withBalances({ [BASE]: 1_000_000n, [ARC]: 10_000_000n });
+      const r = await send(deps, "base");
+      check(
+        "only the shortfall is bridged (1 of 5 already on Base → bridge 4)",
+        !r.ok && !!r.next && r.next.draft.amount === "4" && r.next.draft.receiveAtLeast === "4" &&
+          (r.next.then as { amount?: string })?.amount === "5",
+        JSON.stringify(!r.ok ? r.next : r),
+      );
     }
     {
       const { deps } = withBalances({ [BASE]: 1_000_000n });
@@ -4158,6 +4174,99 @@ async function main() {
         !r.ok && !!r.next && r.next.draft.toChain === arcName && (r.next.draft.sourceOptions ?? []).includes(baseName),
         JSON.stringify(r).slice(0, 300),
       );
+    }
+  }
+
+  console.log("a funding bridge is topped up so the send isn't short");
+  {
+    const { ethers } = await import("ethers");
+    const ARC = 5042;
+    const R = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
+    const usdcArc: IToken = {
+      address: "0x3600000000000000000000000000000000000000",
+      name: "USDC", symbol: "USDC", decimals: 6, chainId: ARC,
+      tags: ["stablecoin", "native-alias"],
+    };
+    /* A route that keeps 1% and reports its delivery in Base's 6 decimals. */
+    const keeps1pct = (report: "received" | "min" | "none", srcDecimals = 6) =>
+      fakeDeps({
+        chainId: ARC,
+        bridgeRoute: async (req) => {
+          const inUnits = ethers.parseUnits(req.amount, srcDecimals);
+          const out6 = (inUnits * 99n) / 100n / 10n ** BigInt(srcDecimals - 6);
+          return {
+            to: R, data: "0x", value: "0", spender: R,
+            toChainId: 8453, toChainName: "Base", provider: "lifi", etaSeconds: 30,
+            ...(report === "received" ? { receivedUnits: out6.toString() } : {}),
+            ...(report === "min" ? { receivedUnits: (out6 + 5000n).toString(), minReceivedUnits: out6.toString() } : {}),
+          };
+        },
+      });
+    const bridge = (deps: PlanDeps, extra: Record<string, unknown> = {}) =>
+      build({ kind: "bridge", amount: "5", token: usdcArc, toChain: "Base", receiveAtLeast: "5", ...extra } as Command, deps);
+    const bridgedAmount = (r: Awaited<ReturnType<typeof build>>) =>
+      r.ok ? String((r.build.intents.find((i) => i.kind === "bridge") as { amount?: string })?.amount) : "";
+
+    {
+      const { deps, calls } = keeps1pct("received");
+      const r = await bridge(deps);
+      const amt = bridgedAmount(r);
+      const delivered = (ethers.parseUnits(amt || "0", 6) * 99n) / 100n;
+      check(
+        "a route keeping 1% is re-quoted with more, until at least 5 arrives",
+        r.ok && calls.bridge.length >= 2 && delivered >= 5_000_000n && Number(amt) < 5.2,
+        `${amt} after ${calls.bridge.length} quotes`,
+      );
+      check(
+        "the approve covers the topped-up amount, not the original",
+        r.ok && String((r.build.intents.find((i) => i.kind === "approve") as { amount?: string })?.amount) === amt,
+        JSON.stringify(r.ok ? r.build.intents[0] : r),
+      );
+      check("the summary says why it's more", summaryOf(r).includes("covers the bridge's fees") && summaryOf(r).includes("at least 5 USDC"), summaryOf(r));
+    }
+    {
+      const { deps } = keeps1pct("min");
+      const r = await bridge(deps);
+      const amt = bridgedAmount(r);
+      check(
+        "the guaranteed floor is what's topped up against, not the expected output",
+        r.ok && (ethers.parseUnits(amt, 6) * 99n) / 100n >= 5_000_000n,
+        amt,
+      );
+    }
+    {
+      const { deps, calls } = keeps1pct("none");
+      const r = await bridge(deps);
+      check("a route that reports no delivery (1:1) is taken as is", r.ok && bridgedAmount(r) === "5" && calls.bridge.length === 1, `${bridgedAmount(r)} ${calls.bridge.length}`);
+    }
+    {
+      const { deps, calls } = keeps1pct("received");
+      const r = await build({ kind: "bridge", amount: "5", token: usdcArc, toChain: "Base" } as Command, deps);
+      check("an ordinary bridge (no floor) is never topped up", r.ok && bridgedAmount(r) === "5" && calls.bridge.length === 1, `${bridgedAmount(r)} ${calls.bridge.length}`);
+    }
+    {
+      /* BSC's USDC is 18 decimals and Base's is 6: the gap has to be scaled UP
+         into source units, or the top-up is a trillionth of what's needed. */
+      const { deps } = keeps1pct("received", 18);
+      const r = await bridge(deps, { fromChain: "bsc" });
+      const amt = bridgedAmount(r);
+      check(
+        "an 18-decimal source is topped up in its own units",
+        r.ok && Number(amt) >= 5.05 && Number(amt) < 5.2,
+        amt || JSON.stringify(r),
+      );
+    }
+    {
+      const { deps } = fakeDeps({
+        chainId: ARC,
+        bridgeRoute: async () => ({
+          to: R, data: "0x", value: "0", spender: R,
+          toChainId: 8453, toChainName: "Base", provider: "lifi", etaSeconds: 30,
+          receivedUnits: "1000000",
+        }),
+      });
+      const r = await bridge(deps);
+      check("a route that never delivers enough is refused, not signed short", !r.ok && /sure to deliver 5/.test(errorOf(r)), errorOf(r));
     }
   }
 

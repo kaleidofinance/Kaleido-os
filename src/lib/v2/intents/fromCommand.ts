@@ -125,6 +125,12 @@ export interface BridgeCommand {
    * here, the same free-text contract as `toChain`.
    */
   toAsset?: string;
+  /**
+   * At least this much of the same asset must ARRIVE (destination units, human
+   * string). Set when the bridge funds a send: the builder tops `amount` up by
+   * the route's fees so the send that follows isn't short. Never typed.
+   */
+  receiveAtLeast?: string;
 }
 export interface HelpCommand {
   kind: "help";
@@ -562,6 +568,8 @@ export interface Draft {
   /** The chains a bridge's source token is on, when more than one could be
       meant — the draft asks which before it completes. */
   sourceOptions?: string[];
+  /** A funding bridge's floor on what must arrive — see BridgeCommand. */
+  receiveAtLeast?: string;
   interestPct?: number;
   days?: number;
   loanId?: number;
@@ -3791,6 +3799,9 @@ export function draftFromCommand(command: Command): Draft | null {
         toChain: command.toChain,
         ...(command.fromChain ? { fromChain: command.fromChain } : {}),
         ...(command.toAsset ? { toAsset: command.toAsset } : {}),
+        ...(command.receiveAtLeast
+          ? { receiveAtLeast: command.receiveAtLeast }
+          : {}),
       };
     case "borrow":
     case "lend":
@@ -4057,6 +4068,7 @@ export function completeDraft(draft: Draft): ParseResult {
         toChain: draft.toChain,
         ...(draft.fromChain ? { fromChain: draft.fromChain } : {}),
         ...(draft.toAsset ? { toAsset: draft.toAsset } : {}),
+        ...(draft.receiveAtLeast ? { receiveAtLeast: draft.receiveAtLeast } : {}),
       },
     };
   }

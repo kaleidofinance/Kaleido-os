@@ -290,6 +290,13 @@ async function tryAggregatorRoute(
       }
     : {};
 
+  /* A same-asset route's guaranteed floor too. Read only by a FUNDING bridge's
+     top-up (build.ts), which must know what is certain to arrive, not what is
+     expected to; the plan rows keep using the cross-asset fields above. */
+  if (!i.crossAsset && exec.toAmountMin) {
+    crossFields.minReceivedUnits = exec.toAmountMin;
+  }
+
   if (i.isNative) {
     return {
       to: exec.to,
