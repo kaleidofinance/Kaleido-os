@@ -47,7 +47,15 @@ import {
   type TokenFacts,
 } from "@/lib/v2/cards";
 import { planChainOf } from "@/lib/v2/intents/planChain";
-import { arrivalTarget, waitForArrival } from "@/lib/v2/intents/afterBridge";
+import {
+  ARRIVAL_WINDOW_MS,
+  arrivalTarget,
+  clearWatch,
+  loadWatch,
+  saveWatch,
+  waitForArrival,
+  type KeyValueStore,
+} from "@/lib/v2/intents/afterBridge";
 import { readBalanceOn } from "@/lib/chain/tokenBalance";
 import {
   portfolioAnswer,
@@ -254,7 +262,10 @@ export default function AgentPage() {
   const afterBridgeRef = useRef<Command | null>(null);
   /* The running arrival watch, so Clear or leaving the page stops it. */
   const arrivalWatchRef = useRef<AbortController | null>(null);
-  useEffect(() => () => arrivalWatchRef.current?.abort(), []);
+  /* Stopped on leaving the page AND on a wallet switch: a send prepared for one
+     wallet must never be built for another. The saved record stays, so
+     switching back (or reloading) resumes it. */
+  useEffect(() => () => arrivalWatchRef.current?.abort(), [address]);
   /*
    * The last command that planned successfully, so later referential messages
    * can continue it. `pending` is the other half of this and they are not the
@@ -759,11 +770,51 @@ export default function AgentPage() {
     return true;
   };
 
+  /* Where the watch is kept across reloads — this browser, per wallet. */
+  const watchStore = (): KeyValueStore | null => {
+    try {
+      return typeof window !== "undefined" ? window.localStorage : null;
+    } catch {
+      return null;
+    }
+  };
+
   /*
-   * After a funding bridge is signed: watch the destination balance and, once it
-   * covers the send, build that send and put it up for review. Never signs it.
-   * Stopped by Clear, by leaving the page, or after 20 minutes.
+   * Watch the destination balance until it covers the send, then build that send
+   * and put it up for review. Never signs it. Ends at the deadline; an abort
+   * (Clear, leaving the page, switching wallet) stops it, and only Clear also
+   * forgets it — otherwise a reload picks it up again (the effect below).
    */
+  const watchArrival = async (then: Command, deadline: number) => {
+    const target = arrivalTarget(then);
+    const owner = address;
+    if (!target || !owner) return;
+    arrivalWatchRef.current?.abort();
+    const watch = new AbortController();
+    arrivalWatchRef.current = watch;
+    const outcome = await waitForArrival({
+      read: () =>
+        readBalanceOn(target.chainId, owner, target.token, target.isNative),
+      need: target.units,
+      intervalMs: 8_000,
+      timeoutMs: Math.max(0, deadline - Date.now()),
+      signal: watch.signal,
+    });
+    if (arrivalWatchRef.current === watch) arrivalWatchRef.current = null;
+    if (outcome === "aborted") return;
+    clearWatch(watchStore(), owner);
+    if (outcome === "timeout") {
+      say(
+        `Your ${target.symbol} hasn't reached ${target.chainName} yet, so I've stopped watching. Ask me about your bridge status, or ask me to send it again once it lands.`,
+        { via: "local" },
+      );
+      return;
+    }
+    say(`Your ${target.symbol} arrived on ${target.chainName}. Here's the send — check the address, then sign.`, { via: "local" });
+    await planLocally({ status: "ok", command: then }, watch.signal);
+  };
+
+  /* After a funding bridge is signed: announce the watch, save it, start it. */
   const prepareAfterBridge = async (then: Command) => {
     const target = arrivalTarget(then);
     if (!target || !address) {
@@ -772,32 +823,44 @@ export default function AgentPage() {
     }
     const to = then.kind === "send" ? then.to : "";
     say(
-      `Bridge sent. I'll have your send of ${then.kind === "send" ? then.amount : ""} ${target.symbol} to ${to} ready to review as soon as it lands on ${target.chainName} — keep this page open.`,
+      `Bridge sent. I'll have your send of ${then.kind === "send" ? then.amount : ""} ${target.symbol} to ${to} ready to review as soon as it lands on ${target.chainName}. If you leave, come back to this page and I'll pick it up.`,
       { via: "local" },
     );
-    arrivalWatchRef.current?.abort();
-    const watch = new AbortController();
-    arrivalWatchRef.current = watch;
-    const outcome = await waitForArrival({
-      read: () =>
-        readBalanceOn(target.chainId, address, target.token, target.isNative),
-      need: target.units,
-      intervalMs: 8_000,
-      timeoutMs: 20 * 60_000,
-      signal: watch.signal,
-    });
-    if (arrivalWatchRef.current === watch) arrivalWatchRef.current = null;
-    if (outcome === "aborted") return;
-    if (outcome === "timeout") {
-      say(
-        `Your ${target.symbol} hasn't reached ${target.chainName} after 20 minutes. Ask me about your bridge status, or ask me to send it again once it lands.`,
-        { via: "local" },
-      );
+    const deadline = Date.now() + ARRIVAL_WINDOW_MS;
+    saveWatch(watchStore(), address, { then, deadline });
+    await watchArrival(then, deadline);
+  };
+
+  /*
+   * Resume a watch saved before a reload (or a wallet switch back). Past its
+   * deadline it still reads the balance ONCE — the bridge may well have landed
+   * while the page was closed — unless it's over a day old, which is forgotten
+   * quietly rather than surfacing a stale send.
+   */
+  const resumedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!address || resumedForRef.current === address) return;
+    resumedForRef.current = address;
+    const saved = loadWatch(watchStore(), address);
+    if (!saved) return;
+    const target = arrivalTarget(saved.then);
+    if (!target || Date.now() - saved.deadline > 24 * 60 * 60_000) {
+      clearWatch(watchStore(), address);
       return;
     }
-    say(`Your ${target.symbol} arrived on ${target.chainName}. Here's the send — check the address, then sign.`, { via: "local" });
-    await planLocally({ status: "ok", command: then }, watch.signal);
-  };
+    if (saved.deadline > Date.now()) {
+      say(
+        `Still watching for your ${target.symbol} to land on ${target.chainName} — your send to ${saved.then.kind === "send" ? saved.then.to : ""} will be ready to review when it does.`,
+        { via: "local" },
+      );
+    }
+    void watchArrival(saved.then, saved.deadline);
+    return () => {
+      arrivalWatchRef.current?.abort();
+      resumedForRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
 
   /**
    * Cancels the in-flight model request (if any) and resets the busy state.
@@ -1998,6 +2061,7 @@ export default function AgentPage() {
                   setCardToken(null);
                   afterBridgeRef.current = null;
                   arrivalWatchRef.current?.abort();
+                  if (address) clearWatch(watchStore(), address);
                   setPanel({ kind: "idle" });
                 }}
                 title="Delete this conversation from this device"

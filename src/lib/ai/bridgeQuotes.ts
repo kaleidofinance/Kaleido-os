@@ -28,8 +28,9 @@
  * approvals; the header of route.ts has it.
  */
 
-import { formatUnits } from "ethers";
+import { formatUnits, parseUnits } from "ethers";
 import { CHAINS, type ChainMeta } from "@/constants/chains";
+import { resolveUserToken } from "@/constants/registry";
 import {
   lifiMonetizationParams,
   lifiAuthHeaders,
@@ -40,15 +41,15 @@ import { resolveCctpFastFee } from "@/lib/bridge/cctpFast";
 const RELAY_API = "https://api.relay.link";
 const LIFI_API = "https://li.quest/v1";
 
-/** Decimals for the assets we quote. Bridging is stablecoin-and-ETH shaped. */
-const DECIMALS: Record<string, number> = {
+/**
+ * Fallback decimals, ONLY for assets that have the same decimals on every chain.
+ * USDC and USDT are deliberately absent: they are 18 on BSC and 6 elsewhere, and
+ * a symbol-keyed table quoted "10 USDT from BSC" as 10×10⁶ units — 0.00000001
+ * USDT. Their decimals come from the source chain's registry (sourceDecimals).
+ */
+const UNIFORM_DECIMALS: Record<string, number> = {
   ETH: 18,
   WETH: 18,
-  USDC: 6,
-  USDT: 6,
-  // 6, per USDR's own decimals() — see BORROW_CURRENCIES in constants/registry.ts.
-  USDR: 6,
-  kfUSD: 18,
   BNB: 18,
 };
 
@@ -118,18 +119,31 @@ export function resolveChain(input: string | number): ChainMeta | undefined {
   );
 }
 
-/** Smallest-unit amount for an asset, using its real decimals. */
-function toBaseUnits(amount: string, asset: string): string | null {
-  const decimals = DECIMALS[asset.toUpperCase()] ?? DECIMALS[asset];
-  if (decimals === undefined) return null;
-  const n = Number(amount);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  // String concatenation rather than BigInt exponentiation, which the repo's
-  // ES5 target rejects. Padding the fraction to `decimals` and appending it to
-  // the whole part is exact for 18-decimal amounts where floats are not.
-  const [whole, frac = ""] = String(n).split(".");
-  const padded = (frac + "0".repeat(decimals)).slice(0, decimals);
-  return BigInt(whole + padded).toString();
+/**
+ * The asset's decimals ON THE SOURCE CHAIN — the same registry lookup the plan
+ * builder signs with, so the quote and the plan scale the amount identically.
+ * Null when the chain doesn't carry it (and it isn't uniform everywhere).
+ */
+export function sourceDecimals(from: ChainMeta, asset: string): number | null {
+  const t =
+    resolveUserToken(from, asset, "dex") ??
+    resolveUserToken(from, asset, "lending");
+  if (t) return t.decimals;
+  return UNIFORM_DECIMALS[asset.toUpperCase()] ?? null;
+}
+
+/**
+ * Smallest-unit amount, parsed exactly from the string (a float turned 0.0000001
+ * into "1e-7" and 18-decimal amounts into rounding). Null for a non-positive or
+ * over-precise amount.
+ */
+function toBaseUnits(amount: string, decimals: number): string | null {
+  try {
+    const units = parseUnits(amount.trim(), decimals);
+    return units > BigInt(0) ? units.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 async function relayQuote(
@@ -281,10 +295,16 @@ export async function getBridgeQuote(args: {
     return { error: "Source and destination are the same chain" };
 
   const asset = args.asset.trim().toUpperCase();
-  const units = toBaseUnits(args.amount, asset);
+  const decimals = sourceDecimals(from, asset);
+  if (decimals === null) {
+    return {
+      error: `Cannot quote ${args.asset}: it isn't a token Kaleido knows on ${from.name}. Say so rather than estimating.`,
+    };
+  }
+  const units = toBaseUnits(args.amount, decimals);
   if (units === null) {
     return {
-      error: `Cannot quote ${args.asset}: unknown decimals or invalid amount. Supported: ${Object.keys(DECIMALS).join(", ")}`,
+      error: `Cannot quote ${args.amount} ${asset}: not a positive amount ${asset} can hold on ${from.name} (${decimals} decimals).`,
     };
   }
 

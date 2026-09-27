@@ -91,3 +91,100 @@ export async function waitForArrival(opts: {
     await sleep(opts.intervalMs);
   }
 }
+
+/* ------------------------------------------------------------ persistence -- */
+/*
+ * The watch survives a reload: the send it's waiting on and its deadline are
+ * kept per wallet in the browser, and the page resumes the watch on load. Only
+ * the one wallet's record is ever read, and what comes back is validated field
+ * by field — it becomes a command, even though it still has to be built,
+ * audited and reviewed before anything is signed.
+ */
+
+/** How long a watch runs, from the moment the bridge was signed. */
+export const ARRIVAL_WINDOW_MS = 20 * 60_000;
+
+export type KeyValueStore = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+export interface SavedWatch {
+  then: Command;
+  /** Epoch ms after which the watch gives up. */
+  deadline: number;
+}
+
+const keyFor = (address: string) =>
+  `kaleido:afterBridge:${address.toLowerCase()}`;
+
+export function saveWatch(
+  store: KeyValueStore | null,
+  address: string,
+  watch: SavedWatch,
+): void {
+  try {
+    store?.setItem(keyFor(address), JSON.stringify(watch));
+  } catch {
+    /* Private mode / quota: the watch still runs, it just won't survive a reload. */
+  }
+}
+
+export function clearWatch(store: KeyValueStore | null, address: string): void {
+  try {
+    store?.removeItem(keyFor(address));
+  } catch {
+    /* nothing to do */
+  }
+}
+
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const AMOUNT = /^\d{1,30}(\.\d{1,36})?$/;
+
+/** The saved watch for this wallet, or null — also null for anything malformed. */
+export function loadWatch(
+  store: KeyValueStore | null,
+  address: string,
+): SavedWatch | null {
+  let raw: string | null = null;
+  try {
+    raw = store?.getItem(keyFor(address)) ?? null;
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as { then?: Record<string, unknown>; deadline?: unknown };
+    const t = v.then;
+    const tok = t?.token as Record<string, unknown> | undefined;
+    if (
+      !t || t.kind !== "send" ||
+      typeof t.to !== "string" || !ADDRESS.test(t.to) ||
+      typeof t.amount !== "string" || !AMOUNT.test(t.amount) ||
+      typeof t.chain !== "string" || t.chain.length === 0 || t.chain.length > 40 ||
+      !tok || typeof tok.symbol !== "string" || tok.symbol.length > 24 ||
+      typeof tok.address !== "string" || !ADDRESS.test(tok.address) ||
+      typeof tok.decimals !== "number" || !Number.isInteger(tok.decimals) ||
+      tok.decimals < 0 || tok.decimals > 36 ||
+      typeof v.deadline !== "number" || !Number.isFinite(v.deadline)
+    ) {
+      return null;
+    }
+    return {
+      then: {
+        kind: "send",
+        amount: t.amount,
+        to: t.to,
+        chain: t.chain,
+        token: {
+          address: tok.address,
+          name: typeof tok.name === "string" ? tok.name.slice(0, 64) : tok.symbol,
+          symbol: tok.symbol,
+          decimals: tok.decimals,
+          verified: tok.verified === true,
+          ...(typeof tok.chainId === "number" ? { chainId: tok.chainId } : {}),
+        },
+      } as Command,
+      deadline: v.deadline,
+    };
+  } catch {
+    return null;
+  }
+}
