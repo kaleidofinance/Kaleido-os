@@ -18,7 +18,11 @@ import {
 import { dexTokenPrices } from "@/lib/swap/dexPrices";
 import { creditAction } from "@/lib/points/credit";
 import { priorLegsToday, recordSwapVolume } from "@/lib/points/swapLedger";
-import { netCreditableUsd, swapAssets } from "@/lib/points/netFlow";
+import {
+  ARC_NATIVE_USDC_LOG,
+  netCreditableUsd,
+  swapAssets,
+} from "@/lib/points/netFlow";
 import {
   backfillNextFrom,
   computeCursorAdvance,
@@ -473,7 +477,11 @@ async function handle(req: Request): Promise<Response> {
           wallet: parsed.wallet,
           inputToken: parsed.inputToken,
           transfers,
-          usdTokens: WRAPPED_NATIVE ? [USDC, WRAPPED_NATIVE] : [USDC],
+          usdTokens: [
+            USDC,
+            ARC_NATIVE_USDC_LOG,
+            ...(WRAPPED_NATIVE ? [WRAPPED_NATIVE] : []),
+          ],
         });
 
         if (dryRun) {

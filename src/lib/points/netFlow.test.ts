@@ -2,7 +2,14 @@
  * Round-trip netting for swap points. Run with `npm run test:netflow`.
  * The regression: a USDC→EURC→USDC round trip earned points on both legs.
  */
-import { USD_ASSET, assetKey, netCreditableUsd, swapAssets, type SwapLeg } from "./netFlow.ts";
+import {
+  ARC_NATIVE_USDC_LOG,
+  USD_ASSET,
+  assetKey,
+  netCreditableUsd,
+  swapAssets,
+  type SwapLeg,
+} from "./netFlow.ts";
 
 let pass = 0;
 let fail = 0;
@@ -115,6 +122,50 @@ console.log("\n— reading a swap's assets from its transfers —");
 {
   const a = swapAssets({ wallet: W, inputToken: USDC, transfers: [{ token: USDC, from: W, to: ROUTER, value: 5n }], usdTokens: USD_TOKENS });
   check("dollar in with no visible output → unclassified, not guessed", a === null);
+}
+
+console.log("\n— Arc logs native USDC twice (the first live swaps after #459) —");
+{
+  /* Transfers copied from mainnet receipts 0x0a984fed… (USD→EURC, $4) and
+     0x5685e36c… (EURC→USD, $4.54), same wallet, 41 seconds apart. Each native
+     move appears from 0xff…fe (18 dec) AND from 0x3600 (6 dec). */
+  const ME = "0x5b5a4ee4964d64b56c47e81b72859a99ffc38d99";
+  const POOL = "0xbe080ac37ad1305dfcc9521f5e6f68cfdc41b7fa";
+  const EXEC = "0x8f10b468b06c6fd214b65f87778827f7d113f996";
+  const KYBER = "0x6131b5fae19ea4f9d964eac0408e4408b66337b5";
+  const FEE = "0x0ce7f8aeaad60b9e19acbe9803518182adc351bc";
+  const N = ARC_NATIVE_USDC_LOG;
+  const DOLLARS = [USDC, N, WUSDC];
+  const out = swapAssets({
+    wallet: ME,
+    inputToken: N, // parseSwapInput takes the first leg the wallet sent: the 0xff…fe log
+    transfers: [
+      { token: N, from: ME, to: EXEC, value: 4_000_000_000_000_000_000n },
+      { token: USDC, from: ME, to: EXEC, value: 4_000_000n },
+      { token: EURC, from: POOL, to: EXEC, value: 3_512_644n },
+      { token: EURC, from: KYBER, to: FEE, value: 7_025n },
+      { token: EURC, from: KYBER, to: ME, value: 3_505_619n },
+    ],
+    usdTokens: DOLLARS,
+  });
+  const back = swapAssets({
+    wallet: ME,
+    inputToken: EURC,
+    transfers: [
+      { token: EURC, from: ME, to: EXEC, value: 4_000_000n },
+      { token: N, from: KYBER, to: FEE, value: 9_106_000_000_000_000n },
+      { token: USDC, from: KYBER, to: FEE, value: 9_106n },
+      { token: N, from: KYBER, to: ME, value: 4_544_044_000_000_000_000n },
+      { token: USDC, from: KYBER, to: ME, value: 4_544_044n },
+    ],
+    usdTokens: DOLLARS,
+  });
+  check("the native-in leg reads as usd→EURC", !!out && out.assetIn === USD_ASSET && out.assetOut === EURC, JSON.stringify(out));
+  check("the return leg reads as EURC→usd", !!back && back.assetIn === EURC && back.assetOut === USD_ASSET, JSON.stringify(back));
+  const c = out && back ? credit([{ ...out, usd: 400 }, { ...back, usd: 454 }]) : [];
+  // +400 then -454 leaves net -54, under the day's high of 400: the return earns 0.
+  check("so the round trip nets: the return leg earns nothing", c[0] === 400 && c[1] === 0, JSON.stringify(c));
+  check("without 0xff…fe in the dollar list the legs would not net (the bug)", assetKey(N, [USDC, WUSDC]) !== USD_ASSET);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

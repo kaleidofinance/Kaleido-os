@@ -28,6 +28,17 @@
  *  a different dollar (the 0x3600 ERC-20 face vs our wrapped-native) still nets. */
 export const USD_ASSET = "usd";
 
+/**
+ * The address Arc logs NATIVE USDC movements under. Every native move is logged
+ * twice in the same receipt: an ERC-20 Transfer from this address (18 decimals,
+ * the native unit) and one from the 0x3600 face (6 decimals). It has no code; it
+ * is a log source only. Measured 2026-09-27 on the first live swaps after #459:
+ * a wallet's USD→EURC leg recorded its input as this address while the EURC→USD
+ * return recorded "usd", so the two sat on different pairs and did not net.
+ * It must be in every dollar list passed to assetKey / swapAssets.
+ */
+export const ARC_NATIVE_USDC_LOG = "0xfffffffffffffffffffffffffffffffffffffffe";
+
 export interface SwapLeg {
   /** Asset the wallet gave up (lowercased address, or USD_ASSET). */
   assetIn: string;
