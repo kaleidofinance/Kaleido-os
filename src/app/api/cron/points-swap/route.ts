@@ -17,7 +17,8 @@ import {
 } from "@/lib/points/swapCollector";
 import { dexTokenPrices } from "@/lib/swap/dexPrices";
 import { creditAction } from "@/lib/points/credit";
-import { recordSwapVolume } from "@/lib/points/swapLedger";
+import { priorLegsToday, recordSwapVolume } from "@/lib/points/swapLedger";
+import { netCreditableUsd, swapAssets } from "@/lib/points/netFlow";
 import {
   backfillNextFrom,
   computeCursorAdvance,
@@ -464,6 +465,17 @@ async function handle(req: Request): Promise<Response> {
           feeReceiver: receiver,
         });
 
+        /* Which assets moved, for round-trip netting. Arc's dollars (the 0x3600
+           ERC-20 face and our wrapped native) are one asset, so a trip out in one
+           and back in the other still nets. Null = unclassifiable, credited in
+           full as before. */
+        const assets = swapAssets({
+          wallet: parsed.wallet,
+          inputToken: parsed.inputToken,
+          transfers,
+          usdTokens: WRAPPED_NATIVE ? [USDC, WRAPPED_NATIVE] : [USDC],
+        });
+
         if (dryRun) {
           // Previewing a backfill: value it, report it, write nothing.
           wouldCredit.push({
@@ -483,6 +495,7 @@ async function handle(req: Request): Promise<Response> {
             venue: cls.venue,
             feePaid: cls.feePaid,
             occurredAt,
+            ...(assets ?? {}),
           });
           if (ok) recorded++;
           else bump("ledger-error");
@@ -491,13 +504,33 @@ async function handle(req: Request): Promise<Response> {
         // Points: skipped for a preview, and for a ledger-only backfill of
         // history whose points were already decided.
         if (!dryRun && !backfill?.ledgerOnly) {
+          /* Round-trip netting: credit only the part of this swap that pushes
+             the wallet's net flow on this pair past its high for the day, so the
+             return leg of a round trip earns nothing (netFlow.ts). Forward-only:
+             it decides this swap and never revisits one already paid. If the
+             ledger cannot be read, credit the full size rather than zero. */
+          let creditUsd = usdValue;
+          if (assets) {
+            const prior = await priorLegsToday({
+              chainId: ARC,
+              wallet: parsed.wallet,
+              occurredAt,
+              excludeTxHash: txHash,
+            });
+            if (prior === null) bump("netflow-unread");
+            else creditUsd = netCreditableUsd(prior, { ...assets, usd: usdValue });
+          }
+          if (!(creditUsd > 0)) {
+            bump("round-trip");
+            continue;
+          }
           const res = await creditAction({
             wallet: parsed.wallet,
             source: "swap",
             season: SEASON,
             chainId: ARC,
             txHash,
-            usdValue,
+            usdValue: creditUsd,
             occurredAt,
           });
           if (res.status === "credited") credited++;
