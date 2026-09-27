@@ -46,6 +46,7 @@ import {
   type CardTokenContext,
   type TokenFacts,
 } from "@/lib/v2/cards";
+import { planChainOf } from "@/lib/v2/intents/planChain";
 import {
   portfolioAnswer,
   healthAnswer,
@@ -627,6 +628,15 @@ export default function AgentPage() {
     if (signal.aborted) return true;
 
     if (!built.ok) {
+      /* A refusal that proposes another command first — a send the chain can't
+         cover, answered with a bridge from wherever the token is held. Held as
+         the pending draft, so naming a chain builds that bridge. */
+      if (built.next) {
+        setPending({ draft: built.next.draft, missing: built.next.missing });
+        note("Can't send it from there — offered a bridge first");
+        say(`${built.error}\n\n${built.next.prompt}`, { via: "local" });
+        return true;
+      }
       /*
        * A refusal that names a fixable value keeps the turn alive.
        *
@@ -682,14 +692,7 @@ export default function AgentPage() {
        a CCTP mint) carries its own chain — so the connected chain would fail
        every per-chain check for a cross-chain plan. Same derivation the sign flow
        pins to; falls back to the connected chain for an ordinary plan. */
-    const auditChainId =
-      built.build.intents.reduce<number | null>((acc, it) => {
-        if (acc != null) return acc;
-        if (it.kind === "bridge") return it.fromChainId;
-        if (it.kind === "aggregatorSwap" || it.kind === "cctpReceive")
-          return it.chainId;
-        return null;
-      }, null) ?? chainId;
+    const auditChainId = planChainOf(built.build.intents) ?? chainId;
     try {
       const res = await fetch("/api/audit", {
         method: "POST",
@@ -1563,6 +1566,24 @@ export default function AgentPage() {
         say("Stopped.", { via: "local" });
         return;
       }
+      /* Why it failed, recorded — the server's log ends at a 200, so a throw
+         here (a dropped stream, a bad payload) was invisible. The error's NAME
+         only, never its message: a message can carry the user's text back. */
+      console.error("[agent] model turn failed", err);
+      const failed = (err instanceof Error ? err.name : typeof err)
+        .replace(/[^a-zA-Z0-9_-]/g, "")
+        .slice(0, 32);
+      void fetch("/api/agent/log", {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: content,
+          route: `failed:${failed || "unknown"}`,
+          chainId,
+          address,
+        }),
+      }).catch(() => {});
       // The model being unreachable is no longer a dead end: commands still
       // execute, so say what still works instead of only apologising.
       say(

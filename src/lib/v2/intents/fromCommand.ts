@@ -81,6 +81,14 @@ export interface SendCommand {
   token: IToken;
   /** Recipient, `0x`-prefixed, case exactly as typed. */
   to: string;
+  /**
+   * The chain the send was asked for ("send 5 USDC to 0x… on Base"), as typed.
+   * Absent means the connected chain. Before this the words were dropped and the
+   * send was built on whatever chain the wallet was on — for an exchange deposit
+   * address that is lost funds. The builder resolves it, re-resolves the token
+   * there, and the sign flow switches the wallet to it.
+   */
+  chain?: string;
 }
 /**
  * A cross-chain move — send's sibling, and the second command in this grammar
@@ -1931,6 +1939,25 @@ const MODEL_ONLY =
  * and a caller with no chain oracle (the marketing planner) gets null and the
  * old behaviour.
  */
+/**
+ * The chain a send names with "on" or "via" — "send 5 USDC to 0x… on Base".
+ * Tries the two-word phrase first ("bnb chain", "arc testnet") so a qualifier
+ * isn't dropped, then the single word. Null unless the registry knows it.
+ */
+function sendChainPhrase(words: string[], ctx: ParseContext): string | null {
+  if (!ctx.isChain) return null;
+  for (let i = 0; i < words.length - 1; i++) {
+    if (words[i] !== "on" && words[i] !== "via") continue;
+    const rest = words.slice(i + 1).filter((w) => !/^0x[0-9a-f]{40}$/.test(w));
+    for (const n of [2, 1]) {
+      if (rest.length < n) continue;
+      const phrase = rest.slice(0, n).join(" ");
+      if (ctx.isChain(phrase)) return phrase;
+    }
+  }
+  return null;
+}
+
 function chainDestination(words: string[], ctx: ParseContext): string | null {
   if (!ctx.isChain) return null;
   const sepAt = words.findIndex((w) => w === "to" || w === "into");
@@ -1999,6 +2026,65 @@ export function parseCommand(
   text: string,
   tokens: IToken[],
   ctx: ParseContext = {},
+): ParseResult {
+  const first = parseCommandOnce(text, tokens, ctx);
+  if (first.status !== "unknown") return first;
+  /* One retry with a misspelled verb corrected ("sedn" → send, "swpa" → swap).
+     Only on a sentence that read as nothing at all, so it can never change a
+     parse that already worked; see correctVerbTypo for what it will not touch. */
+  const fixed = correctVerbTypo(text, tokens);
+  return fixed ? parseCommandOnce(fixed, tokens, ctx) : first;
+}
+
+/**
+ * Verbs a typo is corrected to. Four letters or more, so there is room for one
+ * slip to be unambiguous — "buy", "get" and "pay" are not here.
+ */
+const TYPO_VERBS = [
+  "send", "swap", "bridge", "stake", "unstake", "deposit", "withdraw",
+  "borrow", "repay", "transfer", "supply", "lend", "convert", "exchange",
+];
+
+/**
+ * Real words one edit from a verb, which are never read as that verb: "sent"
+ * is a past send being described, "state" and "steak" are not "stake".
+ */
+const NOT_A_VERB_TYPO = new Set([
+  "sent", "seed", "sand", "spend", "swan", "swab", "swat", "state", "stage",
+  "stack", "steak", "stale", "stare", "bride", "bridges", "ridge", "lead",
+  "land", "lent", "lens", "debit", "repaid", "reply", "supple", "burrow",
+]);
+
+/**
+ * The sentence with its one misspelled verb corrected, or null.
+ *
+ * Deliberately narrow, because a wrong correction builds a plan the user did
+ * not ask for: the word must sit in the first five, be four letters or more,
+ * not already be a word the grammar knows or a token symbol on this chain, be
+ * exactly one edit (a transposition counts as one) from exactly one verb, and
+ * the sentence must carry a number — a command has an amount, a remark rarely
+ * does. Only the first such word is corrected.
+ */
+export function correctVerbTypo(text: string, tokens: IToken[]): string | null {
+  if (!/\d/.test(text)) return null;
+  const parts = text.trim().split(/\s+/);
+  const symbols = new Set(tokens.map((t) => squash(t.symbol)));
+  for (let i = 0; i < Math.min(parts.length, 5); i++) {
+    const w = parts[i].toLowerCase();
+    if (!/^[a-z]{4,}$/.test(w)) continue;
+    if (NEVER_A_TOKEN.has(w) || NOT_A_VERB_TYPO.has(w) || symbols.has(w)) continue;
+    const hits = TYPO_VERBS.filter((v) => editDistance(w, v) === 1);
+    if (hits.length !== 1) continue;
+    parts[i] = hits[0];
+    return parts.join(" ");
+  }
+  return null;
+}
+
+function parseCommandOnce(
+  text: string,
+  tokens: IToken[],
+  ctx: ParseContext,
 ): ParseResult {
   const raw = text.trim();
   if (!raw) return { status: "unknown" };
@@ -2413,12 +2499,33 @@ export function parseCommand(
     }
     if (countAddresses(words) > 1) return { status: "unknown" };
 
+    /* "on Base" / "via Base": the chain the send happens on. Only a phrase the
+       registry knows as a chain, so "on it" or "on my behalf" stay filler. */
+    const onChain = sendChainPhrase(words, ctx);
+    let token = mentions[0]?.token;
+    /* A token the connected chain lacks but the named chain carries ("send 5
+       cbBTC to 0x… on Base" from Arc): take it as that chain knows it. The
+       builder re-resolves by symbol on the named chain either way. */
+    if (!token && onChain && ctx.sourceTokens) {
+      const vAt = words.findIndex((w) => VERBS.send.includes(w));
+      const endAt = words.findIndex(
+        (w, i) => i > vAt && (w === "to" || w === "on" || w === "via"),
+      );
+      const stray = strayWord(words, vAt + 1, endAt >= 0 ? endAt : words.length, mentions);
+      const n = normChainName(onChain);
+      const hit = stray
+        ? ctx.sourceTokens(stray).find((c) => normChainName(c.chainName) === n)
+        : undefined;
+      if (hit) token = hit.token;
+    }
+
     return completeDraft({
       kind: "send",
       amount: amount?.amount,
-      token: mentions[0]?.token,
+      token,
       to: recipient?.to,
-      ...suggestion(words, mentions, tokens),
+      ...(onChain ? { fromChain: onChain } : {}),
+      ...(token ? {} : suggestion(words, mentions, tokens)),
     });
   }
 
@@ -3674,6 +3781,7 @@ export function draftFromCommand(command: Command): Draft | null {
         amount: command.amount,
         token: command.token,
         to: command.to,
+        ...(command.chain ? { fromChain: command.chain } : {}),
       };
     case "bridge":
       return {
@@ -3681,6 +3789,8 @@ export function draftFromCommand(command: Command): Draft | null {
         amount: command.amount,
         token: command.token,
         toChain: command.toChain,
+        ...(command.fromChain ? { fromChain: command.fromChain } : {}),
+        ...(command.toAsset ? { toAsset: command.toAsset } : {}),
       };
     case "borrow":
     case "lend":
@@ -3910,6 +4020,7 @@ export function completeDraft(draft: Draft): ParseResult {
         amount: draft.amount,
         token: draft.token,
         to: draft.to,
+        ...(draft.fromChain ? { chain: draft.fromChain } : {}),
       },
     };
   }

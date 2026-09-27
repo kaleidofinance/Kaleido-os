@@ -9,6 +9,7 @@ import {
 import { formatInterestRate } from "@/constants/utils/FormatInterestRate";
 import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import { getContracts } from "@/constants/registry";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { initialSqrtPriceX96, sortMintParams } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
@@ -498,7 +499,11 @@ register("cancelStakeWithdrawal", {
  */
 register("transfer", {
   render: (i) => ({
-    title: `Send ${i.amount} ${i.symbol}`,
+    title: `Send ${i.amount} ${i.symbol}${
+      i.chainId != null
+        ? ` on ${CHAINS_BY_ID[i.chainId]?.shortName ?? `chain ${i.chainId}`}`
+        : ""
+    }`,
     /*
      * The full address, deliberately, where grantAgentPermission below
      * abbreviates its agent. Address-poisoning attacks work by seeding your
@@ -511,6 +516,13 @@ register("transfer", {
     detail: `To ${i.to}. Irreversible once signed.`,
   }),
   resolve: async (ctx, i) => {
+    /* A send asked for on a named chain carries that chain's token address.
+       Signed anywhere else it would be a different token, or none — refuse. */
+    if (i.chainId != null && ctx.chainId !== i.chainId) {
+      throw new Error(
+        `This send is for ${CHAINS_BY_ID[i.chainId]?.shortName ?? `chain ${i.chainId}`} — switch your wallet to it and try again.`,
+      );
+    }
     const value = ethers.parseUnits(i.amount, i.decimals);
 
     /* `i.token` is deliberately unused here. There is no contract to address,

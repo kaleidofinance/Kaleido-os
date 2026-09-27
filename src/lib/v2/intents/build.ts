@@ -13,7 +13,7 @@ import {
   stakingContracts,
   type LendingSide,
 } from "@/constants/registry";
-import { CHAINS_BY_ID } from "@/constants/chains";
+import { CHAINS, CHAINS_BY_ID } from "@/constants/chains";
 import { resolveChain } from "@/lib/ai/bridgeQuotes";
 import { CCTP_ENABLED, CCTP_USDC, isCctpCorridor } from "@/lib/bridge/cctp";
 import { symbolForAddress } from "@/constants/tokens";
@@ -43,7 +43,8 @@ import { hasKyberSwap, aggregatorToken, nativeSwapErc20 } from "@/lib/swap/kyber
 import { ARC_USDC, ARC_USDC_DECIMALS, ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
 import { PERMIT2 } from "@/lib/argus/swap";
 import type { Intent } from "@/lib/v2/intents";
-import type { Command, Slot } from "@/lib/v2/intents/fromCommand";
+import type { Command, Draft, Slot } from "@/lib/v2/intents/fromCommand";
+import type { IToken } from "@/constants/types/dex";
 /* A value import, unlike the type above, and the only one in this file that
    costs nothing: fromCommand.ts is deliberately dependency-free. The set is
    shared rather than restated so the parser and this branch cannot disagree
@@ -139,9 +140,22 @@ export interface PlanRetry {
   prompt: string;
 }
 
+/**
+ * A refusal that proposes a DIFFERENT command to run first — today, a bridge
+ * that would fund a send the target chain can't cover. The page holds `draft`
+ * as the pending command and asks `prompt`, so the next reply ("Arc") fills
+ * `missing` and builds that plan. Unlike `retry`, which re-asks a slot of the
+ * same command.
+ */
+export interface PlanNext {
+  draft: Draft;
+  missing: Slot;
+  prompt: string;
+}
+
 export type PlanResult =
   | { ok: true; build: PlanBuild }
-  | { ok: false; error: string; retry?: PlanRetry };
+  | { ok: false; error: string; retry?: PlanRetry; next?: PlanNext };
 
 export interface PlannerOptions {
   slippageBps: number;
@@ -516,6 +530,17 @@ export interface PlanDeps {
    * guess a number.
    */
   tokenBalance?(token: string): Promise<bigint | null>;
+  /**
+   * This wallet's balance of `token` on ANY chain — native currency when
+   * `isNative`. Read by send, to check the chain it was asked for and to find
+   * where else the token is held. Null when it can't be read (fail open: the
+   * sign flow's own shortfall check still runs).
+   */
+  balanceOn?(
+    chainId: number,
+    token: string,
+    isNative: boolean,
+  ): Promise<bigint | null>;
   /**
    * What the faucet lists, including assets it has paused.
    *
@@ -894,6 +919,88 @@ function gasTokenReserve(
     isNativeSentinel(token.address, "dex") ||
     isNativeSentinel(token.address, "lending");
   return isGas ? ethers.parseUnits(USDC_GAS_RESERVE, token.decimals) : 0n;
+}
+
+/**
+ * A send the chain can't cover — the token isn't there, or not enough of it is.
+ *
+ * Looks for the token on every other mainnet this wallet holds it on and, when
+ * it finds some, proposes bridging the amount to the send's chain first. The
+ * proposal is a held bridge draft missing only its source, so the user names
+ * the chain to bridge from (it is asked even with one option: moving money off
+ * a chain is theirs to choose). Nothing held anywhere → a plain refusal. Only
+ * mainnets, which is all a bridge can leave from.
+ */
+async function sendShortfall(
+  deps: PlanDeps,
+  args: {
+    amount: string;
+    token: IToken;
+    chainId: number;
+    why: string;
+  },
+): Promise<PlanResult> {
+  const { amount, token, chainId, why } = args;
+  const dest = CHAINS_BY_ID[chainId];
+  const destName = dest?.shortName ?? `chain ${chainId}`;
+  if (!deps.balanceOn || dest?.network !== "mainnet") {
+    return { ok: false, error: why };
+  }
+  const reads = await Promise.all(
+    CHAINS.filter((c) => c.network === "mainnet" && c.id !== chainId).map(
+      async (c) => {
+        const t =
+          resolveUserToken(c, token.symbol, "dex") ??
+          resolveUserToken(c, token.symbol, "lending");
+        if (!t) return null;
+        const native =
+          isNativeSentinel(t.address, "dex") ||
+          isNativeSentinel(t.address, "lending");
+        const bal = await deps.balanceOn!(c.id, t.address, native).catch(
+          () => null,
+        );
+        return bal && bal > 0n
+          ? { name: c.shortName, amount: ethers.formatUnits(bal, t.decimals) }
+          : null;
+      },
+    ),
+  );
+  const held = reads.filter(
+    (r): r is { name: string; amount: string } => r !== null,
+  );
+  if (held.length === 0) {
+    return {
+      ok: false,
+      error: `${why} I don't see ${token.symbol} in this wallet on any other chain either, so there's nothing to bridge from.`,
+    };
+  }
+  const list = held.map((h) => `${h.name} (${shortNum(h.amount)})`);
+  const where =
+    list.length === 1
+      ? list[0]
+      : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+  return {
+    ok: false,
+    error: `${why} You hold ${token.symbol} on ${where}.`,
+    next: {
+      draft: {
+        kind: "bridge",
+        amount,
+        token,
+        toChain: destName,
+        sourceOptions: held.map((h) => h.name),
+      },
+      missing: "fromChain",
+      prompt: `I can bridge ${amount} ${token.symbol} to ${destName} first, then you can send it. Which chain should it come from?`,
+    },
+  };
+}
+
+/** A balance for a sentence: at most 4 decimals, no trailing zeros. */
+function shortNum(x: string): string {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return x;
+  return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
 export async function buildIntents(
@@ -2003,7 +2110,9 @@ export async function buildIntents(
    * Kaleido's contracts entirely.
    */
   if (command.kind === "send") {
-    const { amount, token, to } = command;
+    const { amount, to } = command;
+    let token: { address: string; symbol: string; decimals: number } =
+      command.token;
 
     let recipient: string;
     try {
@@ -2021,6 +2130,37 @@ export async function buildIntents(
         ok: false,
         error: `${to} isn't a valid recipient address. Copy it again from your wallet or an explorer — one wrong character is unrecoverable once it's sent.`,
       };
+    }
+
+    /* The chain the send was asked for ("… on Base"). Resolved, and the token
+       RE-RESOLVED there by symbol: the grammar matched it against the connected
+       chain's registry, and Base's USDC is a different contract from Arc's. A
+       token that chain doesn't carry is not sent anywhere else instead — it is
+       offered as a bridge (sendShortfall). */
+    let sendChainId = chainId;
+    if (command.chain) {
+      const target = resolveChain(command.chain);
+      if (!target) {
+        return {
+          ok: false,
+          error: `I don't recognise the chain "${command.chain}".`,
+        };
+      }
+      if (target.id !== chainId) {
+        const there =
+          resolveUserToken(CHAINS_BY_ID[target.id], token.symbol, "dex") ??
+          resolveUserToken(CHAINS_BY_ID[target.id], token.symbol, "lending");
+        if (!there) {
+          return sendShortfall(deps, {
+            amount,
+            token: command.token,
+            chainId: target.id,
+            why: `I can't find ${token.symbol} on ${target.shortName}.`,
+          });
+        }
+        sendChainId = target.id;
+        token = there;
+      }
     }
 
     // Decimals come from the token the parser matched, never a default: a
@@ -2045,12 +2185,40 @@ export async function buildIntents(
       isNativeSentinel(token.address, "dex") ||
       isNativeSentinel(token.address, "lending");
 
+    /* Enough of it on the chain it's being sent from? Checked here, not only at
+       sign time, because the answer to "no" is a different plan — a bridge from
+       wherever the token IS — and that belongs in the conversation. A balance
+       that can't be read passes (the sign flow's shortfall check still runs). */
+    if (sendChainId !== undefined && deps.balanceOn) {
+      const have = await deps.balanceOn(sendChainId, token.address, isNative);
+      const want = ethers.parseUnits(amount, token.decimals);
+      if (have !== null && have < want) {
+        const chainName =
+          CHAINS_BY_ID[sendChainId]?.shortName ?? `chain ${sendChainId}`;
+        return sendShortfall(deps, {
+          amount,
+          token: command.token,
+          chainId: sendChainId,
+          why:
+            have === 0n
+              ? `You don't have any ${token.symbol} on ${chainName}.`
+              : `You have ${ethers.formatUnits(have, token.decimals)} ${token.symbol} on ${chainName}, not ${amount}.`,
+        });
+      }
+    }
+
+    const onOtherChain =
+      sendChainId !== undefined && sendChainId !== chainId;
+    const chainLabel = onOtherChain
+      ? ` on ${CHAINS_BY_ID[sendChainId!]?.shortName ?? `chain ${sendChainId}`}`
+      : "";
+
     return {
       ok: true,
       build: {
         // The full address, not a truncation — see the transfer renderer in
         // definitions.ts for why abbreviating this one is unsafe.
-        summary: `Send ${amount} ${token.symbol} to ${recipient}.`,
+        summary: `Send ${amount} ${token.symbol}${chainLabel} to ${recipient}.`,
         intents: [
           {
             kind: "transfer",
@@ -2060,6 +2228,7 @@ export async function buildIntents(
             decimals: token.decimals,
             symbol: token.symbol,
             isNative,
+            ...(onOtherChain ? { chainId: sendChainId } : {}),
           },
         ],
       },

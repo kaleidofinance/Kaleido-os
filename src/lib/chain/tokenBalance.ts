@@ -41,3 +41,24 @@ export async function readTokenBalance(
     return null;
   }
 }
+
+/**
+ * One wallet's balance on ANY chain — the native currency when `isNative`, else
+ * an ERC-20 — in base units, or null when it can't be read. Used by send to
+ * check the chain it was asked for, and to find where else a token is held.
+ */
+export async function readBalanceOn(
+  chainId: number,
+  address: string | undefined,
+  token: string,
+  isNative: boolean,
+): Promise<bigint | null> {
+  if (!isNative) return readTokenBalance(chainId, address, token);
+  const provider = providerForChain(chainId);
+  if (!provider || !address || !ethers.isAddress(address)) return null;
+  try {
+    return BigInt((await provider.getBalance(address)).toString());
+  } catch {
+    return null;
+  }
+}

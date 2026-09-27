@@ -4055,6 +4055,112 @@ async function main() {
     );
   }
 
+  console.log("a send on a named chain, and a bridge offer when it can't be covered");
+  {
+    const ARC = 5042;
+    const BASE = 8453;
+    const { CHAINS_BY_ID } = await import("../../../constants/chains");
+    const baseName = CHAINS_BY_ID[BASE]?.shortName ?? "Base";
+    const arcName = CHAINS_BY_ID[ARC]?.shortName ?? "Arc";
+    const baseUsdc =
+      registry.resolveUserToken(CHAINS_BY_ID[BASE], "USDC", "dex") ??
+      registry.resolveUserToken(CHAINS_BY_ID[BASE], "USDC", "lending");
+    check("fixture: Base mainnet carries USDC", !!baseUsdc, "");
+    const usdcArc: IToken = {
+      address: "0x3600000000000000000000000000000000000000",
+      name: "USDC", symbol: "USDC", decimals: 6, chainId: ARC,
+      tags: ["stablecoin", "native-alias"],
+    };
+    const TO = "0xACF53eE33893FA6F9fc246b6a4261ceF95A9D77C";
+    const withBalances = (byChain: Record<number, bigint | null>) => {
+      const { deps } = fakeDeps({ chainId: ARC });
+      const seen: number[] = [];
+      return {
+        seen,
+        deps: {
+          ...deps,
+          balanceOn: async (id: number) => {
+            seen.push(id);
+            return id in byChain ? byChain[id] : 0n;
+          },
+        } as PlanDeps,
+      };
+    };
+    const send = (deps: PlanDeps, chain?: string, token: IToken = usdcArc) =>
+      build({ kind: "send", amount: "5", token, to: TO, ...(chain ? { chain } : {}) }, deps);
+
+    {
+      const { deps } = withBalances({ [BASE]: 10_000_000n });
+      const r = await send(deps, "base");
+      const t = r.ok ? at(r, 0) : ({} as Record<string, unknown>);
+      check(
+        "'on Base' from Arc sends Base's USDC, pinned to Base",
+        r.ok && t.chainId === BASE && same(String(t.token), baseUsdc?.address ?? "") && t.decimals === baseUsdc?.decimals,
+        JSON.stringify(r).slice(0, 300),
+      );
+      check("the summary names the chain", summaryOf(r).includes(`on ${baseName}`), summaryOf(r));
+    }
+    {
+      const { deps } = withBalances({ [ARC]: 10_000_000n });
+      const r = await send(deps, "arc");
+      const t = r.ok ? at(r, 0) : ({} as Record<string, unknown>);
+      check("naming the connected chain pins nothing", r.ok && t.chainId === undefined, JSON.stringify(r).slice(0, 200));
+    }
+    {
+      const { deps } = withBalances({ [BASE]: null });
+      const r = await send(deps, "base");
+      check("an unreadable balance doesn't block the send (sign flow still checks)", r.ok, JSON.stringify(r).slice(0, 200));
+    }
+    {
+      const { deps } = withBalances({ [BASE]: 0n, [ARC]: 12_500_000_000_000_000_000n });
+      const r = await send(deps, "base");
+      const next = !r.ok ? r.next : undefined;
+      check(
+        "no USDC on Base → says so, and offers a bridge from where it's held",
+        !r.ok && /don't have any USDC on/i.test(r.error) && r.error.includes(arcName) && !!next,
+        JSON.stringify(r).slice(0, 300),
+      );
+      check(
+        "the offer is a held bridge of the same amount TO Base, asking the source",
+        !!next && next.draft.kind === "bridge" && next.draft.amount === "5" &&
+          next.draft.toChain === baseName && next.missing === "fromChain" &&
+          (next.draft.sourceOptions ?? []).includes(arcName) && /which chain/i.test(next.prompt),
+        JSON.stringify(next),
+      );
+    }
+    {
+      const { deps } = withBalances({ [BASE]: 1_000_000n });
+      const r = await send(deps, "base");
+      check(
+        "too little on Base names what's there",
+        !r.ok && /You have 1(\.0)? USDC on/i.test(r.error),
+        JSON.stringify(r).slice(0, 300),
+      );
+      check("…and with nothing held elsewhere, offers no bridge", !r.ok && !r.next && /nothing to bridge from/i.test(r.error), JSON.stringify(r).slice(0, 300));
+    }
+    {
+      const { deps } = withBalances({});
+      const r = await send(deps, "mars");
+      check("an unknown chain is refused by name", !r.ok && /don't recognise the chain "mars"/.test(r.error), JSON.stringify(r));
+    }
+    {
+      const zzz: IToken = { address: "0x1111111111111111111111111111111111111111", name: "Z", symbol: "ZZZNOPE", decimals: 18, chainId: ARC };
+      const { deps } = withBalances({});
+      const r = await send(deps, "base", zzz);
+      check("a token Base doesn't carry is never sent as something else", !r.ok && /can't find ZZZNOPE on/i.test(r.error), JSON.stringify(r).slice(0, 200));
+    }
+    {
+      /* The connected chain is checked too once a balance reader is wired. */
+      const { deps } = withBalances({ [ARC]: 0n, [BASE]: 40_000_000n });
+      const r = await send(deps);
+      check(
+        "an empty connected chain offers a bridge from where the token is",
+        !r.ok && !!r.next && r.next.draft.toChain === arcName && (r.next.draft.sourceOptions ?? []).includes(baseName),
+        JSON.stringify(r).slice(0, 300),
+      );
+    }
+  }
+
   console.log(`\n${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exit(1);
 }

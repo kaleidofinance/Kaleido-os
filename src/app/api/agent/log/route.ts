@@ -24,8 +24,12 @@ export const runtime = "nodejs";
  * strings. An optional chain and address; the address is hashed before it is
  * stored and the hash is short on purpose.
  */
+/* Every label the agent page sends. It used to omit token-card, health,
+   refused:* and command:*:card, so those turns were silently dropped (204) and
+   never reached the backlog. failed:<ErrorName> records why a model turn fell
+   over on the client, which the server log cannot see. */
 const ROUTE =
-  /^(faq|docs|command|asks):[a-zA-Z0-9_-]{1,32}$|^model$|^local-intent:(fresh|follow_up|question)$/;
+  /^(faq|docs|asks|refused|failed):[a-zA-Z0-9_-]{1,32}$|^command:[a-zA-Z0-9_-]{1,32}(:card)?$|^(model|token-card|health)$|^local-intent:(fresh|follow_up|question)$/;
 
 export async function POST(req: NextRequest) {
   try {

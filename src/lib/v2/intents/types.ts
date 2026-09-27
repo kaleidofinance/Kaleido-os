@@ -235,6 +235,12 @@ export type Intent =
       symbol: string;
       /** True for the chain's native currency: sent as value, no calldata. */
       isNative?: boolean;
+      /**
+       * The chain this send is signed on, when the user named one that is not
+       * the connected chain ("… on Base"). Pins the sign flow (planChainOf) and
+       * the audit to it; the resolver refuses to sign it anywhere else.
+       */
+      chainId?: number;
     }
   /* ----------------------------------------------------------- bridge -- */
   /*
