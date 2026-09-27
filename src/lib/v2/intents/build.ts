@@ -151,6 +151,12 @@ export interface PlanNext {
   draft: Draft;
   missing: Slot;
   prompt: string;
+  /**
+   * The command this one exists to enable — the send a funding bridge is for.
+   * The page prepares it (built, audited, up for review; never signed) once the
+   * bridge has landed. See lib/v2/intents/afterBridge.ts.
+   */
+  then?: Command;
 }
 
 export type PlanResult =
@@ -934,13 +940,16 @@ function gasTokenReserve(
 async function sendShortfall(
   deps: PlanDeps,
   args: {
+    /** What must ARRIVE on the send's chain: the shortfall, not the whole send. */
     amount: string;
     token: IToken;
     chainId: number;
     why: string;
+    /** The send this bridge funds, prepared once the bridge lands. */
+    then: Command;
   },
 ): Promise<PlanResult> {
-  const { amount, token, chainId, why } = args;
+  const { amount, token, chainId, why, then } = args;
   const dest = CHAINS_BY_ID[chainId];
   const destName = dest?.shortName ?? `chain ${chainId}`;
   if (!deps.balanceOn || dest?.network !== "mainnet") {
@@ -989,11 +998,22 @@ async function sendShortfall(
         token,
         toChain: destName,
         sourceOptions: held.map((h) => h.name),
+        /* Topped up by the route's fees at build time, so the send that follows
+           isn't short. */
+        receiveAtLeast: amount,
       },
       missing: "fromChain",
-      prompt: `I can bridge ${amount} ${token.symbol} to ${destName} first, then you can send it. Which chain should it come from?`,
+      prompt: `I can bridge ${amount} ${token.symbol} to ${destName} first (a little more, to cover the bridge's fees), and have your send ready to sign as soon as it lands. Which chain should it come from?`,
+      /* Pinned to the chain it's for: the wallet will have moved to the bridge's
+         source to sign it, and an unpinned send would follow it there. */
+      then: then.kind === "send" ? { ...then, chain: destName } : then,
     },
   };
+}
+
+/** A formatUnits string without a trailing ".0" or zeros — still parseable. */
+function plainUnits(x: string): string {
+  return x.includes(".") ? x.replace(/0+$/, "").replace(/\.$/, "") : x;
 }
 
 /** A balance for a sentence: at most 4 decimals, no trailing zeros. */
@@ -2156,6 +2176,7 @@ export async function buildIntents(
             token: command.token,
             chainId: target.id,
             why: `I can't find ${token.symbol} on ${target.shortName}.`,
+            then: command,
           });
         }
         sendChainId = target.id;
@@ -2196,9 +2217,12 @@ export async function buildIntents(
         const chainName =
           CHAINS_BY_ID[sendChainId]?.shortName ?? `chain ${sendChainId}`;
         return sendShortfall(deps, {
-          amount,
+          /* Only what's missing — bridging the whole send would strand the
+             balance already there. */
+          amount: plainUnits(ethers.formatUnits(want - have, token.decimals)),
           token: command.token,
           chainId: sendChainId,
+          then: command,
           why:
             have === 0n
               ? `You don't have any ${token.symbol} on ${chainName}.`
@@ -2259,7 +2283,9 @@ export async function buildIntents(
    * prices the notional against the per-action cap.
    */
   if (command.kind === "bridge") {
-    const { amount, token, toChain, fromChain, toAsset } = command;
+    const { token, toChain, fromChain, toAsset } = command;
+    /* Mutable only for a funding bridge's top-up (receiveAtLeast, below). */
+    let amount = command.amount;
 
     // A bridge is defined by the chain it leaves. Without one there is no
     // corridor to resolve and no `fromChainId` for the Intent, so refuse here
@@ -2377,24 +2403,71 @@ export async function buildIntents(
       isNativeSentinel(srcToken.address, "dex") ||
       isNativeSentinel(srcToken.address, "lending");
 
-    const route = await deps.bridgeRoute({
-      toChain,
-      asset: srcToken.symbol,
-      amount,
-      decimals: srcToken.decimals,
-      isNative,
-      tokenAddress: srcToken.address,
-      sourceChainId,
-      ...(crossAsset && destToken
-        ? {
-            toAsset: destToken.symbol,
-            toTokenAddress: destToken.address,
-            toDecimals: destToken.decimals,
-          }
-        : {}),
-    });
+    const quoteFor = (amt: string) =>
+      deps.bridgeRoute({
+        toChain,
+        asset: srcToken.symbol,
+        amount: amt,
+        decimals: srcToken.decimals,
+        isNative,
+        tokenAddress: srcToken.address,
+        sourceChainId,
+        ...(crossAsset && destToken
+          ? {
+              toAsset: destToken.symbol,
+              toTokenAddress: destToken.address,
+              toDecimals: destToken.decimals,
+            }
+          : {}),
+      });
+    let route = await quoteFor(amount);
     if ("error" in route) {
       return { ok: false, error: route.error };
+    }
+
+    /* A FUNDING bridge (it exists so a send can follow) must deliver at least
+       what the send needs, so top the amount up by what the route keeps. Uses
+       the route's own report of what arrives — its guaranteed floor when it has
+       one, else its expected output — scaled between the two chains' decimals
+       (BSC's USDC is 18, Base's 6), plus 10% of the gap for price drift, and
+       re-quotes to prove it. A route that reports nothing (canonical 1:1) is
+       taken as 1:1. Same-asset only: a cross-asset bridge has its own floor. */
+    let toppedUp = false;
+    if (command.receiveAtLeast && !crossAsset) {
+      const destMeta = resolveChain(toChain);
+      const destEntry = destMeta
+        ? (resolveUserToken(CHAINS_BY_ID[destMeta.id], srcToken.symbol, "dex") ??
+          resolveUserToken(CHAINS_BY_ID[destMeta.id], srcToken.symbol, "lending"))
+        : undefined;
+      const destDecimals = destEntry?.decimals ?? srcToken.decimals;
+      const target = ethers.parseUnits(command.receiveAtLeast, destDecimals);
+      const toSrc = (destUnits: bigint) => {
+        const d = srcToken.decimals - destDecimals;
+        if (d >= 0) return destUnits * 10n ** BigInt(d);
+        const div = 10n ** BigInt(-d);
+        return (destUnits + div - 1n) / div; // round UP: never under-fund
+      };
+      for (let i = 0; i < 3; i++) {
+        const reported = route.minReceivedUnits ?? route.receivedUnits;
+        if (reported == null) break;
+        const got = BigInt(reported);
+        if (got >= target) break;
+        const gap = toSrc(target - got);
+        const next =
+          ethers.parseUnits(amount, srcToken.decimals) + gap + gap / 10n + 1n;
+        amount = ethers.formatUnits(next, srcToken.decimals);
+        const requoted = await quoteFor(amount);
+        if ("error" in requoted) return { ok: false, error: requoted.error };
+        route = requoted;
+        toppedUp = true;
+      }
+      const finalReported = route.minReceivedUnits ?? route.receivedUnits;
+      if (finalReported != null && BigInt(finalReported) < target) {
+        return {
+          ok: false,
+          error: `I couldn't find a ${srcToken.symbol} route to ${destMeta?.shortName ?? toChain} that's sure to deliver ${command.receiveAtLeast} after fees — the quotes kept moving. Try again in a moment.`,
+        };
+      }
     }
 
     /* A token leg with no spender cannot be signed: the router would have no
@@ -2422,15 +2495,22 @@ export async function buildIntents(
     const srcPhrase = fromName
       ? `${amount} ${srcToken.symbol} from ${fromName}`
       : `${amount} ${srcToken.symbol}`;
+    const topUpNote =
+      command.receiveAtLeast && !crossAsset
+        ? toppedUp
+          ? ` That covers the bridge's fees, so at least ${command.receiveAtLeast} ${srcToken.symbol} arrives for your send.`
+          : ` At least ${command.receiveAtLeast} ${srcToken.symbol} arrives for your send.`
+        : "";
     return {
       ok: true,
       build: {
         summary:
-          crossAsset && route.toSymbol && outHuman
+          (crossAsset && route.toSymbol && outHuman
             ? `Bridge ${srcPhrase} to about ${outHuman} ${route.toSymbol} on ${route.toChainName}.`
             : fromName
               ? `Bridge ${amount} ${srcToken.symbol} from ${fromName} to ${route.toChainName}.`
-              : `Bridge ${amount} ${srcToken.symbol} to ${route.toChainName}.`,
+              : `Bridge ${amount} ${srcToken.symbol} to ${route.toChainName}.`) +
+          topUpNote,
         intents: [
           ...(isNative
             ? []

@@ -47,6 +47,8 @@ import {
   type TokenFacts,
 } from "@/lib/v2/cards";
 import { planChainOf } from "@/lib/v2/intents/planChain";
+import { arrivalTarget, waitForArrival } from "@/lib/v2/intents/afterBridge";
+import { readBalanceOn } from "@/lib/chain/tokenBalance";
 import {
   portfolioAnswer,
   healthAnswer,
@@ -243,7 +245,16 @@ export default function AgentPage() {
   const [pending, setPending] = useState<{
     draft: Draft;
     missing: Slot;
+    /** What to prepare once this draft's plan lands — the send a funding
+        bridge is for. See lib/v2/intents/afterBridge.ts. */
+    then?: Command;
   } | null>(null);
+  /* The send waiting on the bridge plan currently up for review; replaced by
+     every plan built, so an abandoned bridge can't trigger it later. */
+  const afterBridgeRef = useRef<Command | null>(null);
+  /* The running arrival watch, so Clear or leaving the page stops it. */
+  const arrivalWatchRef = useRef<AbortController | null>(null);
+  useEffect(() => () => arrivalWatchRef.current?.abort(), []);
   /*
    * The last command that planned successfully, so later referential messages
    * can continue it. `pending` is the other half of this and they are not the
@@ -454,6 +465,7 @@ export default function AgentPage() {
   const planLocally = async (
     result: ParseResult,
     signal: AbortSignal,
+    then?: Command,
   ): Promise<boolean> => {
     if (result.status === "incomplete") {
       setPending({ draft: result.draft, missing: result.missing });
@@ -632,7 +644,11 @@ export default function AgentPage() {
          cover, answered with a bridge from wherever the token is held. Held as
          the pending draft, so naming a chain builds that bridge. */
       if (built.next) {
-        setPending({ draft: built.next.draft, missing: built.next.missing });
+        setPending({
+          draft: built.next.draft,
+          missing: built.next.missing,
+          ...(built.next.then ? { then: built.next.then } : {}),
+        });
         note("Can't send it from there — offered a bridge first");
         say(`${built.error}\n\n${built.next.prompt}`, { via: "local" });
         return true;
@@ -735,8 +751,52 @@ export default function AgentPage() {
 
     const n = built.build.intents.length;
     note(`Built ${n} step${n === 1 ? "" : "s"} to sign`);
+    afterBridgeRef.current =
+      then && built.build.intents.some((it) => it.kind === "bridge")
+        ? then
+        : null;
     say(built.build.summary, { via: "local", plan: built.build.intents });
     return true;
+  };
+
+  /*
+   * After a funding bridge is signed: watch the destination balance and, once it
+   * covers the send, build that send and put it up for review. Never signs it.
+   * Stopped by Clear, by leaving the page, or after 20 minutes.
+   */
+  const prepareAfterBridge = async (then: Command) => {
+    const target = arrivalTarget(then);
+    if (!target || !address) {
+      say("Bridge sent. When it lands, ask me to send it again and I'll build the send.", { via: "local" });
+      return;
+    }
+    const to = then.kind === "send" ? then.to : "";
+    say(
+      `Bridge sent. I'll have your send of ${then.kind === "send" ? then.amount : ""} ${target.symbol} to ${to} ready to review as soon as it lands on ${target.chainName} — keep this page open.`,
+      { via: "local" },
+    );
+    arrivalWatchRef.current?.abort();
+    const watch = new AbortController();
+    arrivalWatchRef.current = watch;
+    const outcome = await waitForArrival({
+      read: () =>
+        readBalanceOn(target.chainId, address, target.token, target.isNative),
+      need: target.units,
+      intervalMs: 8_000,
+      timeoutMs: 20 * 60_000,
+      signal: watch.signal,
+    });
+    if (arrivalWatchRef.current === watch) arrivalWatchRef.current = null;
+    if (outcome === "aborted") return;
+    if (outcome === "timeout") {
+      say(
+        `Your ${target.symbol} hasn't reached ${target.chainName} after 20 minutes. Ask me about your bridge status, or ask me to send it again once it lands.`,
+        { via: "local" },
+      );
+      return;
+    }
+    say(`Your ${target.symbol} arrived on ${target.chainName}. Here's the send — check the address, then sign.`, { via: "local" });
+    await planLocally({ status: "ok", command: then }, watch.signal);
   };
 
   /**
@@ -970,7 +1030,7 @@ export default function AgentPage() {
         if (filled.status !== "unknown") {
           note("Took this as the answer to what I asked");
           log(`asks:${pending.missing}`);
-          await planLocally(filled, abort.signal);
+          await planLocally(filled, abort.signal, pending.then);
           return;
         }
         // The reply didn't answer the question, so drop the draft and let the
@@ -1818,6 +1878,15 @@ export default function AgentPage() {
    */
   const onComplete = (settled: SettledStep[] = []) => {
     setPanel({ kind: "idle" });
+    /* The funding bridge landed its source transaction: prepare the send it was
+       for. Only when the plan was that bridge and its last step (the bridge)
+       broadcast — a cancelled or half-run plan prepares nothing. */
+    const then = afterBridgeRef.current;
+    afterBridgeRef.current = null;
+    const bridged =
+      !!latest?.plan?.some((it) => it.kind === "bridge") &&
+      !!settled[settled.length - 1]?.hash;
+    if (then && bridged) void prepareAfterBridge(then);
     setLastOutcome({
       kind: settled.some((step) => step.hash && !step.skipped) ? "confirmed" : "nothing",
       steps: settled,
@@ -1927,6 +1996,8 @@ export default function AgentPage() {
                   clearThread();
                   setPending(null);
                   setCardToken(null);
+                  afterBridgeRef.current = null;
+                  arrivalWatchRef.current?.abort();
                   setPanel({ kind: "idle" });
                 }}
                 title="Delete this conversation from this device"

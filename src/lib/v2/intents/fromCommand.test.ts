@@ -2596,6 +2596,17 @@ console.log("swap resolves relative amounts; other verbs escalate");
     check("correctVerbTypo leaves a word the grammar knows alone", correctVerbTypo("send 5 usdc", TOKENS) === null);
     check("correctVerbTypo needs a number in the sentence", correctVerbTypo("sedn usdc", TOKENS) === null);
     check("correctVerbTypo fixes only the first slip", correctVerbTypo("sedn 5 usdc", TOKENS) === "send 5 usdc");
+    /* The bridge offered to fund a send: answering "which chain?" keeps the
+       floor on what must arrive, so the builder can top it up. */
+    const usdc = TOKENS.find((t) => t.symbol === "USDC");
+    const offered = completeDraft({ kind: "bridge", amount: "4", token: usdc, toChain: "Base", sourceOptions: ["Arc", "BSC"], receiveAtLeast: "4" });
+    check("the funding bridge asks which chain to bridge from", offered.status === "incomplete" && offered.missing === "fromChain", JSON.stringify(offered).slice(0, 160));
+    const chosen = offered.status === "incomplete" ? fillSlot(offered.draft, "fromChain", "arc", TOKENS) : null;
+    check(
+      "answering 'arc' builds the bridge from Arc and keeps the arrival floor",
+      !!chosen && chosen.status === "ok" && chosen.command.kind === "bridge" && chosen.command.fromChain === "Arc" && chosen.command.receiveAtLeast === "4",
+      JSON.stringify(chosen).slice(0, 200),
+    );
   }
 
   console.log("\n— the question names the real problem —");
