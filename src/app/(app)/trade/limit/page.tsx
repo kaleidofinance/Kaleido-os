@@ -28,6 +28,11 @@ import {
   type StoredOrder,
 } from "@/lib/dex/orders";
 import { FEE_TIERS } from "@/lib/dex/liquidity";
+import {
+  aggregatorToken,
+  getKyberSwapExecution,
+  hasKyberSwap,
+} from "@/lib/swap/kyberswap";
 import s from "../trade.module.css";
 import d from "../deferred.module.css";
 import l from "./limit.module.css";
@@ -146,6 +151,14 @@ const balanceText = (balance: string, unread: boolean) =>
  * significant figures expressed as decimals, which is more precision than a
  * price input needs and less than the 18 `parseUnits` would accept.
  */
+/** `v` with at most `dp` decimals, so parseUnits accepts it for a coarser token
+ *  (native USDC is 18 decimals here, its ERC-20 face 6). Truncates, never rounds
+ *  up. */
+const truncTo = (v: string, dp: number) => {
+  const [w, f = ""] = v.split(".");
+  return f && dp > 0 ? `${w}.${f.slice(0, dp)}` : w;
+};
+
 const priceText = (n: number) => {
   if (!Number.isFinite(n) || n <= 0) return "";
   const places = Math.min(18, Math.max(0, 7 - Math.floor(Math.log10(n))));
@@ -452,8 +465,21 @@ export default function LimitPage() {
   const [expiryIdx, setExpiryIdx] = useState(1);
   const [intervalIdx, setIntervalIdx] = useState(0);
   const [fills, setFills] = useState(4);
-  const [market, setMarket] = useState(0);
+  /* Two rates, because on Arc they are far apart.
+   *   poolRate — what Kaleido's own V3 pools pay for this size. Orders are filled
+   *              through these (KaleidoOrders routes a V3 path on our router), so
+   *              it is what can fill RIGHT NOW.
+   *   refRate  — the market, from the aggregator the Swap tab routes through
+   *              (KyberSwap), for the same size. Null where there is none.
+   * `market` below is refRate when there is one, else poolRate — so presets and
+   * "at market" mean the real market, and a chain without the aggregator
+   * behaves exactly as before. Measured 2026-09-28: 75.67 USDC→EURC on Arc,
+   * our ~$20/side pool 0.5032 vs KyberSwap ~0.876 — the card used to call 0.5032
+   * "market". */
+  const [poolRate, setPoolRate] = useState(0);
+  const [refRate, setRefRate] = useState(0);
   const [quoting, setQuoting] = useState(false);
+  const market = refRate || poolRate;
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
   /** The plan under review, whichever control raised it. Null while editing. */
   const [reviewing, setReviewing] = useState<Intent[] | null>(null);
@@ -589,7 +615,8 @@ export default function LimitPage() {
    * what lets the preset chips fill a price before anything is typed. */
   useEffect(() => {
     if (!tokenIn || !tokenOut || tokenIn.address === tokenOut.address) {
-      setMarket(0);
+      setPoolRate(0);
+      setRefRate(0);
       return;
     }
     const size = Number(amountIn) > 0 ? amountIn : "1";
@@ -618,9 +645,36 @@ export default function LimitPage() {
           return Number.isFinite(v) && v > m ? v : m;
         }, 0);
         const rate = best / Number(size);
-        if (!cancelled) setMarket(Number.isFinite(rate) && rate > 0 ? rate : 0);
+        if (!cancelled) setPoolRate(Number.isFinite(rate) && rate > 0 ? rate : 0);
+
+        /* The reference market: the same aggregator quote the Swap tab takes, for
+           the same size. It needs the connected address (KyberSwap bakes the
+           sender into the route), so a disconnected visitor keeps the pool rate
+           as "market", as before. Native USDC is quoted as its ERC-20 face. */
+        let ref = 0;
+        if (chainId && hasKyberSwap(chainId) && address) {
+          const sell = aggregatorToken(chainId, tokenIn);
+          const buy = aggregatorToken(chainId, tokenOut);
+          const exec = await getKyberSwapExecution({
+            chainId,
+            tokenIn: sell.address,
+            tokenOut: buy.address,
+            amountUnits: ethers.parseUnits(truncTo(size, sell.decimals), sell.decimals).toString(),
+            address,
+            slippageBps: 50,
+          });
+          if (exec) {
+            const out = Number(ethers.formatUnits(exec.amountOut, buy.decimals));
+            const r = out / Number(size);
+            if (Number.isFinite(r) && r > 0) ref = r;
+          }
+        }
+        if (!cancelled) setRefRate(ref);
       } catch {
-        if (!cancelled) setMarket(0);
+        if (!cancelled) {
+          setPoolRate(0);
+          setRefRate(0);
+        }
       } finally {
         if (!cancelled) setQuoting(false);
       }
@@ -629,7 +683,14 @@ export default function LimitPage() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [amountIn, tokenIn, tokenOut, getV3AmountOut]);
+  }, [amountIn, tokenIn, tokenOut, getV3AmountOut, chainId, address]);
+
+  /* Whether Kaleido's pools can fill at the price being set, right now. Only
+     worth saying when there IS a separate market reference — without one the
+     pool rate is the market and every preset is already relative to it. */
+  const limitRate = parseFloat(price);
+  const waitsForLiquidity =
+    refRate > 0 && limitRate > 0 && poolRate < limitRate;
 
   /* A preset is a mode, not a button: it re-derives the price every time the
      market moves, so "Market" keeps meaning market. Typing clears it. */
@@ -1019,7 +1080,9 @@ export default function LimitPage() {
           <div className={s.quote}>
             <span className="tabular">
               {market
-                ? `1 ${tokenIn.symbol} = ${fmt(market)} ${tokenOut.symbol}`
+                ? `1 ${tokenIn.symbol} = ${fmt(market)} ${tokenOut.symbol}${
+                    refRate ? " · market" : ""
+                  }`
                 : "No market rate for this pair"}
             </span>
             {minOutHuman && (
@@ -1043,6 +1106,16 @@ export default function LimitPage() {
         )}
 
         {block?.why && <p className={l.warn}>{block.why}</p>}
+
+        {waitsForLiquidity && tokenIn && tokenOut && (
+          <p className={l.fillNote}>
+            {poolRate > 0
+              ? `Kaleido's pools fill this size at up to ${fmt(poolRate)} ${tokenOut.symbol} per ${tokenIn.symbol} right now, below your price.`
+              : `Kaleido has no pool that fills ${tokenIn.symbol} → ${tokenOut.symbol} yet.`}{" "}
+            The order stays open and fills once our liquidity or the market
+            reaches it — a smaller order fills closer to market.
+          </p>
+        )}
 
         <p className={d.note}>
           Signed, not sent. Nothing moves until the market reaches your floor,

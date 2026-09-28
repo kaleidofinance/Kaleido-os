@@ -109,3 +109,13 @@
   line-height: 1.5;
   text-align: center;
 }
+
+/* "Our pools can't fill this yet" — information, not an error, so it reads in
+   the secondary text colour rather than danger red. */
+.fillNote {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  margin: 10px 2px 0;
+  line-height: 1.5;
+  text-align: center;
+}
