@@ -696,8 +696,8 @@ export default function WaitlistPage() {
                           {tier.done
                             ? tier.superseded
                               ? "Done · included in higher tier"
-                              : `Done · +${tier.points} $kPoint`
-                            : `+${tier.points} $kPoint · $${(status.swapVolume?.volumeUsd ?? 0).toLocaleString(
+                              : `Done · +${tier.displayPoints} $kPoint`
+                            : `+${tier.displayPoints} $kPoint · $${(status.swapVolume?.volumeUsd ?? 0).toLocaleString(
                                 undefined,
                                 { maximumFractionDigits: 2 },
                               )} / $${tier.threshold}`}
