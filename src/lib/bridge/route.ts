@@ -135,8 +135,19 @@ const LIFI_DIAMOND = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
  */
 const LIFI_ARC_ROUTER = "0xA4072583658Fae592A3506A42431cb6316a8d40b";
 
+/**
+ * LI.FI's diamond on Robinhood Chain mainnet (4663) — like Arc, NOT the
+ * deterministic 0x1231… (measured 2026-09-28: eth_getCode at 0x1231… on 4663 is
+ * 0x, this address carries 254 bytes). Taken from LI.FI's own chain registry
+ * (`GET li.quest/v1/chains` → diamondAddress for 4663), and a live 4663→Arc
+ * quote (ETH → USDC via Across) names it as both `transactionRequest.to` and
+ * `estimate.approvalAddress`. Without it every Robinhood-source route was
+ * refused here, so Luca could not bridge out of Robinhood Chain into Arc.
+ */
+const LIFI_ROBINHOOD_ROUTER = "0xB477751B76CF82d00a686A1232f5fCD772414Af3";
+
 /** Every router LI.FI names as a spender/target across our corridors. */
-const KNOWN_BRIDGE_SPENDERS = [LIFI_DIAMOND, LIFI_ARC_ROUTER];
+const KNOWN_BRIDGE_SPENDERS = [LIFI_DIAMOND, LIFI_ARC_ROUTER, LIFI_ROBINHOOD_ROUTER];
 
 /**
  * Whether an address is a bridge router this resolver would itself authorise an
