@@ -22,6 +22,17 @@
  * /trade quotes and what the chart on the limit page draws.
  *
  * Optional:
+ *   ORDERS_CONTRACT=KaleidoOrdersV2
+ *                                 which contract to deploy. Defaults to
+ *                                 KaleidoOrders (V1: fills only through our V3
+ *                                 pools). V2 adds fillViaAggregator — fills
+ *                                 through an allowlisted aggregator router, with
+ *                                 the maker's floor checked as a balance delta —
+ *                                 and signs under EIP-712 version "2".
+ *   ORDERS_AGGREGATORS=0x..,0x..  V2 only: routers to allowlist at deploy (each
+ *                                 must hold code). On Arc, KyberSwap's
+ *                                 MetaAggregationRouterV2
+ *                                 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5.
  *   ORDERS_OWNER=0x...            owner; defaults to the deployer.
  *   ORDERS_FILLER_FEE_BPS=5       filler reimbursement, in bps of the input.
  *                                 Defaults to 0 — see the note below.
@@ -161,7 +172,25 @@ async function main() {
   const net = hre.network.name;
   const chainId = Number((await ethers.provider.getNetwork()).chainId);
 
-  console.log("Deploying KaleidoOrders");
+  const contractName = process.env.ORDERS_CONTRACT || "KaleidoOrders";
+  if (contractName !== "KaleidoOrders" && contractName !== "KaleidoOrdersV2") {
+    throw new Error(
+      `ORDERS_CONTRACT must be KaleidoOrders or KaleidoOrdersV2, got ${contractName}`,
+    );
+  }
+  const isV2 = contractName === "KaleidoOrdersV2";
+  const aggregators = (process.env.ORDERS_AGGREGATORS || "")
+    .split(",")
+    .map((a) => a.trim())
+    .filter(Boolean);
+  if (aggregators.length > 0 && !isV2) {
+    throw new Error("ORDERS_AGGREGATORS is V2-only; set ORDERS_CONTRACT=KaleidoOrdersV2.");
+  }
+  for (const a of aggregators) {
+    if (!ethers.isAddress(a)) throw new Error(`ORDERS_AGGREGATORS: not an address: ${a}`);
+  }
+
+  console.log(`Deploying ${contractName}`);
   console.log("  network:  ", net, `(chainId ${chainId})`);
   console.log("  deployer: ", deployer.address);
   console.log(
@@ -229,12 +258,29 @@ async function main() {
    * path. Worth stating at deploy time because "owner" usually implies more. */
   console.log("  owner:    ", owner, owner === deployer.address ? "(deployer)" : "");
 
-  console.log("\nDeploying KaleidoOrders...");
-  const Orders = await ethers.getContractFactory("KaleidoOrders");
+  /* Every allowlisted router must be a contract here BEFORE deploying — the
+   * setter refuses a codeless address, and finding that out after the deploy
+   * leaves a V2 with no aggregator and a record that says otherwise. */
+  for (const a of aggregators) {
+    if ((await ethers.provider.getCode(a)) === "0x") {
+      throw new Error(`ORDERS_AGGREGATORS: ${a} holds no code on ${net}.`);
+    }
+    console.log("  aggregator:", a);
+  }
+  if (aggregators.length > 0 && owner !== deployer.address) {
+    throw new Error(
+      `ORDERS_AGGREGATORS was set but the owner is ${owner}, not the deployer — ` +
+        "setAggregator is onlyOwner, so this run cannot make the call. Deploy " +
+        "without it and have the owner allowlist the routers.",
+    );
+  }
+
+  console.log(`\nDeploying ${contractName}...`);
+  const Orders = await ethers.getContractFactory(contractName);
   const orders = await Orders.deploy(routerAddress, owner);
   await orders.waitForDeployment();
   const ordersAddress = await orders.getAddress();
-  console.log("KaleidoOrders deployed to:", ordersAddress);
+  console.log(`${contractName} deployed to:`, ordersAddress);
 
   /* Read the immutable back rather than trusting the argument. It cannot be
    * changed later, so this is the only moment the pairing can be checked at all,
@@ -284,6 +330,18 @@ async function main() {
   }
   const onChainFee = Number(await orders.fillerFeeBps());
 
+  /* V2's aggregator allowlist, set and then READ BACK — the record states what
+   * the contract answers, not what this run intended. */
+  const allowlisted = [];
+  for (const a of aggregators) {
+    console.log(`\nAllowlisting aggregator ${a}...`);
+    await (await orders.setAggregator(a, true)).wait();
+    if (!(await orders.isAggregator(a))) {
+      throw new Error(`setAggregator(${a}) mined but isAggregator is false.`);
+    }
+    allowlisted.push(ethers.getAddress(a));
+  }
+
   /* The EIP-712 domain, recorded because the frontend must reproduce it exactly
    * and a mismatch in any of the four values produces a signature that is valid
    * nowhere. Read off the contract via ERC-5267 rather than restated from the
@@ -304,9 +362,11 @@ async function main() {
       v3Router: routerAddress,
     },
     config: {
+      contract: contractName,
       owner,
       fillerFeeBps: onChainFee,
       maxFillerFeeBps: Number(await orders.MAX_FILLER_FEE_BPS()),
+      ...(isV2 ? { aggregators: allowlisted } : {}),
     },
     eip712: {
       name: domainName,
@@ -338,6 +398,7 @@ async function main() {
   console.log("Router:        ", routerAddress);
   console.log("Owner:         ", owner);
   console.log("fillerFeeBps:  ", onChainFee);
+  if (isV2) console.log("Aggregators:   ", allowlisted.length ? allowlisted.join(", ") : "(none)");
   console.log(
     "EIP-712 domain:",
     `${domainName} v${domainVersion} @ chain ${Number(domainChainId)}`,
