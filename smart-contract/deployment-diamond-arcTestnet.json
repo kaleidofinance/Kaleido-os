@@ -12,7 +12,7 @@
     "DiamondInit": "0xBf24907810bd15135f38dFe59998585dC4C60E71",
     "DiamondLoupeFacet": "0xA7e0A9391C181527C12d7E2C1Bef3A0051c6FB04",
     "OwnershipFacet": "0xD0a6bFe795AD429c9c9E55e0Ef9d710b4b7A13eA",
-    "ProtocolFacet": "0x7Ad04316A1E2601054c691bD066Af91f411dA41B",
+    "ProtocolFacet": "0xE86ed0a1d4B3AF3fa348A5dad8bd51e5506C2584",
     "AgentPermissionFacet": "0x7d8Ff941f156492a745763C521EF468cfB78Af65",
     "LendingAdminFacet": "0xF87F5261DA2a0D0293e75C11FD4AD16C15E31Aa5"
   },
@@ -27,5 +27,16 @@
   "stillRequired": [
     "register-tokens.js — addCollateralToken / addLoanableToken, or no asset is usable",
     "transfer ownership to a multisig"
+  ],
+  "upgrades": [
+    {
+      "facet": "ProtocolFacet",
+      "from": "0x7Ad04316A1E2601054c691bD066Af91f411dA41B",
+      "to": "0xE86ed0a1d4B3AF3fa348A5dad8bd51e5506C2584",
+      "txHash": "0x4ce194c8958ad366d57b43ab1d71b6941d5409d043c49dae8a5d48cc07a94d5c",
+      "block": 64503746,
+      "selectorsReplaced": 66,
+      "signer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc"
+    }
   ]
 }

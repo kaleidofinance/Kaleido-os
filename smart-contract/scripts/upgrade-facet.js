@@ -229,14 +229,25 @@ async function main() {
   /* Read-back: the cut reporting success is not the same as the selectors having
    * moved. Sample rather than all 68 on the flaky chains — but sample widely. */
   console.log(`\n   verifying selector routing …`);
-  let wrong = 0;
-  for (const sel of replace) {
-    const a = await retry(`facetAddress(${sel})`, () => loupe.facetAddress(sel));
-    if (ethers.getAddress(a) !== ethers.getAddress(newFacet)) {
-      wrong++;
-      console.log(`     !! ${sel} -> ${a}, expected ${newFacet}`);
+  /* One diamondCut is atomic, so a partial move is not a state the chain can be in.
+   * What CAN happen is a public endpoint answering from a node behind the receipt:
+   * Base Sepolia reported 64/66 moved right after a cut that had moved all 66 (both
+   * endpoints showed 66/66 a minute later). So re-read the stragglers for ~30s
+   * before calling it a mixed state. */
+  let pending = [...replace];
+  for (let attempt = 0; attempt < 6 && pending.length; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 5000));
+    const still = [];
+    for (const sel of pending) {
+      const a = await retry(`facetAddress(${sel})`, () => loupe.facetAddress(sel));
+      if (ethers.getAddress(a) !== ethers.getAddress(newFacet)) still.push([sel, a]);
+    }
+    pending = still.map(([sel]) => sel);
+    if (pending.length && attempt === 5) {
+      for (const [sel, a] of still) console.log(`     !! ${sel} -> ${a}, expected ${newFacet}`);
     }
   }
+  const wrong = pending.length;
   console.log(`   ${replace.length - wrong}/${replace.length} selectors now served by the new facet`);
   if (wrong) throw new Error(`${wrong} selectors did not move — the diamond is in a mixed state`);
 

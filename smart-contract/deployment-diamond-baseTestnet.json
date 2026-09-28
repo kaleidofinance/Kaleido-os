@@ -11,8 +11,8 @@
     "DiamondCutFacet": "0x5C95260eBD1dD21547528E73dc601d74B2793e0D",
     "DiamondInit": "0xdAFf6E1941CA376A5cA711EF2D6762BC545D5d89",
     "DiamondLoupeFacet": "0x387d687B9574E93aCCEF1c272ce0D77381305eC3",
-    "OwnershipFacet": "0xD539e8A7C12B1b6bEDfa5C98e0B1dab8215f86d5",
-    "ProtocolFacet": "0xBaF80feDEa73a93Ee8b736c6591De88b39De8246",
+    "OwnershipFacet": "0x3a585816fE3ab442Cb681DaFC6aAe5A9bB707C0e",
+    "ProtocolFacet": "0xEc42bD9f20737aA2C50E2334856Db8BA8023c351",
     "AgentPermissionFacet": "0xf786334d6A48290E039fEA25846a6889a2bD494D"
   },
   "config": {
@@ -54,6 +54,23 @@
       "block": 45945694,
       "selectorsReplaced": 68,
       "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0xBaF80feDEa73a93Ee8b736c6591De88b39De8246",
+      "to": "0xEc42bD9f20737aA2C50E2334856Db8BA8023c351",
+      "txHash": "0x23576bf72a751e16edb07e5facc9d8bd9e3f9dc7652a1f0390e62aec67678ed3",
+      "block": 47431826,
+      "selectorsReplaced": 66,
+      "signer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc"
+    }
+  ],
+  "recordCorrections": [
+    {
+      "field": "facets.OwnershipFacet",
+      "was": "0xD539e8A7C12B1b6bEDfa5C98e0B1dab8215f86d5",
+      "now": "0x3a585816fE3ab442Cb681DaFC6aAe5A9bB707C0e",
+      "why": "the 2026-09-28 hardening cut (upgrade-lending-hardening.js) replaced OwnershipFacet without updating this record; value read from the live loupe by verify-diamond.js"
     }
   ]
 }
