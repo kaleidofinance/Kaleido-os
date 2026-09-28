@@ -550,9 +550,12 @@ export default function SwapPage() {
           kyberBuy = aggregatorToken(swapChainId, tokenOut);
           const units = ethers
             .parseUnits(
-              sellIsWrapped
-                ? truncDecimals(amountIn, kyberSell.decimals)
-                : amountIn,
+              /* Always trimmed to the token actually quoted. Native USDC is 18
+                 decimals but its aggregator face (0x3600) is 6, so a 25%-chip
+                 amount like 18.90951174 made parseUnits throw here — and the
+                 throw aborted the whole quote, our pool's included, showing
+                 "No route" until the user reselected USDC. */
+              truncDecimals(amountIn, kyberSell.decimals),
               kyberSell.decimals,
             )
             .toString();
