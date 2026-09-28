@@ -213,5 +213,15 @@ npx hardhat run scripts/verify-diamond.js --network <net>
 
 ---
 
+- **2026-09-28 — the five testnet lending diamonds upgraded in place** with
+  `upgrade-lending-hardening.js` (order Robinhood → Arc → BSC → Base Sepolia → Sepolia): every
+  cut verified live, state unchanged (Sepolia 422 values / 67 requests, Base Sepolia 380 / 41,
+  BSC 37 / 3, Robinhood + Arc empty), `verify-diamond` green on all five, ownership accepted by
+  `0x0Ce7…51Bc`. The leaked `0x28b7…` key's native balances swept to `0x0Ce7…`. **Still owned by
+  the leaked key on all five testnets:** faucet, kldVault, orders, lending `priceOracle`, mock
+  USDT/USDe, v3Factory (owner); admin role on KLD, stKLD, kfUSD, kafUSD, YieldTreasury; ≈ 1B KLD
+  and mock stables held per chain. The oracle is the urgent one — whoever holds that key can
+  repoint lending prices.
+
 _Add a dated line here after each mainnet deploy: what shipped, the addresses, and which of the
 above was the closest call. The next deploy reads this first._
