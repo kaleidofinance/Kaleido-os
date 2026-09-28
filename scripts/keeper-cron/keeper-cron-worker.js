@@ -142,6 +142,33 @@ function summariseCctp(status, body) {
     `errors=${parsed?.errors?.length ?? "?"}`
   );
 }
+/* The lending liquidator rides the same two-minute trigger: a position can go
+   from healthy to underwater within one price move, and every minute it waits the
+   collateral covers less of the lender's debt. Default scope is every chain with
+   a lending diamond (the route decides); LIQUIDATE_CHAIN_IDS narrows it. */
+function liquidateUrl(env) {
+  const url = new URL(`${baseUrl(env)}/api/keeper/liquidate`);
+  const chains = (env.LIQUIDATE_CHAIN_IDS ?? "").trim();
+  if (chains) url.searchParams.set("chainId", chains);
+  const limit = (env.LIQUIDATE_LIMIT ?? "").trim();
+  if (limit) url.searchParams.set("limit", limit);
+  return url;
+}
+function summariseLiquidate(status, body) {
+  if (status === 0) return body;
+  let parsed = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return `${status} non-JSON: ${body.slice(0, 200)}`;
+  }
+  if (parsed?.error) return `${status} ${parsed.error}`;
+  const chainErrors = (parsed?.chains ?? []).filter((c) => c.status === "error").length;
+  return (
+    `${status} liquidated=${parsed?.liquidated ?? "?"} failed=${parsed?.failed ?? "?"} ` +
+    `chains=${parsed?.chains?.length ?? "?"}` + (chainErrors ? ` chainErrors=${chainErrors}` : "")
+  );
+}
 function candlesUrl(env) {
   const chains = (env.CANDLE_CHAIN_IDS ?? DEFAULT_CANDLE_CHAIN_IDS).trim();
   const url = new URL(`${baseUrl(env)}/api/keeper/candles`);
@@ -311,10 +338,16 @@ async function runCctp(env) {
         "  npx wrangler secret put KEEPER_CRON_SECRET --config scripts/keeper-cron/wrangler.toml",
     );
   }
-  const r = await attempt(cctpUrl(env), secret, summariseCctp);
-  (r.ok ? console.info : console.error)(r.line);
-  if (!r.ok) throw new Error(r.line);
-  return r.line;
+  /* CCTP completion and liquidations: independent, overlapped, each judged on
+     its own — and the invocation fails if EITHER did, like runAll. */
+  const results = await Promise.all([
+    attempt(cctpUrl(env), secret, summariseCctp),
+    attempt(liquidateUrl(env), secret, summariseLiquidate),
+  ]);
+  for (const r of results) (r.ok ? console.info : console.error)(r.line);
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length > 0) throw new Error(failed.map((r) => r.line).join(" | "));
+  return results.map((r) => r.line).join(" | ");
 }
 
 export default {

@@ -316,43 +316,55 @@ console.log("\n— candles are their own job, judged on their own —");
 }
 
 
-console.log("\n— the two-minute tick is the CCTP keeper, alone —");
+console.log("\n— the two-minute tick runs the CCTP keeper and the liquidator —");
 {
-  calls = [];
-  globalThis.fetch = async (url, init) => {
-    calls.push({ url: String(url), init });
-    return new Response(
-      JSON.stringify({ ok: true, minted: ["0xa"], wouldMint: [], stillPending: 1, failed: [], skipped: [], errors: [] }),
-      { status: 200 },
-    );
+  const CCTP_200 = JSON.stringify({ ok: true, minted: ["0xa"], wouldMint: [], stillPending: 1, failed: [], skipped: [], errors: [] });
+  const LIQ_200 = JSON.stringify({ ok: true, dryRun: false, keeper: "0xk", chains: [{ chainId: 5042, status: "ok" }], liquidated: 1, wouldLiquidate: 0, failed: 0 });
+  const route = (cctp = { status: 200, body: CCTP_200 }, liq = { status: 200, body: LIQ_200 }) => {
+    calls = [];
+    globalThis.fetch = async (url, init) => {
+      const u = String(url);
+      calls.push({ url: u, init });
+      const r = u.includes("/api/keeper/liquidate") ? liq : cctp;
+      return new Response(r.body, { status: r.status });
+    };
   };
+  const urls = () => calls.map((c) => c.url).sort();
+
+  route();
   await worker.scheduled({ cron: "*/2 * * * *" }, ENV);
-  check("one call, to /api/keeper/cctp", calls.length === 1 && calls[0].url === "https://kaleidofi.xyz/api/keeper/cctp", JSON.stringify(calls.map((c) => c.url)));
-  check("with the bearer secret", calls[0]?.init?.headers?.authorization === `Bearer ${SECRET}`);
+  check("two calls: cctp and liquidate", JSON.stringify(urls()) === JSON.stringify(["https://kaleidofi.xyz/api/keeper/cctp", "https://kaleidofi.xyz/api/keeper/liquidate"]), JSON.stringify(urls()));
+  check("both with the bearer secret", calls.every((c) => c.init?.headers?.authorization === `Bearer ${SECRET}`));
   check("and neither push nor candles", pushCalls().length === 0 && candleCalls().length === 0);
 
-  calls = [];
-  await worker.scheduled({ cron: "*/2 * * * *" }, { ...ENV, CCTP_LIMIT: "3" });
-  check("CCTP_LIMIT becomes ?limit=", calls[0]?.url === "https://kaleidofi.xyz/api/keeper/cctp?limit=3", calls[0]?.url);
+  route();
+  await worker.scheduled({ cron: "*/2 * * * *" }, { ...ENV, CCTP_LIMIT: "3", LIQUIDATE_CHAIN_IDS: "5042", LIQUIDATE_LIMIT: "2" });
+  check("CCTP_LIMIT becomes ?limit= on cctp", calls.some((c) => c.url === "https://kaleidofi.xyz/api/keeper/cctp?limit=3"), JSON.stringify(urls()));
+  check("LIQUIDATE_CHAIN_IDS / LIQUIDATE_LIMIT scope the liquidator", calls.some((c) => c.url === "https://kaleidofi.xyz/api/keeper/liquidate?chainId=5042&limit=2"), JSON.stringify(urls()));
 
-  /* The fifteen-minute tick is unchanged: push and candles, no cctp. */
+  /* The fifteen-minute tick is unchanged: push and candles, no cctp, no liquidator. */
   stub({ status: 200, body: REAL_200 });
   await worker.scheduled({ cron: "*/15 * * * *" }, ENV);
-  check("the other tick still runs push + candles and not cctp", pushCalls().length === 1 && candleCalls().length === 1 && !calls.some((c) => c.url.includes("/api/keeper/cctp")), JSON.stringify(calls.map((c) => c.url)));
+  check("the other tick still runs push + candles only", pushCalls().length === 1 && candleCalls().length === 1 && !calls.some((c) => c.url.includes("/api/keeper/cctp") || c.url.includes("/api/keeper/liquidate")), JSON.stringify(calls.map((c) => c.url)));
 
-  /* A failing cctp endpoint fails the invocation, so the dashboard shows it. */
-  calls = [];
-  globalThis.fetch = async (url, init) => {
-    calls.push({ url: String(url), init });
-    return new Response(JSON.stringify({ error: "The keeper route is not enabled." }), { status: 503 });
-  };
+  /* Either endpoint failing fails the invocation, with its reason. */
+  route({ status: 503, body: JSON.stringify({ error: "The keeper route is not enabled." }) });
   let threw = false;
   try {
     await worker.scheduled({ cron: "*/2 * * * *" }, ENV);
   } catch (e) {
     threw = String(e?.message ?? e).includes("not enabled");
   }
-  check("a 503 from the keeper throws with its reason", threw);
+  check("a 503 from the cctp keeper throws with its reason", threw);
+
+  route(undefined, { status: 503, body: JSON.stringify({ error: "KEEPER_PRIVATE_KEY is not set, or is an owner key — refusing to sign" }) });
+  threw = false;
+  try {
+    await worker.scheduled({ cron: "*/2 * * * *" }, ENV);
+  } catch (e) {
+    threw = String(e?.message ?? e).includes("refusing to sign");
+  }
+  check("a failing liquidator fails the tick even when cctp is fine", threw);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
