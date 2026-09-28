@@ -25,12 +25,29 @@ const check = (name: string, ok: boolean, got?: string) => {
 const SECRET = "s3cret";
 const ENV = { POINTS_LP_CRON_SECRET: SECRET, APP_URL: "https://kaleidofi.xyz" };
 
-function stubFetch(responses: Array<{ status: number; body: unknown }>) {
+const LEND_200 = {
+  chainId: 5042,
+  sources: {
+    lend: { wallets: 3, usd: 1500.5, epochs: 3, points: 420, snapshots: 3 },
+    borrow: { wallets: 2, usd: 1000, epochs: 2, points: 110, snapshots: 2 },
+    collateral_idle: { wallets: 4, usd: 800, epochs: 4, points: 55, snapshots: 4 },
+  },
+  notes: [],
+};
+
+/* One stub per route: `responses` drives points-lp (the route most tests are
+   about); points-lend answers `lend` (a clean 200 unless a test says otherwise). */
+function stubFetch(
+  responses: Array<{ status: number; body: unknown }>,
+  lend: { status: number; body: unknown } = { status: 200, body: LEND_200 },
+) {
   const calls: string[] = [];
   let i = 0;
   (globalThis as any).fetch = async (url: URL | string) => {
     calls.push(String(url));
-    const r = responses[Math.min(i++, responses.length - 1)];
+    const r = String(url).includes("/api/cron/points-lend")
+      ? lend
+      : responses[Math.min(i++, responses.length - 1)];
     return {
       status: r.status,
       text: async () => (typeof r.body === "string" ? r.body : JSON.stringify(r.body)),
@@ -81,7 +98,25 @@ async function main() {
     const res = await worker.fetch(req(`Bearer ${SECRET}`), ENV);
     const body = await res.json();
     check("route 401 → worker 502 ok:false", res.status === 502 && body.ok === false, JSON.stringify(body));
-    check("a 401 is NOT retried (one call only)", calls.length === 1, String(calls.length));
+    check("a 401 is NOT retried (one call only)", calls.filter((c) => c.includes("/points-lp")).length === 1, String(calls.length));
+  }
+
+  console.log("\n— the lending accrual rides the same tick —");
+  {
+    const calls = stubFetch([{ status: 200, body: { positionsRead: 1, snapshotsWritten: 1, epochsWritten: 1, pointsAccrued: 5, boost: 1, skips: {} } }]);
+    const res = await worker.fetch(req(`Bearer ${SECRET}`), ENV);
+    const body = await res.json();
+    check("both routes are called", calls.includes("https://kaleidofi.xyz/api/cron/points-lp") && calls.includes("https://kaleidofi.xyz/api/cron/points-lend"), JSON.stringify(calls));
+    check("the lending summary reads the real per-source fields", /lend:3w\/\$1500\.5\/420pts/.test(body.detail) && /collateral_idle:4w/.test(body.detail), body.detail);
+
+    stubFetch([{ status: 200, body: { skipped: "no-lp-rate" } }], { status: 200, body: { skipped: "no-diamond", chainId: 5042 } });
+    const skipped = await (await worker.fetch(req(`Bearer ${SECRET}`), ENV)).json();
+    check("no diamond yet (before the mainnet deploy) is a skip, not a failure", skipped.ok === true && /skipped=no-diamond/.test(skipped.detail), JSON.stringify(skipped));
+
+    stubFetch([{ status: 200, body: { positionsRead: 1, snapshotsWritten: 1, epochsWritten: 1, pointsAccrued: 5, boost: 1, skips: {} } }], { status: 401, body: { error: "unauthorised" } });
+    const failed = await worker.fetch(req(`Bearer ${SECRET}`), ENV);
+    const fb = await failed.json();
+    check("a failing lending accrual fails the run even when LP is fine", failed.status === 502 && /points-lend/.test(fb.error), JSON.stringify(fb));
   }
 }
 

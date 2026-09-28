@@ -49,6 +49,11 @@ function baseUrl(env) {
 function accrualUrl(env) {
   return new URL(`${baseUrl(env)}/api/cron/points-lp`);
 }
+/* The lending time sources (lend / borrow / collateral_idle) ride the same tick:
+   same cadence, same secret, same anti-gaming arithmetic. */
+function lendUrl(env) {
+  return new URL(`${baseUrl(env)}/api/cron/points-lend`);
+}
 
 /** A hung fetch must be reported, not waited on. The route's own work is bounded
  *  by its 60s function budget, so anything well past that is not arriving. */
@@ -100,6 +105,44 @@ function summarise(status, body) {
   );
 }
 
+/** The points-lend route returns `{ sources: { lend|borrow|collateral_idle:
+ *  { wallets, usd, epochs, points, snapshots } }, notes }` (or error / skipped). */
+function summariseLend(status, body) {
+  if (status === 0) return body;
+  let parsed = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return `${status} non-JSON: ${body.slice(0, 200)}`;
+  }
+  if (parsed?.error) return `${status} ${parsed.error}${parsed.detail ? ` (${parsed.detail})` : ""}`;
+  if (parsed?.skipped) return `${status} skipped=${parsed.skipped}`;
+  const parts = Object.entries(parsed?.sources ?? {}).map(
+    ([k, v]) => `${k}:${v?.wallets ?? "?"}w/$${v?.usd ?? "?"}/${v?.points ?? "?"}pts`,
+  );
+  return `${status} ${parts.join(" ") || "sources=?"}`;
+}
+
+/** One route, retried once on 0/5xx; resolves to { ok, line } and never throws. */
+async function accrue(url, secret, summariser) {
+  let result = await callAccrual(url, secret).catch((error) => ({
+    status: 0,
+    body: `fetch failed: ${error?.message ?? error}`,
+  }));
+  if (result.status === 0 || result.status >= 500) {
+    console.warn(`[points-lp-cron] ${url.pathname} ${summariser(result.status, result.body)} — retrying once`);
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    result = await callAccrual(url, secret).catch((error) => ({
+      status: 0,
+      body: `fetch failed: ${error?.message ?? error}`,
+    }));
+  }
+  return {
+    ok: result.status === 200,
+    line: `[points-lp-cron] ${url.pathname} → ${summariser(result.status, result.body)}`,
+  };
+}
+
 async function run(env) {
   const secret = env.POINTS_LP_CRON_SECRET;
   if (!secret) {
@@ -110,31 +153,20 @@ async function run(env) {
     );
   }
 
-  const url = accrualUrl(env);
-  let result = await callAccrual(url, secret).catch((error) => ({
-    status: 0,
-    body: `fetch failed: ${error?.message ?? error}`,
-  }));
-
-  if (result.status === 0 || result.status >= 500) {
-    console.warn(`[points-lp-cron] ${summarise(result.status, result.body)} — retrying once`);
-    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-    result = await callAccrual(url, secret).catch((error) => ({
-      status: 0,
-      body: `fetch failed: ${error?.message ?? error}`,
-    }));
-  }
-
-  const line = `[points-lp-cron] ${url.pathname} → ${summarise(result.status, result.body)}`;
-  if (result.status !== 200) {
+  // LP and lending accrue independently (overlapped); each is judged on its own.
+  const results = await Promise.all([
+    accrue(accrualUrl(env), secret, summarise),
+    accrue(lendUrl(env), secret, summariseLend),
+  ]);
+  for (const r of results) (r.ok ? console.info : console.error)(r.line);
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length > 0) {
     // Thrown, not swallowed: a thrown scheduled handler marks the invocation
     // failed in Cloudflare's dashboard. A silently dead accrual is a silent
-    // outage — liquidity would stop earning points.
-    console.error(line);
-    throw new Error(line);
+    // outage — liquidity or lending would stop earning points.
+    throw new Error(failed.map((r) => r.line).join(" | "));
   }
-  console.info(line);
-  return line;
+  return results.map((r) => r.line).join(" | ");
 }
 
 export default {
@@ -155,7 +187,7 @@ export default {
         JSON.stringify({
           error: "Unauthorized.",
           armed: Boolean(env.POINTS_LP_CRON_SECRET),
-          target: accrualUrl(env).toString(),
+          targets: [accrualUrl(env).toString(), lendUrl(env).toString()],
         }),
         { status: 401, headers: { "content-type": "application/json" } },
       );
