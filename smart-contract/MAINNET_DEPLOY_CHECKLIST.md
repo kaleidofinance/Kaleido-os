@@ -222,6 +222,26 @@ npx hardhat run scripts/verify-diamond.js --network <net>
   USDT/USDe, v3Factory (owner); admin role on KLD, stKLD, kfUSD, kafUSD, YieldTreasury; ≈ 1B KLD
   and mock stables held per chain. The oracle is the urgent one — whoever holds that key can
   repoint lending prices.
+- **2026-09-28 (later) — everything else the leaked key controlled moved to `0x0Ce7…51Bc`**, oracle
+  first, with `migrate-leaked-key.mjs` driven by `survey-leaked-key.mjs` (every deployment record
+  **plus every `CREATE` address from the key's 1,318 nonces** — the nonce walk found ~30 contracts no
+  record names: old mocks, Robinhood mock stocks, four Robinhood contracts paying fees to the key).
+  Fork-rehearsed on all five (second pass a no-op), then live: 534 steps — lending `priceOracle`
+  and Robinhood's two `PushablePriceFeed`s (pusher revoked, keeper `0xB37d…` still a pusher), every
+  `Ownable`/V3 `setOwner`/V2 `feeToSetter`/`feeTo`/`feeRecipient`, every AccessControl role
+  (granted to `0x0Ce7`, renounced, admin last), the key's lending-ledger balance (Sepolia 0.145 WETH,
+  Base 120.8 USDT), 48 V3 LP position NFTs, and every ERC20 balance (~1B KLD + ~1B mock USDT/USDe
+  per chain, stKLD, kfUSD, kafUSD, mock USDC, WETH, EURC, cirBTC). A fresh post-survey of all five
+  finds the key controls nothing, except the **Sepolia "USD Theters" mock `0xeAeE…f6a2` (nonce 25):
+  immutable owner with `mint`, no transfer function — its mint right stays with the leaked key
+  forever; it is in no Sepolia record or registry**. Residue: gas dust, and the key remains the
+  *lender* on six old serviced loans (Sepolia #1 #2 #34, Base #1 #2 #3) — a repayment would credit
+  its ledger, so re-run `survey-leaked-lending.mjs` and sweep if one is repaid. Arc mainnet was
+  checked too: the key never transacted there (nonce 0) and owns nothing.
+  Lesson: Arc testnet's RPC once answered real `hasRole` checks with revert-shaped errors, which
+  read as "no role" and left three contracts' roles behind on the first pass — the survey now
+  disables batching and only believes a revert that repeats; always post-survey, never trust the
+  migration's own checks alone.
 
 _Add a dated line here after each mainnet deploy: what shipped, the addresses, and which of the
 above was the closest call. The next deploy reads this first._
