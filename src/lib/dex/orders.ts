@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { FEE_TIERS, isTradedTier } from "@/lib/dex/liquidity";
+import { getContracts } from "@/constants/registry";
 
 /**
  * Everything a KaleidoOrders order needs that isn't a chain read.
@@ -127,9 +128,26 @@ export const ORDER_TYPES = {
   ],
 } as const;
 
-/** The domain name and version the contract passes to `EIP712(...)`. Not configurable. */
+/** The domain name the contract passes to `EIP712(...)`. Not configurable. */
 export const ORDERS_DOMAIN_NAME = "Kaleido Orders";
+/** V1's domain version, and the default for any deployment that does not say. */
 export const ORDERS_DOMAIN_VERSION = "1";
+
+/**
+ * The domain version `ordersAddress` signs under on `chainId`: the registry's
+ * `ordersVersion` when that IS the registered orders contract, else "1".
+ *
+ * Per chain because the chains differ: Arc runs KaleidoOrdersV2 ("2", aggregator
+ * fills) while the testnets keep V1 ("1"). Keyed on the address as well as the
+ * chain, so an order for a retired contract keeps hashing the way it was signed.
+ */
+export function ordersDomainVersion(chainId: number, ordersAddress: string): string {
+  const c = getContracts(chainId);
+  if (c.orders && c.orders.toLowerCase() === ordersAddress.toLowerCase() && c.ordersVersion) {
+    return c.ordersVersion;
+  }
+  return ORDERS_DOMAIN_VERSION;
+}
 
 /**
  * The EIP-712 domain for a chain's KaleidoOrders.
@@ -144,7 +162,7 @@ export const ORDERS_DOMAIN_VERSION = "1";
 export function ordersDomain(chainId: number, ordersAddress: string) {
   return {
     name: ORDERS_DOMAIN_NAME,
-    version: ORDERS_DOMAIN_VERSION,
+    version: ordersDomainVersion(chainId, ordersAddress),
     chainId,
     verifyingContract: ordersAddress,
   };

@@ -11,6 +11,8 @@ import {
   parseSwapInput,
   classifySwap,
   userOpSenders,
+  orderFillMaker,
+  ORDER_FILLED_TOPIC,
   USER_OPERATION_EVENT_TOPIC,
   usdcLegValue,
   valueInput,
@@ -263,6 +265,25 @@ console.log("\n— classifySwap: venue + whether Kaleido's fee was paid —");
 
   const zeroFee = classifySwap({ ...base, tx: { to: KY, from: W }, transfers: [tr(X, KY, FEE, 0n)] });
   check("a zero-value transfer to the fee wallet is not a fee", !zeroFee.feePaid, JSON.stringify(zeroFee));
+}
+
+console.log("\n— a limit-order fill credits its maker, not the orders contract —");
+{
+  const ORDERS = "0x92571bfdf7c5b66e44c05513855d1d145acfd960";
+  const MAKER = "0x5b5a4ee4964d64b56c47e81b72859a99ffc38d99";
+  const topic = (a: string) => "0x" + "0".repeat(24) + a.slice(2);
+  const filled = {
+    address: ORDERS,
+    topics: [ORDER_FILLED_TOPIC, "0x" + "ab".repeat(32), topic(MAKER), topic("0x" + "11".repeat(20))],
+    data: "0x",
+  };
+  check("reads the maker from the orders contract's OrderFilled", orderFillMaker([filled], ORDERS) === MAKER);
+  check(
+    "ignores the same event emitted by any other contract",
+    orderFillMaker([{ ...filled, address: "0x" + "99".repeat(20) }], ORDERS) === null,
+  );
+  check("no orders contract configured → null", orderFillMaker([filled], undefined) === null);
+  check("no OrderFilled in the receipt → null", orderFillMaker([{ ...filled, topics: ["0x" + "00".repeat(32)] }], ORDERS) === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

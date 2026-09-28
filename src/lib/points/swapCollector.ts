@@ -90,6 +90,37 @@ export function userOpSenders(logs: readonly RawLog[]): string[] {
   return out;
 }
 
+/** KaleidoOrders(V2) `OrderFilled(bytes32 indexed orderHash, address indexed
+ *  maker, address indexed filler, uint256, uint256, uint32)` — topic[2] is the
+ *  maker. Taken from the compiled ABI, not typed by hand. */
+export const ORDER_FILLED_TOPIC =
+  "0xd6005c7da259c8998900aaec2d5cae7116d59e4adcc1e28869615918f02ca9be";
+
+/**
+ * The maker of a limit-order fill in this receipt, or null. Pure.
+ *
+ * A KaleidoOrdersV2 fill through the aggregator pays our swap fee like any
+ * swap, so the indexer finds it — but the input leg is sent by the ORDERS
+ * CONTRACT (it pulls from the maker, then pays the router), so parseSwapInput
+ * would credit the contract's address. The maker is named in the contract's own
+ * OrderFilled event; only a log emitted BY `ordersAddress` counts, so any other
+ * contract emitting the same signature cannot redirect the credit.
+ */
+export function orderFillMaker(
+  logs: readonly RawLog[],
+  ordersAddress: string | null | undefined,
+): string | null {
+  const orders = norm(ordersAddress);
+  if (!orders) return null;
+  for (const l of logs) {
+    if (norm(l.address) !== orders) continue;
+    if (norm(l.topics[0]) !== ORDER_FILLED_TOPIC) continue;
+    const maker = addressFromTopic(l.topics[2]);
+    if (maker) return maker;
+  }
+  return null;
+}
+
 /**
  * Who to credit and for which input, from a swap transaction's transfers — or a
  * reason to skip. Pure.

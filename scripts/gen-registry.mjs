@@ -664,6 +664,25 @@ function build(chosen) {
       }
       mergeField(contracts, prov, entry.chainId, "oracleKind", kind, source);
     }
+
+    /* ordersVersion — the EIP-712 domain version the chain's KaleidoOrders signs
+     * under, from the record's `eip712` block (deploy-orders.js reads it back from
+     * the contract). Not an address, so it bypasses normalise() like oracleKind.
+     *
+     * It is part of every order's digest: V1 is "1", KaleidoOrdersV2 is "2". A
+     * frontend signing a V2 order under "1" produces a signature the contract
+     * rejects, so the app must read the version per chain rather than assume it —
+     * that is what this field is for. See lib/dex/orders.ts ordersDomain. */
+    if (entry.component === "orders" && entry.record?.eip712?.version != null) {
+      const version = String(entry.record.eip712.version);
+      if (!/^[0-9]+$/.test(version)) {
+        throw new Error(
+          `${source}: eip712.version is ${JSON.stringify(version)}, expected a ` +
+            `plain number like "1" or "2".`,
+        );
+      }
+      mergeField(contracts, prov, entry.chainId, "ordersVersion", version, source);
+    }
   }
 
   const warnings = [];

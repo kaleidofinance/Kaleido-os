@@ -13,6 +13,7 @@ import {
   parseSwapInput,
   classifySwap,
   userOpSenders,
+  orderFillMaker,
   usdcLegValue,
 } from "@/lib/points/swapCollector";
 import { dexTokenPrices } from "@/lib/swap/dexPrices";
@@ -404,6 +405,17 @@ async function handle(req: Request): Promise<Response> {
         if ("skip" in parsed) {
           bump(parsed.skip);
           continue;
+        }
+        /* A limit-order fill through the aggregator: the orders contract sent the
+           input, so credit the maker its OrderFilled event names instead. */
+        const ordersAddr = getContracts(ARC).orders;
+        if (ordersAddr && parsed.wallet === ordersAddr.toLowerCase()) {
+          const maker = orderFillMaker(receipt.logs, ordersAddr);
+          if (!maker) {
+            bump("orders-fill-no-maker");
+            continue;
+          }
+          parsed.wallet = maker;
         }
 
         // Value the trade. First choice is the USDC leg the wallet moved — USDC

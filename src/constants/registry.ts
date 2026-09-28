@@ -177,6 +177,14 @@ export interface ChainContracts {
    * fill at all - at a price the user never saw.
    */
   orders?: string;
+  /**
+   * The EIP-712 domain version `orders` signs under — "1" for KaleidoOrders,
+   * "2" for KaleidoOrdersV2 (which adds aggregator fills). Part of every order's
+   * digest, so signing under the wrong one yields a signature the contract
+   * rejects. Generated from the deploy record's `eip712.version`; absent means
+   * "1", which every record before V2 is.
+   */
+  ordersVersion?: string;
 
   /* -- External, NOT deployed by us ------------------------------------- */
   /**
@@ -2081,6 +2089,12 @@ export function auditRegistry(chains: ChainMeta[]): string[] {
           problems.push(
             `chain ${chainId}: oracleKind is "${value}", expected "pyth" or "aggregator-v3"`,
           );
+        }
+        continue;
+      }
+      if (field === "ordersVersion") {
+        if (!/^[0-9]+$/.test(value)) {
+          problems.push(`chain ${chainId}: ordersVersion is "${value}", expected a number like "1"`);
         }
         continue;
       }

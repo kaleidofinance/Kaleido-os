@@ -32,6 +32,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kldVault: "0xEE73946fF9794B03fE87874532F9e4aE3D758788", // deployment-kld-bscTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-bscTestnet.json
     orders: "0x40ABaDfCDD24159069859f756cf6B68C79027cB8", // deployment-orders-bscTestnet.json
+    ordersVersion: "1", // deployment-orders-bscTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-bscTestnet-1787453320471.json
     priceOracle: "0xf9928C816b75Bb3EA081Fc0d1C0172E475957C48", // deployment-diamond-bscTestnet.json
@@ -51,6 +52,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
   },
   5042: {
     orders: "0x92571BFdF7c5B66E44c05513855D1d145acFD960", // deployment-orders-arcMainnet.json
+    ordersVersion: "1", // deployment-orders-arcMainnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcMainnet-1789855914870.json
     v3Factory: "0xbB74f2319494461B2591F8fbF126654Dd4c2a649", // deployment-v3-arcMainnet-1789855914870.json
@@ -69,6 +71,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kldVault: "0x5528FC4D02Ca74Fa42eC9D9B104f49829994B0F4", // deployment-kld-robinhoodTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-robinhoodTestnet.json
     orders: "0x2488216dF30680f96078E3B303D6Aa0391f3f79F", // deployment-orders-robinhoodTestnet.json
+    ordersVersion: "1", // deployment-orders-robinhoodTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-robinhoodTestnet-1787450008885.json
     priceOracle: "0x7Ee07e9eb94B6b21589539a491E37804886AB201", // deployment-diamond-robinhoodTestnet.json
@@ -95,6 +98,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kldVault: "0xff3932A4353146a2C7CA76b5F1C481bd9020779E", // deployment-kld-baseTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-baseTestnet.json
     orders: "0x123E353ABafE726C8e417817F002F320CfEFC30A", // deployment-orders-baseTestnet.json
+    ordersVersion: "1", // deployment-orders-baseTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-baseTestnet-1787327167156.json
     priceOracle: "0x1fb928c085A9CBF2e5eC3Ca2Caea77c765E5882A", // deployment-diamond-baseTestnet.json
@@ -121,6 +125,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kldVault: "0xf341BFb02404485FD360Ca864f49e2F7F1172951", // deployment-kld-arcTestnet.json
     oracleKind: "aggregator-v3", // deployment-oracle-arcTestnet.json
     orders: "0xB53b9689d9Eb363760770a45867c072DFe400AB4", // deployment-orders-arcTestnet.json
+    ordersVersion: "1", // deployment-orders-arcTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcTestnet-1787358306379.json
     priceOracle: "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564", // deployment-diamond-arcTestnet.json
@@ -147,6 +152,7 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     kldVault: "0xefc1A2Cb814b5dF04EfC2931d2cd731647aEb832", // deployment-kld-sepolia.json
     oracleKind: "aggregator-v3", // deployment-oracle-sepolia.json
     orders: "0x3713336a6Ba0Ae1BD758257334091CEFa283ceC1", // deployment-orders-sepolia.json
+    ordersVersion: "1", // deployment-orders-sepolia.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-sepolia-1787339244721.json
     priceOracle: "0x126C64a2d48F40EeAEcD534387902f5da74c9dbb", // deployment-diamond-sepolia.json
@@ -371,7 +377,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-28T16:04:21.533Z",
+  generatedAt: "2026-09-28T21:33:51.028Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",

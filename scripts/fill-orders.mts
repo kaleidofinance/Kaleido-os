@@ -81,6 +81,9 @@ const STATE_TUPLE = "(uint32 fills, uint64 lastFillAt, bool cancelled)";
 const FILLER_ABI = [
   `function checkFill(${ORDER_TUPLE} o, bytes signature, bytes path) external view returns (bool ok, string reason)`,
   `function fill(${ORDER_TUPLE} o, bytes signature, bytes path) external returns (uint256 amountOut)`,
+  /* KaleidoOrdersV2 only — see chooseAggregator in lib/dex/fill.ts. */
+  `function fillViaAggregator(${ORDER_TUPLE} o, bytes signature, address target, bytes data) external returns (uint256 amountOut)`,
+  "function isAggregator(address) external view returns (bool)",
   `function stateOf(${ORDER_TUPLE} o) external view returns (${STATE_TUPLE} state)`,
   "function fillerFeeBps() external view returns (uint16)",
 ];
@@ -141,8 +144,10 @@ async function main() {
   const { readFillableOrders, SWEEP_CEILING } = await import(
     "../src/lib/dex/orderStore.ts"
   );
-  const { decideFill, reconcile, sweepable } = await import(
-    "../src/lib/dex/fill.ts"
+  const { decideFill, reconcile, sweepable, chooseAggregator, bestQuote } =
+    await import("../src/lib/dex/fill.ts");
+  const { resolveKyberSwap, hasKyberSwap } = await import(
+    "../src/lib/swap/kyberswap.ts"
   );
   const { supabaseAdmin } = await import("../src/lib/supabase/serverClient.ts");
 
@@ -349,6 +354,13 @@ async function main() {
        any way that matters, since the contract recomputes it on each fill. */
     const fillerFeeBps = Number(await retryRpc(() => orders.fillerFeeBps()));
 
+    /* Aggregator fills: only a KaleidoOrdersV2 (EIP-712 version "2") has
+       fillViaAggregator, and only a chain KyberSwap serves has a route to offer.
+       Everywhere else this keeper behaves exactly as it did for V1. */
+    const aggregatorFills =
+      contracts.ordersVersion === "2" && hasKyberSwap(chainId);
+    if (aggregatorFills) log("  aggregator fills: on (KaleidoOrdersV2 + KyberSwap)");
+
     for (const stored of take) {
       const o = stored.order;
       const inTok = chainTokenByAddress(chainId, o.tokenIn);
@@ -439,7 +451,56 @@ async function main() {
           fillerFeeBps,
         });
 
-        if (decision.action === "wait") {
+        /* The aggregator, when it pays the floor and beats our pools. Built with
+           the orders contract as sender AND recipient (it is the contract that
+           calls the router and receives the output before forwarding it), and
+           with our swap fee in the route as on the Swap tab. Built right before
+           the simulation and the send: a KyberSwap route goes stale within
+           blocks. */
+        let filledViaAggregator = false;
+        if (aggregatorFills && terms.ok) {
+          const exec = await resolveKyberSwap({
+            chainId,
+            tokenIn: o.tokenIn,
+            tokenOut: o.tokenOut,
+            amountUnits: quotedFor.toString(),
+            address: ordersAddress,
+            slippageBps: 50,
+          });
+          const best = bestQuote(quotes);
+          const useAggregator =
+            exec !== null &&
+            chooseAggregator({
+              terms,
+              minOut: BigInt(o.minOut),
+              bestV3Out: best?.out ?? null,
+              aggregatorOut: BigInt(exec.amountOut),
+            });
+          if (exec && useAggregator) {
+            log(
+              `  fill  ${label}: via aggregator ${exec.to} — expects ${exec.amountOut}, floor ${o.minOut}` +
+                (best?.out != null ? `, best pool ${best.out}` : ", no pool quote"),
+            );
+            if (!DRY) {
+              if (!(await retryRpc(() => orders.isAggregator(exec.to)))) {
+                /* The route names a router the contract will refuse. Ours to fix
+                   (allowlist it), not the market's — loud, and the V3 path below
+                   still gets its chance. */
+                bug(`${label}: route router ${exec.to} is not allowlisted on ${ordersAddress}`);
+              } else {
+                await orders.fillViaAggregator.staticCall(o, stored.signature, exec.to, exec.data);
+                const tx = await orders.fillViaAggregator(o, stored.signature, exec.to, exec.data);
+                log(`        sent ${tx.hash}`);
+                await tx.wait();
+                filledViaAggregator = true;
+              }
+            } else {
+              filledViaAggregator = true; // dry run: report the choice, skip V3
+            }
+          }
+        }
+
+        if (!filledViaAggregator && decision.action === "wait") {
           /* The two reasons that mean this code is wrong rather than the market
              being wrong: both are shapes the store and `pathFor` are supposed to
              have made impossible. Loud, and they redden the run. */
@@ -452,7 +513,7 @@ async function main() {
           continue;
         }
 
-        if (decision.action === "fill") {
+        if (!filledViaAggregator && decision.action === "fill") {
           log(`  fill  ${label}: ${decision.because}`);
           if (DRY) continue;
           const fillPath = pathFor(o, decision.fee);
