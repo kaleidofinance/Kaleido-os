@@ -26,12 +26,13 @@ function check(name: string, cond: boolean, got?: string) {
 
 console.log("\n— the tier ladder —");
 check(
-  "three tiers: $10→500, $50→700, $100→1000",
+  "four tiers: $10→500, $50→700, $100→1000, $300→2000",
   JSON.stringify(SWAP_VOLUME_TIERS.map((t) => [t.threshold, t.points])) ===
     JSON.stringify([
       [10, 500],
       [50, 700],
       [100, 1000],
+      [300, 2000],
     ]),
   JSON.stringify(SWAP_VOLUME_TIERS),
 );
@@ -49,7 +50,7 @@ check("$49.99 still only the $10 tier (500)", swapVolumePoints(49.99) === 500, S
 check("exactly $50 earns 700", swapVolumePoints(50) === 700, String(swapVolumePoints(50)));
 check("$99.99 still only the $50 tier (700)", swapVolumePoints(99.99) === 700, String(swapVolumePoints(99.99)));
 check("exactly $100 earns 1000", swapVolumePoints(100) === 1000, String(swapVolumePoints(100)));
-check("well past the top tier stays 1000 (no stacking)", swapVolumePoints(100000) === 1000, String(swapVolumePoints(100000)));
+check("well past the top tier stays 2000 (no stacking)", swapVolumePoints(100000) === 2000, String(swapVolumePoints(100000)));
 check("zero volume earns nothing", swapVolumePoints(0) === 0, String(swapVolumePoints(0)));
 
 console.log("\n— highestSwapTier —");
@@ -72,14 +73,14 @@ console.log("\n— swapVolumeStanding: per-tier UI state —");
   // whole credited total, so what the UI shows sums to what is credited.
   const shown = s.tiers
     .filter((t) => t.done && !t.superseded)
-    .reduce((sum, t) => sum + t.points, 0);
+    .reduce((sum, t) => sum + t.displayPoints, 0);
   check("shown (done, non-superseded) points equal credited", shown === s.points, `${shown} vs ${s.points}`);
 }
 {
   // $100+: all three met, only the $100 tier pays.
   const s = swapVolumeStanding(250);
-  check("all three tiers done at $250", s.tiers.every((t) => t.done));
-  check("only the $100 tier is non-superseded", s.tiers.filter((t) => !t.superseded).length === 1);
+  check("$10–$100 tiers done at $250", s.tiers.filter((t) => t.threshold <= 100).every((t) => t.done));
+  check("only the $100 tier is done and non-superseded", s.tiers.filter((t) => t.done && !t.superseded).length === 1);
   check("credited is 1000 at $250", s.points === 1000, String(s.points));
 }
 {
@@ -88,6 +89,23 @@ console.log("\n— swapVolumeStanding: per-tier UI state —");
   check("nothing done below $10", s.tiers.every((t) => !t.done));
   check("nothing superseded below $10", s.tiers.every((t) => !t.superseded));
   check("credited is 0 below $10", s.points === 0);
+}
+
+{
+  // $300: pays 2,000 total, shown as $100's 1,000 + the $300 tier's +1,000.
+  const s = swapVolumeStanding(300);
+  const k = Object.fromEntries(s.tiers.map((t) => [t.key, t]));
+  check("credited is 2000 at $300", s.points === 2000, String(s.points));
+  check("$300 tier shows +1000", k.vol300.displayPoints === 1000);
+  check("$100 tier is not superseded at $300", k.vol100.superseded === false);
+  check("$10 and $50 superseded at $300", k.vol10.superseded && k.vol50.superseded);
+  const shown = s.tiers.filter((t) => t.done && !t.superseded).reduce((n, t) => n + t.displayPoints, 0);
+  check("shown equals credited at $300", shown === s.points, `${shown} vs ${s.points}`);
+}
+{
+  const s = swapVolumeStanding(299.99);
+  check("credited is still 1000 just under $300", s.points === 1000, String(s.points));
+  check("$300 tier not done just under $300", !s.tiers.find((t) => t.key === "vol300")!.done);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

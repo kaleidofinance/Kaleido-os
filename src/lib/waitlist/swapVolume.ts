@@ -22,11 +22,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export type SwapVolumeTier = {
   /** Stable key the API/UI use to identify the tier. */
-  key: "vol10" | "vol50" | "vol100";
+  key: "vol10" | "vol50" | "vol100" | "vol300";
   /** Minimum cumulative USD swap volume to complete the tier. */
   threshold: number;
-  /** kPoint awarded when this is the highest tier reached. */
+  /** kPoint awarded when this is the highest tier reached (the TOTAL). */
   points: number;
+  /**
+   * A tier that pays ON TOP of a lower one instead of replacing it. Its total is
+   * still `points` (highest-tier-only is unchanged), but the UI shows it as
+   * `+(points − that tier's points)` and keeps the lower tier showing its own
+   * points rather than "included" — so what is shown still sums to what is
+   * credited. $300 (added 2026-09-29, product decision): 2,000 total, shown as
+   * "+1,000" on top of the $100 tier's 1,000.
+   */
+  addsTo?: SwapVolumeTier["key"];
 };
 
 /** Ascending by threshold. Keep sorted — `swapVolumePoints` relies on it. */
@@ -34,6 +43,7 @@ export const SWAP_VOLUME_TIERS: readonly SwapVolumeTier[] = [
   { key: "vol10", threshold: 10, points: 500 },
   { key: "vol50", threshold: 50, points: 700 },
   { key: "vol100", threshold: 100, points: 1000 },
+  { key: "vol300", threshold: 300, points: 2000, addsTo: "vol100" },
 ] as const;
 
 /**
@@ -61,6 +71,8 @@ export function highestSwapTier(volumeUsd: number): SwapVolumeTier | null {
 export type SwapVolumeTierState = SwapVolumeTier & {
   /** The wallet has met this tier's threshold. */
   done: boolean;
+  /** Points to SHOW for this tier: the increment for an `addsTo` tier, else `points`. */
+  displayPoints: number;
   /**
    * A higher tier is also met, so this tier's points are already covered by the
    * highest tier and do NOT add to the balance (highest-tier-only payout).
@@ -80,14 +92,23 @@ export type SwapVolumeStanding = {
 /** Build the per-tier UI state + credited points from a volume figure. */
 export function swapVolumeStanding(volumeUsd: number): SwapVolumeStanding {
   const top = highestSwapTier(volumeUsd);
+  const byKey = new Map(SWAP_VOLUME_TIERS.map((t) => [t.key, t]));
   const tiers: SwapVolumeTierState[] = SWAP_VOLUME_TIERS.map((tier) => {
     const done = volumeUsd >= tier.threshold;
+    const base = tier.addsTo ? byKey.get(tier.addsTo) : undefined;
     return {
       ...tier,
       done,
+      displayPoints: base ? tier.points - base.points : tier.points,
       // Completed, but a strictly higher tier is also completed → its points are
-      // rolled into that higher tier (we pay the highest only).
-      superseded: done && top !== null && tier.threshold < top.threshold,
+      // rolled into that higher tier (we pay the highest only) — UNLESS the top
+      // tier adds on top of this one, in which case this one still shows its own
+      // points and the top shows only the increment.
+      superseded:
+        done &&
+        top !== null &&
+        tier.threshold < top.threshold &&
+        top.addsTo !== tier.key,
     };
   });
   return { volumeUsd, tiers, points: swapVolumePoints(volumeUsd) };
