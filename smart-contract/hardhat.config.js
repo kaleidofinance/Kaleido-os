@@ -247,6 +247,17 @@ module.exports = {
      * rules behave exactly as they will on the day. Fund the account with
      * `anvil_setBalance` first; deploy records land as *-arcFork.json — delete
      * them, never run gen:registry on them. */
+    /* Any LOCAL anvil fork (e.g. of a testnet, to rehearse an upgrade). Same
+     * safety as arcFork — 127.0.0.1 only, anvil's public key — but no pinned
+     * chainId, so it follows whichever chain anvil forked. Records it writes are
+     * `*-fork.json`, which gen-registry skips. */
+    fork: {
+      url: "http://127.0.0.1:8545",
+      accounts: [
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      ],
+      timeout: 300000,
+    },
     arcFork: {
       url: "http://127.0.0.1:8545",
       chainId: 5042,

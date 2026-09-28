@@ -187,6 +187,30 @@ space first (e.g. string `require`s → custom errors).
 Still to do before mainnet: Arc Testnet parity deploy of this commit (§0), a ≥ 30-day walk of
 each Chainlink feed, and the app's ABI/error regeneration.
 
+### The five existing testnet diamonds — upgrade in place (rehearsed 2026-09-28)
+
+All five are owned by `0x28b7…8955`, the testnet deployer whose key was committed to the repo
+(public). `scripts/upgrade-lending-hardening.js` upgrades each in ONE cut — ProtocolFacet
+Replace, OwnershipFacet Replace + Add, LendingAdminFacet Add, Remove the dead `pyth()` /
+`pythPriceOracle()` — proves every request, lock and participant balance is unchanged, then
+nominates a new owner who accepts (two-step), taking ownership off the leaked key.
+
+Rehearsed on anvil forks of all five (`FORK=1`, owner impersonated) plus
+`scripts/smoke-upgraded-fork.js` (new owner pauses/unpauses; health factors read; a REAL overdue
+loan from the existing book liquidated with a consistent ledger). Results: Sepolia 422 values /
+67 requests, Base Sepolia 380 / 41, BSC 37 / 3, Robinhood and Arc testnet empty — all unchanged,
+all handed to `0x0Ce7…`, all smoke tests pass. The real-network path (owner deploys + signs, tops
+up the new owner's gas, new owner accepts) was rehearsed on an Arc testnet fork with a stand-in key.
+
+Real run, per chain (smallest first: Robinhood → Arc → BSC → Base Sepolia → Sepolia):
+
+```bash
+KALEIDO_DIAMOND=<diamond> DRY_RUN=1 npx hardhat run scripts/upgrade-lending-hardening.js --network <net>
+KALEIDO_DIAMOND=<diamond> OWNER_PRIVATE_KEY=<0x28b7 key> NEW_OWNER=0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc \
+  ACCEPT=1 npx hardhat run scripts/upgrade-lending-hardening.js --network <net>
+npx hardhat run scripts/verify-diamond.js --network <net>
+```
+
 ---
 
 _Add a dated line here after each mainnet deploy: what shipped, the addresses, and which of the
