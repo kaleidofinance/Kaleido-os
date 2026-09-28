@@ -391,6 +391,32 @@ async function run() {
       other.includes("Protocol__PositionHealthy") && !/0x/.test(other),
       `got ${other}`,
     );
+
+    /* A help key that is not a real error name can never match — a typo there is
+       a message that silently never shows. EnforcedPause is OpenZeppelin's, raised
+       by contracts outside this union, so it is the one allowed exception. */
+    const errorNames = new Set(PROTOCOL_ERROR_ABI.map((f) => f.name));
+    const orphans = Object.keys(PROTOCOL_ERROR_HELP).filter(
+      (k) => k !== "EnforcedPause" && !errorNames.has(k),
+    );
+    check("every help key is an error the union ABI can decode", orphans.length === 0,
+      orphans.join(", "));
+
+    /* The paused-market sentence is what a borrower sees after the lending pause:
+       it decodes by name through the regenerated ProtocolFacet ABI. */
+    const PAUSED = pIface.encodeErrorResult("Protocol__Paused", []);
+    const paused = describeFailure(
+      await pDecoder.decode(makeError("execution reverted", "CALL_EXCEPTION", { data: PAUSED })),
+      makeError("execution reverted", "CALL_EXCEPTION", { data: PAUSED }),
+      PROTOCOL_ERROR_ABI,
+    );
+    check("a paused market explains that repay and withdraw still work",
+      paused === PROTOCOL_ERROR_HELP.Protocol__Paused, `got ${paused}`);
+
+    /* Owner-only errors from the admin + ownership facets are named, not raw. */
+    for (const name of ["OwnershipNotPendingOwner", "OwnershipZeroAddress", "Protocol__InvalidPriceFeed"]) {
+      check(`${name} is in the union ABI`, errorNames.has(name));
+    }
   }
 
   /* -------------------------------------------------------------------------- */
