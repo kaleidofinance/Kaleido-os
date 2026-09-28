@@ -83,8 +83,36 @@ describe("Mainnet guards (Arc lending, Phase A)", function () {
       const r = confirmMainnet({
         chainId: ARC, script: "t", plan, explicit: ["PROTOCOL_FEE_BPS"],
         env: { CONFIRM_MAINNET: "5042", PROTOCOL_FEE_BPS: "500" }, log: quiet,
+        shellKeys: new Set(["CONFIRM_MAINNET", "PROTOCOL_FEE_BPS"]),
       });
       expect(r.mainnet).to.equal(true);
+    });
+
+    it("mainnet refuses a money setting that only came from .env (found in the fork rehearsal)", function () {
+      // PROTOCOL_FEE_BPS is in the environment, but not among the keys the shell
+      // set before .env loaded — so it is a .env value, possibly a testnet leftover.
+      expect(() =>
+        confirmMainnet({
+          chainId: ARC, script: "t", plan, explicit: ["PROTOCOL_FEE_BPS", "PRICE_MAX_AGE_SECONDS"],
+          env: { CONFIRM_MAINNET: "5042", PROTOCOL_FEE_BPS: "500", PRICE_MAX_AGE_SECONDS: "300" },
+          log: quiet,
+          shellKeys: new Set(["CONFIRM_MAINNET", "PROTOCOL_FEE_BPS"]),
+        }),
+      ).to.throw(/come from \.env[\s\S]*PRICE_MAX_AGE_SECONDS/);
+    });
+
+    it("mainnet refuses a CONFIRM_MAINNET that only came from .env", function () {
+      expect(() =>
+        confirmMainnet({
+          chainId: ARC, script: "t", plan, env: { CONFIRM_MAINNET: "5042" }, log: quiet,
+          shellKeys: new Set(["SOMETHING_ELSE"]),
+        }),
+      ).to.throw(/Nothing was sent/);
+    });
+
+    it("hardhat.config.js records the shell's keys before .env loads", function () {
+      // This test runs under hardhat, so the snapshot must exist and be a Set.
+      expect(globalThis.__KALEIDO_SHELL_ENV_KEYS__).to.be.instanceOf(Set);
     });
 
     it("mainnet refuses feed overrides from the environment, even when confirmed", function () {
@@ -95,7 +123,7 @@ describe("Mainnet guards (Arc lending, Phase A)", function () {
       }
       // An empty value is not an override.
       expect(
-        confirmMainnet({ chainId: ARC, script: "t", plan, env: { CONFIRM_MAINNET: "5042", FEED_EURC: "" }, log: quiet }).mainnet,
+        confirmMainnet({ chainId: ARC, script: "t", plan, env: { CONFIRM_MAINNET: "5042", FEED_EURC: "" }, log: quiet, shellKeys: new Set(["CONFIRM_MAINNET"]) }).mainnet,
       ).to.equal(true);
     });
 

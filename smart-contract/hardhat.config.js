@@ -9,6 +9,28 @@
  * Copy .env.example to .env (already gitignored) before deploying.
  */
 
+/* Which variables came from the SHELL (the command line), recorded before .env
+ * is merged in. dotenv never overwrites a variable that is already set, so this
+ * set is exactly "what the operator typed for this run". The mainnet guard
+ * (scripts/libraries/mainnet-guard.js) requires money settings to be in it, so a
+ * stale value sitting in .env from a testnet run can never stand in for an
+ * explicit mainnet choice — found in the Arc fork rehearsal, where .env's
+ * PRICE_MAX_AGE_SECONDS silently satisfied the "must be explicit" check.
+ * Upper-cased because process.env is case-insensitive on Windows.
+ *
+ * Taken ONCE, in the first process, and handed down in an env var: `hardhat run`
+ * executes the script in a CHILD process whose environment already contains the
+ * parent's .env values, so a snapshot taken in the child would count them as
+ * typed (the first version of this did exactly that — caught by the rehearsal). */
+if (!process.env.KALEIDO_SHELL_ENV_KEYS) {
+  process.env.KALEIDO_SHELL_ENV_KEYS = Object.keys(process.env)
+    .map((k) => k.toUpperCase())
+    .join(",");
+}
+globalThis.__KALEIDO_SHELL_ENV_KEYS__ = new Set(
+  process.env.KALEIDO_SHELL_ENV_KEYS.split(","),
+);
+
 require("dotenv").config();
 require("@nomicfoundation/hardhat-toolbox");
 
@@ -213,6 +235,25 @@ module.exports = {
       chainId: 5042,
       accounts: accounts(),
       timeout: 120000,
+    },
+    /* A LOCAL anvil fork of Arc mainnet, for rehearsing the mainnet runbook:
+     *   anvil --fork-url https://rpc.mainnet.arc.io --chain-id 5042
+     * Hardwired to 127.0.0.1 and signed by anvil's own PUBLIC test account #0
+     * (the key anvil prints on start — not a secret, holds nothing on any real
+     * chain), deliberately NOT by DEPLOYER_PRIVATE_KEY. Pointing `arcMainnet` at
+     * a fork through ARC_MAINNET_RPC would work too, but one typo in that env var
+     * sends the real deployer's transactions to the real chain. This network
+     * cannot. chainId stays 5042 so the scripts' mainnet guard, tables and asset
+     * rules behave exactly as they will on the day. Fund the account with
+     * `anvil_setBalance` first; deploy records land as *-arcFork.json — delete
+     * them, never run gen:registry on them. */
+    arcFork: {
+      url: "http://127.0.0.1:8545",
+      chainId: 5042,
+      accounts: [
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      ],
+      timeout: 300000,
     },
   },
 

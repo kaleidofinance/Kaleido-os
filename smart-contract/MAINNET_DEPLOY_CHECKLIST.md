@@ -153,6 +153,40 @@ npx hardhat run scripts/verify-diamond.js --network arcMainnet
 
 (PowerShell: set each as `$env:NAME="value";` before the command.)
 
+**Every money setting must be typed on the command line for the run.** `smart-contract/.env`
+holds leftovers from testnet work (all six settings above, and `NATIVE_FEED_SYMBOL=BNB`); the
+mainnet guard now refuses a setting that only came from `.env`.
+
+### Phase B — rehearse on a fork of Arc mainnet (done 2026-09-28, repeat before the real run)
+
+```bash
+anvil --fork-url https://rpc.mainnet.arc.io --chain-id 5042 --port 8545
+# fund anvil's public test account #0 (0xf39F…2266) with anvil_setBalance, then run
+# steps 1–4 above with --network arcFork instead of arcMainnet, then:
+npx hardhat run scripts/rehearse-lending-fork.js --network arcFork
+# afterwards: delete smart-contract/deployment-*-arcFork.json — never gen:registry them
+```
+
+`arcFork` is hardwired to 127.0.0.1 and signs with anvil's public test key, never the deployer,
+so a mistake cannot reach the real chain. The rehearsal refuses to run anywhere but anvil.
+
+Result on real EURC / cirBTC / Chainlink: runbook steps 1–4 pass; a full loan (fee exactly 5% of
+interest, lender withdraws the native-USDC repayment from the ledger), pause, a normal liquidation,
+an over-collateralised liquidation, two-step ownership and the refusals all pass.
+
+It found and we fixed: (1) the guard accepted `.env` leftovers as "explicit" (and `hardhat run`
+executes in a child process, so the shell snapshot is passed down in `KALEIDO_SHELL_ENV_KEYS`);
+(2) `verify-diamond` priced native USDC with `.env`'s stale BNB symbol; (3) **liquidation seized
+only the loan's locked collateral** while eligibility used the whole account — an
+over-collateralised borrower's lender recovered ≈ $7.00 of $10.50 and the liquidator nothing.
+Liquidation now takes the shortfall from the borrower's free collateral (never another loan's
+lock); on the fork the same case pays the lender ≈ $10.51, the liquidator and the fee vault.
+ProtocolFacet is now **24,412 bytes (164 under EIP-170)** — the next facet change must reclaim
+space first (e.g. string `require`s → custom errors).
+
+Still to do before mainnet: Arc Testnet parity deploy of this commit (§0), a ≥ 30-day walk of
+each Chainlink feed, and the app's ABI/error regeneration.
+
 ---
 
 _Add a dated line here after each mainnet deploy: what shipped, the addresses, and which of the

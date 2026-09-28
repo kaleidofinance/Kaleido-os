@@ -63,6 +63,7 @@ const fs = require("fs");
 const { getSelectors } = require("./libraries/diamond.js");
 const { feedFor } = require("./libraries/pyth-feeds.js");
 const { backendFor, feedPlanFor } = require("./libraries/aggregator-feeds.js");
+const { NATIVE_SYMBOL } = require("./libraries/chain-asset-rules.js");
 
 /**
  * The facets that are cut into the diamond.
@@ -406,7 +407,22 @@ async function main() {
   const NATIVE_SENTINEL = ethers.getAddress(
     "0x0000000000000000000000000000000000000001",
   );
+  /* Which feed prices native. The chain's own native symbol first (the reviewed
+   * table register-tokens.js enforces), then what register-tokens recorded, and
+   * the environment only last. It used to read the diamond record (which never
+   * carries this) and then .env — so on Arc the fork rehearsal found it checking
+   * native USDC against BNB/USD, from a stale NATIVE_FEED_SYMBOL=BNB in .env. */
+  let tokensRecord = null;
+  try {
+    tokensRecord = JSON.parse(
+      fs.readFileSync(`deployment-tokens-${hre.network.name}.json`, "utf8"),
+    );
+  } catch {
+    /* no registration record for this network */
+  }
   const nativeFeedSymbol =
+    NATIVE_SYMBOL[chainId] ||
+    tokensRecord?.nativeFeedSymbol ||
     record?.nativeFeedSymbol ||
     (process.env.NATIVE_FEED_SYMBOL || "").trim() ||
     null;

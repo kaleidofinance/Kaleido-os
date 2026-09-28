@@ -87,7 +87,15 @@ the total repayment for a proposed amount, rate and return date.
 
 If the health factor drops below 1.0, anyone can clear the debt and take collateral
 for it. The penalty is 6.4% of the debt cleared, split three parts to one: 4.8% to
-whoever performed the liquidation, 1.6% to the protocol.
+whoever performed the liquidation, 1.6% to the protocol. A loan can also be
+liquidated once its return date has passed, whatever the health factor.
+
+What is taken is the collateral locked to that loan first. If that does not cover
+the debt plus the penalty — which happens when you deposited more than the loan
+locked and the price then fell — the rest comes from your free, unlocked collateral,
+token by token. Collateral locked to your other loans is never touched: it backs
+other lenders. The health factor already counts all of your collateral, so this is
+what lets the lender be repaid in full whenever your account as a whole can cover it.
 
 It is a waterfall rather than a flat rate, and the ordering is the important part.
 The lender's claim on what was seized is settled first; the penalty is only whatever
