@@ -270,6 +270,109 @@ describe("Lending hardening (Arc mainnet Phase A)", function () {
     });
   });
 
+  describe("liquidation seizes free collateral when the lock falls short", function () {
+    /* Found in the Arc mainnet fork rehearsal: eligibility used the ACCOUNT health
+     * factor but seizure took only the collateral LOCKED to the loan, so an
+     * over-collateralised borrower's lender recovered ≈ 67% and the liquidator
+     * nothing. Pass 2 now takes the shortfall from the borrower's free balance. */
+    const LOAN = 10_500_000_000_000_000_000n; // 10.5 USDC (18dp native)
+    const feeVaultAddr = () => carol.address;
+
+    async function borrow(user, amount) {
+      await protocol.connect(user).createLendingRequest(amount, 1000, (await time.latest()) + 3 * 86400, NATIVE);
+      const all = await protocol.getAllRequests(0, 1000);
+      const id = all[all.length - 1].requestId;
+      await protocol.connect(bob).serviceRequest(id, NATIVE, { value: amount });
+      return id;
+    }
+
+    beforeEach(async function () {
+      await protocol.setFeeVault(feeVaultAddr());
+      await protocol.setLiquidityBps(640);
+      await protocol.setBPS(500);
+      await fund(alice, cirbtc, 60_000n); // 0.0006 cirBTC ≈ $50.8
+      await protocol.connect(alice).depositCollateral(await cirbtc.getAddress(), 60_000n);
+    });
+
+    it("makes the lender whole, pays liquidator and vault, and leaves the borrower's other loan alone", async function () {
+      const id1 = await borrow(alice, LOAN);
+      const id2 = await borrow(alice, LOAN);
+      const token = await cirbtc.getAddress();
+      const locked1 = await protocol.getRequestToColateral(id1, token);
+      const locked2 = await protocol.getRequestToColateral(id2, token);
+      expect(locked1 + locked2).to.be.lessThan(60_000n); // spare, unlocked collateral exists
+
+      await btcFeed.setAnswer(8_463_533_000_000n / 2n); // BTC −50%
+      expect(await protocol.getHealthFactor(alice.address)).to.be.lessThan(10n ** 18n);
+
+      const debt = (await protocol.getRequest(id1)).totalRepayment;
+      await protocol.connect(owner).liquidateUserRequest(id1);
+
+      const lenderGot = await protocol.gets_addressToCollateralDeposited(bob.address, token);
+      const lenderUsd = await protocol.getUsdValue(token, lenderGot, 8);
+      const debtUsd = await protocol.getUsdValue(NATIVE, debt, 18);
+      // Whole, give or take one base unit of rounding (1 sat ≈ $0.0004 here).
+      expect(lenderUsd + 10n ** 15n).to.be.gte(debtUsd);
+      expect(await protocol.gets_addressToCollateralDeposited(owner.address, token)).to.be.greaterThan(0n); // liquidator
+      expect(await protocol.gets_addressToCollateralDeposited(feeVaultAddr(), token)).to.be.greaterThan(0n); // vault
+      // More than the lock was taken — pass 2 reached the free balance …
+      const seized = 60_000n - (await protocol.gets_addressToCollateralDeposited(alice.address, token));
+      expect(seized).to.be.greaterThan(locked1);
+      // … but loan 2's lock, which backs a different lender, was not touched.
+      expect(await protocol.getRequestToColateral(id2, token)).to.equal(locked2);
+      // The borrower keeps whatever was not needed.
+      expect(await protocol.gets_addressToCollateralDeposited(alice.address, token)).to.be.greaterThan(locked2);
+      // Ledger invariant: deposited == free + every remaining lock (loan 2's).
+      expect(await protocol.gets_addressToCollateralDeposited(alice.address, token)).to.equal(
+        (await protocol.gets_addressToAvailableBalance(alice.address, token)) + locked2,
+      );
+    });
+
+    it("pass 2 spans tokens (and the same token in both passes), keeping the ledger consistent", async function () {
+      // EURC as well: a loan locks the same fraction of EVERY collateral the
+      // borrower holds, and pass 2 walks tokens in listed order (EURC, cirBTC).
+      await fund(alice, eurc, 5_000_000n); // 5 EURC ≈ $5.69
+      await protocol.connect(alice).depositCollateral(await eurc.getAddress(), 5_000_000n);
+      const id = await borrow(alice, 40n * 10n ** 18n); // ≈ 94% of the borrowing limit
+      const [e, b] = [await eurc.getAddress(), await cirbtc.getAddress()];
+      const freeE = await protocol.gets_addressToAvailableBalance(alice.address, e);
+      const freeB = await protocol.gets_addressToAvailableBalance(alice.address, b);
+      expect(freeE).to.be.greaterThan(0n);
+      expect(freeB).to.be.greaterThan(0n);
+
+      await btcFeed.setAnswer(8_463_533_000_000n / 2n); // the lock falls well short
+      await protocol.connect(owner).liquidateUserRequest(id);
+
+      // Pass 2 took the free balance of BOTH tokens (cirBTC was also in pass 1).
+      expect(await protocol.gets_addressToAvailableBalance(alice.address, e)).to.equal(0n);
+      expect(await protocol.gets_addressToAvailableBalance(alice.address, b)).to.equal(0n);
+      // Seized EURC reached the lender, liquidator and vault.
+      expect(await protocol.gets_addressToCollateralDeposited(bob.address, e)).to.be.greaterThan(0n);
+      // No open loan remains, so for each token deposited == free (no stray lock).
+      for (const t of [e, b]) {
+        expect(await protocol.gets_addressToCollateralDeposited(alice.address, t)).to.equal(
+          await protocol.gets_addressToAvailableBalance(alice.address, t),
+        );
+        expect(await protocol.getRequestToColateral(id, t)).to.equal(0n);
+      }
+    });
+
+    it("a borrower whose lock alone covers the debt loses no free collateral", async function () {
+      const id = await borrow(alice, LOAN);
+      const token = await cirbtc.getAddress();
+      const locked = await protocol.getRequestToColateral(id, token);
+      // −10%: the account HF is still healthy with 60k sats, so force eligibility
+      // by letting the loan go overdue instead.
+      await btcFeed.setAnswer((8_463_533_000_000n * 9n) / 10n);
+      await time.increase(3 * 86400 + 60);
+      await btcFeed.setUpdatedAt(await time.latest());
+      await usdcFeed.setUpdatedAt(await time.latest());
+      await protocol.connect(owner).liquidateUserRequest(id);
+      const seized = 60_000n - (await protocol.gets_addressToCollateralDeposited(alice.address, token));
+      expect(seized).to.be.lte(locked); // only the lock was needed
+    });
+  });
+
   describe("registration guards", function () {
     it("collateral with a zero feed is refused", async function () {
       const t = await (await ethers.getContractFactory("MockERC20")).deploy("X", "X", 18);

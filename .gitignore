@@ -78,3 +78,6 @@ smart-contract/.scan-progress-*.json
 brand/out/
 brand/.render-cache/
 brand/.card-*.html
+
+# Local anvil-fork rehearsal records (network arcFork, chainId 5042) — never commit or register
+smart-contract/deployment-*Fork*.json

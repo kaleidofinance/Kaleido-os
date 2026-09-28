@@ -260,6 +260,14 @@ function discover() {
       found.push({ name, absPath, skip: `unknown component "${parsed.component}"` });
       continue;
     }
+    /* A LOCAL FORK rehearsal (hardhat network `arcFork`, anvil) keeps the real
+     * chainId — 5042 — so its records would otherwise be filed as Arc MAINNET's
+     * and a leftover file would become the app's live lending registry entry.
+     * Never registered, whatever else is in the directory. */
+    if (/fork/i.test(name)) {
+      found.push({ name, absPath, skip: "local fork rehearsal record — never registered" });
+      continue;
+    }
 
     let record;
     try {

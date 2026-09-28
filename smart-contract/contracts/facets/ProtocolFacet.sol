@@ -1518,6 +1518,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
              * early when the borrower's collateral runs out, so asking for more
              * than the position holds is safe: it just seizes everything. */
             (
+                address[] memory seizedTokens,
                 uint256[] memory seizedAmounts,
                 uint256 totalCollateralUsdValue
             ) = _seizeCollateralForLiquidation(
@@ -1602,6 +1603,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
              * recipient to accept anything. */
             _settleLiquidationProceeds(
                 _foundRequest,
+                seizedTokens,
                 seizedAmounts,
                 totalCollateralUsdValue,
                 liquidatorUsd,
@@ -1646,9 +1648,26 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
     /// @param targetUsd Debt plus penalty. Asking for more than the position
     ///        holds is safe — the loop stops when the collateral runs out, and
     ///        the caller checks the total it got back.
-    /// @return seizedAmounts Per token, positionally aligned with
-    ///         `collateralTokens`.
+    /// @return seizedTokens The token of each entry in `seizedAmounts`: the
+    ///         request's own collateral tokens first, then every collateral
+    ///         token the protocol lists (for the second pass).
+    /// @return seizedAmounts Per entry, aligned with `seizedTokens`.
     /// @return totalSeizedUsd USD value of everything seized.
+    ///
+    /// TWO PASSES (2026-09-28, found in the Arc mainnet fork rehearsal).
+    /// Liquidation is triggered by the borrower's ACCOUNT health factor — all
+    /// their collateral — but this used to seize only the collateral LOCKED to
+    /// the one request. A borrower who had deposited more than their loan locked
+    /// therefore became liquidatable only once the locked part was already worth
+    /// less than the debt: measured on the fork with real cirBTC and Chainlink,
+    /// BTC −50% left the lender with ≈ $7.00 of a $10.50 loan, the liquidator
+    /// with nothing (the penalty is paid only from value above the debt, so no
+    /// one would have called liquidate at all), and the borrower keeping 13,461
+    /// of 30,000 sats of unlocked collateral. Eligibility and seizure now agree:
+    /// pass 1 takes the request's locked collateral, and if that does not reach
+    /// `targetUsd`, pass 2 (`_seizeFreeCollateral`) takes the rest from the
+    /// borrower's FREE balance — never from collateral locked to their other
+    /// loans, which backs other lenders.
     function _seizeCollateralForLiquidation(
         uint96 requestId,
         address borrower,
@@ -1656,7 +1675,11 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
         uint256 targetUsd
     )
         private
-        returns (uint256[] memory seizedAmounts, uint256 totalSeizedUsd)
+        returns (
+            address[] memory seizedTokens,
+            uint256[] memory seizedAmounts,
+            uint256 totalSeizedUsd
+        )
     {
         uint256 len = collateralTokens.length;
         uint256 remaining = targetUsd;
@@ -1667,7 +1690,12 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
          * would let two reads of the same oracle disagree within one
          * transaction. One memory word per collateral asset named on the
          * request. */
-        seizedAmounts = new uint256[](len);
+        {
+            uint256 n = len + _appStorage.s_collateralToken.length;
+            seizedTokens = new address[](n);
+            seizedAmounts = new uint256[](n);
+        }
+        for (uint256 i = 0; i < len; ++i) seizedTokens[i] = collateralTokens[i];
 
         for (uint256 i = 0; i < len && remaining > 0; ++i) {
             address collateralToken = collateralTokens[i];
@@ -1773,6 +1801,51 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
                 }
             }
         }
+        if (remaining > 0) {
+            totalSeizedUsd += _seizeFreeCollateral(
+                borrower,
+                seizedTokens,
+                seizedAmounts,
+                len,
+                remaining
+            );
+        }
+    }
+
+    /// @notice Pass 2 of a liquidation: take what the locked collateral did not
+    ///         cover from the borrower's FREE (unlocked) collateral.
+    /// @dev Walks the protocol's collateral tokens in listed order and takes up to
+    ///      `remainingUsd` from each free balance, debiting both the deposit and
+    ///      the free-balance ledgers (free ⊆ deposited). Collateral locked to the
+    ///      borrower's other requests is untouched: it is not in the free balance.
+    ///      Records each token at `offset + j` so settlement can credit it out.
+    ///      See `_seizeCollateralForLiquidation` for why this exists.
+    /// @return seizedUsd USD value taken in this pass.
+    function _seizeFreeCollateral(
+        address borrower,
+        address[] memory seizedTokens,
+        uint256[] memory seizedAmounts,
+        uint256 offset,
+        uint256 remainingUsd
+    ) private returns (uint256 seizedUsd) {
+        address[] storage _all = _appStorage.s_collateralToken;
+        for (uint256 j = 0; j < _all.length && remainingUsd > 0; ++j) {
+            address t = _all[j];
+            seizedTokens[offset + j] = t;
+            uint256 free = _appStorage.s_addressToAvailableBalance[borrower][t];
+            if (free == 0) continue;
+            uint8 dec = _getTokenDecimal(t);
+            // +1 base unit: getTokenAmountFromUsd floors, and a short take would
+            // leave the target a dust amount under what was owed.
+            uint256 take = getTokenAmountFromUsd(t, remainingUsd, dec) + 1;
+            if (take > free) take = free;
+            uint256 usd = getUsdValue(t, take, dec);
+            _appStorage.s_addressToAvailableBalance[borrower][t] -= take;
+            _appStorage.s_addressToCollateralDeposited[borrower][t] -= take;
+            seizedAmounts[offset + j] = take;
+            seizedUsd += usd;
+            remainingUsd = usd >= remainingUsd ? 0 : remainingUsd - usd;
+        }
     }
 
     /// @notice Divides what a liquidation seized into the penalty's two
@@ -1851,15 +1924,17 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
     ///      which is the entire point of the split.
     /// @param _request The liquidated request, read for its lender and its
     ///        collateral token list.
-    /// @param seizedAmounts Per-token amounts from
-    ///        `_seizeCollateralForLiquidation`, positionally aligned with
-    ///        `_request.collateralTokens`.
+    /// @param seizedTokens The token of each entry, from
+    ///        `_seizeCollateralForLiquidation` (the request's locked tokens, then
+    ///        the free-balance pass).
+    /// @param seizedAmounts Per-entry amounts, aligned with `seizedTokens`.
     /// @param totalSeizedUsd Denominator for the pro-rata split; the caller has
     ///        already required it to be non-zero.
     /// @param liquidatorUsd The liquidator's penalty share, in USD.
     /// @param protocolUsd The protocol's penalty share, in USD.
     function _settleLiquidationProceeds(
         Request memory _request,
+        address[] memory seizedTokens,
         uint256[] memory seizedAmounts,
         uint256 totalSeizedUsd,
         uint256 liquidatorUsd,
@@ -1871,7 +1946,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
         for (uint256 i = 0; i < len; ++i) {
             uint256 seizedAmount = seizedAmounts[i];
             if (seizedAmount == 0) continue;
-            address collateralToken = _request.collateralTokens[i];
+            address collateralToken = seizedTokens[i];
 
             /* Truncating division on the two penalty legs with the lender
              * taking the remainder, so the three credits sum to exactly

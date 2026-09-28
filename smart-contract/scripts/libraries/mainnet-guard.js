@@ -52,7 +52,16 @@ function isMainnet(chainId) {
  * @param {object} [args.env]       Injected for tests; defaults to process.env.
  * @param {(line: string) => void} [args.log]
  */
-function confirmMainnet({ chainId, script, plan, explicit = [], env = process.env, log = console.log }) {
+function confirmMainnet({
+  chainId,
+  script,
+  plan,
+  explicit = [],
+  env = process.env,
+  log = console.log,
+  // Keys set in the shell before .env loaded (see hardhat.config.js). Injectable for tests.
+  shellKeys = globalThis.__KALEIDO_SHELL_ENV_KEYS__,
+}) {
   const id = Number(chainId);
   const mainnet = isMainnet(id);
   const width = Math.max(...plan.map(([k]) => String(k).length), 10);
@@ -92,7 +101,27 @@ function confirmMainnet({ chainId, script, plan, explicit = [], env = process.en
         `even if it equals the default):\n   ${missing.join("\n   ")}`,
     );
   }
-  if (String(env.CONFIRM_MAINNET ?? "").trim() !== String(id)) {
+
+  /* "Explicit" means typed for THIS run — not merely present. hardhat.config.js
+   * records which variables came from the shell before .env is merged in; a
+   * money setting that is only in .env may be another chain's leftover (the Arc
+   * fork rehearsal proved it: .env's PRICE_MAX_AGE_SECONDS satisfied the check
+   * above). Skipped only when that record is unavailable (not run via hardhat). */
+  if (shellKeys) {
+    const fromFileOnly = explicit.filter((name) => !shellKeys.has(name.toUpperCase()));
+    if (fromFileOnly.length) {
+      throw new Error(
+        `Refusing to run ${script} on mainnet: these money settings come from .env,\n` +
+          `not from the command line, so they may be another chain's leftovers:\n` +
+          `   ${fromFileOnly.join("\n   ")}\n` +
+          "Pass each one on the command line for this run (PowerShell: $env:NAME=\"…\").",
+      );
+    }
+  }
+  /* The confirmation itself must be typed for this run too: a CONFIRM_MAINNET
+     line left in .env would pre-approve every future mainnet run. */
+  const confirmFromShell = !shellKeys || shellKeys.has("CONFIRM_MAINNET");
+  if (!confirmFromShell || String(env.CONFIRM_MAINNET ?? "").trim() !== String(id)) {
     throw new Error(
       `Nothing was sent. This is ${MAINNETS[id]} mainnet (chainId ${id}).\n` +
         `Read every row printed above. If each one is what you intend, re-run with\n` +

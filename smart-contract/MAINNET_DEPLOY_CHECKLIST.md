@@ -153,7 +153,95 @@ npx hardhat run scripts/verify-diamond.js --network arcMainnet
 
 (PowerShell: set each as `$env:NAME="value";` before the command.)
 
+**Every money setting must be typed on the command line for the run.** `smart-contract/.env`
+holds leftovers from testnet work (all six settings above, and `NATIVE_FEED_SYMBOL=BNB`); the
+mainnet guard now refuses a setting that only came from `.env`.
+
+### Phase B — rehearse on a fork of Arc mainnet (done 2026-09-28, repeat before the real run)
+
+```bash
+anvil --fork-url https://rpc.mainnet.arc.io --chain-id 5042 --port 8545
+# fund anvil's public test account #0 (0xf39F…2266) with anvil_setBalance, then run
+# steps 1–4 above with --network arcFork instead of arcMainnet, then:
+npx hardhat run scripts/rehearse-lending-fork.js --network arcFork
+# afterwards: delete smart-contract/deployment-*-arcFork.json — never gen:registry them
+```
+
+`arcFork` is hardwired to 127.0.0.1 and signs with anvil's public test key, never the deployer,
+so a mistake cannot reach the real chain. The rehearsal refuses to run anywhere but anvil.
+
+Result on real EURC / cirBTC / Chainlink: runbook steps 1–4 pass; a full loan (fee exactly 5% of
+interest, lender withdraws the native-USDC repayment from the ledger), pause, a normal liquidation,
+an over-collateralised liquidation, two-step ownership and the refusals all pass.
+
+It found and we fixed: (1) the guard accepted `.env` leftovers as "explicit" (and `hardhat run`
+executes in a child process, so the shell snapshot is passed down in `KALEIDO_SHELL_ENV_KEYS`);
+(2) `verify-diamond` priced native USDC with `.env`'s stale BNB symbol; (3) **liquidation seized
+only the loan's locked collateral** while eligibility used the whole account — an
+over-collateralised borrower's lender recovered ≈ $7.00 of $10.50 and the liquidator nothing.
+Liquidation now takes the shortfall from the borrower's free collateral (never another loan's
+lock); on the fork the same case pays the lender ≈ $10.51, the liquidator and the fee vault.
+ProtocolFacet is now **24,412 bytes (164 under EIP-170)** — the next facet change must reclaim
+space first (e.g. string `require`s → custom errors).
+
+Still to do before mainnet: Arc Testnet parity deploy of this commit (§0), a ≥ 30-day walk of
+each Chainlink feed, and the app's ABI/error regeneration.
+
+### The five existing testnet diamonds — upgrade in place (rehearsed 2026-09-28)
+
+All five are owned by `0x28b7…8955`, the testnet deployer whose key was committed to the repo
+(public). `scripts/upgrade-lending-hardening.js` upgrades each in ONE cut — ProtocolFacet
+Replace, OwnershipFacet Replace + Add, LendingAdminFacet Add, Remove the dead `pyth()` /
+`pythPriceOracle()` — proves every request, lock and participant balance is unchanged, then
+nominates a new owner who accepts (two-step), taking ownership off the leaked key.
+
+Rehearsed on anvil forks of all five (`FORK=1`, owner impersonated) plus
+`scripts/smoke-upgraded-fork.js` (new owner pauses/unpauses; health factors read; a REAL overdue
+loan from the existing book liquidated with a consistent ledger). Results: Sepolia 422 values /
+67 requests, Base Sepolia 380 / 41, BSC 37 / 3, Robinhood and Arc testnet empty — all unchanged,
+all handed to `0x0Ce7…`, all smoke tests pass. The real-network path (owner deploys + signs, tops
+up the new owner's gas, new owner accepts) was rehearsed on an Arc testnet fork with a stand-in key.
+
+Real run, per chain (smallest first: Robinhood → Arc → BSC → Base Sepolia → Sepolia):
+
+```bash
+KALEIDO_DIAMOND=<diamond> DRY_RUN=1 npx hardhat run scripts/upgrade-lending-hardening.js --network <net>
+KALEIDO_DIAMOND=<diamond> OWNER_PRIVATE_KEY=<0x28b7 key> NEW_OWNER=0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc \
+  ACCEPT=1 npx hardhat run scripts/upgrade-lending-hardening.js --network <net>
+npx hardhat run scripts/verify-diamond.js --network <net>
+```
+
 ---
+
+- **2026-09-28 — the five testnet lending diamonds upgraded in place** with
+  `upgrade-lending-hardening.js` (order Robinhood → Arc → BSC → Base Sepolia → Sepolia): every
+  cut verified live, state unchanged (Sepolia 422 values / 67 requests, Base Sepolia 380 / 41,
+  BSC 37 / 3, Robinhood + Arc empty), `verify-diamond` green on all five, ownership accepted by
+  `0x0Ce7…51Bc`. The leaked `0x28b7…` key's native balances swept to `0x0Ce7…`. **Still owned by
+  the leaked key on all five testnets:** faucet, kldVault, orders, lending `priceOracle`, mock
+  USDT/USDe, v3Factory (owner); admin role on KLD, stKLD, kfUSD, kafUSD, YieldTreasury; ≈ 1B KLD
+  and mock stables held per chain. The oracle is the urgent one — whoever holds that key can
+  repoint lending prices.
+- **2026-09-28 (later) — everything else the leaked key controlled moved to `0x0Ce7…51Bc`**, oracle
+  first, with `migrate-leaked-key.mjs` driven by `survey-leaked-key.mjs` (every deployment record
+  **plus every `CREATE` address from the key's 1,318 nonces** — the nonce walk found ~30 contracts no
+  record names: old mocks, Robinhood mock stocks, four Robinhood contracts paying fees to the key).
+  Fork-rehearsed on all five (second pass a no-op), then live: 534 steps — lending `priceOracle`
+  and Robinhood's two `PushablePriceFeed`s (pusher revoked, keeper `0xB37d…` still a pusher), every
+  `Ownable`/V3 `setOwner`/V2 `feeToSetter`/`feeTo`/`feeRecipient`, every AccessControl role
+  (granted to `0x0Ce7`, renounced, admin last), the key's lending-ledger balance (Sepolia 0.145 WETH,
+  Base 120.8 USDT), 48 V3 LP position NFTs, and every ERC20 balance (~1B KLD + ~1B mock USDT/USDe
+  per chain, stKLD, kfUSD, kafUSD, mock USDC, WETH, EURC, cirBTC). A fresh post-survey of all five
+  finds the key controls nothing, except the **Sepolia "USD Theters" mock `0xeAeE…f6a2` (nonce 25):
+  immutable owner with `mint`, no transfer function — its mint right stays with the leaked key
+  forever; it is in no Sepolia record or registry**. Residue: gas dust, and the key remains the
+  *lender* on six old serviced loans (Sepolia #1 #2 #34, Base #1 #2 #3) — a repayment would credit
+  its ledger, so re-run `survey-leaked-lending.mjs` and sweep if one is repaid. Arc mainnet was
+  checked too: the key never transacted there (nonce 0) and owns nothing.
+  Lesson: Arc testnet's RPC once answered real `hasRole` checks with revert-shaped errors, which
+  read as "no role" and left three contracts' roles behind on the first pass — the survey now
+  disables batching and only believes a revert that repeats; always post-survey, never trust the
+  migration's own checks alone.
 
 _Add a dated line here after each mainnet deploy: what shipped, the addresses, and which of the
 above was the closest call. The next deploy reads this first._
