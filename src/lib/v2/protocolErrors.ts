@@ -5,6 +5,8 @@ import ERC20Abi from "@/abi/ERC20Abi.json";
 import KLDVaultAbi from "@/abi/KLDVaultAbi.json";
 import KaleidoMasterChef from "@/abi/KaleidoMasterChef.json";
 import AgentPermissionFacet from "@/abi/AgentPermissionFacet.json";
+import LendingAdminFacet from "@/abi/LendingAdminFacet.json";
+import OwnershipFacet from "@/abi/OwnershipFacet.json";
 
 /**
  * The union of every custom error an agent plan can hit, and a plain-English line
@@ -24,7 +26,11 @@ import AgentPermissionFacet from "@/abi/AgentPermissionFacet.json";
  * deduped by signature, so building an `Interface` from it can't collide on a
  * function selector shared across facets, and it stays small. The plans an agent
  * runs touch the lending diamond (ProtocolFacet), ERC-20 approvals, the KLD vault
- * and MasterChef, and the agent-grant facet — so those are the ABIs unioned here.
+ * and MasterChef, and the agent-grant facet — so those are the ABIs unioned here,
+ * plus the diamond's admin and ownership facets so an owner-only revert is named too.
+ *
+ * The ABIs themselves are generated from the compiled contracts (`npm run gen:abis`;
+ * `npm run test:abis` fails on drift) — never edit src/abi/ by hand.
  */
 function errorFragments(...abis: unknown[]): JsonFragment[] {
   const seen = new Set<string>();
@@ -53,6 +59,8 @@ export const PROTOCOL_ERROR_ABI: JsonFragment[] = errorFragments(
   KLDVaultAbi,
   KaleidoMasterChef,
   AgentPermissionFacet,
+  LendingAdminFacet,
+  OwnershipFacet,
 );
 
 /**
@@ -85,4 +93,24 @@ export const PROTOCOL_ERROR_HELP: Record<string, string> = {
   Protocol__BreaksHealthFactor:
     "This would push your position below a safe health factor. Borrow less, or add more collateral first.",
   EnforcedPause: "This action is paused right now. Try again a little later.",
+  /* The lending pause gates only NEW risk (requests, funding, listings, borrowing
+     from a listing); repay, add collateral, withdraw and liquidate stay open. */
+  Protocol__Paused:
+    "New loans are paused on this market right now. You can still repay, add collateral and withdraw.",
+  Protocol__StalePrice:
+    "The price for one of these assets is out of date, so the market can't value it right now. Try again shortly.",
+  Protocol__TokenNotAllowed:
+    "That asset isn't accepted for this here. Pick a supported asset.",
+  Protocol__TermTooShort:
+    "The loan term is too short — the minimum is one day. Pick a later return date.",
+  Protocol__CantFundSelf:
+    "You can't fund your own request. Another wallet has to lend to it.",
+  Protocol__RequestNotOpen:
+    "This loan request isn't open anymore — it may already have been funded or closed.",
+  Protocol__RequestExpired:
+    "This loan request has expired. Create a new one.",
+  Protocol__ListingNotOpen:
+    "This lending offer isn't open anymore. Pick another offer.",
+  Protocol__InsufficientAllowance:
+    "The token approval is too low for this amount. Approve the amount first, then try again.",
 };

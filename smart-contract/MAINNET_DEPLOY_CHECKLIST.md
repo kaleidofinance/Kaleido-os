@@ -59,7 +59,8 @@ bottom; do not skip because it "looks fine."
       `AgentPermissionFacet`, `OwnershipFacet`, loupe/cut) → `diamondCut` → wiring. A facet
       missing from the cut is a silent "function not found on ABI" at call time.
 - [ ] ABIs consumed by the app come from `artifacts/`, regenerated this deploy — **never**
-      hand-edited `src/abi/`. `protocolErrors.ts` union ABI is current (so reverts decode to
+      hand-edited `src/abi/`: `npm run gen:abis` writes them, `npm run test:abis` fails on drift
+      (compile first; artifacts are not committed). `protocolErrors.ts` union ABI is current (so reverts decode to
       friendly names, e.g. `0xd4030a2a = NoCollateralDeposited`).
 - [ ] `src/constants/deployments.generated.ts` is regenerated (not hand-edited) and committed;
       `chains.ts` / `registry.ts` carry the new mainnet addresses; `native-alias` tag is on
@@ -127,7 +128,7 @@ overwrite a collateral feed; `MAX_FEED_PRICE_AGE` 90,000 → 108,000 (Arc's stab
 only on the 24h heartbeat — walked gaps 86,404–86,487s left ~58 min under the old cap);
 OpenZeppelin pinned to 5.4.0 and its ReentrancyGuard vendored as `LendingReentrancyGuard` (the storage layout depends on `_status` at slot 0 — a test reads slots 0 and 1 of a live diamond); `receive()` and `example()` removed from the Diamond (a plain USDC transfer now reverts instead of being stuck forever); depositing collateral is never paused (borrowers can defend positions) and only accepts collateral tokens (native USDC, loanable-only, is refused); a debt-free user can withdraw during an oracle outage; `setTokenFeed` proves the new feed prices in the same tx. Scripts refuse FEED_*/AGGREGATOR_*/FEED_MAX_AGE_*/ORACLE_BACKEND env overrides on mainnet and dry-run every registration before the first send. Independently reviewed 2026-09-27: no blockers.
 
-**Known, not fixed in Phase A (facet-upgradeable later):** a USDC/USD answer older than its 97,200s bound blocks `repayLoan` for every borrower (the repay path prices the loan currency); the app's `src/abi/ProtocolFacet.json` and error catalogue need regenerating from artifacts (new errors: Protocol__Paused, Protocol__InvalidPriceFeed, OwnershipZeroAddress, OwnershipNotPendingOwner; new LendingAdminFacet ABI); `AggregatorPriceOracle.transferOwnership` is single-step — include it in the Safe handover; existing testnet diamonds lack LendingAdminFacet and two-step ownership until upgraded (Phase B).
+**Known, not fixed in Phase A (facet-upgradeable later):** a USDC/USD answer older than its 97,200s bound blocks `repayLoan` for every borrower (the repay path prices the loan currency); the app's `src/abi/ProtocolFacet.json` and error catalogue need regenerating from artifacts (done 2026-09-28 via `npm run gen:abis`) (new errors: Protocol__Paused, Protocol__InvalidPriceFeed, OwnershipZeroAddress, OwnershipNotPendingOwner; new LendingAdminFacet ABI); `AggregatorPriceOracle.transferOwnership` is single-step — include it in the Safe handover; existing testnet diamonds lack LendingAdminFacet and two-step ownership until upgraded (Phase B).
 
 **Before running anything below:** Phase B — rehearse the exact commands on an anvil fork of
 Arc mainnet, then deploy the same commit on Arc Testnet (§0). Re-walk each Chainlink feed over
@@ -185,8 +186,9 @@ lock); on the fork the same case pays the lender ≈ $10.51, the liquidator and 
 ProtocolFacet is now **24,412 bytes (164 under EIP-170)** — the next facet change must reclaim
 space first (e.g. string `require`s → custom errors).
 
-Still to do before mainnet: a ≥ 30-day walk of each Chainlink feed, and the app's ABI/error
-regeneration. (Arc Testnet parity deploy: done 2026-09-28, see below.)
+Still to do before mainnet: a ≥ 30-day walk of each Chainlink feed. (Arc Testnet parity deploy
+and the app's ABI/error regeneration: both done 2026-09-28 — `gen:abis` / `test:abis`; the app now
+names and explains `Protocol__Paused`, `Protocol__StalePrice` and the other user-reachable reverts.)
 
 ### Arc Testnet parity deploy (done 2026-09-28)
 
