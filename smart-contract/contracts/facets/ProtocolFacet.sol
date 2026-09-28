@@ -259,9 +259,13 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
         uint256 maxLoanableAmount = (collateralValueInLoanCurrency *
             Constants.COLLATERALIZATION_RATIO) / 100;
 
+        /* Outstanding debt is summed live from the borrower's serviced loans
+         * (getLoanCollectedInUsd) rather than read from the old
+         * `totalLoanCollected` counter, which repay double-subtracted: after
+         * repaying one of several loans it undercounted by the amount repaid, so
+         * this cap let through requests no lender could ever fund. */
         if (
-            _appStorage.addressToUser[msg.sender].totalLoanCollected +
-                _loanUsdValue >=
+            getLoanCollectedInUsd(msg.sender) + _loanUsdValue >=
             maxLoanableAmount
         ) {
             revert Protocol__InsufficientCollateral();
@@ -410,9 +414,6 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
         _Request.status = Status.SERVICED;
 
         // Update the request's status to serviced
-        _appStorage
-            .addressToUser[_foundRequest.author]
-            .totalLoanCollected += _loanUsdValue;
 
         for (uint i = 0; i < _foundRequest.collateralTokens.length; i++) {
             uint256 availableBalance = _appStorage.s_addressToAvailableBalance[
@@ -957,7 +958,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
     function setListingFeatured(uint96 _listingId, bool _featured) external {
         LibDiamond.enforceIsContractOwner();
         LoanListing storage _listing = _appStorage.loanListings[_listingId];
-        require(_listing.listingId != 0, "Protocol: Listing does not exist");
+        if (_listing.listingId == 0) revert Protocol__IdNotExist();
 
         _listing.isFeatured = _featured;
 
@@ -1046,11 +1047,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
          *
          * It also covers `maxLoanableUsd == 0`, which would divide by zero on
          * the next line. */
-        if (
-            _appStorage.addressToUser[msg.sender].totalLoanCollected +
-                loanUsdValue >=
-            maxLoanableUsd
-        ) {
+        if (getLoanCollectedInUsd(msg.sender) + loanUsdValue >= maxLoanableUsd) {
             revert Protocol__InsufficientCollateral();
         }
 
@@ -1125,6 +1122,13 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
             _appStorage.s_idToCollateralTokenAmount[_appStorage.requestId][
                     token
                 ] = tokenAmountToLock;
+            /* The cumulative cap above keeps this inside the balance; if it ever
+             * does not, refuse by name as serviceRequest does rather than let
+             * the subtraction panic (0x11). */
+            if (
+                _appStorage.s_addressToAvailableBalance[msg.sender][token] <
+                tokenAmountToLock
+            ) revert Protocol__InsufficientCollateralBalance();
             _appStorage.s_addressToAvailableBalance[msg.sender][
                     token
                 ] -= tokenAmountToLock;
@@ -1132,9 +1136,6 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
 
         _appStorage.s_requests.push(newRequest);
         _indexUserRequest(msg.sender, newRequest.requestId);
-        _appStorage
-            .addressToUser[msg.sender]
-            .totalLoanCollected += loanUsdValue;
 
         /* The lender's award, paid here rather than at createLoanListing.
          *
@@ -1188,7 +1189,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
         uint96 _requestId,
         uint256 _amount
     ) external payable nonReentrant {
-        require(_amount > 0, "Protocol__MustBeMoreThanZero");
+        if (_amount == 0) revert Protocol__MustBeMoreThanZero();
         Request storage _request = _appStorage.request[_requestId];
         Request storage _foundRequest = _appStorage.s_requests[_requestId - 1];
         uint256 _returnedAmount;
@@ -1206,7 +1207,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
          * below as a zero payment and still awarded points. */
         if (_isNative) {
             _amount = msg.value;
-            require(_amount > 0, "Protocol__MustBeMoreThanZero");
+            if (_amount == 0) revert Protocol__MustBeMoreThanZero();
         } else if (msg.value != 0) {
             /* The ERC20 branch below pulls the repayment with transferFrom and
              * never reads msg.value, and _nativeRefund is only ever set on the
@@ -1283,7 +1284,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
                 (bool success, ) = _appStorage.kaleidoFeeVault.call{
                     value: protocolFee
                 }("");
-                require(success, "Protocol fee transfer failed");
+                if (!success) revert Protocol__TransferFailed();
             }
         } else {
             IERC20 _token = IERC20(_request.loanRequestAddr);
@@ -1295,15 +1296,11 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
             /* Return values were discarded here. A token that reports failure
              * by returning false rather than reverting would have left the
              * repayment credited to the lender with nothing having moved. */
-            require(
-                _token.transferFrom(msg.sender, address(this), _amount),
-                "Repayment transfer failed"
-            );
+            if (!_token.transferFrom(msg.sender, address(this), _amount))
+                revert Protocol__TransferFailed();
             if (protocolFee > 0) {
-                require(
-                    _token.transfer(_appStorage.kaleidoFeeVault, protocolFee),
-                    "Protocol fee transfer failed"
-                );
+                if (!_token.transfer(_appStorage.kaleidoFeeVault, protocolFee))
+                    revert Protocol__TransferFailed();
             }
         }
 
@@ -1317,14 +1314,11 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
             _foundRequest.totalRepayment -= _amount;
         }
 
-        uint8 decimal = _getTokenDecimal(_request.loanRequestAddr);
-        uint256 _loanUsdValue = getUsdValue(
-            _request.loanRequestAddr,
-            _amount,
-            decimal
-        );
-        uint256 loanCollected = getLoanCollectedInUsd(msg.sender);
-
+        /* Repayment reads no price. It used to price the loan only to maintain
+         * the `totalLoanCollected` counter, so a USDC/USD answer past its bound
+         * (Arc's stable feeds post only on a 24h heartbeat) blocked every
+         * borrower's repayment. The borrow cap now sums outstanding debt live
+         * instead, and the counter is no longer written anywhere. */
         _appStorage.s_addressToCollateralDeposited[_request.lender][
                 _request.loanRequestAddr
             ] += _returnedAmount;
@@ -1365,13 +1359,6 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
                 ] += _lockedAmount;
             }
         }
-        if (loanCollected > _loanUsdValue) {
-            _appStorage.addressToUser[msg.sender].totalLoanCollected =
-                loanCollected -
-                _loanUsdValue;
-        } else {
-            _appStorage.addressToUser[msg.sender].totalLoanCollected = 0;
-        }
 
         /* Last, after every state write: this is an external call to an address
          * the borrower controls. nonReentrant already guards the function, but
@@ -1385,7 +1372,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
          * the exact amount. */
         if (_nativeRefund > 0) {
             (bool refunded, ) = msg.sender.call{value: _nativeRefund}("");
-            require(refunded, "Refund failed");
+            if (!refunded) revert Protocol__TransferFailed();
         }
 
         /* `lender` is indexed so the party being repaid can filter for this at
@@ -1495,7 +1482,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
                 _getTokenDecimal(loanCurrency)
             );
         }
-        require(loanUsdValue > 0, "Protocol__InvalidAmount");
+        if (loanUsdValue == 0) revert Protocol__InvalidAmount();
         if (_foundRequest.status != Status.SERVICED)
             revert Protocol__RequestNotServiced();
 
@@ -1532,10 +1519,8 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
                         )
                 );
 
-            require(
-                totalCollateralUsdValue > 0,
-                "totalCollateralUsdValue must be more than zero"
-            );
+            if (totalCollateralUsdValue == 0)
+                revert Protocol__NoCollateralDeposited();
 
             for (uint256 i = 0; i < len; ++i) {
                 address collateralToken = _foundRequest.collateralTokens[i];
@@ -1573,17 +1558,6 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
              * recourse the protocol cannot enforce. */
             _appStorage.request[requestId].totalRepayment = 0;
             _appStorage.s_requests[requestId - 1].totalRepayment = 0;
-
-            uint256 loanCollected = getLoanCollectedInUsd(_foundRequest.author);
-            if (loanCollected > loanUsdValue) {
-                _appStorage
-                    .addressToUser[_foundRequest.author]
-                    .totalLoanCollected = loanCollected - loanUsdValue;
-            } else {
-                _appStorage
-                    .addressToUser[_foundRequest.author]
-                    .totalLoanCollected = 0;
-            }
 
             _appStorage.request[requestId].status = Status.CLOSED;
             _appStorage.s_requests[requestId - 1].status = Status.CLOSED;
@@ -2143,10 +2117,10 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
         bytes32 priceFeedId
     ) private view returns (uint256) {
         IPythPriceOracle oracle = IPythPriceOracle(_appStorage.pythPriceOracle);
-        require(address(oracle) != address(0), "Oracle not set");
+        if (address(oracle) == address(0)) revert Protocol__InvalidPriceFeed();
         /* getTokenAmountFromUsd did not check this before, so an unregistered
          * token queried feed id 0 rather than reverting for the actual reason. */
-        require(priceFeedId != bytes32(0), "Price feed not set");
+        if (priceFeedId == bytes32(0)) revert Protocol__InvalidPriceFeed();
 
         uint256 maxAge = _appStorage.s_feedMaxAge[priceFeedId];
         /* Falls back to the global bound. Zero is "no override" rather than "no
@@ -2161,7 +2135,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
         PythStructs.Price memory priceInfo = oracle.getPrice(priceFeedId);
         /* Guards the int64 -> uint64 cast below: a negative price would wrap to
          * an enormous positive one. */
-        require(priceInfo.price > 0, "Invalid price");
+        if (priceInfo.price <= 0) revert Protocol__InvalidPriceFeed();
 
         /* A publishTime in the future is treated as age zero rather than
          * reverting: Pyth timestamps come from its own clock, so a small skew

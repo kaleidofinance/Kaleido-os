@@ -373,6 +373,93 @@ describe("Lending hardening (Arc mainnet Phase A)", function () {
     });
   });
 
+  describe("pre-launch audit fixes (2026-09-28)", function () {
+    /* Found by the pre-mainnet audit: repay priced the loan only to maintain a
+     * `totalLoanCollected` counter, and subtracted from it twice. The cap now sums
+     * outstanding debt live and repay reads no price at all. */
+    const U = (x) => ethers.parseUnits(String(x), 18);
+    const later = async () => (await time.latest()) + 3 * 86400;
+    async function borrow(amount) {
+      await protocol.connect(alice).createLendingRequest(amount, 1000, await later(), NATIVE);
+      const all = await protocol.getAllRequests(0, 1000);
+      const id = all[all.length - 1].requestId;
+      await protocol.connect(bob).serviceRequest(id, NATIVE, { value: amount });
+      return id;
+    }
+    async function repayAll(id) {
+      const total = (await protocol.getRequest(id)).totalRepayment;
+      await protocol.connect(alice).repayLoan(id, total, { value: total });
+    }
+
+    beforeEach(async function () {
+      await protocol.setFeeVault(carol.address);
+      await protocol.setLiquidityBps(640);
+      await protocol.setBPS(500);
+      await fund(alice, cirbtc, 60_000n); // 0.0006 cirBTC ≈ $50.8 → 75% cap ≈ $38.1
+      await protocol.connect(alice).depositCollateral(await cirbtc.getAddress(), 60_000n);
+    });
+
+    it("repayment reads no price: a stale USDC/USD cannot block it", async function () {
+      const id = await borrow(U(10.5));
+      // USDC/USD past its 97,200s bound; BTC/USD kept fresh so only the loan currency is stale.
+      await time.increase(DAY_PLUS + 60);
+      await btcFeed.setUpdatedAt(await time.latest());
+      await eurcFeed.setUpdatedAt(await time.latest());
+      // Control: the loan currency really is unpriceable right now.
+      await expect(protocol.getUsdValue(NATIVE, U(1), 18))
+        .to.be.revertedWithCustomError(protocol, "Protocol__StalePrice");
+      // A partial and then a full repayment both go through.
+      await protocol.connect(alice).repayLoan(id, U(1), { value: U(1) });
+      const rest = (await protocol.getRequest(id)).totalRepayment;
+      await protocol.connect(alice).repayLoan(id, rest, { value: rest });
+      expect((await protocol.getRequest(id)).totalRepayment).to.equal(0n);
+      expect(await protocol.gets_addressToAvailableBalance(bob.address, NATIVE)).to.be.greaterThan(U(10.5));
+    });
+
+    it("the borrow cap still counts the loans left open after a repayment", async function () {
+      const id1 = await borrow(U(10.5));
+      await borrow(U(10.5));
+      await borrow(U(10.5));
+      // Control: with 31.5 outstanding a fourth 10.5 breaches the ≈ $38.1 cap.
+      await expect(protocol.connect(alice).createLendingRequest(U(10.5), 1000, await later(), NATIVE))
+        .to.be.revertedWithCustomError(protocol, "Protocol__InsufficientCollateral");
+      await repayAll(id1);
+      // ≈ $21 still owed → ≈ $17 of room. The old counter read ≈ $10.5 and let $25 through.
+      await expect(protocol.connect(alice).createLendingRequest(U(25), 1000, await later(), NATIVE))
+        .to.be.revertedWithCustomError(protocol, "Protocol__InsufficientCollateral");
+      // Not over-tightened: a loan inside the real room is created AND funded.
+      await borrow(U(15));
+    });
+
+    it("a listing draw past the cap is refused by name, not with an arithmetic panic", async function () {
+      const id1 = await borrow(U(10.5));
+      await borrow(U(10.5));
+      await borrow(U(10.5));
+      await repayAll(id1);
+      await protocol.connect(bob).createLoanListing(U(100), U(1), U(100), (await time.latest()) + 5 * 86400, 1000, NATIVE, { value: U(100) });
+      const lid = await protocol.getListingId();
+      // $17.5 used to revert with panic 0x11 (the lock subtraction underflowed).
+      await expect(protocol.connect(alice).requestLoanFromListing(lid, U(17.5)))
+        .to.be.revertedWithCustomError(protocol, "Protocol__InsufficientCollateral");
+      // Inside the room, the draw lands and the ledger stays consistent.
+      await protocol.connect(alice).requestLoanFromListing(lid, U(15));
+      const token = await cirbtc.getAddress();
+      const all = await protocol.getAllRequests(0, 1000);
+      let locked = 0n;
+      for (const r of all) if (r.status === 1n) locked += await protocol.getRequestToColateral(r.requestId, token);
+      expect(await protocol.gets_addressToCollateralDeposited(alice.address, token)).to.equal(
+        (await protocol.gets_addressToAvailableBalance(alice.address, token)) + locked,
+      );
+    });
+
+    it("former string reverts are named errors the app can decode", async function () {
+      const id = await borrow(U(10.5));
+      // Native repay with no value attached.
+      await expect(protocol.connect(alice).repayLoan(id, U(1)))
+        .to.be.revertedWithCustomError(protocol, "Protocol__MustBeMoreThanZero");
+    });
+  });
+
   describe("registration guards", function () {
     it("collateral with a zero feed is refused", async function () {
       const t = await (await ethers.getContractFactory("MockERC20")).deploy("X", "X", 18);

@@ -128,7 +128,7 @@ overwrite a collateral feed; `MAX_FEED_PRICE_AGE` 90,000 → 108,000 (Arc's stab
 only on the 24h heartbeat — walked gaps 86,404–86,487s left ~58 min under the old cap);
 OpenZeppelin pinned to 5.4.0 and its ReentrancyGuard vendored as `LendingReentrancyGuard` (the storage layout depends on `_status` at slot 0 — a test reads slots 0 and 1 of a live diamond); `receive()` and `example()` removed from the Diamond (a plain USDC transfer now reverts instead of being stuck forever); depositing collateral is never paused (borrowers can defend positions) and only accepts collateral tokens (native USDC, loanable-only, is refused); a debt-free user can withdraw during an oracle outage; `setTokenFeed` proves the new feed prices in the same tx. Scripts refuse FEED_*/AGGREGATOR_*/FEED_MAX_AGE_*/ORACLE_BACKEND env overrides on mainnet and dry-run every registration before the first send. Independently reviewed 2026-09-27: no blockers.
 
-**Known, not fixed in Phase A (facet-upgradeable later):** a USDC/USD answer older than its 97,200s bound blocks `repayLoan` for every borrower (the repay path prices the loan currency); the app's `src/abi/ProtocolFacet.json` and error catalogue need regenerating from artifacts (done 2026-09-28 via `npm run gen:abis`) (new errors: Protocol__Paused, Protocol__InvalidPriceFeed, OwnershipZeroAddress, OwnershipNotPendingOwner; new LendingAdminFacet ABI); `AggregatorPriceOracle.transferOwnership` is single-step — include it in the Safe handover; existing testnet diamonds lack LendingAdminFacet and two-step ownership until upgraded (Phase B).
+**Known, not fixed in Phase A (facet-upgradeable later):** a USDC/USD answer older than its 97,200s bound blocks `repayLoan` for every borrower (the repay path prices the loan currency) — **fixed 2026-09-28, see the pre-launch audit below**; the app's `src/abi/ProtocolFacet.json` and error catalogue need regenerating from artifacts (done 2026-09-28 via `npm run gen:abis`) (new errors: Protocol__Paused, Protocol__InvalidPriceFeed, OwnershipZeroAddress, OwnershipNotPendingOwner; new LendingAdminFacet ABI); `AggregatorPriceOracle.transferOwnership` is single-step — include it in the Safe handover; existing testnet diamonds lack LendingAdminFacet and two-step ownership until upgraded (Phase B).
 
 **Before running anything below:** Phase B — rehearse the exact commands on an anvil fork of
 Arc mainnet, then deploy the same commit on Arc Testnet (§0). Re-walk each Chainlink feed over
@@ -183,7 +183,7 @@ only the loan's locked collateral** while eligibility used the whole account —
 over-collateralised borrower's lender recovered ≈ $7.00 of $10.50 and the liquidator nothing.
 Liquidation now takes the shortfall from the borrower's free collateral (never another loan's
 lock); on the fork the same case pays the lender ≈ $10.51, the liquidator and the fee vault.
-ProtocolFacet is now **24,412 bytes (164 under EIP-170)** — the next facet change must reclaim
+ProtocolFacet was **24,412 bytes (164 under EIP-170)** here — reclaimed to 23,458 (1,118 headroom) by the 2026-09-28 audit fixes; the next facet change must reclaim
 space first (e.g. string `require`s → custom errors).
 
 Still to do before mainnet: a ≥ 30-day walk of each Chainlink feed. (Arc Testnet parity deploy
@@ -228,6 +228,53 @@ feeds) is superseded in the registry, not destroyed.
 which has no EURC/BTC, and the Worker is scoped to 46630 — so these feeds are kept fresh by
 `PUSH_ALL=1 npx hardhat run scripts/push-aggregator.js --network arcTestnet` inside 97,200s until
 the keeper learns those symbols.
+
+### Pre-launch audit (2026-09-28)
+
+Asked "is everything ok before mainnet?" — checked rather than recalled:
+
+- **Rehearsal:** the Arc mainnet fork runbook passes on the shipping code, now including flow F
+  (repay while USDC/USD is 30h stale).
+- **Chainlink walk (the ≥ 30-day item — done):** every round each feed has ever published:
+  USDC/USD 67 rounds / 66 days, EURC/USD 118 / 109 d, BTC/USD 1,325 / 109 d. Worst gap
+  86,487s vs the 97,200s bound (~3h headroom); no heartbeat ever late by more than ~90s.
+- **Keys:** deployer `0x0Ce7…` key is in no commit (337 MB of history scanned; the same scan
+  finds the leaked address, as a control); `smart-contract/.env` is ignored. Deployer holds
+  75.5 USDC on 5042.
+
+Contract findings, fixed in `ProtocolFacet` (4 regression tests, each shown failing on the old
+facet; full suite unchanged apart from them):
+
+1. `repayLoan` priced the loan only to maintain the `totalLoanCollected` counter, so a stale
+   USDC/USD blocked every repayment. **Repay now reads no price.**
+2. That counter was subtracted twice per repayment (undercounting debt by the amount repaid):
+   after repaying one of three loans a $25 request passed a cap with ~$17 of real room. Funding
+   still refused it — every loan must lock its own free collateral — so no unbacked loan was
+   possible, only unfundable requests. **The cap now sums outstanding debt live**
+   (`getLoanCollectedInUsd`); the counter is no longer written (field kept: layout unchanged).
+3. An over-cap draw from a listing reverted with a raw panic `0x11`; it now reverts
+   `Protocol__InsufficientCollateralBalance`, like `serviceRequest`.
+4. Every string `require` is a named error, and the facet shrank 24,412 → 23,458 bytes.
+
+**Rolled out to all five testnet diamonds the same day** with `upgrade-facet.js` (pure
+`ProtocolFacet` Replace, 66 selectors), each fork-rehearsed first with the smoke test (Sepolia,
+Base Sepolia and Robinhood each liquidated a real overdue loan under the new code): Arc testnet
+13/13 values unchanged, Robinhood 12/12, Base Sepolia (state read OK; see below), Sepolia 13/13,
+BSC 15/15; `verify-diamond` green on all five; a real loan landed and unwound on the Arc testnet
+parity diamond after the upgrade. Rollback targets are in each record's `upgrades[]` (`from`).
+Two operational lessons: `upgrade-facet.js` now re-reads routing for ~30s before declaring a
+"mixed state" (Base Sepolia's public RPC answered 64/66 right after an atomic cut that had moved
+all 66 — its record was then written from the receipt); and BSC testnet forks need an endpoint
+that serves recent history under throttling (blocks every ~0.75s prune plain nodes within
+minutes) — `bsc-testnet-rpc.publicnode.com` at `--compute-units-per-second 10 --retries 30`
+worked. The stale `facets.OwnershipFacet` in four records (left by the morning's hardening cut)
+was corrected from the live loupe, noted in each record's `recordCorrections`.
+
+Still open, and not code: **nobody liquidates** (no bot in the repo — lenders depend on third
+parties); **no lend/borrow points collector** (schema has the sources; decide before the first
+position); **custody** is a hot EOA whose key lives in a file (it can diamondCut — move to the
+Safe before meaningful deposits); **internal review only**, no external audit; the **app UI has
+not been walked** against the Arc testnet parity diamond.
 
 ### The five existing testnet diamonds — upgrade in place (rehearsed 2026-09-28)
 

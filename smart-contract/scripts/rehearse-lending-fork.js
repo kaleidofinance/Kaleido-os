@@ -325,6 +325,30 @@ async function main() {
   await reverts("native USDC cannot be deposited as collateral",
     () => P(alice).depositCollateral(NATIVE, 10n ** 18n, { value: 10n ** 18n }), "Protocol__TokenNotAllowed");
 
+  // ── F. repay while the loan currency's price is stale (2026-09-28 audit fix)
+  console.log("\nF. repay with USDC/USD past its bound");
+  const USDC_ID = "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
+  const realUsdc = await oracle.feedAggregator(USDC_ID);
+  await (await eurc.connect(alice).approve(diamond, 15_000_000n)).wait();
+  await (await P(alice).depositCollateral(EURC, 15_000_000n)).wait();
+  await (await P(alice).createLendingRequest(loanAmount, 1000, (await now()) + 3 * 86400, NATIVE)).wait();
+  const idF = await lastRequestId();
+  await (await P(bob).serviceRequest(idF, NATIVE, { value: loanAmount })).wait();
+  // A USDC/USD answer 30h old — past the 97,200s bound — on a mock, fork only.
+  const staleUsdc = await Mock.deploy(8, "USDC / USD", 99_990_000n);
+  await staleUsdc.waitForDeployment();
+  await (await staleUsdc.setUpdatedAt((await now()) - 30 * 3600)).wait();
+  await (await oracle.setFeed(USDC_ID, await staleUsdc.getAddress())).wait();
+  let staleConfirmed = false;
+  try { await protocol.getUsdValue(NATIVE, 10n ** 18n, 18); } catch (e) { staleConfirmed = errorName(e).includes("Protocol__StalePrice"); }
+  check("control: native USDC is unpriceable right now", staleConfirmed);
+  const totalF = (await protocol.getRequest(idF)).totalRepayment;
+  await (await P(alice).repayLoan(idF, totalF, { value: totalF })).wait();
+  check("the borrower still repays in full", (await protocol.getRequest(idF)).totalRepayment === 0n);
+  await (await oracle.setFeed(USDC_ID, realUsdc)).wait();
+  check("USDC/USD restored to the real feed", (await oracle.feedAggregator(USDC_ID)) === realUsdc);
+  await (await P(alice).withdrawCollateral(EURC, 15_000_000n)).wait();
+
   console.log(`\n${failures === 0 ? "✅ All rehearsal checks passed." : `❌ ${failures} check(s) failed.`}`);
   if (failures) process.exitCode = 1;
 }
