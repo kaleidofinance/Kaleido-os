@@ -1,15 +1,21 @@
 /**
  * Rehearse real user flows against a lending diamond on a LOCAL ANVIL FORK of
- * Arc mainnet — with the real EURC, cirBTC and Chainlink contracts.
+ * Arc mainnet — with the real EURC, cirBTC and Chainlink contracts — or of Arc
+ * testnet (5042002), with Circle's testnet EURC / cirBTC and our own
+ * PushablePriceFeeds (the parity deploy; Chainlink has no Arc testnet feeds).
  *
  *   anvil --fork-url https://rpc.mainnet.arc.io --chain-id 5042
  *   (then the runbook: deploy-oracle → deploy → register-tokens, all --network arcFork)
  *   npx hardhat run scripts/rehearse-lending-fork.js --network arcFork
  *
+ *   anvil --fork-url https://rpc.testnet.arc.network        (chain id 5042002)
+ *   (deploy-pushable-feeds → the same runbook, all --network fork)
+ *   npx hardhat run scripts/rehearse-lending-fork.js --network fork
+ *
  * FORK ONLY, and it checks: it writes token balances straight into storage and
  * re-points an oracle feed to a mock, which is meaningless (and impossible) on a
- * real chain. It refuses to run unless the network is `arcFork` AND the node
- * answers `anvil_nodeInfo`, which no public RPC does.
+ * real chain. It refuses to run unless the network is `arcFork` or `fork` AND the
+ * node answers `anvil_nodeInfo`, which no public RPC does.
  *
  * Flows, each asserted, not just printed:
  *   A. deposit EURC → request 10.5 USDC → a lender services it → repay in full:
@@ -35,17 +41,30 @@ const hre = require("hardhat");
 const { ethers } = hre;
 const fs = require("fs");
 
-const EURC = "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1";
-const CIRBTC = "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0";
 const NATIVE = "0x0000000000000000000000000000000000000001";
 const BTC_ID = "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43";
-const CHAINLINK_BTC = "0xa109B535C70C8Be9995be64Bb6751AcDB27e03De";
 const FEE_VAULT = "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc";
-// Known holders, used only to FIND each token's balance-mapping slot.
-const HOLDERS = {
-  [EURC]: "0x8a02d189B74cC725A632107Ef3A850F3cDd942Ca",
-  [CIRBTC]: "0x542E6E2256270215d667ED43e65d4def8295164a",
+/* Per chain. `btcFeed` is the real BTC/USD aggregator to restore after a mock;
+   null means "whatever the oracle points at when the rehearsal starts" (our own
+   PushablePriceFeed on testnet). Holders are used only to FIND each token's
+   balance-mapping slot, so any address with a non-zero balance will do. */
+const CHAINS = {
+  5042: {
+    eurc: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+    cirbtc: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+    btcFeed: "0xa109B535C70C8Be9995be64Bb6751AcDB27e03De",
+    eurcHolder: "0x8a02d189B74cC725A632107Ef3A850F3cDd942Ca",
+    cirbtcHolder: "0x542E6E2256270215d667ED43e65d4def8295164a",
+  },
+  5042002: {
+    eurc: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+    cirbtc: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
+    btcFeed: null,
+    eurcHolder: "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+    cirbtcHolder: "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  },
 };
+let EURC, CIRBTC, CHAINLINK_BTC, HOLDERS;
 
 const ERC20 = [
   "function approve(address,uint256) returns (bool)",
@@ -59,15 +78,22 @@ function check(label, cond, detail = "") {
 }
 
 async function main() {
-  if (hre.network.name !== "arcFork") throw new Error("Fork only: run with --network arcFork.");
+  if (!["arcFork", "fork"].includes(hre.network.name)) throw new Error("Fork only: run with --network arcFork or fork.");
   try {
     await ethers.provider.send("anvil_nodeInfo", []);
   } catch {
     throw new Error("The node is not anvil. This script only runs against a local anvil fork.");
   }
 
-  const diamond = JSON.parse(fs.readFileSync("deployment-diamond-arcFork.json", "utf8")).contracts.diamond;
-  const oracleAddr = JSON.parse(fs.readFileSync("deployment-oracle-arcFork.json", "utf8")).contracts.priceOracle;
+  const chainId = Number((await ethers.provider.getNetwork()).chainId);
+  const cfg = CHAINS[chainId];
+  if (!cfg) throw new Error(`No rehearsal config for chain ${chainId} (have ${Object.keys(CHAINS).join(", ")}).`);
+  EURC = cfg.eurc;
+  CIRBTC = cfg.cirbtc;
+  HOLDERS = { [EURC]: cfg.eurcHolder, [CIRBTC]: cfg.cirbtcHolder };
+  const net = hre.network.name;
+  const diamond = JSON.parse(fs.readFileSync(`deployment-diamond-${net}.json`, "utf8")).contracts.diamond;
+  const oracleAddr = JSON.parse(fs.readFileSync(`deployment-oracle-${net}.json`, "utf8")).contracts.priceOracle;
   const [owner] = await ethers.getSigners();
   const protocol = await ethers.getContractAt("ProtocolFacet", diamond, owner);
   const admin = await ethers.getContractAt("LendingAdminFacet", diamond, owner);
@@ -78,6 +104,7 @@ async function main() {
   console.log(`Rehearsing on fork: diamond ${diamond}, oracle ${oracleAddr}`);
   /* Never trust leftover fork state: an earlier run that stopped mid-liquidation
      leaves BTC/USD on a mock. Put the real Chainlink proxy back first. */
+  CHAINLINK_BTC = cfg.btcFeed ?? (await oracle.feedAggregator(BTC_ID));
   if ((await oracle.feedAggregator(BTC_ID)).toLowerCase() !== CHAINLINK_BTC.toLowerCase()) {
     await (await oracle.setFeed(BTC_ID, CHAINLINK_BTC)).wait();
     console.log("   (reset BTC/USD to the real Chainlink proxy left over from an earlier run)");
@@ -149,6 +176,14 @@ async function main() {
 
   const now = async () => (await ethers.provider.getBlock("latest")).timestamp;
   const P = (s) => protocol.connect(s);
+  /* A liquidation's gas is estimated one block before it lands, and its cost drifts
+     a few hundred gas with time (interest, seizure amounts); sent unbuffered it dies
+     on EIP-2200's SSTORE sentry (Arc testnet parity rehearsal: 351,105 limit,
+     351,376 needed). A liquidator bot pads its limit; so does this. */
+  const liquidate = async (who, id) => {
+    const est = await P(who).liquidateUserRequest.estimateGas(id);
+    return P(who).liquidateUserRequest(id, { gasLimit: (est * 12n) / 10n });
+  };
   const lastRequestId = async () => {
     const all = await protocol.getAllRequests(0, 10000);
     return all[all.length - 1].requestId;
@@ -232,7 +267,7 @@ async function main() {
   const hf3b = await protocol.getHealthFactor(carol.address);
   check("BTC −10% breaks the health factor", hf3b < 10n ** 18n, `HF ${ethers.formatUnits(hf3b, 18)}`);
   const [l0, d0, v0] = [await ledger(bob.address), await ledger(dave.address), await ledger(FEE_VAULT)];
-  await (await P(dave).liquidateUserRequest(id3)).wait();
+  await (await liquidate(dave, id3)).wait();
   const [l1, d1, v1] = [await ledger(bob.address), await ledger(dave.address), await ledger(FEE_VAULT)];
   check("lender, liquidator and fee vault are all paid in cirBTC",
     l1 > l0 && d1 > d0 && v1 > v0, `lender +${l1 - l0}, liquidator +${d1 - d0}, vault +${v1 - v0} sats`);
@@ -255,7 +290,7 @@ async function main() {
   await btcAt(0.5);
   const hf4 = await protocol.getHealthFactor(erin.address);
   const [l2, d2, v2, e2] = [await ledger(bob.address), await ledger(dave.address), await ledger(FEE_VAULT), await ledger(erin.address)];
-  await (await P(dave).liquidateUserRequest(id4)).wait();
+  await (await liquidate(dave, id4)).wait();
   const [l3, d3, v3, e3] = [await ledger(bob.address), await ledger(dave.address), await ledger(FEE_VAULT), await ledger(erin.address)];
   const debtUsd = Number(ethers.formatUnits(owed, 18));
   const lenderUsd = (Number(l3 - l2) / 1e8) * btcUsd * 0.5;

@@ -1,0 +1,47 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "signer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-09-28T16:11:55.654Z",
+  "oracle": "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564",
+  "hermes": "https://hermes.pyth.network",
+  "coingecko": "https://api.coingecko.com/api/v3/simple/price",
+  "pushed": [
+    {
+      "symbols": [
+        "USDC"
+      ],
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "aggregator": "0x7003aB0bf030304f917df7c0A6750C16b5d79899",
+      "answer": "99983500",
+      "observedAt": 1790611790,
+      "source": "coingecko",
+      "bound": 97200,
+      "txHash": "0x45d0c07705add54239363bb0210113908c9d1be922b69bfcb1cc6ba80a1ba2eb"
+    },
+    {
+      "symbols": [
+        "EURC"
+      ],
+      "feedId": "0x76fa85158bf14ede77087fe3ae472f66213f6ea2f5b411cb2de472794990fa5c",
+      "aggregator": "0x95b67405cFc4312b4ff39E78D25B115788f790a6",
+      "answer": "114000000",
+      "observedAt": 1790611810,
+      "source": "coingecko",
+      "bound": 97200,
+      "txHash": "0x5fc97c2263f222ad897cf963d917ddd7951c295f4c5b81528eec439eaeaf7198"
+    },
+    {
+      "symbols": [
+        "CIRBTC"
+      ],
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "aggregator": "0xbB74f2319494461B2591F8fbF126654Dd4c2a649",
+      "answer": "8339100000000",
+      "observedAt": 1790611790,
+      "source": "coingecko",
+      "bound": 97200,
+      "txHash": "0x936fdb3dcada3294031d0b3e0db37e675e732dcedfe4849fe26fc9683a4e33c4"
+    }
+  ]
+}

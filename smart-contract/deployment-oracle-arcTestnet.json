@@ -1,62 +1,52 @@
 {
   "network": "arcTestnet",
   "chainId": 5042002,
-  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
-  "timestamp": "2026-08-21T23:46:25.985Z",
-  "oracleKind": "pyth",
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-09-28T15:56:58.121Z",
+  "oracleKind": "aggregator-v3",
   "contracts": {
-    "priceOracle": "0x0262aff2a0D8E56048e408D5fE875EA051dED65c",
-    "pythContract": "0x2880aB155794e7179c9eE2e38200202908C17B43"
+    "priceOracle": "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564",
+    "pythContract": null
   },
   "feeds": [
     {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
       "symbols": [
-        "ETH",
-        "WETH"
+        "USDC"
       ],
-      "id": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
-      "pythSymbol": "Crypto.ETH/USD",
-      "provider": "pyth",
-      "maxAge": 600,
-      "maxAgeBasis": "Same feed id as ETH — WETH is redeemable 1:1 by contract, not by market."
+      "aggregator": "0x7003aB0bf030304f917df7c0A6750C16b5d79899",
+      "provider": "kaleido-push",
+      "decimals": 8,
+      "maxAge": 97200,
+      "maxAgeBasis": "Parity with the 5042 USDC/USD bound — not a property of our own feed, whose age is whatever the keeper cadence makes it.",
+      "priceAtDeploy": 0.999837,
+      "ageSecondsAtDeploy": 151
     },
     {
+      "feedId": "0x76fa85158bf14ede77087fe3ae472f66213f6ea2f5b411cb2de472794990fa5c",
       "symbols": [
-        "USDC",
-        "WUSDC"
+        "EURC"
       ],
-      "id": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
-      "pythSymbol": "Crypto.USDC/USD",
-      "provider": "pyth",
-      "maxAge": 90000,
-      "maxAgeBasis": "Same Crypto.USDC/USD feed as native USDC, so the same observation and the same ceiling bound. See the USDC entry above for why 90,000 is defensible for a pegged asset and must not be copied onto a volatile one."
+      "aggregator": "0x95b67405cFc4312b4ff39E78D25B115788f790a6",
+      "provider": "kaleido-push",
+      "decimals": 8,
+      "maxAge": 97200,
+      "maxAgeBasis": "Parity with the 5042 EURC/USD bound.",
+      "priceAtDeploy": 1.1400000000000001,
+      "ageSecondsAtDeploy": 141
     },
     {
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
       "symbols": [
-        "BTC"
+        "CIRBTC"
       ],
-      "id": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
-      "pythSymbol": "Crypto.BTC/USD",
-      "provider": "pyth",
-      "maxAge": 600,
-      "maxAgeBasis": "Same relayer cadence as ETH/USD on this chain, measured in the same run."
-    }
-  ],
-  "unboundable": [
-    {
-      "symbol": "USDT",
-      "observedAgeSeconds": 8375146,
-      "basis": "8,375,146s (97 days) is 93x MAX_FEED_PRICE_AGE, so no legal bound exists — setFeedMaxAge reverts Protocol__InvalidPriceBounds for any value that would cover it. deploy-stablecoin.js still mints USDT here; it simply stays unregistered as a lending asset, the same outcome as on Sepolia and Base Sepolia and for the same kind of reason. Do NOT close the gap by pointing USDT's id at USDC/USD: verifyFeed asks Hermes what the id actually names and refuses the mismatch, correctly."
-    },
-    {
-      "symbol": "USDE",
-      "observedAgeSeconds": 8375146,
-      "basis": "Identical to USDT on this chain, to the second — the same dead relayer."
-    },
-    {
-      "symbol": "WBTC",
-      "observedAgeSeconds": null,
-      "basis": "Not served by Pyth on this chain at all: getPriceUnsafe reverts PriceFeedNotFound. verifyFeed already refuses this on its own, so the entry is here to answer 'was it forgotten or is it absent' without another probe run."
+      "aggregator": "0xbB74f2319494461B2591F8fbF126654Dd4c2a649",
+      "provider": "kaleido-push",
+      "decimals": 8,
+      "maxAge": 97200,
+      "maxAgeBasis": "Parity with the 5042 BTC/USD bound used for cirBTC.",
+      "priceAtDeploy": 83280,
+      "ageSecondsAtDeploy": 151
     }
   ]
 }

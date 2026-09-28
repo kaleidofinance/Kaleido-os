@@ -79,5 +79,6 @@ brand/out/
 brand/.render-cache/
 brand/.card-*.html
 
-# Local anvil-fork rehearsal records (network arcFork, chainId 5042) — never commit or register
-smart-contract/deployment-*Fork*.json
+# Local anvil-fork rehearsal records (networks arcFork / fork) — never commit or register
+smart-contract/deployment-*[Ff]ork*.json
+smart-contract/pricefeeds-*[Ff]ork*.json
