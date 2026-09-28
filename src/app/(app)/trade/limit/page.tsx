@@ -689,8 +689,15 @@ export default function LimitPage() {
      worth saying when there IS a separate market reference — without one the
      pool rate is the market and every preset is already relative to it. */
   const limitRate = parseFloat(price);
+  /* On a KaleidoOrdersV2 chain the keeper can also fill through the aggregator
+     (fillViaAggregator), so our own pools' depth no longer limits the order and
+     the note would be false there. */
+  const aggregatorFills =
+    chainId !== undefined &&
+    getContracts(chainId).ordersVersion === "2" &&
+    hasKyberSwap(chainId);
   const waitsForLiquidity =
-    refRate > 0 && limitRate > 0 && poolRate < limitRate;
+    !aggregatorFills && refRate > 0 && limitRate > 0 && poolRate < limitRate;
 
   /* A preset is a mode, not a button: it re-derives the price every time the
      market moves, so "Market" keeps meaning market. Typing clears it. */

@@ -2,21 +2,25 @@
   "network": "arcMainnet",
   "chainId": 5042,
   "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
-  "timestamp": "2026-09-24T23:19:24.675Z",
+  "timestamp": "2026-09-28T22:14:48.696Z",
   "contracts": {
-    "orders": "0x92571BFdF7c5B66E44c05513855D1d145acFD960",
+    "orders": "0x83CA08cd25a663f0a66bda93E5f3c67D382C9856",
     "v3Router": "0x98D4f47b6F06d30527b61ea3d68656f7Da9B442E"
   },
   "config": {
+    "contract": "KaleidoOrdersV2",
     "owner": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
     "fillerFeeBps": 0,
-    "maxFillerFeeBps": 100
+    "maxFillerFeeBps": 100,
+    "aggregators": [
+      "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5"
+    ]
   },
   "eip712": {
     "name": "Kaleido Orders",
-    "version": "1",
+    "version": "2",
     "chainId": 5042,
-    "verifyingContract": "0x92571BFdF7c5B66E44c05513855D1d145acFD960"
+    "verifyingContract": "0x83CA08cd25a663f0a66bda93E5f3c67D382C9856"
   },
   "notes": {
     "priceTrigger": "The maker's signed minOut is passed to the router as amountOutMinimum, so the price bound and the trigger are the same value. No oracle.",

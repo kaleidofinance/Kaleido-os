@@ -51,8 +51,8 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     yieldTreasury: "0xeFe21b46e9603A574c7aBd3a88976f9B456D832B", // deployment-stablecoin-bscTestnet-1788709839524.json
   },
   5042: {
-    orders: "0x92571BFdF7c5B66E44c05513855D1d145acFD960", // deployment-orders-arcMainnet.json
-    ordersVersion: "1", // deployment-orders-arcMainnet.json
+    orders: "0x83CA08cd25a663f0a66bda93E5f3c67D382C9856", // deployment-orders-arcMainnet.json
+    ordersVersion: "2", // deployment-orders-arcMainnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcMainnet-1789855914870.json
     v3Factory: "0xbB74f2319494461B2591F8fbF126654Dd4c2a649", // deployment-v3-arcMainnet-1789855914870.json
@@ -377,7 +377,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-28T21:33:51.028Z",
+  generatedAt: "2026-09-28T22:15:41.996Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
