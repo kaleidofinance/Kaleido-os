@@ -1,0 +1,23 @@
+{
+  "network": "arcMainnet",
+  "chainId": 5042,
+  "purpose": "Owner of the lending diamond + price oracle (signers rotatable without touching protocol contracts)",
+  "contracts": {
+    "safe": "0x4c72B4799d374D2Ad9a8C9716766f8325808B94F"
+  },
+  "config": {
+    "owners": [
+      "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc"
+    ],
+    "threshold": 1,
+    "saltLabel": "kaleido-lending-owner-v1",
+    "saltNonce": "66548707893411483057213241027955497550892828539131468320595405930286104107421",
+    "version": "1.4.1",
+    "singleton": "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
+    "factory": "0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67",
+    "fallbackHandler": "0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99"
+  },
+  "txHash": "0xee17ed2a6a69b2c016dac238e8971fcfd837d9dfab9d971a10e80541d539cba6",
+  "block": 23277478,
+  "createdBy": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc"
+}

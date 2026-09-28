@@ -115,7 +115,7 @@ bottom; do not skip because it "looks fine."
 | Oracle | Chainlink: USDC/USD `0x84EA90AC…7905`, EURC/USD `0x361b95c1…Bf23`, BTC/USD (for cirBTC) `0xa109B535…03De`; bound **97,200s** each | Feeds: `AggregatorPriceOracle.setFeed` / `LendingAdminFacet.setTokenFeed` |
 | Protocol fee | **500 bps** (5% of interest; Aave's USDC reserve factor is 10%) | `setBPS`, ≤ 2500 |
 | Liquidation penalty | 640 bps (liquidator ~4.8%) | `setLiquidityBps` |
-| Custody | **Deployer `0x0Ce7…51Bc` for now**, Safe later via two-step `transferOwnership` → `acceptOwnership` | Two-step: a wrong nominee is re-nominated |
+| Custody | **Safe `0x4c72B4799d374D2Ad9a8C9716766f8325808B94F`** (Arc mainnet, created 2026-09-29, 1-of-1 owned by the deployer for now) takes the diamond + oracle right after deploy; signers are then rotated at the Safe (add a hardware wallet, raise the threshold) without touching protocol contracts | Safe signers: any time. Diamond: two-step, so a wrong nominee is re-nominated |
 
 Measured before deciding: KyberSwap sells of cirBTC lose 0.14% at $10k / 0.70% at $250k, EURC
 0.03% / 0.45% — liquidations stay profitable well past $250k.
@@ -228,6 +228,38 @@ feeds) is superseded in the registry, not destroyed.
 which has no EURC/BTC, and the Worker is scoped to 46630 — so these feeds are kept fresh by
 `PUSH_ALL=1 npx hardhat run scripts/push-aggregator.js --network arcTestnet` inside 97,200s until
 the keeper learns those symbols.
+
+### Ownership handover to the Safe (right after the mainnet deploy)
+
+The owner Safe already exists: **`0x4c72B4799d374D2Ad9a8C9716766f8325808B94F`** on Arc mainnet
+(SafeL2 1.4.1 via the canonical factory, salt `kaleido-lending-owner-v1`, created by
+`scripts/create-safe.js`, record `deployment-safe-arcMainnet.json`). Owner: the deployer
+`0x0Ce7…51Bc`, threshold 1 — deliberately a starting point: control changes later by changing the
+Safe's signers, never by re-nominating protocol contracts. Safe's own app supports Arc
+(app.safe.global, network "Arc"), so signers can be managed there.
+
+Rehearsed end to end on an Arc mainnet fork (2026-09-29): nominate → the Safe accepts → the Safe
+pauses/unpauses → a second signer is added → threshold raised to 2 → a lone signer is refused.
+
+```bash
+SAFE=0x4c72B4799d374D2Ad9a8C9716766f8325808B94F
+# 1. the deployer nominates the Safe (two-step: nothing changes yet)
+cast send <diamond> "transferOwnership(address)" $SAFE --private-key $DEPLOYER_PRIVATE_KEY --rpc-url https://rpc.mainnet.arc.io
+# 2. the Safe accepts (the deployer is its 1-of-1 owner, so safe-exec can execute it)
+SAFE_ADDRESS=$SAFE TO=<diamond> CALLDATA=0x79ba5097 CONFIRM_MAINNET=5042 \
+  npx hardhat run scripts/safe-exec.js --network arcMainnet
+# 3. confirm owner() == $SAFE on the diamond, THEN move the oracle (single-step — no undo)
+cast send <oracle> "transferOwnership(address)" $SAFE --private-key $DEPLOYER_PRIVATE_KEY --rpc-url https://rpc.mainnet.arc.io
+# 4. harden the Safe (any time): add a hardware-wallet signer, then require 2
+SAFE_ADDRESS=$SAFE TO=$SAFE CALLDATA=$(cast calldata 'addOwnerWithThreshold(address,uint256)' <signer> 1) \
+  CONFIRM_MAINNET=5042 npx hardhat run scripts/safe-exec.js --network arcMainnet
+SAFE_ADDRESS=$SAFE TO=$SAFE CALLDATA=$(cast calldata 'changeThreshold(uint256)' 2) \
+  CONFIRM_MAINNET=5042 npx hardhat run scripts/safe-exec.js --network arcMainnet
+```
+
+After step 4 every owner action (pause, setTokenFeed, facet cuts) needs two signatures, collected
+in app.safe.global; `safe-exec.js` refuses a Safe whose threshold is above 1. Until then the Safe is
+exactly as strong as the deployer key — the benefit is that rotating it costs nothing later.
 
 ### Pre-launch audit (2026-09-28)
 
