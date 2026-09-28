@@ -113,18 +113,17 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     yieldTreasury: "0x3305F04C7DDb32C23F250620CBa50C8DE61f67B5", // deployment-stablecoin-baseTestnet-1788709726722.json
   },
   5042002: {
-    diamond: "0x90a1620578CE419242F806e7387Db7e70c8cfa96", // deployment-diamond-arcTestnet.json
+    diamond: "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3", // deployment-diamond-arcTestnet.json
     faucet: "0x41D38A5b47887B98957cD2Bbe53528c2be0a3238", // deployment-faucet-arcTestnet.json
     kafUSD: "0xE94f351cBfec2c4BeAcF99988EC4e701d6C267Ce", // deployment-stablecoin-arcTestnet-1788709849665.json
     kfUSD: "0x2d1ea4f5E6269E4379aBd8D3d302AAb8772C2d62", // deployment-stablecoin-arcTestnet-1788709849665.json
     kld: "0xC0f8D36ec1D96477F26228A629a31248c584f477", // deployment-kld-arcTestnet.json
     kldVault: "0xf341BFb02404485FD360Ca864f49e2F7F1172951", // deployment-kld-arcTestnet.json
-    oracleKind: "pyth", // deployment-oracle-arcTestnet.json
+    oracleKind: "aggregator-v3", // deployment-oracle-arcTestnet.json
     orders: "0xB53b9689d9Eb363760770a45867c072DFe400AB4", // deployment-orders-arcTestnet.json
     poolInitCodeHash:
       "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-arcTestnet-1787358306379.json
-    priceOracle: "0x0262aff2a0D8E56048e408D5fE875EA051dED65c", // deployment-diamond-arcTestnet.json
-    pythContract: "0x2880aB155794e7179c9eE2e38200202908C17B43", // deployment-oracle-arcTestnet.json
+    priceOracle: "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564", // deployment-diamond-arcTestnet.json
     stKLD: "0xA44b63033BD3bc7F240ccD88EC3E9BB669E99c82", // deployment-kld-arcTestnet.json
     usdc: "0x3600000000000000000000000000000000000000", // deployment-stablecoin-arcTestnet-1788709849665.json
     usde: "0xCF59972d09Dbf9b37c1e3CDa55c47d0253038D76", // deployment-stablecoin-arcTestnet-1788709849665.json
@@ -238,10 +237,10 @@ export const GENERATED_LENDING_REGISTRATION: Record<
   5042002: {
     // deployment-tokens-arcTestnet.json
     collateral: [
-      "0x0000000000000000000000000000000000000001",
-      "0x911b4000D3422F482F4062a913885f7b035382Df",
+      "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+      "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
     ],
-    loanable: ["0x911b4000D3422F482F4062a913885f7b035382Df"],
+    loanable: ["0x0000000000000000000000000000000000000001"],
   },
   11155111: {
     // deployment-tokens-sepolia.json
@@ -372,7 +371,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-09-25T10:13:28.751Z",
+  generatedAt: "2026-09-28T16:04:21.533Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",

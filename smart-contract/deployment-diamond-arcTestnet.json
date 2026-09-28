@@ -1,24 +1,25 @@
 {
   "network": "arcTestnet",
   "chainId": 5042002,
-  "deployer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
-  "timestamp": "2026-08-22T00:09:45.502Z",
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-09-28T15:58:14.308Z",
   "contracts": {
-    "diamond": "0x90a1620578CE419242F806e7387Db7e70c8cfa96",
-    "priceOracle": "0x0262aff2a0D8E56048e408D5fE875EA051dED65c"
+    "diamond": "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3",
+    "priceOracle": "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564"
   },
   "facets": {
-    "DiamondCutFacet": "0x2E7dd52073d6653F610607dA9B947ba59B585bf8",
-    "DiamondInit": "0x7Ee07e9eb94B6b21589539a491E37804886AB201",
-    "DiamondLoupeFacet": "0xA9006fA582F859536AE04C9808AE75C7c3EBE110",
-    "OwnershipFacet": "0x52b38b95ccF2d29794deb567BA7935235ff9E4d1",
-    "ProtocolFacet": "0xAE330a471E09733F66b0423352D61A2B6228dBD1",
-    "AgentPermissionFacet": "0xe8a9eb6026D7f755aaC92a4B68C902Ee32334e3a"
+    "DiamondCutFacet": "0x55879358eC7eDA609f2264b0348D1915ee8307e1",
+    "DiamondInit": "0xBf24907810bd15135f38dFe59998585dC4C60E71",
+    "DiamondLoupeFacet": "0xA7e0A9391C181527C12d7E2C1Bef3A0051c6FB04",
+    "OwnershipFacet": "0xD0a6bFe795AD429c9c9E55e0Ef9d710b4b7A13eA",
+    "ProtocolFacet": "0x7Ad04316A1E2601054c691bD066Af91f411dA41B",
+    "AgentPermissionFacet": "0x7d8Ff941f156492a745763C521EF468cfB78Af65",
+    "LendingAdminFacet": "0xF87F5261DA2a0D0293e75C11FD4AD16C15E31Aa5"
   },
   "config": {
-    "feeVault": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+    "feeVault": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
     "swapRouter": null,
-    "protocolFeeBps": 1000,
+    "protocolFeeBps": 500,
     "liquidationPenaltyBps": 640,
     "priceMaxAgeSeconds": 300,
     "priceMaxConfBps": 100
@@ -26,34 +27,5 @@
   "stillRequired": [
     "register-tokens.js — addCollateralToken / addLoanableToken, or no asset is usable",
     "transfer ownership to a multisig"
-  ],
-  "upgrades": [
-    {
-      "facet": "ProtocolFacet",
-      "from": "0xF4cAd894479e1BbD9356b683403101AABC1c7BFa",
-      "to": "0x629C8Af0230466558953ea305a6319E5e938d7f0",
-      "txHash": "0xa53e2131e83069a154473a30a794abbc34f668ae5c3aabbad9c4170cd1a1c819",
-      "block": 58655347,
-      "selectorsReplaced": 68,
-      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
-    },
-    {
-      "facet": "ProtocolFacet",
-      "from": "0x629C8Af0230466558953ea305a6319E5e938d7f0",
-      "to": "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
-      "txHash": "0xcc32568751cf1fa58abbb7ef29faede0c7637dcae124f89705ab1288466415dd",
-      "block": 58774212,
-      "selectorsReplaced": 68,
-      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
-    },
-    {
-      "facet": "ProtocolFacet",
-      "from": "0x031d0127d14793b2B632F1eb25b57F66abD1dE0B",
-      "to": "0xAE330a471E09733F66b0423352D61A2B6228dBD1",
-      "txHash": "0xbc1443f7b90ef884a775f94232a732da83ce6fadf0288dac6d664a82f4a9a49f",
-      "block": 58780548,
-      "selectorsReplaced": 68,
-      "signer": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955"
-    }
   ]
 }

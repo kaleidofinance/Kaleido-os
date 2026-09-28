@@ -39,8 +39,9 @@ bottom; do not skip because it "looks fine."
       backing a live loan, and health-factor floors match `Constant.sol` (liquidation at 1.0,
       not a stale value).
 - [ ] **Oracle wiring per chain.** Arc **mainnet** uses **Chainlink push feeds** through
-      `AggregatorPriceOracle` (`oracleKind` = aggregator-v3) — NOT Pyth. (Arc *testnet* stays
-      on Pyth.) Pyth is deployed on Arc mainnet but no feed has ever been pushed to it, and
+      `AggregatorPriceOracle` (`oracleKind` = aggregator-v3) — NOT Pyth. (Arc *testnet* runs the
+      same oracle path on our own `PushablePriceFeed`s since 2026-09-28 — Chainlink has no Arc
+      testnet feeds.) Pyth is deployed on Arc mainnet but no feed has ever been pushed to it, and
       relaying needs a paid Hermes key. Confirm `getFeedMaxAge` is **per-feed**, never the
       global 300s. A converting points season must never read a testnet-chain price.
 - [ ] **Fee receivers / ownership.** Every `setFeeVault`, `setSwapRouter`, `setBps`,
@@ -184,8 +185,47 @@ lock); on the fork the same case pays the lender ≈ $10.51, the liquidator and 
 ProtocolFacet is now **24,412 bytes (164 under EIP-170)** — the next facet change must reclaim
 space first (e.g. string `require`s → custom errors).
 
-Still to do before mainnet: Arc Testnet parity deploy of this commit (§0), a ≥ 30-day walk of
-each Chainlink feed, and the app's ABI/error regeneration.
+Still to do before mainnet: a ≥ 30-day walk of each Chainlink feed, and the app's ABI/error
+regeneration. (Arc Testnet parity deploy: done 2026-09-28, see below.)
+
+### Arc Testnet parity deploy (done 2026-09-28)
+
+The mainnet runbook, same commit (`e6aac77` + scripts only), same order and money settings, on
+Arc Testnet (5042002). One unavoidable difference: **Chainlink publishes no Arc testnet feeds**
+(its directory lists `arc-mainnet` only; the three mainnet proxies have no code on 5042002), so
+step 0 deploys our own `PushablePriceFeed`s (Chainlink `AggregatorV3` interface, seeded from
+CoinGecko while Hermes 401s) and everything after it is the identical `aggregator-v3` path —
+USDC / EURC / CIRBTC-on-BTC, 8 decimals, 97,200s bounds.
+
+```bash
+npx hardhat run scripts/deploy-pushable-feeds.js --network arcTestnet
+npx hardhat run scripts/deploy-oracle.js --network arcTestnet
+# then steps 2–4 of the runbook above with --network arcTestnet and the testnet tokens:
+#   EURC 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a, CIRBTC 0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF
+PRICE_ORACLE=<oracle> PUSHER_ADDRESS=0xB37d079F6AccE50332043cf20e1f4FFD363799aE   npx hardhat run scripts/grant-pusher.js --network arcTestnet
+KALEIDO_DIAMOND=<diamond> COLLATERAL=<EURC> COLLATERAL_AMOUNT=15000000 SMOKE_KEY_FILE=<outside repo>   npx hardhat run scripts/smoke-lending-live.js --network arcTestnet
+```
+
+Rehearsed first on an anvil fork of Arc testnet (`--network fork`; `rehearse-lending-fork.js` is
+now chain-aware): runbook 0–4 green, flows A–E green. The rehearsal found one harness bug — a
+liquidation estimated one block early drifted ~270 gas and died on EIP-2200's SSTORE sentry
+(`ReentrancySentryOOG`, 351,105 limit vs 351,376 needed), so the rehearsal pads liquidation gas
+×1.2 like any liquidator bot. Also fixed: `resolveSelfHosted` now ignores `pricefeeds-*fork*.json`
+off a fork (a fork record carries the real chain id and would have been registered on the real
+chain).
+
+**Live result:** diamond `0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3`, oracle
+`0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564`, feeds in `pricefeeds-arcTestnet.json` (owner
+`0x0Ce7…`, keeper `0xB37d…` granted pusher). `verify-diamond` green (all 6 facets routed, three
+prices fresh on per-feed 97,200s bounds). `smoke-lending-live.js` landed and unwound a real
+10.5 USDC loan against 15 EURC: fee exactly 5% of interest to the vault, lender withdrew in native
+USDC, collateral returned. The old Pyth-backed Arc testnet diamond `0x90a1…fa96` (empty, stale
+feeds) is superseded in the registry, not destroyed.
+
+**Keeping it live:** the app keeper (`src/lib/keeper/pushFeeds.ts`) prices from `PYTH_FEEDS`,
+which has no EURC/BTC, and the Worker is scoped to 46630 — so these feeds are kept fresh by
+`PUSH_ALL=1 npx hardhat run scripts/push-aggregator.js --network arcTestnet` inside 97,200s until
+the keeper learns those symbols.
 
 ### The five existing testnet diamonds — upgrade in place (rehearsed 2026-09-28)
 

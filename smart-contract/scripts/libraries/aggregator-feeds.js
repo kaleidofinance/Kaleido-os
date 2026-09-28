@@ -59,7 +59,17 @@ const { FEEDS } = require("./pyth-feeds.js");
  *           every ~90s" reading of this chain is an average across one live
  *           pusher and one absent one. Chainlink publishes both. See the 84532
  *           block below for why a per-feed bound could not rescue the Pyth path.
- *   5042002 Arc Testnet. Pyth deployed and, on the strength of one ETH/USD
+ *   5042002 Arc Testnet — SINCE 2026-09-28, the mainnet-parity lending deploy: our
+ *           own PushablePriceFeeds behind AggregatorPriceOracle, mirroring the 5042
+ *           entry symbol for symbol (USDC, EURC, CIRBTC on BTC/USD; 8 decimals;
+ *           97,200s bounds), so the testnet diamond runs the exact oracle code
+ *           path, wiring and bounds mainnet will. Only the publisher differs:
+ *           Chainlink has no Arc TESTNET push feeds (its directory lists
+ *           arc-mainnet only, Arc's contract-address page lists no oracle, and the
+ *           three mainnet proxy addresses have no code on 5042002). The Pyth
+ *           history below is why Pyth was retired here; the old Pyth-backed
+ *           diamond 0x90a1…fa96 is superseded, not deleted.
+ *   5042002 (history) Arc Testnet. Pyth deployed and, on the strength of one ETH/USD
  *           reading, "publishing every ~104s" — which is what this line used to
  *           say, and it is the same average-of-a-live-and-a-dead-pusher mistake
  *           the 84532 note above warns about. Measured per feed on 2026-08-21:
@@ -127,7 +137,8 @@ const ORACLE_BACKEND = {
   84532: "aggregator-v3",
   97: "aggregator-v3",
   46630: "aggregator-v3",
-  5042002: "pyth",
+  /* Arc TESTNET: self-hosted feeds in the mainnet shape — see the 5042002 note. */
+  5042002: "aggregator-v3",
 };
 
 /**
@@ -609,6 +620,39 @@ const AGGREGATORS = {
       descriptionHint: "BTC / USD",
     },
   },
+  /* Arc TESTNET — mainnet parity. Same symbols, decimals and bounds as 5042; the
+     aggregators are our PushablePriceFeeds (deploy-pushable-feeds.js), so the
+     price is ours and a keeper push inside 97,200s keeps it live. cirBTC is
+     priced on BTC/USD exactly as mainnet prices it on Chainlink BTC/USD. */
+  5042002: {
+    USDC: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis: "Parity with the 5042 USDC/USD bound — not a property of our own feed, whose age is whatever the keeper cadence makes it.",
+      descriptionHint: "USDC / USD",
+    },
+    EURC: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis: "Parity with the 5042 EURC/USD bound.",
+      descriptionHint: "EURC / USD",
+    },
+    CIRBTC: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis: "Parity with the 5042 BTC/USD bound used for cirBTC.",
+      descriptionHint: "BTC / USD",
+    },
+  },
 };
 
 /**
@@ -705,8 +749,16 @@ function resolveSelfHosted(chainId, symbol) {
     names = [];
   }
 
+  /* A fork rehearsal writes pricefeeds-<fork network>.json carrying the REAL
+     chain's id, for contracts that exist only on the fork. Matching on chainId
+     alone would let a real deploy register those addresses, so fork records are
+     used only on a fork and real records only off one. */
+  const onFork = /fork/i.test(process.env.HARDHAT_NETWORK || "");
   const candidates = names.filter(
-    (n) => n.startsWith("pricefeeds-") && n.endsWith(".json"),
+    (n) =>
+      n.startsWith("pricefeeds-") &&
+      n.endsWith(".json") &&
+      /fork/i.test(n) === onFork,
   );
   for (const name of candidates) {
     let record;
