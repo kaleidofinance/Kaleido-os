@@ -45,9 +45,9 @@ export async function readCollateralDeposits(
   const diamond = getContracts(chainId).diamond;
   if (!diamond) return null;
 
-  /* The union of both registered arrays, which is what `registeredLendingAssets`
-     returns for the collateral side — a loanable token is depositable too, since
-     addLoanableToken writes a price feed. See the helper's own header. */
+  /* The registered collateral array, which is what `registeredLendingAssets`
+     returns for the collateral side — only a collateral token can be deposited
+     (since 2026-09-27). See the helper's own header. */
   const { assets } = registeredLendingAssets(chainId, "collateral");
   if (assets.length === 0) return [];
 

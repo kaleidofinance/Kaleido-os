@@ -224,7 +224,9 @@ Five things it gets right that are easy to get wrong by hand:
   `addCollateralToken` checks it first — so registering a token as loanable
   first bars it from the collateral set permanently. The script orders the whole
   plan before sending anything.
-- **`addLoanableToken` has no duplicate guard.** It pushes onto
+- **`addLoanableToken` had no duplicate guard** (fixed 2026-09-27: it now refuses a
+  duplicate, a zero feed, and a feed that differs from the token's collateral feed —
+  diamonds cut before that still lack the guard). It pushed onto
   `s_loanableToken` unconditionally, and nothing anywhere removes from that
   array — `removeCollateralTokens` clears the feed and `s_collateralToken` only.
   A re-run without the pre-flight check would grow the list forever.
@@ -247,7 +249,7 @@ Five things it gets right that are easy to get wrong by hand:
   stablecoin means accepting a four-hour-old ETH price to liquidate against; tight
   enough for ETH means the stablecoin never prices and `/borrow` is dead on that
   chain. So the script calls `setFeedMaxAge(feedId, seconds)` per feed, capped at
-  `MAX_FEED_PRICE_AGE` (90000s / 25h — API3's only heartbeat option is 24 hours).
+  `MAX_FEED_PRICE_AGE` (108000s / 30h — raised from 25h for Arc mainnet's 24h Chainlink heartbeat).
   It deduplicates by feed id, because ETH and WETH share one and the bound is
   stored per id; refuses if two symbols sharing an id ask for different bounds; and
   reads each value back rather than trusting a status-1 receipt, since a selector

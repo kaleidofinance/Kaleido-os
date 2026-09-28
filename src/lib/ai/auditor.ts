@@ -2126,9 +2126,10 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
    * mappings, so a token can be depositable and not borrowable. See lendingToken.
    *
    * The sides come from ProtocolFacet, not from a naming convention:
-   * depositCollateral and withdrawCollateral carry `_isTokenAllowed`
-   * (`s_priceFeeds[token] != 0`), createLendingRequest and createLoanListing
-   * check `s_isLoanable`. repayLoan is gated on neither and is not checked here.
+   * depositCollateral requires the token to be in `s_collateralToken` (with a
+   * feed), withdrawCollateral carries `_isTokenAllowed` (`s_priceFeeds[token] !=
+   * 0`), createLendingRequest and createLoanListing check `s_isLoanable`.
+   * repayLoan is gated on neither and is not checked here.
    */
 
   depositCollateral: (s, chainId) => {

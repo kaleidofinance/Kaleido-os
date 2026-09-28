@@ -1577,15 +1577,16 @@ const hasAddress = (list: string[], address: string) =>
  * passing plans that revert — `lend 500 kfUSD` and `borrow 1 ETH` build cleanly
  * on all five chains and are loanable on none of them.
  *
- * COLLATERAL IS THE UNION of the two recorded arrays, deliberately. The gate for
- * a deposit is `s_priceFeeds[token] != 0`, and `addLoanableToken` writes
- * `s_priceFeeds` too (ProtocolFacet.sol:533-539) — so registering a token as
- * loanable also makes it depositable, whether or not it is in
- * `s_collateralToken`. Using the collateral array alone would refuse a deposit
- * the facet accepts. It happens not to bite today, because loanable ⊆ collateral
- * on all five chains, and that is a fact about these five registrations rather
- * than an invariant of the contract. The reverse union would be wrong: a
- * collateral token is NOT loanable.
+ * COLLATERAL IS THE COLLATERAL ARRAY ONLY (since 2026-09-27). It used to be the
+ * union of both arrays, because depositCollateral gated on `s_priceFeeds[token]
+ * != 0` and addLoanableToken writes a feed too — so a loanable-only token was
+ * depositable. The Arc mainnet hardening changed the contract: a deposit now
+ * requires the token to be in `s_collateralToken` (a loanable-only deposit was
+ * accepted, valued at zero, and blocked the depositor's borrows). On Arc native
+ * USDC is loanable only, so the union would have let the app and the auditor
+ * approve a deposit the contract refuses. On the five testnets loanable ⊆
+ * collateral, so the answer there is unchanged either way. A collateral token
+ * is still NOT loanable.
  *
  * It is an approximation of the feed mapping in one direction only.
  * `removeCollateralTokens` clears a feed and leaves `s_loanableToken` alone, so a
@@ -1607,13 +1608,7 @@ export function registeredLendingAssets(
   const reg = chainId === undefined ? undefined : LENDING_REGISTRATION[chainId];
   if (!reg) return { known: false, assets: [], unnamed: [] };
 
-  const addresses =
-    side === "loanable"
-      ? reg.loanable
-      : [
-          ...reg.collateral,
-          ...reg.loanable.filter((a) => !hasAddress(reg.collateral, a)),
-        ];
+  const addresses = side === "loanable" ? reg.loanable : reg.collateral;
 
   const assets: BorrowCurrencyEntry[] = [];
   const unnamed: string[] = [];

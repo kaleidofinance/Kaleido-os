@@ -67,6 +67,8 @@ const {
   verifyAggregatorFeed,
 } = require("./libraries/aggregator-feeds.js");
 const { waitForState } = require("./libraries/rpc.js");
+const { assetRuleViolations } = require("./libraries/chain-asset-rules.js");
+const { confirmMainnet, isMainnet } = require("./libraries/mainnet-guard.js");
 
 /** The read surface both Chainlink feeds and API3 reader proxies expose. */
 const AGGREGATOR_ABI = [
@@ -235,6 +237,21 @@ async function main() {
 
   const collateral = parseTokenList(process.env.COLLATERAL_TOKENS, "COLLATERAL_TOKENS");
   const loanable = parseTokenList(process.env.LOANABLE_TOKENS, "LOANABLE_TOKENS");
+
+  /* Before any chain read: the asset mistakes that cannot be undone once sent
+   * (native priced as the wrong asset, one dollar registered under two
+   * addresses, a token whose on-chain symbol lies). See chain-asset-rules.js. */
+  const ruleProblems = assetRuleViolations(
+    chainId,
+    [...collateral, ...loanable],
+    nativeFeedSymbol(),
+  );
+  if (ruleProblems.length) {
+    throw new Error(
+      "Refusing to register anything on chain " + chainId + ":\n" +
+        ruleProblems.map((p) => `   - ${p}`).join("\n"),
+    );
+  }
   if (collateral.length === 0 && loanable.length === 0) {
     throw new Error(
       "Nothing to register: set COLLATERAL_TOKENS and/or LOANABLE_TOKENS.\n" +
@@ -593,8 +610,10 @@ async function main() {
   /**
    * Collateral before loanable, and not merely for tidiness.
    *
-   * addCollateralToken requires s_priceFeeds[token] == 0; addLoanableToken sets
-   * that mapping without checking it. Sorting collateral first is what makes
+   * addCollateralToken requires s_priceFeeds[token] == 0, and addLoanableToken
+   * writes that mapping (since 2026-09-27 it refuses a duplicate, a zero feed, or
+   * a feed different from the token's existing one — but still writes a new one).
+   * Sorting collateral first is what makes
    * "register X as both" possible at all — the reverse order locks X out of the
    * collateral set for good.
    */
@@ -602,6 +621,65 @@ async function main() {
     ...plan.filter((p) => p.kind === "collateral"),
     ...plan.filter((p) => p.kind === "loanable"),
   ];
+
+  /* Every registration dry-run BEFORE anything is sent (and before the mainnet
+   * prompt, so a problem is seen before anyone is asked to confirm). This used
+   * to staticCall collateral only, and only inside the send loop — so a loanable
+   * entry that reverted (now: a duplicate, a zero feed, or a feed that differs
+   * from the token's collateral feed) failed AFTER earlier entries had already
+   * landed, leaving a half-registered market. Collateral is dry-run first because
+   * a token that is both is sent collateral-first; its loanable dry-run then sees
+   * no existing feed, which the real call (same feed) also accepts. */
+  /* A token listed twice on the same side passes two independent dry-runs, then
+   * the second real send reverts after the first has landed. Refuse the list. */
+  const seenSide = new Set();
+  for (const entry of ordered) {
+    const key = `${entry.kind}:${entry.address.toLowerCase()}`;
+    if (seenSide.has(key)) {
+      throw new Error(
+        `Nothing was sent. ${entry.symbol} (${entry.address}) is listed twice as ${entry.kind}.`,
+      );
+    }
+    seenSide.add(key);
+  }
+
+  console.log("\n   Dry-running every registration…");
+  for (const entry of ordered) {
+    if (entry.already) continue;
+    const fn = entry.kind === "collateral" ? "addCollateralToken" : "addLoanableToken";
+    try {
+      await protocol[fn].staticCall(entry.address, entry.feed.id);
+    } catch (err) {
+      throw new Error(
+        `Nothing was sent. ${fn} would revert for ${entry.kind} ${entry.symbol} @ ` +
+          `${entry.address}: ${err.shortMessage || err.message}`,
+      );
+    }
+  }
+  console.log("   ✅ all registrations would succeed");
+
+  /* The last stop before the first irreversible transaction. On a mainnet this
+   * prints the exact registration plan and refuses to continue unless
+   * CONFIRM_MAINNET is this chain's id. */
+  confirmMainnet({
+    chainId,
+    script: "register-tokens.js",
+    plan: [
+      ["diamond", diamondAddress],
+      ["signer", signer.address],
+      ["NATIVE priced as", nativeFeedSymbol()],
+      ...ordered.map((e) => [
+        `${e.kind} ${e.symbol}`,
+        `${e.address}  feed ${e.feed.symbol} ${e.feed.id}  ` +
+          `${e.decimals}dp  bound ${e.feedMaxAge || "global"}s` +
+          (e.already ? "  (already registered — skip)" : ""),
+      ]),
+    ],
+    explicit: [...collateral, ...loanable].some((t) => t.isNative)
+      ? ["NATIVE_FEED_SYMBOL"]
+      : [],
+  });
+  void isMainnet;
 
   console.log("\n2. Registering");
   const registered = [];
@@ -776,7 +854,7 @@ async function main() {
       continue;
     }
 
-    /* staticCall first: the setter caps at Constants.MAX_FEED_PRICE_AGE (90000)
+    /* staticCall first: the setter caps at Constants.MAX_FEED_PRICE_AGE (108000)
      * and reverts Protocol__InvalidPriceBounds above it. A table entry over the
      * cap should say so here rather than as an opaque diamond-fallback revert. */
     try {
@@ -785,7 +863,7 @@ async function main() {
       throw new Error(
         `setFeedMaxAge would revert for ${b.symbols.join("/")} at ${b.maxAge}s: ` +
           `${err.shortMessage || err.message}\n` +
-          "The ceiling is Constants.MAX_FEED_PRICE_AGE = 90000 seconds (25h). A " +
+          "The ceiling is Constants.MAX_FEED_PRICE_AGE = 108000 seconds (30h). A " +
           "bound above it means the table in aggregator-feeds.js is asking for " +
           "more staleness than the protocol will express — which for a volatile " +
           "asset is the right refusal.",
@@ -871,7 +949,7 @@ async function main() {
   if (dupes.length) {
     console.warn(
       `\n⚠️  s_loanableToken contains duplicates: ${[...new Set(dupes)].join(", ")}\n` +
-        "    addLoanableToken has no duplicate guard, so these were added by an\n" +
+        "    addLoanableToken had no duplicate guard before 2026-09-27, so these were added by an\n" +
         "    earlier run or by hand. getLoanableAssets() returns them twice and\n" +
         "    the frontend will list them twice. There is no removal function for\n" +
         "    loanable tokens — this needs a facet change to clean up.",
