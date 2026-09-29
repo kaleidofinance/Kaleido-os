@@ -312,9 +312,13 @@ async function runAll(env) {
     );
   }
 
+  /* CCTP and liquidations ride this tick too: the account's cron cap leaves no
+     room for their own two-minute trigger (see wrangler.toml). */
   const results = await Promise.all([
     attempt(pushUrl(env), secret, summarise),
     attempt(candlesUrl(env), secret, summariseCandles),
+    attempt(cctpUrl(env), secret, summariseCctp),
+    attempt(liquidateUrl(env), secret, summariseLiquidate),
   ]);
 
   for (const r of results) (r.ok ? console.info : console.error)(r.line);
@@ -380,7 +384,7 @@ export default {
         JSON.stringify({
           error: "Unauthorized.",
           armed: Boolean(env.KEEPER_CRON_SECRET),
-          targets: [pushUrl(env).toString(), candlesUrl(env).toString()],
+          targets: [pushUrl(env), candlesUrl(env), cctpUrl(env), liquidateUrl(env)].map(String),
         }),
         { status: 401, headers: { "content-type": "application/json" } },
       );

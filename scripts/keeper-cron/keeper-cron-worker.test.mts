@@ -92,6 +92,10 @@ const stubFor = (which, ...responses) => {
     const u = String(url);
     calls.push({ url: u, init });
     if (u.includes(other)) return new Response(otherBody, { status: 200 });
+    /* CCTP and the liquidator share the fifteen-minute tick now; they answer a
+       clean 200 so push/candle assertions stay about push and candles. */
+    if (u.includes("/api/keeper/cctp")) return new Response(JSON.stringify({ ok: true, minted: [], wouldMint: [], stillPending: 0, failed: [], skipped: [], errors: [] }), { status: 200 });
+    if (u.includes("/api/keeper/liquidate")) return new Response(JSON.stringify({ ok: true, chains: [], liquidated: 0, wouldLiquidate: 0, failed: 0 }), { status: 200 });
     const r = responses[Math.min(i, responses.length - 1)];
     i++;
     if (r instanceof Error) throw r;
@@ -345,7 +349,11 @@ console.log("\nâ€” the two-minute tick runs the CCTP keeper and the liquidator â
   /* The fifteen-minute tick is unchanged: push and candles, no cctp, no liquidator. */
   stub({ status: 200, body: REAL_200 });
   await worker.scheduled({ cron: "*/15 * * * *" }, ENV);
-  check("the other tick still runs push + candles only", pushCalls().length === 1 && candleCalls().length === 1 && !calls.some((c) => c.url.includes("/api/keeper/cctp") || c.url.includes("/api/keeper/liquidate")), JSON.stringify(calls.map((c) => c.url)));
+  check("the fifteen-minute tick runs every keeper: push, candles, cctp, liquidate",
+    pushCalls().length === 1 && candleCalls().length === 1 &&
+      calls.filter((c) => c.url.includes("/api/keeper/cctp")).length === 1 &&
+      calls.filter((c) => c.url.includes("/api/keeper/liquidate")).length === 1,
+    JSON.stringify(calls.map((c) => c.url)));
 
   /* Either endpoint failing fails the invocation, with its reason. */
   route({ status: 503, body: JSON.stringify({ error: "The keeper route is not enabled." }) });

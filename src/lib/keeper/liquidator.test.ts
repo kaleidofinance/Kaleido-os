@@ -167,6 +167,21 @@ async function run() {
       r.failed === 1 && r.liquidated === 1 && sent.length === 2);
   }
   {
+    // A clock that advances 15s per send: with a 40s budget, the 4th candidate is deferred.
+    let t = 0;
+    const loans = Array.from({ length: 6 }, (_, i) => loan(i + 1, B, NOW - 1n));
+    const { deps, sent } = fakeDeps({
+      books: { 1: book(loans, {}) },
+      send: () => {
+        t += 15_000;
+        return { hash: "0xok" };
+      },
+    });
+    const r = await runLiquidations({ chainIds: [1], limit: 25, budgetMs: 40_000, now: () => t }, deps);
+    check("the time budget stops new sends and reports the rest as deferred",
+      sent.length === 3 && r.chains[0].deferred === 3, `sent ${sent.length}, deferred ${r.chains[0].deferred}`);
+  }
+  {
     const { deps, sent } = fakeDeps({ keeper: null, books: { 1: book([loan(1, B, NOW - 1n)], {}) } });
     const r = await runLiquidations({ chainIds: [1] }, deps);
     check("no keeper key (or an owner key) — nothing runs", !r.ok && sent.length === 0 && /refusing/.test(r.error ?? ""));

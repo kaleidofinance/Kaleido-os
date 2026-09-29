@@ -104,6 +104,8 @@ export interface ChainLiquidation {
   wouldLiquidate: { requestId: string; overdue: boolean }[];
   skipped: { requestId: string; reason: string }[];
   failed: { requestId: string; error: string }[];
+  /** Candidates left for the next run because the time budget ran out. */
+  deferred: number;
   rewards?: Record<string, string>;
 }
 
@@ -143,9 +145,18 @@ export function candidates(book: ChainBook): Candidate[] {
   });
 }
 
+/**
+ * Stop STARTING liquidations after this long in one run. Each send waits for its
+ * receipt (the next shares the nonce), so on a 12s-block chain five sends take a
+ * minute — past the route's 60s budget, which surfaces as a 504 and a scheduler
+ * retry (measured on Sepolia, 2026-09-29: harmless — every send is simulated
+ * first — but noisy). What is left is reported as `deferred` for the next tick.
+ */
+export const DEFAULT_BUDGET_MS = 40_000;
+
 async function liquidateChain(
   chainId: number,
-  opts: { dryRun: boolean; limit: number },
+  opts: { dryRun: boolean; limit: number; deadline: number; now: () => number },
   deps: LiquidatorDeps,
 ): Promise<ChainLiquidation> {
   const report: ChainLiquidation = {
@@ -157,6 +168,7 @@ async function liquidateChain(
     wouldLiquidate: [],
     skipped: [],
     failed: [],
+    deferred: 0,
   };
   const book = await deps.readBook(chainId);
   if ("error" in book) {
@@ -169,8 +181,12 @@ async function liquidateChain(
   report.candidates = list.length;
 
   let acted = 0;
-  for (const c of list) {
+  for (const [i, c] of list.entries()) {
     if (acted >= opts.limit) break;
+    if (opts.now() >= opts.deadline) {
+      report.deferred = list.length - i;
+      break;
+    }
     const id = c.requestId.toString();
     const sim = await deps.simulate(chainId, c.requestId);
     if (!sim.ok) {
@@ -203,9 +219,11 @@ async function liquidateChain(
 }
 
 export async function runLiquidations(
-  opts: { chainIds?: number[]; dryRun?: boolean; limit?: number } = {},
+  opts: { chainIds?: number[]; dryRun?: boolean; limit?: number; budgetMs?: number; now?: () => number } = {},
   deps: LiquidatorDeps = defaultDeps(),
 ): Promise<LiquidationResult> {
+  const now = opts.now ?? Date.now;
+  const deadline = now() + (opts.budgetMs ?? DEFAULT_BUDGET_MS);
   const dryRun = Boolean(opts.dryRun);
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 5), 1), 25);
   const keeper = deps.keeperAddress();
@@ -223,7 +241,7 @@ export async function runLiquidations(
   }
   const chainIds = opts.chainIds?.length ? opts.chainIds : lendingChains();
   // Chains in parallel (separate nonces); loans within a chain in sequence (one nonce).
-  const chains = await Promise.all(chainIds.map((id) => liquidateChain(id, { dryRun, limit }, deps)));
+  const chains = await Promise.all(chainIds.map((id) => liquidateChain(id, { dryRun, limit, deadline, now }, deps)));
   return {
     ...base,
     ok: chains.every((c) => c.status === "ok"),

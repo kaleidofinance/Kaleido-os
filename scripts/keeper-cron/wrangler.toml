@@ -43,7 +43,14 @@ preview_urls = false
 [triggers]
 # Two clocks: the price+candle keepers every fifteen minutes, the CCTP
 # completion keeper every two — see CCTP_CRON in the worker.
-crons = ["*/15 * * * *", "*/2 * * * *"]
+# ONE trigger. The account is on Workers Free, capped at 5 cron triggers across
+# ALL its Workers, and every slot is taken (agent-health, keeper, points-lp,
+# points-swap, waitlist-activation) — a second trigger here is rejected by the API
+# and the deploy half-fails. Measured 2026-09-29: the old "*/2" CCTP trigger was
+# never registered. So the */15 tick runs every keeper (push, candles, CCTP,
+# liquidations). On Workers Paid, add "*/2 * * * *" back: the worker already
+# routes that expression to CCTP + liquidations.
+crons = ["*/15 * * * *"]
 
 [vars]
 # The apex, deliberately. `www.kaleidofi.xyz` answers 307, and a redirect is not
