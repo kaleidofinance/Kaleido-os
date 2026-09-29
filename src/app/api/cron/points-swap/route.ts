@@ -31,6 +31,11 @@ import {
 } from "@/lib/points/swapCursor";
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import { ARGUS_V4 } from "@/lib/argus/addresses";
+import {
+  poolLegsUsd,
+  readPoolUsdSides,
+  recordPoolVolume,
+} from "@/lib/points/poolVolume";
 
 const ERC20_DECIMALS_ABI = ["function decimals() view returns (uint8)"];
 
@@ -222,6 +227,8 @@ async function handle(req: Request): Promise<Response> {
   /* Swaps written to the volume ledger — every one the indexer can value, below
      the points floor included. Counted apart from `credited` (points). */
   let recorded = 0;
+  /* Native-pool Swap logs written to the per-pool ledger (Pools table totals). */
+  let poolLegsRecorded = 0;
   const skips: Record<string, number> = {};
   const bump = (r: string) => (skips[r] = (skips[r] ?? 0) + 1);
 
@@ -388,6 +395,32 @@ async function handle(req: Request): Promise<Response> {
         const transfers = receipt.logs
           .map((l) => decodeTransferLog(l))
           .filter((t): t is NonNullable<typeof t> => t !== null);
+
+        /* Per-pool volume for the Pools table, BEFORE the wallet parse below: a
+           trade that parse skips (unpriced input, an unresolvable limit-order
+           maker…) still crossed our pool, and the pool's own dollar leg values
+           it with no price lookup. Idempotent per log; fail-open. */
+        if (!dryRun && NATIVE_POOLS.length > 0) {
+          const sides = await readPoolUsdSides(provider, NATIVE_POOLS, {
+            [USDC]: USDC_DECIMALS,
+            ...(WRAPPED_NATIVE
+              ? { [WRAPPED_NATIVE]: WRAPPED_NATIVE_DECIMALS }
+              : {}),
+          });
+          const legs = poolLegsUsd(receipt.logs, sides);
+          if (legs.length > 0) {
+            const blk = await retryRpc(() =>
+              provider.getBlock(receipt.blockNumber),
+            );
+            poolLegsRecorded += await recordPoolVolume(
+              supabaseAdmin,
+              ARC,
+              txHash,
+              new Date((blk?.timestamp ?? Date.now() / 1000) * 1000).toISOString(),
+              legs,
+            );
+          }
+        }
 
         // Venues + account senders so Argus trades, direct native-pool trades,
         // and bundled (EIP-5792 / 7702 / 4337) trades are all credited to the
@@ -593,6 +626,7 @@ async function handle(req: Request): Promise<Response> {
       scanned,
       credited,
       recorded,
+      poolLegsRecorded,
       skips,
       fromBlock: backfill.from,
       drainedTo: advancedTo,
@@ -600,7 +634,15 @@ async function handle(req: Request): Promise<Response> {
       ...(dryRun ? { wouldCredit } : {}),
     });
 
-  return Response.json({ scanned, credited, recorded, skips, cursor, advancedTo });
+  return Response.json({
+    scanned,
+    credited,
+    recorded,
+    poolLegsRecorded,
+    skips,
+    cursor,
+    advancedTo,
+  });
 }
 
 export const GET = handle;

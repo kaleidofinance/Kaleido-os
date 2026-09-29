@@ -6,6 +6,12 @@ import { PRICEABLE, getPrices } from "@/lib/points/prices";
 import type { ITradingPair } from "@/constants/types/dex";
 import { unstable_cache } from "next/cache";
 import { shouldAcceptPoolSnapshot } from "@/lib/dex/poolSnapshot";
+import { supabaseAdmin } from "@/lib/supabase/serverClient";
+import {
+  feesOn,
+  poolTotalKey,
+  readPoolVolumeTotals,
+} from "@/lib/points/poolVolume";
 
 /**
  * GET /api/pools — the V3 pool list, swept once on the server.
@@ -63,7 +69,19 @@ async function compute(): Promise<ITradingPair[]> {
   for (const r of settled) {
     if (r.status === "fulfilled") pools.push(...r.value);
   }
-  return pools;
+  /* All-time totals from the per-pool ledger. A pool the ledger has never seen
+     trade shows $0; an unreadable ledger leaves the fields null (a dash). */
+  const totals = await readPoolVolumeTotals(supabaseAdmin);
+  if (!totals) return pools;
+  return pools.map((p) => {
+    const volumeTotal =
+      totals.get(poolTotalKey(p.chainId, p.address))?.volumeUsd ?? 0;
+    return {
+      ...p,
+      volumeTotal,
+      feesTotal: feesOn(volumeTotal, p.feeBps ?? null),
+    };
+  });
 }
 
 /* Vercel's Data Cache is shared across serverless instances; module memory is
