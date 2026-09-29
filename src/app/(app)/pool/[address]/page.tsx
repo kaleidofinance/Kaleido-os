@@ -19,7 +19,7 @@ import PoolBalanceBar from "../_components/PoolBalanceBar";
 import PoolDepthChart from "../_components/PoolDepthChart";
 import PoolTxnTable from "../_components/PoolTxnTable";
 import SeededTick from "../_components/SeededTick";
-import { feeLabel, volumeTitle } from "../format";
+import { feeLabel } from "../format";
 import { poolCurves } from "../poolCurve";
 import s from "../pool.module.css";
 
@@ -225,11 +225,13 @@ export default function PoolDetailPage() {
             <div className={s.statList}>
               <SideStat label="TVL" value={usd(pool.liquidity)} />
               <SideStat
-                label="24h volume"
-                value={usd(pool.volume24h)}
-                title={volumeTitle(pool.volumeWindowSec)}
+                label="Total volume"
+                value={usd(pool.volumeTotal ?? null)}
               />
-              <SideStat label="24h fees" value={usd(pool.fees24h, 2)} />
+              <SideStat
+                label="Total fees"
+                value={usd(pool.feesTotal ?? null, 2)}
+              />
               <SideStat label="APR" value={pct(pool.apr)} />
               <SideStat
                 label="Price"

@@ -20,7 +20,7 @@ import {
   applyPoolFilters,
   type PoolFilters,
 } from "./filters";
-import { feeLabel, volumeTitle } from "./format";
+import { feeLabel } from "./format";
 import s from "./pool.module.css";
 
 /**
@@ -194,8 +194,8 @@ export default function PoolsPage() {
         <div className={s.thead}>
           <span>Pool</span>
           <span className={s.right}>Price</span>
-          <span className={s.right}>24h volume</span>
-          <span className={s.right}>24h fees</span>
+          <span className={s.right}>Total volume</span>
+          <span className={s.right}>Total fees</span>
           <span className={s.right}>TVL</span>
           <span className={s.right}>APR</span>
           {/* Deliberately unlabelled: the column holds one button that says what it
@@ -278,20 +278,15 @@ export default function PoolsPage() {
               <span className={`${s.right} tabular`}>
                 {p.price !== null ? p.price.toFixed(p.price < 1 ? 6 : 4) : DASH}
               </span>
-              <span
-                className={`${s.right} tabular`}
-                title={volumeTitle(p.volumeWindowSec)}
-              >
-                {usd(p.volume24h)}
-              </span>
-              {/* Fees the pool earned over the same window: the 24h volume that
-                  crossed it times its fee rate (feeBps is basis points, so
-                  /10000 is the fraction). What an LP is actually paid, before
-                  it is annualised into APR two columns over. */}
+              {/* All-time, not 24h: our pools are young and thin, so a 24h
+                  window was empty on nearly every row. Totals come from the
+                  per-pool ledger the swap indexer writes (poolVolume.ts); fees
+                  are that volume at the pool's fee rate. */}
               <span className={`${s.right} tabular`}>
-                {p.volume24h !== null && p.feeBps !== null
-                  ? usd((p.volume24h * p.feeBps) / 10000)
-                  : DASH}
+                {usd(p.volumeTotal ?? null)}
+              </span>
+              <span className={`${s.right} tabular`}>
+                {usd(p.feesTotal ?? null)}
               </span>
               <span className={`${s.right} tabular`}>{usd(p.liquidity)}</span>
               <span className={`${s.right} tabular`}>{pct(p.apr)}</span>
