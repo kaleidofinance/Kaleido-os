@@ -364,5 +364,21 @@ npx hardhat run scripts/verify-diamond.js --network <net>
   disables batching and only believes a revert that repeats; always post-survey, never trust the
   migration's own checks alone.
 
+- **2026-09-29 — ARC MAINNET LENDING DEPLOYED (chainId 5042), commit `0f975ba`.** Preflight: lending
+  suites 66/66; the §6 fork rehearsal re-run on that exact commit (flows A–F incl. repay with a 30h-stale
+  USDC/USD) all green; Chainlink walk of every round ever published (worst gap 86,487s vs 97,200s).
+  - AggregatorPriceOracle `0x5027ACF31cEf802d6A89D170691Fa256e079D39B` (USDC/EURC/BTC Chainlink, 97,200s bounds)
+  - Diamond **`0xE4e7f16DB22e6bb2E505fbC504d7B2B4B995A6E3`** (first block with code 23,285,687) — 6 facets
+    fully routed; fee vault `0x0Ce7…51Bc`, 500 bps, penalty 640 bps, bounds 300s / 100 bps.
+  - Collateral EURC `0xbEf5…c1c1` + cirBTC `0x171A…baa0`; loanable native USDC (address(1)) — permanent.
+  - `verify-diamond` green. One REAL loan (`smoke-lending-live.js`): 0.0002 cirBTC ($16.65) → 10.5 USDC,
+    fee exactly 5% of interest to the vault, repaid, unwound, everything returned.
+  - **Owned by the Safe `0x4c72B4799d374D2Ad9a8C9716766f8325808B94F`**: deployer nominated → the Safe
+    accepted (Safe nonce 0→1) → diamond owner confirmed → oracle moved (single-step) last. Safe is 1-of-1
+    (deployer) — add a hardware-wallet signer and raise the threshold to 2 next.
+  - Total cost ≈ 0.31 USDC. Vercel `POINTS_LEND_FROM_BLOCK=23285687` set; the app registry change ships in
+    the launch PR (held for the UI walkthrough). Closest call: none this time — the audit fixes
+    (repay without price, live-debt cap) went in before the deploy, not after.
+
 _Add a dated line here after each mainnet deploy: what shipped, the addresses, and which of the
 above was the closest call. The next deploy reads this first._
