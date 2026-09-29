@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import {
+  findRegisteredLendingAsset,
   getContracts,
   hasSwaps,
   isNativeSentinel,
@@ -835,6 +836,24 @@ function symbolFor(chainId: number, address: string): string {
  * here" and "the protocol isn't deployed here" are different facts and the second
  * one is actionable.
  */
+/**
+ * The token addresses a book row may carry for `asset`, lowercased. Book rows are
+ * denominated in the LENDING currency, which is not always the DEX token of the
+ * same symbol: on Arc, "USDC" on the DEX is the 0x3600 ERC-20 while loans are in
+ * native USDC (address(1)). Matching both is what makes "USDC offers" find
+ * native-USDC rows instead of reporting an empty book. Empty = unknown asset.
+ */
+export function bookAssetAddresses(chainId: number, asset: string): Set<string> {
+  if (!asset) return new Set();
+  const token = chainTokenBySymbol(chainId, asset);
+  const lendingAsset = findRegisteredLendingAsset(chainId, "loanable", asset);
+  return new Set(
+    [token?.address, lendingAsset?.address]
+      .filter((a): a is string => typeof a === "string")
+      .map((a) => a.toLowerCase()),
+  );
+}
+
 async function getMarkets(args: Json, chainId: number): Promise<Json> {
   const asset = String(args.asset ?? "").toUpperCase();
   const side = String(args.side ?? "borrow").toLowerCase();
@@ -853,7 +872,8 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
       : null;
 
   const token = asset ? chainTokenBySymbol(chainId, asset) : undefined;
-  if (asset && !token) {
+  const matchAddresses = bookAssetAddresses(chainId, asset);
+  if (asset && matchAddresses.size === 0) {
     const known = chainTokens(chainId).map((t) => t.symbol);
     // Distinguish "that symbol isn't one of ours" from "we have no token
     // registry on this chain at all". The model relays this to the user, and
@@ -893,8 +913,7 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
     const offers = book.entries
       .filter(
         (e) =>
-          !token ||
-          e.tokenAddress.toLowerCase() === token.address.toLowerCase(),
+          !asset || matchAddresses.has(e.tokenAddress.toLowerCase()),
       )
       .map((e) => {
         let amount: string | null = null;
@@ -1018,12 +1037,12 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
       venue: "Kaleido",
       chainId,
       side: wantLend ? "lend" : "borrow",
-      asset: token?.symbol ?? "all",
+      asset: token?.symbol ?? (asset || "all"),
       offers,
       bestFit,
       note:
         (offers.length === 0
-          ? `No open offers on ${chainName}${token ? ` for ${token.symbol}` : ""}. Suggest the user post their own offer at the rate they want. `
+          ? `No open offers on ${chainName}${asset ? ` for ${token?.symbol ?? asset}` : ""}. Suggest the user post their own offer at the rate they want. `
           : "aprBps is an annual rate in basis points (100 bps = 1%). Use getQuote with a specific amount and maturity to compute the real cost over the term before comparing offers. Each offer carries coversYourAmount (whether it can take the amount the user named — a listing's takeRange is the min–max a borrower may draw; a request is filled in full) and meetsYourTerm. bestFit names the offer that ranks first on these objective terms and can actually take the amount; if none can, bestFit is null — say so rather than naming one whose fill would revert. Present bestFit as the objective pick, not as financial advice; the user decides. ") +
         (partial
           ? `Read the ${book.scanned} most recent of ${book.total} ${wantLend ? "requests" : "listings"} ever posted, so older open offers may exist. `

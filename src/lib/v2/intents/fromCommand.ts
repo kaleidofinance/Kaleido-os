@@ -1,4 +1,7 @@
 import type { IToken } from "@/constants/types/dex";
+/* Type-only as well: the caller reads the registry (lib/lending/arcLending.ts)
+   and passes the answer in, so the grammar stays free of chain reads. */
+import type { ArcLending } from "@/lib/lending/arcLending";
 /* Type-only, so this module keeps the zero runtime dependencies its header
    claims — liquidity.ts imports ethers, and an erased import brings none of it. */
 import type { RangeChoice } from "@/lib/dex/liquidity";
@@ -4148,7 +4151,9 @@ export const COMMAND_HELP = [
  * on. Trade's examples switch with it too — KLD on a testnet, a real Arc pair and
  * the wrap on mainnet.
  */
-export function capabilityHelp(opts: { showTestnets?: boolean } = {}): string {
+export function capabilityHelp(
+  opts: { showTestnets?: boolean; arcLending?: ArcLending | null } = {},
+): string {
   const line = (heading: string, examples: string[]) =>
     `**${heading}**  \n${examples.map((e) => `\`${e}\``).join(" · ")}`;
 
@@ -4162,10 +4167,27 @@ export function capabilityHelp(opts: { showTestnets?: boolean } = {}): string {
     line("Bridge", ["bridge 50 USDC to Base", "bridge 100 USDC to Arbitrum"]),
   ];
 
-  /* The testnet-only surfaces. Gated as a block because none of lending, kfUSD,
-     staking or our liquidity positions is on Arc mainnet — the app's default
-     network — so on mainnet the overview skips straight from Bridge to the wallet
-     reads that work everywhere. */
+  /* Borrow & lend is shown on mainnet as soon as the Arc lending book is live
+     (read from the registry, lib/lending/arcLending.ts), with examples that work
+     THERE: native-USDC loans against the registered collateral, above the $10
+     floor. On testnets the older examples stand. */
+  const arc = opts.arcLending ?? null;
+  if (arc && !testnets) {
+    const coll = arc.collateral[0];
+    groups.push(
+      line("Borrow & lend", [
+        `deposit 20 ${coll}`,
+        "borrow 10 USDC at 8% for 30 days",
+        "lend 100 USDC at 10% for 60 days",
+        "repay",
+      ]),
+    );
+  }
+
+  /* The testnet-only surfaces. Gated as a block because none of kfUSD, staking or
+     our liquidity positions is on Arc mainnet — the app's default network — so on
+     mainnet the overview skips straight from Bridge to the wallet reads that work
+     everywhere. */
   if (testnets) {
     groups.push(
       line("Borrow & lend", [

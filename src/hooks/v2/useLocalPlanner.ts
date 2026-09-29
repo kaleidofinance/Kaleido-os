@@ -8,6 +8,7 @@ import { readFaucetAssets } from "@/hooks/v2/useFaucet";
 import { readMarketRow } from "@/lib/lending/book";
 import { readStakingState } from "@/lib/staking/state";
 import { readCollateralDeposits } from "@/lib/lending/collateral";
+import { checkLending } from "@/lib/lending/guard";
 import { readBalanceOn, readTokenBalance } from "@/lib/chain/tokenBalance";
 import { readPoolState } from "@/lib/dex/pool";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
@@ -204,6 +205,8 @@ export function useLocalPlanner() {
              facet won't lend a token this wallet has posted as collateral, and
              a plan that ignores that can only revert at the wallet. */
           collateralDeposits: () => readCollateralDeposits(chainId, address),
+          /* The same lending pre-check the server planner runs. */
+          lendingCheck: (check) => checkLending(chainId, address, check),
           /* Resolves a relative swap ("half my USDC") to a number against the
              wallet's balance — the same reader the server planner uses, so both
              agree. See chain/tokenBalance. */
