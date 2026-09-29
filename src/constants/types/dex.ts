@@ -160,6 +160,14 @@ export interface ITradingPair {
   value1: number | null;
   /** Swap fees the pool collected over the same extrapolated day, in USD. */
   fees24h: number | null;
+  /**
+   * All-time USD volume through the pool, from the `pool_volume` ledger the
+   * swap indexer writes (src/lib/points/poolVolume.ts). Undefined/null when the
+   * ledger was not read (client sweep, testnets) — shown as a dash, not zero.
+   */
+  volumeTotal?: number | null;
+  /** All-time fees: `volumeTotal` at the pool's fee rate. */
+  feesTotal?: number | null;
   /** fees24h annualised against liquidity, in percent. */
   apr: number | null;
   /**

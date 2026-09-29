@@ -493,7 +493,9 @@ function settledOf(
         lines: [
           {
             label: "Back in your wallet",
-            value: `${num(command.amount)} ${command.token.symbol}`,
+            value: command.all
+              ? `all your free ${command.token?.symbol ?? "collateral"}`
+              : `${num(command.amount)} ${command.token.symbol}`,
           },
           {
             label: "Health factor",

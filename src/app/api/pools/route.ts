@@ -6,6 +6,12 @@ import { PRICEABLE, getPrices } from "@/lib/points/prices";
 import type { ITradingPair } from "@/constants/types/dex";
 import { unstable_cache } from "next/cache";
 import { shouldAcceptPoolSnapshot } from "@/lib/dex/poolSnapshot";
+import { supabaseAdmin } from "@/lib/supabase/serverClient";
+import {
+  feesOn,
+  poolTotalKey,
+  readPoolVolumeTotals,
+} from "@/lib/points/poolVolume";
 
 /**
  * GET /api/pools — the V3 pool list, swept once on the server.
@@ -34,13 +40,22 @@ let cache: { at: number; pools: ITradingPair[] } | null = null;
 let inflight: Promise<ITradingPair[]> | null = null;
 
 async function priceMap() {
-  const results = await getPrices(PRICEABLE);
   const usd: Record<string, number> = {};
-  results.forEach((r, symbol) => {
-    if (r.usd !== null && Number.isFinite(r.usd) && (r.usd as number) > 0) {
-      usd[symbol] = r.usd as number;
-    }
-  });
+  /* A price-feed outage (CoinGecko 403s from Vercel, 2026-09-29) used to throw
+     out of compute() and fail the WHOLE list as "sweep unavailable" — pools,
+     TVL and the all-time totals with it. Degrade to no spot prices instead: the
+     sweep still lists every pool, values legs through the pool's own quote where
+     it can, and leaves the rest null. */
+  try {
+    const results = await getPrices(PRICEABLE);
+    results.forEach((r, symbol) => {
+      if (r.usd !== null && Number.isFinite(r.usd) && (r.usd as number) > 0) {
+        usd[symbol] = r.usd as number;
+      }
+    });
+  } catch (err) {
+    console.error("[api/pools] spot prices unavailable:", err);
+  }
   return priceLookup({ usd, asOf: new Date().toISOString() } as SpotPrices);
 }
 
@@ -63,7 +78,19 @@ async function compute(): Promise<ITradingPair[]> {
   for (const r of settled) {
     if (r.status === "fulfilled") pools.push(...r.value);
   }
-  return pools;
+  /* All-time totals from the per-pool ledger. A pool the ledger has never seen
+     trade shows $0; an unreadable ledger leaves the fields null (a dash). */
+  const totals = await readPoolVolumeTotals(supabaseAdmin);
+  if (!totals) return pools;
+  return pools.map((p) => {
+    const volumeTotal =
+      totals.get(poolTotalKey(p.chainId, p.address))?.volumeUsd ?? 0;
+    return {
+      ...p,
+      volumeTotal,
+      feesTotal: feesOn(volumeTotal, p.feeBps ?? null),
+    };
+  });
 }
 
 /* Vercel's Data Cache is shared across serverless instances; module memory is

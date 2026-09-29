@@ -519,6 +519,8 @@ export type Intent =
       amount: string;
       symbol: string;
       isNative?: boolean;
+      /** Less than what is owed — the loan stays open for the rest. */
+      partial?: boolean;
     }
   | {
       /** Ask to borrow: posts a request lenders can fill. */

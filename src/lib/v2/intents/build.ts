@@ -1,4 +1,6 @@
 import { ethers } from "ethers";
+import type { LendingCheck, PendingCollateral } from "@/lib/lending/guard";
+import type { FreeCollateral } from "@/lib/lending/collateral";
 import { envVars } from "@/constants/envVars";
 import {
   NATIVE_SENTINEL,
@@ -519,6 +521,21 @@ export interface PlanDeps {
    */
   collateralDeposits?(): Promise<string[] | null>;
   /**
+   * The lending pre-check (lib/lending/guard.ts): pause, stale price, the $10
+   * floor and the 75% capacity rule, read from the diamond. Returns the refusal
+   * to show, or null. Optional on the same precedent: a planner with no wallet
+   * (the marketing demo, a fixture) skips it, and every unknown read fails open —
+   * the plan simulation and the sign-time preflight still stand behind it.
+   */
+  lendingCheck?(check: LendingCheck): Promise<string | null>;
+  /**
+   * The wallet's FREE collateral per registered asset (lib/lending/collateral.ts)
+   * — what "withdraw all" withdraws. Null when it cannot be read. Optional on the
+   * same precedent: without it "withdraw all" is refused with a request to name
+   * an amount, never guessed.
+   */
+  freeCollateral?(): Promise<FreeCollateral[] | null>;
+  /**
    * This wallet's balance of one token, in base units, or null when it cannot be
    * read. Used to resolve a relative swap amount ("swap half my USDC") into a
    * number — the grammar carries the share, this reads the balance and build.ts
@@ -884,6 +901,43 @@ const stableUnavailable = (what: string): PlanResult => ({
  * courtesy check in front of a gate the contract enforces regardless, so a failed
  * read must not become a refusal of a borrow that would have succeeded.
  */
+/**
+ * Run the optional lending pre-check (see PlanDeps.lendingCheck). A refusal from
+ * it is a plan error in the user's words; no reader, an unparseable amount or an
+ * unknown answer is no refusal.
+ */
+async function lendingRefusal(
+  deps: PlanDeps,
+  args: {
+    action: LendingCheck["action"];
+    token: string;
+    symbol: string;
+    amount: string;
+    decimals: number;
+    /** Collateral this same command deposits first ("borrow X against Y"). */
+    pending?: PendingCollateral[];
+  },
+): Promise<PlanResult | null> {
+  if (!deps.lendingCheck) return null;
+  let amountRaw: bigint;
+  try {
+    amountRaw = ethers.parseUnits(args.amount, args.decimals);
+  } catch {
+    return null;
+  }
+  const error = await deps
+    .lendingCheck({
+      action: args.action,
+      token: args.token,
+      symbol: args.symbol,
+      amountRaw,
+      decimals: args.decimals,
+      ...(args.pending?.length ? { pendingCollateral: args.pending } : {}),
+    })
+    .catch(() => null);
+  return error ? { ok: false, error } : null;
+}
+
 async function borrowBlockedByCollateral(
   deps: PlanDeps,
   token: { address: string; symbol: string },
@@ -2816,12 +2870,59 @@ export async function buildIntents(
     };
   }
 
+  if (command.kind === "withdraw" && command.all) {
+    /* "withdraw all": every FREE unit — the figure withdrawCollateral itself
+       bounds by — read now, not guessed. Collateral earmarked to a funded loan is
+       not free and stays; the health check on chain still judges the rest. */
+    let wanted: { address: string; symbol: string } | undefined;
+    if (command.token) {
+      const cur = toLendingCurrency(chainId, "collateral", command.token.symbol);
+      if (!cur) return unsupported(chainId, "collateral", command.token.symbol);
+      wanted = cur;
+    }
+    const free = deps.freeCollateral ? await deps.freeCollateral().catch(() => null) : null;
+    if (!free) {
+      return {
+        ok: false,
+        error: `I couldn't read your free collateral just now, so I can't work out "all". Try again, or name an amount, e.g. "withdraw 20 ${wanted?.symbol ?? "EURC"}".`,
+      };
+    }
+    const rows = free.filter(
+      (f) => f.raw > 0n && (!wanted || f.address.toLowerCase() === wanted.address.toLowerCase()),
+    );
+    if (rows.length === 0) {
+      return {
+        ok: false,
+        error: `You have no free ${wanted ? `${wanted.symbol} ` : ""}collateral to withdraw on this chain. Collateral backing an open loan stays locked until the loan is repaid.`,
+      };
+    }
+    const legs = rows.map((f) => ({ ...f, amount: ethers.formatUnits(f.raw, f.decimals) }));
+    return {
+      ok: true,
+      build: {
+        summary: `Withdraw all your free collateral: ${legs.map((l) => `${l.amount} ${l.symbol}`).join(", ")}.`,
+        intents: legs.map(
+          (l) =>
+            ({
+              kind: "withdrawCollateral",
+              diamond,
+              token: l.address,
+              amount: l.amount,
+              decimals: l.decimals,
+              symbol: l.symbol,
+            }) as Intent,
+        ),
+      },
+    };
+  }
+
   if (command.kind === "withdraw") {
-    const { amount } = command;
+    const amount = command.amount as string;
     /* Same gate as deposit — withdrawCollateral carries `_isTokenAllowed` too,
        so a token whose feed was removed cannot be withdrawn either. */
-    const cur = toLendingCurrency(chainId, "collateral", command.token.symbol);
-    if (!cur) return unsupported(chainId, "collateral", command.token.symbol);
+    const token = command.token as IToken;
+    const cur = toLendingCurrency(chainId, "collateral", token.symbol);
+    if (!cur) return unsupported(chainId, "collateral", token.symbol);
     return {
       ok: true,
       build: {
@@ -2849,11 +2950,64 @@ export async function buildIntents(
     /* The facet refuses to lend a token this wallet has posted as collateral. */
     const blocked = await borrowBlockedByCollateral(deps, cur);
     if (blocked) return blocked;
+    /* "borrow 100 USDC against 150 EURC": deposit first, in the same plan, and
+       count it toward capacity — the check would otherwise refuse the loan for
+       collateral that is one step away. */
+    const backing: Intent[] = [];
+    const pending: PendingCollateral[] = [];
+    let backingText = "";
+    if (command.collateral) {
+      const coll = toLendingCurrency(chainId, "collateral", command.collateral.token.symbol);
+      if (!coll) return unsupported(chainId, "collateral", command.collateral.token.symbol);
+      if (coll.address.toLowerCase() === cur.address.toLowerCase()) {
+        return {
+          ok: false,
+          error: `You can't borrow ${cur.symbol} against ${cur.symbol} — the protocol won't lend a token you've posted as collateral. Back it with a different asset.`,
+        };
+      }
+      const collAmount = command.collateral.amount;
+      const collNative = isLendingNative(coll.address);
+      if (!collNative) {
+        backing.push({
+          kind: "approve",
+          token: coll.address,
+          spender: diamond,
+          amount: collAmount,
+          decimals: coll.decimals,
+          symbol: coll.symbol,
+        });
+      }
+      backing.push({
+        kind: "depositCollateral",
+        diamond,
+        token: coll.address,
+        amount: collAmount,
+        decimals: coll.decimals,
+        symbol: coll.symbol,
+        isNative: collNative,
+      });
+      try {
+        pending.push({ token: coll.address, amountRaw: ethers.parseUnits(collAmount, coll.decimals), decimals: coll.decimals });
+      } catch {
+        /* unparseable → not counted; the check under-counts, never over */
+      }
+      backingText = `Deposit ${collAmount} ${coll.symbol} as collateral, then post`;
+    }
+    const refused = await lendingRefusal(deps, {
+      action: "borrow",
+      token: cur.address,
+      symbol: cur.symbol,
+      amount,
+      decimals: cur.decimals,
+      pending,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
-        summary: `Post a request to borrow ${amount} ${cur.symbol} at ${interestPct}% for ${days} days. It fills when a lender takes it.`,
+        summary: `${backingText || "Post"} a request to borrow ${amount} ${cur.symbol} at ${interestPct}% for ${days} days. It fills when a lender takes it.`,
         intents: [
+          ...backing,
           {
             kind: "createLendingRequest",
             diamond,
@@ -2876,6 +3030,14 @@ export async function buildIntents(
     if (!cur) return unsupported(chainId, "loanable", command.token.symbol);
     const token = cur;
     const isNative = isLendingNative(cur.address);
+    const refused = await lendingRefusal(deps, {
+      action: "lend",
+      token: cur.address,
+      symbol: cur.symbol,
+      amount,
+      decimals: cur.decimals,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
@@ -2885,12 +3047,10 @@ export async function buildIntents(
         // state; the Borrow page is where that gets chosen deliberately.
         summary: `Offer ${amount} ${token.symbol} to lend at ${interestPct}% for ${days} days, drawn in one piece.`,
         intents: [
-          // Kept although it is unreachable on all five deployed chains: the
-          // native sentinel is registered collateral everywhere and loanable
-          // nowhere, so the guard above refuses `lend ETH` before this runs.
-          // That is on-chain state one owner transaction changes, not an
-          // invariant, and createLoanListing does take native value — so
-          // deleting the branch would break the day it is registered.
+          // Native loans skip the approve and ride as value on
+          // createLoanListing. Live on Arc, where native USDC (address(1)) is
+          // the loanable asset; on the five testnets the sentinel is registered
+          // as collateral only, so the guard above refuses `lend ETH` there.
           ...(isNative
             ? []
             : ([
@@ -2957,6 +3117,14 @@ export async function buildIntents(
       symbol,
     });
     if (blocked) return blocked;
+    const refused = await lendingRefusal(deps, {
+      action: "takeListing",
+      token: row.tokenAddress,
+      symbol,
+      amount: command.amount,
+      decimals,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
@@ -2988,6 +3156,14 @@ export async function buildIntents(
     const { symbol, decimals } = described;
     const isNative = isLendingNative(row.tokenAddress);
     const amount = ethers.formatUnits(BigInt(row.amount), decimals);
+    const refused = await lendingRefusal(deps, {
+      action: "fill",
+      token: row.tokenAddress,
+      symbol,
+      amount,
+      decimals,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
@@ -3840,10 +4016,40 @@ export async function buildIntents(
       error: `Loan #${target.requestId} is denominated in a token this app doesn't have declared decimals for (${target.tokenAddress.slice(0, 6)}…${target.tokenAddress.slice(-4)}), so the approval amount can't be computed safely. Repay it from the Borrow page, which reads the token's decimals on-chain.`,
     };
   }
+
+  /* A partial repayment — "repay 50 USDC". The contract has always taken one:
+     it clamps at what is owed and charges its fee on the interest share of the
+     payment only. So an amount at or above the total IS the full repayment, and
+     is sent as the contract's own figure — never a rounded human number, which
+     would leave the loan open by dust. Native loans are 18 decimals. */
+  let payRaw = BigInt(target.totalRepaymentRaw);
+  let payHuman = target.totalRepayment;
+  let partial = false;
+  if (command.amount) {
+    const decimals = repayDecimals ?? 18;
+    let asked: bigint;
+    try {
+      asked = ethers.parseUnits(command.amount, decimals);
+    } catch {
+      return { ok: false, error: `"${command.amount}" isn't an amount I can repay.` };
+    }
+    if (asked <= 0n) return { ok: false, error: "The repayment must be more than zero." };
+    if (asked < payRaw) {
+      payRaw = asked;
+      payHuman = ethers.formatUnits(asked, decimals);
+      partial = true;
+    }
+  }
+  const remaining = partial
+    ? ethers.formatUnits(BigInt(target.totalRepaymentRaw) - payRaw, repayDecimals ?? 18)
+    : "0";
+
   return {
     ok: true,
     build: {
-      summary: `Repay loan #${target.requestId} in full: ${target.totalRepayment} ${target.symbol}.`,
+      summary: partial
+        ? `Repay ${payHuman} ${target.symbol} of loan #${target.requestId}. About ${remaining} ${target.symbol} stays owed.`
+        : `Repay loan #${target.requestId} in full: ${target.totalRepayment} ${target.symbol}.`,
       intents: [
         ...(isNative
           ? []
@@ -3852,7 +4058,7 @@ export async function buildIntents(
                 kind: "approve",
                 token: target.tokenAddress,
                 spender: diamond,
-                amount: target.totalRepayment,
+                amount: payHuman,
                 decimals: repayDecimals,
                 symbol: target.symbol,
               },
@@ -3861,10 +4067,11 @@ export async function buildIntents(
           kind: "repayLoan",
           diamond,
           requestId: target.requestId,
-          amountRaw: target.totalRepaymentRaw,
-          amount: target.totalRepayment,
+          amountRaw: payRaw.toString(),
+          amount: payHuman,
           symbol: target.symbol,
           isNative,
+          ...(partial ? { partial: true } : {}),
         },
       ],
     },

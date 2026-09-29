@@ -15,6 +15,7 @@ import { encodeV3Path } from "@/lib/dex/route";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
+import { LENDING_ABI } from "./lendingAbi";
 import type { Intent } from "./types";
 
 /**
@@ -142,17 +143,8 @@ const VAULT_ABI = [
  * artifacts/contracts/facets/ProtocolFacet.sol/ProtocolFacet.json — change a
  * width here only when the facet's own signature changes.
  */
-const PROTOCOL_ABI = [
-  "function depositCollateral(address token, uint256 amount) external payable",
-  "function withdrawCollateral(address token, uint128 amount) external",
-  "function repayLoan(uint96 requestId, uint256 amount) external payable",
-  "function createLendingRequest(uint128 amount, uint16 interest, uint256 returnDate, address token) external",
-  "function createLoanListing(uint256 amount, uint256 minAmount, uint256 maxAmount, uint256 returnDate, uint16 interest, address token) external payable",
-  "function requestLoanFromListing(uint96 listingId, uint256 amount) external",
-  "function serviceRequest(uint96 requestId, address token) external payable",
-  "function closeListingAd(uint96 listingId) external",
-  "function closeRequest(uint96 requestId) external",
-];
+/* The lending calls, shared with the simulator so a simulated step is the signed one. */
+const PROTOCOL_ABI = LENDING_ABI;
 
 const KFUSD_ABI = [
   "function mint(address to, uint256 kfUsdAmount, address collateralToken, uint256 collateralAmount) external",
@@ -871,7 +863,9 @@ register("withdrawCollateral", {
 register("repayLoan", {
   render: (i) => ({
     title: `Repay ${i.amount} ${i.symbol}`,
-    detail: `Closes loan #${i.requestId} in full, principal plus interest.`,
+    detail: i.partial
+      ? `Pays down loan #${i.requestId}; the rest stays owed until you repay it.`
+      : `Closes loan #${i.requestId} in full, principal plus interest.`,
   }),
   resolve: async (ctx, i) => {
     const protocol = new ethers.Contract(i.diamond, PROTOCOL_ABI, ctx.signer);

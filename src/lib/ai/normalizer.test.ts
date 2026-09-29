@@ -46,6 +46,7 @@ async function main() {
     PRODUCT_STATE,
     GLOSSARY,
     MAINNET_DIRECTIVE,
+    ARC_LENDING,
   } = await import("./normalizer.ts");
   const { runAgent } = await import("./agent.ts");
 
@@ -69,7 +70,14 @@ async function main() {
   check("Arc mainnet is stated as live", arc.includes("Arc mainnet is live"));
   check("default addendum (testnets shown) carries no mainnet directive", !arc.includes("MAINNET MODE"));
   check("mainnet-only addendum forbids testnet steering", normalizerAddendum({ chainId: 5042, mainnetOnly: true }).includes(MAINNET_DIRECTIVE));
-  check("lending/staking/limit-orders stated as testnet-only", /lending book, kfUSD\/kafUSD, KLD staking, and limit orders run only on the testnets/.test(arc));
+  /* Follows the registry (lib/lending/arcLending): once the Arc diamond is
+     published, the lending book is stated as live on Arc and only kfUSD, staking
+     and limit orders stay testnet-only. */
+  if (ARC_LENDING) {
+    check("Arc lending live: the book is on Arc, the rest testnet-only", /peer-to-peer lending book/.test(arc) && /kfUSD\/kafUSD, KLD staking, and limit orders run only on the testnets/.test(arc));
+  } else {
+    check("lending/staking/limit-orders stated as testnet-only", /lending book, kfUSD\/kafUSD, KLD staking, and limit orders run only on the testnets/.test(arc));
+  }
   check("concentrated-liquidity pools stated as available on Arc", /concentrated-liquidity pools/.test(arc) && arc.includes("available today"));
   check("carries the escalate rule with the sentinel", arc.includes(`reply with exactly the word ${ESCALATE}`));
   check("forbids sending the user to the docs", arc.includes("never tell them to read the docs"));

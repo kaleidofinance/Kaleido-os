@@ -222,7 +222,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "withdraw",
     kind: "execute",
     description:
-      "Withdraw collateral from the lending market. Lowers the health factor — check getPortfolio first and never propose an amount that approaches liquidation.",
+      "Withdraw collateral from the lending market. Lowers the health factor — check getPortfolio first and never propose an amount that approaches liquidation. For \"withdraw all\" pass amount \"all\": the server reads the free (unlocked) balance exactly; omit nothing else.",
     parameters: amountAndToken,
   },
 
@@ -284,7 +284,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "repay",
     kind: "execute",
     description:
-      "Repay an open loan in full. Omit loanId when the user has exactly one open loan; the server resolves it and computes the exact total repayment including interest.",
+      "Repay an open loan — in full by default, or partly when the user names an amount (\"repay 50 USDC\"). Omit loanId when the user has exactly one open loan; the server resolves it and computes the exact total repayment including interest. Omit amount to repay in full; an amount at or above what is owed repays in full.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -292,6 +292,10 @@ export const TOOL_CATALOG: ToolSpec[] = [
         loanId: {
           type: "number",
           description: "Only when the user has more than one open loan",
+        },
+        amount: {
+          type: "string",
+          description: 'Partial repayment in the loan\'s currency, human units, e.g. "50". Only when the user named one.',
         },
       },
     },
@@ -701,6 +705,20 @@ export const TOOL_CATALOG: ToolSpec[] = [
     kind: "read",
     description:
       "The user's borrowing position on the connected chain: collateral deposited, each open loan (amount still owed, interest rate, due date, and the requestId a repay targets), total debt, and the health factor. Call this for 'what do I owe', 'what are my loans', 'when is my loan due', 'am I close to liquidation', or before proposing a repay — so the user never has to look up a requestId. Distinct from getPortfolio, which is collateral value and health only; and from getPositions, which is liquidity, not loans. Per chain — the chain the wallet is on.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getLendingAccount",
+    kind: "read",
+    description:
+      "The user's lending ACCOUNT on the connected chain, beyond the loans themselves: whether lending is paused, borrowing capacity (75% of collateral value minus debt — 'how much can I borrow'), free collateral per asset ('how much can I withdraw', what 'withdraw all' takes), and the loans this wallet FUNDED as a lender with what each borrower still owes, what the lender nets after the protocol fee, and the fee itself. Call this for 'how much can I borrow', 'what can I withdraw', 'what am I earning from lending', 'who owes me', 'is lending paused'. For the user's own borrowed loans call getLoans. Per chain.",
     parameters: {
       type: "object",
       additionalProperties: false,

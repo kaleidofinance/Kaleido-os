@@ -181,6 +181,8 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
      getPortfolio reads only the collateral value and health. "loans" because that
      is the noun the borrow page uses for the same rows. */
   getLoans: () => "Checked your loans",
+  /* Capacity, free collateral, pause state, and loans funded as a lender. */
+  getLendingAccount: () => "Checked your lending account",
   /* KLD staking — the stake, the vault totals, the withdrawal cooldown. */
   getStaking: () => "Checked your staking",
   /* The kfUSD/kafUSD stablecoin vault — held and yield-vault balances. */

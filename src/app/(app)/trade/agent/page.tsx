@@ -93,6 +93,10 @@ import {
   type ParseResult,
   type Slot,
 } from "@/lib/v2/intents/fromCommand";
+import { arcLending } from "@/lib/lending/arcLending";
+
+/* Read once: the registry is generated at build time. */
+const ARC_LENDING = arcLending();
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { useTxLog } from "@/hooks/v2/useTxLog";
 import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
@@ -503,7 +507,7 @@ export default function AgentPage() {
         "Tell me what you want in plain language and I'll build the transaction " +
           "for you to review and sign — nothing goes on-chain without your " +
           "signature. Here's the range:\n\n" +
-          `${capabilityHelp({ showTestnets })}\n\n` +
+          `${capabilityHelp({ showTestnets, arcLending: ARC_LENDING })}\n\n` +
           "You can also just ask — I answer " +
           (showTestnets
             ? "health factor, kfUSD, staking, slippage, agent permissions, "
@@ -1711,7 +1715,7 @@ export default function AgentPage() {
       // execute, so say what still works instead of only apologising.
       say(
         "I can't think that one through right now, but I can still act on any " +
-          `command directly:\n\n${capabilityHelp({ showTestnets })}`,
+          `command directly:\n\n${capabilityHelp({ showTestnets, arcLending: ARC_LENDING })}`,
         { via: "local" },
       );
     } finally {

@@ -9,6 +9,7 @@ import {
 } from "@/constants/registry";
 import type { IToken } from "@/constants/types/dex";
 import type { RangeChoice } from "@/lib/dex/liquidity";
+import type { PendingCollateral } from "@/lib/lending/guard";
 import {
   buildIntents,
   type PlanDeps,
@@ -309,6 +310,12 @@ function toCommand(
     case "withdraw":
     case "mint":
     case "redeem": {
+      /* "withdraw all": the builder reads the free balance, so the model never
+         has to compute (or guess) it. Token optional — none means every asset. */
+      if (call.name === "withdraw" && /^(all|max)$/i.test(str(a.amount).trim())) {
+        const t = str(a.token).trim();
+        return t ? { kind: "withdraw", all: true, token: symbolToken(chainId, t) } : { kind: "withdraw", all: true };
+      }
       const amount = amountOf(a.amount);
       if (!amount) return `${call.name}: no amount given`;
       const token = str(a.token);
@@ -354,7 +361,15 @@ function toCommand(
          resolves it from a chain read, which is more reliable than a model
          recalling an id from an earlier tool result. */
       const loanId = numOf(a.loanId);
-      return loanId === null ? { kind: "repay" } : { kind: "repay", loanId };
+      /* Optional partial amount, in the loan's currency; absent = in full. */
+      const amount = a.amount === undefined || a.amount === null || a.amount === "" ? null : amountOf(a.amount);
+      if (a.amount !== undefined && a.amount !== null && a.amount !== "" && amount === null)
+        return "repay: amount isn't a number";
+      return {
+        kind: "repay",
+        ...(loanId === null ? {} : { loanId }),
+        ...(amount === null ? {} : { amount }),
+      };
     }
 
     case "cancel": {
@@ -642,6 +657,20 @@ export async function planFromToolCalls(
 ): Promise<BuiltPlan> {
   const plan: PlanStep[] = [];
   const errors: string[] = [];
+  /* Collateral this plan deposits before a later borrow step. Each tool call is
+     built on its own, so without this "deposit EURC" + "borrow USDC" would have
+     the borrow's capacity check refuse the collateral it is about to have. */
+  const pendingCollateral: PendingCollateral[] = [];
+  const stepDeps: PlanDeps = deps.lendingCheck
+    ? {
+        ...deps,
+        lendingCheck: (check) =>
+          deps.lendingCheck!({
+            ...check,
+            pendingCollateral: [...pendingCollateral, ...(check.pendingCollateral ?? [])],
+          }),
+      }
+    : deps;
 
   for (const call of calls) {
     if (!EXECUTE_TOOLS.has(call.name)) {
@@ -665,7 +694,7 @@ export async function planFromToolCalls(
       continue;
     }
 
-    const built = await buildIntents(command, opts, deps);
+    const built = await buildIntents(command, opts, stepDeps);
     if (!built.ok) {
       /* "help" and "receive" are panel commands the builder signals through
          the same error channel. Neither is reachable from a tool call, but
@@ -675,6 +704,18 @@ export async function planFromToolCalls(
       continue;
     }
     plan.push(...(built.build.intents as unknown as PlanStep[]));
+    for (const intent of built.build.intents) {
+      if (intent.kind !== "depositCollateral") continue;
+      try {
+        pendingCollateral.push({
+          token: intent.token,
+          amountRaw: ethers.parseUnits(intent.amount, intent.decimals),
+          decimals: intent.decimals,
+        });
+      } catch {
+        /* unparseable → not counted; the check then under-counts, never over */
+      }
+    }
   }
 
   /*

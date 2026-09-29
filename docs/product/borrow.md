@@ -115,10 +115,48 @@ than transferred out, so a liquidator finishes with a collateral balance and wit
 it as a second step. That is the same balance any depositor has, which is why there is
 one withdrawal path rather than a special one.
 
+## On Arc
+
+Arc runs the same book with its own assets:
+
+| | |
+| --- | --- |
+| Collateral | EURC and cirBTC |
+| Loans | USDC — Arc's native currency, the same USDC that pays gas |
+
+USDC is loanable only, not collateral, and EURC and cirBTC are collateral only, so a
+loan and its backing are always different assets. Because loans are in the native
+currency, lending and repaying send USDC as the transaction's value; there is no
+approval step for the loan side. Collateral is an ordinary token deposit with an
+approval first.
+
+**The $10 floor is measured in dollars, not in USDC.** Prices come from the market's
+oracle, and USDC trades a hair under a dollar — 10 USDC has been measured at about
+$9.998, which the contract refuses. Borrow or lend at least 10.01 USDC; the agent
+says exactly how much clears the floor when an amount falls short.
+
+**Pausing.** The market can be paused. A pause stops new risk only — new borrow
+requests, new listings, filling a request and borrowing from a listing. Repaying,
+depositing collateral, withdrawing free collateral and liquidation keep working, so
+nobody is ever locked into a loan by a pause.
+
 ## Doing it by asking
 
 The agent covers this whole surface — borrowing, lending, taking a listing, filling a
-request, repaying, cancelling, and moving collateral either way. It is also the part
+request, repaying, cancelling, and moving collateral either way:
+
+- "borrow 100 USDC against 150 EURC at 8% for 30 days" deposits the collateral and
+  posts the request in one plan.
+- "repay 50 USDC" pays part of a loan; "repay" alone repays it in full.
+- "withdraw all my collateral" withdraws exactly your free collateral — what is not
+  locked to a funded loan.
+- "how much more can I borrow?", "what am I earning from lending?" and "is lending
+  paused?" are answered from the contract: capacity is 75% of your collateral value
+  minus what you owe.
+
+Before you sign, the agent checks what the contract would refuse — a pause, a stale
+price, the $10 floor, borrowing past 75% of your collateral — and says so in plain
+words instead of building a transaction that would revert. It is also the part
 of the protocol delegation is designed around, because the on-chain mandate's action
 flags are exactly these actions: see [letting it act without
 you](./delegation.md).

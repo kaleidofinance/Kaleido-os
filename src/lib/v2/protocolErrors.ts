@@ -97,6 +97,10 @@ export const PROTOCOL_ERROR_HELP: Record<string, string> = {
      from a listing); repay, add collateral, withdraw and liquidate stay open. */
   Protocol__Paused:
     "New loans are paused on this market right now. You can still repay, add collateral and withdraw.",
+  /* ETH/native value sent with a step whose currency is a token (repaying an
+     ERC-20 loan, depositing a token): refused rather than left stranded. */
+  Protocol__UnexpectedNativeValue:
+    "This step doesn't take a native-currency payment, so the transaction was refused and nothing moved. Try again without sending value.",
   Protocol__StalePrice:
     "The price for one of these assets is out of date, so the market can't value it right now. Try again shortly.",
   Protocol__TokenNotAllowed:
