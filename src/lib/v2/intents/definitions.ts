@@ -863,7 +863,9 @@ register("withdrawCollateral", {
 register("repayLoan", {
   render: (i) => ({
     title: `Repay ${i.amount} ${i.symbol}`,
-    detail: `Closes loan #${i.requestId} in full, principal plus interest.`,
+    detail: i.partial
+      ? `Pays down loan #${i.requestId}; the rest stays owed until you repay it.`
+      : `Closes loan #${i.requestId} in full, principal plus interest.`,
   }),
   resolve: async (ctx, i) => {
     const protocol = new ethers.Contract(i.diamond, PROTOCOL_ABI, ctx.signer);

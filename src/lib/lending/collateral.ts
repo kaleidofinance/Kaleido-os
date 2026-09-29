@@ -34,7 +34,57 @@ import { readContracts } from "@/lib/chain/multicall";
  */
 const DEPOSITS = new ethers.Interface([
   "function gets_addressToCollateralDeposited(address _sender, address _tokenAddr) view returns (uint256)",
+  "function gets_addressToAvailableBalance(address _sender, address _tokenAddr) view returns (uint256)",
 ]);
+
+/** One collateral asset's FREE balance — what withdrawCollateral will release. */
+export interface FreeCollateral {
+  address: string;
+  symbol: string;
+  decimals: number;
+  raw: bigint;
+}
+
+/**
+ * The wallet's free collateral per registered asset: `s_addressToAvailableBalance`,
+ * the exact bound withdrawCollateral checks (`depositedAmount < _amount` reverts
+ * Protocol__InsufficientCollateralDeposited). Collateral earmarked to a funded
+ * loan is deposited but not available, so "withdraw all" means THIS figure, never
+ * the deposited one.
+ *
+ * Same null-vs-empty contract as readCollateralDeposits: null is "could not
+ * read", never "nothing there". A single failed asset is dropped.
+ */
+export async function readFreeCollateral(
+  chainId: number | undefined,
+  address: string | undefined,
+): Promise<FreeCollateral[] | null> {
+  if (!address) return null;
+  const diamond = getContracts(chainId).diamond;
+  if (!diamond) return null;
+  const { assets } = registeredLendingAssets(chainId, "collateral");
+  if (assets.length === 0) return [];
+  const results = await readContracts(
+    chainId,
+    assets.map((a) => ({
+      target: diamond,
+      iface: DEPOSITS,
+      method: "gets_addressToAvailableBalance",
+      args: [address, a.address],
+    })),
+  );
+  if (results.length > 0 && results.every((r) => !r.success)) return null;
+  const out: FreeCollateral[] = [];
+  results.forEach((r, i) => {
+    if (!r.success || r.value === null) return;
+    try {
+      out.push({ address: assets[i].address, symbol: assets[i].symbol, decimals: assets[i].decimals, raw: BigInt(r.value as bigint) });
+    } catch {
+      /* Undecodable is unknown, not zero. */
+    }
+  });
+  return out;
+}
 
 export async function readCollateralDeposits(
   chainId: number | undefined,

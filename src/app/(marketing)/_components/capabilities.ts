@@ -39,6 +39,7 @@ export interface Tool {
    *
    *   `repay.loanId` — "Only when the user has more than one open loan",
    *   because the server resolves a single open loan itself.
+   *   `repay.amount` — a partial repayment; absent means in full.
    *   `grantAgentPermission.maxInterestBps` — carried as 0 when absent and not
    *   audited; fromToolCall.ts:318 states this outright.
    *   `getMarkets.side` — an enum of borrow/lend; absent means both sides.
@@ -235,7 +236,7 @@ export const GROUPS: readonly Group[] = [
       {
         name: "repay",
         params: [],
-        optional: ["loanId"],
+        optional: ["loanId", "amount"],
         prompt: "repay",
         example: {},
       },
@@ -652,6 +653,13 @@ export const READS: Group = {
          the requestId a repay needs, and the health factor. getPortfolio is only
          collateral value and health; this is the loans themselves. */
       prompt: "what do I owe, and when is it due?",
+    },
+    {
+      name: "getLendingAccount",
+      params: ["address"],
+      /* Capacity, free collateral, pause state, and the loans this wallet
+         funded as a lender — the account around the loans getLoans lists. */
+      prompt: "how much more can I borrow, and what am I earning from lending?",
     },
     {
       name: "getStaking",
