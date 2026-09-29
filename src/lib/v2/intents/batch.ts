@@ -3,6 +3,8 @@ import { ethers } from "ethers";
 import { encodeV3Path } from "@/lib/dex/route";
 import { ARGUS_V4, PERMIT2 } from "@/lib/argus/addresses";
 import type { Intent, IntentKind } from "./types";
+import { formatInterestRate } from "@/constants/utils/FormatInterestRate";
+import { LENDING_IFACE } from "./lendingAbi";
 
 /**
  * Which adjacent steps can be signed together, and — mostly — which cannot.
@@ -458,4 +460,113 @@ export function encodeBatch(
     });
   }
   return out;
+}
+
+/**
+ * Lending steps as they are SIGNED, for simulation only — including the ones
+ * `ENCODERS` deliberately leaves out of bundles (native-value steps, and kinds that
+ * never pair with an approve). Kept separate so widening what can be SIMULATED
+ * never changes what gets BUNDLED. Each mirrors its resolver in definitions.ts
+ * argument for argument, through the same ABI (lendingAbi.ts).
+ */
+const SIM_ENCODERS: Partial<Record<IntentKind, BatchEncoder>> = {
+  depositCollateral: (raw) => {
+    const i = raw as Extract<Intent, { kind: "depositCollateral" }>;
+    const amount = ethers.parseUnits(i.amount, i.decimals);
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("depositCollateral", [i.token, amount]),
+      ...(i.isNative ? { value: amount } : {}),
+    };
+  },
+  withdrawCollateral: (raw) => {
+    const i = raw as Extract<Intent, { kind: "withdrawCollateral" }>;
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("withdrawCollateral", [i.token, ethers.parseUnits(i.amount, i.decimals)]),
+    };
+  },
+  repayLoan: (raw) => {
+    const i = raw as Extract<Intent, { kind: "repayLoan" }>;
+    const amount = BigInt(i.amountRaw);
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("repayLoan", [i.requestId, amount]),
+      ...(i.isNative ? { value: amount } : {}),
+    };
+  },
+  createLendingRequest: (raw) => {
+    const i = raw as Extract<Intent, { kind: "createLendingRequest" }>;
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("createLendingRequest", [
+        ethers.parseUnits(i.amount, i.decimals),
+        formatInterestRate(i.interestPct),
+        i.returnDate,
+        i.token,
+      ]),
+    };
+  },
+  createLoanListing: (raw) => {
+    const i = raw as Extract<Intent, { kind: "createLoanListing" }>;
+    const amount = ethers.parseUnits(i.amount, i.decimals);
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("createLoanListing", [
+        amount,
+        ethers.parseUnits(i.minAmount, i.decimals),
+        ethers.parseUnits(i.maxAmount, i.decimals),
+        i.returnDate,
+        formatInterestRate(i.interestPct),
+        i.token,
+      ]),
+      ...(i.isNative ? { value: amount } : {}),
+    };
+  },
+  borrowFromListing: (raw) => {
+    const i = raw as Extract<Intent, { kind: "borrowFromListing" }>;
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("requestLoanFromListing", [i.listingId, ethers.parseUnits(i.amount, i.decimals)]),
+    };
+  },
+  fillRequest: (raw) => {
+    const i = raw as Extract<Intent, { kind: "fillRequest" }>;
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("serviceRequest", [i.requestId, i.token]),
+      ...(i.isNative ? { value: ethers.parseUnits(i.amount, i.decimals) } : {}),
+    };
+  },
+  closeListing: (raw) => {
+    const i = raw as Extract<Intent, { kind: "closeListing" }>;
+    return { to: i.diamond, data: LENDING_IFACE.encodeFunctionData("closeListingAd", [i.listingId]) };
+  },
+  closeRequest: (raw) => {
+    const i = raw as Extract<Intent, { kind: "closeRequest" }>;
+    return { to: i.diamond, data: LENDING_IFACE.encodeFunctionData("closeRequest", [i.requestId]) };
+  },
+};
+
+/** Kinds that change the lending diamond's ledger (not just an allowance). */
+export const LENDING_STATE_KINDS: ReadonlySet<IntentKind> = new Set(
+  Object.keys(SIM_ENCODERS) as IntentKind[],
+);
+
+/**
+ * One step's calldata for SIMULATION: the lending encoder when the kind has one
+ * (native value included), else the bundle encoder. Null when it cannot be encoded.
+ */
+export function encodeForSimulation(intents: Intent[], index: number, address: string): BatchCall | null {
+  const intent = intents[index];
+  const sim = SIM_ENCODERS[intent.kind];
+  if (sim) {
+    try {
+      return sim(intent);
+    } catch {
+      return null;
+    }
+  }
+  const bundled = encodeBatch(intents, [index], address);
+  return bundled && bundled.length === 1 ? bundled[0] : null;
 }

@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 
 import type { Intent } from "@/lib/v2/intents/types";
-import { encodeBatch } from "@/lib/v2/intents/batch";
+import { encodeForSimulation, LENDING_STATE_KINDS } from "@/lib/v2/intents/batch";
 import { PROTOCOL_ERROR_ABI } from "@/lib/v2/protocolErrors";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import {
@@ -159,12 +159,11 @@ export async function simulatePlan(
        an unencodable step cannot be simulated, and a later step may depend on it,
        so the walk stops and the plan is left un-vouched-for rather than judged on
        half its steps. */
-    const encoded = encodeBatch(plan, [i], address);
-    if (!encoded || encoded.length !== 1) {
+    const c = encodeForSimulation(plan, i, address);
+    if (!c) {
       indeterminate = true;
       break;
     }
-    const c = encoded[0];
 
     let res: Awaited<ReturnType<RpcCall>>;
     try {
@@ -197,6 +196,16 @@ export async function simulatePlan(
     }
 
     steps.push({ index: i, kind: intent.kind, ok: true });
+
+    /* A lending step changes the diamond's ledger (a deposit, a loan, a
+       repayment), and only allowances are faked forward — so a LATER step would
+       be simulated against a ledger missing this one ("deposit, then borrow"
+       would read as an over-borrow). Stop, unverified, rather than predict a
+       revert that is an artefact of the simulation. */
+    if (LENDING_STATE_KINDS.has(intent.kind) && i < plan.length - 1) {
+      indeterminate = true;
+      break;
+    }
 
     /* An approve grants an allowance the next step relies on. Fake it forward for
        the rest of the plan — but only once detection has PROVEN the override is

@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import type { LendingCheck } from "@/lib/lending/guard";
 import { envVars } from "@/constants/envVars";
 import {
   NATIVE_SENTINEL,
@@ -519,6 +520,14 @@ export interface PlanDeps {
    */
   collateralDeposits?(): Promise<string[] | null>;
   /**
+   * The lending pre-check (lib/lending/guard.ts): pause, stale price, the $10
+   * floor and the 75% capacity rule, read from the diamond. Returns the refusal
+   * to show, or null. Optional on the same precedent: a planner with no wallet
+   * (the marketing demo, a fixture) skips it, and every unknown read fails open —
+   * the plan simulation and the sign-time preflight still stand behind it.
+   */
+  lendingCheck?(check: LendingCheck): Promise<string | null>;
+  /**
    * This wallet's balance of one token, in base units, or null when it cannot be
    * read. Used to resolve a relative swap amount ("swap half my USDC") into a
    * number — the grammar carries the share, this reads the balance and build.ts
@@ -884,6 +893,28 @@ const stableUnavailable = (what: string): PlanResult => ({
  * courtesy check in front of a gate the contract enforces regardless, so a failed
  * read must not become a refusal of a borrow that would have succeeded.
  */
+/**
+ * Run the optional lending pre-check (see PlanDeps.lendingCheck). A refusal from
+ * it is a plan error in the user's words; no reader, an unparseable amount or an
+ * unknown answer is no refusal.
+ */
+async function lendingRefusal(
+  deps: PlanDeps,
+  args: { action: LendingCheck["action"]; token: string; symbol: string; amount: string; decimals: number },
+): Promise<PlanResult | null> {
+  if (!deps.lendingCheck) return null;
+  let amountRaw: bigint;
+  try {
+    amountRaw = ethers.parseUnits(args.amount, args.decimals);
+  } catch {
+    return null;
+  }
+  const error = await deps
+    .lendingCheck({ action: args.action, token: args.token, symbol: args.symbol, amountRaw, decimals: args.decimals })
+    .catch(() => null);
+  return error ? { ok: false, error } : null;
+}
+
 async function borrowBlockedByCollateral(
   deps: PlanDeps,
   token: { address: string; symbol: string },
@@ -2849,6 +2880,14 @@ export async function buildIntents(
     /* The facet refuses to lend a token this wallet has posted as collateral. */
     const blocked = await borrowBlockedByCollateral(deps, cur);
     if (blocked) return blocked;
+    const refused = await lendingRefusal(deps, {
+      action: "borrow",
+      token: cur.address,
+      symbol: cur.symbol,
+      amount,
+      decimals: cur.decimals,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
@@ -2876,6 +2915,14 @@ export async function buildIntents(
     if (!cur) return unsupported(chainId, "loanable", command.token.symbol);
     const token = cur;
     const isNative = isLendingNative(cur.address);
+    const refused = await lendingRefusal(deps, {
+      action: "lend",
+      token: cur.address,
+      symbol: cur.symbol,
+      amount,
+      decimals: cur.decimals,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
@@ -2957,6 +3004,14 @@ export async function buildIntents(
       symbol,
     });
     if (blocked) return blocked;
+    const refused = await lendingRefusal(deps, {
+      action: "takeListing",
+      token: row.tokenAddress,
+      symbol,
+      amount: command.amount,
+      decimals,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
@@ -2988,6 +3043,14 @@ export async function buildIntents(
     const { symbol, decimals } = described;
     const isNative = isLendingNative(row.tokenAddress);
     const amount = ethers.formatUnits(BigInt(row.amount), decimals);
+    const refused = await lendingRefusal(deps, {
+      action: "fill",
+      token: row.tokenAddress,
+      symbol,
+      amount,
+      decimals,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {

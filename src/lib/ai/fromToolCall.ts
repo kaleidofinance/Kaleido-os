@@ -9,6 +9,7 @@ import {
 } from "@/constants/registry";
 import type { IToken } from "@/constants/types/dex";
 import type { RangeChoice } from "@/lib/dex/liquidity";
+import type { PendingCollateral } from "@/lib/lending/guard";
 import {
   buildIntents,
   type PlanDeps,
@@ -642,6 +643,17 @@ export async function planFromToolCalls(
 ): Promise<BuiltPlan> {
   const plan: PlanStep[] = [];
   const errors: string[] = [];
+  /* Collateral this plan deposits before a later borrow step. Each tool call is
+     built on its own, so without this "deposit EURC" + "borrow USDC" would have
+     the borrow's capacity check refuse the collateral it is about to have. */
+  const pendingCollateral: PendingCollateral[] = [];
+  const stepDeps: PlanDeps = deps.lendingCheck
+    ? {
+        ...deps,
+        lendingCheck: (check) =>
+          deps.lendingCheck!({ ...check, pendingCollateral: [...pendingCollateral] }),
+      }
+    : deps;
 
   for (const call of calls) {
     if (!EXECUTE_TOOLS.has(call.name)) {
@@ -665,7 +677,7 @@ export async function planFromToolCalls(
       continue;
     }
 
-    const built = await buildIntents(command, opts, deps);
+    const built = await buildIntents(command, opts, stepDeps);
     if (!built.ok) {
       /* "help" and "receive" are panel commands the builder signals through
          the same error channel. Neither is reachable from a tool call, but
@@ -675,6 +687,18 @@ export async function planFromToolCalls(
       continue;
     }
     plan.push(...(built.build.intents as unknown as PlanStep[]));
+    for (const intent of built.build.intents) {
+      if (intent.kind !== "depositCollateral") continue;
+      try {
+        pendingCollateral.push({
+          token: intent.token,
+          amountRaw: ethers.parseUnits(intent.amount, intent.decimals),
+          decimals: intent.decimals,
+        });
+      } catch {
+        /* unparseable → not counted; the check then under-counts, never over */
+      }
+    }
   }
 
   /*

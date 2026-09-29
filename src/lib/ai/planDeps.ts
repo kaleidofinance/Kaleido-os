@@ -9,6 +9,7 @@ import { readMarketRow } from "@/lib/lending/book";
 import { readPoolState } from "@/lib/dex/pool";
 import { readStakingState } from "@/lib/staking/state";
 import { readCollateralDeposits } from "@/lib/lending/collateral";
+import { checkLending } from "@/lib/lending/guard";
 import { readBalanceOn, readTokenBalance } from "@/lib/chain/tokenBalance";
 import { encodeV3Path, type PathQuoter } from "@/lib/dex/route";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
@@ -444,6 +445,8 @@ export function serverPlanDeps(
     /* Shared with useLocalPlanner for the same reason: a borrow the facet will
        refuse should be refused identically in the chat and on the page. */
     collateralDeposits: () => readCollateralDeposits(chainId, address),
+    /* Shared with useLocalPlanner: pause, stale price, $10 floor, 75% capacity. */
+    lendingCheck: (check) => checkLending(chainId, address, check),
     /* Shared with useLocalPlanner so a relative swap ("half my USDC") resolves to
        the same number in the chat and on the agent page. See chain/tokenBalance. */
     tokenBalance: (token) => readTokenBalance(chainId, address, token),
