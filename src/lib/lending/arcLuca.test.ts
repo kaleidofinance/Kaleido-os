@@ -64,6 +64,10 @@ async function run() {
   check("taking a listing has no $10 floor (the contract has none there)",
     lendingVerdict(c({ action: "takeListing" }), { loanUsd: usdc(5), collateralUsd: usdc(100), debtUsd: 0n }) === null);
   check("exactly $10 passes the floor", lendingVerdict(c({ action: "lend" }), { loanUsd: MIN_LOAN_USD }) === null);
+  /* Measured live on Arc testnet: 10 USDC at $0.99983 = $9.998 — refused by the
+     contract, so the message must show why and what clears it. */
+  const hair = lendingVerdict(c({ amountRaw: 10n * E18 }), { loanUsd: 9_998_350_000_000_000_000n }) ?? "";
+  check("10 USDC just under $10: shows $9.998 and suggests 10.01 USDC", /worth \$9\.998/.test(hair) && /Try at least 10\.01 USDC/.test(hair), hair);
   const cap = { collateralUsd: usdc(100), debtUsd: usdc(20) }; // 75% of 100 = 75 → room 55
   check("within capacity passes", lendingVerdict(c(), { loanUsd: usdc(54), ...cap }) === null);
   check("at the cap refuses (the contract reverts on >=)", lendingVerdict(c(), { loanUsd: usdc(55), ...cap }) !== null);
@@ -166,7 +170,7 @@ async function run() {
 
   const helpLive = capabilityHelp({ showTestnets: false, arcLending: { collateral: ["EURC", "cirBTC"], loanable: ["USDC"] } });
   const helpNot = capabilityHelp({ showTestnets: false, arcLending: null });
-  check("capability help lists Borrow & lend on mainnet when Arc lending is live", /Borrow & lend/.test(helpLive) && /deposit 20 EURC/.test(helpLive) && /borrow 10 USDC/.test(helpLive));
+  check("capability help lists Borrow & lend on mainnet when Arc lending is live", /Borrow & lend/.test(helpLive) && /deposit 20 EURC/.test(helpLive) && /borrow 15 USDC/.test(helpLive));
   check("and not when it isn't", !/Borrow & lend/.test(helpNot));
 
   // ───────────────────────────────────────────── 5. grammar → plan on the Arc shape

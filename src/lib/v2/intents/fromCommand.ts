@@ -4177,7 +4177,9 @@ export function capabilityHelp(
     groups.push(
       line("Borrow & lend", [
         `deposit 20 ${coll}`,
-        "borrow 10 USDC at 8% for 30 days",
+        /* 15, not 10: USDC trades a hair under $1, so exactly 10 USDC is under the
+           contract's $10 floor on Arc (measured: $9.998). */
+        "borrow 15 USDC at 8% for 30 days",
         "lend 100 USDC at 10% for 60 days",
         "repay",
       ]),

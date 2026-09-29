@@ -82,7 +82,18 @@ export function lendingVerdict(check: LendingCheck, facts: LendingFacts): string
 
   if ((check.action === "borrow" || check.action === "lend") && facts.loanUsd !== undefined) {
     if (facts.loanUsd < MIN_LOAN_USD) {
-      return `The minimum loan is $10 — ${ethers.formatUnits(check.amountRaw, check.decimals)} ${check.symbol} is about $${usd(facts.loanUsd)}. Increase the amount and try again.`;
+      /* Measured on Arc: 10 USDC at $0.99983 is $9.998 — under the floor, and the
+         contract refuses it. So show the value precisely enough to see why, and
+         the smallest amount that clears it (rounded UP to the cent). */
+      const shown = Number(ethers.formatUnits(facts.loanUsd, 18)).toFixed(facts.loanUsd >= 9n * 10n ** 18n ? 3 : 2);
+      let hint = "Increase the amount and try again.";
+      if (facts.loanUsd > 0n && check.amountRaw > 0n) {
+        const needRaw = (MIN_LOAN_USD * check.amountRaw + facts.loanUsd - 1n) / facts.loanUsd;
+        const cent = check.decimals >= 2 ? 10n ** BigInt(check.decimals - 2) : 1n;
+        const rounded = ((needRaw + cent - 1n) / cent) * cent;
+        hint = `Try at least ${ethers.formatUnits(rounded, check.decimals)} ${check.symbol}.`;
+      }
+      return `The minimum loan is $10 — ${ethers.formatUnits(check.amountRaw, check.decimals)} ${check.symbol} is worth $${shown} at the current price. ${hint}`;
     }
   }
 
