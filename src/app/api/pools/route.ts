@@ -40,13 +40,22 @@ let cache: { at: number; pools: ITradingPair[] } | null = null;
 let inflight: Promise<ITradingPair[]> | null = null;
 
 async function priceMap() {
-  const results = await getPrices(PRICEABLE);
   const usd: Record<string, number> = {};
-  results.forEach((r, symbol) => {
-    if (r.usd !== null && Number.isFinite(r.usd) && (r.usd as number) > 0) {
-      usd[symbol] = r.usd as number;
-    }
-  });
+  /* A price-feed outage (CoinGecko 403s from Vercel, 2026-09-29) used to throw
+     out of compute() and fail the WHOLE list as "sweep unavailable" — pools,
+     TVL and the all-time totals with it. Degrade to no spot prices instead: the
+     sweep still lists every pool, values legs through the pool's own quote where
+     it can, and leaves the rest null. */
+  try {
+    const results = await getPrices(PRICEABLE);
+    results.forEach((r, symbol) => {
+      if (r.usd !== null && Number.isFinite(r.usd) && (r.usd as number) > 0) {
+        usd[symbol] = r.usd as number;
+      }
+    });
+  } catch (err) {
+    console.error("[api/pools] spot prices unavailable:", err);
+  }
   return priceLookup({ usd, asOf: new Date().toISOString() } as SpotPrices);
 }
 
