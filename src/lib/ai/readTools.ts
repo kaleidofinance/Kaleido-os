@@ -3,6 +3,7 @@ import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import {
   findRegisteredLendingAsset,
   getContracts,
+  registeredLendingAssetAt,
   hasSwaps,
   isNativeSentinel,
   resolveUserToken,
@@ -27,6 +28,8 @@ import {
 } from "@/lib/dex/orders";
 import { retryRpc } from "@/lib/dex/rpcRetry";
 import protocolAbi from "@/abi/ProtocolFacet.json";
+import LendingAdminFacetAbi from "@/abi/LendingAdminFacet.json";
+import { readFreeCollateral } from "@/lib/lending/collateral";
 import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import {
   chainTokenByAddress,
@@ -383,6 +386,129 @@ async function getLoans(args: Json, chainId: number): Promise<Json> {
     debtUsd: usd2(pos.debtUsd),
     healthFactor,
     note,
+  };
+}
+
+/**
+ * Everything about the user's lending ACCOUNT that getLoans does not say, in one
+ * read — each figure straight off the diamond, never re-derived:
+ *
+ *   - paused: LendingAdminFacet.paused(). New loans, listings and fills stop;
+ *     repay, withdraw and deposit keep working.
+ *   - borrowing capacity: 75% of collateral value (getAccountCollateralValue)
+ *     minus outstanding debt (getLoanCollectedInUsd). The contract refuses a loan
+ *     that reaches the cap (`>=`), so the room is "up to just under".
+ *   - free collateral: s_addressToAvailableBalance per asset — what can be
+ *     withdrawn now. Collateral earmarked to a funded loan is deposited but not
+ *     free.
+ *   - lender positions: getServicedRequestByLender — the loans this wallet
+ *     funded, with what the borrower still owes and what the lender will net
+ *     after the protocol fee (getRepaymentFee — a share of the INTEREST only).
+ *
+ * A failed read is null, never a fabricated zero.
+ */
+const LOAN_STATUS = ["open", "active", "closed"] as const;
+async function getLendingAccount(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+  const { contract, error } = protocolOn(chainId);
+  if (!contract) return { error };
+  const admin = new ethers.Contract(
+    contract.target as string,
+    LendingAdminFacetAbi as ethers.InterfaceAbi,
+    contract.runner,
+  );
+  const read = <T>(fn: () => Promise<T>): Promise<T | null> =>
+    retryRpc(fn).catch(() => null);
+
+  const [paused, collRaw, debtRaw, lent, free] = await Promise.all([
+    read(() => admin.paused() as Promise<boolean>),
+    read(() => contract.getAccountCollateralValue(address) as Promise<bigint>),
+    read(() => contract.getLoanCollectedInUsd(address) as Promise<bigint>),
+    read(() => contract.getServicedRequestByLender(address) as Promise<unknown[]>),
+    readFreeCollateral(chainId, address).catch(() => null),
+  ]);
+
+  const usdOf = (x: bigint | null) =>
+    x === null ? null : Number(Number(ethers.formatUnits(x, 18)).toFixed(2));
+  let capacity: Json | null = null;
+  if (collRaw !== null && debtRaw !== null) {
+    const coll = BigInt(collRaw);
+    const debt = BigInt(debtRaw);
+    const cap = (coll * 75n) / 100n;
+    capacity = {
+      collateralUsd: usdOf(coll),
+      debtUsd: usdOf(debt),
+      maxDebtUsd: usdOf(cap),
+      canBorrowMoreUsd: usdOf(cap > debt ? cap - debt : 0n),
+    };
+  }
+
+  const meta = (token: string) => {
+    const asset =
+      registeredLendingAssetAt(chainId, "loanable", token).entry ??
+      registeredLendingAssetAt(chainId, "collateral", token).entry;
+    return asset
+      ? { symbol: asset.symbol, decimals: asset.decimals }
+      : { symbol: `${token.slice(0, 6)}…${token.slice(-4)}`, decimals: getTokenDecimals(chainId, token) };
+  };
+  const fmt = (raw: bigint, decimals: number) =>
+    Number(Number(ethers.formatUnits(raw, decimals)).toFixed(6));
+
+  let lending: Json[] | null = null;
+  if (lent !== null) {
+    const rows = (lent as ethers.Result[]).slice(0, 25);
+    lending = await Promise.all(
+      rows.map(async (r) => {
+        const requestId = Number(r[1]);
+        const token = String(r[8]);
+        const { symbol, decimals } = meta(token);
+        const owed = BigInt(r[5]);
+        const status = LOAN_STATUS[Number(r[10])] ?? "unknown";
+        const quote =
+          status === "active" && owed > 0n
+            ? await read(() => contract.getRepaymentFee(requestId, owed) as Promise<[bigint, bigint]>)
+            : null;
+        return {
+          requestId,
+          symbol,
+          principal: fmt(BigInt(r[3]), decimals),
+          interestPct: Number(r[4]) / 100,
+          interestTotal: fmt(BigInt(r[11]), decimals),
+          dueDate: new Date(Number(r[6]) * 1000).toISOString().slice(0, 10),
+          status,
+          stillOwedByBorrower: status === "active" ? fmt(owed, decimals) : 0,
+          youReceive: quote ? fmt(BigInt(quote[1]), decimals) : null,
+          protocolFee: quote ? fmt(BigInt(quote[0]), decimals) : null,
+        };
+      }),
+    );
+  }
+
+  return {
+    chainId,
+    paused,
+    pausedNote:
+      paused === true
+        ? "Lending is PAUSED on this chain: new borrow requests, listings, fills and borrowing from listings are stopped. Repaying, depositing and withdrawing collateral still work."
+        : paused === null
+          ? "Pause status could not be read."
+          : undefined,
+    borrowingCapacity: capacity,
+    capacityNote:
+      "Loans may total up to 75% of collateral value; the contract refuses a loan that reaches it, so the room is up to just under canBorrowMoreUsd. The minimum loan is $10.",
+    freeCollateral:
+      free === null
+        ? null
+        : free
+            .filter((f) => f.raw > 0n)
+            .map((f) => ({ symbol: f.symbol, amount: fmt(f.raw, f.decimals) })),
+    freeCollateralNote:
+      "Free collateral is what can be withdrawn now ('withdraw all' withdraws exactly this). Collateral backing a funded loan stays locked until it is repaid.",
+    lending,
+    lendingNote:
+      "Loans this wallet FUNDED as a lender. youReceive is what the lender nets from the remaining repayment after the protocol fee, which is a share of the interest only — never of the principal. status 'active' is still owed; 'closed' is repaid or liquidated. interestPct is a fixed rate, not an APY.",
   };
 }
 
@@ -1951,6 +2077,7 @@ const HANDLERS: Record<
     getQuote,
     getPortfolio,
     getLoans,
+    getLendingAccount,
     getStaking,
     getVault,
     getPositions,

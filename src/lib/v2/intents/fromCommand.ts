@@ -176,6 +176,12 @@ export interface BorrowCommand {
   token: IToken;
   interestPct: number;
   days: number;
+  /**
+   * Collateral to deposit in the same plan — "borrow 100 USDC against 150 EURC".
+   * Absent when none was named, or when it was named without an amount ("against
+   * my EURC"), which means collateral already posted.
+   */
+  collateral?: { amount: string; token: IToken };
 }
 export interface LendCommand {
   kind: "lend";
@@ -189,15 +195,34 @@ export interface DepositCommand {
   amount: string;
   token: IToken;
 }
-export interface WithdrawCommand {
-  kind: "withdraw";
-  amount: string;
-  token: IToken;
-}
+export type WithdrawCommand =
+  | {
+      kind: "withdraw";
+      amount: string;
+      token: IToken;
+      all?: undefined;
+    }
+  /**
+   * "withdraw all my collateral" / "withdraw all EURC": every free unit, read
+   * from the diamond at build time. No token = every collateral asset with a free
+   * balance.
+   */
+  | {
+      kind: "withdraw";
+      all: true;
+      token?: IToken;
+      amount?: undefined;
+    };
 export interface RepayCommand {
   kind: "repay";
   /** Omitted when the user has exactly one open loan; the planner resolves it. */
   loanId?: number;
+  /**
+   * A partial repayment, in the loan's own currency — "repay 50 USDC". Omitted
+   * means in full. The contract takes partial repayments; an amount at or above
+   * what is owed is a full repayment and is clamped to the exact figure.
+   */
+  amount?: string;
 }
 /** Draw against someone's listing. */
 export interface TakeListingCommand {
@@ -576,6 +601,12 @@ export interface Draft {
   interestPct?: number;
   days?: number;
   loanId?: number;
+  /** A partial repay amount — see RepayCommand. */
+  repayAmount?: string;
+  /** Borrow's same-plan collateral deposit — see BorrowCommand. */
+  collateral?: { amount: string; token: IToken };
+  /** Withdraw everything free — see WithdrawCommand. */
+  all?: true;
   /** Which row a command points at, e.g. listing 3, or position 42. */
   refTarget?: "listing" | "request" | "position";
   refId?: number;
@@ -1524,6 +1555,74 @@ function detectAmount(
   return null;
 }
 
+/** Words that introduce a borrow's collateral: "borrow 100 USDC against 150 EURC". */
+const BACKING_WORDS: ReadonlySet<string> = new Set(["against", "using", "with", "backed", "collateralized", "collateralised"]);
+
+/**
+ * The collateral half of "borrow X against Y". `at` is the connector's index —
+ * everything before it is the loan. `collateral` is set only when a token AND an
+ * amount follow the connector: "against 150 EURC" deposits 150 EURC in the same
+ * plan, while "against my EURC" names collateral already posted, so there is
+ * nothing to deposit. Null when no connector is followed by a token (a "with"
+ * that is not about collateral stays out of it).
+ */
+function parseBacking(
+  words: string[],
+  mentions: Mention[],
+  claimed: Set<number>,
+  loanAmount: { amount: string; index: number } | null,
+): { at: number; collateral?: { amount: string; token: IToken } } | null {
+  const at = words.findIndex((w, i) => BACKING_WORDS.has(w) && mentions.some((m) => m.index > i));
+  if (at === -1) return null;
+  const mention = mentions.find((m) => m.index > at);
+  if (!mention) return null;
+  const skip = new Set(claimed);
+  if (loanAmount && loanAmount.index < at) skip.add(loanAmount.index);
+  for (let i = at + 1; i < mention.index; i++) {
+    if (skip.has(i)) continue;
+    const a = parseAmount(words[i]);
+    if (a) return { at, collateral: { amount: a, token: mention.token } };
+  }
+  return { at };
+}
+
+/**
+ * "repay" / "repay 3" / "repay loan 3" name a loan; "repay 50 USDC" names an
+ * AMOUNT. The difference is the token after the number: a loan id is never
+ * followed by a currency. Reading every number as an id was how "repay 50 USDC"
+ * targeted loan #50 — refused at best, and never a partial repayment, which the
+ * contract has always accepted. Both can appear: "repay 50 USDC on loan 3".
+ */
+function parseRepay(
+  words: string[],
+  mentions: Mention[],
+  claimed: Set<number>,
+): { loanId?: number; amount?: string } {
+  let loanId: number | undefined;
+  let amount: string | undefined;
+  const used = new Set(claimed);
+  const loanWord = words.findIndex((w) => w === "loan" || w === "id");
+  if (loanWord !== -1) {
+    const m = words[loanWord + 1]?.match(/^(\d+)$/);
+    if (m && Number(m[1]) > 0) {
+      loanId = Number(m[1]);
+      used.add(loanWord + 1);
+    }
+  }
+  for (let i = 0; i < words.length; i++) {
+    if (used.has(i)) continue;
+    const a = parseAmount(words[i]);
+    if (!a) continue;
+    if (mentions.some((m) => m.index === i + 1)) {
+      if (amount === undefined) amount = a;
+    } else if (loanId === undefined) {
+      const id = Number(a);
+      if (Number.isInteger(id) && id > 0) loanId = id;
+    }
+  }
+  return { loanId, amount };
+}
+
 /* -------------------------------------------------------------- recipient -- */
 
 /*
@@ -2364,6 +2463,28 @@ function parseCommandOnce(
      "How much?" at someone who just told us, hand it to the model, which can read
      the balance (getBalances) and compute it. Only when no absolute amount was also
      named, and only for verbs whose amount can be relative. See AMOUNT_VERBS. */
+  /* "withdraw all (my collateral)", "withdraw all EURC", "withdraw max": the one
+     relative amount this grammar resolves itself for a lending verb, because
+     "all" of collateral is a figure the builder reads exactly from the diamond
+     (the free balance) — no share arithmetic, nothing for a model to compute.
+     Only the whole of it: "withdraw half my EURC" still goes to the model, and a
+     named chain still makes it a bridge. */
+  if (
+    !amount &&
+    verb.kind === "withdraw" &&
+    !chainDestination(words, ctx) &&
+    (() => {
+      const rel = detectRelativeAmount(words);
+      return rel !== null && rel.num === 1 && rel.den === 1;
+    })()
+  ) {
+    const token = mentions[0]?.token;
+    return {
+      status: "ok",
+      command: token ? { kind: "withdraw", all: true, token } : { kind: "withdraw", all: true },
+    };
+  }
+
   if (
     !amount &&
     verb.kind !== "swap" &&
@@ -2561,25 +2682,34 @@ function parseCommandOnce(
 
   if (verb.kind === "repay") {
     // A bare "repay" is valid: the planner resolves it when exactly one loan is
-    // open, and asks which otherwise. Only a number here names the loan.
-    const id = amount ? Number(amount.amount) : undefined;
+    // open, and asks which otherwise.
+    const parsed = parseRepay(words, mentions, claimed);
     return {
       status: "ok",
       command: {
         kind: "repay",
-        loanId: Number.isInteger(id) && (id as number) > 0 ? id : undefined,
+        ...(parsed.loanId !== undefined ? { loanId: parsed.loanId } : {}),
+        ...(parsed.amount !== undefined ? { amount: parsed.amount } : {}),
       },
     };
   }
 
   if (verb.kind === "borrow" || verb.kind === "lend") {
+    /* "borrow 100 USDC against 150 EURC": the loan is what comes BEFORE the
+       connector, the collateral after it. Reading mentions[0] alone took the
+       loan right and silently dropped the collateral — a plan that could only
+       revert for a wallet with none posted. */
+    const backing = verb.kind === "borrow" ? parseBacking(words, mentions, claimed, amount) : null;
+    const loanMentions = backing ? mentions.filter((m) => m.index < backing.at) : mentions;
+    const loanAmount = backing && amount && amount.index > backing.at ? undefined : amount?.amount;
     return completeDraft({
       kind: verb.kind,
-      amount: amount?.amount,
-      token: mentions[0]?.token,
+      amount: loanAmount,
+      token: loanMentions[0]?.token,
       interestPct: rate?.pct,
       days: duration?.days,
-      ...suggestion(words, mentions, tokens),
+      ...(backing?.collateral ? { collateral: backing.collateral } : {}),
+      ...suggestion(words, loanMentions, tokens),
     });
   }
 
@@ -3814,9 +3944,14 @@ export function draftFromCommand(command: Command): Draft | null {
         token: command.token,
         interestPct: command.interestPct,
         days: command.days,
+        ...(command.kind === "borrow" && command.collateral ? { collateral: command.collateral } : {}),
       };
     case "repay":
-      return { kind: "repay", loanId: command.loanId };
+      return {
+        kind: "repay",
+        loanId: command.loanId,
+        ...(command.amount ? { repayAmount: command.amount } : {}),
+      };
     case "takeListing":
       return {
         kind: "takeListing",
@@ -3937,7 +4072,14 @@ export function completeDraft(draft: Draft): ParseResult {
   }
 
   if (draft.kind === "repay") {
-    return { status: "ok", command: { kind: "repay", loanId: draft.loanId } };
+    return {
+      status: "ok",
+      command: {
+        kind: "repay",
+        loanId: draft.loanId,
+        ...(draft.repayAmount ? { amount: draft.repayAmount } : {}),
+      },
+    };
   }
 
   if (draft.kind === "cancel") {
@@ -4000,6 +4142,7 @@ export function completeDraft(draft: Draft): ParseResult {
         token: draft.token,
         interestPct: draft.interestPct,
         days: draft.days,
+        ...(draft.kind === "borrow" && draft.collateral ? { collateral: draft.collateral } : {}),
       },
     };
   }
@@ -4082,6 +4225,13 @@ export function completeDraft(draft: Draft): ParseResult {
        — fillSlot and completeDraft are both exported — it cannot fall through to
        the amount-plus-token tail below and ask for an amount the faucet ignores. */
     return { status: "ok", command: { kind: "claimTestTokens" } };
+  }
+
+  if (draft.kind === "withdraw" && draft.all) {
+    return {
+      status: "ok",
+      command: draft.token ? { kind: "withdraw", all: true, token: draft.token } : { kind: "withdraw", all: true },
+    };
   }
 
   // approve, deposit, withdraw, mint, redeem

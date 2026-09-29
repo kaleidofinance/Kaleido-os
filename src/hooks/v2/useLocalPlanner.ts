@@ -7,7 +7,7 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { readFaucetAssets } from "@/hooks/v2/useFaucet";
 import { readMarketRow } from "@/lib/lending/book";
 import { readStakingState } from "@/lib/staking/state";
-import { readCollateralDeposits } from "@/lib/lending/collateral";
+import { readCollateralDeposits, readFreeCollateral } from "@/lib/lending/collateral";
 import { checkLending } from "@/lib/lending/guard";
 import { readBalanceOn, readTokenBalance } from "@/lib/chain/tokenBalance";
 import { readPoolState } from "@/lib/dex/pool";
@@ -207,6 +207,8 @@ export function useLocalPlanner() {
           collateralDeposits: () => readCollateralDeposits(chainId, address),
           /* The same lending pre-check the server planner runs. */
           lendingCheck: (check) => checkLending(chainId, address, check),
+          /* What "withdraw all" withdraws — the same reader as the server. */
+          freeCollateral: () => readFreeCollateral(chainId, address),
           /* Resolves a relative swap ("half my USDC") to a number against the
              wallet's balance — the same reader the server planner uses, so both
              agree. See chain/tokenBalance. */

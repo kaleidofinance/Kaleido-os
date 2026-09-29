@@ -1,4 +1,4 @@
-// Luca on the Arc lending book (items 1–5 of the 2026-09-29 integration audit).
+// Luca on the Arc lending book (items 1–10 of the 2026-09-29 integration audit).
 //
 //   npm run test:arclending
 //
@@ -203,6 +203,76 @@ async function run() {
     const l = await plan("lend 100 USDC at 10% for 60 days");
     const li = l.ok ? (l.build.intents[0] as { kind: string; isNative?: boolean; token: string }) : undefined;
     check("lend 100 USDC → a native listing with no approve", kinds(l) === "createLoanListing" && li?.isNative === true && li?.token === NATIVE, kinds(l));
+
+    // ── 6. borrow X against Y composes the deposit
+    const eurcAddr = depIntent ? (depIntent as { token: string }).token : "";
+    const seen6: LendingCheck[] = [];
+    const bc = await plan("borrow 100 USDC against 150 EURC at 8% for 30 days", { lendingCheck: async (chk) => (seen6.push(chk), null) });
+    const req = bc.ok ? (bc.build.intents.find((i) => i.kind === "createLendingRequest") as { amount: string; token: string } | undefined) : undefined;
+    const depc = bc.ok ? (bc.build.intents.find((i) => i.kind === "depositCollateral") as { amount: string; token: string } | undefined) : undefined;
+    check("borrow 100 USDC against 150 EURC → approve + deposit + request",
+      kinds(bc) === "approve,depositCollateral,createLendingRequest" && req?.amount === "100" && req?.token === NATIVE && depc?.amount === "150" && depc?.token === eurcAddr, kinds(bc));
+    check("and the capacity check counts the 150 EURC about to be deposited",
+      seen6[0]?.pendingCollateral?.[0]?.amountRaw === 150_000_000n && seen6[0]?.amountRaw === 100n * E18);
+    check("the summary says both steps", bc.ok && /Deposit 150 EURC as collateral, then post a request to borrow 100 USDC/.test(bc.build.summary), bc.ok ? bc.build.summary : "");
+    check("'against my EURC' (no amount) deposits nothing", kinds(await plan("borrow 100 USDC against my EURC at 8% for 30 days")) === "createLendingRequest");
+    check("a plain borrow is unchanged", kinds(await plan("borrow 100 USDC at 8% for 30 days")) === "createLendingRequest");
+    const same = await plan("borrow 100 EURC against 150 EURC at 8% for 30 days");
+    check("borrowing the collateral asset is refused", !same.ok, kinds(same));
+
+    // ── 7. partial repay
+    const loan = { requestId: 4, totalRepayment: "101.5", totalRepaymentRaw: (1015n * E18 / 10n).toString(), symbol: "USDC", tokenAddress: NATIVE };
+    const withLoan = { loans: async () => [loan] };
+    const rp = await plan("repay 50 USDC", withLoan);
+    const rpi = rp.ok ? (rp.build.intents[0] as { kind: string; amountRaw: string; partial?: boolean; requestId: number }) : undefined;
+    check("repay 50 USDC → partial repayLoan of exactly 50e18 on the one open loan",
+      kinds(rp) === "repayLoan" && rpi?.amountRaw === (50n * E18).toString() && rpi?.partial === true && rpi?.requestId === 4, kinds(rp));
+    check("and says what stays owed", rp.ok && /51\.5 USDC stays owed/.test(rp.build.summary), rp.ok ? rp.build.summary : "");
+    const full = await plan("repay", withLoan);
+    const fulli = full.ok ? (full.build.intents[0] as { amountRaw: string; partial?: boolean }) : undefined;
+    check("bare repay is still in full, with the contract's own figure", fulli?.amountRaw === loan.totalRepaymentRaw && !fulli?.partial);
+    const over = await plan("repay 500 USDC", withLoan);
+    const overi = over.ok ? (over.build.intents[0] as { amountRaw: string; partial?: boolean }) : undefined;
+    check("an amount above what is owed repays in full, clamped", overi?.amountRaw === loan.totalRepaymentRaw && !overi?.partial);
+    const byId = await plan("repay 4", withLoan);
+    check("repay 4 still means loan #4", byId.ok && (byId.build.intents[0] as { requestId: number }).requestId === 4, kinds(byId));
+    const both = parseCommand("repay 50 USDC on loan 4", tokens) as { status: string; command?: { loanId?: number; amount?: string } };
+    check("repay 50 USDC on loan 4 → amount 50, loan 4", both.command?.loanId === 4 && both.command?.amount === "50", JSON.stringify(both.command));
+
+    // ── 8. withdraw all
+    const free = [
+      { address: eurcAddr, symbol: "EURC", decimals: 6, raw: 12_345_678n },
+      { address: "0x000000000000000000000000000000000000beef", symbol: "cirBTC", decimals: 8, raw: 0n },
+    ];
+    const wa = await plan("withdraw all my collateral", { freeCollateral: async () => free });
+    const wai = wa.ok ? (wa.build.intents[0] as { amount: string; token: string; decimals: number }) : undefined;
+    check("withdraw all → one withdrawCollateral per non-zero FREE balance, exact",
+      kinds(wa) === "withdrawCollateral" && wai?.amount === "12.345678" && wai?.token === eurcAddr && wai?.decimals === 6, kinds(wa));
+    const wn = await plan("withdraw all EURC", { freeCollateral: async () => free });
+    check("withdraw all EURC → just EURC", kinds(wn) === "withdrawCollateral", kinds(wn));
+    const w0 = await plan("withdraw all", { freeCollateral: async () => [] });
+    check("nothing free → a plain refusal naming the lock", !w0.ok && /locked until the loan is repaid/.test(w0.error), kinds(w0));
+    const wu = await plan("withdraw all", { freeCollateral: async () => null });
+    check("an unreadable balance refuses rather than guesses", !wu.ok && /couldn't read/.test(wu.error), kinds(wu));
+    check("withdraw half still goes to the model", (parseCommand("withdraw half my EURC", tokens) as { status: string }).status === "unknown");
+    check("withdraw 20 EURC is unchanged", kinds(await plan("withdraw 20 EURC")) === "withdrawCollateral");
+  }
+
+  // ───────────────────────────────────────────── 7/8 via tool calls
+  console.log("\n7/8. the model's tool calls reach the same plans");
+  {
+    const loan = { requestId: 9, totalRepayment: "20", totalRepaymentRaw: (20n * E18).toString(), symbol: "USDC", tokenAddress: NATIVE };
+    const deps = fakeDeps(ARC_TESTNET, {
+      loans: async () => [loan],
+      freeCollateral: async () => [{ address: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a", symbol: "EURC", decimals: 6, raw: 5_000_000n }],
+    });
+    const opts = { slippageBps: 50, deadlineMin: 20, impactCeiling: null };
+    const r = await planFromToolCalls([{ name: "repay", args: { amount: "5" } }] as never, ARC_TESTNET, deps, opts);
+    const ri = r.plan[0] as unknown as { kind: string; amountRaw: string; partial?: boolean };
+    check("repay {amount: 5} → partial 5e18", ri?.kind === "repayLoan" && ri.amountRaw === (5n * E18).toString() && ri.partial === true, JSON.stringify(ri) + r.errors.join("|"));
+    const w = await planFromToolCalls([{ name: "withdraw", args: { amount: "all", token: "EURC" } }] as never, ARC_TESTNET, deps, opts);
+    const wi = w.plan[0] as unknown as { kind: string; amount: string };
+    check("withdraw {amount: all} → the free balance, read", wi?.kind === "withdrawCollateral" && wi.amount === "5.0", JSON.stringify(wi) + w.errors.join("|"));
   }
 
   console.log(`\n${pass} passed, ${fail} failed\n`);
