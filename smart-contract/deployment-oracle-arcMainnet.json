@@ -1,0 +1,52 @@
+{
+  "network": "arcMainnet",
+  "chainId": 5042,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-09-29T00:45:27.977Z",
+  "oracleKind": "aggregator-v3",
+  "contracts": {
+    "priceOracle": "0x5027ACF31cEf802d6A89D170691Fa256e079D39B",
+    "pythContract": null
+  },
+  "feeds": [
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "aggregator": "0x84EA90AC252Dc437031461836DB5164219147905",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 97200,
+      "maxAgeBasis": "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 rounds on chain 2026-09-27: gaps 86,421s median, 86,487s max — heartbeat only. 97200 = 27h = heartbeat + 3h. Deviation-triggered, so an old answer is still within 0.5% of the market; the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to 108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      "priceAtDeploy": 0.9999792000000001,
+      "ageSecondsAtDeploy": 33813
+    },
+    {
+      "feedId": "0x76fa85158bf14ede77087fe3ae472f66213f6ea2f5b411cb2de472794990fa5c",
+      "symbols": [
+        "EURC"
+      ],
+      "aggregator": "0x361b95c10b76Ca3f35C686d423e43A951755Bf23",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 97200,
+      "maxAgeBasis": "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 rounds on chain 2026-09-27: gaps 86,404s median, 86,482s max — heartbeat only. 97200 = 27h = heartbeat + 3h. Deviation-triggered, so an old answer is still within 0.5% of the market; the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to 108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      "priceAtDeploy": 1.1372236900000001,
+      "ageSecondsAtDeploy": 28322
+    },
+    {
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "symbols": [
+        "CIRBTC"
+      ],
+      "aggregator": "0xa109B535C70C8Be9995be64Bb6751AcDB27e03De",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 97200,
+      "maxAgeBasis": "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 rounds on chain 2026-09-27: gaps 3,692s median, 83,853s max — deviation-driven, heartbeat in quiet markets. 97200 = 27h = heartbeat + 3h. Deviation-triggered, so an old answer is still within 0.5% of the market; the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to 108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy. cirBTC is Circle Wrapped Bitcoin (FiatToken, 1:1 BTC), priced off BTC/USD as WBTC is on Aave; the cirBTC Reserves PoR feed (0xEB0884a8…11fc) is for monitoring.",
+      "priceAtDeploy": 83259.18907188,
+      "ageSecondsAtDeploy": 18396
+    }
+  ]
+}
