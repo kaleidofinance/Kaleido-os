@@ -235,6 +235,10 @@ export interface MarketRow {
    * because `res.json()` would have truncated the value before this code saw it.
    */
   amount: string;
+  /** The row's rate (basis points, APR) and return date (unix seconds), so a
+   *  draw can be checked against the borrow limit on what it will owe. */
+  interestBps?: number;
+  returnDate?: number;
 }
 
 export interface QuoteRequest {
@@ -916,6 +920,9 @@ async function lendingRefusal(
     decimals: number;
     /** Collateral this same command deposits first ("borrow X against Y"). */
     pending?: PendingCollateral[];
+    /** Rate (bps) and term (seconds) of the loan, so the limit counts its interest. */
+    interestBps?: number;
+    seconds?: number;
   },
 ): Promise<PlanResult | null> {
   if (!deps.lendingCheck) return null;
@@ -933,6 +940,7 @@ async function lendingRefusal(
       amountRaw,
       decimals: args.decimals,
       ...(args.pending?.length ? { pendingCollateral: args.pending } : {}),
+      ...(args.interestBps && args.seconds ? { interestBps: args.interestBps, seconds: args.seconds } : {}),
     })
     .catch(() => null);
   return error ? { ok: false, error } : null;
@@ -3000,6 +3008,8 @@ export async function buildIntents(
       amount,
       decimals: cur.decimals,
       pending,
+      interestBps: Math.round(interestPct * 100),
+      seconds: Math.round(days * 86400),
     });
     if (refused) return refused;
     return {
@@ -3123,6 +3133,8 @@ export async function buildIntents(
       symbol,
       amount: command.amount,
       decimals,
+      interestBps: row.interestBps,
+      seconds: row.returnDate ? row.returnDate - Math.floor(Date.now() / 1000) : undefined,
     });
     if (refused) return refused;
     return {

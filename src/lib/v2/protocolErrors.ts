@@ -75,7 +75,7 @@ export const PROTOCOL_ERROR_HELP: Record<string, string> = {
   Protocol__NoCollateralDeposited:
     "You haven't deposited any collateral yet. Deposit collateral first, then borrow against it.",
   Protocol__InsufficientCollateral:
-    "You don't have enough collateral for this. Deposit more, or borrow a smaller amount.",
+    "You don't have enough collateral for this. What you owe — principal plus the interest for the whole term — can be at most 75% of your collateral. Deposit more, borrow less, or pick a shorter term.",
   Protocol__InsufficientCollateralBalance:
     "You don't have enough collateral for this. Deposit more, or borrow a smaller amount.",
   Protocol__InsufficientCollateralDeposited:

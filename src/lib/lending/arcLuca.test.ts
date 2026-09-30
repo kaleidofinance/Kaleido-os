@@ -17,7 +17,7 @@
 import { ethers } from "ethers";
 
 import facetAbi from "../../abi/ProtocolFacet.json";
-import { lendingVerdict, MIN_LOAN_USD, type LendingCheck } from "./guard.ts";
+import { lendingVerdict, MIN_LOAN_USD, owedUsd, type LendingCheck } from "./guard.ts";
 import { arcLending, ARC_MAINNET } from "./arcLending.ts";
 import { LENDING_ABI, LENDING_IFACE } from "../v2/intents/lendingAbi.ts";
 import { encodeBatch, encodeForSimulation, isBatchable, LENDING_STATE_KINDS } from "../v2/intents/batch.ts";
@@ -64,6 +64,26 @@ async function run() {
   check("taking a listing has no $10 floor (the contract has none there)",
     lendingVerdict(c({ action: "takeListing" }), { loanUsd: usdc(5), collateralUsd: usdc(100), debtUsd: 0n }) === null);
   check("exactly $10 passes the floor", lendingVerdict(c({ action: "lend" }), { loanUsd: MIN_LOAN_USD }) === null);
+
+  /* The borrow limit counts what a loan OWES — principal plus the interest for its whole term
+     (disclosure finding 5). 74.9% of collateral over a year at 10% used to pass and be liquidatable
+     the moment it was funded. */
+  {
+    const YEAR = 365 * 24 * 3600;
+    const coll = 1000n * E18;
+    const facts = (loanUsd: bigint) => ({ loanUsd, collateralUsd: coll, debtUsd: 0n });
+    const b = (over: Partial<LendingCheck> = {}) => c({ action: "borrow", ...over });
+    check("principal alone at 74.9% still fits when no rate/term is known (the contract decides)",
+      lendingVerdict(b(), facts(749n * E18)) === null);
+    const refused = lendingVerdict(b({ interestBps: 1000, seconds: YEAR }), facts(749n * E18)) ?? "";
+    check("74.9% at 10% for a year is refused, naming the interest", /interest/i.test(refused) && /about \$68[0-9]\./.test(refused), refused);
+    check("68% at 10% for a year passes", lendingVerdict(b({ interestBps: 1000, seconds: YEAR }), facts(680n * E18)) === null);
+    check("69% at 10% for a year does not", lendingVerdict(b({ interestBps: 1000, seconds: YEAR }), facts(690n * E18)) !== null);
+    check("a 7-day loan keeps almost all the room (74% passes)", lendingVerdict(b({ interestBps: 1000, seconds: 7 * 86400 }), facts(740n * E18)) === null);
+    check("takeListing is held to the same rule", lendingVerdict(b({ action: "takeListing", interestBps: 5000, seconds: YEAR }), facts(520n * E18)) !== null
+      && lendingVerdict(b({ action: "takeListing", interestBps: 5000, seconds: YEAR }), facts(480n * E18)) === null);
+    check("owedUsd rounds the interest UP (never admits what the contract refuses)", owedUsd(1n, 1, 1) === 2n && owedUsd(100n, 0, YEAR) === 100n);
+  }
   /* Measured live on Arc testnet: 10 USDC at $0.99983 = $9.998 — refused by the
      contract, so the message must show why and what clears it. */
   const hair = lendingVerdict(c({ amountRaw: 10n * E18 }), { loanUsd: 9_998_350_000_000_000_000n }) ?? "";

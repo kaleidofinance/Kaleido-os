@@ -53,6 +53,30 @@ export interface LendingCheck {
   decimals: number;
   /** Collateral this same plan deposits before the loan step. */
   pendingCollateral?: PendingCollateral[];
+  /**
+   * The loan's rate (basis points, APR) and term (seconds). When both are known the
+   * capacity check counts what the loan will OWE — principal plus the interest for
+   * the whole term — which is what the contract counts. Absent, it falls back to
+   * principal alone (and the contract still decides).
+   */
+  interestBps?: number;
+  seconds?: number;
+}
+
+const SECONDS_PER_YEAR = 365n * 24n * 60n * 60n;
+const BASIS_POINTS = 10_000n;
+
+/**
+ * What a loan owes, in USD, once its interest is added: the contract fixes interest
+ * for the whole term at origination (`amount × bps × seconds / (10000 × year)`) and
+ * the health factor and the borrow limit both read that full repayment. Rounded UP,
+ * so a figure the guard admits is never one the contract refuses by a hair.
+ */
+export function owedUsd(loanUsd: bigint, interestBps?: number, seconds?: number): bigint {
+  if (!interestBps || !seconds || interestBps <= 0 || seconds <= 0) return loanUsd;
+  const num = loanUsd * BigInt(Math.round(interestBps)) * BigInt(Math.round(seconds));
+  const den = BASIS_POINTS * SECONDS_PER_YEAR;
+  return loanUsd + (num + den - 1n) / den;
 }
 
 /** What the reader learned; `undefined` = could not be read (fail open). */
@@ -105,10 +129,21 @@ export function lendingVerdict(check: LendingCheck, facts: LendingFacts): string
   ) {
     if (facts.collateralUsd === 0n) return PROTOCOL_ERROR_HELP.Protocol__NoCollateralDeposited;
     const cap = (facts.collateralUsd * COLLATERALIZATION_RATIO) / 100n;
-    if (facts.debtUsd + facts.loanUsd >= cap) {
+    /* Counted at what it will owe, interest included — the contract's own rule. A
+       loan opened at 74.9% of collateral over a year at 10% used to pass and then be
+       liquidatable the moment it was funded. */
+    const owedNew = owedUsd(facts.loanUsd, check.interestBps, check.seconds);
+    if (facts.debtUsd + owedNew >= cap) {
       const room = cap > facts.debtUsd ? cap - facts.debtUsd : 0n;
       const owed = facts.debtUsd > 0n ? `, minus $${usd(facts.debtUsd)} you already owe` : "";
-      return `That's more than your collateral supports. You can borrow up to about $${usd(room)} more (75% of your $${usd(facts.collateralUsd)} collateral${owed}). Deposit more collateral or borrow less.`;
+      /* The most PRINCIPAL that fits at this rate and term: room ÷ (1 + rate × term). */
+      const counted = owedNew > facts.loanUsd;
+      const most =
+        counted && facts.loanUsd > 0n ? (room * facts.loanUsd) / owedNew : room;
+      const why = counted
+        ? `Once the interest for the whole term is counted this loan comes to about $${usd(owedNew)}. You can borrow up to about $${usd(most)} at this rate and term (75% of your $${usd(facts.collateralUsd)} collateral${owed}, minus interest).`
+        : `You can borrow up to about $${usd(room)} more (75% of your $${usd(facts.collateralUsd)} collateral${owed}).`;
+      return `That's more than your collateral supports. ${why} Deposit more collateral, borrow less, or pick a shorter term.`;
     }
   }
   return null;
