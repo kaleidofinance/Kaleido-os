@@ -6,7 +6,7 @@ They live here until the PR is open; the source of truth after that is the DefiL
 
 | Adapter | Reads | Result on 2026-09-30 |
 | --- | --- | --- |
-| `kaleido-swap` | pools from Kaleido's V3 factory `0xbB74…a649` (getPool over every token pair × fee tier); the WETH9 quote asset `0x8c6c…5C75b` is counted as USDC | $483 (EURC $241, USDC $222, cirBTC $20) |
+| `kaleido-swap` | pools from Kaleido's V3 factory `0xbB74…a649` (getPool over every pair of Arc core assets + lending-registered tokens × fee tier; no event logs — Arc RPCs reject them in DefiLlama CI); the WETH9 quote asset `0x8c6c…5C75b` is counted as USDC | $483 (EURC $241, USDC $222, cirBTC $20) |
 | `kaleido-lending` | balances of the lending diamond `0xE4e7…A6E3`: collateral tokens + native USDC (sentinel `address(1)`), enumerated from the contract | $0.23 (went live 2026-09-29) |
 
 Arc (`arc`) is already a supported chain in DefiLlama (RPCs, chain list and core assets).
