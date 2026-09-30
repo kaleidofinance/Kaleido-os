@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useConnectModal } from "thirdweb/react";
@@ -75,6 +81,10 @@ const LINKS: {
   label: string;
   icon: SectionIconKind;
   primary: boolean;
+  /* Behind the desktop strip's "More" dropdown rather than in the strip itself.
+     Separate from `primary` (the phone tab bar): Leaderboard is off the tab bar
+     but keeps its desktop link, while Stake and Stable live under More on both. */
+  desktopMore?: boolean;
   match?: (p: string) => boolean;
 }[] = [
   { href: "/trade", label: "Trade", icon: "swap", primary: true },
@@ -95,8 +105,20 @@ const LINKS: {
       p === "/mylends" ||
       p === "/myloans",
   },
-  { href: "/stake", label: "Stake", icon: "wrap", primary: false },
-  { href: "/stable", label: "Stable", icon: "mint", primary: false },
+  {
+    href: "/stake",
+    label: "Stake",
+    icon: "wrap",
+    primary: false,
+    desktopMore: true,
+  },
+  {
+    href: "/stable",
+    label: "Stable",
+    icon: "mint",
+    primary: false,
+    desktopMore: true,
+  },
   /* Was Explore, which was a copy of Uniswap's page and named a job it had
      stopped doing: both of its tables moved to /pool, and what a reader arrives
      for now is standings. Named after that. /explore redirects — see
@@ -138,8 +160,156 @@ const LINKS: {
    top strip, the tab bar, the More tab (of every secondary at once) and the
    sheet's own rows. It was written out inline three times; a fourth copy is the
    point at which one of them starts drifting. */
-function isActive(l: (typeof LINKS)[number], pathname: string | null): boolean {
+function isActive(
+  l: { href: string; match?: (p: string) => boolean },
+  pathname: string | null,
+): boolean {
   return l.match?.(pathname ?? "") ?? pathname?.startsWith(l.href) ?? false;
+}
+
+/** A row in either More surface (phone sheet, desktop dropdown). */
+type MoreItem = {
+  href: string;
+  label: string;
+  iconNode: ReactNode;
+  match?: (p: string) => boolean;
+};
+
+const toMoreItem = (l: (typeof LINKS)[number]): MoreItem => ({
+  href: l.href,
+  label: l.label,
+  iconNode: <SectionIcon kind={l.icon} />,
+  match: l.match,
+});
+
+/**
+ * Analytics' mark — drawn here, like MoreIcon, rather than added to
+ * <SectionIcon>: that union is exactly the eight top-level sections and
+ * products.test.ts asserts it. Analytics is a public stats page reached only
+ * from More, not a ninth section. Same 24-unit grid and 1.5 stroke.
+ */
+function AnalyticsIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 19.5h16" />
+      <path d="M7 16v-4" />
+      <path d="M12 16V8" />
+      <path d="M17 16v-6.5" />
+    </svg>
+  );
+}
+
+/* Destinations that sit only in More, on every screen size. Kept out of LINKS
+   so that array stays the eight canonical sections. */
+const EXTRA_MORE: MoreItem[] = [
+  { href: "/analytics", label: "Analytics", iconNode: <AnalyticsIcon /> },
+];
+
+/**
+ * The desktop strip's "More" dropdown: the same destinations the phone's More
+ * sheet offers for the sections not in the strip. Portalled with fixed
+ * positioning because `.menu` scrolls horizontally (overflow-x), which would
+ * clip an absolutely positioned child. Closes on Escape, outside click, a row
+ * click and any route change.
+ */
+function DesktopMore({
+  items,
+  pathname,
+}: {
+  items: MoreItem[];
+  pathname: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btn = useRef<HTMLButtonElement | null>(null);
+  const panel = useRef<HTMLDivElement | null>(null);
+  const active = items.some((i) => isActive(i, pathname));
+
+  useEffect(() => setOpen(false), [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = btn.current?.getBoundingClientRect();
+      if (r) setPos({ top: r.bottom + 10, left: r.left });
+    };
+    place();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        btn.current?.focus();
+      }
+    };
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (btn.current?.contains(t) || panel.current?.contains(t)) return;
+      setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, { passive: true });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place);
+    };
+  }, [open]);
+
+  if (items.length === 0) return null;
+
+  return (
+    <>
+      <button
+        ref={btn}
+        type="button"
+        className={`${styles.item} ${styles.moreBtn} ${active ? styles.on : ""}`}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        More
+        <Chevron size={10} className={styles.moreCaret} />
+      </button>
+      {open && pos && (
+        <Portal>
+          <div
+            ref={panel}
+            className={styles.moreMenu}
+            role="menu"
+            aria-label="More sections"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            {items.map((i) => {
+              const on = isActive(i, pathname);
+              return (
+                <Link
+                  key={i.href}
+                  href={i.href}
+                  role="menuitem"
+                  className={`${styles.sheetRow} ${on ? styles.sheetRowOn : ""}`}
+                  aria-current={on ? "page" : undefined}
+                  onClick={() => setOpen(false)}
+                >
+                  <span className={styles.sheetIcon}>{i.iconNode}</span>
+                  {i.label}
+                </Link>
+              );
+            })}
+          </div>
+        </Portal>
+      )}
+    </>
+  );
 }
 
 /**
@@ -217,7 +387,7 @@ function MoreSheet({
   open,
   onClose,
 }: {
-  items: (typeof LINKS)[number][];
+  items: MoreItem[];
   pathname: string | null;
   open: boolean;
   onClose: () => void;
@@ -326,9 +496,7 @@ function MoreSheet({
                    sitting over the page you just asked for. */
                 onClick={onClose}
               >
-                <span className={styles.sheetIcon}>
-                  <SectionIcon kind={l.icon} />
-                </span>
+                <span className={styles.sheetIcon}>{l.iconNode}</span>
                 {l.label}
               </Link>
             );
@@ -361,7 +529,16 @@ export default function Nav() {
     ? LINKS
     : LINKS.filter((l) => l.href !== "/faucet");
   const secondary = visibleLinks.filter((l) => !l.primary);
-  const moreActive = secondary.some((l) => isActive(l, pathname));
+  /* The phone sheet: every section off the tab bar, then More-only extras. */
+  const sheetItems: MoreItem[] = [...secondary.map(toMoreItem), ...EXTRA_MORE];
+  const moreActive = sheetItems.some((l) => isActive(l, pathname));
+  /* The desktop strip keeps everything except `desktopMore` sections, which go
+     in its dropdown alongside the same extras. */
+  const stripLinks = visibleLinks.filter((l) => !l.desktopMore);
+  const desktopMoreItems: MoreItem[] = [
+    ...visibleLinks.filter((l) => l.desktopMore).map(toMoreItem),
+    ...EXTRA_MORE,
+  ];
 
   /* Stable identity, and it is load-bearing rather than a tidiness point: it is a
      dependency of the sheet's focus effect, which focuses the panel when it runs.
@@ -446,7 +623,7 @@ export default function Nav() {
         </Link>
 
         <div className={styles.menu}>
-          {visibleLinks.map((l) => {
+          {stripLinks.map((l) => {
             const active = isActive(l, pathname);
             return (
               <Link
@@ -461,6 +638,7 @@ export default function Nav() {
               </Link>
             );
           })}
+          <DesktopMore items={desktopMoreItems} pathname={pathname} />
         </div>
 
         <div className={styles.right}>
@@ -543,7 +721,7 @@ export default function Nav() {
             sheet, and a bar of six where one does nothing is worse than a bar of
             five. `.tabBtn` only carries the resets a <button> needs to sit beside
             five <a>s — the geometry is `.tab`, shared, so the columns stay equal. */}
-        {secondary.length > 0 && (
+        {sheetItems.length > 0 && (
           <button
             type="button"
             className={`${styles.tab} ${styles.tabBtn} ${moreActive ? styles.tabOn : ""}`}
@@ -559,7 +737,7 @@ export default function Nav() {
         )}
       </div>
       <MoreSheet
-        items={secondary}
+        items={sheetItems}
         pathname={pathname}
         open={moreOpen}
         onClose={closeMore}
