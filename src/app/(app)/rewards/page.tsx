@@ -16,10 +16,20 @@ import { findLatestAcrossChains } from "@/lib/v2/txLog";
 import type { WaitlistStatus } from "@/lib/waitlist/status";
 import {
   CHECKIN_POINTS,
+  STREAK_BONUS,
+  STREAK_LENGTH,
   checkinMessage,
   msUntilNextUtcDay,
   utcDay,
 } from "@/lib/rewards/checkin";
+
+/** "Day 3/7 of streak", or "7-day streak 🔥" on a bonus day. */
+const streakLabel = (n: number) => {
+  const inCycle = ((n - 1) % STREAK_LENGTH) + 1;
+  return inCycle === STREAK_LENGTH
+    ? `${n}-day streak 🔥 +${STREAK_BONUS}`
+    : `day ${inCycle}/${STREAK_LENGTH} of streak`;
+};
 import Nav from "@/components/v2/Nav";
 import s from "./rewards.module.css";
 
@@ -212,6 +222,7 @@ export default function WaitlistPage() {
   const [checkin, setCheckin] = useState<{
     checkedInToday: boolean;
     days: number;
+    streak?: number;
   } | null>(null);
   const [checkinBusy, setCheckinBusy] = useState(false);
   const loadCheckin = useCallback(async () => {
@@ -551,8 +562,8 @@ export default function WaitlistPage() {
                         {!status.season1
                           ? "Unlocks once your wallet is active on Arc"
                           : checkin?.checkedInToday
-                            ? `Checked in today · next in ${Math.ceil(msUntilNextUtcDay() / 3_600_000)}h${checkin.days > 1 ? ` · ${checkin.days} days total` : ""}`
-                            : `+${CHECKIN_POINTS} $kPoint every day`}
+                            ? `Checked in · ${streakLabel(checkin.streak ?? 1)} · next in ${Math.ceil(msUntilNextUtcDay() / 3_600_000)}h`
+                            : `+${CHECKIN_POINTS} $kPoint daily · +${STREAK_BONUS} every ${STREAK_LENGTH}-day streak${checkin?.streak ? ` · ${streakLabel(checkin.streak)}` : ""}`}
                       </span>
                     </div>
                     {checkin?.checkedInToday ? (
