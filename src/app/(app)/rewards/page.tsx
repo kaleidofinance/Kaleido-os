@@ -18,6 +18,7 @@ import {
   CHECKIN_POINTS,
   STREAK_BONUS,
   STREAK_LENGTH,
+  WELCOME_BONUS,
   checkinMessage,
   msUntilNextUtcDay,
   utcDay,
@@ -223,6 +224,8 @@ export default function WaitlistPage() {
     checkedInToday: boolean;
     days: number;
     streak?: number;
+    welcomeLeft?: number;
+    gotWelcome?: boolean;
   } | null>(null);
   const [checkinBusy, setCheckinBusy] = useState(false);
   const loadCheckin = useCallback(async () => {
@@ -557,7 +560,14 @@ export default function WaitlistPage() {
                 <ul className={s.tasks}>
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>Daily check-in</span>
+                      <span className={s.taskTitle}>
+                        Daily check-in
+                        {!checkin?.gotWelcome && (checkin?.welcomeLeft ?? 0) > 0
+                          ? ` · 🎉 +${WELCOME_BONUS} for the first 100 (${checkin?.welcomeLeft} left)`
+                          : checkin?.gotWelcome
+                            ? ` · 🎉 +${WELCOME_BONUS} early bonus earned`
+                            : ""}
+                      </span>
                       <span className={s.taskMeta}>
                         {!status.season1
                           ? "Unlocks once your wallet is active on Arc"

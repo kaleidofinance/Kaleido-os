@@ -7,6 +7,9 @@ import {
   CHECKIN_SOURCE,
   STREAK_BONUS,
   STREAK_LENGTH,
+  WELCOME_BONUS,
+  WELCOME_LIMIT,
+  WELCOME_PREFIX,
   checkinMessage,
   checkinTxHash,
   currentStreak,
@@ -35,6 +38,25 @@ async function checkinDays(wallet: string): Promise<string[] | null> {
     .filter((d): d is string => d !== null);
 }
 
+/** Welcome-bonus slots taken so far, and whether this wallet holds one. */
+async function welcomeState(
+  wallet: string,
+): Promise<{ claimed: number; mine: boolean }> {
+  const [{ count }, { data: own }] = await Promise.all([
+    supabaseAdmin!
+      .from("point_actions")
+      .select("tx_hash", { count: "exact", head: true })
+      .eq("source_slug", CHECKIN_SOURCE)
+      .like("tx_hash", `${WELCOME_PREFIX}%`),
+    supabaseAdmin!
+      .from("point_actions")
+      .select("tx_hash")
+      .eq("tx_hash", `${WELCOME_PREFIX}${wallet}`)
+      .maybeSingle(),
+  ]);
+  return { claimed: count ?? 0, mine: !!own };
+}
+
 /** Has this wallet checked in today, its streak, and total days. */
 export async function GET(request: NextRequest) {
   const address = new URL(request.url).searchParams.get("address")?.trim() ?? "";
@@ -47,6 +69,7 @@ export async function GET(request: NextRequest) {
   if (!days) return NextResponse.json({ error: "Couldn't read check-ins." }, { status: 500 });
 
   const today = utcDay();
+  const welcome = await welcomeState(wallet);
   return NextResponse.json({
     checkedInToday: days.includes(today),
     days: days.length,
@@ -54,6 +77,9 @@ export async function GET(request: NextRequest) {
     points: CHECKIN_POINTS,
     streakLength: STREAK_LENGTH,
     streakBonus: STREAK_BONUS,
+    welcomeBonus: WELCOME_BONUS,
+    welcomeLeft: Math.max(0, WELCOME_LIMIT - welcome.claimed),
+    gotWelcome: welcome.mine,
   });
 }
 
@@ -135,5 +161,22 @@ export async function POST(request: NextRequest) {
     });
     if (!bErr) bonus = STREAK_BONUS;
   }
-  return NextResponse.json({ ok: true, points: CHECKIN_POINTS, bonus, streak });
+  /* First-100 welcome bonus: claimed atomically in the database (an advisory
+     lock around count + insert), so the cap holds under concurrent check-ins
+     and a wallet can hold it once. A failure never undoes the check-in. */
+  let welcome = 0;
+  const { data: won } = await supabaseAdmin.rpc("claim_checkin_welcome", {
+    p_wallet: wallet,
+    p_points: WELCOME_BONUS,
+    p_limit: WELCOME_LIMIT,
+  });
+  if (won === true) welcome = WELCOME_BONUS;
+
+  return NextResponse.json({
+    ok: true,
+    points: CHECKIN_POINTS,
+    bonus,
+    welcome,
+    streak,
+  });
 }
