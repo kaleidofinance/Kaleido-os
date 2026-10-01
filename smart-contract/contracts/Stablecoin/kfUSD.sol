@@ -9,6 +9,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IAggregatorV3} from "../interfaces/IAggregatorV3.sol";
 
 // Interface for YieldTreasury contract to receive yield
 interface IYieldTreasury {
@@ -104,6 +105,39 @@ contract kfUSD is
 
     // Deployment strategy for collateral
     // Percentage of collateral to deploy to yield sources (basis points)
+    /*
+     * ---- Pricing -----------------------------------------------------------
+     *
+     * Mint and redeem used to be a PAR swap: each collateral was scaled for its
+     * decimals and nothing else — no price, no check — and the redeemer chose which
+     * reserve to take. So with USDe at $0.90 and USDC at $1.00, 100 USDe minted
+     * ~99.95 kfUSD, which redeemed for ~99.90 USDC: the depegged asset bought the
+     * good one at par, repeatable while idle reserves lasted (disclosed 2026-09-23,
+     * finding 3).
+     *
+     * Both legs are now valued at the collateral's USD price from a Chainlink-style
+     * aggregator the admin names per collateral:
+     *   - mint credits `collateral × price` of kfUSD, so a depegged asset buys only
+     *     what it is worth;
+     *   - redeem pays `kfUSD ÷ price` of the output asset, so what leaves is worth
+     *     what was burned, whichever reserve is chosen.
+     * kfUSD itself is taken as $1.
+     *
+     * Fail-closed: a collateral with no feed cannot be minted or redeemed; a stale,
+     * non-positive or implausible (outside $0.50–$2.00) answer reverts. Feeds are
+     * read directly, not through the lending oracle, so this contract stays
+     * standalone.
+     */
+    uint256 public constant PRICE_FLOOR = 0.5e18;
+    uint256 public constant PRICE_CEILING = 2e18;
+    mapping(address => address) public collateralFeed;
+    /// @dev 27h: fits a stablecoin feed that updates on a 24h heartbeat (Arc's
+    ///      Chainlink stable feeds do), with slack — the bound the lending oracle uses.
+    uint256 public maxFeedAge = 97200;
+
+    event CollateralFeedSet(address indexed token, address indexed feed);
+    event MaxFeedAgeSet(uint256 maxAge);
+
     uint256 public deploymentRatio = 5000; // 50% deployed, 50% idle for redemptions
     mapping(address => uint256) public idleBalances; // Collateral kept idle
     mapping(address => uint256) public deployedBalances; // Collateral deployed to yield
@@ -202,11 +236,8 @@ contract kfUSD is
             "kfUSD: Collateral amount must be greater than zero"
         );
 
-        uint8 collateralDecimals = IERC20Metadata(_collateralToken).decimals();
-        require(collateralDecimals <= 18, "kfUSD: Collateral decimals too high");
-        // Par: 1 collateral unit backs 1 kfUSD, scaled to kfUSD's 18 decimals.
-        uint256 kfUsdAmount = _collateralAmount *
-            (10 ** (18 - collateralDecimals));
+        // Worth what the collateral is worth at its oracle price, not at par.
+        uint256 kfUsdAmount = _collateralValue(_collateralToken, _collateralAmount);
 
         _mintWithCollateral(
             msg.sender,
@@ -238,6 +269,13 @@ contract kfUSD is
         require(
             _collateralAmount > 0,
             "kfUSD: Collateral amount must be greater than zero"
+        );
+        /* The permissioned `mint` names its own kfUSD amount. It may not exceed what
+           the collateral is worth, so a minter's mistake (or a compromised minter
+           key) cannot create unbacked kfUSD through this door either. */
+        require(
+            _amount <= _collateralValue(_collateralToken, _collateralAmount),
+            "kfUSD: Mint exceeds collateral value"
         );
 
         // Transfer collateral from caller
@@ -363,26 +401,9 @@ contract kfUSD is
             }
         }
 
-        // Calculate collateral to return (1:1 ratio)
-        // Improved decimal handling to prevent rounding errors
-        uint256 kfUSDDecimals = decimals(); // 18
-        uint256 collateralDecimals = IERC20Metadata(_outputToken).decimals();
-
-        uint256 collateralToReturn;
-        if (kfUSDDecimals >= collateralDecimals) {
-            // kfUSD has more decimals (18) than collateral (6 for USDC/USDT)
-            uint256 scale = 10 ** (kfUSDDecimals - collateralDecimals);
-            collateralToReturn = redeemAmount / scale;
-            // Ensure no rounding down causes loss
-            require(
-                collateralToReturn * scale <= redeemAmount,
-                "kfUSD: Rounding error"
-            );
-        } else {
-            // Collateral has more decimals (unlikely but handle it)
-            uint256 scale = 10 ** (collateralDecimals - kfUSDDecimals);
-            collateralToReturn = redeemAmount * scale;
-        }
+        // Collateral worth what was burned: kfUSD is $1, the output asset is
+        // valued at its oracle price. Rounds down, in the protocol's favour.
+        uint256 collateralToReturn = _collateralFor(_outputToken, redeemAmount);
 
         require(collateralToReturn > 0, "kfUSD: Collateral amount too small");
 
@@ -481,11 +502,97 @@ contract kfUSD is
      * @dev Get total collateral value across all supported assets
      */
     function getTotalCollateralValue() public view returns (uint256) {
+        /* USD, 18 decimals. This used to add RAW balances — 6-decimal USDC with
+           18-decimal USDe — which is neither dollars nor comparable to the
+           18-decimal supply the backing ratio divides it by. A collateral with no
+           usable price counts as ZERO: the figure understates backing rather than
+           overstating it. */
         uint256 total = 0;
         for (uint256 i = 0; i < collateralList.length; i++) {
-            total += collateralBalances[collateralList[i]];
+            address token = collateralList[i];
+            uint256 bal = collateralBalances[token];
+            if (bal == 0) continue;
+            (bool ok, uint256 price) = _tryPrice(collateralFeed[token]);
+            if (!ok) continue;
+            uint8 d = IERC20Metadata(token).decimals();
+            if (d > 18) continue;
+            total += (bal * (10 ** (18 - d)) * price) / 1e18;
         }
         return total;
+    }
+
+    /**
+     * @dev The USD value (18 decimals) of `_amount` of `_token` at its oracle price.
+     */
+    function _collateralValue(address _token, uint256 _amount) internal view returns (uint256) {
+        uint8 d = IERC20Metadata(_token).decimals();
+        require(d <= 18, "kfUSD: Collateral decimals too high");
+        return (_amount * (10 ** (18 - d)) * _priceOf(_token)) / 1e18;
+    }
+
+    /**
+     * @dev How much `_token` is worth `_kfusd` kfUSD (taken as $1), rounded down.
+     */
+    function _collateralFor(address _token, uint256 _kfusd) internal view returns (uint256 units) {
+        uint8 d = IERC20Metadata(_token).decimals();
+        require(d <= 18, "kfUSD: Collateral decimals too high");
+        units = (_kfusd * 1e18) / _priceOf(_token) / (10 ** (18 - d));
+    }
+
+    function _priceOf(address _token) internal view returns (uint256) {
+        address feed = collateralFeed[_token];
+        require(feed != address(0), "kfUSD: No price feed for collateral");
+        (bool ok, uint256 price) = _tryPrice(feed);
+        require(ok, "kfUSD: Price feed stale or out of range");
+        return price;
+    }
+
+    /**
+     * @dev Read a feed without reverting. `ok` is false for no feed, a failing
+     * feed, a non-positive or stale answer, or one outside [PRICE_FLOOR, PRICE_CEILING].
+     */
+    function _tryPrice(address feed) internal view returns (bool ok, uint256 price) {
+        if (feed == address(0)) return (false, 0);
+        try IAggregatorV3(feed).latestRoundData() returns (
+            uint80,
+            int256 answer,
+            uint256,
+            uint256 updatedAt,
+            uint80
+        ) {
+            if (answer <= 0 || updatedAt == 0 || block.timestamp > updatedAt + maxFeedAge) return (false, 0);
+            try IAggregatorV3(feed).decimals() returns (uint8 fd) {
+                if (fd > 18) return (false, 0);
+                uint256 p = uint256(answer) * (10 ** (18 - fd));
+                if (p < PRICE_FLOOR || p > PRICE_CEILING) return (false, 0);
+                return (true, p);
+            } catch {
+                return (false, 0);
+            }
+        } catch {
+            return (false, 0);
+        }
+    }
+
+    /**
+     * @dev Name the USD price feed for a collateral (address(0) clears it, which
+     * disables mint and redeem for that collateral). The feed is checked to answer
+     * with a usable price now, so a wrong address fails here, not at a user's mint.
+     */
+    function setCollateralFeed(address _token, address _feed) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_token != address(0), "kfUSD: Cannot use zero address");
+        if (_feed != address(0)) {
+            (bool ok, ) = _tryPrice(_feed);
+            require(ok, "kfUSD: Feed does not return a usable price");
+        }
+        collateralFeed[_token] = _feed;
+        emit CollateralFeedSet(_token, _feed);
+    }
+
+    function setMaxFeedAge(uint256 _maxAge) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_maxAge >= 1 hours && _maxAge <= 3 days, "kfUSD: Feed age out of range");
+        maxFeedAge = _maxAge;
+        emit MaxFeedAgeSet(_maxAge);
     }
 
     /**
