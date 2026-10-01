@@ -12,7 +12,7 @@
     "DiamondInit": "0x90a1620578CE419242F806e7387Db7e70c8cfa96",
     "DiamondLoupeFacet": "0x7Ee07e9eb94B6b21589539a491E37804886AB201",
     "OwnershipFacet": "0xb5a9CFD795Fe9B3377a9e077c302559212c4BC15",
-    "ProtocolFacet": "0xEc42bD9f20737aA2C50E2334856Db8BA8023c351",
+    "ProtocolFacet": "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
     "AgentPermissionFacet": "0xF4cAd894479e1BbD9356b683403101AABC1c7BFa"
   },
   "config": {
@@ -70,6 +70,15 @@
       "to": "0xEc42bD9f20737aA2C50E2334856Db8BA8023c351",
       "txHash": "0x8bf0048088dc8756cabd5b83b895f1d4e0c7265cddcee75eb4bca098802fdd47",
       "block": 133746826,
+      "selectorsReplaced": 66,
+      "signer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0xEc42bD9f20737aA2C50E2334856Db8BA8023c351",
+      "to": "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
+      "txHash": "0x7e6390eaa0b5778581e1540d644891d37eb2f9d4a11c52c1eee50b764f2b951c",
+      "block": 134257187,
       "selectorsReplaced": 66,
       "signer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc"
     }
