@@ -497,7 +497,7 @@ async function getLendingAccount(args: Json, chainId: number): Promise<Json> {
           : undefined,
     borrowingCapacity: capacity,
     capacityNote:
-      "Loans may total up to 75% of collateral value; the contract refuses a loan that reaches it, so the room is up to just under canBorrowMoreUsd. The minimum loan is $10.",
+      "What you owe — each loan's principal PLUS its interest for the whole term — may total up to 75% of collateral value; the contract refuses a loan that reaches it. So canBorrowMoreUsd is the room for principal plus interest: at a long term or high rate the most principal you can borrow is less (about canBorrowMoreUsd ÷ (1 + rate × years)). The minimum loan is $10.",
     freeCollateral:
       free === null
         ? null

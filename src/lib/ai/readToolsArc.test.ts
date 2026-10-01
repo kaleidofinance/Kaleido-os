@@ -21,11 +21,13 @@ async function main() {
   const { runReadTool } = await import("./readTools.ts");
   const { quoteKyberSwap, hasKyberSwap } = await import("../swap/kyberswap.ts");
 
+  /* Base, not Arc: Arc mainnet has had a lending Diamond since 2026-09-29, so it no longer
+     exercises the "no lending here" path. Any registered chain without one does. */
   console.log("\n— getPortfolio on a chain with no lending Diamond —");
-  const pf = (await runReadTool("getPortfolio", { address: ADDR }, 5042)) as Record<string, unknown>;
-  check("Arc degrades instead of erroring", pf.supported === false && !("error" in pf), JSON.stringify(pf).slice(0, 160));
-  check("it names the chain", pf.chain === "Arc", String(pf.chain));
-  check("the note says lending is not here, and what is", typeof pf.note === "string" && pf.note.includes("isn't deployed on Arc") && pf.note.includes("Swaps and bridging"), String(pf.note).slice(0, 160));
+  const pf = (await runReadTool("getPortfolio", { address: ADDR }, 8453)) as Record<string, unknown>;
+  check("a chain without lending degrades instead of erroring", pf.supported === false && !("error" in pf), JSON.stringify(pf).slice(0, 160));
+  check("it names the chain", pf.chain === "Base", String(pf.chain));
+  check("the note says lending is not here", typeof pf.note === "string" && pf.note.includes("isn't deployed on Base"), String(pf.note).slice(0, 160));
   check("holdings are pointed at getBalances", String(pf.note).includes("getBalances"));
   const unk = (await runReadTool("getPortfolio", { address: ADDR }, 424242)) as Record<string, unknown>;
   check("an unregistered chain is still an error", typeof unk.error === "string" && unk.error.includes("registry"), String(unk.error));

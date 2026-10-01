@@ -50,11 +50,18 @@ Below 1.0 the position can be liquidated. Above it, nothing happens. The 80% is 
 liquidation threshold and it is a constant, not a per-asset parameter — see
 [`constant.sol`](../../smart-contract/contracts/utils/constants/constant.sol).
 
-Borrowing has a separate, tighter limit: you may draw up to 75% of your collateral's
-value. Those two numbers together are the headroom you open with. Borrow the maximum
-and your health factor starts at about 1.07 — roughly 6% of adverse price movement
-before you are liquidatable. That is thin on purpose: the protocol lets you take it,
-and does not pretend it is comfortable.
+Borrowing has a separate, tighter limit: what you owe may total up to 75% of your
+collateral's value. What you owe is each loan's principal **plus its interest for the
+whole term**, because interest is fixed when the loan opens and health counts the full
+repayment. So the most principal you can borrow depends on the rate and term: at 10% APR
+for 365 days the limit is about 68% of collateral in principal, and for a 7-day loan
+it is nearly 75%. Ask for more and the contract refuses it by name rather than opening
+a position that is liquidatable the moment it is funded.
+
+Those two numbers together are the headroom you open with. Borrow the maximum and your
+health factor starts at about 1.07 — roughly 6% of adverse price movement before you are
+liquidatable. That is thin on purpose: the protocol lets you take it, and does not
+pretend it is comfortable.
 
 The check is not advisory and it is not in the interface. Every action that could move
 the health factor — borrowing, withdrawing collateral, filling, taking — is checked by

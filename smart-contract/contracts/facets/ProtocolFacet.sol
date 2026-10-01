@@ -264,11 +264,35 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
          * `totalLoanCollected` counter, which repay double-subtracted: after
          * repaying one of several loans it undercounted by the amount repaid, so
          * this cap let through requests no lender could ever fund. */
-        if (
-            getLoanCollectedInUsd(msg.sender) + _loanUsdValue >=
-            maxLoanableAmount
-        ) {
-            revert Protocol__InsufficientCollateral();
+        /* The new loan counts at what it will OWE, not at its principal.
+         *
+         * Interest is priced once, at origination, for the whole term
+         * (`_calculateLoanInterest`), and `getLoanCollectedInUsd` — which the
+         * health factor and liquidation read — sums that full `totalRepayment`.
+         * This cap used to add the new loan at principal alone, so it admitted a
+         * loan whose repayment, once funded, already sat past the liquidation
+         * line: 74.9% LTV over 365 days at 10% APR passed here, was funded at a
+         * health factor of 0.971, and could be liquidated in the next block with
+         * no price move (disclosed 2026-09-23; reproduced on this facet). Since
+         * COLLATERALIZATION_RATIO (75) sits inside LIQUIDATION_THRESHOLD (80) by
+         * only ~6.7%, any prepaid interest above that cannot be ignored here.
+         *
+         * Counting the repayment keeps every loan this check admits at or above
+         * a health factor of 80/75 = 1.0667 the moment it is funded, whatever
+         * the rate or term. */
+        {
+            (uint256 _owed, ) = _calculateLoanInterest(
+                _returnDate,
+                _amount,
+                _interest
+            );
+            if (
+                getLoanCollectedInUsd(msg.sender) +
+                    _owedUsd(_loanUsdValue, _amount, _owed) >=
+                maxLoanableAmount
+            ) {
+                revert Protocol__InsufficientCollateral();
+            }
         }
         //
         address[] memory _collateralTokens = getUserCollateralTokens(
@@ -387,9 +411,20 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
          * into a loan, already compared against PRECISION for the same check, so
          * the identical protection differed by 100x depending on which path the
          * loan came through. */
+        /* Priced at what the loan OWES, not its principal: the borrower's other
+         * loans and the collateral price may have moved since the request was
+         * posted, and this loan's `totalRepayment` (interest included, fixed at
+         * origination) is what health reads from the next block. Principal alone
+         * let a long, high-rate loan through at a health factor below 1. */
         if (
-            _healthFactor(_foundRequest.author, _loanUsdValue) <
-            Constants.PRECISION
+            _healthFactor(
+                _foundRequest.author,
+                _owedUsd(
+                    _loanUsdValue,
+                    amountToLend,
+                    _foundRequest.totalRepayment
+                )
+            ) < Constants.PRECISION
         ) {
             revert Protocol__InsufficientCollateral();
         }
@@ -1011,7 +1046,18 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
             loanTokenDecimals
         );
 
-        if (_healthFactor(msg.sender, loanUsdValue) < Constants.PRECISION)
+        /* Interest for the whole term, priced now — the loan is funded in this
+         * same call, so this is exactly the `totalRepayment` health will read.
+         * Both checks below count it, not just the principal; see the note on
+         * the same cap in createLendingRequest. */
+        (uint256 _totalOwed, uint256 _interestOwed) = _calculateLoanInterest(
+            _listing.returnDate,
+            _amount,
+            _listing.interest
+        );
+        uint256 owedUsd = _owedUsd(loanUsdValue, _amount, _totalOwed);
+
+        if (_healthFactor(msg.sender, owedUsd) < Constants.PRECISION)
             revert Protocol__InsufficientCollateral();
 
         uint256 collateralValueUsd = getAccountCollateralValue(msg.sender);
@@ -1047,7 +1093,7 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
          *
          * It also covers `maxLoanableUsd == 0`, which would divide by zero on
          * the next line. */
-        if (getLoanCollectedInUsd(msg.sender) + loanUsdValue >= maxLoanableUsd) {
+        if (getLoanCollectedInUsd(msg.sender) + owedUsd >= maxLoanableUsd) {
             revert Protocol__InsufficientCollateral();
         }
 
@@ -1084,14 +1130,8 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
         newRequest.amount = _amount;
         newRequest.interest = _listing.interest;
         newRequest.returnDate = _listing.returnDate;
-        (
-            newRequest.totalRepayment,
-            newRequest.interestAccrued
-        ) = _calculateLoanInterest(
-            _listing.returnDate,
-            _amount,
-            _listing.interest
-        );
+        newRequest.totalRepayment = _totalOwed;
+        newRequest.interestAccrued = _interestOwed;
         newRequest.loanRequestAddr = _listing.tokenAddress;
         newRequest.collateralTokens = userCollateralTokens;
         newRequest.status = Status.SERVICED;
@@ -2666,6 +2706,17 @@ contract ProtocolFacet is LendingReentrancyGuard, IKaleidoEvents {
      *      interest on the Request because `totalRepayment` gets decremented as
      *      the loan is paid down and the split is lost after the first payment.
      */
+    /// @dev A loan's USD value scaled from its principal to what it will owe
+    ///      (`_owed` = principal + the interest fixed at origination). Pure, so
+    ///      the three places that gate a loan on health apply one rule.
+    function _owedUsd(
+        uint256 _principalUsd,
+        uint256 _principal,
+        uint256 _owed
+    ) private pure returns (uint256) {
+        return (_principalUsd * _owed) / _principal;
+    }
+
     function _calculateLoanInterest(
         uint256 _returnDate,
         uint256 _amount,

@@ -427,7 +427,12 @@ export async function readMarketRow(
       if (Number(l.listingStatus) !== 0) return null;
       const amount = BigInt(l.amount);
       if (amount <= 0n) return null;
-      return { tokenAddress: String(l.tokenAddress), amount: amount.toString() };
+      return {
+        tokenAddress: String(l.tokenAddress),
+        amount: amount.toString(),
+        interestBps: Number(l.interest),
+        returnDate: Number(l.returnDate),
+      };
     }
 
     const r = await diamond.getRequest(id);
@@ -439,7 +444,12 @@ export async function readMarketRow(
     /* `loanRequestAddr` is the borrowed token on a request; `tokenAddress` is
        what the same field is called on a listing. Same meaning, two names in the
        struct, and MarketRow uses the listing's. */
-    return { tokenAddress: String(r.loanRequestAddr), amount: amount.toString() };
+    return {
+      tokenAddress: String(r.loanRequestAddr),
+      amount: amount.toString(),
+      interestBps: Number(r.interest),
+      returnDate: Number(r.returnDate),
+    };
   } catch {
     /* An id past the counter reverts Protocol__IdNotExist, which lands here and
        means the same thing to the caller as "not open". */
