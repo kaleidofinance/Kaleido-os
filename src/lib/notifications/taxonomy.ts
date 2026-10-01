@@ -35,6 +35,12 @@ const BY_ACTION_TYPE: Record<string, Category> = {
   loan_filled: "orders",
   new_borrow_request: "orders",
   loan_repaid: "orders",
+  // Trading activity — your own confirmed swaps/bridges/orders, and fills.
+  trade_executed: "orders",
+  bridge_executed: "orders",
+  order_placed: "orders",
+  order_cancelled: "orders",
+  order_filled: "orders",
 
   // Agent — Luca asking for something. The only category that can be actionable.
   permission_request: "agent",

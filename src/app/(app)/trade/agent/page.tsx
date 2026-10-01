@@ -2143,6 +2143,7 @@ export default function AgentPage() {
             <PlanReview
               intents={plan}
               submitLabel="Sign & run"
+              source="agent"
               /* The one caller that passes it, because the setting is on the
                  agent: this is a plan the user is reading for the first time,
                  not a form they just filled in.

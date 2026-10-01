@@ -121,6 +121,38 @@ export function sendHealthFactorWarning(healthFactor: number): void {
   });
 }
 
+/**
+ * A plan you signed finished: swap, bridge, limit order placed or cancelled,
+ * or anything else PlanReview runs. Quiet — the plan card already shows it
+ * landed — so this only records it in the panel's history.
+ */
+export function sendPlanCompleteNotification(notice: {
+  title: string;
+  body: string;
+  actionType: string;
+}): void {
+  notify({ ...notice, level: "success", quiet: true });
+}
+
+/**
+ * A resting limit order filled. Loud: it happens while you are away, and no
+ * action of yours produced a toast. No amounts in the body — it can surface as
+ * an OS banner on a locked screen.
+ */
+export function sendOrderFilledNotification(
+  pair: string,
+  recurring: boolean,
+): void {
+  notify({
+    title: "Limit order filled",
+    body: recurring
+      ? `Your recurring ${pair} order filled again.`
+      : `Your ${pair} limit order was filled.`,
+    level: "success",
+    actionType: "order_filled",
+  });
+}
+
 /** Your own order reached the chain. Quiet — the call site toasts on receipt. */
 export function sendLoanCreatedNotification(kind: "borrow" | "lending"): void {
   notify({

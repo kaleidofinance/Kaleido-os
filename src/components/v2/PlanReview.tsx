@@ -22,6 +22,8 @@ import { describeFailure, isRejection } from "@/lib/v2/txErrors";
 import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { PROTOCOL_ERROR_ABI } from "@/lib/v2/protocolErrors";
 import SwapRoute from "./SwapRoute";
+import { describePlan, type PlanSource } from "@/lib/notifications/activity";
+import { sendPlanCompleteNotification } from "@/lib/notifications/emit";
 import s from "./PlanReview.module.css";
 
 /* One decoder for every step, carrying the union of the errors a plan can hit
@@ -106,6 +108,11 @@ interface PlanReviewProps {
    * whole time; nothing carried them up.
    */
   onComplete?: (settled: SettledStep[]) => void;
+  /**
+   * Who built the plan, for the notification history: "agent" files it under
+   * the Agent tab as a Luca action, "manual" under Orders. Default "manual".
+   */
+  source?: PlanSource;
   onCancel?: () => void;
   /**
    * Pin the plan to the chain it was prepared on, and refuse to sign it from any
@@ -206,6 +213,7 @@ export default function PlanReview({
   submitLabel = "Sign & execute",
   stepMode = "manual",
   onComplete,
+  source = "manual",
   onCancel,
   pinChain = false,
   quotedAt,
@@ -1008,7 +1016,10 @@ export default function PlanReview({
     }
     setRunning(false);
     setDone(true);
-    onComplete?.(settledRef.current.filter(Boolean));
+    const settledSteps = settledRef.current.filter(Boolean);
+    const notice = describePlan(intents, settledSteps, source);
+    if (notice) sendPlanCompleteNotification(notice);
+    onComplete?.(settledSteps);
   };
 
   const mark = (status: StepStatus, n: number) => {
