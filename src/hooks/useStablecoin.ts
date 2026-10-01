@@ -834,9 +834,10 @@ export function useStablecoin() {
        * because a caller who set both amounts could mint kfUSD the collateral
        * does not back — so it reverts for every ordinary wallet, which is what
        * left the whole Stable section unusable. This permissionless entry point
-       * names only the collateral and derives the kfUSD at par on-chain (see
-       * kfUSD.sol), so the amount the form quoted and the amount minted are the
-       * same 1:1 the contract can honour on redeem. */
+       * names only the collateral and derives the kfUSD on-chain from the
+       * collateral's ORACLE price (see kfUSD.sol) — close to 1:1 for a dollar
+       * stablecoin, and less for one trading below its peg, which is the point.
+       * A collateral with no price feed reverts here (fails closed). */
       const mintTx = await kfUSDContract.mintWithCollateral(
         collateralAddress,
         collateralAmount,
