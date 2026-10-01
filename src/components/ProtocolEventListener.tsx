@@ -1,6 +1,7 @@
 "use client";
 
 import useProtocolEvents from "@/hooks/events/useProtocolEvents";
+import useOrderFills from "@/hooks/events/useOrderFills";
 
 /**
  * Mounts the chain-event subscriptions once, for the whole app.
@@ -16,5 +17,6 @@ import useProtocolEvents from "@/hooks/events/useProtocolEvents";
  */
 export default function ProtocolEventListener() {
   useProtocolEvents();
+  useOrderFills();
   return null;
 }
