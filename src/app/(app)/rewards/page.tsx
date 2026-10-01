@@ -14,6 +14,12 @@ import { WALLETS, APP_METADATA } from "@/config/wallets";
 import { CHAINS_BY_ID, toThirdwebChainOptions } from "@/constants/chains";
 import { findLatestAcrossChains } from "@/lib/v2/txLog";
 import type { WaitlistStatus } from "@/lib/waitlist/status";
+import {
+  CHECKIN_POINTS,
+  checkinMessage,
+  msUntilNextUtcDay,
+  utcDay,
+} from "@/lib/rewards/checkin";
 import Nav from "@/components/v2/Nav";
 import s from "./rewards.module.css";
 
@@ -201,6 +207,52 @@ export default function WaitlistPage() {
       setLoading(false);
     }
   }, [account, ref, ensureArc]);
+
+  /* Daily check-in: once per UTC day, enforced server-side. */
+  const [checkin, setCheckin] = useState<{
+    checkedInToday: boolean;
+    days: number;
+  } | null>(null);
+  const [checkinBusy, setCheckinBusy] = useState(false);
+  const loadCheckin = useCallback(async () => {
+    if (!account) return setCheckin(null);
+    try {
+      const r = await fetch(
+        `/api/rewards/checkin?address=${account.address}`,
+        { cache: "no-store" },
+      );
+      if (r.ok) setCheckin(await r.json());
+    } catch {
+      /* leave the last state */
+    }
+  }, [account]);
+  useEffect(() => {
+    void loadCheckin();
+  }, [loadCheckin]);
+  const doCheckin = useCallback(async () => {
+    if (!account || checkinBusy) return;
+    setCheckinBusy(true);
+    setError(null);
+    try {
+      const signature = await account.signMessage({
+        message: checkinMessage(account.address, utcDay()),
+      });
+      const res = await fetch("/api/rewards/checkin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address: account.address, signature }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) setError(d.error || "Couldn't check in. Try again.");
+      await loadCheckin();
+      await loadStatus();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      setError(/reject|denied/i.test(msg) ? "Signature rejected." : "Something went wrong.");
+    } finally {
+      setCheckinBusy(false);
+    }
+  }, [account, checkinBusy, loadCheckin, loadStatus]);
 
   // Sign the task message and record it. Refreshes standing on success.
   const postXTask = useCallback(
@@ -492,6 +544,31 @@ export default function WaitlistPage() {
                 <p className={s.refLabel}>Earn more $kPoint</p>
                 {error ? <p className={s.error}>{error}</p> : null}
                 <ul className={s.tasks}>
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Daily check-in</span>
+                      <span className={s.taskMeta}>
+                        {!status.season1
+                          ? "Unlocks once your wallet is active on Arc"
+                          : checkin?.checkedInToday
+                            ? `Checked in today · next in ${Math.ceil(msUntilNextUtcDay() / 3_600_000)}h${checkin.days > 1 ? ` · ${checkin.days} days total` : ""}`
+                            : `+${CHECKIN_POINTS} $kPoint every day`}
+                      </span>
+                    </div>
+                    {checkin?.checkedInToday ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : !status.season1 ? (
+                      <span className={s.taskLock}>🔒</span>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={doCheckin}
+                        disabled={checkinBusy}
+                      >
+                        {checkinBusy ? "…" : "Check in"}
+                      </button>
+                    )}
+                  </li>
                   <li className={s.task}>
                     <div className={s.taskText}>
                       <span className={s.taskTitle}>Link your X account</span>
