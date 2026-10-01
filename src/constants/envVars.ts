@@ -8,9 +8,12 @@ export const envVars = {
   httpRPCab: process.env.NEXT_PUBLIC_HTTP_RPC_AB,
 
   // NOTE: no private key here. Signing keys must never be exposed via a
-  // NEXT_PUBLIC_ variable — Next.js inlines those into the browser bundle.
-  // Server-side signing reads process.env.PRIVATE_KEY directly; see
-  // src/app/api/referral/route.ts.
+  // NEXT_PUBLIC_ variable — Next.js inlines those into the browser bundle. And no
+  // web route signs with the Diamond OWNER key (PRIVATE_KEY): the owner of the
+  // Arc mainnet diamond is a Safe, and a route that can be reached without a login
+  // must never hold a key that can call diamondCut. The one server-side signer
+  // that exists (src/app/api/gas-drip/route.ts) uses its own GAS_DRIP_PRIVATE_KEY
+  // and refuses to start if that equals PRIVATE_KEY.
 
   measurementId: process.env.NEXT_PUBLIC_MEASUREMENT_ID,
 

@@ -164,7 +164,7 @@ compile, and the 300s ceiling is below it. They need a re-probe to confirm.
 | `/api/market/overview`  | 4                                    | ✓ both tables + kfUSD read                                                  |
 | `/api/prices`           | 5                                    | ✓ CoinGecko key optional by design, absent, degrades cleanly                |
 | `/api/prices/spot`      | 1                                    | ✓                                                                           |
-| `/api/referral`         | 2                                    | ⚠ `PRIVATE_KEY` set, but signs against the **dead diamond**                 |
+| `/api/referral`         | 2                                    | ✂ **removed 2026-10-01** — it signed with the Diamond owner key, unauthenticated |
 | `/api/moonpay`          | 2                                    | ✗ `MOONPAY_SECRET_KEY` and `NEXT_PUBLIC_MOONPAY_API_KEY` **both empty**     |
 | `/api/push/send`        | 1                                    | ✗ all 4 VAPID vars absent → returns 503 with a reason                       |
 | `/api/push/subscribe`   | 1                                    | ✗ same                                                                      |
