@@ -25,7 +25,6 @@ import { envVars } from "@/constants/envVars";
 import { WALLETS, APP_METADATA } from "@/config/wallets";
 import ChainIcon from "./ChainIcon";
 import Chevron from "./Chevron";
-import LinkX from "./LinkX";
 import NetworkSelector from "./NetworkSelector";
 import NotificationBell from "./NotificationBell";
 import NotificationCenter from "./NotificationCenter";
@@ -678,9 +677,7 @@ export default function Nav() {
             onClose={() => setNetworkOpen(false)}
           />
           <NotificationCenter open={panelOpen} onClose={closePanel} />
-          {/* Beside Connect, not behind a route. The /verify page this replaces
-              is gone; its backend is not — see LinkX.tsx. */}
-          <LinkX />
+          {/* Link X lives in the wallet menu now (WalletMenu.tsx). */}
           {isConnected ? (
             <WalletMenu />
           ) : (

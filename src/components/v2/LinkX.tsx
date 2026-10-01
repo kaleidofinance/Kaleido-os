@@ -29,7 +29,17 @@ import s from "./LinkX.module.css";
  * it is not what the header trusts. The binding, and the handle shown, live in the
  * table against the wallet.
  */
-export default function LinkX() {
+/**
+ * `menuItem` renders it as a row in the wallet menu (WalletMenu passes its own
+ * row class); the default is the original header pill.
+ */
+export default function LinkX({
+  variant = "pill",
+  className,
+}: {
+  variant?: "pill" | "menuItem";
+  className?: string;
+} = {}) {
   const { address } = useWalletV2();
   const account = useActiveAccount();
   /** The X bound to the connected wallet (the table's truth). */
@@ -143,6 +153,38 @@ export default function LinkX() {
     : canConfirm
       ? `Sign to link @${pending} to this wallet`
       : "Link your X account to this wallet";
+
+  if (variant === "menuItem") {
+    return (
+      <button
+        type="button"
+        role="menuitem"
+        className={className}
+        title={title}
+        disabled={busy || linked}
+        onClick={linked ? undefined : canConfirm ? confirmLink : startOAuth}
+        style={{ display: "flex", alignItems: "center", gap: 8 }}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          style={{ width: 14, height: 14, flex: "none" }}
+        >
+          <path
+            fill="currentColor"
+            d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+          />
+        </svg>
+        {busy
+          ? "Linking…"
+          : linked
+            ? `Linked as @${handle}`
+            : canConfirm
+              ? `Confirm @${pending}`
+              : "Link X account"}
+      </button>
+    );
+  }
 
   return (
     <button
