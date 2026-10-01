@@ -11,7 +11,7 @@
     "DiamondCutFacet": "0x0B7D46C80f2FB087AfB952D17bfC13892b2c04b9",
     "DiamondLoupeFacet": "0xf341BFb02404485FD360Ca864f49e2F7F1172951",
     "OwnershipFacet": "0x34C903b7016F70f3C9FA42eEd3D8e9273267d2F1",
-    "ProtocolFacet": "0xEc42bD9f20737aA2C50E2334856Db8BA8023c351",
+    "ProtocolFacet": "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
     "AgentPermissionFacet": "0x56b722645e4d42493A0ec1Dd0ca479aA92d909aE"
   },
   "config": {
@@ -62,6 +62,15 @@
       "to": "0xEc42bD9f20737aA2C50E2334856Db8BA8023c351",
       "txHash": "0xede012f532d2d6a477b5021dab8031d1dd7885286be9e25cce3429bf3d081099",
       "block": 11803297,
+      "selectorsReplaced": 66,
+      "signer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc"
+    },
+    {
+      "facet": "ProtocolFacet",
+      "from": "0xEc42bD9f20737aA2C50E2334856Db8BA8023c351",
+      "to": "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
+      "txHash": "0xff5b35d2be61550959d7a607d0e34d485b183a6464d7b30a3128396eabf2afb9",
+      "block": 11822228,
       "selectorsReplaced": 66,
       "signer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc"
     }
