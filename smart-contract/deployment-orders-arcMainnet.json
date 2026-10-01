@@ -9,7 +9,7 @@
   },
   "config": {
     "contract": "KaleidoOrdersV2",
-    "owner": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+    "owner": "0x4c72B4799d374D2Ad9a8C9716766f8325808B94F",
     "fillerFeeBps": 0,
     "maxFillerFeeBps": 100,
     "aggregators": [
@@ -27,5 +27,12 @@
     "venue": "V3. The V2 factory has created no pair on any chain; the V3 pools are what /trade quotes. Paths are V3-packed: token || fee || token.",
     "output": "Swapped straight to the maker; the contract never holds it.",
     "cancellation": "cancel(order) per order, cancelAll() bumps the maker's epoch and kills every signature at once. Deleting a row from the off-chain store does not invalidate a signature."
+  },
+  "ownershipHandover": {
+    "date": "2026-10-01",
+    "from": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+    "to": "0x4c72B4799d374D2Ad9a8C9716766f8325808B94F (Safe, 1-of-1)",
+    "nominateTx": "0xb871d83875324c7ec1ced7c80bbecf6596972ab91f596fed85f62fea55e74718",
+    "acceptTx": "0xd8cddb4ac31e6365215debc907775abb76bba02edf313973a379269fe38235ea"
   }
 }
