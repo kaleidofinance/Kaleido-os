@@ -5,8 +5,15 @@ import {
   CHECKIN_CHAIN_ID,
   CHECKIN_POINTS,
   CHECKIN_SOURCE,
+  STREAK_BONUS,
+  STREAK_LENGTH,
   checkinMessage,
   checkinTxHash,
+  currentStreak,
+  dayOfCheckinHash,
+  earnsStreakBonus,
+  streakBonusTxHash,
+  streakEndingOn,
   utcDay,
 } from "@/lib/rewards/checkin";
 
@@ -14,7 +21,21 @@ export const dynamic = "force-dynamic";
 
 const SEASON = 1;
 
-/** Has this wallet checked in today, and on how many days in total. */
+/** The UTC days this wallet has checked in (bonus rows excluded). */
+async function checkinDays(wallet: string): Promise<string[] | null> {
+  const { data, error } = await supabaseAdmin!
+    .from("point_actions")
+    .select("tx_hash")
+    .eq("wallet", wallet)
+    .eq("source_slug", CHECKIN_SOURCE)
+    .eq("season", SEASON);
+  if (error) return null;
+  return (data ?? [])
+    .map((r) => dayOfCheckinHash(String(r.tx_hash)))
+    .filter((d): d is string => d !== null);
+}
+
+/** Has this wallet checked in today, its streak, and total days. */
 export async function GET(request: NextRequest) {
   const address = new URL(request.url).searchParams.get("address")?.trim() ?? "";
   if (!ethers.isAddress(address))
@@ -22,19 +43,17 @@ export async function GET(request: NextRequest) {
   if (!supabaseAdmin) return NextResponse.json({ error: "not configured" }, { status: 503 });
 
   const wallet = address.toLowerCase();
-  const { data, error } = await supabaseAdmin
-    .from("point_actions")
-    .select("tx_hash")
-    .eq("wallet", wallet)
-    .eq("source_slug", CHECKIN_SOURCE)
-    .eq("season", SEASON);
-  if (error) return NextResponse.json({ error: "Couldn't read check-ins." }, { status: 500 });
+  const days = await checkinDays(wallet);
+  if (!days) return NextResponse.json({ error: "Couldn't read check-ins." }, { status: 500 });
 
-  const today = checkinTxHash(wallet, utcDay());
+  const today = utcDay();
   return NextResponse.json({
-    checkedInToday: (data ?? []).some((r) => r.tx_hash === today),
-    days: (data ?? []).length,
+    checkedInToday: days.includes(today),
+    days: days.length,
+    streak: currentStreak(days, today),
     points: CHECKIN_POINTS,
+    streakLength: STREAK_LENGTH,
+    streakBonus: STREAK_BONUS,
   });
 }
 
@@ -94,5 +113,27 @@ export async function POST(request: NextRequest) {
     console.error("checkin insert failed:", error);
     return NextResponse.json({ error: "Couldn't check in — try again." }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, points: CHECKIN_POINTS });
+
+  /* Streak bonus: today completes a run of 7, 14, 21… consecutive days. Its
+     own unique tx_hash, so it pays once even if this request is replayed. A
+     failure here never undoes the check-in itself. */
+  let bonus = 0;
+  const days = await checkinDays(wallet);
+  const streak = days ? streakEndingOn(days, day) : 0;
+  if (earnsStreakBonus(streak)) {
+    const { error: bErr } = await supabaseAdmin.from("point_actions").insert({
+      wallet,
+      source_slug: CHECKIN_SOURCE,
+      season: SEASON,
+      tx_hash: streakBonusTxHash(wallet, day),
+      chain_id: CHECKIN_CHAIN_ID,
+      usd_value: 0,
+      multiplier_applied: 1.0,
+      points: STREAK_BONUS,
+      is_agent_initiated: false,
+      occurred_at: new Date().toISOString(),
+    });
+    if (!bErr) bonus = STREAK_BONUS;
+  }
+  return NextResponse.json({ ok: true, points: CHECKIN_POINTS, bonus, streak });
 }
