@@ -10,6 +10,10 @@
 export const CHECKIN_POINTS = 25;
 export const STREAK_LENGTH = 7;
 export const STREAK_BONUS = 100;
+/** One-time bonus for the first WELCOME_LIMIT wallets ever to check in. */
+export const WELCOME_BONUS = 500;
+export const WELCOME_LIMIT = 100;
+export const WELCOME_PREFIX = "checkin-welcome:";
 export const CHECKIN_SOURCE = "checkin";
 export const CHECKIN_CHAIN_ID = 5042;
 
