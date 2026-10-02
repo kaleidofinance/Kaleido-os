@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ethers, verifyMessage } from "ethers";
+import { ethers } from "ethers";
+import { verifyWalletSignature } from "@/lib/auth/verifyWalletSignature";
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import {
   CHECKIN_CHAIN_ID,
@@ -100,13 +101,17 @@ export async function POST(request: NextRequest) {
 
   const wallet = address.toLowerCase();
   const day = utcDay();
-  let recovered = "";
-  try {
-    recovered = verifyMessage(checkinMessage(wallet, day), signature).toLowerCase();
-  } catch {
-    /* fall through to the mismatch below */
-  }
-  if (recovered !== wallet)
+  /* The browser stamps the message with ITS UTC date; one signed seconds
+     before midnight arrives after it. Accept yesterday's wording too — the
+     credit is still keyed to the server's day, so this can't earn twice. */
+  const yesterday = utcDay(new Date(Date.now() - 86_400_000));
+  if (
+    !(await verifyWalletSignature(
+      wallet,
+      [checkinMessage(wallet, day), checkinMessage(wallet, yesterday)],
+      signature,
+    ))
+  )
     return NextResponse.json({ error: "Signature doesn't match this wallet." }, { status: 401 });
 
   const { data: bal } = await supabaseAdmin
