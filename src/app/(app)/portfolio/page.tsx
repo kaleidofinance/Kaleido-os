@@ -14,7 +14,9 @@ import {
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import AvatarPicker from "./_components/AvatarPicker";
-import { Tabs, Overview, Tokens, type TabId } from "./_components/PortfolioTabs";
+import { Tabs, Overview, Tokens, SLICE, type TabId } from "./_components/PortfolioTabs";
+import { PointsTab, usePointsStanding, pointsTotal, referralLink } from "./_components/PointsTab";
+import { allocation } from "@/lib/portfolio/aggregate";
 import { drawShareCard } from "./shareCard";
 import s from "./portfolio.module.css";
 
@@ -128,6 +130,7 @@ export default function PortfolioPage() {
      (tokens.css:29), and this <main> is inside it by construction. */
   const mainRef = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<TabId>("overview");
+  const points = usePointsStanding(address ?? undefined);
 
   /*
    * Share and Deposit were markup with no handler — chrome from the first pass
@@ -179,8 +182,25 @@ export default function PortfolioPage() {
             { label: "Health factor", value: healthText(p.health) },
             { label: "Collateral", value: usd(p.collateralUsd, 0) },
             { label: "Borrowed", value: usd(p.debtUsd, 0) },
-            { label: "Unclaimed", value: usd(p.unclaimedYieldUsd) },
+            points.kind === "ok"
+              ? {
+                  label: "Season 1 points",
+                  value: pointsTotal(points.status).toLocaleString("en-US", {
+                    maximumFractionDigits: 0,
+                  }),
+                }
+              : { label: "Unclaimed", value: usd(p.unclaimedYieldUsd) },
           ],
+          /* The same bar as the Overview tab, and the sharer's invite in the
+             footer — every shared card is a way in (Portfolio v2, phase 2). */
+          allocation: allocation(p.groups).map((a) => ({
+            share: a.share,
+            color: SLICE[a.id] ?? "#888",
+          })),
+          link:
+            points.kind === "ok"
+              ? referralLink(points.status, url).replace(/^https?:\/\//, "")
+              : null,
           /* `?? null` because useWalletV2 reports an unknown chain as undefined
              while the card's contract is `string | null` — the codebase's spelling
              of "genuinely unknown", per usePortfolio's Position doc. */
@@ -381,6 +401,7 @@ export default function PortfolioPage() {
                 loading={p.isLoading}
               />
             )}
+            {tab === "points" && <PointsTab state={points} />}
             {tab === "positions" && (
               <div className={s.main}>
                 {p.groups

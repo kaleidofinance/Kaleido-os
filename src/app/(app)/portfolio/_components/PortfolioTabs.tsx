@@ -9,12 +9,13 @@ import { CHAINS_BY_ID } from "@/constants/chains";
 import { aggregateByToken, allocation, type TokenAggregate } from "@/lib/portfolio/aggregate";
 import t from "./PortfolioTabs.module.css";
 
-export type TabId = "overview" | "tokens" | "positions";
+export type TabId = "overview" | "tokens" | "positions" | "points";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "tokens", label: "Tokens" },
   { id: "positions", label: "Positions" },
+  { id: "points", label: "Points" },
 ];
 
 const usd = (n: number | null, dp = 2) =>
@@ -25,9 +26,10 @@ const usd = (n: number | null, dp = 2) =>
 const amt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: n >= 1000 ? 0 : n >= 1 ? 4 : 6 });
 
-/** Slice colours for the allocation bar, in group order. */
-const SLICE: Record<string, string> = {
-  wallet: "var(--k-accent, #1de6a4)",
+/** Slice colours for the allocation bar. Plain hex, so the share card's canvas
+ *  can draw the same bar. */
+export const SLICE: Record<string, string> = {
+  wallet: "#1de6a4",
   lending: "#5b8cff",
   borrowing: "#f0b64a",
   stable: "#b18cff",
