@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import Nav from "@/components/v2/Nav";
@@ -14,6 +14,7 @@ import {
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import AvatarPicker from "./_components/AvatarPicker";
+import { Tabs, Overview, Tokens, type TabId } from "./_components/PortfolioTabs";
 import { drawShareCard } from "./shareCard";
 import s from "./portfolio.module.css";
 
@@ -126,6 +127,7 @@ export default function PortfolioPage() {
      querySelector because the card reads --k-bg and friends off `.kaleido-v2`
      (tokens.css:29), and this <main> is inside it by construction. */
   const mainRef = useRef<HTMLElement>(null);
+  const [tab, setTab] = useState<TabId>("overview");
 
   /*
    * Share and Deposit were markup with no handler — chrome from the first pass
@@ -360,42 +362,34 @@ export default function PortfolioPage() {
               </div>
             </div>
 
-            <div className={s.cols}>
-              <div className={s.main}>
-                {/* Every group, every time — including the empty ones. A reader
-                    with nothing lent cannot tell "I have no offers" from "this
-                    page does not show offers" if the Lending group is absent,
-                    and the empty state is one line plus a link to the surface
-                    that fills it. The order is the hook's, which is the order
-                    money moves through the protocol: wallet, then what it was
-                    lent to, borrowed against, minted into, staked as. */}
-                {p.groups.map((g) => (
-                  <PositionGroup key={g.id} group={g} loading={p.isLoading} />
-                ))}
-              </div>
+            <Tabs value={tab} onChange={setTab} />
 
-              <aside className={s.side}>
-                <div className={s.sideTitle}>Needs attention</div>
-                {p.alerts.length === 0 && (
-                  <div className={s.calm}>Nothing needs attention.</div>
-                )}
-                {p.alerts.map((a) => (
-                  <a key={a.id} href={a.href ?? "#"} className={s.alert}>
-                    <span
-                      className={`${s.aIcon} ${
-                        a.severity === "info" ? "" : s.aWarn
-                      }`}
-                    >
-                      {a.severity === "info" ? "↑" : "!"}
-                    </span>
-                    <div>
-                      <div className={s.alTitle}>{a.title}</div>
-                      <div className={s.alDetail}>{a.detail}</div>
-                    </div>
-                  </a>
-                ))}
-              </aside>
-            </div>
+            {/* Portfolio v2: one surface, three views. Wallet holdings live in
+                Tokens (folded by token across chains); Positions keeps the four
+                protocol groups at full detail; Overview summarises both. */}
+            {tab === "overview" && (
+              <Overview
+                groups={p.groups}
+                alerts={p.alerts}
+                loading={p.isLoading}
+                onOpen={setTab}
+              />
+            )}
+            {tab === "tokens" && (
+              <Tokens
+                wallet={p.groups.find((g) => g.id === "wallet")}
+                loading={p.isLoading}
+              />
+            )}
+            {tab === "positions" && (
+              <div className={s.main}>
+                {p.groups
+                  .filter((g) => g.id !== "wallet")
+                  .map((g) => (
+                    <PositionGroup key={g.id} group={g} loading={p.isLoading} />
+                  ))}
+              </div>
+            )}
           </>
         )}
       </main>

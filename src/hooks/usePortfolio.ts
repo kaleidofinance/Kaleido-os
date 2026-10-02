@@ -114,6 +114,9 @@ export interface Position {
   /** Annualised rate as a percentage, e.g. 14.2. Null where not applicable. */
   apy: number | null;
   state: PositionState;
+  /** The chain a wallet row is on. Set on Wallet rows, which the Tokens tab
+   *  folds by token across chains. */
+  chainId?: number;
 }
 
 export type GroupId = "wallet" | "lending" | "borrowing" | "stable" | "staking";
@@ -393,6 +396,7 @@ export const usePortfolio = (): Portfolio => {
              so the bare address collided and React dropped rows. */
           id: `wallet-${h.chainId}-${h.address}`,
           kind: "wallet" as const,
+          chainId: h.chainId,
           label: h.symbol,
           sublabel: `${chainName} · ${h.isNative ? "Native" : "Wallet"}`,
           amount: shortAmount(h.value, h.amount),
