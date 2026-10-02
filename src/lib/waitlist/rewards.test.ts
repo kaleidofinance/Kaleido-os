@@ -36,7 +36,7 @@ const activated = projectWaitlistRewards(
   0,
   now,
 );
-check("activated settled task is marked settled", activated.tasks[6].status === "settled");
+check("activated settled task is marked settled", activated.tasks.find((t) => t.task === "First Arc mainnet transaction")?.status === "settled");
 check("an expired X hold is available for reconciliation", activated.availablePoints === 100);
 check("an activated X hold is no longer pending", activated.pendingPoints === 0);
 

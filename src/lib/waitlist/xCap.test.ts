@@ -2,6 +2,8 @@ import {
   X_TASK_CAP,
   CAPPED_X_TASKS,
   isCappedColumn,
+  X_TASK_CAPS,
+  capForColumn,
 } from "./xCap";
 
 let passed = 0;
@@ -18,15 +20,18 @@ function check(name: string, cond: boolean) {
 
 check("the cap is 1,000 claims", X_TASK_CAP === 1000);
 
-// Only `commented` is capped. linked (real OAuth), followed (its claim count
+// Only `commented` and the first-100 `argus` task are capped. linked (real OAuth), followed (its claim count
 // matched the real follower count), and the two repost tasks (the active
 // mainnet-launch push, kept open by product decision 2026-09-23) must NOT be
 // capped.
 const capped = Object.keys(CAPPED_X_TASKS).sort();
 check(
-  "exactly commented is capped",
-  JSON.stringify(capped) === JSON.stringify(["commented"]),
+  "exactly argus + commented are capped",
+  JSON.stringify(capped) === JSON.stringify(["argus", "commented"]),
 );
+check("argus is first-100", X_TASK_CAPS.argus === 100 && capForColumn("x_argus_at") === 100);
+check("comment keeps the 1,000 cap", capForColumn("x_commented_at") === 1000);
+check("an uncapped column has no cap", capForColumn("x_llama_at") === undefined);
 check("linked is not capped", !("linked" in CAPPED_X_TASKS));
 check("followed is not capped", !("followed" in CAPPED_X_TASKS));
 check("retweeted is not capped", !("retweeted" in CAPPED_X_TASKS));
