@@ -1373,6 +1373,12 @@ export interface ParseContext {
    * dependency-free: no env, no getAddress, no chain check leaks in here.
    */
   addressToken?: (word: string) => IToken | null;
+  /**
+   * USD price of the token a "$N worth of X" sentence names, looked up by the
+   * caller before parsing (see `dollarSizedToken`). With it the dollars become a
+   * token amount here; without it (or null) the sentence goes to the model.
+   */
+  usdPrice?: (token: IToken) => number | null;
 }
 
 /** Verbs whose first question is which token, and so cannot start without a vocabulary. */
@@ -1463,6 +1469,71 @@ function dollarsAsUsdc(text: string): string {
   return text.replace(
     /\$\s?(\d[\d,]*(?:\.\d+)?[km]?)(\s*usdc\b)?/gi,
     (_m, n: string, unit?: string) => (unit ? `${n}${unit}` : `${n} usdc`),
+  );
+}
+
+/** Dollar stablecoins: "$N" of one of these IS N tokens. */
+const DOLLAR_SYMBOLS = new Set(["usdc", "usdt", "usde", "kfusd", "usd"]);
+
+/**
+ * The "$N [worth] [of] X" in a sentence, when X is a token this vocabulary knows
+ * and is not a dollar stablecoin — the case that needs a price. Exported so the
+ * caller can look up X's live price BEFORE parsing and pass it in as
+ * `ParseContext.usdPrice`; null when there is no such phrase.
+ */
+export function dollarSizedToken(
+  text: string,
+  tokens: IToken[],
+  /** Resolves a bare contract address — an Argus launch named by its address. */
+  addressToken?: (word: string) => IToken | null,
+): { usd: number; token: IToken; match: string } | null {
+  const m = dollarsAsUsdc(text).match(
+    /\$\s?(\d[\d,]*(?:\.\d+)?)([km])?\s+(?:worth\s+)?(?:of\s+)?(0x[0-9a-f]{40}|[a-z][a-z0-9.]*)/i,
+  );
+  if (!m) return null;
+  const word = m[3].toLowerCase();
+  if (DOLLAR_SYMBOLS.has(word)) return null;
+  const token = word.startsWith("0x")
+    ? tokens.find((t) => t.address.toLowerCase() === word) ?? addressToken?.(m[3]) ?? null
+    : tokens.find((t) => t.symbol.toLowerCase() === word);
+  if (!token) return null;
+  const mult = m[2]?.toLowerCase() === "k" ? 1e3 : m[2]?.toLowerCase() === "m" ? 1e6 : 1;
+  const usd = Number(m[1].replace(/,/g, "")) * mult;
+  if (!Number.isFinite(usd) || usd <= 0) return null;
+  return { usd, token, match: m[0] };
+}
+
+/**
+ * Turn the dollar size into a token amount at `price` (USD per token). Rounded
+ * DOWN at 6 significant figures (capped at the token's decimals), so the amount is
+ * never worth more than the dollars asked for. Null on a missing/invalid price.
+ */
+export function usdToTokenAmount(usd: number, price: number, decimals: number): string | null {
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const raw = usd / price;
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  const mag = Math.floor(Math.log10(raw));
+  const dp = Math.min(Math.max(0, 5 - mag), decimals, 18);
+  const f = 10 ** dp;
+  const down = Math.floor(raw * f) / f;
+  if (down <= 0) return null;
+  const fixed = down.toFixed(dp);
+  return fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed;
+}
+
+/**
+ * A dollar amount that sizes a NON-dollar token: "sell $100 worth of cirBTC",
+ * "swap $10 of ETH to USDC". normalise() strips the "$", so the bare 100 used to be
+ * read as 100 cirBTC — a $5M swap from a $100 sentence. Converting dollars into a
+ * token amount needs a live price, which this grammar does not have, so such a
+ * sentence is never built here: it goes to the model, which reads the price.
+ *
+ * Buy/spend sentences are already rewritten to "N usdc" by dollarsAsUsdc (the
+ * dollars ARE the spend), and "$100 usdc" names its own unit, so neither counts.
+ */
+function dollarSizedNonDollar(raw: string): boolean {
+  return /\$\s?\d[\d,]*(?:\.\d+)?[km]?(?![km\d.,])(?!\s*(?:worth\s+)?(?:of\s+)?(?:usdc|usdt|usde|kfusd|usd)\b)/i.test(
+    dollarsAsUsdc(raw),
   );
 }
 
@@ -2137,6 +2208,20 @@ export function parseCommand(
   tokens: IToken[],
   ctx: ParseContext = {},
 ): ParseResult {
+  if (dollarSizedNonDollar(text)) {
+    /* "$100 worth of cirBTC": with a live price, rewrite to "<amount> cirBTC" and
+       parse that; the plan's own quote then shows the dollar value to check. */
+    const sized = dollarSizedToken(text, tokens, ctx.addressToken);
+    const price = sized && ctx.usdPrice ? ctx.usdPrice(sized.token) : null;
+    const amount = sized && price ? usdToTokenAmount(sized.usd, price, sized.token.decimals) : null;
+    if (!sized || !amount) return { status: "unknown" };
+    /* An address keeps its address (the symbol of a provisional launch token is
+       not resolvable); a symbol is written back as its symbol. */
+    const named = /0x[0-9a-f]{40}$/i.test(sized.match) ? sized.match.slice(-42) : sized.token.symbol;
+    const rewritten = dollarsAsUsdc(text).replace(sized.match, `${amount} ${named}`);
+    if (dollarSizedNonDollar(rewritten)) return { status: "unknown" };
+    return parseCommand(rewritten, tokens, ctx);
+  }
   const first = parseCommandOnce(text, tokens, ctx);
   if (first.status !== "unknown") return first;
   /* One retry with a misspelled verb corrected ("sedn" → send, "swpa" → swap).
@@ -3552,7 +3637,7 @@ export function parseFollowUp(
   const lower = raw.toLowerCase();
   /* The same sentences parseCommand refuses. A follow-up must not be the way a
      recurring buy or a delegation grant gets built after all. */
-  if (MODEL_ONLY.test(lower)) return { status: "unknown" };
+  if (MODEL_ONLY.test(lower) || dollarSizedNonDollar(raw)) return { status: "unknown" };
 
   const words = normalise(dollarsAsUsdc(raw));
   /* Rule 1, with its one exception. A verb makes this a fresh command — unless
