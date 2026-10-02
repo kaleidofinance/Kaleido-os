@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePoolData } from "@/hooks/dex/usePoolData";
 import { useV3Pools } from "@/hooks/dex/useV3Pools";
@@ -99,6 +99,25 @@ export default function PoolsPage() {
      pool and needs the whole row, and holding the row is also what lets it stay
      open across a re-sweep. */
   const [depositInto, setDepositInto] = useState<ITradingPair | null>(null);
+  /* Season 1 LP points: the rate the points-lp cron pays (base × any active lp
+     campaign), for the Points column. One read per visit. */
+  const [lpPoints, setLpPoints] = useState<{
+    chainId: number;
+    perUsdPerDay: number;
+    boost: number;
+  } | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/pools/points")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (live && d?.active) setLpPoints(d);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   /* Descending by TVL, unmeasurable last. `?? -1` rather than `?? 0`: a pool
      whose legs have no price is not a pool with no liquidity, and sorting it
@@ -192,12 +211,15 @@ export default function PoolsPage() {
 
       <div className={`${s.table} ${s.pools}`}>
         <div className={s.thead}>
+          {/* TVL first, the way the big DEX tables lead: what a pool holds is the
+              first thing a liquidity provider weighs. The pair's price lives on
+              the pool's own page, not in the list. */}
           <span>Pool</span>
-          <span className={s.right}>Price</span>
-          <span className={s.right}>Total volume</span>
-          <span className={s.right}>Total fees</span>
           <span className={s.right}>TVL</span>
           <span className={s.right}>APR</span>
+          <span className={s.right}>Points</span>
+          <span className={s.right}>Volume</span>
+          <span className={s.right}>Fees</span>
           {/* Deliberately unlabelled: the column holds one button that says what it
               does, and "Action" above it would be a heading for nothing. */}
           <span />
@@ -275,8 +297,21 @@ export default function PoolsPage() {
                   </div>
                 </div>
               </Link>
+              <span className={`${s.right} tabular`}>{usd(p.liquidity)}</span>
+              <span className={`${s.right} tabular`}>{pct(p.apr)}</span>
+              {/* Season 1 points for in-range liquidity: Kaleido V3 pools on the
+                  chain the points-lp cron reads. Elsewhere, nothing is paid. */}
               <span className={`${s.right} tabular`}>
-                {p.price !== null ? p.price.toFixed(p.price < 1 ? 6 : 4) : DASH}
+                {lpPoints && p.version === "v3" && p.chainId === lpPoints.chainId ? (
+                  <span className={s.pointsCell} title="Season 1 points per $1 of in-range liquidity per day">
+                    {lpPoints.boost > 1 ? (
+                      <span className={s.boost}>{lpPoints.boost}×</span>
+                    ) : null}
+                    {lpPoints.perUsdPerDay.toLocaleString("en-US", { maximumFractionDigits: 2 })} pts/$/day
+                  </span>
+                ) : (
+                  DASH
+                )}
               </span>
               {/* All-time, not 24h: our pools are young and thin, so a 24h
                   window was empty on nearly every row. Totals come from the
@@ -288,8 +323,6 @@ export default function PoolsPage() {
               <span className={`${s.right} tabular`}>
                 {usd(p.feesTotal ?? null)}
               </span>
-              <span className={`${s.right} tabular`}>{usd(p.liquidity)}</span>
-              <span className={`${s.right} tabular`}>{pct(p.apr)}</span>
               {/* A sibling of the pair link, not inside it — nesting a button in an
                   anchor is invalid, and the click would have to be swallowed. */}
               <button
