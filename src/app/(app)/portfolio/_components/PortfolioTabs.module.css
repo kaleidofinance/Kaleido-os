@@ -635,3 +635,19 @@ button.act {
     padding: 14px 12px 12px;
   }
 }
+
+/* ---------- row dividers ---------- */
+/* A hairline between rows in every portfolio list, inset from the card edge, so
+   long lists read as a table rather than a stack of floating rows. */
+.allocRow + .allocRow,
+.posRow + .posRow,
+.tok + .tok,
+.actRow + .actRow,
+.alert + .alert {
+  border-top: 1px solid var(--k-line);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.alert + .alert {
+  margin-top: 0;
+}
