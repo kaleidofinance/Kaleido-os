@@ -9,12 +9,13 @@ import { CHAINS_BY_ID } from "@/constants/chains";
 import { aggregateByToken, allocation, type TokenAggregate } from "@/lib/portfolio/aggregate";
 import t from "./PortfolioTabs.module.css";
 
-export type TabId = "overview" | "tokens" | "positions" | "points";
+export type TabId = "overview" | "tokens" | "positions" | "activity" | "points";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "tokens", label: "Tokens" },
   { id: "positions", label: "Positions" },
+  { id: "activity", label: "Activity" },
   { id: "points", label: "Points" },
 ];
 

@@ -17,6 +17,7 @@ import AvatarPicker from "./_components/AvatarPicker";
 import { Tabs, Overview, Tokens, SLICE, type TabId } from "./_components/PortfolioTabs";
 import { PointsTab, usePointsStanding, pointsTotal, referralLink } from "./_components/PointsTab";
 import { allocation } from "@/lib/portfolio/aggregate";
+import { ActivityTab } from "./_components/ActivityTab";
 import { drawShareCard } from "./shareCard";
 import s from "./portfolio.module.css";
 
@@ -402,6 +403,7 @@ export default function PortfolioPage() {
               />
             )}
             {tab === "points" && <PointsTab state={points} />}
+            {tab === "activity" && <ActivityTab address={address ?? undefined} />}
             {tab === "positions" && (
               <div className={s.main}>
                 {p.groups
