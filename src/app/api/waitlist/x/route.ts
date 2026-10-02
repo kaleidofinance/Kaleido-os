@@ -1,4 +1,4 @@
-import { verifyMessage } from "ethers";
+import { verifyWalletSignature } from "@/lib/auth/verifyWalletSignature";
 import { cookies } from "next/headers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
@@ -71,21 +71,15 @@ export async function POST(req: Request) {
 
   // The wallet must sign the exact task message. Keep accepting the original
   // waitlist wording so existing waitlist users do not need to reconnect.
-  let recovered: string;
-  try {
-    recovered = verifyMessage(
-      t === "link" ? xAppLinkMessage(address) : xTaskMessage(address, t),
-      signature,
-    );
-  } catch {
-    if (t !== "link") return Response.json({ error: "bad signature" }, { status: 401 });
-    try {
-      recovered = verifyMessage(xTaskMessage(address, t), signature);
-    } catch {
-      return Response.json({ error: "bad signature" }, { status: 401 });
-    }
-  }
-  if (recovered.toLowerCase() !== address.toLowerCase())
+  /* Both link wordings are checked by RESULT, not by exception: ecrecover over
+     the wrong message returns a stranger's address instead of throwing, so the
+     old try/catch fallback never ran and every Rewards-page link (which signs
+     the waitlist wording) was rejected as a mismatch. */
+  const accepted =
+    t === "link"
+      ? [xAppLinkMessage(address), xTaskMessage(address, t)]
+      : [xTaskMessage(address, t)];
+  if (!(await verifyWalletSignature(address, accepted, signature)))
     return Response.json({ error: "signature mismatch" }, { status: 401 });
 
   const wallet = address.toLowerCase();

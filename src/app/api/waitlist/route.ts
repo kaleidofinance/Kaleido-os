@@ -1,6 +1,6 @@
 import { randomInt } from "node:crypto";
 
-import { verifyMessage } from "ethers";
+import { verifyWalletSignature } from "@/lib/auth/verifyWalletSignature";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { getClosedXTasks } from "@/lib/waitlist/xCap";
@@ -318,13 +318,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "bad input" }, { status: 400 });
 
   // Prove control of the wallet: the signature must recover to the address.
-  let recovered: string;
-  try {
-    recovered = verifyMessage(joinMessage(address), signature);
-  } catch {
-    return Response.json({ error: "bad signature" }, { status: 401 });
-  }
-  if (recovered.toLowerCase() !== address.toLowerCase())
+  if (!(await verifyWalletSignature(address, joinMessage(address), signature)))
     return Response.json({ error: "signature mismatch" }, { status: 401 });
 
   const wallet = address.toLowerCase();

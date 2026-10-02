@@ -1,11 +1,11 @@
 import {
-  verifyMessage,
   JsonRpcProvider,
   isAddress,
   isHexString,
   type TransactionResponse,
   type TransactionReceipt,
 } from "ethers";
+import { verifyWalletSignature } from "@/lib/auth/verifyWalletSignature";
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { hasArcActivity } from "@/lib/waitlist/arcMainnet";
 import { providerForChain } from "@/config/provider";
@@ -165,16 +165,14 @@ export async function POST(req: Request) {
     );
   }
   if (!auto) {
-    try {
-      const recovered = verifyMessage(
+    if (
+      !(await verifyWalletSignature(
+        address,
         message(address, task, txHash),
         signature!,
-      );
-      if (recovered.toLowerCase() !== address.toLowerCase())
-        return Response.json({ error: "signature mismatch" }, { status: 401 });
-    } catch {
-      return Response.json({ error: "bad signature" }, { status: 401 });
-    }
+      ))
+    )
+      return Response.json({ error: "signature mismatch" }, { status: 401 });
   }
 
   const wallet = address.toLowerCase();
