@@ -57,10 +57,11 @@ const X_HANDLE = "kaleido_finance";
 const ANNOUNCE_TWEET_ID =
   process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
 const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
-// The DefiLlama-listing post for the like & repost task. Set the id in Vercel
-// (NEXT_PUBLIC_DEFILLAMA_TWEET_ID) once the post is live; until then the task
-// opens the Kaleido profile, where the post will be pinned.
-const DEFILLAMA_TWEET_ID = process.env.NEXT_PUBLIC_DEFILLAMA_TWEET_ID ?? "";
+// The DefiLlama-listing post for the like & repost task. The task opens X's
+// repost intent for it (like + repost are one attested task); the env var still
+// overrides the id.
+const DEFILLAMA_TWEET_ID =
+  process.env.NEXT_PUBLIC_DEFILLAMA_TWEET_ID ?? "2105990214858449138";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -392,9 +393,7 @@ export default function WaitlistPage() {
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
               : task === "llama"
-                ? DEFILLAMA_TWEET_ID
-                  ? `https://x.com/${X_HANDLE}/status/${DEFILLAMA_TWEET_ID}`
-                  : `https://x.com/${X_HANDLE}`
+                ? `https://x.com/intent/retweet?tweet_id=${DEFILLAMA_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
       window.open(url, "_blank", "noopener,noreferrer");
       setOpened((o) => ({ ...o, [task]: true }));
@@ -820,7 +819,7 @@ export default function WaitlistPage() {
                         className={s.taskBtn}
                         onClick={() => openIntent("llama")}
                       >
-                        Open post
+                        Like &amp; repost
                       </button>
                     )}
                   </li>
