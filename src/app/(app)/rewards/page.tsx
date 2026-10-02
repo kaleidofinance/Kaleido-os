@@ -63,8 +63,6 @@ const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 /** The $ARGUS listing post: RT + comment, first 100 wallets get +600. */
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
-const DEFILLAMA_TWEET_ID =
-  process.env.NEXT_PUBLIC_DEFILLAMA_TWEET_ID ?? "2105990214858449138";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -397,8 +395,6 @@ export default function WaitlistPage() {
             ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
-              : task === "llama"
-                ? `https://x.com/intent/retweet?tweet_id=${DEFILLAMA_TWEET_ID}`
                 : task === "argus"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -743,43 +739,6 @@ export default function WaitlistPage() {
                         onClick={() => openIntent("argus")}
                       >
                         RT &amp; comment
-                      </button>
-                    )}
-                  </li>
-
-                  <li className={s.task}>
-                    <div className={s.taskText}>
-                      <span className={s.taskTitle}>
-                        Like &amp; repost the DefiLlama listing post
-                      </span>
-                      <span className={s.taskMeta}>
-                        {status.xTasks.llama?.done
-                          ? status.xTasks.llama.counted
-                            ? "Done"
-                            : "Done · counts within 5h"
-                          : !status.xTasks.linked.done
-                            ? "Link X first"
-                            : "+100 $kPoint"}
-                      </span>
-                    </div>
-                    {status.xTasks.llama?.done ? (
-                      <span className={s.taskDone}>✓</span>
-                    ) : !status.xTasks.linked.done ? (
-                      <span className={s.taskLock}>🔒</span>
-                    ) : opened.llama ? (
-                      <button
-                        className={s.taskBtn}
-                        onClick={() => postXTask("llama")}
-                        disabled={xBusy === "llama"}
-                      >
-                        {xBusy === "llama" ? "…" : "Claim"}
-                      </button>
-                    ) : (
-                      <button
-                        className={s.taskBtn}
-                        onClick={() => openIntent("llama")}
-                      >
-                        Like &amp; repost
                       </button>
                     )}
                   </li>
