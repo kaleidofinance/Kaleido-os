@@ -5,7 +5,7 @@
 // ambiguous case must fall through to "unknown" (escalate to a model) or
 // "incomplete" (ask the user). Silently guessing an amount or a token is the
 // one outcome that must never happen.
-import {
+import { dollarSizedToken, usdToTokenAmount,
   parseCommand,
   parseFollowUp,
   fillSlot,
@@ -2400,7 +2400,12 @@ console.log("swap resolves relative amounts; other verbs escalate");
   const asBridge = (r) =>
     r.status === "ok" && r.command.kind === "bridge" ? r.command : null;
 
-  const one = asBridge(px("bridge $10 bnb to arc usdc"));
+  /* "$10 bnb" is ten DOLLARS of BNB, not 10 BNB (~$6,000): dollars that size a
+     non-dollar token need a price, so the grammar hands the sentence to the
+     model instead of guessing. The one-shot shape is checked without the "$". */
+  const dollarBnb = px("bridge $10 bnb to arc usdc");
+  check("'$10 bnb' is not read as 10 BNB (goes to the model)", dollarBnb.status === "unknown", JSON.stringify(dollarBnb).slice(0, 200));
+  const one = asBridge(px("bridge 10 bnb to arc usdc"));
   check(
     "one-shot: BNB inferred as source (on BSC), dest split into arc + usdc",
     !!one &&
@@ -2432,7 +2437,7 @@ console.log("swap resolves relative amounts; other verbs escalate");
 
   /* The exact regression from the screenshots: "which token?" then "bnb". The
      reply must be taken as the bridge SOURCE, not refused as a swap token. */
-  const step1 = px("bridge $10 to arc usdc");
+  const step1 = px("bridge 10 to arc usdc");
   const filled =
     step1.status === "incomplete"
       ? fillSlot(step1.draft, step1.missing, "bnb", TOKENS, XCTX)
@@ -3030,6 +3035,95 @@ console.log("\n— wrap / unwrap as a local verb —");
     plain.status === "ok" && plain.command.kind === "swap" && plain.command.tokenOut.symbol === "KLD" && !plain.command.tokenOut.tags?.includes("argus"),
     plain.status,
   );
+}
+
+console.log("\n— dollars that size a non-dollar token go to the model —");
+{
+  /* The live incident (2026-10-02): "sell $100 worth cirBTC to USDC" was built as
+     a swap of 100 cirBTC (~$5.25M). A dollar figure on a non-dollar token needs a
+     live price to convert, so the grammar must never build it. */
+  for (const t of [
+    "sell $100 worth kld to usdc",
+    "sell $100 worth of kld for usdc",
+    "swap $10 of weth to usdc",
+    "swap $10 weth to kld",
+    "sell $1k of kld",
+    "convert $2.5 worth of weth into usdc",
+  ]) {
+    const r = p(t);
+    check(`'${t}' is not built locally`, r.status === "unknown", JSON.stringify(r).slice(0, 160));
+  }
+  // Dollars that ARE the stablecoin amount still build.
+  const usdcDollars = p("swap $100 usdc to kld");
+  check(
+    "'$100 usdc' still reads as 100 USDC",
+    usdcDollars.status === "ok" && usdcDollars.command.kind === "swap" && usdcDollars.command.amount === "100" && usdcDollars.command.tokenIn.symbol === "USDC",
+    JSON.stringify(usdcDollars).slice(0, 160),
+  );
+  const worthUsdc = p("swap $50 worth of usdc to kld");
+  check(
+    "'$50 worth of usdc' reads as 50 USDC",
+    worthUsdc.status === "ok" && worthUsdc.command.kind === "swap" && worthUsdc.command.amount === "50",
+    JSON.stringify(worthUsdc).slice(0, 160),
+  );
+  // A buy with dollars is a USDC spend, unchanged.
+  const buy = p("buy $10 of kld");
+  check(
+    "'buy $10 of kld' still spends 10 USDC",
+    buy.status === "ok" && buy.command.kind === "swap" && buy.command.amount === "10" && buy.command.tokenIn.symbol === "USDC",
+    JSON.stringify(buy).slice(0, 160),
+  );
+  // No "$": a token amount is a token amount.
+  const plain = p("sell 100 kld for usdc");
+  check("'sell 100 kld' is still 100 KLD", plain.status === "ok" && plain.command.amount === "100", JSON.stringify(plain).slice(0, 160));
+}
+
+console.log("\n— dollar sizes converted with a live price —");
+{
+  const priced = (t, prices) =>
+    parseCommand(t, TOKENS, { usdPrice: (tok) => prices[tok.symbol] ?? null });
+  const kld = priced("sell $100 worth kld to usdc", { KLD: 0.05 });
+  check(
+    "'$100 worth kld' at $0.05 → 2000 KLD",
+    kld.status === "ok" && kld.command.kind === "swap" && kld.command.amount === "2000" && kld.command.tokenIn.symbol === "KLD" && kld.command.tokenOut.symbol === "USDC",
+    JSON.stringify(kld).slice(0, 200),
+  );
+  const weth = priced("swap $100 of weth to kld", { WETH: 3000 });
+  check(
+    "'$100 of weth' at $3000 → 0.0333333 WETH (rounded down, 6 sig figs)",
+    weth.status === "ok" && weth.command.amount === "0.0333333",
+    JSON.stringify(weth).slice(0, 200),
+  );
+  const big = priced("sell $1k of kld for usdc", { KLD: 0.05 });
+  check("'$1k of kld' → 20000 KLD", big.status === "ok" && big.command.amount === "20000", JSON.stringify(big).slice(0, 200));
+  const noPrice = priced("sell $100 worth kld to usdc", {});
+  check("no price → still goes to the model", noPrice.status === "unknown");
+  const zero = priced("sell $100 worth kld to usdc", { KLD: 0 });
+  check("a zero price is refused", zero.status === "unknown");
+  check("dollarSizedToken finds the token", dollarSizedToken("sell $100 worth of kld for usdc", TOKENS)?.token.symbol === "KLD");
+  check("dollarSizedToken ignores a stablecoin", dollarSizedToken("swap $100 of usdc to kld", TOKENS) === null);
+  check("usdToTokenAmount never exceeds the dollars", Number(usdToTokenAmount(100, 3, 18)) * 3 <= 100);
+  check("usdToTokenAmount respects decimals", usdToTokenAmount(1, 3, 2) === "0.33");
+  check("usdToTokenAmount keeps an integer's zeros", usdToTokenAmount(100, 0.0004, 18) === "250000" && usdToTokenAmount(1000, 1, 6) === "1000");
+}
+
+console.log("\n— a dollar size of an Argus launch named by address —");
+{
+  const A = "0x1234567890abcdef1234567890abcdef12345678";
+  const meme = { address: A, symbol: "MEME", decimals: 18, name: "Meme" };
+  const ctx = {
+    addressToken: (w) => (w.toLowerCase() === A ? meme : null),
+    usdPrice: (t) => (t.address.toLowerCase() === A ? 0.0004 : null),
+  };
+  check("dollarSizedToken resolves an address", dollarSizedToken(`sell $100 worth of ${A}`, TOKENS, ctx.addressToken)?.token.symbol === "MEME");
+  const r = parseCommand(`sell $100 worth of ${A} for usdc`, TOKENS, ctx);
+  check(
+    "'sell $100 worth of <launch>' at $0.0004 → 250000 of it",
+    r.status === "ok" && r.command.kind === "swap" && r.command.amount === "250000" && r.command.tokenIn.address.toLowerCase() === A,
+    JSON.stringify(r).slice(0, 220),
+  );
+  const unpriced = parseCommand(`sell $100 worth of ${A} for usdc`, TOKENS, { addressToken: ctx.addressToken });
+  check("unpriced launch → the model", unpriced.status === "unknown");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

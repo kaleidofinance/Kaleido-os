@@ -81,6 +81,7 @@ import { createBrowserLocalIntentModel } from "@/lib/ai/browserLocalIntent";
 import { canUseBrowserLocalModel, type LocalIntentClassification } from "@/lib/ai/localIntent";
 import {
   parseCommand,
+  dollarSizedToken,
   parseFollowUp,
   containsActionVerb,
   fillSlot,
@@ -93,6 +94,7 @@ import {
   type ParseResult,
   type Slot,
 } from "@/lib/v2/intents/fromCommand";
+import { fetchUsdPrice } from "@/lib/market/usdPrice";
 import { arcLending } from "@/lib/lending/arcLending";
 
 /* Read once: the registry is generated at build time. */
@@ -1255,6 +1257,20 @@ export default function AgentPage() {
         }
       }
 
+      /* "$100 worth of cirBTC" (or of an Argus meme by address): read that token's
+         live price first, so the grammar converts dollars to an amount instead of
+         reading 100 as 100 tokens. No price → the grammar hands it to the model. */
+      const sized = askedAboutAction
+        ? null
+        : dollarSizedToken(content, vocabulary, parseCtx.addressToken);
+      if (sized) {
+        const usd = await fetchUsdPrice(sized.token, chainId);
+        if (usd !== null) {
+          parseCtx.usdPrice = (t) =>
+            t.address.toLowerCase() === sized.token.address.toLowerCase() ? usd : null;
+          note(`Priced ${sized.token.symbol} at $${usd.toPrecision(6)} to size $${sized.usd}`);
+        }
+      }
       const parsed: ParseResult = askedAboutAction
         ? { status: "unknown" }
         : parseCommand(content, vocabulary, parseCtx);
@@ -1988,6 +2004,30 @@ export default function AgentPage() {
    * decline, a revert, a manual-mode pause), and the mount below reads it back as
    * `startFrom`.
    */
+  /*
+   * Cancel, beside the sign button: the user has read the plan and does not want
+   * it. The plan comes off its message, so the button goes and a reload cannot
+   * bring it back, and a one-line note says what did (not) happen — a plan that
+   * silently vanishes reads like a glitch. Nothing is on-chain to undo: a halted
+   * plan's landed steps already have their own receipts.
+   */
+  const cancelPlan = () => {
+    const from = latest?.planFrom ?? 0;
+    setMessages((prev) => [
+      ...prev.map((m) =>
+        m === latest ? { ...m, plan: undefined, planFrom: undefined } : m,
+      ),
+      {
+        role: "assistant" as const,
+        text:
+          from > 0
+            ? `Cancelled. The first ${from} step${from === 1 ? "" : "s"} already went through; nothing after that was signed.`
+            : "Cancelled. Nothing was signed.",
+        via: "local" as const,
+      },
+    ]);
+  };
+
   const onHalt = (nextIndex: number) => {
     setMessages((prev) =>
       prev.map((m) => (m === latest ? { ...m, planFrom: nextIndex } : m)),
@@ -2433,13 +2473,22 @@ export default function AgentPage() {
               Hidden while a panel is open, because "Review 3 steps" above an open
               review is a button pointing at itself. */}
           {plan && panel.kind === "idle" ? (
-            <button
-              type="button"
-              className={s.ctaPlan}
-              onClick={() => setPanel({ kind: "plan" })}
-            >
-              {planLabel}
-            </button>
+            <div className={s.planRow}>
+              <button
+                type="button"
+                className={s.ctaPlan}
+                onClick={() => setPanel({ kind: "plan" })}
+              >
+                {planLabel}
+              </button>
+              <button
+                type="button"
+                className={s.ctaCancel}
+                onClick={cancelPlan}
+              >
+                Cancel
+              </button>
+            </div>
           ) : null}
 
           <div className={s.sendRow}>

@@ -1055,8 +1055,16 @@
    control, the stop control and the plan handoff at once, which is why it needed a
    disabled state, a hover-swap label and a busy variant; the send button owns the
    first two now and this owns nothing but the handoff. */
-.ctaPlan {
+/* Sign and Cancel side by side: the plan is an offer, and declining it is as
+   ordinary as accepting it. */
+.planRow {
+  display: flex;
+  gap: var(--k-s2);
   width: 100%;
+}
+.ctaPlan {
+  flex: 1;
+  min-width: 0;
   background: var(--k-brand);
   color: var(--k-brand-fg);
   border: 0;
@@ -1069,6 +1077,20 @@
 }
 .ctaPlan:hover {
   background: var(--k-brand-hover);
+}
+.ctaCancel {
+  flex: none;
+  background: var(--k-glass-deep, var(--k-card));
+  color: var(--k-t1);
+  border: 1px solid var(--k-line);
+  font: inherit;
+  font-size: var(--k-fs-base);
+  padding: 12px 20px;
+  border-radius: var(--k-r-lg);
+  cursor: pointer;
+}
+.ctaCancel:hover {
+  background: var(--k-row-hover);
 }
 
 /* The footnote under the field. `margin: 0 2px` rather than the old `10px 2px 0`
@@ -1194,7 +1216,7 @@
   .wide .composer {
     align-items: center;
   }
-  .wide .ctaPlan,
+  .wide .planRow,
   .wide .sendRow,
   .wide .foot {
     width: 100%;

@@ -1,4 +1,28 @@
 import { kyberSwapChainSlug } from "./kyberswap";
+import { ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
+import { readArgusLaunch, readArgusPoolState } from "@/lib/argus/launch";
+
+/** Argus quote assets that are a US dollar (native USDC, its 0x3600 mirror and the
+ *  wrapped-native 0x8c6c that wraps it 1:1). A launch quoted in anything else is
+ *  left unpriced rather than guessed. */
+const ARGUS_DOLLAR_QUOTES = new Set([
+  "0x0000000000000000000000000000000000000000",
+  "0x3600000000000000000000000000000000000000",
+  "0x8c6c0a4c5500c2bc196383b4d85feb7f08a5c75b",
+]);
+
+/**
+ * An Argus launch token's USD price from its own Uniswap v4 pool, for a meme the
+ * aggregator does not route yet ("sell $100 worth of <launch>"). Null when it is
+ * not a launch, the pool cannot be read, or the quote asset is not a dollar.
+ */
+async function argusPrice(address: string): Promise<number | null> {
+  const launch = await readArgusLaunch(address).catch(() => null);
+  if (!launch || !ARGUS_DOLLAR_QUOTES.has(launch.quoteAsset.toLowerCase())) return null;
+  const state = await readArgusPoolState(launch).catch(() => null);
+  const p = state?.pricePerTokenInQuote;
+  return typeof p === "number" && Number.isFinite(p) && p > 0 ? p : null;
+}
 
 /**
  * USD prices for arbitrary tokens on a KyberSwap chain, from the aggregator.
@@ -102,7 +126,11 @@ export async function dexTokenPrices(
   const usdc = QUOTE_USDC[chainId];
   if (!slug || !usdc || tokens.length === 0) return {};
 
-  const prices = await mapLimit(tokens, 5, (t) => priceOne(slug, usdc, t));
+  const prices = await mapLimit(tokens, 5, async (t) => {
+    const p = await priceOne(slug, usdc, t);
+    if (p !== null || chainId !== ARGUS_CHAIN_ID) return p;
+    return argusPrice(t.address);
+  });
   const out: Record<string, number> = {};
   tokens.forEach((t, i) => {
     const p = prices[i];
