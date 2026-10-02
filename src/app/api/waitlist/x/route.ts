@@ -169,7 +169,7 @@ export async function POST(req: Request) {
   // the claim through rather than falsely locking a legitimate task.
   /* Capped tasks claim atomically in the database (count + update under one
      advisory lock), so the cap is exact under a burst of claims — which
-     matters for the first-100 $ARGUS task at 1,000 kPoint each. */
+     matters for the first-100 $ARGUS task at 600 kPoint each. */
   const cap = capForColumn(col);
   if (cap !== undefined) {
     const { data: res, error: capErr } = await admin.rpc("claim_capped_x_task", {

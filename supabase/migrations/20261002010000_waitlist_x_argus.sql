@@ -1,4 +1,4 @@
--- Waitlist X: "RT & comment on the $ARGUS listing post" — +1000 kPoint, first
+-- Waitlist X: "RT & comment on the $ARGUS listing post" — +600 kPoint, first
 -- 100 wallets only. Claimed through claim_capped_x_task so the cap holds under
 -- concurrent claims (count + update under one advisory lock), unlike a
 -- count-then-update from the app.
@@ -8,7 +8,7 @@ alter table public.waitlist
   add column if not exists x_argus_at timestamptz;
 
 comment on column public.waitlist.x_argus_at is
-  'Attested RT + comment on the $ARGUS listing post; +1000 kPoint; first 100 wallets.';
+  'Attested RT + comment on the $ARGUS listing post; +600 kPoint; first 100 wallets.';
 
 create or replace function public.claim_capped_x_task(
   p_wallet text,

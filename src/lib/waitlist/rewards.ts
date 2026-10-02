@@ -9,7 +9,7 @@ export const WAITLIST_TASK_POINTS = {
   commented: 50,
   launch: 100,
   llama: 100,
-  argus: 1000,
+  argus: 600,
   arcMainnet: 300,
   agent: 500,
   bridge: 500,

@@ -60,7 +60,7 @@ const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 // The DefiLlama-listing post for the like & repost task. The task opens X's
 // repost intent for it (like + repost are one attested task); the env var still
 // overrides the id.
-/** The $ARGUS listing post: RT + comment, first 100 wallets get +1,000. */
+/** The $ARGUS listing post: RT + comment, first 100 wallets get +600. */
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
 const DEFILLAMA_TWEET_ID =
@@ -722,7 +722,7 @@ export default function WaitlistPage() {
                             ? "Closed · all 100 spots claimed"
                             : !status.xTasks.linked.done
                               ? "Link X first"
-                              : "First 100 wallets · +1,000 $kPoint"}
+                              : "First 100 wallets · +600 $kPoint"}
                       </span>
                     </div>
                     {status.xTasks.argus?.done ? (
