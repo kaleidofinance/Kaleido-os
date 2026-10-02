@@ -51,6 +51,12 @@ export interface ShareCardData {
   stats: ShareStat[];
   /** Chain name, or null when there is none to name. */
   network: string | null;
+  /** Where the money is, as shares summing to 1 — drawn as a thin bar under the
+   *  hero figure. Omitted or empty draws nothing. */
+  allocation?: { share: number; color: string }[];
+  /** A referral link printed in the footer instead of the bare domain, so every
+   *  shared card carries the sharer's invite. */
+  link?: string | null;
 }
 
 const W = 1080;
@@ -283,6 +289,24 @@ export async function drawShareCard(
   ctx.fillStyle = t1;
   ctx.fillText(d.netValue, PAD, 500);
 
+  /* -------------------------------------------------------------- allocation */
+  const slices = (d.allocation ?? []).filter((a) => a.share > 0);
+  if (slices.length) {
+    const by = 548;
+    const bh = 16;
+    let x = PAD;
+    ctx.save();
+    panel(ctx, PAD, by, INNER, bh, bh / 2);
+    ctx.clip();
+    for (const a of slices) {
+      const w = Math.max(4, a.share * INNER);
+      ctx.fillStyle = a.color;
+      ctx.fillRect(x, by, w, bh);
+      x += w;
+    }
+    ctx.restore();
+  }
+
   /* ------------------------------------------------------------------- stats */
   /* The panel is deep on purpose. 4:5 gives 1350px of height for one figure and
      four stats, and the first pass left ~200px of dead ground between the panel
@@ -334,8 +358,10 @@ export async function drawShareCard(
     ctx.fillText(d.network, PAD, H - PAD);
   }
   ctx.textAlign = "right";
-  ctx.fillStyle = t3;
-  ctx.fillText("kaleidofi.xyz", W - PAD, H - PAD);
+  const foot = d.link || "kaleidofi.xyz";
+  fitText(ctx, foot, 28, 400, family, d.network ? INNER / 2 : INNER);
+  ctx.fillStyle = d.link ? t1 : t3;
+  ctx.fillText(foot, W - PAD, H - PAD);
   ctx.textAlign = "left";
 
   return new Promise<Blob | null>((resolve) => {
