@@ -552,3 +552,10 @@
     min-width: 0;
   }
 }
+
+/* Hairline between position rows, matching the Overview cards. */
+.row + .row {
+  border-top: 1px solid var(--k-line);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
