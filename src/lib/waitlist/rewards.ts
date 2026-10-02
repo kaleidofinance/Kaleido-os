@@ -8,6 +8,7 @@ export const WAITLIST_TASK_POINTS = {
   retweeted: 100,
   commented: 50,
   launch: 100,
+  llama: 100,
   arcMainnet: 300,
   agent: 500,
   bridge: 500,
@@ -21,6 +22,7 @@ export interface WaitlistRewardRow {
   x_retweeted_at?: string | null;
   x_commented_at?: string | null;
   x_launch_at?: string | null;
+  x_llama_at?: string | null;
   arc_mainnet_tx_at?: string | null;
   agent_tx_at?: string | null;
   bridge_tx_at?: string | null;
@@ -84,6 +86,7 @@ export function projectWaitlistRewards(
     heldTask("Repost the Mainnet Launch post", WAITLIST_TASK_POINTS.retweeted, row.x_retweeted_at, now),
     heldTask("Comment on the launch post", WAITLIST_TASK_POINTS.commented, row.x_commented_at, now),
     heldTask("Like and repost the Mainnet Launch post", WAITLIST_TASK_POINTS.launch, row.x_launch_at, now),
+    heldTask("Like and repost the DefiLlama listing post", WAITLIST_TASK_POINTS.llama, row.x_llama_at, now),
     {
       task: "First Arc mainnet transaction",
       points: WAITLIST_TASK_POINTS.arcMainnet,
@@ -142,7 +145,7 @@ export async function readWaitlistRewardState(
     supabaseAdmin
       .from("waitlist")
       .select(
-        "welcome_points, activated_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at",
+        "welcome_points, activated_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at",
       )
       .eq("wallet", wallet)
       .maybeSingle<WaitlistRewardRow>(),
