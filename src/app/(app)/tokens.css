@@ -641,6 +641,21 @@
   }
 }
 
+/* The landing page's halftone dither, inside every glass card: a token-coloured
+   dot on a 5px grid (see (marketing)/layout.module.css). There it is a whole
+   layer at opacity .05; here it is one background layer, so the faintness goes
+   into the dot colour instead. Sub-pixel radii keep it a grain, not polka dots.
+   `!important` on the image only, because modules restyle hover with the
+   `background:` shorthand, which would otherwise wipe the texture mid-hover; the
+   fill colour stays theirs. Raised surfaces (modals, menus) stay plain. */
+.kaleido-v2 .k-glass {
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--k-t1) 7%, transparent) 0.6px,
+    transparent 0.9px
+  ) !important;
+  background-size: 5px 5px !important;
+}
+
 /* ------------------------------------------------------------------
  * Interaction.
  *
