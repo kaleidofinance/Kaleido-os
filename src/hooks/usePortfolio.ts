@@ -114,6 +114,9 @@ export interface Position {
   /** Annualised rate as a percentage, e.g. 14.2. Null where not applicable. */
   apy: number | null;
   state: PositionState;
+  /** Where to manage this position (a liquidity row opens its card on
+   *  /pool/positions). Rows without one are read-only. */
+  href?: string;
   /** The chain a wallet row is on. Set on Wallet rows, which the Tokens tab
    *  folds by token across chains. */
   chainId?: number;
@@ -314,8 +317,8 @@ export const usePortfolio = (): Portfolio => {
      holdings spot could not value on a KyberSwap chain, and use it as the
      fallback under `priceOf` below. */
   const dexTokens = useMemo(
-    () =>
-      holdings
+    () => [
+      ...holdings
         .filter(
           (h) =>
             !h.isNative &&
@@ -328,7 +331,26 @@ export const usePortfolio = (): Portfolio => {
           address: h.address,
           decimals: h.decimals,
         })),
-    [holdings, priceOf],
+      /* The legs of the connected chain's LP positions too: a pool leg the wallet
+         doesn't also hold (EURC, cirBTC on Arc) was never in this list, so the
+         position read "—" though the token trades. */
+      ...(v3Positions ?? []).flatMap((p) =>
+        [p.token0, p.token1]
+          .filter(
+            (a) =>
+              hasKyberSwap(walletChainId ?? 0) &&
+              ethers.isAddress(a) &&
+              priceOf(symbolForAddress(walletChainId, a) ?? "") === null &&
+              decimalsForAddress(walletChainId, a) !== undefined,
+          )
+          .map((a) => ({
+            chainId: walletChainId as number,
+            address: a,
+            decimals: decimalsForAddress(walletChainId, a) as number,
+          })),
+      ),
+    ],
+    [holdings, priceOf, v3Positions, walletChainId],
   );
   const dexPriceOf = useDexPrices(dexTokens);
 
@@ -711,15 +733,23 @@ export const usePortfolio = (): Portfolio => {
               decimals1,
             });
 
+        /* Spot first; then the wrapped native at par (WUSDC wraps native USDC
+           1:1 — the same assumption as ASSUMED_PAR in lib/points/prices.ts);
+           then the DEX price for an Arc leg no feed carries. */
+        const legPrice = (sym: string, addr: string) =>
+          priceOf(sym) ??
+          (sym === "WUSDC" ? 1 : null) ??
+          (walletChainId ? dexPriceOf(walletChainId, addr) : null);
         const valueUsd = positionValueUsd(
           amounts,
-          priceOf(symbol0),
-          priceOf(symbol1),
+          legPrice(symbol0, p.token0),
+          legPrice(symbol1, p.token1),
         );
 
         rows.push({
           id: `liquidity-${p.tokenId}`,
           kind: "liquidity",
+          href: `/pool/positions#position-${p.tokenId}`,
           label: `${symbol0} / ${symbol1}`,
           sublabel: `Liquidity · ${(Number(p.fee) / 10000).toFixed(2)}%`,
           amount: amounts
