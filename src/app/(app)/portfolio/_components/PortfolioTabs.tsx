@@ -6,7 +6,7 @@ import type { Alert, PositionGroup } from "@/hooks/usePortfolio";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import ChainIcon from "@/components/v2/ChainIcon";
 import { CHAINS_BY_ID } from "@/constants/chains";
-import { aggregateByToken, allocation, type TokenAggregate } from "@/lib/portfolio/aggregate";
+import { aggregateByToken, type TokenAggregate } from "@/lib/portfolio/aggregate";
 import t from "./PortfolioTabs.module.css";
 
 export type TabId = "overview" | "tokens" | "positions" | "activity" | "points";
@@ -60,83 +60,172 @@ export function Tabs({ value, onChange }: { value: TabId; onChange: (v: TabId) =
   );
 }
 
-/** Overview: where the money is, one card per product, and what needs attention. */
+/** Brand-ish colours for the allocation bars, by rank (largest first). */
+const RANK = ["#1de6a4", "#5b8cff", "#b18cff", "#f0b64a", "#ff7a90", "#8a8f98"];
+
+const clock = (ms: number) =>
+  new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+/**
+ * Overview, laid out the way Uniswap/Zerion read: one value card (figure, when it
+ * was read, Refresh), three action tiles, a facts row, then where the value sits
+ * by token, then the protocol summary and anything that needs attention.
+ */
 export function Overview({
+  netValue,
+  partial,
   groups,
   alerts,
   loading,
+  updatedAt,
+  onRefresh,
   onOpen,
 }: {
+  netValue: number | null;
+  partial: boolean;
   groups: PositionGroup[];
   alerts: Alert[];
   loading: boolean;
+  /** ms of the last completed read; null while the first is in flight. */
+  updatedAt: number | null;
+  onRefresh: () => void;
   onOpen: (tab: TabId) => void;
 }) {
-  const slices = allocation(groups);
+  const wallet = groups.find((g) => g.id === "wallet");
+  const tokens = aggregateByToken(wallet?.rows ?? []);
+  const networks = new Set((wallet?.rows ?? []).map((r) => r.chainId).filter(Boolean)).size;
+  const priced = tokens.reduce(
+    (s, tk) => s + tk.chains.reduce((a, c) => a + (c.valueUsd ?? 0), 0),
+    0,
+  );
+  const pricedTokens = tokens
+    .map((tk) => ({ tk, v: tk.chains.reduce((a, c) => a + (c.valueUsd ?? 0), 0) }))
+    .filter((x) => x.v > 0);
+  const top = pricedTokens.slice(0, 5);
+  const protocol = groups.filter((g) => g.id !== "wallet");
+
   return (
-    <div className={t.overview}>
-      {slices.length > 0 && (
-        <section className={t.alloc} aria-label="Allocation">
-          <div className={t.bar}>
-            {slices.map((sl) => (
-              <span
-                key={sl.id}
-                style={{ width: `${(sl.share * 100).toFixed(2)}%`, background: SLICE[sl.id] }}
-                title={`${sl.label} ${(sl.share * 100).toFixed(1)}%`}
-              />
-            ))}
+    <div className={t.ov}>
+      <section className={t.hero}>
+        <div className={t.heroTop}>
+          <span className={t.heroLabel}>Portfolio value</span>
+          <button className={t.refresh} onClick={onRefresh} disabled={loading}>
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+        <div
+          className={`${t.heroVal} tabular`}
+          title={partial ? "Excludes holdings with no price feed" : undefined}
+        >
+          {loading && netValue === null ? "…" : usd(netValue)}
+        </div>
+        <span className={t.heroSub}>
+          {updatedAt ? `Updated ${clock(updatedAt)}` : "Reading your wallet…"}
+        </span>
+      </section>
+
+      <div className={t.tiles}>
+        <Link href="/trade/agent" className={t.tile}>
+          <span className={t.tileIcon} aria-hidden>→</span>
+          Send
+        </Link>
+        <Link href="/trade/buy" className={t.tile}>
+          <span className={t.tileIcon} aria-hidden>+</span>
+          Buy
+        </Link>
+        <Link href="/trade/swap" className={t.tile}>
+          <span className={t.tileIcon} aria-hidden>⇄</span>
+          Swap
+        </Link>
+      </div>
+
+      <div className={t.facts}>
+        <div>
+          <span>Token holdings</span>
+          <b className="tabular">{tokens.length}</b>
+        </div>
+        <div>
+          <span>Networks</span>
+          <b className="tabular">{networks}</b>
+        </div>
+        <div>
+          <span>Priced holdings</span>
+          <b className="tabular">{usd(priced)}</b>
+        </div>
+      </div>
+
+      {top.length > 0 && (
+        <section className={t.allocCard} aria-label="Allocation">
+          <div className={t.cardHead}>
+            <span>Your allocation</span>
+            <small>By token value</small>
           </div>
-          <div className={t.legend}>
-            {slices.map((sl) => (
-              <span key={sl.id} className={t.lg}>
-                <i style={{ background: SLICE[sl.id] }} />
-                {sl.label}
-                <b className="tabular">{(sl.share * 100).toFixed(1)}%</b>
-              </span>
-            ))}
-          </div>
+          {top.map(({ tk, v }, i) => {
+            const share = priced > 0 ? v / priced : 0;
+            return (
+              <button key={tk.key} className={t.allocRow} onClick={() => onOpen("tokens")}>
+                <span className={`${t.icon} ${hasTokenIcon(tk.symbol) ? t.iconArt : ""}`}>
+                  <TokenIcon symbol={tk.symbol} size={32} fallback={tk.symbol.slice(0, 3)} />
+                </span>
+                <span className={t.allocBody}>
+                  <span className={t.allocLine}>
+                    <b>{tk.symbol}</b>
+                    <span className="tabular">
+                      {usd(v)} <small>{(share * 100).toFixed(1)}%</small>
+                    </span>
+                  </span>
+                  <span className={t.track}>
+                    <span style={{ width: `${Math.max(1, share * 100).toFixed(2)}%`, background: RANK[i] }} />
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+          {pricedTokens.length > top.length && (
+            <button className={t.more2} onClick={() => onOpen("tokens")}>
+              View all {tokens.length} tokens →
+            </button>
+          )}
         </section>
       )}
 
-      <div className={t.cards}>
-        {groups.map((g) => (
-          <button
-            key={g.id}
-            className={t.card}
-            onClick={() => onOpen(g.id === "wallet" ? "tokens" : "positions")}
-          >
-            <span className={t.cTitle}>
-              <i style={{ background: SLICE[g.id] }} />
-              {g.title}
-            </span>
-            <span className={`${t.cVal} tabular`}>{loading && g.rows.length === 0 ? "…" : usd(g.subtotalUsd)}</span>
-            <span className={t.cSub}>
-              {g.rows.length === 0
-                ? g.empty
-                : `${g.rows.length} ${g.rows.length === 1 ? "position" : "positions"}`}
-            </span>
-          </button>
-        ))}
-      </div>
+      <div className={t.split}>
+        <section className={t.allocCard}>
+          <div className={t.cardHead}>
+            <span>Positions</span>
+            <button className={t.linkBtn} onClick={() => onOpen("positions")}>Details →</button>
+          </div>
+          {protocol.map((g) => (
+            <button key={g.id} className={t.posRow} onClick={() => onOpen("positions")}>
+              <span>{g.title}</span>
+              <span className="tabular">
+                {g.rows.length === 0 ? <small>None</small> : usd(g.subtotalUsd)}
+              </span>
+            </button>
+          ))}
+        </section>
 
-      <section className={t.attn}>
-        <div className={t.attnTitle}>Needs attention</div>
-        {alerts.length === 0 ? (
-          <div className={t.calm}>Nothing needs attention.</div>
-        ) : (
-          alerts.map((a) => (
-            <a key={a.id} href={a.href ?? "#"} className={t.alert}>
-              <span className={`${t.aIcon} ${a.severity === "info" ? "" : t.aWarn}`}>
-                {a.severity === "info" ? "↑" : "!"}
-              </span>
-              <span>
-                <span className={t.alTitle}>{a.title}</span>
-                <span className={t.alDetail}>{a.detail}</span>
-              </span>
-            </a>
-          ))
-        )}
-      </section>
+        <section className={t.allocCard}>
+          <div className={t.cardHead}>
+            <span>Needs attention</span>
+          </div>
+          {alerts.length === 0 ? (
+            <div className={t.calmIn}>Nothing needs attention.</div>
+          ) : (
+            alerts.map((a) => (
+              <a key={a.id} href={a.href ?? "#"} className={t.alert}>
+                <span className={`${t.aIcon} ${a.severity === "info" ? "" : t.aWarn}`}>
+                  {a.severity === "info" ? "↑" : "!"}
+                </span>
+                <span>
+                  <span className={t.alTitle}>{a.title}</span>
+                  <span className={t.alDetail}>{a.detail}</span>
+                </span>
+              </a>
+            ))
+          )}
+        </section>
+      </div>
     </div>
   );
 }

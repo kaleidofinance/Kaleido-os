@@ -190,6 +190,8 @@ export interface Portfolio {
    */
   walletHoldings: ChainWalletHolding[];
   isLoading: boolean;
+  /** Re-read the wallet's balances on every chain (the Overview's Refresh). */
+  refresh: () => void;
 }
 
 /** Health factor below which we surface a liquidation warning. */
@@ -302,6 +304,7 @@ export const usePortfolio = (): Portfolio => {
     holdings,
     unread: unreadHoldings,
     loading: walletLoading,
+    refresh: refreshWallet,
   } = useWalletBalancesAcrossChains();
   const { priceOf, loading: pricesLoading } = useSpotPrices();
 
@@ -971,6 +974,7 @@ export const usePortfolio = (): Portfolio => {
     groups,
     alerts,
     walletHoldings: holdings,
+    refresh: refreshWallet,
     isLoading:
       Boolean(address) &&
       (stableLoading ||

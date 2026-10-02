@@ -486,7 +486,8 @@ const groups: PositionGroup[] = [
   },
 ];
 
-export const MOCK_PORTFOLIO: Portfolio = {
+/* Refresh stays the live one even in demo mode. */
+export const MOCK_PORTFOLIO: Omit<Portfolio, "refresh"> = {
   netValue: groups.reduce((acc, g) => acc + (g.subtotalUsd ?? 0), 0),
   /* False because every group priced in full — see the header. */
   netValuePartial: groups.some((g) => g.unpriced.length > 0),

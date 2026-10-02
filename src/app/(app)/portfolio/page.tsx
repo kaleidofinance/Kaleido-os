@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import Nav from "@/components/v2/Nav";
@@ -131,6 +131,12 @@ export default function PortfolioPage() {
      (tokens.css:29), and this <main> is inside it by construction. */
   const mainRef = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<TabId>("overview");
+  /* When the figures were last read: set each time a load completes, shown as
+     "Updated 10:23 AM" on the Overview. */
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!p.isLoading && address) setUpdatedAt(Date.now());
+  }, [p.isLoading, address]);
   const points = usePointsStanding(address ?? undefined);
 
   /*
@@ -332,57 +338,6 @@ export default function PortfolioPage() {
           <ChainGate product="portfolio" state={gate} />
         ) : (
           <>
-            <div>
-              {/*
-                `netValuePartial` is true whenever a group could not price
-                something it holds — a wallet with WBTC in it, a collateral figure
-                the oracle would not answer for — which makes this figure a floor
-                rather than a total. It used to say so in a sentence under the
-                number, and each group used to name its own gap under its table.
-                Neither does now: a product's headline figure is the headline
-                figure, and a paragraph of caveat under it reads as an apology for
-                the page. What is unpriced already shows as an em dash on the row
-                itself, which is where a reader is looking when they wonder. The
-                flag survives here as the number's own tooltip.
-              */}
-              <div
-                className={`${s.value} tabular`}
-                title={
-                  p.netValuePartial
-                    ? "Excludes holdings with no price feed"
-                    : undefined
-                }
-              >
-                {usd(p.netValue)}
-              </div>
-              <div className={s.eyebrow}>Net position</div>
-            </div>
-
-            <div className={s.strip}>
-              <div className={s.stat}>
-                <span className={s.sLabel}>Health factor</span>
-                <span className={`${s.sVal} tabular`}>
-                  {healthText(p.health)}
-                </span>
-              </div>
-              <div className={s.stat}>
-                <span className={s.sLabel}>Collateral</span>
-                <span className={`${s.sVal} tabular`}>
-                  {usd(p.collateralUsd, 0)}
-                </span>
-              </div>
-              <div className={s.stat}>
-                <span className={s.sLabel}>Borrowed</span>
-                <span className={`${s.sVal} tabular`}>{usd(p.debtUsd, 0)}</span>
-              </div>
-              <div className={s.stat}>
-                <span className={s.sLabel}>Unclaimed</span>
-                <span className={`${s.sVal} tabular`}>
-                  {usd(p.unclaimedYieldUsd)}
-                </span>
-              </div>
-            </div>
-
             <Tabs value={tab} onChange={setTab} />
 
             {/* Portfolio v2: one surface, three views. Wallet holdings live in
@@ -390,9 +345,13 @@ export default function PortfolioPage() {
                 protocol groups at full detail; Overview summarises both. */}
             {tab === "overview" && (
               <Overview
+                netValue={p.netValue}
+                partial={p.netValuePartial}
                 groups={p.groups}
                 alerts={p.alerts}
                 loading={p.isLoading}
+                updatedAt={updatedAt}
+                onRefresh={p.refresh}
                 onOpen={setTab}
               />
             )}
@@ -406,6 +365,31 @@ export default function PortfolioPage() {
             {tab === "activity" && <ActivityTab address={address ?? undefined} />}
             {tab === "positions" && (
               <div className={s.main}>
+              <div className={s.strip}>
+                <div className={s.stat}>
+                  <span className={s.sLabel}>Health factor</span>
+                  <span className={`${s.sVal} tabular`}>
+                    {healthText(p.health)}
+                  </span>
+                </div>
+                <div className={s.stat}>
+                  <span className={s.sLabel}>Collateral</span>
+                  <span className={`${s.sVal} tabular`}>
+                    {usd(p.collateralUsd, 0)}
+                  </span>
+                </div>
+                <div className={s.stat}>
+                  <span className={s.sLabel}>Borrowed</span>
+                  <span className={`${s.sVal} tabular`}>{usd(p.debtUsd, 0)}</span>
+                </div>
+                <div className={s.stat}>
+                  <span className={s.sLabel}>Unclaimed</span>
+                  <span className={`${s.sVal} tabular`}>
+                    {usd(p.unclaimedYieldUsd)}
+                  </span>
+                </div>
+              </div>
+
                 {p.groups
                   .filter((g) => g.id !== "wallet")
                   .map((g) => (
