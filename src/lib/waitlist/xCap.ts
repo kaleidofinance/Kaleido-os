@@ -26,7 +26,22 @@ export const X_TASK_CAP = 1000;
  */
 export const CAPPED_X_TASKS = {
   commented: "x_commented_at",
+  argus: "x_argus_at",
 } as const;
+
+/** Per-task claim cap. `commented` keeps the original X_TASK_CAP; the $ARGUS
+ *  listing task is first-100. */
+export const X_TASK_CAPS: Record<keyof typeof CAPPED_X_TASKS, number> = {
+  commented: X_TASK_CAP,
+  argus: 100,
+};
+
+/** The cap for a capped task column (undefined if the column is uncapped). */
+export const capForColumn = (col: string): number | undefined => {
+  const hit = (Object.entries(CAPPED_X_TASKS) as [keyof typeof CAPPED_X_TASKS, string][])
+    .find(([, c]) => c === col);
+  return hit ? X_TASK_CAPS[hit[0]] : undefined;
+};
 
 export type CappedTaskKey = keyof typeof CAPPED_X_TASKS;
 
@@ -37,6 +52,7 @@ export const isCappedColumn = (col: string): boolean => CAPPED_COLUMNS.has(col);
 
 const ALL_OPEN: Record<CappedTaskKey, boolean> = {
   commented: false,
+  argus: false,
 };
 
 // A task closes once and stays closed (new claims are rejected, so its count
@@ -63,7 +79,7 @@ export async function getClosedXTasks(): Promise<Record<CappedTaskKey, boolean>>
           .from("waitlist")
           .select("wallet", { count: "exact", head: true })
           .not(col, "is", null);
-        return [key, !error && (count ?? 0) >= X_TASK_CAP] as const;
+        return [key, !error && (count ?? 0) >= X_TASK_CAPS[key]] as const;
       },
     ),
   );

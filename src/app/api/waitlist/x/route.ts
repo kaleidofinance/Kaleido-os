@@ -2,7 +2,7 @@ import { verifyWalletSignature } from "@/lib/auth/verifyWalletSignature";
 import { cookies } from "next/headers";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
-import { X_TASK_CAP, isCappedColumn } from "@/lib/waitlist/xCap";
+import { capForColumn } from "@/lib/waitlist/xCap";
 
 /**
  * Waitlist X (Twitter) tasks: link an X account to the wallet, then attest the
@@ -21,8 +21,8 @@ import { X_TASK_CAP, isCappedColumn } from "@/lib/waitlist/xCap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama";
-const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama"];
+type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
   const { data: row } = await admin
     .from("waitlist")
     .select(
-      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at",
+      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at",
     )
     .eq("wallet", wallet)
     .single();
@@ -149,14 +149,15 @@ export async function POST(req: Request) {
   if (!row.x_linked_at)
     return Response.json({ error: "link X first" }, { status: 409 });
 
-  const COL: Record<"follow" | "retweet" | "comment" | "launch" | "llama", string> = {
+  const COL: Record<Exclude<Task, "link">, string> = {
     follow: "x_followed_at",
     retweet: "x_retweeted_at",
     comment: "x_commented_at",
     launch: "x_launch_at",
     llama: "x_llama_at",
+    argus: "x_argus_at",
   };
-  const col = COL[t as "follow" | "retweet" | "comment" | "launch" | "llama"];
+  const col = COL[t as Exclude<Task, "link">];
   const existing = row[col as keyof typeof row];
   if (existing) return Response.json({ ok: true, already: true });
 
@@ -166,16 +167,23 @@ export async function POST(req: Request) {
   // NEW claim — it never revokes a wallet that already earned the task. Counted
   // live (not cached) so enforcement can't lag. Fail-open: a count error lets
   // the claim through rather than falsely locking a legitimate task.
-  if (isCappedColumn(col)) {
-    const { count, error: capErr } = await admin
-      .from("waitlist")
-      .select("wallet", { count: "exact", head: true })
-      .not(col, "is", null);
-    if (!capErr && (count ?? 0) >= X_TASK_CAP)
-      return Response.json(
-        { error: "task closed", closed: true },
-        { status: 409 },
-      );
+  /* Capped tasks claim atomically in the database (count + update under one
+     advisory lock), so the cap is exact under a burst of claims — which
+     matters for the first-100 $ARGUS task at 600 kPoint each. */
+  const cap = capForColumn(col);
+  if (cap !== undefined) {
+    const { data: res, error: capErr } = await admin.rpc("claim_capped_x_task", {
+      p_wallet: wallet,
+      p_column: col,
+      p_cap: cap,
+    });
+    if (capErr) return Response.json({ error: "update failed" }, { status: 500 });
+    if (res === "closed")
+      return Response.json({ error: "task closed", closed: true }, { status: 409 });
+    if (res === "already") return Response.json({ ok: true, already: true });
+    if (res !== "claimed")
+      return Response.json({ error: "not registered" }, { status: 404 });
+    return Response.json({ ok: true });
   }
 
   const { error } = await admin
