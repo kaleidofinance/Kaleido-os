@@ -214,6 +214,10 @@
   padding: 14px;
   border-radius: var(--k-r-md);
 }
+.actRow {
+  grid-template-columns: 34px minmax(0, 1fr) auto 14px;
+  text-decoration: none;
+}
 .tokRow:hover {
   background: var(--k-row-hover);
 }
@@ -402,6 +406,9 @@ button.act {
   /* The badge stack moves under the name on a phone — the money keeps the right. */
   .stack {
     display: none;
+  }
+  .actRow {
+    grid-template-columns: 34px minmax(0, 1fr) auto 12px;
   }
   .detail {
     padding: 2px 10px 12px 10px;
