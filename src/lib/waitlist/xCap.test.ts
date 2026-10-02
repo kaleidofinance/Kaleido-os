@@ -36,6 +36,7 @@ check("launch is not capped", !("launch" in CAPPED_X_TASKS));
 check("comment column is capped", isCappedColumn("x_commented_at"));
 check("retweet column is NOT capped", !isCappedColumn("x_retweeted_at"));
 check("launch column is NOT capped", !isCappedColumn("x_launch_at"));
+check("llama column is NOT capped", !isCappedColumn("x_llama_at"));
 check("follow column is NOT capped", !isCappedColumn("x_followed_at"));
 check("link column is NOT capped", !isCappedColumn("x_linked_at"));
 check("an unknown column is not capped", !isCappedColumn("x_bitget_at"));

@@ -23,6 +23,7 @@ export type XTaskKey =
   | "retweeted"
   | "commented"
   | "launch"
+  | "llama"
   | "bitget";
 
 /** On-chain transaction task keys. `arcMainnet` was retired 2026-09-23 (farmable);

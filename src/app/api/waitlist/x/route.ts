@@ -21,8 +21,8 @@ import { X_TASK_CAP, isCappedColumn } from "@/lib/waitlist/xCap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet" | "comment" | "launch";
-const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch"];
+type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
   const { data: row } = await admin
     .from("waitlist")
     .select(
-      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at",
+      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at",
     )
     .eq("wallet", wallet)
     .single();
@@ -155,13 +155,14 @@ export async function POST(req: Request) {
   if (!row.x_linked_at)
     return Response.json({ error: "link X first" }, { status: 409 });
 
-  const COL: Record<"follow" | "retweet" | "comment" | "launch", string> = {
+  const COL: Record<"follow" | "retweet" | "comment" | "launch" | "llama", string> = {
     follow: "x_followed_at",
     retweet: "x_retweeted_at",
     comment: "x_commented_at",
     launch: "x_launch_at",
+    llama: "x_llama_at",
   };
-  const col = COL[t as "follow" | "retweet" | "comment" | "launch"];
+  const col = COL[t as "follow" | "retweet" | "comment" | "launch" | "llama"];
   const existing = row[col as keyof typeof row];
   if (existing) return Response.json({ ok: true, already: true });
 

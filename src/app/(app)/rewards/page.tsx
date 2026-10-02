@@ -48,7 +48,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -57,6 +57,10 @@ const X_HANDLE = "kaleido_finance";
 const ANNOUNCE_TWEET_ID =
   process.env.NEXT_PUBLIC_WAITLIST_ANNOUNCE_TWEET_ID ?? "2099572698380730531";
 const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
+// The DefiLlama-listing post for the like & repost task. Set the id in Vercel
+// (NEXT_PUBLIC_DEFILLAMA_TWEET_ID) once the post is live; until then the task
+// opens the Kaleido profile, where the post will be pinned.
+const DEFILLAMA_TWEET_ID = process.env.NEXT_PUBLIC_DEFILLAMA_TWEET_ID ?? "";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -99,11 +103,13 @@ export default function WaitlistPage() {
     retweet: boolean;
     comment: boolean;
     launch: boolean;
+    llama: boolean;
   }>({
     follow: false,
     retweet: false,
     comment: false,
     launch: false,
+    llama: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -377,7 +383,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -385,7 +391,11 @@ export default function WaitlistPage() {
             ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
-              : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
+              : task === "llama"
+                ? DEFILLAMA_TWEET_ID
+                  ? `https://x.com/${X_HANDLE}/status/${DEFILLAMA_TWEET_ID}`
+                  : `https://x.com/${X_HANDLE}`
+                : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
       window.open(url, "_blank", "noopener,noreferrer");
       setOpened((o) => ({ ...o, [task]: true }));
     },
@@ -772,6 +782,43 @@ export default function WaitlistPage() {
                       <button
                         className={s.taskBtn}
                         onClick={() => openIntent("launch")}
+                      >
+                        Open post
+                      </button>
+                    )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        Like &amp; repost the DefiLlama listing post
+                      </span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.llama?.done
+                          ? status.xTasks.llama.counted
+                            ? "Done"
+                            : "Done · counts within 5h"
+                          : !status.xTasks.linked.done
+                            ? "Link X first"
+                            : "+100 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.llama?.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : !status.xTasks.linked.done ? (
+                      <span className={s.taskLock}>🔒</span>
+                    ) : opened.llama ? (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => postXTask("llama")}
+                        disabled={xBusy === "llama"}
+                      >
+                        {xBusy === "llama" ? "…" : "Claim"}
+                      </button>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => openIntent("llama")}
                       >
                         Open post
                       </button>

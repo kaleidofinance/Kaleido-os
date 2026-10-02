@@ -25,6 +25,7 @@ export const X_TASK_POINTS = {
   retweeted: 100,
   commented: 50,
   launch: 100,
+  llama: 100,
   bitget: 100,
 } as const;
 
@@ -37,6 +38,7 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   retweeted: "x_retweeted_at",
   commented: "x_commented_at",
   launch: "x_launch_at",
+  llama: "x_llama_at",
   bitget: "x_bitget_at",
 };
 
