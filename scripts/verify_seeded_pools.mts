@@ -431,7 +431,16 @@ async function verify(rec: PoolRecord) {
     rec.token0.decimals,
     rec.token1.decimals,
   );
-  const quoteIs1 = /^(USDC|USDT|kfUSD|USDe)$/.test(rec.token1.symbol);
+  /* token1 is the quote when its symbol says dollar — or when it was SEEDED at $1
+     and token0 was not. The second case is Arc's wrapped native 0x8c6c, which
+     wraps USDC 1:1 but reports the stock WETH9 symbol "WETH"; by symbol alone the
+     checker took the dollar side for the asset and printed a -100% oracle gap. */
+  const usdOf = (raw: string | undefined) =>
+    raw ? Number(BigInt(raw)) / 1e18 : NaN;
+  const isDollar = (v: number) => Math.abs(v - 1) < 0.02;
+  const quoteIs1 =
+    /^(USDC|USDT|kfUSD|USDe)$/.test(rec.token1.symbol) ||
+    (isDollar(usdOf(rec.oracle?.usd1)) && !isDollar(usdOf(rec.oracle?.usd0)));
   const base = quoteIs1 ? rec.token0.symbol : rec.token1.symbol;
   const quote = quoteIs1 ? rec.token1.symbol : rec.token0.symbol;
   const now = quoteIs1 ? price : 1 / price;
@@ -498,9 +507,17 @@ async function verify(rec: PoolRecord) {
     for (const p of rec.positions) {
       /* The receipt comes first because it is the only thing that can supply a
          token id the record does not have — see `tokenIdFrom`. */
-      const tx = (await rpc(urls, "eth_getTransactionByHash", [p.tx])) as {
-        from?: string;
-      } | null;
+      /* An old transaction comes back as `null` (not an error) from a pruning
+         endpoint — rpc.mainnet.arc.io does this — so ask each endpoint in turn
+         until one has it. Without this the minter read as unknown and a position
+         still in the deployer's wallet was reported as having left it. */
+      let tx: { from?: string } | null = null;
+      for (const u of urls) {
+        tx = (await rpc([u], "eth_getTransactionByHash", [p.tx]).catch(
+          () => null,
+        )) as { from?: string } | null;
+        if (tx?.from) break;
+      }
       const receipt = await receiptOf(urls, p.tx);
       if (receipt?.blockNumber) {
         const b = Number(BigInt(receipt.blockNumber));
@@ -541,6 +558,9 @@ async function verify(rec: PoolRecord) {
       const minter = tx?.from ?? null;
       const held =
         minter !== null && String(owner).toLowerCase() === minter.toLowerCase();
+      /* No endpoint could serve the mint tx: the minter is unknown, which is a
+         gap in what we can read, not evidence the position moved. */
+      const minterUnknown = minter === null;
 
       /* A minted NFT that holds liquidity on the recorded ticks is itself proof
          the mint landed — a reverted one leaves nothing to read. So an unserved
@@ -559,7 +579,7 @@ async function verify(rec: PoolRecord) {
         `    #${idLabel} ${p.label.padEnd(11)} liq ${String(posLiq).padEnd(22)} ticks ${rangeOk ? "as recorded" : `${Number(pos[5])}..${Number(pos[6])} NOT as recorded`}`,
       );
       console.log(
-        `         pair ${pairOk ? "matches" : "MISMATCH"} · ${mintSays} · ${held ? `still held by its minter ${short(String(owner))}` : `owner ${short(String(owner))} is NOT the minter ${minter ? short(minter) : "unknown"}`}`,
+        `         pair ${pairOk ? "matches" : "MISMATCH"} · ${mintSays} · ${held ? `still held by its minter ${short(String(owner))}` : (minterUnknown ? `owner ${short(String(owner))}, minter unknown (no endpoint served the mint tx)` : `owner ${short(String(owner))} is NOT the minter ${short(minter)}`)}`,
       );
 
       if (posLiq === 0n) note(`position #${tokenId} holds no liquidity`);
@@ -567,7 +587,7 @@ async function verify(rec: PoolRecord) {
       if (!pairOk) note(`position #${tokenId} is on a different pair`);
       if (receipt !== null && receipt.status !== "0x1")
         note(`mint tx for #${tokenId} reverted (status ${receipt.status})`);
-      if (!held) note(`position #${tokenId} left its minter`);
+      if (!held && !minterUnknown) note(`position #${tokenId} left its minter`);
     }
   }
 
