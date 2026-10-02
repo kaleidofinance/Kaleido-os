@@ -306,6 +306,7 @@ export const GENERATED_SEEDED_POOLS: Record<number, string[]> = {
   5042: [
     "0x2D3a8369C1406E12756D69304e133c73E2555cd9",
     "0x542E6E2256270215d667ED43e65d4def8295164a",
+    "0x7FDE7f39e0A06B9A97fA71A82D26F766C7A616D4",
     "0x8a02d189B74cC725A632107Ef3A850F3cDd942Ca",
     "0xF885508ef332d8DC6b05Ac3afE4938d17473535A",
   ],
@@ -352,6 +353,7 @@ export const GENERATED_POOL_PAIRS: Record<number, [string, string][]> = {
   5042: [
     ["0x171a4217b86a807a64eb94757db6849fb4bdbaa0", "0x8c6c0a4c5500c2bc196383b4d85feb7f08a5c75b"],
     ["0x3600000000000000000000000000000000000000", "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1"],
+    ["0x3600000000000000000000000000000000000000", "0xece5ca8bf9220718e5727754026757512212cb3c"],
     ["0x8c6c0a4c5500c2bc196383b4d85feb7f08a5c75b", "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1"],
     ["0x8c6c0a4c5500c2bc196383b4d85feb7f08a5c75b", "0xece5ca8bf9220718e5727754026757512212cb3c"],
   ],
@@ -390,7 +392,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-10-02T21:47:28.587Z",
+  generatedAt: "2026-10-02T22:35:39.118Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -425,6 +427,7 @@ export const GENERATED_META: {
     "deployment-orders-bscTestnet.json",
     "deployment-orders-robinhoodTestnet.json",
     "deployment-orders-sepolia.json",
+    "deployment-pool-arcMainnet-USDC-ARGUS-10000.json",
     "deployment-pool-arcMainnet-USDC-EURC-500.json",
     "deployment-pool-arcMainnet-WETH-ARGUS-10000.json",
     "deployment-pool-arcMainnet-WETH-EURC-3000.json",
