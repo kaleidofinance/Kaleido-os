@@ -66,16 +66,32 @@ const FOLD_CHIP: Record<GroupId, boolean> = {
 function PositionRow({ p, fold }: { p: Position; fold: boolean }) {
   const toneClass =
     p.state.tone === "bad" ? s.bad : p.state.tone === "warn" ? s.warn : "";
-  return (
-    <div className={`${s.row} ${fold ? s.rowFold : ""}`}>
+  /* A pair ("WUSDC / EURC") gets both logos, overlapped, the way every DEX shows
+     a pool. Each side resolves on its own; a single token is unchanged. */
+  const pair = p.label.includes(" / ") ? p.label.split(" / ") : null;
+  const body = (
+    <>
       <div className={s.asset}>
-        <span className={`${s.icon} ${hasTokenIcon(p.label) ? s.iconArt : ""}`}>
-          <TokenIcon
-            symbol={p.label}
-            size={34}
-            fallback={p.label.slice(0, 3)}
-          />
-        </span>
+        {pair ? (
+          <span className={s.pairIcons}>
+            {pair.map((sym, i) => (
+              <span
+                key={i}
+                className={`${s.icon} ${s.pairIcon} ${hasTokenIcon(sym) ? s.iconArt : ""}`}
+              >
+                <TokenIcon symbol={sym} size={26} fallback={sym.slice(0, 3)} />
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className={`${s.icon} ${hasTokenIcon(p.label) ? s.iconArt : ""}`}>
+            <TokenIcon
+              symbol={p.label}
+              size={34}
+              fallback={p.label.slice(0, 3)}
+            />
+          </span>
+        )}
         <div>
           <div className={s.aName}>{p.label}</div>
           <div className={s.aSub}>{p.sublabel}</div>
@@ -118,7 +134,17 @@ function PositionRow({ p, fold }: { p: Position; fold: boolean }) {
         </div>
         <span className={`${s.badge} ${toneClass}`}>{p.state.text}</span>
       </div>
-    </div>
+    </>
+  );
+  const cls = `${s.row} ${fold ? s.rowFold : ""}`;
+  /* A row with somewhere to go is the link to it — a liquidity position opens
+     its card on /pool/positions (Collect, Add, Remove). */
+  return p.href ? (
+    <Link href={p.href} className={`${cls} ${s.rowLink}`} title="Manage this position">
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 

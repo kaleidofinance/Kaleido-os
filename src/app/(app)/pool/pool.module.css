@@ -1665,3 +1665,19 @@ a.txAction:hover {
   cursor: default;
 }
 
+
+/* Points column: the LP points rate, with a pill when a campaign boosts it. */
+.pointsCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.boost {
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  color: var(--k-brand-fg);
+  background: var(--k-brand);
+  border-radius: var(--k-r-pill);
+  padding: 2px 7px;
+}

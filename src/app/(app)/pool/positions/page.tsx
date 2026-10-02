@@ -423,7 +423,8 @@ function PositionCard({
   };
 
   return (
-    <div className={s.card}>
+    /* Anchored, so /portfolio's liquidity rows can open THIS position's card. */
+    <div className={s.card} id={`position-${p.tokenId}`}>
       <div className={s.cardTop}>
         <div className={s.pair}>
           <PairIcon symbol={symbolFor(p.token0)} />
@@ -632,6 +633,22 @@ export default function PositionsPage() {
      those — and their Collect button — while the Portfolio showed the fees as
      ready to claim. See lib/dex/visiblePositions. */
   const withActive = positionsToShow(positions);
+
+  /* Arriving from /portfolio as #position-<id>: the cards render after the read,
+     so the browser's own jump found nothing. Scroll once the card exists, and
+     flash it so the eye lands on the right one. */
+  const anchorReady = withActive.length;
+  useEffect(() => {
+    const id = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    if (!id.startsWith("position-")) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.animate?.(
+      [{ boxShadow: "0 0 0 2px var(--k-brand)" }, { boxShadow: "0 0 0 0 transparent" }],
+      { duration: 1800, easing: "ease-out" },
+    );
+  }, [anchorReady]);
 
   /* The third fact the two empty states below do not cover: a connected wallet
      on a chain with no PositionManager. `useV3Positions` reads nothing there, so
