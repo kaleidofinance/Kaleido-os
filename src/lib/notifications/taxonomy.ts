@@ -45,6 +45,9 @@ const BY_ACTION_TYPE: Record<string, Category> = {
   // Agent — Luca asking for something. The only category that can be actionable.
   permission_request: "agent",
   agent_action: "agent",
+
+  // System — Kaleido product updates and upgrades (announcements).
+  product_update: "system",
   plan_ready: "agent",
 };
 
