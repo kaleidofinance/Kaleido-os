@@ -6,6 +6,7 @@ import type { Alert, PositionGroup } from "@/hooks/usePortfolio";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import ChainIcon from "@/components/v2/ChainIcon";
 import TokenCoin from "@/components/v2/TokenCoin";
+import BalanceChart from "./BalanceChart";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import { aggregateByToken, type TokenAggregate } from "@/lib/portfolio/aggregate";
 import t from "./PortfolioTabs.module.css";
@@ -121,6 +122,14 @@ export function Overview({
         <span className={t.heroSub}>
           {updatedAt ? `Updated ${clock(updatedAt)}` : "Reading your wallet…"}
         </span>
+        <BalanceChart
+          netValue={netValue}
+          holdings={tokens.map((tk) => ({
+            symbol: tk.symbol,
+            amount: tk.amount,
+            valueUsd: tk.chains.reduce((a, c) => a + (c.valueUsd ?? 0), 0),
+          }))}
+        />
       </section>
 
       {/* Three actions, each its own colour, with the asset coin art (TokenCoin)
