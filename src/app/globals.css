@@ -107,3 +107,53 @@ input[type="number"] {
 .below03 {
   background: var(--k-neg);
 }
+
+/* ------------------------------------------------------------------
+ * Toasts (Sonner) as Kaleido cards.
+ *
+ * The <Toaster> renders outside the app's .kaleido-v2 wrapper, so the
+ * --k-* tokens aren't in scope here — these are the same values, written
+ * out, with the light theme keyed off <html data-theme> like tokens.css.
+ * ------------------------------------------------------------------ */
+[data-sonner-toast].k-toast {
+  --kt-bg: #1d1c1a;
+  --kt-line: rgba(255, 255, 255, 0.1);
+  --kt-t1: #ffffff;
+  --kt-t2: #a8a49b;
+  --kt-brand: #00b383;
+  --kt-brand-fg: #0b0b0a;
+  background: var(--kt-bg) !important;
+  border: 1px solid var(--kt-line) !important;
+  color: var(--kt-t1) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45) !important;
+  padding: 14px 16px !important;
+}
+:root[data-theme="light"] [data-sonner-toast].k-toast {
+  --kt-bg: #ffffff;
+  --kt-line: rgba(20, 20, 19, 0.1);
+  --kt-t1: #141413;
+  --kt-t2: #6d6b63;
+  --kt-brand: #12a866;
+  --kt-brand-fg: #ffffff;
+  box-shadow: 0 12px 32px rgba(20, 20, 19, 0.14) !important;
+}
+[data-sonner-toast].k-toast [data-title] {
+  color: var(--kt-t1) !important;
+  font-weight: 600;
+}
+[data-sonner-toast].k-toast [data-description] {
+  color: var(--kt-t2) !important;
+}
+[data-sonner-toast].k-toast [data-button] {
+  background: var(--kt-brand) !important;
+  color: var(--kt-brand-fg) !important;
+  border-radius: 999px !important;
+  font-weight: 600;
+  padding: 0 14px !important;
+}
+[data-sonner-toast].k-toast [data-close-button] {
+  background: var(--kt-bg) !important;
+  border-color: var(--kt-line) !important;
+  color: var(--kt-t2) !important;
+}

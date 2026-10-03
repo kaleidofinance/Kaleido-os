@@ -55,10 +55,15 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
               <main className="min-h-screen">
                 {children}
               </main>
+              {/* Styled as a Kaleido card (globals.css, .k-toast) rather than
+                  Sonner's white "rich colors": the toast is the same news as
+                  the notification panel and should look like it. */}
               <Toaster
-                richColors
                 position="top-right"
-                toastOptions={{ style: { zIndex: 100000 } }}
+                toastOptions={{
+                  className: "k-toast",
+                  style: { zIndex: 100000 },
+                }}
               />
             </NotificationsProvider>
           </Web3Modal>
