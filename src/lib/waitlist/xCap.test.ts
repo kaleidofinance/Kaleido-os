@@ -26,10 +26,11 @@ check("the cap is 1,000 claims", X_TASK_CAP === 1000);
 // capped.
 const capped = Object.keys(CAPPED_X_TASKS).sort();
 check(
-  "exactly argus + commented are capped",
-  JSON.stringify(capped) === JSON.stringify(["argus", "commented"]),
+  "exactly argus, argus2 + commented are capped",
+  JSON.stringify(capped) === JSON.stringify(["argus", "argus2", "commented"]),
 );
 check("argus is first-100", X_TASK_CAPS.argus === 100 && capForColumn("x_argus_at") === 100);
+check("argus batch 2 is 50", capForColumn("x_argus2_at") === 50);
 check("comment keeps the 1,000 cap", capForColumn("x_commented_at") === 1000);
 check("an uncapped column has no cap", capForColumn("x_llama_at") === undefined);
 check("linked is not capped", !("linked" in CAPPED_X_TASKS));
