@@ -85,7 +85,7 @@ console.log("\n— testnet keeps the full set, each reaching its surface —");
 {
   const EXPECTED = [
     ["claim everything from the faucet", "claimTestTokens"],
-    ["swap 500 USDC to KLD", "swap"],
+    ["swap 500 USDC to EURC", "swap"],
     ["stake 100 KLD", "stake"],
     ["mint 500 USDC", "mint"],
     ["lend 1,000 USDC at 10% for 60 days", "lend"],
@@ -131,11 +131,11 @@ console.log("\n— activity ranking: what you did last reorders the list —");
   /* A fresh wallet gets the default order — the first mainnet-valid entry. */
   const fresh = computeSuggestions({ showTestnets: false });
   check("a fresh wallet gets the default order", fresh[0] === "swap 100 USDC to EURC", fresh.join(" | "));
-  /* On testnet, just claimed from the faucet → the KLD swap that follows a claim
+  /* On testnet, just claimed from the faucet → the EURC swap that follows a claim (ac703f1 aligned it with Arc mainnet)
      is promoted. */
   const afterClaim = computeSuggestions({ showTestnets: true, recentKinds: ["claimTestTokens"] });
   check("after a faucet claim, the next step is promoted",
-    afterClaim[0] === "swap 500 USDC to KLD", afterClaim.join(" | "));
+    afterClaim[0] === "swap 500 USDC to EURC", afterClaim.join(" | "));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

@@ -303,6 +303,8 @@ export function docBySlug(slug: string): DocEntry | undefined {
  * a decision about it here.
  */
 export const UNPUBLISHED: Record<string, string> = {
+  "docs/guides/SAFE_ADMIN.md":
+    "An operator runbook for the admin Safe that owns the live Arc contracts: its address, how admin transactions are prepared and signed, and the order for adding the second signer and raising the threshold. Until that second signer exists, publishing the signing process and the single-signer state is a map to the one key that controls the protocol; none of it is for someone using the app.",
   "docs/product/token.md":
     "The supply table and the unlock curve. Written for this site and published until 2026-09-11, then withdrawn: the allocation is not something we have announced, and a docs page is an announcement whoever reads it first. It came down because the agent quoted it, but the agent was only reading what the site already served ungated — pulling the page is what actually closes it. Nothing else links here, and the roadmap covers what happens at TGE without naming the buckets. Its two figures went with it and are NOT recoverable from a config line: public/docs-media/token-supply.svg and unlock-curve.svg carried the same allocation in picture form and were served at 200 whether or not any page linked them, so hiding the page alone would have left the numbers up. They are deleted, hand-drawn, and have no generator, so re-publishing means one line in DOC_GROUPS, restoring the asks from this commit's diff, redrawing both figures, and `npm run gen:docs`.",
   "docs/README.md":

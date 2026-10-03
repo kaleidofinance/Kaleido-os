@@ -21,6 +21,9 @@ export interface ActivityItem {
   at: number;
   status: "pending" | "confirmed" | "reverted";
   source: "server" | "device";
+  /** The action's kind (intent kind for device entries, ledger source for
+   *  server ones), for the Type column and filter. */
+  kind?: string;
 }
 
 export interface ServerActivity {
@@ -49,6 +52,7 @@ export function fromServer(rows: ServerActivity[]): ActivityItem[] {
       return {
         id: `s-${hash ?? `${r.kind}-${at}`}`,
         title: TITLES[r.kind] ?? r.kind,
+        kind: r.kind,
         chainId: r.chainId,
         hash,
         at,
@@ -122,4 +126,59 @@ export function tidyTitle(title: string): string {
     if (!Number.isFinite(v)) return n;
     return String(Number(v.toPrecision(6)));
   });
+}
+
+/* ---------------- the activity table: type, amount, filters ---------------- */
+
+export type ActivityType = "swap" | "liquidity" | "lending" | "bridge" | "transfer" | "approve" | "rewards" | "other";
+
+export const ACTIVITY_TYPES: { key: ActivityType; label: string }[] = [
+  { key: "swap", label: "Swap" },
+  { key: "liquidity", label: "Liquidity" },
+  { key: "lending", label: "Lending" },
+  { key: "bridge", label: "Bridge" },
+  { key: "transfer", label: "Send" },
+  { key: "approve", label: "Approve" },
+  { key: "rewards", label: "Rewards" },
+  { key: "other", label: "Transaction" },
+];
+
+/** The Type column for a row: from its kind first, then its title's verb. */
+export function activityType(it: Pick<ActivityItem, "kind" | "title">): ActivityType {
+  const k = (it.kind ?? "").toLowerCase();
+  const t = it.title.toLowerCase();
+  const has = (re: RegExp) => re.test(k) || re.test(t);
+  if (has(/approv/)) return "approve";
+  if (has(/checkin|check-in|claim(?!yield)|reward|faucet|points/)) return "rewards";
+  if (has(/bridge|cctp/)) return "bridge";
+  if (has(/liquidity|\blp\b|position|collectfees|collect fees|range/)) return "liquidity";
+  if (has(/lend|borrow|repay|collateral|loan|withdraw|deposit|fill/)) return "lending";
+  if (has(/swap|wrap|buy|sell|order/)) return "swap";
+  if (has(/send|transfer/)) return "transfer";
+  return "other";
+}
+
+/** The first "<amount> <SYMBOL>" in a title ("Swap 0.00246701 cirBTC for USDC"
+ *  → 0.00246701 cirBTC). Null when the title names no amount. */
+export function activityAmount(title: string): { amount: string; symbol: string } | null {
+  const m = title.match(/(\d[\d,]*(?:\.\d+)?)\s+([A-Za-z][A-Za-z0-9.]{0,11})\b/);
+  return m ? { amount: m[1], symbol: m[2] } : null;
+}
+
+export type ActivityWindow = "all" | "24h" | "7d" | "30d";
+const WINDOW_MS: Record<ActivityWindow, number> = { all: Infinity, "24h": 86_400_000, "7d": 7 * 86_400_000, "30d": 30 * 86_400_000 };
+
+/** Type, time-window and free-text filters, as the table's filter row applies them. */
+export function filterActivity(
+  items: ActivityItem[],
+  f: { type: ActivityType | "all"; window: ActivityWindow; query: string },
+  now = Date.now(),
+): ActivityItem[] {
+  const q = f.query.trim().toLowerCase();
+  return items.filter(
+    (it) =>
+      (f.type === "all" || activityType(it) === f.type) &&
+      now - it.at <= WINDOW_MS[f.window] &&
+      (!q || it.title.toLowerCase().includes(q) || (it.hash ?? "").toLowerCase().includes(q)),
+  );
 }
