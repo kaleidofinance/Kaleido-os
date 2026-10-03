@@ -2354,7 +2354,7 @@ export default function AgentPage() {
                                   )}
                                 </div>
                                 <span className={s.stepMeta}>
-                                  {v.chain ?? "—"}
+                                  {v.chain ?? ""}
                                 </span>
                               </li>
                             ))}

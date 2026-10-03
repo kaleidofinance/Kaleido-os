@@ -72,3 +72,54 @@ export function mergeActivity(server: ActivityItem[], device: ActivityItem[], li
   }
   return out.sort((a, b) => b.at - a.at).slice(0, limit);
 }
+
+/**
+ * Activity grouped by calendar day (local time), newest first, the way wallet
+ * history lists read: "Today", "Yesterday", then "Mon, Sep 29" style dates (with
+ * the year only when it is not this year). Items keep their order inside a day.
+ */
+export function groupByDay(
+  items: ActivityItem[],
+  now = Date.now(),
+): { key: string; label: string; items: ActivityItem[] }[] {
+  const dayKey = (ms: number) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+  const today = dayKey(now);
+  const yesterday = dayKey(now - 86_400_000);
+  const thisYear = new Date(now).getFullYear();
+  const out: { key: string; label: string; items: ActivityItem[] }[] = [];
+  for (const it of items) {
+    const k = dayKey(it.at);
+    let g = out[out.length - 1];
+    if (!g || g.key !== k) {
+      const d = new Date(it.at);
+      const label =
+        k === today
+          ? "Today"
+          : k === yesterday
+            ? "Yesterday"
+            : d.toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                ...(d.getFullYear() !== thisYear ? { year: "numeric" } : {}),
+              });
+      g = { key: k, label, items: [] };
+      out.push(g);
+    }
+    g.items.push(it);
+  }
+  return out;
+}
+
+/** Long raw amounts in a title ("2.362785936882168666 LIFT") cut to 6
+ *  significant digits ("2.36279 LIFT"). Whole numbers and short decimals stay. */
+export function tidyTitle(title: string): string {
+  return title.replace(/\b\d+\.\d{7,}\b/g, (n) => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return n;
+    return String(Number(v.toPrecision(6)));
+  });
+}

@@ -504,12 +504,16 @@ button.act {
   --tile-accent: #b18cff;
   --tile-fg: #c9b0ff;
 }
+/* The art sits on the right edge: text first in the row, art pushed over and
+   drawn after it (order), so the label keeps the card's leading edge. */
 .tileArt {
+  order: 2;
+  margin-left: auto;
   flex: none;
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
+  width: 84px;
+  height: 84px;
   border-radius: 16px;
   background: radial-gradient(circle, color-mix(in srgb, var(--tile-accent) 30%, transparent), transparent 70%);
 }
@@ -517,8 +521,12 @@ button.act {
   display: flex;
   justify-content: center;
 }
+.tileArtPair {
+  width: auto;
+  min-width: 84px;
+}
 .tileArtPair > * + * {
-  margin-left: -16px;
+  margin-left: -22px;
 }
 .tileText {
   display: flex;
@@ -680,8 +688,14 @@ button.act {
     gap: 8px;
   }
   .tileArt {
-    width: 44px;
-    height: 44px;
+    order: 0;
+    margin-left: 0;
+    width: 48px;
+    height: 48px;
+  }
+  /* The coins render at desktop size; scale them to the phone tile. */
+  .tileArt > * {
+    transform: scale(0.72);
   }
 }
 
@@ -699,4 +713,22 @@ button.act {
 }
 .alert + .alert {
   margin-top: 0;
+}
+
+/* Activity grouped by day: a date header over each day's card. */
+.days {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s4);
+}
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+.dayHead {
+  margin: 0 4px;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t2);
 }

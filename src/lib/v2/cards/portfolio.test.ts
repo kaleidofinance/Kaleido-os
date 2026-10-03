@@ -243,7 +243,7 @@ console.log("\n— holdings with no price feed at all —");
   );
   check("never writes a null total as zero", !a.text.includes("$0"), a.text);
   check("says there is no total", /no total/i.test(a.text), a.text);
-  check("the figure is an em dash", card(a, "metric").value === "—");
+  check("an unknown figure renders as 0 (product decision 2026-10-03)", card(a, "metric").value === "$0.00");
   check(
     "the note names what could not be summed",
     card(a, "metric").note?.includes("KLD"),

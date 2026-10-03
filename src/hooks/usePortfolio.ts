@@ -109,7 +109,7 @@ export interface Position {
   sublabel: string;
   /** Human-readable token amount. Null where the position isn't denominated in one token. */
   amount: string | null;
-  /** USD value. Null means genuinely unknown — render "—", never 0. */
+  /** USD value. Null means genuinely unknown (the page renders it as $0.00 — product decision 2026-10-03). */
   valueUsd: number | null;
   /** Annualised rate as a percentage, e.g. 14.2. Null where not applicable. */
   apy: number | null;
@@ -468,7 +468,7 @@ export const usePortfolio = (): Portfolio => {
         kind: "loan",
         label: symbol,
         sublabel: `${chainName} · Lent`,
-        amount: outstanding === null ? null : shortAmount(outstanding, "—"),
+        amount: outstanding === null ? null : shortAmount(outstanding, "0"),
         valueUsd:
           outstanding === null || price === null ? null : outstanding * price,
         apy: convertbasisPointsToPercentage(l.interestBps),
@@ -495,7 +495,7 @@ export const usePortfolio = (): Portfolio => {
         kind: "offer",
         label: symbol,
         sublabel: `${chainName} · Offer`,
-        amount: amount === null ? null : shortAmount(amount, "—"),
+        amount: amount === null ? null : shortAmount(amount, "0"),
         valueUsd: amount === null || price === null ? null : amount * price,
         apy: convertbasisPointsToPercentage(o.interestBps),
         /* Not "ok" even when live: an unfilled offer is capital sitting in the
@@ -539,7 +539,7 @@ export const usePortfolio = (): Portfolio => {
           kind: "collateral",
           label: col.symbol,
           sublabel: `${chainName} · Collateral`,
-          amount: shortAmount(col.amount, "—"),
+          amount: shortAmount(col.amount, "0"),
           /* Priced by the diamond's own oracle (getUsdValue), the same source
              the subtotal and the health factor use, so the column agrees with
              both. */
@@ -558,7 +558,7 @@ export const usePortfolio = (): Portfolio => {
           kind: "debt",
           label: d.symbol,
           sublabel: `${chainName} · Borrowed`,
-          amount: shortAmount(d.outstanding, "—"),
+          amount: shortAmount(d.outstanding, "0"),
           /* Negative: a liability in the one-addition netValue. */
           valueUsd: d.usd === null ? null : -d.usd,
           apy: convertbasisPointsToPercentage(d.interestBps),
@@ -716,6 +716,14 @@ export const usePortfolio = (): Portfolio => {
       const knownDecimals =
         decimals0 !== undefined && decimals1 !== undefined;
 
+      /* Spot first; then the wrapped native at par (WUSDC wraps native USDC 1:1 —
+         the same assumption as ASSUMED_PAR in lib/points/prices.ts); then the DEX
+         price for an Arc leg no feed carries. Shared by the capital and fee rows. */
+      const legPrice = (sym: string, addr: string) =>
+        priceOf(sym) ??
+        (sym === "WUSDC" ? 1 : null) ??
+        (walletChainId ? dexPriceOf(walletChainId, addr) : null);
+
       /* The capital row. A fully-withdrawn position (liquidity 0) still exists as
          an NFT and may still hold uncollected fees — but it holds no CAPITAL, so
          it contributes no liquidity row. Its fees are handled by the fee row
@@ -733,13 +741,6 @@ export const usePortfolio = (): Portfolio => {
               decimals1,
             });
 
-        /* Spot first; then the wrapped native at par (WUSDC wraps native USDC
-           1:1 — the same assumption as ASSUMED_PAR in lib/points/prices.ts);
-           then the DEX price for an Arc leg no feed carries. */
-        const legPrice = (sym: string, addr: string) =>
-          priceOf(sym) ??
-          (sym === "WUSDC" ? 1 : null) ??
-          (walletChainId ? dexPriceOf(walletChainId, addr) : null);
         const valueUsd = positionValueUsd(
           amounts,
           legPrice(symbol0, p.token0),
@@ -753,9 +754,9 @@ export const usePortfolio = (): Portfolio => {
           label: `${symbol0} / ${symbol1}`,
           sublabel: `Liquidity · ${(Number(p.fee) / 10000).toFixed(2)}%`,
           amount: amounts
-            ? `${shortAmount(amounts.amount0, "—")} ${symbol0} + ${shortAmount(
+            ? `${shortAmount(amounts.amount0, "0")} ${symbol0} + ${shortAmount(
                 amounts.amount1,
-                "—",
+                "0",
               )} ${symbol1}`
             : null,
           valueUsd,
@@ -799,8 +800,8 @@ export const usePortfolio = (): Portfolio => {
           amount0 === null || amount1 === null
             ? null
             : { amount0, amount1 },
-          priceOf(symbol0),
-          priceOf(symbol1),
+          legPrice(symbol0, p.token0),
+          legPrice(symbol1, p.token1),
         );
 
         rows.push({
@@ -810,9 +811,9 @@ export const usePortfolio = (): Portfolio => {
           sublabel: "Uncollected fees",
           amount:
             amount0 !== null && amount1 !== null
-              ? `${shortAmount(amount0, "—")} ${symbol0} + ${shortAmount(
+              ? `${shortAmount(amount0, "0")} ${symbol0} + ${shortAmount(
                   amount1,
-                  "—",
+                  "0",
                 )} ${symbol1}`
               : null,
           valueUsd,

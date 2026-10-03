@@ -248,7 +248,7 @@ export const useBorrowV2 = (formChainId?: number): BorrowV2 => {
              until the address cutover, and that table held Abstract literals —
              so after the cutover every row on every deployed chain rendered its
              currency as "—". */
-          symbol: declaredSymbol(readChain, r.tokenAddress) ?? "—",
+          symbol: declaredSymbol(readChain, r.tokenAddress) ?? "",
           status: r.status,
           overdue: Number(r.returnDate) > 0 && Number(r.returnDate) < now,
         };

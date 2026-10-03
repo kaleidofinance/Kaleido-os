@@ -154,7 +154,7 @@ export default function PriceChart({
             <TokenIcon
               symbol={symbol}
               size={22}
-              fallback={(symbol ?? "—").slice(0, 3)}
+              fallback={(symbol ?? "").slice(0, 3)}
             />
           </span>
           <span className={s.symbol}>{symbol ?? "No token"}</span>

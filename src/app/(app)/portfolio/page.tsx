@@ -22,19 +22,18 @@ import { drawShareCard } from "./shareCard";
 import s from "./portfolio.module.css";
 
 const usd = (n: number | null, dp = 2) =>
-  n === null
-    ? "—"
-    : n.toLocaleString("en-US", {
+  (n ?? 0).toLocaleString("en-US", {
         style: "currency",
         currency: "USD",
         minimumFractionDigits: dp,
         maximumFractionDigits: dp,
       });
 
-const pct = (n: number | null) => (n === null ? "—" : `${n.toFixed(2)}%`);
+const pct = (n: number | null) => `${(n ?? 0).toFixed(2)}%`;
 
 const healthText = (h: number | null) =>
-  h === null ? "—" : h === Infinity ? "∞" : h.toFixed(2);
+  /* Never 0.00 for "unknown": a zero health factor reads as liquidation. */
+  h === null || h === Infinity ? "∞" : h.toFixed(2);
 
 /**
  * Which tables fold their status chip up beside the money on a phone, instead of

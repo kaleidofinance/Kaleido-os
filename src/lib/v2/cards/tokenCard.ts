@@ -79,7 +79,7 @@ export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
  * launch token at 4.1e-5 reads "$0.00004103", not "$4.103e-5".
  */
 export function formatUsdPrice(p: number): string {
-  if (!Number.isFinite(p) || p <= 0) return "—";
+  if (!Number.isFinite(p) || p <= 0) return "0";
   if (p >= 1) {
     return `$${p.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   }
@@ -90,7 +90,7 @@ export function formatUsdPrice(p: number): string {
 
 /** "$1.2K", "$3.4M" — market caps are read at a glance, not to the cent. */
 export function formatUsdCompact(v: number): string {
-  if (!Number.isFinite(v) || v <= 0) return "—";
+  if (!Number.isFinite(v) || v <= 0) return "0";
   return `$${new Intl.NumberFormat("en-US", {
     notation: "compact",
     maximumFractionDigits: 1,

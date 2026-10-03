@@ -17,11 +17,11 @@
 /**
  * What an unmeasured figure renders as.
  *
- * Never "$0". A zero is a measurement, and a reader has no way to tell an empty
- * book from an unreachable one when both render as one — the whole reason every
- * field of `MarketOverview` is nullable.
+ * Product decision 2026-10-03: a figure with no value reads as zero, not as an
+ * em dash ("no apy and others can just show 0"). The formatters below render
+ * their own zero ($0, 0, 0.00%); DASH is the bare fallback for anything else.
  */
-export const DASH = "—";
+export const DASH = "0";
 
 export const usd = (n: number | null | undefined, dp = 0) =>
   typeof n === "number" && Number.isFinite(n)
@@ -31,7 +31,12 @@ export const usd = (n: number | null | undefined, dp = 0) =>
         minimumFractionDigits: dp,
         maximumFractionDigits: dp,
       })
-    : DASH;
+    : (0).toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: dp,
+        maximumFractionDigits: dp,
+      });
 
 /** Counts and token quantities. The unit lives in the label, not the value. */
 export const qty = (n: number | null | undefined, dp = 0) =>
@@ -43,7 +48,7 @@ export const qty = (n: number | null | undefined, dp = 0) =>
     : DASH;
 
 export const pct = (n: number | null | undefined, dp = 2) =>
-  typeof n === "number" && Number.isFinite(n) ? `${n.toFixed(dp)}%` : DASH;
+  `${(typeof n === "number" && Number.isFinite(n) ? n : 0).toFixed(dp)}%`;
 
 /**
  * A token amount at a readable precision, scaled to its size.

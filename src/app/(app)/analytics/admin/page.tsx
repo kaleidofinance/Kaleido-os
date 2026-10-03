@@ -19,11 +19,11 @@ import s from "../analytics.module.css";
 type Proof = { address: string; signature: string; ts: number };
 
 const secs = (ms: number | null | undefined) =>
-  typeof ms === "number" ? `${(ms / 1000).toFixed(1)}s` : "—";
+  typeof ms === "number" ? `${(ms / 1000).toFixed(1)}s` : "0";
 
 /** Human-readable age from a second count. */
 const dur = (sec: number | null | undefined) => {
-  if (typeof sec !== "number" || !Number.isFinite(sec)) return "—";
+  if (typeof sec !== "number" || !Number.isFinite(sec)) return "0";
   if (sec < 90) return `${sec}s`;
   if (sec < 5400) return `${Math.round(sec / 60)}m`;
   if (sec < 172800) return `${Math.round(sec / 3600)}h`;

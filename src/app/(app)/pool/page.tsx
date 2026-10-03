@@ -217,7 +217,6 @@ export default function PoolsPage() {
           <span>Pool</span>
           <span className={s.right}>TVL</span>
           <span className={s.right}>APR</span>
-          <span className={s.right}>Points</span>
           <span className={s.right}>Volume</span>
           <span className={s.right}>Fees</span>
           {/* Deliberately unlabelled: the column holds one button that says what it
@@ -298,20 +297,21 @@ export default function PoolsPage() {
                 </div>
               </Link>
               <span className={`${s.right} tabular`}>{usd(p.liquidity)}</span>
-              <span className={`${s.right} tabular`}>{pct(p.apr)}</span>
-              {/* Season 1 points for in-range liquidity: Kaleido V3 pools on the
-                  chain the points-lp cron reads. Elsewhere, nothing is paid. */}
-              <span className={`${s.right} tabular`}>
+              {/* APR, with a Points pill on pools that earn Season 1 points (in-range
+                  liquidity in Kaleido V3 pools on the chain the points-lp cron
+                  reads) — the badge convention the big DEX tables use. The rate is
+                  in the pill's tooltip rather than spelled out in the cell. */}
+              <span className={`${s.right} tabular ${s.aprCell}`}>
+                {pct(p.apr)}
                 {lpPoints && p.version === "v3" && p.chainId === lpPoints.chainId ? (
-                  <span className={s.pointsCell} title="Season 1 points per $1 of in-range liquidity per day">
-                    {lpPoints.boost > 1 ? (
-                      <span className={s.boost}>{lpPoints.boost}×</span>
-                    ) : null}
-                    {lpPoints.perUsdPerDay.toLocaleString("en-US", { maximumFractionDigits: 2 })} pts/$/day
+                  <span
+                    className={s.pointsPill}
+                    title={`Earns ${lpPoints.perUsdPerDay.toLocaleString("en-US", { maximumFractionDigits: 2 })} Season 1 points per $1 of in-range liquidity per day${lpPoints.boost > 1 ? ` (${lpPoints.boost}× campaign boost)` : ""}`}
+                  >
+                    <span className={s.pointsMark} aria-hidden />
+                    {lpPoints.boost > 1 ? `${lpPoints.boost}× ` : ""}kPoints
                   </span>
-                ) : (
-                  DASH
-                )}
+                ) : null}
               </span>
               {/* All-time, not 24h: our pools are young and thin, so a 24h
                   window was empty on nearly every row. Totals come from the

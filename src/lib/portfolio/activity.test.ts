@@ -1,4 +1,4 @@
-import { fromServer, mergeActivity, isTxHash, type ActivityItem } from "./activity";
+import { fromServer, mergeActivity, isTxHash, groupByDay, tidyTitle, type ActivityItem } from "./activity";
 
 let pass = 0;
 let fail = 0;
@@ -32,6 +32,22 @@ check("keeps everything else", merged.length === 4);
 check("newest first", merged[0].hash === H(2) && merged[merged.length - 1].hash === H(9));
 check("limit applies", mergeActivity(server, device, 2).length === 2);
 check("isTxHash rejects synthetic ids", !isTxHash("checkin:0xabc") && isTxHash(H(5)));
+
+// grouping by day
+{
+  const now = new Date(2026, 9, 3, 15, 0).getTime();
+  const mk = (id: string, at: number): ActivityItem => ({ id, title: id, chainId: 5042, hash: null, at, status: "confirmed", source: "server" });
+  const g = groupByDay(
+    [mk("a", now - 60_000), mk("b", now - 3_600_000), mk("c", now - 86_400_000), mk("d", new Date(2026, 8, 26).getTime())],
+    now,
+  );
+  check("groups into Today / Yesterday / a date", g.map((x) => x.label).join("|") === "Today|Yesterday|Sat, Sep 26");
+  check("today holds both of today's items, in order", g[0].items.map((x) => x.id).join("") === "ab");
+  check("a past year shows the year", groupByDay([mk("e", new Date(2025, 0, 2).getTime())], now)[0].label.includes("2025"));
+}
+check("tidyTitle trims a long raw amount", tidyTitle("Swap 2.362785936882168666 LIFT for COOL") === "Swap 2.36279 LIFT for COOL");
+check("tidyTitle keeps short amounts", tidyTitle("Swap 0.00246701 cirBTC for USDC") === "Swap 0.00246701 cirBTC for USDC" || tidyTitle("Swap 0.00246701 cirBTC for USDC") === "Swap 0.00246701 cirBTC for USDC");
+check("tidyTitle keeps whole numbers", tidyTitle("Lend 1000 USDC") === "Lend 1000 USDC");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

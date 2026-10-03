@@ -106,7 +106,7 @@ export default function AnalyticsPage() {
               label="Handled rate"
               value={pct(l ? l.handledRate * 100 : null, 1)}
             />
-            <Stat label="Avg latency" value={l?.avgLatencyMs != null ? `${(l.avgLatencyMs / 1000).toFixed(1)}s` : "—"} />
+            <Stat label="Avg latency" value={l?.avgLatencyMs != null ? `${(l.avgLatencyMs / 1000).toFixed(1)}s` : "0"} />
           </StatStrip>
         </section>
 

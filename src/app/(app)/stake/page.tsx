@@ -12,7 +12,7 @@ import { chainTokenBySymbol } from "@/constants/tokens";
 import s from "./stake.module.css";
 
 const fmt = (n: number | null, dp = 2) =>
-  n === null ? "—" : n.toLocaleString("en-US", { maximumFractionDigits: dp });
+  n === null ? "0" : n.toLocaleString("en-US", { maximumFractionDigits: dp });
 
 /** Cooldown countdown, e.g. "13d 4h" or "2h 15m". */
 const fmtCooldown = (secs: number) => {
@@ -30,7 +30,7 @@ const fmtCooldown = (secs: number) => {
  */
 const fmtYield = (index: number | null) =>
   index === null
-    ? "—"
+    ? "0"
     : `${index >= 1 ? "+" : ""}${((index - 1) * 100).toFixed(2)}%`;
 
 export default function StakePage() {

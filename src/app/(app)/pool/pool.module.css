@@ -275,7 +275,7 @@
    own width (13px text in 15px of horizontal padding) with nothing spare. */
 .pools .thead,
 .pools .row {
-  grid-template-columns: minmax(260px, 1.8fr) 1fr 1fr 1fr 1fr 0.8fr 96px;
+  grid-template-columns: minmax(260px, 1.8fr) 1fr 1.5fr 1fr 1fr 96px;
 }
 .row {
   display: grid;
@@ -1668,18 +1668,33 @@ a.txAction:hover {
 }
 
 
-/* Points column: the LP points rate, with a pill when a campaign boosts it. */
-.pointsCell {
+/* APR cell with the kPoints pill beside it: the Kaleido mark + "kPoints", in
+   our own brand green (not another DEX's lime). */
+.aprCell {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: flex-end;
+  gap: 8px;
   white-space: nowrap;
 }
-.boost {
-  font-size: var(--k-fs-xs);
+.pointsPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
   font-weight: var(--k-fw-med);
-  color: var(--k-brand-fg);
-  background: var(--k-brand);
+  line-height: 1;
+  color: var(--k-brand);
+  background: var(--k-brand-dim);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-brand) 35%, transparent);
   border-radius: var(--k-r-pill);
-  padding: 2px 7px;
+  padding: 3px 9px 3px 4px;
+  cursor: help;
+}
+.pointsMark {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #04170f url("/newklogo2.png") center / cover no-repeat;
+  flex: none;
 }

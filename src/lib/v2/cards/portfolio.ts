@@ -48,7 +48,8 @@ const healthTone = (h: number | null): CardTone =>
 
 /** Matches /portfolio's own header: ∞ where there is no debt to divide by. */
 const healthText = (h: number | null): string =>
-  h === null ? DASH : h === Infinity ? "∞" : h.toFixed(2);
+  /* Never "0" for unknown: a zero health factor reads as liquidation. */
+  h === null || h === Infinity ? "∞" : h.toFixed(2);
 
 /**
  * Health as a gauge — full and green when safe, a red sliver near liquidation.

@@ -1067,7 +1067,7 @@ export default function NewPositionPage() {
             <span>
               Balance{" "}
               {unread0
-                ? "—"
+                ? "0"
                 : Number(balance0).toLocaleString(undefined, {
                     maximumFractionDigits: 4,
                   })}
@@ -1119,7 +1119,7 @@ export default function NewPositionPage() {
             <span>
               Balance{" "}
               {unread1
-                ? "—"
+                ? "0"
                 : Number(balance1).toLocaleString(undefined, {
                     maximumFractionDigits: 4,
                   })}

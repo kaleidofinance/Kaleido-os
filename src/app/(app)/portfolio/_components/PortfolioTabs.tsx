@@ -21,9 +21,7 @@ const TABS: { id: TabId; label: string }[] = [
 ];
 
 const usd = (n: number | null, dp = 2) =>
-  n === null
-    ? "—"
-    : n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: dp, maximumFractionDigits: dp });
+  (n ?? 0).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: dp, maximumFractionDigits: dp });
 
 const amt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: n >= 1000 ? 0 : n >= 1 ? 4 : 6 });
@@ -126,11 +124,11 @@ export function Overview({
       </section>
 
       {/* Three actions, each its own colour, with the asset coin art (TokenCoin)
-          on the left — the Uniswap card treatment rather than three grey boxes. */}
+          on the right — the Uniswap card treatment rather than three grey boxes. */}
       <div className={t.tiles}>
         <Link href="/trade/agent" className={`${t.tile} ${t.tileSend}`}>
           <span className={t.tileArt} aria-hidden>
-            <TokenCoin symbol="USDC" size={46} />
+            <TokenCoin symbol="USDC" size={64} />
           </span>
           <span className={t.tileText}>
             <span className={t.tileIcon} aria-hidden>→</span>
@@ -139,7 +137,7 @@ export function Overview({
         </Link>
         <Link href="/trade/buy" className={`${t.tile} ${t.tileBuy}`}>
           <span className={t.tileArt} aria-hidden>
-            <TokenCoin symbol="BTC" size={46} />
+            <TokenCoin symbol="BTC" size={64} />
           </span>
           <span className={t.tileText}>
             <span className={t.tileIcon} aria-hidden>+</span>
@@ -148,8 +146,8 @@ export function Overview({
         </Link>
         <Link href="/trade/swap" className={`${t.tile} ${t.tileSwap}`}>
           <span className={`${t.tileArt} ${t.tileArtPair}`} aria-hidden>
-            <TokenCoin symbol="USDC" size={38} />
-            <TokenCoin symbol="EURC" size={38} />
+            <TokenCoin symbol="USDC" size={52} />
+            <TokenCoin symbol="EURC" size={52} />
           </span>
           <span className={t.tileText}>
             <span className={t.tileIcon} aria-hidden>⇄</span>
@@ -173,42 +171,42 @@ export function Overview({
         </div>
       </div>
 
-      {top.length > 0 && (
-        <section className={t.allocCard} aria-label="Allocation">
-          <div className={t.cardHead}>
-            <span>Your allocation</span>
-            <small>By token value</small>
-          </div>
-          {top.map(({ tk, v }, i) => {
-            const share = priced > 0 ? v / priced : 0;
-            return (
-              <button key={tk.key} className={t.allocRow} onClick={() => onOpen("tokens")}>
-                <span className={`${t.icon} ${hasTokenIcon(tk.symbol) ? t.iconArt : ""}`}>
-                  <TokenIcon symbol={tk.symbol} size={32} fallback={tk.symbol.slice(0, 3)} />
-                </span>
-                <span className={t.allocBody}>
-                  <span className={t.allocLine}>
-                    <b>{tk.symbol}</b>
-                    <span className="tabular">
-                      {usd(v)} <small>{(share * 100).toFixed(1)}%</small>
+      {/* Allocation and positions side by side; attention spans the row below. */}
+      <div className={t.split}>
+        {top.length > 0 && (
+          <section className={t.allocCard} aria-label="Allocation">
+            <div className={t.cardHead}>
+              <span>Your allocation</span>
+              <small>By token value</small>
+            </div>
+            {top.map(({ tk, v }, i) => {
+              const share = priced > 0 ? v / priced : 0;
+              return (
+                <button key={tk.key} className={t.allocRow} onClick={() => onOpen("tokens")}>
+                  <span className={`${t.icon} ${hasTokenIcon(tk.symbol) ? t.iconArt : ""}`}>
+                    <TokenIcon symbol={tk.symbol} size={32} fallback={tk.symbol.slice(0, 3)} />
+                  </span>
+                  <span className={t.allocBody}>
+                    <span className={t.allocLine}>
+                      <b>{tk.symbol}</b>
+                      <span className="tabular">
+                        {usd(v)} <small>{(share * 100).toFixed(1)}%</small>
+                      </span>
+                    </span>
+                    <span className={t.track}>
+                      <span style={{ width: `${Math.max(1, share * 100).toFixed(2)}%`, background: RANK[i] }} />
                     </span>
                   </span>
-                  <span className={t.track}>
-                    <span style={{ width: `${Math.max(1, share * 100).toFixed(2)}%`, background: RANK[i] }} />
-                  </span>
-                </span>
+                </button>
+              );
+            })}
+            {pricedTokens.length > top.length && (
+              <button className={t.more2} onClick={() => onOpen("tokens")}>
+                View all {tokens.length} tokens →
               </button>
-            );
-          })}
-          {pricedTokens.length > top.length && (
-            <button className={t.more2} onClick={() => onOpen("tokens")}>
-              View all {tokens.length} tokens →
-            </button>
-          )}
-        </section>
-      )}
-
-      <div className={t.split}>
+            )}
+          </section>
+        )}
         <section className={t.allocCard}>
           <div className={t.cardHead}>
             <span>Positions</span>
@@ -224,27 +222,28 @@ export function Overview({
           ))}
         </section>
 
-        <section className={t.allocCard}>
-          <div className={t.cardHead}>
-            <span>Needs attention</span>
-          </div>
-          {alerts.length === 0 ? (
-            <div className={t.calmIn}>Nothing needs attention.</div>
-          ) : (
-            alerts.map((a) => (
-              <a key={a.id} href={a.href ?? "#"} className={t.alert}>
-                <span className={`${t.aIcon} ${a.severity === "info" ? "" : t.aWarn}`}>
-                  {a.severity === "info" ? "↑" : "!"}
-                </span>
-                <span>
-                  <span className={t.alTitle}>{a.title}</span>
-                  <span className={t.alDetail}>{a.detail}</span>
-                </span>
-              </a>
-            ))
-          )}
-        </section>
       </div>
+
+      <section className={t.allocCard}>
+        <div className={t.cardHead}>
+          <span>Needs attention</span>
+        </div>
+        {alerts.length === 0 ? (
+          <div className={t.calmIn}>Nothing needs attention.</div>
+        ) : (
+          alerts.map((a) => (
+            <a key={a.id} href={a.href ?? "#"} className={t.alert}>
+              <span className={`${t.aIcon} ${a.severity === "info" ? "" : t.aWarn}`}>
+                {a.severity === "info" ? "↑" : "!"}
+              </span>
+              <span>
+                <span className={t.alTitle}>{a.title}</span>
+                <span className={t.alDetail}>{a.detail}</span>
+              </span>
+            </a>
+          ))
+        )}
+      </section>
     </div>
   );
 }
