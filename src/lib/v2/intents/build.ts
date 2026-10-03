@@ -2320,7 +2320,13 @@ export async function buildIntents(
             decimals: token.decimals,
             symbol: token.symbol,
             isNative,
-            ...(onOtherChain ? { chainId: sendChainId } : {}),
+            /* ALWAYS pinned, not only when it differs from the connected chain.
+               An unpinned send is signed on whatever chain the wallet is on at
+               signing time; a follow-up send built while on BSC and signed back
+               on Arc called BSC's USDC address on Arc — no contract there, so it
+               "succeeded" and moved nothing (0x7f6662a5…, 2026-10-03). Pinned,
+               the resolver refuses any other chain and the sign flow switches. */
+            ...(sendChainId !== undefined ? { chainId: sendChainId } : {}),
           },
         ],
       },
