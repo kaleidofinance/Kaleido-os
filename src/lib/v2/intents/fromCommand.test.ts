@@ -3146,5 +3146,29 @@ console.log("\n— another wallet's balances are a local lookup —");
   check("no address → not a lookup", !(p("check my balance").status === "ok" && (p("check my balance") as { command: { kind: string } }).command.kind === "lookup"));
 }
 
+console.log("\n— bridge to someone else's address —");
+{
+  const R = "0x591e8114DB6B5E6b8f6961002e9b0d2A120495DD";
+  const BCTX = { isChain: (ph) => /^(base|bsc|arc|ethereum|sepolia)$/i.test(ph.trim()) };
+  const pb = (t) => parseCommand(t, TOKENS, BCTX);
+  for (const t of [
+    `bridge 100 usdc to base to ${R}`,
+    `bridge 100 usdc to base and send it to ${R}`,
+    `bridge 100 usdc to base for ${R}`,
+    `bridge 100 usdc to base, then send to the address ${R}`,
+  ]) {
+    const r = pb(t);
+    check(
+      `'${t.replace(R, "<addr>")}' → bridge with recipient`,
+      r.status === "ok" && r.command.kind === "bridge" && r.command.recipient === R && r.command.amount === "100",
+      JSON.stringify(r).slice(0, 200),
+    );
+  }
+  const plain = pb("bridge 100 usdc to base");
+  check("a plain bridge carries no recipient", plain.status === "ok" && plain.command.kind === "bridge" && plain.command.recipient === undefined, JSON.stringify(plain).slice(0, 160));
+  const two = pb(`bridge 100 usdc to base to ${R} and ${R}`);
+  check("two addresses → the model decides, nothing guessed", two.status === "unknown");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

@@ -286,6 +286,8 @@ export interface PathQuoteRequest {
  * shape the read deps follow — so this request stays free of wallet state.
  */
 export interface BridgeRouteRequest {
+  /** Deliver to this address instead of the signer (see BridgeCommand.recipient). */
+  recipient?: string;
   /** Destination as the user named it — a chain name, shortName or id. */
   toChain: string;
   /** Symbol of the asset leaving the wallet, e.g. "ETH". */
@@ -2471,6 +2473,7 @@ export async function buildIntents(
 
     const quoteFor = (amt: string) =>
       deps.bridgeRoute({
+        ...(command.recipient ? { recipient: command.recipient } : {}),
         toChain,
         asset: srcToken.symbol,
         amount: amt,
@@ -2576,6 +2579,9 @@ export async function buildIntents(
             : fromName
               ? `Bridge ${amount} ${srcToken.symbol} from ${fromName} to ${route.toChainName}.`
               : `Bridge ${amount} ${srcToken.symbol} to ${route.toChainName}.`) +
+          (command.recipient
+            ? ` Delivered to ${command.recipient} on ${route.toChainName}, not to your wallet — check every character.`
+            : "") +
           topUpNote,
         intents: [
           ...(isNative
@@ -2605,6 +2611,7 @@ export async function buildIntents(
             provider: route.provider,
             etaSeconds: route.etaSeconds,
             isNative,
+            ...(command.recipient ? { recipient: command.recipient } : {}),
             ...(route.spender ? { spender: route.spender } : {}),
             ...(route.gasLimit ? { gasLimit: route.gasLimit } : {}),
             ...(crossAsset && route.toToken && route.toDecimals

@@ -576,7 +576,14 @@ register("bridge", {
         i.toSymbol && i.toSymbol.toUpperCase() !== i.symbol.toUpperCase()
           ? `Bridge ${i.amount} ${i.symbol} to ${i.toSymbol} on ${i.toChainName}`
           : `Bridge ${i.amount} ${i.symbol} to ${i.toChainName}`,
-      detail: out + arrival,
+      /* A third-party delivery prints the FULL address first: a bridge to the
+         wrong address is unrecoverable, and the reader checks it here. */
+      detail:
+        (i.recipient
+          ? `Delivered to ${i.recipient} on ${i.toChainName} — not your wallet. Check every character. `
+          : "") +
+        out +
+        arrival,
       chain: `→ ${i.toChainName}`,
     };
   },

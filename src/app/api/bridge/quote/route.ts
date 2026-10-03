@@ -38,6 +38,7 @@ const FORWARD_PARAMS = [
   "toToken",
   "fromAmount",
   "fromAddress",
+  "toAddress",
   "order",
   "denyBridges",
   "slippage",

@@ -284,6 +284,12 @@ export type Intent =
       toChainName: string;
       /** "canonical" | "relay" | "lifi" — the trusted origin of `to`/`data`. */
       provider: string;
+      /**
+       * Delivered to this address on the destination chain, not the signer's.
+       * Absent = the signer. When set, the auditor requires it to be a sane
+       * account AND to be the receiver inside the route's own calldata.
+       */
+      recipient?: string;
       /** Seconds, or null when genuinely unknown — never a fabricated ETA. */
       etaSeconds: number | null;
       /** True for the chain's native currency: sent as `value`, no approve. */

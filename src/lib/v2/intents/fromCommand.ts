@@ -134,6 +134,13 @@ export interface BridgeCommand {
    * the route's fees so the send that follows isn't short. Never typed.
    */
   receiveAtLeast?: string;
+  /**
+   * Deliver to this address on the destination chain instead of the signer's
+   * own ("bridge 100 USDC to BSC to 0x…"). Lifted out of the sentence by
+   * parseCommand before the bridge is parsed; checked by the auditor against the
+   * route's own calldata. Absent = the signer, as before.
+   */
+  recipient?: string;
 }
 export interface HelpCommand {
   kind: "help";
@@ -2219,6 +2226,25 @@ export function parseCommand(
   tokens: IToken[],
   ctx: ParseContext = {},
 ): ParseResult {
+  /* A bridge that delivers to someone else: "bridge 100 USDC to BSC to 0x…",
+     "… and send it to 0x…", "… for 0x…". The address phrase is lifted out, the
+     rest parses as an ordinary bridge, and the recipient rides on the command.
+     Anything short of a complete bridge goes to the model (which has the same
+     field) rather than dropping the address. */
+  if (/\bbridge\b/i.test(text)) {
+    const rx =
+      /\s*(?:,?\s*(?:and\s+)?(?:then\s+)?(?:send|deliver|transfer)\s+(?:it\s+)?)?(?:to|for)\s+(?:the\s+)?(?:address\s+|wallet\s+|recipient\s+)?(0x[0-9a-fA-F]{40})\b/;
+    const m = text.match(rx);
+    if (m) {
+      const rest = text.replace(m[0], " ").replace(/\s+/g, " ").trim();
+      if (/0x[0-9a-fA-F]{40}/.test(rest)) return { status: "unknown" };
+      const r = parseCommand(rest, tokens, ctx);
+      if (r.status === "ok" && r.command.kind === "bridge")
+        return { status: "ok", command: { ...r.command, recipient: m[1] } };
+      return { status: "unknown" };
+    }
+  }
+
   /* A balance question about another wallet. Needs the address AND a holdings
      word, and no action verb — "send 10 USDC to 0x…" names an address too and
      must stay a send. Typos in the verb ("chheck") don't matter: the noun decides. */
