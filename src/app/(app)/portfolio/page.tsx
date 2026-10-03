@@ -378,6 +378,7 @@ export default function PortfolioPage() {
                 updatedAt={updatedAt}
                 onRefresh={p.refresh}
                 onOpen={setTab}
+                address={address ?? undefined}
               />
             )}
             {tab === "tokens" && (

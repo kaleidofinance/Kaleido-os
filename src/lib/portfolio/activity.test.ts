@@ -1,4 +1,4 @@
-import { fromServer, mergeActivity, isTxHash, groupByDay, tidyTitle, type ActivityItem } from "./activity";
+import { fromServer, mergeActivity, isTxHash, groupByDay, tidyTitle, activityType, activityAmount, filterActivity, type ActivityItem } from "./activity";
 
 let pass = 0;
 let fail = 0;
@@ -48,6 +48,26 @@ check("isTxHash rejects synthetic ids", !isTxHash("checkin:0xabc") && isTxHash(H
 check("tidyTitle trims a long raw amount", tidyTitle("Swap 2.362785936882168666 LIFT for COOL") === "Swap 2.36279 LIFT for COOL");
 check("tidyTitle keeps short amounts", tidyTitle("Swap 0.00246701 cirBTC for USDC") === "Swap 0.00246701 cirBTC for USDC" || tidyTitle("Swap 0.00246701 cirBTC for USDC") === "Swap 0.00246701 cirBTC for USDC");
 check("tidyTitle keeps whole numbers", tidyTitle("Lend 1000 USDC") === "Lend 1000 USDC");
+
+// table: type, amount, filters
+{
+  const ty = (title: string, kind?: string) => activityType({ title, kind });
+  check("swap by kind", ty("Swap 1 USDC for EURC", "swap") === "swap");
+  check("approve wins over the token verb", ty("Approve cirBTC", "approve") === "approve");
+  check("check-in is rewards", ty("Daily check-in", "checkin") === "rewards");
+  check("bridge", ty("Bridge 10 USDC to Base", "bridge") === "bridge");
+  check("liquidity", ty("Add liquidity WUSDC / EURC", "provideLiquidity") === "liquidity");
+  check("lending", ty("Borrow 20 USDC", "borrow") === "lending");
+  check("unknown is other", ty("Something") === "other");
+  check("amount from title", JSON.stringify(activityAmount("Swap 0.00246701 cirBTC for USDC")) === JSON.stringify({ amount: "0.00246701", symbol: "cirBTC" }));
+  check("no amount → null", activityAmount("Daily check-in") === null);
+  const now = 10 * 86_400_000;
+  const mk = (title: string, at: number, kind?: string): ActivityItem => ({ id: title, title, kind, chainId: 5042, hash: "0xabc", at, status: "confirmed", source: "device" });
+  const rows = [mk("Swap 1 USDC for EURC", now - 1000, "swap"), mk("Daily check-in", now - 2 * 86_400_000, "checkin")];
+  check("type filter", filterActivity(rows, { type: "rewards", window: "all", query: "" }, now).length === 1);
+  check("window filter", filterActivity(rows, { type: "all", window: "24h", query: "" }, now).length === 1);
+  check("search filter", filterActivity(rows, { type: "all", window: "all", query: "eurc" }, now).length === 1);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
