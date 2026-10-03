@@ -153,6 +153,24 @@ export function sendOrderFilledNotification(
   });
 }
 
+/**
+ * A Kaleido product update or upgrade (an announcement row). Loud: it's news
+ * the user didn't cause, so it gets the toast/OS treatment like any other
+ * notification they haven't seen. The link, if any, is appended to the body.
+ */
+export function sendProductUpdateNotification(
+  title: string,
+  body: string,
+  url?: string | null,
+): void {
+  notify({
+    title,
+    body: url ? `${body} → ${url.replace(/^https?:\/\//, "")}` : body,
+    level: "info",
+    actionType: "product_update",
+  });
+}
+
 /** Your own order reached the chain. Quiet — the call site toasts on receipt. */
 export function sendLoanCreatedNotification(kind: "borrow" | "lending"): void {
   notify({
