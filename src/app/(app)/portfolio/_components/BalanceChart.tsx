@@ -25,11 +25,51 @@ const money = (n: number) =>
 export default function BalanceChart({
   holdings,
   netValue,
+  wallet,
 }: {
   holdings: Holding[];
   netValue: number | null;
+  /** When given, real daily snapshots are recorded and preferred (1W+). */
+  wallet?: string;
 }) {
   const [range, setRange] = useState<PriceRange>("1D");
+  /* Real history: today's snapshot is recorded once per day per browser (the
+     server computes the value from the chain), then the stored days are read. */
+  const [snaps, setSnaps] = useState<Series>([]);
+  useEffect(() => {
+    if (!wallet) return;
+    const w = wallet.toLowerCase();
+    let live = true;
+    const day = new Date().toISOString().slice(0, 10);
+    const key = `kaleido.snap:${w}:${day}`;
+    let done = false;
+    try {
+      done = window.localStorage.getItem(key) === "1";
+    } catch {
+      /* storage unavailable: just record */
+    }
+    const record = done
+      ? Promise.resolve()
+      : fetch(`/api/portfolio/snapshot?wallet=${w}`, { method: "POST" })
+          .then((r) => {
+            if (r.ok) {
+              try {
+                window.localStorage.setItem(key, "1");
+              } catch {
+                /* ignore */
+              }
+            }
+          })
+          .catch(() => {});
+    record
+      .then(() => fetch(`/api/portfolio/history?wallet=${w}`))
+      .then((r) => (r.ok ? r.json() : { points: [] }))
+      .then((d: { points?: Series }) => live && setSnaps(d.points ?? []))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [wallet]);
   const [series, setSeries] = useState<Record<string, Series>>({});
   const symbols = useMemo(
     () =>
@@ -61,9 +101,24 @@ export default function BalanceChart({
     return () => ctl.abort();
   }, [key, range]);
 
+  /* Daily snapshots win for 1W and longer once the window holds two or more
+     days; 1D (and a wallet with no history yet) uses today's holdings re-priced. */
+  const WINDOW: Record<string, number> = { "1W": 7, "1M": 31, "1Y": 366 };
+  const snapPts = useMemo(() => {
+    const days = WINDOW[range];
+    if (!days) return [];
+    const since = Date.now() - days * 86_400_000;
+    return snaps.filter(([t]) => t >= since).map(([t, v]) => ({ t, v }));
+  }, [snaps, range]);
+  const usingSnaps = snapPts.length >= 2;
   const pts = useMemo(
-    () => (netValue === null ? [] : portfolioHistory(holdings, series, netValue)),
-    [holdings, series, netValue],
+    () =>
+      usingSnaps
+        ? snapPts
+        : netValue === null
+          ? []
+          : portfolioHistory(holdings, series, netValue),
+    [usingSnaps, snapPts, holdings, series, netValue],
   );
   const change = historyChange(pts);
 
@@ -111,7 +166,11 @@ export default function BalanceChart({
           preserveAspectRatio="none"
           aria-label="Portfolio value over time"
         >
-          <title>Value of your current holdings at each moment&apos;s price</title>
+          <title>
+            {usingSnaps
+              ? "Your wallet balance, one recorded value per day"
+              : "Value of your current holdings at each moment's price"}
+          </title>
           <defs>
             <linearGradient id="bal-fill" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor={up ? "var(--k-pos)" : "var(--k-neg)"} stopOpacity="0.25" />
@@ -121,6 +180,11 @@ export default function BalanceChart({
           <path d={area} fill="url(#bal-fill)" />
           <path d={line} fill="none" stroke={up ? "var(--k-pos)" : "var(--k-neg)"} strokeWidth="2" vectorEffect="non-scaling-stroke" />
         </svg>
+      ) : null}
+      {pts.length >= 2 ? (
+        <span className={t.balSrc}>
+          {usingSnaps ? "Wallet balance · daily snapshots" : "Current holdings at past prices"}
+        </span>
       ) : (
         <div className={t.balNone}>
           {symbols.length === 0 ? "Your holdings are stable — the value is flat." : "Loading the chart…"}
