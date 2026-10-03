@@ -1126,6 +1126,10 @@ export async function buildIntents(
   if (command.kind === "portfolio") {
     return { ok: false, error: "portfolio" };
   }
+  /* Another wallet's balances: a read the page answers, never a plan. */
+  if (command.kind === "lookup") {
+    return { ok: false, error: "lookup" };
+  }
 
   /*
    * Same shape again: opening the add-liquidity form is a navigation, not a

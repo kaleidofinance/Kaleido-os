@@ -3126,5 +3126,25 @@ console.log("\n— a dollar size of an Argus launch named by address —");
   check("unpriced launch → the model", unpriced.status === "unknown");
 }
 
+console.log("\n— another wallet's balances are a local lookup —");
+{
+  const A = "0x591e8114DB6B5E6b8f6961002e9b0d2A120495DD";
+  for (const t of [
+    `chheck the balance of this address ${A}`,
+    `check the balance ${A}`,
+    `what does ${A} hold`,
+    `show me ${A}'s holdings`,
+    `${A} balance`,
+  ]) {
+    const r = p(t);
+    check(`'${t.replace(A, "<addr>")}' → lookup`, r.status === "ok" && r.command.kind === "lookup" && r.command.address === A, JSON.stringify(r).slice(0, 160));
+  }
+  const send = p(`send 10 usdc to ${A}`);
+  check("a send to an address stays a send", send.status === "ok" && send.command.kind === "send", JSON.stringify(send).slice(0, 160));
+  const sendBal = p(`send my usdc balance to ${A}`);
+  check("an action verb wins over 'balance'", !(sendBal.status === "ok" && sendBal.command.kind === "lookup"), JSON.stringify(sendBal).slice(0, 160));
+  check("no address → not a lookup", !(p("check my balance").status === "ok" && (p("check my balance") as { command: { kind: string } }).command.kind === "lookup"));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
