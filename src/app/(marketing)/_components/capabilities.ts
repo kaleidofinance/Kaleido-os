@@ -343,11 +343,12 @@ export const GROUPS: readonly Group[] = [
     tools: [
       {
         name: "provideLiquidity",
-        /* Four, in the catalog's order. The other four declared properties are
-           the range and the tier — see `optional`, and the prompt below for why
-           none of them is a tick. */
-        params: ["token0", "amount0", "token1", "amount1"],
-        optional: ["fee", "bandPct", "minPrice", "maxPrice"],
+        /* The two tokens, in the catalog's order. Either amount alone is enough
+           (the builder derives the other side from the pool price, 623fd3b), so
+           both amounts are optional alongside the range and the tier — see the
+           prompt below for why none of them is a tick. */
+        params: ["token0", "token1"],
+        optional: ["amount0", "amount1", "fee", "bandPct", "minPrice", "maxPrice"],
         /*
          * The second model turn on the page, and the reason is the same shape as
          * the grant's: six values against a grammar whose only amount slot is
