@@ -217,6 +217,8 @@ interface ResolveInput {
   isNative: boolean;
   tokenAddress?: string;
   userAddress: string;
+  /** Delivery address on the destination; the signer when absent. */
+  recipient?: string;
   units: string;
   speed?: "standard" | "fast";
   /** True when the delivered asset differs from `asset` (BNB→USDC). Cross-asset
@@ -247,6 +249,7 @@ async function tryAggregatorRoute(
     asset: i.asset,
     units: i.units,
     address: i.userAddress,
+    ...(i.recipient ? { toAddress: i.recipient } : {}),
     toAsset: i.crossAsset ? i.toAsset : undefined,
   });
   if (!exec) return null;
@@ -497,7 +500,15 @@ export async function resolveBridgeRoute(
     toAsset,
     toTokenAddress,
     toDecimals,
+    recipient,
   } = params;
+  /* A third-party delivery: the address to credit on the destination. CCTP is
+     skipped for it — its pending-mint tracking and completion keeper assume the
+     mint lands in the signer's own wallet. */
+  const thirdParty =
+    !!recipient && recipient.toLowerCase() !== (userAddress ?? "").toLowerCase();
+  if (recipient && !ethers.isAddress(recipient))
+    return { error: `${recipient} isn't a valid address to deliver to.` };
   /* Cross-asset when a distinct destination symbol was requested. Such a bridge
      swaps as it moves, so it routes only through the aggregator — never the 1:1
      CCTP/canonical corridors below, which are gated off this. */
@@ -534,6 +545,7 @@ export async function resolveBridgeRoute(
     isNative,
     tokenAddress,
     userAddress,
+    ...(thirdParty ? { recipient } : {}),
     units,
     speed,
     crossAsset,
@@ -552,6 +564,7 @@ export async function resolveBridgeRoute(
   //    whole decision and never falls through to the canonical path below.
   if (
     CCTP_ENABLED &&
+    !thirdParty &&
     !crossAsset &&
     asset.toUpperCase() === "USDC" &&
     isCctpCorridor(fromChainId, dest.id)
@@ -605,7 +618,7 @@ export async function resolveBridgeRoute(
     const data = new ethers.Interface(
       L1_STANDARD_BRIDGE_ABI,
     ).encodeFunctionData("depositETHTo", [
-      userAddress,
+      thirdParty ? (recipient as string) : userAddress,
       CANONICAL_MIN_GAS_LIMIT,
       "0x",
     ]);

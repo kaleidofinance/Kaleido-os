@@ -132,6 +132,7 @@ const VERB: Record<Command["kind"], string> = {
   help: "Help",
   receive: "Receive",
   portfolio: "Portfolio",
+  lookup: "Balance lookup",
 };
 
 /**
@@ -144,7 +145,7 @@ const VERB: Record<Command["kind"], string> = {
  * rather than rendered as a failure.
  */
 const PANEL: Record<
-  "help" | "receive" | "portfolio" | "openLiquidity",
+  "help" | "receive" | "portfolio" | "openLiquidity" | "lookup",
   { title: string; body: string }
 > = {
   help: {
@@ -158,6 +159,10 @@ const PANEL: Record<
   portfolio: {
     title: "Answers with what you hold",
     body: "Wallet balances, collateral, debt, the vaults and your liquidity, in one figure — read from the chain and from the protocol itself. A read, so there is nothing to sign.",
+  },
+  lookup: {
+    title: "Answers with that wallet's balances",
+    body: "Any address's token balances on the chain, read from the chain itself — the same read Luca's model would make, answered without it. A read, so there is nothing to sign.",
   },
   openLiquidity: {
     title: "Opens the add-liquidity form, prefilled",
@@ -753,6 +758,7 @@ function settledOf(
     case "help":
     case "receive":
     case "portfolio":
+    case "lookup":
     /* Same shape: intercepted by PANEL above, so the builder never runs and
        there is nothing settled to describe. */
     case "openLiquidity":
@@ -895,6 +901,7 @@ export default function LivePlanner() {
         command.kind === "help" ||
         command.kind === "receive" ||
         command.kind === "portfolio" ||
+        command.kind === "lookup" ||
         command.kind === "openLiquidity"
       ) {
         setOut({

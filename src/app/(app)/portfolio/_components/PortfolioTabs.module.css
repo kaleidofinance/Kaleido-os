@@ -1110,3 +1110,8 @@ button.miniRow:hover {
     grid-template-columns: minmax(0, 1fr) auto auto;
   }
 }
+
+.balSrc {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}

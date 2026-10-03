@@ -130,6 +130,7 @@ export function Overview({
             {updatedAt ? `Updated ${clock(updatedAt)}` : "Reading your wallet…"}
           </span>
           <BalanceChart
+            wallet={address}
             netValue={netValue}
             holdings={tokens.map((tk) => ({
               symbol: tk.symbol,

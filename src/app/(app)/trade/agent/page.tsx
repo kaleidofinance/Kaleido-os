@@ -572,6 +572,52 @@ export default function AgentPage() {
     }
 
     /*
+     * Someone else's balances — "check the balance of 0x…". Read on the server
+     * with the same getBalances the model's tool runs, shown as a balance card.
+     * No model involved, so it answers even when the model is down.
+     */
+    if (result.command.kind === "lookup") {
+      const who = result.command.address;
+      const short = `${who.slice(0, 6)}…${who.slice(-4)}`;
+      const onChain = chainId ?? 5042;
+      note(`Reading ${short}'s balances on chain`);
+      let data: {
+        error?: string;
+        chain?: string;
+        holdings?: { symbol: string; amount: string }[];
+        unread?: string[];
+      } = {};
+      try {
+        const r = await fetch(`/api/lookup/balances?address=${who}&chainId=${onChain}`, { signal });
+        data = await r.json();
+      } catch {
+        data = { error: "The balance read didn't come back." };
+      }
+      if (signal.aborted) return true;
+      if (data.error) {
+        say(`I couldn't read ${short}'s balances right now — ${data.error.split(" - ")[0]}. That isn't the same as an empty wallet.`, { via: "local" });
+        return true;
+      }
+      const rows = (data.holdings ?? []).map((h) => {
+        const n = Number(h.amount);
+        return {
+          symbol: h.symbol,
+          amount: Number.isFinite(n)
+            ? n.toLocaleString("en-US", { maximumFractionDigits: n >= 1 ? 4 : 8 })
+            : h.amount,
+        };
+      });
+      const unread = data.unread?.length ? ` I couldn't read ${data.unread.join(", ")}, so those may not be zero.` : "";
+      const text =
+        rows.length === 0
+          ? `${short} holds none of the tokens I know on ${data.chain ?? "this chain"}.${unread}`
+          : `${short} on ${data.chain ?? "this chain"}:${unread}`;
+      const cards = rows.length ? localCards([{ kind: "balance", title: `${short} · ${data.chain ?? ""}`.trim(), rows }]) : [];
+      say(text, { via: "local", ...(cards.length ? { cards } : {}) });
+      return true;
+    }
+
+    /*
      * Adding liquidity resolves to a *screen*, which is the third answer in this
      * grammar that is not a plan — and the only one that leaves the page.
      *

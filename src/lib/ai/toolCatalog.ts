@@ -205,6 +205,11 @@ export const TOOL_CATALOG: ToolSpec[] = [
           description:
             'Symbol to RECEIVE on the destination when it differs from `asset`, e.g. "USDC" for "bridge BNB to Arc as USDC". Omit for an ordinary same-token bridge.',
         },
+        recipient: {
+          type: "string",
+          description:
+            "0x address to deliver to on the destination chain when it is NOT the user's own wallet (\"bridge 100 USDC to BSC and send it to 0x…\"). Copy it exactly from the user's message; never invent or complete one. Omit to deliver to the user.",
+        },
       },
       required: ["amount", "asset", "toChain"],
     },

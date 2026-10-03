@@ -162,5 +162,25 @@ console.log("— a slow instant fill loses to the exact 1:1 even when small —"
   check("slow instant with no exact alternative → still returns instant", r?.primary === INSTANT_SLOW);
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-if (fail > 0) process.exit(1);
+/* ---- bridge to someone else's address (offline: the canonical corridor) ---- */
+void (async () => {
+  const { resolveBridgeRoute } = await import("./route");
+  const { ethers } = await import("ethers");
+  const ME = "0x1111111111111111111111111111111111111111";
+  const R = "0x2222222222222222222222222222222222222222";
+  const base = {
+    toChain: "84532", asset: "ETH", amount: "0.01", decimals: 18, isNative: true,
+    fromChainId: 11155111, userAddress: ME,
+  };
+  const dec = (data: string) =>
+    String(new ethers.Interface(["function depositETHTo(address _to, uint32 _minGasLimit, bytes _extraData)"]).decodeFunctionData("depositETHTo", data)[0]).toLowerCase();
+  const self = await resolveBridgeRoute(base);
+  check("a canonical deposit with no recipient credits the signer", !("error" in self) && dec(self.data) === ME, self);
+  const other = await resolveBridgeRoute({ ...base, recipient: R });
+  check("a canonical deposit with a recipient credits the recipient", !("error" in other) && dec(other.data) === R, other);
+  const bad = await resolveBridgeRoute({ ...base, recipient: "0x123" });
+  check("a malformed recipient is refused, not dropped", "error" in bad, bad);
+})().then(() => {
+  console.log(`\n${pass} passed, ${fail} failed`);
+  if (fail > 0) process.exit(1);
+});

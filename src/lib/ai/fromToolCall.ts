@@ -296,6 +296,12 @@ function toCommand(
       /* A different token to receive — a cross-asset bridge. Text, resolved on
          the destination chain by the builder, exactly like `toChain`. */
       const toAsset = str(a.toAsset || a.receiveAsset).trim() || undefined;
+      /* Deliver to someone else. Validated here as an address (a malformed one
+         is refused by name, never dropped — dropping it would bridge to the
+         signer instead), then checked again by the auditor. */
+      const rawRecipient = str(a.recipient || a.toAddress).trim();
+      if (rawRecipient && !ethers.isAddress(rawRecipient))
+        return `bridge: "${rawRecipient}" isn't a valid address to deliver to`;
       return {
         kind: "bridge",
         amount,
@@ -303,6 +309,7 @@ function toCommand(
         toChain,
         ...(fromChain ? { fromChain } : {}),
         ...(toAsset ? { toAsset } : {}),
+        ...(rawRecipient ? { recipient: ethers.getAddress(rawRecipient) } : {}),
       };
     }
 

@@ -1,3 +1,4 @@
+import { ethers } from "ethers";
 // Checks on the plan auditor. Run with `npx tsx src/lib/ai/auditor.test.ts` —
 // tsx rather than plain node, because auditor.ts imports the token registry and
 // ethers rather than being self-contained the way fromCommand.ts is.
@@ -1296,6 +1297,58 @@ async function main() {
           "a bridge is not gated by any product toggle",
           v.ok,
           JSON.stringify(v.blocked),
+        );
+      }
+
+      /* ---- bridge to someone else's address ---- */
+      {
+        const R = "0x1234567890123456789012345678901234567890";
+        const depositTo = (addr: string) =>
+          new ethers.Interface(["function depositETHTo(address _to, uint32 _minGasLimit, bytes _extraData)"]).encodeFunctionData(
+            "depositETHTo",
+            [addr, 200000, "0x"],
+          );
+        const ok = await audit([{ ...bridge, data: depositTo(R), recipient: R }]);
+        check(
+          "a canonical deposit whose calldata credits the named recipient passes",
+          ok.ok,
+          JSON.stringify(ok.blocked),
+        );
+        const wrong = await audit([
+          { ...bridge, data: depositTo("0x9999999999999999999999999999999999999999"), recipient: R },
+        ]);
+        check(
+          "a deposit crediting a different address than the one named is blocked",
+          !wrong.ok && wrong.blocked.some((b) => b.includes("credits a different address")),
+          JSON.stringify(wrong.blocked),
+        );
+        const zero = await audit([
+          { ...bridge, data: depositTo("0x0000000000000000000000000000000000000000"), recipient: "0x0000000000000000000000000000000000000000" },
+        ]);
+        check(
+          "delivering to the zero address is blocked",
+          !zero.ok && zero.blocked.some((b) => b.includes("zero address")),
+          JSON.stringify(zero.blocked),
+        );
+        const lifiData = "0xdeadbeef" + "0".repeat(24) + R.slice(2).toLowerCase() + "0".repeat(64);
+        const lifiStep = { ...bridge, provider: "lifi", data: lifiData, recipient: R };
+        const lifi = await audit([lifiStep]);
+        check(
+          "an aggregator route that encodes the recipient is not blocked for it",
+          !lifi.blocked.some((b) => b.includes("delivery address") || b.includes("does not name the delivery")),
+          JSON.stringify(lifi.blocked),
+        );
+        const lifiOther = await audit([{ ...lifiStep, data: "0xdeadbeef" + "0".repeat(128) }]);
+        check(
+          "an aggregator route that does not name the recipient is blocked",
+          !lifiOther.ok && lifiOther.blocked.some((b) => b.includes("does not name the delivery address")),
+          JSON.stringify(lifiOther.blocked),
+        );
+        const cctp = await audit([{ ...bridge, provider: "cctp", recipient: R }]);
+        check(
+          "a CCTP step carrying a third-party recipient is blocked",
+          !cctp.ok && cctp.blocked.some((b) => b.includes("CCTP bridge can only deliver to your own wallet")),
+          JSON.stringify(cctp.blocked),
         );
       }
 

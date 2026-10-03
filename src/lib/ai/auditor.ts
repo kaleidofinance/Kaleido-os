@@ -1774,6 +1774,43 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       reasons.push(`unrecognised bridge provider "${provider || "(none)"}"`);
     }
 
+    /* A third-party delivery ("bridge … to 0x…"). The recipient is the one field
+       here a person typed, so it gets send's account checks on the DESTINATION
+       chain, and it must be the receiver inside the route's own calldata — a
+       route that would credit anyone else (or the signer) is refused:
+         - canonical: decode depositETHTo and require its `to` argument to equal it;
+         - lifi/relay: require it as an ABI-encoded address word in the calldata
+           (their BridgeData carries the receiver as a fixed field);
+         - cctp: never built for a third party (its completion assumes the
+           signer), so a recipient on a CCTP step is refused outright. */
+    const recipient = str(s.recipient);
+    if (recipient) {
+      reasons.push(
+        ...recipientReasons(recipient, "", toChainId ?? undefined).map(
+          (r) => `delivery address: ${r}`,
+        ),
+      );
+      const data = str(s.data).toLowerCase();
+      const word = recipient.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+      if (provider === "canonical") {
+        try {
+          const [to] = new ethers.Interface([
+            "function depositETHTo(address _to, uint32 _minGasLimit, bytes _extraData)",
+          ]).decodeFunctionData("depositETHTo", str(s.data));
+          if (String(to).toLowerCase() !== recipient.toLowerCase())
+            reasons.push("the deposit credits a different address than the one you named");
+        } catch {
+          reasons.push("the canonical deposit could not be decoded to check its recipient");
+        }
+      } else if (provider === "cctp") {
+        reasons.push("a CCTP bridge can only deliver to your own wallet");
+      } else if (!data.includes(word)) {
+        reasons.push(
+          "the route's calldata does not name the delivery address as its receiver — it would credit someone else",
+        );
+      }
+    }
+
     /* The value that actually leaves the wallet, against the amount on the row.
        For a native bridge the resolver derives both from one number —
        identically for a canonical deposit — so a gap past rounding means the row

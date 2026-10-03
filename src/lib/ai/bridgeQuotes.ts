@@ -447,6 +447,8 @@ export async function getBridgeExecution(args: {
   /** Smallest-unit amount, already scaled by the caller. */
   units: string;
   address: string;
+  /** Receiver on the destination when it is not `address` (LI.FI `toAddress`). */
+  toAddress?: string;
   /** Destination symbol for a CROSS-ASSET bridge (BNB→USDC). Absent = same
    *  asset, where toToken == fromToken as before. */
   toAsset?: string;
@@ -485,6 +487,7 @@ export async function getBridgeExecution(args: {
       toToken: args.toAsset ?? args.asset,
       fromAmount: args.units,
       fromAddress: args.address,
+      ...(args.toAddress ? { toAddress: args.toAddress } : {}),
       /* Swift by default. FASTEST picks a sub-minute route where one exists
          — Arc’s Polymer Fast lands in ~10s — instead of the ~18-minute Standard
          the unordered call returns. lifiIntents is denied because it is a
