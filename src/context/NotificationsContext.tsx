@@ -71,6 +71,8 @@ export interface Notification {
   actionType?: string;
   /** Present when this notification is an agent permission ask. */
   request?: NotificationRequest;
+  /** A call-to-action button on the row (e.g. an announcement's page). */
+  link?: { href: string; label: string };
   /**
    * Where the row came from.
    *
@@ -373,6 +375,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           read: false,
           category: categorise(n.actionType),
           actionType: n.actionType,
+          ...(n.link ? { link: n.link } : {}),
           origin: "local",
         },
         n.quiet !== true,

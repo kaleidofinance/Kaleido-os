@@ -10,6 +10,8 @@ export interface Announcement {
   title: string;
   body: string;
   url: string | null;
+  /** The button label for `url`; "Open" when unset. */
+  cta?: string | null;
   publishedAt: string;
 }
 

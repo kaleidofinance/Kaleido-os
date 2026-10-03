@@ -1,8 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { CATEGORY_LABELS } from "@/lib/notifications/taxonomy";
 import type { Notification } from "@/context/NotificationsContext";
 import s from "./NotificationRow.module.css";
+
+/** A link to this app: a relative path, or an absolute kaleidofi.xyz URL. */
+const isInternal = (href: string) =>
+  href.startsWith("/") || /^https?:\/\/(www\.)?kaleidofi\.xyz(\/|$)/i.test(href);
+const internalPath = (href: string) =>
+  href.startsWith("/")
+    ? href
+    : href.replace(/^https?:\/\/(www\.)?kaleidofi\.xyz/i, "") || "/";
 
 /**
  * One notification, rendered the same way in the nav panel and on
@@ -106,6 +115,31 @@ export default function NotificationRow({
           </span>
         </span>
       </button>
+
+      {!pending && n.link && (
+        <div className={s.actions}>
+          {/* Our own pages navigate in place; anything else opens a tab. */}
+          {isInternal(n.link.href) ? (
+            <Link
+              className={s.approve}
+              href={internalPath(n.link.href)}
+              onClick={() => onOpen?.(n)}
+            >
+              {n.link.label}
+            </Link>
+          ) : (
+            <a
+              className={s.approve}
+              href={n.link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => onOpen?.(n)}
+            >
+              {n.link.label}
+            </a>
+          )}
+        </div>
+      )}
 
       {pending && (
         <div className={s.actions}>

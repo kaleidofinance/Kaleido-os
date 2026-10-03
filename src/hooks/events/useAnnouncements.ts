@@ -46,7 +46,8 @@ export default function useAnnouncements(): void {
             /* storage blocked: worst case it shows again next visit */
           }
         }
-        for (const a of show) sendProductUpdateNotification(a.title, a.body, a.url);
+        for (const a of show)
+          sendProductUpdateNotification(a.title, a.body, a.url, a.cta);
       } catch {
         /* offline — try again next poll */
       }
