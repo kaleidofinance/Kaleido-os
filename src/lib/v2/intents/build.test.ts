@@ -4104,7 +4104,10 @@ async function main() {
       const { deps } = withBalances({ [ARC]: 10_000_000n });
       const r = await send(deps, "arc");
       const t = r.ok ? at(r, 0) : ({} as Record<string, unknown>);
-      check("naming the connected chain pins nothing", r.ok && t.chainId === undefined, JSON.stringify(r).slice(0, 200));
+      /* Every send is pinned now, the connected chain included: an unpinned send
+         was signed on whatever chain the wallet was on at signing time, and a
+         wrong-chain ERC20 transfer to an empty address "succeeds" moving nothing. */
+      check("a send on the connected chain is pinned to it", r.ok && t.chainId === ARC, JSON.stringify(r).slice(0, 200));
     }
     {
       const { deps } = withBalances({ [BASE]: null });

@@ -286,6 +286,7 @@ register("approve", {
       : "One-time approval.",
   }),
   resolve: async (ctx, i) => {
+    await requireTokenCode(ctx, i.token, i.symbol);
     const token = new ethers.Contract(i.token, ERC20_ABI, ctx.signer);
     const needed = ethers.parseUnits(i.amount, i.decimals);
 
@@ -489,6 +490,26 @@ register("cancelStakeWithdrawal", {
  * moves the caller's own balance, so there is nothing to pre-authorise and no
  * redundant step that could ever be skipped.
  */
+/**
+ * Refuse to call a token that has no contract on the chain the wallet is
+ * signing on. An ERC20 call to an empty address returns success and does
+ * nothing, so without this a wrong-chain send or approve reports "confirmed"
+ * with a real hash while no funds move.
+ */
+async function requireTokenCode(
+  ctx: { signer: ethers.Signer; chainId: number },
+  token: string,
+  symbol: string,
+): Promise<void> {
+  const provider = ctx.signer.provider;
+  if (!provider) return;
+  const code = await provider.getCode(token);
+  if (!code || code === "0x")
+    throw new Error(
+      `${symbol} has no contract at ${token} on ${CHAINS_BY_ID[ctx.chainId]?.shortName ?? `chain ${ctx.chainId}`} — this step belongs to another chain. Nothing was sent.`,
+    );
+}
+
 register("transfer", {
   render: (i) => ({
     title: `Send ${i.amount} ${i.symbol}${
@@ -526,6 +547,11 @@ register("transfer", {
       return { hash: tx.hash };
     }
 
+    /* A token transfer to an address with no contract SUCCEEDS on any EVM chain
+       and moves nothing — the wallet reports success over an empty call. So the
+       token must exist on the chain actually signing (defence in depth beside
+       the chain pin above). */
+    await requireTokenCode(ctx, i.token, i.symbol);
     const token = new ethers.Contract(i.token, ERC20_ABI, ctx.signer);
     const tx = await token.transfer(i.to, value);
     await tx.wait();
