@@ -1698,3 +1698,106 @@ a.txAction:hover {
   background: #04170f url("/newklogo2.png") center / cover no-repeat;
   flex: none;
 }
+
+
+/* ---------- pool detail v2 (Uniswap-style) ---------- */
+/* .panel composes .card, which becomes a two-column grid on desktop for the
+   position cards — that is what squeezed every panel's title into a narrow left
+   column ("Transa ctions"). Detail panels are plain stacks. */
+.detailGrid .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.detailGrid {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+.detailGrid .panelHead {
+  font-size: var(--k-fs-base);
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  margin-bottom: 14px;
+}
+.priceCard {
+  gap: 14px;
+}
+.priceTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--k-s3);
+}
+.priceBig {
+  font-size: 34px;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.priceUnit {
+  font-size: var(--k-fs-lg);
+  color: var(--k-t2);
+  letter-spacing: 0;
+}
+.priceSub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.pricePos {
+  color: var(--k-pos);
+}
+.priceNeg {
+  color: var(--k-neg);
+}
+.flipBt {
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  background: var(--k-glass-deep);
+  border-radius: var(--k-r-pill);
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.flipBt:hover {
+  color: var(--k-t1);
+}
+.priceSvg {
+  display: block;
+  width: 100%;
+  height: 220px;
+}
+.priceNone {
+  padding: 40px 8px;
+  text-align: center;
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+}
+/* Stats: balances first, then a 2x2 of label-over-value figures. */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--k-line);
+}
+.statGrid .sideStat {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 0;
+}
+.statGrid .sideStatValue {
+  font-size: var(--k-fs-xl);
+  letter-spacing: -0.02em;
+}
+@media (max-width: 960px) {
+  .detailGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
