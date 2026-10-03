@@ -51,6 +51,8 @@ export interface LocalNotification {
    * different door.
    */
   quiet?: boolean;
+  /** Optional call-to-action button shown on the row. */
+  link?: { href: string; label: string };
 }
 
 type Emitter = (n: LocalNotification) => void;
@@ -162,12 +164,14 @@ export function sendProductUpdateNotification(
   title: string,
   body: string,
   url?: string | null,
+  cta?: string | null,
 ): void {
   notify({
     title,
-    body: url ? `${body} → ${url.replace(/^https?:\/\//, "")}` : body,
+    body,
     level: "info",
     actionType: "product_update",
+    ...(url ? { link: { href: url, label: cta || "Open" } } : {}),
   });
 }
 

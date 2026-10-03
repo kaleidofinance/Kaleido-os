@@ -12,7 +12,7 @@ export async function GET() {
   if (!supabaseAdmin) return NextResponse.json({ announcements: [] });
   const { data, error } = await supabaseAdmin
     .from("announcements")
-    .select("id, title, body, url, published_at")
+    .select("id, title, body, url, cta, published_at")
     .eq("active", true)
     .lte("published_at", new Date().toISOString())
     .order("id", { ascending: false })
@@ -25,6 +25,7 @@ export async function GET() {
         title: r.title,
         body: r.body,
         url: r.url ?? null,
+        cta: r.cta ?? null,
         publishedAt: r.published_at,
       })),
     },

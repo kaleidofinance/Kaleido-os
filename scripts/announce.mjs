@@ -1,7 +1,9 @@
 // Post a product-update announcement to every Kaleido visitor's notification
 // panel (and as a browser notification where allowed).
 //
-//   node scripts/announce.mjs "Daily check-in is live" "Earn +25 kPoint every day…" [https://kaleidofi.xyz/rewards]
+//   node scripts/announce.mjs "Daily check-in is live" "+25 kPoint daily" [/rewards] ["Check in"]
+//     → the optional 3rd arg is the page; the 4th is its button label (default "Open").
+//     Keep the body to one short line — the button carries the link.
 //   node scripts/announce.mjs --list
 //   node scripts/announce.mjs --hide <id>
 //
@@ -27,7 +29,7 @@ if (!url || !key) {
 }
 const H = { apikey: key, Authorization: `Bearer ${key}`, "content-type": "application/json" };
 const api = `${url}/rest/v1/announcements`;
-const [a, b, c] = process.argv.slice(2);
+const [a, b, c, d] = process.argv.slice(2);
 
 if (a === "--list") {
   const r = await fetch(`${api}?select=id,title,published_at,active&order=id.desc&limit=20`, { headers: H });
@@ -43,7 +45,7 @@ if (a === "--list") {
   const r = await fetch(api, {
     method: "POST",
     headers: { ...H, Prefer: "return=representation" },
-    body: JSON.stringify({ title: a, body: b, url: c ?? null }),
+    body: JSON.stringify({ title: a, body: b, url: c ?? null, cta: d ?? null }),
   });
   const out = await r.json();
   if (!r.ok) {
@@ -52,5 +54,5 @@ if (a === "--list") {
   }
   console.log(`Posted #${out[0].id}: "${out[0].title}" — visitors see it within ~5 minutes.`);
 } else {
-  console.log('Usage: node scripts/announce.mjs "Title" "Body" [url] | --list | --hide <id>');
+  console.log('Usage: node scripts/announce.mjs "Title" "Body" [url] [button] | --list | --hide <id>');
 }
