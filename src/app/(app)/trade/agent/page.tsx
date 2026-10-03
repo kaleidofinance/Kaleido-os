@@ -1164,6 +1164,21 @@ export default function AgentPage() {
        * anything with a space, so "buy 0x… with 5 usdc" still reaches the
        * parser.
        */
+      /* An address one character short (or long) — a common paste/typing slip.
+         Say exactly what's wrong instead of a generic "invalid address" from
+         the model: count the hex digits and name the expected 40. */
+      const nearAddr = content.match(/\b0x([0-9a-fA-F]{30,50})\b/);
+      if (nearAddr && nearAddr[1].length !== 40) {
+        note("Checked the address length");
+        log("address-length");
+        const n = nearAddr[1].length;
+        say(
+          `That address has ${n} characters after 0x — a full address has 40, so ${n < 40 ? `${40 - n} is missing` : `there ${n - 40 === 1 ? "is 1" : `are ${n - 40}`} too many`}. Check it against the source and paste it again.`,
+          { via: "local" },
+        );
+        return;
+      }
+
       const pasted = pastedTokenAddress(content);
       if (pasted) {
         note("Looking up the token you pasted");
@@ -1184,6 +1199,18 @@ export default function AgentPage() {
           };
         }
         if (abort.signal.aborted) return;
+        /* Not a token contract — most often it's a WALLET someone pasted to see
+           what it holds. Answer that (the same local read as "check the balance
+           of 0x…") rather than "no card for that contract". A read failure for
+           a reason other than "not a token" still shows its card. */
+        if (!facts.ok && /isn't a token contract/i.test(facts.reason ?? "")) {
+          note("Not a token — reading it as a wallet");
+          await planLocally(
+            { status: "ok", command: { kind: "lookup", address: pasted } },
+            abort.signal,
+          );
+          return;
+        }
         const tradable =
           facts.ok && !facts.isQuote && (facts.source === "argus" || facts.source === "listed");
         const tokenCard = tokenCardFrom(facts);
