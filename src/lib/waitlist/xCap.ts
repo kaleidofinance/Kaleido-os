@@ -27,6 +27,7 @@ export const X_TASK_CAP = 1000;
 export const CAPPED_X_TASKS = {
   commented: "x_commented_at",
   argus: "x_argus_at",
+  argus2: "x_argus2_at",
 } as const;
 
 /** Per-task claim cap. `commented` keeps the original X_TASK_CAP; the $ARGUS
@@ -34,6 +35,7 @@ export const CAPPED_X_TASKS = {
 export const X_TASK_CAPS: Record<keyof typeof CAPPED_X_TASKS, number> = {
   commented: X_TASK_CAP,
   argus: 100,
+  argus2: 50,
 };
 
 /** The cap for a capped task column (undefined if the column is uncapped). */
@@ -53,6 +55,7 @@ export const isCappedColumn = (col: string): boolean => CAPPED_COLUMNS.has(col);
 const ALL_OPEN: Record<CappedTaskKey, boolean> = {
   commented: false,
   argus: false,
+  argus2: false,
 };
 
 // A task closes once and stays closed (new claims are rejected, so its count

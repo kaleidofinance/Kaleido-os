@@ -27,6 +27,8 @@ export const X_TASK_POINTS = {
   launch: 100,
   llama: 100,
   argus: 600,
+  /** $ARGUS listing, batch 2: 50 more spots at half the reward. */
+  argus2: 300,
   bitget: 100,
 } as const;
 
@@ -41,6 +43,7 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   launch: "x_launch_at",
   llama: "x_llama_at",
   argus: "x_argus_at",
+  argus2: "x_argus2_at",
   bitget: "x_bitget_at",
 };
 

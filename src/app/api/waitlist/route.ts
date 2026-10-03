@@ -157,7 +157,7 @@ async function season1Balance(wallet: string): Promise<Season1Balance | null> {
 const BASE_COLS = "ref_code, welcome_points, activated_at";
 const TRANSACTION_COLS = "arc_mainnet_tx_at, agent_tx_at, bridge_tx_at";
 const X_COLS =
-  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_bitget_at";
+  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_bitget_at";
 const LEGACY_X_COLS =
   "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at";
 const LEGACY_COLS = `${BASE_COLS}, ${LEGACY_X_COLS}`;
@@ -219,6 +219,7 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
     launch: xTaskState(row.x_launch_at as string | null, now),
     llama: xTaskState(row.x_llama_at as string | null, now),
     argus: xTaskState(row.x_argus_at as string | null, now, closedX.argus),
+    argus2: xTaskState(row.x_argus2_at as string | null, now, closedX.argus2),
     // Kept in the response for compatibility with an older deployed client;
     // the current UI does not render or claim this disabled task.
     bitget: xTaskState(row.x_bitget_at as string | null, now),

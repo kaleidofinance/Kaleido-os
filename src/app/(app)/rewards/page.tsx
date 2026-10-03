@@ -48,7 +48,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -107,6 +107,7 @@ export default function WaitlistPage() {
     launch: boolean;
     llama: boolean;
     argus: boolean;
+    argus2: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -114,6 +115,7 @@ export default function WaitlistPage() {
     launch: false,
     llama: false,
     argus: false,
+    argus2: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -387,7 +389,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -395,7 +397,7 @@ export default function WaitlistPage() {
             ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
-                : task === "argus"
+                : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
       window.open(url, "_blank", "noopener,noreferrer");
@@ -704,6 +706,48 @@ export default function WaitlistPage() {
                     )}
                   </li>
 
+                  {/* Batch 2 takes the row once batch 1 is full, for wallets
+                      that missed it (a batch-1 wallet keeps its ✓ row). */}
+                  {status.xTasks.argus?.closed && !status.xTasks.argus?.done ? (
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        RT &amp; comment on the $ARGUS listing · batch 2
+                      </span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.argus2?.done
+                          ? status.xTasks.argus2.counted
+                            ? "Done"
+                            : "Done · counts within 5h"
+                          : status.xTasks.argus2?.closed
+                            ? "Closed · all 50 spots claimed"
+                            : !status.xTasks.linked.done
+                              ? "Link X first"
+                              : "50 more spots · +300 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.argus2?.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : status.xTasks.argus2?.closed || !status.xTasks.linked.done ? (
+                      <span className={s.taskLock}>🔒</span>
+                    ) : opened.argus2 ? (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => postXTask("argus2")}
+                        disabled={xBusy === "argus2"}
+                      >
+                        {xBusy === "argus2" ? "…" : "Claim"}
+                      </button>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => openIntent("argus2")}
+                      >
+                        RT &amp; comment
+                      </button>
+                    )}
+                  </li>
+                  ) : (
                   <li className={s.task}>
                     <div className={s.taskText}>
                       <span className={s.taskTitle}>
@@ -742,6 +786,7 @@ export default function WaitlistPage() {
                       </button>
                     )}
                   </li>
+                  )}
 
                   {/* Swap-volume milestones. Completion is derived on-chain from
                   the wallet's credited Kaleido swap volume (see lib/waitlist/

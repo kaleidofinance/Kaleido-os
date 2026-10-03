@@ -21,8 +21,8 @@ import { capForColumn } from "@/lib/waitlist/xCap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus";
-const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus"];
+type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
   const { data: row } = await admin
     .from("waitlist")
     .select(
-      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at",
+      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at",
     )
     .eq("wallet", wallet)
     .single();
@@ -156,10 +156,15 @@ export async function POST(req: Request) {
     launch: "x_launch_at",
     llama: "x_llama_at",
     argus: "x_argus_at",
+    argus2: "x_argus2_at",
   };
   const col = COL[t as Exclude<Task, "link">];
   const existing = row[col as keyof typeof row];
   if (existing) return Response.json({ ok: true, already: true });
+  // Batch 2 of the $ARGUS task is for wallets that missed batch 1 — the same
+  // post can't pay twice.
+  if (t === "argus2" && row.x_argus_at)
+    return Response.json({ ok: true, already: true });
 
   // Cap the self-attested tasks: once X_TASK_CAP wallets have completed one it
   // auto-closes, so an unverifiable task can't be farmed without bound. This
