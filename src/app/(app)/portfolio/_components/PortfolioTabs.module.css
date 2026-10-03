@@ -474,21 +474,61 @@ button.act {
 .tile {
   composes: k-glass from global;
   border-radius: var(--k-r-lg);
-  padding: 16px 16px 14px;
+  padding: 14px 16px;
   display: flex;
-  flex-direction: column;
-  gap: 22px;
-  color: var(--k-brand);
+  align-items: center;
+  gap: 14px;
+  color: var(--tile-fg);
   font-weight: var(--k-fw-med);
   text-decoration: none;
   min-height: 96px;
-  justify-content: space-between;
+  /* The card's own colour: a wash of the accent over the glass, plus a soft
+     glow behind the coin art. background-color (not the shorthand) so the
+     card's dot texture stays. */
+  background-color: color-mix(in srgb, var(--tile-accent) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--tile-accent) 28%, transparent) !important;
+  transition: background-color var(--k-dur-fast, 0.15s) ease;
 }
 .tile:hover {
-  background: var(--k-row-hover);
+  background-color: color-mix(in srgb, var(--tile-accent) 20%, transparent) !important;
+}
+.tileSend {
+  --tile-accent: #1de6a4;
+  --tile-fg: #1de6a4;
+}
+.tileBuy {
+  --tile-accent: #5b8cff;
+  --tile-fg: #8fb0ff;
+}
+.tileSwap {
+  --tile-accent: #b18cff;
+  --tile-fg: #c9b0ff;
+}
+.tileArt {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--tile-accent) 30%, transparent), transparent 70%);
+}
+.tileArtPair {
+  display: flex;
+  justify-content: center;
+}
+.tileArtPair > * + * {
+  margin-left: -16px;
+}
+.tileText {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--k-fs-base);
 }
 .tileIcon {
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
 }
 .facts {
@@ -634,7 +674,14 @@ button.act {
   }
   .tile {
     min-height: 84px;
-    padding: 14px 12px 12px;
+    padding: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .tileArt {
+    width: 44px;
+    height: 44px;
   }
 }
 

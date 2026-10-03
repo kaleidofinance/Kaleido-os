@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Alert, PositionGroup } from "@/hooks/usePortfolio";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import ChainIcon from "@/components/v2/ChainIcon";
+import TokenCoin from "@/components/v2/TokenCoin";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import { aggregateByToken, type TokenAggregate } from "@/lib/portfolio/aggregate";
 import t from "./PortfolioTabs.module.css";
@@ -124,18 +125,36 @@ export function Overview({
         </span>
       </section>
 
+      {/* Three actions, each its own colour, with the asset coin art (TokenCoin)
+          on the left — the Uniswap card treatment rather than three grey boxes. */}
       <div className={t.tiles}>
-        <Link href="/trade/agent" className={t.tile}>
-          <span className={t.tileIcon} aria-hidden>→</span>
-          Send
+        <Link href="/trade/agent" className={`${t.tile} ${t.tileSend}`}>
+          <span className={t.tileArt} aria-hidden>
+            <TokenCoin symbol="USDC" size={46} />
+          </span>
+          <span className={t.tileText}>
+            <span className={t.tileIcon} aria-hidden>→</span>
+            Send
+          </span>
         </Link>
-        <Link href="/trade/buy" className={t.tile}>
-          <span className={t.tileIcon} aria-hidden>+</span>
-          Buy
+        <Link href="/trade/buy" className={`${t.tile} ${t.tileBuy}`}>
+          <span className={t.tileArt} aria-hidden>
+            <TokenCoin symbol="BTC" size={46} />
+          </span>
+          <span className={t.tileText}>
+            <span className={t.tileIcon} aria-hidden>+</span>
+            Buy
+          </span>
         </Link>
-        <Link href="/trade/swap" className={t.tile}>
-          <span className={t.tileIcon} aria-hidden>⇄</span>
-          Swap
+        <Link href="/trade/swap" className={`${t.tile} ${t.tileSwap}`}>
+          <span className={`${t.tileArt} ${t.tileArtPair}`} aria-hidden>
+            <TokenCoin symbol="USDC" size={38} />
+            <TokenCoin symbol="EURC" size={38} />
+          </span>
+          <span className={t.tileText}>
+            <span className={t.tileIcon} aria-hidden>⇄</span>
+            Swap
+          </span>
         </Link>
       </div>
 
