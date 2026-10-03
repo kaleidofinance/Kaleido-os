@@ -5,7 +5,7 @@ import Link from "next/link";
 import ChainIcon from "@/components/v2/ChainIcon";
 import { CHAINS, CHAINS_BY_ID } from "@/constants/chains";
 import { readTxLog, subscribeTxLog } from "@/lib/v2/txLog";
-import { fromServer, mergeActivity, type ActivityItem, type ServerActivity } from "@/lib/portfolio/activity";
+import { fromServer, mergeActivity, groupByDay, tidyTitle, type ActivityItem, type ServerActivity } from "@/lib/portfolio/activity";
 import t from "./PortfolioTabs.module.css";
 
 function readDevice(address: string): ActivityItem[] {
@@ -30,7 +30,8 @@ const when = (ms: number) => {
   if (d < 60_000) return "just now";
   if (d < 3_600_000) return `${Math.floor(d / 60_000)}m ago`;
   if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`;
-  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // The day header already names the date; a row shows its time.
+  return new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 };
 
 /**
@@ -80,9 +81,15 @@ export function ActivityTab({ address }: { address: string | undefined }) {
       </Link>
     );
 
+  /* Grouped by day under a date header — Today, Yesterday, then dates — the way
+     wallet histories read, one card per day. */
   return (
-    <div className={t.list}>
-      {items.map((it) => {
+    <div className={t.days}>
+      {groupByDay(items).map((day) => (
+        <section key={day.key} className={t.day}>
+          <h3 className={t.dayHead}>{day.label}</h3>
+          <div className={t.list}>
+      {day.items.map((it) => {
         const meta = it.chainId ? CHAINS_BY_ID[it.chainId] : undefined;
         const href = it.hash && meta ? `${meta.blockExplorer.url.replace(/\/$/, "")}/tx/${it.hash}` : null;
         const body = (
@@ -95,7 +102,7 @@ export function ActivityTab({ address }: { address: string | undefined }) {
               )}
             </span>
             <span className={t.tName}>
-              <b>{it.title}</b>
+              <b>{tidyTitle(it.title)}</b>
               <small>
                 {meta?.shortName ?? "Kaleido"}
                 {it.status !== "confirmed" && ` · ${it.status === "pending" ? "Pending" : "Failed"}`}
@@ -119,6 +126,9 @@ export function ActivityTab({ address }: { address: string | undefined }) {
           </div>
         );
       })}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

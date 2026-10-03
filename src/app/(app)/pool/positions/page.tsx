@@ -462,8 +462,8 @@ function PositionCard({
         <div className={s.stat}>
           <span className={s.statLabel}>Unclaimed fees</span>
           <span className={`${s.statValue} tabular`}>
-            {shortAmount(feeAmount0, "—")} {symbolFor(p.token0)} +{" "}
-            {shortAmount(feeAmount1, "—")} {symbolFor(p.token1)}
+            {shortAmount(feeAmount0, "0")} {symbolFor(p.token0)} +{" "}
+            {shortAmount(feeAmount1, "0")} {symbolFor(p.token1)}
           </span>
         </div>
       </div>

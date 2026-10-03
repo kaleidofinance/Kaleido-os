@@ -106,7 +106,7 @@ const PREFER_BUY = ["USDT", "USDC", "WETH", "ETH"] as const;
  */
 const balanceText = (balance: string, unread: boolean) =>
   unread
-    ? "—"
+    ? "0"
     : Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 /**

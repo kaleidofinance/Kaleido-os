@@ -140,7 +140,7 @@ const fmt = (n: number) =>
 /** See balanceText on /trade/swap: a dash means "not read", not "empty". */
 const balanceText = (balance: string, unread: boolean) =>
   unread
-    ? "—"
+    ? "0"
     : Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 /**

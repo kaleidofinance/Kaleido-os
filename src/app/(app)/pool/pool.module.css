@@ -242,8 +242,8 @@
 }
 .table {
   composes: k-glass from global;
-  /* Tables carry dense rows of figures, so the card dither is half strength. */
-  --k-dot: 3.5%;
+  /* Tables carry dense rows of figures: no card dither (stat cards keep it). */
+  --k-dot: 0%;
   border-radius: var(--k-r-lg);
   padding: var(--k-s2);
 }
@@ -275,7 +275,7 @@
    own width (13px text in 15px of horizontal padding) with nothing spare. */
 .pools .thead,
 .pools .row {
-  grid-template-columns: minmax(260px, 1.8fr) 1fr 1fr 1fr 1fr 0.8fr 96px;
+  grid-template-columns: minmax(260px, 1.8fr) 1fr 1.5fr 1fr 1fr 96px;
 }
 .row {
   display: grid;
@@ -1668,18 +1668,136 @@ a.txAction:hover {
 }
 
 
-/* Points column: the LP points rate, with a pill when a campaign boosts it. */
-.pointsCell {
+/* APR cell with the kPoints pill beside it: the Kaleido mark + "kPoints", in
+   our own brand green (not another DEX's lime). */
+.aprCell {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: flex-end;
+  gap: 8px;
   white-space: nowrap;
 }
-.boost {
-  font-size: var(--k-fs-xs);
+.pointsPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
   font-weight: var(--k-fw-med);
-  color: var(--k-brand-fg);
-  background: var(--k-brand);
+  line-height: 1;
+  color: var(--k-brand);
+  background: var(--k-brand-dim);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-brand) 35%, transparent);
   border-radius: var(--k-r-pill);
-  padding: 2px 7px;
+  padding: 3px 9px 3px 4px;
+  cursor: help;
+}
+.pointsMark {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #04170f url("/newklogo2.png") center / cover no-repeat;
+  flex: none;
+}
+
+
+/* ---------- pool detail v2 (Uniswap-style) ---------- */
+/* .panel composes .card, which becomes a two-column grid on desktop for the
+   position cards — that is what squeezed every panel's title into a narrow left
+   column ("Transa ctions"). Detail panels are plain stacks. */
+.detailGrid .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.detailGrid {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+.detailGrid .panelHead {
+  font-size: var(--k-fs-base);
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  margin-bottom: 14px;
+}
+.priceCard {
+  gap: 14px;
+}
+.priceTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--k-s3);
+}
+.priceBig {
+  font-size: 34px;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.priceUnit {
+  font-size: var(--k-fs-lg);
+  color: var(--k-t2);
+  letter-spacing: 0;
+}
+.priceSub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.pricePos {
+  color: var(--k-pos);
+}
+.priceNeg {
+  color: var(--k-neg);
+}
+.flipBt {
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  background: var(--k-glass-deep);
+  border-radius: var(--k-r-pill);
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.flipBt:hover {
+  color: var(--k-t1);
+}
+.priceSvg {
+  display: block;
+  width: 100%;
+  height: 220px;
+}
+.priceNone {
+  padding: 40px 8px;
+  text-align: center;
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+}
+/* Stats: balances first, then a 2x2 of label-over-value figures. */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--k-line);
+}
+.statGrid .sideStat {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 0;
+}
+.statGrid .sideStatValue {
+  font-size: var(--k-fs-xl);
+  letter-spacing: -0.02em;
+}
+@media (max-width: 960px) {
+  .detailGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

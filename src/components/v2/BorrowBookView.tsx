@@ -789,7 +789,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                           <div className={s.aName}>{loan.symbol}</div>
                           <div className={s.aSub}>
                             from{" "}
-                            {loan.lender ? formatAddress(loan.lender) : "—"}
+                            {loan.lender ? formatAddress(loan.lender) : ""}
                           </div>
                         </div>
                       </div>
@@ -1016,7 +1016,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                         )
                       : null;
 
-                    let amount = "—";
+                    let amount = "0";
                     try {
                       amount = formatWithCommas(
                         ethers.formatUnits(row.amount ?? "0", decimals),
@@ -1027,7 +1027,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                         isNative ? 4 : 2,
                       );
                     } catch {
-                      amount = "—";
+                      amount = "0";
                     }
 
                     return (
@@ -1053,7 +1053,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                                 tells them apart and what a take/cancel targets.
                                 Same idea as the Pool page's ChainTag. */}
                             <div className={s.aNameRow}>
-                              <span className={s.aName}>{symbol ?? "—"}</span>
+                              <span className={s.aName}>{symbol ?? "0"}</span>
                               <span className={s.chainTag}>
                                 <ChainIcon
                                   id={CHAINS_BY_ID[row.chainId]?.iconId}
@@ -1075,7 +1075,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                               </span>
                             </div>
                             <div className={s.aSub}>
-                              {counterparty ? formatAddress(counterparty) : "—"}
+                              {counterparty ? formatAddress(counterparty) : ""}
                               {isOwnRow && " · you"}
                             </div>
                           </div>
@@ -1122,7 +1122,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                                   : ""
                             }`}
                           >
-                            {isOverdue ? "Overdue" : row.status || "—"}
+                            {isOverdue ? "Overdue" : row.status || ""}
                           </span>
                         </span>
                         <span className={s.actionCell}>
@@ -1281,7 +1281,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                   className={`tabular ${borrow.healthFactor !== null && borrow.healthFactor < 1.2 ? s.rateBad : ""}`}
                 >
                   {borrow.healthFactor === null
-                    ? "—"
+                    ? "0"
                     : borrow.healthFactor.toFixed(2)}
                 </span>
               </div>

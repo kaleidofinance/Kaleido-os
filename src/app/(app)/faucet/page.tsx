@@ -50,9 +50,9 @@ import s from "./faucet.module.css";
  */
 
 const fmt = (v: string | null, dp = 2) => {
-  if (v === null) return "—";
+  if (v === null) return "0";
   const n = Number(v);
-  if (!Number.isFinite(n)) return "—";
+  if (!Number.isFinite(n)) return "0";
   return n.toLocaleString("en-US", { maximumFractionDigits: dp });
 };
 
@@ -459,7 +459,7 @@ export default function FaucetPage() {
                 <span className={s.sl}>Wait between claims</span>
                 <span className={`${s.sv} tabular`}>
                   {faucet.cooldownSeconds === null
-                    ? "—"
+                    ? "0"
                     : fmtDuration(faucet.cooldownSeconds)}
                 </span>
               </div>
@@ -467,7 +467,7 @@ export default function FaucetPage() {
                 <span className={s.sl}>Claimers</span>
                 <span className={`${s.sv} tabular`}>
                   {faucet.totalUsers === null
-                    ? "—"
+                    ? "0"
                     : faucet.totalUsers.toLocaleString("en-US")}
                 </span>
               </div>
@@ -604,7 +604,7 @@ export default function FaucetPage() {
                           {fmt(a.amount, 4)}
                         </span>
                         <span className={`${s.num} ${s.dim} tabular`}>
-                          {isConnected ? fmt(a.balance, 4) : "—"}
+                          {isConnected ? fmt(a.balance, 4) : "0"}
                         </span>
                         <span className={`${s.num} ${s.dim} tabular`}>
                           {fmt(a.stock, 0)}

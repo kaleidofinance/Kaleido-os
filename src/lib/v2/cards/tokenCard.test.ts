@@ -74,7 +74,7 @@ console.log("\n— formatting —");
   check("tiny price, no exponent", formatUsdPrice(0.00004103) === "$0.00004103", formatUsdPrice(0.00004103));
   check("sub-dollar price", formatUsdPrice(0.5) === "$0.5", formatUsdPrice(0.5));
   check("price over a dollar", formatUsdPrice(1234.5) === "$1,234.5", formatUsdPrice(1234.5));
-  check("zero price is a dash, not $0", formatUsdPrice(0) === "—");
+  check("zero price renders as 0", formatUsdPrice(0) === "0");
   check("compact market cap", formatUsdCompact(1_234_567) === "$1.2M", formatUsdCompact(1_234_567));
   check("bps → percent", formatBps(100) === "1%" && formatBps(250) === "2.5%");
 }

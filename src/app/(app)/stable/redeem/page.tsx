@@ -135,14 +135,14 @@ export default function RedeemPage() {
         <div className={f.kv}>
           <span>Rate</span>
           <b className="tabular">
-            {rate === null ? "—" : `1 kfUSD = ${trim(rate)} ${output}`}
+            {rate === null ? "0" : `1 kfUSD = ${trim(rate)} ${output}`}
           </b>
         </div>
         <div className={f.kv}>
           <span>Redemption fee</span>
           <b className="tabular">
             {stats?.redeemFee === null || stats?.redeemFee === undefined
-              ? "—"
+              ? "0"
               : fee && fee > 0
                 ? `${stats.redeemFee}% · ${trim(fee, 2)} kfUSD`
                 : `${stats.redeemFee}%`}

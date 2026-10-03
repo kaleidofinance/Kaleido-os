@@ -188,8 +188,8 @@
 /* ---------- tokens ---------- */
 .list {
   composes: k-glass from global;
-  /* Tables carry dense rows of figures, so the card dither is half strength. */
-  --k-dot: 3.5%;
+  /* Tables carry dense rows of figures: no card dither (stat cards keep it). */
+  --k-dot: 0%;
   border-radius: var(--k-r-lg);
   padding: var(--k-s2);
   display: flex;
@@ -504,12 +504,16 @@ button.act {
   --tile-accent: #b18cff;
   --tile-fg: #c9b0ff;
 }
+/* The art sits on the right edge: text first in the row, art pushed over and
+   drawn after it (order), so the label keeps the card's leading edge. */
 .tileArt {
+  order: 2;
+  margin-left: auto;
   flex: none;
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
+  width: 84px;
+  height: 84px;
   border-radius: 16px;
   background: radial-gradient(circle, color-mix(in srgb, var(--tile-accent) 30%, transparent), transparent 70%);
 }
@@ -517,8 +521,12 @@ button.act {
   display: flex;
   justify-content: center;
 }
+.tileArtPair {
+  width: auto;
+  min-width: 84px;
+}
 .tileArtPair > * + * {
-  margin-left: -16px;
+  margin-left: -22px;
 }
 .tileText {
   display: flex;
@@ -680,8 +688,14 @@ button.act {
     gap: 8px;
   }
   .tileArt {
-    width: 44px;
-    height: 44px;
+    order: 0;
+    margin-left: 0;
+    width: 48px;
+    height: 48px;
+  }
+  /* The coins render at desktop size; scale them to the phone tile. */
+  .tileArt > * {
+    transform: scale(0.72);
   }
 }
 
@@ -699,4 +713,75 @@ button.act {
 }
 .alert + .alert {
   margin-top: 0;
+}
+
+/* Activity grouped by day: a date header over each day's card. */
+.days {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s4);
+}
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+.dayHead {
+  margin: 0 4px;
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t2);
+}
+
+/* ---------- total-balance chart ---------- */
+.bal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.balTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  font-size: var(--k-fs-sm);
+}
+.balUp {
+  color: var(--k-pos);
+}
+.balDown {
+  color: var(--k-neg);
+}
+.ranges {
+  display: flex;
+  gap: 4px;
+}
+.rangeBt {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  padding: 4px 10px;
+  border-radius: var(--k-r-pill);
+  cursor: pointer;
+}
+.rangeBt:hover {
+  color: var(--k-t1);
+}
+.rangeOn {
+  background: var(--k-glass-deep);
+  color: var(--k-t1);
+}
+.balSvg {
+  display: block;
+  width: 100%;
+  height: 200px;
+}
+.balNone {
+  padding: 34px 0;
+  text-align: center;
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
 }
