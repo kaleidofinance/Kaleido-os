@@ -105,6 +105,8 @@
 /* ---------- board ---------- */
 .table {
   composes: k-glass from global;
+  /* Tables carry dense rows of figures, so the card dither is half strength. */
+  --k-dot: 3.5%;
   border-radius: var(--k-r-lg);
   padding: var(--k-s2);
 }

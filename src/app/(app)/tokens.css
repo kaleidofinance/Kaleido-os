@@ -650,7 +650,8 @@
    fill colour stays theirs. Raised surfaces (modals, menus) stay plain. */
 .kaleido-v2 .k-glass {
   background-image: radial-gradient(
-    color-mix(in srgb, var(--k-t1) 7%, transparent) 0.6px,
+    /* --k-dot sets the strength per surface; tables lower it (see .table). */
+    color-mix(in srgb, var(--k-t1) var(--k-dot, 7%), transparent) 0.6px,
     transparent 0.9px
   ) !important;
   background-size: 5px 5px !important;
