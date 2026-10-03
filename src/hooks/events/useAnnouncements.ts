@@ -12,7 +12,10 @@ import {
 } from "@/lib/notifications/announcements";
 import { sendProductUpdateNotification } from "@/lib/notifications/emit";
 
-const KEY = "kaleido_announcements_seen";
+/* v2: the panel used to be wiped on every reload (see NotificationsContext's
+   storageKey), so announcements marked seen under v1 never stayed visible.
+   A new marker re-delivers recent ones once. */
+const KEY = "kaleido_announcements_seen_v2";
 const POLL_MS = 5 * 60_000;
 
 function loadSeen(): number | null {
