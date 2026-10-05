@@ -295,7 +295,8 @@ const HTML = `<!doctype html>
 </section></div></div></div>
 <div class="page"><div class="frame"><div class="slide"><section id="ask" style="display:flex; flex-direction:column; gap:48px; justify-content:center; padding:128px; background:radial-gradient(circle at 20% 80%, #0f3a2b 0%, #141413 60%)">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#00b383">Let's build together</p>
-  <h2 style="width:1500px; font-family:'Source Serif 4', Georgia, serif; font-size:104px; font-weight:600; line-height:1.05; color:#f3efe6">Raising <span style="color:#00b383">$1M</span> to scale agentic DeFi.</h2>
+  <h2 style="width:1500px; font-family:'Source Serif 4', Georgia, serif; font-size:104px; font-weight:600; line-height:1.05; color:#f3efe6">Raising <span style="color:#00b383">$3M</span> to scale agentic DeFi.</h2>
+  <p style="font-family:'DM Sans', Arial, sans-serif; font-size:36px; font-weight:600; color:#f3efe6">$20M pre-money · Seed price $0.02 per KLD · Tickets $50K–$1M</p>
   <p style="width:1400px; font-family:'DM Sans', Arial, sans-serif; font-size:36px; line-height:1.45; color:#c9c4b8">Seeking strategic partners who bring liquidity, distribution and ecosystem reach: security, liquidity, AI infrastructure and multi-chain expansion.</p>
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:32px; color:#f3efe6">mac@kaleidofi.xyz · kaleidofi.xyz · Telegram @macrew15</p>
   <img src="/deck/texture.webp" alt="bg-3.webp" id="da70e45e" style="position:absolute; bottom:0; left:0; width:1920.01px; height:1080px; opacity:0.4; mix-blend-mode:screen">
