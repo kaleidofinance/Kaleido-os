@@ -6,6 +6,7 @@
  * connected. What counts as "new" is decided by unseenAnnouncements.
  */
 import { useEffect } from "react";
+import { visibleInterval } from "@/lib/visibleInterval";
 import {
   unseenAnnouncements,
   type Announcement,
@@ -56,10 +57,10 @@ export default function useAnnouncements(): void {
       }
     };
     void check();
-    const id = window.setInterval(() => void check(), POLL_MS);
+    const stop = visibleInterval(() => void check(), POLL_MS);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stop();
     };
   }, []);
 }

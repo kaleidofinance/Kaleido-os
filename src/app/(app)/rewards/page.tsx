@@ -23,6 +23,7 @@ import {
   msUntilNextUtcDay,
   utcDay,
 } from "@/lib/rewards/checkin";
+import { normalizeCode, redeemMessage } from "@/lib/rewards/redeem";
 
 /** "Day 3/7 of streak", or "7-day streak 🔥" on a bonus day. */
 const streakLabel = (n: number) => {
@@ -176,12 +177,15 @@ export default function WaitlistPage() {
 
   // Is an X account linked in this browser (the OAuth cookie is set)? Drives
   // whether "Link X" starts OAuth or just needs the on-chain confirm signature.
+  // Once per wallet + when X-link state changes — not on every status reload
+  // (that re-fetched it after every check-in and claim).
+  const xLinkedNow = Boolean(status?.xTasks?.linked?.done);
   useEffect(() => {
     fetch("/api/waitlist/x")
       .then((r) => r.json())
       .then((d) => setXLinkedCookie(Boolean(d?.linked)))
       .catch(() => {});
-  }, [status]);
+  }, [account?.address, xLinkedNow]);
 
   const onConnect = useCallback(async () => {
     try {
@@ -279,6 +283,43 @@ export default function WaitlistPage() {
       setCheckinBusy(false);
     }
   }, [account, checkinBusy, loadCheckin, loadStatus]);
+
+  /* Redeem a points code (POST /api/rewards/redeem, signature-gated). */
+  const [redeemCode, setRedeemCode] = useState("");
+  const [redeemBusy, setRedeemBusy] = useState(false);
+  const [redeemMsg, setRedeemMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const doRedeem = useCallback(async () => {
+    if (!account || redeemBusy) return;
+    const code = normalizeCode(redeemCode);
+    if (!code) {
+      setRedeemMsg({ ok: false, text: "Enter a valid code." });
+      return;
+    }
+    setRedeemBusy(true);
+    setRedeemMsg(null);
+    try {
+      const signature = await account.signMessage({
+        message: redeemMessage(account.address, code),
+      });
+      const res = await fetch("/api/rewards/redeem", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address: account.address, code, signature }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) setRedeemMsg({ ok: false, text: d.error || "Couldn't redeem." });
+      else {
+        setRedeemMsg({ ok: true, text: `+${d.points} $kPoint added to your balance.` });
+        setRedeemCode("");
+        await loadStatus();
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      setRedeemMsg({ ok: false, text: /reject|denied/i.test(msg) ? "Signature rejected." : "Something went wrong." });
+    } finally {
+      setRedeemBusy(false);
+    }
+  }, [account, redeemBusy, redeemCode, loadStatus]);
 
   // Sign the task message and record it. Refreshes standing on success.
   const postXTask = useCallback(
@@ -567,6 +608,32 @@ export default function WaitlistPage() {
                   <p className={s.held}>
                     +{status.heldPoints} $kPoint from X tasks · counts within 5h
                   </p>
+                ) : null}
+
+                <p className={s.refLabel}>Have a code?</p>
+                <div className={s.redeem}>
+                  <input
+                    className={s.redeemInput}
+                    value={redeemCode}
+                    onChange={(e) => setRedeemCode(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void doRedeem();
+                    }}
+                    placeholder="Enter code, e.g. KLD-XXXX-XXXX-XXXX"
+                    aria-label="Redeem code"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <button
+                    className={s.taskBtn}
+                    onClick={() => void doRedeem()}
+                    disabled={redeemBusy || !redeemCode.trim()}
+                  >
+                    {redeemBusy ? "…" : "Redeem"}
+                  </button>
+                </div>
+                {redeemMsg ? (
+                  <p className={redeemMsg.ok ? s.redeemOk : s.error}>{redeemMsg.text}</p>
                 ) : null}
 
                 <p className={s.refLabel}>Earn more $kPoint</p>

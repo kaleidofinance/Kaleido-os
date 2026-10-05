@@ -12,6 +12,7 @@
  * next visit even if the tab was closed when it landed — no backend push needed.
  */
 import { useEffect } from "react";
+import { visibleInterval } from "@/lib/visibleInterval";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { CHAINS_BY_ID } from "@/constants/chains";
@@ -21,7 +22,8 @@ import { fetchOrders } from "@/lib/dex/orders";
 import { newFills, type SeenFills } from "@/lib/notifications/activity";
 import { sendOrderFilledNotification } from "@/lib/notifications/emit";
 
-const POLL_MS = 60_000;
+/* 5 min, visible tabs only (was 60s in every tab — the top request source). */
+const POLL_MS = 5 * 60_000;
 const key = (wallet: string, chainId: number) =>
   `kaleido_order_fills:${chainId}:${wallet.toLowerCase()}`;
 
@@ -87,10 +89,10 @@ export default function useOrderFills(): void {
     };
 
     void check();
-    const id = window.setInterval(() => void check(), POLL_MS);
+    const stop = visibleInterval(() => void check(), POLL_MS);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stop();
     };
   }, [address, showTestnets]);
 }

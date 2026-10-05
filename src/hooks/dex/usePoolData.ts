@@ -58,6 +58,7 @@
  * field rather than on which hook it came from.
  */
 
+import { visibleInterval } from "@/lib/visibleInterval";
 import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { getContracts, isSeededPool } from "@/constants/registry";
@@ -98,7 +99,7 @@ const ERC20_ABI = [
   "function decimals() external view returns (uint8)",
 ];
 
-const CACHE_DURATION = 30_000; // 30 seconds
+const CACHE_DURATION = 120_000; // 2 min, visible tabs only
 
 /* One cache for every consumer, keyed by chain inside so a chain's pairs can
  * land while another chain is still being read. Same contract as useV3Pools':
@@ -430,12 +431,8 @@ export const usePoolData = () => {
 
   useEffect(() => {
     fetchPools();
-
-    const interval = setInterval(() => {
-      fetchPools(true); // Force refetch on interval
-    }, CACHE_DURATION);
-
-    return () => clearInterval(interval);
+    // Force refetch on interval — only while the tab is visible.
+    return visibleInterval(() => fetchPools(true), CACHE_DURATION);
   }, [fetchPools]);
 
   return {
