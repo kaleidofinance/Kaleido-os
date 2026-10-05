@@ -176,12 +176,15 @@ export default function WaitlistPage() {
 
   // Is an X account linked in this browser (the OAuth cookie is set)? Drives
   // whether "Link X" starts OAuth or just needs the on-chain confirm signature.
+  // Once per wallet + when X-link state changes — not on every status reload
+  // (that re-fetched it after every check-in and claim).
+  const xLinkedNow = Boolean(status?.xTasks?.linked?.done);
   useEffect(() => {
     fetch("/api/waitlist/x")
       .then((r) => r.json())
       .then((d) => setXLinkedCookie(Boolean(d?.linked)))
       .catch(() => {});
-  }, [status]);
+  }, [account?.address, xLinkedNow]);
 
   const onConnect = useCallback(async () => {
     try {

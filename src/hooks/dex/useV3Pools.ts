@@ -85,8 +85,10 @@ import { fetchSpotPricesSoon, priceLookup } from "@/lib/market/spot";
 import { MOCK_DATA } from "@/lib/mock";
 import { sweepChain } from "@/lib/dex/poolSweep";
 import { hasActiveLiquidity } from "@/lib/dex/pool";
+import { visibleInterval } from "@/lib/visibleInterval";
 
-const CACHE_DURATION = 30_000;
+/* 2 min, visible tabs only (was 30s in every tab). The server caches the sweep. */
+const CACHE_DURATION = 120_000;
 
 /* Shared with every consumer, same contract as usePoolData's: the strip, the
  * table and the detail page are three views of one fetch and must not disagree.
@@ -189,8 +191,7 @@ export function useV3Pools(): V3PoolsResult {
 
   useEffect(() => {
     fetchPools();
-    const interval = setInterval(() => void fetchPools(false), CACHE_DURATION);
-    return () => clearInterval(interval);
+    return visibleInterval(() => void fetchPools(false), CACHE_DURATION);
   }, [fetchPools]);
 
   return {
