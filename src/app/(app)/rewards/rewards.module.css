@@ -306,3 +306,37 @@
   margin-left: 0.22em;
   vertical-align: -0.04em;
 }
+
+/* Redeem-a-code row: input + the same pill button the tasks use. */
+.redeem {
+  display: flex;
+  gap: var(--k-s2);
+  margin-top: var(--k-s2);
+}
+.redeemInput {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  background: var(--k-well);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-sm);
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.redeemInput::placeholder {
+  color: var(--k-t3);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.redeemInput:focus {
+  outline: none;
+  border-color: var(--k-brand);
+}
+.redeemOk {
+  margin: var(--k-s2) 0 0;
+  color: var(--k-brand);
+  font-size: var(--k-fs-sm);
+}
