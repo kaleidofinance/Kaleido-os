@@ -22,9 +22,14 @@ const HTML = `<!doctype html>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400..700&family=DM+Sans:wght@400..700&display=swap">
 <style>
   *{box-sizing:border-box}
+  html{scroll-snap-type:y mandatory}
   html,body{margin:0;background:#0b0b0a;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .deck{display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px 16px 48px}
-  .frame{width:min(100%,1280px);aspect-ratio:16/9;position:relative;overflow:hidden;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .deck{display:flex;flex-direction:column;align-items:center}
+  /* Each slide fills the screen: as wide as fits BOTH the window's width and
+     its height at 16:9, centred, one slide per scroll step. */
+  .page{height:100vh;height:100dvh;width:100%;display:flex;align-items:center;justify-content:center;padding:16px;scroll-snap-align:center}
+  .frame{width:min(calc(100vw - 32px),calc((100dvh - 32px) * 16 / 9));aspect-ratio:16/9;position:relative;overflow:hidden;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  @media (max-width:700px) and (orientation:portrait){html{scroll-snap-type:none}.page{height:auto;padding:8px}.frame{width:calc(100vw - 16px)}}
   .slide{position:absolute;top:0;left:0;width:1920px;height:1080px;transform-origin:0 0;transform:scale(var(--s,0.6667))}
   .slide>section{position:relative;width:1920px;height:1080px;overflow:hidden;box-sizing:border-box}
   .slide h1,.slide h2,.slide h3,.slide p,.slide table{margin:0}
@@ -32,12 +37,12 @@ const HTML = `<!doctype html>
   .slide th,.slide td{padding:.35em .6em;border-bottom:1px solid rgba(20,20,19,.15);text-align:left}
   .slide th{font-weight:700}
   .slide img{display:block;object-fit:cover}
-  @media print{.deck{gap:0;padding:0}.frame{width:1920px;border-radius:0;box-shadow:none;break-after:page}.slide{transform:none}}
+  @media print{html{scroll-snap-type:none}.page{height:auto;padding:0}.frame{width:1920px;border-radius:0;box-shadow:none;break-after:page}.slide{transform:none}}
 </style>
 </head>
 <body>
 <main class="deck">
-<div class="frame"><div class="slide"><section id="cover" style="background:radial-gradient(circle at 80% 20%, #0f3a2b 0%, #141413 55%)">
+<div class="page"><div class="frame"><div class="slide"><section id="cover" style="background:radial-gradient(circle at 80% 20%, #0f3a2b 0%, #141413 55%)">
   <p id="e2-1ftwghs" style="position:absolute; bottom:64px; left:128px; width:1200px; font-family:'DM Sans', Arial, sans-serif; font-size:28px; color:#a8a49b">kaleidofi.xyz · mac@kaleidofi.xyz</p>
   <div id="c8f37627" style="clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);position:absolute; top:0; left:calc(50% + 414.33px); width:835.37px; height:699.37px; background:#141413; opacity:0.39; transform:translateX(-50%); filter:blur(4px)"></div>
   <div id="445bd3ee" style="clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);position:absolute; top:277.43px; left:calc(50% + 597.45px); width:835.37px; height:699.37px; background:#141413; opacity:0.39; transform:translateX(-50%); filter:blur(4px)"></div>
@@ -48,8 +53,8 @@ const HTML = `<!doctype html>
   <h1 id="406f0ce1" style="position:absolute; top:406.01px; left:50%; width:1664px; font-family:'Source Serif 4', Georgia, serif; font-size:160px; font-weight:600; line-height:1; color:#f3efe6; transform:translateX(-50%)">Kaleido<span style="color:#00b383">fi</span></h1>
   <img src="/deck/colosseum-1.webp" alt="kaleidocolosseum.png" id="eccc896e" style="position:absolute; top:50%; left:50%; width:1920.02px; height:1080.01px; opacity:0.09; transform:translate(-50%, -50%); mix-blend-mode:screen">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="problem" style="display:flex; flex-direction:column; gap:64px; padding:128px; background:#f3efe6">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="problem" style="display:flex; flex-direction:column; gap:64px; padding:128px; background:#f3efe6">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#0b7a4b">The problem</p>
   <h2 style="width:1500px; font-family:'Source Serif 4', Georgia, serif; font-size:88px; font-weight:600; line-height:1.1; color:#141413">DeFi still asks users to be their own engineer.</h2>
   <div style="display:flex; flex-direction:row; gap:32px">
@@ -68,8 +73,8 @@ const HTML = `<!doctype html>
   </div>
   <img src="/deck/colosseum-2.webp" alt="colosseum2.png" id="f896bd27" style="position:absolute; top:calc(50% + 0.01px); left:calc(50% + 0.01px); width:1920.02px; height:1080px; opacity:0.18; transform:translate(-50%, -50%)">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="solution" style="display:flex; flex-direction:column; gap:56px; justify-content:center; padding:128px; background:#141413">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="solution" style="display:flex; flex-direction:column; gap:56px; justify-content:center; padding:128px; background:#141413">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#00b383">The solution · Luca</p>
   <h2 style="width:1560px; font-family:'Source Serif 4', Georgia, serif; font-size:96px; font-weight:600; line-height:1.08; color:#f3efe6">One sentence in. One audited transaction out.</h2>
   <div style="width:1400px; display:flex; flex-direction:column; gap:20px; padding:48px; background:#1d1c1a; border:1px solid #33312c; border-radius:24px">
@@ -79,8 +84,8 @@ const HTML = `<!doctype html>
   </div>
   <img src="/deck/texture.webp" alt="bg-3.webp" id="c2464dae" style="position:absolute; bottom:0; left:0; width:1920.01px; height:1080px; opacity:0.4; mix-blend-mode:screen">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="how" style="display:flex; flex-direction:column; gap:72px; padding:128px; background:#f3efe6">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="how" style="display:flex; flex-direction:column; gap:72px; padding:128px; background:#f3efe6">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#0b7a4b">How it works</p>
   <h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:80px; font-weight:600; line-height:1.1; color:#141413">Safety is built into every step.</h2>
   <div style="display:flex; flex-direction:row; gap:24px">
@@ -107,8 +112,8 @@ const HTML = `<!doctype html>
   </div>
   <img src="/deck/colosseum-2.webp" alt="colosseum2.png" id="4abaef86" style="position:absolute; top:calc(50% + 0.01px); left:calc(50% + 0.01px); width:1920.02px; height:1080px; opacity:0.18; transform:translate(-50%, -50%)">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="product" style="display:flex; flex-direction:column; gap:56px; padding:128px; background:#f3efe6">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="product" style="display:flex; flex-direction:column; gap:56px; padding:128px; background:#f3efe6">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#0b7a4b">The product</p>
   <h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:80px; font-weight:600; line-height:1.1; color:#141413">A full DeFi stack, owned end to end.</h2>
   <div style="display:grid; gap:24px; grid-template-columns:1fr 1fr 1fr">
@@ -139,8 +144,8 @@ const HTML = `<!doctype html>
   </div>
   <img src="/deck/colosseum-2.webp" alt="colosseum2.png" id="c392e1c3" style="position:absolute; top:calc(50% + 0.01px); left:calc(50% + 0.01px); width:1920.02px; height:1080px; opacity:0.18; transform:translate(-50%, -50%)">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="testnet" style="display:flex; flex-direction:column; gap:56px; padding:128px 128px 160px; background:#141413">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="testnet" style="display:flex; flex-direction:column; gap:56px; padding:128px 128px 160px; background:#141413">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#00b383">Traction · testnet</p>
   <h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:80px; font-weight:600; line-height:1.1; color:#f3efe6">Battle-tested across 5 chains before mainnet.</h2>
   <div style="display:grid; gap:24px; grid-template-columns:1fr 1fr 1fr">
@@ -160,8 +165,8 @@ const HTML = `<!doctype html>
   <p style="position:absolute; bottom:64px; left:128px; width:1664px; font-family:'DM Sans', Arial, sans-serif; font-size:24px; color:#8f8a80">Testnet tokens valued at market prices · Sepolia, Base Sepolia, BNB, Arc and Robinhood testnets · TVL read on-chain, Oct 2026</p>
   <img src="/deck/texture.webp" alt="bg-3.webp" id="aaf543a1" style="position:absolute; bottom:0; left:0; width:1920.01px; height:1080px; opacity:0.4; mix-blend-mode:screen">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="mainnet" style="display:flex; flex-direction:column; gap:56px; padding:128px 128px 160px; background:#f3efe6">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="mainnet" style="display:flex; flex-direction:column; gap:56px; padding:128px 128px 160px; background:#f3efe6">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#0b7a4b">Traction · Arc mainnet</p>
   <h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:80px; font-weight:600; line-height:1.1; color:#141413">A community that's already on-chain.</h2>
   <div style="display:grid; gap:24px; grid-template-columns:1fr 1fr">
@@ -186,8 +191,8 @@ const HTML = `<!doctype html>
   <p style="position:absolute; bottom:64px; left:128px; width:1664px; font-family:'DM Sans', Arial, sans-serif; font-size:24px; color:#7a776e">Source: Kaleido production database and Arc mainnet, Oct 2026</p>
   <img src="/deck/colosseum-3.webp" alt="colosseum3.png" id="98b3ed37" style="position:absolute; top:50%; left:calc(50% + 8.01px); width:1920.02px; height:1080px; opacity:0.12; transform:translate(-50%, -50%); mix-blend-mode:screen">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="model" style="display:flex; flex-direction:column; gap:64px; padding:128px; background:#141413">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="model" style="display:flex; flex-direction:column; gap:64px; padding:128px; background:#141413">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#00b383">Business model</p>
   <h2 style="width:1500px; font-family:'Source Serif 4', Georgia, serif; font-size:80px; font-weight:600; line-height:1.1; color:#f3efe6">Revenue on every action Luca executes.</h2>
   <div style="display:flex; flex-direction:row; gap:24px">
@@ -209,8 +214,8 @@ const HTML = `<!doctype html>
   </div>
   <img src="/deck/texture.webp" alt="bg-3.webp" id="13a324e4" style="position:absolute; bottom:0; left:0; width:1920.01px; height:1080px; opacity:0.4; mix-blend-mode:screen">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="ecosystem" style="display:flex; flex-direction:column; gap:56px; padding:128px; background:#f3efe6">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="ecosystem" style="display:flex; flex-direction:column; gap:56px; padding:128px; background:#f3efe6">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#0b7a4b">Ecosystem</p>
   <h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:80px; font-weight:600; line-height:1.1; color:#141413">Built on Circle's stack, plugged into the best of DeFi.</h2>
   <table style="width:1664px; font-family:'DM Sans', Arial, sans-serif; font-size:30px; color:#141413">
@@ -223,8 +228,8 @@ const HTML = `<!doctype html>
   </table>
   <img src="/deck/colosseum-2.webp" alt="colosseum2.png" id="9aa1334b" style="position:absolute; top:calc(50% + 0.01px); left:calc(50% + 0.01px); width:1920.02px; height:1080px; opacity:0.18; transform:translate(-50%, -50%); mix-blend-mode:screen">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="roadmap" style="display:flex; flex-direction:column; gap:64px; padding:128px; background:#141413">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="roadmap" style="display:flex; flex-direction:column; gap:64px; padding:128px; background:#141413">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#00b383">Roadmap</p>
   <h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:80px; font-weight:600; line-height:1.1; color:#f3efe6">From one chain to the agent layer of DeFi.</h2>
   <div style="display:flex; flex-direction:row; gap:24px">
@@ -243,8 +248,8 @@ const HTML = `<!doctype html>
   </div>
   <img src="/deck/colosseum-1.webp" alt="kaleidocolosseum.png" id="238329bc" style="position:absolute; top:50%; left:50%; width:1920.02px; height:1080.01px; opacity:0.09; transform:translate(-50%, -50%)">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="team" style="display:flex; flex-direction:column; gap:48px; padding:128px; background:#141413">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="team" style="display:flex; flex-direction:column; gap:48px; padding:128px; background:#141413">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#00b383">The team</p>
   <h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:80px; font-weight:600; line-height:1.1; color:#f3efe6">Builders who ship.</h2>
   <div style="display:grid; gap:24px; grid-template-columns:1fr 1fr">
@@ -287,19 +292,20 @@ const HTML = `<!doctype html>
   </div>
   <img src="/deck/texture.webp" alt="bg-3.webp" id="10f53cf4" style="position:absolute; bottom:0; left:0; width:1920.01px; height:1080px; opacity:0.4; mix-blend-mode:screen">
   
-</section></div></div>
-<div class="frame"><div class="slide"><section id="ask" style="display:flex; flex-direction:column; gap:48px; justify-content:center; padding:128px; background:radial-gradient(circle at 20% 80%, #0f3a2b 0%, #141413 60%)">
+</section></div></div></div>
+<div class="page"><div class="frame"><div class="slide"><section id="ask" style="display:flex; flex-direction:column; gap:48px; justify-content:center; padding:128px; background:radial-gradient(circle at 20% 80%, #0f3a2b 0%, #141413 60%)">
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:28px; font-weight:600; letter-spacing:6px; text-transform:uppercase; color:#00b383">Let's build together</p>
   <h2 style="width:1500px; font-family:'Source Serif 4', Georgia, serif; font-size:104px; font-weight:600; line-height:1.05; color:#f3efe6">Raising <span style="color:#00b383">$1M</span> to scale agentic DeFi.</h2>
   <p style="width:1400px; font-family:'DM Sans', Arial, sans-serif; font-size:36px; line-height:1.45; color:#c9c4b8">Seeking strategic partners who bring liquidity, distribution and ecosystem reach: security, liquidity, AI infrastructure and multi-chain expansion.</p>
   <p style="font-family:'DM Sans', Arial, sans-serif; font-size:32px; color:#f3efe6">mac@kaleidofi.xyz · kaleidofi.xyz · Telegram @macrew15</p>
   <img src="/deck/texture.webp" alt="bg-3.webp" id="da70e45e" style="position:absolute; bottom:0; left:0; width:1920.01px; height:1080px; opacity:0.4; mix-blend-mode:screen">
   
-</section></div></div>
+</section></div></div></div>
 </main>
 <script>
   function fit(){var f=document.querySelector('.frame');if(!f)return;var s=f.clientWidth/1920;document.documentElement.style.setProperty('--s',s)}
-  addEventListener('resize',fit);fit();
+  addEventListener('resize',fit);addEventListener('load',fit);fit();
+  addEventListener('keydown',function(e){var k=e.key;if(k!=='ArrowDown'&&k!=='ArrowUp'&&k!=='PageDown'&&k!=='PageUp'&&k!==' ')return;e.preventDefault();var d=(k==='ArrowUp'||k==='PageUp')?-1:1;scrollBy({top:d*innerHeight,behavior:'smooth'})});
 </script>
 </body>
 </html>
