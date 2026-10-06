@@ -28,6 +28,7 @@ import {
 // the old flat STABLE_CONTRACTS was Abstract-testnet only, so every consumer
 // now has to say which chain it means.
 import { stableContracts } from "@/constants/registry";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /** The six keys stableContracts() projects, for indexing it by a form value. */
 type StableKey = keyof ReturnType<typeof stableContracts>;
@@ -1163,11 +1164,11 @@ export function useStablecoin() {
   useEffect(() => {
     if (!withdrawalInfo.hasWithdrawal) return;
 
-    const interval = setInterval(() => {
+    const stopTimer = visibleInterval(() => {
       fetchWithdrawalInfo();
-    }, 60000); // Update every minute
+    }, 60000); // Update every minute, only while the tab is visible
 
-    return () => clearInterval(interval);
+    return () => stopTimer();
   }, [withdrawalInfo.hasWithdrawal, activeAccount?.address, activeChain?.id]);
 
   return {

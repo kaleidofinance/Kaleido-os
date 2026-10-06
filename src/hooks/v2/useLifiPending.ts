@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { readLifiPending, removeLifiPending, type LifiPending } from "@/lib/bridge/lifiPending";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /** Reconciles persisted LI.FI source broadcasts with destination status. */
 export function useLifiPending(): LifiPending[] {
@@ -33,8 +34,8 @@ export function useLifiPending(): LifiPending[] {
       if (!stopped) load();
     };
     void poll();
-    const timer = window.setInterval(() => void poll(), 30_000);
-    return () => { stopped = true; window.clearInterval(timer); };
+    const stopTimer = visibleInterval(() => void poll(), 30_000);
+    return () => { stopped = true; stopTimer(); };
   }, [address]);
 
   return rows;

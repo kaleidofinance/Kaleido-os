@@ -71,8 +71,8 @@ interface CursorHookParams extends FetchParams {
   searchId?: string;
 }
 
-/** 15s, matching the read layer's staleTime — a book turns over slowly. */
-const REFETCH_MS = 15_000;
+/** 60s — a book turns over slowly, and every open tab polls this (react-query pauses it while hidden). */
+const REFETCH_MS = 60_000;
 
 const sameAddress = (a: string | undefined, b: string | undefined) =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();

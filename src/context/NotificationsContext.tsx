@@ -24,6 +24,7 @@ import {
   type LocalNotification,
 } from "@/lib/notifications/emit";
 import { MOCK_DATA, mockNotifications } from "@/lib/mock";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /**
  * The notification centre's single source of truth.
@@ -702,7 +703,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     };
 
     fetchHistory(false);
-    const syncId = window.setInterval(() => fetchHistory(true), 60_000);
+    const stopSync = visibleInterval(() => fetchHistory(true), 60_000);
 
     const connect = () => {
       if (cancelled) return;
@@ -743,7 +744,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
-      window.clearInterval(syncId);
+      stopSync();
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       if (socket) {
         // Drop onclose first, or closing here schedules a reconnect for a

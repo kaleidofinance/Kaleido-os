@@ -34,6 +34,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { MarketCoverage, MarketOverview } from "@/lib/market/bookValue";
 import { MOCK_DATA, MOCK_MARKET } from "@/lib/mock";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 export type { MarketCoverage, MarketOverview };
 
@@ -118,13 +119,13 @@ export const useMarketStats = () => {
     const controller = new AbortController();
     load(controller.signal);
 
-    const interval = setInterval(() => {
+    const stopTimer = visibleInterval(() => {
       if (!controller.signal.aborted) load(controller.signal);
     }, REFRESH_MS);
 
     return () => {
       controller.abort();
-      clearInterval(interval);
+      stopTimer();
     };
   }, [load]);
 

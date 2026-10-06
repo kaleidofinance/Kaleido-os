@@ -9,6 +9,7 @@ import {
 } from "@/lib/market/spot";
 import { MOCK_DATA } from "@/lib/mock";
 import { MOCK_USD } from "@/lib/mock/quotes";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /**
  * Spot USD prices for a component tree.
@@ -118,11 +119,11 @@ export function useSpotPrices(): SpotPricesState {
     };
 
     void run(false);
-    const timer = setInterval(() => void run(true), REFRESH_MS);
+    const stopTimer = visibleInterval(() => void run(true), REFRESH_MS);
 
     return () => {
       live = false;
-      clearInterval(timer);
+      stopTimer();
     };
   }, []);
 
