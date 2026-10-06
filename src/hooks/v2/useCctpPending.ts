@@ -12,6 +12,7 @@ import {
   type PendingCctp,
 } from "@/lib/bridge/cctpPending";
 import { isCctpMinted } from "@/lib/bridge/cctpAttestation";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /**
  * The connected wallet's not-yet-completed CCTP transfers, live.
@@ -76,10 +77,10 @@ export function useCctpPending(): {
       }
     };
     void poll();
-    const timer = setInterval(poll, 30_000);
+    const stopTimer = visibleInterval(() => void poll(), 30_000);
     return () => {
       stopped = true;
-      clearInterval(timer);
+      stopTimer();
     };
   }, [address, pending]);
 

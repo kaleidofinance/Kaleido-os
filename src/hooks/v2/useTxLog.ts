@@ -11,6 +11,7 @@ import {
   txLogKey,
   type TxLogEntry,
 } from "@/lib/v2/txLog";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /**
  * The connected wallet's transaction log, live.
@@ -89,10 +90,10 @@ export function useTxLog() {
       }));
     };
     void reconcile();
-    const timer = window.setInterval(() => void reconcile(), 12_000);
+    const stopTimer = visibleInterval(() => void reconcile(), 12_000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      stopTimer();
     };
   }, [entries, chainId, address]);
 

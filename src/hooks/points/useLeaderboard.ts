@@ -23,6 +23,7 @@ import type {
   LeaderboardPayload,
   LeaderboardStanding,
 } from "@/lib/points/leaderboard";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /** Long, on purpose: the board's own cache is 60s, so anything shorter would
     poll a route that returns the same bytes. Points accrue per epoch, not per
@@ -118,7 +119,7 @@ export function useLeaderboard(
     setState((prev) => ({ ...prev, loading: true }));
     load(controller.signal);
 
-    const interval = setInterval(() => {
+    const stopTimer = visibleInterval(() => {
       if (!controller.signal.aborted) load(controller.signal);
     }, REFRESH_MS);
     const refreshAfterTask = () => {
@@ -128,7 +129,7 @@ export function useLeaderboard(
 
     return () => {
       controller.abort();
-      clearInterval(interval);
+      stopTimer();
       window.removeEventListener("kaleido:tasks-updated", refreshAfterTask);
     };
   }, [load]);
