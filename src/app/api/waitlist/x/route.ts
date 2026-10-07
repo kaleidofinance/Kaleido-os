@@ -21,8 +21,8 @@ import { capForColumn } from "@/lib/waitlist/xCap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2";
-const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2"];
+type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "absexit";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "absexit"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
   const { data: row } = await admin
     .from("waitlist")
     .select(
-      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at",
+      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at",
     )
     .eq("wallet", wallet)
     .single();
@@ -157,6 +157,7 @@ export async function POST(req: Request) {
     llama: "x_llama_at",
     argus: "x_argus_at",
     argus2: "x_argus2_at",
+    absexit: "x_absexit_at",
   };
   const col = COL[t as Exclude<Task, "link">];
   const existing = row[col as keyof typeof row];

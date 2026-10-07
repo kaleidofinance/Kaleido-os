@@ -49,7 +49,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "absexit";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -62,6 +62,10 @@ const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 // repost intent for it (like + repost are one attested task); the env var still
 // overrides the id.
 /** The $ARGUS listing post: RT + comment, first 100 wallets get +600. */
+/* The Abstract-exit announcement (Luca bridges everything off Abstract). An
+   empty override hides the task row rather than pointing at the wrong post. */
+const ABS_EXIT_TWEET_ID =
+  process.env.NEXT_PUBLIC_ABS_EXIT_TWEET_ID ?? "2107947414627999847";
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
 const bridgeOpenedKey = (address: string) =>
@@ -109,6 +113,7 @@ export default function WaitlistPage() {
     llama: boolean;
     argus: boolean;
     argus2: boolean;
+    absexit: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -117,6 +122,7 @@ export default function WaitlistPage() {
     llama: false,
     argus: false,
     argus2: false,
+    absexit: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -430,7 +436,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "absexit") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -438,6 +444,8 @@ export default function WaitlistPage() {
             ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
+                : task === "absexit"
+                  ? `https://x.com/kaleido_finance/status/${ABS_EXIT_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -772,6 +780,47 @@ export default function WaitlistPage() {
                       </button>
                     )}
                   </li>
+
+                  {ABS_EXIT_TWEET_ID && (
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>
+                        Like &amp; RT the Abstract Luca bridge-out post
+                      </span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.absexit?.done
+                          ? status.xTasks.absexit.counted
+                            ? "Done"
+                            : "Done · counts within 5h"
+                          : status.xTasks.absexit?.closed
+                            ? "Closed · all 200 spots claimed"
+                            : !status.xTasks.linked.done
+                              ? "Link X first"
+                              : "First 200 wallets · +700 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.absexit?.done ? (
+                      <span className={s.taskDone}>✓</span>
+                    ) : status.xTasks.absexit?.closed || !status.xTasks.linked.done ? (
+                      <span className={s.taskLock}>🔒</span>
+                    ) : opened.absexit ? (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => postXTask("absexit")}
+                        disabled={xBusy === "absexit"}
+                      >
+                        {xBusy === "absexit" ? "…" : "Claim"}
+                      </button>
+                    ) : (
+                      <button
+                        className={s.taskBtn}
+                        onClick={() => openIntent("absexit")}
+                      >
+                        Like &amp; RT
+                      </button>
+                    )}
+                  </li>
+                  )}
 
                   {/* Batch 2 takes the row once batch 1 is full, for wallets
                       that missed it (a batch-1 wallet keeps its ✓ row). */}
