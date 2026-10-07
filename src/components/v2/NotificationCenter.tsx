@@ -311,7 +311,13 @@ export default function NotificationCenter({
                       key={n.id}
                       n={n}
                       focused={n.id === focusedId}
-                      onOpen={() => markAsRead(n.id)}
+                      onOpen={(x) => {
+                        markAsRead(x.id);
+                        /* Following a link leaves the panel: closed, so the
+                           page it opened is visible rather than hidden behind
+                           it (which read as "the button does nothing"). */
+                        if (x.link && x.request?.status !== "pending") onClose();
+                      }}
                       onReview={onReview}
                       onDeny={onDeny}
                       onDelete={deleteNotification}
