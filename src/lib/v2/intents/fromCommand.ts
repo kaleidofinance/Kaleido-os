@@ -2221,6 +2221,37 @@ function parseWrap(raw: string, tokens: IToken[]): ParseResult | null {
   return { status: "ok", command: { kind: "swap", amount, tokenIn, tokenOut } };
 }
 
+/**
+ * Does a trade sentence name two tokens joined by "and" (or "&" / ",")?
+ *
+ * True when a trade verb is present, some token is named before the joiner,
+ * and another token follows it with only fillers in between ("10", "all", "my",
+ * "sell", "100%"…) — so "swap ARGUS for TOLLY" (no joiner) and "bridge 10 USDC
+ * to BSC and send it to 0x…" (no token after "and") are untouched.
+ */
+function namesTwoTradedTokens(text: string, tokens: IToken[]): boolean {
+  if (!/\b(sell|swap|dump|trade|convert|buy)\b/i.test(text)) return false;
+  const symbols = new Set(
+    tokens.flatMap((t) => [t.symbol.toLowerCase(), ...(/^[a-z0-9.]+$/i.test(t.name) ? [t.name.toLowerCase()] : [])]),
+  );
+  const words = text
+    .toLowerCase()
+    .replace(/[,&]/g, " and ")
+    .split(/\s+/)
+    .map((w) => w.replace(/^[$]+|[.!?]+$/g, ""))
+    .filter(Boolean);
+  const filler = /^(\d[\d,]*(\.\d+)?%?|all|my|the|of|also|then|sell|swap|dump|trade|convert|buy|half|some|max|everything|\$?\d[\d,]*(\.\d+)?)$/;
+  for (let k = 0; k < words.length; k++) {
+    if (words[k] !== "and") continue;
+    if (!words.slice(0, k).some((w) => symbols.has(w))) continue;
+    for (let j = k + 1; j < words.length; j++) {
+      if (symbols.has(words[j])) return true;
+      if (!filler.test(words[j])) break;
+    }
+  }
+  return false;
+}
+
 export function parseCommand(
   text: string,
   tokens: IToken[],
@@ -2244,6 +2275,14 @@ export function parseCommand(
       return { status: "unknown" };
     }
   }
+
+  /* Two tokens joined by "and" in one trade — "sell 10 ARGUS and 10 TOLLY",
+     "sell all my ARGUS and TOLLY", "sell X for USDC and sell Y for USDC". The
+     grammar builds ONE swap, so it used to keep the first token and drop the
+     second without a word, or worse, read "and TOLLY" as the token to receive
+     and swap ARGUS into it. The model builds one swap per token into a single
+     plan, so the sentence goes there instead of being half-built here. */
+  if (namesTwoTradedTokens(text, tokens)) return { status: "unknown" };
 
   /* A balance question about another wallet. Needs the address AND a holdings
      word, and no action verb — "send 10 USDC to 0x…" names an address too and

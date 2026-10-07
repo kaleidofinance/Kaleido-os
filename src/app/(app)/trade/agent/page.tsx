@@ -19,6 +19,9 @@ import { useChatHistory, type Msg } from "@/hooks/v2/useChatHistory";
 import { chainTokens, chainsOffering, bridgeSourceCandidates } from "@/constants/tokens";
 import { resolveChain } from "@/lib/ai/bridgeQuotes";
 import { argusAddressToken } from "@/lib/argus/token";
+import { fetchHeldTokens, heldVocabulary } from "@/lib/wallet/heldTokens";
+import { envVars } from "@/constants/envVars";
+import type { IToken } from "@/constants/types/dex";
 import { ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
 import AgentSettings from "@/components/v2/AgentSettings";
 import AgentCards from "@/components/v2/AgentCards";
@@ -378,6 +381,25 @@ export default function AgentPage() {
   /** The connected wallet as of this render, readable from a stale closure. */
   const addrRef = useRef(address);
   addrRef.current = address;
+
+  /*
+   * Tokens the wallet holds that the registry doesn't list (an Argus launch
+   * bought last week), so "sell 100% of GLITCH" names the GLITCH in this
+   * wallet instead of "I don't know a token called GLITCH". Read once per
+   * wallet and chain from thirdweb Insight in the browser; see heldTokens.ts.
+   */
+  const [heldTokens, setHeldTokens] = useState<IToken[]>([]);
+  useEffect(() => {
+    setHeldTokens([]);
+    if (!address || !chainId) return;
+    let live = true;
+    void fetchHeldTokens(address, chainId, envVars.thirdwebClientId).then((t) => {
+      if (live) setHeldTokens(t);
+    });
+    return () => {
+      live = false;
+    };
+  }, [address, chainId]);
 
   /**
    * Reads the balance without spending one, so the count is visible before the
@@ -1034,7 +1056,8 @@ export default function AgentPage() {
     // The vocabulary the parser resolves symbols against, scoped to the chain
     // the user is on. "swap 500 usdc" names a different contract on each chain,
     // so there is no chain-free answer to what "usdc" means.
-    const vocabulary = chainTokens(chainId);
+    const registryTokens = chainTokens(chainId);
+    const vocabulary = [...registryTokens, ...heldVocabulary(registryTokens, heldTokens)];
     /* What the grammar needs to explain a miss rather than ask again: this
        chain's name, which other chains carry a symbol it doesn't (kept to the
        viewer's network), and whether a phrase names a chain — so "swap 50

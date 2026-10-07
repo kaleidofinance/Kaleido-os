@@ -5,6 +5,7 @@
 // ambiguous case must fall through to "unknown" (escalate to a model) or
 // "incomplete" (ask the user). Silently guessing an amount or a token is the
 // one outcome that must never happen.
+import { chainTokens } from "../../../constants/tokens";
 import { dollarSizedToken, usdToTokenAmount,
   parseCommand,
   parseFollowUp,
@@ -3168,6 +3169,27 @@ console.log("\n— bridge to someone else's address —");
   check("a plain bridge carries no recipient", plain.status === "ok" && plain.command.kind === "bridge" && plain.command.recipient === undefined, JSON.stringify(plain).slice(0, 160));
   const two = pb(`bridge 100 usdc to base to ${R} and ${R}`);
   check("two addresses → the model decides, nothing guessed", two.status === "unknown");
+}
+
+// Two tokens joined by "and" in one trade go to the model (one swap each),
+// never half-built here: the second token used to be dropped silently, and
+// "sell all my ARGUS and TOLLY" swapped ARGUS INTO TOLLY.
+{
+  const arc = chainTokens(5042);
+  const pm = (s) => parseCommand(s, arc, { chainName: "Arc" });
+  for (const s of [
+    "sell 10 ARGUS and 10 TOLLY for USDC",
+    "sell 10 ARGUS for USDC and sell 10 TOLLY for USDC",
+    "sell all my ARGUS and TOLLY",
+    "sell ARGUS & TOLLY",
+  ])
+    check(`two traded tokens -> model: "${s}"`, pm(s).status === "unknown", JSON.stringify(pm(s)).slice(0, 160));
+  const single = pm("swap 10 ARGUS for TOLLY");
+  check("control: 'swap ARGUS for TOLLY' is still ARGUS into TOLLY",
+    single.status === "ok" && single.command.kind === "swap" && single.command.tokenIn.symbol === "ARGUS" && single.command.tokenOut.symbol === "TOLLY",
+    JSON.stringify(single).slice(0, 160));
+  const br = pm("bridge 10 USDC to BSC and send it to 0x591e000000000000000000000000000000000000");
+  check("control: bridge '... and send it to 0x...' is untouched", br.status === "ok" && br.command.kind === "bridge");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
