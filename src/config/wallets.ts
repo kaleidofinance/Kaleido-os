@@ -1,4 +1,4 @@
-import { createWallet, inAppWallet } from "thirdweb/wallets";
+import { createWallet, inAppWallet, type WalletId } from "thirdweb/wallets";
 
 /**
  * The wallets we offer, in the order the connect modal shows them.
@@ -29,6 +29,14 @@ export const WALLETS = [
   createWallet("com.coinbase.wallet"),
   createWallet("me.rainbow"),
   createWallet("walletConnect"),
+  /* Abstract Global Wallet — so users can move funds OFF Abstract before the
+     chain shuts down (2026-12-15). AGW is a smart-contract wallet behind a
+     Privy cross-app login; @abstract-foundation/agw-web announces it as an
+     EIP-6963 provider with rdns "xyz.abs.privy" (NOT thirdweb's catalogue id
+     "xyz.abs", which has no connector), and thirdweb matches an injected
+     provider by that rdns. The provider is loaded in the browser by the
+     thirdweb adapter. */
+  createWallet("xyz.abs.privy" as WalletId),
   /* RESTORED 2026-09-15 — thirdweb's paid plan is now provisioned, so the
      embedded/social wallet service is back. Email or social sign-in producing a
      real EOA, for someone with no browser extension. (The connect modal surfaces

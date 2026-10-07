@@ -22,6 +22,15 @@ import { prepareTransaction } from "thirdweb";
 import { toast } from "sonner";
 
 import { client } from "@/config/client";
+
+/** Announces Abstract Global Wallet as an EIP-6963 provider, in the browser only
+ *  (the package touches `window`), so the "xyz.abs" entry in WALLETS can connect. */
+function AgwProvider() {
+  useEffect(() => {
+    void import("@abstract-foundation/agw-web/mainnet").catch(() => {});
+  }, []);
+  return null;
+}
 import { WALLETS } from "@/config/wallets";
 import {
   CHAINS_BY_ID,
@@ -187,6 +196,7 @@ function useBatch() {
 function Root({ children }: { children: ReactNode }) {
   return (
     <ThirdwebProvider>
+      <AgwProvider />
       <AutoConnect wallets={WALLETS} client={client} />
       {children}
     </ThirdwebProvider>

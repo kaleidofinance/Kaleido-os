@@ -141,7 +141,9 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
+    "@abstract-foundation/agw-web": "^1.10.4",
     "@huggingface/transformers": "^3.3.3",
+    "@privy-io/cross-app-connect": "^0.5.15",
     "@pythnetwork/hermes-client": "^2.0.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/themes": "^3.1.4",
