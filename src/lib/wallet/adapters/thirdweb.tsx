@@ -8,6 +8,7 @@ import {
   useActiveAccount,
   useActiveWallet,
   useActiveWalletChain,
+  useConnect,
   useConnectModal,
   useSwitchActiveWalletChain,
 } from "thirdweb/react";
@@ -64,6 +65,9 @@ type ToEthersArgs = Parameters<typeof ethers6Adapter.signer.toEthers>[0];
  * thirdweb is important: its omitted-chain default is Ethereum. Existing
  * sessions are restored by AutoConnect and keep the wallet's current chain. */
 const ARC_MAINNET = defineChain(toThirdwebChainOptions(CHAINS_BY_ID[5042]));
+const ABSTRACT_MAINNET = defineChain(toThirdwebChainOptions(CHAINS_BY_ID[2741]));
+/** The id agw-web announces the Abstract Global Wallet under; see config/wallets.ts. */
+const AGW_WALLET_ID = "xyz.abs.privy";
 
 /* ---------------------------------------------------------------- signing -- */
 
@@ -214,7 +218,23 @@ export const thirdwebAdapter: WalletAdapter = {
   useChainHandle: () => useActiveWalletChain(),
   useConnect: () => {
     const { connect } = useConnectModal();
-    return () => {
+    const { connect: connectDirect } = useConnect();
+    return (opts?: { wallet?: "agw" }) => {
+      /* AGW logs in through a Privy popup, and a browser only lets a popup open
+         inside the click that asked for it. A one-wallet modal auto-connects
+         AFTER the click, so the popup was silently blocked. Connect the wallet
+         directly, synchronously from the click, instead. */
+      if (opts?.wallet === "agw") {
+        const agw = WALLETS.find((w) => (w.id as string) === AGW_WALLET_ID);
+        if (agw)
+          void connectDirect(async () => {
+            await agw.connect({ client, chain: ABSTRACT_MAINNET });
+            return agw;
+          }).catch(() => {
+            /* Closing the popup rejects — a choice, not a fault. */
+          });
+        return;
+      }
       connect({
         client,
         wallets: WALLETS,

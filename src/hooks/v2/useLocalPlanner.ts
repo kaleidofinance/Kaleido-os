@@ -52,6 +52,8 @@ export type {
   LoanRef,
   PoolPositionRef,
 } from "@/lib/v2/intents/build";
+import { fetchHeldTokens } from "@/lib/wallet/heldTokens";
+import { envVars } from "@/constants/envVars";
 export { isParsableAmount } from "@/lib/v2/intents/build";
 
 export interface PlannerOptions extends BuilderOptions {
@@ -213,6 +215,12 @@ export function useLocalPlanner() {
              wallet's balance — the same reader the server planner uses, so both
              agree. See chain/tokenBalance. */
           tokenBalance: (token) => readTokenBalance(chainId, address, token),
+          /* Everything held on this chain, registry or not — read by the
+             "move everything off <chain>" plan (Abstract's shutdown). */
+          heldTokens: () =>
+            chainId && address
+              ? fetchHeldTokens(address, chainId, envVars.thirdwebClientId)
+              : Promise.resolve([]),
           /* Any chain: a send "on Base" is checked there, and a short one looks
              for the token elsewhere to offer a bridge. Same reader as the server. */
           balanceOn: (id, token, isNative) =>

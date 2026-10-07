@@ -10,6 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useConnectAgw } from "@/lib/wallet";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
@@ -197,6 +198,34 @@ function historyForModel(
 
 export default function AgentPage() {
   const { chainId, address } = useWalletV2();
+  const connectAgw = useConnectAgw();
+  /* The exit request waiting on the Abstract wallet: set when the connect card
+     is shown, replayed once the wallet is on Abstract (effect below send). */
+  const [pendingExit, setPendingExitState] = useState<string | null>(null);
+  /* Kept in sessionStorage too (10 min), because connecting a different wallet
+     reloads this page's transcript and remounts it — component state alone was
+     lost exactly at the moment the wallet connected. */
+  const PENDING_EXIT_KEY = "luca:pendingExit";
+  const setPendingExit = (text: string | null) => {
+    setPendingExitState(text);
+    try {
+      if (text) sessionStorage.setItem(PENDING_EXIT_KEY, JSON.stringify({ text, at: Date.now() }));
+      else sessionStorage.removeItem(PENDING_EXIT_KEY);
+    } catch {
+      /* private mode: the in-memory copy still works within this mount */
+    }
+  };
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(PENDING_EXIT_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw) as { text?: string; at?: number };
+      if (p.text && p.at && Date.now() - p.at < 10 * 60_000) setPendingExitState(p.text);
+      else sessionStorage.removeItem(PENDING_EXIT_KEY);
+    } catch {
+      /* unreadable or blocked storage: nothing to resume */
+    }
+  }, []);
   const { settings } = useAgentSettings(address);
   const { buildPlan } = useLocalPlanner();
   const { showTestnets } = useTestnetMode();
@@ -598,6 +627,35 @@ export default function AgentPage() {
      * with the same getBalances the model's tool runs, shown as a balance card.
      * No model involved, so it answers even when the model is down.
      */
+    /* "Move everything off Abstract": the bridges are signed from Abstract, so
+       a wallet that isn't there gets a card that opens the Abstract Global
+       Wallet connector instead of a dead-end refusal. */
+    if (
+      result.command.kind === "exitChain" &&
+      /^abs/i.test(result.command.fromChain) &&
+      chainId !== 2741
+    ) {
+      note("Needs the Abstract wallet connected first");
+      const c = result.command;
+      setPendingExit(`move everything off ${c.fromChain} to ${c.toChain} as ${c.toAsset.toLowerCase()}`);
+      say(
+        "Those funds are on Abstract, so the bridges have to be signed from your Abstract wallet. Connect it and I'll carry on and build the plan to move everything out.",
+        {
+          via: "local",
+          cards: [
+            {
+              kind: "connect",
+              wallet: "agw",
+              title: "Connect your Abstract Global Wallet",
+              body: "Abstract shuts down on Dec 15, 2026. Connecting signs nothing — you'll review every bridge before it's sent.",
+              label: "Connect Abstract Global Wallet",
+            },
+          ],
+        },
+      );
+      return true;
+    }
+
     if (result.command.kind === "lookup") {
       const who = result.command.address;
       const short = `${who.slice(0, 6)}…${who.slice(-4)}`;
@@ -952,6 +1010,17 @@ export default function AgentPage() {
     refreshCredits(address);
   };
 
+  /* Picks the exit back up the moment the Abstract wallet is connected, so the
+     connect card leads somewhere instead of asking the user to repeat
+     themselves. Fires once: the pending request is cleared before it runs. */
+  useEffect(() => {
+    if (!pendingExit || chainId !== 2741 || !address) return;
+    const text = pendingExit;
+    setPendingExit(null);
+    void send(text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingExit, chainId, address]);
+
   const send = async (text: string) => {
     const content = text.trim();
     if (!content || busy) return;
@@ -1157,7 +1226,13 @@ export default function AgentPage() {
       // Local-first. A stated command is not a reasoning problem, and routing it
       // through a provider costs a credit, adds latency, and introduces the one
       // failure mode a grammar can't have: a confidently wrong number.
-      if (pending) {
+      /* A message that is a whole command on its own is a NEW request, not the
+         answer to the question still pending: "move everything off Abstract to
+         Arc" typed after an unanswered "Which token?" was being read as the
+         token and looped. Only a fragment ("USDC", "50") fills the slot. */
+      if (pending && parseCommand(content, vocabulary, parseCtx).status === "ok")
+        setPending(null);
+      else if (pending) {
         const filled = fillSlot(
           pending.draft,
           pending.missing,
@@ -2400,6 +2475,8 @@ export default function AgentPage() {
                           cards={m.cards}
                           onPrompt={fillPrompt}
                           onSend={(t) => void send(t)}
+                          onConnect={() => connectAgw()}
+                          agwConnected={chainId === 2741 && !!address}
                           historical={m.historical ? { at: m.ts } : undefined}
                         />
                       )}

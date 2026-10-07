@@ -9,6 +9,7 @@ import {
   findRegisteredLendingAsset,
   getContracts,
   isNativeSentinel,
+  nativeTokenOf,
   registeredLendingAssets,
   resolveUserToken,
   stableContracts,
@@ -559,6 +560,13 @@ export interface PlanDeps {
    * guess a number.
    */
   tokenBalance?(token: string): Promise<bigint | null>;
+  /**
+   * Every ERC-20 this wallet holds on the connected chain, registry or not (from
+   * thirdweb Insight). Read only by `exitChain`, which bridges all of them out;
+   * absent or empty means that branch refuses rather than leaves tokens behind
+   * silently.
+   */
+  heldTokens?(): Promise<IToken[]>;
   /**
    * This wallet's balance of `token` on ANY chain — native currency when
    * `isNative`. Read by send, to check the chain it was asked for and to find
@@ -1131,6 +1139,101 @@ export async function buildIntents(
   /* Another wallet's balances: a read the page answers, never a plan. */
   if (command.kind === "lookup") {
     return { ok: false, error: "lookup" };
+  }
+
+  /*
+   * Everything off one chain: one bridge per held token, all converted to
+   * `toAsset` on the destination, in one plan. Built for Abstract's shutdown
+   * (2026-12-15). Each leg goes through the ordinary bridge branch below, so it
+   * is resolved, cross-checked and audited exactly like a typed bridge; a leg the
+   * aggregator can't route is skipped and named, never silently dropped.
+   */
+  if (command.kind === "exitChain") {
+    const src = resolveChain(command.fromChain);
+    const dest = resolveChain(command.toChain);
+    if (!src) return { ok: false, error: `I don't recognise the chain "${command.fromChain}".` };
+    if (!dest) return { ok: false, error: `I don't recognise the chain "${command.toChain}".` };
+    if (src.id === dest.id)
+      return { ok: false, error: `That moves funds from ${src.shortName} to itself. Name where they should go, e.g. "to Arc".` };
+    if (chainId !== src.id)
+      return {
+        ok: false,
+        error: `The bridges are signed from ${src.shortName}, so connect the wallet that holds your funds there (for Abstract, the Abstract Global Wallet) and switch it to ${src.shortName} first.`,
+      };
+    if (!deps.heldTokens || !deps.tokenBalance || !deps.balanceOn)
+      return { ok: false, error: `I can't read everything this wallet holds on ${src.shortName} from here. Try again from the Luca page.` };
+
+    const legs: { token: IToken; raw: bigint }[] = [];
+    for (const t of await deps.heldTokens()) {
+      const raw = await deps.tokenBalance(t.address);
+      if (raw && raw > 0n) legs.push({ token: t, raw });
+    }
+    /* The native coin (ETH on Abstract) — usually the main thing to move. Bridged
+       last, minus a small reserve to pay gas for the bridges before it. Never
+       dropped without a word: too little to bridge, or an unreadable balance,
+       is said out loud in the reply. */
+    const native = nativeTokenOf(CHAINS_BY_ID[src.id], "dex");
+    const nativeRaw = native ? await deps.balanceOn(src.id, native.address, true) : null;
+    const reserve = ethers.parseUnits("0.0005", native?.decimals ?? 18);
+    let nativeNote = "";
+    if (native) {
+      if (nativeRaw === null)
+        nativeNote = ` I couldn't read your ${native.symbol} balance on ${src.shortName} just now, so ${native.symbol} isn't in this plan — ask again in a moment.`;
+      else if (nativeRaw > reserve)
+        legs.push({
+          token: { address: native.address, symbol: native.symbol, name: native.name, decimals: native.decimals, chainId: src.id, verified: true, isNative: true },
+          raw: nativeRaw - reserve,
+        });
+      else if (nativeRaw > 0n)
+        nativeNote = ` Your ${Number(ethers.formatUnits(nativeRaw, native.decimals)).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${native.symbol} is kept for gas — too little to bridge after paying for the other steps.`;
+    }
+    if (legs.length === 0)
+      return { ok: false, error: `I don't see anything to move in this wallet on ${src.shortName}.${nativeNote}` };
+
+    const intents: Intent[] = [];
+    const moved: string[] = [];
+    const skipped: string[] = [];
+    for (const leg of legs) {
+      const amount = ethers.formatUnits(leg.raw, leg.token.decimals);
+      const same = leg.token.symbol.toUpperCase() === command.toAsset.toUpperCase();
+      const r = await buildIntents(
+        { kind: "bridge", amount, token: leg.token, toChain: command.toChain, ...(same ? {} : { toAsset: command.toAsset }) },
+        opts,
+        deps,
+      );
+      if (r.ok) {
+        intents.push(...r.build.intents);
+        moved.push(`${Number(amount).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${leg.token.symbol}`);
+      } else
+        /* "No executable route" means no bridge carries it and no DEX on the
+           source chain will swap it — typical for a token that only exists
+           there. Said plainly; any other refusal is passed through. */
+        skipped.push(
+          /No executable route/i.test(r.error)
+            ? `${leg.token.symbol} (no bridge or swap route out of ${src.shortName})`
+            : `${leg.token.symbol} (${r.error.replace(/\.$/, "")})`,
+        );
+    }
+    const stuckHint =
+      ` Tokens that only exist on ${src.shortName} can't be bridged — they need a buyer there first.` +
+      (src.id === 2741 ? " Try selling them on an Abstract DEX, or Abstract's official Migration Hub (migrate.abs.xyz), then ask me again to move the proceeds." : "");
+    if (intents.length === 0)
+      return {
+        ok: false,
+        error: `None of your ${src.shortName} tokens can be moved out right now: ${skipped.join("; ")}.${skipped.some((x) => x.includes("no bridge or swap route")) ? stuckHint : ""}${nativeNote}`,
+      };
+    return {
+      ok: true,
+      build: {
+        intents,
+        summary:
+          `Move ${moved.join(", ")} off ${src.shortName} to ${command.toAsset} on ${dest.shortName}, one bridge each — review and sign every step.` +
+          (skipped.length
+            ? ` Can't be moved: ${skipped.join("; ")}.${skipped.some((x) => x.includes("no bridge or swap route")) ? stuckHint : ""}`
+            : "") +
+          nativeNote,
+      },
+    };
   }
 
   /*

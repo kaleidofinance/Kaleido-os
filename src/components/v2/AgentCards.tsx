@@ -184,6 +184,11 @@ interface Props {
    * back to prefilling via `onPrompt`, which is always safe.
    */
   onSend?: (text: string) => void;
+  /** Opens a wallet connector — only the local-only `connect` card uses it. */
+  onConnect?: (wallet: "agw") => void;
+  /** True once the Abstract Global Wallet is connected on Abstract — the
+   *  connect card then shows that instead of its button. */
+  agwConnected?: boolean;
   /**
    * Set for cards restored from storage — a past turn's data, not a reading of
    * now. Present makes the group dimmed and captioned so a balance from earlier
@@ -203,7 +208,7 @@ function whenLabel(at?: number): string {
   return `from ${Math.round(hrs / 24)}d ago`;
 }
 
-export default function AgentCards({ cards, onPrompt, onSend, historical }: Props) {
+export default function AgentCards({ cards, onPrompt, onSend, onConnect, agwConnected, historical }: Props) {
   if (!cards.length) return null;
 
   return (
@@ -354,6 +359,34 @@ export default function AgentCards({ cards, onPrompt, onSend, historical }: Prop
                   <div className={s.nTitle}>{card.title}</div>
                 </div>
                 {card.body && <div className={s.nBody}>{card.body}</div>}
+              </div>
+            );
+
+          case "connect":
+            return (
+              <div key={i} className={`${s.card} ${s.notice} ${s.neutral}`}>
+                <div className={s.nHead}>
+                  <ToneIcon tone="neutral" className={s.nIcon} />
+                  <div className={s.nTitle}>{card.title}</div>
+                </div>
+                {card.body && <div className={s.nBody}>{card.body}</div>}
+                {/* A restored card is a snapshot; only a live one connects. */}
+                {!historical && agwConnected && (
+                  <div className={s.tokBtns}>
+                    <span className={`${s.chip} ${s.good}`}>✓ Connected</span>
+                  </div>
+                )}
+                {!historical && !agwConnected && onConnect && (
+                  <div className={s.tokBtns}>
+                    <button
+                      type="button"
+                      className={`${s.chip} ${s.tokBuy}`}
+                      onClick={() => onConnect(card.wallet)}
+                    >
+                      {card.label}
+                    </button>
+                  </div>
+                )}
               </div>
             );
 

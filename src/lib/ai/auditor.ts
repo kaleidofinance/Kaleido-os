@@ -1694,7 +1694,19 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const fromChainId = num(s.fromChainId);
     const srcChain = fromChainId ?? chainId;
     const tok = knownToken(srcChain, token);
-    if (!tok.ok) reasons.push(`unrecognised token ${token || "(none)"}`);
+    /* An unverified source is admitted on exactly the shape a trade admits it:
+       an aggregator bridge that SWAPS into a token (`toToken`) and carries a
+       minimum output, so the cross-asset block below prices the step by that
+       verified floor and the per-action USD cap still binds. This is how a token
+       we never listed (an Abstract holding moved out before the chain shuts
+       down) leaves; a same-asset bridge of an unknown token still refuses. */
+    const unverifiedSwapOut =
+      !tok.ok &&
+      ethers.isAddress(token) &&
+      !!str(s.toToken) &&
+      (str(s.provider) === "lifi" || str(s.provider) === "relay");
+    if (!tok.ok && !unverifiedSwapOut)
+      reasons.push(`unrecognised token ${token || "(none)"}`);
 
     const amount = positive(s.amount);
     if (amount === null)
