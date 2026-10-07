@@ -161,6 +161,18 @@ const ENCODERS: Partial<Record<IntentKind, BatchEncoder>> = {
     return { to: i.to, data: i.data };
   },
 
+  /* An aggregator bridge (LI.FI / Relay) is the provider's own transaction —
+     `to`/`data`/`value` exactly as the one-step resolver sends it. Bundled ONLY
+     inside an exit run (see exitRun): pairsWith keeps excluding bridges, so an
+     ordinary approve+bridge still signs as before. Canonical and CCTP legs never
+     bundle — their post-send tracking assumes a hash of their own. */
+  bridge: (raw) => {
+    const i = raw as Extract<Intent, { kind: "bridge" }>;
+    if (i.provider !== "lifi" && i.provider !== "relay") return null;
+    if (i.recipient) return null;
+    return { to: i.to, data: i.data, value: BigInt(i.value || "0") };
+  },
+
   /* The Argus swap is pre-built calldata (the server's, audited as bytes), so
      its "encoding" is the call it already is — exactly what its resolver sends. */
   argusSwap: (raw) => {
@@ -350,6 +362,8 @@ export function isBatchable(kind: IntentKind): boolean {
 export function pairsWith(approve: Intent, next: Intent): boolean {
   if (approve.kind !== "approve") return false;
   if (!isBatchable(next.kind)) return false;
+  /* Bridges bundle only as a whole exit run (exitRun), never as a lone pair. */
+  if (next.kind === "bridge") return false;
 
   const target = targetOf(next);
   return (
@@ -403,7 +417,41 @@ export function argusRun(a: Intent, b: Intent | undefined, c: Intent | undefined
   );
 }
 
+/**
+ * "Move everything off a chain" as ONE signature: a plan made only of
+ * aggregator bridges and the approves that pay them, all leaving one chain.
+ *
+ * Every link is checked the way pairsWith checks one: each approve must be
+ * followed by the bridge whose router it authorises, on the same token, so the
+ * bundle grants no allowance the visible bridges don't use. Two or more bridges
+ * (an exit), or any bridge out of Abstract (2741, shutting down) — a single
+ * ordinary bridge elsewhere keeps its one-step-at-a-time flow.
+ */
+export function exitRun(intents: Intent[]): boolean {
+  if (intents.length < 2) return false;
+  const eq = (x: string, y: string) => x.toLowerCase() === y.toLowerCase();
+  let bridges = 0;
+  let from: number | null = null;
+  for (let k = 0; k < intents.length; k++) {
+    const it = intents[k];
+    if (it.kind === "bridge") {
+      if (!ENCODERS.bridge!(it)) return false;
+      if (from === null) from = it.fromChainId;
+      else if (it.fromChainId !== from) return false;
+      bridges++;
+      continue;
+    }
+    if (it.kind !== "approve") return false;
+    const next = intents[k + 1];
+    if (!next || next.kind !== "bridge") return false;
+    if (!eq(it.spender, next.to) || !eq(it.token, next.token)) return false;
+  }
+  return bridges >= 2 || (bridges >= 1 && from === 2741);
+}
+
 export function planRuns(intents: Intent[]): PlanRun[] {
+  if (exitRun(intents))
+    return [{ steps: intents.map((_, k) => k), bundled: true }];
   const runs: PlanRun[] = [];
   for (let i = 0; i < intents.length; i++) {
     if (argusRun(intents[i], intents[i + 1], intents[i + 2])) {
@@ -567,6 +615,10 @@ export function encodeForSimulation(intents: Intent[], index: number, address: s
       return null;
     }
   }
+  /* Bridges gained an encoder for exit-run BUNDLING, not for simulation: they
+     were never simulated (the provider's calldata is opaque and its quote
+     perishable), and widening what can be bundled must not change that. */
+  if (intent.kind === "bridge") return null;
   const bundled = encodeBatch(intents, [index], address);
   return bundled && bundled.length === 1 ? bundled[0] : null;
 }
