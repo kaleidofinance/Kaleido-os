@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { getBridgeExecution, resolveChain } from "@/lib/ai/bridgeQuotes";
+import { chainTokenBySymbol } from "@/constants/tokens";
 import {
   CCTP_ENABLED,
   buildCctpBurnRoute,
@@ -146,8 +147,19 @@ const LIFI_ARC_ROUTER = "0xA4072583658Fae592A3506A42431cb6316a8d40b";
  */
 const LIFI_ROBINHOOD_ROUTER = "0xB477751B76CF82d00a686A1232f5fCD772414Af3";
 
+/**
+ * LI.FI's diamond on Abstract (2741), a zkSync-stack chain, so not the
+ * deterministic 0x1231… (measured 2026-10-07: eth_getCode at 0x1231… on 2741 is
+ * 0x; 0x4f8C… carries 13,664 bytes). From `GET li.quest/v1/chains` →
+ * diamondAddress for 2741, and a live 2741→Arc quote (ETH → USDC via Relay)
+ * names it as both `transactionRequest.to` and `estimate.approvalAddress`. Added
+ * for the "move everything off Abstract" exit before the chain shuts down on
+ * 2026-12-15; without it every Abstract-source route is refused here.
+ */
+const LIFI_ABSTRACT_ROUTER = "0x4f8C9056bb8A3616693a76922FA35d53C056E5b3";
+
 /** Every router LI.FI names as a spender/target across our corridors. */
-const KNOWN_BRIDGE_SPENDERS = [LIFI_DIAMOND, LIFI_ARC_ROUTER, LIFI_ROBINHOOD_ROUTER];
+const KNOWN_BRIDGE_SPENDERS = [LIFI_DIAMOND, LIFI_ARC_ROUTER, LIFI_ROBINHOOD_ROUTER, LIFI_ABSTRACT_ROUTER];
 
 /**
  * Whether an address is a bridge router this resolver would itself authorise an
@@ -251,6 +263,15 @@ async function tryAggregatorRoute(
     address: i.userAddress,
     ...(i.recipient ? { toAddress: i.recipient } : {}),
     toAsset: i.crossAsset ? i.toAsset : undefined,
+    /* A token we don't list (an Abstract holding moved out before shutdown) is
+       unknown to LI.FI by symbol, so ask by contract. Only then: a listed
+       token keeps the symbol path every existing corridor was measured on. */
+    ...(!i.isNative &&
+    i.tokenAddress &&
+    ethers.isAddress(i.tokenAddress) &&
+    !chainTokenBySymbol(i.fromChainId, i.asset)
+      ? { fromTokenAddress: i.tokenAddress }
+      : {}),
   });
   if (!exec) return null;
 
