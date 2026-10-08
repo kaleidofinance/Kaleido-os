@@ -80,6 +80,24 @@ export type SwapVolumeTierState = SwapVolumeTier & {
   superseded: boolean;
 };
 
+/**
+ * What reaching `key` adds on the wallet's balance: the tier's points minus the
+ * highest LOWER tier the wallet has already completed (that one was paid, and
+ * only the highest tier counts). A $10 wallet paid 500; reaching $50 adds 200,
+ * not 700. Pure; works on the standing's tier list.
+ */
+export function tierIncrement(
+  tiers: readonly { key: string; threshold: number; points: number; done: boolean }[],
+  key: string,
+): number {
+  const t = tiers.find((x) => x.key === key);
+  if (!t) return 0;
+  const paidBelow = tiers
+    .filter((x) => x.done && x.threshold < t.threshold)
+    .reduce((m, x) => Math.max(m, x.points), 0);
+  return t.points - paidBelow;
+}
+
 export type SwapVolumeStanding = {
   /** Cumulative Kaleido swap volume in USD. */
   volumeUsd: number;

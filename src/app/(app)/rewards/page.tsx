@@ -24,6 +24,7 @@ import {
   utcDay,
 } from "@/lib/rewards/checkin";
 import { normalizeCode, redeemMessage } from "@/lib/rewards/redeem";
+import { tierIncrement } from "@/lib/waitlist/swapVolume";
 
 /** "Day 3/7 of streak", or "7-day streak 🔥" on a bonus day. */
 const streakLabel = (n: number) => {
@@ -838,8 +839,15 @@ export default function WaitlistPage() {
                           {tier.done
                             ? tier.superseded
                               ? "Done · included in higher tier"
-                              : `Done · +${tier.displayPoints} $kPoint`
-                            : `+${tier.displayPoints} $kPoint · $${(status.swapVolume?.volumeUsd ?? 0).toLocaleString(
+                              : (() => {
+                                  /* What this tier ADDED, not its total: a $10
+                                     wallet already holds 500, so $50 adds 200. */
+                                  const add = tierIncrement(status.swapVolume.tiers, tier.key);
+                                  return add < tier.points
+                                    ? `Done · +${add} $kPoint now (${tier.points} total)`
+                                    : `Done · +${add} $kPoint`;
+                                })()
+                            : `+${tierIncrement(status.swapVolume?.tiers ?? [], tier.key)} $kPoint · $${(status.swapVolume?.volumeUsd ?? 0).toLocaleString(
                                 undefined,
                                 { maximumFractionDigits: 2 },
                               )} / $${tier.threshold}`}
