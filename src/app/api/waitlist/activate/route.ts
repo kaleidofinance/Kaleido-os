@@ -4,7 +4,7 @@ import { hasArcActivity, ARC_MAINNET_CHAIN_ID } from "@/lib/waitlist/arcMainnet"
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import {
   swapVolumePoints,
-  walletSwapVolumeUsd,
+  walletTaskVolumeUsd,
 } from "@/lib/waitlist/swapVolume";
 import { PER_REFERRAL, X_TASK_POINTS } from "@/lib/waitlist/eligible";
 import { TRANSACTION_TASK_POINTS } from "@/lib/waitlist/transactionTasks";
@@ -214,7 +214,7 @@ async function handle(req: Request): Promise<Response> {
       (row.bridge_tx_at ? BRIDGE_TX_POINTS : 0);
     // Swap-volume milestone (highest reached tier). Derived from the wallet's
     // credited `swap` volume, matching standing() in api/waitlist/route.ts.
-    const swapPoints = swapVolumePoints(await walletSwapVolumeUsd(admin, wallet));
+    const swapPoints = swapVolumePoints(await walletTaskVolumeUsd(admin, wallet));
     const points =
       Number(row.welcome_points) + referralPoints + xTaskPoints + swapPoints;
 

@@ -6,7 +6,7 @@ import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { getClosedXTasks } from "@/lib/waitlist/xCap";
 import {
   swapVolumeStanding,
-  walletSwapVolumeUsd,
+  walletTaskVolumeUsd,
 } from "@/lib/waitlist/swapVolume";
 import type { Season1Balance, WaitlistStatus } from "@/lib/waitlist/status";
 import {
@@ -241,7 +241,7 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
   // Swap-volume milestones, derived live from the wallet's credited `swap`
   // volume. Folded into `eligible` so reconcileWaitlistPoints tops the kPoint up
   // forward-only as the wallet trades higher — no stored column (see swapVolume).
-  const swapVolume = swapVolumeStanding(await walletSwapVolumeUsd(admin, wallet));
+  const swapVolume = swapVolumeStanding(await walletTaskVolumeUsd(admin, wallet));
   const eligiblePoints = eligibleTaskPoints({
     row: row as Parameters<typeof eligibleTaskPoints>[0]["row"],
     referrals,
