@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { eligibleTaskPoints, topUpOwed, topUpRow, X_TASK_COLUMNS, type TaskRow } from "./eligible";
+import { taskVolumeTotal } from "./swapVolume";
 
 /**
  * Keep every wallet's Season 1 task credit level with its /rewards card.
@@ -104,20 +105,21 @@ export async function loadSyncFacts(admin: SupabaseClient) {
         .order("id")
         .range(a, b) as never,
     ),
-    pageAll<{ wallet: string; usd_value: number | string | null }>((a, b) =>
+    pageAll<{ wallet: string; swaps_usd: number | string | null; collateral_usd: number | string | null }>((a, b) =>
       admin
-        .from("point_actions")
-        .select("wallet, usd_value")
-        .eq("source_slug", "swap")
-        .eq("season", 1)
-        .order("id")
+        .from("wallet_task_volume")
+        .select("wallet, swaps_usd, collateral_usd")
+        .order("wallet")
         .range(a, b) as never,
     ),
   ]);
 
   const referrals = new Map(lb.map((r) => [r.wallet.toLowerCase(), Number(r.referrals ?? 0)]));
   const credited = sumBy(credits, (r: { points: number | string }) => Number(r.points ?? 0));
-  const swapVolumeUsd = sumBy(swaps, (r: { usd_value: number | string | null }) => Number(r.usd_value ?? 0));
+  // Task volume per wallet: ledger swaps + idle collateral held now (the view).
+  const swapVolumeUsd = new Map(
+    swaps.map((r) => [r.wallet.toLowerCase(), taskVolumeTotal(r.swaps_usd, r.collateral_usd)] as const),
+  );
   return { rows, referrals, credited, swapVolumeUsd };
 }
 
