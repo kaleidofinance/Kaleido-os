@@ -12,6 +12,7 @@ import {
   swapVolumeStanding,
   latestCollateralUsd,
   sumUsd,
+  tierIncrement,
 } from "./swapVolume.ts";
 
 let passed = 0;
@@ -139,6 +140,16 @@ check("a malformed timestamp is ignored, not counted as newest", latestCollatera
 const combined = sumUsd([{ usd_value: 200 }]) + latestCollateralUsd([{ chain_id: 5042, usd_value: 150, taken_at: "2026-10-02T00:00:00Z" }]);
 check("$200 of swaps + $150 collateral = $350 → the $300 tier (2,000 kPoint)", swapVolumePoints(combined) === 2000, String(combined));
 check("$200 of swaps alone is only the $100 tier", swapVolumePoints(200) === 1000);
+
+// tierIncrement: what a tier ADDS, given the tiers already paid.
+{
+  const tiers = (vol: number) => swapVolumeStanding(vol).tiers;
+  check("$10 wallet: the $10 tier adds its full 500", tierIncrement(tiers(10), "vol10") === 500);
+  check("$54 wallet: the $50 tier adds 200 (700 total − 500 already paid)", tierIncrement(tiers(54.36), "vol50") === 200);
+  check("$54 wallet: the $100 tier, not yet reached, would add 300 (1000 − 700)", tierIncrement(tiers(54.36), "vol100") === 300);
+  check("$350 wallet: the $300 tier adds 1000 (2000 − the $100 tier's 1000 already paid)", tierIncrement(tiers(350), "vol300") === 1000);
+  check("unknown tier key adds 0", tierIncrement(tiers(54), "nope") === 0);
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
