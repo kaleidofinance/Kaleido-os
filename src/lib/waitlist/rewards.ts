@@ -12,6 +12,8 @@ export const WAITLIST_TASK_POINTS = {
   argus: 600,
   argus2: 300,
   absexit: 700,
+  lendborrow: 500,
+  lendborrowComment: 500,
   arcMainnet: 300,
   agent: 500,
   bridge: 500,
@@ -29,6 +31,8 @@ export interface WaitlistRewardRow {
   x_argus_at?: string | null;
   x_argus2_at?: string | null;
   x_absexit_at?: string | null;
+  x_lendborrow_at?: string | null;
+  x_lendborrow_comment_at?: string | null;
   arc_mainnet_tx_at?: string | null;
   agent_tx_at?: string | null;
   bridge_tx_at?: string | null;
@@ -96,6 +100,8 @@ export function projectWaitlistRewards(
     heldTask("RT & comment on the $ARGUS listing", WAITLIST_TASK_POINTS.argus, row.x_argus_at, now),
     heldTask("RT & comment on the $ARGUS listing (batch 2)", WAITLIST_TASK_POINTS.argus2, row.x_argus2_at, now),
     heldTask("Like & RT the Abstract Luca bridge-out post", WAITLIST_TASK_POINTS.absexit, row.x_absexit_at, now),
+    heldTask("Like & RT the Lend & Borrow launch post", WAITLIST_TASK_POINTS.lendborrow, row.x_lendborrow_at, now),
+    heldTask("Comment on the Lend & Borrow launch post", WAITLIST_TASK_POINTS.lendborrowComment, row.x_lendborrow_comment_at, now),
     {
       task: "First Arc mainnet transaction",
       points: WAITLIST_TASK_POINTS.arcMainnet,
@@ -154,7 +160,7 @@ export async function readWaitlistRewardState(
     supabaseAdmin
       .from("waitlist")
       .select(
-        "welcome_points, activated_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at",
+        "welcome_points, activated_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at",
       )
       .eq("wallet", wallet)
       .maybeSingle<WaitlistRewardRow>(),

@@ -31,6 +31,8 @@ export const X_TASK_POINTS = {
   argus2: 300,
   /** Like & RT the Abstract-exit (Luca bridge-out) post — first 200. */
   absexit: 700,
+  lendborrow: 500,
+  lendborrowComment: 500,
   bitget: 100,
 } as const;
 
@@ -47,6 +49,8 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   argus: "x_argus_at",
   argus2: "x_argus2_at",
   absexit: "x_absexit_at",
+  lendborrow: "x_lendborrow_at",
+  lendborrowComment: "x_lendborrow_comment_at",
   bitget: "x_bitget_at",
 };
 

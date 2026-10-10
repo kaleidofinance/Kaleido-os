@@ -122,7 +122,7 @@ async function handle(req: Request): Promise<Response> {
   const { data: pending, error: pendErr } = await admin
     .from("waitlist")
     .select(
-      "wallet, welcome_points, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_bitget_at",
+      "wallet, welcome_points, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_bitget_at",
     )
     .is("activated_at", null)
     // X-verified only, keyed on x_user_id (the UNIQUE column — one real X account
@@ -208,6 +208,8 @@ async function handle(req: Request): Promise<Response> {
       (row.x_argus_at ? X_TASK_POINTS.argus : 0) +
       (row.x_argus2_at ? X_TASK_POINTS.argus2 : 0) +
       (row.x_absexit_at ? X_TASK_POINTS.absexit : 0) +
+      (row.x_lendborrow_at ? X_TASK_POINTS.lendborrow : 0) +
+      (row.x_lendborrow_comment_at ? X_TASK_POINTS.lendborrowComment : 0) +
       (row.x_bitget_at ? X_TASK_POINTS.bitget : 0) +
       (row.arc_mainnet_tx_at ? ARC_TX_POINTS : 0) +
       (row.agent_tx_at ? AGENT_TX_POINTS : 0) +

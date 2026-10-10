@@ -50,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "absexit";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "absexit" | "lendborrow" | "lendborrowComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -69,6 +69,7 @@ const ABS_EXIT_TWEET_ID =
   process.env.NEXT_PUBLIC_ABS_EXIT_TWEET_ID ?? "2107947414627999847";
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
+const LEND_BORROW_TWEET_ID = "2108961225199567258";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -115,6 +116,8 @@ export default function WaitlistPage() {
     argus: boolean;
     argus2: boolean;
     absexit: boolean;
+    lendborrow: boolean;
+    lendborrowComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -124,6 +127,8 @@ export default function WaitlistPage() {
     argus: false,
     argus2: false,
     absexit: false,
+    lendborrow: false,
+    lendborrowComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -437,7 +442,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "absexit") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "absexit" | "lendborrow" | "lendborrowComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -447,6 +452,10 @@ export default function WaitlistPage() {
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
                 : task === "absexit"
                   ? `https://x.com/kaleido_finance/status/${ABS_EXIT_TWEET_ID}`
+                : task === "lendborrow"
+                  ? `https://x.com/kaleido_finance/status/${LEND_BORROW_TWEET_ID}`
+                : task === "lendborrowComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${LEND_BORROW_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -822,6 +831,48 @@ export default function WaitlistPage() {
                     )}
                   </li>
                   )}
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Like &amp; RT the Lend &amp; Borrow launch post</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.lendborrow?.done
+                          ? status.xTasks.lendborrow.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.lendborrow?.closed ? "Closed · all 200 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.lendborrow?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.lendborrow?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.lendborrow ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("lendborrow")} disabled={xBusy === "lendborrow"}>
+                          {xBusy === "lendborrow" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("lendborrow")}>Like &amp; RT</button>
+                      )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Comment on the Lend &amp; Borrow post</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.lendborrowComment?.done
+                          ? status.xTasks.lendborrowComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.lendborrowComment?.closed ? "Closed · all 200 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.lendborrowComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.lendborrowComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.lendborrowComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("lendborrowComment")} disabled={xBusy === "lendborrowComment"}>
+                          {xBusy === "lendborrowComment" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("lendborrowComment")}>Comment</button>
+                      )}
+                  </li>
 
                   {/* Swap-volume milestones. Completion is derived on-chain from
                   the wallet's credited Kaleido swap volume (see lib/waitlist/
