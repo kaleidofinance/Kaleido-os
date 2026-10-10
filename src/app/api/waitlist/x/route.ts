@@ -21,8 +21,8 @@ import { capForColumn } from "@/lib/waitlist/xCap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "absexit" | "lendborrow" | "lendborrowComment";
-const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "absexit", "lendborrow", "lendborrowComment"];
+type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "lendborrow" | "lendborrowComment";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "lendborrow", "lendborrowComment"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -157,7 +157,6 @@ export async function POST(req: Request) {
     llama: "x_llama_at",
     argus: "x_argus_at",
     argus2: "x_argus2_at",
-    absexit: "x_absexit_at",
     lendborrow: "x_lendborrow_at",
     lendborrowComment: "x_lendborrow_comment_at",
   };
