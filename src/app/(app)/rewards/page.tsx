@@ -453,7 +453,7 @@ export default function WaitlistPage() {
                 : task === "absexit"
                   ? `https://x.com/kaleido_finance/status/${ABS_EXIT_TWEET_ID}`
                 : task === "lendborrow"
-                  ? `https://x.com/kaleido_finance/status/${LEND_BORROW_TWEET_ID}`
+                  ? `https://x.com/intent/retweet?tweet_id=${LEND_BORROW_TWEET_ID}`
                 : task === "lendborrowComment"
                   ? `https://x.com/intent/tweet?in_reply_to=${LEND_BORROW_TWEET_ID}`
                 : task === "argus" || task === "argus2"
