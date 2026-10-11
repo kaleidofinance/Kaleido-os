@@ -53,6 +53,14 @@ export function lendingChains(): number[] {
   return ids;
 }
 
+/** Mainnet-first default for a disconnected Borrow/Lend surface. */
+export function defaultLendingChainId(): number {
+  const mainnet = CHAINS.find(
+    (chain) => chain.network === "mainnet" && isDeployed(chain.id),
+  );
+  return mainnet?.id ?? READ_ONLY_CHAIN_ID;
+}
+
 /**
  * Null when `chainId` is the lending chain, otherwise the message to show.
  *

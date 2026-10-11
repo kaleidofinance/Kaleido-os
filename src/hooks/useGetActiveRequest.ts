@@ -1,9 +1,10 @@
 "use client";
 
 import { getKaleidoContract } from "@/config/contracts";
-import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { providerForChain } from "@/config/provider";
 import { Request } from "@/constants/types";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
+import { defaultLendingChainId } from "@/lib/lending/chain";
 
 import { ethers } from "ethers";
 import { useCallback, useEffect, useState } from "react";
@@ -19,7 +20,7 @@ const useGetActiveRequest = () => {
      loans were on any other chain (e.g. Base Sepolia), while the portfolio,
      which sweeps every chain, showed them — the mismatch a tester reported.
      Falls back to the read chain only when walletless. */
-  const readChain = chainId ?? READ_ONLY_CHAIN_ID;
+  const readChain = chainId ?? defaultLendingChainId();
 
   useEffect(() => {
     const fetchUserStatus = async () => {

@@ -28,8 +28,8 @@ import { useEnhancedCardData } from "@/components/market/EnhancedCardlayout";
 import { Ordertype } from "@/constants/types/index";
 import { declaredSymbol } from "@/constants/registry";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
-import { READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { ethers } from "ethers";
+import { defaultLendingChainId } from "@/lib/lending/chain";
 
 export default function useDataFiltersPanel() {
   const router = useRouter();
@@ -130,7 +130,8 @@ export default function useDataFiltersPanel() {
 
   const handleBorrowAllocation = useCallback(
     (data: any) => {
-      const decimal = getTokenDecimals(READ_ONLY_CHAIN_ID, data.tokenAddress);
+      const chainId = data.chainId ?? defaultLendingChainId();
+      const decimal = getTokenDecimals(chainId, data.tokenAddress);
       const maxAmount = ethers.formatUnits(
         data.maxAmount || data.max_amount,
         decimal,
@@ -143,7 +144,7 @@ export default function useDataFiltersPanel() {
          `tokenImageMap[addr]?.label` against a table of Abstract literals, which
          after the address cutover matched nothing on any deployed chain and put
          the literal string `tokenType=undefined` in the query. */
-      const tokenType = declaredSymbol(READ_ONLY_CHAIN_ID, data.tokenAddress);
+      const tokenType = declaredSymbol(chainId, data.tokenAddress);
       const queryString = `?listingId=${data.listingId}&maxAmount=${maxAmount}&minAmount=${minAmount}&tokenType=${tokenType ?? ""}`;
       router.push(`/borrow-allocation${queryString}`);
     },
