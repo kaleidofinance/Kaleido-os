@@ -130,7 +130,7 @@ function withTimeout<T>(work: Promise<T>, label: string, ms = 8000) {
 }
 
 /** The OPEN lending book, valued and counted, plus the count of funded loans. */
-async function lendingLeg(): Promise<{
+async function lendingLeg(testnets: boolean): Promise<{
   usd: number | null;
   coverage: MarketCoverage;
   openOffers: number | null;
@@ -139,7 +139,9 @@ async function lendingLeg(): Promise<{
   degraded: string[];
 }> {
   const degraded: string[] = [];
-  const chains = lendingChains();
+  const chains = lendingChains().filter(
+    (chainId) => testnets || CHAINS_BY_ID[chainId]?.network === "mainnet",
+  );
   if (chains.length === 0) {
     return {
       usd: null,
@@ -353,23 +355,12 @@ async function kldStakedLeg(): Promise<number | null> {
  * testnets are hidden and the read chain is itself a testnet, the lending leg is
  * the honest empty market — 0 offers, 0 requests, 0 loans, $0 book — until a
  * mainnet lending deployment lands, at which point the read chain being mainnet
- * flips `readLending` true on its own. kfUSD supply and pooled KLD are protocol
+ * the lending chain filter includes it on its own. kfUSD supply and pooled KLD are protocol
  * tiles on /leaderboard, not the Borrow strip, and are left as-is.
  */
-const EMPTY_LENDING = {
-  usd: 0,
-  coverage: EMPTY_COVERAGE,
-  openOffers: 0,
-  openRequests: 0,
-  loansOutstanding: 0,
-  degraded: [] as string[],
-};
-
 async function computeOverview(testnets: boolean): Promise<MarketOverview> {
-  const readLending =
-    testnets || CHAINS_BY_ID[READ_ONLY_CHAIN_ID]?.network === "mainnet";
   const [lending, kfUsdSupply, kldStaked] = await Promise.all([
-    readLending ? lendingLeg() : Promise.resolve(EMPTY_LENDING),
+    lendingLeg(testnets),
     kfUsdSupplyLeg(),
     kldStakedLeg(),
   ]);
@@ -447,7 +438,7 @@ async function remember(
 export async function GET(request: Request) {
   try {
     /* `?testnets=1` when the viewer has the testnet toggle on. Default (mainnet)
-       hides the testnet lending book — see EMPTY_LENDING above. */
+       hides the testnet lending book. */
     const testnets =
       new URL(request.url).searchParams.get("testnets") === "1";
     const { data, stale } = await remember(testnets);
