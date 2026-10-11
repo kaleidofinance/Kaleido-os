@@ -81,6 +81,13 @@ const xTaskMessage = (address: string, task: XTaskKey) =>
 const transactionTaskMessage = (address: string) =>
   `Confirm my first Kaleido bridge transaction for wallet ${address}.`;
 
+const rewardsError = (value: unknown, fallback: string) =>
+  value === "not registered"
+    ? "Register this wallet for Arc rewards before claiming tasks."
+    : typeof value === "string" && value
+      ? value
+      : fallback;
+
 export default function WaitlistPage() {
   const account = useActiveAccount();
   const { connect, isConnecting } = useConnectModal();
@@ -156,6 +163,7 @@ export default function WaitlistPage() {
       const d = await res.json();
       if (!res.ok) throw new Error(d?.error || "Could not load waitlist.");
       setStatus(d && d.refCode ? d : null);
+      setError(null);
       setStatusReady(true);
     } catch {
       // Never show a first-time claim button while an existing wallet's
@@ -344,7 +352,8 @@ export default function WaitlistPage() {
           body: JSON.stringify({ address: account.address, signature, task }),
         });
         const d = await res.json();
-        if (!res.ok) setError(d.error || "Couldn't record that. Try again.");
+        if (!res.ok)
+          setError(rewardsError(d.error, "Couldn't record that. Try again."));
         else await loadStatus();
       } catch (e) {
         const msg = e instanceof Error ? e.message : "";
@@ -397,7 +406,8 @@ export default function WaitlistPage() {
           }),
         });
         const d = await res.json();
-        if (!res.ok) setError(d.error || "Transaction not verified.");
+        if (!res.ok)
+          setError(rewardsError(d.error, "Transaction not verified."));
         else await loadStatus();
       } catch (e) {
         setError(
