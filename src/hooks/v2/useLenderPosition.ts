@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { ethers } from "ethers";
 
-import { READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { defaultLendingChainId } from "@/lib/lending/chain";
 import { isNativeSentinel } from "@/constants/registry";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 
@@ -38,6 +38,7 @@ export interface LenderPosition {
 
 /** The row shape both books return; only the fields priced here are required. */
 interface PricedRow {
+  chainId?: number;
   tokenAddress: string;
   amount: string;
   status?: string;
@@ -60,13 +61,17 @@ export function useLenderPosition(
   const usdcPrice = filters?.usdcPrice;
 
   return useMemo(() => {
-    const usdValue = (tokenAddress: string, baseUnits: string | undefined) => {
+    const usdValue = (
+      tokenAddress: string,
+      baseUnits: string | undefined,
+      chainId?: number,
+    ) => {
       try {
         const amt =
           Number(
             ethers.formatUnits(
               baseUnits ?? "0",
-              getTokenDecimals(READ_ONLY_CHAIN_ID, tokenAddress),
+              getTokenDecimals(chainId ?? defaultLendingChainId(), tokenAddress),
             ),
           ) || 0;
         /*
@@ -94,14 +99,15 @@ export function useLenderPosition(
 
     return {
       openValueUsd: myListings.reduce(
-        (sum, li) => sum + usdValue(li.tokenAddress, li.amount),
+        (sum, li) => sum + usdValue(li.tokenAddress, li.amount, li.chainId),
         0,
       ),
       myOpenCount: myListings.length,
       fundedCount: funded.length,
       outstandingUsd: funded.reduce(
         (sum, r) =>
-          sum + usdValue(r.tokenAddress, r.totalRepayment ?? r.amount),
+          sum +
+          usdValue(r.tokenAddress, r.totalRepayment ?? r.amount, r.chainId),
         0,
       ),
     };

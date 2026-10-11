@@ -16,10 +16,10 @@ import useGetValueAndHealth from "@/hooks/useGetValueAndHealth";
 import useLendingAssets from "@/hooks/useLendingAssets";
 import useLendingFees, { type LendingFees } from "@/hooks/useLendingFees";
 import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
-import { READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { declaredSymbol, type BorrowCurrency } from "@/constants/registry";
 import type { CollateralHolding, LendingAsset } from "@/lib/lending/assets";
 import { isSupportedChain } from "@/config/chain";
+import { defaultLendingChainId } from "@/lib/lending/chain";
 import {
   MOCK_COLLATERAL,
   MOCK_DATA,
@@ -220,7 +220,7 @@ export const useBorrowV2 = (formChainId?: number): BorrowV2 => {
        formats on. Both must agree: the parseUnits below is the inverse of that
        hook's formatUnits, and a mismatched decimals would rescale the repay
        amount (Arc's USDC is 18-dec where every other chain's is 6). */
-    const readChain = activeChain?.id ?? READ_ONLY_CHAIN_ID;
+    const readChain = activeChain?.id ?? defaultLendingChainId();
     return (activeRequests ?? [])
       .filter((r) => Number(r.totalRepayment) > 0)
       .map((r) => {

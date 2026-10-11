@@ -2,7 +2,6 @@ import { getKaleidoContract } from "@/config/contracts";
 import {
   providerForChain,
   readOnlyProvider,
-  READ_ONLY_CHAIN_ID,
 } from "@/config/provider";
 import { getContracts, NATIVE_SENTINEL } from "@/constants/registry";
 import { ethers } from "ethers";
@@ -28,6 +27,7 @@ import {
 } from "@/constants/atom";
 import { useAtom } from "jotai";
 import { sendHealthFactorWarning } from "@/lib/notifications/emit";
+import { defaultLendingChainId } from "@/lib/lending/chain";
 
 // Extend Window interface for health factor notification flag
 declare global {
@@ -149,7 +149,7 @@ const useGetValueAndHealth = (targetChainId?: number) => {
      chain, so collateral and health reflect where you are about to act; else the
      wallet's when connected — the figures are per-deployment — falling back to
      the read chain when disconnected, for a browsable default. */
-  const readChain = targetChainId ?? chainId ?? READ_ONLY_CHAIN_ID;
+  const readChain = targetChainId ?? chainId ?? defaultLendingChainId();
   const readProvider = providerForChain(readChain) ?? readOnlyProvider;
   const LENDING = getContracts(readChain);
 
