@@ -59,6 +59,13 @@ interface AgentSettingsProps {
   address?: string;
   open: boolean;
   onClose: () => void;
+  localModelStatus?:
+    | "checking"
+    | "idle"
+    | "loading"
+    | "ready"
+    | "failed"
+    | "unavailable";
 }
 
 const ACTION_LABELS: Record<AgentAction, string> = {
@@ -73,6 +80,7 @@ export default function AgentSettings({
   address,
   open,
   onClose,
+  localModelStatus = "checking",
 }: AgentSettingsProps) {
   const { settings, update, toggleAction } = useAgentSettings(address);
   const { chainId } = useWalletV2();
@@ -315,19 +323,23 @@ export default function AgentSettings({
             <section className={s.section}>
               <div className={s.sectionTitle}>Signing</div>
               {/*
-                * Three rungs, not a switch, because the old boolean was blunt in
-                * one direction and misleading in the other — and because the
-                * third rung is not this panel's to grant.
-                *
-                * `agent` is the on-chain mandate (AgentPermissionFacet): bounds
-                * signed once and enforced by the contract, which is the only
-                * thing here that genuinely acts without you. Selecting it is
-                * therefore a request to open the delegation flow below, not a
-                * preference that takes effect on click — and it is offered only
-                * where that flow can run, since a mode you cannot reach would be
-                * a promise the panel cannot keep.
-                */}
-              <div className={s.modes} role="radiogroup" aria-label="Between plan steps">
+               * Three rungs, not a switch, because the old boolean was blunt in
+               * one direction and misleading in the other — and because the
+               * third rung is not this panel's to grant.
+               *
+               * `agent` is the on-chain mandate (AgentPermissionFacet): bounds
+               * signed once and enforced by the contract, which is the only
+               * thing here that genuinely acts without you. Selecting it is
+               * therefore a request to open the delegation flow below, not a
+               * preference that takes effect on click — and it is offered only
+               * where that flow can run, since a mode you cannot reach would be
+               * a promise the panel cannot keep.
+               */}
+              <div
+                className={s.modes}
+                role="radiogroup"
+                aria-label="Between plan steps"
+              >
                 {(
                   [
                     ["manual", "Manual", "Stops after every step"],
@@ -412,6 +424,38 @@ export default function AgentSettings({
                 </p>
               </section>
             )}
+
+            <section className={s.section}>
+              <div className={s.sectionTitle}>On-device context model</div>
+              <div
+                className={s.localModelStatus}
+                data-status={localModelStatus}
+              >
+                <span className={s.statusDot} aria-hidden="true" />
+                <span>
+                  <strong>
+                    {localModelStatus === "loading"
+                      ? "Downloading and preparing"
+                      : localModelStatus === "ready"
+                        ? "Ready on this device"
+                        : localModelStatus === "failed"
+                          ? "Unavailable — using server model"
+                          : localModelStatus === "unavailable"
+                            ? "Not supported by this browser"
+                            : localModelStatus === "idle"
+                              ? "Waiting for an idle moment"
+                              : "Checking this browser"}
+                  </strong>
+                  <small>
+                    {localModelStatus === "loading"
+                      ? "The page stays usable while the model is cached."
+                      : localModelStatus === "ready"
+                        ? "Small context hints run locally before reasoning turns."
+                        : "Used only for context labels; transaction planning stays deterministic."}
+                  </small>
+                </span>
+              </div>
+            </section>
 
             <section className={s.section} ref={delegateRef}>
               <div className={s.sectionTitle}>

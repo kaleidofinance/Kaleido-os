@@ -27,6 +27,7 @@ export interface BrowserLocalIntentModel {
     text: string,
     context: LocalIntentContext,
   ): Promise<LocalIntentClassification>;
+  warmup?(): Promise<void>;
 }
 
 export interface BrowserLocalIntentModelOptions {
@@ -40,12 +41,32 @@ export interface BrowserLocalIntentModelOptions {
 
 export const DEFAULT_BROWSER_LOCAL_INTENT_MODEL =
   "onnx-community/SmolLM2-360M-Instruct-ONNX";
+export const SMALL_BROWSER_LOCAL_INTENT_MODEL =
+  "onnx-community/SmolLM2-135M-Instruct-ONNX";
 
 export function browserLocalIntentOptions(): Required<BrowserLocalIntentModelOptions> {
+  const configured = process.env.NEXT_PUBLIC_LOCAL_INTENT_MODEL;
+  if (configured) return { modelId: configured, device: "webgpu", dtype: "q4" };
+  if (typeof window !== "undefined") {
+    const memory =
+      (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
+    const cores = navigator.hardwareConcurrency ?? 4;
+    const webgpu = "gpu" in navigator;
+    if (webgpu && memory >= 8 && cores >= 8) {
+      return {
+        modelId: DEFAULT_BROWSER_LOCAL_INTENT_MODEL,
+        device: "webgpu",
+        dtype: "q4f16",
+      };
+    }
+    return {
+      modelId: SMALL_BROWSER_LOCAL_INTENT_MODEL,
+      device: webgpu ? "webgpu" : "wasm",
+      dtype: webgpu ? "q4f16" : "q4",
+    };
+  }
   return {
-    modelId:
-      process.env.NEXT_PUBLIC_LOCAL_INTENT_MODEL ||
-      DEFAULT_BROWSER_LOCAL_INTENT_MODEL,
+    modelId: DEFAULT_BROWSER_LOCAL_INTENT_MODEL,
     device: "webgpu",
     dtype: "q4",
   };
@@ -57,11 +78,7 @@ const KINDS = new Set<LocalTurnKind>([
   "question",
   "unknown",
 ]);
-const REFERENCES = new Set([
-  "previous_command",
-  "active_task",
-  "none",
-]);
+const REFERENCES = new Set(["previous_command", "active_task", "none"]);
 
 /**
  * Validates untrusted model output into the tiny envelope the router accepts.
@@ -74,9 +91,10 @@ export function validateLocalClassification(
 ): LocalIntentClassification {
   if (!value || typeof value !== "object") return { kind: "unknown" };
   const raw = value as Record<string, unknown>;
-  const kind = typeof raw.kind === "string" && KINDS.has(raw.kind as LocalTurnKind)
-    ? (raw.kind as LocalTurnKind)
-    : "unknown";
+  const kind =
+    typeof raw.kind === "string" && KINDS.has(raw.kind as LocalTurnKind)
+      ? (raw.kind as LocalTurnKind)
+      : "unknown";
   const reference =
     typeof raw.reference === "string" && REFERENCES.has(raw.reference)
       ? (raw.reference as LocalIntentClassification["reference"])
@@ -85,11 +103,17 @@ export function validateLocalClassification(
     typeof raw.reason === "string" && raw.reason.length <= 160
       ? raw.reason
       : undefined;
-  return { kind, ...(reference ? { reference } : {}), ...(reason ? { reason } : {}) };
+  return {
+    kind,
+    ...(reference ? { reference } : {}),
+    ...(reason ? { reason } : {}),
+  };
 }
 
 /** Browser capability check only; it does not load a model or make network calls. */
 export function canUseBrowserLocalModel(): boolean {
-  return typeof window !== "undefined" &&
-    ("gpu" in navigator || "WebAssembly" in window);
+  return (
+    typeof window !== "undefined" &&
+    ("gpu" in navigator || "WebAssembly" in window)
+  );
 }

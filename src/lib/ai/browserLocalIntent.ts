@@ -10,6 +10,7 @@ import {
 
 type WorkerRequest = {
   id: number;
+  op: "classify" | "warmup";
   text: string;
   context: LocalIntentContext;
   options: Required<BrowserLocalIntentModelOptions>;
@@ -33,9 +34,12 @@ export function createBrowserLocalIntentModel(
   const resolved = { ...browserLocalIntentOptions(), ...options };
   let worker: Worker;
   try {
-    worker = new Worker(new URL("./browserLocalIntent.worker.ts", import.meta.url), {
-      type: "module",
-    });
+    worker = new Worker(
+      new URL("./browserLocalIntent.worker.ts", import.meta.url),
+      {
+        type: "module",
+      },
+    );
   } catch {
     return null;
   }
@@ -43,7 +47,11 @@ export function createBrowserLocalIntentModel(
   let nextId = 0;
   const pending = new Map<
     number,
-    { resolve: (value: LocalIntentClassification) => void; reject: (error: Error) => void; timer: number }
+    {
+      resolve: (value: LocalIntentClassification) => void;
+      reject: (error: Error) => void;
+      timer: number;
+    }
   >();
 
   worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
@@ -63,9 +71,27 @@ export function createBrowserLocalIntentModel(
       pending.delete(id);
     }
   };
-  worker.onerror = () => failAll(new Error("browser local intent worker failed"));
+  worker.onerror = () =>
+    failAll(new Error("browser local intent worker failed"));
 
   return {
+    warmup() {
+      return new Promise<void>((resolve, reject) => {
+        const id = ++nextId;
+        const timer = window.setTimeout(() => {
+          pending.delete(id);
+          reject(new Error("browser local intent warmup timed out"));
+        }, 8_000);
+        pending.set(id, { resolve: () => resolve(), reject, timer });
+        worker.postMessage({
+          id,
+          op: "warmup",
+          text: "",
+          context: { hasActiveTask: false },
+          options: resolved,
+        });
+      });
+    },
     classify(text, context) {
       return new Promise<LocalIntentClassification>((resolve, reject) => {
         const id = ++nextId;
@@ -74,7 +100,13 @@ export function createBrowserLocalIntentModel(
           reject(new Error("browser local intent timed out"));
         }, 8_000);
         pending.set(id, { resolve, reject, timer });
-        const request: WorkerRequest = { id, text, context, options: resolved };
+        const request: WorkerRequest = {
+          id,
+          op: "classify",
+          text,
+          context,
+          options: resolved,
+        };
         worker.postMessage(request);
       });
     },
