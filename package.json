@@ -48,6 +48,7 @@
     "test:feegrowth": "tsx src/lib/dex/feeGrowth.test.ts",
     "test:rpcretry": "tsx src/lib/dex/rpcRetry.test.ts",
     "test:failover": "tsx src/lib/chain/rpcFailover.test.ts",
+    "test:local-intent": "tsx src/lib/ai/localIntent.test.ts",
     "test:positionvalue": "tsx src/lib/dex/positionValue.test.ts",
     "test:route": "tsx src/lib/dex/route.test.ts",
     "test:orders": "tsx src/lib/dex/orders.test.ts",
@@ -76,6 +77,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.3.3",
     "@pythnetwork/hermes-client": "^2.0.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/themes": "^3.1.4",

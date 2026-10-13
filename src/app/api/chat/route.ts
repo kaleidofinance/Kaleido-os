@@ -26,6 +26,7 @@ import {
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
 import { splitActionsBlock } from "@/lib/ai/actionsBlock";
 import type { ChatMessage } from "@/lib/ai/types";
+import { validateLocalClassification } from "@/lib/ai/localIntent";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -149,7 +150,12 @@ function groundingFromBody(raw: unknown): AgentInput["grounding"] {
   for (const g of raw.slice(0, 3)) {
     if (!g || typeof g !== "object") continue;
     const { title, heading, href, text } = g as Record<string, unknown>;
-    if (typeof title !== "string" || typeof text !== "string" || typeof href !== "string") continue;
+    if (
+      typeof title !== "string" ||
+      typeof text !== "string" ||
+      typeof href !== "string"
+    )
+      continue;
     if (!/^\/docs\/[a-z0-9-]+(#[a-z0-9-]+)?$/.test(href)) continue;
     out.push({
       title: title.slice(0, 80),
@@ -247,6 +253,7 @@ export async function POST(request: NextRequest) {
            bare reply to something Luca itself said. */
         history: historyFromBody(body.history),
         grounding: groundingFromBody(body.grounding),
+        localIntent: validateLocalClassification(body.localIntent),
       };
 
       /**

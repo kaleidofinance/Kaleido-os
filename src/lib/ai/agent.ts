@@ -68,6 +68,11 @@ export interface AgentInput {
    * them into a prompt would spend tokens on our own rendering.
    */
   history?: ChatMessage[];
+  /** Non-authoritative browser-local context hint; never transaction data. */
+  localIntent?: {
+    kind: "fresh" | "follow_up" | "question" | "unknown";
+    reference?: "previous_command" | "active_task" | "none";
+  };
 }
 
 /**
@@ -132,6 +137,10 @@ export async function runAgent(
      framed as reference, not instruction - the model may quote it, and should
      prefer it to guessing, but it is not told the answer is in there, because
      sometimes it is not and a model told otherwise will make it fit. */
+  const localHint =
+    input.localIntent && input.localIntent.kind !== "unknown"
+      ? `\n\nA browser-local classifier supplied a non-authoritative context hint. Use it only as a tie-breaker for conversation reference; verify the user's words and history yourself. Never use it for transaction arguments. Local hint: kind=${input.localIntent.kind}; reference=${input.localIntent.reference ?? "none"}.`
+      : "";
   const systemWithDocs = input.grounding?.length
     ? system +
       "\n\nReference from the docs, matched to this question. Prefer it to reconstructing the same facts from tool calls, quote it where it answers directly, and give the path so the user can read the rest. If it does not answer the question, ignore it.\n" +
@@ -142,6 +151,7 @@ export async function runAgent(
         )
         .join("\n")
     : system;
+  const finalSystem = systemWithDocs + localHint;
 
   /* History first, then this turn's message. The loop appends its own
      assistant/tool-result pairs onto the end of this array, so prior turns have
@@ -159,10 +169,10 @@ export async function runAgent(
   const ask = () =>
     events?.onText && provider.chatStream
       ? provider.chatStream(
-          { system: systemWithDocs, messages, tools: TOOL_CATALOG },
+          { system: finalSystem, messages, tools: TOOL_CATALOG },
           events.onText,
         )
-      : provider.chat({ system: systemWithDocs, messages, tools: TOOL_CATALOG });
+      : provider.chat({ system: finalSystem, messages, tools: TOOL_CATALOG });
 
   let result = await ask();
   const trace: ReadCall[] = [];

@@ -353,6 +353,61 @@
   color: var(--k-t2);
 }
 
+.localModelStatus {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--k-r-sm);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+}
+.localModelStatus > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.localModelStatus strong {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+}
+.localModelStatus small {
+  font-size: var(--k-fs-xs);
+  line-height: 1.4;
+  color: var(--k-t3);
+}
+.statusDot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--k-t3);
+}
+.localModelStatus[data-status="loading"] .statusDot {
+  background: var(--k-warn, #e0a33a);
+  animation: statusPulse 1.2s ease-in-out infinite;
+}
+.localModelStatus[data-status="ready"] .statusDot {
+  background: var(--k-brand);
+}
+.localModelStatus[data-status="failed"] .statusDot,
+.localModelStatus[data-status="unavailable"] .statusDot {
+  background: var(--k-t3);
+}
+@keyframes statusPulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .localModelStatus[data-status="loading"] .statusDot {
+    animation: none;
+  }
+}
+
 .footer {
   padding: 14px 18px 18px;
   flex: none;

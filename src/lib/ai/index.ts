@@ -4,6 +4,19 @@ import type { ChatProvider } from "./types";
 
 export { TOOL_CATALOG, EXECUTE_TOOLS } from "./toolCatalog";
 export { isReadTool, runReadTool } from "./readTools";
+export {
+  canUseBrowserLocalModel,
+  browserLocalIntentOptions,
+  DEFAULT_BROWSER_LOCAL_INTENT_MODEL,
+  SMALL_BROWSER_LOCAL_INTENT_MODEL,
+  validateLocalClassification,
+} from "./localIntent";
+export type {
+  BrowserLocalIntentModel,
+  LocalIntentClassification,
+  LocalIntentContext,
+  LocalTurnKind,
+} from "./localIntent";
 export type {
   ChatInput,
   ChatMessage,
@@ -150,7 +163,8 @@ const buildAgentRouter = (id?: string): ChatProvider | null =>
         process.env.AGENTROUTER_API_KEY,
         id || process.env.AGENTROUTER_MODEL || "claude-opus-5",
         {
-          baseUrl: process.env.AGENTROUTER_BASE_URL || "https://agentrouter.org",
+          baseUrl:
+            process.env.AGENTROUTER_BASE_URL || "https://agentrouter.org",
           id: "agentrouter",
           maxTokens: 8192,
           userAgent: process.env.AGENTROUTER_USER_AGENT,

@@ -36,8 +36,19 @@ import { renderIntent } from "@/lib/v2/intents";
 import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
 import { portfolioAnswer } from "@/lib/v2/cards/portfolio";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
-import { docsReply, groundingFor, MIN_ASK_SIMILARITY, outageReply, searchDocs } from "@/lib/ai/docsSearch";
+import {
+  docsReply,
+  groundingFor,
+  MIN_ASK_SIMILARITY,
+  outageReply,
+  searchDocs,
+} from "@/lib/ai/docsSearch";
 import { visibleProse } from "@/lib/ai/actionsBlock";
+import { createBrowserLocalIntentModel } from "@/lib/ai/browserLocalIntent";
+import {
+  canUseBrowserLocalModel,
+  type LocalIntentClassification,
+} from "@/lib/ai/localIntent";
 import {
   parseCommand,
   parseFollowUp,
@@ -203,6 +214,61 @@ export default function AgentPage() {
    * this one continues a plan the USER completed. See parseFollowUp.
    */
   const [lastCommand, setLastCommand] = useState<Command | null>(null);
+  const localIntentModelRef = useRef<ReturnType<
+    typeof createBrowserLocalIntentModel
+  > | null>(null);
+  const localIntentDisabledRef = useRef(false);
+  const [localModelStatus, setLocalModelStatus] = useState<
+    "checking" | "idle" | "loading" | "ready" | "failed" | "unavailable"
+  >("checking");
+  /* Warm the selected model only after the page has been idle. This moves the
+     first-download cost away from the user's first ambiguous message while
+     still keeping the model optional and disposable on constrained devices. */
+  useEffect(() => {
+    if (!canUseBrowserLocalModel() || typeof window === "undefined") {
+      setLocalModelStatus("unavailable");
+      return;
+    }
+    setLocalModelStatus("idle");
+    const warm = () => {
+      if (localIntentDisabledRef.current) return;
+      const model =
+        localIntentModelRef.current ??
+        (localIntentModelRef.current = createBrowserLocalIntentModel());
+      if (!model?.warmup) return;
+      setLocalModelStatus("loading");
+      void model.warmup().then(
+        () => setLocalModelStatus("ready"),
+        () => {
+          localIntentDisabledRef.current = true;
+          setLocalModelStatus("failed");
+        },
+      );
+    };
+    const requestIdle = (
+      window as unknown as {
+        requestIdleCallback?: (
+          callback: () => void,
+          options?: { timeout: number },
+        ) => number;
+      }
+    ).requestIdleCallback;
+    const idle = requestIdle
+      ? requestIdle(warm, { timeout: 12_000 })
+      : window.setTimeout(warm, 12_000);
+    return () => {
+      const cancelIdle = (
+        window as unknown as {
+          cancelIdleCallback?: (id: number) => void;
+        }
+      ).cancelIdleCallback;
+      if (requestIdle && cancelIdle) {
+        cancelIdle(idle);
+      } else {
+        window.clearTimeout(idle);
+      }
+    };
+  }, []);
   /** Remaining model requests today. Null until known, or when unmetered. */
   const [credits, setCredits] = useState<{
     remaining: number;
@@ -706,7 +772,12 @@ export default function AgentPage() {
          bank deliberately carries no ask for it. */
       if (question) {
         const exact = searchDocs(content);
-        if (exact && exact.via === "ask" && exact.score >= MIN_ASK_SIMILARITY && (exact.shared ?? 0) >= 2) {
+        if (
+          exact &&
+          exact.via === "ask" &&
+          exact.score >= MIN_ASK_SIMILARITY &&
+          (exact.shared ?? 0) >= 2
+        ) {
           note("Read this as a question about the action, not the action");
           log(`docs:${exact.slug}`);
           const reply = docsReply(exact);
@@ -718,7 +789,11 @@ export default function AgentPage() {
       const parsed = parseCommand(content, vocabulary);
       if (parsed.status !== "unknown") {
         note("Read it as a direct command — no reasoning request needed");
-        log(parsed.status === "ok" ? `command:${parsed.command.kind}` : `asks:${parsed.missing}`);
+        log(
+          parsed.status === "ok"
+            ? `command:${parsed.command.kind}`
+            : `asks:${parsed.missing}`,
+        );
         await planLocally(parsed, abort.signal);
         return;
       }
@@ -765,6 +840,36 @@ export default function AgentPage() {
           return;
         }
       }
+
+      /* Optional browser-local semantic pass. It only supplies a bounded
+         context label to the server; deterministic parsing remains the
+         authority for amounts, tokens, routes, and calldata. */
+      let localIntent: LocalIntentClassification | null = null;
+      if (!localIntentDisabledRef.current && canUseBrowserLocalModel()) {
+        if (!localIntentModelRef.current) {
+          localIntentModelRef.current = createBrowserLocalIntentModel();
+          if (!localIntentModelRef.current)
+            localIntentDisabledRef.current = true;
+        }
+        if (localIntentModelRef.current) {
+          try {
+            setLocalModelStatus("loading");
+            localIntent = await localIntentModelRef.current.classify(content, {
+              lastKind: lastCommand?.kind,
+              hasActiveTask: Boolean(pending),
+              chainId,
+            });
+            setLocalModelStatus("ready");
+            if (localIntent.kind !== "unknown")
+              note("Used local context to interpret this turn");
+          } catch {
+            /* A blocked WebGPU/WASM load must never block Luca's normal route. */
+            localIntentDisabledRef.current = true;
+            setLocalModelStatus("failed");
+            localIntent = null;
+          }
+        }
+      }
       log("model");
 
       /* Only genuine questions reach the model.
@@ -791,6 +896,9 @@ export default function AgentPage() {
              with nothing to attach it to. Bounded and re-sanitised server-side
              (historyFromBody), since a client is sending it. */
           history: historyForModel(messages),
+          ...(localIntent && localIntent.kind !== "unknown"
+            ? { localIntent }
+            : {}),
           /* The two docs sections closest to the question, so the model can
              answer from the protocol's own text instead of reconstructing it
              from tool calls. Re-checked server-side like everything else that
@@ -888,7 +996,10 @@ export default function AgentPage() {
              "the reasoning service returned an error" - which tells the user
              nothing about their question. Say what happened and give them the
              closest thing the docs have, marked as such. */
-          if ((context as { status?: string } | undefined)?.status === "provider_error") {
+          if (
+            (context as { status?: string } | undefined)?.status ===
+            "provider_error"
+          ) {
             const o = outageReply(content);
             say(o.text, { via: "local", ...(o.link ? { link: o.link } : {}) });
             return;
@@ -1300,9 +1411,7 @@ export default function AgentPage() {
       ...prev.map((m) => (m === latest ? { ...m, plan: undefined } : m)),
       {
         role: "assistant" as const,
-        text: lines.length
-          ? [head, ...lines].join("\n")
-          : head,
+        text: lines.length ? [head, ...lines].join("\n") : head,
         via: "local" as const,
       },
     ]);
@@ -1330,6 +1439,7 @@ export default function AgentPage() {
         address={address}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        localModelStatus={localModelStatus}
       />
 
       <div className={`${s.box} ${s.raised} ${s.chat}`}>
