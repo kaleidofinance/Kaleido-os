@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { getKaleidoContract } from "@/config/contracts";
-import { providerForChain, readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { providerForChain, readOnlyProvider } from "@/config/provider";
 import { isDeployed } from "@/constants/registry";
-import { lendingChains } from "@/lib/lending/chain";
+import { CHAINS_BY_ID } from "@/constants/chains";
+import { defaultLendingChainId, lendingChains } from "@/lib/lending/chain";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import {
   readLendingAssets,
   type CollateralHolding,
@@ -71,7 +73,7 @@ export function useLendingAssets(targetChainId?: number): LendingAssets {
      wallet's chain, and to the read chain when disconnected — a browse view.
      Lending went multi-chain — this used to be pinned to LENDING_CHAIN_ID. */
   const activeChain = useActiveWalletChain();
-  const readChain = targetChainId ?? activeChain?.id ?? READ_ONLY_CHAIN_ID;
+  const readChain = targetChainId ?? activeChain?.id ?? defaultLendingChainId();
   const readProvider = providerForChain(readChain) ?? readOnlyProvider;
 
   const [sets, setSets] = useState<{
@@ -132,7 +134,11 @@ export function useLendingAssets(targetChainId?: number): LendingAssets {
    * WETH had no row for it and could not withdraw it from this surface. */
   useEffect(() => {
     if (MOCK_DATA) return;
-    if (!address || sets.collateral.length === 0) {
+    /* No diamond on this chain (Arc mainnet and the other coming-soon
+       mainnets have none yet) means getKaleidoContract below would throw —
+       guard it here like the sibling useLendingFees does, and show nothing
+       rather than crash the page. */
+    if (!address || sets.collateral.length === 0 || !isDeployed(readChain)) {
       setHoldings([]);
       return;
     }
@@ -143,14 +149,19 @@ export function useLendingAssets(targetChainId?: number): LendingAssets {
     Promise.all(
       sets.collateral.map(async (asset) => {
         try {
-          const raw: bigint = await diamond.gets_addressToCollateralDeposited(
-            address,
-            asset.address,
-          );
+          /* Deposited AND available in one pass: the deposited total is what the
+             UI shows, but a withdrawal is gated on the available (unlocked)
+             balance, which is lower whenever collateral backs an open loan. */
+          const [rawDeposited, rawAvailable]: [bigint, bigint] =
+            await Promise.all([
+              diamond.gets_addressToCollateralDeposited(address, asset.address),
+              diamond.gets_addressToAvailableBalance(address, asset.address),
+            ]);
           return {
             symbol: asset.symbol,
             address: asset.address,
-            amount: Number(ethers.formatUnits(raw, asset.decimals)),
+            amount: Number(ethers.formatUnits(rawDeposited, asset.decimals)),
+            available: Number(ethers.formatUnits(rawAvailable, asset.decimals)),
           };
         } catch {
           /* One unreadable asset must not blank the whole list, and a zero here
@@ -209,7 +220,18 @@ export interface LendingAssetsAcrossChains {
  * configuration, read read-only through providerForChain per chain.
  */
 export function useLendingAssetsAcrossChains(): LendingAssetsAcrossChains {
-  const chains = useMemo(() => lendingChains(), []);
+  /* Respect the testnet toggle: in mainnet mode the testnet lending chains are
+     noise, not markets. The positions hooks were gated in #220; the market
+     listing this feeds was missed, so testnet assets kept showing with the
+     toggle off. */
+  const { showTestnets } = useTestnetMode();
+  const chains = useMemo(
+    () =>
+      lendingChains().filter(
+        (id) => showTestnets || CHAINS_BY_ID[id]?.network === "mainnet",
+      ),
+    [showTestnets],
+  );
   const [state, setState] = useState<LendingAssetsAcrossChains>({
     loanable: [],
     collateral: [],
@@ -221,7 +243,7 @@ export function useLendingAssetsAcrossChains(): LendingAssetsAcrossChains {
     if (MOCK_DATA) {
       const tag = (a: LendingAsset): ChainLendingAsset => ({
         ...a,
-        chainId: READ_ONLY_CHAIN_ID,
+        chainId: defaultLendingChainId(),
       });
       setState({
         loanable: MOCK_ASSETS.map(tag),

@@ -235,7 +235,10 @@ function main() {
   ].map((m) => m[1]);
   check(
     "parsed SectionIcon's keys",
-    iconKeys.length === 8,
+    /* 9 since the Rewards tab's `gift` joined the eight. The guards below (every
+       Nav icon is a key, every key is used) are the real check; this pins the
+       parse so a regex miss can't pass them vacuously. */
+    iconKeys.length === 9,
     iconKeys.join(",") || "none",
   );
   check(
@@ -302,8 +305,8 @@ function main() {
   );
   const navIcons = [...navCode.matchAll(/icon:\s*"([^"]+)"/g)].map((m) => m[1]);
   check(
-    "parsed Nav's eight icon keys",
-    navIcons.length === 8,
+    "parsed Nav's nine icon keys",
+    navIcons.length === 9,
     navIcons.join(",") || "none",
   );
   check(

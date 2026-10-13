@@ -68,11 +68,24 @@ export interface AgentInput {
    * them into a prompt would spend tokens on our own rendering.
    */
   history?: ChatMessage[];
-  /** Non-authoritative browser-local context hint; never transaction data. */
-  localIntent?: {
-    kind: "fresh" | "follow_up" | "question" | "unknown";
-    reference?: "previous_command" | "active_task" | "none";
-  };
+  /**
+   * Cap on read rounds for this turn. 0 makes the call single-shot — the
+   * normalizer tier, which must never read the chain (see lib/ai/normalizer.ts).
+   * Defaults to MAX_READ_ROUNDS; never raises it.
+   */
+  maxReadRounds?: number;
+  /**
+   * The user has testnets hidden (mainnet-first default). Passed to the read
+   * tools so a cross-chain sweep (getChains) never surfaces a testnet balance
+   * to a mainnet user. Absent reads as mainnet-only, the app's default.
+   */
+  mainnetOnly?: boolean;
+  /**
+   * Text appended after the base prompt and the docs reference — the
+   * normalizer's product facts, glossary and rules. Last, so its rules win
+   * where they narrow the base prompt's.
+   */
+  systemAddendum?: string;
 }
 
 /**
@@ -91,6 +104,15 @@ export interface AgentInput {
  */
 export interface AgentRun extends ChatResult {
   trace: ReadCall[];
+  /**
+   * Read-rounds this turn ran — grounding passes where reads executed, their
+   * results were fed back, and the model was asked again. 0 for a turn answered
+   * outright with no tool calls; MAX_READ_ROUNDS is the ceiling. Distinct from
+   * `trace.length` (the total reads): one round can run several reads at once, so
+   * a four-read turn may be one round or four. Both travel to the turn log — see
+   * logAgentTurn — as the two numbers that say how hard the turn worked.
+   */
+  rounds: number;
 }
 
 /**
@@ -137,13 +159,9 @@ export async function runAgent(
      framed as reference, not instruction - the model may quote it, and should
      prefer it to guessing, but it is not told the answer is in there, because
      sometimes it is not and a model told otherwise will make it fit. */
-  const localHint =
-    input.localIntent && input.localIntent.kind !== "unknown"
-      ? `\n\nA browser-local classifier supplied a non-authoritative context hint. Use it only as a tie-breaker for conversation reference; verify the user's words and history yourself. Never use it for transaction arguments. Local hint: kind=${input.localIntent.kind}; reference=${input.localIntent.reference ?? "none"}.`
-      : "";
   const systemWithDocs = input.grounding?.length
     ? system +
-      "\n\nReference from the docs, matched to this question. Prefer it to reconstructing the same facts from tool calls, quote it where it answers directly, and give the path so the user can read the rest. If it does not answer the question, ignore it.\n" +
+      "\n\nReference from the docs, matched to this question. Prefer it to reconstructing the same facts from tool calls, answer from it in your own words — you have read it so the user does not have to; do not send them to read it or hand them a path. If it does not answer the question, ignore it.\n" +
       input.grounding
         .map(
           (g) =>
@@ -151,13 +169,16 @@ export async function runAgent(
         )
         .join("\n")
     : system;
-  const finalSystem = systemWithDocs + localHint;
 
   /* History first, then this turn's message. The loop appends its own
      assistant/tool-result pairs onto the end of this array, so prior turns have
      to be in front of the current message or the round-trips would interleave
      with them and the model would read the tool results as answering an older
      question. */
+  const systemFinal = input.systemAddendum
+    ? `${systemWithDocs}\n\n${input.systemAddendum}`
+    : systemWithDocs;
+
   const messages: ChatMessage[] = [
     ...(input.history ?? []),
     { role: "user", content: input.message },
@@ -169,13 +190,18 @@ export async function runAgent(
   const ask = () =>
     events?.onText && provider.chatStream
       ? provider.chatStream(
-          { system: finalSystem, messages, tools: TOOL_CATALOG },
+          { system: systemFinal, messages, tools: TOOL_CATALOG },
           events.onText,
         )
-      : provider.chat({ system: finalSystem, messages, tools: TOOL_CATALOG });
+      : provider.chat({ system: systemFinal, messages, tools: TOOL_CATALOG });
 
   let result = await ask();
   const trace: ReadCall[] = [];
+  /* Grounding passes that ran. Incremented once per loop iteration that fed a
+     context block back and re-asked — so a turn answered on the first call
+     without a tool stays 0, and the count matches how many times the model was
+     handed fresh reads to reason over. Reported on the run for the turn log. */
+  let rounds = 0;
 
   /**
    * Every read this turn has already run, by `readKey`.
@@ -200,7 +226,11 @@ export async function runAgent(
    */
   const served = new Map<string, unknown>();
 
-  for (let round = 0; round < MAX_READ_ROUNDS; round++) {
+  const roundCap = Math.min(
+    MAX_READ_ROUNDS,
+    input.maxReadRounds ?? MAX_READ_ROUNDS,
+  );
+  for (let round = 0; round < roundCap; round++) {
     // Execute verbs mean it had what it needed — stop.
     if (result.executes.length > 0) break;
 
@@ -220,7 +250,7 @@ export async function runAgent(
         fresh.map(async (r) => {
           served.set(
             readKey(r.name, r.args),
-            await runReadTool(r.name, r.args, input.chainId),
+            await runReadTool(r.name, r.args, input.chainId, input.mainnetOnly),
           );
         }),
       );
@@ -306,10 +336,11 @@ export async function runAgent(
           : ""),
     });
 
+    rounds++;
     result = await ask();
   }
 
-  return { ...result, trace };
+  return { ...result, trace, rounds };
 }
 
 /**
@@ -325,7 +356,32 @@ export async function runAgent(
  * On the non-streaming path nothing is emitted until the end, so every provider
  * in the chain is genuinely tried. Retrying is safe because the model never sets
  * addresses or amounts — the deterministic builder does, after this returns.
+ *
+ * A HANG is failed over too, not just a fast error — which it was not before. A
+ * provider's own request timeout is 60s, the same as the whole function's budget
+ * (maxDuration), so waiting for a stalled primary to throw left no time for a
+ * backend that would have answered; the failover the doc-comment promised for a
+ * "timeout" never actually reached the second provider. So on the STREAMING path,
+ * each non-last provider is raced against a first-sign-of-life deadline: if it has
+ * emitted nothing within `STALL_MS`, it is treated as hung and the next backend is
+ * tried, while the stalled attempt is abandoned (its rejection swallowed). Gated
+ * to streaming because the JSON path emits nothing until the end and so cannot
+ * tell a hung provider from a slow-but-working one — there, the old behaviour
+ * (fail over only on a thrown error) stands.
  */
+const STALL_MS = Number(process.env.AGENT_STALL_MS) || 12_000;
+
+/**
+ * Extra attempts against the SAME provider on a transient error before giving
+ * up or failing over. The gateway throws an intermittent reasoning-service
+ * error (~1 in 3 measured 2026-09-17) and in production the chain is often a
+ * single provider, so there is nothing to fail over TO — a lone blip became the
+ * user's whole answer. A retry is only ever taken when nothing has been
+ * streamed yet, so it can never double up a reply; the reads it re-runs are
+ * read-only. One retry turns ~33% failure into ~11%; two into ~4%.
+ */
+const RETRY_PER_PROVIDER = Number(process.env.AGENT_RETRY_PER_PROVIDER) || 1;
+
 export async function runAgentWithFailover(
   providers: ChatProvider[],
   input: AgentInput,
@@ -351,13 +407,51 @@ export async function runAgentWithFailover(
 
   let lastError: unknown;
   for (let i = 0; i < providers.length; i++) {
+    const isLast = i === providers.length - 1;
+    /* Each provider gets RETRY_PER_PROVIDER extra attempts on a transient error,
+       as long as nothing has streamed yet (checked in the catch). A stall breaks
+       out to the next provider instead — a hung backend does not un-hang on a
+       retry. */
+    for (let retry = 0; ; retry++) {
+    const attempt = runAgent(providers[i], input, guarded);
     try {
-      return await runAgent(providers[i], input, guarded);
+      /* No watchdog on the last provider, or on the JSON path (no events): let it
+         run to its own timeout, since there is no backend left to fail over to and
+         no first-token signal to judge a stall by. */
+      if (isLast || !events) return await attempt;
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const stalled = new Promise<"stall">((resolve) => {
+        timer = setTimeout(() => resolve("stall"), STALL_MS);
+      });
+      const outcome = await Promise.race([
+        attempt.then((r) => ({ kind: "done" as const, r })),
+        stalled.then(() => ({ kind: "stall" as const })),
+      ]);
+      clearTimeout(timer);
+
+      if (outcome.kind === "done") return outcome.r;
+      /* The deadline fired. If the provider has shown any life it is slow, not
+         hung — wait for it to finish, and let a real error propagate. */
+      if (dirty) return await attempt;
+      /* Hung with nothing emitted: move on. Swallow the abandoned attempt's
+         eventual rejection so it cannot surface as an unhandled rejection. */
+      attempt.catch(() => {});
+      lastError = new Error(
+        `Provider ${providers[i].id} stalled (no output in ${STALL_MS}ms).`,
+      );
+      break;
     } catch (err) {
       lastError = err;
-      /* Last provider, or the client has already seen output — surface it. */
-      if (dirty || i === providers.length - 1) throw err;
-      /* Otherwise fall through to the next backend. */
+      /* Already streamed — cannot retry or fail over without doubling the reply. */
+      if (dirty) throw err;
+      /* A transient error with nothing shown yet: try this provider again before
+         moving on. Cheap insurance for the common single-provider chain. */
+      if (retry < RETRY_PER_PROVIDER) continue;
+      /* Retries spent. Surface on the last provider; otherwise fail over. */
+      if (isLast) throw err;
+      break;
+    }
     }
   }
   throw lastError;

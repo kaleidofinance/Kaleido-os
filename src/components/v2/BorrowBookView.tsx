@@ -197,10 +197,10 @@ function FeeCard({ fees, lender }: { fees: LendingFees; lender: boolean }) {
       </div>
       <p className={s.cardNote}>
         {interestFeeBps === null && liquidationPenaltyBps === null
-          ? "These rates couldn't be read from the protocol just now. Both are still charged — the interest fee out of the lender's interest, the penalty out of a liquidated borrower's collateral."
+          ? "Rates couldn't be read just now. Both still apply."
           : lender
-            ? "The interest fee is deducted from the interest paid to you at repayment; your principal is untouched. In a liquidation you are paid before anyone else — the penalty only comes out of collateral above your claim, so a shortfall costs the liquidator and the protocol, not you."
-            : "The interest fee is deducted from your lender's interest, not added to your repayment. The liquidation penalty is charged on the debt and taken from your collateral if your health factor breaks."}
+            ? "Taken from your interest, not your principal. In liquidation you're paid first."
+            : "Taken from your lender's interest. Penalty hits your collateral if health breaks."}
         {split &&
           ` Of the penalty, ${formatBps(split.liquidator)} goes to whoever closes the position and ${formatBps(split.protocol)} to the protocol.`}
       </p>
@@ -789,7 +789,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                           <div className={s.aName}>{loan.symbol}</div>
                           <div className={s.aSub}>
                             from{" "}
-                            {loan.lender ? formatAddress(loan.lender) : "—"}
+                            {loan.lender ? formatAddress(loan.lender) : ""}
                           </div>
                         </div>
                       </div>
@@ -1016,7 +1016,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                         )
                       : null;
 
-                    let amount = "—";
+                    let amount = "0";
                     try {
                       amount = formatWithCommas(
                         ethers.formatUnits(row.amount ?? "0", decimals),
@@ -1027,7 +1027,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                         isNative ? 4 : 2,
                       );
                     } catch {
-                      amount = "—";
+                      amount = "0";
                     }
 
                     return (
@@ -1053,7 +1053,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                                 tells them apart and what a take/cancel targets.
                                 Same idea as the Pool page's ChainTag. */}
                             <div className={s.aNameRow}>
-                              <span className={s.aName}>{symbol ?? "—"}</span>
+                              <span className={s.aName}>{symbol ?? "0"}</span>
                               <span className={s.chainTag}>
                                 <ChainIcon
                                   id={CHAINS_BY_ID[row.chainId]?.iconId}
@@ -1075,7 +1075,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                               </span>
                             </div>
                             <div className={s.aSub}>
-                              {counterparty ? formatAddress(counterparty) : "—"}
+                              {counterparty ? formatAddress(counterparty) : ""}
                               {isOwnRow && " · you"}
                             </div>
                           </div>
@@ -1122,7 +1122,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                                   : ""
                             }`}
                           >
-                            {isOverdue ? "Overdue" : row.status || "—"}
+                            {isOverdue ? "Overdue" : row.status || ""}
                           </span>
                         </span>
                         <span className={s.actionCell}>
@@ -1281,7 +1281,7 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
                   className={`tabular ${borrow.healthFactor !== null && borrow.healthFactor < 1.2 ? s.rateBad : ""}`}
                 >
                   {borrow.healthFactor === null
-                    ? "—"
+                    ? "0"
                     : borrow.healthFactor.toFixed(2)}
                 </span>
               </div>

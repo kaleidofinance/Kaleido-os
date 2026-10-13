@@ -557,7 +557,23 @@ async function main() {
      block clock; a day of slack keeps a stale-price revert from being mistaken
      for a health-factor result. */
   await (await protocol.setFeedMaxAge(loanFeed, 86400)).wait();
-  await (await protocol.addLoanableToken(lRec.currency.address, loanFeed)).wait();
+  /* Re-pointing the loan leg's feed. Since 2026-09-27 addLoanableToken refuses
+     to overwrite an existing feed, and LendingAdminFacet.setTokenFeed is the
+     deliberate way to change one. Diamonds cut before that have no setTokenFeed
+     (and still overwrite through addLoanableToken), so try the new path first. */
+  const admin = new ethers.Contract(
+    protocol.target,
+    ["function setTokenFeed(address,bytes32)"],
+    lender,
+  );
+  try {
+    await (await admin.setTokenFeed(lRec.currency.address, loanFeed)).wait();
+  } catch (err) {
+    /* Only a diamond without LendingAdminFacet falls back. Any other failure
+       (stale or unmapped feed) is real and must surface as itself. */
+    if (!/Function does not exist/.test(String(err?.message))) throw err;
+    await (await protocol.addLoanableToken(lRec.currency.address, loanFeed)).wait();
+  }
   console.log(
     `   WETH/USD ${Number(livePrice) / 1e8} → ${Number(pumped) / 1e8} via ${stubAddr} ` +
       `(collateral stays on Chainlink ${oRec.feeds[0].aggregator})`,

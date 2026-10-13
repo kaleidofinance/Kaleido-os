@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="_mockbase.css">
+<style>
+  body{padding:32px 36px;display:block}
+  .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:var(--k-s6)}
+  .head{display:flex;align-items:center;gap:var(--k-s3)}
+  .av{width:52px;height:52px;border-radius:50%;flex:none;
+    background:conic-gradient(from 210deg,#00b383,#2775ca,#f0803c,#00b383)}
+  .paddr{font-size:var(--k-fs-xl);font-weight:var(--k-fw-med)}
+  .pnet{font-size:var(--k-fs-sm);color:var(--k-t2)}
+  .hActions{margin-left:auto;display:flex;gap:var(--k-s2)}
+  .bt{background:var(--k-card);border:0;font:inherit;font-size:var(--k-fs-sm);color:var(--k-t1);padding:10px 18px;border-radius:var(--k-r-pill)}
+  .btWhite{background:var(--k-btn-solid);color:var(--k-btn-solid-fg);font-weight:var(--k-fw-med)}
+  .value{font-size:var(--k-fs-hero);font-weight:var(--k-fw-body);letter-spacing:-.035em;line-height:1.05}
+  .eyebrow{font-size:var(--k-fs-sm);color:var(--k-t2);margin-top:2px}
+  .strip{display:flex}
+  .stat{padding:0 24px;border-left:1px solid var(--k-line);display:flex;flex-direction:column;gap:var(--k-s1);flex:1}
+  .stat:first-child{border-left:0;padding-left:0}
+  .sLabel{font-size:var(--k-fs-sm);color:var(--k-t2)}
+  .sVal{font-size:var(--k-fs-xl);letter-spacing:-.02em}
+  .sVal.pos{color:var(--k-pos)}
+  .cols{display:grid;grid-template-columns:1fr 330px;gap:var(--k-s5);align-items:start}
+  .main{display:flex;flex-direction:column;gap:var(--k-s5)}
+  .group{display:flex;flex-direction:column;gap:var(--k-s3)}
+  .gHead{display:flex;align-items:baseline;justify-content:space-between}
+  .gTitle{font-size:var(--k-fs-xl);font-weight:var(--k-fw-med);letter-spacing:-.02em}
+  .gSum{font-size:var(--k-fs-lg);letter-spacing:-.02em;color:var(--k-t2)}
+  .table{background:var(--k-card);border:1px solid var(--k-line);border-radius:var(--k-r-lg);padding:var(--k-s2)}
+  .row{display:grid;grid-template-columns:1.7fr 1fr 0.9fr auto;gap:var(--k-s3);align-items:center;padding:15px 14px;border-radius:var(--k-r-md)}
+  .row+.row{border-top:1px solid var(--k-line)}
+  .asset{display:flex;align-items:center;gap:var(--k-s3);min-width:0}
+  .icon{width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff}
+  .aName{font-size:var(--k-fs-base)}
+  .aSub{font-size:var(--k-fs-xs);color:var(--k-t2)}
+  .cell{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+  .cVal{font-size:var(--k-fs-base)}
+  .cSub{font-size:var(--k-fs-xs);color:var(--k-t2)}
+  .pos{color:var(--k-pos);font-size:var(--k-fs-base);text-align:right}
+  .badge{justify-self:end;font-size:var(--k-fs-sm);padding:5px 11px;border-radius:var(--k-r-pill);background:var(--k-glass-deep);color:var(--k-t2);white-space:nowrap}
+  .side{display:flex;flex-direction:column;gap:10px}
+  .sideTitle{font-size:var(--k-fs-lg);font-weight:var(--k-fw-med);margin-bottom:2px}
+  .alert{background:var(--k-card);border:1px solid var(--k-line);border-radius:var(--k-r-md);padding:14px 16px;display:flex;align-items:center;gap:var(--k-s3)}
+  .aIcon{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:var(--k-fs-base);flex:none}
+  .aWarn{background:var(--k-alt-dim);color:var(--k-alt)}
+  .aGood{background:var(--k-brand-dim);color:var(--k-brand)}
+  .alTitle{font-size:var(--k-fs-base)}
+  .alDetail{font-size:var(--k-fs-xs);color:var(--k-t2)}
+</style></head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <span class="av"></span>
+      <div><div class="paddr tabular">0x1a2f…be3f</div><div class="pnet">Arc · mainnet</div></div>
+      <div class="hActions"><a class="bt">Deposit</a><button class="bt btWhite">Share</button></div>
+    </div>
+
+    <div>
+      <div class="eyebrow">Net position</div>
+      <div class="value tabular">$48,213.90</div>
+    </div>
+
+    <div class="strip">
+      <div class="stat"><span class="sLabel">Wallet</span><span class="sVal tabular">$12,113</span></div>
+      <div class="stat"><span class="sLabel">Staking &amp; LP</span><span class="sVal tabular">$24,488</span></div>
+      <div class="stat"><span class="sLabel">Supplied</span><span class="sVal tabular">$13,700</span></div>
+      <div class="stat"><span class="sLabel">Borrowed</span><span class="sVal tabular">$2,088</span></div>
+      <div class="stat"><span class="sLabel">Net APY</span><span class="sVal pos tabular">+7.9%</span></div>
+    </div>
+
+    <div class="cols">
+      <div class="main">
+        <div class="group">
+          <div class="gHead"><span class="gTitle">Wallet</span><span class="gSum tabular">$12,113</span></div>
+          <div class="table">
+            <div class="row">
+              <div class="asset"><span class="icon" style="background:#2775ca">$</span><div><div class="aName">USDC</div><div class="aSub">USD Coin</div></div></div>
+              <div class="cell"><span class="cVal tabular">$5,000</span><span class="cSub tabular">5,000</span></div>
+              <span></span><span class="badge">Idle</span>
+            </div>
+            <div class="row">
+              <div class="asset"><span class="icon" style="background:var(--k-brand)">K</span><div><div class="aName">KLD</div><div class="aSub">Kaleido</div></div></div>
+              <div class="cell"><span class="cVal tabular">$6,373</span><span class="cSub tabular">210,400</span></div>
+              <span></span><span class="badge">Idle</span>
+            </div>
+            <div class="row">
+              <div class="asset"><span class="icon" style="background:#1a73e8">€</span><div><div class="aName">EURC</div><div class="aSub">Euro Coin</div></div></div>
+              <div class="cell"><span class="cVal tabular">$740</span><span class="cSub tabular">680</span></div>
+              <span></span><span class="badge">Idle</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="gHead"><span class="gTitle">Staking &amp; LP</span><span class="gSum tabular">$24,488</span></div>
+          <div class="table">
+            <div class="row">
+              <div class="asset"><span class="icon" style="background:var(--k-brand)">sK</span><div><div class="aName">stKLD</div><div class="aSub">Staked KLD</div></div></div>
+              <div class="cell"><span class="cVal tabular">$18,900</span><span class="cSub tabular">92,000 stKLD</span></div>
+              <span class="pos tabular">12.4%</span><span class="badge">Staked</span>
+            </div>
+            <div class="row">
+              <div class="asset"><span class="icon" style="background:#7a5cff">LP</span><div><div class="aName">KLD / USDC</div><div class="aSub">v3 · 0.30%</div></div></div>
+              <div class="cell"><span class="cVal tabular">$5,588</span><span class="cSub tabular">2,904 KLD + 3,412 USDC</span></div>
+              <span class="pos tabular">18.1%</span><span class="badge">In range</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="gHead"><span class="gTitle">Lending</span><span class="gSum tabular">$11,612</span></div>
+          <div class="table">
+            <div class="row">
+              <div class="asset"><span class="icon" style="background:#2775ca">$</span><div><div class="aName">USDC</div><div class="aSub">Supplied</div></div></div>
+              <div class="cell"><span class="cVal tabular">$13,700</span><span class="cSub tabular">13,700</span></div>
+              <span class="pos tabular">4.8%</span><span class="badge">Earning</span>
+            </div>
+            <div class="row">
+              <div class="asset"><span class="icon" style="background:var(--k-brand)">K</span><div><div class="aName">KLD</div><div class="aSub">Borrowed</div></div></div>
+              <div class="cell"><span class="cVal tabular">$2,088</span><span class="cSub tabular">68,900</span></div>
+              <span class="tabular" style="color:var(--k-alt)">6.2%</span><span class="badge">Debt</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side">
+        <div class="sideTitle">Attention</div>
+        <div class="alert"><span class="aIcon aGood">◈</span><div><div class="alTitle tabular">Health factor 3.14</div><div class="alDetail">Comfortable — no liquidation risk.</div></div></div>
+        <div class="alert"><span class="aIcon aWarn">↑</span><div><div class="alTitle">Idle USDC earning nothing</div><div class="alDetail">$5,000 could earn 4.8% supplied. Ask Luca.</div></div></div>
+      </div>
+    </div>
+  </div>
+</body></html>

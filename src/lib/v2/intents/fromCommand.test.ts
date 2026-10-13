@@ -5,13 +5,15 @@
 // ambiguous case must fall through to "unknown" (escalate to a model) or
 // "incomplete" (ask the user). Silently guessing an amount or a token is the
 // one outcome that must never happen.
-import {
+import { chainTokens } from "../../../constants/tokens";
+import { dollarSizedToken, usdToTokenAmount,
   parseCommand,
   parseFollowUp,
   fillSlot,
   completeDraft,
   draftFromCommand,
   clearSlot,
+  correctVerbTypo,
 } from "./fromCommand.ts";
 
 let pass = 0;
@@ -877,6 +879,33 @@ console.log("\n— stablecoin: complete withdrawal, claim, compound —");
     "bare 'claim' still resolves (no slot to miss)",
     bare.status === "ok" && bare.command.kind === "claimYield",
   );
+
+  // "claim" is also the plain word for points, staking rewards, an airdrop —
+  // none of them the kfUSD yield claim. A claim that names one escalates rather
+  // than planning a yield claim from a sentence about a different product.
+  for (const sentence of [
+    "claim my points",
+    "claim my rewards",
+    "claim my staking rewards",
+    "claim my airdrop",
+    "claim my referral rewards",
+    "claim my season points",
+  ]) {
+    const r = p(sentence);
+    check(
+      `"${sentence}" is not a kfUSD yield claim`,
+      r.status === "unknown",
+      r.status === "ok" ? r.command.kind : r.status,
+    );
+  }
+  // And the yield claim itself is untouched: unqualified, or naming "yield".
+  check(
+    "'claim my yield' is still the kfUSD claim",
+    (() => {
+      const r = p("claim my yield");
+      return r.status === "ok" && r.command.kind === "claimYield";
+    })(),
+  );
 }
 
 console.log("\n— the testnet faucet —");
@@ -1049,6 +1078,91 @@ console.log("\n— pool: collect fees, remove position —");
     answeredWithPosition.status === "incomplete" &&
       answeredWithPosition.missing === "ref",
     answeredWithPosition.status,
+  );
+}
+
+console.log("\n— remove a share, not always all of it —");
+{
+  /* The bug this section pins: "remove 50%" used to parse the 50 (as if it were
+     an interest rate) and then drop it, so a half-remove signed away the whole
+     position. A share is now carried, or the sentence escalates — it is never
+     silently rounded up to all. */
+  const half = p("remove 50% of position 7");
+  check(
+    "a percentage is carried, not dropped",
+    half.status === "ok" &&
+      half.command.kind === "removePosition" &&
+      half.command.percent === 50 &&
+      half.command.positionId === 7,
+    half.status === "ok" ? String(half.command.percent) : half.status,
+  );
+  const worded = p("remove 25 percent of position 7");
+  check(
+    "'N percent' reads the same as 'N%'",
+    worded.status === "ok" && worded.command.percent === 25,
+    worded.status === "ok" ? String(worded.command.percent) : worded.status,
+  );
+  const bare = p("remove position 7");
+  check(
+    "a bare remove still means all of it (no percent carried)",
+    bare.status === "ok" &&
+      bare.command.kind === "removePosition" &&
+      bare.command.percent === undefined,
+    bare.status === "ok" ? String(bare.command.percent) : bare.status,
+  );
+  const hundred = p("remove 100% of position 7");
+  check(
+    "'100%' is all of it, carried as no percent",
+    hundred.status === "ok" && hundred.command.percent === undefined,
+    hundred.status === "ok" ? String(hundred.command.percent) : hundred.status,
+  );
+
+  /* A share asked for as a WORD is a real signal but not a number this grammar
+     will invent — it escalates rather than guessing 50 for "half", and never
+     falls back to all. */
+  check(
+    "'remove half' escalates rather than removing everything",
+    p("remove half of position 7").status === "unknown",
+    p("remove half of position 7").status,
+  );
+  check(
+    "a nonsense share escalates rather than rounding to all",
+    p("remove 0% of position 7").status === "unknown",
+    p("remove 0% of position 7").status,
+  );
+  check(
+    "'150%' is not a share, so it just means all of it",
+    (() => {
+      const r = p("remove 150% of position 7");
+      return r.status === "ok" && r.command.percent === undefined;
+    })(),
+  );
+
+  /* A partial share with no position id can't be held through the "which
+     position?" prompt — the answer would drop the share and remove all — so it
+     goes to the model, which can find the position and honour the share. */
+  check(
+    "a partial share with no position id escalates, never prompts",
+    p("remove 50% of my KLD/USDC position").status === "unknown",
+    p("remove 50% of my KLD/USDC position").status,
+  );
+  check(
+    "a bare remove with no id still just asks which position",
+    (() => {
+      const r = p("remove my KLD/USDC position");
+      return r.status === "incomplete" && r.missing === "ref";
+    })(),
+  );
+
+  /* collectFees has no partial form — you collect the fees owed, all of them —
+     so the share machinery must not touch it. */
+  const collect = p("collect fees from position 3");
+  check(
+    "collectFees is unaffected and carries no percent",
+    collect.status === "ok" &&
+      collect.command.kind === "collectFees" &&
+      collect.command.percent === undefined,
+    collect.status,
   );
 }
 
@@ -1625,13 +1739,19 @@ console.log("\n— degen and whale slang read as the trade a person meant —");
     JSON.stringify(cop),
   );
 
-  /* The phrasing where a buy synonym runs forward — amount and both tokens are
-     present, but "into" is not a spend marker, so the trade could be read two
-     ways. It must ask, not pick. */
+  /* A buy synonym in a plain forward frame — an explicit spend token and amount
+     before "into", a receive token after — is a forward swap, not a buy. Both
+     readings of "ape 500 USDC into KLD" mean spend the 500 USDC for KLD, so
+     asking which token to spend (the old behaviour) dropped what the sentence
+     had already said. See FORWARD_SEPARATORS. */
   const forwardApe = p("ape 500 USDC into KLD");
   check(
-    "an ambiguous 'ape … into' asks rather than inverting a trade",
-    forwardApe.status === "incomplete" && forwardApe.missing === "tokenIn",
+    "'ape … into' with a spend token+amount is a forward swap",
+    forwardApe.status === "ok" &&
+      forwardApe.command.kind === "swap" &&
+      forwardApe.command.tokenIn.symbol === "USDC" &&
+      forwardApe.command.tokenOut.symbol === "KLD" &&
+      forwardApe.command.amount === "500",
     JSON.stringify(forwardApe),
   );
 
@@ -1787,6 +1907,11 @@ console.log("\n— unstake parses like stake: one amount, the step decided later
     follow("same to WETH every week").status === "unknown",
     follow("same to WETH every week").status,
   );
+  check(
+    "a bare amount does not reuse an old command without a reference",
+    follow("50").status === "unknown",
+    follow("50").status,
+  );
 }
 
 console.log("\n— resting orders: sell-framed limit + cancel-all —");
@@ -1812,6 +1937,18 @@ console.log("\n— resting orders: sell-framed limit + cancel-all —");
   check("no price is a spot swap", spot.status === "ok" && spot.command.kind === "swap", spot.status);
   const buy = p("buy 100 KLD at 0.02 USDC");
   check("buy-framed is not a local order", buy.status !== "ok" || buy.command.kind !== "placeOrder", buy.status);
+
+  /* SAFETY: a conditional or market-cap trade must REFUSE, never fall through to
+     a market swap with the condition dropped (the "sell now at $17M mcap" bug). */
+  const mcap = p("sell 100% of KLD for USDC when marketcap hits 17m");
+  check("market-cap trade is refused, not market-sold", mcap.status === "refused", mcap.status);
+  check("…with the market-cap reason", mcap.status === "refused" && /market cap/i.test(mcap.message), mcap.status === "refused" ? mcap.message.slice(0,40) : "");
+  const cond = p("sell 500 KLD when the price reaches 0.05 USDC");
+  check("a 'when it reaches' trade is refused", cond.status === "refused", cond.status);
+  const condBuy = p("buy 100 KLD when it drops to 0.02 USDC");
+  check("a conditional buy is refused too", condBuy.status === "refused", condBuy.status);
+  check("a plain market swap is untouched by the guard", p("swap 500 USDC to KLD").status === "ok", "");
+  check("a plain 'at <price>' order is still a placeOrder (no false refusal)", p("sell 500 KLD at 0.05 USDC").status === "ok", "");
   check("recurring reaches the model", p("sell 50 KLD every week at 0.05 USDC").status === "unknown", "");
   for (const q of ["cancel all my orders", "cancel every order", "cancel all orders"]) {
     const r = p(q);
@@ -1945,6 +2082,38 @@ console.log("\n— what must never become a token —");
   const b = p("bridge 100 usdcc to Base Sepolia");
   check("a bridge names the typo", b.status === "incomplete" && b.prompt.includes("did you mean USDC"), b.prompt || b.status);
   check("and keeps the destination", b.status === "incomplete" && (b.draft.toChain || "").toLowerCase() === "base sepolia", b.draft?.toChain);
+
+  /* An explicit source: "from X" is captured as fromChain, kept out of the token
+     and destination, and left unresolved for buildIntents. */
+  const src = p("bridge 50 USDC from BNB Chain to Arc");
+  check(
+    "a from-chain bridge builds",
+    src.status === "ok" && src.command.kind === "bridge",
+    src.status,
+  );
+  check(
+    "the source is captured",
+    src.status === "ok" && src.command.kind === "bridge" && src.command.fromChain === "bnb chain",
+    src.status === "ok" && src.command.kind === "bridge" ? src.command.fromChain : src.status,
+  );
+  check(
+    "the destination is still the 'to' chain",
+    src.status === "ok" && src.command.kind === "bridge" && src.command.toChain === "arc",
+    src.status === "ok" && src.command.kind === "bridge" ? src.command.toChain : src.status,
+  );
+  check(
+    "the asset is not read out of the source phrase",
+    src.status === "ok" && src.command.kind === "bridge" && src.command.token.symbol === "USDC",
+    src.status,
+  );
+
+  /* No "from" means no source — every existing bridge is unchanged. */
+  const noSrc = p("bridge 0.05 USDC to Base Sepolia");
+  check(
+    "a plain bridge has no source",
+    noSrc.status === "ok" && noSrc.command.kind === "bridge" && noSrc.command.fromChain === undefined,
+    noSrc.status,
+  );
 }
 
 console.log("\n— a guess is only ever offered —");
@@ -1972,6 +2141,1070 @@ console.log("\n— a guess is only ever offered —");
      turn ago must not be what the next "yes" agrees to. */
   const cleared = clearSlot({ kind: "swap", amount: "100", tokenIn: TOKENS[1], tokenOut: TOKENS[0], suggest: { token: TOKENS[2], typed: "eth" } }, "tokenIn");
   check("clearing a slot clears the guess", !cleared.suggest);
+}
+
+console.log("swap resolves relative amounts; other verbs escalate");
+{
+  // The reported bug: these returned "How much?". Swap now carries the exact
+  // share for the planner (build.ts) to resolve against the balance.
+  const expect = [
+    { text: "swap half of my USDC to KLD", num: 1, den: 2 },
+    { text: "swap 50% of my USDC balance to KLD", num: 50, den: 100 },
+    { text: "swap all my USDC to KLD", num: 1, den: 1 },
+    { text: "swap most of my USDC to KLD", num: 1, den: 1 },
+  ];
+  for (const { text, num, den } of expect) {
+    const r = p(text);
+    const ok =
+      r.status === "ok" &&
+      r.command.kind === "swap" &&
+      !r.command.amount &&
+      !!r.command.relative &&
+      r.command.relative.num === num &&
+      r.command.relative.den === den;
+    check(`"${text}" carries a ${num}/${den} share`, ok, r.status);
+  }
+}
+{
+  // Siblings: any amount verb whose amount can be relative.
+  const cases = [
+    "send half my WETH to 0x1111111111111111111111111111111111111111",
+    "stake all my KLD",
+    "deposit 50% of my USDC",
+    "withdraw half my collateral",
+    "borrow half of my USDC", // rate verb, but "half" is still a share
+  ];
+  for (const text of cases) {
+    const r = p(text);
+    check(`"${text}" escalates`, r.status === "unknown", r.status);
+  }
+}
+{
+  // Controls: absolute amounts still parse, and a rate is NOT a relative amount.
+  const swap = p("swap 5 USDC to KLD");
+  check(
+    "an absolute swap still parses",
+    swap.status === "ok" && swap.command.kind === "swap" && swap.command.amount === "5",
+    swap.status,
+  );
+  const noAmount = p("swap USDC to KLD");
+  check(
+    "a swap with no amount and no share still asks 'how much?'",
+    noAmount.status === "incomplete" && noAmount.missing === "amount",
+    noAmount.status,
+  );
+  const borrow = p("borrow 500 USDC at 8% for 30 days");
+  check(
+    "borrow at 8% reads the % as a rate, not a share",
+    borrow.status === "ok" && borrow.command.kind === "borrow" && borrow.command.amount === "500",
+    borrow.status,
+  );
+}
+{
+  // Replying "half" to "How much?" escalates rather than re-asking.
+  const draft = { kind: "swap", tokenIn: TOKENS[1], tokenOut: TOKENS[0] };
+  const r = fillSlot(draft, "amount", "half", TOKENS);
+  check("replying 'half' to 'how much?' escalates", r.status === "unknown", r.status);
+}
+
+/* ---------------------------------------------------------------------------
+ * A REPEAT OF THE LAST PLAN, NAMED WITH ITS OWN VERB.
+ *
+ * "swap 1 usdc to eurc", signed, then "do same swap once again" — and Luca
+ * asked "which token do you want to spend?". The grammar read the verb, found
+ * no token and opened a Draft; the follow-up reader never saw the sentence,
+ * and would have refused it anyway under rule 1 (it has a verb). The exception
+ * admits a verb that AGREES with the carried command inside a repeat cue, and
+ * the page now offers an incomplete parse to the follow-up reader before it
+ * asks. What these cases protect: a repeat must be the SAME trade (or the same
+ * trade with the stated change); a different verb, an acknowledgement, and a
+ * token-for-itself must all still refuse — a wrong repeat is a wrong trade.
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— 'do the same swap once again' repeats the last plan —");
+  const seeded = parseCommand("swap 10 USDC to KLD", TOKENS);
+  const last = seeded.status === "ok" ? seeded.command : null;
+  check("the seed parses", last !== null, seeded.status);
+  const follow = (text) => parseFollowUp(text, TOKENS, last);
+  const swapOf = (r) =>
+    r.status === "ok" && r.command.kind === "swap"
+      ? `${r.command.amount} ${r.command.tokenIn.symbol}->${r.command.tokenOut.symbol}`
+      : r.status;
+
+  /* The grammar alone still opens a Draft asking for the token — that is the
+     exact sentence the page now hands to the follow-up reader instead. */
+  const alone = p("do same swap once again");
+  check(
+    "on its own the grammar asks for the token (the bug's shape)",
+    alone.status === "incomplete" && alone.missing === "tokenIn",
+    alone.status === "incomplete" ? alone.missing : alone.status,
+  );
+
+  for (const text of [
+    "do same swap once again",
+    "do the same swap again",
+    "same swap again",
+    "swap again",
+    "repeat that swap",
+    "swap once more",
+    "again",
+    "do it again",
+    "once more",
+    "one more time",
+    "the same",
+    "repeat",
+    "redo that",
+    "same as before",
+  ]) {
+    check(
+      `'${text}' rebuilds the identical swap`,
+      swapOf(follow(text)) === "10 USDC->KLD",
+      swapOf(follow(text)),
+    );
+  }
+
+  /* A repeat that changes something changes only that. */
+  check(
+    "'same swap but 5' keeps the pair, changes the amount",
+    swapOf(follow("same swap but 5")) === "5 USDC->KLD",
+    swapOf(follow("same swap but 5")),
+  );
+  check(
+    "'redo the transaction' repeats the last swap",
+    swapOf(follow("redo the transaction")) === "10 USDC->KLD",
+    swapOf(follow("redo the transaction")),
+  );
+  check(
+    "'repeat the transaction' repeats the last swap",
+    swapOf(follow("repeat the transaction")) === "10 USDC->KLD",
+    swapOf(follow("repeat the transaction")),
+  );
+  const half = follow("swap half of it");
+  check(
+    "'swap half of it' keeps the pair and carries a half balance share",
+    half.status === "ok" &&
+      half.command.kind === "swap" &&
+      !half.command.amount &&
+      half.command.relative?.num === 1 &&
+      half.command.relative?.den === 2,
+    half.status,
+  );
+  for (const text of ["swap the rest", "swap the remaining balance", "swap what's left"]) {
+    const r = follow(text);
+    check(
+      `'${text}' uses the remaining balance of the previous input`,
+      r.status === "ok" && r.command.kind === "swap" && !r.command.amount && r.command.relative?.num === 1 && r.command.relative?.den === 1,
+      r.status,
+    );
+  }
+  for (const [text, expected] of [["double it", "20"], ["triple it", "30"], ["add another 5", "15"], ["use 5 more", "15"], ["reduce it by half", "5"]]) {
+    const r = follow(text);
+    check(
+      `'${text}' changes the previous exact amount to ${expected}`,
+      r.status === "ok" && r.command.kind === "swap" && r.command.amount === expected,
+      r.status === "ok" && r.command.kind === "swap" ? String(r.command.amount) : r.status,
+    );
+  }
+  for (const text of ["swap half of my USDC to WETH", "add another 5 USDC to KLD"]) {
+    check(
+      `'${text}' stays a fresh command instead of inheriting the previous swap`,
+      follow(text).status === "unknown",
+      follow(text).status,
+    );
+  }
+  const wrapSeed = parseCommand("wrap 10 usdc", [
+    { address: "0xnat", name: "USD Coin", symbol: "USDC", decimals: 18, chainId: 5042, isNative: true },
+    { address: "0xwusdc", name: "Wrapped USDC", symbol: "WUSDC", decimals: 18, chainId: 5042, tags: ["wrapped-native"] },
+  ]);
+  if (wrapSeed.status === "ok") {
+    const wrapFollow = (text) => parseFollowUp(text, [], wrapSeed.command);
+    const halfWrap = wrapFollow("wrap half of it");
+    check(
+      "'wrap half of it' keeps the native-to-wrapped direction",
+      halfWrap.status === "ok" && halfWrap.command.kind === "swap" && halfWrap.command.tokenIn.isNative === true && halfWrap.command.tokenOut.symbol === "WUSDC" && halfWrap.command.relative?.num === 1 && halfWrap.command.relative?.den === 2,
+      halfWrap.status,
+    );
+    const restUnwrap = wrapFollow("unwrap the rest");
+    check(
+      "'unwrap the rest' reverses the direction and uses the remaining balance",
+      restUnwrap.status === "ok" && restUnwrap.command.kind === "swap" && restUnwrap.command.tokenIn.symbol === "WUSDC" && restUnwrap.command.tokenOut.isNative === true && restUnwrap.command.relative?.num === 1 && restUnwrap.command.relative?.den === 1,
+      restUnwrap.status,
+    );
+  }
+  check(
+    "'swap again to WETH' keeps the amount and input, changes the output",
+    swapOf(follow("swap again to WETH")) === "10 USDC->WETH",
+    swapOf(follow("swap again to WETH")),
+  );
+  check(
+    "'do the same swap again from WETH' changes only the input",
+    swapOf(follow("do the same swap again from WETH")) === "10 WETH->KLD",
+    swapOf(follow("do the same swap again from WETH")),
+  );
+
+  /* Rule 1 still holds for a DIFFERENT verb, however the sentence is cued. */
+  for (const text of ["stake again", "same bridge again", "now stake it", "repeat the send"]) {
+    check(
+      `'${text}' after a swap is not a repeat of the swap`,
+      follow(text).status === "unknown",
+      follow(text).status,
+    );
+  }
+  /* Rule 3 still holds: an acknowledgement repeats nothing. */
+  for (const text of ["ok", "thanks", "do it", "yes", "sure"]) {
+    check(
+      `'${text}' does not rebuild the swap`,
+      follow(text).status === "unknown",
+      follow(text).status,
+    );
+  }
+  /* And a repeat that would trade a token for itself is refused, not built. */
+  check(
+    "'sell 2 usdc again' (USDC for USDC) is refused",
+    follow("sell 2 usdc again").status === "unknown",
+    follow("sell 2 usdc again").status,
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * THE QUESTION NAMES THE REAL PROBLEM.
+ *
+ * Read from the agent_questions log (2026-09-13..17): 130 complete commands
+ * were asked "which token?" — "swap 100 USDC to EURC" on Sepolia, "swap 500
+ * USDC to KLD" on Ethereum — because the token named was not on the connected
+ * chain and the grammar dropped it silently; 28 more came with no wallet at
+ * all; "0.0001ETH" and "500kfusd" lost both amount and token; a pasted
+ * "/trade/agent" became a swap; "swap 50 usdc to sepolia" asked for a token
+ * where a chain was named; and "1,0" would have read as 10. Each case below is
+ * one of those, with the answer the grammar now gives instead.
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— cross-asset bridge: an abroad source + a delivered token —");
+  const bnb = {
+    address: "0xB0B0000000000000000000000000000000000001",
+    name: "BNB",
+    symbol: "BNB",
+    decimals: 18,
+    chainId: 56,
+  };
+  const XCTX = {
+    chainName: "Arc",
+    isChain: (pp) =>
+      ["arc", "base", "bsc", "bnb chain", "ethereum", "base sepolia"].includes(
+        pp.toLowerCase(),
+      ),
+    elsewhere: (s) => (s.toLowerCase() === "bnb" ? ["BSC"] : []),
+    sourceTokens: (s) =>
+      s.toLowerCase() === "bnb" ? [{ token: bnb, chainName: "bsc" }] : [],
+  };
+  const px = (t) => parseCommand(t, TOKENS, XCTX);
+  const asBridge = (r) =>
+    r.status === "ok" && r.command.kind === "bridge" ? r.command : null;
+
+  /* "$10 bnb" is ten DOLLARS of BNB, not 10 BNB (~$6,000): dollars that size a
+     non-dollar token need a price, so the grammar hands the sentence to the
+     model instead of guessing. The one-shot shape is checked without the "$". */
+  const dollarBnb = px("bridge $10 bnb to arc usdc");
+  check("'$10 bnb' is not read as 10 BNB (goes to the model)", dollarBnb.status === "unknown", JSON.stringify(dollarBnb).slice(0, 200));
+  const one = asBridge(px("bridge 10 bnb to arc usdc"));
+  check(
+    "one-shot: BNB inferred as source (on BSC), dest split into arc + usdc",
+    !!one &&
+      one.amount === "10" &&
+      one.token.symbol === "BNB" &&
+      one.fromChain === "bsc" &&
+      one.toChain === "arc" &&
+      one.toAsset === "usdc",
+    JSON.stringify(one),
+  );
+
+  const same = asBridge(px("bridge 10 bnb to arc"));
+  check(
+    "an abroad source with no delivered token stays same-asset (no toAsset)",
+    !!same &&
+      same.token.symbol === "BNB" &&
+      same.fromChain === "bsc" &&
+      same.toChain === "arc" &&
+      same.toAsset === undefined,
+    JSON.stringify(same),
+  );
+
+  const twoWord = asBridge(px("bridge 10 bnb to base sepolia"));
+  check(
+    "a multi-word chain dest is not mis-split into chain + token",
+    !!twoWord && twoWord.toChain === "base sepolia" && twoWord.toAsset === undefined,
+    JSON.stringify(twoWord),
+  );
+
+  /* The exact regression from the screenshots: "which token?" then "bnb". The
+     reply must be taken as the bridge SOURCE, not refused as a swap token. */
+  const step1 = px("bridge 10 to arc usdc");
+  const filled =
+    step1.status === "incomplete"
+      ? fillSlot(step1.draft, step1.missing, "bnb", TOKENS, XCTX)
+      : step1;
+  const filledCmd = asBridge(filled);
+  check(
+    "fill-slot: a 'bnb' reply resolves the source instead of the swap-style refusal",
+    !!filledCmd &&
+      filledCmd.amount === "10" &&
+      filledCmd.token.symbol === "BNB" &&
+      filledCmd.fromChain === "bsc" &&
+      filledCmd.toChain === "arc" &&
+      filledCmd.toAsset === "usdc",
+    JSON.stringify(filled),
+  );
+
+  console.log("\n— a source on SEVERAL chains is asked about, never guessed —");
+  {
+    const eth = (chainId) => ({ address: "0x000000000000000000000000000000000000eeee", name: "ETH", symbol: "ETH", decimals: 18, chainId });
+    const ACTX = {
+      ...XCTX,
+      // ETH exists on three chains; the page would pass all of them when the
+      // wallet holds it on none (or on several) of them.
+      sourceTokens: (s) =>
+        s.toLowerCase() === "eth"
+          ? [
+              { token: eth(46630), chainName: "Robinhood" },
+              { token: eth(8453), chainName: "Base" },
+              { token: eth(1), chainName: "Ethereum" },
+            ]
+          : [],
+      isChain: (pp) => ["arc", "base", "ethereum", "robinhood"].includes(pp.toLowerCase()),
+      // As the page supplies it: ETH is known to be on other chains.
+      elsewhere: (s) =>
+        s.toLowerCase() === "eth" ? ["Robinhood", "Base", "Ethereum"] : s.toLowerCase() === "bnb" ? ["BSC"] : [],
+    };
+    const pa = (t) => parseCommand(t, TOKENS, ACTX);
+
+    const asked = pa("bridge 0.1 eth to arc");
+    check(
+      "ambiguous source: asks which chain, naming every option — no first-match guess",
+      asked.status === "incomplete" &&
+        asked.missing === "fromChain" &&
+        asked.prompt === "ETH is on Robinhood, Base and Ethereum. Which chain are you bridging from?",
+      JSON.stringify(asked),
+    );
+    const answered = asked.status === "incomplete" ? fillSlot(asked.draft, asked.missing, "base", TOKENS, ACTX) : asked;
+    const cmd = answered.status === "ok" && answered.command.kind === "bridge" ? answered.command : null;
+    check(
+      "answering 'base' completes it from Base (option matched, case-insensitive)",
+      !!cmd && cmd.fromChain === "Base" && cmd.toChain === "arc" && cmd.token.symbol === "ETH" && cmd.amount === "0.1",
+      JSON.stringify(answered),
+    );
+    const fromWord = asked.status === "incomplete" ? fillSlot(asked.draft, asked.missing, "from Ethereum", TOKENS, ACTX) : asked;
+    check(
+      "'from Ethereum' is read as the Ethereum option",
+      fromWord.status === "ok" && fromWord.command.kind === "bridge" && fromWord.command.fromChain === "Ethereum",
+      JSON.stringify(fromWord),
+    );
+    const named = pa("bridge 0.1 eth from base to arc");
+    check(
+      "naming the source up front skips the question",
+      named.status === "ok" && named.command.kind === "bridge" && named.command.fromChain === "base",
+      JSON.stringify(named),
+    );
+    // The caller narrowed to the one chain the wallet holds ETH on → inferred.
+    const one = parseCommand("bridge 0.1 eth to arc", TOKENS, {
+      ...ACTX,
+      sourceTokens: (s) => (s.toLowerCase() === "eth" ? [{ token: eth(8453), chainName: "Base" }] : []),
+    });
+    check(
+      "a single candidate (e.g. the only chain holding it) is inferred without asking",
+      one.status === "ok" && one.command.kind === "bridge" && one.command.fromChain === "Base",
+      JSON.stringify(one),
+    );
+    // The same ambiguity through the "which token?" reply path.
+    const step = pa("bridge 0.1 to arc");
+    const viaFill = step.status === "incomplete" ? fillSlot(step.draft, step.missing, "eth", TOKENS, ACTX) : step;
+    check(
+      "a 'which token?' reply of a multi-chain token then asks which chain",
+      viaFill.status === "incomplete" && viaFill.missing === "fromChain",
+      JSON.stringify(viaFill),
+    );
+  }
+
+  console.log("\n— 'spend X on' and '$' amounts in a buy —");
+  {
+    const A = "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71";
+    const launch = { address: A, name: "Glitch", symbol: "GLITCH", decimals: 18, chainId: 5042 };
+    const LCTX = { addressToken: (w) => (w.toLowerCase() === A.toLowerCase() ? launch : null) };
+    const pl = (t) => parseCommand(t, TOKENS, LCTX);
+    const buysTen = (r) =>
+      r.status === "ok" && r.command.kind === "swap" && r.command.amount === "10" &&
+      r.command.tokenIn.symbol === "USDC" && r.command.tokenOut.address === A;
+    for (const t of [`spend 10 usdc on ${A}`, `buy $10 of ${A}`, `buy ${A} with $10`, `spend $10 on ${A}`, `buy ${A} with $10 usdc`]) {
+      const r = pl(t);
+      check(`'${t.replace(A, "<launch>")}' spends 10 USDC on it`, buysTen(r), JSON.stringify(r).slice(0, 200));
+    }
+    // "$" outside a buy/spend sentence is untouched: dollars there size the other token.
+    const swapDollars = p("swap $10 of usdc to kld");
+    check(
+      "'$' in a plain swap is left as a bare amount (not rewritten to USDC)",
+      swapDollars.status === "ok" && swapDollars.command.kind === "swap" && swapDollars.command.amount === "10" && swapDollars.command.tokenIn.symbol === "USDC",
+      JSON.stringify(swapDollars).slice(0, 200),
+    );
+    // "on" is only a separator after "spend": a plain swap's "on" is not.
+    const onChain = p("swap 10 usdc to kld on sepolia");
+    check(
+      "'on' does not split a swap that isn't 'spend'",
+      !(onChain.status === "ok" && onChain.command.kind === "swap" && onChain.command.tokenOut?.symbol === "SEPOLIA"),
+      JSON.stringify(onChain).slice(0, 200),
+    );
+  }
+
+  console.log("\n— a send on a named chain, and a misspelled verb —");
+  {
+    const A = "0xACF53eE33893FA6F9fc246b6a4261ceF95A9D77C";
+    const CCTX = { isChain: (w) => ["base", "arc", "bnb chain", "bsc", "ethereum"].includes(w.toLowerCase()) };
+    const pc = (t) => parseCommand(t, TOKENS, CCTX);
+    for (const t of [
+      `i want to sedn 5 $USDC to tthis address on Base ${A}`,
+      `send 5 USDC to ${A} on Base`,
+      `send 5 USDC on base to ${A}`,
+      `send 5 usdc via Base to ${A}`,
+    ]) {
+      const r = pc(t);
+      check(
+        `'${t.replace(A, "<addr>")}' → send 5 USDC to the address, on Base`,
+        r.status === "ok" && r.command.kind === "send" && r.command.amount === "5" &&
+          r.command.to === A && r.command.chain?.toLowerCase() === "base",
+        JSON.stringify(r).slice(0, 200),
+      );
+    }
+    const plain = pc(`send 5 USDC to ${A}`);
+    check("no chain named → no chain on the send", plain.status === "ok" && plain.command.chain === undefined, JSON.stringify(plain).slice(0, 200));
+    const onIt = pc(`send 5 USDC on it to ${A}`);
+    check("'on' before a non-chain word stays filler", onIt.status === "ok" && onIt.command.chain === undefined, JSON.stringify(onIt).slice(0, 200));
+    const toChain = pc("send 5 USDC to Base");
+    check("'send X to Base' with no address is still a bridge", toChain.status === "ok" && toChain.command.kind === "bridge", JSON.stringify(toChain).slice(0, 200));
+    const asked = pc("send 5 USDC on Base");
+    check(
+      "a send on Base with no address keeps the chain while asking for it",
+      asked.status === "incomplete" && asked.missing === "recipient" && asked.draft.fromChain?.toLowerCase() === "base",
+      JSON.stringify(asked).slice(0, 200),
+    );
+    const filled = asked.status === "incomplete" ? fillSlot(asked.draft, "recipient", A, TOKENS) : null;
+    check(
+      "…and answering with the address builds it on Base",
+      !!filled && filled.status === "ok" && filled.command.kind === "send" && filled.command.chain?.toLowerCase() === "base",
+      JSON.stringify(filled).slice(0, 200),
+    );
+
+    for (const [typo, kind] of [["sedn", "send"], ["swpa", "swap"], ["sned", "send"]]) {
+      const r = typo === "swpa" ? p("swpa 10 usdc to kld") : p(`${typo} 5 usdc to ${A}`);
+      check(`'${typo}' reads as ${kind}`, r.status === "ok" && r.command.kind === kind, JSON.stringify(r).slice(0, 160));
+    }
+    for (const t of [`i sent 5 usdc to ${A}`, "the state of 5 loans", "sedn usdc please", "hello 5"]) {
+      const r = p(t);
+      check(`'${t.replace(A, "<addr>")}' is not corrected into a command`, !(r.status === "ok" && (r.command.kind === "send" || r.command.kind === "stake")), JSON.stringify(r).slice(0, 160));
+    }
+    check("correctVerbTypo leaves a word the grammar knows alone", correctVerbTypo("send 5 usdc", TOKENS) === null);
+    check("correctVerbTypo needs a number in the sentence", correctVerbTypo("sedn usdc", TOKENS) === null);
+    check("correctVerbTypo fixes only the first slip", correctVerbTypo("sedn 5 usdc", TOKENS) === "send 5 usdc");
+    /* The bridge offered to fund a send: answering "which chain?" keeps the
+       floor on what must arrive, so the builder can top it up. */
+    const usdc = TOKENS.find((t) => t.symbol === "USDC");
+    const offered = completeDraft({ kind: "bridge", amount: "4", token: usdc, toChain: "Base", sourceOptions: ["Arc", "BSC"], receiveAtLeast: "4" });
+    check("the funding bridge asks which chain to bridge from", offered.status === "incomplete" && offered.missing === "fromChain", JSON.stringify(offered).slice(0, 160));
+    const chosen = offered.status === "incomplete" ? fillSlot(offered.draft, "fromChain", "arc", TOKENS) : null;
+    check(
+      "answering 'arc' builds the bridge from Arc and keeps the arrival floor",
+      !!chosen && chosen.status === "ok" && chosen.command.kind === "bridge" && chosen.command.fromChain === "Arc" && chosen.command.receiveAtLeast === "4",
+      JSON.stringify(chosen).slice(0, 200),
+    );
+  }
+
+  console.log("\n— the question names the real problem —");
+  const CTX = {
+    chainName: "Sepolia",
+    elsewhere: (s) => (s.toLowerCase() === "eurc" ? ["Arc"] : s.toLowerCase() === "cirbtc" ? ["Arc", "Base"] : []),
+    isChain: (p) => ["base", "sepolia", "arc", "base sepolia", "arc sepolia"].includes(p),
+  };
+  const pc = (text, ctx = CTX, tokens = TOKENS) => parseCommand(text, tokens, ctx);
+  const promptOf = (r) => (r.status === "incomplete" ? r.prompt : r.status);
+
+  /* A token known on another chain: named, located, never "did you mean". */
+  const abroad = pc("swap 100 usdc to eurc");
+  check(
+    "a token from another chain is asked about by name and place",
+    abroad.status === "incomplete" && abroad.missing === "tokenOut" && abroad.prompt.includes("EURC isn't on Sepolia") && abroad.prompt.includes("it's on Arc"),
+    promptOf(abroad),
+  );
+  check(
+    "and not as a near miss of USDC (two edits away)",
+    abroad.status === "incomplete" && !abroad.prompt.includes("did you mean"),
+    promptOf(abroad),
+  );
+  check(
+    "the side that resolved is kept",
+    abroad.status === "incomplete" && abroad.draft.tokenIn?.symbol === "USDC" && abroad.draft.amount === "100",
+    abroad.status === "incomplete" ? `${abroad.draft.tokenIn?.symbol} ${abroad.draft.amount}` : abroad.status,
+  );
+  const spent = pc("swap 100 eurc to usdc");
+  check(
+    "the same on the spent side",
+    spent.status === "incomplete" && spent.missing === "tokenIn" && spent.prompt.includes("EURC isn't on Sepolia"),
+    promptOf(spent),
+  );
+  const two = pc("swap 10 usdc to cirbtc");
+  check(
+    "several chains are listed",
+    two.status === "incomplete" && two.prompt.includes("it's on Arc and Base"),
+    promptOf(two),
+  );
+  /* Unknown everywhere: quoted back, with what IS here. */
+  const nowhere = pc("swap 100 usdc to zzzq");
+  check(
+    "a token known nowhere is named as unknown here, with options",
+    nowhere.status === "incomplete" && nowhere.missing === "tokenOut" && nowhere.prompt.includes("I don't know a token called ZZZQ on Sepolia") && nowhere.prompt.includes("USDC"),
+    promptOf(nowhere),
+  );
+  /* Without context the old answers stand — the marketing planner passes none. */
+  const plain = p("swap 100 usdc to eurc");
+  check(
+    "with no context the token is still named as unknown, with no chain",
+    plain.status === "incomplete" && plain.prompt.includes("I don't know a token called EURC") && !plain.prompt.includes(" on "),
+    promptOf(plain),
+  );
+  check("a complete command is untouched", pc("swap 100 usdc to kld").status === "ok", pc("swap 100 usdc to kld").status);
+  check("the near-miss answer is untouched", promptOf(pc("swap 100 usdcc to kld")).includes("did you mean USDC"), promptOf(pc("swap 100 usdcc to kld")));
+
+  /* A slot reply naming a token from elsewhere gets the same answer, and a
+     reply that is a whole command is not an answer at all. */
+  const seeded = p("swap 100 usdc to kld");
+  const draft = seeded.status === "ok" ? draftFromCommand(seeded.command) : null;
+  const replied = fillSlot({ ...draft, tokenOut: undefined }, "tokenOut", "eurc", TOKENS, CTX);
+  check(
+    "a reply naming a token from another chain says where it is",
+    replied.status === "incomplete" && replied.missing === "tokenOut" && replied.prompt.includes("EURC isn't on Sepolia"),
+    promptOf(replied),
+  );
+  const whole = fillSlot({ kind: "swap" }, "tokenIn", "swap 100 usdc to kld", TOKENS, CTX);
+  check("a reply with its own verb is a fresh command, not an answer", whole.status === "unknown", whole.status);
+
+  /* No wallet, no vocabulary: the question is the wallet, not the token. */
+  const nowallet = pc("swap 100 usdc to kld", {}, []);
+  check(
+    "no wallet asks for the wallet",
+    nowallet.status === "incomplete" && nowallet.prompt.includes("Connect a wallet first"),
+    promptOf(nowallet),
+  );
+  const nochain = pc("send 5 usdc to 0x74A9E2cC8E97DC56D4a337454AD4F62BFa1D63d7", { chainName: "Foo" }, []);
+  check(
+    "an unsupported chain is named",
+    nochain.status === "incomplete" && nochain.prompt.includes("tokens for Foo"),
+    promptOf(nochain),
+  );
+
+  /* Glued amounts. */
+  const lock = p("lock 500kfusd");
+  check("'lock 500kfusd' reads the amount", lock.status === "ok" && lock.command.kind === "lock" && lock.command.amount === "500", lock.status === "ok" ? `${lock.command.kind} ${lock.command.amount}` : lock.status);
+  const glued = p("swap 100usdc to kld");
+  check("'swap 100usdc to kld' reads amount and token", glued.status === "ok" && glued.command.kind === "swap" && glued.command.amount === "100" && glued.command.tokenIn.symbol === "USDC", glued.status);
+  const dec = p("swap 0.5weth to usdc");
+  check("'0.5weth' too", dec.status === "ok" && dec.command.kind === "swap" && dec.command.amount === "0.5" && dec.command.tokenIn.symbol === "WETH", dec.status);
+  const k = p("swap 10k usdc to kld");
+  check("'10k' keeps its multiplier", k.status === "ok" && k.command.kind === "swap" && k.command.amount === "10000", k.status === "ok" ? k.command.amount : k.status);
+
+  /* Links are not sentences. */
+  check("a pasted link with /trade in it is not a swap", p("check https://app.kaleidofi.xyz/trade/agent please").status === "unknown", p("check https://app.kaleidofi.xyz/trade/agent please").status);
+  check("a bare domain path is not a swap either", p("lu coba kasih saran app.kaleidofi.xyz/trade/agent").status === "unknown", p("lu coba kasih saran app.kaleidofi.xyz/trade/agent").status);
+  check("nor a bare path", p("see /trade/agent").status === "unknown", p("see /trade/agent").status);
+  check("control: the verb itself still works", p("trade 100 usdc to kld").status === "ok", p("trade 100 usdc to kld").status);
+
+  /* A chain where a token should be is a bridge. */
+  const br = pc("swap 50 usdc to sepolia");
+  check(
+    "'swap 50 usdc to sepolia' is read as a bridge",
+    br.status === "ok" && br.command.kind === "bridge" && br.command.amount === "50" && br.command.token.symbol === "USDC" && br.command.toChain === "sepolia",
+    br.status === "ok" ? `${br.command.kind} ${br.command.toChain}` : br.status,
+  );
+  const br2 = pc("swap 100 usdc to arc sepolia");
+  check("a two-word chain too", br2.status === "ok" && br2.command.kind === "bridge" && br2.command.toChain === "arc sepolia", br2.status === "ok" ? br2.command.toChain : br2.status);
+  check("without a chain oracle it stays a swap question", p("swap 50 usdc to sepolia").status === "incomplete", p("swap 50 usdc to sepolia").status);
+
+  /* Commas. */
+  const th = p("swap 1,000 usdc to kld");
+  check("'1,000' is a thousand", th.status === "ok" && th.command.kind === "swap" && th.command.amount === "1000", th.status === "ok" ? th.command.amount : th.status);
+  const thd = p("swap 1,000.50 usdc to kld");
+  check("'1,000.50' keeps its cents", thd.status === "ok" && thd.command.kind === "swap" && thd.command.amount === "1000.5", thd.status === "ok" ? thd.command.amount : thd.status);
+  const eu = p("lend 1,0 usdc at 8% for 30 days");
+  check("'1,0' is not read as 10 — the amount is asked for", eu.status === "incomplete" && eu.missing === "amount", eu.status === "incomplete" ? eu.missing : eu.status);
+  const eu2 = p("swap 12,5 usdc to kld");
+  check("'12,5' likewise", eu2.status === "incomplete" && eu2.missing === "amount", eu2.status === "incomplete" ? eu2.missing : eu2.status);
+}
+
+/* ---------------------------------------------------------------------------
+ * A POSSESSIVE READ WITH A WORD IN THE MIDDLE.
+ *
+ * From the log: "whats my wallet balance?" (repeatedly), "Tell me all my
+ * lending positions", "Whats my cumulative balance across all assests" — all
+ * sent to the model, because the phrase list matched "my balance" as an exact
+ * substring and a qualifier between the two words broke it. Now a bounded gap
+ * is allowed, behind the same action and liquidity vetoes.
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— a possessive read with a qualifier in the middle —");
+  for (const text of [
+    "whats my wallet balance?",
+    "tell me all my lending positions",
+    "whats my cumulative balance across all assets",
+    "my total holdings",
+    "show my stablecoin balance",
+    "what is my usdc balance",
+    "how big is my portfolio",
+  ]) {
+    const r = p(text);
+    check(
+      `'${text}' is read as a portfolio question`,
+      r.status === "ok" && r.command.kind === "portfolio",
+      r.status === "ok" ? r.command.kind : r.status,
+    );
+  }
+  /* The vetoes still hold: an action on the portfolio is not a read of it, and
+     a pool question is not a balance sheet. */
+  check(
+    "'move my idle balance to best yield' is not a read (action veto)",
+    p("move my idle balance to best yield").status === "unknown",
+    p("move my idle balance to best yield").status,
+  );
+  check(
+    "'how much liquidity is in my pool' is not a read (liquidity veto)",
+    p("how much liquidity is in my pool").status !== "ok" ||
+      p("how much liquidity is in my pool").command.kind !== "portfolio",
+    p("how much liquidity is in my pool").status,
+  );
+  /* And a stated action that happens to name a balance still belongs to its
+     verb — the read runs last. */
+  check(
+    "'sell my balance of 5 kld for usdc' is still a swap",
+    (() => { const r = p("sell my balance of 5 kld for usdc"); return r.status === "ok" && r.command.kind === "swap"; })(),
+    p("sell my balance of 5 kld for usdc").status,
+  );
+  check("'my balance' still works", p("my balance").status === "ok" && p("my balance").command.kind === "portfolio", p("my balance").status);
+
+  /* Capability questions reach help, not the model. */
+  for (const text of ["what commands can i use", "what can luca do", "what commands are there"]) {
+    const r = p(text);
+    check(`'${text}' is answered as help`, r.status === "ok" && r.command.kind === "help", r.status === "ok" ? r.command.kind : r.status);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * WRONG ANSWERS THE GRAMMAR GAVE, from driving it as a trader would.
+ *
+ * Each below returned something misleading before: a vault withdrawal that
+ * dropped the chain, a send that asked for an address when a chain was named,
+ * a balance sheet in answer to "diversify", a dropped amount on "ape 50 usdc
+ * into argus", and a "which token?" command in answer to "how do i bridge".
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— cross-chain phrasings that led with the wrong verb —");
+  const CHAINCTX = { isChain: (pp) => ["base", "arc", "ethereum", "sepolia", "base sepolia", "arc sepolia"].includes(pp) };
+  const pc = (t) => parseCommand(t, TOKENS, CHAINCTX);
+  const bridgeOf = (r) =>
+    r.status === "ok" && r.command.kind === "bridge"
+      ? `${r.command.amount} ${r.command.token?.symbol} -> ${r.command.toChain}`
+      : r.status === "ok" ? r.command.kind : r.status;
+
+  check(
+    "'withdraw 100 usdc to base' is a bridge, not a vault withdrawal",
+    bridgeOf(pc("withdraw 100 usdc to base")) === "100 USDC -> base",
+    bridgeOf(pc("withdraw 100 usdc to base")),
+  );
+  check(
+    "'send 100 usdc to base' is a bridge, not a send-to-address",
+    bridgeOf(pc("send 100 usdc to base")) === "100 USDC -> base",
+    bridgeOf(pc("send 100 usdc to base")),
+  );
+  /* But the ordinary meanings survive when no chain is named. */
+  check(
+    "'withdraw 100 usdc' is still a plain withdrawal",
+    (() => { const r = pc("withdraw 100 usdc"); return r.status === "ok" && r.command.kind === "withdraw"; })(),
+    pc("withdraw 100 usdc").status,
+  );
+  check(
+    "'send 5 usdc to 0x…' is still a send to that address",
+    (() => { const r = pc("send 5 usdc to 0x74A9E2cC8E97DC56D4a337454AD4F62BFa1D63d7"); return r.status === "ok" && r.command.kind === "send"; })(),
+    pc("send 5 usdc to 0x74A9E2cC8E97DC56D4a337454AD4F62BFa1D63d7").status,
+  );
+  /* With no chain oracle (the marketing planner), nothing changes. */
+  check(
+    "'send 100 usdc to base' without a chain oracle stays a send question",
+    p("send 100 usdc to base").status !== "ok" || p("send 100 usdc to base").command.kind === "send",
+    p("send 100 usdc to base").status,
+  );
+
+  console.log("\n— a buy-word in a forward frame is a forward swap —");
+  const swapOf = (r) =>
+    r.status === "ok" && r.command.kind === "swap"
+      ? `${r.command.amount} ${r.command.tokenIn.symbol}->${r.command.tokenOut.symbol}`
+      : r.status;
+  check(
+    "'ape 50 usdc into kld' spends the 50 usdc",
+    swapOf(p("ape 50 usdc into kld")) === "50 USDC->KLD",
+    swapOf(p("ape 50 usdc into kld")),
+  );
+  check(
+    "'grab 100 usdc to weth' too",
+    swapOf(p("grab 100 usdc to weth")) === "100 USDC->WETH",
+    swapOf(p("grab 100 usdc to weth")),
+  );
+  /* The buy readings that must NOT change. */
+  check(
+    "'buy kld with 100 usdc' still spends the usdc",
+    swapOf(p("buy kld with 100 usdc")) === "100 USDC->KLD",
+    swapOf(p("buy kld with 100 usdc")),
+  );
+  check(
+    "'buy 100 kld' still drops the amount and asks what to spend",
+    (() => { const r = p("buy 100 kld"); return r.status === "incomplete" && r.missing === "tokenIn"; })(),
+    p("buy 100 kld").status,
+  );
+
+  console.log("\n— diversify is an action, not a balance read —");
+  check(
+    "'diversify my holdings' is not answered as a portfolio read",
+    p("diversify my holdings").status !== "ok" || p("diversify my holdings").command.kind !== "portfolio",
+    p("diversify my holdings").status,
+  );
+  check("'my holdings' alone is still a portfolio read", p("my holdings").status === "ok" && p("my holdings").command.kind === "portfolio", p("my holdings").status);
+
+  console.log("\n— a how-to question is not a command —");
+  for (const t of ["how do i bridge", "how to stake", "how does lending work", "how do i swap", "how can i borrow"]) {
+    check(`'${t}' does not open a command draft`, p(t).status === "unknown", p(t).status + (p(t).status === "incomplete" ? ":" + p(t).missing : ""));
+  }
+  /* But the reads that begin with "how" are untouched. */
+  check("'how much do i have' is still a portfolio read", p("how much do i have").status === "ok" && p("how much do i have").command.kind === "portfolio", p("how much do i have").status);
+  check("'how do points work' still falls through to the FAQ (unknown here)", p("how do points work").status === "unknown", p("how do points work").status);
+}
+
+/* ---------------------------------------------------------------------------
+ * TWO PHRASINGS THAT WERE PAYING THE MODEL FOR SOMETHING LOCAL.
+ *
+ * "move 100 usdc to base" (a bridge worded with a verb the table doesn't carry)
+ * and "how much usdc do i have" (a balance question with the asset in the
+ * middle) both escalated. Neither needs reasoning.
+ * ------------------------------------------------------------------------- */
+{
+  console.log("\n— move/transfer to a chain is a bridge —");
+  const CHAINCTX = { isChain: (pp) => ["base", "arc", "ethereum", "sepolia", "base sepolia"].includes(pp) };
+  const pc = (t) => parseCommand(t, TOKENS, CHAINCTX);
+  const bridgeOf = (r) =>
+    r.status === "ok" && r.command.kind === "bridge"
+      ? `${r.command.amount} ${r.command.token?.symbol} -> ${r.command.toChain}${r.command.fromChain ? " (from " + r.command.fromChain + ")" : ""}`
+      : r.status === "ok" ? r.command.kind : r.status;
+
+  check("'move 100 usdc to base' is a bridge", bridgeOf(pc("move 100 usdc to base")) === "100 USDC -> base", bridgeOf(pc("move 100 usdc to base")));
+  check("'transfer 50 kld to arc' is a bridge", bridgeOf(pc("transfer 50 kld to arc")) === "50 KLD -> arc", bridgeOf(pc("transfer 50 kld to arc")));
+  check("'move 100 usdc from arc to base' keeps the source", bridgeOf(pc("move 100 usdc from arc to base")) === "100 USDC -> base (from arc)", bridgeOf(pc("move 100 usdc from arc to base")));
+  /* Without a chain it is NOT a bridge — a strategy for the model. */
+  check("'move my usdc to the best yield' is not a bridge", pc("move my usdc to the best yield").status !== "ok" || pc("move my usdc to the best yield").command.kind !== "bridge", pc("move my usdc to the best yield").status);
+  /* And with no chain oracle at all (marketing planner) it stays as it was. */
+  check("'move 100 usdc to base' without an oracle is not a bridge", p("move 100 usdc to base").status !== "ok" || p("move 100 usdc to base").command.kind !== "bridge", p("move 100 usdc to base").status);
+
+  console.log("\n— how much <token> do i have is a portfolio read —");
+  for (const t of ["how much usdc do i have", "how much eth do i own", "how much kld have i got", "how much do i hold"]) {
+    check(`'${t}' is a portfolio read`, p(t).status === "ok" && p(t).command.kind === "portfolio", p(t).status === "ok" ? p(t).command.kind : p(t).status);
+  }
+  /* "how much" of an ACTION is still its verb, and a how-to is still a question. */
+  check("'how much usdc should i swap' is not a portfolio read", p("how much usdc should i swap").status !== "ok" || p("how much usdc should i swap").command.kind !== "portfolio", p("how much usdc should i swap").status);
+}
+
+console.log("\n— wrap / unwrap as a local verb —");
+{
+  /* A chain that HAS a wrap concept: a native token and a wrapped-native one. */
+  const WRAP_TOKENS = [
+    { address: "0xnat", name: "USD Coin", symbol: "USDC", decimals: 18, chainId: 5042, isNative: true },
+    { address: "0xwusdc", name: "Wrapped USDC", symbol: "WUSDC", decimals: 18, chainId: 5042, tags: ["wrapped-native"] },
+    { address: "0xeurc", name: "Euro Coin", symbol: "EURC", decimals: 6, chainId: 5042, tags: ["stablecoin"] },
+  ];
+  const pw = (text) => parseCommand(text, WRAP_TOKENS);
+
+  {
+    const r = pw("wrap 10 usdc");
+    check("'wrap 10 usdc' is a native->wrapped swap", r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn.symbol === "USDC" && r.command.tokenOut.symbol === "WUSDC", r.status === "ok" ? `${r.command.tokenIn?.symbol}->${r.command.tokenOut?.symbol}` : r.status);
+    check("'wrap 10 usdc' keeps the amount", r.status === "ok" && r.command.amount === "10");
+  }
+  {
+    const r = pw("wrap 5");
+    check("'wrap 5' (no token) still wraps native->wrapped", r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn.symbol === "USDC" && r.command.tokenOut.symbol === "WUSDC" && r.command.amount === "5");
+  }
+  {
+    const r = pw("unwrap 7 wusdc");
+    check("'unwrap 7 wusdc' is a wrapped->native swap", r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn.symbol === "WUSDC" && r.command.tokenOut.symbol === "USDC" && r.command.amount === "7", r.status === "ok" ? `${r.command.tokenIn?.symbol}->${r.command.tokenOut?.symbol}` : r.status);
+  }
+  {
+    /* Arc's DEX list also contains canonical ERC20 USDC, so native USDC is
+       intentionally omitted there to avoid an ambiguous duplicate. Wrap still
+       needs to recover the native sentinel for this explicit verb. */
+    const ARC_DEX_TOKENS = [
+      { address: "0xerc20usdc", name: "USD Coin", symbol: "USDC", decimals: 6, chainId: 5042 },
+      { address: "0xwusdc", name: "Wrapped USDC", symbol: "WUSDC", decimals: 18, chainId: 5042, tags: ["wrapped-native"] },
+    ];
+    const r = parseCommand("wrap 10 usdc", ARC_DEX_TOKENS);
+    check(
+      "Arc wrap resolves native USDC even when the canonical ERC20 USDC is listed",
+      r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn.isNative === true && r.command.tokenOut.symbol === "WUSDC",
+      r.status,
+    );
+  }
+  {
+    /* Relative / no amount needs the balance - left to the model, not a local dead end. */
+    const r = pw("wrap all my usdc");
+    check("'wrap all my usdc' is not caught locally (needs the balance)", !(r.status === "ok" && r.command.kind === "swap" && r.command.tokenIn?.symbol === "USDC" && r.command.tokenOut?.symbol === "WUSDC"), r.status);
+  }
+  {
+    /* A normal swap on the same chain is untouched by parseWrap. */
+    const r = pw("swap 500 usdc to eurc");
+    check("a plain swap is unaffected", r.status === "ok" && r.command.kind === "swap" && r.command.tokenOut.symbol === "EURC", r.status);
+  }
+  {
+    check("a how-to question is not a wrap command", pw("how do i wrap usdc").status !== "ok" || pw("how do i wrap usdc").command.kind !== "swap");
+  }
+  {
+    /* A chain with no wrapped-native token: wrap falls through to the model. */
+    const NO_WRAP = [{ address: "0xk", name: "Kaleido", symbol: "KLD", decimals: 18, chainId: 1 }];
+    const r = parseCommand("wrap 10 kld", NO_WRAP);
+    check("no wrapped-native on the chain -> not a local wrap", !(r.status === "ok" && r.command.kind === "swap"), r.status);
+  }
+}
+
+{
+  console.log("\n— a bare token address is a swap side (argus) —");
+  /* The grammar resolves a registry token by symbol; an Argus launch is named by
+     ADDRESS, which the registry never carries. ctx.addressToken (wired only on
+     Arc, gated by the caller) turns that address into a provisional side so the
+     build branch can look it up. Here the hook is a plain 40-hex validator that
+     refuses USDC — the same contract lib/argus/token.ts implements. */
+  const LAUNCH = "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71";
+  const ARC_USDC = "0x3600000000000000000000000000000000000000";
+  const addressToken = (w) => {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(w)) return null;
+    if (w.toLowerCase() === ARC_USDC.toLowerCase()) return null;
+    return { address: w, name: w, symbol: w, decimals: 18, verified: false, tags: ["argus"] };
+  };
+  const ac = (text) => parseCommand(text, TOKENS, { addressToken });
+
+  const buy = ac(`buy ${LAUNCH} with 10 usdc`);
+  check(
+    "a buy of an address-named token resolves both sides",
+    buy.status === "ok" &&
+      buy.command.kind === "swap" &&
+      buy.command.tokenOut.address.toLowerCase() === LAUNCH.toLowerCase() &&
+      buy.command.tokenIn.symbol === "USDC" &&
+      buy.command.amount === "10",
+    buy.status === "ok" ? `${buy.command.tokenIn?.symbol}->${buy.command.tokenOut?.address} ${buy.command.amount}` : buy.status,
+  );
+  check(
+    "the synthetic side carries the argus tag for the build branch",
+    buy.status === "ok" && buy.command.tokenOut.tags?.includes("argus"),
+    buy.status,
+  );
+
+  /* "swap 10 usdc for 0x…" — the forward framing, same result. */
+  const fwd = ac(`swap 10 usdc for ${LAUNCH}`);
+  check(
+    "the forward framing resolves the address on the receive side",
+    fwd.status === "ok" && fwd.command.kind === "swap" && fwd.command.tokenOut.address.toLowerCase() === LAUNCH.toLowerCase() && fwd.command.tokenIn.symbol === "USDC",
+    fwd.status,
+  );
+
+  /* A SELL: the address is the SPEND side ("sell 0x… for usdc"). The build layer
+     routes this through the Argus sell path. */
+  const sell = ac(`sell 100 ${LAUNCH} for usdc`);
+  check(
+    "a sell resolves the address on the spend side and USDC on the receive side",
+    sell.status === "ok" && sell.command.kind === "swap" && sell.command.amount === "100" && sell.command.tokenIn.address.toLowerCase() === LAUNCH.toLowerCase() && sell.command.tokenIn.tags?.includes("argus") && sell.command.tokenOut.symbol === "USDC",
+    sell.status === "ok" ? `${sell.command.amount} ${sell.command.tokenIn?.address}->${sell.command.tokenOut?.symbol}` : sell.status,
+  );
+
+  /* Without the hook (every non-Arc chain) the address is not a token, so the
+     command does not silently become a swap. */
+  const noHook = parseCommand(`buy ${LAUNCH} with 10 usdc`, TOKENS);
+  check(
+    "no addressToken -> the address is not a swap side",
+    !(noHook.status === "ok" && noHook.command.kind === "swap" && noHook.command.tokenOut?.address === LAUNCH),
+    noHook.status,
+  );
+
+  /* The hook never shadows an ordinary registry swap. */
+  const plain = ac("swap 10 usdc for kld");
+  check(
+    "a registry swap is unaffected by the hook",
+    plain.status === "ok" && plain.command.kind === "swap" && plain.command.tokenOut.symbol === "KLD" && !plain.command.tokenOut.tags?.includes("argus"),
+    plain.status,
+  );
+}
+
+console.log("\n— dollars that size a non-dollar token go to the model —");
+{
+  /* The live incident (2026-10-02): "sell $100 worth cirBTC to USDC" was built as
+     a swap of 100 cirBTC (~$5.25M). A dollar figure on a non-dollar token needs a
+     live price to convert, so the grammar must never build it. */
+  for (const t of [
+    "sell $100 worth kld to usdc",
+    "sell $100 worth of kld for usdc",
+    "swap $10 of weth to usdc",
+    "swap $10 weth to kld",
+    "sell $1k of kld",
+    "convert $2.5 worth of weth into usdc",
+  ]) {
+    const r = p(t);
+    check(`'${t}' is not built locally`, r.status === "unknown", JSON.stringify(r).slice(0, 160));
+  }
+  // Dollars that ARE the stablecoin amount still build.
+  const usdcDollars = p("swap $100 usdc to kld");
+  check(
+    "'$100 usdc' still reads as 100 USDC",
+    usdcDollars.status === "ok" && usdcDollars.command.kind === "swap" && usdcDollars.command.amount === "100" && usdcDollars.command.tokenIn.symbol === "USDC",
+    JSON.stringify(usdcDollars).slice(0, 160),
+  );
+  const worthUsdc = p("swap $50 worth of usdc to kld");
+  check(
+    "'$50 worth of usdc' reads as 50 USDC",
+    worthUsdc.status === "ok" && worthUsdc.command.kind === "swap" && worthUsdc.command.amount === "50",
+    JSON.stringify(worthUsdc).slice(0, 160),
+  );
+  // A buy with dollars is a USDC spend, unchanged.
+  const buy = p("buy $10 of kld");
+  check(
+    "'buy $10 of kld' still spends 10 USDC",
+    buy.status === "ok" && buy.command.kind === "swap" && buy.command.amount === "10" && buy.command.tokenIn.symbol === "USDC",
+    JSON.stringify(buy).slice(0, 160),
+  );
+  // No "$": a token amount is a token amount.
+  const plain = p("sell 100 kld for usdc");
+  check("'sell 100 kld' is still 100 KLD", plain.status === "ok" && plain.command.amount === "100", JSON.stringify(plain).slice(0, 160));
+}
+
+console.log("\n— dollar sizes converted with a live price —");
+{
+  const priced = (t, prices) =>
+    parseCommand(t, TOKENS, { usdPrice: (tok) => prices[tok.symbol] ?? null });
+  const kld = priced("sell $100 worth kld to usdc", { KLD: 0.05 });
+  check(
+    "'$100 worth kld' at $0.05 → 2000 KLD",
+    kld.status === "ok" && kld.command.kind === "swap" && kld.command.amount === "2000" && kld.command.tokenIn.symbol === "KLD" && kld.command.tokenOut.symbol === "USDC",
+    JSON.stringify(kld).slice(0, 200),
+  );
+  const weth = priced("swap $100 of weth to kld", { WETH: 3000 });
+  check(
+    "'$100 of weth' at $3000 → 0.0333333 WETH (rounded down, 6 sig figs)",
+    weth.status === "ok" && weth.command.amount === "0.0333333",
+    JSON.stringify(weth).slice(0, 200),
+  );
+  const big = priced("sell $1k of kld for usdc", { KLD: 0.05 });
+  check("'$1k of kld' → 20000 KLD", big.status === "ok" && big.command.amount === "20000", JSON.stringify(big).slice(0, 200));
+  const noPrice = priced("sell $100 worth kld to usdc", {});
+  check("no price → still goes to the model", noPrice.status === "unknown");
+  const zero = priced("sell $100 worth kld to usdc", { KLD: 0 });
+  check("a zero price is refused", zero.status === "unknown");
+  check("dollarSizedToken finds the token", dollarSizedToken("sell $100 worth of kld for usdc", TOKENS)?.token.symbol === "KLD");
+  check("dollarSizedToken ignores a stablecoin", dollarSizedToken("swap $100 of usdc to kld", TOKENS) === null);
+  check("usdToTokenAmount never exceeds the dollars", Number(usdToTokenAmount(100, 3, 18)) * 3 <= 100);
+  check("usdToTokenAmount respects decimals", usdToTokenAmount(1, 3, 2) === "0.33");
+  check("usdToTokenAmount keeps an integer's zeros", usdToTokenAmount(100, 0.0004, 18) === "250000" && usdToTokenAmount(1000, 1, 6) === "1000");
+}
+
+console.log("\n— a dollar size of an Argus launch named by address —");
+{
+  const A = "0x1234567890abcdef1234567890abcdef12345678";
+  const meme = { address: A, symbol: "MEME", decimals: 18, name: "Meme" };
+  const ctx = {
+    addressToken: (w) => (w.toLowerCase() === A ? meme : null),
+    usdPrice: (t) => (t.address.toLowerCase() === A ? 0.0004 : null),
+  };
+  check("dollarSizedToken resolves an address", dollarSizedToken(`sell $100 worth of ${A}`, TOKENS, ctx.addressToken)?.token.symbol === "MEME");
+  const r = parseCommand(`sell $100 worth of ${A} for usdc`, TOKENS, ctx);
+  check(
+    "'sell $100 worth of <launch>' at $0.0004 → 250000 of it",
+    r.status === "ok" && r.command.kind === "swap" && r.command.amount === "250000" && r.command.tokenIn.address.toLowerCase() === A,
+    JSON.stringify(r).slice(0, 220),
+  );
+  const unpriced = parseCommand(`sell $100 worth of ${A} for usdc`, TOKENS, { addressToken: ctx.addressToken });
+  check("unpriced launch → the model", unpriced.status === "unknown");
+}
+
+console.log("\n— another wallet's balances are a local lookup —");
+{
+  const A = "0x591e8114DB6B5E6b8f6961002e9b0d2A120495DD";
+  for (const t of [
+    `chheck the balance of this address ${A}`,
+    `check the balance ${A}`,
+    `what does ${A} hold`,
+    `show me ${A}'s holdings`,
+    `${A} balance`,
+  ]) {
+    const r = p(t);
+    check(`'${t.replace(A, "<addr>")}' → lookup`, r.status === "ok" && r.command.kind === "lookup" && r.command.address === A, JSON.stringify(r).slice(0, 160));
+  }
+  const send = p(`send 10 usdc to ${A}`);
+  check("a send to an address stays a send", send.status === "ok" && send.command.kind === "send", JSON.stringify(send).slice(0, 160));
+  const sendBal = p(`send my usdc balance to ${A}`);
+  check("an action verb wins over 'balance'", !(sendBal.status === "ok" && sendBal.command.kind === "lookup"), JSON.stringify(sendBal).slice(0, 160));
+  check("no address → not a lookup", !(p("check my balance").status === "ok" && (p("check my balance") as { command: { kind: string } }).command.kind === "lookup"));
+}
+
+console.log("\n— bridge to someone else's address —");
+{
+  const R = "0x591e8114DB6B5E6b8f6961002e9b0d2A120495DD";
+  const BCTX = { isChain: (ph) => /^(base|bsc|arc|ethereum|sepolia)$/i.test(ph.trim()) };
+  const pb = (t) => parseCommand(t, TOKENS, BCTX);
+  for (const t of [
+    `bridge 100 usdc to base to ${R}`,
+    `bridge 100 usdc to base and send it to ${R}`,
+    `bridge 100 usdc to base for ${R}`,
+    `bridge 100 usdc to base, then send to the address ${R}`,
+  ]) {
+    const r = pb(t);
+    check(
+      `'${t.replace(R, "<addr>")}' → bridge with recipient`,
+      r.status === "ok" && r.command.kind === "bridge" && r.command.recipient === R && r.command.amount === "100",
+      JSON.stringify(r).slice(0, 200),
+    );
+  }
+  const plain = pb("bridge 100 usdc to base");
+  check("a plain bridge carries no recipient", plain.status === "ok" && plain.command.kind === "bridge" && plain.command.recipient === undefined, JSON.stringify(plain).slice(0, 160));
+  const two = pb(`bridge 100 usdc to base to ${R} and ${R}`);
+  check("two addresses → the model decides, nothing guessed", two.status === "unknown");
+}
+
+// Two tokens joined by "and" in one trade go to the model (one swap each),
+// never half-built here: the second token used to be dropped silently, and
+// "sell all my ARGUS and TOLLY" swapped ARGUS INTO TOLLY.
+{
+  const arc = chainTokens(5042);
+  const pm = (s) => parseCommand(s, arc, { chainName: "Arc" });
+  for (const s of [
+    "sell 10 ARGUS and 10 TOLLY for USDC",
+    "sell 10 ARGUS for USDC and sell 10 TOLLY for USDC",
+    "sell all my ARGUS and TOLLY",
+    "sell ARGUS & TOLLY",
+  ])
+    check(`two traded tokens -> model: "${s}"`, pm(s).status === "unknown", JSON.stringify(pm(s)).slice(0, 160));
+  const single = pm("swap 10 ARGUS for TOLLY");
+  check("control: 'swap ARGUS for TOLLY' is still ARGUS into TOLLY",
+    single.status === "ok" && single.command.kind === "swap" && single.command.tokenIn.symbol === "ARGUS" && single.command.tokenOut.symbol === "TOLLY",
+    JSON.stringify(single).slice(0, 160));
+  const br = pm("bridge 10 USDC to BSC and send it to 0x591e000000000000000000000000000000000000");
+  check("control: bridge '... and send it to 0x...' is untouched", br.status === "ok" && br.command.kind === "bridge");
+}
+
+// "Move everything off Abstract" is one command that bridges every holding.
+{
+  const arc = chainTokens(5042);
+  const ex = (s) => parseCommand(s, arc, {});
+  const isExit = (r, to, asset) => r.status === "ok" && r.command.kind === "exitChain" && r.command.fromChain === "abstract" && r.command.toChain === to && r.command.toAsset === asset;
+  check("'move everything off abstract to arc'", isExit(ex("move everything off abstract to arc"), "arc", "USDC"), JSON.stringify(ex("move everything off abstract to arc")));
+  check("'bridge all my tokens out of Abstract' defaults to Arc", isExit(ex("bridge all my tokens out of Abstract"), "arc", "USDC"));
+  check("'exit abstract'", isExit(ex("exit abstract"), "arc", "USDC"));
+  check("'migrate my funds from abstract to base as eth'", isExit(ex("migrate my funds from abstract to base as eth"), "base", "ETH"), JSON.stringify(ex("migrate my funds from abstract to base as eth")));
+  const one = ex("move all my USDC from base to arc");
+  check("control: a named token stays an ordinary bridge", !(one.status === "ok" && one.command.kind === "exitChain"), JSON.stringify(one).slice(0, 160));
+  const br = ex("bridge 10 USDC from base to arc");
+  check("control: 'bridge 10 USDC from base to arc' is a bridge", br.status === "ok" && br.command.kind === "bridge");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

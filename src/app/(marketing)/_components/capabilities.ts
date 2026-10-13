@@ -20,14 +20,13 @@
  * the exact surface, check it against the source". A name that does not exist in
  * the catalog, or a parameter list that has drifted from it, turns the section
  * from evidence into decoration. `params` is the tool's `required` array in
- * order; properties the catalog declares but does not require go in `optional`,
- * and there are exactly eight of those.
+ * order; properties the catalog declares but does not require go in `optional`.
  *
  * How to re-verify after a catalog change, rather than trusting this comment:
  * `npx tsx src/app/(marketing)/_components/capabilities.test.ts` asserts every
  * name, every `required` list and every `optional` split against the catalog
- * itself, and builds all 23 examples through the real planner. It runs in the
- * gate, so a catalog change that invalidates this file fails there.
+ * itself, and builds every execute example through the real planner. It runs in
+ * the gate, so a catalog change that invalidates this file fails there.
  */
 
 export interface Tool {
@@ -35,14 +34,20 @@ export interface Tool {
   /** The catalog's `required` list, in order. Empty means the tool takes none. */
   params: readonly string[];
   /**
-   * Properties the catalog declares but leaves out of `required`. Ten of them,
-   * and none is an oversight in the catalog:
+   * Properties the catalog declares but leaves out of `required`, and none is an
+   * oversight in the catalog:
    *
    *   `repay.loanId` — "Only when the user has more than one open loan",
    *   because the server resolves a single open loan itself.
+   *   `repay.amount` — a partial repayment; absent means in full.
    *   `grantAgentPermission.maxInterestBps` — carried as 0 when absent and not
    *   audited; fromToolCall.ts:318 states this outright.
    *   `getMarkets.side` — an enum of borrow/lend; absent means both sides.
+   *   `getMarkets.amount`, `.termDays` — the size and term the user wants; given,
+   *   the tool ranks covering offers first and names a bestFit, absent it lists
+   *   by rate.
+   *   `getAgentMandate.agent` — the delegate to inspect; absent, the read reports
+   *   there is no active delegation rather than guessing one.
    *   `getBridgeRoute.address` — "improves quote accuracy", so a route can be
    *   quoted for a visitor with no wallet connected.
    *   `getSwapRoute.amount` — absent prices one unit, so "can I route ETH to
@@ -117,13 +122,13 @@ export interface Group {
 }
 
 /**
- * The seven execute groups — 24 tools, which is the number in the section
- * heading. Keep that true: the heading is a count, and a count is the one kind
- * of copy that a reader can falsify by scrolling.
+ * The eight execute groups — 27 tools, which is the number in the section
+ * heading. Keep that true: the heading is a count (rendered from EXECUTE_COUNT,
+ * so it cannot drift from this array), and a count is the one kind of copy that a
+ * reader can falsify by scrolling.
  *
  * `READS` is deliberately not in here. A read tool is not an action the agent
- * executes, and folding the seven of them in would make the heading wrong by
- * seven.
+ * executes, and folding the reads in would make the heading wrong by that many.
  */
 export const GROUPS: readonly Group[] = [
   {
@@ -184,6 +189,7 @@ export const GROUPS: readonly Group[] = [
       {
         name: "bridge",
         params: ["amount", "asset", "toChain"],
+        optional: ["fromChain", "toAsset", "recipient"],
         prompt: "bridge 0.05 ETH to Base Sepolia",
         example: { amount: "0.05", asset: "ETH", toChain: "Base Sepolia" },
       },
@@ -230,7 +236,7 @@ export const GROUPS: readonly Group[] = [
       {
         name: "repay",
         params: [],
-        optional: ["loanId"],
+        optional: ["loanId", "amount"],
         prompt: "repay",
         example: {},
       },
@@ -337,11 +343,12 @@ export const GROUPS: readonly Group[] = [
     tools: [
       {
         name: "provideLiquidity",
-        /* Four, in the catalog's order. The other four declared properties are
-           the range and the tier — see `optional`, and the prompt below for why
-           none of them is a tick. */
-        params: ["token0", "amount0", "token1", "amount1"],
-        optional: ["fee", "bandPct", "minPrice", "maxPrice"],
+        /* The two tokens, in the catalog's order. Either amount alone is enough
+           (the builder derives the other side from the pool price, 623fd3b), so
+           both amounts are optional alongside the range and the tier — see the
+           prompt below for why none of them is a tick. */
+        params: ["token0", "token1"],
+        optional: ["amount0", "amount1", "fee", "bandPct", "minPrice", "maxPrice"],
         /*
          * The second model turn on the page, and the reason is the same shape as
          * the grant's: six values against a grammar whose only amount slot is
@@ -478,6 +485,19 @@ export const GROUPS: readonly Group[] = [
         prompt: "stake 1200 KLD",
         example: { amount: "1200" },
       },
+      /* One verb, three possible transactions, and the trace shows the first:
+         with no cooldown open (the stakingState fixture in traces.ts), "unstake"
+         builds the request that starts the cooldown — a single
+         requestStakeWithdrawal step, not a payout. The typed path reaches it too,
+         so this is tagged Direct like stake above; build.ts reads the vault's
+         state and picks the step, which is what lets one sentence mean a request
+         today and a withdrawal once the cooldown ends. */
+      {
+        name: "unstake",
+        params: ["amount"],
+        prompt: "unstake 100 KLD",
+        example: { amount: "100" },
+      },
     ],
   },
   {
@@ -578,6 +598,20 @@ export const GROUPS: readonly Group[] = [
           fills: 4,
         },
       },
+      /* The panic cancel, and Direct despite its neighbour above being a model
+         turn: "cancel all my orders" is grammar — fromCommand.ts requires the
+         collective word so it cannot be confused with "cancel order 5", which the
+         verb table owns as a single-listing cancel. No arguments, so the trace is
+         the proof it needs none: one cancelAllOrders step against the chain's
+         order book, no id for the model to invent. Cancelling ONE resting order is
+         left to the model via getOrders — that is a different tool with a
+         different shape and is deliberately not here yet. */
+      {
+        name: "cancelOrders",
+        params: [],
+        prompt: "cancel all my orders",
+        example: {},
+      },
     ],
   },
 ];
@@ -600,7 +634,7 @@ export const GROUPS: readonly Group[] = [
 export const READS: Group = {
   title: "Reads before it acts",
   tab: "Reads",
-  note: "Seven read tools, so a proposal arrives with numbers.",
+  note: "Read tools, so a proposal arrives with numbers.",
   href: "/portfolio",
   tools: [
     {
@@ -614,6 +648,54 @@ export const READS: Group = {
       prompt: "how healthy is my position?",
     },
     {
+      name: "getLoans",
+      params: ["address"],
+      /* The borrowing position — collateral, each open loan with its due date and
+         the requestId a repay needs, and the health factor. getPortfolio is only
+         collateral value and health; this is the loans themselves. */
+      prompt: "what do I owe, and when is it due?",
+    },
+    {
+      name: "getLendingAccount",
+      params: ["address"],
+      /* Capacity, free collateral, pause state, and the loans this wallet
+         funded as a lender — the account around the loans getLoans lists. */
+      prompt: "how much more can I borrow, and what am I earning from lending?",
+    },
+    {
+      name: "getStaking",
+      params: ["address"],
+      /* The staked KLD (held as stKLD), the vault totals, and any withdrawal
+         cooldown. The question pairs the stake with the unstake lifecycle, which
+         is the pair this read answers. */
+      prompt: "how much KLD have I staked, and can I unstake yet?",
+    },
+    {
+      name: "getVault",
+      params: ["address"],
+      /* kfUSD held and the kafUSD yield-vault position, with any withdrawal
+         cooldown. Phrased for the yield question, which is the one the vault is
+         for — the value rises rather than paying an APY. */
+      prompt: "is my kafUSD vault earning, and can I withdraw yet?",
+    },
+    {
+      name: "getPoints",
+      params: ["address"],
+      /* The masked leaderboard standing — rank or percentile, total, breakdown.
+         Off chain and cross-season; the question is the plain "where am I", which
+         is exactly what the read answers. */
+      prompt: "how many points do I have, and what's my rank?",
+    },
+    {
+      name: "getPositions",
+      params: ["address"],
+      /* A different read from getPortfolio, which is the lending position — this
+         is the liquidity positions, each with whether it is in range. The
+         question names the thing the read is for: which ones have drifted out of
+         range and stopped earning. */
+      prompt: "which of my liquidity positions are out of range?",
+    },
+    {
       name: "getOrders",
       params: ["address"],
       prompt: "what orders do I have resting?",
@@ -621,7 +703,11 @@ export const READS: Group = {
     {
       name: "getMarkets",
       params: ["asset"],
-      optional: ["side"],
+      /* `side` is borrow/lend, absent means both. `amount` and `termDays` are the
+         size and term the user wants: given, the tool ranks offers that can cover
+         the amount first and names a bestFit — absent, it lists by rate. All three
+         optional because a bare "who's lending USDC" is a valid, useful ask. */
+      optional: ["side", "amount", "termDays"],
       prompt: "who's lending USDC right now, and at what rate?",
     },
     {
@@ -653,8 +739,33 @@ export const READS: Group = {
     {
       name: "getBridgeRoute",
       params: ["fromChain", "toChain", "asset", "amount"],
-      optional: ["address"],
+      optional: ["address", "toAsset"],
       prompt: "what would moving 1,000 USDC from Base to Arbitrum cost me?",
+    },
+    {
+      name: "getAgentMandate",
+      params: ["address"],
+      /* `agent` is optional: named, it reads that delegate's mandate; omitted —
+         the usual case — the read reports there is no active delegation rather
+         than guessing one. So the question is the plain "what have I authorised",
+         which is exactly what a read of the on-chain grant answers. */
+      optional: ["agent"],
+      prompt: "what can my agent do on my behalf right now?",
+    },
+    {
+      name: "getLivePools",
+      params: [],
+      /* No params: it lists the connected chain's live pools. Phrased as a
+         question so the parser does not read it as a pool action. */
+      prompt: "which liquidity pools are live right now?",
+    },
+    {
+      name: "getPoolMarket",
+      params: [],
+      /* metric is liquidity/volume/apr, limit caps the ranking — both optional,
+         so a bare 'which pool has the most volume' is a valid ask. */
+      optional: ["metric", "limit"],
+      prompt: "which pool has the most 24h volume?",
     },
   ],
 };
@@ -683,11 +794,11 @@ export const ALL_GROUPS: readonly Group[] = [...GROUPS, READS];
  */
 export const INTERNAL_TOOLS: readonly string[] = ["claimTestTokens"];
 
-/** 23. Derived, so the heading's number cannot drift from the data. */
+/** 27. Derived, so the heading's number cannot drift from the data. */
 export const EXECUTE_COUNT = GROUPS.reduce((n, g) => n + g.tools.length, 0);
 
 /**
- * All 29 names in one flat list.
+ * Every name in one flat list — 27 execute plus the reads.
  *
  * Order is the groups' order rather than alphabetical, so it reads as the same
  * inventory the card grid walks through. `ToolRibbon` is its only reader and is

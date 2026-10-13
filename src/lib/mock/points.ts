@@ -109,6 +109,7 @@ const S2_ROWS: LeaderboardRow[] = S2_TOTALS.map((total, i) => ({
   timePoints: null,
   actionPoints: null,
   bonusPoints: null,
+  volume: total * 12,
 }));
 
 const SEASON_2: LeaderboardSeason = {
@@ -170,6 +171,7 @@ const S1_ROWS: LeaderboardRow[] = S1_SPLIT.map(
     timePoints,
     actionPoints,
     bonusPoints,
+    volume: 0,
   }),
 );
 
@@ -206,6 +208,8 @@ function payload(
     rows,
     participants,
     truncated: participants > rows.length,
+    page: 0,
+    pageSize: 100,
     asOf: AS_OF,
     degraded: [],
   };
@@ -256,6 +260,7 @@ const STANDING_ROWS: Record<number, Omit<LeaderboardRow, "wallet">> = {
     timePoints: null,
     actionPoints: null,
     bonusPoints: null,
+    volume: 0,
   },
   1: {
     rank: 96,
@@ -264,6 +269,7 @@ const STANDING_ROWS: Record<number, Omit<LeaderboardRow, "wallet">> = {
     timePoints: 21_360,
     actionPoints: 14_880,
     bonusPoints: 2_000,
+    volume: 0,
   },
 };
 

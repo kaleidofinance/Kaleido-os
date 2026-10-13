@@ -97,3 +97,22 @@ export async function fetchSpotPrices(
     return null;
   }
 }
+
+/**
+ * `fetchSpotPrices` that never blocks its caller longer than `ms`.
+ *
+ * The pool sweep runs the price fetch once up front and only reads chains after
+ * it resolves. A slow or hung `/api/prices/spot` (a cold serverless start, an
+ * upstream stall) therefore held the ENTIRE table hostage — nothing rendered,
+ * not even the pools, though a missing price only ever costs an em dash in one
+ * column. Bounding it here means a slow price API degrades to "no prices" rather
+ * than "no pools": the fetch keeps running, but the sweep proceeds on `null`.
+ */
+export async function fetchSpotPricesSoon(
+  ms = 4000,
+): Promise<SpotPrices | null> {
+  return Promise.race([
+    fetchSpotPrices().catch(() => null),
+    new Promise<SpotPrices | null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}

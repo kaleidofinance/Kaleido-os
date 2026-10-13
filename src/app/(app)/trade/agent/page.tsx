@@ -10,13 +10,24 @@ import {
 } from "react";
 import Link from "next/link";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useConnectAgw } from "@/lib/wallet";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { usePortfolio, type Portfolio } from "@/hooks/usePortfolio";
 import { useLocalPlanner } from "@/hooks/v2/useLocalPlanner";
 import { useChatHistory, type Msg } from "@/hooks/v2/useChatHistory";
-import { chainTokens } from "@/constants/tokens";
+import {
+  chainTokens,
+  chainsOffering,
+  bridgeSourceCandidates,
+} from "@/constants/tokens";
+import { resolveChain } from "@/lib/ai/bridgeQuotes";
+import { argusAddressToken } from "@/lib/argus/token";
+import { fetchHeldTokens, heldVocabulary } from "@/lib/wallet/heldTokens";
+import { envVars } from "@/constants/envVars";
+import type { IToken } from "@/constants/types/dex";
+import { ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
 import AgentSettings from "@/components/v2/AgentSettings";
 import AgentCards from "@/components/v2/AgentCards";
 import Answer from "@/components/v2/Answer";
@@ -33,8 +44,44 @@ import { intentsFromChat } from "@/lib/v2/intents/fromChat";
 import { traceFromChat } from "@/lib/v2/agentTurn";
 import { readChatStream } from "@/lib/v2/chatStream";
 import { renderIntent } from "@/lib/v2/intents";
-import { cardsFromChat, figureCards, localCards } from "@/lib/v2/cards";
-import { portfolioAnswer } from "@/lib/v2/cards/portfolio";
+import {
+  cardsFromChat,
+  figureCards,
+  localCards,
+  pastedTokenAddress,
+  tokenCardFrom,
+  cardFollowUp,
+  type CardTokenContext,
+  type TokenFacts,
+} from "@/lib/v2/cards";
+import { planChainOf } from "@/lib/v2/intents/planChain";
+import {
+  ARRIVAL_WINDOW_MS,
+  arrivalTarget,
+  clearWatch,
+  loadWatch,
+  saveWatch,
+  waitForArrival,
+  type KeyValueStore,
+} from "@/lib/v2/intents/afterBridge";
+import { readBalanceOn } from "@/lib/chain/tokenBalance";
+import {
+  portfolioAnswer,
+  healthAnswer,
+  isPersonalHealthQuestion,
+} from "@/lib/v2/cards/portfolio";
+import { receiptFromSettled } from "@/lib/v2/cards/receipt";
+import { readLifiPending } from "@/lib/bridge/lifiPending";
+import { readCctpPending } from "@/lib/bridge/cctpPending";
+import { isCctpMinted } from "@/lib/bridge/cctpAttestation";
+import {
+  asksAboutLastResult,
+  followThroughReply,
+  reconcileFollowThrough,
+  reviveFollowThrough,
+  type FollowThrough,
+} from "@/lib/v2/agentFollowThrough";
+import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
 import {
   docsReply,
@@ -51,18 +98,29 @@ import {
 } from "@/lib/ai/localIntent";
 import {
   parseCommand,
+  dollarSizedToken,
   parseFollowUp,
   containsActionVerb,
   fillSlot,
   clearSlot,
   draftFromCommand,
-  COMMAND_HELP,
+  capabilityHelp,
   type Command,
   type Draft,
+  type ParseContext,
   type ParseResult,
   type Slot,
 } from "@/lib/v2/intents/fromCommand";
-import { SUGGESTIONS } from "./suggestions";
+import { fetchUsdPrice } from "@/lib/market/usdPrice";
+import { arcLending } from "@/lib/lending/arcLending";
+
+/* Read once: the registry is generated at build time. */
+const ARC_LENDING = arcLending();
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
+import { useTxLog } from "@/hooks/v2/useTxLog";
+import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
+import { planRuns } from "@/lib/v2/intents/batch";
+import { computeSuggestions } from "./suggestions";
 import s from "./agent.module.css";
 
 /**
@@ -153,8 +211,56 @@ function historyForModel(
 
 export default function AgentPage() {
   const { chainId, address } = useWalletV2();
+  const connectAgw = useConnectAgw();
+  /* The exit request waiting on the Abstract wallet: set when the connect card
+     is shown, replayed once the wallet is on Abstract (effect below send). */
+  const [pendingExit, setPendingExitState] = useState<string | null>(null);
+  /* Kept in sessionStorage too (10 min), because connecting a different wallet
+     reloads this page's transcript and remounts it — component state alone was
+     lost exactly at the moment the wallet connected. */
+  const PENDING_EXIT_KEY = "luca:pendingExit";
+  const setPendingExit = (text: string | null) => {
+    setPendingExitState(text);
+    try {
+      if (text)
+        sessionStorage.setItem(
+          PENDING_EXIT_KEY,
+          JSON.stringify({ text, at: Date.now() }),
+        );
+      else sessionStorage.removeItem(PENDING_EXIT_KEY);
+    } catch {
+      /* private mode: the in-memory copy still works within this mount */
+    }
+  };
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(PENDING_EXIT_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw) as { text?: string; at?: number };
+      if (p.text && p.at && Date.now() - p.at < 10 * 60_000)
+        setPendingExitState(p.text);
+      else sessionStorage.removeItem(PENDING_EXIT_KEY);
+    } catch {
+      /* unreadable or blocked storage: nothing to resume */
+    }
+  }, []);
   const { settings } = useAgentSettings(address);
   const { buildPlan } = useLocalPlanner();
+  const { showTestnets } = useTestnetMode();
+  /* Recent transaction kinds, newest first, so the starting-point chips lead with
+     the natural next step after what the wallet last did and don't offer back a
+     thing it just finished. Read here rather than in suggestions.ts because the tx
+     log is a wallet-bound React store; the chip logic itself stays a pure function
+     the test can exercise. */
+  const { entries: txEntries } = useTxLog();
+  const recentKinds = useMemo(
+    () => txEntries.slice(0, 6).map((e) => e.kind),
+    [txEntries],
+  );
+  const suggestions = useMemo(
+    () => computeSuggestions({ showTestnets, recentKinds }),
+    [showTestnets, recentKinds],
+  );
   // Open loans, so "repay" resolves on its own when there's only one.
   const { loans } = useBorrowV2();
   // V3 positions, so "collect fees position 42" / "remove position 42" can
@@ -203,17 +309,33 @@ export default function AgentPage() {
   const [pending, setPending] = useState<{
     draft: Draft;
     missing: Slot;
+    /** What to prepare once this draft's plan lands — the send a funding
+        bridge is for. See lib/v2/intents/afterBridge.ts. */
+    then?: Command;
   } | null>(null);
+  /* The send waiting on the bridge plan currently up for review; replaced by
+     every plan built, so an abandoned bridge can't trigger it later. */
+  const afterBridgeRef = useRef<Command | null>(null);
+  /* The running arrival watch, so Clear or leaving the page stops it. */
+  const arrivalWatchRef = useRef<AbortController | null>(null);
+  /* Stopped on leaving the page AND on a wallet switch: a send prepared for one
+     wallet must never be built for another. The saved record stays, so
+     switching back (or reloading) resumes it. */
+  useEffect(() => () => arrivalWatchRef.current?.abort(), [address]);
   /*
-   * The last command that planned successfully, so the NEXT sentence can
-   * continue it. "swap 10 USDC to USDT" then "now the same to USDe" is one
-   * thought in two messages, and without this the second half reached the
-   * model as an unparseable fragment - a reasoning request for a sentence the
-   * grammar already had every part of. `pending` is the other half of this and
-   * they are not the same thing: that one resumes a draft LUCA asked about,
-   * this one continues a plan the USER completed. See parseFollowUp.
+   * The last command that planned successfully, so later referential messages
+   * can continue it. `pending` is the other half of this and they are not the
+   * same thing: that one resumes a draft Luca asked about, this one continues a
+   * plan the user completed. See parseFollowUp.
    */
   const [lastCommand, setLastCommand] = useState<Command | null>(null);
+  /* The token the last token card was about. A card is a display, not a
+     command, so without this nothing carried it into the next message: "buy 10
+     usdc" had no token and "buy 10 usdc of GLITCH" named a launch symbol the
+     registry doesn't carry. Read by cardFollowUp only when a message fails to
+     parse on its own; replaced by the next card, dropped on Clear. */
+  const [cardToken, setCardToken] = useState<CardTokenContext | null>(null);
+  const [lastOutcome, setLastOutcome] = useState<FollowThrough | null>(null);
   const localIntentModelRef = useRef<ReturnType<
     typeof createBrowserLocalIntentModel
   > | null>(null);
@@ -221,9 +343,6 @@ export default function AgentPage() {
   const [localModelStatus, setLocalModelStatus] = useState<
     "checking" | "idle" | "loading" | "ready" | "failed" | "unavailable"
   >("checking");
-  /* Warm the selected model only after the page has been idle. This moves the
-     first-download cost away from the user's first ambiguous message while
-     still keeping the model optional and disposable on constrained devices. */
   useEffect(() => {
     if (!canUseBrowserLocalModel() || typeof window === "undefined") {
       setLocalModelStatus("unavailable");
@@ -262,13 +381,65 @@ export default function AgentPage() {
           cancelIdleCallback?: (id: number) => void;
         }
       ).cancelIdleCallback;
-      if (requestIdle && cancelIdle) {
-        cancelIdle(idle);
-      } else {
-        window.clearTimeout(idle);
-      }
+      if (requestIdle && cancelIdle) cancelIdle(idle);
+      else window.clearTimeout(idle);
     };
   }, []);
+  const [contextHydrated, setContextHydrated] = useState(false);
+  const contextKeyRef = useRef<string | null>(null);
+  /* The transcript hook persists the visible conversation. This companion
+     snapshot persists the structured command Luca needs for references such as
+     "double it" after a route change or reload. It is session-scoped and wallet
+     scoped, matching the transcript's privacy boundary. */
+  useEffect(() => {
+    const key = `kaleido.v2.agentContext.${address ?? "anon"}`;
+    setContextHydrated(false);
+    let restored: Command | null = null;
+    let restoredOutcome: FollowThrough | null = null;
+    try {
+      const raw = sessionStorage.getItem(key);
+      const parsed = raw ? (JSON.parse(raw) as Partial<Command>) : null;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.kind === "string"
+      ) {
+        restored = parsed as Command;
+      }
+      const outcomeRaw = sessionStorage.getItem(`${key}.outcome`);
+      restoredOutcome = outcomeRaw
+        ? reviveFollowThrough(JSON.parse(outcomeRaw))
+        : null;
+    } catch {
+      restored = null;
+      restoredOutcome = null;
+    }
+    contextKeyRef.current = key;
+    setLastCommand(restored);
+    setLastOutcome(restoredOutcome);
+    setContextHydrated(true);
+  }, [address]);
+  useEffect(() => {
+    const key = `kaleido.v2.agentContext.${address ?? "anon"}`;
+    if (!contextHydrated || contextKeyRef.current !== key) return;
+    try {
+      if (lastCommand) sessionStorage.setItem(key, JSON.stringify(lastCommand));
+      else sessionStorage.removeItem(key);
+    } catch {
+      /* unavailable storage leaves the context in memory */
+    }
+  }, [lastCommand, address, contextHydrated]);
+  useEffect(() => {
+    const key = `kaleido.v2.agentContext.${address ?? "anon"}`;
+    if (!contextHydrated || contextKeyRef.current !== key) return;
+    try {
+      if (lastOutcome)
+        sessionStorage.setItem(`${key}.outcome`, JSON.stringify(lastOutcome));
+      else sessionStorage.removeItem(`${key}.outcome`);
+    } catch {
+      /* unavailable storage leaves the outcome in memory */
+    }
+  }, [lastOutcome, address, contextHydrated]);
   /** Remaining model requests today. Null until known, or when unmetered. */
   const [credits, setCredits] = useState<{
     remaining: number;
@@ -311,6 +482,27 @@ export default function AgentPage() {
   /** The connected wallet as of this render, readable from a stale closure. */
   const addrRef = useRef(address);
   addrRef.current = address;
+
+  /*
+   * Tokens the wallet holds that the registry doesn't list (an Argus launch
+   * bought last week), so "sell 100% of GLITCH" names the GLITCH in this
+   * wallet instead of "I don't know a token called GLITCH". Read once per
+   * wallet and chain from thirdweb Insight in the browser; see heldTokens.ts.
+   */
+  const [heldTokens, setHeldTokens] = useState<IToken[]>([]);
+  useEffect(() => {
+    setHeldTokens([]);
+    if (!address || !chainId) return;
+    let live = true;
+    void fetchHeldTokens(address, chainId, envVars.thirdwebClientId).then(
+      (t) => {
+        if (live) setHeldTokens(t);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [address, chainId]);
 
   /**
    * Reads the balance without spending one, so the count is visible before the
@@ -374,6 +566,9 @@ export default function AgentPage() {
       {
         role: "assistant",
         text,
+        /* When this answer was produced, so a plan hanging off it knows how old
+           its quotes are. Harmless on a reply with no plan. */
+        ts: Date.now(),
         /* Attached here rather than at each call site: every answer is the end of
            some sequence of steps, and there is no reply this page can produce
            that shouldn't be able to say how it got there. Spread first, so a
@@ -412,11 +607,18 @@ export default function AgentPage() {
   const planLocally = async (
     result: ParseResult,
     signal: AbortSignal,
+    then?: Command,
   ): Promise<boolean> => {
     if (result.status === "incomplete") {
       setPending({ draft: result.draft, missing: result.missing });
       note("Needs one more detail before it can be built");
       say(result.prompt, { via: "local" });
+      return true;
+    }
+    if (result.status === "refused") {
+      setPending(null);
+      note("Declined a conditional order it can't place from a sentence");
+      say(result.message, { via: "local" });
       return true;
     }
     if (result.status !== "ok") return false;
@@ -429,42 +631,33 @@ export default function AgentPage() {
     if (result.command.kind === "help") {
       note("Answered from the command reference");
       say(
-        `Things I can do without using a reasoning request:\n\n${COMMAND_HELP}\n\n` +
-          "I can also answer common questions directly — health factor, kfUSD, staking, slippage, agent permissions, which chains are live.",
+        "Tell me what you want in plain language and I'll build the transaction " +
+          "for you to review and sign — nothing goes on-chain without your " +
+          "signature. Here's the range:\n\n" +
+          `${capabilityHelp({ showTestnets, arcLending: ARC_LENDING })}\n\n` +
+          "You can also just ask — I answer " +
+          (showTestnets
+            ? "health factor, kfUSD, staking, slippage, agent permissions, "
+            : "swaps, bridging, slippage, agent permissions, ") +
+          "and which chains are live directly.",
         {
           via: "local",
-          /* Five of the list above as chips. The list is reference — you read it
-             to find out what exists — and these are a way in, which is a
-             different job that a line of text cannot do.
-
-             Labels name the product, not the verb: "Swap" alone repeats the
-             word already sitting in the reference list above it, where "Swap
-             USDC to KLD" says which market. The prompts are the parser's own
-             phrasing and are verified against it — which is why mint's label
-             and prompt name different tokens: the parser binds mint's token as
-             the *collateral*, so "mint 500 kfUSD" resolves to kfUSD-as-
-             collateral and the planner rejects it. "mint 500 USDC" is the
-             phrasing that plans. The faucet's prompt asks for everything due
-             rather than a named asset, because which assets a faucet stocks
-             differs per chain and a card cannot know. Clicking fills the box;
-             nothing sends. */
+          /* A few of the list above as chips — the list is reference you read to
+             find out what exists, and these are a way in, which a line of text
+             cannot be. Drawn from computeSuggestions so they follow the same rules
+             as the empty card: dropped on mainnet when they need a testnet-only
+             surface, ranked by what the wallet last did, and each one parses to a
+             known command. Clicking fills the box; nothing sends. */
           cards: localCards([
             {
               kind: "actions",
               title: "Try one",
-              actions: [
-                {
-                  label: "Claim testnet tokens",
-                  prompt: "claim everything from the faucet",
-                },
-                { label: "Swap USDC to KLD", prompt: "swap 500 USDC to KLD" },
-                { label: "Stake KLD for stKLD", prompt: "stake 100 KLD" },
-                { label: "Mint kfUSD", prompt: "mint 500 USDC" },
-                {
-                  label: "Explain my health factor",
-                  prompt: "explain my health factor",
-                },
-              ],
+              /* The same mode-gated, activity-ranked chips the empty card shows, so
+                 the "what can I do" answer never offers a faucet or a KLD stake to a
+                 mainnet wallet that has neither. Label is the request itself —
+                 clicking fills the box with exactly it, and a second wording to
+                 maintain is a second thing to drift from what actually parses. */
+              actions: suggestions.map((p) => ({ label: p, prompt: p })),
             },
           ]),
         },
@@ -500,6 +693,101 @@ export default function AgentPage() {
       const answer = portfolioAnswer(held, { connected: Boolean(address) });
       const cards = localCards(answer.cards);
       say(answer.text, { via: "local", ...(cards.length ? { cards } : {}) });
+      return true;
+    }
+
+    /*
+     * Someone else's balances — "check the balance of 0x…". Read on the server
+     * with the same getBalances the model's tool runs, shown as a balance card.
+     * No model involved, so it answers even when the model is down.
+     */
+    /* "Move everything off Abstract": the bridges are signed from Abstract, so
+       a wallet that isn't there gets a card that opens the Abstract Global
+       Wallet connector instead of a dead-end refusal. */
+    if (
+      result.command.kind === "exitChain" &&
+      /^abs/i.test(result.command.fromChain) &&
+      chainId !== 2741
+    ) {
+      note("Needs the Abstract wallet connected first");
+      const c = result.command;
+      setPendingExit(
+        `move everything off ${c.fromChain} to ${c.toChain} as ${c.toAsset.toLowerCase()}`,
+      );
+      say(
+        "Those funds are on Abstract, so the bridges have to be signed from your Abstract wallet. Connect it and I'll carry on and build the plan to move everything out.",
+        {
+          via: "local",
+          cards: [
+            {
+              kind: "connect",
+              wallet: "agw",
+              title: "Connect your Abstract Global Wallet",
+              body: "Abstract shuts down on Dec 15, 2026. Connecting signs nothing — you'll review every bridge before it's sent.",
+              label: "Connect Abstract Global Wallet",
+            },
+          ],
+        },
+      );
+      return true;
+    }
+
+    if (result.command.kind === "lookup") {
+      const who = result.command.address;
+      const short = `${who.slice(0, 6)}…${who.slice(-4)}`;
+      const onChain = chainId ?? 5042;
+      note(`Reading ${short}'s balances on chain`);
+      let data: {
+        error?: string;
+        chain?: string;
+        holdings?: { symbol: string; amount: string }[];
+        unread?: string[];
+      } = {};
+      try {
+        const r = await fetch(
+          `/api/lookup/balances?address=${who}&chainId=${onChain}`,
+          { signal },
+        );
+        data = await r.json();
+      } catch {
+        data = { error: "The balance read didn't come back." };
+      }
+      if (signal.aborted) return true;
+      if (data.error) {
+        say(
+          `I couldn't read ${short}'s balances right now — ${data.error.split(" - ")[0]}. That isn't the same as an empty wallet.`,
+          { via: "local" },
+        );
+        return true;
+      }
+      const rows = (data.holdings ?? []).map((h) => {
+        const n = Number(h.amount);
+        return {
+          symbol: h.symbol,
+          amount: Number.isFinite(n)
+            ? n.toLocaleString("en-US", {
+                maximumFractionDigits: n >= 1 ? 4 : 8,
+              })
+            : h.amount,
+        };
+      });
+      const unread = data.unread?.length
+        ? ` I couldn't read ${data.unread.join(", ")}, so those may not be zero.`
+        : "";
+      const text =
+        rows.length === 0
+          ? `${short} holds none of the tokens I know on ${data.chain ?? "this chain"}.${unread}`
+          : `${short} on ${data.chain ?? "this chain"}:${unread}`;
+      const cards = rows.length
+        ? localCards([
+            {
+              kind: "balance",
+              title: `${short} · ${data.chain ?? ""}`.trim(),
+              rows,
+            },
+          ])
+        : [];
+      say(text, { via: "local", ...(cards.length ? { cards } : {}) });
       return true;
     }
 
@@ -589,6 +877,19 @@ export default function AgentPage() {
     if (signal.aborted) return true;
 
     if (!built.ok) {
+      /* A refusal that proposes another command first — a send the chain can't
+         cover, answered with a bridge from wherever the token is held. Held as
+         the pending draft, so naming a chain builds that bridge. */
+      if (built.next) {
+        setPending({
+          draft: built.next.draft,
+          missing: built.next.missing,
+          ...(built.next.then ? { then: built.next.then } : {}),
+        });
+        note("Can't send it from there — offered a bridge first");
+        say(`${built.error}\n\n${built.next.prompt}`, { via: "local" });
+        return true;
+      }
       /*
        * A refusal that names a fixable value keeps the turn alive.
        *
@@ -623,11 +924,176 @@ export default function AgentPage() {
       return true;
     }
 
+    /*
+     * The auditor, before the plan is shown to sign — the gate a direct command
+     * used to miss.
+     *
+     * buildPlan produces the same intents the model path produces, but only the
+     * model path was ever audited: the per-action USD ceiling from Agent Settings
+     * was checked on a reasoned plan and silently skipped on a typed one, so a
+     * $1,000 cap did not stop a "swap 1500 USDC to KLD". /api/audit runs the same
+     * auditPlan server-side, where the cap is not the client's to edit, and a
+     * blocked plan is never rendered.
+     *
+     * Fails CLOSED. A ceiling that quietly stops being checked is the exact bug
+     * this closes, so if the audit cannot be reached the plan is not presented —
+     * the turn asks for a retry rather than putting up an unaudited plan.
+     */
+    let verdict: { ok: boolean; refusal: string | null };
+    /* Audit against the chain the plan is FOR, not the wallet's current one. The
+       auditor checks every intent against one chainId, and a "from X" bridge (or
+       a CCTP mint) carries its own chain — so the connected chain would fail
+       every per-chain check for a cross-chain plan. Same derivation the sign flow
+       pins to; falls back to the connected chain for an ordinary plan. */
+    const auditChainId = planChainOf(built.build.intents) ?? chainId;
+    try {
+      const res = await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal,
+        body: JSON.stringify({
+          plan: built.build.intents,
+          chainId: auditChainId,
+          limits: {
+            maxPerAction: settings.maxPerAction,
+            maxPerDay: settings.maxPerDay,
+            minHealthFactor: settings.minHealthFactor,
+            slippageBps: settings.slippageBps,
+            allowedActions: settings.allowedActions,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error(`audit ${res.status}`);
+      verdict = (await res.json()) as { ok: boolean; refusal: string | null };
+    } catch {
+      if (signal.aborted) return true;
+      note("Couldn't check it against your Agent Settings limits");
+      say(
+        "I built those steps, but couldn't check them against the limits in your Agent Settings just now — so I won't put them up to sign yet. Try again in a moment.",
+        { via: "local" },
+      );
+      return true;
+    }
+
+    if (signal.aborted) return true;
+
+    if (!verdict.ok) {
+      note("A limit in your Agent Settings stops this one");
+      say(
+        verdict.refusal ??
+          "That would cross a limit you set in Agent Settings.",
+        { via: "local" },
+      );
+      return true;
+    }
+
     const n = built.build.intents.length;
     note(`Built ${n} step${n === 1 ? "" : "s"} to sign`);
+    afterBridgeRef.current =
+      then && built.build.intents.some((it) => it.kind === "bridge")
+        ? then
+        : null;
     say(built.build.summary, { via: "local", plan: built.build.intents });
     return true;
   };
+
+  /* Where the watch is kept across reloads — this browser, per wallet. */
+  const watchStore = (): KeyValueStore | null => {
+    try {
+      return typeof window !== "undefined" ? window.localStorage : null;
+    } catch {
+      return null;
+    }
+  };
+
+  /*
+   * Watch the destination balance until it covers the send, then build that send
+   * and put it up for review. Never signs it. Ends at the deadline; an abort
+   * (Clear, leaving the page, switching wallet) stops it, and only Clear also
+   * forgets it — otherwise a reload picks it up again (the effect below).
+   */
+  const watchArrival = async (then: Command, deadline: number) => {
+    const target = arrivalTarget(then);
+    const owner = address;
+    if (!target || !owner) return;
+    arrivalWatchRef.current?.abort();
+    const watch = new AbortController();
+    arrivalWatchRef.current = watch;
+    const outcome = await waitForArrival({
+      read: () =>
+        readBalanceOn(target.chainId, owner, target.token, target.isNative),
+      need: target.units,
+      intervalMs: 8_000,
+      timeoutMs: Math.max(0, deadline - Date.now()),
+      signal: watch.signal,
+    });
+    if (arrivalWatchRef.current === watch) arrivalWatchRef.current = null;
+    if (outcome === "aborted") return;
+    clearWatch(watchStore(), owner);
+    if (outcome === "timeout") {
+      say(
+        `Your ${target.symbol} hasn't reached ${target.chainName} yet, so I've stopped watching. Ask me about your bridge status, or ask me to send it again once it lands.`,
+        { via: "local" },
+      );
+      return;
+    }
+    say(
+      `Your ${target.symbol} arrived on ${target.chainName}. Here's the send — check the address, then sign.`,
+      { via: "local" },
+    );
+    await planLocally({ status: "ok", command: then }, watch.signal);
+  };
+
+  /* After a funding bridge is signed: announce the watch, save it, start it. */
+  const prepareAfterBridge = async (then: Command) => {
+    const target = arrivalTarget(then);
+    if (!target || !address) {
+      say(
+        "Bridge sent. When it lands, ask me to send it again and I'll build the send.",
+        { via: "local" },
+      );
+      return;
+    }
+    const to = then.kind === "send" ? then.to : "";
+    say(
+      `Bridge sent. I'll have your send of ${then.kind === "send" ? then.amount : ""} ${target.symbol} to ${to} ready to review as soon as it lands on ${target.chainName}. If you leave, come back to this page and I'll pick it up.`,
+      { via: "local" },
+    );
+    const deadline = Date.now() + ARRIVAL_WINDOW_MS;
+    saveWatch(watchStore(), address, { then, deadline });
+    await watchArrival(then, deadline);
+  };
+
+  /*
+   * Resume a watch saved before a reload (or a wallet switch back). Past its
+   * deadline it still reads the balance ONCE — the bridge may well have landed
+   * while the page was closed — unless it's over a day old, which is forgotten
+   * quietly rather than surfacing a stale send.
+   */
+  const resumedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!address || resumedForRef.current === address) return;
+    resumedForRef.current = address;
+    const saved = loadWatch(watchStore(), address);
+    if (!saved) return;
+    const target = arrivalTarget(saved.then);
+    if (!target || Date.now() - saved.deadline > 24 * 60 * 60_000) {
+      clearWatch(watchStore(), address);
+      return;
+    }
+    if (saved.deadline > Date.now()) {
+      say(
+        `Still watching for your ${target.symbol} to land on ${target.chainName} — your send to ${saved.then.kind === "send" ? saved.then.to : ""} will be ready to review when it does.`,
+        { via: "local" },
+      );
+    }
+    void watchArrival(saved.then, saved.deadline);
+    return () => {
+      arrivalWatchRef.current?.abort();
+      resumedForRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
 
   /**
    * Cancels the in-flight model request (if any) and resets the busy state.
@@ -645,14 +1111,233 @@ export default function AgentPage() {
     refreshCredits(address);
   };
 
+  /* Picks the exit back up the moment the Abstract wallet is connected, so the
+     connect card leads somewhere instead of asking the user to repeat
+     themselves. Fires once: the pending request is cleared before it runs. */
+  useEffect(() => {
+    if (!pendingExit || chainId !== 2741 || !address) return;
+    const text = pendingExit;
+    setPendingExit(null);
+    void send(text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingExit, chainId, address]);
+
   const send = async (text: string) => {
     const content = text.trim();
     if (!content || busy) return;
 
+    /* A halted plan already carries its safe resume index. Reopen that review
+       locally instead of sending "continue" to the model, which could invent a
+       fresh plan and re-sign a step that already landed. */
+    if (
+      /\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(
+        content,
+      ) &&
+      latest &&
+      typeof latest.planFrom === "number" &&
+      latest.planFrom > 0
+    ) {
+      // Capture the narrowed number in a const: TS drops control-flow narrowing of
+      // a property access (latest.planFrom) inside the setMessages closure below,
+      // which is the "possibly undefined" build error. A const local keeps `number`.
+      const resumeFrom = latest.planFrom;
+      if (!latest.plan) {
+        setMessages((m) => [
+          ...m,
+          { role: "user", text: content },
+          {
+            role: "assistant",
+            text: `That plan was paused before step ${resumeFrom + 1}. I kept the safe checkpoint, but the old transaction data expired after reload. Ask me to build the action again for a fresh review.`,
+            via: "local",
+          },
+        ]);
+        setInput("");
+        return;
+      }
+      setMessages((m) => [
+        ...m,
+        { role: "user", text: content },
+        {
+          role: "assistant",
+          text: `I kept the completed steps. Reopen the review to resume from step ${resumeFrom + 1}.`,
+          via: "local",
+        },
+      ]);
+      setPanel({ kind: "plan" });
+      setInput("");
+      return;
+    }
+
+    /* Bridge status is a live route question, not a generic model prompt.
+       Read the persisted LI.FI route and ask the status proxy so Luca never
+       calls a source-chain confirmation the same thing as destination arrival. */
+    if (
+      /\b(bridge|route|transfer)\b/i.test(content) &&
+      /\b(status|complete|completed|arrived|landed|finish|finished|where)\b/i.test(
+        content,
+      ) &&
+      address
+    ) {
+      const routes = readLifiPending(address);
+      const cctpRoutes = readCctpPending(address);
+      setMessages((m) => [...m, { role: "user", text: content }]);
+      setInput("");
+      if (routes.length === 0 && cctpRoutes.length > 0) {
+        const route = cctpRoutes[0];
+        try {
+          const minted = await isCctpMinted({
+            sourceChainId: route.sourceChainId,
+            destChainId: route.destChainId,
+            txHash: route.txHash,
+          });
+          const status = minted
+            ? `completed — your ${route.amount} ${route.symbol} has been minted on ${route.destChainName}`
+            : `source-confirmed and waiting for Circle attestation or destination minting on ${route.destChainName}`;
+          setMessages((m) => [
+            ...m,
+            {
+              role: "assistant",
+              text: `Your CCTP bridge is ${status}.`,
+              via: "local",
+            },
+          ]);
+        } catch {
+          setMessages((m) => [
+            ...m,
+            {
+              role: "assistant",
+              text: `Your CCTP burn is source-confirmed, but I couldn't read the destination mint status right now. It remains pending for ${route.destChainName}.`,
+              via: "local",
+            },
+          ]);
+        }
+        return;
+      }
+      if (routes.length === 0) {
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: "I don't have an active LI.FI route saved for this wallet. If you bridged elsewhere, share the source transaction hash and I can check it.",
+            via: "local",
+          },
+        ]);
+        return;
+      }
+      const route = routes[0];
+      try {
+        const response = await fetch(
+          `/api/bridge/status?tx=${route.txHash}&from=${route.sourceChainId}&to=${route.destinationChainId}`,
+          { cache: "no-store" },
+        );
+        const data = (await response.json()) as {
+          status?: string;
+          destinationTxHash?: string | null;
+        };
+        const status =
+          data.status === "DONE"
+            ? `completed — your ${route.amount} ${route.symbol} arrived on ${route.destinationChainName}`
+            : data.status === "FAILED"
+              ? `failed on the route to ${route.destinationChainName}; the source transaction was confirmed, but the destination leg needs attention`
+              : `still processing after the source transaction; it has not yet arrived on ${route.destinationChainName}`;
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: `Your LI.FI bridge is ${status}.`,
+            via: "local",
+          },
+        ]);
+      } catch {
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: `The source transaction is recorded, but I couldn't read LI.FI's destination status right now. The route to ${route.destinationChainName} remains pending; try again shortly.`,
+            via: "local",
+          },
+        ]);
+      }
+      return;
+    }
+
+    /* A receipt is structured context, not a model question. Keep result
+       follow-through local so Luca reports the actual hash it observed rather
+       than guessing from the previous prose. */
+    if (lastOutcome && asksAboutLastResult(content)) {
+      /* Load the RPC adapter only for an explicit status check. Keeping this
+         browser-only path lazy avoids constructing the read provider while the
+         agent page is being prerendered. */
+      const { providerForChain } = await import("@/config/provider");
+      const provider = providerForChain(chainId);
+      const currentOutcome = provider
+        ? await reconcileFollowThrough(lastOutcome, async (hash) =>
+            provider.getTransactionReceipt(hash),
+          )
+        : lastOutcome;
+      setLastOutcome(currentOutcome);
+      setMessages((m) => [
+        ...m,
+        { role: "user", text: content },
+        {
+          role: "assistant",
+          text: followThroughReply(currentOutcome),
+          via: "local",
+        },
+      ]);
+      setInput("");
+      return;
+    }
+
     // The vocabulary the parser resolves symbols against, scoped to the chain
     // the user is on. "swap 500 usdc" names a different contract on each chain,
     // so there is no chain-free answer to what "usdc" means.
-    const vocabulary = chainTokens(chainId);
+    const registryTokens = chainTokens(chainId);
+    const vocabulary = [
+      ...registryTokens,
+      ...heldVocabulary(registryTokens, heldTokens),
+    ];
+    /* What the grammar needs to explain a miss rather than ask again: this
+       chain's name, which other chains carry a symbol it doesn't (kept to the
+       viewer's network), and whether a phrase names a chain — so "swap 50
+       USDC to Sepolia" is read as the bridge it is. */
+    const parseCtx: ParseContext = {
+      chainName: getChainMeta(chainId)?.shortName,
+      elsewhere: (symbol) =>
+        chainsOffering(symbol, showTestnets ? undefined : "mainnet"),
+      /* The chains a bridge source could be on, for a token the connected chain
+         lacks (BNB → BSC). Narrowed to chains the wallet actually HOLDS it on
+         when the balances are loaded, so one holding is inferred and several are
+         asked about — never the first chain in the list. With no known holding
+         every chain that has the token is offered. */
+      sourceTokens: (symbol) => {
+        const all = bridgeSourceCandidates(
+          symbol,
+          showTestnets ? undefined : "mainnet",
+        );
+        const s = symbol.toLowerCase();
+        const heldOn = new Set(
+          portfolio.walletHoldings
+            .filter((h) => h.symbol.toLowerCase() === s)
+            .map((h) => h.chainId),
+        );
+        const held = all.filter((c) => heldOn.has(c.chainId));
+        return held.length > 0 ? held : all;
+      },
+      isChain: (phrase) => resolveChain(phrase) !== undefined,
+      /* On Arc, let a bare token address be a swap side so an Argus launch named
+         by address reaches the build branch. Chain-gated here; the real arming
+         switch is the SERVER's ARGUS_ENABLED (the plan route refuses when off),
+         so this is inert until the pilot is turned on. */
+      addressToken:
+        chainId === ARGUS_CHAIN_ID ? (w) => argusAddressToken(w) : undefined,
+    };
+
+    /* Structured agent context survives turns and reloads. parseFollowUp requires
+       an explicit reference before applying an old amount, so a lone "50" cannot
+       silently re-price a stale swap. A complete fresh command still wins and
+       replaces this context. */
+    const carriedCommand = lastCommand;
 
     setMessages((m) => [...m, { role: "user", text: content }]);
     setInput("");
@@ -670,6 +1355,25 @@ export default function AgentPage() {
     // A fresh controller per request. The old one (if any) is already spent.
     const abort = new AbortController();
     abortRef.current = abort;
+
+    /* After reload, the old signable plan is intentionally gone, but the
+       persisted command remains safe to rebuild. Re-run the local planner so
+       balances, quotes, allowances, and bridge routes are read fresh before a
+       new review appears. */
+    if (
+      /\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(
+        content,
+      ) &&
+      latest &&
+      typeof latest.planFrom === "number" &&
+      latest.planFrom > 0 &&
+      !latest.plan &&
+      lastCommand
+    ) {
+      note("Rebuilding the expired plan from your original command");
+      await planLocally({ status: "ok", command: lastCommand }, abort.signal);
+      return;
+    }
 
     /*
      * The bubble a streamed answer is being written into, when there is one.
@@ -699,22 +1403,109 @@ export default function AgentPage() {
       // Local-first. A stated command is not a reasoning problem, and routing it
       // through a provider costs a credit, adds latency, and introduces the one
       // failure mode a grammar can't have: a confidently wrong number.
-      if (pending) {
+      /* A message that is a whole command on its own is a NEW request, not the
+         answer to the question still pending: "move everything off Abstract to
+         Arc" typed after an unanswered "Which token?" was being read as the
+         token and looped. Only a fragment ("USDC", "50") fills the slot. */
+      if (
+        pending &&
+        parseCommand(content, vocabulary, parseCtx).status === "ok"
+      )
+        setPending(null);
+      else if (pending) {
         const filled = fillSlot(
           pending.draft,
           pending.missing,
           content,
           vocabulary,
+          parseCtx,
         );
         if (filled.status !== "unknown") {
           note("Took this as the answer to what I asked");
           log(`asks:${pending.missing}`);
-          await planLocally(filled, abort.signal);
+          await planLocally(filled, abort.signal, pending.then);
           return;
         }
         // The reply didn't answer the question, so drop the draft and let the
         // message be read fresh rather than trapping the user in a slot loop.
         setPending(null);
+      }
+
+      /*
+       * Paste-a-contract net. A message that is ONLY a contract (or a chart /
+       * explorer link to one) is a request to see the token, not a command —
+       * answer with its live card, whose buttons send ready-made buy/sell
+       * commands back through this same path (grammar → plan → audit → review
+       * → signature). After a pending slot, since a pasted address may be the
+       * answer to "which token?"; before the FAQ and grammar, which have
+       * nothing to say about a bare address. pastedTokenAddress refuses
+       * anything with a space, so "buy 0x… with 5 usdc" still reaches the
+       * parser.
+       */
+      /* An address one character short (or long) — a common paste/typing slip.
+         Say exactly what's wrong instead of a generic "invalid address" from
+         the model: count the hex digits and name the expected 40. */
+      const nearAddr = content.match(/\b0x([0-9a-fA-F]{30,50})\b/);
+      if (nearAddr && nearAddr[1].length !== 40) {
+        note("Checked the address length");
+        log("address-length");
+        const n = nearAddr[1].length;
+        say(
+          `That address has ${n} characters after 0x — a full address has 40, so ${n < 40 ? `${40 - n} is missing` : `there ${n - 40 === 1 ? "is 1" : `are ${n - 40}`} too many`}. Check it against the source and paste it again.`,
+          { via: "local" },
+        );
+        return;
+      }
+
+      const pasted = pastedTokenAddress(content);
+      if (pasted) {
+        note("Looking up the token you pasted");
+        log("token-card");
+        let facts: TokenFacts;
+        try {
+          const res = await fetch(
+            `/api/token/card?chainId=${chainId ?? ""}&address=${pasted}`,
+            { signal: abort.signal, cache: "no-store" },
+          );
+          facts = (await res.json()) as TokenFacts;
+        } catch {
+          if (abort.signal.aborted) return;
+          facts = {
+            ok: false,
+            address: pasted,
+            reason: "Couldn't reach the token lookup — try again in a moment.",
+          };
+        }
+        if (abort.signal.aborted) return;
+        /* Not a token contract — most often it's a WALLET someone pasted to see
+           what it holds. Answer that (the same local read as "check the balance
+           of 0x…") rather than "no card for that contract". A read failure for
+           a reason other than "not a token" still shows its card. */
+        if (!facts.ok && /isn't a token contract/i.test(facts.reason ?? "")) {
+          note("Not a token — reading it as a wallet");
+          await planLocally(
+            { status: "ok", command: { kind: "lookup", address: pasted } },
+            abort.signal,
+          );
+          return;
+        }
+        const tradable =
+          facts.ok &&
+          !facts.isQuote &&
+          (facts.source === "argus" || facts.source === "listed");
+        const tokenCard = tokenCardFrom(facts);
+        setCardToken(
+          tradable && tokenCard.kind === "token" && tokenCard.ref
+            ? { ref: tokenCard.ref, symbol: tokenCard.symbol }
+            : null,
+        );
+        say(
+          tradable
+            ? `Here's ${facts.symbol ?? "that token"}. Tap a size or type an amount to get a plan — you review and sign before anything moves.`
+            : "Here's what I found for that contract.",
+          { via: "local", cards: localCards([tokenCard]) },
+        );
+        return;
       }
 
       // Second local net: static questions with a fixed, known answer. Checked
@@ -754,6 +1545,24 @@ export default function AgentPage() {
        * either way a miss falls through to the other net before the model — so
        * "how do I swap" still opens a swap draft, which is the better answer.
        */
+      /*
+       * A question about the reader's OWN health factor gets the live number as
+       * a gauge, ahead of the FAQ. The FAQ owns the definitional "what IS health
+       * factor" and answers it well; it cannot know yours. See
+       * isPersonalHealthQuestion for the split — a personal marker plus a health
+       * term, so "what is health factor" still falls through to the FAQ below.
+       */
+      if (isPersonalHealthQuestion(content)) {
+        note("Reading your live health factor");
+        log("health");
+        const held = await readPortfolio(abort.signal);
+        if (abort.signal.aborted) return;
+        const answer = healthAnswer(held, { connected: Boolean(address) });
+        const cards = localCards(answer.cards);
+        say(answer.text, { via: "local", ...(cards.length ? { cards } : {}) });
+        return;
+      }
+
       const question = isQuestionShaped(content);
       if (question && answerFromFaq(content)) return;
 
@@ -770,23 +1579,102 @@ export default function AgentPage() {
          balance question, which the grammar reads as a portfolio read. "how do I
          add liquidity" still opens the form - decided on purpose, and the
          bank deliberately carries no ask for it. */
+      /* Set by the docs-ask gate below when a question-shaped sentence names
+         an action ("can i repay part of my loan"). It used to be answered by
+         quoting the docs section with a link; now the quick model answers it
+         in Luca's own words from that same section — but the grammar must
+         still be kept off it, or "repay" reads as a repay. */
+      let askedAboutAction = false;
       if (question) {
         const exact = searchDocs(content);
         if (
           exact &&
           exact.via === "ask" &&
           exact.score >= MIN_ASK_SIMILARITY &&
-          (exact.shared ?? 0) >= 2
+          /* Two shared content words guard a loose match — but a near-verbatim
+             ask (score >= 0.9) needs no such guard, and requiring two words
+             was rejecting real short how-tos ("how do i stake", score 1.0,
+             one shared word) into the model. */
+          ((exact.shared ?? 0) >= 2 || exact.score >= 0.9)
         ) {
           note("Read this as a question about the action, not the action");
           log(`docs:${exact.slug}`);
-          const reply = docsReply(exact);
-          say(reply.text, { via: "local", link: reply.link });
-          return;
+          if (!address) {
+            /* No wallet means no model turn (the route meters by wallet), so
+               the section is quoted as before. */
+            const reply = docsReply(exact);
+            say(reply.text, { via: "local", link: reply.link });
+            return;
+          }
+          askedAboutAction = true;
         }
       }
 
-      const parsed = parseCommand(content, vocabulary);
+      /* "$100 worth of cirBTC" (or of an Argus meme by address): read that token's
+         live price first, so the grammar converts dollars to an amount instead of
+         reading 100 as 100 tokens. No price → the grammar hands it to the model. */
+      const sized = askedAboutAction
+        ? null
+        : dollarSizedToken(content, vocabulary, parseCtx.addressToken);
+      if (sized) {
+        const usd = await fetchUsdPrice(sized.token, chainId);
+        if (usd !== null) {
+          parseCtx.usdPrice = (t) =>
+            t.address.toLowerCase() === sized.token.address.toLowerCase()
+              ? usd
+              : null;
+          note(
+            `Priced ${sized.token.symbol} at $${usd.toPrecision(6)} to size $${sized.usd}`,
+          );
+        }
+      }
+      const parsed: ParseResult = askedAboutAction
+        ? { status: "unknown" }
+        : parseCommand(content, vocabulary, parseCtx);
+      /* A referential sentence that names the last plan's own verb — "do the
+         same swap once again", "swap again", "repeat that swap" — parses as a
+         Draft with an empty slot: the grammar reads the verb and finds no
+         token. Asking "which token do you want to spend?" there is the wrong
+         question about a sentence that said exactly what it wants. So before
+         accepting the ask, the follow-up reader gets the sentence against the
+         carried command: with the verb agreeing it is a repeat (plus whatever
+         the sentence changes) and resolves; otherwise the ask stands. */
+      if (parsed.status === "incomplete" && carriedCommand) {
+        const repeated = parseFollowUp(content, vocabulary, carriedCommand);
+        if (repeated.status === "ok") {
+          note("Read it as a repeat of the last plan");
+          log(`command:${repeated.command.kind}`);
+          await planLocally(repeated, abort.signal);
+          return;
+        }
+      }
+      /* A bare buy/sell typed while a token card is showing ("buy 10 usdc",
+         "sell half", "buy 10 usdc of GLITCH") is about that card's token. Only
+         when the message failed on its own, and only for a sentence that is
+         purely a buy/sell of it (cardFollowUp returns null otherwise); the
+         rewritten command is the card's own, so it takes the same plan →
+         audit → review → signature path as a tap. */
+      if (parsed.status !== "ok" && cardToken && !askedAboutAction) {
+        const rewritten = cardFollowUp(content, cardToken);
+        const onCard = rewritten
+          ? parseCommand(rewritten, vocabulary, parseCtx)
+          : null;
+        if (onCard?.status === "ok") {
+          note(`Read it as about ${cardToken.symbol} on the card`);
+          log(`command:${onCard.command.kind}:card`);
+          await planLocally(onCard, abort.signal);
+          return;
+        }
+      }
+      /* A conditional/market-cap trade: refuse here, with the grammar's own
+         message, and do NOT escalate — the model would drop the condition and
+         build a market order. */
+      if (parsed.status === "refused") {
+        note("Declined a conditional order it can't place from a sentence");
+        log("refused:conditional");
+        say(parsed.message, { via: "local" });
+        return;
+      }
       if (parsed.status !== "unknown") {
         note("Read it as a direct command — no reasoning request needed");
         log(
@@ -802,14 +1690,16 @@ export default function AgentPage() {
          declined the sentence outright. Order matters: a sentence with its own
          verb is a fresh command and parseFollowUp refuses it anyway, so this
          can never re-point an instruction at the previous action. */
-      if (lastCommand) {
-        const followed = parseFollowUp(content, vocabulary, lastCommand);
+      if (carriedCommand && !askedAboutAction) {
+        const followed = parseFollowUp(content, vocabulary, carriedCommand);
         if (followed.status !== "unknown") {
           note("Read it as a follow-up to the last plan");
           log(
             followed.status === "ok"
               ? `command:${followed.command.kind}`
-              : `asks:${followed.missing}`,
+              : followed.status === "refused"
+                ? "refused:conditional"
+                : `asks:${followed.missing}`,
           );
           await planLocally(followed, abort.signal);
           return;
@@ -835,17 +1725,28 @@ export default function AgentPage() {
         if (hit) {
           note("Found the section of the docs that answers this");
           log(`docs:${hit.slug}`);
-          const reply = docsReply(hit);
-          say(reply.text, { via: "local", link: reply.link });
-          return;
+          if (!address) {
+            const reply = docsReply(hit);
+            say(reply.text, { via: "local", link: reply.link });
+            return;
+          }
+          /* With a wallet, not answered here: the fetch below carries this
+             section as grounding, and the quick model answers from it in
+             Luca's own words rather than handing over a link. */
         }
       }
 
-      /* Optional browser-local semantic pass. It only supplies a bounded
-         context label to the server; deterministic parsing remains the
-         authority for amounts, tokens, routes, and calldata. */
+      /* Optional local semantic pass. The grammar remains authoritative: this
+       * classifier never creates a command, amount, token, route, or calldata.
+       * It only gives the server model a bounded hint when the deterministic
+       * parser and local docs/FAQ paths could not decide the turn. The worker is
+       * lazy, so ordinary commands and known questions never download a model. */
       let localIntent: LocalIntentClassification | null = null;
-      if (!localIntentDisabledRef.current && canUseBrowserLocalModel()) {
+      if (
+        !askedAboutAction &&
+        !localIntentDisabledRef.current &&
+        canUseBrowserLocalModel()
+      ) {
         if (!localIntentModelRef.current) {
           localIntentModelRef.current = createBrowserLocalIntentModel();
           if (!localIntentModelRef.current)
@@ -855,15 +1756,18 @@ export default function AgentPage() {
           try {
             setLocalModelStatus("loading");
             localIntent = await localIntentModelRef.current.classify(content, {
-              lastKind: lastCommand?.kind,
+              lastKind: carriedCommand?.kind,
               hasActiveTask: Boolean(pending),
               chainId,
             });
             setLocalModelStatus("ready");
-            if (localIntent.kind !== "unknown")
+            if (localIntent.kind !== "unknown") {
               note("Used local context to interpret this turn");
+              log(`local-intent:${localIntent.kind}`);
+            }
           } catch {
-            /* A blocked WebGPU/WASM load must never block Luca's normal route. */
+            /* A weak device, blocked WebGPU, or a failed model download must
+             * never block Luca. Disable this session and use the normal route. */
             localIntentDisabledRef.current = true;
             setLocalModelStatus("failed");
             localIntent = null;
@@ -915,6 +1819,10 @@ export default function AgentPage() {
           // truth when no wallet is connected, and the server can say so.
           chainId,
           address,
+          /* Testnets hidden by default (useTestnetMode). Sent so the server's
+             reads and facts match the UI's posture — no testnet balances
+             surfaced, no steering to a testnet the user cannot see. */
+          showTestnets,
           // The model chosen in settings, when one is. Omitted rather than sent
           // empty so the server's own default answers — and re-checked there
           // against its allow-list either way, since this arrives from a client.
@@ -932,6 +1840,11 @@ export default function AgentPage() {
              a quota refusal, the legacy proxy and anything that fails before
              dispatch still reply in plain JSON, which is why the content type
              below decides how to read this and not the flag above. */
+          /* Ask for the normalizer tier first — a cheap single-shot read of
+             the sentence with the dialect glossary, which builds the plan or
+             answers the question itself and hands the turn to the full model
+             only when it says it cannot. See lib/ai/normalizer.ts. */
+          tier: "normalize",
           stream: true,
         }),
       });
@@ -1022,6 +1935,12 @@ export default function AgentPage() {
           }
           const extra: Partial<Msg> = {
             via: "model",
+            /* When this turn landed. Carried on the message for two readers: a
+               plan's quotes are re-checked against it at sign time (see PlanReview),
+               and a card restored from storage shows it as the "as of" of its
+               dimmed, historical rendering. Set unconditionally because this path
+               does not go through `say`, which stamps it otherwise. */
+            ts: Date.now(),
             ...(plan.length ? { plan } : {}),
             ...(cards.length ? { cards } : {}),
           };
@@ -1162,10 +2081,29 @@ export default function AgentPage() {
         say("Stopped.", { via: "local" });
         return;
       }
+      /* Why it failed, recorded — the server's log ends at a 200, so a throw
+         here (a dropped stream, a bad payload) was invisible. The error's NAME
+         only, never its message: a message can carry the user's text back. */
+      console.error("[agent] model turn failed", err);
+      const failed = (err instanceof Error ? err.name : typeof err)
+        .replace(/[^a-zA-Z0-9_-]/g, "")
+        .slice(0, 32);
+      void fetch("/api/agent/log", {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: content,
+          route: `failed:${failed || "unknown"}`,
+          chainId,
+          address,
+        }),
+      }).catch(() => {});
       // The model being unreachable is no longer a dead end: commands still
       // execute, so say what still works instead of only apologising.
       say(
-        `I can't think that through right now, but I can still act on commands:\n\n${COMMAND_HELP}`,
+        "I can't think that one through right now, but I can still act on any " +
+          `command directly:\n\n${capabilityHelp({ showTestnets, arcLending: ARC_LENDING })}`,
         { via: "local" },
       );
     } finally {
@@ -1300,6 +2238,14 @@ export default function AgentPage() {
 
   const plan = latest?.plan;
   const steps = useMemo(() => (plan ? plan.map(renderIntent) : []), [plan]);
+  /* What the handoff counts is wallet CONFIRMATIONS, not steps: on a wallet that
+     signs a bundle as one (EIP-5792), an approve-and-swap is one confirmation. */
+  const { support: batchSupport } = useBatchCalls();
+  const confirmations = useMemo(
+    () =>
+      !plan ? 0 : batchSupport.supported ? planRuns(plan).length : plan.length,
+    [plan, batchSupport.supported],
+  );
 
   /*
    * What the chart beside this card follows.
@@ -1383,38 +2329,79 @@ export default function AgentPage() {
    */
   const onComplete = (settled: SettledStep[] = []) => {
     setPanel({ kind: "idle" });
+    /* The funding bridge landed its source transaction: prepare the send it was
+       for. Only when the plan was that bridge and its last step (the bridge)
+       broadcast — a cancelled or half-run plan prepares nothing. */
+    const then = afterBridgeRef.current;
+    afterBridgeRef.current = null;
+    const bridged =
+      !!latest?.plan?.some((it) => it.kind === "bridge") &&
+      !!settled[settled.length - 1]?.hash;
+    if (then && bridged) void prepareAfterBridge(then);
+    setLastOutcome({
+      kind: settled.some((step) => step.hash && !step.skipped)
+        ? "confirmed"
+        : "nothing",
+      steps: settled,
+      at: Date.now(),
+    });
 
-    /* Each step's wall-clock, when it was measured. Shown because the wait is
-       the thing testers report as slow, and a number they can see is the
-       difference between "it hung" and "the chain took 14s" - which are
-       different complaints with different fixes. Seconds, one decimal: the
-       precision that distinguishes a slow chain from a slow app. */
-    const took = (st: SettledStep) =>
-      st.ms === undefined ? "" : ` · ${(st.ms / 1000).toFixed(1)}s`;
-    const lines = settled.map((st) =>
-      st.skipped
-        ? `${st.title} — already in place, nothing sent`
-        : st.hash
-          ? `${st.title} — done${took(st)} · ${st.hash.slice(0, 10)}…${st.hash.slice(-6)}`
-          : `${st.title} — done${took(st)}, no transaction needed`,
-    );
-    const sent = settled.filter((st) => st.hash && !st.skipped).length;
-    const totalMs = settled.reduce((n, st) => n + (st.ms ?? 0), 0);
-    const head =
-      settled.length === 0
-        ? "Done."
-        : sent === 0
-          ? "Done — nothing needed to be sent."
-          : `Done — ${sent} transaction${sent === 1 ? "" : "s"} confirmed${totalMs ? ` in ${(totalMs / 1000).toFixed(1)}s` : ""}.`;
+    /* The headline as prose, the per-step outcome as a receipt card with a mark
+       on each line — see receiptFromSettled. The timing stays in each step's
+       detail because the wait is the thing testers report as slow, and a number
+       they can see separates "it hung" from "the chain took 14s". */
+    const { head, card } = receiptFromSettled(settled);
+    const cards = card ? localCards([card]) : [];
 
     setMessages((prev) => [
-      ...prev.map((m) => (m === latest ? { ...m, plan: undefined } : m)),
+      ...prev.map((m) =>
+        m === latest ? { ...m, plan: undefined, planFrom: undefined } : m,
+      ),
       {
         role: "assistant" as const,
-        text: lines.length ? [head, ...lines].join("\n") : head,
+        text: head,
+        via: "local" as const,
+        ...(cards.length ? { cards } : {}),
+      },
+    ]);
+  };
+
+  /*
+   * Where a stopped-short plan should resume. Recorded on the plan's message so
+   * that closing and re-opening the review panel — which unmounts and remounts
+   * PlanReview — resumes at the step after the ones that landed, instead of
+   * re-signing them from the top. The panel reports this on every halt (a
+   * decline, a revert, a manual-mode pause), and the mount below reads it back as
+   * `startFrom`.
+   */
+  /*
+   * Cancel, beside the sign button: the user has read the plan and does not want
+   * it. The plan comes off its message, so the button goes and a reload cannot
+   * bring it back, and a one-line note says what did (not) happen — a plan that
+   * silently vanishes reads like a glitch. Nothing is on-chain to undo: a halted
+   * plan's landed steps already have their own receipts.
+   */
+  const cancelPlan = () => {
+    const from = latest?.planFrom ?? 0;
+    setMessages((prev) => [
+      ...prev.map((m) =>
+        m === latest ? { ...m, plan: undefined, planFrom: undefined } : m,
+      ),
+      {
+        role: "assistant" as const,
+        text:
+          from > 0
+            ? `Cancelled. The first ${from} step${from === 1 ? "" : "s"} already went through; nothing after that was signed.`
+            : "Cancelled. Nothing was signed.",
         via: "local" as const,
       },
     ]);
+  };
+
+  const onHalt = (nextIndex: number) => {
+    setMessages((prev) =>
+      prev.map((m) => (m === latest ? { ...m, planFrom: nextIndex } : m)),
+    );
   };
 
   /*
@@ -1430,7 +2417,11 @@ export default function AgentPage() {
    * appears only when there is a plan to open.
    */
   const planLabel = plan
-    ? `Review and sign · ${plan.length} transaction${plan.length === 1 ? "" : "s"}`
+    ? latest?.planFrom
+      ? `Resume · step ${latest.planFrom + 1} of ${plan.length}`
+      : confirmations > 1
+        ? `Review and sign · ${confirmations} confirmations`
+        : "Review and sign"
     : "";
 
   return (
@@ -1482,6 +2473,10 @@ export default function AgentPage() {
                 onClick={() => {
                   clearThread();
                   setPending(null);
+                  setCardToken(null);
+                  afterBridgeRef.current = null;
+                  arrivalWatchRef.current?.abort();
+                  if (address) clearWatch(watchStore(), address);
                   setPanel({ kind: "idle" });
                 }}
                 title="Delete this conversation from this device"
@@ -1559,6 +2554,7 @@ export default function AgentPage() {
             <PlanReview
               intents={plan}
               submitLabel="Sign & run"
+              source="agent"
               /* The one caller that passes it, because the setting is on the
                  agent: this is a plan the user is reading for the first time,
                  not a form they just filled in.
@@ -1569,6 +2565,18 @@ export default function AgentPage() {
                  a plan IS on screen under it, the user is signing this one
                  themselves and has asked not to be stopped between steps. */
               stepMode={settings.stepMode === "manual" ? "manual" : "auto"}
+              /* Pin to the chain the plan was built for: a model plan is prepared
+                 for the connected chain and read for the first time here, so a
+                 wallet that switches networks before signing would sign the wrong
+                 chain's addresses. */
+              pinChain
+              /* When the plan's quotes were priced, so PlanReview refuses to sign
+                 a quote-bearing plan that has gone stale while it sat here. */
+              quotedAt={latest?.ts}
+              /* Resume where a prior attempt stopped, so re-opening the panel
+                 never re-signs a step that already landed. */
+              startFrom={latest?.planFrom ?? 0}
+              onHalt={onHalt}
               onComplete={onComplete}
               onCancel={() => setPanel({ kind: "idle" })}
             />
@@ -1598,7 +2606,7 @@ export default function AgentPage() {
               <div className={s.empty}>
                 <div className={s.emptyTitle}>Try one</div>
                 <div className={s.suggest}>
-                  {SUGGESTIONS.map((sug) => (
+                  {suggestions.map((sug) => (
                     <button
                       key={sug}
                       className={s.chip}
@@ -1642,7 +2650,7 @@ export default function AgentPage() {
                       {m.thinking && m.thinking.length >= 2 && (
                         <details className={s.think}>
                           <summary className={s.thinkHead}>
-                            {m.thinking.length} steps
+                            How I answered
                           </summary>
                           <ol className={s.thinkList}>
                             {m.thinking.map((line, k) => (
@@ -1657,12 +2665,20 @@ export default function AgentPage() {
                       <Answer text={m.text} />
 
                       {/* Frames for the turn's data — rendered on every turn
-                          that carries them, not only the newest. Unlike a plan
-                          they can't be acted on, so an older one is a record of
-                          what was said rather than a control that has gone stale.
-                          They don't survive a reload; see revive() for why. */}
+                          that carries them, not only the newest. A turn restored
+                          from storage is marked `historical`: its cards survive the
+                          reload now, but rendered dimmed and dated so a balance from
+                          earlier reads as a snapshot, not a reading of now. See
+                          toStored/fromStored in useChatHistory for the rule. */}
                       {m.cards && m.cards.length > 0 && (
-                        <AgentCards cards={m.cards} onPrompt={fillPrompt} />
+                        <AgentCards
+                          cards={m.cards}
+                          onPrompt={fillPrompt}
+                          onSend={(t) => void send(t)}
+                          onConnect={() => connectAgw()}
+                          agwConnected={chainId === 2741 && !!address}
+                          historical={m.historical ? { at: m.ts } : undefined}
+                        />
                       )}
 
                       {/* A route this turn offers. Rendered on every turn that
@@ -1703,20 +2719,43 @@ export default function AgentPage() {
                               <li key={j} className={s.step}>
                                 <span className={s.marker}>{j + 1}</span>
                                 <div className={s.stepBody}>
-                                  <div className={s.stepTitle}>{v.title}</div>
+                                  <div className={s.stepTitle}>
+                                    {displayTxTitle(v.title)}
+                                  </div>
                                   {v.detail && (
                                     <div className={s.stepDetail}>
-                                      {v.detail}
+                                      {displayTxDetail(v.detail)}
                                     </div>
                                   )}
                                 </div>
                                 <span className={s.stepMeta}>
-                                  {v.chain ?? "—"}
+                                  {v.chain ?? ""}
                                 </span>
                               </li>
                             ))}
                           </ol>
                         </>
+                      )}
+
+                      {/* A record of the plan a past turn proposed, kept when the
+                          signable plan itself was dropped on reload. Read-only by
+                          construction — there is no plan to act on, only the titles
+                          of the steps it offered — so it says what was proposed
+                          without re-arming a signature against a market that has
+                          since moved. Only historical turns carry planSummary, so
+                          this never competes with the live steps above. */}
+                      {m.planSummary && m.planSummary.length > 0 && (
+                        <div className={s.planPast}>
+                          <div className={s.planPastHead}>Proposed earlier</div>
+                          <ol className={s.planPastList}>
+                            {m.planSummary.map((t, j) => (
+                              <li key={j} className={s.planPastStep}>
+                                <span className={s.marker}>{j + 1}</span>
+                                <span>{t}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
                       )}
 
                       {/* Newest turn only. Tagging every local turn is more
@@ -1809,13 +2848,22 @@ export default function AgentPage() {
               Hidden while a panel is open, because "Review 3 steps" above an open
               review is a button pointing at itself. */}
           {plan && panel.kind === "idle" ? (
-            <button
-              type="button"
-              className={s.ctaPlan}
-              onClick={() => setPanel({ kind: "plan" })}
-            >
-              {planLabel}
-            </button>
+            <div className={s.planRow}>
+              <button
+                type="button"
+                className={s.ctaPlan}
+                onClick={() => setPanel({ kind: "plan" })}
+              >
+                {planLabel}
+              </button>
+              <button
+                type="button"
+                className={s.ctaCancel}
+                onClick={cancelPlan}
+              >
+                Cancel
+              </button>
+            </div>
           ) : null}
 
           <div className={s.sendRow}>

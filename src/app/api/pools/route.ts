@@ -1,0 +1,128 @@
+import { NextResponse } from "next/server";
+import { discoveryChains } from "@/lib/dex/poolDiscovery";
+import { sweepChain } from "@/lib/dex/poolSweep";
+import { priceLookup, type SpotPrices } from "@/lib/market/spot";
+import { PRICEABLE, getPrices } from "@/lib/points/prices";
+import type { ITradingPair } from "@/constants/types/dex";
+import { unstable_cache } from "next/cache";
+import { shouldAcceptPoolSnapshot } from "@/lib/dex/poolSnapshot";
+import { supabaseAdmin } from "@/lib/supabase/serverClient";
+import {
+  feesOn,
+  poolTotalKey,
+  readPoolVolumeTotals,
+} from "@/lib/points/poolVolume";
+
+/**
+ * GET /api/pools — the V3 pool list, swept once on the server.
+ *
+ * The pool table used to run the whole sweep in every browser: hundreds of
+ * `getPool` calls per tab at Arc's rate-limited RPC, ~15s and prone to stalling.
+ * This runs it here instead — once per TTL, shared across every tab through one
+ * cached response — so a browser fetches a ready list rather than fanning out.
+ *
+ * Mainnet chains only: the mainnet-first default is what this serves, and a
+ * testnet viewer keeps the client-side sweep (useV3Pools falls back to it). One
+ * throttled or dead chain doesn't sink the rest — each is bounded and settled
+ * independently, the same contract the client sweep has.
+ */
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+const TTL_MS = 30_000;
+/* Per-chain ceiling, so a hung endpoint can't hold the whole response. Wider
+   than the client's own per-chain deadline because the server pays it once for
+   everyone, not per tab. */
+const CHAIN_TIMEOUT_MS = 18_000;
+
+let cache: { at: number; pools: ITradingPair[] } | null = null;
+let inflight: Promise<ITradingPair[]> | null = null;
+
+async function priceMap() {
+  const usd: Record<string, number> = {};
+  /* A price-feed outage (CoinGecko 403s from Vercel, 2026-09-29) used to throw
+     out of compute() and fail the WHOLE list as "sweep unavailable" — pools,
+     TVL and the all-time totals with it. Degrade to no spot prices instead: the
+     sweep still lists every pool, values legs through the pool's own quote where
+     it can, and leaves the rest null. */
+  try {
+    const results = await getPrices(PRICEABLE);
+    results.forEach((r, symbol) => {
+      if (r.usd !== null && Number.isFinite(r.usd) && (r.usd as number) > 0) {
+        usd[symbol] = r.usd as number;
+      }
+    });
+  } catch (err) {
+    console.error("[api/pools] spot prices unavailable:", err);
+  }
+  return priceLookup({ usd, asOf: new Date().toISOString() } as SpotPrices);
+}
+
+function withTimeout<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+async function compute(): Promise<ITradingPair[]> {
+  const priceOf = await priceMap();
+  const chains = discoveryChains().filter((c) => c.meta.network === "mainnet");
+  const settled = await Promise.allSettled(
+    chains.map((c) =>
+      withTimeout(sweepChain(c, priceOf), CHAIN_TIMEOUT_MS, [] as ITradingPair[]),
+    ),
+  );
+  const pools: ITradingPair[] = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled") pools.push(...r.value);
+  }
+  /* All-time totals from the per-pool ledger. A pool the ledger has never seen
+     trade shows $0; an unreadable ledger leaves the fields null (a dash). */
+  const totals = await readPoolVolumeTotals(supabaseAdmin);
+  if (!totals) return pools;
+  return pools.map((p) => {
+    const volumeTotal =
+      totals.get(poolTotalKey(p.chainId, p.address))?.volumeUsd ?? 0;
+    return {
+      ...p,
+      volumeTotal,
+      feesTotal: feesOn(volumeTotal, p.feeBps ?? null),
+    };
+  });
+}
+
+/* Vercel's Data Cache is shared across serverless instances; module memory is
+   only a fast local layer and cannot be the source of truth in production. */
+const computeShared = unstable_cache(compute, ["kaleido-live-pools"], {
+  revalidate: 30,
+});
+
+export async function GET() {
+  const now = Date.now();
+  if (cache && now - cache.at < TTL_MS) {
+    return NextResponse.json({ pools: cache.pools, stale: false });
+  }
+  try {
+    if (!inflight) {
+      inflight = computeShared().finally(() => {
+        inflight = null;
+      });
+    }
+    const pools = await inflight;
+    /* A timeout-bounded sweep can legitimately finish with no rows when an RPC
+       is throttled. Never let that transient result erase the last good market
+       snapshot; callers can keep rendering it while the next refresh retries. */
+    if (cache && !shouldAcceptPoolSnapshot(cache.pools, pools)) {
+      return NextResponse.json({ pools: cache.pools, stale: true });
+    }
+    cache = { at: Date.now(), pools };
+    return NextResponse.json({ pools, stale: false });
+  } catch {
+    /* Serve the last good list rather than nothing, flagged stale — the client
+       falls back to its own sweep only when there is no cache at all. */
+    if (cache) return NextResponse.json({ pools: cache.pools, stale: true });
+    return NextResponse.json({ pools: [], error: "sweep unavailable" });
+  }
+}

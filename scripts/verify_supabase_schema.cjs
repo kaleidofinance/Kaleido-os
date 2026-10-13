@@ -140,6 +140,53 @@ const EXPECTED = [
     usedBy:
       "the pre-liquidation warning's cooldown (/api/health/watch, src/lib/health/monitor.ts)",
   },
+  {
+    migration: "20260910000000_agent_questions.sql",
+    tables: {
+      agent_questions: ["route", "question", "asker_hash", "chain_id"],
+    },
+    /* The question log. A silently-unapplied table here means /api/agent/log
+       inserts fail into a 204 and the corpus that grows the local nets is empty
+       while looking healthy — exactly the kind of quiet gap this verifier is for. */
+    usedBy:
+      "what people ask Luca and which net answered (src/app/api/agent/log/route.ts)",
+  },
+  {
+    migration: "20260911000000_kld_candles.sql",
+    tables: {
+      kld_candles: ["chain_id", "pool", "bucket_start", "c"],
+      kld_candle_cursor: ["chain_id"],
+    },
+    usedBy: "the KLD price chart's OHLC store (src/lib/market)",
+  },
+  {
+    migration: "20260913000000_agent_turns.sql",
+    tables: {
+      agent_turns: ["status", "provider", "latency_ms", "failed_over"],
+    },
+    /* The operational turn log. Unapplied, /api/chat's logAgentTurn inserts fail
+       into a logged no-op and the team is blind to Luca's health again — the very
+       gap this table was added to close, so it must not itself go missing. */
+    usedBy:
+      "the durable per-turn record read by /api/health/agent (src/lib/ai/turnLog.ts)",
+  },
+  {
+    migration: "20260914000000_agent_ip_rate.sql",
+    tables: {
+      agent_ip_rate: ["ip", "window_start", "count"],
+    },
+    /* The per-IP rate limit in front of /api/chat. Unapplied, checkIpRate fails
+       open (the bump_ip_rate RPC errors) and the endpoint has no rate floor —
+       back to the unauthenticated free-for-all this table was added to bound. */
+    usedBy:
+      "the /api/chat per-IP rate limit (src/lib/ai/ipRate.ts, bump_ip_rate RPC)",
+  },
+  {
+    migration: "20261010000000_waitlist_x_lend_borrow.sql",
+    tables: { waitlist: ["x_lendborrow_at", "x_lendborrow_comment_at"] },
+    functions: ["claim_capped_x_task"],
+    usedBy: "the first-200 Lend & Borrow X tasks in /api/waitlist/x and /rewards",
+  },
 ];
 
 /* Replayed verbatim from the route files. If these two pass, the leaderboard

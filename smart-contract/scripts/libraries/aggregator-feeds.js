@@ -59,7 +59,17 @@ const { FEEDS } = require("./pyth-feeds.js");
  *           every ~90s" reading of this chain is an average across one live
  *           pusher and one absent one. Chainlink publishes both. See the 84532
  *           block below for why a per-feed bound could not rescue the Pyth path.
- *   5042002 Arc Testnet. Pyth deployed and, on the strength of one ETH/USD
+ *   5042002 Arc Testnet — SINCE 2026-09-28, the mainnet-parity lending deploy: our
+ *           own PushablePriceFeeds behind AggregatorPriceOracle, mirroring the 5042
+ *           entry symbol for symbol (USDC, EURC, CIRBTC on BTC/USD; 8 decimals;
+ *           97,200s bounds), so the testnet diamond runs the exact oracle code
+ *           path, wiring and bounds mainnet will. Only the publisher differs:
+ *           Chainlink has no Arc TESTNET push feeds (its directory lists
+ *           arc-mainnet only, Arc's contract-address page lists no oracle, and the
+ *           three mainnet proxy addresses have no code on 5042002). The Pyth
+ *           history below is why Pyth was retired here; the old Pyth-backed
+ *           diamond 0x90a1…fa96 is superseded, not deleted.
+ *   5042002 (history) Arc Testnet. Pyth deployed and, on the strength of one ETH/USD
  *           reading, "publishing every ~104s" — which is what this line used to
  *           say, and it is the same average-of-a-live-and-a-dead-pusher mistake
  *           the 84532 note above warns about. Measured per feed on 2026-08-21:
@@ -121,11 +131,14 @@ const { FEEDS } = require("./pyth-feeds.js");
  *           here is not the ~1800s-heartbeat feed set that Sepolia and BSC have.
  */
 const ORACLE_BACKEND = {
+  /* Arc MAINNET: Chainlink push feeds. See the 5042 entry in AGGREGATORS. */
+  5042: "aggregator-v3",
   11155111: "aggregator-v3",
   84532: "aggregator-v3",
   97: "aggregator-v3",
   46630: "aggregator-v3",
-  5042002: "pyth",
+  /* Arc TESTNET: self-hosted feeds in the mainnet shape — see the 5042002 note. */
+  5042002: "aggregator-v3",
 };
 
 /**
@@ -543,6 +556,103 @@ const AGGREGATORS = {
       descriptionHint: "USDC / USD",
     },
   },
+  /* ── Arc mainnet (5042) ──────────────────────────────────────────────────
+   * The first MAINNET entry in this file, 2026-09-27. Chainlink push feeds went
+   * live on Arc on 2026-09-09 (directory: reference-data-directory.vercel.app/
+   * feeds-arc-mainnet.json, 32 feeds). Each address below was verified ON CHAIN
+   * — description(), decimals(), latestRoundData(), and 40 rounds walked back —
+   * not taken from the directory.
+   *
+   * Why Chainlink and not Pyth on this chain: Pyth IS deployed on Arc mainnet
+   * (0x8250f4aF…487a, v1.4.6) but no feed has ever been pushed to it — every id
+   * returns PriceFeedNotFound — so using it means relaying ourselves, which needs
+   * a paid Hermes key. Stork (0xacC0a0cF…fd62) is the same: live, empty. Chainlink
+   * maintains these itself; no keeper, no key.
+   *
+   * Launch set only (decided 2026-09-27): USDC is the loanable (native, via
+   * NATIVE_FEED_SYMBOL=USDC); EURC and cirBTC are collateral. ETH/USD exists
+   * (0x50FCDD99…D364) but is deliberately absent — no ETH asset is registered,
+   * and this table is what the oracle maps, so every entry is a feed the market
+   * depends on. */
+  5042: {
+    USDC: {
+      aggregator: "0x84EA90AC252Dc437031461836DB5164219147905",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis:
+        "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 " +
+        "rounds on chain 2026-09-27: gaps 86,421s median, 86,487s max — heartbeat only. 97200 = 27h = heartbeat + 3h. " +
+        "Deviation-triggered, so an old answer is still within 0.5% of the market; " +
+        "the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to " +
+        "108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      descriptionHint: "USDC / USD",
+    },
+    EURC: {
+      aggregator: "0x361b95c10b76Ca3f35C686d423e43A951755Bf23",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis:
+        "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 " +
+        "rounds on chain 2026-09-27: gaps 86,404s median, 86,482s max — heartbeat only. 97200 = 27h = heartbeat + 3h. " +
+        "Deviation-triggered, so an old answer is still within 0.5% of the market; " +
+        "the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to " +
+        "108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      descriptionHint: "EURC / USD",
+    },
+    CIRBTC: {
+      aggregator: "0xa109B535C70C8Be9995be64Bb6751AcDB27e03De",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis:
+        "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 " +
+        "rounds on chain 2026-09-27: gaps 3,692s median, 83,853s max — deviation-driven, heartbeat in quiet markets. 97200 = 27h = heartbeat + 3h. " +
+        "Deviation-triggered, so an old answer is still within 0.5% of the market; " +
+        "the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to " +
+        "108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy." +
+        " cirBTC is Circle Wrapped Bitcoin (FiatToken, 1:1 BTC), priced off BTC/USD as " +
+        "WBTC is on Aave; the cirBTC Reserves PoR feed (0xEB0884a8…11fc) is for monitoring.",
+      descriptionHint: "BTC / USD",
+    },
+  },
+  /* Arc TESTNET — mainnet parity. Same symbols, decimals and bounds as 5042; the
+     aggregators are our PushablePriceFeeds (deploy-pushable-feeds.js), so the
+     price is ours and a keeper push inside 97,200s keeps it live. cirBTC is
+     priced on BTC/USD exactly as mainnet prices it on Chainlink BTC/USD. */
+  5042002: {
+    USDC: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis: "Parity with the 5042 USDC/USD bound — not a property of our own feed, whose age is whatever the keeper cadence makes it.",
+      descriptionHint: "USDC / USD",
+    },
+    EURC: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis: "Parity with the 5042 EURC/USD bound.",
+      descriptionHint: "EURC / USD",
+    },
+    CIRBTC: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 97200,
+      maxAgeBasis: "Parity with the 5042 BTC/USD bound used for cirBTC.",
+      descriptionHint: "BTC / USD",
+    },
+  },
 };
 
 /**
@@ -639,8 +749,16 @@ function resolveSelfHosted(chainId, symbol) {
     names = [];
   }
 
+  /* A fork rehearsal writes pricefeeds-<fork network>.json carrying the REAL
+     chain's id, for contracts that exist only on the fork. Matching on chainId
+     alone would let a real deploy register those addresses, so fork records are
+     used only on a fork and real records only off one. */
+  const onFork = /fork/i.test(process.env.HARDHAT_NETWORK || "");
   const candidates = names.filter(
-    (n) => n.startsWith("pricefeeds-") && n.endsWith(".json"),
+    (n) =>
+      n.startsWith("pricefeeds-") &&
+      n.endsWith(".json") &&
+      /fork/i.test(n) === onFork,
   );
   for (const name of candidates) {
     let record;

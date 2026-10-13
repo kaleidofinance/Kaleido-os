@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePoolData } from "@/hooks/dex/usePoolData";
 import { useV3Pools } from "@/hooks/dex/useV3Pools";
@@ -20,7 +20,7 @@ import {
   applyPoolFilters,
   type PoolFilters,
 } from "./filters";
-import { feeLabel, volumeTitle } from "./format";
+import { feeLabel } from "./format";
 import s from "./pool.module.css";
 
 /**
@@ -90,7 +90,7 @@ export default function PoolsPage() {
      deployments — the table is cross-chain, so one chain being unreadable is a
      missing block of rows, not an empty page. The read chain is named only when
      that set is empty, which is when there is genuinely nothing to enumerate. */
-  const gate = useChainGate(discoveryChainIds()[0] ?? READ_ONLY_CHAIN_ID);
+  const gate = useChainGate(discoveryChainIds()[0] ?? READ_ONLY_CHAIN_ID, "dex");
 
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<PoolFilters>(NO_FILTERS);
@@ -99,6 +99,25 @@ export default function PoolsPage() {
      pool and needs the whole row, and holding the row is also what lets it stay
      open across a re-sweep. */
   const [depositInto, setDepositInto] = useState<ITradingPair | null>(null);
+  /* Season 1 LP points: the rate the points-lp cron pays (base × any active lp
+     campaign), for the Points column. One read per visit. */
+  const [lpPoints, setLpPoints] = useState<{
+    chainId: number;
+    perUsdPerDay: number;
+    boost: number;
+  } | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/pools/points")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (live && d?.active) setLpPoints(d);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   /* Descending by TVL, unmeasurable last. `?? -1` rather than `?? 0`: a pool
      whose legs have no price is not a pool with no liquidity, and sorting it
@@ -130,7 +149,7 @@ export default function PoolsPage() {
   };
 
   /* After both hooks, never between them. */
-  if (!gate.ready) return <ChainGate product="pool list" state={gate} />;
+  if (!gate.ready) return <ChainGate product="pool list" state={gate} requires="dex" />;
 
   return (
     <>
@@ -192,11 +211,14 @@ export default function PoolsPage() {
 
       <div className={`${s.table} ${s.pools}`}>
         <div className={s.thead}>
+          {/* TVL first, the way the big DEX tables lead: what a pool holds is the
+              first thing a liquidity provider weighs. The pair's price lives on
+              the pool's own page, not in the list. */}
           <span>Pool</span>
-          <span className={s.right}>Price</span>
-          <span className={s.right}>24h volume</span>
           <span className={s.right}>TVL</span>
           <span className={s.right}>APR</span>
+          <span className={s.right}>Volume</span>
+          <span className={s.right}>Fees</span>
           {/* Deliberately unlabelled: the column holds one button that says what it
               does, and "Action" above it would be a heading for nothing. */}
           <span />
@@ -274,17 +296,33 @@ export default function PoolsPage() {
                   </div>
                 </div>
               </Link>
-              <span className={`${s.right} tabular`}>
-                {p.price !== null ? p.price.toFixed(p.price < 1 ? 6 : 4) : DASH}
-              </span>
-              <span
-                className={`${s.right} tabular`}
-                title={volumeTitle(p.volumeWindowSec)}
-              >
-                {usd(p.volume24h)}
-              </span>
               <span className={`${s.right} tabular`}>{usd(p.liquidity)}</span>
-              <span className={`${s.right} tabular`}>{pct(p.apr)}</span>
+              {/* APR, with a Points pill on pools that earn Season 1 points (in-range
+                  liquidity in Kaleido V3 pools on the chain the points-lp cron
+                  reads) — the badge convention the big DEX tables use. The rate is
+                  in the pill's tooltip rather than spelled out in the cell. */}
+              <span className={`${s.right} tabular ${s.aprCell}`}>
+                {pct(p.apr)}
+                {lpPoints && p.version === "v3" && p.chainId === lpPoints.chainId ? (
+                  <span
+                    className={s.pointsPill}
+                    title={`Earns ${lpPoints.perUsdPerDay.toLocaleString("en-US", { maximumFractionDigits: 2 })} Season 1 points per $1 of in-range liquidity per day${lpPoints.boost > 1 ? ` (${lpPoints.boost}× campaign boost)` : ""}`}
+                  >
+                    <span className={s.pointsMark} aria-hidden />
+                    {lpPoints.boost > 1 ? `${lpPoints.boost}× ` : ""}kPoints
+                  </span>
+                ) : null}
+              </span>
+              {/* All-time, not 24h: our pools are young and thin, so a 24h
+                  window was empty on nearly every row. Totals come from the
+                  per-pool ledger the swap indexer writes (poolVolume.ts); fees
+                  are that volume at the pool's fee rate. */}
+              <span className={`${s.right} tabular`}>
+                {usd(p.volumeTotal ?? null)}
+              </span>
+              <span className={`${s.right} tabular`}>
+                {usd(p.feesTotal ?? null)}
+              </span>
               {/* A sibling of the pair link, not inside it — nesting a button in an
                   anchor is invalid, and the click would have to be swallowed. */}
               <button

@@ -1,0 +1,47 @@
+Vercel CLI 59.6.2 (Node.js 24.18.0)
+Fetching deployments in kaleido-os
+> Deployments for kaleido-os/kaleido-os [610ms]
+
+  Age     Project                   Deployment                                          Status      Environment     Duration     Username           
+  9m      kaleido-os/kaleido-os     https://kaleido-c4txvaujq-kaleido-os.vercel.app     ● Ready     Preview         2m           lorganleo-8028     
+  39m     kaleido-os/kaleido-os     https://kaleido-6bdet78qs-kaleido-os.vercel.app     ● Ready     Production      3m           lorganleo-8028     
+  3h      kaleido-os/kaleido-os     https://kaleido-f7zfe9i7g-kaleido-os.vercel.app     ● Ready     Preview         3m           lorganleo-8028     
+  3h      kaleido-os/kaleido-os     https://kaleido-132o0l5li-kaleido-os.vercel.app     ● Error     Preview         2m           lorganleo-8028     
+  3h      kaleido-os/kaleido-os     https://kaleido-4xdabbkdz-kaleido-os.vercel.app     ● Error     Preview         2m           lorganleo-8028     
+  4h      kaleido-os/kaleido-os     https://kaleido-1ark5noom-kaleido-os.vercel.app     ● Error     Preview         2m           lorganleo-8028     
+  5h      kaleido-os/kaleido-os     https://kaleido-j61risixe-kaleido-os.vercel.app     ● Error     Preview         2m           lorganleo-8028     
+  5h      kaleido-os/kaleido-os     https://kaleido-df0gm5yv9-kaleido-os.vercel.app     ● Error     Preview         2m           lorganleo-8028     
+  5h      kaleido-os/kaleido-os     https://kaleido-5ug3wi6yq-kaleido-os.vercel.app     ● Error     Preview         3m           lorganleo-8028     
+  6h      kaleido-os/kaleido-os     https://kaleido-le76ctlnd-kaleido-os.vercel.app     ● Error     Preview         4m           lorganleo-8028     
+  6h      kaleido-os/kaleido-os     https://kaleido-j34tutayt-kaleido-os.vercel.app     ● Error     Preview         3m           lorganleo-8028     
+  12h     kaleido-os/kaleido-os     https://kaleido-cpd8wj5c2-kaleido-os.vercel.app     ● Ready     Production      3m           lorganleo-8028     
+  13h     kaleido-os/kaleido-os     https://kaleido-rd9buo66r-kaleido-os.vercel.app     ● Ready     Preview         2m           lorganleo-8028     
+  13h     kaleido-os/kaleido-os     https://kaleido-fya44s14n-kaleido-os.vercel.app     ● Ready     Production      3m           lorganleo-8028     
+  13h     kaleido-os/kaleido-os     https://kaleido-5ajwppgyy-kaleido-os.vercel.app     ● Ready     Preview         3m           lorganleo-8028     
+  13h     kaleido-os/kaleido-os     https://kaleido-92mbinay1-kaleido-os.vercel.app     ● Ready     Preview         3m           lorganleo-8028     
+  13h     kaleido-os/kaleido-os     https://kaleido-9l7wi0xr1-kaleido-os.vercel.app     ● Ready     Preview         3m           lorganleo-8028     
+  14h     kaleido-os/kaleido-os     https://kaleido-2w03mu6i9-kaleido-os.vercel.app     ● Ready     Production      3m           lorganleo-8028     
+  14h     kaleido-os/kaleido-os     https://kaleido-2nyv9376h-kaleido-os.vercel.app     ● Ready     Preview         3m           lorganleo-8028     
+  14h     kaleido-os/kaleido-os     https://kaleido-bqm07417i-kaleido-os.vercel.app     ● Ready     Production      3m           lorganleo-8028     
+
+https://kaleido-c4txvaujq-kaleido-os.vercel.app
+https://kaleido-6bdet78qs-kaleido-os.vercel.app
+https://kaleido-f7zfe9i7g-kaleido-os.vercel.app
+https://kaleido-132o0l5li-kaleido-os.vercel.app
+https://kaleido-4xdabbkdz-kaleido-os.vercel.app
+https://kaleido-1ark5noom-kaleido-os.vercel.app
+https://kaleido-j61risixe-kaleido-os.vercel.app
+https://kaleido-df0gm5yv9-kaleido-os.vercel.app
+https://kaleido-5ug3wi6yq-kaleido-os.vercel.app
+https://kaleido-le76ctlnd-kaleido-os.vercel.app
+https://kaleido-j34tutayt-kaleido-os.vercel.app
+https://kaleido-cpd8wj5c2-kaleido-os.vercel.app
+https://kaleido-rd9buo66r-kaleido-os.vercel.app
+https://kaleido-fya44s14n-kaleido-os.vercel.app
+https://kaleido-5ajwppgyy-kaleido-os.vercel.app
+https://kaleido-92mbinay1-kaleido-os.vercel.app
+https://kaleido-9l7wi0xr1-kaleido-os.vercel.app
+https://kaleido-2w03mu6i9-kaleido-os.vercel.app
+https://kaleido-2nyv9376h-kaleido-os.vercel.app
+https://kaleido-bqm07417i-kaleido-os.vercel.app
+> To display the next page, run `vercel ls kaleido-os --scope kaleido-os --next 1789725343139`

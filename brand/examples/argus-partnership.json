@@ -1,0 +1,16 @@
+{
+  "eyebrow": "Partnership proposal · Arc mainnet",
+  "tokenLogo": "tokens/argus.png",
+  "hero": "Kaleido × Argus",
+  "sub": "Their launchpad, our agent. Every Argus launch is instantly tradable in **Luca** — already listed, already integrated, ready to co-market.",
+  "stats": [
+    "$ARGUS listed",
+    "Launchpad integrated",
+    "Ready to co-market"
+  ],
+  "url": "kaleidofi.xyz",
+  "background": "colosseum-dark",
+  "layout": "left",
+  "effect": "wash",
+  "arc": true
+}

@@ -1,0 +1,15 @@
+{
+  "eyebrow": "Product · Arc mainnet",
+  "hero": "Limit orders are live.",
+  "sub": "Set your price, sign once — **Luca** and the keeper fill it when the market gets there. Non-custodial: an order is a signature, never a deposit.",
+  "stats": [
+    "Live on Arc",
+    { "v": "0", "k": "keeper fee" },
+    "Fills at your price, or not at all"
+  ],
+  "url": "kaleidofi.xyz/trade/limit",
+  "background": "colosseum-dark",
+  "layout": "center",
+  "effect": "spotlight",
+  "arc": true
+}

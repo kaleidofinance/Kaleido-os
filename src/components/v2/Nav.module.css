@@ -115,6 +115,49 @@
   font-weight: var(--k-fw-med);
 }
 
+/* Desktop "More" trigger: reads as one more strip link, so it takes `.item`'s
+   type and colour and only resets what a <button> brings. */
+.moreBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+.moreCaret {
+  color: var(--k-t2);
+}
+
+/* The dropdown. Fixed and portalled (see DesktopMore in Nav.tsx); the same rows
+   as the phone sheet, in a floating card. */
+.moreMenu {
+  position: fixed;
+  z-index: 100;
+  min-width: 200px;
+  padding: 6px 0;
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-lg);
+  box-shadow: var(--k-shadow-modal);
+}
+.moreMenu .sheetRow {
+  min-height: 40px;
+  padding: 9px 16px;
+}
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .moreMenu {
+    background: var(--k-glass-strong);
+    border-color: var(--k-glass-line);
+    -webkit-backdrop-filter: blur(28px) saturate(var(--k-glass-sat));
+    backdrop-filter: blur(28px) saturate(var(--k-glass-sat));
+  }
+}
+
 .right {
   margin-left: auto;
   display: flex;

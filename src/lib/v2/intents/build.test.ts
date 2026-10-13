@@ -78,7 +78,10 @@ const check = (name: string, cond: boolean, detail = "") => {
    populated token list AND all twelve deployment fields. */
 const CHAIN = 11155111;
 
-const OPTS = { slippageBps: 50, deadlineMin: 20 };
+/* impactCeiling: null — the fixtures' mock quoters return one output for any
+   size, which a real AMM cannot, so the price-impact probe would read them as
+   ~99% impact. The guard has its own cases below with size-aware quoters. */
+const OPTS = { slippageBps: 50, deadlineMin: 20, impactCeiling: null };
 
 /**
  * A PlanDeps that reads nothing and remembers everything asked of it.
@@ -116,6 +119,8 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
        ERC20 case reads back `tokenAddress`, the field the resolver cross-checks
        against the provider's own idea of what the symbol resolves to. */
     bridge: [] as BridgeRouteRequest[],
+    /* Tokens whose balance a relative swap asked to read. */
+    balances: [] as string[],
   };
   const deps: PlanDeps = {
     chainId: over.chainId ?? CHAIN,
@@ -166,6 +171,12 @@ function fakeDeps(over: Partial<PlanDeps> = {}) {
     faucetAssets: async () => {
       calls.faucet++;
       return over.faucetAssets ? over.faucetAssets() : [];
+    },
+    /* Null by default (couldn't read), so a relative swap must state a balance
+       to resolve. A case wanting the resolved number overrides it. */
+    tokenBalance: async (token) => {
+      calls.balances.push(token);
+      return over.tokenBalance ? over.tokenBalance(token) : null;
     },
     /* Null by default, which is "no pool at this tier" and not "no answer" — the
        distinction the mint branch turns into either a full-range create or a
@@ -362,6 +373,56 @@ async function main() {
     check("receive reads nothing", quiet(calls));
   }
 
+  console.log("\n— the price-impact guard (on by default) —");
+  /*
+   * A size-aware quoter, shaped like a real constant-product pool: output for
+   * `a` in is 2a / (1 + a/depth). Deep, it prices ~2 KLD per USDC at any size;
+   * shallow, a large order walks the curve and gets a small fraction of that —
+   * the dust-pool fill that cost a user 67% on Arc. The fixtures above use
+   * constant quoters with the guard off; these run it the way production does.
+   */
+  {
+    const pool = (depth: number) => async (req: QuoteRequest) => {
+      const a = Number(req.amountIn);
+      return String((2 * a) / (1 + a / depth));
+    };
+    const LIVE = { slippageBps: 50, deadlineMin: 20 };
+    const cmd = {
+      kind: "swap" as const,
+      amount: "500",
+      tokenIn: DEX_USDC,
+      tokenOut: DEX_KLD,
+    };
+
+    {
+      const { deps } = fakeDeps({ quote: pool(1e9) });
+      const r = await build(cmd, deps, LIVE);
+      check("a deep pool passes the guard", kinds(r) === "approve,swap", kinds(r));
+    }
+    {
+      const { deps } = fakeDeps({ quote: pool(10) });
+      const r = await build(cmd, deps, LIVE);
+      check(
+        "a shallow pool is refused, and says it is shallow rather than missing",
+        !r.ok && /too shallow/.test(errorOf(r)) && !/no pool/i.test(errorOf(r)),
+        errorOf(r) || kinds(r),
+      );
+    }
+    {
+      // Control: the same shallow pool with the guard explicitly off fills —
+      // proving it is the guard refusing, not the fixture failing to route.
+      const { deps } = fakeDeps({ quote: pool(10) });
+      const r = await build(cmd, deps, { ...LIVE, impactCeiling: null });
+      check("(control) with the guard off the shallow route is built", kinds(r) === "approve,swap", kinds(r));
+    }
+    {
+      // A small order in the same shallow pool is well inside the ceiling.
+      const { deps } = fakeDeps({ quote: pool(10) });
+      const r = await build({ ...cmd, amount: "0.1" }, deps, LIVE);
+      check("a small order still fills the shallow pool", kinds(r) === "approve,swap", kinds(r));
+    }
+  }
+
   console.log("\n— swap —");
   {
     const { deps, calls } = fakeDeps({ quote: async () => "1000" });
@@ -516,13 +577,396 @@ async function main() {
     const r = await build(
       { kind: "swap", amount: "1", tokenIn: DEX_KLD, tokenOut: DEX_USDC },
       deps,
-      { slippageBps: 100, deadlineMin: 5 },
+      { slippageBps: 100, deadlineMin: 5, impactCeiling: null },
     );
     check(
       "slippage and deadline come from the caller, not a constant",
       at(r, 1).amountOutMin === "990.000000" && at(r, 1).deadlineMin === 5,
       JSON.stringify(at(r, 1)),
     );
+  }
+
+  console.log("\n— argus launchpad (arc) —");
+  /*
+   * A buy of an Argus launch token, named by address, on Arc. The grammar tags
+   * the synthetic token `argus`; the branch then calls deps.argusPlan (the server
+   * route, stubbed here) and assembles the four signable steps. This asserts the
+   * BUILDER's half — the ordering, the fee skim, and that the v4 calldata is
+   * carried through unrebuilt — not the on-chain encoding (that is test:argusswap).
+   */
+  {
+    const ARC = 5042;
+    const ARC_USDC = "0x3600000000000000000000000000000000000000";
+    const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+    const ROUTER = "0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1";
+    const LAUNCH = "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71";
+    const FEE_RCVR = "0x000000000000000000000000000000000000dEaD";
+    const argusOut: IToken = {
+      address: LAUNCH,
+      name: "0x08Ad…2A71",
+      symbol: "0x08Ad…2A71",
+      decimals: 18,
+      chainId: ARC,
+      verified: false,
+      tags: ["argus"],
+    };
+    const usdcArc: IToken = {
+      address: ARC_USDC,
+      name: "USDC",
+      symbol: "USDC",
+      decimals: 6,
+      chainId: ARC,
+    };
+    const okPlan = (feeReceiver: string | null) => async () => ({
+      argus: true,
+      blocked: false,
+      tokenOut: { address: LAUNCH, symbol: "PEPE", decimals: 18 },
+      fee: {
+        receiver: feeReceiver,
+        amountRaw: feeReceiver ? "20000" : "0",
+        bps: feeReceiver ? 20 : 0,
+      },
+      swapAmountRaw: feeReceiver ? "9980000" : "10000000",
+      totalInRaw: "10000000",
+      to: ROUTER,
+      data: "0xdeadbeef",
+      value: "0",
+      hook: "0x00000000000000000000000000000000000ABC00",
+      amountOut: 1234.5,
+      amountOutMinimum: "1000000000000000000000",
+    });
+
+    {
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
+        { ...deps, argusPlan: okPlan(FEE_RCVR) },
+      );
+      /* The fee rides INSIDE the swap transaction (PERMIT2_TRANSFER_FROM in the
+         server's calldata), so the plan has no fee step of its own — nothing
+         for the review to list as a separate send. */
+      check(
+        "argus buy assembles approve→permit2Approve→argusSwap (no fee step)",
+        kinds(r) === "approve,permit2Approve,argusSwap",
+        kinds(r),
+      );
+      check(
+        "no step sends anything to the fee receiver",
+        (r.ok ? r.build.intents : []).every(
+          (i) => !same((i as { to?: string }).to ?? "", FEE_RCVR),
+        ),
+        kinds(r),
+      );
+      check(
+        "approve authorises Permit2 for the whole input (swap + in-tx fee)",
+        same(at(r, 0).spender, PERMIT2) &&
+          same(at(r, 0).token, ARC_USDC) &&
+          at(r, 0).amount === "10.0",
+        JSON.stringify(at(r, 0)),
+      );
+      check(
+        "buy approvals are one-time (unlimited to Permit2, 30-day router grant)",
+        at(r, 0).unlimited === true && at(r, 1).unlimited === true,
+        JSON.stringify([at(r, 0), at(r, 1)]),
+      );
+      check(
+        "permit2Approve authorises the UniversalRouter for the whole input",
+        same(at(r, 1).spender, ROUTER) &&
+          same(at(r, 1).token, ARC_USDC) &&
+          at(r, 1).amount === "10.0",
+        JSON.stringify(at(r, 1)),
+      );
+      check(
+        "argusSwap carries the server's calldata unrebuilt, spending the whole input",
+        same(at(r, 2).to, ROUTER) &&
+          at(r, 2).data === "0xdeadbeef" &&
+          at(r, 2).amountIn === "10.0" &&
+          at(r, 2).amountOutMin === "1000.0" &&
+          same(at(r, 2).symbolIn, "usdc"),
+        JSON.stringify(at(r, 2)),
+      );
+    }
+
+    {
+      // No fee receiver configured → no transfer leg, three steps.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
+        { ...deps, argusPlan: okPlan(null) },
+      );
+      check(
+        "no fee receiver → the same three steps",
+        kinds(r) === "approve,permit2Approve,argusSwap" &&
+          at(r, 0).amount === "10.0",
+        kinds(r),
+      );
+    }
+
+    {
+      // A blocked launch (opening surcharge / too large) refuses, no plan.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
+        {
+          ...deps,
+          argusPlan: async () => ({
+            argus: true,
+            blocked: true,
+            reason: "opening surcharge active",
+          }),
+        },
+      );
+      check(
+        "a blocked argus launch refuses with its reason",
+        !r.ok && /opening surcharge/.test(errorOf(r)),
+        kinds(r),
+      );
+    }
+
+    {
+      // Not actually a launch → argus:false → falls through to normal routing,
+      // which has no pool for this address on Arc and so refuses (not the argus
+      // branch's refusal — proves the fall-through happened).
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: usdcArc, tokenOut: argusOut },
+        { ...deps, argusPlan: async () => ({ argus: false }) },
+      );
+      check(
+        "argus:false falls through to normal routing (no argus plan)",
+        !r.ok && !/argus/i.test(errorOf(r)),
+        kinds(r),
+      );
+    }
+
+    {
+      // A non-USDC input to an argus target is out of the buys-only pilot.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const notUsdc: IToken = { ...usdcArc, address: DEX_KLD.address, symbol: "KLD", decimals: 18 };
+      const r = await build(
+        { kind: "swap", amount: "10", tokenIn: notUsdc, tokenOut: argusOut },
+        { ...deps, argusPlan: okPlan(FEE_RCVR) },
+      );
+      check(
+        "an argus buy is USDC-only for now",
+        !r.ok && /USDC-only/i.test(errorOf(r)),
+        kinds(r),
+      );
+    }
+
+    {
+      // SELL: argus token on the spend side, USDC out. Fee is in-swap (no transfer),
+      // so the plan is approve → permit2Approve → argusSwap on the LAUNCH token.
+      const sellPlan = async () => ({
+        argus: true,
+        blocked: false,
+        side: "sell" as const,
+        tokenIn: { address: LAUNCH, symbol: "PEPE", decimals: 18 },
+        tokenOut: { address: ARC_USDC, symbol: "USDC", decimals: 6 },
+        fee: { receiver: FEE_RCVR, amountRaw: "40000", bps: 20 },
+        swapAmountRaw: "5000000000000000000",
+        to: ROUTER,
+        data: "0xbeef",
+        value: "0",
+        hook: "0x00000000000000000000000000000000000ABC00",
+        amountOut: 19.96,
+        amountOutMinimum: "19500000",
+      });
+      const { deps } = fakeDeps({ chainId: ARC });
+      const r = await build(
+        { kind: "swap", amount: "5", tokenIn: argusOut, tokenOut: usdcArc },
+        { ...deps, argusPlan: sellPlan },
+      );
+      check(
+        "an argus sell assembles approve→permit2Approve→argusSwap (no transfer — fee is in-swap)",
+        kinds(r) === "approve,permit2Approve,argusSwap",
+        kinds(r),
+      );
+      check(
+        "sell approves the LAUNCH token to Permit2 for the full amount",
+        same(at(r, 0).token, LAUNCH) &&
+          same(at(r, 0).spender, PERMIT2) &&
+          at(r, 0).amount === "5",
+        JSON.stringify(at(r, 0)),
+      );
+      check(
+        "sell's argusSwap spends the token and receives USDC (net of fee)",
+        same(at(r, 2).tokenIn, LAUNCH) &&
+          same(at(r, 2).tokenOut, ARC_USDC) &&
+          same(at(r, 2).symbolOut, "usdc") &&
+          at(r, 2).amountOut === "19.96" &&
+          at(r, 2).amountOutMin === "19.5",
+        JSON.stringify(at(r, 2)),
+      );
+      check(
+        "sell approvals are one-time (unlimited to Permit2, 30-day router grant)",
+        at(r, 0).unlimited === true && at(r, 1).unlimited === true,
+        JSON.stringify([at(r, 0), at(r, 1)]),
+      );
+      check(
+        "sell summary reads as a sell",
+        r.ok && /^Sell 5 /.test(summaryOf(r)),
+        summaryOf(r),
+      );
+    }
+
+    {
+      // Selling an argus token for a NON-USDC asset is out of the pilot.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const notUsdcOut: IToken = { ...usdcArc, address: DEX_KLD.address, symbol: "KLD", decimals: 18 };
+      const r = await build(
+        { kind: "swap", amount: "5", tokenIn: argusOut, tokenOut: notUsdcOut },
+        { ...deps, argusPlan: okPlan(FEE_RCVR) },
+      );
+      check(
+        "an argus sell is USDC-only for now",
+        !r.ok && /USDC-only/i.test(errorOf(r)),
+        kinds(r),
+      );
+    }
+  }
+
+  console.log("\n— selling Arc's wrapped-native through the aggregator —");
+  /*
+   * Arc's wrapped-native (0x8c6c, a WETH9 wrapper of the native USDC gas token,
+   * mislabelled "WETH") is a token KyberSwap has never indexed: a route request
+   * for it answers "token not found", so a large sell used to fall to our own
+   * thin native pool and lose most of its value to price impact. The builder now
+   * routes it like the native currency — quotes/pulls the 0x3600 mirror — and
+   * prepends an unwrap so the user's wrapped balance becomes the native the
+   * mirror moves. Two failure modes are asserted together: the wrong VENUE (the
+   * pool instead of the aggregator) and the wrong DECIMALS (an 18-dec Max sell
+   * overflowing parseUnits at the mirror's 6).
+   */
+  {
+    const ARC = 5042;
+    const WUSDC = String(registry.getContracts(ARC).wrappedNative);
+    const MIRROR = "0x3600000000000000000000000000000000000000";
+    const ROUTER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
+    const wrapped: IToken = tk("WETH", 18, WUSDC);
+    const cirBTC: IToken = {
+      ...tk("cirBTC", 8, "0xc1a0000000000000000000000000000000000001"),
+    };
+    /* Records what the builder asked the aggregator to route, so a case can
+       prove the mirror address and the truncated amount reached the quote — not
+       0x8c6c (which would 404) nor the raw 18-dec string. */
+    const routed: { tokenIn: string; amount: string; decimalsIn: number }[] = [];
+    const swapRoute = async (req: SwapRouteRequest) => {
+      routed.push({
+        tokenIn: req.tokenIn,
+        amount: req.amount,
+        decimalsIn: req.decimalsIn,
+      });
+      return {
+        to: ROUTER,
+        data: "0xkyber",
+        value: "0",
+        spender: ROUTER,
+        amountOut: "50000000", // 0.5 cirBTC at 8 decimals
+        venue: "kyberswap",
+      };
+    };
+
+    {
+      const { deps } = fakeDeps({ chainId: ARC });
+      routed.length = 0;
+      const r = await build(
+        { kind: "swap", amount: "1.5", tokenIn: wrapped, tokenOut: cirBTC },
+        { ...deps, swapRoute },
+      );
+      check(
+        "selling wrapped-native prepends an unwrap: unwrapNative,approve,aggregatorSwap",
+        kinds(r) === "unwrapNative,approve,aggregatorSwap",
+        kinds(r),
+      );
+      check(
+        "the unwrap withdraws the wrapped token (0x8c6c) at its own 18 decimals",
+        same(at(r, 0).to, WUSDC) &&
+          at(r, 0).decimals === 18 &&
+          at(r, 0).amount === "1.5" &&
+          at(r, 0).nativeSymbol === "USDC",
+        JSON.stringify(at(r, 0)),
+      );
+      check(
+        "approve and the swap run on the 0x3600 mirror at 6 decimals",
+        same(at(r, 1).token, MIRROR) &&
+          at(r, 1).decimals === 6 &&
+          same(at(r, 2).tokenIn, MIRROR) &&
+          at(r, 2).decimalsIn === 6 &&
+          same(at(r, 2).tokenOut, cirBTC.address),
+        JSON.stringify([at(r, 1), at(r, 2)]),
+      );
+      check(
+        "the aggregator was quoted the mirror, not the un-indexed 0x8c6c",
+        routed.length === 1 &&
+          same(routed[0].tokenIn, MIRROR) &&
+          routed[0].amount === "1.5" &&
+          routed[0].decimalsIn === 6,
+        JSON.stringify(routed),
+      );
+    }
+
+    {
+      // A Max sell of an 18-decimal wrapped balance carries more than six
+      // fractional digits; the mirror legs run at 6, so the amount is truncated
+      // DOWN once (never rounded up past the balance) rather than overflowing
+      // parseUnits(amount, 6).
+      const { deps } = fakeDeps({ chainId: ARC });
+      routed.length = 0;
+      const r = await build(
+        {
+          kind: "swap",
+          amount: "1.123456789012345678",
+          tokenIn: wrapped,
+          tokenOut: cirBTC,
+        },
+        { ...deps, swapRoute },
+      );
+      check(
+        "an 18-dp Max sell truncates to 6 dp on every leg (no round-up, no throw)",
+        r.ok &&
+          at(r, 0).amount === "1.123456" &&
+          at(r, 2).amountIn === "1.123456" &&
+          routed[0]?.amount === "1.123456",
+        JSON.stringify([kinds(r), at(r, 0).amount, at(r, 2).amountIn]),
+      );
+    }
+
+    {
+      // A normal ERC20 seller (not native, not the wrapped-native) is untouched:
+      // no unwrap, and the amount is passed through as given.
+      const { deps } = fakeDeps({ chainId: ARC });
+      const someUsdc: IToken = tk("USDC", 6, MIRROR);
+      routed.length = 0;
+      const r = await build(
+        { kind: "swap", amount: "0.5", tokenIn: cirBTC, tokenOut: someUsdc },
+        { ...deps, swapRoute },
+      );
+      check(
+        "a plain ERC20 sell stays approve,aggregatorSwap with no unwrap",
+        kinds(r) === "approve,aggregatorSwap" &&
+          same(at(r, 0).token, cirBTC.address) &&
+          routed[0]?.amount === "0.5",
+        kinds(r),
+      );
+    }
+
+    {
+      // Selling the native gas token itself still routes via the mirror without
+      // an unwrap (there is nothing to unwrap) — the pre-existing behaviour the
+      // wrapped-native case is modelled on, asserted here so it can't regress.
+      const { deps } = fakeDeps({ chainId: ARC });
+      routed.length = 0;
+      const r = await build(
+        { kind: "swap", amount: "0.5", tokenIn: DEX_ETH, tokenOut: cirBTC },
+        { ...deps, swapRoute },
+      );
+      check(
+        "selling native routes via the mirror with no unwrap leg",
+        kinds(r) === "approve,aggregatorSwap" && same(at(r, 0).token, MIRROR),
+        kinds(r),
+      );
+    }
   }
 
   console.log("\n— swapping the chain's own currency —");
@@ -601,11 +1045,10 @@ async function main() {
     );
   }
   {
-    /* One asset held two ways, so in pool form both sides are one address. This
-       used to fall through to "I couldn't get a price", which is a claim about
-       liquidity — and it sends the user looking for the pool that would fix it.
-       There is no pool between a token and its own wrapper and there never will
-       be. */
+    /* Native against its own wrapper is a WRAP, not a swap: there is no pool
+       between a token and its wrapper and never will be, but there is a 1:1
+       deposit()/withdraw() on the wrapped-native. So it builds a wrap plan
+       rather than refusing, and costs no quote to do it. */
     const { deps, calls } = fakeDeps({ quote: async () => "1000" });
     const r = await build(
       {
@@ -617,16 +1060,32 @@ async function main() {
       deps,
     );
     check(
-      "ETH for its own wrapper is refused as one asset, not as no liquidity",
-      !r.ok &&
-        errorOf(r).includes("same asset") &&
-        !errorOf(r).includes("couldn't get a price"),
-      errorOf(r),
+      "native for its own wrapper builds a wrap, not a swap or a refusal",
+      r.ok && kinds(r) === "wrapNative",
+      r.ok ? kinds(r) : errorOf(r),
     );
     check(
-      "and it costs no quotes to say so",
+      "and it costs no quotes to build",
       calls.quote.length === 0,
       String(calls.quote.length),
+    );
+  }
+  {
+    /* The reverse: the wrapper back to native is an unwrap. */
+    const { deps } = fakeDeps({ quote: async () => "1000" });
+    const r = await build(
+      {
+        kind: "swap",
+        amount: "1",
+        tokenIn: tk("WETH", 18, WRAPPED),
+        tokenOut: DEX_ETH,
+      },
+      deps,
+    );
+    check(
+      "the wrapper for native builds an unwrap",
+      r.ok && kinds(r) === "unwrapNative",
+      r.ok ? kinds(r) : errorOf(r),
     );
   }
 
@@ -1243,6 +1702,174 @@ async function main() {
       "and refuses before resolving a corridor",
       calls.bridge.length === 0,
       JSON.stringify(calls.bridge),
+    );
+  }
+  /* A "from X" bridge builds for the NAMED source, re-resolving the asset there
+     (BNB's USDC is a different address and decimals than the connected chain's).
+     The sign flow then switches the wallet to it. */
+  {
+    const { deps, calls } = fakeDeps({
+      bridgeRoute: async () => ({
+        to: "0x00000000000000000000000000000000000000a1",
+        data: "0x",
+        value: "0",
+        toChainId: 5042,
+        toChainName: "Arc",
+        provider: "lifi",
+        etaSeconds: null,
+        spender: "0x00000000000000000000000000000000000000a1",
+      }),
+    });
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "50",
+        token: DEX_USDC,
+        toChain: "Arc",
+        fromChain: "BNB Chain",
+      },
+      deps,
+    );
+    check(
+      "a from-chain bridge resolves the corridor for the named source (BNB = 56)",
+      r.ok && calls.bridge.length === 1 && calls.bridge[0].sourceChainId === 56,
+      r.ok ? String(calls.bridge[0]?.sourceChainId) : errorOf(r),
+    );
+    check(
+      "the asset is re-resolved on the source, not carried from the connected chain",
+      calls.bridge.length === 1 &&
+        (calls.bridge[0].tokenAddress ?? "").toLowerCase() !==
+          DEX_USDC.address.toLowerCase(),
+      JSON.stringify(calls.bridge[0]?.tokenAddress),
+    );
+    check(
+      "and the bridge intent leaves the named source",
+      r.ok && at(r, r.build.intents.length - 1).fromChainId === 56,
+      r.ok ? String(at(r, r.build.intents.length - 1).fromChainId) : errorOf(r),
+    );
+  }
+  /* A testnet source is refused before any corridor is resolved. */
+  {
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "50",
+        token: DEX_USDC,
+        toChain: "Arc",
+        fromChain: "Base Sepolia",
+      },
+      deps,
+    );
+    check(
+      "a testnet source is refused, resolving no corridor",
+      !r.ok && calls.bridge.length === 0,
+      errorOf(r) || JSON.stringify(calls.bridge),
+    );
+  }
+  /* An unknown source is refused by name. */
+  {
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "50",
+        token: DEX_USDC,
+        toChain: "Arc",
+        fromChain: "Wonderland",
+      },
+      deps,
+    );
+    check(
+      "an unknown source is refused",
+      !r.ok && calls.bridge.length === 0,
+      errorOf(r) || JSON.stringify(calls.bridge),
+    );
+  }
+  /* Cross-asset: bridge ETH and RECEIVE a different token (USDC) on the far
+     chain. The delivered asset threads to the resolver and back onto the intent,
+     and the resolver's floor becomes the intent's enforceable amountOutMin. */
+  {
+    const XROUTER = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
+    const { deps, calls } = fakeDeps({
+      bridgeRoute: async (req) => ({
+        to: XROUTER,
+        data: "0xfeed",
+        value: "50000000000000000", // native ETH in rides as value
+        toChainId: 84532,
+        toChainName: "Base Sepolia",
+        provider: "lifi",
+        etaSeconds: 60,
+        // The delivered side — echoed from the request the builder resolved.
+        toToken: req.toTokenAddress,
+        toDecimals: req.toDecimals,
+        toSymbol: req.toAsset,
+        receivedUnits: "99000000", // 99 USDC (6dp) expected
+        minReceivedUnits: "98000000", // 98 USDC floor
+      }),
+    });
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "0.05",
+        token: DEX_ETH,
+        toChain: "Base Sepolia",
+        toAsset: "USDC",
+      },
+      deps,
+    );
+    check(
+      "a cross-asset native bridge is one step (ETH rides as value, nothing to approve)",
+      kinds(r) === "bridge",
+      kinds(r),
+    );
+    check(
+      "the corridor was resolved WITH the delivered asset (cross-asset request)",
+      calls.bridge.length === 1 &&
+        same(calls.bridge[0].asset, "ETH") &&
+        calls.bridge[0].toAsset === "USDC" &&
+        !!calls.bridge[0].toTokenAddress &&
+        calls.bridge[0].toDecimals === 6,
+      JSON.stringify(calls.bridge[0]),
+    );
+    const bx = at(r, 0);
+    check(
+      "the bridge intent carries the delivered token, its decimals and the enforced floor",
+      same(bx.toSymbol, "USDC") &&
+        bx.toDecimals === 6 &&
+        !!bx.toToken &&
+        bx.amountOut === "99.0" &&
+        bx.amountOutMin === "98.0" &&
+        bx.minReceivedUnits === "98000000",
+      JSON.stringify(bx),
+    );
+    check(
+      "the summary names both sides and the expected output",
+      /^Bridge 0\.05 ETH to about 99(\.0)? USDC on Base Sepolia\.$/.test(
+        summaryOf(r),
+      ),
+      summaryOf(r),
+    );
+  }
+  /* Fail-closed: a delivered asset that does not exist on the destination chain
+     refuses before any corridor is resolved — never a route to a token we can't
+     name. */
+  {
+    const { deps, calls } = fakeDeps(realBridge);
+    const r = await build(
+      {
+        kind: "bridge",
+        amount: "0.05",
+        token: DEX_ETH,
+        toChain: "Base Sepolia",
+        toAsset: "ZZZ",
+      },
+      deps,
+    );
+    check(
+      "an unknown delivered asset is refused, resolving no corridor",
+      !r.ok && /ZZZ/.test(errorOf(r)) && calls.bridge.length === 0,
+      errorOf(r) || JSON.stringify(calls.bridge),
     );
   }
   {
@@ -2136,6 +2763,26 @@ async function main() {
         summaryOf(r).includes("1655.79") &&
         summaryOf(r).includes("2018.32"),
       summaryOf(r),
+    );
+  }
+  {
+    const { deps } = fakeDeps({ poolState: async () => pool("9000") });
+    const r = await build(
+      {
+        kind: "provideLiquidity",
+        token0: DEX_WETH,
+        amount0: "1.5",
+        token1: DEX_USDC,
+        fee: 3000,
+        range: { kind: "full" },
+      },
+      deps,
+    );
+    const m = at(r, 2);
+    check(
+      "one-sided liquidity uses the live price for the missing side",
+      r.ok && m.kind === "mintPoolPosition" && m.amount0 === "1.5" && m.amount1 === "2751.915",
+      `${errorOf(r)} ${JSON.stringify(m)}`,
     );
   }
   {
@@ -3323,6 +3970,377 @@ async function main() {
       kinds(cancelAll) === "cancelAllOrders",
       kinds(cancelAll),
     );
+  }
+
+  console.log("relative swap resolves against the balance");
+  {
+    const { deps, calls } = fakeDeps({
+      quote: async () => "1000",
+      tokenBalance: async () => 1000000000n,
+    });
+    const r = await build(
+      { kind: "swap", relative: { num: 1, den: 2 }, tokenIn: DEX_USDC, tokenOut: DEX_KLD },
+      deps,
+    );
+    check("a relative swap builds a swap", kinds(r).endsWith("swap"), kinds(r));
+    check(
+      "it read the tokenIn balance",
+      calls.balances.length === 1 && same(calls.balances[0], DEX_USDC.address),
+      JSON.stringify(calls.balances),
+    );
+    check(
+      "half of 1000 USDC is quoted as 500",
+      calls.quote[0]?.amountIn === "500.0",
+      String(calls.quote[0]?.amountIn),
+    );
+  }
+  {
+    const { deps } = fakeDeps({ tokenBalance: async () => 0n });
+    const r = await build(
+      { kind: "swap", relative: { num: 1, den: 1 }, tokenIn: DEX_USDC, tokenOut: DEX_KLD },
+      deps,
+    );
+    check("a zero balance refuses by name", !r.ok && /don't have any/i.test(r.error ?? ""), JSON.stringify(r));
+  }
+  {
+    const { deps } = fakeDeps({ tokenBalance: async () => null });
+    const r = await build(
+      { kind: "swap", relative: { num: 1, den: 2 }, tokenIn: DEX_USDC, tokenOut: DEX_KLD },
+      deps,
+    );
+    check("an unreadable balance refuses", !r.ok, JSON.stringify(r));
+  }
+
+  console.log("a relative spend of Arc's gas token keeps a reserve");
+  /* On Arc USDC IS the gas token, so the token card's "Buy 100%" must not spend
+     the fee money for its own approvals and swap. */
+  {
+    const ARC = 5042;
+    const usdcArc: IToken = {
+      address: "0x3600000000000000000000000000000000000000",
+      name: "USDC", symbol: "USDC", decimals: 6, chainId: ARC,
+      tags: ["stablecoin", "native-alias"],
+    };
+    const launch: IToken = {
+      address: "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71",
+      name: "0x08Ad…2A71", symbol: "0x08Ad…2A71", decimals: 18, chainId: ARC,
+      verified: false, tags: ["argus"],
+    };
+    const spent = async (num: number, den: number, balance: bigint) => {
+      const seen: string[] = [];
+      const { deps } = fakeDeps({ chainId: ARC, tokenBalance: async () => balance });
+      const r = await build(
+        { kind: "swap", relative: { num, den }, tokenIn: usdcArc, tokenOut: launch },
+        {
+          ...deps,
+          argusPlan: async (req) => {
+            seen.push(req.amountInRaw);
+            return { argus: false };
+          },
+        },
+      );
+      return { r, raw: seen[0] };
+    };
+    const all = await spent(100, 100, 10_000_000n);
+    check("100% of 10 USDC spends 9.75 (0.25 kept for gas)", all.raw === "9750000", String(all.raw));
+    const half = await spent(50, 100, 10_000_000n);
+    check("50% of 10 USDC is untouched by the reserve", half.raw === "5000000", String(half.raw));
+    const most = await spent(99, 100, 10_000_000n);
+    check("99% that would dip into the reserve is trimmed to it", most.raw === "9750000", String(most.raw));
+    const dust = await spent(100, 100, 200_000n);
+    check(
+      "a balance under the reserve refuses, naming the fee",
+      !dust.r.ok && /network fee/i.test(dust.r.error ?? "") && dust.raw === undefined,
+      JSON.stringify(dust.r),
+    );
+  }
+
+  console.log("a send on a named chain, and a bridge offer when it can't be covered");
+  {
+    const ARC = 5042;
+    const BASE = 8453;
+    const { CHAINS_BY_ID } = await import("../../../constants/chains");
+    const baseName = CHAINS_BY_ID[BASE]?.shortName ?? "Base";
+    const arcName = CHAINS_BY_ID[ARC]?.shortName ?? "Arc";
+    const baseUsdc =
+      registry.resolveUserToken(CHAINS_BY_ID[BASE], "USDC", "dex") ??
+      registry.resolveUserToken(CHAINS_BY_ID[BASE], "USDC", "lending");
+    check("fixture: Base mainnet carries USDC", !!baseUsdc, "");
+    const usdcArc: IToken = {
+      address: "0x3600000000000000000000000000000000000000",
+      name: "USDC", symbol: "USDC", decimals: 6, chainId: ARC,
+      tags: ["stablecoin", "native-alias"],
+    };
+    const TO = "0xACF53eE33893FA6F9fc246b6a4261ceF95A9D77C";
+    const withBalances = (byChain: Record<number, bigint | null>) => {
+      const { deps } = fakeDeps({ chainId: ARC });
+      const seen: number[] = [];
+      return {
+        seen,
+        deps: {
+          ...deps,
+          balanceOn: async (id: number) => {
+            seen.push(id);
+            return id in byChain ? byChain[id] : 0n;
+          },
+        } as PlanDeps,
+      };
+    };
+    const send = (deps: PlanDeps, chain?: string, token: IToken = usdcArc) =>
+      build({ kind: "send", amount: "5", token, to: TO, ...(chain ? { chain } : {}) }, deps);
+
+    {
+      const { deps } = withBalances({ [BASE]: 10_000_000n });
+      const r = await send(deps, "base");
+      const t = r.ok ? at(r, 0) : ({} as Record<string, unknown>);
+      check(
+        "'on Base' from Arc sends Base's USDC, pinned to Base",
+        r.ok && t.chainId === BASE && same(String(t.token), baseUsdc?.address ?? "") && t.decimals === baseUsdc?.decimals,
+        JSON.stringify(r).slice(0, 300),
+      );
+      check("the summary names the chain", summaryOf(r).includes(`on ${baseName}`), summaryOf(r));
+    }
+    {
+      const { deps } = withBalances({ [ARC]: 10_000_000n });
+      const r = await send(deps, "arc");
+      const t = r.ok ? at(r, 0) : ({} as Record<string, unknown>);
+      /* Every send is pinned now, the connected chain included: an unpinned send
+         was signed on whatever chain the wallet was on at signing time, and a
+         wrong-chain ERC20 transfer to an empty address "succeeds" moving nothing. */
+      check("a send on the connected chain is pinned to it", r.ok && t.chainId === ARC, JSON.stringify(r).slice(0, 200));
+    }
+    {
+      const { deps } = withBalances({ [BASE]: null });
+      const r = await send(deps, "base");
+      check("an unreadable balance doesn't block the send (sign flow still checks)", r.ok, JSON.stringify(r).slice(0, 200));
+    }
+    {
+      const { deps } = withBalances({ [BASE]: 0n, [ARC]: 12_500_000_000_000_000_000n });
+      const r = await send(deps, "base");
+      const next = !r.ok ? r.next : undefined;
+      check(
+        "no USDC on Base → says so, and offers a bridge from where it's held",
+        !r.ok && /don't have any USDC on/i.test(r.error) && r.error.includes(arcName) && !!next,
+        JSON.stringify(r).slice(0, 300),
+      );
+      check(
+        "the offer is a held bridge of the same amount TO Base, asking the source",
+        !!next && next.draft.kind === "bridge" && next.draft.amount === "5" &&
+          next.draft.toChain === baseName && next.missing === "fromChain" &&
+          (next.draft.sourceOptions ?? []).includes(arcName) && /which chain/i.test(next.prompt),
+        JSON.stringify(next),
+      );
+      check(
+        "the bridge must deliver the send's amount, and the send waits behind it pinned to Base",
+        !!next && next.draft.receiveAtLeast === "5" && next.then?.kind === "send" &&
+          (next.then as { chain?: string }).chain === baseName && (next.then as { to?: string }).to === TO,
+        JSON.stringify(next),
+      );
+    }
+    {
+      const { deps } = withBalances({ [BASE]: 1_000_000n, [ARC]: 10_000_000n });
+      const r = await send(deps, "base");
+      check(
+        "only the shortfall is bridged (1 of 5 already on Base → bridge 4)",
+        !r.ok && !!r.next && r.next.draft.amount === "4" && r.next.draft.receiveAtLeast === "4" &&
+          (r.next.then as { amount?: string })?.amount === "5",
+        JSON.stringify(!r.ok ? r.next : r),
+      );
+    }
+    {
+      const { deps } = withBalances({ [BASE]: 1_000_000n });
+      const r = await send(deps, "base");
+      check(
+        "too little on Base names what's there",
+        !r.ok && /You have 1(\.0)? USDC on/i.test(r.error),
+        JSON.stringify(r).slice(0, 300),
+      );
+      check("…and with nothing held elsewhere, offers no bridge", !r.ok && !r.next && /nothing to bridge from/i.test(r.error), JSON.stringify(r).slice(0, 300));
+    }
+    {
+      const { deps } = withBalances({});
+      const r = await send(deps, "mars");
+      check("an unknown chain is refused by name", !r.ok && /don't recognise the chain "mars"/.test(r.error), JSON.stringify(r));
+    }
+    {
+      const zzz: IToken = { address: "0x1111111111111111111111111111111111111111", name: "Z", symbol: "ZZZNOPE", decimals: 18, chainId: ARC };
+      const { deps } = withBalances({});
+      const r = await send(deps, "base", zzz);
+      check("a token Base doesn't carry is never sent as something else", !r.ok && /can't find ZZZNOPE on/i.test(r.error), JSON.stringify(r).slice(0, 200));
+    }
+    {
+      /* The connected chain is checked too once a balance reader is wired. */
+      const { deps } = withBalances({ [ARC]: 0n, [BASE]: 40_000_000n });
+      const r = await send(deps);
+      check(
+        "an empty connected chain offers a bridge from where the token is",
+        !r.ok && !!r.next && r.next.draft.toChain === arcName && (r.next.draft.sourceOptions ?? []).includes(baseName),
+        JSON.stringify(r).slice(0, 300),
+      );
+    }
+  }
+
+  console.log("a funding bridge is topped up so the send isn't short");
+  {
+    const { ethers } = await import("ethers");
+    const ARC = 5042;
+    const R = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
+    const usdcArc: IToken = {
+      address: "0x3600000000000000000000000000000000000000",
+      name: "USDC", symbol: "USDC", decimals: 6, chainId: ARC,
+      tags: ["stablecoin", "native-alias"],
+    };
+    /* A route that keeps 1% and reports its delivery in Base's 6 decimals. */
+    const keeps1pct = (report: "received" | "min" | "none", srcDecimals = 6) =>
+      fakeDeps({
+        chainId: ARC,
+        bridgeRoute: async (req) => {
+          const inUnits = ethers.parseUnits(req.amount, srcDecimals);
+          const out6 = (inUnits * 99n) / 100n / 10n ** BigInt(srcDecimals - 6);
+          return {
+            to: R, data: "0x", value: "0", spender: R,
+            toChainId: 8453, toChainName: "Base", provider: "lifi", etaSeconds: 30,
+            ...(report === "received" ? { receivedUnits: out6.toString() } : {}),
+            ...(report === "min" ? { receivedUnits: (out6 + 5000n).toString(), minReceivedUnits: out6.toString() } : {}),
+          };
+        },
+      });
+    const bridge = (deps: PlanDeps, extra: Record<string, unknown> = {}) =>
+      build({ kind: "bridge", amount: "5", token: usdcArc, toChain: "Base", receiveAtLeast: "5", ...extra } as Command, deps);
+    const bridgedAmount = (r: Awaited<ReturnType<typeof build>>) =>
+      r.ok ? String((r.build.intents.find((i) => i.kind === "bridge") as { amount?: string })?.amount) : "";
+
+    {
+      const { deps, calls } = keeps1pct("received");
+      const r = await bridge(deps);
+      const amt = bridgedAmount(r);
+      const delivered = (ethers.parseUnits(amt || "0", 6) * 99n) / 100n;
+      check(
+        "a route keeping 1% is re-quoted with more, until at least 5 arrives",
+        r.ok && calls.bridge.length >= 2 && delivered >= 5_000_000n && Number(amt) < 5.2,
+        `${amt} after ${calls.bridge.length} quotes`,
+      );
+      check(
+        "the approve covers the topped-up amount, not the original",
+        r.ok && String((r.build.intents.find((i) => i.kind === "approve") as { amount?: string })?.amount) === amt,
+        JSON.stringify(r.ok ? r.build.intents[0] : r),
+      );
+      check("the summary says why it's more", summaryOf(r).includes("covers the bridge's fees") && summaryOf(r).includes("at least 5 USDC"), summaryOf(r));
+    }
+    {
+      const { deps } = keeps1pct("min");
+      const r = await bridge(deps);
+      const amt = bridgedAmount(r);
+      check(
+        "the guaranteed floor is what's topped up against, not the expected output",
+        r.ok && (ethers.parseUnits(amt, 6) * 99n) / 100n >= 5_000_000n,
+        amt,
+      );
+    }
+    {
+      const { deps, calls } = keeps1pct("none");
+      const r = await bridge(deps);
+      check("a route that reports no delivery (1:1) is taken as is", r.ok && bridgedAmount(r) === "5" && calls.bridge.length === 1, `${bridgedAmount(r)} ${calls.bridge.length}`);
+    }
+    {
+      const { deps, calls } = keeps1pct("received");
+      const r = await build({ kind: "bridge", amount: "5", token: usdcArc, toChain: "Base" } as Command, deps);
+      check("an ordinary bridge (no floor) is never topped up", r.ok && bridgedAmount(r) === "5" && calls.bridge.length === 1, `${bridgedAmount(r)} ${calls.bridge.length}`);
+    }
+    {
+      /* BSC's USDC is 18 decimals and Base's is 6: the gap has to be scaled UP
+         into source units, or the top-up is a trillionth of what's needed. */
+      const { deps } = keeps1pct("received", 18);
+      const r = await bridge(deps, { fromChain: "bsc" });
+      const amt = bridgedAmount(r);
+      check(
+        "an 18-decimal source is topped up in its own units",
+        r.ok && Number(amt) >= 5.05 && Number(amt) < 5.2,
+        amt || JSON.stringify(r),
+      );
+    }
+    {
+      const { deps } = fakeDeps({
+        chainId: ARC,
+        bridgeRoute: async () => ({
+          to: R, data: "0x", value: "0", spender: R,
+          toChainId: 8453, toChainName: "Base", provider: "lifi", etaSeconds: 30,
+          receivedUnits: "1000000",
+        }),
+      });
+      const r = await bridge(deps);
+      check("a route that never delivers enough is refused, not signed short", !r.ok && /sure to deliver 5/.test(errorOf(r)), errorOf(r));
+    }
+  }
+
+  /* ---- exitChain: everything off Abstract, one bridge per held token ---- */
+  {
+    const ABS = 2741;
+    const ROUTER = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
+    const PENGU: IToken = { address: "0x9eBe3A824Ca958e4b3Da772D2065518F009CBa62", symbol: "PENGU", name: "Pudgy Penguins", decimals: 18, chainId: ABS, verified: false, tags: ["held"] };
+    const DUST: IToken = { address: "0x1111111111111111111111111111111111111111", symbol: "DUST", name: "Dust", decimals: 18, chainId: ABS, verified: false, tags: ["held"] };
+    const exitDeps = (over: Partial<PlanDeps> = {}) => {
+      const routed: string[] = [];
+      const { deps } = fakeDeps({
+        chainId: ABS,
+        heldTokens: async () => [PENGU, DUST],
+        tokenBalance: async (t) => (t === PENGU.address ? 5_000n * 10n ** 18n : 0n),
+        balanceOn: async () => 10n ** 16n, // 0.01 ETH
+        bridgeRoute: async (req) => {
+          routed.push(String((req as { asset?: string }).asset));
+          return { to: ROUTER, data: "0xdeadbeef", value: "0", spender: ROUTER, toChainId: 5042, toChainName: "Arc", provider: "lifi", etaSeconds: 60 };
+        },
+        ...over,
+      });
+      /* fakeDeps forwards only the deps it knows; these two are exitChain's own. */
+      const merged = {
+        ...deps,
+        heldTokens: over.heldTokens ?? (async () => [PENGU, DUST]),
+        balanceOn: over.balanceOn ?? (async () => 10n ** 16n),
+      } as PlanDeps;
+      return { deps: merged, routed };
+    };
+    const exit = { kind: "exitChain", fromChain: "abstract", toChain: "arc", toAsset: "USDC" } as Command;
+
+    {
+      const { deps, routed } = exitDeps();
+      const r = await build(exit, deps);
+      check("exitChain bridges each held token with a balance, plus native ETH", r.ok && routed.join(",") === "PENGU,ETH", JSON.stringify(r).slice(0, 300) + " routed=" + routed.join(","));
+      check("a zero-balance holding is not bridged", !routed.includes("DUST"));
+      check("the plan is approve+bridge for the token, then the ETH bridge", kinds(r) === "approve,bridge,bridge", kinds(r));
+      const eth = r.ok ? r.build.intents[r.build.intents.length - 1] as { amount?: string } : {};
+      check("native ETH keeps a gas reserve (0.01 → 0.0095)", eth.amount === "0.0095", JSON.stringify(eth).slice(0, 200));
+    }
+    {
+      const { deps } = exitDeps({ chainId: 5042 });
+      const r = await build(exit, deps);
+      check("exitChain refuses unless the wallet is ON the source chain", !r.ok && /connect the wallet/i.test(errorOf(r)), errorOf(r));
+    }
+    {
+      const { deps } = exitDeps({ heldTokens: async () => [], balanceOn: async () => 0n });
+      const r = await build(exit, deps);
+      check("nothing held → a plain answer, no plan", !r.ok && /don't see anything to move/i.test(errorOf(r)), errorOf(r));
+    }
+    {
+      const { deps, routed } = exitDeps({ balanceOn: async () => 3n * 10n ** 14n }); // 0.0003 ETH
+      const r = await build(exit, deps);
+      check("ETH below the gas reserve is named, not silently dropped", r.ok && !routed.includes("ETH") && /0\.0003 ETH is kept for gas/.test(r.ok ? r.build.summary : ""), r.ok ? r.build.summary : errorOf(r));
+    }
+    {
+      const { deps } = exitDeps({ balanceOn: async () => null });
+      const r = await build(exit, deps);
+      check("an unreadable ETH balance is said, not silently dropped", r.ok && /couldn't read your ETH balance/.test(r.ok ? r.build.summary : ""), r.ok ? r.build.summary : errorOf(r));
+    }
+    {
+      const { deps, routed } = exitDeps({ balanceOn: async () => 8n * 10n ** 14n }); // 0.0008 ETH
+      const r = await build(exit, deps);
+      check("ETH just above the reserve is bridged (0.0008 → 0.0003)", r.ok && routed.includes("ETH"), JSON.stringify(routed));
+    }
+    {
+      const { deps } = exitDeps({ bridgeRoute: async () => ({ error: "no route" }) });
+      const r = await build(exit, deps);
+      check("unroutable legs are named, never dropped silently", !r.ok && /PENGU/.test(errorOf(r)) && /ETH/.test(errorOf(r)), errorOf(r));
+    }
   }
 
   console.log(`\n${pass} passed, ${fail} failed\n`);

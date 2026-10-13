@@ -158,6 +158,45 @@ const runAsync = async () => {
     { quote: nullQuote, router: VENUE.router, venue: VENUE },
   ]);
   check("null when no source can fill", none === null, String(none));
+
+  // — price-impact ceiling (opt-in via impactCeiling) —
+  // Mirrors the cirBTC/WUSDC incident: a positive V3 quote is not proof the
+  // pool can fill the size. A saturating quoter models a pool whose output caps
+  // as the fill walks its range; a linear quoter models a deep pool.
+  const linear = async (_t, _f, amountIn) => String(Number(amountIn) * 10);
+  const CAP = 5;
+  const saturating = async (_t, _f, amountIn) =>
+    String(Math.min(Number(amountIn) * 10, CAP));
+
+  const deep = await findRouteAcrossSources(
+    SEPOLIA, A, B, "1",
+    [{ quote: linear, router: OUR_ROUTER, venue: null }],
+    { impactCeiling: 0.15 },
+  );
+  check("deep pool passes the impact ceiling", !!deep && deep.amountOut === 10,
+    JSON.stringify(deep && { out: deep.amountOut }));
+
+  const shallow = await findRouteAcrossSources(
+    SEPOLIA, A, B, "1",
+    [{ quote: saturating, router: OUR_ROUTER, venue: null }],
+    { impactCeiling: 0.15 },
+  );
+  check("a shallow pool is refused above the impact ceiling", shallow === null,
+    JSON.stringify(shallow && { out: shallow.amountOut }));
+
+  const smallOk = await findRouteAcrossSources(
+    SEPOLIA, A, B, "0.01",
+    [{ quote: saturating, router: OUR_ROUTER, venue: null }],
+    { impactCeiling: 0.15 },
+  );
+  check("a small size still fills the same shallow pool", !!smallOk,
+    JSON.stringify(smallOk && { out: smallOk.amountOut }));
+
+  const noGuard = await findRouteAcrossSources(SEPOLIA, A, B, "1", [
+    { quote: saturating, router: OUR_ROUTER, venue: null },
+  ]);
+  check("without a ceiling the shallow route is still returned (opt-in)",
+    !!noGuard, String(noGuard));
 };
 
 runAsync().then(() => {

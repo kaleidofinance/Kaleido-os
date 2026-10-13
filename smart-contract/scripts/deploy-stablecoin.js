@@ -356,6 +356,36 @@ async function main() {
   await (await kfusd.setCollateralSupport(usdeAddress, true)).wait();
   console.log("Added USDe as collateral");
 
+  /* Price feeds. kfUSD values mint and redeem at each collateral's oracle price and
+   * FAILS CLOSED: a collateral with no feed cannot be minted or redeemed. Name a
+   * Chainlink-style USD aggregator per collateral —
+   *   KFUSD_FEED_USDC=0x…  KFUSD_FEED_USDT=0x…  KFUSD_FEED_USDE=0x…
+   * (setCollateralFeed checks the feed answers with a usable price, so a wrong
+   * address fails here, not at a user's mint). The feed must update inside
+   * kfUSD.maxFeedAge (27h by default) — a 24h-heartbeat stablecoin feed does. */
+  console.log("\n=== Configuring kfUSD price feeds ===");
+  const feedsMissing = [];
+  for (const [symbol, token] of [
+    ["USDC", USDC_ADDRESS],
+    ["USDT", usdtAddress],
+    ["USDe", usdeAddress],
+  ]) {
+    const feed = process.env[`KFUSD_FEED_${symbol.toUpperCase()}`];
+    if (feed) {
+      await (await kfusd.setCollateralFeed(token, feed)).wait();
+      console.log(`Set ${symbol} price feed ${feed}`);
+    } else {
+      feedsMissing.push(symbol);
+    }
+  }
+  if (feedsMissing.length > 0) {
+    console.log(
+      `\n⚠️  NO PRICE FEED for ${feedsMissing.join(", ")} — kfUSD mint and redeem stay DISABLED for ` +
+        `${feedsMissing.length > 1 ? "them" : "it"} until kfUSD.setCollateralFeed(token, feed) is called. ` +
+        `Set KFUSD_FEED_<SYMBOL> and re-run, or call it from the admin.`,
+    );
+  }
+
   // Grant MINTER_ROLE to kfUSD for minting
   const MINTER_ROLE = await kfusd.MINTER_ROLE();
   // You can add your own address or a multisig here

@@ -1,3 +1,4 @@
+import { ethers } from "ethers";
 // Checks on the plan auditor. Run with `npx tsx src/lib/ai/auditor.test.ts` —
 // tsx rather than plain node, because auditor.ts imports the token registry and
 // ethers rather than being self-contained the way fromCommand.ts is.
@@ -125,8 +126,13 @@ async function load() {
   const { chainTokens } = await import("../../constants/tokens");
   const registry = await import("../../constants/registry");
   const { NATIVE_SENTINEL } = registry;
-  const { auditPlan, HARD_MAX_NOTIONAL_USD, ALL_INTENT_KINDS } =
-    await import("./auditor");
+  const {
+    auditPlan,
+    HARD_MAX_NOTIONAL_USD,
+    ALL_INTENT_KINDS,
+    sanitizeGuardrails,
+    AGENT_MAX_SLIPPAGE_BPS,
+  } = await import("./auditor");
   /* Same reason as everything else in here: a static import of either would
      evaluate before the DIAMOND assignment at the top of the file, and the
      send-into-our-own-diamond case would then be checked against an address
@@ -145,6 +151,8 @@ async function load() {
     auditPlan,
     HARD_MAX_NOTIONAL_USD,
     ALL_INTENT_KINDS,
+    sanitizeGuardrails,
+    AGENT_MAX_SLIPPAGE_BPS,
     stakingContracts,
     isKnownBridgeSpender,
   };
@@ -158,9 +166,64 @@ async function main() {
     auditPlan,
     HARD_MAX_NOTIONAL_USD,
     ALL_INTENT_KINDS,
+    sanitizeGuardrails,
+    AGENT_MAX_SLIPPAGE_BPS,
     stakingContracts,
     isKnownBridgeSpender,
   } = await load();
+
+  /* The shared limits sanitiser, used by both audit entry points (/api/chat for
+     a reasoned plan, /api/audit for a locally-built one). Its whole job is that
+     a bad field cannot loosen a cap — the regression that let a NaN maxPerAction
+     switch the ceiling off entirely. */
+  {
+    const clean = sanitizeGuardrails({
+      maxPerAction: 1000,
+      maxPerDay: 5000,
+      minHealthFactor: 1.4,
+      slippageBps: 50,
+    });
+    check(
+      "a well-formed limit set passes through unchanged",
+      clean.maxPerAction === 1000 &&
+        clean.maxPerDay === 5000 &&
+        clean.minHealthFactor === 1.4 &&
+        clean.slippageBps === 50,
+      JSON.stringify(clean),
+    );
+
+    const nan = sanitizeGuardrails({ maxPerAction: NaN, slippageBps: "lots" });
+    check(
+      "a NaN cap becomes undefined, never a ceiling that is off",
+      nan.maxPerAction === undefined,
+      String(nan.maxPerAction),
+    );
+    check(
+      "a non-numeric slippage falls back to the default, not NaN",
+      nan.slippageBps === 50,
+      String(nan.slippageBps),
+    );
+
+    const wild = sanitizeGuardrails({ slippageBps: 100000 });
+    check(
+      "slippage is clamped to the agent ceiling, so a plan cannot quote ~0 out",
+      wild.slippageBps === AGENT_MAX_SLIPPAGE_BPS,
+      String(wild.slippageBps),
+    );
+    const tiny = sanitizeGuardrails({ slippageBps: 0 });
+    check(
+      "and floored at 1 bp, never zero",
+      tiny.slippageBps === 1,
+      String(tiny.slippageBps),
+    );
+
+    const empty = sanitizeGuardrails(undefined);
+    check(
+      "no limits at all is not a crash — every cap is undefined, slippage default",
+      empty.maxPerAction === undefined && empty.slippageBps === 50,
+      JSON.stringify(empty),
+    );
+  }
 
   /* Read from the registry rather than pasted in. A pasted address passes the
      day it is copied and silently stops testing anything the day the market
@@ -529,8 +592,8 @@ async function main() {
         },
       ]);
       check(
-        "a hallucinated token address is rejected",
-        !v.ok && v.blocked.some((b) => b.includes("unrecognised output token")),
+        "a hallucinated (bad-checksum) token address is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("output is not a token address")),
         JSON.stringify(v.blocked),
       );
     }
@@ -586,6 +649,27 @@ async function main() {
         "a client-supplied cap above the hard ceiling does not raise it",
         !v.ok && v.blocked.some((b) => b.includes("per-action limit")),
         `HARD_MAX=${HARD_MAX_NOTIONAL_USD} ${JSON.stringify(v.blocked)}`,
+      );
+    }
+
+    {
+      /* A non-numeric cap must fall BACK to the hard ceiling, not switch it off.
+         Math.min(NaN, cap) is NaN, and every `usd > NaN` is false, so before the
+         finiteness guard this exact 60k swap passed — the ceiling silently gone. */
+      const v = await audit(
+        [{ ...wellFormed, amountIn: "60000", amountOutMin: "19.8" }],
+        {
+          limits: {
+            ...LIMITS,
+            maxPerAction: "not-a-number" as never,
+            slippageBps: 200,
+          },
+        },
+      );
+      check(
+        "a non-numeric per-action cap falls back to the hard ceiling, not off",
+        !v.ok && v.blocked.some((b) => b.includes("per-action limit")),
+        JSON.stringify(v.blocked),
       );
     }
 
@@ -880,6 +964,19 @@ async function main() {
       symbol: usdc.symbol,
     };
 
+    {
+      /* A send pinned to another chain ("… on Base") carries that chain's token
+         address, so auditing it against this chain is checking the wrong
+         registry — refused, not waved through. Pinned to THIS chain, it passes. */
+      const elsewhere = await audit([{ ...send, chainId: CHAIN + 1 }]);
+      check(
+        "a send pinned to another chain is refused when audited against this one",
+        !elsewhere.ok,
+        JSON.stringify({ blocked: elsewhere.blocked }),
+      );
+      const here = await audit([{ ...send, chainId: CHAIN }]);
+      check("a send pinned to the audited chain passes", here.ok, JSON.stringify({ blocked: here.blocked }));
+    }
     {
       const v = await audit([send]);
       check(
@@ -1203,6 +1300,58 @@ async function main() {
         );
       }
 
+      /* ---- bridge to someone else's address ---- */
+      {
+        const R = "0x1234567890123456789012345678901234567890";
+        const depositTo = (addr: string) =>
+          new ethers.Interface(["function depositETHTo(address _to, uint32 _minGasLimit, bytes _extraData)"]).encodeFunctionData(
+            "depositETHTo",
+            [addr, 200000, "0x"],
+          );
+        const ok = await audit([{ ...bridge, data: depositTo(R), recipient: R }]);
+        check(
+          "a canonical deposit whose calldata credits the named recipient passes",
+          ok.ok,
+          JSON.stringify(ok.blocked),
+        );
+        const wrong = await audit([
+          { ...bridge, data: depositTo("0x9999999999999999999999999999999999999999"), recipient: R },
+        ]);
+        check(
+          "a deposit crediting a different address than the one named is blocked",
+          !wrong.ok && wrong.blocked.some((b) => b.includes("credits a different address")),
+          JSON.stringify(wrong.blocked),
+        );
+        const zero = await audit([
+          { ...bridge, data: depositTo("0x0000000000000000000000000000000000000000"), recipient: "0x0000000000000000000000000000000000000000" },
+        ]);
+        check(
+          "delivering to the zero address is blocked",
+          !zero.ok && zero.blocked.some((b) => b.includes("zero address")),
+          JSON.stringify(zero.blocked),
+        );
+        const lifiData = "0xdeadbeef" + "0".repeat(24) + R.slice(2).toLowerCase() + "0".repeat(64);
+        const lifiStep = { ...bridge, provider: "lifi", data: lifiData, recipient: R };
+        const lifi = await audit([lifiStep]);
+        check(
+          "an aggregator route that encodes the recipient is not blocked for it",
+          !lifi.blocked.some((b) => b.includes("delivery address") || b.includes("does not name the delivery")),
+          JSON.stringify(lifi.blocked),
+        );
+        const lifiOther = await audit([{ ...lifiStep, data: "0xdeadbeef" + "0".repeat(128) }]);
+        check(
+          "an aggregator route that does not name the recipient is blocked",
+          !lifiOther.ok && lifiOther.blocked.some((b) => b.includes("does not name the delivery address")),
+          JSON.stringify(lifiOther.blocked),
+        );
+        const cctp = await audit([{ ...bridge, provider: "cctp", recipient: R }]);
+        check(
+          "a CCTP step carrying a third-party recipient is blocked",
+          !cctp.ok && cctp.blocked.some((b) => b.includes("CCTP bridge can only deliver to your own wallet")),
+          JSON.stringify(cctp.blocked),
+        );
+      }
+
       {
         /* 1 ETH is $3000 at the stub price, over the $1000 per-action cap. The
            value rides the amount so both move together — this is the cap doing
@@ -1261,16 +1410,22 @@ async function main() {
       }
 
       {
-        /* Built for a chain the wallet is not on. The plan is signed on CHAIN; a
-           source that is not CHAIN means the route was resolved elsewhere. */
-        const v = await audit([{ ...bridge, fromChainId: 84532 }]);
+        /* Built for a chain the wallet is not on. No longer a refusal: the
+           multichain sign flow builds for a named source and switches the wallet
+           to it at signing (#242), so a cross-source bridge is by design — noted,
+           not blocked. Uses a `lifi` native leg so the only thing under test is
+           the source-chain handling, not the canonical portal allowlist. */
+        const v = await audit([
+          { ...bridge, provider: "lifi", fromChainId: 56 },
+        ]);
         check(
-          "a bridge whose source chain is not the connected chain is rejected",
-          !v.ok &&
-            v.blocked.some((b) =>
+          "a bridge from a non-connected source chain is allowed and noted, not rejected",
+          v.ok &&
+            !v.blocked.some((b) =>
               b.includes("source chain is not the connected chain"),
-            ),
-          JSON.stringify(v.blocked),
+            ) &&
+            v.notes.some((n) => n.includes("switches to it at signing")),
+          JSON.stringify({ blocked: v.blocked, notes: v.notes }),
         );
       }
 
@@ -1310,6 +1465,55 @@ async function main() {
             ),
           JSON.stringify(v.blocked),
         );
+      }
+
+      {
+        /* ---------------------------------------- the cross-asset leg -- *
+         * A bridge that DELIVERS a different token (ETH→USDC). The delivered
+         * side is opaque calldata like an aggregator swap, so the guard is the
+         * same: a required, positive minimum output. A `lifi` native leg so the
+         * only thing under test is the cross-asset output handling. `toToken` is
+         * an unverified address (a valid contract we have not listed), which is
+         * allowed — the trade is priced by the verified source side. */
+        const DEST_USDC = "0x00000000000000000000000000000000c0c0dec0";
+        const crossBridge: Step = {
+          ...bridge,
+          provider: "lifi",
+          to: RECIPIENT, // lifi does not allow-list `to`; any valid address
+          toToken: DEST_USDC,
+          toDecimals: 6,
+          toSymbol: "USDC",
+          amountOut: "150",
+          amountOutMin: "149",
+        };
+        {
+          const v = await audit([crossBridge]);
+          check(
+            "a cross-asset bridge with a positive floor passes, priced by the source side",
+            v.ok &&
+              v.notes.some((n) => n.includes("delivers a different token")),
+            JSON.stringify({ blocked: v.blocked, notes: v.notes }),
+          );
+        }
+        {
+          const { amountOutMin: _drop, ...noFloor } = crossBridge;
+          const v = await audit([noFloor]);
+          check(
+            "a cross-asset bridge with no minimum output is rejected",
+            !v.ok &&
+              v.blocked.some((b) => b.includes("no minimum output")),
+            JSON.stringify(v.blocked),
+          );
+        }
+        {
+          const v = await audit([{ ...crossBridge, amountOutMin: "0" }]);
+          check(
+            "a cross-asset bridge with a zero floor is rejected",
+            !v.ok &&
+              v.blocked.some((b) => b.includes("no minimum output")),
+            JSON.stringify(v.blocked),
+          );
+        }
       }
 
       if (usdc) {
@@ -1484,6 +1688,34 @@ async function main() {
             JSON.stringify({ blocked: v.blocked, notes: v.notes }),
           );
         }
+
+        {
+          /* Base mainnet has no Kaleido product deployment, but it is a valid
+             CCTP source for a bridge into Arc. The bridge allowlist must be
+             evaluated before the local-deployment guard. */
+          const { CCTP_USDC, TOKEN_MESSENGER_V2 } = await import(
+            "../bridge/cctp"
+          );
+          const v = await audit(
+            [
+              {
+                kind: "approve",
+                token: CCTP_USDC[8453],
+                spender: TOKEN_MESSENGER_V2,
+                amount: "1",
+                decimals: 6,
+                symbol: "USDC",
+              },
+            ],
+            { chainId: 8453 },
+          );
+          check(
+            "a CCTP approval passes on Base even without Kaleido deployments",
+            v.ok &&
+              !v.blocked.some((b) => b.includes("no Kaleido contracts")),
+            JSON.stringify({ blocked: v.blocked, notes: v.notes }),
+          );
+        }
       }
     }
   }
@@ -1585,6 +1817,56 @@ async function main() {
       check(
         "a grant to a malformed agent address is rejected",
         !v.ok && v.blocked.some((b) => b.includes("agent")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      // Per-action cap above the user's $1,000 limit — the injected-mandate case.
+      const v = await audit([{ ...grant, maxNotionalPerAction: "5000" }]);
+      check(
+        "a grant whose per-action cap exceeds the user's limit is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("above your")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      const v = await audit([{ ...grant, maxNotionalPerEpoch: undefined }]);
+      check(
+        "a grant with no per-epoch bound is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("per-epoch")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      // Within the user's cap (900 <= 1000) but per-action above per-epoch.
+      const v = await audit([
+        { ...grant, maxNotionalPerAction: "900", maxNotionalPerEpoch: "500" },
+      ]);
+      check(
+        "a grant whose per-action cap exceeds its per-epoch cap is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("above its per-epoch")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      // Bit 7 (128) is outside the six actions the facet defines (0b111111).
+      const v = await audit([{ ...grant, allowedActions: 128 }]);
+      check(
+        "a grant with an out-of-range action bit is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("does not define")),
+        JSON.stringify(v.blocked),
+      );
+    }
+
+    {
+      const v = await audit([{ ...grant, allowedActions: 0 }]);
+      check(
+        "a grant that permits no action is rejected",
+        !v.ok && v.blocked.some((b) => b.includes("no permitted actions")),
         JSON.stringify(v.blocked),
       );
     }
@@ -1699,6 +1981,146 @@ async function main() {
       "a cancel against a stranger's vault is refused",
       v.blocked.some((b) => /vault/i.test(b)),
       v.blocked.join("; ") || "(passed)",
+    );
+  }
+
+  /* ---------------------------------------------------------------------- *
+   * Wrap / unwrap
+   *
+   * One property: the target is PINNED to this chain's own wrapped-native, the
+   * same way the staking set is pinned above. A well-formed wrap to a stranger
+   * address is exactly the plan to refuse; a wrap of nothing is refused for its
+   * amount, not its target.
+   * ---------------------------------------------------------------------- */
+  {
+    const WRAPPED = registry.getContracts(CHAIN).wrappedNative;
+    const STRANGER = "0x000000000000000000000000000000000000dEaD";
+
+    let v = await audit([
+      { kind: "wrapNative", to: WRAPPED, amount: "0.1", decimals: 18, symbol: "ETH", wrappedSymbol: "WETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "a wrap to this chain's wrapped-native passes and is priced",
+      v.blocked.length === 0,
+      v.blocked.join("; "),
+    );
+
+    v = await audit([
+      { kind: "wrapNative", to: STRANGER, amount: "5", decimals: 18, symbol: "ETH", wrappedSymbol: "WETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "a wrap to an address that is not our wrapped-native is refused",
+      v.blocked.some((b) => /wrapped-native/i.test(b)),
+      v.blocked.join("; ") || "(passed)",
+    );
+
+    v = await audit([
+      { kind: "wrapNative", to: WRAPPED, amount: "0", decimals: 18, symbol: "ETH", wrappedSymbol: "WETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "a wrap of nothing is refused for its amount",
+      v.blocked.some((b) => /amount/i.test(b)),
+      v.blocked.join("; ") || "(passed)",
+    );
+
+    v = await audit([
+      { kind: "unwrapNative", to: WRAPPED, amount: "0.1", decimals: 18, symbol: "WETH", nativeSymbol: "ETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "an unwrap of the chain's wrapped-native passes",
+      v.blocked.length === 0,
+      v.blocked.join("; "),
+    );
+
+    v = await audit([
+      { kind: "unwrapNative", to: STRANGER, amount: "5", decimals: 18, symbol: "WETH", nativeSymbol: "ETH", chainId: CHAIN } as Step,
+    ]);
+    check(
+      "an unwrap to a stranger address is refused",
+      v.blocked.some((b) => /wrapped-native/i.test(b)),
+      v.blocked.join("; ") || "(passed)",
+    );
+  }
+
+  /* ---------------------------------------------------------------------- *
+   * Arc: a native-USDC swap routes the 0x3600 ERC20 mirror. The registry omits
+   * it from balances (it would double-count native), so the auditor must still
+   * recognise it as a known token or it would refuse every such swap.
+   * ---------------------------------------------------------------------- */
+  {
+    const KYBER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
+    const USDC_3600 = "0x3600000000000000000000000000000000000000";
+    const CIRBTC = "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0";
+    const arcSwap = {
+      kind: "aggregatorSwap",
+      to: KYBER,
+      data: "0x",
+      value: "0",
+      tokenIn: USDC_3600,
+      amountIn: "50",
+      decimalsIn: 6,
+      symbolIn: "USDC",
+      tokenOut: CIRBTC,
+      amountOut: "0.0006",
+      amountOutMin: "0.0005",
+      decimalsOut: 8,
+      symbolOut: "cirBTC",
+      chainId: 5042,
+      venue: "kyberswap",
+      spender: KYBER,
+      slippageBps: 50,
+    } as Step;
+    const okv = await audit([arcSwap], { chainId: 5042 });
+    check(
+      "an Arc aggregator swap of native USDC's 0x3600 mirror is accepted",
+      okv.blocked.length === 0,
+      okv.blocked.join("; ") || "(passed)",
+    );
+    /* The registry lists VERIFIED tokens; it is not a whitelist of what a user
+       may trade. An unverified token (any real address) trades, priced by the
+       verified side; only a malformed address, or a trade with no verified
+       side to price it by, is refused. */
+    const UNVERIFIED = "0x08adbf431569a1aacac2606d2adcd18f4ebf2a71";
+    const buyUnv = await audit([{ ...arcSwap, tokenOut: UNVERIFIED, decimalsOut: 18, symbolOut: "GLITCH" }], { chainId: 5042 });
+    check(
+      "buying an unverified token with USDC is accepted",
+      buyUnv.blocked.length === 0,
+      buyUnv.blocked.join("; ") || "(passed)",
+    );
+    check("…and priced by the USDC input", buyUnv.totalUsd > 0, String(buyUnv.totalUsd));
+    const sellUnv = await audit(
+      [{ ...arcSwap, tokenIn: UNVERIFIED, decimalsIn: 18, symbolIn: "GLITCH", amountIn: "1000000", tokenOut: USDC_3600, decimalsOut: 6, symbolOut: "USDC", amountOut: "40", amountOutMin: "39" }],
+      { chainId: 5042 },
+    );
+    check(
+      "selling an unverified token for USDC is accepted",
+      sellUnv.blocked.length === 0,
+      sellUnv.blocked.join("; ") || "(passed)",
+    );
+    check("…and priced by the USDC floor", sellUnv.totalUsd > 0, String(sellUnv.totalUsd));
+    const bothUnv = await audit(
+      [{ ...arcSwap, tokenIn: UNVERIFIED, decimalsIn: 18, tokenOut: "0x1111111111111111111111111111111111111111", decimalsOut: 18 }],
+      { chainId: 5042 },
+    );
+    check(
+      "a trade with no verified side is refused (nothing to price the cap by)",
+      bothUnv.blocked.some((b) => /neither side/i.test(b)),
+      bothUnv.blocked.join("; ") || "(passed)",
+    );
+    const badv = await audit(
+      [{ ...arcSwap, tokenIn: "0x0000000000000000000000000000000000000dEaD" }],
+      { chainId: 5042 },
+    );
+    check(
+      "a malformed (bad-checksum) input address is still refused",
+      badv.blocked.some((b) => /not a token address/i.test(b)),
+      badv.blocked.join("; ") || "(passed)",
+    );
+    const badRouter = await audit([{ ...arcSwap, tokenOut: UNVERIFIED, to: "0x2222222222222222222222222222222222222222", spender: "0x2222222222222222222222222222222222222222" }], { chainId: 5042 });
+    check(
+      "an unverified token does not loosen the router pin",
+      badRouter.blocked.some((b) => /router/i.test(b)),
+      badRouter.blocked.join("; ") || "(passed)",
     );
   }
 
@@ -2897,6 +3319,134 @@ async function main() {
         JSON.stringify(v?.notes ?? []),
       );
     }
+  }
+
+  /* ---------------------------------------------------- argus swap rules -- */
+  {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const ARC = 5042;
+    const ROUTER = "0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1"; // Argus UniversalRouter
+    const USDC = "0x3600000000000000000000000000000000000000";
+    const TOKEN = "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71";
+    const HOOK = "0x19B58A4555760558763D62f16250bb1890182044";
+    const argAudit = (plan: Step[]) =>
+      auditPlan({ plan: plan as never, chainId: ARC, limits: LIMITS, allowedActions: ALL_ON, pricer: stubPricer });
+    const goodSwap = {
+      kind: "argusSwap", to: ROUTER, data: "0xdead", value: "0",
+      tokenIn: USDC, amountIn: "1", decimalsIn: 6, symbolIn: "USDC",
+      tokenOut: TOKEN, amountOut: "2000", amountOutMin: "1900", decimalsOut: 18, symbolOut: "ARG", chainId: ARC, hook: HOOK,
+    };
+    {
+      const v = await argAudit([goodSwap]);
+      check("argusSwap: a well-formed buy passes", v.ok, JSON.stringify(v.blocked));
+      check("argusSwap: priced by the USDC leg (cap applies)", v.totalUsd > 0, String(v.totalUsd));
+    }
+    {
+      const v = await argAudit([{ ...goodSwap, to: "0x000000000000000000000000000000000000dEaD" }]);
+      check("argusSwap: a non-Argus router is blocked", !v.ok && v.blocked.some((b) => /UniversalRouter/i.test(b)), JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ ...goodSwap, value: "1000" }]);
+      check("argusSwap: native value is blocked", !v.ok && v.blocked.some((b) => /native value/i.test(b)), JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ ...goodSwap, amountOutMin: undefined }]);
+      check("argusSwap: missing min-out is blocked (slippage required)", !v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 1800 }]);
+      check("permit2Approve: authorising the Argus router passes", v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: "0x000000000000000000000000000000000000dEaD", amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 1800 }]);
+      check("permit2Approve: a non-router spender is blocked", !v.ok && v.blocked.some((b) => /UniversalRouter/i.test(b)), JSON.stringify(v.blocked));
+    }
+    /* The WHOLE plan, as build.ts emits it. Every rule above passed on its own
+       while a real Argus buy failed closed at step 1 — the ERC20 approve to
+       Permit2 hit "spender is not a Kaleido contract". Pin the sequence. */
+    const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+    const FEE_TO = "0x0ce7f8aeaad60b9e19acbe9803518182adc351bc";
+    {
+      const v = await argAudit([
+        { kind: "approve", token: USDC, spender: PERMIT2, amount: "0.998", decimals: 6, symbol: "USDC" },
+        { kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "0.998", decimals: 6, symbol: "USDC", expiration: nowSec + 30 * 86400 },
+        { kind: "transfer", token: USDC, to: FEE_TO, amount: "0.002", decimals: 6, symbol: "USDC" },
+        { ...goodSwap, amountIn: "0.998" },
+      ]);
+      check("argus BUY plan (approve→permit2→fee→swap) passes end to end", v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([
+        { kind: "approve", token: TOKEN, spender: PERMIT2, amount: "2000", decimals: 18, symbol: "ARG" },
+        { kind: "permit2Approve", token: TOKEN, spender: ROUTER, amount: "2000", decimals: 18, symbol: "ARG", expiration: nowSec + 30 * 86400 },
+        { ...goodSwap, tokenIn: TOKEN, amountIn: "2000", decimalsIn: 18, symbolIn: "ARG", tokenOut: USDC, amountOut: "0.9", amountOutMin: "0.85", decimalsOut: 6, symbolOut: "USDC" },
+      ]);
+      check("argus SELL plan (approve→permit2→swap) passes end to end", v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await auditPlan({
+        plan: [{ kind: "approve", token: USDC, spender: PERMIT2, amount: "1", decimals: 6, symbol: "USDC" }] as never,
+        chainId: 11155111, limits: LIMITS, allowedActions: ALL_ON, pricer: stubPricer,
+      });
+      check("approve to Permit2 OFF Arc is still blocked", !v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([
+        { kind: "approve", token: USDC, spender: PERMIT2, amount: "1", decimals: 6, symbol: "USDC", unlimited: true },
+        { kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 30 * 86400, unlimited: true },
+      ]);
+      check("an unlimited approval to Permit2 + a 30-day router grant pass on Arc", v.ok, JSON.stringify(v.blocked));
+    }
+    {
+      const v = await argAudit([{ kind: "approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", unlimited: true }]);
+      check(
+        "an unlimited approval to anything but Permit2 is blocked",
+        !v.ok && v.blocked.some((b) => /unlimited approval/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec + 90 * 86400, unlimited: true }]);
+      check(
+        "a Permit2 router grant longer than 30 days is blocked",
+        !v.ok && v.blocked.some((b) => /longer than 30 days/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+    {
+      const v = await argAudit([{ kind: "permit2Approve", token: USDC, spender: ROUTER, amount: "1", decimals: 6, symbol: "USDC", expiration: nowSec - 10 }]);
+      check(
+        "an expired Permit2 grant is blocked",
+        !v.ok && v.blocked.some((b) => /future expiry/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+    {
+      const v = await argAudit([{ kind: "approve", token: TOKEN, spender: ROUTER, amount: "1", decimals: 18, symbol: "ARG" }]);
+      check(
+        "an unverified token approved to an unpinned spender is still blocked (the spender is the guard)",
+        !v.ok && v.blocked.some((b) => /spender/i.test(b)),
+        JSON.stringify(v.blocked),
+      );
+    }
+  }
+
+  /* ---- an unlisted token leaving Abstract: admitted only as a priced swap-out ---- */
+  {
+    const { auditPlan: ap } = await import("./auditor");
+    const R = "0x4f8C9056bb8A3616693a76922FA35d53C056E5b3";
+    const PENGU = "0x9eBe3A824Ca958e4b3Da772D2065518F009CBa62";
+    const base = { kind: "bridge", to: R, data: "0xdeadbeef", value: "0", token: PENGU, amount: "5000", decimals: 18, symbol: "PENGU", fromChainId: 2741, toChainId: 5042, toChainName: "Arc", provider: "lifi", etaSeconds: 60, spender: R };
+    const cross = { ...base, toToken: "0x3600000000000000000000000000000000000000", toDecimals: 6, toSymbol: "USDC", amountOut: "20", amountOutMin: "19.5", minReceivedUnits: "19500000" };
+    const pricer = stubPricer;
+    const v1 = await ap({ plan: [cross], chainId: 2741, pricer } as never);
+    check("Abstract exit: an unlisted token bridged INTO USDC with a floor passes", v1.ok, JSON.stringify(v1.blocked));
+    const v2 = await ap({ plan: [base], chainId: 2741, pricer } as never);
+    check("Abstract exit: the same token bridged as itself is still refused", !v2.ok && v2.blocked.some((b) => /unrecognised token/.test(b)), JSON.stringify(v2.blocked));
+    const v3 = await ap({ plan: [cross], chainId: 2741, pricer, limits: { maxPerAction: 10 } } as never);
+    check("Abstract exit: the per-action USD cap still binds via the USDC floor", !v3.ok && v3.blocked.some((b) => /per-action limit/.test(b)), JSON.stringify(v3.blocked));
+    const { isKnownBridgeSpender } = await import("../bridge/route");
+    check("LI.FI's Abstract router is a known bridge spender", isKnownBridgeSpender(R));
   }
 
   console.log(

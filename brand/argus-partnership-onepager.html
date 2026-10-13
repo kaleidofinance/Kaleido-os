@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face{font-family:"KSerif";src:url("../src/app/fonts/lora-var.woff2") format("woff2");font-weight:100 900;font-display:block}
+  @font-face{font-family:"KSans";src:url("../src/app/fonts/GeistVF.woff") format("woff");font-weight:100 900;font-display:block}
+  :root{--ink:#0a1512;--panel:rgba(255,255,255,.035);--line:rgba(214,192,154,.18);--text:#f4eee5;--muted:#c4cec5;--green:#35d18d;--sand:#e7d7b6}
+  *{box-sizing:border-box;margin:0}
+  html,body{width:100%;height:100%}
+  .page{position:relative;width:1200px;height:1320px;overflow:hidden;background:var(--ink);
+    font-family:"KSans",system-ui,sans-serif;color:var(--text);padding:70px 72px 60px;display:flex;flex-direction:column}
+  .page::before{content:"";position:absolute;inset:0;z-index:0;
+    background:
+      linear-gradient(180deg, rgba(6,15,12,.62) 0%, rgba(6,15,12,.9) 42%, var(--ink) 72%),
+      radial-gradient(60% 30% at 90% 2%, rgba(53,209,141,.18), transparent 60%),
+      url("../public/hero-colosseum.webp") top center/120% no-repeat}
+  .page>*{position:relative;z-index:1}
+
+  /* centred co-brand masthead: [logo] Kaleidofi  ×  [logo] ArgusPad */
+  .masthead{text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px}
+  .kicker{color:var(--green);font-weight:700;font-size:16px;letter-spacing:.22em;text-transform:uppercase}
+  .lock{display:flex;align-items:center;justify-content:center;gap:34px}
+  .co{display:flex;align-items:center;gap:16px}
+  .logo{width:74px;height:74px;border-radius:50%;object-fit:cover;flex:none;box-shadow:0 0 0 2px rgba(231,215,182,.3),0 0 32px rgba(53,209,141,.28)}
+  .kmark{background:#0c1a15 url("../public/newklogo2.png") center/cover no-repeat}
+  .name{font-family:"KSerif",Georgia,serif;font-weight:600;font-size:52px;letter-spacing:-.02em;line-height:1;color:#fff}
+  .name i{font-style:normal;color:var(--green)}
+  .x{font-family:"KSerif",Georgia,serif;font-size:48px;color:var(--green);opacity:.9;line-height:1}
+  .lede{color:var(--muted);font-size:22px;line-height:1.45;max-width:64ch;margin-top:2px}
+  .lede b{color:#fff;font-weight:600}
+
+  section{margin-top:34px}
+  h2{font-family:"KSerif",Georgia,serif;font-weight:600;font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--sand);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .rows{display:flex;flex-direction:column;gap:14px}
+  .row{display:flex;gap:15px;align-items:flex-start}
+  .tick{color:var(--green);font-size:22px;line-height:1.2;flex:none}
+  .num{width:30px;height:30px;border-radius:50%;background:var(--green);color:#06120c;font-weight:800;font-size:15px;display:grid;place-items:center;flex:none;margin-top:1px}
+  .row .h{font-weight:600;font-size:21px;color:#fff}
+  .row .d{color:var(--muted);font-size:18.5px;line-height:1.4;margin-top:2px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px 30px}
+
+  .stats{margin-top:auto;display:flex;gap:0;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}
+  .stat{flex:1;padding:22px 24px}
+  .stat + .stat{border-left:1px solid var(--line)}
+  .stat .n{font-family:"KSerif",Georgia,serif;font-weight:600;font-size:36px;color:var(--green)}
+  .stat .k{font-size:15px;color:var(--muted);margin-top:4px;letter-spacing:.02em}
+
+  .cta{margin-top:26px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+  .cta .t{font-family:"KSerif",Georgia,serif;font-size:26px;color:#fff;font-weight:600;max-width:70%}
+  .cta .u{font-family:"KSerif",Georgia,serif;font-weight:700;font-size:24px;color:var(--green)}
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="top">
+      <div class="brand"><span class="badge"></span><span class="word">Kaleido<i>fi</i></span></div>
+      <span class="pill">Arc mainnet · Live</span>
+    </div>
+
+    <div class="hero">
+      <div class="kicker">Partnership proposal</div>
+      <div class="lock">
+        <img class="orb" src="../public/tokens/argus.png" alt="Argus">
+        <div class="title">Kaleido&nbsp;×&nbsp;Argus</div>
+      </div>
+      <p class="lede">Kaleido is agentic DeFi on Arc — our agent <b>Luca</b> lets anyone trade, bridge and manage positions in plain language, every action audited and signed by the user. We've already wired Argus in. Here's what's live, and what we'd build together.</p>
+    </div>
+
+    <section>
+      <h2>What's already live</h2>
+      <div class="rows">
+        <div class="row"><span class="tick">✓</span><div><div class="h">$ARGUS is listed and trading on Kaleido's DEX.</div></div></div>
+        <div class="row"><span class="tick">✓</span><div><div class="h">The Argus launchpad is integrated into Luca.</div><div class="d">Paste any Argus-launched token's contract and get an instant card — live price, market cap, buy/sell taxes, launch status — with one-tap Buy &amp; Sell (10–100%). Trades route directly through your Uniswap-v4 pools, are checked by our fail-closed auditor, and are non-custodial: the user signs, we never hold funds.</div></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Why it's a win for Argus</h2>
+      <div class="two">
+        <div class="row"><span class="tick">→</span><div><div class="d"><b style="color:#fff">A second trading surface for every launch</b> — no lift on your side.</div></div></div>
+        <div class="row"><span class="tick">→</span><div><div class="d"><b style="color:#fff">Smarter than a Telegram bot</b> — research, price protection and planning built in.</div></div></div>
+        <div class="row"><span class="tick">→</span><div><div class="d"><b style="color:#fff">More reach and volume</b> for Argus tokens, inside an AI agent.</div></div></div>
+        <div class="row"><span class="tick">→</span><div><div class="d"><b style="color:#fff">Non-custodial &amp; audited</b> — safer UX reflects well on the pad.</div></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What we propose</h2>
+      <div class="rows">
+        <div class="row"><span class="num">1</span><div><div class="h">Co-market the integration.</div><div class="d">A joint announcement (assets ready), cross-posts, and Argus launches featured inside Kaleido.</div></div></div>
+        <div class="row"><span class="num">2</span><div><div class="h">A joint points / quest campaign.</div><div class="d">Kaleido Season 1 points for trading Argus launches, paired with rewards on your side.</div></div></div>
+        <div class="row"><span class="num">3</span><div><div class="h">A pipeline for future campaigns.</div><div class="d">Featured launches, co-branded pushes, and deeper launchpad features as they ship.</div></div></div>
+      </div>
+    </section>
+
+    <div class="stats">
+      <div class="stat"><div class="n">2.3M+</div><div class="k">$kPoint distributed</div></div>
+      <div class="stat"><div class="n">6,900+</div><div class="k">wallets earning</div></div>
+      <div class="stat"><div class="n">Live</div><div class="k">on Arc mainnet</div></div>
+    </div>
+
+    <div class="cta">
+      <div class="t">Let's align on the first announcement and campaign.</div>
+      <div class="u">kaleidofi.xyz</div>
+    </div>
+  </div>
+</body>
+</html>

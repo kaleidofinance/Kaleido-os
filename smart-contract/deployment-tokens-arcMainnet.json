@@ -1,0 +1,103 @@
+{
+  "network": "arcMainnet",
+  "chainId": 5042,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-09-29T00:48:08.523Z",
+  "diamond": "0xE4e7f16DB22e6bb2E505fbC504d7B2B4B995A6E3",
+  "oracle": "0x5027ACF31cEf802d6A89D170691Fa256e079D39B",
+  "oracleKind": "aggregator-v3",
+  "pyth": null,
+  "nativeFeedSymbol": "USDC",
+  "hermesVerified": true,
+  "registered": [
+    {
+      "kind": "collateral",
+      "symbol": "EURC",
+      "address": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+      "onChainSymbol": "EURC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.EURC/USD",
+      "feedId": "0x76fa85158bf14ede77087fe3ae472f66213f6ea2f5b411cb2de472794990fa5c",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 28460,
+      "feedMaxAge": 97200,
+      "maxAgeBasis": "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 rounds on chain 2026-09-27: gaps 86,404s median, 86,482s max — heartbeat only. 97200 = 27h = heartbeat + 3h. Deviation-triggered, so an old answer is still within 0.5% of the market; the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to 108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      "effectiveMaxAge": 97200,
+      "txHash": "0xc5c3649a877736a0331c1b0d86933e9241b21590787fc06b427cbf8eecbf0478",
+      "skipped": false
+    },
+    {
+      "kind": "collateral",
+      "symbol": "CIRBTC",
+      "address": "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+      "onChainSymbol": "cirBTC",
+      "decimals": 8,
+      "feedSymbol": "Crypto.BTC/USD",
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 18534,
+      "feedMaxAge": 97200,
+      "maxAgeBasis": "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 rounds on chain 2026-09-27: gaps 3,692s median, 83,853s max — deviation-driven, heartbeat in quiet markets. 97200 = 27h = heartbeat + 3h. Deviation-triggered, so an old answer is still within 0.5% of the market; the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to 108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy. cirBTC is Circle Wrapped Bitcoin (FiatToken, 1:1 BTC), priced off BTC/USD as WBTC is on Aave; the cirBTC Reserves PoR feed (0xEB0884a8…11fc) is for monitoring.",
+      "effectiveMaxAge": 97200,
+      "txHash": "0xaba4bd8400348034a83f4cf7fae1a06a723fc7ca76a32b59c2e7d12520308117",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDC",
+      "address": "0x0000000000000000000000000000000000000001",
+      "onChainSymbol": null,
+      "decimals": 18,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 33951,
+      "feedMaxAge": 97200,
+      "maxAgeBasis": "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 rounds on chain 2026-09-27: gaps 86,421s median, 86,487s max — heartbeat only. 97200 = 27h = heartbeat + 3h. Deviation-triggered, so an old answer is still within 0.5% of the market; the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to 108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      "effectiveMaxAge": 97200,
+      "txHash": "0x22cbcd73d5eccb6acac588f7355684cf6a19814bfbbe63878955ed9582fdd135",
+      "skipped": false
+    }
+  ],
+  "feedBounds": [
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "maxAge": 97200,
+      "basis": "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 rounds on chain 2026-09-27: gaps 86,421s median, 86,487s max — heartbeat only. 97200 = 27h = heartbeat + 3h. Deviation-triggered, so an old answer is still within 0.5% of the market; the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to 108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      "txHash": "0x89a3b70793eab8b033baaa40fa1468209b500905466815409c02712247f304fa",
+      "skipped": false
+    },
+    {
+      "feedId": "0x76fa85158bf14ede77087fe3ae472f66213f6ea2f5b411cb2de472794990fa5c",
+      "symbols": [
+        "EURC"
+      ],
+      "maxAge": 97200,
+      "basis": "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 rounds on chain 2026-09-27: gaps 86,404s median, 86,482s max — heartbeat only. 97200 = 27h = heartbeat + 3h. Deviation-triggered, so an old answer is still within 0.5% of the market; the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to 108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy.",
+      "txHash": "0xc980e9f9a132fafb449b83220f559bcd15947a74dfa6b902299b5561805d16a7",
+      "skipped": false
+    },
+    {
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "symbols": [
+        "CIRBTC"
+      ],
+      "maxAge": 97200,
+      "basis": "Arc mainnet Chainlink push feed: 86400s heartbeat, 0.5% deviation. Walked 40 rounds on chain 2026-09-27: gaps 3,692s median, 83,853s max — deviation-driven, heartbeat in quiet markets. 97200 = 27h = heartbeat + 3h. Deviation-triggered, so an old answer is still within 0.5% of the market; the bound is a liveness check (see Constants.MAX_FEED_PRICE_AGE, raised to 108000 for exactly these feeds). Re-walk >=30 days before mainnet deploy. cirBTC is Circle Wrapped Bitcoin (FiatToken, 1:1 BTC), priced off BTC/USD as WBTC is on Aave; the cirBTC Reserves PoR feed (0xEB0884a8…11fc) is for monitoring.",
+      "txHash": "0x036a86500ee4e1733bb789a6f1bfcb91a8abfd137fd44a96f5c87a6925d48952",
+      "skipped": false
+    }
+  ],
+  "onChain": {
+    "collateral": [
+      "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+      "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0"
+    ],
+    "loanable": [
+      "0x0000000000000000000000000000000000000001"
+    ]
+  }
+}

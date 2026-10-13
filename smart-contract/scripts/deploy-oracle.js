@@ -59,6 +59,7 @@ const {
 } = require("./libraries/aggregator-feeds.js");
 const { PYTH_BOUNDS, pythBoundPlanFor } = require("./libraries/pyth-feeds.js");
 const { waitForCode, waitForState } = require("./libraries/rpc.js");
+const { confirmMainnet } = require("./libraries/mainnet-guard.js");
 
 /**
  * Canonical Pyth ETH/USD feed id.
@@ -230,7 +231,7 @@ async function deployPythOracle(chainId) {
    * uniformly warm, so one probe is not a verdict.
    *
    * The unboundable list is the actionable half. Constants.MAX_FEED_PRICE_AGE is
-   * 90,000s, so a feed older than that cannot be bounded at any legal value and
+   * 108,000s (30h; 90,000 before 2026-09-27), so a feed older than that cannot be bounded at any legal value and
    * register-tokens.js will REFUSE to register a token against it. Leaving those
    * symbols out of COLLATERAL_TOKENS/LOANABLE_TOKENS is the operator's step, and
    * finding that out here is cheaper than finding it out from a failed
@@ -257,7 +258,7 @@ async function deployPythOracle(chainId) {
               `   ${u.symbol.padEnd(6)} ${
                 u.observedAgeSeconds === null
                   ? "never populated on this chain's receiver"
-                  : `${u.observedAgeSeconds}s old — ${(u.observedAgeSeconds / 90000).toFixed(1)}x MAX_FEED_PRICE_AGE`
+                  : `${u.observedAgeSeconds}s old — ${(u.observedAgeSeconds / 108000).toFixed(1)}x MAX_FEED_PRICE_AGE`
               }`,
           )
           .join("\n") +
@@ -506,6 +507,21 @@ async function main() {
     "  balance:  ",
     ethers.formatEther(await ethers.provider.getBalance(deployer.address)),
   );
+
+  confirmMainnet({
+    chainId,
+    script: "deploy-oracle.js",
+    plan: [
+      ["backend", backend],
+      ["deployer (owner)", deployer.address],
+      ...(backend === "aggregator-v3"
+        ? feedPlanFor(chainId).map((f) => [
+            `feed ${f.symbols.join("/")}`,
+            `${f.aggregator}  ${f.provider}  bound ${f.maxAge}s`,
+          ])
+        : [["PYTH_CONTRACT", process.env.PYTH_CONTRACT || PYTH_CONTRACTS[chainId]]]),
+    ],
+  });
 
   const result =
     backend === "pyth"

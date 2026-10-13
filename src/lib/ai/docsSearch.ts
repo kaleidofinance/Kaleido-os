@@ -298,7 +298,7 @@ export function outageReply(question: string): { text: string; link?: { href: st
     return {
       text:
         "I can't reason about that right now — the model I use for open questions is unavailable. " +
-        "Direct commands like `swap 100 USDC to KLD` still run here without it, and the docs cover how everything works.",
+        "Direct commands like `swap 100 USDC to EURC` still run here without it, and the docs cover how everything works.",
       link: DOCS_LINK,
     };
   }

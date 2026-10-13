@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useActiveWallet, useSwitchActiveWalletChain } from "thirdweb/react";
 import { defineChain } from "thirdweb/chains";
 import { toast } from "sonner";
 import { chainTokens, tokensAcrossChains } from "@/constants/tokens";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import {
   CHAINS,
   getChainMeta,
@@ -182,6 +183,30 @@ function NetworkFilter({
   const [q, setQ] = useState("");
   const active = value === "all" ? undefined : getChainMeta(value);
 
+  /* The panel is portalled out of the dialog and positioned against the
+     button's rect. It has to be: the dialog is a `backdrop-filter` surface with
+     `overflow: hidden`, so a panel left inside it is both trapped as a
+     containing block AND clipped at the dialog's edge — which is why it was
+     appearing squashed inside the box instead of floating over it. */
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const PANEL_W = 264;
+  const toggle = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) {
+      const left = Math.min(
+        Math.max(8, r.right - PANEL_W),
+        window.innerWidth - PANEL_W - 8,
+      );
+      setPos({ top: r.bottom + 8, left });
+    }
+    setOpen(true);
+  };
+
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return chains;
@@ -197,9 +222,10 @@ function NetworkFilter({
   return (
     <div className={s.nf}>
       <button
+        ref={btnRef}
         type="button"
         className={s.nfBtn}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label={
@@ -218,8 +244,8 @@ function NetworkFilter({
         <Chevron className={s.nfCaret} />
       </button>
 
-      {open && (
-        <>
+      {open && pos && (
+        <Portal>
           {/* Click-away. A transparent sibling rather than a document
               listener: it cannot fire before React has processed the click
               that opened the panel, which is the classic double-toggle bug. */}
@@ -227,8 +253,20 @@ function NetworkFilter({
             className={s.nfScrim}
             onClick={() => setOpen(false)}
             role="presentation"
+            style={{ zIndex: 110 }}
           />
-          <div className={s.nfPanel} role="listbox">
+          <div
+            className={s.nfPanel}
+            role="listbox"
+            style={{
+              position: "fixed",
+              top: pos.top,
+              left: pos.left,
+              right: "auto",
+              width: PANEL_W,
+              zIndex: 111,
+            }}
+          >
             <div className={s.nfSearch}>
               <span aria-hidden="true">⌕</span>
               <input
@@ -284,7 +322,7 @@ function NetworkFilter({
               )}
             </div>
           </div>
-        </>
+        </Portal>
       )}
     </div>
   );
@@ -377,13 +415,17 @@ export default function TokenSelector({
   }, [open, onClose]);
 
   /* Mainnets first, then testnets, each in registry order — the same ordering
-     NetworkSelector uses, so the two lists never disagree about precedence. */
+     NetworkSelector uses, so the two lists never disagree about precedence.
+     Gated on the testnet toggle like every other multichain surface (#225/#232):
+     with it off, the network filter AND the "all networks" token list it feeds
+     show only mainnet, so a mainnet-first user never picks or sees a testnet. */
+  const { showTestnets } = useTestnetMode();
   const chains = useMemo(
     () => [
       ...CHAINS.filter((c) => c.network === "mainnet"),
-      ...CHAINS.filter((c) => c.network !== "mainnet"),
+      ...(showTestnets ? CHAINS.filter((c) => c.network !== "mainnet") : []),
     ],
-    [],
+    [showTestnets],
   );
 
   const available = useMemo(

@@ -6,6 +6,7 @@ import NetworkSelector from "@/components/v2/NetworkSelector";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import { useFaucet, type FaucetAsset } from "@/hooks/v2/useFaucet";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { CHAINS, getChainMeta } from "@/constants/chains";
 import { faucetChains, isNativeSentinel } from "@/constants/registry";
 import {
@@ -49,9 +50,9 @@ import s from "./faucet.module.css";
  */
 
 const fmt = (v: string | null, dp = 2) => {
-  if (v === null) return "—";
+  if (v === null) return "0";
   const n = Number(v);
-  if (!Number.isFinite(n)) return "—";
+  if (!Number.isFinite(n)) return "0";
   return n.toLocaleString("en-US", { maximumFractionDigits: dp });
 };
 
@@ -91,6 +92,7 @@ export default function FaucetPage() {
   const faucet = useFaucet();
   const now = useNow();
   const [picker, setPicker] = useState(false);
+  const { showTestnets, setShowTestnets } = useTestnetMode();
 
   /*
    * The sponsored-fee request. Four states rather than a boolean because the
@@ -387,6 +389,40 @@ export default function FaucetPage() {
    */
   const batch = isConnected && faucet.claimable.length > 1;
 
+  /* The faucet is a testnet-only surface, so it rides the same switch the
+     network selector and the nav do. With testnets wound down for the mainnet
+     launch, reaching /faucet by URL lands here instead of on a table of assets
+     that cannot be claimed on mainnet. It is a wind-down, not a wall: the one
+     button turns testnets back on (the shared, persisted signal) and the page
+     below renders on the next pass. All hooks above have already run, so this
+     early return breaks none of them. */
+  if (!showTestnets) {
+    return (
+      <>
+        <Nav />
+        <main className={s.wrap}>
+          <header className={s.head}>
+            <h1 className={s.h1}>Test tokens</h1>
+            <p className={s.lede}>
+              Testnet faucet is off on mainnet. Turn testnets on to claim.
+            </p>
+          </header>
+          <div className={s.panel}>
+            <div className={s.panelTitle}>Testnets are wound down</div>
+            <p className={s.panelBody}>
+              Testnet assets only — switch testnets on to reach it.
+            </p>
+            <button
+              className={s.panelCta}
+              onClick={() => setShowTestnets(true)}
+            >
+              Show testnet networks
+            </button>
+          </div>
+        </main>
+      </>
+    );
+  }
   return (
     <>
       <Nav />
@@ -394,9 +430,7 @@ export default function FaucetPage() {
         <header className={s.head}>
           <h1 className={s.h1}>Test tokens</h1>
           <p className={s.lede}>
-            Claim the test assets Kaleido runs on {chainName}. Use them anywhere
-            in the app — swap them, post them as collateral, mint kfUSD against
-            them.
+            Test tokens for {chainName} — use them anywhere in the app.
           </p>
         </header>
 
@@ -425,7 +459,7 @@ export default function FaucetPage() {
                 <span className={s.sl}>Wait between claims</span>
                 <span className={`${s.sv} tabular`}>
                   {faucet.cooldownSeconds === null
-                    ? "—"
+                    ? "0"
                     : fmtDuration(faucet.cooldownSeconds)}
                 </span>
               </div>
@@ -433,7 +467,7 @@ export default function FaucetPage() {
                 <span className={s.sl}>Claimers</span>
                 <span className={`${s.sv} tabular`}>
                   {faucet.totalUsers === null
-                    ? "—"
+                    ? "0"
                     : faucet.totalUsers.toLocaleString("en-US")}
                 </span>
               </div>
@@ -570,7 +604,7 @@ export default function FaucetPage() {
                           {fmt(a.amount, 4)}
                         </span>
                         <span className={`${s.num} ${s.dim} tabular`}>
-                          {isConnected ? fmt(a.balance, 4) : "—"}
+                          {isConnected ? fmt(a.balance, 4) : "0"}
                         </span>
                         <span className={`${s.num} ${s.dim} tabular`}>
                           {fmt(a.stock, 0)}
@@ -653,36 +687,22 @@ export default function FaucetPage() {
                       it is asserted while the list is still loading. */}
                   <p className={s.gasBody}>
                     {!rowKnown ? (
-                      <>
-                        Claiming is a transaction, so it costs a fee. A wallet at
-                        exactly zero has to get its first {gasName} from outside
-                        the app before it can claim anything here.
-                      </>
+                      <>Claiming costs gas. Get {gasName} elsewhere first.</>
                     ) : gasRow ? (
                       <>
-                        Claiming is a transaction, so it costs a fee, and{" "}
-                        {gasRow.asset
-                          ? `the ${gasName} row above is out of stock`
-                          : `this faucet cannot stock ${gasName} — there is no ${gasName} row above`}
-                        . That row&rsquo;s Claim button goes to{" "}
-                        {gasRow.link.operator}&rsquo;s faucet instead; get{" "}
-                        {gasName} there first, then come back and claim the rest
-                        here.
+                        Claiming costs gas. Get {gasName} at{" "}
+                        {gasRow.link.operator}&rsquo;s faucet first.
                       </>
                     ) : hasNativeRow ? (
                       <>
-                        Claiming is a transaction, so it costs a fee. A wallet at
-                        exactly zero has to get its first {gasName} from outside
-                        the app — after that, the {gasName} row above tops you
-                        up.
+                        Claiming costs gas. Get your first {gasName} elsewhere;
+                        the {gasName} row tops you up after.
                       </>
                     ) : (
                       <>
-                        Claiming is a transaction, so it costs a fee, and this
-                        faucet stocks tokens only — there is no {gasName} row
-                        above. Get {gasName} from{" "}
+                        Claiming costs gas. Get {gasName} from{" "}
                         {leadLink ? `${leadLink.operator}'s faucet` : "elsewhere"}{" "}
-                        first, then come back and claim the tokens here.
+                        first.
                       </>
                     )}
                   </p>

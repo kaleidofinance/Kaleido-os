@@ -320,6 +320,19 @@ export function poolSide(
 }
 
 /**
+ * The price-impact ceiling a native-pool route may not exceed.
+ *
+ * A V3 `quoteExactInput` returns a positive number even when it walks a nearly
+ * empty pool to the end of its range, so "a quote exists" is not "the pool can
+ * fill this size". A dust-seeded Arc pool (cirBTC/WUSDC) filled a ~$41 order at
+ * ~67% impact because nothing compared the fill to the pool's marginal price.
+ * Callers pass this as `impactCeiling` so a route worse than it is refused
+ * rather than offered — 0.15 is a catastrophe bound, an order of magnitude
+ * above any healthy swap, so it never blocks a normal trade. Tunable per call.
+ */
+export const MAX_PRICE_IMPACT = 0.15;
+
+/**
  * The best route from one token to another, or null when there is none.
  *
  * Direct pools first, all three tiers at once, and the deepest fill wins — that
@@ -352,7 +365,7 @@ export async function findBestRoute(
   tokenOut: RouteToken,
   amountIn: string,
   quote: PathQuoter,
-  opts: { maxIntermediates?: number } = {},
+  opts: { maxIntermediates?: number; impactCeiling?: number } = {},
 ): Promise<SwapPath | null> {
   if (tokenIn.address.toLowerCase() === tokenOut.address.toLowerCase()) {
     return null;
@@ -444,6 +457,36 @@ export async function findBestRoute(
   for (const r of results) {
     if (r && (!best || r.amountOut > best.amountOut)) best = r;
   }
+
+  /* Price-impact ceiling. `quoteExactInput` prices a fill against a pool's
+     real ticks and returns a positive number even when the pool is nearly
+     empty and the fill walks its price to the end of the range — so the best
+     `amountOut` above can still be a catastrophic rate on a dust-seeded pool.
+     Re-quote 1% of the size on the winning path to approximate the marginal
+     (no-impact) rate; if the full fill is worse than the ceiling, drop the
+     route so the caller shows "no route for this size" instead of signing a
+     67%-loss swap. Fail open when the probe can't be priced — a missing read
+     must never block a swap, the same stance the sign-path reads take. Opt-in:
+     callers that do not pass `impactCeiling` (and the pure routing tests) keep
+     the old behaviour. */
+  if (best !== null && opts.impactCeiling != null && amount > 0) {
+    const probeIn = amount / 100;
+    const probeOut = await safeQuote(
+      quote,
+      best.tokens,
+      best.fees,
+      probeIn.toFixed(tokenIn.decimals),
+      tokenIn.decimals,
+      tokenOut.decimals,
+    );
+    if (probeOut !== null) {
+      const fullRate = best.amountOut / amount;
+      const probeRate = probeOut / probeIn;
+      if (probeRate > 0 && 1 - fullRate / probeRate > opts.impactCeiling) {
+        return null;
+      }
+    }
+  }
   return best;
 }
 
@@ -491,7 +534,7 @@ export async function findRouteAcrossSources(
   tokenOut: RouteToken,
   amountIn: string,
   sources: RouteSource[],
-  opts: { maxIntermediates?: number } = {},
+  opts: { maxIntermediates?: number; impactCeiling?: number } = {},
 ): Promise<RoutedPath | null> {
   for (const src of sources) {
     const path = await findBestRoute(
@@ -508,6 +551,23 @@ export async function findRouteAcrossSources(
 }
 
 /**
+ * Truncate a human decimal string to `dp` fractional digits, rounding DOWN.
+ *
+ * Rounding down (never up) matters where a token is converted between decimal
+ * scalings before it is spent — the wrapped-native (18-dec) unwrapped to native
+ * USDC and routed through the 6-dec 0x3600 mirror. A Max sell carries more than
+ * six fractional digits, and `parseUnits(amount, 6)` throws on the extra ones;
+ * truncating keeps the value the wallet can cover and leaves the sub-`dp`
+ * remainder wrapped as dust rather than stranding native the route was quoted to
+ * pull. See build.ts tryKyberSwap and the swap page's KyberSwap plan.
+ */
+export function truncDecimals(amount: string, dp: number): string {
+  const [whole, frac = ""] = amount.split(".");
+  if (frac.length <= dp) return amount;
+  return dp > 0 ? `${whole}.${frac.slice(0, dp)}` : whole;
+}
+
+/**
  * A route as a line of prose: "WETH → USDC → KLD through 0.3% and 0.3%".
  *
  * Here rather than in a component because both the swap card and the planner's
@@ -516,10 +576,14 @@ export async function findRouteAcrossSources(
  * this file is imported by the builder that produces it, so the formatting is
  * repeated rather than creating a cycle.
  */
+
 export function describeRoute(path: SwapPath): string {
   const symbols = [path.hops[0].symbolIn, ...path.hops.map((h) => h.symbolOut)];
   const tiers = path.fees.map((f) => `${String(Number((f / 10_000).toFixed(4)))}%`);
+  /* Terse: the two tokens are already named in the Sell/Buy fields, so a single
+     hop only needs its fee tier. A multi-hop names the path, since the token it
+     routes through is the one piece the fields don't show. */
   return path.hops.length === 1
-    ? `${symbols.join(" → ")} through the ${tiers[0]} pool`
-    : `${symbols.join(" → ")} through the ${tiers.join(" and ")} pools`;
+    ? `${tiers[0]} pool`
+    : `${symbols.join(" → ")} · ${tiers.join(" + ")}`;
 }

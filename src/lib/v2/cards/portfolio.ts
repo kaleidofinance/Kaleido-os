@@ -1,6 +1,6 @@
 import type { Portfolio } from "@/hooks/usePortfolio";
 import { DASH, usd } from "@/lib/format/figures";
-import type { AgentCard, CardTone } from "./types";
+import type { AgentCard, CardTone, GaugeCard } from "./types";
 
 /**
  * "What are my balances" — answered from the app's own portfolio, not the model.
@@ -48,12 +48,64 @@ const healthTone = (h: number | null): CardTone =>
 
 /** Matches /portfolio's own header: ∞ where there is no debt to divide by. */
 const healthText = (h: number | null): string =>
-  h === null ? DASH : h === Infinity ? "∞" : h.toFixed(2);
+  /* Never "0" for unknown: a zero health factor reads as liquidation. */
+  h === null || h === Infinity ? "∞" : h.toFixed(2);
+
+/**
+ * Health as a gauge — full and green when safe, a red sliver near liquidation.
+ *
+ * The track is a reading, not a scale: 1.0 (liquidation) sits at empty, 3.0 at
+ * full, and anything above 3 is simply full — past there the exact number stops
+ * being the thing you act on. `fraction` is that mapping; the number the reader
+ * reads is `value`, and the tone is the same `healthTone` the FAQ card and
+ * /portfolio use, so the bar and the figure can never disagree.
+ *
+ * Only ever built when there is debt, so `h` is a finite number here — a wallet
+ * with no loan has health ∞, which is not a reading a gauge can place.
+ */
+function healthGauge(h: number | null): GaugeCard {
+  const known = typeof h === "number" && Number.isFinite(h);
+  return {
+    kind: "gauge",
+    label: "Health factor",
+    value: healthText(h),
+    /* (h − 1) / 2: 1.0 → 0, 3.0 → 1, clamped. */
+    fraction: known ? Math.min(1, Math.max(0, (h! - 1) / 2)) : 0,
+    tone: healthTone(h),
+    min: "1.0",
+    max: "3.0+",
+    note:
+      known && h! <= 1.4
+        ? "Below 1.0 your collateral can be liquidated. Add collateral or repay to lift it."
+        : "Above 1.0 you are solvent; higher is safer.",
+  };
+}
 
 const positive = (n: number | null): boolean => typeof n === "number" && n > 0;
 
 /** The prompt the empty state offers, which is also the answer to "no gas". */
 const FAUCET_PROMPT = "claim everything from the faucet";
+
+/**
+ * A question about the reader's OWN health factor, as opposed to the concept.
+ *
+ * "what is health factor" wants the definition — the static FAQ answers it well
+ * and cheaply. "what is MY health factor", "am I safe", "will I get liquidated"
+ * want the live number, which the FAQ cannot know. This is the split, and it is
+ * deliberately two conditions: a health/liquidation/safety term AND a personal
+ * marker. The personal marker is what keeps the definitional question on the FAQ,
+ * and the topic term is what keeps "is my swap safe" or "my balance" off this
+ * path — a personal sentence with no health word is not a health question.
+ */
+export function isPersonalHealthQuestion(text: string): boolean {
+  const t = ` ${text.toLowerCase()} `;
+  const personal =
+    /\bmy\b|\bam i\b|\bi'?m\b|\bwill i\b|\bcan i\b|\bi get\b|\bi be\b/.test(t);
+  if (!personal) return false;
+  return /health\s*factor|\bhealth\b|liquidat|\bhf\b|under\s?water|\bsafe\b/.test(
+    t,
+  );
+}
 
 export function portfolioAnswer(
   p: Portfolio,
@@ -82,7 +134,7 @@ export function portfolioAnswer(
           title: "Get funded",
           actions: [
             { label: "Claim testnet tokens", prompt: FAUCET_PROMPT },
-            { label: "Then one swap", prompt: "swap 500 USDC to KLD" },
+            { label: "Then one swap", prompt: "swap 500 USDC to EURC" },
           ],
         },
       ],
@@ -117,29 +169,31 @@ export function portfolioAnswer(
   }
 
   const cards: AgentCard[] = [
-    {
-      kind: "metric",
-      label: "Net value",
-      value: usd(p.netValue, 2),
-      ...(unpricedNote ? { note: unpricedNote } : {}),
-    },
+    /*
+     * With a loan open, health is the headline risk, so it leads as a gauge
+     * rather than a stat — and it takes the first card from the net-value metric,
+     * which the prose above already opens with, to stay inside the three-card
+     * budget the validator enforces. With no debt there is nothing for a health
+     * gauge to place (health is ∞), so the net figure keeps the slot.
+     */
+    positive(p.debtUsd)
+      ? healthGauge(p.health)
+      : {
+          kind: "metric",
+          label: "Net value",
+          value: usd(p.netValue, 2),
+          ...(unpricedNote ? { note: unpricedNote } : {}),
+        },
   ];
 
   /*
    * The five subtotals, in the hook's order, which is /portfolio's order. Health
-   * joins them only when there is debt for it to describe: with no loan open it
-   * is ∞, and a row reading "Health factor ∞" is a number that answers a question
-   * nobody asked.
+   * is no longer one of them: it is the gauge above when there is a loan to
+   * describe, and ∞ — a number answering a question nobody asked — when there is
+   * not.
    */
   const rows: { label: string; value: string; tone?: CardTone }[] =
     p.groups.map((g) => ({ label: g.title, value: usd(g.subtotalUsd, 2) }));
-  if (positive(p.debtUsd)) {
-    rows.push({
-      label: "Health factor",
-      value: healthText(p.health),
-      tone: healthTone(p.health),
-    });
-  }
   cards.push({ kind: "stats", title: "Positions", rows });
 
   /*
@@ -173,4 +227,54 @@ export function portfolioAnswer(
   }
 
   return { text: lines.join("\n\n"), cards };
+}
+
+/**
+ * "What's my health factor" — the live number as a gauge, not the definition.
+ *
+ * The focused sibling of portfolioAnswer: it answers only the health question,
+ * so it renders one card (the gauge) rather than the whole balance sheet. The
+ * FAQ still owns "what IS health factor"; this owns the possessive form, routed
+ * to by isPersonalHealthQuestion.
+ *
+ * Every not-a-number case is stated rather than drawn — a gauge is only built
+ * for a real reading. No wallet, no read, and no loan are three different facts
+ * and each gets its own sentence; an ∞ health factor in particular is not a
+ * failure to report but the correct answer to "am I safe" with nothing borrowed.
+ */
+export function healthAnswer(
+  p: Portfolio,
+  opts: { connected: boolean },
+): PortfolioAnswer {
+  if (!opts.connected) {
+    return {
+      text: "Health factor is read off your positions, and there's no wallet connected yet. Connect one — the button is top right — and ask me again.",
+      cards: [],
+    };
+  }
+  const h = p.health;
+  if (h === null) {
+    return {
+      text: "I couldn't read your health factor just now — the position read didn't come back. Try again in a moment.",
+      cards: [],
+    };
+  }
+  if (h === Infinity || !positive(p.debtUsd)) {
+    return {
+      text: "You have no loan open, so there's nothing that can be liquidated — your health factor is effectively infinite. It becomes a number to watch once you borrow against collateral.",
+      cards: [],
+    };
+  }
+  /* A live number, so the gauge draws. The sentence names the same reading the
+     gauge's tone shows, in the same three bands, so the two cannot disagree. */
+  const verdict =
+    h <= 1
+      ? "at or below 1.0, your collateral can be liquidated — add collateral or repay to lift it"
+      : h <= 1.4
+        ? "thin — a normal day's move could bring it toward 1.0"
+        : "comfortable — well above the 1.0 line where liquidation begins";
+  return {
+    text: `Your health factor is ${healthText(h)} — ${verdict}.`,
+    cards: [healthGauge(h)],
+  };
 }

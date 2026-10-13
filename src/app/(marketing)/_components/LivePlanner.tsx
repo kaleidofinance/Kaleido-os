@@ -132,6 +132,8 @@ const VERB: Record<Command["kind"], string> = {
   help: "Help",
   receive: "Receive",
   portfolio: "Portfolio",
+  lookup: "Balance lookup",
+  exitChain: "Move everything off a chain",
 };
 
 /**
@@ -144,7 +146,7 @@ const VERB: Record<Command["kind"], string> = {
  * rather than rendered as a failure.
  */
 const PANEL: Record<
-  "help" | "receive" | "portfolio" | "openLiquidity",
+  "help" | "receive" | "portfolio" | "openLiquidity" | "lookup",
   { title: string; body: string }
 > = {
   help: {
@@ -158,6 +160,10 @@ const PANEL: Record<
   portfolio: {
     title: "Answers with what you hold",
     body: "Wallet balances, collateral, debt, the vaults and your liquidity, in one figure — read from the chain and from the protocol itself. A read, so there is nothing to sign.",
+  },
+  lookup: {
+    title: "Answers with that wallet's balances",
+    body: "Any address's token balances on the chain, read from the chain itself — the same read Luca's model would make, answered without it. A read, so there is nothing to sign.",
   },
   openLiquidity: {
     title: "Opens the add-liquidity form, prefilled",
@@ -210,7 +216,7 @@ const FIELDS: ReadonlyArray<{ key: string; label: string }> = [
  * that actually needs a model.
  */
 const EXAMPLES: ReadonlyArray<{ text: string; chip: string }> = [
-  { text: "swap 500 USDC to KLD", chip: "swap 500 USDC to KLD" },
+  { text: "swap 500 USDC to EURC", chip: "swap 500 USDC to EURC" },
   { text: "stake 250 KLD", chip: "stake 250 KLD" },
   {
     text: "lend 1000 USDC at 6% for 30 days",
@@ -384,7 +390,10 @@ function settledOf(
         lines: [
           {
             label: "Left your wallet",
-            value: `${num(command.amount)} ${command.tokenIn.symbol}`,
+            /* amount is absent for a relative swap ("half my USDC"); those don't
+               build on the landing page's balance-less snapshot deps, so this
+               fallback is never shown here — it only satisfies the optional type. */
+            value: `${num(command.amount ?? "0")} ${command.tokenIn.symbol}`,
           },
           {
             label: "Arrived",
@@ -490,7 +499,9 @@ function settledOf(
         lines: [
           {
             label: "Back in your wallet",
-            value: `${num(command.amount)} ${command.token.symbol}`,
+            value: command.all
+              ? `all your free ${command.token?.symbol ?? "collateral"}`
+              : `${num(command.amount)} ${command.token.symbol}`,
           },
           {
             label: "Health factor",
@@ -748,6 +759,8 @@ function settledOf(
     case "help":
     case "receive":
     case "portfolio":
+    case "lookup":
+    case "exitChain":
     /* Same shape: intercepted by PANEL above, so the builder never runs and
        there is nothing settled to describe. */
     case "openLiquidity":
@@ -861,7 +874,7 @@ export default function LivePlanner() {
       const parsed = parseCommand(text, vocabulary);
       const ms = (performance.now() - t0).toFixed(2);
 
-      if (parsed.status === "unknown") {
+      if (parsed.status === "unknown" || parsed.status === "refused") {
         setOut({
           text,
           ms,
@@ -890,6 +903,7 @@ export default function LivePlanner() {
         command.kind === "help" ||
         command.kind === "receive" ||
         command.kind === "portfolio" ||
+        command.kind === "lookup" ||
         command.kind === "openLiquidity"
       ) {
         setOut({

@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import { useActiveAccount } from "thirdweb/react";
 
 import { CHAINS, CHAINS_BY_ID } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { nativeTokenOf, registeredTokens } from "@/constants/registry";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { readContracts, MULTICALL3_ADDRESS } from "@/lib/chain/multicall";
@@ -55,7 +56,18 @@ const MC3 = new ethers.Interface([
 
 export function useWalletBalancesAcrossChains(): WalletBalancesAcrossChains {
   const address = useActiveAccount()?.address;
-  const chains = useMemo(() => CHAINS.map((c) => c.id), []);
+  const { showTestnets } = useTestnetMode();
+  /* Respect the testnet toggle: in mainnet mode a wallet’s testnet balances
+     (Sepolia and the testnet Base/BNB/Robinhood) are noise, not assets. Every
+     surface reading this hook — the portfolio, the nav, Luca’s balance card —
+     then shows only what the toggle admits. */
+  const chains = useMemo(
+    () =>
+      CHAINS.filter((c) => showTestnets || c.network === "mainnet").map(
+        (c) => c.id,
+      ),
+    [showTestnets],
+  );
   const [state, setState] = useState<{
     holdings: ChainWalletHolding[];
     unread: string[];
@@ -76,7 +88,9 @@ export function useWalletBalancesAcrossChains(): WalletBalancesAcrossChains {
        page has holdings to render without a live sweep. Delete with src/lib/mock. */
     if (MOCK_DATA) {
       const native = nativeTokenOf(CHAINS_BY_ID[READ_ONLY_CHAIN_ID], "lending");
-      const tokens = registeredTokens(READ_ONLY_CHAIN_ID);
+      const tokens = registeredTokens(READ_ONLY_CHAIN_ID).filter(
+        (t) => !t.tags?.includes("native-alias"),
+      );
       const rows: ChainWalletHolding[] = [
         ...(native ? [native] : []),
         ...tokens,
@@ -110,7 +124,14 @@ export function useWalletBalancesAcrossChains(): WalletBalancesAcrossChains {
     ): Promise<{ holdings: ChainWalletHolding[]; unread: string[] }> => {
       if (!providerForChain(chainId)) return { holdings: [], unread: [] };
       const native = nativeTokenOf(CHAINS_BY_ID[chainId], "lending");
-      const tokens = registeredTokens(chainId);
+      /* Arc's 6-decimal USDC entry is the ERC20 face of the native USDC
+         balance, not a second holding. Keep the native row for the portfolio
+         and omit the tagged alias here; otherwise the same dollars appear as
+         both "Arc · Native" and "Arc · Wallet" and are counted twice. The
+         registry entry remains available to swap/lending resolvers. */
+      const tokens = registeredTokens(chainId).filter(
+        (t) => !t.tags?.includes("native-alias"),
+      );
 
       /* Native first (Multicall3's own getEthBalance, batched with the ERC20s),
          then one balanceOf per registered token. */

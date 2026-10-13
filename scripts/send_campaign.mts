@@ -178,7 +178,7 @@ Start on Base Sepolia — it is the fastest of the five networks to get funded o
 The first ten minutes, step by step: ${GUIDE_URL}
 
 The part worth trying first is Luca. Connect your wallet, then tell it what you
-want in plain language — "swap 50 USDC for ETH", "lend 100 USDC at 8%" — and it
+want in plain language — "swap 50 USDC for ETH", "lend 100 USDC at 8% for 30 days" — and it
 builds the transactions for you to sign. It needs a connected wallet before it
 will do anything, so connect first.
 
@@ -196,7 +196,7 @@ const HTML = `<!doctype html>
 <p style="margin:0 0 24px;padding:16px;background:#16161d;border:1px solid #2a2a35;border-radius:10px;font:600 26px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.18em;text-align:center;color:#fff">${ACCESS_CODE}</p>
 <p style="margin:0 0 20px"><a href="${APP_URL}" style="color:#8b8bff">Open the app</a> and enter it once. It is remembered on that browser afterwards.</p>
 <p style="margin:0 0 20px">Start on <strong>Base Sepolia</strong> — it is the fastest of the five networks to get funded on. <a href="${GUIDE_URL}" style="color:#8b8bff">The first ten minutes, step by step.</a></p>
-<p style="margin:0 0 20px">The part worth trying first is <strong>Luca</strong>. Connect your wallet, then tell it what you want in plain language — &ldquo;swap 50 USDC for ETH&rdquo;, &ldquo;lend 100 USDC at 8%&rdquo; — and it builds the transactions for you to sign. It needs a connected wallet before it will do anything, so connect first.</p>
+<p style="margin:0 0 20px">The part worth trying first is <strong>Luca</strong>. Connect your wallet, then tell it what you want in plain language — &ldquo;swap 50 USDC for ETH&rdquo;, &ldquo;lend 100 USDC at 8% for 30 days&rdquo; — and it builds the transactions for you to sign. It needs a connected wallet before it will do anything, so connect first.</p>
 <p style="margin:0 0 8px">&mdash; The Kaleido team<br><a href="mailto:${REPLY_TO}" style="color:#8b8bff">${REPLY_TO}</a></p>
 <p style="margin:24px 0 0;font-size:13px;color:#8a8a99">We will never ask for your seed phrase or private key.</p>
 </div></body></html>`;

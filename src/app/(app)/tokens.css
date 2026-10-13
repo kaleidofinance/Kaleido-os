@@ -273,11 +273,11 @@
 :root[data-theme="light"] .kaleido-v2 {
   /* Claude's bone paper. Same warmth discipline as the dark ramp: R > G > B
      with a small delta, so the page reads as paper rather than as cream. */
-  --k-bg: #faf9f5;
+  --k-bg: #f3efe6;
   --k-card: #ffffff;
-  --k-well: #f4f3ee;
-  --k-well2: #ebe9e2;
-  --k-hover: #e3e0d8;
+  --k-well: #ece7db;
+  --k-well2: #e4ddce;
+  --k-hover: #ddd5c4;
   --k-line: rgba(20, 20, 19, 0.08);
   --k-line2: rgba(20, 20, 19, 0.14);
   --k-row-hover: rgba(20, 20, 19, 0.045);
@@ -314,7 +314,7 @@
   --k-glass: rgba(255, 255, 255, 0.72);
   --k-glass-strong: rgba(255, 255, 255, 0.85);
   --k-glass-line: rgba(20, 20, 19, 0.08);
-  --k-glass-highlight: rgba(250, 249, 245, 0.92);
+  --k-glass-highlight: rgba(243, 239, 230, 0.92);
 
   /* Ink, not black, and an eighth of the dark side's alpha. The dark ramp can
      take a heavy wash because it is washing near-black over near-black; the
@@ -639,6 +639,22 @@
       inset 0 1px 0 var(--k-glass-highlight),
       var(--k-shadow-modal);
   }
+}
+
+/* The landing page's halftone dither, inside every glass card: a token-coloured
+   dot on a 5px grid (see (marketing)/layout.module.css). There it is a whole
+   layer at opacity .05; here it is one background layer, so the faintness goes
+   into the dot colour instead. Sub-pixel radii keep it a grain, not polka dots.
+   `!important` on the image only, because modules restyle hover with the
+   `background:` shorthand, which would otherwise wipe the texture mid-hover; the
+   fill colour stays theirs. Raised surfaces (modals, menus) stay plain. */
+.kaleido-v2 .k-glass {
+  background-image: radial-gradient(
+    /* --k-dot sets the strength per surface; tables lower it (see .table). */
+    color-mix(in srgb, var(--k-t1) var(--k-dot, 7%), transparent) 0.6px,
+    transparent 0.9px
+  ) !important;
+  background-size: 5px 5px !important;
 }
 
 /* ------------------------------------------------------------------

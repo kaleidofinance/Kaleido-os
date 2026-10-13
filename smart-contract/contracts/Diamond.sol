@@ -10,12 +10,8 @@ pragma solidity ^0.8.0;
 
 import {LibDiamond} from "./libraries/LibDiamond.sol";
 import {IDiamondCut} from "./interfaces/IDiamondCut.sol";
-import {LibAppStorage} from "./libraries/LibAppStorage.sol";
-import "../contracts/utils/validators/Error.sol";
 
 contract Diamond {
-    LibAppStorage.Layout internal _appStorage;
-
     constructor(address _contractOwner, address _diamondCutFacet) payable {
         LibDiamond.setContractOwner(_contractOwner);
 
@@ -31,49 +27,24 @@ contract Diamond {
         LibDiamond.diamondCut(cut, address(0), "");
     }
 
-    /// @dev Acts as our contructor
-    ///
-    /// NOT ON THE DEPLOY PATH. deploy.js initializes through
-    /// `DiamondInit.init()` delivered as the `_init` argument of `diamondCut`,
-    /// and never calls this — so nothing in a normal deploy runs it. It stays
-    /// because it is owner-callable on the diamond directly and is the only
-    /// bulk-registration entry point; the five deployed chains got their assets
-    /// from register-tokens.js instead, which is why native is collateral on all
-    /// five and loanable on none.
-    ///
-    /// Registers each token on BOTH sides at once: `s_isLoanable` and a price
-    /// feed, which `_isTokenAllowed` reads, so an initialize token is borrowable
-    /// and depositable. That is a blunter instrument than the two per-side owner
-    /// calls in ProtocolFacet, and worth knowing before using it.
-    ///
-    /// This used to end by writing `_appStorage.swapRouter =
-    /// 0x96ff7D9dbf52FdcAe79157d3b249282c7FABd409`, a pre-rebuild Abstract
-    /// testnet router. It was removed rather than parameterised. Nothing in
-    /// contracts/ reads `AppStorage.swapRouter` and it has no getter, so the
-    /// write configured no behaviour; the literal is codeless on all five chains
-    /// we deploy to, so the one thing it accomplished was to guarantee that the
-    /// first reader anyone added would resolve to a dead address. Because this
-    /// function is off the deploy path, no deployed diamond ever received it.
-    /// An operator who wants the slot set has `setSwapRouter`, which deploy.js
-    /// calls when SWAP_ROUTER is configured. Removing a write does not affect
-    /// storage layout.
-    ///
-    /// @param _tokens address of all the tokens
-    /// @param _priceFeeds address of all the pricefeed tokens
-    function initialize(
-        address[] memory _tokens,
-        bytes32[] memory _priceFeeds
-    ) public {
-        LibDiamond.enforceIsContractOwner();
-        if (_tokens.length != _priceFeeds.length) {
-            revert Protocol__tokensAndPriceFeedsArrayMustBeSameLength();
-        }
-        for (uint8 i = 0; i < _tokens.length; i++) {
-            _appStorage.s_isLoanable[_tokens[i]] = true;
-            _appStorage.s_priceFeeds[_tokens[i]] = _priceFeeds[i];
-            _appStorage.s_collateralToken.push(_tokens[i]);
-        }
-    }
+    /* There used to be an `initialize(address[], bytes32[])` here, and a
+     * `LibAppStorage.Layout internal _appStorage` declared above it for it to
+     * write into. Both are gone, and they had to go BEFORE a mainnet deploy
+     * because a function compiled into the Diamond itself can never be removed
+     * afterwards (LibDiamond.removeFunction refuses immutable functions).
+     *
+     * It was a live corruption path, not dead code. The Diamond put its layout at
+     * slot 0; ProtocolFacet inherits ReentrancyGuard first, so `_status` takes
+     * slot 0 there and the facet's copy of the same layout starts at slot 1.
+     * Every write `initialize` made therefore landed one slot away from where the
+     * facet reads it — `s_isLoanable = true` would have become a feed id of
+     * 0x…01 on the token. It was owner-only and off the deploy path (deploy.js
+     * initializes through DiamondInit via diamondCut, and assets are registered
+     * by register-tokens.js through the facet's own setters), so no deployed
+     * diamond was ever hurt by it; the risk was one mistaken owner call.
+     *
+     * The Diamond now declares no storage of its own. All of its state lives at
+     * the EIP-2535 position in LibDiamond, which is what the fallback reads. */
 
     // Find facet for function that is called and execute the
     // function if a facet is found and return any value.
@@ -106,10 +77,20 @@ contract Diamond {
         }
     }
 
-    //immutable function example
-    function example() public pure returns (string memory) {
-        return "THIS IS AN EXAMPLE OF AN IMMUTABLE FUNCTION";
-    }
-
-    receive() external payable {}
+    /* No `receive()` and no `example()`, removed before the Arc mainnet deploy for
+     * the same reason `initialize` was: anything compiled into the Diamond can
+     * never be removed.
+     *
+     * `receive()` accepted a plain native transfer and credited it to nobody. On
+     * Arc the native currency is USDC, so a mistaken send was a real dollar stuck
+     * in the diamond — with no liability total to tell it apart from user
+     * collateral, no sweep could ever safely return it. Nothing legitimately
+     * sends value here with empty calldata (no facet unwraps a wrapped-native
+     * token; every payable facet call carries a selector and reaches the
+     * fallback). Now a plain transfer hits the fallback's "Function does not
+     * exist" and reverts, which returns the money to the sender. If a receive
+     * path is ever needed, a facet can route the empty-calldata case later.
+     *
+     * `example()` was the EIP-2535 reference template's demo of an immutable
+     * function: a permanent, useless selector. */
 }

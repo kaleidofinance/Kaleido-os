@@ -10,7 +10,11 @@
 // validator is what the frames actually receive — a title one character too long
 // or a ninth row is dropped there, silently, and a card that vanishes between
 // here and the screen is the failure this file exists to catch.
-import { portfolioAnswer } from "./portfolio.ts";
+import {
+  portfolioAnswer,
+  healthAnswer,
+  isPersonalHealthQuestion,
+} from "./portfolio.ts";
 import { localCards } from "./fromChat.ts";
 
 let pass = 0;
@@ -167,12 +171,34 @@ console.log("\n— a loan open —");
     }),
     { connected: true },
   );
-  const health = card(a, "stats").rows.find((r) => r.label === "Health factor");
-  check("health joins the breakdown", !!health, kinds(a));
-  check("as the number, not a band", health?.value === "1.12");
-  check("tinted by the same bands as the FAQ card", health?.tone === "warn");
+  const g = card(a, "gauge");
+  check("health leads as a gauge", g?.kind === "gauge", kinds(a));
+  check("as the number, not a band", g?.value === "1.12");
+  check("tinted by the same bands as the FAQ card", g?.tone === "warn");
   check(
-    "prose names the debt and the collateral behind it",
+    "the fill places 1.12 low on the 1.0–3.0 track",
+    typeof g?.fraction === "number" && g.fraction > 0 && g.fraction < 0.1,
+    String(g?.fraction),
+  );
+  check(
+    "the gauge takes the first card from the net-value metric",
+    !a.cards.some((c) => c.kind === "metric"),
+    kinds(a),
+  );
+  check(
+    "the gauge survives the validator, within the card budget",
+    (() => {
+      const out = localCards(a.cards);
+      return out.length <= 3 && out.some((c) => c.kind === "gauge");
+    })(),
+    JSON.stringify(localCards(a.cards).map((c) => c.kind)),
+  );
+  check(
+    "health is no longer a stats row",
+    !card(a, "stats")?.rows.some((r) => r.label === "Health factor"),
+  );
+  check(
+    "prose still names the debt and the collateral behind it",
     a.text.includes("$700.00 borrowed against $1,500.00"),
     a.text,
   );
@@ -217,7 +243,7 @@ console.log("\n— holdings with no price feed at all —");
   );
   check("never writes a null total as zero", !a.text.includes("$0"), a.text);
   check("says there is no total", /no total/i.test(a.text), a.text);
-  check("the figure is an em dash", card(a, "metric").value === "—");
+  check("an unknown figure renders as 0 (product decision 2026-10-03)", card(a, "metric").value === "$0.00");
   check(
     "the note names what could not be summed",
     card(a, "metric").note?.includes("KLD"),
@@ -304,6 +330,64 @@ console.log("\n— more holdings than one card can show —");
     "nothing is dropped on the way to the frame",
     localCards(a.cards).find((c) => c.kind === "balance").rows.length === 8,
   );
+}
+
+console.log("\n— personal health question vs the definition —");
+{
+  // Personal marker + a health/liquidation/safety term routes to the live answer.
+  for (const q of [
+    "what is my health factor",
+    "my health factor",
+    "my hf",
+    "am i safe",
+    "am i close to liquidation",
+    "will i get liquidated",
+    "how safe am i",
+    "is my position safe",
+  ]) {
+    check(`"${q}" is personal`, isPersonalHealthQuestion(q), q);
+  }
+  // The definition, and personal sentences with no health term, are NOT this.
+  for (const q of [
+    "what is health factor",
+    "how does health factor work",
+    "explain liquidation",
+    "my balance",
+    "my portfolio",
+    "am i winning",
+    "is it safe to use testnet", // "safe" but no personal marker
+  ]) {
+    check(`"${q}" is not personal health`, !isPersonalHealthQuestion(q), q);
+  }
+}
+
+console.log("\n— healthAnswer: one gauge, or an honest sentence —");
+{
+  const off = healthAnswer(portfolio({ health: 1.2, debtUsd: 300 }), {
+    connected: false,
+  });
+  check("no wallet → no card, a connect prompt", off.cards.length === 0 && /connect/i.test(off.text), off.text);
+
+  const unread = healthAnswer(portfolio({ health: null, debtUsd: 300 }), {
+    connected: true,
+  });
+  check("unread health → no card, says so", unread.cards.length === 0 && /couldn't read/i.test(unread.text), unread.text);
+
+  const noLoan = healthAnswer(
+    portfolio({ health: Infinity, debtUsd: 0 }),
+    { connected: true },
+  );
+  check("no loan → no gauge, explains ∞", noLoan.cards.length === 0 && /no loan open/i.test(noLoan.text), noLoan.text);
+
+  const live = healthAnswer(
+    portfolio({ health: 1.12, debtUsd: 700, collateralUsd: 1500 }),
+    { connected: true },
+  );
+  const g = live.cards[0];
+  check("a live number → exactly one gauge", live.cards.length === 1 && g?.kind === "gauge", kinds(live));
+  check("the gauge carries the number and the warn tone", g?.value === "1.12" && g?.tone === "warn", JSON.stringify(g));
+  check("the sentence names the same figure", live.text.includes("1.12"), live.text);
+  check("it survives the validator", localCards(live.cards).length === 1);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

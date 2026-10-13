@@ -177,7 +177,22 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
      left the wallet. A label saying "balances" on the one tool that does not read
      them sat next to getBalances in the same fold. */
   getPortfolio: () => "Checked your lending position",
+  /* The loans themselves — collateral, what is owed, due dates, health — where
+     getPortfolio reads only the collateral value and health. "loans" because that
+     is the noun the borrow page uses for the same rows. */
+  getLoans: () => "Checked your loans",
+  /* Capacity, free collateral, pause state, and loans funded as a lender. */
+  getLendingAccount: () => "Checked your lending account",
+  /* KLD staking — the stake, the vault totals, the withdrawal cooldown. */
+  getStaking: () => "Checked your staking",
+  /* The kfUSD/kafUSD stablecoin vault — held and yield-vault balances. */
+  getVault: () => "Checked your stablecoin vault",
+  /* The points leaderboard — off chain, so its arg is only an address. */
+  getPoints: () => "Checked your points standing",
   getPositions: () => "Checked your liquidity positions",
+  /* The delegation the user signed, if any — read only, never a grant. Its args
+     are addresses, which `str` refuses at 42 characters, so this names no one. */
+  getAgentMandate: () => "Checked your agent delegation",
   getBalances: () => "Checked what your wallet holds",
   /* "open orders" because that is what the limit page calls them on the screen
      the user is looking at, and the fold should not introduce a second name for
@@ -229,6 +244,11 @@ const READ_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
       ? `Priced the ${from} → ${to} route`
       : "Looked for a swap route";
   },
+  getLivePools: () => "Checked the live Kaleido pools",
+  getPoolMarket: (a) => {
+    const metric = str(a.metric);
+    return metric ? `Ranked the pools by ${metric}` : "Ranked the top Kaleido pools";
+  },
 };
 
 /**
@@ -259,6 +279,8 @@ interface ChatTrace {
     reads?: unknown;
     plan?: unknown;
     audit?: { ok?: unknown } | null;
+    /** The model's distilled "why", when it offered one — see traceFromChat. */
+    reasoning?: unknown;
     [k: string]: unknown;
   };
 }
@@ -275,6 +297,19 @@ interface ChatTrace {
 export function traceFromChat(data: unknown): string[] {
   const chat = data as ChatTrace;
   const lines: string[] = [];
+
+  /* The model's distilled reasoning, when it wrote a line. Emitted before the
+     reads so a reader opening the fold gets the "why" ahead of the "what it
+     looked at" — on the JSON path, at least; on the streaming path the reads
+     were already noted live, so this lands after them, which reads just as well
+     as a closing rationale. Already capped and flattened at the route
+     (splitReasoning), re-bounded here on the same defensive footing as every
+     other field this function reads from a reply it did not build. */
+  const reasoning = chat?.context?.reasoning;
+  if (typeof reasoning === "string") {
+    const line = reasoning.replace(/\s+/g, " ").trim().slice(0, 160);
+    if (line) lines.push(line);
+  }
 
   const reads = chat?.context?.reads;
   if (Array.isArray(reads)) {

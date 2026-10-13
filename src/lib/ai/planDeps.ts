@@ -8,9 +8,12 @@ import { getTokenDecimals } from "@/constants/utils/formatTokenDecimals";
 import { readMarketRow } from "@/lib/lending/book";
 import { readPoolState } from "@/lib/dex/pool";
 import { readStakingState } from "@/lib/staking/state";
-import { readCollateralDeposits } from "@/lib/lending/collateral";
+import { readCollateralDeposits, readFreeCollateral } from "@/lib/lending/collateral";
+import { checkLending } from "@/lib/lending/guard";
+import { readBalanceOn, readTokenBalance } from "@/lib/chain/tokenBalance";
 import { encodeV3Path, type PathQuoter } from "@/lib/dex/route";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
+import { resolveSwapRoute } from "@/lib/swap/route";
 import type {
   FaucetAssetRef,
   LoanRef,
@@ -442,6 +445,16 @@ export function serverPlanDeps(
     /* Shared with useLocalPlanner for the same reason: a borrow the facet will
        refuse should be refused identically in the chat and on the page. */
     collateralDeposits: () => readCollateralDeposits(chainId, address),
+    /* Shared with useLocalPlanner: pause, stale price, $10 floor, 75% capacity. */
+    lendingCheck: (check) => checkLending(chainId, address, check),
+    /* Shared with useLocalPlanner: what "withdraw all" withdraws. */
+    freeCollateral: () => readFreeCollateral(chainId, address),
+    /* Shared with useLocalPlanner so a relative swap ("half my USDC") resolves to
+       the same number in the chat and on the agent page. See chain/tokenBalance. */
+    tokenBalance: (token) => readTokenBalance(chainId, address, token),
+    /* Shared with useLocalPlanner: a send's chain check and the bridge offer. */
+    balanceOn: (id, token, isNative) =>
+      readBalanceOn(id, address, token, isNative),
     faucetAssets: () => serverFaucetAssets(chainId, address),
     /* Delegated to the same reader useLocalPlanner and the /pool/new range
        picker call. Sharing it is not tidiness here: a ±10% band that centres on
@@ -469,8 +482,16 @@ export function serverPlanDeps(
           })
         : resolveBridgeRoute({
             ...req,
-            fromChainId: chainId,
+            // A "from X" bridge names its own source; otherwise it leaves the
+            // connected chain, as every bridge did before.
+            fromChainId: req.sourceChainId ?? chainId,
             userAddress: address ?? "",
           }),
+    swapRoute: (req) =>
+      chainId === undefined
+        ? Promise.resolve({
+            error: "Connect a wallet to a supported chain to swap.",
+          })
+        : resolveSwapRoute({ ...req, chainId, userAddress: address ?? "" }),
   };
 }

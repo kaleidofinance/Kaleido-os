@@ -121,6 +121,25 @@ const FEEDS = {
     id: "0xc9d8b075a5c69303365ae23633d4e085199bf5c520a3b90fed1322a0342ffc33",
     source: "hermes",
   },
+  /* Circle's euro stablecoin. Looked up 2026-09-27 on Hermes' unauthenticated
+   * /v2/price_feeds metadata (still 200 after the Hermes 401 change): id → symbol
+   * "Crypto.EURC/USD", description "EURO COIN / US DOLLAR". Not FX.EUR/USD
+   * (0xa995…c30b): EURC is priced as the token, which is what Arc's Chainlink
+   * EURC/USD feed tracks too. On aggregator chains the id is the key the oracle
+   * maps to that feed. */
+  EURC: {
+    symbol: "Crypto.EURC/USD",
+    id: "0x76fa85158bf14ede77087fe3ae472f66213f6ea2f5b411cb2de472794990fa5c",
+    source: "hermes",
+  },
+  /* Circle Wrapped Bitcoin (Arc). Pyth publishes no cirBTC feed; it is priced off
+   * BTC/USD for the reason WETH is priced off ETH/USD — a 1:1 wrapper. Same id as
+   * BTC, so on a chain that registers both they share one oracle mapping. */
+  CIRBTC: {
+    symbol: "Crypto.BTC/USD",
+    id: "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+    source: "hermes",
+  },
 };
 
 /**
@@ -215,7 +234,7 @@ const NO_FEED = {
  * failure the aggregator table was built to prevent, reached by the other door.
  *
  * `maxAge: null` means the feed cannot be bounded legally AS THINGS STAND, so the
- * token must not be registered. Constants.MAX_FEED_PRICE_AGE is 90,000s and
+ * token must not be registered. Constants.MAX_FEED_PRICE_AGE is 108,000s (90,000 when this was written) and
  * `setFeedMaxAge` reverts Protocol__InvalidPriceBounds above it, so there is no
  * value that turns a 97-day-old price into a working market. The refusal is still
  * correct and still harder than the warning a merely-stale feed gets — but it is

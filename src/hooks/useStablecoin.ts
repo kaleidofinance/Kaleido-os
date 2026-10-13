@@ -28,6 +28,7 @@ import {
 // the old flat STABLE_CONTRACTS was Abstract-testnet only, so every consumer
 // now has to say which chain it means.
 import { stableContracts } from "@/constants/registry";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /** The six keys stableContracts() projects, for indexing it by a form value. */
 type StableKey = keyof ReturnType<typeof stableContracts>;
@@ -834,9 +835,10 @@ export function useStablecoin() {
        * because a caller who set both amounts could mint kfUSD the collateral
        * does not back — so it reverts for every ordinary wallet, which is what
        * left the whole Stable section unusable. This permissionless entry point
-       * names only the collateral and derives the kfUSD at par on-chain (see
-       * kfUSD.sol), so the amount the form quoted and the amount minted are the
-       * same 1:1 the contract can honour on redeem. */
+       * names only the collateral and derives the kfUSD on-chain from the
+       * collateral's ORACLE price (see kfUSD.sol) — close to 1:1 for a dollar
+       * stablecoin, and less for one trading below its peg, which is the point.
+       * A collateral with no price feed reverts here (fails closed). */
       const mintTx = await kfUSDContract.mintWithCollateral(
         collateralAddress,
         collateralAmount,
@@ -1162,11 +1164,11 @@ export function useStablecoin() {
   useEffect(() => {
     if (!withdrawalInfo.hasWithdrawal) return;
 
-    const interval = setInterval(() => {
+    const stopTimer = visibleInterval(() => {
       fetchWithdrawalInfo();
-    }, 60000); // Update every minute
+    }, 60000); // Update every minute, only while the tab is visible
 
-    return () => clearInterval(interval);
+    return () => stopTimer();
   }, [withdrawalInfo.hasWithdrawal, activeAccount?.address, activeChain?.id]);
 
   return {

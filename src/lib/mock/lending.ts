@@ -533,9 +533,11 @@ export const MOCK_LOANS: ActiveLoan[] = [
  * `collateralUsd` the portfolio fixture reports.
  */
 export const MOCK_COLLATERAL: CollateralHolding[] = [
-  { symbol: "ETH", address: ETH, amount: 4.2 },
-  { symbol: "USDC", address: USDC, amount: 12000 },
-  { symbol: "kfUSD", address: kfUSD, amount: 8500 },
+  /* `available` below `amount` on USDC demonstrates the locked-collateral case
+     the withdraw form now caps on; the others are fully free. */
+  { symbol: "ETH", address: ETH, amount: 4.2, available: 4.2 },
+  { symbol: "USDC", address: USDC, amount: 12000, available: 7000 },
+  { symbol: "kfUSD", address: kfUSD, amount: 8500, available: 8500 },
 ];
 
 /**

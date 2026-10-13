@@ -22,6 +22,7 @@ import {
   namedRevert,
 } from "./txErrors.ts";
 import tokenFaucetAbi from "../../abi/TokenFaucet.json";
+import { PROTOCOL_ERROR_ABI, PROTOCOL_ERROR_HELP } from "./protocolErrors.ts";
 
 let pass = 0;
 let fail = 0;
@@ -336,6 +337,86 @@ async function run() {
       r.message.length <= 160 && r.message.endsWith("…"),
       `len ${r.message.length}`,
     );
+  }
+
+  /* -------------------------------------------------------------------------- */
+  console.log("\nprotocol errors decode to actionable sentences (the agent path)");
+  {
+    /* The exact tester failure: a borrow reverts with the bare selector for
+       Protocol__NoCollateralDeposited (0xd4030a2a). With the protocol error ABI
+       wired in — as PlanReview now does — it names AND explains it, instead of
+       leaking ethers' "…not found on ABI". */
+    const pIface = new ethers.Interface(PROTOCOL_ERROR_ABI);
+    const pDecoder = ErrorDecoder.create([PROTOCOL_ERROR_ABI]);
+    const NO_COLLATERAL = pIface.encodeErrorResult(
+      "Protocol__NoCollateralDeposited",
+      [],
+    );
+    check(
+      "the borrow selector is 0xd4030a2a",
+      NO_COLLATERAL.slice(0, 10) === "0xd4030a2a",
+      `got ${NO_COLLATERAL.slice(0, 10)}`,
+    );
+
+    const decoded = await pDecoder.decode(
+      makeError("execution reverted", "CALL_EXCEPTION", { data: NO_COLLATERAL }),
+    );
+    const message = describeFailure(
+      decoded,
+      makeError("execution reverted", "CALL_EXCEPTION", { data: NO_COLLATERAL }),
+      PROTOCOL_ERROR_ABI,
+    );
+    check(
+      "no-collateral borrow gets the friendly sentence",
+      message === PROTOCOL_ERROR_HELP.Protocol__NoCollateralDeposited,
+      `got ${message}`,
+    );
+    check(
+      "no-collateral borrow never leaks 'not found on ABI'",
+      !/not found on abi/i.test(message),
+      `got ${message}`,
+    );
+
+    /* An error in the ABI but not the friendly map is still named, not raw. */
+    const UNMAPPED = pIface.encodeErrorResult("Protocol__PositionHealthy", []);
+    const other = describeFailure(
+      await pDecoder.decode(
+        makeError("execution reverted", "CALL_EXCEPTION", { data: UNMAPPED }),
+      ),
+      makeError("execution reverted", "CALL_EXCEPTION", { data: UNMAPPED }),
+      PROTOCOL_ERROR_ABI,
+    );
+    check(
+      "an unmapped protocol error is named, not shown as a selector",
+      other.includes("Protocol__PositionHealthy") && !/0x/.test(other),
+      `got ${other}`,
+    );
+
+    /* A help key that is not a real error name can never match — a typo there is
+       a message that silently never shows. EnforcedPause is OpenZeppelin's, raised
+       by contracts outside this union, so it is the one allowed exception. */
+    const errorNames = new Set(PROTOCOL_ERROR_ABI.map((f) => f.name));
+    const orphans = Object.keys(PROTOCOL_ERROR_HELP).filter(
+      (k) => k !== "EnforcedPause" && !errorNames.has(k),
+    );
+    check("every help key is an error the union ABI can decode", orphans.length === 0,
+      orphans.join(", "));
+
+    /* The paused-market sentence is what a borrower sees after the lending pause:
+       it decodes by name through the regenerated ProtocolFacet ABI. */
+    const PAUSED = pIface.encodeErrorResult("Protocol__Paused", []);
+    const paused = describeFailure(
+      await pDecoder.decode(makeError("execution reverted", "CALL_EXCEPTION", { data: PAUSED })),
+      makeError("execution reverted", "CALL_EXCEPTION", { data: PAUSED }),
+      PROTOCOL_ERROR_ABI,
+    );
+    check("a paused market explains that repay and withdraw still work",
+      paused === PROTOCOL_ERROR_HELP.Protocol__Paused, `got ${paused}`);
+
+    /* Owner-only errors from the admin + ownership facets are named, not raw. */
+    for (const name of ["OwnershipNotPendingOwner", "OwnershipZeroAddress", "Protocol__InvalidPriceFeed"]) {
+      check(`${name} is in the union ABI`, errorNames.has(name));
+    }
   }
 
   /* -------------------------------------------------------------------------- */

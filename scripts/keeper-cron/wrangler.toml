@@ -41,6 +41,15 @@ preview_urls = false
 # change, and the arithmetic above is the thing to redo: the cadence needs to be
 # short enough that (bound / cadence) still leaves room for a missed run.
 [triggers]
+# Two clocks: the price+candle keepers every fifteen minutes, the CCTP
+# completion keeper every two — see CCTP_CRON in the worker.
+# ONE trigger. The account is on Workers Free, capped at 5 cron triggers across
+# ALL its Workers, and every slot is taken (agent-health, keeper, points-lp,
+# points-swap, waitlist-activation) — a second trigger here is rejected by the API
+# and the deploy half-fails. Measured 2026-09-29: the old "*/2" CCTP trigger was
+# never registered. So the */15 tick runs every keeper (push, candles, CCTP,
+# liquidations). On Workers Paid, add "*/2 * * * *" back: the worker already
+# routes that expression to CCTP + liquidations.
 crons = ["*/15 * * * *"]
 
 [vars]

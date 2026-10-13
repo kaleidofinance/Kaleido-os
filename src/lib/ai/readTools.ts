@@ -1,8 +1,21 @@
 import { ethers } from "ethers";
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
-import { getContracts, resolveUserToken } from "@/constants/registry";
+import {
+  findRegisteredLendingAsset,
+  getContracts,
+  registeredLendingAssetAt,
+  hasSwaps,
+  isNativeSentinel,
+  resolveUserToken,
+  stakingContracts,
+  stableContracts,
+} from "@/constants/registry";
+import KLDVaultAbi from "@/abi/KLDVaultAbi.json";
+import StKLDAbi from "@/abi/StKLDAbi.json";
+import { supabase } from "@/lib/supabase/supabaseClient";
 import { getChainMeta } from "@/constants/chains";
 import { readOpenBook } from "@/lib/lending/book";
+import { readBorrowPositions } from "@/lib/lending/positions";
 import { MULTICALL3_ADDRESS, readContracts } from "@/lib/chain/multicall";
 import { readOpenOrders } from "@/lib/dex/orderStore";
 import {
@@ -15,6 +28,9 @@ import {
 } from "@/lib/dex/orders";
 import { retryRpc } from "@/lib/dex/rpcRetry";
 import protocolAbi from "@/abi/ProtocolFacet.json";
+import LendingAdminFacetAbi from "@/abi/LendingAdminFacet.json";
+import { readFreeCollateral } from "@/lib/lending/collateral";
+import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import {
   chainTokenByAddress,
   chainTokenBySymbol,
@@ -27,7 +43,11 @@ import {
   fetchOmniAssetBalance,
   indexedAssets,
 } from "@/constants/utils/omniChainBalances";
-import { getSpotPrice, PRICED_SYMBOLS } from "@/lib/v2/prices/spot";
+import {
+  getSpotPrice,
+  PRICED_SYMBOLS,
+  SUPPORTED_ASSET_SYMBOLS,
+} from "@/lib/v2/prices/spot";
 import { FEE_TIERS } from "@/lib/dex/liquidity";
 import {
   describeRoute,
@@ -36,9 +56,19 @@ import {
   poolSide,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
+import {
+  aggregatorToken,
+  hasKyberSwap,
+  quoteKyberSwap,
+} from "@/lib/swap/kyberswap";
 import { serverPathQuoter, serverQuote, serverPositions } from "./planDeps";
 import { readPoolState } from "@/lib/dex/pool";
 import { getBridgeQuote } from "./bridgeQuotes";
+import { discoveryChains } from "@/lib/dex/poolDiscovery";
+import { sweepChain } from "@/lib/dex/poolSweep";
+import { priceLookup, type SpotPrices } from "@/lib/market/spot";
+import { PRICEABLE, getPrices } from "@/lib/points/prices";
+import { readWaitlistRewardState } from "@/lib/waitlist/rewards";
 
 /**
  * Server-side execution of Luca's READ tools.
@@ -76,6 +106,61 @@ import { getBridgeQuote } from "./bridgeQuotes";
  */
 
 type Json = Record<string, unknown>;
+
+let livePoolsCache: { at: number; pools: Json[] } | null = null;
+let livePoolsInflight: Promise<Json[]> | null = null;
+const LIVE_POOLS_TIMEOUT_MS = 12_000;
+
+async function readLivePools(
+  chainId?: number,
+  mainnetOnly = true,
+): Promise<Json[]> {
+  const now = Date.now();
+  const select = (all: Json[]) =>
+    all.filter(
+      (p) =>
+        (!chainId || p.chainId === chainId) &&
+        (!mainnetOnly || getChainMeta(Number(p.chainId))?.network === "mainnet"),
+    );
+  if (livePoolsCache && now - livePoolsCache.at < 30_000) {
+    return select(livePoolsCache.pools);
+  }
+  if (!livePoolsInflight) {
+    livePoolsInflight = (async () => {
+      const results = await getPrices(PRICEABLE);
+      const usd: Record<string, number> = {};
+      results.forEach((r, symbol) => {
+        if (r.usd !== null && Number.isFinite(r.usd) && r.usd > 0) usd[symbol] = r.usd;
+      });
+      const priceOf = priceLookup({ usd, asOf: new Date().toISOString() } as SpotPrices);
+      const chains = discoveryChains();
+      const settled = await Promise.allSettled(chains.map((c) => sweepChain(c, priceOf)));
+      return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).map((p) => ({
+        chainId: p.chainId,
+        chain: chains.find((c) => c.chainId === p.chainId)?.meta.shortName ?? `chain ${p.chainId}`,
+        pair: `${p.token0.symbol}/${p.token1.symbol}`,
+        address: p.address,
+        version: p.version,
+        feePct: p.feeBps === null ? null : p.feeBps / 100,
+        liquidityUsd: p.liquidity,
+        volume24hUsd: p.volume24h,
+        fees24hUsd: p.fees24h,
+        aprPct: p.apr,
+        price: p.price,
+      }));
+    })().finally(() => {
+      livePoolsInflight = null;
+    });
+  }
+  const pools = await Promise.race([
+    livePoolsInflight,
+    new Promise<Json[]>((_, reject) =>
+      setTimeout(() => reject(new Error("Live pool discovery timed out.")), LIVE_POOLS_TIMEOUT_MS),
+    ),
+  ]);
+  livePoolsCache = { at: Date.now(), pools };
+  return select(pools);
+}
 
 const HEALTH_SCALE = 1e-18;
 /**
@@ -177,6 +262,26 @@ async function getPortfolio(args: Json, chainId: number): Promise<Json> {
   if (!ethers.isAddress(address))
     return { error: "A valid wallet address is required" };
 
+  /* A chain we know that has no lending Diamond — Arc mainnet launched
+     DEX-first — is not an error to relay: it is "lending isn't here", said the
+     way getStaking and getVault say it, so the model tells the user which
+     products ARE on this chain instead of reporting a failure. (Measured: on
+     Arc this returned a bare error, and the full model answered a slippage
+     question with "that check failed".) Holdings stay readable via getBalances. */
+  const chainMeta = getChainMeta(chainId);
+  if (chainMeta && !getContracts(chainId).diamond) {
+    const here = chainMeta.shortName;
+    const products = hasSwaps(chainId)
+      ? `Swaps and bridging are available on ${here}; `
+      : "";
+    return {
+      chainId,
+      chain: here,
+      supported: false,
+      note: `Kaleido's lending book isn't deployed on ${here} yet, so there is no collateral or health factor to report — say lending isn't available here rather than reporting an error. ${products}wallet holdings are readable with getBalances.`,
+    };
+  }
+
   const { contract, error } = protocolOn(chainId);
   if (!contract) return { error };
 
@@ -216,6 +321,485 @@ async function getPortfolio(args: Json, chainId: number): Promise<Json> {
   }
 }
 
+/** Trims a human number to a short, relayable form: 5000.000000 → 5000. */
+const trim6 = (n: number): number => Number(n.toFixed(6));
+const usd2 = (n: number | null): number | null =>
+  n === null ? null : Number(n.toFixed(2));
+
+/**
+ * The wallet's borrowing position on the connected chain — collateral posted,
+ * loans owed, and the health factor between them.
+ *
+ * getPortfolio reads collateral value and health only; it cannot enumerate the
+ * loans, so "what do I owe" and "which loan is due first" had no read, and a
+ * repay had no way to find its requestId except by asking the user for a number
+ * they never saw. This reads the chain's OWN registered collateral set and the
+ * wallet's active requests off the diamond (readBorrowPositions, the same reader
+ * the multichain portfolio uses), priced by the diamond's own oracle.
+ *
+ * Fails SOFT to an empty position rather than throwing: a chain with no diamond,
+ * a dead endpoint or a token with no feed each contributes nothing. `requestId`
+ * is carried on every loan because it is what `repay` targets; `usd: null` on a
+ * row means the token has no price feed, never zero, for the same reason
+ * getBalances splits `unread` out — a relayed zero built from a failed read is
+ * the class of answer that gets planned off.
+ */
+async function getLoans(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+
+  const provider = providerForChain(chainId);
+  if (!provider) return { error: `No RPC endpoint for chain ${chainId}` };
+
+  const pos = await readBorrowPositions(provider, chainId, address);
+  const hasDebt = pos.debts.length > 0;
+  /* Infinity is the no-debt sentinel and null is unread — both become a null
+     healthFactor, and the note below is what tells them apart for the model. */
+  const healthFactor =
+    pos.health === null || pos.health === Infinity
+      ? null
+      : Number(pos.health.toFixed(4));
+
+  const note = !hasDebt
+    ? "No open loans on this chain — say the user has no debt here. Collateral may still be deposited (see collateral). Do not quote a health factor and do not describe the position as safe by some margin."
+    : healthFactor === null
+      ? "There are open loans but the health factor could not be read. Say so rather than implying the position is fine."
+      : `Loans are per chain — this is chain ${chainId} only. Liquidation occurs at health factor 1.0. Each loan's requestId is what a repay targets, so the user never has to look it up. interestPct is a fixed rate set on the request, not an APY.`;
+
+  return {
+    chainId,
+    collateral: pos.collateral.map((c) => ({
+      symbol: c.symbol,
+      amount: trim6(c.amount),
+      usd: usd2(c.usd),
+    })),
+    collateralUsd: usd2(pos.collateralUsd),
+    loans: pos.debts.map((d) => ({
+      requestId: d.requestId,
+      symbol: d.symbol,
+      outstanding: trim6(d.outstanding),
+      interestPct: d.interestBps / 100,
+      dueDate: new Date(d.returnDate * 1000).toISOString().slice(0, 10),
+      usd: usd2(d.usd),
+    })),
+    debtUsd: usd2(pos.debtUsd),
+    healthFactor,
+    note,
+  };
+}
+
+/**
+ * Everything about the user's lending ACCOUNT that getLoans does not say, in one
+ * read — each figure straight off the diamond, never re-derived:
+ *
+ *   - paused: LendingAdminFacet.paused(). New loans, listings and fills stop;
+ *     repay, withdraw and deposit keep working.
+ *   - borrowing capacity: 75% of collateral value (getAccountCollateralValue)
+ *     minus outstanding debt (getLoanCollectedInUsd). The contract refuses a loan
+ *     that reaches the cap (`>=`), so the room is "up to just under".
+ *   - free collateral: s_addressToAvailableBalance per asset — what can be
+ *     withdrawn now. Collateral earmarked to a funded loan is deposited but not
+ *     free.
+ *   - lender positions: getServicedRequestByLender — the loans this wallet
+ *     funded, with what the borrower still owes and what the lender will net
+ *     after the protocol fee (getRepaymentFee — a share of the INTEREST only).
+ *
+ * A failed read is null, never a fabricated zero.
+ */
+const LOAN_STATUS = ["open", "active", "closed"] as const;
+async function getLendingAccount(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+  const { contract, error } = protocolOn(chainId);
+  if (!contract) return { error };
+  const admin = new ethers.Contract(
+    contract.target as string,
+    LendingAdminFacetAbi as ethers.InterfaceAbi,
+    contract.runner,
+  );
+  const read = <T>(fn: () => Promise<T>): Promise<T | null> =>
+    retryRpc(fn).catch(() => null);
+
+  const [paused, collRaw, debtRaw, lent, free] = await Promise.all([
+    read(() => admin.paused() as Promise<boolean>),
+    read(() => contract.getAccountCollateralValue(address) as Promise<bigint>),
+    read(() => contract.getLoanCollectedInUsd(address) as Promise<bigint>),
+    read(() => contract.getServicedRequestByLender(address) as Promise<unknown[]>),
+    readFreeCollateral(chainId, address).catch(() => null),
+  ]);
+
+  const usdOf = (x: bigint | null) =>
+    x === null ? null : Number(Number(ethers.formatUnits(x, 18)).toFixed(2));
+  let capacity: Json | null = null;
+  if (collRaw !== null && debtRaw !== null) {
+    const coll = BigInt(collRaw);
+    const debt = BigInt(debtRaw);
+    const cap = (coll * 75n) / 100n;
+    capacity = {
+      collateralUsd: usdOf(coll),
+      debtUsd: usdOf(debt),
+      maxDebtUsd: usdOf(cap),
+      canBorrowMoreUsd: usdOf(cap > debt ? cap - debt : 0n),
+    };
+  }
+
+  const meta = (token: string) => {
+    const asset =
+      registeredLendingAssetAt(chainId, "loanable", token).entry ??
+      registeredLendingAssetAt(chainId, "collateral", token).entry;
+    return asset
+      ? { symbol: asset.symbol, decimals: asset.decimals }
+      : { symbol: `${token.slice(0, 6)}…${token.slice(-4)}`, decimals: getTokenDecimals(chainId, token) };
+  };
+  const fmt = (raw: bigint, decimals: number) =>
+    Number(Number(ethers.formatUnits(raw, decimals)).toFixed(6));
+
+  let lending: Json[] | null = null;
+  if (lent !== null) {
+    const rows = (lent as ethers.Result[]).slice(0, 25);
+    lending = await Promise.all(
+      rows.map(async (r) => {
+        const requestId = Number(r[1]);
+        const token = String(r[8]);
+        const { symbol, decimals } = meta(token);
+        const owed = BigInt(r[5]);
+        const status = LOAN_STATUS[Number(r[10])] ?? "unknown";
+        const quote =
+          status === "active" && owed > 0n
+            ? await read(() => contract.getRepaymentFee(requestId, owed) as Promise<[bigint, bigint]>)
+            : null;
+        return {
+          requestId,
+          symbol,
+          principal: fmt(BigInt(r[3]), decimals),
+          interestPct: Number(r[4]) / 100,
+          interestTotal: fmt(BigInt(r[11]), decimals),
+          dueDate: new Date(Number(r[6]) * 1000).toISOString().slice(0, 10),
+          status,
+          stillOwedByBorrower: status === "active" ? fmt(owed, decimals) : 0,
+          youReceive: quote ? fmt(BigInt(quote[1]), decimals) : null,
+          protocolFee: quote ? fmt(BigInt(quote[0]), decimals) : null,
+        };
+      }),
+    );
+  }
+
+  return {
+    chainId,
+    paused,
+    pausedNote:
+      paused === true
+        ? "Lending is PAUSED on this chain: new borrow requests, listings, fills and borrowing from listings are stopped. Repaying, depositing and withdrawing collateral still work."
+        : paused === null
+          ? "Pause status could not be read."
+          : undefined,
+    borrowingCapacity: capacity,
+    capacityNote:
+      "What you owe — each loan's principal PLUS its interest for the whole term — may total up to 75% of collateral value; the contract refuses a loan that reaches it. So canBorrowMoreUsd is the room for principal plus interest: at a long term or high rate the most principal you can borrow is less (about canBorrowMoreUsd ÷ (1 + rate × years)). The minimum loan is $10.",
+    freeCollateral:
+      free === null
+        ? null
+        : free
+            .filter((f) => f.raw > 0n)
+            .map((f) => ({ symbol: f.symbol, amount: fmt(f.raw, f.decimals) })),
+    freeCollateralNote:
+      "Free collateral is what can be withdrawn now ('withdraw all' withdraws exactly this). Collateral backing a funded loan stays locked until it is repaid.",
+    lending,
+    lendingNote:
+      "Loans this wallet FUNDED as a lender. youReceive is what the lender nets from the remaining repayment after the protocol fee, which is a share of the interest only — never of the principal. status 'active' is still owed; 'closed' is repaid or liquidated. interestPct is a fixed rate, not an APY.",
+  };
+}
+
+/* Raw fragment arrays, the same JSONs config/contracts hands to `new
+   ethers.Contract` — Interface takes the identical shape. */
+const KLD_VAULT_IFACE = new ethers.Interface(
+  KLDVaultAbi as unknown as ethers.InterfaceAbi,
+);
+const STKLD_IFACE = new ethers.Interface(
+  StKLDAbi as unknown as ethers.InterfaceAbi,
+);
+
+/**
+ * The user's KLD staking on the connected chain.
+ *
+ * The server port of useStakingData: six vault/stKLD views in one Multicall3
+ * round — the vault's pooled total and staker count, and the caller's stake,
+ * withdrawal cooldown and whether one is open. Staking is deployed independently
+ * on each chain and a stake is written on the wallet's chain, so this reads the
+ * wallet's chain the way the write does — the exact bug useStakingData was built
+ * to fix (a stake on BSC read as "0" against Sepolia's totals).
+ *
+ * `staked` is the caller's stKLD balance, which IS their KLD claim: stKLD rebases,
+ * so its value rises as yield is harvested rather than paying a separate reward.
+ * That is why there is no APY to report — the number to watch is the stake's KLD
+ * value, not a percentage. A failed view is null (unread), never a fabricated 0.
+ */
+async function getStaking(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+
+  const staking = stakingContracts(chainId);
+  if (!staking.supported) {
+    return {
+      chainId,
+      supported: false,
+      note: "KLD staking is not deployed on this chain. Say it is not available here rather than reporting an empty stake; the user can switch to a chain where it is.",
+    };
+  }
+
+  const vault = staking.kldVault!;
+  const stKld = staking.stKLD!;
+  const kld = staking.kld!;
+
+  const r = await readContracts(chainId, [
+    { target: vault, iface: KLD_VAULT_IFACE, method: "getTotalPooledKld", args: [kld] },
+    { target: vault, iface: KLD_VAULT_IFACE, method: "getTotalStakers" },
+    { target: stKld, iface: STKLD_IFACE, method: "balanceOf", args: [address] },
+    { target: vault, iface: KLD_VAULT_IFACE, method: "getWithdrawalTimeLeft", args: [address] },
+    { target: vault, iface: KLD_VAULT_IFACE, method: "hasWithdrawalRequest", args: [address] },
+  ]);
+
+  const num18 = (x: { success: boolean; value: unknown }): number | null =>
+    x.success && x.value !== null
+      ? Number(ethers.formatUnits(x.value as bigint, 18))
+      : null;
+
+  const totalStaked = num18(r[0]);
+  const stakers = r[1].success && r[1].value !== null ? Number(r[1].value) : null;
+  const staked = num18(r[2]);
+  const cooldownLeft =
+    r[3].success && r[3].value !== null ? Math.max(0, Number(r[3].value)) : 0;
+  const hasRequest = r[4].success ? Boolean(r[4].value) : false;
+
+  const withdrawal = !hasRequest
+    ? { status: "none" as const }
+    : cooldownLeft > 0
+      ? {
+          status: "cooling_down" as const,
+          secondsLeft: cooldownLeft,
+          hoursLeft: Math.round(cooldownLeft / 360) / 10,
+        }
+      : { status: "claimable" as const };
+
+  const nothing = (staked === null || staked === 0) && !hasRequest;
+  const note = nothing
+    ? "No active stake on this chain — say the user has nothing staked here."
+    : `Staking is per chain — this is chain ${chainId} only. 'staked' is the KLD the user's stKLD is worth now; it rises as yield accrues, so there is no APY to quote — point at the value, not a percentage. To unstake they request a withdrawal (starts the cooldown), wait it out, then withdraw; withdrawal.status says where in that lifecycle they are.`;
+
+  return {
+    chainId,
+    staked: staked === null ? null : trim6(staked),
+    totalStaked: totalStaked === null ? null : trim6(totalStaked),
+    stakers,
+    withdrawal,
+    note,
+  };
+}
+
+/* kfUSD and kafUSD are both ERC20s; only kafUSD carries the withdrawal views, and
+   the cooldown is derived from the request time and the period rather than read
+   from getWithdrawalTime, whose meaning the ABI does not pin down. */
+const STABLE_VAULT_IFACE = new ethers.Interface([
+  "function balanceOf(address) view returns (uint256)",
+  "function withdrawalAmount(address) view returns (uint256)",
+  "function withdrawalRequestTime(address) view returns (uint256)",
+  "function cooldownPeriod() view returns (uint256)",
+]);
+
+/**
+ * The user's kfUSD / kafUSD vault position on the connected chain.
+ *
+ * kfUSD is the stablecoin, minted 1:1 against collateral and held like any token;
+ * kafUSD is the yield vault — lock kfUSD to mint kafUSD, whose value rises as
+ * yield accrues, exited through a request → cooldown → complete lifecycle. This
+ * reads what the user holds of each and where any kafUSD withdrawal sits.
+ *
+ * The cooldown is DERIVED (`withdrawalRequestTime + cooldownPeriod − now`), not
+ * read from the ambiguous getWithdrawalTime, so the "unlocks in" figure is one
+ * this code can stand behind. A failed view is null (unread), never a
+ * fabricated 0. Distinct from KLD staking (getStaking), which is a different vault.
+ */
+async function getVault(args: Json, chainId: number): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+
+  const { kfUSD, kafUSD } = stableContracts(chainId);
+  if (!kfUSD || !kafUSD) {
+    return {
+      chainId,
+      supported: false,
+      note: "The kfUSD/kafUSD vault is not deployed on this chain. Say it is not available here rather than reporting an empty position.",
+    };
+  }
+
+  const r = await readContracts(chainId, [
+    { target: kfUSD, iface: STABLE_VAULT_IFACE, method: "balanceOf", args: [address] },
+    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "balanceOf", args: [address] },
+    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "withdrawalAmount", args: [address] },
+    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "withdrawalRequestTime", args: [address] },
+    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "cooldownPeriod" },
+  ]);
+
+  const num18 = (x: { success: boolean; value: unknown }): number | null =>
+    x.success && x.value !== null
+      ? Number(ethers.formatUnits(x.value as bigint, 18))
+      : null;
+  const asInt = (x: { success: boolean; value: unknown }): number =>
+    x.success && x.value !== null ? Number(x.value) : 0;
+
+  const kfusdHeld = num18(r[0]);
+  const kafusdHeld = num18(r[1]);
+  const pendingKaf = num18(r[2]);
+  const requestTime = asInt(r[3]);
+  const cooldown = asInt(r[4]);
+
+  const hasPending = pendingKaf !== null && pendingKaf > 0 && requestTime > 0;
+  const secondsLeft = hasPending
+    ? Math.max(0, requestTime + cooldown - Math.floor(Date.now() / 1000))
+    : 0;
+  const withdrawal = !hasPending
+    ? { status: "none" as const }
+    : secondsLeft > 0
+      ? {
+          status: "cooling_down" as const,
+          kafUSD: trim6(pendingKaf!),
+          secondsLeft,
+          hoursLeft: Math.round(secondsLeft / 360) / 10,
+        }
+      : { status: "claimable" as const, kafUSD: trim6(pendingKaf!) };
+
+  const nothing = !kfusdHeld && !kafusdHeld && !hasPending;
+  const note = nothing
+    ? "No kfUSD held and nothing in the kafUSD vault on this chain — say the user has no vault position here."
+    : `The stablecoin vault, chain ${chainId} only. kfUSD is minted 1:1 against collateral and held as a stablecoin; kafUSD is the yield vault — locking kfUSD mints it, and its value rises as yield accrues, so there is no APY to quote. Exiting kafUSD is request → cooldown → complete; withdrawal.status says where in that lifecycle they are. This is not KLD staking (getStaking).`;
+
+  return {
+    chainId,
+    kfUSD: kfusdHeld === null ? null : trim6(kfusdHeld),
+    kafUSD: kafusdHeld === null ? null : trim6(kafusdHeld),
+    withdrawal,
+    note,
+  };
+}
+
+/**
+ * The user's standing in the points program — off chain, not per chain.
+ *
+ * Points accrue in Supabase from protocol use, and the ONLY read is the masked
+ * `point_leaderboard` view the public board reads: a wallet outside the season's
+ * public rank limit gets a percentile and no exact rank. This relays exactly what
+ * the view gives and NEVER more — the moment it returned an exact rank for any
+ * `?address=` it would be an oracle that de-masks the whole book, which is the
+ * hazard /api/leaderboard/me is written around. Tier-2 exact standing needs a
+ * signature this has no way to check, so it does not serve it.
+ *
+ * Takes no chainId: a season spans every chain, and the season shown is the one
+ * flagged `is_default`, the same one the /points board resolves.
+ */
+async function getPoints(args: Json): Promise<Json> {
+  const address = String(args.address ?? "");
+  if (!ethers.isAddress(address))
+    return { error: "A valid wallet address is required" };
+  const wallet = address.toLowerCase();
+
+  const seasonRes = await supabase
+    .from("point_seasons")
+    .select("id, label")
+    .eq("is_default", true)
+    .maybeSingle<{ id: number; label: string }>();
+  if (seasonRes.error || !seasonRes.data) {
+    return { error: "Could not read the current points season." };
+  }
+  const season = seasonRes.data;
+
+  const [row, count] = await Promise.all([
+    supabase
+      .from("point_leaderboard")
+      .select(
+        "rank, percentile, total, time_points, action_points, bonus_points",
+      )
+      .eq("season", season.id)
+      .eq("wallet", wallet)
+      .maybeSingle<{
+        rank: number | null;
+        percentile: number | null;
+        total: number | string | null;
+        time_points: number | string | null;
+        action_points: number | string | null;
+        bonus_points: number | string | null;
+      }>(),
+    supabase
+      .from("point_leaderboard")
+      .select("wallet", { count: "exact", head: true })
+      .eq("season", season.id),
+  ]);
+  const waitlistRewards = await readWaitlistRewardState(wallet);
+
+  if (row.error) return { error: "Could not read your points standing." };
+  const participants = count.error ? null : (count.count ?? null);
+
+  /* Postgres `numeric` arrives as a string over PostgREST — parse, don't assume. */
+  const num = (v: number | string | null): number | null =>
+    v === null ? null : Number.isFinite(Number(v)) ? Number(v) : null;
+
+  if (!row.data) {
+    return {
+      season: season.label,
+      participants,
+      earned: false,
+      rewards: waitlistRewards
+        ? {
+            settledPoints: 0,
+            pendingPoints: waitlistRewards.pendingPoints,
+            availableNow: waitlistRewards.availablePoints,
+            totalAfterPending:
+              waitlistRewards.pendingPoints + waitlistRewards.availablePoints,
+            referrals: waitlistRewards.referrals,
+            referralPoints: waitlistRewards.referralPoints,
+            welcomePoints: waitlistRewards.welcomePoints,
+            tasks: waitlistRewards.tasks,
+          }
+        : null,
+      note: "This wallet has no settled row on the board for the current season. If rewards are present, report them as waitlist points and distinguish available from pending; do not say the user has earned nothing. Do not speculate about why a settled row is missing (a missing row can also be a flagged wallet, which must never be disclosed). Points come from using the protocol: a swap, a deposit, or providing liquidity all earn.",
+    };
+  }
+
+  const r = row.data;
+  return {
+    season: season.label,
+    participants,
+    /* Null when the wallet is outside the season's public rank limit — the view
+       masks it and gives the percentile instead. Relayed as-is; never de-masked. */
+    rank: r.rank,
+    percentile: r.percentile,
+    total: num(r.total),
+    breakdown: {
+      time: num(r.time_points),
+      action: num(r.action_points),
+      bonus: num(r.bonus_points),
+    },
+    rewards: waitlistRewards
+      ? {
+          settledPoints: num(r.total),
+          pendingPoints: waitlistRewards.pendingPoints,
+          availableNow: waitlistRewards.availablePoints,
+          totalAfterPending:
+            (num(r.total) ?? 0) +
+            waitlistRewards.availablePoints +
+            waitlistRewards.pendingPoints,
+          referrals: waitlistRewards.referrals,
+          referralPoints: waitlistRewards.referralPoints,
+          welcomePoints: waitlistRewards.welcomePoints,
+          tasks: waitlistRewards.tasks,
+        }
+      : null,
+    note: `Points for the ${season.label} season, across all chains — not per chain.${r.rank === null ? " Outside the public top ranks, so the exact rank is masked; give the percentile instead." : ""} Points are not a token balance and nothing is claimable here. If rewards.pendingPoints or rewards.availableNow are present, explain that waitlist/task points are pending or awaiting ledger reconciliation rather than presenting them as already settled.`,
+  };
+}
 
 const ERC20_BALANCE = new ethers.Interface([
   "function balanceOf(address owner) view returns (uint256)",
@@ -378,6 +962,24 @@ function symbolFor(chainId: number, address: string): string {
  * here" and "the protocol isn't deployed here" are different facts and the second
  * one is actionable.
  */
+/**
+ * The token addresses a book row may carry for `asset`, lowercased. Book rows are
+ * denominated in the LENDING currency, which is not always the DEX token of the
+ * same symbol: on Arc, "USDC" on the DEX is the 0x3600 ERC-20 while loans are in
+ * native USDC (address(1)). Matching both is what makes "USDC offers" find
+ * native-USDC rows instead of reporting an empty book. Empty = unknown asset.
+ */
+export function bookAssetAddresses(chainId: number, asset: string): Set<string> {
+  if (!asset) return new Set();
+  const token = chainTokenBySymbol(chainId, asset);
+  const lendingAsset = findRegisteredLendingAsset(chainId, "loanable", asset);
+  return new Set(
+    [token?.address, lendingAsset?.address]
+      .filter((a): a is string => typeof a === "string")
+      .map((a) => a.toLowerCase()),
+  );
+}
+
 async function getMarkets(args: Json, chainId: number): Promise<Json> {
   const asset = String(args.asset ?? "").toUpperCase();
   const side = String(args.side ?? "borrow").toLowerCase();
@@ -388,9 +990,16 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
     Number.isFinite(Number(args.amount)) && Number(args.amount) > 0
       ? Number(args.amount)
       : null;
+  /* The user's preferred term in days, if named — a soft preference that
+     ranks offers lasting at least that long ahead of shorter ones. */
+  const wantTerm =
+    Number.isFinite(Number(args.termDays)) && Number(args.termDays) > 0
+      ? Number(args.termDays)
+      : null;
 
   const token = asset ? chainTokenBySymbol(chainId, asset) : undefined;
-  if (asset && !token) {
+  const matchAddresses = bookAssetAddresses(chainId, asset);
+  if (asset && matchAddresses.size === 0) {
     const known = chainTokens(chainId).map((t) => t.symbol);
     // Distinguish "that symbol isn't one of ours" from "we have no token
     // registry on this chain at all". The model relays this to the user, and
@@ -430,8 +1039,7 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
     const offers = book.entries
       .filter(
         (e) =>
-          !token ||
-          e.tokenAddress.toLowerCase() === token.address.toLowerCase(),
+          !asset || matchAddresses.has(e.tokenAddress.toLowerCase()),
       )
       .map((e) => {
         let amount: string | null = null;
@@ -443,35 +1051,74 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
         } catch {
           amount = null;
         }
+        const dec = (() => {
+          try {
+            return getTokenDecimals(chainId, e.tokenAddress);
+          } catch {
+            return null;
+          }
+        })();
+        const fmt = (raw: string | null) =>
+          raw !== null && dec !== null ? ethers.formatUnits(raw, dec) : null;
+        const minAmount = fmt(e.minAmountRaw);
+        const maxAmount = fmt(e.maxAmountRaw);
+        const termDays =
+          e.returnDateUnix > nowSec
+            ? Number(((e.returnDateUnix - nowSec) / 86_400).toFixed(1))
+            : null;
+
+        /*
+         * Whether this offer can actually take the user's amount — the question
+         * `takeListing`/`fillRequest` answer on-chain, so a true here means the
+         * fill won't revert on size. The two sides differ, which the old code
+         * ignored (it compared amount >= want for both, backwards for a lender):
+         *  - a LISTING (borrow side) lets the taker draw min..max, so it fits when
+         *    min <= want <= max — the exact takeListing range check;
+         *  - a REQUEST (lend side) is filled in full, so it fits when the user has
+         *    enough to fund it, want >= the request's amount.
+         */
+        const coversYourAmount =
+          wantAmount === null
+            ? null
+            : minAmount !== null && maxAmount !== null
+              ? wantAmount >= Number(minAmount) && wantAmount <= Number(maxAmount)
+              : amount !== null && wantAmount >= Number(amount);
+
         return {
           id: e.id,
           asset: symbolFor(chainId, e.tokenAddress),
           amount,
           aprBps: e.interestBps,
           maturesUnix: e.returnDateUnix || null,
-          termDays:
-            e.returnDateUnix > nowSec
-              ? Number(((e.returnDateUnix - nowSec) / 86_400).toFixed(1))
-              : null,
+          termDays,
           counterparty: e.counterparty,
-          coversYourAmount:
-            wantAmount === null
+          /* The amount a borrower may draw from this listing; null on a request,
+             which is filled in full. Present so the model states a valid take
+             amount instead of the listing's total. */
+          takeRange:
+            minAmount !== null && maxAmount !== null
+              ? { min: minAmount, max: maxAmount }
+              : null,
+          coversYourAmount,
+          /* True when the offer lasts at least as long as the user asked for. */
+          meetsYourTerm:
+            wantTerm === null
               ? null
-              : amount !== null && Number(amount) >= wantAmount,
+              : termDays !== null && termDays >= wantTerm,
         };
       })
       // Drop anything already past maturity — it isn't fillable.
       .filter((o) => o.termDays !== null)
       /* Deterministic ranking, so the model EXPLAINS the order rather than
-         inventing a best: offers that cover the user's amount first (when one
-         was named), then by rate — cheapest for a borrower, richest for a
-         lender. */
+         inventing a best: offers that can take the user's amount first (when one
+         was named), then those long enough for the wanted term, then by rate —
+         cheapest for a borrower, richest for a lender. */
       .sort((a, b) => {
-        if (
-          wantAmount !== null &&
-          a.coversYourAmount !== b.coversYourAmount
-        ) {
+        if (wantAmount !== null && a.coversYourAmount !== b.coversYourAmount) {
           return a.coversYourAmount ? -1 : 1;
+        }
+        if (wantTerm !== null && a.meetsYourTerm !== b.meetsYourTerm) {
+          return a.meetsYourTerm ? -1 : 1;
         }
         return wantLend ? b.aprBps - a.aprBps : a.aprBps - b.aprBps;
       })
@@ -479,7 +1126,9 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
 
     /* The offer that ranks first on those objective terms — named so the model
        can point at it ("this one fits and is cheapest") without being the thing
-       that decided. Never financial advice. */
+       that decided. Never financial advice. When an amount was named, the pick
+       must actually be able to take it, or bestFit is null and the note says so
+       rather than naming an offer whose fill would revert. */
     const bestFit =
       offers.length === 0
         ? null
@@ -491,12 +1140,16 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
             if (!pick) return null;
             const rate = `${(pick.aprBps / 100).toFixed(2)}% APR`;
             const term = pick.termDays ? `, ~${pick.termDays}d term` : "";
+            const range =
+              pick.takeRange !== null
+                ? ` Draw ${pick.takeRange.min}–${pick.takeRange.max}.`
+                : "";
             return {
               id: pick.id,
               why:
                 wantAmount === null
-                  ? `Ranks first on rate: ${rate}${term}.`
-                  : `Covers your ${wantAmount} and has the ${wantLend ? "highest" : "lowest"} rate that does: ${rate}${term}.`,
+                  ? `Ranks first on rate: ${rate}${term}.${range}`
+                  : `Takes your ${wantAmount} and has the ${wantLend ? "highest" : "lowest"} rate that does: ${rate}${term}.${range}`,
             };
           })();
 
@@ -510,13 +1163,13 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
       venue: "Kaleido",
       chainId,
       side: wantLend ? "lend" : "borrow",
-      asset: token?.symbol ?? "all",
+      asset: token?.symbol ?? (asset || "all"),
       offers,
       bestFit,
       note:
         (offers.length === 0
-          ? `No open offers on ${chainName}${token ? ` for ${token.symbol}` : ""}. Suggest the user post their own offer at the rate they want. `
-          : "aprBps is an annual rate in basis points (100 bps = 1%). Use getQuote with a specific amount and maturity to compute the real cost over the term before comparing offers. bestFit names the offer that ranks first on these objective terms (and covers the amount, if one was given) — present it as the objective pick, not as financial advice; the user decides. ") +
+          ? `No open offers on ${chainName}${asset ? ` for ${token?.symbol ?? asset}` : ""}. Suggest the user post their own offer at the rate they want. `
+          : "aprBps is an annual rate in basis points (100 bps = 1%). Use getQuote with a specific amount and maturity to compute the real cost over the term before comparing offers. Each offer carries coversYourAmount (whether it can take the amount the user named — a listing's takeRange is the min–max a borrower may draw; a request is filled in full) and meetsYourTerm. bestFit names the offer that ranks first on these objective terms and can actually take the amount; if none can, bestFit is null — say so rather than naming one whose fill would revert. Present bestFit as the objective pick, not as financial advice; the user decides. ") +
         (partial
           ? `Read the ${book.scanned} most recent of ${book.total} ${wantLend ? "requests" : "listings"} ever posted, so older open offers may exist. `
           : "") +
@@ -564,9 +1217,18 @@ const INDEXED_CHAINS = [
  * case is a guard rather than a live path — the not-issued case is very much
  * live, and is the correct answer for "my ETH balance" on BSC.
  */
-async function getChains(args: Json): Promise<Json> {
+async function getChains(
+  args: Json,
+  _chainId: number,
+  mainnetOnly?: boolean,
+): Promise<Json> {
   const address = String(args.address ?? "");
   const asset = String(args.asset ?? "").toUpperCase();
+  /* Mainnet-first users have testnets hidden in the UI, so a cross-chain sweep
+     must not surface a testnet balance the app itself would not show. */
+  const chains = mainnetOnly
+    ? INDEXED_CHAINS.filter((id) => getChainMeta(id)?.network !== "testnet")
+    : INDEXED_CHAINS;
 
   if (!ethers.isAddress(address)) {
     return { error: "A valid wallet address is required" };
@@ -583,7 +1245,7 @@ async function getChains(args: Json): Promise<Json> {
    * indexedAssets() enumerates the same resolver fetchOmniAssetBalance uses, so
    * the advertised set and the readable set cannot disagree.
    */
-  const SUPPORTED = indexedAssets(INDEXED_CHAINS);
+  const SUPPORTED = indexedAssets(chains);
   const match = SUPPORTED.find((s) => s.toUpperCase() === asset);
   if (!match) {
     return {
@@ -593,7 +1255,7 @@ async function getChains(args: Json): Promise<Json> {
   }
 
   try {
-    const result = await fetchOmniAssetBalance(address, match, INDEXED_CHAINS);
+    const result = await fetchOmniAssetBalance(address, match, chains);
     const byChain = result.chains.map((c) => ({
       chain: c.chainName,
       chainId: c.chainId,
@@ -609,7 +1271,7 @@ async function getChains(args: Json): Promise<Json> {
         byChain.length === 0
           ? "No balance found for this asset on any indexed chain."
           : byChain.length > 1
-            ? "Holdings span multiple chains. Call getBridgeRoute for the real cost and time of moving them. Kaleido still cannot execute a bridge itself, so present it as a manual step the user completes with the provider, never as a signable action."
+            ? "Holdings span multiple chains. Call getBridgeRoute for the real cost and time of moving them, then the bridge action can sign the move for a supported corridor — native currency or a token, from another chain, and optionally delivering a different token (toAsset); getBridgeRoute says whether a corridor is available. Do not promise a bridge before getBridgeRoute confirms one exists."
             : "All holdings for this asset are on a single chain.",
     };
   } catch (err) {
@@ -630,10 +1292,11 @@ async function getChains(args: Json): Promise<Json> {
  * round replaces all of it.
  *
  * Priced off the chart's own allowlist, so there is exactly one place that
- * decides what Kaleido claims to know a price for. KLD, kfUSD, kafUSD and stKLD
- * are deliberately absent from it — they have no market because they have no
- * deployment — and this returns the "no feed" answer for them rather than a
- * number, which is the honest result and the one the model can relay.
+ * decides what Kaleido claims to know a price for. The supported-asset list is
+ * separately derived from the canonical token registry: an asset can be valid
+ * for the app without having a verified USD market feed. This returns the "no
+ * feed" answer for those assets rather than a number, which is the honest
+ * result and the one the model can relay.
  */
 async function getPrice(args: Json): Promise<Json> {
   const asset = String(args.asset ?? "").trim();
@@ -650,7 +1313,8 @@ async function getPrice(args: Json): Promise<Json> {
         asset: asset.toUpperCase(),
         priced: false,
         pricedAssets: PRICED_SYMBOLS,
-        note: `No price feed for "${asset.toUpperCase()}". Kaleido's own tokens (KLD, kfUSD, kafUSD, stKLD) have no market price to read. Say so plainly — do not estimate one, do not substitute a different asset's price, and do not speculate about why.`,
+        supportedAssets: SUPPORTED_ASSET_SYMBOLS,
+        note: `No verified USD price feed for "${asset.toUpperCase()}". It may still be a supported Kaleido asset for balances or execution, but Luca must not estimate a price, substitute a different asset, or speculate. Only report a USD value when priced is true.`,
       };
     }
 
@@ -690,8 +1354,65 @@ async function getBridgeRoute(args: Json): Promise<Json> {
     asset: String(args.asset ?? ""),
     amount: String(args.amount ?? ""),
     address: args.address ? String(args.address) : undefined,
+    toAsset: args.toAsset ? String(args.toAsset) : undefined,
   });
   return result as unknown as Json;
+}
+
+/**
+ * The aggregator's answer for a pair our own quoter cannot route, or null.
+ *
+ * Our quoter sees Kaleido's pools and the recorded venues — not an aggregator.
+ * On Arc, whose liquidity is Uniswap V3/V4 our fork cannot read, that made
+ * getSwapRoute say "not tradable" for pairs the swap action routes through
+ * KyberSwap every day: the read and the plan disagreed, and the user was told a
+ * token could not be bought when it could. Same token mapping as the plan
+ * (native USDC → its ERC20 mirror), same /routes call, same fee parameters.
+ */
+async function aggregatorQuote(
+  chainId: number,
+  inEntry: Parameters<typeof toIToken>[0],
+  outEntry: Parameters<typeof toIToken>[0],
+  amount: string,
+): Promise<Json | null> {
+  if (!hasKyberSwap(chainId)) return null;
+  const inI = toIToken(inEntry);
+  const outI = toIToken(outEntry);
+  const inTok = aggregatorToken(chainId, {
+    ...inI,
+    isNative: isNativeSentinel(inI.address, "dex"),
+  });
+  const outTok = aggregatorToken(chainId, {
+    ...outI,
+    isNative: isNativeSentinel(outI.address, "dex"),
+  });
+  // A native input with no ERC20 mirror cannot be approved; the plan bails too.
+  if (inTok.isNative) return null;
+  let units: string;
+  try {
+    units = ethers.parseUnits(amount, inTok.decimals).toString();
+  } catch {
+    return null;
+  }
+  const q = await quoteKyberSwap({
+    chainId,
+    tokenIn: inTok.address,
+    tokenOut: outTok.address,
+    amountUnits: units,
+  });
+  if (!q) return null;
+  const out = Number(ethers.formatUnits(q.amountOut, outTok.decimals));
+  const rate = out / Number(amount);
+  return {
+    routable: true,
+    via: "aggregator",
+    tokenIn: inTok.symbol,
+    tokenOut: outTok.symbol,
+    amountIn: amount,
+    amountOut: out,
+    rate: `1 ${inTok.symbol} ≈ ${Number(rate.toPrecision(6))} ${outTok.symbol}`,
+    note: "Routed through the KyberSwap aggregator across this chain's DEXes rather than a Kaleido pool — the swap action builds exactly this route. Indicative, not a floor: the minimum is set from the user's slippage at build time.",
+  };
 }
 
 /**
@@ -799,7 +1520,9 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
       { maxIntermediates: 2 },
     );
 
-    if (!path)
+    if (!path) {
+      const aggregator = await aggregatorQuote(chainId, inEntry, outEntry, amount);
+      if (aggregator) return aggregator;
       return {
         routable: false,
         tokenIn: sell.token.symbol,
@@ -808,6 +1531,7 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
         triedVia: intermediateTokens(chainId).map((t) => t.symbol),
         note: "No pool at any tier and no two-hop route either. Report which tiers and intermediates were tried — a bare 'not supported' reads as a missing feature when it is missing liquidity.",
       };
+    }
 
     const rate = path.amountOut / Number(amount);
     return {
@@ -889,10 +1613,9 @@ const ORDERS_FEE_ABI = ["function fillerFeeBps() external view returns (uint16)"
  * still lists - a failed symbol lookup drops the amounts and keeps the order,
  * because a cancel names no amount.
  *
- * No cancel TOOL exists yet, though: the `cancelOrder`/`cancelAllOrders` intents
- * shipped with the limit page but nothing maps a model's call onto them. Until
- * that lands this tool is read-only and its note says so rather than offering
- * something the agent cannot do.
+ * A cancel-ALL tool now exists — `cancelOrders` maps onto the `cancelAllOrders`
+ * intent — so the note offers it. There is still no per-ORDER cancel tool, so a
+ * single order is a shortHash the user cancels themselves on the Limit tab.
  */
 async function getOrders(args: Json, chainId: number): Promise<Json> {
   const address = String(args.address ?? "");
@@ -1076,8 +1799,7 @@ async function getOrders(args: Json, chainId: number): Promise<Json> {
       "A fill needs two things at once, so do not report either one alone as 'about to fill': `eligibleForAFillNow` is whether the order's own terms permit a fill this second, and `awayPct` is how far its floor sits above the pool's live price — 0 or below means the price is there. A null awayPct means the pair has no pool to quote, which is not the same as ready. " +
       "Never say an order will fill: the floor guarantees the price it fills at, not that anyone fills it, and an order can rest until it expires. " +
       "Everything except awayPct comes from the signed order itself. " +
-      "Cancelling is not something you can do yet - there is no cancel tool - so do not offer to. " +
-      "Point the user at the Limit tab under Trade, where each resting order has its own cancel, and give them the shortHash so they can find the right one.",
+      "To cancel, the cancelOrders tool cancels ALL of this wallet's resting orders on the chain in one signature — offer it when the user wants to clear their orders. There is no per-order cancel tool yet, so for a single order point the user at the Limit tab under Trade, where each resting order has its own cancel, and give them the shortHash so they can find the right one.",
   };
 }
 
@@ -1142,11 +1864,225 @@ async function getPositions(args: Json, chainId: number): Promise<Json> {
   }
 }
 
-const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
+async function getLivePools(_args: Json, chainId: number, mainnetOnly = true): Promise<Json> {
+  try {
+    const pools = await readLivePools(chainId, mainnetOnly);
+    return {
+      chainId,
+      chain: getChainMeta(chainId)?.shortName ?? `chain ${chainId}`,
+      pools,
+      count: pools.length,
+      note: pools.length
+        ? "These are the live Kaleido liquidity pools currently discovered on this chain. Use the pair, fee tier and liquidity values as current snapshots; they can change between reads."
+        : "No live Kaleido liquidity pools were discovered on this chain. Do not invent a pair; say the current inventory is empty or unavailable.",
+    };
+  } catch (err) {
+    return { error: `Could not read live Kaleido liquidity pools: ${(err as Error).message}` };
+  }
+}
+
+async function getPoolMarket(args: Json, chainId: number, mainnetOnly = true): Promise<Json> {
+  try {
+    const all = await readLivePools(chainId, mainnetOnly);
+    const metric = args.metric === "volume" || args.metric === "apr" ? args.metric : "liquidity";
+    const limit = Math.min(20, Math.max(1, Number(args.limit) || 10));
+    const ranked = [...all].sort((a, b) => {
+      const av = Number(a[metric === "volume" ? "volume24hUsd" : metric === "apr" ? "aprPct" : "liquidityUsd"] ?? -1);
+      const bv = Number(b[metric === "volume" ? "volume24hUsd" : metric === "apr" ? "aprPct" : "liquidityUsd"] ?? -1);
+      return bv - av;
+    }).slice(0, limit);
+    const sum = (key: string) => all.reduce((n, p) => n + (Number(p[key] ?? 0) || 0), 0);
+    return {
+      chainId,
+      chain: getChainMeta(chainId)?.shortName ?? `chain ${chainId}`,
+      metric,
+      count: all.length,
+      totals: { liquidityUsd: sum("liquidityUsd"), volume24hUsd: sum("volume24hUsd"), fees24hUsd: sum("fees24hUsd") },
+      pools: ranked,
+      note: all.length
+        ? `Ranked live Kaleido pools on this chain by ${metric}. These are current snapshots, not guaranteed returns or execution prices.`
+        : "No live pools were discovered on this chain, so no ranking is available.",
+    };
+  } catch (err) {
+    return { error: `Could not read live pool market data: ${(err as Error).message}` };
+  }
+}
+
+/*
+ * The action bitmask AgentPermissionFacet stores, decoded to the names a user
+ * would recognise. Mirrors LibAgentPermission.ACTION_* — kept as a literal here
+ * rather than imported because the frontend has the ABI, not the Solidity
+ * constants, and a wrong bit would mislabel what a delegate is allowed to do on
+ * the one screen where that matters. Lending-only by design: swaps, liquidity,
+ * staking and minting have no bit and an agent can never be granted them.
+ */
+const AGENT_ACTIONS: ReadonlyArray<[number, string]> = [
+  [1, "borrow"],
+  [2, "lend"],
+  [4, "repay"],
+  [8, "deposit collateral"],
+  [16, "withdraw collateral"],
+  [32, "close position"],
+];
+
+/**
+ * Reads an on-chain agent delegation — the mandate a user signed via
+ * AgentPermissionFacet.grantAgentPermission — so Luca can state exactly what an
+ * agent is (and is not) allowed to do, and how much budget is left this epoch.
+ *
+ * Read-only and honest about the common case: today the app has no autonomous
+ * agent address to act *as*, so a turn that does not name one gets a plain "no
+ * active delegation" rather than a guess. When an agent address is given, this
+ * is the source of truth the delegation UI should also read — the reads
+ * (getAgentPermission, agentRemainingBudget) already exist on-chain; this is the
+ * frontend half that useAgentSettings notes "isn't in the frontend ABI yet".
+ *
+ * It never enables anything. Granting is a signed action (grantAgentPermission);
+ * revoking is a signed action (revokeAgentPermission); nothing here moves funds
+ * or changes a mandate. It only lets the user and Luca see one.
+ */
+async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
+  const user = typeof args.address === "string" ? args.address : undefined;
+  const agent = typeof args.agent === "string" ? args.agent : undefined;
+  if (!user || !ethers.isAddress(user)) {
+    return { error: "getAgentMandate needs the user's wallet address." };
+  }
+  if (!agent) {
+    return {
+      configured: false,
+      note:
+        "No autonomous agent address was given, and the app has no default one — " +
+        "so there is no active delegation to report. Delegating is opt-in and " +
+        "revocable: the user signs grantAgentPermission to authorise a bounded, " +
+        "capped mandate, and revokeAgentPermission kills it instantly. Until then " +
+        "every action still needs the user's own signature.",
+    };
+  }
+  if (!ethers.isAddress(agent)) {
+    return { error: "getAgentMandate: agent is not a valid 0x address." };
+  }
+
+  try {
+    const provider = providerForChain(chainId);
+    const diamond = getContracts(chainId).diamond;
+    if (!provider || !diamond) {
+      return {
+        error: `No Kaleido deployment recorded for chain ${chainId}.`,
+      };
+    }
+    const facet = new ethers.Contract(diamond, agentPermissionAbi, provider);
+    const p = await facet.getAgentPermission(user, agent);
+
+    // expiry === 0 is the facet's "no grant was ever made" sentinel.
+    if (p.expiry === 0n || Number(p.expiry) === 0) {
+      return {
+        configured: false,
+        agent,
+        note:
+          `No delegation from this user to ${agent}. The user has not signed a ` +
+          "mandate for that agent, so it can do nothing on their behalf.",
+      };
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expiry = Number(p.expiry);
+    const revoked = Boolean(p.revoked);
+    const expired = nowSec > expiry;
+    const status = revoked
+      ? "revoked"
+      : expired
+        ? "expired"
+        : "active";
+
+    const bits = Number(p.allowedActions);
+    const allowedActions = AGENT_ACTIONS.filter(([b]) => (bits & b) !== 0).map(
+      ([, name]) => name,
+    );
+
+    // USD notional is 1e18-scaled on-chain, matching the grant's units.
+    const fmtUsd = (v: bigint) => Number(ethers.formatUnits(v, 18));
+    const maxPerEpochUsd = fmtUsd(p.maxNotionalPerEpoch);
+    let remainingBudgetUsd: number | null = null;
+    try {
+      remainingBudgetUsd = fmtUsd(
+        await facet.agentRemainingBudget(user, agent),
+      );
+    } catch {
+      remainingBudgetUsd = null;
+    }
+
+    /*
+     * Spent is DERIVED from remaining, not read from the struct's spentInEpoch —
+     * the two disagree across an idle epoch and the derived one is the honest
+     * figure. agentRemainingBudget rolls the epoch (returns the full cap once the
+     * window has elapsed), but the on-chain spentInEpoch only resets on the NEXT
+     * spend, so reading it raw produced spent + remaining > max — a mandate that
+     * looks over budget while having its whole allowance free. Deriving it keeps
+     * the pair consistent by construction. Falls back to the raw field only when
+     * remaining could not be read.
+     */
+    const spentThisEpochUsd =
+      remainingBudgetUsd !== null
+        ? Math.max(0, maxPerEpochUsd - remainingBudgetUsd)
+        : fmtUsd(p.spentInEpoch);
+
+    const daysLeft = expired
+      ? 0
+      : Number(((expiry - nowSec) / 86_400).toFixed(1));
+
+    /* When the current epoch's budget rolls over. 0 once the window has elapsed
+       (the next spend opens a fresh one), so "resets now" and "already reset" are
+       the same answer to the user. */
+    const epochEnd = Number(p.epochStart) + Number(p.epochDuration);
+    const epochResetsInSec = Math.max(0, epochEnd - nowSec);
+
+    return {
+      configured: true,
+      agent,
+      status,
+      allowedActions,
+      maxPerActionUsd: fmtUsd(p.maxNotionalPerAction),
+      maxPerEpochUsd,
+      spentThisEpochUsd,
+      remainingBudgetUsd,
+      epochResetsInSec,
+      minHealthFactor: Number(p.minHealthFactorBps) / 10_000,
+      maxInterestBps: Number(p.maxInterestBps) || null,
+      expiryUnix: expiry,
+      daysUntilExpiry: daysLeft,
+      note:
+        status === "active"
+          ? "This is a live, revocable mandate. Amounts are USD. remainingBudgetUsd " +
+            "is what the agent may still spend this epoch (spentThisEpochUsd is the " +
+            "rest of the cap and is derived from it, so the two always sum to the " +
+            "epoch max); the budget does not refund on repayment, and " +
+            "epochResetsInSec says when it rolls over. allowedActions is " +
+            "lending-only by design. The user can revoke it instantly with " +
+            "revokeAgentPermission — offer that if they sound unsure."
+          : status === "revoked"
+            ? "This mandate was revoked and does nothing. The agent cannot act."
+            : "This mandate has expired and does nothing. The user would need to " +
+              "sign a fresh grantAgentPermission to delegate again.",
+    };
+  } catch (err) {
+    return { error: `getAgentMandate failed: ${(err as Error).message}` };
+  }
+}
+
+const HANDLERS: Record<
+  string,
+  (args: Json, chainId: number, mainnetOnly?: boolean) => Promise<Json>
+> =
   {
     getQuote,
     getPortfolio,
+    getLoans,
+    getLendingAccount,
+    getStaking,
+    getVault,
     getPositions,
+    getLivePools,
+    getPoolMarket,
     getBalances,
     getMarkets,
     getOrders,
@@ -1154,6 +2090,8 @@ const HANDLERS: Record<string, (args: Json, chainId: number) => Promise<Json>> =
     getChains,
     getBridgeRoute,
     getSwapRoute,
+    getAgentMandate,
+    getPoints,
   };
 
 export function isReadTool(name: string): boolean {
@@ -1175,11 +2113,12 @@ export async function runReadTool(
   name: string,
   args: Json,
   chainId?: number,
+  mainnetOnly?: boolean,
 ): Promise<Json> {
   const handler = HANDLERS[name];
   if (!handler) return { error: `Unknown read tool: ${name}` };
   try {
-    return await handler(args, chainId ?? READ_ONLY_CHAIN_ID);
+    return await handler(args, chainId ?? READ_ONLY_CHAIN_ID, mainnetOnly);
   } catch (err) {
     return { error: `${name} threw: ${(err as Error).message}` };
   }

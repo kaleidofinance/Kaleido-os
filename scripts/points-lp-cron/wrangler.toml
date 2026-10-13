@@ -1,0 +1,45 @@
+# Cloudflare Worker config for the LP-points accrual clock.
+#
+# Deploy / redeploy:
+#
+#   npx wrangler deploy --config scripts/points-lp-cron/wrangler.toml
+#
+# Arm it (the value must equal the Vercel project's CRON_SECRET — the SAME value
+# the keeper / waitlist / points-swap Workers hold; the route compares against
+# process.env.CRON_SECRET and answers 401 to anything else):
+#
+#   npx wrangler secret put POINTS_LP_CRON_SECRET --config scripts/points-lp-cron/wrangler.toml
+#
+# See points-lp-cron-worker.js for why this is a Cloudflare Worker, and
+# src/app/api/cron/points-lp for what it drives.
+
+name = "kaleido-points-lp-cron"
+main = "points-lp-cron-worker.js"
+compatibility_date = "2026-09-01"
+
+# The workers.dev hostname is only a manual trigger and refuses anything without
+# the same secret — see the fetch handler. No route and no custom domain.
+#
+# Declared above every [table] header on purpose: a bare key after one belongs to
+# that table.
+workers_dev = true
+preview_urls = false
+
+# Every 30 minutes — finer than the swap indexer. Accrual credits min(previous,
+# current) between snapshots, so a short interval keeps the min() close to real
+# holdings and a legitimate mid-interval dip is penalised for less time. Snapshots
+# are idempotent on (wallet, source, block_number), so an overlapping run never
+# double-writes.
+[triggers]
+crons = ["*/30 * * * *"]
+
+[vars]
+# The apex, deliberately. `www.kaleidofi.xyz` answers 307, and a redirect is not
+# somewhere to send a bearer token.
+APP_URL = "https://kaleidofi.xyz"
+
+# On, because an accrual job that silently stops is a silent outage — liquidity
+# would stop earning points with nothing to show it. The scheduled handler
+# rethrows on any non-200 so the invocation is marked failed, not just logged.
+[observability]
+enabled = true

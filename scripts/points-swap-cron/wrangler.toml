@@ -1,0 +1,48 @@
+# Cloudflare Worker config for the swap-points indexer clock.
+#
+# Deploy / redeploy:
+#
+#   npx wrangler deploy --config scripts/points-swap-cron/wrangler.toml
+#
+# Arm it (the value must equal the Vercel project's CRON_SECRET — the SAME value
+# the keeper and waitlist Workers hold; the route compares against
+# process.env.CRON_SECRET and answers 401 to anything else):
+#
+#   npx wrangler secret put POINTS_SWAP_CRON_SECRET --config scripts/points-swap-cron/wrangler.toml
+#
+# See points-swap-cron-worker.js for why this is a Cloudflare Worker rather than a
+# Vercel cron (Hobby plan: once a day), and src/app/api/cron/points-swap for what
+# it drives.
+
+name = "kaleido-points-swap-cron"
+main = "points-swap-cron-worker.js"
+compatibility_date = "2026-09-01"
+
+# The workers.dev hostname is only a manual trigger and refuses anything without
+# the same secret — see the fetch handler. No route and no custom domain: nothing
+# but Cloudflare's scheduler needs to reach this.
+#
+# Declared above every [table] header on purpose: a bare key after one belongs to
+# that table.
+workers_dev = true
+preview_urls = false
+
+# Every 15 minutes. The route scans a 10,000-block window each run and is
+# idempotent on the swap's real tx_hash, so overlapping windows and re-runs never
+# double-credit — a 15-minute tick comfortably covers its own window at Arc's
+# block time, and matches the keeper's cadence. There is no backlog to drain
+# fast: a swap credited late is credited the same. Gentle on the Arc RPC, which
+# this hits for getLogs + per-swap getTransaction/getReceipt.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+# The apex, deliberately. `www.kaleidofi.xyz` answers 307, and a redirect is not
+# somewhere to send a bearer token.
+APP_URL = "https://kaleidofi.xyz"
+
+# On, because an indexer that silently stops is a silent outage — swaps would
+# stop earning points with nothing to show it. The scheduled handler rethrows on
+# any non-200 so the invocation is marked failed, not just logged.
+[observability]
+enabled = true

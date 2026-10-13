@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 
 import { providerForChain, READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { CHAINS, CHAINS_BY_ID, type ChainMeta } from "@/constants/chains";
-import { isDeployed, tradableChains } from "@/constants/registry";
+import { hasSwaps, isDeployed } from "@/constants/registry";
 import type { ITradingPair } from "@/constants/types/dex";
 
 /**
@@ -62,11 +62,13 @@ let discovered: DiscoveryChain[] | null = null;
 /**
  * The chains a pool sweep covers: everywhere we have deployed and intend to trade.
  *
- * `tradableChains` is the same set the network picker offers, so the table cannot
- * list a chain the user has no way to reach — it ands `chains.ts`'s `tradable`
- * intent against a real deployment record, which is why a chain we have not
- * deployed to contributes no requests at all rather than 84 calls into an empty
- * address.
+ * A chain is covered when it is `tradable` AND has a DEX (`hasSwaps` — a
+ * v3Router where pools live), NOT when its Diamond is deployed. Pools exist on
+ * the router, independent of lending: Arc launched DEX-first (v3Router + seeded
+ * pools, no Diamond), so gating on `isDeployed` hid Arc's own pools from the
+ * table. Anding in `tradable` still means a chain the user cannot reach never
+ * appears; a chain with no DEX contributes no requests rather than 84 calls into
+ * an empty address.
  *
  * The read chain leads the list when it is deployed, and is included even if it
  * were not marked tradable: it is the chain the rest of the app answers for, so a
@@ -80,7 +82,14 @@ export function discoveryChains(): DiscoveryChain[] {
 
   const ids: number[] = [];
   if (isDeployed(READ_ONLY_CHAIN_ID)) ids.push(READ_ONLY_CHAIN_ID);
-  for (const chain of tradableChains(CHAINS)) {
+  /* Chains with a DEX, not chains with a Diamond. Pools live on the v3Router,
+     and Arc launched DEX-first — v3Router + seeded pools, no Diamond yet. Gating
+     on `isDeployed` (what `tradableChains` does) hid Arc's OWN seeded pools from
+     the table: its pools exist, but the sweep never read the chain. `hasSwaps`
+     is the right predicate, and the swap builder already gates on v3Router the
+     same way. Still `tradable`, so a chain hidden from the switcher stays hidden
+     here too. */
+  for (const chain of CHAINS.filter((c) => c.tradable && hasSwaps(c.id))) {
     if (!ids.includes(chain.id)) ids.push(chain.id);
   }
 
@@ -156,7 +165,14 @@ export interface PoolStore {
     prepare: () => Promise<C>,
     perChain: (chain: DiscoveryChain, context: C) => Promise<ITradingPair[]>,
     force: boolean,
+    mainnetOnly: boolean,
   ): Promise<ITradingPair[]>;
+  /**
+   * Replace the cache with a pre-computed list — the server-swept pools from
+   * `/api/pools`. Groups by chain and publishes, so a subscriber receives the
+   * server result exactly the way it would a client sweep's.
+   */
+  replace(pools: ITradingPair[]): void;
 }
 
 /**
@@ -173,6 +189,7 @@ export function createPoolStore(ttlMs: number): PoolStore {
   const listeners = new Set<(pools: ITradingPair[]) => void>();
   let completedAt = 0;
   let inFlight: Promise<ITradingPair[]> | null = null;
+  let lastMainnetOnly: boolean | null = null;
 
   const snapshot = () =>
     discoveryChains().flatMap((c) => byChain.get(c.chainId) ?? []);
@@ -192,18 +209,50 @@ export function createPoolStore(ttlMs: number): PoolStore {
       };
     },
 
-    sweep(prepare, perChain, force) {
+    replace(pools) {
+      /* The server already swept — group its flat list back by chain (the store's
+         native shape) and publish, so subscribers get it the same way they'd get a
+         client sweep. `completedAt` is stamped so a fallback sweep inside the TTL
+         serves this list rather than re-reading every chain. */
+      byChain.clear();
+      for (const p of pools) {
+        const list = byChain.get(p.chainId) ?? [];
+        list.push(p);
+        byChain.set(p.chainId, list);
+      }
+      completedAt = Date.now();
+      publish();
+    },
+
+    sweep(prepare, perChain, force, mainnetOnly) {
+      /* Mainnet-first: with testnets hidden (the Arc-launch default) the sweep
+         must not read testnet chains at all. Reading them anyway hammered five
+         testnet RPCs into 429s and stalled the whole table for 20s per chain —
+         for a viewer who could only ever see mainnet rows. A change of mode
+         forces a fresh sweep rather than serving a snapshot built for the other
+         set. */
+      const modeChanged =
+        lastMainnetOnly !== null && lastMainnetOnly !== mainnetOnly;
+      lastMainnetOnly = mainnetOnly;
+
       /* An in-flight sweep is joined rather than duplicated, force or not: two
          consumers mounting in the same tick would otherwise each read five
          chains. */
       if (inFlight) return inFlight;
-      if (!force && completedAt > 0 && Date.now() - completedAt < ttlMs) {
+      if (
+        !force &&
+        !modeChanged &&
+        completedAt > 0 &&
+        Date.now() - completedAt < ttlMs
+      ) {
         return Promise.resolve(snapshot());
       }
 
       const run = (async () => {
         const context = await prepare();
-        const chains = discoveryChains();
+        const chains = discoveryChains().filter(
+          (c) => !mainnetOnly || c.meta.network === "mainnet",
+        );
 
         const settled = await Promise.allSettled(
           chains.map(async (chain) => {

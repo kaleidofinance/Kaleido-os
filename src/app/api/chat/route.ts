@@ -11,21 +11,43 @@ import {
   GATEWAY_MODEL_IDS,
 } from "@/lib/ai";
 import {
+  runAgent,
   runAgentWithFailover,
   type AgentInput,
   type AgentRun,
 } from "@/lib/ai/agent";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
+import {
+  getNormalizerProviders,
+  isEscalation,
+  normalizerAddendum,
+  productFacts,
+} from "@/lib/ai/normalizer";
+import {
+  classifyLucaRoute,
+  jevMode,
+  jevReplaceMinConfidence,
+  shouldSkipNormalizer,
+  type JevRoute,
+} from "@/lib/ai/jev";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
-import { auditPlan, refusalText } from "@/lib/ai/auditor";
+import { auditPlan, refusalText, sanitizeGuardrails } from "@/lib/ai/auditor";
 import {
   consumeModelRequest,
   peekModelUsage,
   releaseModelRequest,
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
-import { splitActionsBlock } from "@/lib/ai/actionsBlock";
+import { splitCards, splitReasoning } from "@/lib/ai/actionsBlock";
+import {
+  simulatePlan,
+  rpcCallFor,
+  isStaleQuoteRevert,
+} from "@/lib/ai/simulatePlan";
+import { logAgentTurn } from "@/lib/ai/turnLog";
+import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
+import { chainTokens } from "@/constants/tokens";
 import { validateLocalClassification } from "@/lib/ai/localIntent";
 
 /**
@@ -52,7 +74,14 @@ export const maxDuration = 60;
  * would 403. Ids and labels only; no keys, no base URLs.
  */
 export async function GET(request: NextRequest) {
-  const wallet = request.nextUrl.searchParams.get("address") ?? undefined;
+  /* Validated to an address shape: a peek is a low-sensitivity read (a daily
+     count), but a malformed value should not reach the RPC, and an unowned one
+     gets the same empty default as no wallet. Proving ownership of the address
+     is the session-auth work deferred with the provider decision. */
+  const raw = request.nextUrl.searchParams.get("address") ?? "";
+  const wallet = /^0x[0-9a-fA-F]{40}$/.test(raw)
+    ? raw.toLowerCase()
+    : undefined;
   const usage = await peekModelUsage(wallet);
   const models = [
     ...(process.env.AGENTROUTER_API_KEY
@@ -171,6 +200,31 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    /*
+     * Per-IP rate limit, before anything else spends work or quota.
+     *
+     * The quota below is keyed on a wallet address the caller supplies and does
+     * not have to own, so on its own it lets a script POST a victim's address to
+     * lock them out, or rotate addresses to burn the shared daily ceiling for
+     * everyone. This is the floor that raises the cost of both: one IP cannot
+     * hammer the endpoint regardless of what identity it claims. It fails open
+     * (a limiter outage must not take the agent down) and sits in front of the
+     * per-wallet and deployment caps, not instead of them. Not a substitute for
+     * binding the quota to a signed session — that is the stronger fix, deferred
+     * with the wallet-provider decision — but it closes the cheap attacks now.
+     */
+    const ipRate = await checkIpRate(clientIp(request.headers));
+    if (!ipRate.allowed) {
+      return NextResponse.json(
+        {
+          response:
+            "You're sending requests faster than I can take them — give it a moment and try again. Direct commands like `swap 500 USDC to EURC` are unaffected.",
+          context: { status: "rate_limited" },
+        },
+        { status: 429 },
+      );
+    }
+
     // --- Provider-agnostic agent loop -----------------------------------
     // When an AI key is configured (Claude, OpenAI, …) Luca runs here: read
     // tools ground the reasoning, execute tools become the signable plan the
@@ -189,13 +243,30 @@ export async function POST(request: NextRequest) {
         : undefined;
     /* Primary provider, then the others as fall-backs, so a model outage on
        one backend degrades to the next instead of failing the turn. */
+    /* The page asks for the normalizer tier on every sentence its local nets
+       could not answer: a cheap single-shot read before the full model — see
+       lib/ai/normalizer.ts. Anything else is the full turn as before. */
+    const tier = body.tier === "normalize" ? "normalize" : "full";
     const providers = getProviderChain(requested);
     const provider = providers[0] ?? null;
+    /* When the turn started, for the latency every ending records. */
+    const startedAt = Date.now();
+    let jevRoute: JevRoute | null = null;
+    let jevConfidence: number | null = null;
+    let jevNormalizerSkipped = false;
+    /* The address the quota is keyed on, validated to an EIP-shaped address and
+       lower-cased. Anything else is treated as no wallet — the anonymous,
+       local-only branch — so a garbage string cannot become its own metered
+       identity, and the counter is keyed on a canonical form rather than on
+       whatever casing the caller sent. */
+    const meterAddress = /^0x[0-9a-fA-F]{40}$/.test(String(body.address ?? ""))
+      ? String(body.address).toLowerCase()
+      : undefined;
     if (provider) {
       // Quota is spent here, at the point of dispatch, and nowhere earlier.
       // A turn the client answered locally never reaches this route at all, so
       // routing locally first is what makes the allowance go far.
-      const quota = await consumeModelRequest(body.address);
+      const quota = await consumeModelRequest(meterAddress);
       if (!quota.allowed) {
         /*
          * Three refusals, three different things to say, and the difference
@@ -212,13 +283,27 @@ export async function POST(request: NextRequest) {
          * it should not show a user as spent when they are not.
          */
         const global = quota.refusedBy === "global";
+        /* A refused turn is still a turn worth counting — an exhausted global cap
+           is an operational event (the shared allowance ran dry), distinct from a
+           per-wallet or anonymous refusal. No provider ran, so no provider/model. */
+        await logAgentTurn({
+          status:
+            quota.refusedBy === "global"
+              ? "global_quota_exhausted"
+              : quota.refusedBy === "anonymous"
+                ? "quota_anonymous"
+                : "quota_exhausted",
+          latencyMs: Date.now() - startedAt,
+          chainId: typeof body.chainId === "number" ? body.chainId : null,
+          address: meterAddress,
+        });
         return NextResponse.json(
           {
             response:
               quota.refusedBy === "anonymous"
-                ? "Connect your wallet and I can work on your positions. Direct commands like `swap 500 USDC to KLD` work without it."
+                ? "Connect your wallet and I can work on your positions. Direct commands like `swap 500 USDC to EURC` work without it."
                 : global
-                  ? `The reasoning allowance shared across everyone on the testnet is spent for today — it resets at 00:00 UTC. Your own ${quota.remaining} questions are untouched and will still be there. Direct commands like \`swap 500 USDC to KLD\` work right now.`
+                  ? `The shared reasoning allowance is spent for today — it resets at 00:00 UTC. Your own ${quota.remaining} questions are untouched and will still be there. Direct commands like \`swap 500 USDC to EURC\` work right now.`
                   : `You've asked me all ${quota.quota} questions for today. Direct commands still work, and the allowance resets at 00:00 UTC.`,
             context: {
               status: global ? "global_quota_exhausted" : "quota_exhausted",
@@ -242,18 +327,54 @@ export async function POST(request: NextRequest) {
       const chainId =
         typeof body.chainId === "number" ? body.chainId : undefined;
 
+      /*
+       * Client limits are untrusted input, and they reach three places: the
+       * auditor (which treats them as tightening-only), the planner's slippage
+       * floor, and the model prompt. Sanitise once, here, so a non-numeric value
+       * cannot pass through as NaN — Math.min(NaN, cap) is NaN and `stepUsd > NaN`
+       * is always false, which silently disabled the very ceiling the auditor
+       * calls the one the client cannot raise. A bad field becomes undefined (the
+       * auditor then applies its own ceiling), and slippage is clamped into a sane
+       * band so a client cannot post a 100% tolerance that drives amountOutMin to
+       * ~0. allowedActions is passed on untouched — it is the user's product
+       * switches, enforced separately.
+       */
+      /* One sanitiser for both audit entry points — see sanitizeGuardrails. The
+         locally-built plan path (/api/audit) cleans limits the same way, so a
+         typed command and a reasoned one are held to the same ceiling. */
+      const safeLimits = sanitizeGuardrails(body.limits);
+      const localIntent = validateLocalClassification(body.localIntent);
+      /* Testnets are hidden by default in the UI (mainnet-first). The page
+         sends the flag; absent reads as mainnet-only, so an older client or a
+         direct call is held to the same posture. Threads to the read tools
+         (no testnet balance surfaced) and the system facts (no testnet
+         steering). */
+      const mainnetOnly = body.showTestnets !== true;
+
       const agentInput = {
         message: String(body.message ?? ""),
-        address: body.address,
+        address: meterAddress,
         chainId: body.chainId,
-        limits: body.limits,
+        limits: safeLimits,
         /* The conversation this message belongs to. Sanitised and bounded — see
            historyFromBody. Without it the model received only the sentence the
            local grammar could not parse, which on a local-first page is often a
            bare reply to something Luca itself said. */
         history: historyFromBody(body.history),
         grounding: groundingFromBody(body.grounding),
-        localIntent: validateLocalClassification(body.localIntent),
+        /* The product as it is today, for the full model too — so it never
+           recommends a competitor or a product that is not on this chain. The
+           normalizer tier below replaces this with its fuller addendum. */
+        systemAddendum: [
+          productFacts(mainnetOnly),
+          ...(localIntent.kind !== "unknown"
+            ? [
+                "A browser-local classifier supplied a non-authoritative context hint. Treat it only as a tie-breaker for conversation reference; verify the user's words and history yourself. Never use it for transaction arguments.",
+                `Local hint: kind=${localIntent.kind}; reference=${localIntent.reference ?? "none"}.`,
+              ]
+            : []),
+        ].join("\n"),
+        mainnetOnly,
       };
 
       /**
@@ -265,12 +386,21 @@ export async function POST(request: NextRequest) {
        * would be a second copy of the auditor call — and a copy that forgot it
        * would stream a plan nothing had checked.
        */
-      const settle = async (result: AgentRun) => {
-        /* The offered-actions block comes off the prose first, so every use of
-           the reply below is the reader's version. Doing it here rather than at
-           each of the three concatenations means a refusal, a build note and a
-           clean answer cannot disagree about whether the block is still in. */
-        const reply = splitActionsBlock(result.text);
+      const settle = async (result: AgentRun, streamed = false) => {
+        /* The model's card blocks — display cards and offered actions — come off
+           the prose first, so every use of the reply below is the reader's
+           version. Doing it here rather than at each of the three concatenations
+           means a refusal, a build note and a clean answer cannot disagree about
+           whether the blocks are still in. `reply.cards` is raw; the client's
+           cardsFromChat validates it and forbids a `steps` receipt. */
+        /* The reasoning line comes off first, before the card blocks, so what
+           splitCards and every concatenation below see is prose with the model's
+           private "why" already lifted out. It travels in `context.reasoning`
+           and is rendered into the folded record (traceFromChat), never the
+           answer — see the "Showing your reasoning" section of the system prompt. */
+        const reasoned = splitReasoning(result.text);
+        const reply = splitCards(reasoned.text);
+        const reasoning = reasoned.reasoning;
 
         /*
          * Verbs become intents here, before anything is audited.
@@ -282,48 +412,90 @@ export async function POST(request: NextRequest) {
          * it at the route rather than in each provider adapter means one
          * translation, not one per provider.
          */
-        const built = await planFromToolCalls(
-          result.executes,
-          chainId,
-          serverPlanDeps(body.address, chainId),
-          {
-            slippageBps: body.limits?.slippageBps ?? 50,
-            deadlineMin: 20,
-          },
-        );
+        /* Everything the user themselves typed this turn — this message plus
+           their earlier turns — so the planner can refuse to send to or delegate
+           to an address the user never named. An address a tool result or a
+           document slipped in is not in here. */
+        const userText = [
+          agentInput.message,
+          ...agentInput.history
+            .filter((m) => m.role === "user")
+            .map((m) => m.content),
+        ].join("\n");
 
         /*
-         * The auditor pass, on the path that actually serves turns.
+         * Build then audit, inside one try — because a throw HERE is ours, not
+         * the model's. The model answered; it is the builder or the auditor that
+         * failed. Letting it propagate sent it to `recover`, which tags it
+         * `provider_error` and puts "the model is unavailable" underneath a reply
+         * the model produced perfectly well. So this branch keeps the prose,
+         * reports a distinct `build_error`, and logs it under its own prefix, so a
+         * builder bug is triaged as a builder bug rather than a model outage.
          *
-         * This used to sit after the legacy AI-engine fetch below, which this
-         * branch returns before reaching — so a plan from Claude, OpenAI or
-         * AgentRouter was checked by nothing. The prompt states the user's
-         * limits; a prompt is a request, not an enforcement point.
-         *
-         * It audits the BUILT plan, not the model's tool calls. That ordering
-         * is what lets the rules keep checking real addresses and real
-         * amountOutMin values even though the model now supplies neither — the
-         * builder is trusted to construct, and the auditor still verifies what
-         * was constructed.
-         *
-         * A rejected plan is dropped WHOLE, and never trimmed to its passing
-         * steps. A plan is ordered and interdependent — an approve exists to
-         * enable the swap after it — so removing one step leaves a sequence
-         * that means something different from anything the model proposed or
-         * the user read. The prose survives, because the reasoning is often
-         * right even when a step is malformed, and the user can still act on it
-         * with a direct command.
-         *
-         * `body.limits` and `allowedActions` are client input. The auditor
-         * treats them as tightening-only against its own ceiling — a request
-         * cannot raise its own cap by claiming a larger one.
+         * (What each does: the builder fills in contract addresses, decimals, fee
+         * tiers, quotes and slippage floors from the registry and chain reads, the
+         * same way the typed path does; the auditor then verifies the BUILT plan —
+         * real addresses, real amountOutMin values — and drops a rejected plan
+         * whole, never trimmed to its passing steps, since the steps are ordered
+         * and interdependent. `limits`/`allowedActions` are client input, treated
+         * as tightening-only.)
          */
-        const verdict = await auditPlan({
-          plan: built.plan,
-          chainId,
-          limits: body.limits,
-          allowedActions: body.limits?.allowedActions,
-        });
+        let built: Awaited<ReturnType<typeof planFromToolCalls>>;
+        let verdict: Awaited<ReturnType<typeof auditPlan>>;
+        try {
+          built = await planFromToolCalls(
+            result.executes,
+            chainId,
+            serverPlanDeps(body.address, chainId),
+            {
+              slippageBps: safeLimits.slippageBps,
+              deadlineMin: 20,
+            },
+            userText,
+          );
+          verdict = await auditPlan({
+            plan: built.plan,
+            chainId,
+            limits: safeLimits,
+            allowedActions: body.limits?.allowedActions,
+          });
+        } catch (buildErr) {
+          console.error("[chat] plan build/audit failed:", buildErr);
+        await logAgentTurn({
+            status: "build_error",
+            provider: result.provider,
+            model: result.model,
+            latencyMs: Date.now() - startedAt,
+            failedOver: !!provider && result.provider !== provider.id,
+            rounds: result.rounds,
+            readCount: result.trace.length,
+            stream: streamed,
+            chainId,
+          address: meterAddress,
+          jevRoute,
+          jevConfidence,
+          jevNormalizerSkipped,
+            error: String(
+              (buildErr as { name?: string })?.name ?? "build_error",
+            ).slice(0, 60),
+          });
+          return {
+            response: `${reply.text}\n\n---\n\nI worked that out, but couldn't prepare the steps to sign — try again, or use a direct command like \`swap 500 USDC to EURC\`.`,
+            context: {
+              status: "build_error",
+              provider: result.provider,
+              model: result.model,
+              ...(reply.cards.length ? { cards: reply.cards } : {}),
+              ...(reasoning ? { reasoning } : {}),
+              reads: result.trace,
+              credits: {
+                used: quota.used,
+                quota: quota.quota,
+                remaining: quota.remaining,
+              },
+            },
+          };
+        }
 
         if (!verdict.ok) {
           console.warn(
@@ -332,16 +504,145 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        /* A verb that couldn't be built is reported, not swallowed. Returning
-           a quietly shorter plan would let the user believe the model's prose
-           described what they were about to sign. */
+        /*
+         * Simulate the built plan against the current block before offering it as
+         * signable — the propose-time counterpart to the sign-time preflight
+         * (withPreflight). It fakes each approve into the step it authorises and
+         * eth_calls the plan, so a first-time swap whose floor the market has moved
+         * past is called out here rather than at the wallet.
+         *
+         * Only when the auditor PASSED a plan we have a wallet to simulate from.
+         * Bounded by a race so a slow or unreachable RPC cannot hold the turn.
+         * Surface only, with one deterministic exception (the stale-quote retry
+         * below): a predicted revert is stated, the plan still offered — the market
+         * may move again by signing, and the preflight re-checks against real state
+         * then — and anything short of a decoded, honoured revert says nothing.
+         */
+        let simNote = "";
+        if (
+          verdict.ok &&
+          built.plan.length > 0 &&
+          meterAddress &&
+          chainId !== undefined
+        ) {
+          const rpc = rpcCallFor(chainId);
+          const from = meterAddress;
+          if (rpc) {
+            /* One bounded simulation of a plan. The cast is the PlanStep↔Intent
+               identity the wire already relies on (intentsFromChat); the race caps
+               it so the RPC can never hold the turn. */
+            const simOnce = (plan: typeof built.plan) =>
+              Promise.race([
+                simulatePlan(
+                  plan as unknown as Parameters<typeof simulatePlan>[0],
+                  chainId,
+                  from,
+                  rpc,
+                ),
+                new Promise<null>((r) => setTimeout(() => r(null), 5000)),
+              ]);
+
+            try {
+              let sim = await simOnce(built.plan);
+
+              /* A slippage-floor revert is very often a quote that went stale in the
+                 beat between pricing and simulating: the pool moved and the same plan
+                 re-priced now would clear. On exactly that reason, rebuild ONCE with a
+                 fresh quote — which re-audits like any built plan — and re-simulate.
+                 No model call and no new quota: deterministic self-correction, bounded
+                 to a single retry. A second failure is surfaced, never chased. */
+              if (
+                sim &&
+                !sim.ok &&
+                sim.firstFailure &&
+                isStaleQuoteRevert(sim.firstFailure.reason)
+              ) {
+                try {
+                  const rebuilt = await planFromToolCalls(
+                    result.executes,
+                    chainId,
+                    serverPlanDeps(body.address, chainId),
+                    { slippageBps: safeLimits.slippageBps, deadlineMin: 20 },
+                    userText,
+                  );
+                  if (rebuilt.plan.length > 0) {
+                    const reverdict = await auditPlan({
+                      plan: rebuilt.plan,
+                      chainId,
+                      limits: safeLimits,
+                      allowedActions: body.limits?.allowedActions,
+                    });
+                    if (reverdict.ok) {
+                      const resim = await simOnce(rebuilt.plan);
+                      if (resim && resim.ok) {
+                        /* The fresh quote clears it — offer the re-priced plan, and
+                           say so rather than pretending nothing was wrong. */
+                        built = rebuilt;
+                        verdict = reverdict;
+                        sim = resim;
+                        simNote =
+                          "\n\n---\n\nThe first pricing would have slipped past your limit, so I re-priced it against the current market before offering it.";
+                      }
+                    }
+                  }
+                } catch {
+                  /* Fail open — keep the original plan and surface the prediction. */
+                }
+              }
+
+              /* Still predicted to revert — not a stale quote, or the re-price did
+                 not clear it. State it, keep the plan, let the preflight and the user
+                 take it from here. */
+              if (sim && !sim.ok && sim.firstFailure) {
+                const f = sim.firstFailure;
+                const where =
+                  built.plan.length > 1 ? `step ${f.index + 1}` : "this";
+                simNote =
+                  `\n\n---\n\nI simulated it against the chain as it stands and ${where} looks like it would revert` +
+                  (f.reason ? ` — ${f.reason}` : "") +
+                  `. The market may move again before you sign, so I've still prepared it and I re-check each step at signing; or ask me to rebuild it.`;
+              }
+            } catch {
+              /* Fail open — a simulation that throws is no reason to hold a plan. */
+            }
+          }
+        }
+
+        /* A verb that couldn't be built is reported, not swallowed. Computed after
+           the simulation because a stale-quote retry above can replace `built` with
+           a freshly-priced plan, and these notes must describe the plan actually
+           offered — not the one the retry discarded. */
         const buildNotes = built.errors.length
           ? `\n\n---\n\nI couldn't prepare some of that:\n${built.errors.map((e) => `• ${e}`).join("\n")}`
           : "";
 
+        /* The record of a turn that ran. `refused` is a turn the model answered
+           and the auditor then dropped its plan — a different fact from a clean
+           answer, and one worth being able to count. failed_over is the outage
+           signal: the answer came from a backend other than the primary. */
+          await logAgentTurn({
+          status: verdict.ok ? "ok" : "refused",
+          provider: result.provider,
+          model: result.model,
+          latencyMs: Date.now() - startedAt,
+          failedOver: !!provider && result.provider !== provider.id,
+          planSteps: verdict.ok ? built.plan.length : 0,
+          auditOk: built.plan.length > 0 ? verdict.ok : null,
+          /* How hard the turn worked, not just how it ended: the grounding passes
+             the loop ran and the reads they made. */
+          rounds: result.rounds,
+          readCount: result.trace.length,
+          stream: streamed,
+          chainId,
+            address: meterAddress,
+            jevRoute,
+            jevConfidence,
+            jevNormalizerSkipped,
+        });
+
         return {
           response: verdict.ok
-            ? `${reply.text}${buildNotes}`
+            ? `${reply.text}${buildNotes}${simNote}`
             : /* The model's own words, then the refusal. Dropping the prose
                  would hide the analysis the user paid a request for. */
               `${reply.text}${buildNotes}\n\n---\n\n${refusalText(verdict)}`,
@@ -349,17 +650,20 @@ export async function POST(request: NextRequest) {
             plan: verdict.ok ? built.plan : [],
             provider: result.provider,
             model: result.model,
-            /* The choices the answer offered, as the one card kind that can be
-               clicked. Sent unvalidated on purpose: `cardsFromChat` on the
-               client is the gate every card passes through, local or model, and
-               a second half-implementation of its caps here would be a second
-               thing to keep in step with it.
-
-               Omitted rather than sent empty, so a reply that offered nothing
-               does not carry a key implying it might have. */
-            ...(reply.actions.length
-              ? { cards: [{ kind: "actions", actions: reply.actions }] }
-              : {}),
+            /* The cards the answer carried — display cards and any offered
+               actions. Sent unvalidated on purpose: `cardsFromChat` on the client
+               is the gate every card passes through, local or model, and it is
+               where the caps, the rebuild and the `steps` ban live; a second
+               half-implementation here would be a second thing to keep in step
+               with it. Omitted rather than sent empty, so a reply that carried
+               nothing does not imply it might have. */
+            ...(reply.cards.length ? { cards: reply.cards } : {}),
+            /* The distilled "why" behind this answer, when the model offered one.
+               Rendered as the lead line of the folded record (traceFromChat), not
+               the prose — so a turn's reasoning sits with the reads it made rather
+               than in the answer the reads produced. Omitted when the model wrote
+               none, which is the common case. */
+            ...(reasoning ? { reasoning } : {}),
             /* What the model read before answering, in the order it ran.
                Reported so the turn can show its own work: the frontend renders
                these as the thought process under the reply (traceFromChat in
@@ -401,7 +705,7 @@ export async function POST(request: NextRequest) {
        * The turn failed. Works out whether it can ever succeed, hands back the
        * credit when it cannot, and returns the reply either way.
        */
-      const recover = async (aiError: any) => {
+      const recover = async (aiError: any, streamed = false) => {
         console.error("[chat] provider failed:", aiError);
         /*
          * "Try again shortly" is only true of a failure that might pass next
@@ -431,11 +735,28 @@ export async function POST(request: NextRequest) {
            have generated tokens upstream, and handing those back would make the
            ceiling refundable by making the provider fail. */
         const refunded = blocked
-          ? await releaseModelRequest(body.address, quota)
+          ? await releaseModelRequest(meterAddress, quota)
           : null;
+
+        /* A failed turn, with a short error class rather than the raw message —
+           enough to tell a gateway content-block from a 5xx or a timeout when
+           reading the log, never a user's words. */
+        await logAgentTurn({
+          status: blocked ? "provider_blocked" : "provider_error",
+          provider: provider?.id ?? null,
+          latencyMs: Date.now() - startedAt,
+          stream: streamed,
+          chainId,
+          address: meterAddress,
+          jevRoute,
+          jevConfidence,
+          jevNormalizerSkipped,
+          error: String(aiError?.name ?? aiError?.code ?? "error").slice(0, 60),
+        });
+
         return {
           response: blocked
-            ? "The model gateway refused that wording — it screens messages shaped like a transfer instruction. Say it as a command, like `swap 100 USDC to KLD`, and it runs here without a reasoning request. Questions about your positions or the markets are unaffected."
+            ? "The model gateway refused that wording — it screens messages shaped like a transfer instruction. Say it as a command, like `swap 100 USDC to EURC`, and it runs here without a reasoning request. Questions about your positions or the markets are unaffected."
             : "I couldn't complete that just now — the reasoning service returned an error. Try again shortly.",
           context: {
             status: blocked ? "provider_blocked" : "provider_error",
@@ -461,6 +782,90 @@ export async function POST(request: NextRequest) {
        * quota check sits above this and not inside — a 429 has to be a real 429,
        * not an error frame inside a successful stream.
        */
+      /*
+       * THE NORMALIZER TIER.
+       *
+       * One cheap, single-shot call (no read rounds) with the product facts and
+       * the dialect glossary in its prompt. Three outcomes:
+       *  - it made an execute call → settled exactly like a full turn, through
+       *    planFromToolCalls and the auditor, so a cheap model's proposal is held
+       *    to the same checks as an expensive one's;
+       *  - it answered a question in prose → settled and returned;
+       *  - it said ESCALATE, said nothing, or the plan could not be built →
+       *    fall through to the full turn below, on the same already-consumed
+       *    credit, so one sentence never costs two.
+       * Skipped entirely when no cheap model is configured. Returned as plain
+       * JSON even to a streaming client: the client's JSON branch renders a
+       * plan, cards and credits identically, and a one-round answer has nothing
+       * to stream.
+       */
+      if (tier === "normalize") {
+        const jev = await classifyLucaRoute({
+          message: body.message,
+          chainId,
+          walletConnected: Boolean(meterAddress),
+          mainnetOnly,
+          visibleTokens: chainTokens(chainId).map((token) => token.symbol),
+        });
+        if (jev) {
+          jevRoute = jev.route;
+          jevConfidence = jev.confidence;
+          console.info("[chat] Jev route:", {
+            mode: jevMode(),
+            route: jev.route,
+            confidence: jev.confidence,
+          });
+        }
+
+        /* In replace mode, Jev can skip the redundant cheap text model when it
+           already identifies a live-data or reasoning request. The full agent
+           still owns reads, tools, prose, auditing, and execution. Shadow mode
+           records the decision but preserves today's behavior for calibration. */
+        const skipNormalizer = shouldSkipNormalizer({
+          mode: jevMode(),
+          route: jev?.route ?? null,
+          confidence: jev?.confidence ?? null,
+          minimum: jevReplaceMinConfidence(),
+        });
+        jevNormalizerSkipped = skipNormalizer;
+        if (skipNormalizer) {
+          // Continue directly to the existing full-agent path below.
+        } else {
+          /* Each configured cheap model in turn. A THROWN error (a 503, a
+           timeout) moves to the next cheap model — that is what the second one
+           is for. A considered decline — ESCALATE, an empty reply, a plan that
+           would not build — goes straight to the full model: the sentence was
+           read and judged, and a second cheap opinion is not worth a call. */
+          for (const cheap of getNormalizerProviders()) {
+            try {
+              const quick = await runAgent(cheap, {
+                ...agentInput,
+                maxReadRounds: 0,
+                systemAddendum: normalizerAddendum({ chainId, mainnetOnly }),
+              });
+              const bail =
+                quick.executes.length === 0 &&
+                (isEscalation(quick.text, 0) || !quick.text.trim());
+              if (bail) break;
+              const settled = (await settle(quick)) as {
+                response: string;
+                context?: Record<string, unknown>;
+              };
+              if (settled.context?.status === "build_error") break;
+              return NextResponse.json({
+                ...settled,
+                context: { ...(settled.context ?? {}), tier: "normalize" },
+              });
+            } catch (quickError) {
+              console.warn(
+                `[chat] normalizer ${cheap.id}/${cheap.model} failed, trying next:`,
+                quickError,
+              );
+            }
+          }
+        }
+      }
+
       if (body.stream === true) {
         const encoder = new TextEncoder();
         let closed = false;
@@ -495,9 +900,9 @@ export async function POST(request: NextRequest) {
                   send({ t: "round", ...(note ? { note } : {}), reads });
                 },
               });
-              send({ t: "done", ...(await settle(result)) });
+              send({ t: "done", ...(await settle(result, true)) });
             } catch (aiError: any) {
-              send({ t: "error", ...(await recover(aiError)) });
+              send({ t: "error", ...(await recover(aiError, true)) });
             } finally {
               if (!closed) {
                 try {

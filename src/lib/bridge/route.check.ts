@@ -331,6 +331,14 @@ async function main() {
     isKnownBridgeSpender(LIFI_ROUTER),
   );
   check(
+    "isKnownBridgeSpender accepts LI.FI's Robinhood Chain diamond (not the deterministic one)",
+    isKnownBridgeSpender("0xB477751B76CF82d00a686A1232f5fCD772414Af3"),
+  );
+  check(
+    "isKnownBridgeSpender accepts LI.FI's Arc executor",
+    isKnownBridgeSpender("0xA4072583658Fae592A3506A42431cb6316a8d40b"),
+  );
+  check(
     "isKnownBridgeSpender is case-insensitive on the address",
     isKnownBridgeSpender(LIFI_ROUTER.toLowerCase()),
   );

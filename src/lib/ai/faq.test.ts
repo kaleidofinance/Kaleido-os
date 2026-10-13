@@ -186,15 +186,14 @@ check(
   );
 }
 {
-  /* The token topic now offers the purchase phrasing, which only became parseable
-     with the `buy` verb — a card that fills the box with an unparseable sentence
-     is worse than no card. */
+  /* The token topic offers a live Arc swap entry point; a card must never send
+     people toward an asset that has not launched yet. */
   const buy = matchFaq("how do I get KLD")?.cards?.flatMap(
     (c) => c.actions?.map((a) => a.prompt) ?? [],
   );
   check(
-    "the KLD answer offers a way to buy it",
-    buy?.includes("buy KLD with 500 USDC"),
+    "the KLD answer offers a live swap entry point",
+    buy?.includes("swap 100 USDC to EURC"),
     JSON.stringify(buy),
   );
   /* And asking how to buy it lands on that answer rather than on the grammar's

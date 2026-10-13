@@ -5,6 +5,7 @@ import {
   type SwapRoute as Route,
 } from "@/lib/v2/agentTurn";
 import type { Intent } from "@/lib/v2/intents";
+import { formatTxAmount } from "@/lib/v2/txDisplay";
 import s from "./SwapRoute.module.css";
 
 /**
@@ -63,7 +64,7 @@ function Path({ route }: { route: Route }) {
               </span>
             )}
             <span className={s.token}>
-              {i === 0 ? `${route.amountIn} ${t}` : t}
+              {i === 0 ? `${formatTxAmount(route.amountIn)} ${t}` : t}
             </span>
           </span>
         ))}
@@ -71,7 +72,7 @@ function Path({ route }: { route: Route }) {
       {/* The floor, stated as a floor. It is the argument the router reverts
           below, so "at least" is the literal reading and not a hedge. */}
       <div className={s.meta}>
-        At least {route.minOut} {route.symbolOut}
+        Min. received {formatTxAmount(route.minOut)} {route.symbolOut}
       </div>
     </div>
   );
@@ -92,7 +93,7 @@ function Legs({ route }: { route: Route }) {
         <div key={i} className={s.path}>
           <span className={s.node}>
             <span className={s.token}>
-              {h.amountIn} {h.from}
+              {formatTxAmount(h.amountIn)} {h.from}
             </span>
           </span>
           <span className={s.node}>
@@ -104,7 +105,7 @@ function Legs({ route }: { route: Route }) {
             </span>
             <span className={s.token}>{h.to}</span>
           </span>
-          <span className={s.meta}>at least {h.minOut}</span>
+          <span className={s.meta}>Min. received {formatTxAmount(h.minOut)}</span>
         </div>
       ))}
     </div>

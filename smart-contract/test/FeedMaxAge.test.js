@@ -22,8 +22,8 @@ const { getSelectors, FacetCutAction } = require("../scripts/libraries/diamond.j
  * contract actually behaving as its docstring claims, which is what this asserts.
  */
 describe("ProtocolFacet — per-feed staleness bounds", function () {
-  /** Constants.MAX_FEED_PRICE_AGE — 25 hours, the ceiling the setter enforces. */
-  const MAX_FEED_PRICE_AGE = 90000n;
+  /** Constants.MAX_FEED_PRICE_AGE — 30 hours (raised from 25h for Arc mainnet), the ceiling the setter enforces. */
+  const MAX_FEED_PRICE_AGE = 108000n;
 
   const ETH_USD =
     "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace";

@@ -74,6 +74,9 @@ const COINGECKO_IDS = {
   ETH: "ethereum",
   WETH: "ethereum",
   BTC: "bitcoin",
+  /* Circle's EURC — the coin page lists the Arc mainnet EURC contract
+     (0xbef5…21c1) under platforms.arc. Checked 2026-09-28. */
+  EURC: "euro-coin",
   BNB: "binancecoin",
   USDC: "usd-coin",
   WUSDC: "usd-coin",

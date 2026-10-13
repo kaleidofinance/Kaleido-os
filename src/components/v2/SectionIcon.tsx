@@ -37,7 +37,8 @@ export type SectionIconKind =
   | "mint"
   | "leaderboard"
   | "portfolio"
-  | "faucet";
+  | "faucet"
+  | "gift";
 
 /**
  * 24-unit grid, one 1.5 stroke weight, round caps — the eight have to look like a
@@ -121,6 +122,18 @@ const PATHS: Record<SectionIconKind, ReactNode> = {
     <>
       <path d="M6 6.5H14.5V10.5" />
       <path d="M14.5 13C14.5 13 12.4 15.5 12.4 17A2.1 2.1 0 0 0 16.6 17C16.6 15.5 14.5 13 14.5 13Z" />
+    </>
+  ),
+
+  /* A gift box: lid, body, the ribbon down the middle and a small bow. The
+     rewards section hands out points, so an object (like `faucet`) reads truer
+     than a mechanism. Rects like `wrap`/`range`, stroked at the set's one weight. */
+  gift: (
+    <>
+      <rect x="4" y="10" width="16" height="10" rx="1.5" />
+      <rect x="3" y="7" width="18" height="3" rx="0.5" />
+      <path d="M12 7V20" />
+      <path d="M12 7L9.5 4.5M12 7L14.5 4.5" />
     </>
   ),
 };

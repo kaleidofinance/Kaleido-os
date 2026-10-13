@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import { getChainMeta } from "@/constants/chains";
 import { envVars } from "@/constants/envVars";
-import { toIToken } from "@/constants/tokens";
+import { bridgeSourceCandidates, toIToken } from "@/constants/tokens";
 import {
   findBorrowCurrency,
   getContracts,
@@ -9,6 +9,7 @@ import {
 } from "@/constants/registry";
 import type { IToken } from "@/constants/types/dex";
 import type { RangeChoice } from "@/lib/dex/liquidity";
+import type { PendingCollateral } from "@/lib/lending/guard";
 import {
   buildIntents,
   type PlanDeps,
@@ -249,9 +250,41 @@ function toCommand(
        * reach the native-sentinel test as a non-match. An unknown symbol fails
        * by name here.
        */
-      const token = dexToken(chainId, sym);
+      let token: IToken | undefined = dexToken(chainId, sym) ?? undefined;
+      let fromChain = str(a.fromChain || a.sourceChain).trim() || undefined;
+      /*
+       * A bridge's asset may live on ANOTHER chain — BNB is on BSC, not Arc — and
+       * that is its SOURCE, not an unknown token. Resolve it where it lives and
+       * infer the source chain, the same rule the typed grammar follows
+       * (bridgeSourceCandidates). The builder re-resolves the token on the source
+       * chain by symbol and validates it, so only the symbol + chain need be
+       * honest here. Narrowed to the connected chain's network, so a mainnet
+       * user is never routed from a testnet.
+       *
+       * Only ONE candidate is inferred. A symbol on several chains with no
+       * `fromChain` is asked back as a question (shown to the user as-is, and
+       * the model can re-call with fromChain) — the old first-match silently
+       * built "bridge ETH to Arc" on Robinhood because it is listed first.
+       */
+      if (!token) {
+        const cands = bridgeSourceCandidates(sym, getChainMeta(chainId)?.network);
+        if (cands.length === 1) {
+          token = cands[0].token;
+          fromChain = fromChain ?? cands[0].chainName;
+        } else if (cands.length > 1) {
+          if (!fromChain) {
+            const names = cands.map((c) => c.chainName);
+            const list = `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+            return `Which chain are you bridging ${sym.toUpperCase()} from? It's on ${list}.`;
+          }
+          const named = cands.find(
+            (c) => c.chainName.toLowerCase() === fromChain!.toLowerCase(),
+          );
+          token = (named ?? cands[0]).token;
+        }
+      }
       if (!token)
-        return `bridge: I don't know a token called ${sym || "(none)"} on this chain`;
+        return `bridge: I don't know a token called ${sym || "(none)"} on any chain Kaleido supports`;
       /*
        * The destination travels as text, exactly as it does from the typed path:
        * the builder's resolver matches it against the real chain registry, so a
@@ -260,13 +293,36 @@ function toCommand(
        */
       const toChain = str(a.toChain || a.destinationChain).trim();
       if (!toChain) return "bridge: no destination chain given";
-      return { kind: "bridge", amount, token, toChain };
+      /* A different token to receive — a cross-asset bridge. Text, resolved on
+         the destination chain by the builder, exactly like `toChain`. */
+      const toAsset = str(a.toAsset || a.receiveAsset).trim() || undefined;
+      /* Deliver to someone else. Validated here as an address (a malformed one
+         is refused by name, never dropped — dropping it would bridge to the
+         signer instead), then checked again by the auditor. */
+      const rawRecipient = str(a.recipient || a.toAddress).trim();
+      if (rawRecipient && !ethers.isAddress(rawRecipient))
+        return `bridge: "${rawRecipient}" isn't a valid address to deliver to`;
+      return {
+        kind: "bridge",
+        amount,
+        token,
+        toChain,
+        ...(fromChain ? { fromChain } : {}),
+        ...(toAsset ? { toAsset } : {}),
+        ...(rawRecipient ? { recipient: ethers.getAddress(rawRecipient) } : {}),
+      };
     }
 
     case "deposit":
     case "withdraw":
     case "mint":
     case "redeem": {
+      /* "withdraw all": the builder reads the free balance, so the model never
+         has to compute (or guess) it. Token optional — none means every asset. */
+      if (call.name === "withdraw" && /^(all|max)$/i.test(str(a.amount).trim())) {
+        const t = str(a.token).trim();
+        return t ? { kind: "withdraw", all: true, token: symbolToken(chainId, t) } : { kind: "withdraw", all: true };
+      }
       const amount = amountOf(a.amount);
       if (!amount) return `${call.name}: no amount given`;
       const token = str(a.token);
@@ -312,7 +368,15 @@ function toCommand(
          resolves it from a chain read, which is more reliable than a model
          recalling an id from an earlier tool result. */
       const loanId = numOf(a.loanId);
-      return loanId === null ? { kind: "repay" } : { kind: "repay", loanId };
+      /* Optional partial amount, in the loan's currency; absent = in full. */
+      const amount = a.amount === undefined || a.amount === null || a.amount === "" ? null : amountOf(a.amount);
+      if (a.amount !== undefined && a.amount !== null && a.amount !== "" && amount === null)
+        return "repay: amount isn't a number";
+      return {
+        kind: "repay",
+        ...(loanId === null ? {} : { loanId }),
+        ...(amount === null ? {} : { amount }),
+      };
     }
 
     case "cancel": {
@@ -414,10 +478,8 @@ function toCommand(
         return `provideLiquidity: I don't know a token called ${sym0 || "(none)"} on this chain`;
       if (!token1)
         return `provideLiquidity: I don't know a token called ${sym1 || "(none)"} on this chain`;
-      if (!amount0)
-        return `provideLiquidity: no amount given for ${token0.symbol}`;
-      if (!amount1)
-        return `provideLiquidity: no amount given for ${token1.symbol}`;
+      if (!amount0 && !amount1)
+        return `provideLiquidity: give an amount for ${token0.symbol} or ${token1.symbol}`;
 
       /*
        * The range. A model may name a band or two prices; it may not name ticks,
@@ -456,9 +518,9 @@ function toCommand(
       const feeBps = numOf(a.fee);
       return {
         kind: "provideLiquidity",
-        amount0,
+        ...(amount0 ? { amount0 } : {}),
         token0,
-        amount1,
+        ...(amount1 ? { amount1 } : {}),
         token1,
         ...(feeBps === null ? {} : { fee: feeBps }),
         range,
@@ -586,9 +648,36 @@ export async function planFromToolCalls(
   chainId: number | undefined,
   deps: PlanDeps,
   opts: PlannerOptions,
+  /**
+   * The user's own words this turn — their message plus their earlier turns —
+   * used to anchor the two steps that carry a model-supplied address: `transfer`
+   * (a send recipient) and `grantAgentPermission` (a delegate). Every other
+   * address in a plan is resolved from the registry, never named by the model;
+   * these two cannot be, because a recipient and a delegate exist nowhere but in
+   * what the user said. So the rule is exactly that: an address the user did not
+   * type is not one the model may send to or delegate to, regardless of what the
+   * model believes — which makes an address injected through a tool result or a
+   * poisoned document unbuildable rather than merely unlikely. Omitted (tests,
+   * the capability traces) means no check, since those supply fixture addresses.
+   */
+  userText?: string,
 ): Promise<BuiltPlan> {
   const plan: PlanStep[] = [];
   const errors: string[] = [];
+  /* Collateral this plan deposits before a later borrow step. Each tool call is
+     built on its own, so without this "deposit EURC" + "borrow USDC" would have
+     the borrow's capacity check refuse the collateral it is about to have. */
+  const pendingCollateral: PendingCollateral[] = [];
+  const stepDeps: PlanDeps = deps.lendingCheck
+    ? {
+        ...deps,
+        lendingCheck: (check) =>
+          deps.lendingCheck!({
+            ...check,
+            pendingCollateral: [...pendingCollateral, ...(check.pendingCollateral ?? [])],
+          }),
+      }
+    : deps;
 
   for (const call of calls) {
     if (!EXECUTE_TOOLS.has(call.name)) {
@@ -612,7 +701,7 @@ export async function planFromToolCalls(
       continue;
     }
 
-    const built = await buildIntents(command, opts, deps);
+    const built = await buildIntents(command, opts, stepDeps);
     if (!built.ok) {
       /* "help" and "receive" are panel commands the builder signals through
          the same error channel. Neither is reachable from a tool call, but
@@ -622,6 +711,49 @@ export async function planFromToolCalls(
       continue;
     }
     plan.push(...(built.build.intents as unknown as PlanStep[]));
+    for (const intent of built.build.intents) {
+      if (intent.kind !== "depositCollateral") continue;
+      try {
+        pendingCollateral.push({
+          token: intent.token,
+          amountRaw: ethers.parseUnits(intent.amount, intent.decimals),
+          decimals: intent.decimals,
+        });
+      } catch {
+        /* unparseable → not counted; the check then under-counts, never over */
+      }
+    }
+  }
+
+  /*
+   * Provenance anchor for the two address-bearing steps. Run after the plan is
+   * built so it catches an address whatever route produced it, and drops only the
+   * offending step — the injected send or grant — while any legitimate steps
+   * beside it survive. A dropped step leaves an error the caller relays, so the
+   * user hears why rather than seeing a step quietly vanish.
+   */
+  if (userText !== undefined) {
+    const corpus = userText.toLowerCase();
+    const named = (addr?: unknown) =>
+      typeof addr === "string" && corpus.includes(addr.toLowerCase());
+    const anchored: PlanStep[] = [];
+    for (const step of plan) {
+      const s = step as { kind?: string; to?: unknown; agent?: unknown };
+      if (s.kind === "transfer" && !named(s.to)) {
+        errors.push(
+          "I can only send to an address you typed yourself, and that recipient wasn't in your message — so I didn't add the transfer. Paste the address if you want it.",
+        );
+        continue;
+      }
+      if (s.kind === "grantAgentPermission" && !named(s.agent)) {
+        errors.push(
+          "I can only delegate to an address you named yourself, and that agent wasn't in your message — so I didn't add the grant.",
+        );
+        continue;
+      }
+      anchored.push(step);
+    }
+    return { plan: anchored, errors };
   }
 
   return { plan, errors };

@@ -8,9 +8,12 @@ export const envVars = {
   httpRPCab: process.env.NEXT_PUBLIC_HTTP_RPC_AB,
 
   // NOTE: no private key here. Signing keys must never be exposed via a
-  // NEXT_PUBLIC_ variable — Next.js inlines those into the browser bundle.
-  // Server-side signing reads process.env.PRIVATE_KEY directly; see
-  // src/app/api/referral/route.ts.
+  // NEXT_PUBLIC_ variable — Next.js inlines those into the browser bundle. And no
+  // web route signs with the Diamond OWNER key (PRIVATE_KEY): the owner of the
+  // Arc mainnet diamond is a Safe, and a route that can be reached without a login
+  // must never hold a key that can call diamondCut. The one server-side signer
+  // that exists (src/app/api/gas-drip/route.ts) uses its own GAS_DRIP_PRIVATE_KEY
+  // and refuses to start if that equals PRIVATE_KEY.
 
   measurementId: process.env.NEXT_PUBLIC_MEASUREMENT_ID,
 
@@ -81,17 +84,20 @@ export const envVars = {
   thirdwebClientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_KEY,
 
   /**
-   * Where the private-testnet waitlist form lives.
-   *
-   * Public on purpose, and the one part of the access gate that is: this is a
-   * URL handed to anyone who reaches the card without a code. The code itself is
-   * `BETA_ACCESS_CODE`, server-only, read in src/app/api/beta/unlock/route.ts —
-   * a NEXT_PUBLIC_ form of that would ship the code to every visitor and there
-   * would be no gate.
-   *
-   * Unset means the gate renders without the link rather than with a broken one.
+   * Which wallet provider the app wires up — "thirdweb" (default) or a future
+   * adapter like "dynamic". Read once, in src/lib/wallet, to pick the active
+   * WalletAdapter; every wallet primitive the app uses (connect, switch, read,
+   * sign, batch, the root provider) resolves through that one selection, so
+   * moving off thirdweb is a new adapter plus this flag, not a rewrite of the
+   * feature code. Public because it only names a code path, never a secret.
    */
-  waitlistUrl: process.env.NEXT_PUBLIC_WAITLIST_URL,
+  walletProvider: process.env.NEXT_PUBLIC_WALLET_PROVIDER,
+
+  /* LI.FI's integrator string, fee and API key are NOT here on purpose. The API
+     key that authorises the fee is a server secret, so all three are read from
+     PLAIN (non-NEXT_PUBLIC) env in lib/bridge/lifiServer.ts and the browser
+     reaches them only through /api/bridge/quote — see getBridgeExecution. Putting
+     any of them in this NEXT_PUBLIC registry would inline them into the bundle. */
 
   // contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
 };

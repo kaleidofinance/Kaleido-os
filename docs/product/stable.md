@@ -13,16 +13,21 @@ Collateral is USDC, USDT or USDe. It goes in, kfUSD comes out, and the fee is
 0.05% — five basis points, charged in kfUSD, deducted from what is minted rather
 than added on top.
 
-The mint entry point is role-gated, and that is a structural decision rather than a
-lock on the door. The function takes two independent numbers — how much collateral
-arrives and how much kfUSD to issue against it — and does not derive one from the
-other. That flexibility is what lets a mint be denominated correctly across
-collaterals with different decimals, and it is exactly why the caller has to be an
-authorised minter: the role, not an on-chain ratio check, is what guarantees the
-supply is backed.
+**Collateral is valued at its price, not at par.** Each collateral has a USD price
+feed (a Chainlink-style aggregator) named by the admin. A mint credits kfUSD worth
+what the collateral is worth: 100 USDe at $0.90 mints about $90 of kfUSD, not $100.
+This is what stops a depegged collateral from buying a good one at par — mint with
+the weak asset, redeem the strong one — which the earlier par-only design allowed.
 
-Redemption carries no such gate, which is the asymmetry that matters. Anyone holding
-kfUSD can redeem it.
+The pricing fails closed. A collateral with no feed cannot be minted or redeemed; a
+feed that is older than the age bound (27 hours by default, which fits a stablecoin
+feed that updates daily), non-positive, or outside $0.50–$2.00 is refused rather
+than trusted.
+
+Anyone can mint by naming the collateral and the amount; the contract works out the
+kfUSD. There is also a minter-only entry point that names its own kfUSD amount, and
+it is capped at what the collateral is actually worth, so a minter's mistake cannot
+create unbacked kfUSD either.
 
 ## Where your collateral sits
 
@@ -39,30 +44,40 @@ that cannot pay a redemption without a queue.
 
 ## Redeeming
 
-Name an amount and name the collateral you want back. You get it one for one, less
-the same 0.05%, provided the contract holds enough of that particular token — the
-idle balance is per asset, so redeeming into a collateral nobody minted with will
-tell you so rather than silently substituting another.
+Name an amount and name the collateral you want back. kfUSD is worth $1 and the
+collateral is valued at its price, so what comes out is worth what went in, less the
+same 0.05%: redeeming into a collateral trading at $0.80 pays about a quarter more of
+it, worth the same dollars. This only works while the contract holds enough of that
+particular token — the idle balance is per asset, so redeeming into a collateral
+nobody minted with will tell you so rather than silently substituting another.
 
 Two floors apply. The smallest redemption is 0.001 kfUSD, which exists because kfUSD
 carries eighteen decimals and USDC and USDT carry six: below that the conversion
-would round to nothing. And the conversion itself is checked rather than trusted —
-if scaling eighteen decimals down to six would lose value, the transaction reverts
-instead of quietly keeping the remainder.
+would round to nothing. And the conversion rounds down, in the protocol's favour,
+never up.
 
 A full round trip therefore costs 0.1%. Both legs are capped at 3% by the contract,
 so the ceiling is known even though the setting is not fixed.
 
 ## Locking for kafUSD
 
-Lock kfUSD and you get kafUSD one for one. From that moment your share of every fee
-the treasury receives accrues to you, in proportion to your kafUSD balance against
-everyone else's.
+Lock kfUSD and you get kafUSD one for one. kafUSD is an 18-decimal dollar receipt —
+one kafUSD per dollar locked, whatever the asset's own decimals, so a dollar of
+6-decimal USDC and a dollar of 18-decimal kfUSD earn the same. From that moment your
+share of every fee the treasury receives accrues to you, in proportion to your kafUSD
+balance against everyone else's.
+
+kafUSD can be transferred, and the claim goes with it: send a quarter of your kafUSD
+and a quarter of each asset you locked moves to the receiver, who can withdraw it. The
+kafUSD behind a pending withdrawal cannot be moved until that request completes or is
+cancelled.
 
 Coming back out takes three moves, and it is not the same shape as the going-in:
 
 - **Request the amount.** Unlike the staking vault, this one names a figure up
-  front, and it is that figure the cooldown applies to.
+  front, and it is that figure the cooldown applies to. It must come to a whole
+  number of the asset's smallest units (for a 6-decimal asset, a multiple of
+  0.000001), or the request is refused rather than burning the remainder.
 - **Wait seven days.** Enforced on chain.
 - **Complete it, naming an asset.** The kafUSD is burned then, not at the request,
   and you are handed back the same asset you locked — normally kfUSD.

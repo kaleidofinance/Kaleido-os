@@ -458,7 +458,7 @@ on. The first ten minutes, step by step:
 https://kaleidofi.xyz/docs/getting-started
 
 The part worth trying first is Luca. Connect your wallet, then tell it what
-you want in plain language — "swap 50 USDC for ETH", "lend 100 USDC at 8%" —
+you want in plain language — "swap 50 USDC for ETH", "lend 100 USDC at 8% for 30 days" —
 and it builds the transactions for you to sign. It needs a connected wallet
 before it will do anything, so connect first.
 

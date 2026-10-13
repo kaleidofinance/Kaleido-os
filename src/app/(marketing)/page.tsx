@@ -4,7 +4,6 @@ import ThemeToggle from "@/components/v2/ThemeToggle";
 import ChainIcon from "@/components/v2/ChainIcon";
 import Brand from "./_components/Brand";
 import CapabilityTabs from "./_components/CapabilityTabs";
-import HeroArc from "./_components/HeroArc";
 import LivePlanner from "./_components/LivePlanner";
 import ProductRail from "./_components/ProductRail";
 import { ALL_TOOLS, EXECUTE_COUNT, READS } from "./_components/capabilities";
@@ -280,6 +279,36 @@ const STEPS: ReadonlyArray<{ n: string; title: string; body: string }> = [
     body: "Every transaction in the plan, priced and checked, in your wallet and your order.",
   },
 ];
+
+function StepArt({ n }: { n: string }) {
+  if (n === "01")
+    return (
+      <div className={s.showcase} aria-hidden="true">
+        <span className={s.scChip}>
+          <span className={s.scDot} />
+          0x1a2...beef
+        </span>
+        <span className={s.scTag}>read-only</span>
+      </div>
+    );
+  if (n === "02")
+    return (
+      <div className={s.showcase} aria-hidden="true">
+        <span className={s.scPrompt}>
+          swap 500 USDC to EURC<span className={s.scCaret} />
+        </span>
+      </div>
+    );
+  return (
+    <div className={s.showcase} aria-hidden="true">
+      <div className={s.scPlan}>
+        <span className={s.scStep}>Approve USDC</span>
+        <span className={s.scStep}>Swap -&gt; KLD</span>
+      </div>
+      <span className={s.scRun}>Sign &amp; run</span>
+    </div>
+  );
+}
 
 /**
  * `#chains` — the five chains the products open on, in display order.
@@ -561,30 +590,6 @@ export default async function LandingPage() {
             app", no frame means "the app" — and it is what stops two panels in
             a row reading as the same thing twice. */}
         <section className={s.hero}>
-          {/* The dotted dome across the foot of the hero. Artwork with no
-              content, so it says nothing to a screen reader and takes no clicks
-              aimed at the CTAs — both handled inside the component.
-
-              It is a client component, and the only one on this page besides the
-              planner and the theme toggle, because the dots are animated
-              individually on a canvas. The still SVG behind that canvas is what
-              paints before hydration, so the hero never arrives without its
-              artwork; HeroArc.tsx has the reasoning for both halves.
-
-              A child of the section, not of `.heroCopy`, because it spans both
-              columns — it was inside the copy column with its crown above the h1,
-              which put a shape behind the headline rather than a horizon under the
-              whole composition. It is absolutely positioned against `.hero`, so
-              being the first child of a two-column grid costs it no column and the
-              grid no row, and `.hero`'s `isolation: isolate` is what keeps its
-              negative z-index from escaping the section.
-
-              First in source order so that matches paint order. Nothing depends
-              on it — z-index: -1 does the work — but a decorative layer declared
-              after the text it sits behind is the kind of thing that gets read as
-              a mistake and "fixed". */}
-          <HeroArc />
-
           <div className={s.heroCopy}>
             {/* Just the name. This read "Kaleido DeFi-OS", which was the right
                 eyebrow over a headline that named a behaviour — but the h1 below
@@ -689,7 +694,29 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        {/* ---- 2. What it can do -------------------------------------- */}
+        {/* ---- 2. Getting started -------------------------------------
+            The section this page did not have. See the STEPS docblock: the slot
+            held the three internal stages of plan construction, which explains
+            the machine to an engineer and never tells a visitor what to do. */}
+        <section id="start" className={s.section}>
+          <div className={s.head}>
+            <p className={s.eyebrow}>Getting started</p>
+            <h2 className={`${s.h2} k-display`}>Connect. Ask. Sign.</h2>
+          </div>
+
+          <ol className={s.steps}>
+            {STEPS.map((st) => (
+              <li key={st.n} className={s.stepCard}>
+                <StepArt n={st.n} />
+                <span className={s.stepNum}>{st.n}</span>
+                <h3 className={s.cardTitle}>{st.title}</h3>
+                <p className={s.cardBody}>{st.body}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* ---- 3. What it can do -------------------------------------- */}
         <section id="can" className={s.section}>
           <div className={s.head}>
             <p className={s.eyebrow}>Capabilities</p>
@@ -725,7 +752,7 @@ export default async function LandingPage() {
           <CapabilityTabs groups={capabilityGroups} />
         </section>
 
-        {/* ---- 3. The products underneath -----------------------------
+        {/* ---- 4. The products underneath -----------------------------
             A rail of five names beside one panel of detail, which is the shape
             the production page uses for its module grid and the best-working
             component on it. What was here was the live price chart in one column
@@ -750,27 +777,6 @@ export default async function LandingPage() {
           </div>
 
           <ProductRail />
-        </section>
-
-        {/* ---- 4. Getting started -------------------------------------
-            The section this page did not have. See the STEPS docblock: the slot
-            held the three internal stages of plan construction, which explains
-            the machine to an engineer and never tells a visitor what to do. */}
-        <section id="start" className={s.section}>
-          <div className={s.head}>
-            <p className={s.eyebrow}>Getting started</p>
-            <h2 className={`${s.h2} k-display`}>Connect. Ask. Sign.</h2>
-          </div>
-
-          <ol className={s.steps}>
-            {STEPS.map((st) => (
-              <li key={st.n} className={s.stepCard}>
-                <span className={s.stepNum}>{st.n}</span>
-                <h3 className={s.cardTitle}>{st.title}</h3>
-                <p className={s.cardBody}>{st.body}</p>
-              </li>
-            ))}
-          </ol>
         </section>
 
         {/* ---- 5. Multichain, scoped ---------------------------------- */}

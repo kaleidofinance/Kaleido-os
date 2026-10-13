@@ -23,10 +23,7 @@ const valid = validateLocalClassification({
   amount: "1000", // must be ignored: models never author transaction fields
 });
 check("accepts the safe classification envelope", valid.kind === "follow_up");
-check(
-  "keeps only an allowed reference",
-  valid.reference === "previous_command",
-);
+check("keeps only an allowed reference", valid.reference === "previous_command");
 check("ignores transaction fields", !("amount" in valid));
 
 const malformed = validateLocalClassification({
@@ -34,14 +31,8 @@ const malformed = validateLocalClassification({
   tokenIn: "0xdead",
   calldata: "0x1234",
 });
-check(
-  "rejects an execution-shaped model response",
-  malformed.kind === "unknown",
-);
-check(
-  "does not preserve an untrusted reference",
-  malformed.reference === undefined,
-);
+check("rejects an execution-shaped model response", malformed.kind === "unknown");
+check("does not preserve an untrusted reference", malformed.reference === undefined);
 
 const tooLong = validateLocalClassification({
   kind: "question",
@@ -50,10 +41,7 @@ const tooLong = validateLocalClassification({
 check("drops overlong model prose", tooLong.reason === undefined);
 
 const options = browserLocalIntentOptions();
-check(
-  "uses the reviewed small-model default",
-  options.modelId === DEFAULT_BROWSER_LOCAL_INTENT_MODEL,
-);
+check("uses the reviewed small-model default", options.modelId === DEFAULT_BROWSER_LOCAL_INTENT_MODEL);
 check("starts with a quantized browser dtype", options.dtype === "q4");
 check("prefers the GPU acceleration path", options.device === "webgpu");
 

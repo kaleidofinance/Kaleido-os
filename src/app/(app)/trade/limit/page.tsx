@@ -8,7 +8,7 @@ import TxHistory from "@/components/v2/TxHistory";
 import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import { providerForChain } from "@/config/provider";
-import { getContracts } from "@/constants/registry";
+import { getContracts, poolPairsFor } from "@/constants/registry";
 import { chainTokenByAddress, chainTokens } from "@/constants/tokens";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
@@ -27,6 +27,12 @@ import {
   swapInputFor,
   type StoredOrder,
 } from "@/lib/dex/orders";
+import { FEE_TIERS } from "@/lib/dex/liquidity";
+import {
+  aggregatorToken,
+  getKyberSwapExecution,
+  hasKyberSwap,
+} from "@/lib/swap/kyberswap";
 import s from "../trade.module.css";
 import d from "../deferred.module.css";
 import l from "./limit.module.css";
@@ -64,14 +70,11 @@ import l from "./limit.module.css";
  * contract pulls the input per fill and one signature authorises all of them.
  */
 
-/** The tier the pair's own pool is on, and what this card quotes against. */
-const DEFAULT_FEE = 3000;
-
 /** Quick sell amounts, as fractions of the sell-side balance. */
 const QUICK = [0.25, 0.5, 0.75, 1] as const;
 
 /** Display-only, before a wallet arrives. See PREVIEW_CHAIN_ID on /trade/swap. */
-const PREVIEW_CHAIN_ID = 1;
+const PREVIEW_CHAIN_ID = 5042;
 
 /**
  * Seeding order per side, most wanted first.
@@ -137,7 +140,7 @@ const fmt = (n: number) =>
 /** See balanceText on /trade/swap: a dash means "not read", not "empty". */
 const balanceText = (balance: string, unread: boolean) =>
   unread
-    ? "—"
+    ? "0"
     : Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 /**
@@ -148,6 +151,14 @@ const balanceText = (balance: string, unread: boolean) =>
  * significant figures expressed as decimals, which is more precision than a
  * price input needs and less than the 18 `parseUnits` would accept.
  */
+/** `v` with at most `dp` decimals, so parseUnits accepts it for a coarser token
+ *  (native USDC is 18 decimals here, its ERC-20 face 6). Truncates, never rounds
+ *  up. */
+const truncTo = (v: string, dp: number) => {
+  const [w, f = ""] = v.split(".");
+  return f && dp > 0 ? `${w}.${f.slice(0, dp)}` : w;
+};
+
 const priceText = (n: number) => {
   if (!Number.isFinite(n) || n <= 0) return "";
   const places = Math.min(18, Math.max(0, 7 - Math.floor(Math.log10(n))));
@@ -302,7 +313,26 @@ function OpenOrders({
       await Promise.all(
         rows.map(async (r) => {
           try {
-            const path = pathFor(r.order, DEFAULT_FEE);
+            /* Try each tier and keep the path that quotes best — the order's
+               pool may be on any tier (the keeper picks the same way). A fixed
+               tier misreported every non-0.3% pair as unfillable. */
+            const quotedFor = swapInputFor(BigInt(r.order.amountIn), feeBps);
+            let path = pathFor(r.order, FEE_TIERS[0]);
+            let bestOut = BigInt(0);
+            if (quoter) {
+              for (const fee of FEE_TIERS) {
+                const p = pathFor(r.order, fee);
+                try {
+                  const out: bigint = await quoter.quoteExactInput.staticCall(p, quotedFor);
+                  if (out > bestOut) {
+                    bestOut = out;
+                    path = p;
+                  }
+                } catch {
+                  /* no pool at this tier */
+                }
+              }
+            }
             const [ok, reason] = await view.checkFill(
               r.order,
               r.signature,
@@ -310,18 +340,8 @@ function OpenOrders({
             );
             let pct: number | null = null;
             const floor = BigInt(r.order.minOut);
-            if (quoter && floor > BigInt(0)) {
-              try {
-                const out: bigint = await quoter.quoteExactInput.staticCall(
-                  path,
-                  swapInputFor(BigInt(r.order.amountIn), feeBps),
-                );
-                pct =
-                  Number(((out - floor) * BigInt(10_000)) / floor) / 100;
-              } catch {
-                /* No pool at this tier, or not enough liquidity for this size.
-                   The terms verdict above still stands on its own. */
-              }
+            if (floor > BigInt(0) && bestOut > BigInt(0)) {
+              pct = Number(((bestOut - floor) * BigInt(10_000)) / floor) / 100;
             }
             next[r.hash] = { ok: Boolean(ok), reason: String(reason), pct };
           } catch {
@@ -445,8 +465,21 @@ export default function LimitPage() {
   const [expiryIdx, setExpiryIdx] = useState(1);
   const [intervalIdx, setIntervalIdx] = useState(0);
   const [fills, setFills] = useState(4);
-  const [market, setMarket] = useState(0);
+  /* Two rates, because on Arc they are far apart.
+   *   poolRate — what Kaleido's own V3 pools pay for this size. Orders are filled
+   *              through these (KaleidoOrders routes a V3 path on our router), so
+   *              it is what can fill RIGHT NOW.
+   *   refRate  — the market, from the aggregator the Swap tab routes through
+   *              (KyberSwap), for the same size. Null where there is none.
+   * `market` below is refRate when there is one, else poolRate — so presets and
+   * "at market" mean the real market, and a chain without the aggregator
+   * behaves exactly as before. Measured 2026-09-28: 75.67 USDC→EURC on Arc,
+   * our ~$20/side pool 0.5032 vs KyberSwap ~0.876 — the card used to call 0.5032
+   * "market". */
+  const [poolRate, setPoolRate] = useState(0);
+  const [refRate, setRefRate] = useState(0);
   const [quoting, setQuoting] = useState(false);
+  const market = refRate || poolRate;
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
   /** The plan under review, whichever control raised it. Null while editing. */
   const [reviewing, setReviewing] = useState<Intent[] | null>(null);
@@ -479,14 +512,64 @@ export default function LimitPage() {
         undefined,
       );
 
+    /* The pairs that HAVE a pool on this chain, as resolvable tokens. Seeding
+       from these is what stops the form opening on a market that quotes nothing
+       — cirBTC/USDC has no pool, and the old symbol-list default landed there. */
+    const byAddr = (addr: string) =>
+      available.find((t) => !t.isNative && t.address.toLowerCase() === addr);
+    const isStable = (t: IToken) => /usd|eur/i.test(t.symbol);
+    const poolPairs = poolPairsFor(chainId ?? PREVIEW_CHAIN_ID)
+      .map(([a, b]) => [byAddr(a), byAddr(b)] as const)
+      .filter((p): p is readonly [IToken, IToken] => Boolean(p[0] && p[1]))
+      /* A limit order usually sells a volatile asset for a stable, so orient the
+         stable to the BUY side; a stable/stable or volatile/volatile pool keeps
+         the pool's own order. */
+      .map(([a, b]) =>
+        isStable(a) && !isStable(b) ? ([b, a] as const) : ([a, b] as const),
+      );
+    /* Prefer a neutral, deep-reading default: a stable→stable pool (USDC/EURC)
+       first, then any pool whose buy side is a stable, then any pool at all —
+       so the form never opens on "no market", and opens on a sensible pair when
+       it has the choice. */
+    const poolDefault =
+      poolPairs.find(([a, b]) => isStable(a) && isStable(b)) ??
+      poolPairs.find(([, b]) => isStable(b)) ??
+      poolPairs[0] ??
+      null;
+    /* A pool pair that contains `t`, to seed the OTHER side of a chosen token. */
+    const poolPartnerOf = (t: IToken | null): IToken | null => {
+      if (!t) return null;
+      for (const [a, b] of poolPairs) {
+        if (a.address.toLowerCase() === t.address.toLowerCase()) return b;
+        if (b.address.toLowerCase() === t.address.toLowerCase()) return a;
+      }
+      return null;
+    };
+
+    /* Neither side chosen → seed both from one real pool pair, so the form opens
+       on a market that quotes. */
+    if (!inOk && !outOk && poolDefault) {
+      setTokenIn(poolDefault[0]);
+      setTokenOut(poolDefault[1]);
+      return;
+    }
+
     const first =
-      inOk ?? pick(PREFER_SELL, outOk) ?? available.find(usable(outOk)) ?? null;
+      inOk ??
+      poolPartnerOf(outOk) ??
+      pick(PREFER_SELL, outOk) ??
+      available.find(usable(outOk)) ??
+      null;
     const second =
-      outOk ?? pick(PREFER_BUY, first) ?? available.find(usable(first)) ?? null;
+      outOk ??
+      poolPartnerOf(first) ??
+      pick(PREFER_BUY, first) ??
+      available.find(usable(first)) ??
+      null;
 
     if (!inOk) setTokenIn(first);
     if (!outOk) setTokenOut(second);
-  }, [available, tokenIn, tokenOut]);
+  }, [available, tokenIn, tokenOut, chainId]);
 
   usePublishChartPair(tokenIn?.symbol, tokenOut?.symbol);
 
@@ -532,7 +615,8 @@ export default function LimitPage() {
    * what lets the preset chips fill a price before anything is typed. */
   useEffect(() => {
     if (!tokenIn || !tokenOut || tokenIn.address === tokenOut.address) {
-      setMarket(0);
+      setPoolRate(0);
+      setRefRate(0);
       return;
     }
     const size = Number(amountIn) > 0 ? amountIn : "1";
@@ -540,18 +624,57 @@ export default function LimitPage() {
     setQuoting(true);
     const t = setTimeout(async () => {
       try {
-        const out = await getV3AmountOut(
-          tokenIn.address,
-          tokenOut.address,
-          size,
-          DEFAULT_FEE,
-          tokenIn.decimals,
-          tokenOut.decimals,
+        /* The pool can be on any tier — USDC/EURC is 0.05%, not the old
+           hardcoded 0.3% — so quote all of them and keep the best output, the
+           same tier discovery the keeper does before it fills. Quoting one
+           fixed tier showed "no quote" for every pair whose pool isn't 0.3%. */
+        const outs = await Promise.all(
+          FEE_TIERS.map((fee) =>
+            getV3AmountOut(
+              tokenIn.address,
+              tokenOut.address,
+              size,
+              fee,
+              tokenIn.decimals,
+              tokenOut.decimals,
+            ).catch(() => null),
+          ),
         );
-        const rate = Number(out) / Number(size);
-        if (!cancelled) setMarket(Number.isFinite(rate) && rate > 0 ? rate : 0);
+        const best = outs.reduce<number>((m, o) => {
+          const v = o === null ? 0 : Number(o);
+          return Number.isFinite(v) && v > m ? v : m;
+        }, 0);
+        const rate = best / Number(size);
+        if (!cancelled) setPoolRate(Number.isFinite(rate) && rate > 0 ? rate : 0);
+
+        /* The reference market: the same aggregator quote the Swap tab takes, for
+           the same size. It needs the connected address (KyberSwap bakes the
+           sender into the route), so a disconnected visitor keeps the pool rate
+           as "market", as before. Native USDC is quoted as its ERC-20 face. */
+        let ref = 0;
+        if (chainId && hasKyberSwap(chainId) && address) {
+          const sell = aggregatorToken(chainId, tokenIn);
+          const buy = aggregatorToken(chainId, tokenOut);
+          const exec = await getKyberSwapExecution({
+            chainId,
+            tokenIn: sell.address,
+            tokenOut: buy.address,
+            amountUnits: ethers.parseUnits(truncTo(size, sell.decimals), sell.decimals).toString(),
+            address,
+            slippageBps: 50,
+          });
+          if (exec) {
+            const out = Number(ethers.formatUnits(exec.amountOut, buy.decimals));
+            const r = out / Number(size);
+            if (Number.isFinite(r) && r > 0) ref = r;
+          }
+        }
+        if (!cancelled) setRefRate(ref);
       } catch {
-        if (!cancelled) setMarket(0);
+        if (!cancelled) {
+          setPoolRate(0);
+          setRefRate(0);
+        }
       } finally {
         if (!cancelled) setQuoting(false);
       }
@@ -560,7 +683,21 @@ export default function LimitPage() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [amountIn, tokenIn, tokenOut, getV3AmountOut]);
+  }, [amountIn, tokenIn, tokenOut, getV3AmountOut, chainId, address]);
+
+  /* Whether Kaleido's pools can fill at the price being set, right now. Only
+     worth saying when there IS a separate market reference — without one the
+     pool rate is the market and every preset is already relative to it. */
+  const limitRate = parseFloat(price);
+  /* On a KaleidoOrdersV2 chain the keeper can also fill through the aggregator
+     (fillViaAggregator), so our own pools' depth no longer limits the order and
+     the note would be false there. */
+  const aggregatorFills =
+    chainId !== undefined &&
+    getContracts(chainId).ordersVersion === "2" &&
+    hasKyberSwap(chainId);
+  const waitsForLiquidity =
+    !aggregatorFills && refRate > 0 && limitRate > 0 && poolRate < limitRate;
 
   /* A preset is a mode, not a button: it re-derives the price every time the
      market moves, so "Market" keeps meaning market. Typing clears it. */
@@ -950,7 +1087,9 @@ export default function LimitPage() {
           <div className={s.quote}>
             <span className="tabular">
               {market
-                ? `1 ${tokenIn.symbol} = ${fmt(market)} ${tokenOut.symbol}`
+                ? `1 ${tokenIn.symbol} = ${fmt(market)} ${tokenOut.symbol}${
+                    refRate ? " · market" : ""
+                  }`
                 : "No market rate for this pair"}
             </span>
             {minOutHuman && (
@@ -974,6 +1113,16 @@ export default function LimitPage() {
         )}
 
         {block?.why && <p className={l.warn}>{block.why}</p>}
+
+        {waitsForLiquidity && tokenIn && tokenOut && (
+          <p className={l.fillNote}>
+            {poolRate > 0
+              ? `Kaleido's pools fill this size at up to ${fmt(poolRate)} ${tokenOut.symbol} per ${tokenIn.symbol} right now, below your price.`
+              : `Kaleido has no pool that fills ${tokenIn.symbol} → ${tokenOut.symbol} yet.`}{" "}
+            The order stays open and fills once our liquidity or the market
+            reaches it — a smaller order fills closer to market.
+          </p>
+        )}
 
         <p className={d.note}>
           Signed, not sent. Nothing moves until the market reaches your floor,

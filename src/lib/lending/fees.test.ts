@@ -185,7 +185,7 @@ check(
 );
 /* The whole reason the type is `number | null`: an em dash, never "0%". A screen
    that printed 0% would be asserting a waiver the contract does not grant. */
-check("null renders as an em dash", formatBps(null) === "—");
+check("null renders as zero", formatBps(null) === "0");
 check("null is not 0%", formatBps(null) !== "0%");
 check("a real zero still reads as 0%", formatBps(0) === "0%");
 

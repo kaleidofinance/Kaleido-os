@@ -44,7 +44,13 @@ const KNOWN_KINDS: CardKind[] = [
   "balance",
   "notice",
   "actions",
+  "gauge",
+  "steps",
+  "token",
+  "connect",
 ];
+
+const STEP_STATUSES = ["done", "skipped", "failed"] as const;
 
 const TONES: CardTone[] = ["neutral", "good", "warn", "bad"];
 
@@ -53,6 +59,9 @@ const MAX_CARDS = 3;
 /** Rows in one stats/balance card. Beyond this it wants to be a page. */
 const MAX_ROWS = 8;
 const MAX_ACTIONS = 4;
+/** Presets per side on a token card (10/25/50/75/100%). Local-only, so this is
+ *  a layout ceiling, not a wire one. */
+const MAX_TOKEN_BUTTONS = 6;
 
 const LIMITS = {
   label: 40,
@@ -62,6 +71,8 @@ const LIMITS = {
   note: 140,
   body: 280,
   prompt: 120,
+  caption: 16,
+  detail: 48,
 } as const;
 
 /**
@@ -166,6 +177,62 @@ function validate(raw: unknown): AgentCard | null {
       };
     }
 
+    case "gauge": {
+      const label = str(c.label, LIMITS.label);
+      const value = str(c.value, LIMITS.value);
+      if (!label || !value) return null;
+      /* The one numeric field in the union, and the one thing the frame cannot
+         reconstruct from a string. A non-number is a malformed gauge, not a
+         zero-filled one — drop it rather than draw an empty bar that looks
+         measured. A finite number is clamped: `fraction` is geometry in [0,1],
+         and an emitter that computed 1.3 meant "full", not "overflow the track". */
+      const f = c.fraction;
+      if (typeof f !== "number" || !Number.isFinite(f)) return null;
+      const fraction = Math.min(1, Math.max(0, f));
+      const unit = str(c.unit, LIMITS.unit);
+      const min = str(c.min, LIMITS.caption);
+      const max = str(c.max, LIMITS.caption);
+      const note = str(c.note, LIMITS.note);
+      return {
+        kind: "gauge",
+        label,
+        value,
+        fraction,
+        tone: tone(c.tone),
+        ...(unit ? { unit } : {}),
+        ...(min ? { min } : {}),
+        ...(max ? { max } : {}),
+        ...(note ? { note } : {}),
+      };
+    }
+
+    case "steps": {
+      if (!Array.isArray(c.steps)) return null;
+      const steps: {
+        label: string;
+        status: "done" | "skipped" | "failed";
+        detail?: string;
+      }[] = [];
+      for (const r of c.steps.slice(0, MAX_ROWS)) {
+        if (!r || typeof r !== "object") continue;
+        const row = r as Record<string, unknown>;
+        const label = str(row.label, LIMITS.label);
+        if (!label) continue;
+        /* An unknown status is not a guess to render — default it to `done`, the
+           same fail-safe the tone helper makes, rather than drop a real step
+           over a bad enum. */
+        const status =
+          typeof row.status === "string" &&
+          (STEP_STATUSES as readonly string[]).includes(row.status)
+            ? (row.status as "done" | "skipped" | "failed")
+            : "done";
+        const detail = str(row.detail, LIMITS.detail);
+        steps.push({ label, status, ...(detail ? { detail } : {}) });
+      }
+      if (!steps.length) return null;
+      return { kind: "steps", ...(title ? { title } : {}), steps };
+    }
+
     case "actions": {
       if (!Array.isArray(c.actions)) return null;
       const actions: { label: string; prompt: string }[] = [];
@@ -180,12 +247,95 @@ function validate(raw: unknown): AgentCard | null {
       if (!actions.length) return null;
       return { kind: "actions", ...(title ? { title } : {}), actions };
     }
+
+    case "connect": {
+      if (c.wallet !== "agw") return null;
+      const label = str(c.label, LIMITS.label);
+      if (!title || !label) return null;
+      const body = str(c.body, LIMITS.body);
+      return { kind: "connect", wallet: "agw", title, label, ...(body ? { body } : {}) };
+    }
+
+    case "token": {
+      const symbol = str(c.symbol, LIMITS.value);
+      const address = str(c.address, LIMITS.value);
+      if (!symbol || !address) return null;
+      const name = str(c.name, LIMITS.title);
+      const price = str(c.price, LIMITS.value);
+      const note = str(c.note, LIMITS.note);
+      const rows: { label: string; value: string; tone?: CardTone }[] = [];
+      if (Array.isArray(c.rows)) {
+        for (const r of c.rows.slice(0, MAX_ROWS)) {
+          if (!r || typeof r !== "object") continue;
+          const row = r as Record<string, unknown>;
+          const label = str(row.label, LIMITS.label);
+          const value = str(row.value, LIMITS.value);
+          if (!label || !value) continue;
+          rows.push({
+            label,
+            value,
+            ...(row.tone !== undefined ? { tone: tone(row.tone) } : {}),
+          });
+        }
+      }
+      /* Buttons carry a command that a tap SENDS (this kind is local-only —
+         see WIRE_FORBIDDEN), so the command is capped like a prompt and
+         rebuilt field by field like everything else here. */
+      const buttons = (raw: unknown, allowDisabled: boolean) => {
+        const out: { label: string; command: string; disabled?: boolean }[] = [];
+        if (!Array.isArray(raw)) return out;
+        for (const b of raw.slice(0, MAX_TOKEN_BUTTONS)) {
+          if (!b || typeof b !== "object") continue;
+          const item = b as Record<string, unknown>;
+          const label = str(item.label, LIMITS.label);
+          const command = str(item.command, LIMITS.prompt);
+          if (!label || !command) continue;
+          out.push({
+            label,
+            command,
+            ...(allowDisabled && item.disabled === true ? { disabled: true } : {}),
+          });
+        }
+        return out;
+      };
+      const badgeRaw = c.badge as Record<string, unknown> | undefined;
+      const badgeText = badgeRaw ? str(badgeRaw.text, LIMITS.label) : null;
+      return {
+        kind: "token",
+        symbol,
+        address,
+        ...(name ? { name } : {}),
+        ...(price ? { price } : {}),
+        ...(badgeText ? { badge: { text: badgeText, tone: tone(badgeRaw!.tone) } } : {}),
+        rows,
+        ...(note ? { note } : {}),
+        buys: buttons(c.buys, true),
+        sells: buttons(c.sells, false).map(({ label, command }) => ({ label, command })),
+        ...(str(c.ref, LIMITS.prompt) ? { ref: str(c.ref, LIMITS.prompt)! } : {}),
+      };
+    }
   }
 }
 
-export function cardsFromChat(data: unknown): AgentCard[] {
-  const chat = data as ChatResponse;
-  const raw = chat?.context?.cards;
+/**
+ * Card kinds a model may NOT emit over the wire.
+ *
+ * `steps` is a completed plan's receipt — its rows carry real transaction
+ * hashes, built locally by the page from what actually settled (see
+ * lib/v2/cards/receipt.ts). A model writing one would be inventing hashes and a
+ * result the chain never produced, dressed as a record. Every other kind is a
+ * claim the model is entitled to make, exactly as it is entitled to a sentence;
+ * this one is a forgery. Local producers emit the real receipt and keep it, which
+ * is why the ban lives on the wire, not in `validate`.
+ *
+ * `token` is banned for a different reason: it is the one card whose buttons
+ * SEND their command rather than prefill it. That is only safe because this app
+ * composes the command from a token it resolved itself; a model-emitted token
+ * card would be a model choosing what a tap trades.
+ */
+const WIRE_FORBIDDEN: ReadonlySet<CardKind> = new Set(["steps", "token", "connect"]);
+
+function collect(raw: unknown, opts: { allowLocalOnly: boolean }): AgentCard[] {
   if (!Array.isArray(raw)) return [];
 
   const valid: AgentCard[] = [];
@@ -193,6 +343,18 @@ export function cardsFromChat(data: unknown): AgentCard[] {
     if (valid.length >= MAX_CARDS) {
       console.warn(
         `[cardsFromChat] dropped card beyond the ${MAX_CARDS}-card limit:`,
+        card,
+      );
+      continue;
+    }
+    const kind = (card as { kind?: unknown })?.kind;
+    if (
+      !opts.allowLocalOnly &&
+      typeof kind === "string" &&
+      WIRE_FORBIDDEN.has(kind as CardKind)
+    ) {
+      console.warn(
+        "[cardsFromChat] dropped a card kind a model may not emit:",
         card,
       );
       continue;
@@ -205,13 +367,23 @@ export function cardsFromChat(data: unknown): AgentCard[] {
 }
 
 /**
+ * Validates cards that arrived over the wire (a model turn's `context.cards`).
+ * The `steps` receipt is forbidden here — see WIRE_FORBIDDEN.
+ */
+export function cardsFromChat(data: unknown): AgentCard[] {
+  const chat = data as ChatResponse;
+  return collect(chat?.context?.cards, { allowLocalOnly: false });
+}
+
+/**
  * The same validation, for cards this app builds itself.
  *
- * Local emitters (the FAQ, the grammar, the planner) are trusted code, so this
- * is not a security boundary for them — it is the length and row caps, which a
- * local emitter can breach just as easily by interpolating a long token name.
- * Running everything through one gate also means the frames only ever receive
- * one shape, whoever built it.
+ * Local emitters (the FAQ, the grammar, the planner, the completion receipt) are
+ * trusted code, so this is not a security boundary for them — it is the length
+ * and row caps, which a local emitter can breach just as easily by interpolating
+ * a long token name. It allows every kind, `steps` included, because the receipt
+ * is one of these emitters. Running everything through one gate also means the
+ * frames only ever receive one shape, whoever built it.
  */
 export const localCards = (cards: AgentCard[]): AgentCard[] =>
-  cardsFromChat({ context: { cards } });
+  collect(cards, { allowLocalOnly: true });

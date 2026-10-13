@@ -6,6 +6,8 @@
     "pool-hash": "hardhat run scripts/verify-pool-init-hash.js",
     "deploy:oracle": "hardhat run scripts/deploy-oracle.js",
     "deploy:diamond": "hardhat run scripts/deploy.js",
+    "deploy:weth": "hardhat run scripts/deploy-weth.js",
+    "seed:wrap": "hardhat run scripts/seed-wrap.js",
     "deploy:v3": "hardhat run scripts/deploy-v3.js",
     "deploy:v2": "hardhat run scripts/deploy-dex.js",
     "deploy:stablecoin": "hardhat run scripts/deploy-stablecoin.js",
@@ -15,7 +17,7 @@
   },
   "dependencies": {
     "@aragon/os": "^4.4.0",
-    "@openzeppelin/contracts": "^5.2.0",
+    "@openzeppelin/contracts": "5.4.0",
     "@pythnetwork/hermes-client": "^2.0.0",
     "@pythnetwork/pyth-sdk-solidity": "^4.0.0",
     "@uniswap/lib": "^4.0.1-alpha",

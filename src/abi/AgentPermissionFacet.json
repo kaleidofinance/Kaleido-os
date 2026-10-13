@@ -1,58 +1,199 @@
 [
   {
+    "inputs": [],
+    "name": "Protocol__InvalidPermission",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
     "inputs": [
-      { "internalType": "address", "name": "_agent", "type": "address" },
-      { "internalType": "uint256", "name": "_maxNotionalPerAction", "type": "uint256" },
-      { "internalType": "uint256", "name": "_maxNotionalPerEpoch", "type": "uint256" },
-      { "internalType": "uint64", "name": "_epochDuration", "type": "uint64" },
-      { "internalType": "uint64", "name": "_expiry", "type": "uint64" },
-      { "internalType": "uint16", "name": "_maxInterestBps", "type": "uint16" },
-      { "internalType": "uint16", "name": "_minHealthFactorBps", "type": "uint16" },
-      { "internalType": "uint32", "name": "_allowedActions", "type": "uint32" },
-      { "internalType": "address[]", "name": "_tokens", "type": "address[]" }
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "agent",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "maxNotionalPerAction",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "maxNotionalPerEpoch",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "epochDuration",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "expiry",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "allowedActions",
+        "type": "uint32"
+      }
     ],
-    "name": "grantAgentPermission",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "name": "AgentPermissionGranted",
+    "type": "event"
   },
   {
-    "inputs": [{ "internalType": "address", "name": "_agent", "type": "address" }],
-    "name": "revokeAgentPermission",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
+    "anonymous": false,
     "inputs": [
-      { "internalType": "address", "name": "_agent", "type": "address" },
-      { "internalType": "address", "name": "_token", "type": "address" },
-      { "internalType": "bool", "name": "_allowed", "type": "bool" }
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "agent",
+        "type": "address"
+      }
     ],
-    "name": "setAgentToken",
-    "outputs": [],
-    "stateMutability": "nonpayable",
+    "name": "AgentPermissionRevoked",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "agent",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "allowed",
+        "type": "bool"
+      }
+    ],
+    "name": "AgentTokenSet",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_user",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_agent",
+        "type": "address"
+      }
+    ],
+    "name": "agentRemainingBudget",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "_user", "type": "address" },
-      { "internalType": "address", "name": "_agent", "type": "address" }
+      {
+        "internalType": "address",
+        "name": "_user",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_agent",
+        "type": "address"
+      }
     ],
     "name": "getAgentPermission",
     "outputs": [
       {
         "components": [
-          { "internalType": "uint256", "name": "maxNotionalPerAction", "type": "uint256" },
-          { "internalType": "uint256", "name": "maxNotionalPerEpoch", "type": "uint256" },
-          { "internalType": "uint256", "name": "spentInEpoch", "type": "uint256" },
-          { "internalType": "uint64", "name": "epochStart", "type": "uint64" },
-          { "internalType": "uint64", "name": "epochDuration", "type": "uint64" },
-          { "internalType": "uint64", "name": "expiry", "type": "uint64" },
-          { "internalType": "uint16", "name": "maxInterestBps", "type": "uint16" },
-          { "internalType": "uint16", "name": "minHealthFactorBps", "type": "uint16" },
-          { "internalType": "uint32", "name": "allowedActions", "type": "uint32" },
-          { "internalType": "bool", "name": "revoked", "type": "bool" }
+          {
+            "internalType": "uint256",
+            "name": "maxNotionalPerAction",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxNotionalPerEpoch",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "spentInEpoch",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint64",
+            "name": "epochStart",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "epochDuration",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "expiry",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint16",
+            "name": "maxInterestBps",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint16",
+            "name": "minHealthFactorBps",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint32",
+            "name": "allowedActions",
+            "type": "uint32"
+          },
+          {
+            "internalType": "bool",
+            "name": "revoked",
+            "type": "bool"
+          }
         ],
         "internalType": "struct AgentPermission",
         "name": "",
@@ -64,23 +205,120 @@
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "_user", "type": "address" },
-      { "internalType": "address", "name": "_agent", "type": "address" },
-      { "internalType": "address", "name": "_token", "type": "address" }
+      {
+        "internalType": "address",
+        "name": "_agent",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_maxNotionalPerAction",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_maxNotionalPerEpoch",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint64",
+        "name": "_epochDuration",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint64",
+        "name": "_expiry",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint16",
+        "name": "_maxInterestBps",
+        "type": "uint16"
+      },
+      {
+        "internalType": "uint16",
+        "name": "_minHealthFactorBps",
+        "type": "uint16"
+      },
+      {
+        "internalType": "uint32",
+        "name": "_allowedActions",
+        "type": "uint32"
+      },
+      {
+        "internalType": "address[]",
+        "name": "_tokens",
+        "type": "address[]"
+      }
+    ],
+    "name": "grantAgentPermission",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_user",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_agent",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_token",
+        "type": "address"
+      }
     ],
     "name": "isAgentTokenAllowed",
-    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "_user", "type": "address" },
-      { "internalType": "address", "name": "_agent", "type": "address" }
+      {
+        "internalType": "address",
+        "name": "_agent",
+        "type": "address"
+      }
     ],
-    "name": "agentRemainingBudget",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
+    "name": "revokeAgentPermission",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_agent",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_token",
+        "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "_allowed",
+        "type": "bool"
+      }
+    ],
+    "name": "setAgentToken",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   }
 ]

@@ -151,7 +151,31 @@ library Constants {
     ///      misconfiguration stops being a policy choice.
     uint256 constant MAX_PRICE_AGE = 3600;
 
-    /// @dev Ceiling on a per-feed `s_feedMaxAge` override. 25 hours.
+    /// @dev Ceiling on a per-feed `s_feedMaxAge` override. 30 hours.
+    ///
+    ///      RAISED from 90,000 (25h) for Arc mainnet, 2026-09-27, on
+    ///      measurement. Arc's Chainlink push feeds are on an 86,400s heartbeat
+    ///      with a 0.5% deviation trigger, and the stablecoin ones (USDC/USD,
+    ///      EURC/USD) publish ONLY on the heartbeat: 40 consecutive rounds each
+    ///      walked back on chain showed gaps of 86,404-86,487s. Against 90,000
+    ///      that is ~58 minutes of slack, and a single late heartbeat would make
+    ///      every price read on the asset revert — which, because
+    ///      getAccountCollateralValue prices every registered collateral token,
+    ///      used to mean every borrow, withdrawal and liquidation on the chain.
+    ///      BTC/USD falls back to the same heartbeat in a quiet market (walked
+    ///      max gap 83,853s), so the volatile feed needs the same room.
+    ///
+    ///      Why a day-old answer is acceptable on a deviation-triggered feed,
+    ///      volatile or not: the publisher MUST post whenever the price moves
+    ///      0.5% from the last answer, so an old answer is still within 0.5% of
+    ///      the market; the heartbeat only proves the publisher is alive. That is
+    ///      the property that makes this bound a liveness bound rather than an
+    ///      accuracy bound. It does NOT hold for a pull oracle (Pyth, Stork) or a
+    ///      feed with a looser deviation trigger — size those bounds on their own
+    ///      terms. 30h = heartbeat + 6h, room for a late publish without letting a
+    ///      dead feed price indefinitely.
+    ///
+    ///      Earlier rationale, still true for the testnet feeds it was written for:
     ///
     ///      Deliberately far above MAX_PRICE_AGE, and deliberately a separate
     ///      constant rather than a raised value of it. The reasoning above — that
@@ -176,7 +200,7 @@ library Constants {
     ///      a stale asset" into "the protocol liquidated against a price from
     ///      yesterday". The override is per feed and emits an event precisely so
     ///      that choice is visible in the logs instead of buried in a global.
-    uint256 constant MAX_FEED_PRICE_AGE = 90000;
+    uint256 constant MAX_FEED_PRICE_AGE = 108000;
 
     /// @dev Ceiling on priceMaxConfBps — the widest Pyth confidence interval the
     ///      protocol may be configured to accept, as basis points of the price.

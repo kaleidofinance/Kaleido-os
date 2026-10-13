@@ -47,6 +47,11 @@ library LibDiamond {
         mapping(bytes4 => bool) supportedInterfaces;
         // owner of the contract
         address contractOwner;
+        // nominated by OwnershipFacet.transferOwnership, set as owner on
+        // acceptOwnership. APPENDED LAST: this struct lives at a fixed keccak
+        // slot, so a new field after the others leaves every existing one
+        // where it was on diamonds already deployed.
+        address pendingOwner;
     }
 
     function diamondStorage()

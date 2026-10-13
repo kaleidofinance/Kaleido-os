@@ -64,6 +64,7 @@ import { ethers } from "ethers";
 import { providerForChain } from "@/config/provider";
 import type { ITradingPair } from "@/constants/types/dex";
 import { scanBackwards, TX_WINDOW_TARGET_SEC } from "@/lib/dex/logWindow";
+import { isTransientRpcError, retryRpc } from "@/lib/dex/rpcRetry";
 import { MOCK_DATA, mockPoolTxns } from "@/lib/mock";
 
 const V2_ABI = [
@@ -256,11 +257,16 @@ export function usePoolTransactions(pair: ITradingPair | null): PoolTxnsResult {
              over topic0 only from an explicit array of topic hashes, and naming
              the three event fragments keeps the decode typed. They run together,
              so it is one round trip's latency per chunk. */
-          const [swaps, mints, burns] = await Promise.all([
-            contract.queryFilter(contract.filters.Swap(), fromBlock, toBlock),
-            contract.queryFilter(contract.filters.Mint(), fromBlock, toBlock),
-            contract.queryFilter(contract.filters.Burn(), fromBlock, toBlock),
-          ]);
+          /* Arc's public RPC can throttle the three event queries as a group.
+             Retry the whole chunk with jitter so one transient refusal does not
+             surface as a raw provider error in the pool detail page. */
+          const [swaps, mints, burns] = await retryRpc(() =>
+            Promise.all([
+              contract.queryFilter(contract.filters.Swap(), fromBlock, toBlock),
+              contract.queryFilter(contract.filters.Mint(), fromBlock, toBlock),
+              contract.queryFilter(contract.filters.Burn(), fromBlock, toBlock),
+            ]),
+          );
 
           const rows: PoolTxn[] = [];
 
@@ -353,7 +359,11 @@ export function usePoolTransactions(pair: ITradingPair | null): PoolTxnsResult {
          query failed" are different answers and only one of them means the pool
          is quiet. */
       setError(
-        err instanceof Error ? err.message : "Could not read pool transactions",
+        isTransientRpcError(err)
+          ? "Transaction history is temporarily unavailable. Try refreshing in a moment."
+          : err instanceof Error
+            ? err.message
+            : "Could not read pool transactions",
       );
     } finally {
       setLoading(false);

@@ -24,3 +24,7 @@ DEPLOY_LOG_ISOLATED.txt
 # *.tmp.js by convention so they never reach a commit.
 *.tmp.js
 *.tmp.json
+
+# Generated Safe transaction files (scripts/safe-tx.js) — review cards and Transaction Builder batches
+safe-txs/*
+!safe-txs/.gitkeep

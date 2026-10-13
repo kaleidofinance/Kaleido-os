@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useActiveAccount } from "thirdweb/react";
+import { CHAINS_BY_ID } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { providerForChain } from "@/config/provider";
 import { lendingChains } from "@/lib/lending/chain";
 import {
@@ -33,7 +35,14 @@ export interface BorrowPositionsAcrossChains {
 
 export function useBorrowPositionsAcrossChains(): BorrowPositionsAcrossChains {
   const address = useActiveAccount()?.address;
-  const chainIds = useMemo(() => lendingChains(), []);
+  const { showTestnets } = useTestnetMode();
+  const chainIds = useMemo(
+    () =>
+      lendingChains().filter(
+        (id) => showTestnets || CHAINS_BY_ID[id]?.network === "mainnet",
+      ),
+    [showTestnets],
+  );
   const [chains, setChains] = useState<ChainBorrowPositions[]>([]);
   const [loading, setLoading] = useState(false);
   const [nonce, setNonce] = useState(0);

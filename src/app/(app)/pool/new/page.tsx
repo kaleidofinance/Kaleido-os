@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { ethers } from "ethers";
 import {
   useActiveAccount,
   useActiveWalletChain,
@@ -15,7 +17,11 @@ import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3PositionManager } from "@/hooks/dex/useV3PositionManager";
-import { readPoolState, type PoolState } from "@/lib/dex/pool";
+import {
+  hasUsablePoolPrice,
+  readPoolState,
+  type PoolState,
+} from "@/lib/dex/pool";
 import { providerForChain } from "@/config/provider";
 import {
   SLIPPAGE_BPS,
@@ -25,14 +31,18 @@ import {
 } from "@/lib/dex/deposit";
 import {
   FEE_TIERS as TRADED_TIERS,
+  isInitialPriceWithinTolerance,
   isTradedTier,
   ticksForRange,
 } from "@/lib/dex/liquidity";
 import { getV3AmountRatio } from "@/constants/utils/v3Math";
 import { chainTokens } from "@/constants/tokens";
+import { getContracts } from "@/constants/registry";
 import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
 import Chevron from "@/components/v2/Chevron";
+import TokenIcon from "@/components/v2/TokenIcon";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
+import { useDexPrices } from "@/hooks/useDexPrices";
 import type { IToken } from "@/constants/types/dex";
 import s from "../pool.module.css";
 
@@ -111,10 +121,11 @@ export default function NewPositionPage() {
   const account = useActiveAccount();
   const chain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
+  const queryClient = useQueryClient();
   const [switchingChain, setSwitchingChain] = useState(false);
   const { mintPosition, POSITION_MANAGER_ADDRESS: positionManager } =
     useV3PositionManager();
-  const gate = useChainGate();
+  const gate = useChainGate(undefined, "dex");
 
   /*
    * The pair and tier a link asked for, matching /pool/[address]'s own `chain`
@@ -285,6 +296,71 @@ export default function NewPositionPage() {
 
   const { balance: balance0, unread: unread0 } = useTokenBalance(token0);
   const { balance: balance1, unread: unread1 } = useTokenBalance(token1);
+  const nativeToken = useMemo(
+    () => chainTokens(chainId).find((t) => t.isNative) ?? null,
+    [chainId],
+  );
+  const { balance: nativeBalance, unread: nativeUnread } =
+    useTokenBalance(nativeToken);
+  const wrappedNative = getContracts(chainId).wrappedNative?.toLowerCase();
+  const isWrapLeg = (which: "0" | "1") => {
+    const token = which === "0" ? token0 : token1;
+    return Boolean(
+      token && wrappedNative && token.address.toLowerCase() === wrappedNative,
+    );
+  };
+  const wrapShortfallWei = (which: "0" | "1") => {
+    const token = which === "0" ? token0 : token1;
+    const amount = which === "0" ? amount0 : amount1;
+    const balance = which === "0" ? balance0 : balance1;
+    if (!token || !positive(amount)) return 0n;
+    try {
+      const shortfall =
+        ethers.parseUnits(amount, token.decimals) -
+        ethers.parseUnits(balance || "0", token.decimals);
+      return shortfall > 0n ? shortfall : 0n;
+    } catch {
+      return 0n;
+    }
+  };
+  const [wrapping, setWrapping] = useState(false);
+  const canWrap = (which: "0" | "1") => {
+    const need = wrapShortfallWei(which);
+    if (!isConnected || !account || !chain || nativeUnread || !nativeToken)
+      return false;
+    if (!isWrapLeg(which) || need <= 0n) return false;
+    try {
+      return (
+        ethers.parseUnits(nativeBalance || "0", nativeToken.decimals) >= need
+      );
+    } catch {
+      return false;
+    }
+  };
+  const wrap = async (which: "0" | "1") => {
+    const token = which === "0" ? token0 : token1;
+    const need = wrapShortfallWei(which);
+    if (!token || !account || !chain || !canWrap(which)) return;
+    setWrapping(true);
+    try {
+      const signer = toEthersSigner(account, chain);
+      const data = new ethers.Interface([
+        "function deposit() payable",
+      ]).encodeFunctionData("deposit", []);
+      const tx = await signer.sendTransaction({
+        to: token.address,
+        value: need,
+        data,
+      });
+      await tx.wait();
+      toast.success(`Wrapped into ${token.symbol} — 1:1, no fee.`);
+      queryClient.invalidateQueries({ queryKey: ["tokenBalance"] });
+    } catch (err) {
+      toast.error(`Couldn’t wrap: ${(err as Error)?.message ?? "try again"}`);
+    } finally {
+      setWrapping(false);
+    }
+  };
 
   /**
    * Where this pair's market sits at a tier, on the chain the wallet is on.
@@ -380,15 +456,30 @@ export default function NewPositionPage() {
    * which source it is quoting.
    */
   const { priceOf } = useSpotPrices();
+  /* The generic spot table does not carry Arc ecosystem tokens such as ARGUS.
+     Ask the existing KyberSwap-backed DEX price route for those addresses so a
+     new pool can still open at a sensible reference price. */
+  const dexPriceTokens = useMemo(
+    () =>
+      [token0, token1]
+        .filter((t): t is IToken => t !== null && t.chainId !== undefined)
+        .map((t) => ({
+          chainId: t.chainId!,
+          address: t.address,
+          decimals: t.decimals,
+        })),
+    [token0, token1],
+  );
+  const dexPriceOf = useDexPrices(dexPriceTokens);
   const feedPrice = useMemo(() => {
-    if (!token0 || !token1) return null;
-    const usd0 = priceOf(token0.symbol);
-    const usd1 = priceOf(token1.symbol);
+    if (!token0 || !token1 || chainId === undefined) return null;
+    const usd0 = priceOf(token0.symbol) ?? dexPriceOf(chainId, token0.address);
+    const usd1 = priceOf(token1.symbol) ?? dexPriceOf(chainId, token1.address);
     if (!usd0 || !usd1) return null;
     /* token1 per token0, matching every other price in this form. */
     const ratio = usd0 / usd1;
     return Number.isFinite(ratio) && ratio > 0 ? ratio : null;
-  }, [priceOf, token0, token1]);
+  }, [chainId, dexPriceOf, priceOf, token0, token1]);
 
   /**
    * The price to show, preferring the pool's own over the feed's.
@@ -407,14 +498,18 @@ export default function NewPositionPage() {
    * except fifty orders of magnitude out rather than four.
    */
   const poolPrice =
-    pool && pool.price !== null && pool.price > 0 ? pool.price : null;
+    hasUsablePoolPrice(pool) && pool?.price !== null && (pool?.price ?? 0) > 0
+      ? (pool?.price ?? null)
+      : null;
 
   /**
    * A pool that exists and declines to quote, which is a different sentence to
-   * say than "there is no pool here". `readPoolState` nulls `price` only for a
-   * pinned tick, so this is that case and no other.
+   * say than "there is no pool here". Empty initialized pools and pinned pools
+   * both decline to provide a market centre, but only the latter is a drained
+   * range-end condition.
    */
-  const poolPinned = pool !== null && pool.price === null;
+  const poolEmpty = pool !== null && pool.liquidity === "0";
+  const poolPinned = pool !== null && pool.price === null && !poolEmpty;
 
   const market: MarketPrice | null = useMemo(() => {
     if (poolPrice !== null) return { price: poolPrice, source: "pool" };
@@ -424,6 +519,16 @@ export default function NewPositionPage() {
 
   /** A band can only be centred on a pool. See `MarketPrice`. */
   const bandsAvailable = poolPrice !== null;
+
+  /* A new pool has no slot0 yet, so use the live KyberSwap reference only to
+     pair the two opening amounts. Existing pools continue to use their own
+     slot0, and a pinned pool remains explicit rather than guessed. */
+  const amountPrice =
+    poolPrice !== null
+      ? poolPrice
+      : !poolLoading && (pool === null || poolEmpty)
+        ? feedPrice
+        : null;
 
   const applyPreset = (p: (typeof RANGE_PRESETS)[number]) => {
     if (!token0 || !token1) return;
@@ -551,15 +656,15 @@ export default function NewPositionPage() {
    * `ticks` and moves when a preset is clicked.
    */
   const ratio = useMemo(() => {
-    if (!token0 || !token1 || !ticks || poolPrice === null) return null;
+    if (!token0 || !token1 || !ticks || amountPrice === null) return null;
     return getV3AmountRatio(
-      poolPrice,
+      amountPrice,
       ticks.lowerPrice,
       ticks.upperPrice,
       token0.decimals,
       token1.decimals,
     );
-  }, [ticks, poolPrice, token0, token1]);
+  }, [amountPrice, ticks, token0, token1]);
 
   /* A range wholly on one side of the market takes one token and none of the
      other — a legitimate position, and not one this can mint, because
@@ -643,6 +748,16 @@ export default function NewPositionPage() {
     !short1 &&
     ticks !== null;
 
+  const firstPoolNeedsReference = pool === null && feedPrice === null;
+  const firstPoolPriceOffMarket =
+    pool === null &&
+    feedPrice !== null &&
+    positive(amount0) &&
+    positive(amount1) &&
+    !isInitialPriceWithinTolerance(amount0, amount1, feedPrice);
+  const blockedByPoolSafety =
+    poolEmpty || firstPoolNeedsReference || firstPoolPriceOffMarket;
+
   const submit = async () => {
     if (
       !ready ||
@@ -654,6 +769,24 @@ export default function NewPositionPage() {
       !ticks
     )
       return;
+    if (poolEmpty) {
+      toast.error(
+        "This pool is initialized but has no active liquidity. Deposits are temporarily disabled while its opening price is retired.",
+      );
+      return;
+    }
+    if (firstPoolNeedsReference) {
+      toast.error(
+        "We cannot safely initialize this pair until a live market reference is available.",
+      );
+      return;
+    }
+    if (firstPoolPriceOffMarket) {
+      toast.error(
+        "The opening amounts are more than 10% away from the live market price. Adjust the pair before creating its first pool.",
+      );
+      return;
+    }
     setBusy(true);
     try {
       const signer = toEthersSigner(account, chain);
@@ -722,7 +855,9 @@ export default function NewPositionPage() {
    * tokens on every line, so it cannot render either way.
    */
   if (!gate.ready) {
-    return <ChainGate product="liquidity position" state={gate} />;
+    return (
+      <ChainGate product="liquidity position" state={gate} requires="dex" />
+    );
   }
 
   if (!token0 || !token1) {
@@ -732,9 +867,7 @@ export default function NewPositionPage() {
         <div className={s.box}>
           <div className={s.bl}>No pools here yet</div>
           <p className={s.priceHint}>
-            Nothing pairable is registered
-            {here ? ` on ${here}` : ""} yet, so there is no pool to add
-            liquidity to.
+            No pairable tokens{here ? ` on ${here}` : ""} yet.
           </p>
         </div>
       </div>
@@ -748,9 +881,23 @@ export default function NewPositionPage() {
           <div className={s.bl}>Pair</div>
           <div className={s.pairRow}>
             <button className={s.pairPick} onClick={() => setPickerFor("0")}>
+              <TokenIcon
+                symbol={token0.symbol}
+                size={24}
+                chainId={token0.chainId}
+                chainLabel={false}
+                fallback={token0.symbol.slice(0, 3)}
+              />
               {token0.symbol} <Chevron />
             </button>
             <button className={s.pairPick} onClick={() => setPickerFor("1")}>
+              <TokenIcon
+                symbol={token1.symbol}
+                size={24}
+                chainId={token1.chainId}
+                chainLabel={false}
+                fallback={token1.symbol.slice(0, 3)}
+              />
               {token1.symbol} <Chevron />
             </button>
           </div>
@@ -759,8 +906,8 @@ export default function NewPositionPage() {
           {linkChain ? (
             <div className={s.priceHint} style={{ marginTop: 8 }}>
               That pool is on{" "}
-              {getChainMeta(linkChain)?.name ?? `chain ${linkChain}`} — switch to
-              it to open this form on its pair.{" "}
+              {getChainMeta(linkChain)?.name ?? `chain ${linkChain}`} — switch
+              to it to open this form on its pair.{" "}
               <button
                 type="button"
                 className={s.switchLink}
@@ -845,13 +992,15 @@ export default function NewPositionPage() {
                 {market.source === "feed"
                   ? poolPinned
                     ? " — from price feeds. This tier's pool has run to the far end of its range, so bands are unavailable"
-                    : " — from price feeds; no pool at this tier yet, so bands are unavailable"
+                    : poolEmpty
+                      ? " — from price feeds; this tier has no active liquidity, so bands are unavailable"
+                      : " — from price feeds; no pool at this tier yet, so bands are unavailable"
                   : ""}
               </>
             ) : poolPinned ? (
-              "This tier's pool has run to the far end of its price range: a trade took everything on one side of it, so it has no price to quote. Set explicit bounds around what you believe the pair is worth — until someone moves the price back, a deposit here is trading against that clamp."
+              "Pool price is pinned at its range end — set explicit bounds."
             ) : (
-              "No market price for this pair on this chain. Open it with full range, or set explicit bounds — the two amounts you deposit will set the starting price."
+              "No market yet — your deposit sets the opening price."
             )}
           </div>
           <div className={s.priceRow}>
@@ -903,13 +1052,22 @@ export default function NewPositionPage() {
               placeholder="0"
               aria-label={`Amount of ${token0.symbol}`}
             />
-            <span className={s.tkPill}>{token0.symbol}</span>
+            <span className={s.tkPill}>
+              <TokenIcon
+                symbol={token0.symbol}
+                size={20}
+                chainId={token0.chainId}
+                chainLabel={false}
+                fallback={token0.symbol.slice(0, 3)}
+              />
+              {token0.symbol}
+            </span>
           </div>
           <div className={s.addBal}>
             <span>
               Balance{" "}
               {unread0
-                ? "—"
+                ? "0"
                 : Number(balance0).toLocaleString(undefined, {
                     maximumFractionDigits: 4,
                   })}
@@ -921,6 +1079,16 @@ export default function NewPositionPage() {
                 onClick={() => maxLeg("0")}
               >
                 Max
+              </button>
+            )}
+            {canWrap("0") && (
+              <button
+                type="button"
+                className={s.maxChip}
+                onClick={() => wrap("0")}
+                disabled={wrapping}
+              >
+                {wrapping ? "Wrapping…" : `Wrap ${token0.symbol}`}
               </button>
             )}
           </div>
@@ -936,13 +1104,22 @@ export default function NewPositionPage() {
               placeholder="0"
               aria-label={`Amount of ${token1.symbol}`}
             />
-            <span className={s.tkPill}>{token1.symbol}</span>
+            <span className={s.tkPill}>
+              <TokenIcon
+                symbol={token1.symbol}
+                size={20}
+                chainId={token1.chainId}
+                chainLabel={false}
+                fallback={token1.symbol.slice(0, 3)}
+              />
+              {token1.symbol}
+            </span>
           </div>
           <div className={s.addBal}>
             <span>
               Balance{" "}
               {unread1
-                ? "—"
+                ? "0"
                 : Number(balance1).toLocaleString(undefined, {
                     maximumFractionDigits: 4,
                   })}
@@ -954,6 +1131,16 @@ export default function NewPositionPage() {
                 onClick={() => maxLeg("1")}
               >
                 Max
+              </button>
+            )}
+            {canWrap("1") && (
+              <button
+                type="button"
+                className={s.maxChip}
+                onClick={() => wrap("1")}
+                disabled={wrapping}
+              >
+                {wrapping ? "Wrapping…" : `Wrap ${token1.symbol}`}
               </button>
             )}
           </div>
@@ -972,27 +1159,27 @@ export default function NewPositionPage() {
          */}
         {oneSided ? (
           <div className={s.priceHint} style={{ marginTop: 8 }} role="alert">
-            This range sits entirely {oneSided === "0" ? "above" : "below"} the
-            market, so it would take only{" "}
-            {oneSided === "0" ? token0.symbol : token1.symbol} and none of{" "}
-            {oneSided === "0" ? token1.symbol : token0.symbol}. Move a bound
-            across the current price to deposit into it.
+            Range is one-sided — takes only{" "}
+            {oneSided === "0" ? token0.symbol : token1.symbol}. Move a bound
+            across the price.
           </div>
         ) : ratio !== null && Number.isFinite(ratio) && ratio > 0 ? (
           <div className={s.priceHint} style={{ marginTop: 8 }}>
-            This range takes{" "}
-            <span className="tabular">{showPrice(ratio)}</span>{" "}
+            This range takes <span className="tabular">{showPrice(ratio)}</span>{" "}
             {token1.symbol} per {token0.symbol} — the second amount follows the
             first.
           </div>
         ) : ticks && poolPrice === null ? (
           <div className={s.priceHint} style={{ marginTop: 8 }}>
-            No pool at this tier yet, so both amounts are yours to set: their
-            ratio is what opens the price.
+            No pool yet — your amounts set the opening price.
           </div>
         ) : null}
 
-        <button className={s.cta} disabled={!ready || busy} onClick={submit}>
+        <button
+          className={s.cta}
+          disabled={!ready || busy || blockedByPoolSafety}
+          onClick={submit}
+        >
           {!isConnected
             ? "Connect wallet"
             : busy
@@ -1001,9 +1188,15 @@ export default function NewPositionPage() {
                 ? `Not enough ${token0.symbol}`
                 : short1
                   ? `Not enough ${token1.symbol}`
-                  : !ready
-                    ? "Enter an amount and range"
-                    : "Add liquidity"}
+                  : poolEmpty
+                    ? "Pool temporarily unavailable"
+                    : firstPoolNeedsReference
+                      ? "Market reference unavailable"
+                      : firstPoolPriceOffMarket
+                        ? "Adjust opening price"
+                        : !ready
+                          ? "Enter an amount and range"
+                          : "Add liquidity"}
         </button>
       </div>
 

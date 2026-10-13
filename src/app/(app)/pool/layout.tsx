@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Nav from "@/components/v2/Nav";
@@ -75,6 +75,16 @@ const sumOf = (values: (number | null)[]) => {
   return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
 };
 
+/* The shape /api/stats/platform returns — see lib/stats/platform.ts. Only
+   the two headline totals are read here; the breakdown is for other callers. */
+type PlatformTotals = {
+  volumeUsd: number;
+  feesUsd: number;
+  /** True when a cumulative source (swaps / CCTP / route bridges) was
+   *  unavailable, so the totals are a lower bound — see lib/stats/platform.ts. */
+  partial?: boolean;
+};
+
 export default function PoolLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const shell = shellFor(pathname);
@@ -102,6 +112,34 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
   const liquidity = sumOf(pools.map((p) => p.liquidity));
   const volume = sumOf(pools.map((p) => p.volume24h));
   const fees = sumOf(pools.map((p) => p.fees24h));
+  const [platform, setPlatform] = useState<PlatformTotals | null>(null);
+
+  useEffect(() => {
+    if (shell !== "list") return;
+    let cancelled = false;
+    fetch("/api/stats/platform", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setPlatform(data);
+      })
+      .catch(() => {
+        /* The strip falls back to the pool 24h sums below if this is down. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shell]);
+
+  /* The strip's headline totals are PLATFORM-WIDE and CUMULATIVE — every
+     Kaleido product summed (routed swaps from the agent and the manual UI,
+     over native and external pools, plus CCTP bridge volume) — from
+     /api/stats/platform, which keeps the sources separate server-side so a
+     24h pool sample is never mistaken for all-time revenue. Deliberately a
+     different scope from the table's per-pool 24h columns below, which is why
+     it does not equal their sum. When the platform ledger is unavailable the
+     tiles fall back to the measured pool 24h sums rather than blanking. */
+  const totalVolume = platform ? platform.volumeUsd : (volume ?? null);
+  const totalFees = platform ? platform.feesUsd : (fees ?? null);
 
   /* A count of 0 is a real measurement, unlike a total of 0 — but only once the
      first read has landed. Until then it is an em dash, not "0 pools". */
@@ -110,7 +148,7 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
   return (
     <>
       <Nav />
-      <main className={s.wrap}>
+      <main className={`${s.wrap} ${pathname === "/pool" ? s.listWrap : ""}`}>
         {/* The pair's own breadcrumb and title stand in for this head on a detail
             route, so it is dropped rather than duplicated. */}
         {shell !== "detail" && (
@@ -136,12 +174,24 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
             same reason. */}
         {shell === "list" && (
           <>
-            <StatStrip>
-              <Stat label="Pools" value={qty(poolCount)} />
-              <Stat label="Liquidity" value={usd(liquidity)} />
-              <Stat label="24h volume" value={usd(volume)} />
-              <Stat label="24h fees" value={usd(fees, 2)} />
-            </StatStrip>
+            <div className={s.statStrip}>
+              <StatStrip>
+                <Stat label="Pools" value={qty(poolCount)} />
+                <Stat label="TVL" value={usd(liquidity)} />
+                <Stat label="Total volume" value={usd(totalVolume)} />
+                <Stat label="Total fees" value={usd(totalFees, 2)} />
+              </StatStrip>
+              {/* Named beneath the strip, full width, never inside a tile (the
+                  tiles carry no notes by design). Only when the platform ledger
+                  answered but partially — a total on the pool-sum fallback is a
+                  different scope, not a partial platform read. */}
+              {platform?.partial ? (
+                <p className={s.partialNote}>
+                  A volume source is temporarily unavailable — Total volume and
+                  fees are a lower bound until it recovers.
+                </p>
+              ) : null}
+            </div>
 
             <div className={s.tabs}>
               {TABS.map((t) => (

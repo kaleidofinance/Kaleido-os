@@ -135,6 +135,34 @@ export function bestQuote(quotes: TierQuote[]): TierQuote | null {
  * that reverts — so the rule is enforced here rather than written in a comment the
  * caller may not read. A caller that gets this wrong has a bug, not bad input.
  */
+/**
+ * Whether to fill through the aggregator instead of our own V3 pools
+ * (KaleidoOrdersV2.fillViaAggregator). Pure.
+ *
+ * Only when the order's terms permit a fill at all, the aggregator's expected
+ * output meets the maker's floor, and it beats every V3 tier we could quote —
+ * ties go to our own pools. The floor is still enforced by the contract against
+ * what actually arrives, so a route that under-delivers only reverts; this rule
+ * exists so the keeper does not spend gas trying one it can already see is short.
+ *
+ * Why it matters: on Arc our pools hold ~$20 a side, so most orders can only
+ * ever reach their floor through the aggregator (measured 2026-09-28: 75.67
+ * USDC→EURC, 0.5032 on our pool vs 0.8777 routed).
+ */
+export function chooseAggregator(args: {
+  terms: TermsCheck;
+  minOut: bigint;
+  /** Best output across V3 tiers, or null when no tier quoted. */
+  bestV3Out: bigint | null;
+  /** The aggregator route's expected output, or null when there is no route. */
+  aggregatorOut: bigint | null;
+}): boolean {
+  const { terms, minOut, bestV3Out, aggregatorOut } = args;
+  if (!terms.ok || aggregatorOut === null) return false;
+  if (aggregatorOut < minOut) return false;
+  return bestV3Out === null || aggregatorOut > bestV3Out;
+}
+
 export function decideFill(args: {
   order: Order;
   terms: TermsCheck;

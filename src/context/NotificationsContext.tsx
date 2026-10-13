@@ -24,6 +24,7 @@ import {
   type LocalNotification,
 } from "@/lib/notifications/emit";
 import { MOCK_DATA, mockNotifications } from "@/lib/mock";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /**
  * The notification centre's single source of truth.
@@ -71,6 +72,8 @@ export interface Notification {
   actionType?: string;
   /** Present when this notification is an agent permission ask. */
   request?: NotificationRequest;
+  /** A call-to-action button on the row (e.g. an announcement's page). */
+  link?: { href: string; label: string };
   /**
    * Where the row came from.
    *
@@ -111,17 +114,33 @@ const NotificationsContext = createContext<
   NotificationsContextType | undefined
 >(undefined);
 
-const STORAGE_KEY = "kaleido_notifications";
+/* Pre-per-wallet key. Read once, as a fallback, so nothing saved under it is
+   lost on upgrade; never written again. */
+const LEGACY_STORAGE_KEY = "kaleido_notifications";
+
+/**
+ * One saved list per wallet, plus one for "no wallet connected".
+ *
+ * There used to be ONE key, and the effect below cleared it whenever `address`
+ * was empty — which it is for a moment on EVERY page load while the wallet
+ * reconnects. So each refresh wrote an empty list over the saved one and the
+ * panel came back blank. Keying by wallet keeps "never show another wallet's
+ * history" without ever having to wipe anything.
+ */
+const storageKey = (address?: string) =>
+  `kaleido_notifications:${address ? address.toLowerCase() : "anon"}`;
 const MAX_STORED = 50;
 
 /* -------------------------------------------------------------------------- */
 /* Storage                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function loadStored(): Notification[] {
+function loadStored(key: string): Notification[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw =
+      localStorage.getItem(key) ??
+      (key.endsWith(":anon") ? null : localStorage.getItem(LEGACY_STORAGE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -149,11 +168,11 @@ function loadStored(): Notification[] {
   }
 }
 
-function saveStored(list: Notification[]): void {
+function saveStored(key: string, list: Notification[]): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(
-      STORAGE_KEY,
+      key,
       JSON.stringify(list.slice(0, MAX_STORED)),
     );
   } catch {
@@ -246,7 +265,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setNotifications((prev) => {
         const next = updater(prev);
         if (next === prev) return prev;
-        saveStored(next);
+        saveStored(storageKey(addressRef.current), next);
         return next;
       });
     },
@@ -373,6 +392,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           read: false,
           category: categorise(n.actionType),
           actionType: n.actionType,
+          ...(n.link ? { link: n.link } : {}),
           origin: "local",
         },
         n.quiet !== true,
@@ -547,10 +567,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined") return;
 
     if (!address) {
-      // No wallet, no identity to filter on. Clear rather than show another
-      // user's history from a previous session.
-      setNotifications([]);
-      saveStored([]);
+      // No wallet (yet — this is also the moment on every load before the
+      // wallet reconnects). Show the anonymous list; never wipe anything, and
+      // never show another wallet's history.
+      setNotifications(loadStored(storageKey()));
       return;
     }
 
@@ -565,7 +585,22 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     let reconnectTimer: number | undefined;
     let attempt = 0;
 
-    setNotifications(loadStored());
+    /* Load this wallet's list, and carry over product updates that arrived in
+       the moment before the wallet reconnected — they were raised into the
+       anonymous list and are not wallet-specific. */
+    setNotifications((prev) => {
+      const stored = loadStored(storageKey(address));
+      const carried = prev.filter(
+        (p) =>
+          p.actionType === "product_update" &&
+          !stored.some((s) => s.id === p.id || s.title === p.title),
+      );
+      const merged = [...carried, ...stored].sort(
+        (a, b) => b.timestamp - a.timestamp,
+      );
+      if (carried.length > 0) saveStored(storageKey(address), merged);
+      return merged;
+    });
 
     /*
      * Fixture inbox.
@@ -668,7 +703,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     };
 
     fetchHistory(false);
-    const syncId = window.setInterval(() => fetchHistory(true), 60_000);
+    const stopSync = visibleInterval(() => fetchHistory(true), 60_000);
 
     const connect = () => {
       if (cancelled) return;
@@ -709,7 +744,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
-      window.clearInterval(syncId);
+      stopSync();
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       if (socket) {
         // Drop onclose first, or closing here schedules a reconnect for a

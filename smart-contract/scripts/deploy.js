@@ -20,6 +20,25 @@ const fs = require("fs");
  * nothing. Validating after the cut would abort partway and leave a live diamond
  * in exactly the half-configured state this exists to prevent.
  */
+const { confirmMainnet } = require("./libraries/mainnet-guard.js");
+
+/**
+ * Every facet a fresh diamond is cut with, after DiamondCutFacet (which the
+ * Diamond constructor adds). One list, used by the deploy, by facet
+ * identification on resume, and by the post-cut selector assertion — so a facet
+ * added here is deployed, cut AND verified, and cannot be half-added.
+ *
+ * AgentPermissionFacet bounds Luca on-chain. LendingAdminFacet holds pause and
+ * setTokenFeed (kept out of ProtocolFacet, which is near EIP-170).
+ */
+const FACET_NAMES = [
+  "DiamondLoupeFacet",
+  "OwnershipFacet",
+  "ProtocolFacet",
+  "AgentPermissionFacet",
+  "LendingAdminFacet",
+];
+
 function readProtocolConfig() {
   const errors = [];
   const warnings = [];
@@ -418,13 +437,7 @@ async function writeDiamondRecord({
  * cut facet. An unmatched address is reported rather than guessed at.
  */
 async function identifyFacets(diamondAddress) {
-  const KNOWN = [
-    "DiamondCutFacet",
-    "DiamondLoupeFacet",
-    "OwnershipFacet",
-    "ProtocolFacet",
-    "AgentPermissionFacet",
-  ];
+  const KNOWN = ["DiamondCutFacet", ...FACET_NAMES];
 
   const known = [];
   for (const name of KNOWN) {
@@ -507,6 +520,18 @@ async function resumeDiamond(diamondAddress) {
   await assertConfiguredContractsExist(protocolConfig);
 
   const [signer] = await ethers.getSigners();
+  /* The Diamond has no receive() (removed 2026-09-27), so a fee vault equal to
+   * the diamond would make every native repayment revert on the fee transfer. */
+  if (
+    protocolConfig.feeVault &&
+    ethers.getAddress(protocolConfig.feeVault) === address
+  ) {
+    throw new Error("KALEIDO_FEE_VAULT is the diamond itself. Use a wallet or Safe.");
+  }
+  await confirmDeployPlan(protocolConfig, [
+    ["resuming diamond", address],
+    ["signer", signer.address],
+  ]);
   console.log(`\n🔁 Resuming diamond ${address} on ${hre.network.name}`);
   console.log(`   signer ${signer.address}`);
 
@@ -591,10 +616,43 @@ async function resumeDiamond(diamondAddress) {
   return address;
 }
 
+/** Money settings a mainnet deploy may not take from a default. */
+const MAINNET_EXPLICIT = [
+  "KALEIDO_FEE_VAULT",
+  "PYTH_PRICE_ORACLE",
+  "PROTOCOL_FEE_BPS",
+  "LIQUIDATION_PENALTY_BPS",
+  "PRICE_MAX_AGE_SECONDS",
+  "PRICE_MAX_CONF_BPS",
+];
+
+async function confirmDeployPlan(protocolConfig, extra = []) {
+  const chainId = Number((await ethers.provider.getNetwork()).chainId);
+  confirmMainnet({
+    chainId,
+    script: "deploy.js",
+    plan: [
+      ...extra,
+      ["facets", FACET_NAMES.join(", ")],
+      ["fee vault", protocolConfig.feeVault],
+      ["price oracle", protocolConfig.pythPriceOracle],
+      ["protocol fee", `${protocolConfig.protocolFeeBps} bps of interest`],
+      ["liquidation penalty", `${protocolConfig.liquidationPenaltyBps} bps`],
+      ["global price max age", `${protocolConfig.priceMaxAge}s`],
+      ["price max conf", `${protocolConfig.priceMaxConfBps} bps`],
+      ["swap router", protocolConfig.swapRouter],
+    ],
+    explicit: MAINNET_EXPLICIT,
+  });
+}
+
 async function deployDiamond() {
   /* Before any gas is spent. */
   const protocolConfig = readProtocolConfig();
   await assertConfiguredContractsExist(protocolConfig);
+  await confirmDeployPlan(protocolConfig, [
+    ["owner (deployer)", (await ethers.getSigners())[0]?.address],
+  ]);
 
   const accounts = await ethers.getSigners();
 
@@ -680,12 +738,7 @@ async function deployDiamond() {
   // and token allowlists that hold even if someone bypasses the frontend. It
   // was written but never cut into the diamond, so it must be in the list for a
   // fresh deploy or the agent has no on-chain limits at all.
-  const FacetNames = [
-    "DiamondLoupeFacet",
-    "OwnershipFacet",
-    "ProtocolFacet",
-    "AgentPermissionFacet",
-  ];
+  const FacetNames = FACET_NAMES;
   const cut = [];
 
   for (const FacetName of FacetNames) {
@@ -870,6 +923,26 @@ async function deployDiamond() {
   console.log(
     `\n✅ ProtocolFacet: all ${declared.length} selectors routed to ${protocolFacetAddress}`,
   );
+
+  /* The same assertion for every other facet in the cut. LendingAdminFacet holds
+   * the only pause and the only way to change a feed in place; a cut that
+   * dropped it would deploy a market with no emergency brake and nothing would
+   * say so until the day it was needed. */
+  for (const name of FACET_NAMES.filter((n) => n !== "ProtocolFacet")) {
+    const at = deployedFacets[name];
+    if (!at) throw new Error(`${name} was never deployed — see '❌ Failed to deploy' above.`);
+    const live = new Set(
+      (await diamondLoupe.facetFunctionSelectors(at)).map((s) => s.toLowerCase()),
+    );
+    const want = getSelectors(await ethers.getContractFactory(name)).map((s) =>
+      s.toLowerCase(),
+    );
+    const missing = want.filter((s) => !live.has(s));
+    if (missing.length) {
+      throw new Error(`${missing.length} of ${want.length} ${name} selectors are not routed to ${at}: ${missing.join(", ")}`);
+    }
+    console.log(`✅ ${name}: all ${want.length} selectors routed to ${at}`);
+  }
 
   /* Only now that the selectors are live can the setters be reached. */
   await configureProtocol(await diamond.getAddress(), protocolConfig);

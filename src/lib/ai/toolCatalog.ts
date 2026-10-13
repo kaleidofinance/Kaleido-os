@@ -183,7 +183,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
      * native currency is a single transaction.
      */
     description:
-      "Bridge an asset to another chain, signed on the chain the user is on now. Native currency is one transaction; a token is two, an approval and the bridge. `toChain` is a chain name or id; the server resolves the route from a trusted source and refuses, by name, any corridor it cannot build — bridge providers do not index every chain, so a refusal here is normal and getBridgeRoute can still quote a route the user completes with the provider.",
+      "Bridge an asset to another chain. Native currency is one transaction; a token is two, an approval and the bridge. `toChain` is a chain name or id. The asset may live on a chain other than the one the user is connected to (e.g. BNB is on BSC): name it and, if you know it, `fromChain` — the plan is built for that source and the wallet switches to it at signing. To RECEIVE a different token than the one sent (e.g. send BNB, receive USDC on Arc), set `toAsset`; the route swaps as it bridges and carries a guaranteed minimum output. The server resolves every route from a trusted source and refuses, by name, any corridor it cannot build — bridge providers do not index every chain, so a refusal here is normal and getBridgeRoute can still quote a route the user completes with the provider.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -194,6 +194,21 @@ export const TOOL_CATALOG: ToolSpec[] = [
           type: "string",
           description:
             'Destination chain name or id, e.g. "Base Sepolia" or "84532"',
+        },
+        fromChain: {
+          type: "string",
+          description:
+            'Source chain name or id when it is not the connected chain, e.g. "BSC". Optional: omitted, the connected chain is used — or, when the asset is not on it, the chain that carries it.',
+        },
+        toAsset: {
+          type: "string",
+          description:
+            'Symbol to RECEIVE on the destination when it differs from `asset`, e.g. "USDC" for "bridge BNB to Arc as USDC". Omit for an ordinary same-token bridge.',
+        },
+        recipient: {
+          type: "string",
+          description:
+            "0x address to deliver to on the destination chain when it is NOT the user's own wallet (\"bridge 100 USDC to BSC and send it to 0x…\"). Copy it exactly from the user's message; never invent or complete one. Omit to deliver to the user.",
         },
       },
       required: ["amount", "asset", "toChain"],
@@ -212,7 +227,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "withdraw",
     kind: "execute",
     description:
-      "Withdraw collateral from the lending market. Lowers the health factor — check getPortfolio first and never propose an amount that approaches liquidation.",
+      "Withdraw collateral from the lending market. Lowers the health factor — check getPortfolio first and never propose an amount that approaches liquidation. For \"withdraw all\" pass amount \"all\": the server reads the free (unlocked) balance exactly; omit nothing else.",
     parameters: amountAndToken,
   },
 
@@ -274,7 +289,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "repay",
     kind: "execute",
     description:
-      "Repay an open loan in full. Omit loanId when the user has exactly one open loan; the server resolves it and computes the exact total repayment including interest.",
+      "Repay an open loan — in full by default, or partly when the user names an amount (\"repay 50 USDC\"). Omit loanId when the user has exactly one open loan; the server resolves it and computes the exact total repayment including interest. Omit amount to repay in full; an amount at or above what is owed repays in full.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -282,6 +297,10 @@ export const TOOL_CATALOG: ToolSpec[] = [
         loanId: {
           type: "number",
           description: "Only when the user has more than one open loan",
+        },
+        amount: {
+          type: "string",
+          description: 'Partial repayment in the loan\'s currency, human units, e.g. "50". Only when the user named one.',
         },
       },
     },
@@ -447,7 +466,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
      * market where it earns nothing and nothing reverts to say so.
      */
     description:
-      "Open a new liquidity position in a Uniswap-V3-style pool, or create the pool if it doesn't exist yet. Both amounts are supplied by the user; the exact split the position consumes is worked out server-side, so give what the user said. Range: omit bandPct and the prices for a full-range position (the widest, always valid, and the only option on a pool that doesn't exist yet); pass bandPct for a symmetric band around the current price (5 means ±5%); or pass both minPrice and maxPrice for explicit bounds in token1-per-token0. Never guess a narrow range — a position outside the market earns nothing. Omit fee and the server picks whichever tier already has a pool; it will ask for one only when no pool exists at any tier, since that choice is permanent. Native ETH is not accepted — the pool takes the wrapped token.",
+      "Open a new liquidity position in a Uniswap-V3-style pool, or create the pool if it doesn't exist yet. Give both amounts when you are setting a new pool's opening price. For an existing priced pool, either amount is enough: call getPrice/read the live pair price and calculate the other side at that price; never ask the user to repeat the missing side. Range: omit bandPct and the prices for a full-range position (the widest, always valid, and the only option on a pool that doesn't exist yet); pass bandPct for a symmetric band around the current price (5 means ±5%); or pass both minPrice and maxPrice for explicit bounds in token1-per-token0. Never guess a narrow range — a position outside the market earns nothing. Omit fee and the server picks whichever tier already has a pool; it will ask for one only when no pool exists at any tier, since that choice is permanent. Native ETH is not accepted — the pool takes the wrapped token.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -482,7 +501,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
           description: "Upper bound, in token1 per token0. Needs minPrice too.",
         },
       },
-      required: ["token0", "amount0", "token1", "amount1"],
+      required: ["token0", "token1"],
     },
   },
 
@@ -676,7 +695,77 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getPortfolio",
     kind: "read",
     description:
-      "The user's net value, health factor, collateral, debt and unclaimed vault yield on the connected chain. Call this first for any 'what should I do' request. For the user's liquidity (LP) positions and whether they are in range, call getPositions instead — those are not in this result.",
+      "The user's lending COLLATERAL value and health factor on the connected chain — how safe the borrowing position is, not net worth. Call this first for any 'what should I do' request that turns on safety. It is collateral and health ONLY: for the loans themselves (amounts owed, rates, due dates, the requestId a repay needs) call getLoans; for liquidity (LP) positions call getPositions; for wallet balances call getBalances. Do not present it as the whole portfolio.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getLoans",
+    kind: "read",
+    description:
+      "The user's borrowing position on the connected chain: collateral deposited, each open loan (amount still owed, interest rate, due date, and the requestId a repay targets), total debt, and the health factor. Call this for 'what do I owe', 'what are my loans', 'when is my loan due', 'am I close to liquidation', or before proposing a repay — so the user never has to look up a requestId. Distinct from getPortfolio, which is collateral value and health only; and from getPositions, which is liquidity, not loans. Per chain — the chain the wallet is on.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getLendingAccount",
+    kind: "read",
+    description:
+      "The user's lending ACCOUNT on the connected chain, beyond the loans themselves: whether lending is paused, borrowing capacity (75% of collateral value minus debt — 'how much can I borrow'), free collateral per asset ('how much can I withdraw', what 'withdraw all' takes), and the loans this wallet FUNDED as a lender with what each borrower still owes, what the lender nets after the protocol fee, and the fee itself. Call this for 'how much can I borrow', 'what can I withdraw', 'what am I earning from lending', 'who owes me', 'is lending paused'. For the user's own borrowed loans call getLoans. Per chain.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getStaking",
+    kind: "read",
+    description:
+      "The user's KLD staking on the connected chain: how much KLD they have staked (held as the stKLD receipt), the vault's total staked and staker count, and any withdrawal in progress with the cooldown left on it. Call this for 'how much have I staked', 'what are my staking rewards', 'can I unstake yet', or 'when does my unstake unlock'. Staking earns by the stKLD/KLD value rising, not an APY — do not quote a percentage. Per chain — staking is deployed independently on each. Not the kfUSD/kafUSD vault (getVault) and not lending collateral (getLoans).",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getVault",
+    kind: "read",
+    description:
+      "The user's stablecoin-vault position on the connected chain: how much kfUSD they hold (the stablecoin, minted 1:1 against collateral) and how much kafUSD (the yield vault — locking kfUSD mints it and its value rises as yield accrues), plus any kafUSD withdrawal in progress with the cooldown left on it. Call this for 'how much kfUSD do I have', 'what's in my kafUSD vault', 'is my vault earning', or 'can I withdraw from the vault yet'. kafUSD earns by appreciating, not an APY — do not quote a percentage. Per chain. Not KLD staking (getStaking) and not lending (getLoans).",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "Wallet address" },
+      },
+      required: ["address"],
+    },
+  },
+  {
+    name: "getPoints",
+    kind: "read",
+    description:
+      "The user's standing in the points program: their settled total, rank (or a percentile when they are outside the public top ranks), the time/action/bonus breakdown, and how many wallets are on the board. It also reports waitlist task status, points pending the five-hour hold, points available from verified tasks, referrals, and the projected total after pending points settle. Call this for 'how many points do I have', 'what's pending', 'which tasks did I complete', 'when will my points unlock', 'what's my rank', or 'am I on the leaderboard'. Points are off chain and span every chain — do NOT pass or mention a chain. They are not a token and nothing is claimable. When a wallet's exact rank is masked, give the percentile — never imply an exact rank you were not given.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -701,10 +790,54 @@ export const TOOL_CATALOG: ToolSpec[] = [
     },
   },
   {
+    name: "getLivePools",
+    kind: "read",
+    description:
+      "List the live Kaleido DEX liquidity pools on the connected chain. Use this for questions such as which liquidity pairs are live, what pools can I provide liquidity to, or show the current pool inventory. Return the actual pair names, fee tiers, liquidity and volume from the tool; never answer those questions from the static product description alone.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+    },
+  },
+  {
+    name: "getPoolMarket",
+    kind: "read",
+    description:
+      "Rank and summarize live Kaleido liquidity pools on the connected chain. Use for questions about the deepest pool, highest volume, highest APR, total live liquidity, or comparing pool opportunities. metric may be liquidity, volume, or apr; never call this for a specific swap quote, which belongs to getSwapRoute.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        metric: { type: "string", enum: ["liquidity", "volume", "apr"] },
+        limit: { type: "number", description: "Maximum ranked pools to return, 1–20" },
+      },
+    },
+  },
+  {
+    name: "getAgentMandate",
+    kind: "read",
+    description:
+      "Whether the user has delegated bounded, revocable authority to an autonomous agent, and if so what it may do and how much budget is left. Call this for 'what can my agent do', 'have I set up auto-trading', 'how much can it spend', or before discussing delegation. Delegation is opt-in and lending-only; when the user has none (the usual case), it says so. Pass agent only if the user named a specific delegate address; otherwise omit it and the tool reports that there is no active delegation. Read-only — it never grants or revokes anything.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        address: { type: "string", description: "The user's wallet address" },
+        agent: {
+          type: "string",
+          description:
+            "0x address of the delegate to inspect, only if the user named one",
+        },
+      },
+      required: ["address"],
+    },
+  },
+  {
     name: "getBalances",
     kind: "read",
     description:
-      "What the wallet actually holds on the chain it is connected to: the native gas asset plus every registered token, in token units. Use for 'what do I have', 'what is my balance', or to check the user can cover an amount before planning it. Distinct from getPortfolio, which reports positions - collateral, debt, staked KLD, pooled liquidity - that have LEFT the wallet; and from getChains, which takes one named symbol and looks for it across every chain.",
+      "What the wallet actually holds on the chain it is connected to: the native gas asset plus every registered token, in token units. Use for 'what do I have', 'what is my balance', or to check the user can cover an amount before planning it. Distinct from getPortfolio and getLoans, which report the lending position — collateral posted and loans owed, value that has LEFT the wallet; and from getChains, which takes one named symbol and looks for it across every chain.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -766,7 +899,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getPrice",
     kind: "read",
     description:
-      "The current USD price of an asset, with its 24h change. Use this for any question about what something is worth or how it has moved — it is the only tool that returns a market price, and it answers in one call. Do not try to infer a price from getMarkets (an order book of loan offers) or getPortfolio (position values); neither carries one. Covers ETH, BTC, BNB, POL, HYPE, USDC, USDT, DAI and their wrapped forms. Kaleido's own tokens (KLD, kfUSD, kafUSD, stKLD) are not priced — the tool says so and you relay that rather than estimating. Reference only: never size a swap or a collateral amount from this number.",
+      "The current USD price of an asset, with its 24h change, when a verified feed exists. Use this for any question about what something is worth or how it has moved — it is the only tool that returns a market price, and it answers in one call. The supported asset universe is derived from Kaleido's canonical token registry, including crypto, stablecoins, Arc/community assets, own tokens, and tokenized equities; assets without a verified feed are returned as unpriced. Do not infer a price from getMarkets or getPortfolio, and never size a swap or collateral amount from this reference number.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -795,7 +928,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getBridgeRoute",
     kind: "read",
     description:
-      "Cost and time to bridge an asset between two chains, quoted from Relay and LI.FI. Use when the user's funds are on the wrong chain for what they want to do, or to preview a bridge before running one. Kaleido can execute a native-currency bridge itself with the bridge tool; for any other asset, report the quote and say the user completes it with the provider. If fee or time come back null they are genuinely unknown; say so rather than estimating.",
+      "Cost and time to bridge an asset between two chains, quoted from Relay and LI.FI. Use when the user's funds are on the wrong chain for what they want to do, or to preview a bridge before running one. Kaleido executes bridges itself with the bridge tool — native currency, tokens, a source on another chain, and a different token delivered on arrival (toAsset); only when the bridge tool refuses a corridor, report this quote and say the user completes it with the provider. If fee or time come back null they are genuinely unknown; say so rather than estimating.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -810,6 +943,11 @@ export const TOOL_CATALOG: ToolSpec[] = [
         address: {
           type: "string",
           description: "User wallet, improves quote accuracy",
+        },
+        toAsset: {
+          type: "string",
+          description:
+            'Symbol to RECEIVE on the destination when it differs from `asset`, e.g. "USDC" for "how much USDC would 0.1 BNB get me on Arc?". Quoted from LI.FI with the expected amount and the guaranteed minimum. Omit for a same-token bridge.',
         },
       },
       required: ["fromChain", "toChain", "asset", "amount"],
@@ -829,7 +967,7 @@ export const TOOL_CATALOG: ToolSpec[] = [
      * KLD/USDC is the best-filled pair on two chains.
      */
     description:
-      "Whether a swap can be routed on Kaleido's DEX right now, at what rate, and through which pools — without proposing anything. Use this for any question about whether a pair is tradable, what an amount would get, or how a route goes; and before telling a user a pair is unsupported, because the router finds two-hop routes and most pairs here have no direct pool. Amount is optional: without it you get an indicative rate at one unit, with it you get that size's real fill. Either side may be the chain's own currency. This is a live pool quote and not a floor — the minimum output is set from the user's slippage setting when the swap is actually built.",
+      "Whether a swap can be routed right now — on Kaleido's DEX, or where a chain has one, through the KyberSwap aggregator — at what rate, and through which pools — without proposing anything. Use this for any question about whether a pair is tradable, what an amount would get, or how a route goes; and before telling a user a pair is unsupported, because the router finds two-hop routes and most pairs here have no direct pool. Amount is optional: without it you get an indicative rate at one unit, with it you get that size's real fill. Either side may be the chain's own currency. This is a live pool quote and not a floor — the minimum output is set from the user's slippage setting when the swap is actually built.",
     parameters: {
       type: "object",
       additionalProperties: false,

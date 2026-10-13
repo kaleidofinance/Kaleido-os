@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face{font-family:"Geist";src:url("../src/app/fonts/GeistVF.woff") format("woff");font-weight:100 900;font-display:block}
+  @font-face{font-family:"Lora";src:url("../src/app/fonts/lora-var.woff2") format("woff2");font-weight:100 900;font-display:block}
+
+  /* Kaleido v2 dark tokens (verbatim from src/app/(app)/tokens.css) */
+  :root{
+    --k-bg:#000000; --k-card:#1d1c1a; --k-well:#191817; --k-well2:#252420; --k-hover:#302e29;
+    --k-line:rgba(255,255,255,.075); --k-line2:rgba(255,255,255,.13);
+    --k-t1:#ffffff; --k-t2:#a8a49b; --k-t3:#6b6760;
+    --k-brand:#00b383; --k-brand-hover:#0ac795; --k-brand-dim:rgba(0,179,131,.13); --k-brand-fg:#04170f;
+    --k-pos:#4cc46a; --k-neg:#ff5f52; --k-alt:#f0803c; --k-alt-dim:rgba(240,128,60,.14);
+    --k-danger:#ff5f52; --k-danger-dim:rgba(255,95,82,.14);
+    --k-glass-deep:rgba(0,0,0,.45); --k-shadow-inset:inset 0 1px 2px rgba(0,0,0,.3);
+    --k-r-sm:12px; --k-r-md:16px; --k-r-lg:20px; --k-r-xl:24px; --k-r-pill:999px;
+    --k-fs-xs:13px; --k-fs-sm:14px; --k-fs-base:16px; --k-fs-lg:19px; --k-fs-xl:22px;
+    --k-fw-body:485; --k-fw-med:535;
+    --k-s1:4px; --k-s2:8px; --k-s3:12px; --k-s4:16px; --k-s5:20px;
+    --k-font:"Geist","Inter",system-ui,sans-serif; --k-font-display:"Lora",Georgia,serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{background:var(--k-bg)}
+  body{font-family:var(--k-font);font-weight:var(--k-fw-body);color:var(--k-t1);
+    -webkit-font-smoothing:antialiased;line-height:1.4;
+    /* the app's ambient lenses + faint grid, so the card sits on the real ground */
+    background:
+      radial-gradient(circle 34rem at 18% 6%,rgba(4,33,26,.85),transparent 64%),
+      radial-gradient(circle 30rem at 46% -6%,rgba(3,26,20,.7),transparent 64%),
+      radial-gradient(circle 38rem at 78% 92%,rgba(4,33,26,.6),transparent 62%),
+      #000;
+    padding:40px;display:flex;justify-content:center}
+  .tabular{font-variant-numeric:tabular-nums}
+
+  /* tab pills */
+  .tabs{display:flex;gap:4px;justify-content:center;margin-bottom:14px}
+  .tab{font-size:var(--k-fs-sm);color:var(--k-t2);padding:7px 15px;border-radius:var(--k-r-pill)}
+  .tab.on{background:var(--k-card);color:var(--k-t1);font-weight:var(--k-fw-med);box-shadow:var(--k-shadow-inset)}
+
+  /* the agent card (glass fallback = solid --k-card) */
+  .card{width:540px;background:var(--k-card);border:1px solid var(--k-line);
+    border-radius:var(--k-r-xl);box-shadow:inset 0 1px 0 rgba(250,249,245,.06),0 8px 32px rgba(0,0,0,.5);
+    overflow:hidden}
+  .head{display:flex;align-items:center;gap:10px;padding:15px 17px;border-bottom:1px solid var(--k-line)}
+  .bot{width:22px;height:22px;border-radius:6px;border:2px solid var(--k-brand);position:relative;flex:none}
+  .bot::before{content:"";position:absolute;left:3px;top:6px;width:4px;height:4px;border-radius:50%;background:var(--k-brand);box-shadow:8px 0 0 var(--k-brand)}
+  .bot::after{content:"";position:absolute;left:9px;top:-6px;width:2px;height:5px;background:var(--k-brand)}
+  .htitle{font-weight:var(--k-fw-med);font-size:var(--k-fs-base);flex:1}
+  .hicons{display:flex;gap:6px;color:var(--k-t3)}
+  .hi{width:16px;height:16px}
+
+  .well{padding:16px 17px 18px;display:flex;flex-direction:column;gap:16px}
+
+  /* a turn */
+  .who{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--k-t3);margin-bottom:5px}
+  .userMsg{font-size:var(--k-fs-base);color:var(--k-t1)}
+  .how{display:inline-flex;align-items:center;gap:5px;font-size:var(--k-fs-xs);color:var(--k-t3);margin-bottom:7px}
+  .reply{font-size:var(--k-fs-base);color:var(--k-t1);font-weight:var(--k-fw-med);line-height:1.5}
+  .via{display:inline-block;margin-top:8px;font-size:11px;color:var(--k-t3);
+    background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);padding:3px 9px;border-radius:var(--k-r-pill)}
+
+  /* ---- AgentCards: notice (auditor) + stats ---- */
+  .acard{background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);border-radius:var(--k-r-md);padding:12px 13px}
+  .notice{border-left:2px solid var(--k-pos);padding-left:11px;border-radius:var(--k-r-md)}
+  .nHead{display:flex;align-items:flex-start;gap:7px}
+  .nIcon{flex:none;width:15px;height:15px;margin-top:1px;color:var(--k-pos)}
+  .nTitle{font-size:var(--k-fs-sm);font-weight:var(--k-fw-med);color:var(--k-t1);line-height:1.4}
+  .nBody{font-size:var(--k-fs-sm);color:var(--k-t2);line-height:1.45;margin-top:3px}
+  .ctitle{font-size:var(--k-fs-xs);color:var(--k-t3);margin-bottom:8px}
+  .rows{display:flex;flex-direction:column}
+  .row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;font-size:var(--k-fs-sm)}
+  .row+.row{border-top:1px solid var(--k-line)}
+  .rLabel{color:var(--k-t2)}
+  .rValue{color:var(--k-t1);font-weight:var(--k-fw-med)}
+  .rValue.good{color:var(--k-pos)}
+
+  /* ---- PlanReview ---- */
+  .plan{display:flex;flex-direction:column;gap:var(--k-s3)}
+  .ptitle{font-size:var(--k-fs-lg);font-weight:var(--k-fw-med)}
+  /* route strip */
+  .route{display:flex;align-items:baseline;gap:9px;padding:7px 10px;border-radius:var(--k-r-sm);
+    background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset)}
+  .rlabel{flex:none;font-size:var(--k-fs-xs);color:var(--k-t3)}
+  .rbody{flex:1;display:flex;flex-direction:column;gap:2px}
+  .rpath{display:flex;flex-wrap:wrap;align-items:center;gap:5px;font-size:var(--k-fs-sm)}
+  .rtok{color:var(--k-t1);font-weight:var(--k-fw-med)}
+  .rhop{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--k-t3)}
+  .rarrow{font-size:var(--k-fs-sm);color:var(--k-t3)}
+  .rmeta{font-size:var(--k-fs-xs);color:var(--k-t2)}
+  /* steps */
+  .steps{list-style:none;display:flex;flex-direction:column}
+  .step{display:flex;align-items:flex-start;gap:var(--k-s3);padding:13px 0}
+  .step+.step{border-top:1px solid var(--k-line)}
+  .marker{width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:12px;
+    background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);color:var(--k-t2);margin-top:1px}
+  .body{flex:1;min-width:0}
+  .stTitle{font-size:var(--k-fs-base)}
+  .stDetail{font-size:var(--k-fs-xs);color:var(--k-t2);margin-top:2px;line-height:1.5}
+  .stNote{font-size:var(--k-fs-xs);color:var(--k-t3);margin-top:3px}
+  .chain{font-size:var(--k-fs-xs);color:var(--k-t2);background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);
+    padding:3px 9px;border-radius:var(--k-r-pill);flex:none}
+  /* actions */
+  .pactions{display:flex;gap:var(--k-s2)}
+  .ghost{background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);color:var(--k-t1);border:0;
+    font:inherit;font-size:16px;padding:15px 20px;border-radius:var(--k-r-md)}
+  .primary{flex:1;background:var(--k-brand);color:var(--k-brand-fg);border:0;font:inherit;font-size:16px;
+    font-weight:var(--k-fw-med);padding:15px;border-radius:var(--k-r-md)}
+  .alt{margin-top:var(--k-s2);width:100%;background:none;border:0;font:inherit;font-size:var(--k-fs-xs);
+    color:var(--k-t2);padding:var(--k-s2) 0;text-decoration:underline;text-underline-offset:3px}
+  .foot{font-size:var(--k-fs-xs);color:var(--k-t3);text-align:center;line-height:1.5}
+</style>
+</head>
+<body>
+  <div>
+    <div class="tabs">
+      <span class="tab on">Agent</span><span class="tab">Swap</span><span class="tab">Limit</span>
+      <span class="tab">Buy</span><span class="tab">Sell</span>
+    </div>
+
+    <div class="card">
+      <div class="head">
+        <span class="bot"></span>
+        <span class="htitle">Talk to Luca Agent</span>
+        <span class="hicons">
+          <svg class="hi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3H3v5M16 21h5v-5M21 3l-7 7M3 21l7-7"/></svg>
+          <svg class="hi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-8"/></svg>
+          <svg class="hi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+          <svg class="hi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+        </span>
+      </div>
+
+      <div class="well">
+        <!-- user turn -->
+        <div>
+          <div class="who">You</div>
+          <div class="userMsg">Swap 500 USDC to KLD</div>
+        </div>
+
+        <!-- assistant turn -->
+        <div>
+          <div class="who">Luca</div>
+          <div class="how">▸ How I answered</div>
+          <div class="reply">Here's the plan: one swap through the 0.30% USDC/KLD pool, priced now. I've set a 0.5% slippage floor — review the route and steps, then sign.</div>
+          <span class="via">Planned on Arc</span>
+        </div>
+
+        <!-- auditor notice card -->
+        <div class="acard notice">
+          <div class="nHead">
+            <svg class="nIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>
+            <div class="nTitle">Auditor passed — safe to sign</div>
+          </div>
+          <div class="nBody">Priced against the 0.30% USDC/KLD pool. Minimum received floored at 16,412 KLD (0.5% slippage). Approval is exact-amount, not unlimited. No fund-moving step beyond the swap you asked for.</div>
+        </div>
+
+        <!-- quote stats card -->
+        <div class="acard">
+          <div class="ctitle">Quote</div>
+          <div class="rows">
+            <div class="row"><span class="rLabel">Rate</span><span class="rValue tabular">1 USDC = 33.02 KLD</span></div>
+            <div class="row"><span class="rLabel">Expected out</span><span class="rValue tabular">16,494 KLD</span></div>
+            <div class="row"><span class="rLabel">Min. received</span><span class="rValue tabular">16,412 KLD</span></div>
+            <div class="row"><span class="rLabel">Price impact</span><span class="rValue good tabular">0.11%</span></div>
+          </div>
+        </div>
+
+        <!-- plan review -->
+        <div class="plan">
+          <div class="ptitle">Review and sign</div>
+          <div class="route">
+            <span class="rlabel">Route</span>
+            <div class="rbody">
+              <div class="rpath">
+                <span class="rtok tabular">500 USDC</span>
+                <span class="rhop"><span class="rarrow">→</span>0.30%</span>
+                <span class="rtok">KLD</span>
+              </div>
+              <div class="rmeta tabular">Min. received 16,412 KLD</div>
+            </div>
+          </div>
+
+          <ol class="steps">
+            <li class="step">
+              <span class="marker">1</span>
+              <div class="body">
+                <div class="stTitle">Approve USDC</div>
+                <div class="stDetail tabular">Let the router spend 500 USDC — exact amount.</div>
+              </div>
+              <span class="chain">Arc</span>
+            </li>
+            <li class="step">
+              <span class="marker">2</span>
+              <div class="body">
+                <div class="stTitle">Swap 500 USDC for KLD</div>
+                <div class="stDetail tabular">Minimum received 16,412 KLD</div>
+              </div>
+              <span class="chain">Arc</span>
+            </li>
+          </ol>
+
+          <div class="pactions">
+            <button class="ghost">Cancel</button>
+            <button class="primary">Sign &amp; swap</button>
+          </div>
+          <button class="alt">Run all 2 without stopping</button>
+          <p class="foot">Each step is a separate signature, and the plan stops between them so you can stop after any one. Running them all removes the stops, not the signatures — your wallet still asks for each. A failure stops the rest.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

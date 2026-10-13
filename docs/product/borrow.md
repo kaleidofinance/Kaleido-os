@@ -50,11 +50,18 @@ Below 1.0 the position can be liquidated. Above it, nothing happens. The 80% is 
 liquidation threshold and it is a constant, not a per-asset parameter — see
 [`constant.sol`](../../smart-contract/contracts/utils/constants/constant.sol).
 
-Borrowing has a separate, tighter limit: you may draw up to 75% of your collateral's
-value. Those two numbers together are the headroom you open with. Borrow the maximum
-and your health factor starts at about 1.07 — roughly 6% of adverse price movement
-before you are liquidatable. That is thin on purpose: the protocol lets you take it,
-and does not pretend it is comfortable.
+Borrowing has a separate, tighter limit: what you owe may total up to 75% of your
+collateral's value. What you owe is each loan's principal **plus its interest for the
+whole term**, because interest is fixed when the loan opens and health counts the full
+repayment. So the most principal you can borrow depends on the rate and term: at 10% APR
+for 365 days the limit is about 68% of collateral in principal, and for a 7-day loan
+it is nearly 75%. Ask for more and the contract refuses it by name rather than opening
+a position that is liquidatable the moment it is funded.
+
+Those two numbers together are the headroom you open with. Borrow the maximum and your
+health factor starts at about 1.07 — roughly 6% of adverse price movement before you are
+liquidatable. That is thin on purpose: the protocol lets you take it, and does not
+pretend it is comfortable.
 
 The check is not advisory and it is not in the interface. Every action that could move
 the health factor — borrowing, withdrawing collateral, filling, taking — is checked by
@@ -87,7 +94,15 @@ the total repayment for a proposed amount, rate and return date.
 
 If the health factor drops below 1.0, anyone can clear the debt and take collateral
 for it. The penalty is 6.4% of the debt cleared, split three parts to one: 4.8% to
-whoever performed the liquidation, 1.6% to the protocol.
+whoever performed the liquidation, 1.6% to the protocol. A loan can also be
+liquidated once its return date has passed, whatever the health factor.
+
+What is taken is the collateral locked to that loan first. If that does not cover
+the debt plus the penalty — which happens when you deposited more than the loan
+locked and the price then fell — the rest comes from your free, unlocked collateral,
+token by token. Collateral locked to your other loans is never touched: it backs
+other lenders. The health factor already counts all of your collateral, so this is
+what lets the lender be repaid in full whenever your account as a whole can cover it.
 
 It is a waterfall rather than a flat rate, and the ordering is the important part.
 The lender's claim on what was seized is settled first; the penalty is only whatever
@@ -107,10 +122,48 @@ than transferred out, so a liquidator finishes with a collateral balance and wit
 it as a second step. That is the same balance any depositor has, which is why there is
 one withdrawal path rather than a special one.
 
+## On Arc
+
+Arc runs the same book with its own assets:
+
+| | |
+| --- | --- |
+| Collateral | EURC and cirBTC |
+| Loans | USDC — Arc's native currency, the same USDC that pays gas |
+
+USDC is loanable only, not collateral, and EURC and cirBTC are collateral only, so a
+loan and its backing are always different assets. Because loans are in the native
+currency, lending and repaying send USDC as the transaction's value; there is no
+approval step for the loan side. Collateral is an ordinary token deposit with an
+approval first.
+
+**The $10 floor is measured in dollars, not in USDC.** Prices come from the market's
+oracle, and USDC trades a hair under a dollar — 10 USDC has been measured at about
+$9.998, which the contract refuses. Borrow or lend at least 10.01 USDC; the agent
+says exactly how much clears the floor when an amount falls short.
+
+**Pausing.** The market can be paused. A pause stops new risk only — new borrow
+requests, new listings, filling a request and borrowing from a listing. Repaying,
+depositing collateral, withdrawing free collateral and liquidation keep working, so
+nobody is ever locked into a loan by a pause.
+
 ## Doing it by asking
 
 The agent covers this whole surface — borrowing, lending, taking a listing, filling a
-request, repaying, cancelling, and moving collateral either way. It is also the part
+request, repaying, cancelling, and moving collateral either way:
+
+- "borrow 100 USDC against 150 EURC at 8% for 30 days" deposits the collateral and
+  posts the request in one plan.
+- "repay 50 USDC" pays part of a loan; "repay" alone repays it in full.
+- "withdraw all my collateral" withdraws exactly your free collateral — what is not
+  locked to a funded loan.
+- "how much more can I borrow?", "what am I earning from lending?" and "is lending
+  paused?" are answered from the contract: capacity is 75% of your collateral value
+  minus what you owe.
+
+Before you sign, the agent checks what the contract would refuse — a pause, a stale
+price, the $10 floor, borrowing past 75% of your collateral — and says so in plain
+words instead of building a transaction that would revert. It is also the part
 of the protocol delegation is designed around, because the on-chain mandate's action
 flags are exactly these actions: see [letting it act without
 you](./delegation.md).

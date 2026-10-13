@@ -1,0 +1,40 @@
+/**
+ * The landing page's background texture.
+ *
+ * A fine halftone dot dither laid across the WHOLE page — not a hero element —
+ * in the --k-t1 token so it follows the theme, at an opacity low enough that it
+ * is felt rather than seen and never lifts into the contrast of any text painted
+ * over it. An earlier pass put an feTurbulence cloud behind the hero alone; its
+ * uneven dark patches sat under the stat captions and planner hint and washed
+ * them out, which is the one thing a background must not do. A uniform, faint
+ * dot field has no patches to hide text behind.
+ *
+ * It lives on an inner wrapper rather than on `.kaleido-v2` (which is shared
+ * with the app shell and carries its own ambient layer), and paints from a
+ * fixed, negative-z pseudo-element: so it covers the viewport, stays put on
+ * scroll, and sits behind every section — header, hero, rails and all — without
+ * entering the flow. `isolation: isolate` keeps that negative z-index from
+ * escaping the wrapper into the shared shell.
+ */
+
+.shell {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+}
+
+.shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* The dither itself: a token-coloured dot on a 5px grid. Sub-pixel radii keep
+     it a grain rather than a visible polka pattern. */
+  background-image: radial-gradient(var(--k-t1) 0.6px, transparent 0.9px);
+  background-size: 5px 5px;
+  /* Texture, not decoration. Strong enough to read as a printed grain up close,
+     far too faint to touch the legibility of anything above it. This number is
+     the safety margin — raise it and start testing text contrast. */
+  opacity: 0.05;
+}

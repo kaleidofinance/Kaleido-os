@@ -1,17 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { defineChain } from "thirdweb/chains";
-import {
-  useActiveAccount,
-  useActiveWalletChain,
-  useConnectModal,
-  useSwitchActiveWalletChain,
-} from "thirdweb/react";
 import { toast } from "sonner";
-import { client } from "@/config/client";
-import { WALLETS } from "@/config/wallets";
-import { getChainMeta, toThirdwebChainOptions } from "@/constants/chains";
+import {
+  useConnectWallet as useConnectWalletProvider,
+  useSwitchWalletChain,
+  useWalletAddress,
+  useWalletChainId,
+} from "@/lib/wallet";
+import { getChainMeta } from "@/constants/chains";
 import { isSupportedChain } from "@/config/chain";
 
 /**
@@ -20,10 +17,9 @@ import { isSupportedChain } from "@/config/chain";
  * Swap, the lending forms and limit each grew their own copy of the same three
  * moves — is the wallet on the right chain, switch it if not, then act — and the
  * copies had already drifted (one toasts on a failed switch, one stays silent).
- * This is the single implementation, so the provider underneath (thirdweb today,
- * maybe not tomorrow) is named in ONE place rather than at every CTA. It is also
- * why the reads it needs go through `useActiveAccount`/`useActiveWalletChain`
- * here and nowhere else in a feature component.
+ * This is the single implementation, and it reads and switches through the
+ * provider-agnostic `@/lib/wallet` facade, so the provider underneath (thirdweb
+ * today, maybe not tomorrow) is named in the adapter, never at a CTA.
  *
  * `targetChainId` is the chain the action runs on. Given, `wrong` is a strict
  * mismatch against it — the multichain swap and the multichain lending forms both
@@ -59,9 +55,9 @@ export function useChainGateAction(
   targetChainId?: number,
   fallbackChainId?: number,
 ): ChainGateAction {
-  const account = useActiveAccount();
-  const chain = useActiveWalletChain();
-  const switchChain = useSwitchActiveWalletChain();
+  const address = useWalletAddress();
+  const chainId = useWalletChainId();
+  const switchChain = useSwitchWalletChain();
   const [switching, setSwitching] = useState(false);
 
   const goTo = targetChainId ?? fallbackChainId;
@@ -72,11 +68,11 @@ export function useChainGateAction(
     (goTo != null ? `chain ${goTo}` : "the right network");
 
   const wrong =
-    !!account &&
-    !!chain &&
+    !!address &&
+    chainId != null &&
     (targetChainId !== undefined
-      ? chain.id !== targetChainId
-      : !isSupportedChain(chain.id));
+      ? chainId !== targetChainId
+      : !isSupportedChain(chainId));
 
   const goToChain = async (): Promise<boolean> => {
     if (goTo == null || !meta) {
@@ -89,7 +85,7 @@ export function useChainGateAction(
     }
     setSwitching(true);
     try {
-      await switchChain(defineChain(toThirdwebChainOptions(meta)));
+      await switchChain(goTo);
       return true;
     } catch {
       toast.error(
@@ -112,16 +108,8 @@ export function useChainGateAction(
 /**
  * Open the connect modal — the one opener the CTAs share.
  *
- * Swap, limit and the ChainGate empty state each inlined the same
- * `connect({ client, wallets: WALLETS, size: "compact" })` with the same
- * catch-and-ignore (dismissing the modal rejects, which is a choice, not a
- * fault). One function, so the wallet list and the client are wired once.
+ * Now a thin re-export of the provider-agnostic opener in `@/lib/wallet`, kept
+ * at this path so the CTAs that import it here do not change. The wallet list
+ * and client are wired inside the adapter.
  */
-export function useConnectWallet(): () => void {
-  const { connect } = useConnectModal();
-  return () => {
-    connect({ client, wallets: WALLETS, size: "compact" }).catch(() => {
-      /* Dismissing the modal rejects — a choice, not a fault. */
-    });
-  };
-}
+export const useConnectWallet = useConnectWalletProvider;

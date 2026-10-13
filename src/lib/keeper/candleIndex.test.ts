@@ -12,7 +12,7 @@
 //      anything that is not one rather than throwing and losing the whole page.
 
 import { AbiCoder, id, zeroPadValue } from "ethers";
-import { decodeSwap, planSpans } from "./candleIndex.ts";
+import { decodeSwap, isPrunedHistory, planSpans } from "./candleIndex.ts";
 
 let pass = 0;
 let fail = 0;
@@ -105,6 +105,50 @@ console.log("\n— decodeSwap reads the tick, refuses everything else —");
   check("undecodable data yields null, not a throw", garbage === null);
   const empty = decodeSwap({ topics: [], data: "0x", blockNumber: 1, logIndex: 0 });
   check("an empty topic list yields null", empty === null);
+}
+
+/* isPrunedHistory decides whether a getLogs error means "this old range is gone,
+   skip it and fill forward" (true) vs. "a real fault, fail the chain" (false).
+   A false positive silently drops indexable history; a false negative puts the
+   chain back in the 500-every-run poison loop this fix removed. */
+console.log("\n— isPrunedHistory classifies the errors that must be skipped —");
+{
+  // The exact shape ethers surfaces for BSC testnet's publicnode: an
+  // UNKNOWN_ERROR whose coalesced message embeds the JSON-RPC -32701 body.
+  const ethersWrapped = new Error(
+    'could not coalesce error (error={ "code": -32701, "message": "History has ' +
+      'been pruned for this block." }, code=UNKNOWN_ERROR, version=6.13.1)',
+  );
+  check("ethers-wrapped -32701 → pruned", isPrunedHistory(ethersWrapped) === true);
+
+  // A provider that surfaces the JSON-RPC error nested under `.error.message`.
+  check(
+    "nested { error: { message } } → pruned",
+    isPrunedHistory({ error: { message: "history has been pruned" } }) === true,
+  );
+  check(
+    "a geth 'missing trie node' → pruned",
+    isPrunedHistory(new Error("missing trie node 0xabc (path )")) === true,
+  );
+  check(
+    "'state is not available' → pruned",
+    isPrunedHistory(new Error("state is not available for block #123")) === true,
+  );
+
+  // Must NOT swallow these — they are real faults or handled elsewhere.
+  check(
+    "a rate limit is NOT pruned (it retries/backs off)",
+    isPrunedHistory(new Error("429 too many requests")) === false,
+  );
+  check(
+    "a range-too-large is NOT pruned (span is the lever, not a skip)",
+    isPrunedHistory(new Error("requested range too large")) === false,
+  );
+  check(
+    "a generic RPC fault is NOT pruned (fail the chain)",
+    isPrunedHistory(new Error("execution reverted")) === false,
+  );
+  check("no message does not throw and is not pruned", isPrunedHistory({}) === false);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

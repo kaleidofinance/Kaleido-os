@@ -239,7 +239,7 @@ export default function EarnPage() {
         <div className={f.kv}>
           <span>Yield</span>
           <b className="tabular">
-            {stats?.totalYieldAPY ? `${stats.totalYieldAPY}% APY` : "—"}
+            {stats?.totalYieldAPY ? `${stats.totalYieldAPY}% APY` : "0"}
           </b>
         </div>
         <div className={f.kv}>

@@ -184,6 +184,8 @@
    the @supports guard below. */
 .table {
   composes: k-glass from global;
+  /* Tables carry dense rows of figures: no card dither (stat cards keep it). */
+  --k-dot: 0%;
   border-radius: var(--k-r-lg);
   padding: var(--k-s2);
 }
@@ -551,4 +553,32 @@
     border-left: 0;
     min-width: 0;
   }
+}
+
+/* Hairline between position rows, matching the Overview cards. */
+.row + .row {
+  border-top: 1px solid var(--k-line);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* Pool pairs: two logos overlapped, the DEX convention. */
+.pairIcons {
+  display: inline-flex;
+  flex: none;
+  width: 42px;
+}
+.pairIcon {
+  width: 26px;
+  height: 26px;
+  box-shadow: 0 0 0 2px var(--k-bg);
+}
+.pairIcon + .pairIcon {
+  margin-left: -10px;
+}
+/* A row that opens its position: the whole row is the link. */
+.rowLink {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
 }

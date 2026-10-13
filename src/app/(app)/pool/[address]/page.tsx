@@ -15,11 +15,12 @@ import { pct, qty, usd } from "@/lib/format/figures";
 
 import ChainTag from "../_components/ChainTag";
 import PairIcon from "../_components/PairIcon";
+import PoolPriceChart from "../_components/PoolPriceChart";
 import PoolBalanceBar from "../_components/PoolBalanceBar";
 import PoolDepthChart from "../_components/PoolDepthChart";
 import PoolTxnTable from "../_components/PoolTxnTable";
 import SeededTick from "../_components/SeededTick";
-import { feeLabel, volumeTitle } from "../format";
+import { feeLabel } from "../format";
 import { poolCurves } from "../poolCurve";
 import s from "../pool.module.css";
 
@@ -124,7 +125,13 @@ export default function PoolDetailPage() {
   /* This pool's own chain once it is known, and the hint before that so a direct
      load gates on the chain the URL asked for rather than on the read chain.
      Neither is the wallet's, for the reason /pool's header gives. */
-  const gate = useChainGate(pool?.chainId ?? chainHint ?? READ_ONLY_CHAIN_ID);
+  /* Pool detail is a DEX read surface. Arc launched its pools before the
+     lending/stable Diamond, so the default protocol gate incorrectly treated
+     a live Arc pool as an empty undeployed page. */
+  const gate = useChainGate(
+    pool?.chainId ?? chainHint ?? READ_ONLY_CHAIN_ID,
+    "dex",
+  );
 
   /* V2 only — see the header. `version` is checked before the fee so that a V3
      pool takes the venue branch rather than reading as a pool with no fee. */
@@ -143,7 +150,7 @@ export default function PoolDetailPage() {
   }, [pool]);
 
   /* After every hook, never between them. */
-  if (!gate.ready) return <ChainGate product="pool" state={gate} />;
+  if (!gate.ready) return <ChainGate product="pool" state={gate} requires="dex" />;
 
   if (!pool) {
     /* Deliberately not `notFound()`. The pool list is fetched client-side and is
@@ -170,35 +177,28 @@ export default function PoolDetailPage() {
 
       <div className={s.detailGrid}>
         <div className={s.detailMain}>
-          <div className={s.panel}>
-            <div className={s.panelHead}>Trade cost by size</div>
-            {curves ? (
+          {/* The price card leads, as on Uniswap's pool view: live price, change,
+              and a line through the swaps this page has read. */}
+          <PoolPriceChart
+            txns={txns.txns}
+            livePrice={pool.price}
+            symbol0={pool.token0.symbol}
+            symbol1={pool.token1.symbol}
+          />
+          {/* Trade cost by size is a V2 figure (one curve from the reserves); a V3
+              pool's cost depends on its ticks, which this page does not read, so
+              it shows no card rather than an empty one. */}
+          {curves ? (
+            <div className={s.panel}>
+              <div className={s.panelHead}>Trade cost by size</div>
               <PoolDepthChart
                 sell0={curves.sell0}
                 sell1={curves.sell1}
                 symbol0={pool.token0.symbol}
                 symbol1={pool.token1.symbol}
               />
-            ) : pool.version === "v3" ? (
-              /* Not a missing chart — a chart that would be wrong. The balances
-                 in the sidebar are what the pool holds; a V3 pool's cost by size
-                 depends on how that is distributed across ticks, which this page
-                 does not read. */
-              <div className={s.chartEmpty}>
-                V3 liquidity is spread across tick ranges, so a single curve
-                cannot describe this pool&apos;s trade cost.
-              </div>
-            ) : (
-              /* Cost is fee plus curve, so without the fee there is no cost to
-                 plot. The curve alone would understate every size by the fee,
-                 which is the one direction a trader must not be misled in. */
-              <div className={s.chartEmpty}>
-                This pair does not report a swap fee, so its trade cost cannot
-                be computed.
-              </div>
-            )}
-          </div>
-
+            </div>
+          ) : null}
           <div className={s.panel}>
             <div className={s.panelHead}>Transactions</div>
             <PoolTxnTable
@@ -218,34 +218,6 @@ export default function PoolDetailPage() {
         <aside className={s.detailSide}>
           <div className={s.panel}>
             <div className={s.panelHead}>Stats</div>
-            <div className={s.statList}>
-              <SideStat label="TVL" value={usd(pool.liquidity)} />
-              <SideStat
-                label="24h volume"
-                value={usd(pool.volume24h)}
-                title={volumeTitle(pool.volumeWindowSec)}
-              />
-              <SideStat label="24h fees" value={usd(pool.fees24h, 2)} />
-              <SideStat label="APR" value={pct(pool.apr)} />
-              <SideStat
-                label="Price"
-                value={
-                  pool.price === null
-                    ? usd(null)
-                    : `${qty(pool.price, pool.price < 1 ? 6 : 4)} ${
-                        pool.token1.symbol
-                      }`
-                }
-                /* The pool's own quote, not a market price — see ITradingPair.
-                   Named here because a row labelled "Price" beside four USD
-                   figures would otherwise read as one, and sourced because the
-                   two venues derive it differently. */
-                title={`${pool.token1.symbol} per ${pool.token0.symbol}, from ${
-                  pool.version === "v3" ? "slot0" : "the reserves"
-                }`}
-              />
-            </div>
-
             <PoolBalanceBar
               symbol0={pool.token0.symbol}
               symbol1={pool.token1.symbol}
@@ -254,6 +226,12 @@ export default function PoolDetailPage() {
               value0={pool.value0}
               value1={pool.value1}
             />
+            <div className={s.statGrid}>
+              <SideStat label="TVL" value={usd(pool.liquidity)} />
+              <SideStat label="APR" value={pct(pool.apr)} />
+              <SideStat label="Total volume" value={usd(pool.volumeTotal ?? null)} />
+              <SideStat label="Total fees" value={usd(pool.feesTotal ?? null, 2)} />
+            </div>
           </div>
         </aside>
       </div>

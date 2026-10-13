@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="_mockbase.css">
+<style>
+  .card{width:520px;display:flex;flex-direction:column;gap:4px}
+  .seg{display:flex;gap:4px;background:var(--k-card);border:1px solid var(--k-line);border-radius:var(--k-r-pill);padding:3px;margin-bottom:6px}
+  .segBtn{flex:1;background:none;border:0;font:inherit;font-size:var(--k-fs-sm);color:var(--k-t2);padding:9px;border-radius:var(--k-r-pill);text-align:center}
+  .segOn{background:var(--k-well2);color:var(--k-t1);font-weight:var(--k-fw-med)}
+  .box{background:var(--k-card);border:1px solid var(--k-line);border-radius:var(--k-r-xl);padding:17px 18px;
+    box-shadow:inset 0 1px 0 rgba(250,249,245,.06),0 12px 30px rgba(0,0,0,.5)}
+  .box.deep{background:#141312}
+  .bl{font-size:var(--k-fs-sm);color:var(--k-t2);margin-bottom:9px}
+  .amt{display:flex;align-items:center;gap:var(--k-s3)}
+  .inp{flex:1;min-width:0;border:0;background:none;color:var(--k-t1);font:inherit;font-size:34px;font-weight:var(--k-fw-body);letter-spacing:-.025em}
+  .pill{display:flex;align-items:center;gap:var(--k-s2);background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);
+    border:0;font:inherit;font-size:var(--k-fs-base);font-weight:var(--k-fw-med);color:var(--k-t1);padding:6px 14px 6px 6px;border-radius:var(--k-r-pill);flex:none}
+  .cv{font-size:12px;color:var(--k-t2)}
+  .sub{display:flex;align-items:center;justify-content:space-between;margin-top:9px;font-size:var(--k-fs-sm);color:var(--k-t2);min-height:20px}
+  .sub b{color:var(--k-t1);font-weight:var(--k-fw-body)}
+  .linkRow{position:relative;height:0}
+  .arw{position:absolute;left:50%;top:-18px;transform:translateX(-50%);width:36px;height:36px;border-radius:11px;
+    background:var(--k-well2);border:4px solid var(--k-bg);color:var(--k-t1);display:grid;place-items:center;font-size:15px;z-index:2}
+  .kv{display:flex;justify-content:space-between;align-items:center;gap:var(--k-s3);font-size:var(--k-fs-sm);padding:8px 2px;color:var(--k-t2)}
+  .kv b{color:var(--k-t1);font-weight:var(--k-fw-body)}
+  .kv b.good{color:var(--k-pos)}
+  .cta{width:100%;background:var(--k-brand);color:var(--k-brand-fg);border:0;font:inherit;font-size:17px;font-weight:var(--k-fw-med);
+    padding:17px;border-radius:var(--k-r-lg);margin-top:8px}
+  .note{font-size:var(--k-fs-xs);color:var(--k-t3);text-align:center;line-height:1.5;margin-top:10px;padding:0 8px}
+  .note b{color:var(--k-pos);font-weight:var(--k-fw-body)}
+</style></head>
+<body>
+  <div class="card">
+    <div class="seg"><span class="segBtn segOn">Mint</span><span class="segBtn">Redeem</span><span class="segBtn">Earn · kafUSD</span></div>
+    <div class="box deep">
+      <div class="bl">Deposit collateral</div>
+      <div class="amt">
+        <input class="inp tabular" value="5,000" readonly>
+        <span class="pill"><span class="coin" style="background:#2775ca">$</span>USDC <span class="cv">▾</span></span>
+      </div>
+      <div class="sub"><span>Balance <b class="tabular">12,113</b></span><span class="tabular">$5,000.00</span></div>
+    </div>
+    <div class="linkRow"><span class="arw">↓</span></div>
+    <div class="box">
+      <div class="bl">Mint</div>
+      <div class="amt">
+        <input class="inp tabular" value="4,997.50" readonly>
+        <span class="pill"><span class="coin" style="background:var(--k-brand)">kf</span>kfUSD <span class="cv">▾</span></span>
+      </div>
+      <div class="sub"><span></span><span class="tabular">$4,997.50</span></div>
+    </div>
+    <div style="padding:6px 2px 0">
+      <div class="kv"><span>Collateralization</span><b class="good tabular">150%</b></div>
+      <div class="kv"><span>Minting fee</span><b class="tabular">0.05% · 2.50 USDC</b></div>
+      <div class="kv"><span>Rate</span><b class="tabular">1 USDC = 0.99995 kfUSD</b></div>
+    </div>
+    <button class="cta">Mint kfUSD</button>
+    <div class="note">Over-collateralized and permissionless. Hold <b>kafUSD</b> to route protocol yield to your balance — one tap in the Earn tab.</div>
+  </div>
+</body></html>

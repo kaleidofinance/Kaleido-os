@@ -107,6 +107,152 @@ async function main() {
     check("an unknown token is a named error", r.errors.some((e) => e.includes("NOTATOKEN")), r.errors.join("; "));
   }
 
+  console.log("\n— an address must appear in the user's own words —");
+
+  const ADDR = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984";
+  const sendCall = { name: "send", args: { amount: "0.1", token: "ETH", to: ADDR } };
+  const kinds = (r: { plan: unknown[] }) =>
+    r.plan.map((i) => (i as { kind: string }).kind);
+
+  {
+    // No userText: unchanged behaviour, the send builds (tests/traces path).
+    const r = await planFromToolCalls([sendCall] as never, CHAIN, deps, OPTS);
+    check(
+      "with no user text the send is built (backward compatible)",
+      kinds(r).includes("transfer"),
+      kinds(r).join(","),
+    );
+  }
+
+  {
+    // The user typed the address: the send survives.
+    const r = await planFromToolCalls(
+      [sendCall] as never,
+      CHAIN,
+      deps,
+      OPTS,
+      `send 0.1 ETH to ${ADDR}`,
+    );
+    check(
+      "a recipient the user typed is kept",
+      kinds(r).includes("transfer") && r.errors.length === 0,
+      `${kinds(r).join(",")} | ${r.errors.join("; ")}`,
+    );
+  }
+
+  {
+    // The user never typed it — an injected recipient is dropped, with a reason.
+    const r = await planFromToolCalls(
+      [sendCall] as never,
+      CHAIN,
+      deps,
+      OPTS,
+      "send some eth to my friend",
+    );
+    check(
+      "a recipient the user never typed is dropped, not built",
+      !kinds(r).includes("transfer") &&
+        r.errors.some((e) => e.includes("typed yourself")),
+      `${kinds(r).join(",")} | ${r.errors.join("; ")}`,
+    );
+  }
+
+  {
+    // Case-insensitive: a lowercased address in the text still anchors it.
+    const r = await planFromToolCalls(
+      [sendCall] as never,
+      CHAIN,
+      deps,
+      OPTS,
+      `send to ${ADDR.toLowerCase()}`,
+    );
+    check(
+      "the match ignores case",
+      kinds(r).includes("transfer"),
+      kinds(r).join(","),
+    );
+  }
+
+  console.log("\n— bridge: a source on another chain, and a different token to receive —");
+  {
+    /* The model's bridge tool used to resolve the asset on the CONNECTED chain
+       only, so "bridge BNB to Arc as USDC" from Arc failed with "I don't know a
+       token called BNB on this chain", and it had no way to ask for a different
+       token on arrival. The stub records the corridor the builder resolved from
+       the tool's command, which is exactly what this layer decides. */
+    const ARC = 5042;
+    const seen: Record<string, unknown>[] = [];
+    const bdeps = {
+      chainId: ARC,
+      quote: async () => null,
+      quotePath: async () => null,
+      bridgeRoute: async (req: Record<string, unknown>) => {
+        seen.push(req);
+        return { error: "stub: route not resolved in this test" };
+      },
+    } as never;
+    const run = (args: Record<string, unknown>) =>
+      planFromToolCalls([{ name: "bridge", args }] as never, ARC, bdeps, OPTS);
+
+    {
+      seen.length = 0;
+      const r = await run({ amount: "10", asset: "BNB", toChain: "Arc", toAsset: "USDC" });
+      const q = seen[0] ?? {};
+      check(
+        "an asset not on the connected chain is taken as the source (BNB -> BSC)",
+        seen.length === 1 && q.sourceChainId === 56 && q.asset === "BNB",
+        JSON.stringify({ q, errors: r.errors }),
+      );
+      check(
+        "toAsset reaches the corridor as the token to deliver",
+        q.toAsset === "USDC" && typeof q.toTokenAddress === "string",
+        JSON.stringify(q),
+      );
+    }
+    {
+      seen.length = 0;
+      await run({ amount: "10", asset: "BNB", toChain: "Arc", fromChain: "BSC" });
+      const q = seen[0] ?? {};
+      check(
+        "an explicit fromChain is honoured, and no toAsset means same-token",
+        seen.length === 1 && q.sourceChainId === 56 && q.toAsset === undefined,
+        JSON.stringify(q),
+      );
+    }
+    {
+      /* ETH is on several mainnets. With no fromChain, the tool asks instead of
+         building the plan on whichever chain is listed first (it used to pick
+         Robinhood). The message is shown to the user as-is. */
+      seen.length = 0;
+      const r = await run({ amount: "0.1", asset: "ETH", toChain: "Arc" });
+      check(
+        "a multi-chain asset with no fromChain is asked about, resolving no corridor",
+        seen.length === 0 &&
+          r.errors.some((e) => /^Which chain are you bridging ETH from\? It's on .*Base.*Ethereum/.test(e)),
+        JSON.stringify(r.errors),
+      );
+    }
+    {
+      seen.length = 0;
+      await run({ amount: "0.1", asset: "ETH", toChain: "Arc", fromChain: "Base" });
+      const q = seen[0] ?? {};
+      check(
+        "the same asset WITH fromChain proceeds from that chain",
+        seen.length === 1 && q.sourceChainId === 8453 && q.asset === "ETH",
+        JSON.stringify(q),
+      );
+    }
+    {
+      seen.length = 0;
+      const r = await run({ amount: "10", asset: "ZZZNOTATOKEN", toChain: "Arc" });
+      check(
+        "a symbol no chain carries is refused by name, resolving no corridor",
+        seen.length === 0 && r.errors.some((e) => /ZZZNOTATOKEN/i.test(e)),
+        JSON.stringify(r.errors),
+      );
+    }
+  }
+
   console.log(`\n  ${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exit(1);
 }

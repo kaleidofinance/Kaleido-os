@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { getContracts } from "@/constants/registry";
 import Portal from "./Portal";
+import LinkX from "./LinkX";
 import s from "./WalletMenu.module.css";
 
 /**
@@ -139,6 +140,9 @@ export default function WalletMenu() {
               <button className={s.item} onClick={copy} role="menuitem">
                 {copied ? "Copied" : "Copy address"}
               </button>
+              {/* Moved here from the header: linking X is an account setting,
+                  bound to this wallet, so it belongs with the wallet. */}
+              <LinkX variant="menuItem" className={s.item} />
               {hasFaucet && (
                 <Link
                   className={s.item}

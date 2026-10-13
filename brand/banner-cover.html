@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:"KSerif";src:url("../src/app/fonts/lora-var.woff2") format("woff2");font-weight:100 900;font-display:block}
+  @font-face{font-family:"KSans";src:url("../src/app/fonts/GeistVF.woff") format("woff");font-weight:100 900;font-display:block}
+  :root{--ink:#07110e;--text:#f4eee5;--muted:#c9d3ca;--green:#35d18d;--green-fg:#04170f;--sand:#e7d7b6;
+    --serif:"KSerif",Georgia,serif;--sans:"KSans",system-ui,sans-serif}
+  *{box-sizing:border-box;margin:0}
+  html,body{background:var(--ink)}
+  .banner{position:relative;isolation:isolate;overflow:hidden;width:1500px;height:500px;
+    font-family:var(--sans);color:var(--text);display:flex;flex-direction:column;justify-content:center;align-items:center;
+    text-align:center;padding:0 90px;
+    background:#0a1712 url("../public/colosseum4.png") center 40%/cover no-repeat}
+  /* symmetric scrim so centred content reads over the arena */
+  .banner::before{content:"";position:absolute;inset:0;z-index:0;background:
+    radial-gradient(82% 96% at 50% 50%, rgba(6,15,12,.52) 0%, rgba(6,15,12,.7) 52%, rgba(6,15,12,.85) 100%),
+    linear-gradient(180deg, rgba(6,15,12,.5) 0%, transparent 32%, transparent 64%, rgba(6,15,12,.62) 100%)}
+  .banner>*{position:relative;z-index:1}
+
+  .arclogo{height:1.15em;width:auto;vertical-align:-.26em;margin:0 .34em 0 0;display:inline-block}
+
+  /* eyebrow badge pill */
+  .badge{display:inline-flex;align-items:center;gap:9px;margin-bottom:20px;
+    color:var(--sand);font-size:14px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+    border:1px solid rgba(217,195,154,.28);border-radius:999px;padding:9px 17px;
+    background:rgba(216,197,162,.06);backdrop-filter:blur(4px);text-shadow:0 1px 8px rgba(0,0,0,.6)}
+  .badge .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);flex:none}
+
+  h1{font-family:var(--serif);font-weight:600;font-size:56px;line-height:1.04;letter-spacing:-.025em;max-width:22ch;margin:0 auto;
+    text-shadow:0 2px 24px rgba(0,0,0,.7)}
+  h1 i{font-style:normal;color:var(--green)}
+
+  .sub{margin:20px auto 0;color:var(--muted);font-size:25px;line-height:1.42;max-width:44ch;font-weight:485;
+    text-shadow:0 1px 14px rgba(0,0,0,.8)}
+
+  /* CTA row */
+  .cta{display:flex;align-items:center;justify-content:center;gap:15px;margin-top:30px}
+  .btn{font:inherit;font-size:18px;font-weight:600;border-radius:999px;padding:14px 28px;cursor:default;line-height:1}
+  .btnPrimary{background:var(--green);color:var(--green-fg);box-shadow:0 8px 26px rgba(53,209,141,.32)}
+  .btnGhost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid rgba(231,215,182,.28);backdrop-filter:blur(4px)}
+
+  /* trust markers */
+  .trust{margin-top:22px;display:flex;align-items:center;justify-content:center;gap:12px;
+    color:var(--muted);font-size:13.5px;letter-spacing:.12em;text-transform:uppercase;text-shadow:0 1px 8px rgba(0,0,0,.7)}
+  .trust .sep{opacity:.5}
+  .trust b{color:#fff;font-weight:600}
+</style></head>
+<body>
+  <div class="banner">
+    <div class="badge"><span class="dot"></span>Agentic DeFi · Live on <img class="arclogo" src="../public/arc-mark.png" alt="Arc">Arc mainnet</div>
+    <h1>The autonomous finance <i>operating system</i>.</h1>
+    <div class="sub">Trade, earn, borrow, bridge and launch — in plain language, through one AI agent.</div>
+    <div class="cta">
+      <span class="btn btnPrimary">Launch app</span>
+      <span class="btn btnGhost">Meet Luca</span>
+    </div>
+    <div class="trust"><b>Non-custodial</b><span class="sep">·</span><b>Audited</b><span class="sep">·</span>kaleidofi.xyz</div>
+  </div>
+</body></html>

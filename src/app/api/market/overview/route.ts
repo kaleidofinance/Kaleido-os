@@ -36,7 +36,9 @@ import {
   stakingContracts,
 } from "@/constants/registry";
 import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { readBookRows } from "@/lib/lending/book";
+import { lendingChains } from "@/lib/lending/chain";
 import { getERC20Contract, getKLDVaultContract } from "@/config/contracts";
 import { getPrices } from "@/lib/points/prices";
 import {
@@ -62,8 +64,8 @@ export const dynamic = "force-dynamic";
  *    true of the mirror these rows used to come from, whose tables carry no
  *    chainId column at all.
  *
- * When this strip covers a second chain the shape changes: read each chain's
- * book and resolve decimals per chain, rather than widening the guess here.
+ * The book now covers every deployed lending chain, so decimals are resolved
+ * per chain rather than widening one chain's registry into a global guess.
  */
 /*
  * REGISTERED assets first, then the offered list — merged, deduped by address.
@@ -87,10 +89,10 @@ export const dynamic = "force-dynamic";
  * registered — and that is correct: `foldBook` folds by symbol, and both are USDC
  * at 6 decimals, so they sum into one total the way a reader would expect.
  */
-const CURRENCIES: Currency[] = (() => {
+function currenciesForChain(chainId: number): Currency[] {
   const merged = [
-    ...registeredLendingAssets(READ_ONLY_CHAIN_ID, "collateral").assets,
-    ...borrowCurrencies(READ_ONLY_CHAIN_ID),
+    ...registeredLendingAssets(chainId, "collateral").assets,
+    ...borrowCurrencies(chainId),
   ];
   const seen = new Set<string>();
   return merged.filter((c) => {
@@ -99,7 +101,7 @@ const CURRENCIES: Currency[] = (() => {
     seen.add(key);
     return true;
   });
-})();
+}
 
 /**
  * An on-chain read that must not be able to hang the route.
@@ -128,7 +130,7 @@ function withTimeout<T>(work: Promise<T>, label: string, ms = 8000) {
 }
 
 /** The OPEN lending book, valued and counted, plus the count of funded loans. */
-async function lendingLeg(): Promise<{
+async function lendingLeg(testnets: boolean): Promise<{
   usd: number | null;
   coverage: MarketCoverage;
   openOffers: number | null;
@@ -137,6 +139,19 @@ async function lendingLeg(): Promise<{
   degraded: string[];
 }> {
   const degraded: string[] = [];
+  const chains = lendingChains().filter(
+    (chainId) => testnets || CHAINS_BY_ID[chainId]?.network === "mainnet",
+  );
+  if (chains.length === 0) {
+    return {
+      usd: null,
+      coverage: EMPTY_COVERAGE,
+      openOffers: null,
+      openRequests: null,
+      loansOutstanding: null,
+      degraded: ["lendingBook"],
+    };
+  }
 
   /*
    * The book comes from the diamond, not from `kaleido_listings` /
@@ -156,39 +171,58 @@ async function lendingLeg(): Promise<{
    * than an empty array when the chain does not answer, which is what keeps the
    * "not measured" tile distinct from a real zero.
    */
-  const [listingRows, requestRows] = await Promise.all([
-    readBookRows(READ_ONLY_CHAIN_ID, "listings").catch(() => null),
-    readBookRows(READ_ONLY_CHAIN_ID, "requests").catch(() => null),
-  ]);
+  const books = await Promise.all(
+    chains.map(async (chainId) => {
+      const [listingRows, requestRows] = await Promise.all([
+        readBookRows(chainId, "listings").catch(() => null),
+        readBookRows(chainId, "requests").catch(() => null),
+      ]);
+      return { chainId, listingRows, requestRows };
+    }),
+  );
 
-  /*
-   * SERVICED requests are the funded loans. Counted off the same read as the
-   * open ones rather than by a second query — one read of the book answers both,
-   * and two reads could disagree about a request funded between them.
-   */
-  const loansOutstanding =
-    requestRows === null
-      ? null
-      : requestRows.filter((r) => r.status === "SERVICED").length;
-  if (loansOutstanding === null) {
-    console.error("[market/overview] serviced count failed: book unreadable");
-    degraded.push("loansOutstanding");
+  const readable = books.filter(
+    (book): book is typeof book & {
+      listingRows: NonNullable<typeof book.listingRows>;
+      requestRows: NonNullable<typeof book.requestRows>;
+    } => book.listingRows !== null && book.requestRows !== null,
+  );
+  for (const book of books) {
+    if (book.listingRows === null || book.requestRows === null) {
+      console.error(
+        `[market/overview] lending book read failed on chain ${book.chainId}`,
+      );
+      degraded.push(`lendingBook:${book.chainId}`);
+    }
   }
-
-  if (listingRows === null || requestRows === null) {
-    console.error("[market/overview] book read failed: chain did not answer");
+  if (readable.length === 0) {
     return {
       usd: null,
       coverage: EMPTY_COVERAGE,
       openOffers: null,
       openRequests: null,
-      loansOutstanding,
-      degraded: [...degraded, "lendingTvlUsd", "openOffers", "openRequests"],
+      loansOutstanding: null,
+      degraded: [
+        ...degraded,
+        "lendingTvlUsd",
+        "openOffers",
+        "openRequests",
+        "loansOutstanding",
+      ],
     };
   }
 
-  const openListings = listingRows.filter((l) => l.status === "OPEN");
-  const openReqs = requestRows.filter((r) => r.status === "OPEN");
+  const openListings = readable.flatMap((book) =>
+    book.listingRows.filter((l) => l.status === "OPEN"),
+  );
+  const openReqs = readable.flatMap((book) =>
+    book.requestRows.filter((r) => r.status === "OPEN"),
+  );
+  const loansOutstanding = readable.reduce(
+    (count, book) =>
+      count + book.requestRows.filter((r) => r.status === "SERVICED").length,
+    0,
+  );
 
   /* Counted from the rows the value total is computed over, so the two cannot
      disagree — the failure mode the exact-count select above was guarding
@@ -197,18 +231,18 @@ async function lendingLeg(): Promise<{
   const openOffers = openListings.length;
   const openRequests = openReqs.length;
 
-  const rows: BookRow[] = [...openListings, ...openReqs].map((r) => ({
-    tokenAddress: r.tokenAddress,
-    amount: r.amount,
-  }));
-  const folded = foldBook(rows, CURRENCIES);
-
-  if (folded.unknownToken > 0) {
-    console.warn(
-      `[market/overview] ${folded.unknownToken} row(s) reference a token absent ` +
-        `from the read chain's lending currencies; excluded from the total rather than assumed 18dp`,
-    );
-  }
+  const foldedByChain = readable.map((book) => {
+    const rows: BookRow[] = [
+      ...book.listingRows.filter((l) => l.status === "OPEN"),
+      ...book.requestRows.filter((r) => r.status === "OPEN"),
+    ].map((r) => ({ tokenAddress: r.tokenAddress, amount: r.amount }));
+    return {
+      chainId: book.chainId,
+      folded: foldBook(rows, currenciesForChain(book.chainId)),
+    };
+  });
+  const foldedRows = foldedByChain.flatMap(({ folded }) => folded.totals);
+  const symbols = [...new Set(foldedRows.map((row) => row.symbol))];
 
   /* getPrices throws when Hermes itself is unreachable — documented at
    * prices.ts:135-142, and correct: valuing a whole book at zero is worse than
@@ -216,7 +250,7 @@ async function lendingLeg(): Promise<{
    * every priceable row is reported unpriced rather than dropped. */
   let priceOf: (symbol: string) => number | null;
   try {
-    const prices = await getPrices(folded.totals.map((t) => t.symbol));
+    const prices = await getPrices(symbols);
     priceOf = (symbol) => prices.get(symbol)?.usd ?? null;
   } catch (err) {
     console.error("[market/overview] price feed unreachable:", err);
@@ -224,7 +258,31 @@ async function lendingLeg(): Promise<{
     degraded.push("lendingTvlUsd");
   }
 
-  const { usd, coverage } = valueBook(folded, priceOf);
+  const valued = foldedByChain.map(({ folded }) => valueBook(folded, priceOf));
+  const pricedParts = valued.filter((part) => part.usd !== null);
+  const hasRows = valued.some((part) => part.coverage.rows > 0);
+  const usd =
+    pricedParts.length > 0
+      ? pricedParts.reduce((sum, part) => sum + (part.usd ?? 0), 0)
+      : hasRows
+        ? null
+        : 0;
+  const coverage = valued.reduce(
+    (total, part) => ({
+      rows: total.rows + part.coverage.rows,
+      valued: total.valued + part.coverage.valued,
+      unpriced: total.unpriced + part.coverage.unpriced,
+      unknownToken: total.unknownToken + part.coverage.unknownToken,
+      malformedAmount: total.malformedAmount + part.coverage.malformedAmount,
+    }),
+    EMPTY_COVERAGE,
+  );
+  if (coverage.unknownToken > 0) {
+    console.warn(
+      `[market/overview] ${coverage.unknownToken} row(s) reference a token absent ` +
+        `from their chain's lending currencies; excluded from the total rather than assumed 18dp`,
+    );
+  }
 
   /* valueBook nulls the total when rows existed and none priced. That is its own
    * degraded condition, distinct from the throw above — a feed that answers but
@@ -289,9 +347,20 @@ async function kldStakedLeg(): Promise<number | null> {
   }
 }
 
-async function computeOverview(): Promise<MarketOverview> {
+/**
+ * The lending book lives on the read chain, which is a testnet at launch — no
+ * mainnet chain has a lending diamond yet (Arc is DEX-first). So a mainnet-first
+ * viewer must NOT be shown that testnet book's offers, requests and loans on the
+ * Borrow/Lend strip: it reads as a live mainnet market that does not exist. When
+ * testnets are hidden and the read chain is itself a testnet, the lending leg is
+ * the honest empty market — 0 offers, 0 requests, 0 loans, $0 book — until a
+ * mainnet lending deployment lands, at which point the read chain being mainnet
+ * the lending chain filter includes it on its own. kfUSD supply and pooled KLD are protocol
+ * tiles on /leaderboard, not the Borrow strip, and are left as-is.
+ */
+async function computeOverview(testnets: boolean): Promise<MarketOverview> {
   const [lending, kfUsdSupply, kldStaked] = await Promise.all([
-    lendingLeg(),
+    lendingLeg(testnets),
     kfUsdSupplyLeg(),
     kldStakedLeg(),
   ]);
@@ -323,42 +392,56 @@ async function computeOverview(): Promise<MarketOverview> {
  * calls, three queries and a Hermes fetch.
  */
 const TTL_MS = 60_000;
-let cache: { at: number; data: MarketOverview } | null = null;
-let inflight: Promise<MarketOverview> | null = null;
+/* Keyed by the testnet flag — the mainnet and testnet views compute different
+   lending legs, so they cannot share one cache entry. Two keys, no eviction. */
+const cache = new Map<string, { at: number; data: MarketOverview }>();
+const inflight = new Map<string, Promise<MarketOverview>>();
 
-async function remember(): Promise<{ data: MarketOverview; stale: boolean }> {
-  if (cache && Date.now() - cache.at < TTL_MS) {
-    return { data: cache.data, stale: false };
+async function remember(
+  testnets: boolean,
+): Promise<{ data: MarketOverview; stale: boolean }> {
+  const key = testnets ? "testnet" : "mainnet";
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) {
+    return { data: hit.data, stale: false };
   }
 
-  if (!inflight) {
-    inflight = computeOverview()
-      .then((data) => {
-        cache = { at: Date.now(), data };
-        return data;
-      })
-      .finally(() => {
-        inflight = null;
-      });
+  if (!inflight.has(key)) {
+    inflight.set(
+      key,
+      computeOverview(testnets)
+        .then((data) => {
+          cache.set(key, { at: Date.now(), data });
+          return data;
+        })
+        .finally(() => {
+          inflight.delete(key);
+        }),
+    );
   }
 
   try {
-    return { data: await inflight, stale: false };
+    return { data: await inflight.get(key)!, stale: false };
   } catch (err) {
     /* Serve the last good figures rather than nothing, but flag them stale so
      * the caller can label them. With nothing cached, this is a 500 — an empty
      * strip is honest, a zeroed one is not. */
-    if (cache) {
+    const stale = cache.get(key);
+    if (stale) {
       console.error("[market/overview] recompute failed, serving stale:", err);
-      return { data: cache.data, stale: true };
+      return { data: stale.data, stale: true };
     }
     throw err;
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { data, stale } = await remember();
+    /* `?testnets=1` when the viewer has the testnet toggle on. Default (mainnet)
+       hides the testnet lending book. */
+    const testnets =
+      new URL(request.url).searchParams.get("testnets") === "1";
+    const { data, stale } = await remember(testnets);
     return NextResponse.json(
       { success: true, data, stale },
       { headers: { "Cache-Control": "no-store" } },

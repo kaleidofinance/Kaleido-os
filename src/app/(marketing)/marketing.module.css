@@ -50,14 +50,13 @@
 /* ------------------------------------------------------------------
  * Header.
  *
- * Sticky and glass unconditionally, unlike Nav.module.css, which earns
- * its blur only once something is behind it. The difference is real: this
- * page is long, marketing-shaped and scrolls under the strip from the
- * first pixel, so there is never the "blurring an empty backdrop" state
- * that made a permanent blur wrong in the app.
+ * Transparent: no fill of its own, so the hero background - the page dither and
+ * the faint Colosseum wash - shows straight through it. It used to be glass
+ * (k-glass + a bottom hairline); the box read as a separate strip sitting on the
+ * page rather than part of it. Still sticky and thin, so with no backdrop it
+ * simply overlays whatever scrolls beneath.
  * ------------------------------------------------------------------ */
 .header {
-  composes: k-glass from global;
   position: sticky;
   top: 0;
   z-index: 30;
@@ -65,8 +64,7 @@
   align-items: center;
   gap: var(--k-s6);
   padding: 12px var(--k-s5);
-  border-width: 0 0 1px;
-  border-radius: 0;
+  background: transparent;
 }
 
 /* The wordmark used to live here, as `.brand` / `.brandFi` / `.mark`. It moved to
@@ -153,15 +151,9 @@
  * keystroke that changes the plan's length, so the headline moves while someone
  * is reading it. Top-aligned, the copy never moves and only the panel extends.
  *
- * `position: relative` and `isolation: isolate` are for the dotted dome — see
- * _components/HeroArc.module.css, which positions itself against this box and
- * spans both columns. Isolation is the load-bearing half: without it a negative
- * z-index does not stop at this element — it escapes to the nearest ancestor that
- * established a stacking context and vanishes behind the page background. One
- * property here is the alternative to putting `position: relative; z-index: 1` on
- * the eyebrow, the h1, the lede, the CTAs, the stat row and the planner. It is
- * also why the arc must stay a child of this section: moved anywhere else it
- * loses both its containing block and its stacking context in one go.
+ * The background dither is a page-level layer now (see layout.module.css),
+ * painted behind every section, so this box needs no stacking context of
+ * its own; `.hero` is a plain two-column grid again
  * ------------------------------------------------------------------ */
 .hero {
   padding: 72px 0 var(--k-s7);
@@ -171,6 +163,26 @@
   align-items: start;
   position: relative;
   isolation: isolate;
+}
+
+/* A faint Colosseum wash behind the whole hero. The muted + blurred treatment in
+   public/, at low opacity, faded out across the top so the headline, lede and the
+   glass planner stay clean and strongest toward the foot. z-index -1 inside
+   .hero's own isolate context, so it sits above the page dither and below every
+   hero child. Decorative; the two dials are opacity and the mask stop. */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -40px 0 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("/hero-colosseum.webp");
+  background-size: cover;
+  background-position: center 38%;
+  background-repeat: no-repeat;
+  opacity: 0.13;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 62%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 62%);
 }
 
 .heroCopy {
@@ -245,7 +257,7 @@
   color: var(--k-btn-solid-fg);
   font-size: var(--k-fs-base);
   font-weight: var(--k-fw-med);
-  padding: var(--k-s3) var(--k-s6);
+  padding: var(--k-s4) var(--k-s7);
   text-decoration: none;
 }
 
@@ -260,7 +272,7 @@
   color: var(--k-t1);
   font-size: var(--k-fs-base);
   font-weight: var(--k-fw-med);
-  padding: var(--k-s3) var(--k-s6);
+  padding: var(--k-s4) var(--k-s7);
   text-decoration: none;
 }
 
@@ -353,7 +365,7 @@
  * Sections.
  * ------------------------------------------------------------------ */
 .section {
-  padding-top: 80px;
+  padding-top: 116px;
   /* Anchored from the header links, so the heading must not land under the
      sticky strip. scroll-margin rather than padding: it moves where the
      browser stops, not where the content sits. */
@@ -362,20 +374,22 @@
 
 .head {
   max-width: 68ch;
-  margin-bottom: var(--k-s6);
+  margin-bottom: var(--k-s7);
 }
 
 .h2 {
   margin: 0;
-  font-size: var(--k-fs-2xl);
-  line-height: 1.2;
+  font-size: clamp(1.9rem, 1.15rem + 2.4vw, 2.6rem);
+  line-height: 1.14;
+  letter-spacing: -0.01em;
 }
 
 .sub {
-  margin: var(--k-s4) 0 0;
+  margin: var(--k-s5) 0 0;
   color: var(--k-t2);
-  font-size: var(--k-fs-base);
+  font-size: var(--k-fs-lg);
   line-height: 1.6;
+  max-width: 62ch;
 }
 
 /* ------------------------------------------------------------------
@@ -398,7 +412,7 @@
 .grid3 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--k-s4);
+  gap: var(--k-s5);
 }
 
 /* One base class the panel shapes adopt, rather than
@@ -440,8 +454,8 @@
  * padding still belong there — they travel fine, and one place to tune them
  * is worth keeping. Only the global cannot make the trip. */
 .panel {
-  border-radius: var(--k-r-lg);
-  padding: var(--k-s5);
+  border-radius: 20px;
+  padding: var(--k-s6);
 }
 
 .card {
@@ -452,6 +466,7 @@
 .stepCard {
   composes: panel;
   composes: k-glass from global;
+  overflow: hidden;
 }
 
 .cardTitle {
@@ -509,7 +524,7 @@
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--k-s4);
+  gap: var(--k-s5);
 }
 
 /* Tabular, because 01/02/03 in proportional figures sit at different
@@ -834,17 +849,29 @@
  * width, which is right in the hero's button row and wrong for a single one.
  * ------------------------------------------------------------------ */
 .closing {
-  composes: k-glass from global;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   margin-top: 100px;
   border-radius: var(--k-r-xl);
   padding: 72px var(--k-s7);
   text-align: center;
+  background-color: #0b1411;
+  background-image:
+    radial-gradient(rgba(217, 197, 162, 0.08) 0.6px, transparent 0.9px),
+    linear-gradient(rgba(8, 15, 12, 0.68), rgba(8, 15, 12, 0.82)),
+    url("/colosseum.webp");
+  background-size: 5px 5px, cover, cover;
+  background-position: 0 0, center, center 34%;
+  background-repeat: repeat, no-repeat, no-repeat;
+  border: 1px solid rgba(217, 197, 162, 0.16);
 }
 
 .closeH {
   margin: 0;
   font-size: var(--k-fs-2xl);
   line-height: 1.2;
+  color: #f4ece0;
 }
 
 /* `auto` inline margins, because the 46ch measure would otherwise sit hard
@@ -852,7 +879,7 @@
 .closeSub {
   margin: var(--k-s4) auto var(--k-s6);
   max-width: 46ch;
-  color: var(--k-t2);
+  color: rgba(244, 236, 224, 0.78);
   font-size: var(--k-fs-lg);
   line-height: 1.55;
 }
@@ -1058,4 +1085,119 @@
   .footer {
     margin-top: var(--k-s7);
   }
+}
+
+
+/* ------------------------------------------------------------------
+ * Step-card showcase panels.
+ *
+ * adam.new's move: each step card opens with a small "app view" instead of
+ * only prose. Here that view is a dark duotone panel carrying the same dither
+ * grain as the page background, full-bleeding to the card's top edge (negative
+ * margins cancel the card padding). It is decorative — aria-hidden — and stays
+ * dark in both themes because it depicts the product, the way a screenshot does.
+ * ------------------------------------------------------------------ */
+.showcase {
+  margin: calc(-1 * var(--k-s6)) calc(-1 * var(--k-s6)) var(--k-s6);
+  min-height: 132px;
+  padding: var(--k-s5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-s3);
+  border-radius: 20px 20px 0 0;
+  background-color: #0b1411;
+  background-image: radial-gradient(rgba(217, 197, 162, 0.1) 0.6px, transparent 0.9px);
+  background-size: 5px 5px;
+  border-bottom: 1px solid rgba(217, 197, 162, 0.14);
+}
+.scChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(217, 197, 162, 0.08);
+  border: 1px solid rgba(217, 197, 162, 0.18);
+  color: #e7dcc4;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.scDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5fd08a;
+  box-shadow: 0 0 8px #5fd08a;
+}
+.scTag {
+  color: #9a8f79;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.scPrompt {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(217, 197, 162, 0.06);
+  border: 1px solid rgba(217, 197, 162, 0.16);
+  color: #e7dcc4;
+  font-size: 13px;
+}
+.scCaret {
+  width: 2px;
+  height: 15px;
+  margin-left: 3px;
+  background: #d9c5a2;
+  animation: scBlink 1.1s steps(1) infinite;
+}
+@keyframes scBlink {
+  50% {
+    opacity: 0;
+  }
+}
+.scPlan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 190px;
+}
+.scStep {
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(217, 197, 162, 0.06);
+  border: 1px solid rgba(217, 197, 162, 0.14);
+  color: #cdbf9f;
+  font-size: 12px;
+}
+.scRun {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #d9c5a2;
+  color: #1a1712;
+  font-size: 12px;
+  font-weight: 500;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scCaret {
+    animation: none;
+  }
+}
+
+
+/* The closing CTA is a dark image band in both themes, so its button is a light
+   sand pill rather than the theme's default (which is a dark pill in light mode
+   and would vanish on this ground). */
+.closing .primary {
+  background: #ecdfc6;
+  color: #17130c;
+}
+.closing .primary:hover {
+  background: #f5ecda;
 }

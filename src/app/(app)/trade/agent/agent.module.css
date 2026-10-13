@@ -363,6 +363,39 @@
   padding-top: 1px;
 }
 
+/* A past turn's proposed steps, restored read-only from storage. Dimmed and
+   captioned like the historical cards, because there is no plan object behind it
+   to sign — only the titles of what was once offered. Reuses `.marker` above. */
+.planPast {
+  margin-top: 8px;
+  opacity: 0.6;
+}
+.planPastHead {
+  font-size: var(--k-fs-xs, 11px);
+  color: var(--k-t3);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.planPastList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.planPastStep {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 6px 0;
+  font-size: var(--k-fs-sm);
+  line-height: 1.35;
+}
+.planPastStep + .planPastStep {
+  border-top: 1px solid var(--k-line);
+}
+
 /* Luca's prose is not styled here. It renders through <Answer>, which parses the
    markdown the model is writing in, so its blocks — paragraphs, lists, tables,
    code, the `---` /api/chat puts between an answer and its notes — live in
@@ -921,8 +954,8 @@
 /* Numbered by CSS rather than by the browser's list marker, which `list-style:
    none` above had to remove: the rows are flex, so a marker box would sit outside
    the line box and wrap text under the number. Ordered because the stages are —
-   this is the sequence the turn actually ran in — and because it makes the count
-   in the summary something you can check. */
+   this is the sequence the turn actually ran in, so a reader who opens "How I
+   answered" sees the work in the order it happened. */
 .thinkList .thinkLine::before {
   counter-increment: thinkstep;
   content: counter(thinkstep);
@@ -1022,8 +1055,16 @@
    control, the stop control and the plan handoff at once, which is why it needed a
    disabled state, a hover-swap label and a busy variant; the send button owns the
    first two now and this owns nothing but the handoff. */
-.ctaPlan {
+/* Sign and Cancel side by side: the plan is an offer, and declining it is as
+   ordinary as accepting it. */
+.planRow {
+  display: flex;
+  gap: var(--k-s2);
   width: 100%;
+}
+.ctaPlan {
+  flex: 1;
+  min-width: 0;
   background: var(--k-brand);
   color: var(--k-brand-fg);
   border: 0;
@@ -1036,6 +1077,20 @@
 }
 .ctaPlan:hover {
   background: var(--k-brand-hover);
+}
+.ctaCancel {
+  flex: none;
+  background: var(--k-glass-deep, var(--k-card));
+  color: var(--k-t1);
+  border: 1px solid var(--k-line);
+  font: inherit;
+  font-size: var(--k-fs-base);
+  padding: 12px 20px;
+  border-radius: var(--k-r-lg);
+  cursor: pointer;
+}
+.ctaCancel:hover {
+  background: var(--k-row-hover);
 }
 
 /* The footnote under the field. `margin: 0 2px` rather than the old `10px 2px 0`
@@ -1161,7 +1216,7 @@
   .wide .composer {
     align-items: center;
   }
-  .wide .ctaPlan,
+  .wide .planRow,
   .wide .sendRow,
   .wide .foot {
     width: 100%;

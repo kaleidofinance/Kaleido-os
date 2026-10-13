@@ -19,10 +19,17 @@ export type Intent =
       kind: "approve";
       token: string;
       spender: string;
-      /** Human amount; resolver parses with `decimals`. */
+      /** Human amount; resolver parses with `decimals`. What the plan NEEDS —
+       *  the skip check, the review row and the auditor's price all use it. */
       amount: string;
       decimals: number;
       symbol: string;
+      /** Grant an unlimited allowance instead of `amount` when one is needed,
+       *  so later trades of this token skip the step. Only ever to Permit2 on
+       *  Arc (the auditor enforces it): Permit2 then limits and expires what
+       *  each router may pull, so the open-ended grant is to the gate, not to
+       *  a router. */
+      unlimited?: boolean;
     }
   | {
       kind: "swap";
@@ -228,6 +235,12 @@ export type Intent =
       symbol: string;
       /** True for the chain's native currency: sent as value, no calldata. */
       isNative?: boolean;
+      /**
+       * The chain this send is signed on, when the user named one that is not
+       * the connected chain ("… on Base"). Pins the sign flow (planChainOf) and
+       * the audit to it; the resolver refuses to sign it anywhere else.
+       */
+      chainId?: number;
     }
   /* ----------------------------------------------------------- bridge -- */
   /*
@@ -271,6 +284,12 @@ export type Intent =
       toChainName: string;
       /** "canonical" | "relay" | "lifi" — the trusted origin of `to`/`data`. */
       provider: string;
+      /**
+       * Delivered to this address on the destination chain, not the signer's.
+       * Absent = the signer. When set, the auditor requires it to be a sane
+       * account AND to be the receiver inside the route's own calldata.
+       */
+      recipient?: string;
       /** Seconds, or null when genuinely unknown — never a fabricated ETA. */
       etaSeconds: number | null;
       /** True for the chain's native currency: sent as `value`, no approve. */
@@ -285,6 +304,187 @@ export type Intent =
       spender?: string;
       /** Gas floor for a canonical deposit, which underruns estimateGas. */
       gasLimit?: string;
+      /**
+       * Cross-asset bridge only (source asset ≠ delivered asset, e.g. BNB→USDC).
+       * Absent for the ordinary same-asset bridge, which delivers the source
+       * token 1:1 and carries none of these. When present, the aggregator route
+       * swaps as it bridges, so — exactly like `aggregatorSwap` — the output is
+       * not 1:1 and must carry an enforceable floor the auditor prices against.
+       */
+      toToken?: string;
+      toDecimals?: number;
+      toSymbol?: string;
+      /** Human expected output, for the rendered row. */
+      amountOut?: string;
+      /** Human minimum output — the enforced floor the auditor requires and prices. */
+      amountOutMin?: string;
+      /** `amountOutMin` in the destination token's base units (the provider's toAmountMin). */
+      minReceivedUnits?: string;
+    }
+  /* ---------------------------------------------------- aggregator swap -- */
+  /*
+   * A same-chain swap filled by an external aggregator (KyberSwap), for chains
+   * where Kaleido runs no pools of its own — Arc, whose liquidity is Uniswap
+   * V3/V4 the V3-fork quoter cannot read. Shaped like `bridge`: `to`/`data` are
+   * an opaque router call from the resolver, never the model, bounded by the
+   * auditor’s USD cap and paired with an approve whose spender equals `to`.
+   */
+  | {
+      kind: "aggregatorSwap";
+      /** Aggregator router on this chain, from the resolver — never the model. */
+      to: string;
+      /** The router’s own calldata. Opaque, bounded by the auditor’s USD cap. */
+      data: string;
+      /** Wei to send; "0" — an ERC20 swap attaches no native value. */
+      value: string;
+      /** The input token leaving the wallet. */
+      tokenIn: string;
+      /** Human input amount, for the row and the auditor’s pricing. */
+      amountIn: string;
+      decimalsIn: number;
+      symbolIn: string;
+      /** The output token, for the rendered row. */
+      tokenOut: string;
+      /** Expected human output, for the row. */
+      amountOut: string;
+      /** The slippage floor for the row; the router bakes its own into `data`. */
+      amountOutMin: string;
+      decimalsOut: number;
+      symbolOut: string;
+      /** The chain this is signed on. */
+      chainId: number;
+      /** The venue that produced to/data, e.g. "kyberswap". */
+      venue: string;
+      /** The router the paired approve authorises; equal to `to` by construction. */
+      spender: string;
+      /**
+       * The slippage tolerance the route was quoted at, in bps. Carried so the
+       * resolver can REBUILD the router calldata at sign time (aggregator routes
+       * bake in live pool amounts + a recipient and go stale within seconds), at
+       * the same tolerance the user reviewed.
+       */
+      slippageBps: number;
+    }
+  /* ------------------------------------------------------------- argus -- */
+  /*
+   * A swap of an Argus-launchpad token on Arc, executed DIRECTLY against its
+   * Uniswap-v4 pool through the UniversalRouter — not through KyberSwap — so it
+   * pays no aggregator overhead and works on a launch's first block, before any
+   * aggregator has indexed it. Argus tokens are not in the static registry, so
+   * the auditor prices this by its USDC leg and validates structure rather than
+   * calling knownToken (which would reject it). Carries pre-built calldata: the
+   * v4 bytes bake no recipient (TAKE_ALL pays msg.sender) and carry a generous
+   * deadline, so — unlike a KyberSwap route — they do not go stale within the
+   * review window and are NOT rebuilt at sign time. Input is pulled via Permit2,
+   * so the plan pairs this with `approve` (ERC20→Permit2) + `permit2Approve`
+   * (Permit2→UniversalRouter). See src/lib/argus.
+   */
+  | {
+      kind: "argusSwap";
+      /** The UniversalRouter this signs against (a fixed Arc constant). */
+      to: string;
+      /** v4 `execute` calldata, built at plan time by src/lib/argus/swap.ts. */
+      data: string;
+      /** "0" — the quote asset is ERC20 USDC, pulled via Permit2. */
+      value: string;
+      tokenIn: string;
+      amountIn: string;
+      decimalsIn: number;
+      symbolIn: string;
+      tokenOut: string;
+      amountOut: string;
+      amountOutMin: string;
+      decimalsOut: number;
+      symbolOut: string;
+      chainId: number;
+      /** The launch's hook, for the rendered row + provenance. */
+      hook: string;
+    }
+  /* -------------------------------------------------- permit2 approve -- */
+  /*
+   * Authorise a spender (the UniversalRouter) to pull `token` from the user on
+   * Permit2 (AllowanceTransfer). Its own signed, audited step: the paired
+   * `approve` only grants the ERC20 allowance to Permit2 itself; this grants the
+   * router the Permit2 allowance the v4 swap then spends. Not a product.
+   */
+  | {
+      kind: "permit2Approve";
+      /** The ERC20 being authorised (e.g. USDC). */
+      token: string;
+      /** The spender authorised on Permit2 — the UniversalRouter. */
+      spender: string;
+      amount: string;
+      decimals: number;
+      symbol: string;
+      /** Unix expiration for the Permit2 allowance. */
+      expiration: number;
+      /** Authorise the maximum (uint160) until `expiration` rather than
+       *  `amount`, so trades inside that window skip this step. Bounded by the
+       *  expiration, which the auditor caps at ~30 days. */
+      unlimited?: boolean;
+    }
+  /* --------------------------------------------------------- cctp mint -- */
+  /*
+   * The DESTINATION leg of a Circle CCTP transfer — `receiveMessage` on the
+   * destination chain's MessageTransmitterV2, which mints the USDC that a
+   * `bridge`/`cctp` burn released on the source chain. Signed on the DESTINATION
+   * chain (its `chainId`), minutes after the burn, once Circle has attested the
+   * source finality. `to`/`data` come from the resolver — the transmitter and
+   * Circle's attested bytes — never the model. No approve and no value: it moves
+   * nothing of the signer's, it submits an attested message that credits the
+   * recipient the burn named.
+   */
+  | {
+      kind: "cctpReceive";
+      /** MessageTransmitterV2 on the destination chain, from the resolver. */
+      to: string;
+      /** receiveMessage(message, attestation) calldata, from Circle's attestation. */
+      data: string;
+      /** The destination chain this is signed on. */
+      chainId: number;
+      /** Human amount minted, for the rendered row. */
+      amount: string;
+      symbol: string;
+      /** Source chain's display name, for the row ("from Arc"). */
+      fromChainName: string;
+    }
+  /* --------------------------------------------------------- wrap -- */
+  /*
+   * Wrap / unwrap the chain's native currency against its wrapped-native ERC20
+   * — WETH on most chains, WUSDC on Arc (native is USDC). A 1:1 deposit()/
+   * withdraw() on the wrapped-native contract: no pool, no route, no slippage,
+   * fully reversible. `to` is the chain's `wrappedNative` from the registry,
+   * re-checked by the auditor; there is no external address and no approve.
+   */
+  | {
+      kind: "wrapNative";
+      /** The chain's wrapped-native contract (deposit target), from the registry. */
+      to: string;
+      /** Human amount of native currency to wrap. */
+      amount: string;
+      /** Native currency decimals (the value attached), e.g. 18. */
+      decimals: number;
+      /** The native currency's symbol, for the row ("USDC"). */
+      symbol: string;
+      /** The wrapped form's symbol, for the row ("WUSDC"). */
+      wrappedSymbol: string;
+      /** The chain this is signed on. */
+      chainId: number;
+    }
+  | {
+      kind: "unwrapNative";
+      /** The chain's wrapped-native contract (withdraw target), from the registry. */
+      to: string;
+      /** Human amount of the wrapped token to unwrap back to native. */
+      amount: string;
+      /** The wrapped token's decimals, e.g. 18. */
+      decimals: number;
+      /** The wrapped token's symbol, for the row ("WUSDC"). */
+      symbol: string;
+      /** The native currency's symbol received, for the row ("USDC"). */
+      nativeSymbol: string;
+      /** The chain this is signed on. */
+      chainId: number;
     }
   /* ---------------------------------------------------------- lending -- */
   /*
@@ -325,6 +525,8 @@ export type Intent =
       amount: string;
       symbol: string;
       isNative?: boolean;
+      /** Less than what is owed — the loan stays open for the rest. */
+      partial?: boolean;
     }
   | {
       /** Ask to borrow: posts a request lenders can fill. */
@@ -586,6 +788,14 @@ export type Intent =
       tokenId: string;
       liquidity: string;
       pairLabel: string;
+      /**
+       * The least of each token the withdrawal must return, base units — the
+       * slippage floor decreaseLiquidity enforces. "0"/absent is no floor (the old
+       * behaviour, and what the builder falls back to when the pool cannot be read
+       * to price one). See removeMinimums.
+       */
+      amount0Min?: string;
+      amount1Min?: string;
       /** 1–100. Absent means the whole position. Display only — see above. */
       percent?: number;
     }

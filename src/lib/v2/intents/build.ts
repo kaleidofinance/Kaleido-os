@@ -1,4 +1,6 @@
 import { ethers } from "ethers";
+import type { LendingCheck, PendingCollateral } from "@/lib/lending/guard";
+import type { FreeCollateral } from "@/lib/lending/collateral";
 import { envVars } from "@/constants/envVars";
 import {
   NATIVE_SENTINEL,
@@ -7,16 +9,22 @@ import {
   findRegisteredLendingAsset,
   getContracts,
   isNativeSentinel,
+  nativeTokenOf,
   registeredLendingAssets,
+  resolveUserToken,
   stableContracts,
   stakingContracts,
   type LendingSide,
 } from "@/constants/registry";
+import { CHAINS, CHAINS_BY_ID } from "@/constants/chains";
+import { resolveChain } from "@/lib/ai/bridgeQuotes";
+import { CCTP_ENABLED, CCTP_USDC, isCctpCorridor } from "@/lib/bridge/cctp";
 import { symbolForAddress } from "@/constants/tokens";
 import {
   FEE_TIERS,
   isTradedTier,
   mintMinimums,
+  removeMinimums,
   shareOfLiquidity,
   ticksForRange,
 } from "@/lib/dex/liquidity";
@@ -28,12 +36,18 @@ import {
   encodeV3Path,
   findBestRoute,
   findRouteAcrossSources,
+  MAX_PRICE_IMPACT,
+  truncDecimals,
   intermediateTokens,
   poolSide,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
+import { hasKyberSwap, aggregatorToken, nativeSwapErc20 } from "@/lib/swap/kyberswap";
+import { ARC_USDC, ARC_USDC_DECIMALS, ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
+import { PERMIT2 } from "@/lib/argus/swap";
 import type { Intent } from "@/lib/v2/intents";
-import type { Command, Slot } from "@/lib/v2/intents/fromCommand";
+import type { Command, Draft, Slot } from "@/lib/v2/intents/fromCommand";
+import type { IToken } from "@/constants/types/dex";
 /* A value import, unlike the type above, and the only one in this file that
    costs nothing: fromCommand.ts is deliberately dependency-free. The set is
    shared rather than restated so the parser and this branch cannot disagree
@@ -129,13 +143,45 @@ export interface PlanRetry {
   prompt: string;
 }
 
+/**
+ * A refusal that proposes a DIFFERENT command to run first — today, a bridge
+ * that would fund a send the target chain can't cover. The page holds `draft`
+ * as the pending command and asks `prompt`, so the next reply ("Arc") fills
+ * `missing` and builds that plan. Unlike `retry`, which re-asks a slot of the
+ * same command.
+ */
+export interface PlanNext {
+  draft: Draft;
+  missing: Slot;
+  prompt: string;
+  /**
+   * The command this one exists to enable — the send a funding bridge is for.
+   * The page prepares it (built, audited, up for review; never signed) once the
+   * bridge has landed. See lib/v2/intents/afterBridge.ts.
+   */
+  then?: Command;
+}
+
 export type PlanResult =
   | { ok: true; build: PlanBuild }
-  | { ok: false; error: string; retry?: PlanRetry };
+  | { ok: false; error: string; retry?: PlanRetry; next?: PlanNext };
 
 export interface PlannerOptions {
   slippageBps: number;
   deadlineMin: number;
+  /**
+   * Refuse one of our own pool routes whose price impact exceeds this fraction.
+   * ON BY DEFAULT: unset means `MAX_PRICE_IMPACT` (15%), so every caller — the
+   * model route, the local planner, the marketing demo — is guarded without
+   * having to remember to opt in. `null` turns it off, and exists for test
+   * fixtures whose mock quoters return one output for any size (a real AMM
+   * cannot), which the impact probe would otherwise read as ~99% impact.
+   *
+   * The Swap page has carried this guard since #442; the agent path did not, so
+   * Luca could still walk a dust pool for a token KyberSwap cannot route — the
+   * same 67% loss the guard was written for.
+   */
+  impactCeiling?: number | null;
 }
 
 /**
@@ -190,6 +236,10 @@ export interface MarketRow {
    * because `res.json()` would have truncated the value before this code saw it.
    */
   amount: string;
+  /** The row's rate (basis points, APR) and return date (unix seconds), so a
+   *  draw can be checked against the borrow limit on what it will owe. */
+  interestBps?: number;
+  returnDate?: number;
 }
 
 export interface QuoteRequest {
@@ -237,6 +287,8 @@ export interface PathQuoteRequest {
  * shape the read deps follow — so this request stays free of wallet state.
  */
 export interface BridgeRouteRequest {
+  /** Deliver to this address instead of the signer (see BridgeCommand.recipient). */
+  recipient?: string;
   /** Destination as the user named it — a chain name, shortName or id. */
   toChain: string;
   /** Symbol of the asset leaving the wallet, e.g. "ETH". */
@@ -257,6 +309,41 @@ export interface BridgeRouteRequest {
    * authorise, and it cannot make that comparison without this.
    */
   tokenAddress?: string;
+  /**
+   * The chain to bridge FROM, when it is not the connected chain — set by the
+   * bridge branch when the user named "from X". The planner resolves the route
+   * for this chain; the sign flow then switches the wallet to it. Absent means
+   * the connected chain, the default every caller used before.
+   */
+  sourceChainId?: number;
+  /**
+   * CCTP settlement speed, honoured only on a CCTP corridor. "fast" (the
+   * default) settles in seconds for a small Circle fee and falls back to
+   * "standard" when the fast lane has no allowance; "standard" is free but waits
+   * for the source chain's finality. Ignored by every other provider.
+   */
+  speed?: "standard" | "fast";
+  /**
+   * Which of two good USDC routes to take on a CCTP corridor, when both
+   * exist: "instant" is the aggregator solver-fill (arrives in seconds, no
+   * claim, a small spread); "exact" is CCTP's 1:1 burn-and-mint (no spread,
+   * but the destination mint must be completed). Absent lets the resolver
+   * pick by amount — instant below INSTANT_PREFERRED_MAX_USDC, exact at or
+   * above it. Ignored off a CCTP corridor, where only one route exists.
+   */
+  route?: "instant" | "exact";
+  /**
+   * Cross-asset bridge only: the symbol to DELIVER on the destination chain when
+   * it differs from `asset` (BNB→USDC). Absent means same-asset — the source
+   * token is delivered 1:1, the existing behaviour. A cross-asset request routes
+   * only through the aggregator (never CCTP/canonical, which are same-asset), and
+   * the resolver cross-checks the OUTPUT token the way `tokenAddress` guards the
+   * input. `toTokenAddress`/`toDecimals` are the destination-chain contract and
+   * scale to check the provider's delivered token against.
+   */
+  toAsset?: string;
+  toTokenAddress?: string;
+  toDecimals?: number;
 }
 
 /**
@@ -282,6 +369,79 @@ export interface BridgeRoute {
   spender?: string;
   /** Set for a canonical deposit, which underruns estimateGas. */
   gasLimit?: string;
+  /**
+   * Destination-token base units the user is expected to receive. For an
+   * instant aggregator fill this is 1:1 minus the solver spread; for CCTP it
+   * is 1:1 minus the (often zero) Circle fast fee. Absent when the provider
+   * quoted no amount. Display-only — never a bound the auditor enforces.
+   */
+  receivedUnits?: string;
+  /**
+   * The route NOT taken, when a USDC/CCTP corridor offered both. Lets the
+   * agent and the UI show the trade-off and offer the switch (re-resolve with
+   * `route` set). Present only when a real second route resolved.
+   */
+  alternative?: BridgeRouteAlternative;
+  /**
+   * Cross-asset bridge only: the token the route DELIVERS on the destination
+   * chain, its decimals and symbol. Absent for a same-asset bridge, which
+   * delivers the source token. The resolver has already cross-checked these
+   * against the request's `toTokenAddress`/`toDecimals`.
+   */
+  toToken?: string;
+  toDecimals?: number;
+  toSymbol?: string;
+  /**
+   * The enforceable output FLOOR in destination base units (the provider's
+   * `toAmountMin`). Unlike `receivedUnits`, which is the display expectation,
+   * this is the minimum the trade guarantees and the number the auditor prices
+   * and requires. Present only for a cross-asset aggregator route.
+   */
+  minReceivedUnits?: string;
+}
+
+/**
+ * A one-line summary of the bridge route that was not chosen, for the
+ * agent/UI to offer as an alternative. See resolveBridgeRoute.
+ */
+export interface BridgeRouteAlternative {
+  /** "lifi" (instant fill) | "cctp" (1:1). */
+  provider: string;
+  /** The `route` preference that selects it. */
+  route: "instant" | "exact";
+  etaSeconds: number | null;
+  /** Destination units this route would deliver instead. Null if unquoted. */
+  receivedUnits: string | null;
+}
+
+/** A same-chain swap to resolve through an external aggregator (KyberSwap). */
+export interface SwapRouteRequest {
+  tokenIn: string;
+  tokenOut: string;
+  /** Human input amount. */
+  amount: string;
+  decimalsIn: number;
+  decimalsOut: number;
+  /** Slippage floor in basis points, applied to the displayed minimum. */
+  slippageBps: number;
+}
+
+/**
+ * A resolved aggregator swap — the trusted origin of an `aggregatorSwap`
+ * Intent’s `to`/`data`. From KyberSwap via the resolver, targeting a router the
+ * auditor whitelists. See lib/swap/route.ts.
+ */
+export interface AggregatorSwapRoute {
+  to: string;
+  data: string;
+  /** "0" — an ERC20 swap attaches no native value. */
+  value: string;
+  /** The router to approve; equal to `to` by construction. */
+  spender: string;
+  /** Expected output in the out-token’s base units. */
+  amountOut: string;
+  /** The venue that produced to/data, e.g. "kyberswap". */
+  venue: string;
 }
 
 /**
@@ -368,6 +528,57 @@ export interface PlanDeps {
    */
   collateralDeposits?(): Promise<string[] | null>;
   /**
+   * The lending pre-check (lib/lending/guard.ts): pause, stale price, the $10
+   * floor and the 75% capacity rule, read from the diamond. Returns the refusal
+   * to show, or null. Optional on the same precedent: a planner with no wallet
+   * (the marketing demo, a fixture) skips it, and every unknown read fails open —
+   * the plan simulation and the sign-time preflight still stand behind it.
+   */
+  lendingCheck?(check: LendingCheck): Promise<string | null>;
+  /**
+   * The wallet's FREE collateral per registered asset (lib/lending/collateral.ts)
+   * — what "withdraw all" withdraws. Null when it cannot be read. Optional on the
+   * same precedent: without it "withdraw all" is refused with a request to name
+   * an amount, never guessed.
+   */
+  freeCollateral?(): Promise<FreeCollateral[] | null>;
+  /**
+   * This wallet's balance of one token, in base units, or null when it cannot be
+   * read. Used to resolve a relative swap amount ("swap half my USDC") into a
+   * number — the grammar carries the share, this reads the balance and build.ts
+   * does the arithmetic, so "half" is exactly half with no model round trip.
+   *
+   * Base units (a bigint), not a formatted string: the share is computed as
+   * `balance * num / den` with integer math, so it can never exceed the balance
+   * the way a float round-trip could. `token` is the address the user holds — an
+   * ERC-20 address, or the native sentinel, which the implementation reads as the
+   * chain's own balance.
+   *
+   * Optional on the same precedent as `collateralDeposits`: an implementation
+   * with no wallet (the marketing snapshot, a test fixture) has no answer, and its
+   * absence makes the relative-amount branch refuse with a message rather than
+   * guess a number.
+   */
+  tokenBalance?(token: string): Promise<bigint | null>;
+  /**
+   * Every ERC-20 this wallet holds on the connected chain, registry or not (from
+   * thirdweb Insight). Read only by `exitChain`, which bridges all of them out;
+   * absent or empty means that branch refuses rather than leaves tokens behind
+   * silently.
+   */
+  heldTokens?(): Promise<IToken[]>;
+  /**
+   * This wallet's balance of `token` on ANY chain — native currency when
+   * `isNative`. Read by send, to check the chain it was asked for and to find
+   * where else the token is held. Null when it can't be read (fail open: the
+   * sign flow's own shortfall check still runs).
+   */
+  balanceOn?(
+    chainId: number,
+    token: string,
+    isNative: boolean,
+  ): Promise<bigint | null>;
+  /**
    * What the faucet lists, including assets it has paused.
    *
    * Empty is a valid answer and the only one an implementation with no faucet
@@ -403,6 +614,69 @@ export interface PlanDeps {
   bridgeRoute(
     req: BridgeRouteRequest,
   ): Promise<BridgeRoute | { error: string }>;
+
+  /**
+   * A same-chain swap on a chain where Kaleido runs no pools of its own, filled
+   * by an external aggregator. Optional like bridgeRoute: only the swap branch
+   * calls it, and only after `hasKyberSwap(chainId)`. Absent implementation
+   * makes that branch refuse rather than throw.
+   */
+  swapRoute?(
+    req: SwapRouteRequest,
+  ): Promise<AggregatorSwapRoute | { error: string }>;
+
+  /**
+   * Resolve an Argus-launchpad BUY (USDC → launch token, direct Uniswap v4) to
+   * signable calldata + a tax-aware quote, or report that the output isn't an
+   * Argus launch. Optional like `swapRoute`, and for the same reasons: it is a
+   * server round trip (reads the launch + pool over RPC) AND the fee it applies
+   * uses `SWAP_FEE_RECEIVER`, a server-only env the client must never see, so it
+   * is injected as a call to `/api/argus/plan` rather than run here. The marketing
+   * snapshot and test fixtures have no such dep, and its absence makes the Argus
+   * branch fall through to normal routing rather than throw. Only the swap branch
+   * calls it, and only on Arc for a USDC input. `argus:false` means "not an Argus
+   * launch — route it normally"; `blocked` means it IS one but can't trade now
+   * (opening surcharge / too large for the single-range pool).
+   */
+  argusPlan?(req: {
+    tokenIn: string;
+    tokenOut: string;
+    /** USDC input in base units (6-dec), as a decimal string. */
+    amountInRaw: string;
+    slippageBps: number;
+  }): Promise<ArgusPlanResult | null>;
+}
+
+/** What `deps.argusPlan` returns — the JSON shape of `/api/argus/plan`. */
+export interface ArgusPlanResult {
+  argus: boolean;
+  /** True when it IS an Argus launch but can't be traded right now. */
+  blocked?: boolean;
+  reason?: string;
+  /** Which direction the server resolved. Absent on old buy-only responses → buy. */
+  side?: "buy" | "sell";
+  /** BUY: the launch token received. SELL: USDC received. */
+  tokenOut?: { address: string; symbol: string; decimals: number };
+  /** SELL only: the launch token being spent (to approve + swap). */
+  tokenIn?: { address: string; symbol: string; decimals: number };
+  /** The fee cut, always taken inside the swap tx. BUY: USDC pulled from the input (PERMIT2_TRANSFER_FROM). SELL: USDC
+   *  taken from the output in-swap (already reflected in amountOut/min — no transfer). */
+  fee?: { receiver: string | null; amountRaw: string; bps: number; inSwap?: boolean };
+  /** BUY: the whole USDC input the router pulls via Permit2 — swap + in-tx fee. */
+  totalInRaw?: string;
+  /** The amount actually swapped, base units. BUY: USDC in (after fee). SELL: the
+   *  full launch-token amount in (the fee is on the output, not the input). */
+  swapAmountRaw?: string;
+  to?: string;
+  data?: string;
+  value?: string;
+  hook?: string;
+  /** Expected output the USER receives, human units (BUY: token; SELL: USDC, net of fee). */
+  amountOut?: number;
+  /** The user's on-chain minimum out, base units (net of fee on a sell). */
+  amountOutMinimum?: string;
+  priceImpactBps?: number;
+  totalCostBps?: number;
 }
 
 /**
@@ -641,6 +915,47 @@ const stableUnavailable = (what: string): PlanResult => ({
  * courtesy check in front of a gate the contract enforces regardless, so a failed
  * read must not become a refusal of a borrow that would have succeeded.
  */
+/**
+ * Run the optional lending pre-check (see PlanDeps.lendingCheck). A refusal from
+ * it is a plan error in the user's words; no reader, an unparseable amount or an
+ * unknown answer is no refusal.
+ */
+async function lendingRefusal(
+  deps: PlanDeps,
+  args: {
+    action: LendingCheck["action"];
+    token: string;
+    symbol: string;
+    amount: string;
+    decimals: number;
+    /** Collateral this same command deposits first ("borrow X against Y"). */
+    pending?: PendingCollateral[];
+    /** Rate (bps) and term (seconds) of the loan, so the limit counts its interest. */
+    interestBps?: number;
+    seconds?: number;
+  },
+): Promise<PlanResult | null> {
+  if (!deps.lendingCheck) return null;
+  let amountRaw: bigint;
+  try {
+    amountRaw = ethers.parseUnits(args.amount, args.decimals);
+  } catch {
+    return null;
+  }
+  const error = await deps
+    .lendingCheck({
+      action: args.action,
+      token: args.token,
+      symbol: args.symbol,
+      amountRaw,
+      decimals: args.decimals,
+      ...(args.pending?.length ? { pendingCollateral: args.pending } : {}),
+      ...(args.interestBps && args.seconds ? { interestBps: args.interestBps, seconds: args.seconds } : {}),
+    })
+    .catch(() => null);
+  return error ? { ok: false, error } : null;
+}
+
 async function borrowBlockedByCollateral(
   deps: PlanDeps,
   token: { address: string; symbol: string },
@@ -658,6 +973,126 @@ async function borrowBlockedByCollateral(
     ok: false,
     error: `You have ${token.symbol} deposited as collateral, and the protocol won't lend you a token you're using to back a loan — the transaction would revert. Borrow a different asset, or withdraw your ${token.symbol} collateral first and then ask again.`,
   };
+}
+
+/** How much of the gas token a relative spend ("all my USDC") leaves behind. */
+export const USDC_GAS_RESERVE = "0.25";
+
+/**
+ * The reserve to hold back when `token` is what the chain pays gas in, else 0.
+ * Only USDC-gas chains (Arc mainnet + testnet): there the spend asset and the
+ * fee asset are one balance, so a relative spend of it has to stop short. The
+ * native sentinel and the 6-dec ERC20 face (`native-alias`) both count. ETH-gas
+ * chains are unchanged — a 0.25 reserve means nothing there.
+ */
+function gasTokenReserve(
+  chainId: number | undefined,
+  token: { address: string; decimals: number; tags?: string[] },
+): bigint {
+  if (chainId === undefined) return 0n;
+  if (CHAINS_BY_ID[chainId]?.nativeCurrency.symbol !== "USDC") return 0n;
+  const isGas =
+    token.tags?.includes("native-alias") ||
+    token.address.toLowerCase() === ARC_USDC.toLowerCase() ||
+    isNativeSentinel(token.address, "dex") ||
+    isNativeSentinel(token.address, "lending");
+  return isGas ? ethers.parseUnits(USDC_GAS_RESERVE, token.decimals) : 0n;
+}
+
+/**
+ * A send the chain can't cover — the token isn't there, or not enough of it is.
+ *
+ * Looks for the token on every other mainnet this wallet holds it on and, when
+ * it finds some, proposes bridging the amount to the send's chain first. The
+ * proposal is a held bridge draft missing only its source, so the user names
+ * the chain to bridge from (it is asked even with one option: moving money off
+ * a chain is theirs to choose). Nothing held anywhere → a plain refusal. Only
+ * mainnets, which is all a bridge can leave from.
+ */
+async function sendShortfall(
+  deps: PlanDeps,
+  args: {
+    /** What must ARRIVE on the send's chain: the shortfall, not the whole send. */
+    amount: string;
+    token: IToken;
+    chainId: number;
+    why: string;
+    /** The send this bridge funds, prepared once the bridge lands. */
+    then: Command;
+  },
+): Promise<PlanResult> {
+  const { amount, token, chainId, why, then } = args;
+  const dest = CHAINS_BY_ID[chainId];
+  const destName = dest?.shortName ?? `chain ${chainId}`;
+  if (!deps.balanceOn || dest?.network !== "mainnet") {
+    return { ok: false, error: why };
+  }
+  const reads = await Promise.all(
+    CHAINS.filter((c) => c.network === "mainnet" && c.id !== chainId).map(
+      async (c) => {
+        const t =
+          resolveUserToken(c, token.symbol, "dex") ??
+          resolveUserToken(c, token.symbol, "lending");
+        if (!t) return null;
+        const native =
+          isNativeSentinel(t.address, "dex") ||
+          isNativeSentinel(t.address, "lending");
+        const bal = await deps.balanceOn!(c.id, t.address, native).catch(
+          () => null,
+        );
+        return bal && bal > 0n
+          ? { name: c.shortName, amount: ethers.formatUnits(bal, t.decimals) }
+          : null;
+      },
+    ),
+  );
+  const held = reads.filter(
+    (r): r is { name: string; amount: string } => r !== null,
+  );
+  if (held.length === 0) {
+    return {
+      ok: false,
+      error: `${why} I don't see ${token.symbol} in this wallet on any other chain either, so there's nothing to bridge from.`,
+    };
+  }
+  const list = held.map((h) => `${h.name} (${shortNum(h.amount)})`);
+  const where =
+    list.length === 1
+      ? list[0]
+      : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+  return {
+    ok: false,
+    error: `${why} You hold ${token.symbol} on ${where}.`,
+    next: {
+      draft: {
+        kind: "bridge",
+        amount,
+        token,
+        toChain: destName,
+        sourceOptions: held.map((h) => h.name),
+        /* Topped up by the route's fees at build time, so the send that follows
+           isn't short. */
+        receiveAtLeast: amount,
+      },
+      missing: "fromChain",
+      prompt: `I can bridge ${amount} ${token.symbol} to ${destName} first (a little more, to cover the bridge's fees), and have your send ready to sign as soon as it lands. Which chain should it come from?`,
+      /* Pinned to the chain it's for: the wallet will have moved to the bridge's
+         source to sign it, and an unpinned send would follow it there. */
+      then: then.kind === "send" ? { ...then, chain: destName } : then,
+    },
+  };
+}
+
+/** A formatUnits string without a trailing ".0" or zeros — still parseable. */
+function plainUnits(x: string): string {
+  return x.includes(".") ? x.replace(/0+$/, "").replace(/\.$/, "") : x;
+}
+
+/** A balance for a sentence: at most 4 decimals, no trailing zeros. */
+function shortNum(x: string): string {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return x;
+  return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
 export async function buildIntents(
@@ -701,6 +1136,105 @@ export async function buildIntents(
   if (command.kind === "portfolio") {
     return { ok: false, error: "portfolio" };
   }
+  /* Another wallet's balances: a read the page answers, never a plan. */
+  if (command.kind === "lookup") {
+    return { ok: false, error: "lookup" };
+  }
+
+  /*
+   * Everything off one chain: one bridge per held token, all converted to
+   * `toAsset` on the destination, in one plan. Built for Abstract's shutdown
+   * (2026-12-15). Each leg goes through the ordinary bridge branch below, so it
+   * is resolved, cross-checked and audited exactly like a typed bridge; a leg the
+   * aggregator can't route is skipped and named, never silently dropped.
+   */
+  if (command.kind === "exitChain") {
+    const src = resolveChain(command.fromChain);
+    const dest = resolveChain(command.toChain);
+    if (!src) return { ok: false, error: `I don't recognise the chain "${command.fromChain}".` };
+    if (!dest) return { ok: false, error: `I don't recognise the chain "${command.toChain}".` };
+    if (src.id === dest.id)
+      return { ok: false, error: `That moves funds from ${src.shortName} to itself. Name where they should go, e.g. "to Arc".` };
+    if (chainId !== src.id)
+      return {
+        ok: false,
+        error: `The bridges are signed from ${src.shortName}, so connect the wallet that holds your funds there (for Abstract, the Abstract Global Wallet) and switch it to ${src.shortName} first.`,
+      };
+    if (!deps.heldTokens || !deps.tokenBalance || !deps.balanceOn)
+      return { ok: false, error: `I can't read everything this wallet holds on ${src.shortName} from here. Try again from the Luca page.` };
+
+    const legs: { token: IToken; raw: bigint }[] = [];
+    for (const t of await deps.heldTokens()) {
+      const raw = await deps.tokenBalance(t.address);
+      if (raw && raw > 0n) legs.push({ token: t, raw });
+    }
+    /* The native coin (ETH on Abstract) — usually the main thing to move. Bridged
+       last, minus a small reserve to pay gas for the bridges before it. Never
+       dropped without a word: too little to bridge, or an unreadable balance,
+       is said out loud in the reply. */
+    const native = nativeTokenOf(CHAINS_BY_ID[src.id], "dex");
+    const nativeRaw = native ? await deps.balanceOn(src.id, native.address, true) : null;
+    const reserve = ethers.parseUnits("0.0005", native?.decimals ?? 18);
+    let nativeNote = "";
+    if (native) {
+      if (nativeRaw === null)
+        nativeNote = ` I couldn't read your ${native.symbol} balance on ${src.shortName} just now, so ${native.symbol} isn't in this plan — ask again in a moment.`;
+      else if (nativeRaw > reserve)
+        legs.push({
+          token: { address: native.address, symbol: native.symbol, name: native.name, decimals: native.decimals, chainId: src.id, verified: true, isNative: true },
+          raw: nativeRaw - reserve,
+        });
+      else if (nativeRaw > 0n)
+        nativeNote = ` Your ${Number(ethers.formatUnits(nativeRaw, native.decimals)).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${native.symbol} is kept for gas — too little to bridge after paying for the other steps.`;
+    }
+    if (legs.length === 0)
+      return { ok: false, error: `I don't see anything to move in this wallet on ${src.shortName}.${nativeNote}` };
+
+    const intents: Intent[] = [];
+    const moved: string[] = [];
+    const skipped: string[] = [];
+    for (const leg of legs) {
+      const amount = ethers.formatUnits(leg.raw, leg.token.decimals);
+      const same = leg.token.symbol.toUpperCase() === command.toAsset.toUpperCase();
+      const r = await buildIntents(
+        { kind: "bridge", amount, token: leg.token, toChain: command.toChain, ...(same ? {} : { toAsset: command.toAsset }) },
+        opts,
+        deps,
+      );
+      if (r.ok) {
+        intents.push(...r.build.intents);
+        moved.push(`${Number(amount).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${leg.token.symbol}`);
+      } else
+        /* "No executable route" means no bridge carries it and no DEX on the
+           source chain will swap it — typical for a token that only exists
+           there. Said plainly; any other refusal is passed through. */
+        skipped.push(
+          /No executable route/i.test(r.error)
+            ? `${leg.token.symbol} (no bridge or swap route out of ${src.shortName})`
+            : `${leg.token.symbol} (${r.error.replace(/\.$/, "")})`,
+        );
+    }
+    const stuckHint =
+      ` Tokens that only exist on ${src.shortName} can't be bridged — they need a buyer there first.` +
+      (src.id === 2741 ? " Try selling them on an Abstract DEX, or Abstract's official Migration Hub (migrate.abs.xyz), then ask me again to move the proceeds." : "");
+    if (intents.length === 0)
+      return {
+        ok: false,
+        error: `None of your ${src.shortName} tokens can be moved out right now: ${skipped.join("; ")}.${skipped.some((x) => x.includes("no bridge or swap route")) ? stuckHint : ""}${nativeNote}`,
+      };
+    return {
+      ok: true,
+      build: {
+        intents,
+        summary:
+          `Move ${moved.join(", ")} off ${src.shortName} to ${command.toAsset} on ${dest.shortName}, one bridge each — review and sign every step.` +
+          (skipped.length
+            ? ` Can't be moved: ${skipped.join("; ")}.${skipped.some((x) => x.includes("no bridge or swap route")) ? stuckHint : ""}`
+            : "") +
+          nativeNote,
+      },
+    };
+  }
 
   /*
    * Same shape again: opening the add-liquidity form is a navigation, not a
@@ -714,7 +1248,451 @@ export async function buildIntents(
   }
 
   if (command.kind === "swap") {
-    const { amount, tokenIn, tokenOut } = command;
+    const { tokenIn, tokenOut } = command;
+
+    /*
+     * A relative amount ("swap half my USDC") carries a share of the balance, not
+     * a number — resolve it here, where the balance is readable, so "half" is
+     * exactly half with no model round trip. Integer math on base units means the
+     * result can never exceed what the wallet holds.
+     */
+    let amount = command.amount;
+    if (!amount && command.relative) {
+      if (!deps.tokenBalance) {
+        return {
+          ok: false,
+          error: `I can't read your ${tokenIn.symbol} balance to work out that share here. Tell me an amount instead.`,
+        };
+      }
+      const balance = await deps.tokenBalance(tokenIn.address);
+      if (balance === null) {
+        return {
+          ok: false,
+          error: `I couldn't read your ${tokenIn.symbol} balance just now. Try again, or tell me an amount.`,
+        };
+      }
+      const { num, den } = command.relative;
+      let wei = (balance * BigInt(num)) / BigInt(den);
+      /* Where the spend token IS the gas token (USDC on Arc — the 0x3600 ERC20 is
+         a face of the native balance), "all of it" to the last unit leaves nothing
+         to pay for the approvals and the swap that follow, and the plan fails at
+         signing. Hold a small reserve back whenever the share would dip into it;
+         a 10% or 50% share on a funded wallet is never touched. */
+      const reserve = gasTokenReserve(chainId, tokenIn);
+      if (reserve > 0n && wei > balance - reserve) {
+        wei = balance - reserve;
+        if (wei <= 0n) {
+          return {
+            ok: false,
+            error: `You need more than ${ethers.formatUnits(reserve, tokenIn.decimals)} ${tokenIn.symbol} for that — this much stays in your wallet to pay the network fee.`,
+          };
+        }
+      }
+      if (wei <= 0n) {
+        return {
+          ok: false,
+          error: `You don't have any ${tokenIn.symbol} to swap.`,
+        };
+      }
+      amount = ethers.formatUnits(wei, tokenIn.decimals);
+    }
+    if (!amount) {
+      // A swap with neither an absolute amount nor a share is not buildable.
+      return { ok: false, error: "How much do you want to swap?" };
+    }
+
+    /* Native <-> wrapped-native is a wrap, not a swap. Selecting the chain's
+       native currency against its wrapped-native ERC20 (WETH elsewhere, WUSDC on
+       Arc) is a 1:1 deposit()/withdraw() on the wrapped-native contract — no
+       pool, no route, no slippage — so it is built here rather than sent to a
+       quoter that has no pool for the pair. Reached from the swap form and from
+       Luca's swap verb alike; the picker offers WUSDC once it is registered. */
+    if (chainId !== undefined && contracts.wrappedNative) {
+      const wrapped = contracts.wrappedNative;
+      const inNative =
+        isNativeSentinel(tokenIn.address, "dex") ||
+        isNativeSentinel(tokenIn.address, "lending");
+      const outNative =
+        isNativeSentinel(tokenOut.address, "dex") ||
+        isNativeSentinel(tokenOut.address, "lending");
+      const inWrapped = tokenIn.address.toLowerCase() === wrapped.toLowerCase();
+      const outWrapped =
+        tokenOut.address.toLowerCase() === wrapped.toLowerCase();
+
+      if (inNative && outWrapped) {
+        return {
+          ok: true,
+          build: {
+            summary: `Wrap ${amount} ${tokenIn.symbol} into ${tokenOut.symbol}.`,
+            intents: [
+              {
+                kind: "wrapNative",
+                to: wrapped,
+                amount,
+                decimals: tokenIn.decimals,
+                symbol: tokenIn.symbol,
+                wrappedSymbol: tokenOut.symbol,
+                chainId,
+              },
+            ],
+          },
+        };
+      }
+      if (inWrapped && outNative) {
+        return {
+          ok: true,
+          build: {
+            summary: `Unwrap ${amount} ${tokenIn.symbol} into ${tokenOut.symbol}.`,
+            intents: [
+              {
+                kind: "unwrapNative",
+                to: wrapped,
+                amount,
+                decimals: tokenIn.decimals,
+                symbol: tokenIn.symbol,
+                nativeSymbol: tokenOut.symbol,
+                chainId,
+              },
+            ],
+          },
+        };
+      }
+    }
+
+    /* Argus launchpad (Arc): a BUY of a launch token routes DIRECT through
+       Uniswap v4 via our own argus libs, not KyberSwap. The pool is hooked and
+       taxed, and the aggregator can't reliably index a day-one launch, so we
+       read + quote + build the v4 calldata ourselves. Server-side (deps.argusPlan
+       → /api/argus/plan) because the fee receiver is a server-only env; here we
+       just assemble the signable steps. Pilot scope: BUYS only (USDC in), and
+       the branch is inert unless ARGUS_ENABLED (the route returns argus:false).
+       On a non-Argus token the route says so and we fall through to normal
+       routing below, so this never shadows an ordinary Arc swap. */
+    if (
+      chainId === ARGUS_CHAIN_ID &&
+      deps.argusPlan &&
+      tokenOut.tags?.includes("argus")
+    ) {
+      // Only a token named by address (the grammar's synthetic `argus`-tagged
+      // token) reaches here, so an ordinary "swap 10 USDC for KLD" on Arc never
+      // pays the launch-lookup round trip. Pilot is buys-only: the input must be
+      // USDC (on Arc the native gas token IS USDC), else refuse plainly rather
+      // than fall through to a confusing "no wrapped form" error.
+      const inIsUsdc =
+        tokenIn.address.toLowerCase() === ARC_USDC.toLowerCase() ||
+        isNativeSentinel(tokenIn.address, "dex") ||
+        isNativeSentinel(tokenIn.address, "lending");
+      if (!inIsUsdc) {
+        return {
+          ok: false,
+          error: `Buying an Argus launch is USDC-only for now — spend USDC, not ${tokenIn.symbol}.`,
+        };
+      }
+      // The pool's quote asset is the 6-dec ERC20 USDC (0x3600…), whatever
+      // representation the user picked. Approve, permit2, fee and swap all move
+      // that one address.
+      const amountInRaw = ethers.parseUnits(amount, ARC_USDC_DECIMALS).toString();
+      const ap = await deps.argusPlan({
+        tokenIn: ARC_USDC,
+        tokenOut: tokenOut.address,
+        amountInRaw,
+        slippageBps: opts.slippageBps,
+      });
+      if (ap && ap.argus) {
+        if (ap.blocked || !ap.to || !ap.data || !ap.tokenOut || !ap.swapAmountRaw) {
+          return {
+            ok: false,
+            error: ap.reason ?? "This Argus launch can't be traded right now.",
+          };
+        }
+        const out = ap.tokenOut;
+        /* The fee is taken inside the swap transaction (PERMIT2_TRANSFER_FROM
+           ahead of the V4_SWAP), so the user's whole input is what Permit2 must
+           allow and what the swap step spends — there is no separate fee step. */
+        const totalHuman = ethers.formatUnits(
+          ap.totalInRaw ?? amountInRaw,
+          ARC_USDC_DECIMALS,
+        );
+        const minOutHuman = ethers.formatUnits(
+          ap.amountOutMinimum ?? "0",
+          out.decimals,
+        );
+        // Permit2 allowance window: 30 days, the router's usual default.
+        const expiration = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+        const intents: Intent[] = [
+          // 1. ERC20 allowance to Permit2 for the whole input (swap + in-tx fee).
+          {
+            kind: "approve",
+            token: ARC_USDC,
+            spender: PERMIT2,
+            amount: totalHuman,
+            decimals: ARC_USDC_DECIMALS,
+            symbol: "USDC",
+            unlimited: true,
+          },
+          // 2. Permit2 → UniversalRouter allowance the swap transaction spends.
+          {
+            kind: "permit2Approve",
+            token: ARC_USDC,
+            spender: ap.to,
+            amount: totalHuman,
+            decimals: ARC_USDC_DECIMALS,
+            symbol: "USDC",
+            expiration,
+            unlimited: true,
+          },
+        ];
+        // 3. The swap — pre-built calldata, NOT rebuilt at sign time. Carries the
+        //    fee pull and the v4 swap in one execute().
+        intents.push({
+          kind: "argusSwap",
+          to: ap.to,
+          data: ap.data,
+          value: ap.value ?? "0",
+          tokenIn: ARC_USDC,
+          amountIn: totalHuman,
+          decimalsIn: ARC_USDC_DECIMALS,
+          symbolIn: "USDC",
+          tokenOut: out.address,
+          amountOut: String(ap.amountOut ?? 0),
+          amountOutMin: minOutHuman,
+          decimalsOut: out.decimals,
+          symbolOut: out.symbol,
+          chainId,
+          hook: ap.hook ?? "",
+        });
+        return {
+          ok: true,
+          build: {
+            summary: `Buy about ${ap.amountOut ?? "?"} ${out.symbol} with ${amount} USDC on Argus (Uniswap v4).`,
+            intents,
+          },
+        };
+      }
+      // ap null / argus:false → not an Argus launch; fall through to normal routing.
+    }
+
+    /* Argus SELL: the launch token is the SPEND side (grammar `argus`-tagged on
+       tokenIn). Same direct-v4 path, but the fee is taken IN-SWAP from the USDC
+       output (TAKE_PORTION) — so there's no separate transfer and the input isn't
+       reduced; the plan is [approve token→Permit2, permit2Approve token→router,
+       argusSwap]. USDC-out only for the pilot. */
+    if (
+      chainId === ARGUS_CHAIN_ID &&
+      deps.argusPlan &&
+      tokenIn.tags?.includes("argus")
+    ) {
+      const outIsUsdc =
+        tokenOut.address.toLowerCase() === ARC_USDC.toLowerCase() ||
+        isNativeSentinel(tokenOut.address, "dex") ||
+        isNativeSentinel(tokenOut.address, "lending");
+      if (!outIsUsdc) {
+        return {
+          ok: false,
+          error: `Selling an Argus launch is USDC-only for now — receive USDC, not ${tokenOut.symbol}.`,
+        };
+      }
+      // Argus clones a fixed 1e18-supply LaunchToken, so launch tokens are 18-dec;
+      // the grammar's synthetic token carries that and the server confirms it.
+      const amountInRaw = ethers.parseUnits(amount, tokenIn.decimals).toString();
+      const ap = await deps.argusPlan({
+        tokenIn: tokenIn.address,
+        tokenOut: ARC_USDC,
+        amountInRaw,
+        slippageBps: opts.slippageBps,
+      });
+      if (ap && ap.argus) {
+        if (ap.blocked || !ap.to || !ap.data || !ap.tokenIn || !ap.tokenOut) {
+          return {
+            ok: false,
+            error: ap.reason ?? "This Argus launch can't be traded right now.",
+          };
+        }
+        const inTok = ap.tokenIn; // launch token, server-confirmed symbol/decimals
+        const outTok = ap.tokenOut; // USDC
+        const minOutHuman = ethers.formatUnits(
+          ap.amountOutMinimum ?? "0",
+          outTok.decimals,
+        );
+        const expiration = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+        const intents: Intent[] = [
+          // 1. Allowance to Permit2 on the LAUNCH TOKEN — the whole amount, since
+          //    the fee comes off the output, not the input.
+          {
+            kind: "approve",
+            token: inTok.address,
+            spender: PERMIT2,
+            amount,
+            decimals: inTok.decimals,
+            symbol: inTok.symbol,
+            unlimited: true,
+          },
+          // 2. Permit2 → UniversalRouter allowance the v4 swap spends.
+          {
+            kind: "permit2Approve",
+            token: inTok.address,
+            spender: ap.to,
+            amount,
+            decimals: inTok.decimals,
+            symbol: inTok.symbol,
+            expiration,
+            unlimited: true,
+          },
+          // 3. The v4 swap — pre-built calldata; the 0.2% fee is TAKE_PORTION'd
+          //    from the USDC output in this same tx (no transfer step).
+          {
+            kind: "argusSwap",
+            to: ap.to,
+            data: ap.data,
+            value: ap.value ?? "0",
+            tokenIn: inTok.address,
+            amountIn: amount,
+            decimalsIn: inTok.decimals,
+            symbolIn: inTok.symbol,
+            tokenOut: outTok.address,
+            amountOut: String(ap.amountOut ?? 0),
+            amountOutMin: minOutHuman,
+            decimalsOut: outTok.decimals,
+            symbolOut: outTok.symbol,
+            chainId,
+            hook: ap.hook ?? "",
+          },
+        ];
+        return {
+          ok: true,
+          build: {
+            summary: `Sell ${amount} ${inTok.symbol} for about ${ap.amountOut ?? "?"} USDC on Argus (Uniswap v4).`,
+            intents,
+          },
+        };
+      }
+      // ap null / argus:false → not an Argus launch; fall through to normal routing.
+    }
+
+    /* KyberSwap as a venue: builds an [approve, aggregatorSwap] plan from the
+       route the aggregator returns, `{ ok: false }` when it has no route for
+       the pair, or null where KyberSwap isn't wired for this chain. Used two
+       ways below — as the only venue on chains where Kaleido runs no pools of
+       its own, and as a fallback when our own pools exist but hold no
+       liquidity for this pair yet (Arc at launch). The aggregator handles
+       wrapping, discovery and the calldata; we pair its router call with an
+       approve and our own fee (added server-side). */
+    const tryKyberSwap = async (): Promise<{
+      plan: PlanResult;
+      out: number;
+    } | null> => {
+      if (chainId === undefined || !hasKyberSwap(chainId) || !deps.swapRoute) {
+        return null;
+      }
+      /* Trade the ERC20 the aggregator can actually pull. On Arc "USDC" is the
+         native gas token, whose sentinel has no ERC20 code — an approve on it
+         dies "could not decode result data" — so route and approve its 0x3600
+         mirror instead. The user still sees the symbol (USDC); everything else
+         uses the mirror's address and decimals. A native input with no mirror
+         cannot be approved, so bail rather than build a doomed approve. */
+      /* Selling the chain's own wrapped-native (Arc's 0x8c6c, a WETH9 wrapper of
+         native USDC): the aggregator has never heard of it and answers "token not
+         found", so a large trade falls to our thin native pool. Route it like the
+         native currency — quote/pull the 0x3600 mirror — and prepend an unwrap
+         below so the wrapped balance becomes the native the mirror pulls. */
+      const sellIsWrapped =
+        !!contracts.wrappedNative &&
+        tokenIn.address.toLowerCase() === contracts.wrappedNative.toLowerCase();
+      const inTok = aggregatorToken(
+        chainId,
+        sellIsWrapped ? { ...tokenIn, isNative: true } : tokenIn,
+      );
+      const outTok = aggregatorToken(chainId, tokenOut);
+      if (inTok.isNative) return null;
+      /* Both the unwrap and the aggregator leg run at the mirror's 6 decimals; a
+         Max sell of an 18-decimal wrapped balance has more fractional digits than
+         that, so parseUnits(amount, 6) would throw. Truncate DOWN once and use the
+         same value for both legs — the sub-6dp remainder stays wrapped as dust
+         rather than stranding native the route was quoted to pull. */
+      const aggAmount = sellIsWrapped
+        ? truncDecimals(amount, inTok.decimals)
+        : amount;
+
+      const route = await deps.swapRoute({
+        tokenIn: inTok.address,
+        tokenOut: outTok.address,
+        amount: aggAmount,
+        decimalsIn: inTok.decimals,
+        decimalsOut: outTok.decimals,
+        slippageBps: opts.slippageBps,
+      });
+      if ("error" in route)
+        return { plan: { ok: false, error: route.error }, out: 0 };
+
+      const out = ethers.formatUnits(route.amountOut, outTok.decimals);
+      const minOut = (Number(out) * (1 - opts.slippageBps / 10000)).toFixed(
+        outTok.decimals > 6 ? 6 : outTok.decimals,
+      );
+      const approve: Intent = {
+        kind: "approve",
+        token: inTok.address,
+        spender: route.spender,
+        amount: aggAmount,
+        decimals: inTok.decimals,
+        symbol: inTok.symbol,
+      };
+      const swap: Intent = {
+        kind: "aggregatorSwap",
+        to: route.to,
+        data: route.data,
+        value: "0",
+        tokenIn: inTok.address,
+        amountIn: aggAmount,
+        decimalsIn: inTok.decimals,
+        symbolIn: inTok.symbol,
+        tokenOut: outTok.address,
+        amountOut: out,
+        amountOutMin: minOut,
+        decimalsOut: outTok.decimals,
+        symbolOut: outTok.symbol,
+        chainId,
+        venue: route.venue,
+        spender: route.spender,
+        slippageBps: opts.slippageBps,
+      };
+      const unwrap: Intent | null = sellIsWrapped
+        ? {
+            kind: "unwrapNative",
+            to: contracts.wrappedNative!,
+            amount: aggAmount,
+            decimals: tokenIn.decimals,
+            symbol: tokenIn.symbol,
+            nativeSymbol:
+              nativeSwapErc20(chainId, inTok.address)?.symbol ?? tokenIn.symbol,
+            chainId,
+          }
+        : null;
+      return {
+        plan: {
+          ok: true,
+          build: {
+            summary: `Swap ${aggAmount} ${tokenIn.symbol} for about ${out} ${tokenOut.symbol}.`,
+            intents: unwrap ? [unwrap, approve, swap] : [approve, swap],
+          },
+        },
+        out: Number(out),
+      };
+    };
+
+    /* Chains where Kaleido runs no pools of its own route through KyberSwap
+       rather than the V3 machinery below — Arc, whose liquidity is Uniswap
+       V3/V4 our fork quoter cannot read. Taken before the poolSide/venue path
+       because none of it applies. */
+    if (
+      chainId !== undefined &&
+      !contracts.v3Router &&
+      fallbackVenues(chainId).length === 0 &&
+      hasKyberSwap(chainId) &&
+      deps.swapRoute
+    ) {
+      const kyber = await tryKyberSwap();
+      if (kyber) return kyber.plan;
+    }
 
     /* Before quoting, not after: a chain with no router cannot fill this order
        however good the price is, and the quote is a network round trip. */
@@ -809,22 +1787,71 @@ export async function buildIntents(
               decimalsOut,
               quoter,
             });
+    const sources = [
+      { quote: quoterFor(), router: contracts.v3Router, venue: null },
+      ...fallbackVenues(chainId).map((venue) => ({
+        quote: quoterFor(venue.quoter),
+        router: venue.router,
+        venue,
+      })),
+    ];
+    /* The price-impact guard, on unless a caller explicitly turned it off. A
+       quote existing is not the pool being able to fill this size: a dust pool
+       returns a positive number while it walks to the end of its range. */
+    const impactCeiling =
+      opts.impactCeiling === null
+        ? undefined
+        : (opts.impactCeiling ?? MAX_PRICE_IMPACT);
     const path = await findRouteAcrossSources(
       chainId,
       sell.token,
       buy.token,
       amount,
-      [
-        { quote: quoterFor(), router: contracts.v3Router, venue: null },
-        ...fallbackVenues(chainId).map((venue) => ({
-          quote: quoterFor(venue.quoter),
-          router: venue.router,
-          venue,
-        })),
-      ],
+      sources,
+      impactCeiling !== undefined ? { impactCeiling } : {},
     );
 
+    /* Best execution, not "our pool if it fills at all". Also quote the
+       aggregator, and route to whichever gives the user more output — the same
+       comparison the Swap page makes, so the card and the chat agree. Our Arc
+       pools are seed-shallow, so a trade larger than their depth is almost pure
+       price impact; KyberSwap's deep Uniswap V4 liquidity wins for those, our
+       pool + fee wins for the rest, with no slippage threshold to tune. Both
+       outputs are the same asset (a non-native token either way; native USDC is
+       0x8c6c 18-dec our-pool vs 0x3600 6-dec aggregator, both $1) so the human
+       amounts compare directly. */
+    const kyber = await tryKyberSwap();
+
     if (!path) {
+      /* Our own pools returned no route — at Arc's launch the fork's pools
+         exist but hold no liquidity yet. Fall back to the aggregator before
+         refusing, so a swap still fills off external liquidity. */
+      if (kyber?.plan.ok) return kyber.plan;
+
+      /* Refused for impact, not absent: say so. "There's no pool" would be
+         false — the pool exists, it just can't fill this size — and the user's
+         next move (a smaller amount) is different from the one "no pool"
+         implies. Only paid on this refusal path, and only when the guard ran. */
+      if (impactCeiling !== undefined) {
+        const shallow = await findRouteAcrossSources(
+          chainId,
+          sell.token,
+          buy.token,
+          amount,
+          sources,
+        );
+        if (shallow) {
+          return {
+            ok: false,
+            error:
+              `The ${tokenIn.symbol}/${tokenOut.symbol} pool is too shallow for ` +
+              `${amount} ${tokenIn.symbol} — the trade would lose more than ` +
+              `${Math.round(impactCeiling * 100)}% to price impact, and no ` +
+              `aggregator route was found. Try a smaller amount.`,
+          };
+        }
+      }
+
       return {
         ok: false,
         error:
@@ -837,6 +1864,12 @@ export async function buildIntents(
               .join(" or ") || "another token"
           } either.`,
       };
+    }
+
+    /* Our pool filled, but if the aggregator gives strictly more, take it —
+       this is what stops a big order from draining a shallow pool. */
+    if (kyber?.plan.ok && kyber.out > Number(path.amountOut)) {
+      return kyber.plan;
     }
 
     const out = path.amountOut;
@@ -1268,7 +2301,9 @@ export async function buildIntents(
    * Kaleido's contracts entirely.
    */
   if (command.kind === "send") {
-    const { amount, token, to } = command;
+    const { amount, to } = command;
+    let token: { address: string; symbol: string; decimals: number } =
+      command.token;
 
     let recipient: string;
     try {
@@ -1286,6 +2321,38 @@ export async function buildIntents(
         ok: false,
         error: `${to} isn't a valid recipient address. Copy it again from your wallet or an explorer — one wrong character is unrecoverable once it's sent.`,
       };
+    }
+
+    /* The chain the send was asked for ("… on Base"). Resolved, and the token
+       RE-RESOLVED there by symbol: the grammar matched it against the connected
+       chain's registry, and Base's USDC is a different contract from Arc's. A
+       token that chain doesn't carry is not sent anywhere else instead — it is
+       offered as a bridge (sendShortfall). */
+    let sendChainId = chainId;
+    if (command.chain) {
+      const target = resolveChain(command.chain);
+      if (!target) {
+        return {
+          ok: false,
+          error: `I don't recognise the chain "${command.chain}".`,
+        };
+      }
+      if (target.id !== chainId) {
+        const there =
+          resolveUserToken(CHAINS_BY_ID[target.id], token.symbol, "dex") ??
+          resolveUserToken(CHAINS_BY_ID[target.id], token.symbol, "lending");
+        if (!there) {
+          return sendShortfall(deps, {
+            amount,
+            token: command.token,
+            chainId: target.id,
+            why: `I can't find ${token.symbol} on ${target.shortName}.`,
+            then: command,
+          });
+        }
+        sendChainId = target.id;
+        token = there;
+      }
     }
 
     // Decimals come from the token the parser matched, never a default: a
@@ -1310,12 +2377,43 @@ export async function buildIntents(
       isNativeSentinel(token.address, "dex") ||
       isNativeSentinel(token.address, "lending");
 
+    /* Enough of it on the chain it's being sent from? Checked here, not only at
+       sign time, because the answer to "no" is a different plan — a bridge from
+       wherever the token IS — and that belongs in the conversation. A balance
+       that can't be read passes (the sign flow's shortfall check still runs). */
+    if (sendChainId !== undefined && deps.balanceOn) {
+      const have = await deps.balanceOn(sendChainId, token.address, isNative);
+      const want = ethers.parseUnits(amount, token.decimals);
+      if (have !== null && have < want) {
+        const chainName =
+          CHAINS_BY_ID[sendChainId]?.shortName ?? `chain ${sendChainId}`;
+        return sendShortfall(deps, {
+          /* Only what's missing — bridging the whole send would strand the
+             balance already there. */
+          amount: plainUnits(ethers.formatUnits(want - have, token.decimals)),
+          token: command.token,
+          chainId: sendChainId,
+          then: command,
+          why:
+            have === 0n
+              ? `You don't have any ${token.symbol} on ${chainName}.`
+              : `You have ${ethers.formatUnits(have, token.decimals)} ${token.symbol} on ${chainName}, not ${amount}.`,
+        });
+      }
+    }
+
+    const onOtherChain =
+      sendChainId !== undefined && sendChainId !== chainId;
+    const chainLabel = onOtherChain
+      ? ` on ${CHAINS_BY_ID[sendChainId!]?.shortName ?? `chain ${sendChainId}`}`
+      : "";
+
     return {
       ok: true,
       build: {
         // The full address, not a truncation — see the transfer renderer in
         // definitions.ts for why abbreviating this one is unsafe.
-        summary: `Send ${amount} ${token.symbol} to ${recipient}.`,
+        summary: `Send ${amount} ${token.symbol}${chainLabel} to ${recipient}.`,
         intents: [
           {
             kind: "transfer",
@@ -1325,6 +2423,13 @@ export async function buildIntents(
             decimals: token.decimals,
             symbol: token.symbol,
             isNative,
+            /* ALWAYS pinned, not only when it differs from the connected chain.
+               An unpinned send is signed on whatever chain the wallet is on at
+               signing time; a follow-up send built while on BSC and signed back
+               on Arc called BSC's USDC address on Arc — no contract there, so it
+               "succeeded" and moved nothing (0x7f6662a5…, 2026-10-03). Pinned,
+               the resolver refuses any other chain and the sign flow switches. */
+            ...(sendChainId !== undefined ? { chainId: sendChainId } : {}),
           },
         ],
       },
@@ -1355,7 +2460,9 @@ export async function buildIntents(
    * prices the notional against the per-action cap.
    */
   if (command.kind === "bridge") {
-    const { amount, token, toChain } = command;
+    const { token, toChain, fromChain, toAsset } = command;
+    /* Mutable only for a funding bridge's top-up (receiveAtLeast, below). */
+    let amount = command.amount;
 
     // A bridge is defined by the chain it leaves. Without one there is no
     // corridor to resolve and no `fromChainId` for the Intent, so refuse here
@@ -1367,29 +2474,178 @@ export async function buildIntents(
       };
     }
 
-    if (!isParsableAmount(amount, token.decimals)) {
+    /* The source chain. Default is the connected chain — the only source a bridge
+       could mean before an explicit "from X". When the user names one, resolve
+       and validate it: it must be a chain we can bridge from (a mainnet chain the
+       aggregator indexes), and — the subtlety — the asset must be RE-RESOLVED on
+       that chain, because the grammar matched `token` against the CONNECTED
+       chain's registry and BNB's USDC is a different address and decimals than
+       Arc's. Signing the source's own token is what makes the resolver's
+       cross-check pass; carrying the connected chain's would refuse. */
+    let sourceChainId = chainId;
+    /* Only the fields the route + intents read, so both the grammar's `IToken`
+       and the registry's `TokenEntry` (which the source lookup returns) fit. */
+    let srcToken: { address: string; symbol: string; decimals: number } = token;
+    if (fromChain) {
+      const src = resolveChain(fromChain);
+      if (!src) {
+        return {
+          ok: false,
+          error: `I don't recognise the source chain "${fromChain}".`,
+        };
+      }
+      if (src.network !== "mainnet") {
+        return {
+          ok: false,
+          error: `I can only bridge from a mainnet chain, and ${src.shortName} is a testnet. Switch to the mainnet you want to bridge from.`,
+        };
+      }
+      if (src.id !== chainId) {
+        const onSource =
+          resolveUserToken(CHAINS_BY_ID[src.id], token.symbol, "dex") ??
+          resolveUserToken(CHAINS_BY_ID[src.id], token.symbol, "lending");
+        if (!onSource) {
+          return {
+            ok: false,
+            error: `I couldn't find ${token.symbol} on ${src.shortName}, so there's nothing to bridge from there.`,
+          };
+        }
+        sourceChainId = src.id;
+        srcToken = onSource;
+      }
+    }
+
+    /* Arc's USDC IS its native gas token, so `resolveUserToken` hands back the
+       18-decimal native sentinel. CCTP cannot burn that — it burns the 6-decimal
+       ERC20 face of the very same balance (the 0x3600 predeploy on Arc, the
+       `native-alias`). Left as the sentinel, the bridge branch below would take
+       the native path (no approve, a value-bearing tx) and the resolver's CCTP
+       leg would refuse a native-flagged USDC, dropping the most important
+       corridor — USDC out of Arc — through to an aggregator that does not carry
+       it. So on a genuine CCTP corridor, re-point the source asset at that ERC20
+       alias: the plan then approves and burns the token, at 6 decimals, exactly
+       what `buildCctpBurnRoute` expects. Scoped to a live CCTP corridor for USDC
+       so no other route's token choice changes, and inert while the flag is off. */
+    /* A cross-asset bridge (BNB→USDC): the destination token is a DIFFERENT
+       asset, resolved on the destination chain. Same-asset bridges leave this
+       undefined and behave exactly as before. Resolve it here so the branch can
+       gate CCTP/canonical (both same-asset) off it and hand the resolver an
+       output to cross-check. */
+    let destToken:
+      | { address: string; symbol: string; decimals: number }
+      | undefined;
+    if (toAsset) {
+      const dest = resolveChain(toChain);
+      if (!dest) {
+        return { ok: false, error: `I don't recognise the chain "${toChain}".` };
+      }
+      const onDest =
+        resolveUserToken(CHAINS_BY_ID[dest.id], toAsset, "dex") ??
+        resolveUserToken(CHAINS_BY_ID[dest.id], toAsset, "lending");
+      if (!onDest) {
+        return {
+          ok: false,
+          error: `I couldn't find ${toAsset} on ${dest.shortName} to receive into.`,
+        };
+      }
+      destToken = onDest;
+    }
+    const crossAsset =
+      !!destToken &&
+      destToken.symbol.toUpperCase() !== srcToken.symbol.toUpperCase();
+
+    const cctpBurnAlias = CCTP_USDC[sourceChainId];
+    if (
+      CCTP_ENABLED &&
+      !crossAsset &&
+      srcToken.symbol.toUpperCase() === "USDC" &&
+      cctpBurnAlias &&
+      (isNativeSentinel(srcToken.address, "dex") ||
+        isNativeSentinel(srcToken.address, "lending")) &&
+      isCctpCorridor(sourceChainId, resolveChain(toChain)?.id)
+    ) {
+      srcToken = { address: cctpBurnAlias, symbol: "USDC", decimals: 6 };
+    }
+
+    if (!isParsableAmount(amount, srcToken.decimals)) {
       return {
         ok: false,
-        error: `${amount} is more precision than ${token.symbol} has — it holds ${token.decimals} decimal places.`,
+        error: `${amount} is more precision than ${srcToken.symbol} has — it holds ${srcToken.decimals} decimal places.`,
       };
     }
 
     // Same either-sentinel test as send: native is a wallet fact here, not a
     // protocol convention, so both the DEX and lending sentinels count.
     const isNative =
-      isNativeSentinel(token.address, "dex") ||
-      isNativeSentinel(token.address, "lending");
+      isNativeSentinel(srcToken.address, "dex") ||
+      isNativeSentinel(srcToken.address, "lending");
 
-    const route = await deps.bridgeRoute({
-      toChain,
-      asset: token.symbol,
-      amount,
-      decimals: token.decimals,
-      isNative,
-      tokenAddress: token.address,
-    });
+    const quoteFor = (amt: string) =>
+      deps.bridgeRoute({
+        ...(command.recipient ? { recipient: command.recipient } : {}),
+        toChain,
+        asset: srcToken.symbol,
+        amount: amt,
+        decimals: srcToken.decimals,
+        isNative,
+        tokenAddress: srcToken.address,
+        sourceChainId,
+        ...(crossAsset && destToken
+          ? {
+              toAsset: destToken.symbol,
+              toTokenAddress: destToken.address,
+              toDecimals: destToken.decimals,
+            }
+          : {}),
+      });
+    let route = await quoteFor(amount);
     if ("error" in route) {
       return { ok: false, error: route.error };
+    }
+
+    /* A FUNDING bridge (it exists so a send can follow) must deliver at least
+       what the send needs, so top the amount up by what the route keeps. Uses
+       the route's own report of what arrives — its guaranteed floor when it has
+       one, else its expected output — scaled between the two chains' decimals
+       (BSC's USDC is 18, Base's 6), plus 10% of the gap for price drift, and
+       re-quotes to prove it. A route that reports nothing (canonical 1:1) is
+       taken as 1:1. Same-asset only: a cross-asset bridge has its own floor. */
+    let toppedUp = false;
+    if (command.receiveAtLeast && !crossAsset) {
+      const destMeta = resolveChain(toChain);
+      const destEntry = destMeta
+        ? (resolveUserToken(CHAINS_BY_ID[destMeta.id], srcToken.symbol, "dex") ??
+          resolveUserToken(CHAINS_BY_ID[destMeta.id], srcToken.symbol, "lending"))
+        : undefined;
+      const destDecimals = destEntry?.decimals ?? srcToken.decimals;
+      const target = ethers.parseUnits(command.receiveAtLeast, destDecimals);
+      const toSrc = (destUnits: bigint) => {
+        const d = srcToken.decimals - destDecimals;
+        if (d >= 0) return destUnits * 10n ** BigInt(d);
+        const div = 10n ** BigInt(-d);
+        return (destUnits + div - 1n) / div; // round UP: never under-fund
+      };
+      for (let i = 0; i < 3; i++) {
+        const reported = route.minReceivedUnits ?? route.receivedUnits;
+        if (reported == null) break;
+        const got = BigInt(reported);
+        if (got >= target) break;
+        const gap = toSrc(target - got);
+        const next =
+          ethers.parseUnits(amount, srcToken.decimals) + gap + gap / 10n + 1n;
+        amount = ethers.formatUnits(next, srcToken.decimals);
+        const requoted = await quoteFor(amount);
+        if ("error" in requoted) return { ok: false, error: requoted.error };
+        route = requoted;
+        toppedUp = true;
+      }
+      const finalReported = route.minReceivedUnits ?? route.receivedUnits;
+      if (finalReported != null && BigInt(finalReported) < target) {
+        return {
+          ok: false,
+          error: `I couldn't find a ${srcToken.symbol} route to ${destMeta?.shortName ?? toChain} that's sure to deliver ${command.receiveAtLeast} after fees — the quotes kept moving. Try again in a moment.`,
+        };
+      }
     }
 
     /* A token leg with no spender cannot be signed: the router would have no
@@ -1403,21 +2659,50 @@ export async function buildIntents(
       };
     }
 
+    const fromName =
+      sourceChainId !== chainId
+        ? (CHAINS_BY_ID[sourceChainId]?.shortName ?? `chain ${sourceChainId}`)
+        : null;
+    /* A cross-asset route delivers a different token, so the row names both
+       sides and its expected output; the resolver returns the delivered token +
+       floor. A same-asset bridge keeps the 1:1 phrasing it always had. */
+    const outHuman =
+      crossAsset && route.toToken && route.receivedUnits && route.toDecimals
+        ? ethers.formatUnits(route.receivedUnits, route.toDecimals)
+        : null;
+    const srcPhrase = fromName
+      ? `${amount} ${srcToken.symbol} from ${fromName}`
+      : `${amount} ${srcToken.symbol}`;
+    const topUpNote =
+      command.receiveAtLeast && !crossAsset
+        ? toppedUp
+          ? ` That covers the bridge's fees, so at least ${command.receiveAtLeast} ${srcToken.symbol} arrives for your send.`
+          : ` At least ${command.receiveAtLeast} ${srcToken.symbol} arrives for your send.`
+        : "";
     return {
       ok: true,
       build: {
-        summary: `Bridge ${amount} ${token.symbol} to ${route.toChainName}.`,
+        summary:
+          (crossAsset && route.toSymbol && outHuman
+            ? `Bridge ${srcPhrase} to about ${outHuman} ${route.toSymbol} on ${route.toChainName}.`
+            : fromName
+              ? `Bridge ${amount} ${srcToken.symbol} from ${fromName} to ${route.toChainName}.`
+              : `Bridge ${amount} ${srcToken.symbol} to ${route.toChainName}.`) +
+          (command.recipient
+            ? ` Delivered to ${command.recipient} on ${route.toChainName}, not to your wallet — check every character.`
+            : "") +
+          topUpNote,
         intents: [
           ...(isNative
             ? []
             : ([
                 {
                   kind: "approve",
-                  token: token.address,
+                  token: srcToken.address,
                   spender: route.spender!,
                   amount,
-                  decimals: token.decimals,
-                  symbol: token.symbol,
+                  decimals: srcToken.decimals,
+                  symbol: srcToken.symbol,
                 },
               ] as Intent[])),
           {
@@ -1425,18 +2710,31 @@ export async function buildIntents(
             to: route.to,
             data: route.data,
             value: route.value,
-            token: token.address,
+            token: srcToken.address,
             amount,
-            decimals: token.decimals,
-            symbol: token.symbol,
-            fromChainId: chainId,
+            decimals: srcToken.decimals,
+            symbol: srcToken.symbol,
+            fromChainId: sourceChainId,
             toChainId: route.toChainId,
             toChainName: route.toChainName,
             provider: route.provider,
             etaSeconds: route.etaSeconds,
             isNative,
+            ...(command.recipient ? { recipient: command.recipient } : {}),
             ...(route.spender ? { spender: route.spender } : {}),
             ...(route.gasLimit ? { gasLimit: route.gasLimit } : {}),
+            ...(crossAsset && route.toToken && route.toDecimals
+              ? {
+                  toToken: route.toToken,
+                  toDecimals: route.toDecimals,
+                  toSymbol: route.toSymbol,
+                  amountOut: outHuman ?? undefined,
+                  amountOutMin: route.minReceivedUnits
+                    ? ethers.formatUnits(route.minReceivedUnits, route.toDecimals)
+                    : undefined,
+                  minReceivedUnits: route.minReceivedUnits,
+                }
+              : {}),
           },
         ],
       },
@@ -1700,12 +2998,59 @@ export async function buildIntents(
     };
   }
 
+  if (command.kind === "withdraw" && command.all) {
+    /* "withdraw all": every FREE unit — the figure withdrawCollateral itself
+       bounds by — read now, not guessed. Collateral earmarked to a funded loan is
+       not free and stays; the health check on chain still judges the rest. */
+    let wanted: { address: string; symbol: string } | undefined;
+    if (command.token) {
+      const cur = toLendingCurrency(chainId, "collateral", command.token.symbol);
+      if (!cur) return unsupported(chainId, "collateral", command.token.symbol);
+      wanted = cur;
+    }
+    const free = deps.freeCollateral ? await deps.freeCollateral().catch(() => null) : null;
+    if (!free) {
+      return {
+        ok: false,
+        error: `I couldn't read your free collateral just now, so I can't work out "all". Try again, or name an amount, e.g. "withdraw 20 ${wanted?.symbol ?? "EURC"}".`,
+      };
+    }
+    const rows = free.filter(
+      (f) => f.raw > 0n && (!wanted || f.address.toLowerCase() === wanted.address.toLowerCase()),
+    );
+    if (rows.length === 0) {
+      return {
+        ok: false,
+        error: `You have no free ${wanted ? `${wanted.symbol} ` : ""}collateral to withdraw on this chain. Collateral backing an open loan stays locked until the loan is repaid.`,
+      };
+    }
+    const legs = rows.map((f) => ({ ...f, amount: ethers.formatUnits(f.raw, f.decimals) }));
+    return {
+      ok: true,
+      build: {
+        summary: `Withdraw all your free collateral: ${legs.map((l) => `${l.amount} ${l.symbol}`).join(", ")}.`,
+        intents: legs.map(
+          (l) =>
+            ({
+              kind: "withdrawCollateral",
+              diamond,
+              token: l.address,
+              amount: l.amount,
+              decimals: l.decimals,
+              symbol: l.symbol,
+            }) as Intent,
+        ),
+      },
+    };
+  }
+
   if (command.kind === "withdraw") {
-    const { amount } = command;
+    const amount = command.amount as string;
     /* Same gate as deposit — withdrawCollateral carries `_isTokenAllowed` too,
        so a token whose feed was removed cannot be withdrawn either. */
-    const cur = toLendingCurrency(chainId, "collateral", command.token.symbol);
-    if (!cur) return unsupported(chainId, "collateral", command.token.symbol);
+    const token = command.token as IToken;
+    const cur = toLendingCurrency(chainId, "collateral", token.symbol);
+    if (!cur) return unsupported(chainId, "collateral", token.symbol);
     return {
       ok: true,
       build: {
@@ -1733,11 +3078,66 @@ export async function buildIntents(
     /* The facet refuses to lend a token this wallet has posted as collateral. */
     const blocked = await borrowBlockedByCollateral(deps, cur);
     if (blocked) return blocked;
+    /* "borrow 100 USDC against 150 EURC": deposit first, in the same plan, and
+       count it toward capacity — the check would otherwise refuse the loan for
+       collateral that is one step away. */
+    const backing: Intent[] = [];
+    const pending: PendingCollateral[] = [];
+    let backingText = "";
+    if (command.collateral) {
+      const coll = toLendingCurrency(chainId, "collateral", command.collateral.token.symbol);
+      if (!coll) return unsupported(chainId, "collateral", command.collateral.token.symbol);
+      if (coll.address.toLowerCase() === cur.address.toLowerCase()) {
+        return {
+          ok: false,
+          error: `You can't borrow ${cur.symbol} against ${cur.symbol} — the protocol won't lend a token you've posted as collateral. Back it with a different asset.`,
+        };
+      }
+      const collAmount = command.collateral.amount;
+      const collNative = isLendingNative(coll.address);
+      if (!collNative) {
+        backing.push({
+          kind: "approve",
+          token: coll.address,
+          spender: diamond,
+          amount: collAmount,
+          decimals: coll.decimals,
+          symbol: coll.symbol,
+        });
+      }
+      backing.push({
+        kind: "depositCollateral",
+        diamond,
+        token: coll.address,
+        amount: collAmount,
+        decimals: coll.decimals,
+        symbol: coll.symbol,
+        isNative: collNative,
+      });
+      try {
+        pending.push({ token: coll.address, amountRaw: ethers.parseUnits(collAmount, coll.decimals), decimals: coll.decimals });
+      } catch {
+        /* unparseable → not counted; the check under-counts, never over */
+      }
+      backingText = `Deposit ${collAmount} ${coll.symbol} as collateral, then post`;
+    }
+    const refused = await lendingRefusal(deps, {
+      action: "borrow",
+      token: cur.address,
+      symbol: cur.symbol,
+      amount,
+      decimals: cur.decimals,
+      pending,
+      interestBps: Math.round(interestPct * 100),
+      seconds: Math.round(days * 86400),
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
-        summary: `Post a request to borrow ${amount} ${cur.symbol} at ${interestPct}% for ${days} days. It fills when a lender takes it.`,
+        summary: `${backingText || "Post"} a request to borrow ${amount} ${cur.symbol} at ${interestPct}% for ${days} days. It fills when a lender takes it.`,
         intents: [
+          ...backing,
           {
             kind: "createLendingRequest",
             diamond,
@@ -1760,6 +3160,14 @@ export async function buildIntents(
     if (!cur) return unsupported(chainId, "loanable", command.token.symbol);
     const token = cur;
     const isNative = isLendingNative(cur.address);
+    const refused = await lendingRefusal(deps, {
+      action: "lend",
+      token: cur.address,
+      symbol: cur.symbol,
+      amount,
+      decimals: cur.decimals,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
@@ -1769,12 +3177,10 @@ export async function buildIntents(
         // state; the Borrow page is where that gets chosen deliberately.
         summary: `Offer ${amount} ${token.symbol} to lend at ${interestPct}% for ${days} days, drawn in one piece.`,
         intents: [
-          // Kept although it is unreachable on all five deployed chains: the
-          // native sentinel is registered collateral everywhere and loanable
-          // nowhere, so the guard above refuses `lend ETH` before this runs.
-          // That is on-chain state one owner transaction changes, not an
-          // invariant, and createLoanListing does take native value — so
-          // deleting the branch would break the day it is registered.
+          // Native loans skip the approve and ride as value on
+          // createLoanListing. Live on Arc, where native USDC (address(1)) is
+          // the loanable asset; on the five testnets the sentinel is registered
+          // as collateral only, so the guard above refuses `lend ETH` there.
           ...(isNative
             ? []
             : ([
@@ -1841,6 +3247,16 @@ export async function buildIntents(
       symbol,
     });
     if (blocked) return blocked;
+    const refused = await lendingRefusal(deps, {
+      action: "takeListing",
+      token: row.tokenAddress,
+      symbol,
+      amount: command.amount,
+      decimals,
+      interestBps: row.interestBps,
+      seconds: row.returnDate ? row.returnDate - Math.floor(Date.now() / 1000) : undefined,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
@@ -1872,6 +3288,14 @@ export async function buildIntents(
     const { symbol, decimals } = described;
     const isNative = isLendingNative(row.tokenAddress);
     const amount = ethers.formatUnits(BigInt(row.amount), decimals);
+    const refused = await lendingRefusal(deps, {
+      action: "fill",
+      token: row.tokenAddress,
+      symbol,
+      amount,
+      decimals,
+    });
+    if (refused) return refused;
     return {
       ok: true,
       build: {
@@ -2220,9 +3644,39 @@ export async function buildIntents(
       };
     }
 
-    /* null price, not zero. A pool that does not exist has no market, and the two
-       amounts below will set its opening price — which is exactly why a band is
-       refused in that case rather than centred on something. */
+    /* A priced pool can size the omitted side at the current market price. A
+       pool with no price cannot: both amounts are needed to establish its
+       opening ratio, so keep that case explicit and safe. */
+    let resolvedAmount0 = amount0;
+    let resolvedAmount1 = amount1;
+    if (!resolvedAmount0 && !resolvedAmount1) {
+      return { ok: false, error: `Tell me how much ${token0.symbol} or ${token1.symbol} to add.` };
+    }
+    if (!resolvedAmount0 || !resolvedAmount1) {
+      if (!state || state.price === null || !Number.isFinite(state.price) || state.price <= 0) {
+        return {
+          ok: false,
+          error: `I can calculate the other side only from a live ${token0.symbol}/${token1.symbol} price. This pool has no price yet, so give me both amounts to set its opening price.`,
+        };
+      }
+      const trim = (n: number, decimals: number) =>
+        n.toFixed(Math.min(decimals, 18)).replace(/\.?0+$/, "");
+      if (resolvedAmount0)
+        resolvedAmount1 = trim(Number(resolvedAmount0) * state.price, token1.decimals);
+      else
+        resolvedAmount0 = trim(Number(resolvedAmount1) / state.price, token0.decimals);
+    }
+
+    /* The branch above fills the missing side from the live price, but TypeScript
+       correctly keeps the original optional types after mutation. Establish a
+       local invariant before handing values to the intent builder so no partial
+       approve or mint can ever be emitted. */
+    if (!resolvedAmount0 || !resolvedAmount1) {
+      return { ok: false, error: `Tell me both ${token0.symbol} and ${token1.symbol} amounts.` };
+    }
+    const finalAmount0 = resolvedAmount0;
+    const finalAmount1 = resolvedAmount1;
+
     const spot = state ? state.price : null;
 
     const ticks = ticksForRange(
@@ -2235,8 +3689,8 @@ export async function buildIntents(
     if ("error" in ticks) return { ok: false, error: ticks.error };
 
     const floors = mintMinimums({
-      amount0,
-      amount1,
+      amount0: finalAmount0,
+      amount1: finalAmount1,
       decimals0: token0.decimals,
       decimals1: token1.decimals,
       tickLower: ticks.tickLower,
@@ -2251,14 +3705,14 @@ export async function buildIntents(
       n >= 1000 ? n.toFixed(2) : n.toPrecision(6).replace(/\.?0+$/, "");
     const where = state
       ? `between ${priced(ticks.lowerPrice)} and ${priced(ticks.upperPrice)} ${token1.symbol} per ${token0.symbol}`
-      : `across the full range, opening the pool at ${priced(Number(amount1) / Number(amount0))} ${token1.symbol} per ${token0.symbol}`;
+      : `across the full range, opening the pool at ${priced(Number(finalAmount1) / Number(finalAmount0))} ${token1.symbol} per ${token0.symbol}`;
 
     return {
       ok: true,
       build: {
         summary: state
-          ? `Add ${amount0} ${token0.symbol} and ${amount1} ${token1.symbol} to the ${pair} ${fee / 10_000}% pool, ${where}.`
-          : `Create the ${pair} ${fee / 10_000}% pool with ${amount0} ${token0.symbol} and ${amount1} ${token1.symbol}, ${where}.`,
+          ? `Add ${finalAmount0} ${token0.symbol} and ${finalAmount1} ${token1.symbol} to the ${pair} ${fee / 10_000}% pool, ${where}.`
+          : `Create the ${pair} ${fee / 10_000}% pool with ${finalAmount0} ${token0.symbol} and ${finalAmount1} ${token1.symbol}, ${where}.`,
         intents: [
           /* Two approves, because two tokens leave the wallet. Both authorise the
              position manager and not the router — a mint is not a swap, and an
@@ -2267,7 +3721,7 @@ export async function buildIntents(
             kind: "approve",
             token: token0.address,
             spender: positionManager,
-            amount: amount0,
+            amount: finalAmount0,
             decimals: token0.decimals,
             symbol: token0.symbol,
           },
@@ -2275,7 +3729,7 @@ export async function buildIntents(
             kind: "approve",
             token: token1.address,
             spender: positionManager,
-            amount: amount1,
+            amount: finalAmount1,
             decimals: token1.decimals,
             symbol: token1.symbol,
           },
@@ -2291,8 +3745,8 @@ export async function buildIntents(
             fee,
             tickLower: ticks.tickLower,
             tickUpper: ticks.tickUpper,
-            amount0,
-            amount1,
+            amount0: finalAmount0,
+            amount1: finalAmount1,
             amount0Min: floors.amount0Min,
             amount1Min: floors.amount1Min,
             lowerPrice: ticks.lowerPrice,
@@ -2588,6 +4042,30 @@ export async function buildIntents(
         ? "all liquidity"
         : `${percent}% of the liquidity`;
 
+    /* Slippage floors for the withdrawal — the least of each token the pool must
+       return, or it reverts. decreaseLiquidity sent 0/0, so a remove accepted any
+       split the pool gave at execution and was sandwichable on the way out. The
+       floor is computed conservatively from the position's amounts at the current
+       price (see removeMinimums), and degrades to 0 — the old behaviour — when the
+       pool cannot be read, so it can never brick a legitimate removal. This is the
+       one read this branch makes, and a failed read is not a reason to refuse a
+       removal, only to skip its floor. */
+    /* The decimals only feed poolState's `price`, which this branch does not use
+       — the floor reads sqrtPriceX96, which is raw and decimal-agnostic — so an
+       unknown-decimals token falls back to 18 here without affecting the floor. */
+    const dec0 = declaredDecimals(chainId, pos.token0) ?? 18;
+    const dec1 = declaredDecimals(chainId, pos.token1) ?? 18;
+    const state = await deps
+      .poolState(pos.token0, pos.token1, pos.fee, dec0, dec1)
+      .catch(() => null);
+    const mins = removeMinimums({
+      liquidity,
+      sqrtPriceX96: state?.sqrtPriceX96,
+      tickLower: pos.tickLower,
+      tickUpper: pos.tickUpper,
+      slippageBps: opts.slippageBps,
+    });
+
     return {
       ok: true,
       build: {
@@ -2598,6 +4076,8 @@ export async function buildIntents(
             positionManager,
             tokenId: pos.tokenId,
             liquidity,
+            amount0Min: mins.amount0Min,
+            amount1Min: mins.amount1Min,
             pairLabel,
             /* Dropped at 100 as well as when absent, so a full removal is one
                intent shape however it was asked for. Carrying `percent: 100`
@@ -2668,10 +4148,40 @@ export async function buildIntents(
       error: `Loan #${target.requestId} is denominated in a token this app doesn't have declared decimals for (${target.tokenAddress.slice(0, 6)}…${target.tokenAddress.slice(-4)}), so the approval amount can't be computed safely. Repay it from the Borrow page, which reads the token's decimals on-chain.`,
     };
   }
+
+  /* A partial repayment — "repay 50 USDC". The contract has always taken one:
+     it clamps at what is owed and charges its fee on the interest share of the
+     payment only. So an amount at or above the total IS the full repayment, and
+     is sent as the contract's own figure — never a rounded human number, which
+     would leave the loan open by dust. Native loans are 18 decimals. */
+  let payRaw = BigInt(target.totalRepaymentRaw);
+  let payHuman = target.totalRepayment;
+  let partial = false;
+  if (command.amount) {
+    const decimals = repayDecimals ?? 18;
+    let asked: bigint;
+    try {
+      asked = ethers.parseUnits(command.amount, decimals);
+    } catch {
+      return { ok: false, error: `"${command.amount}" isn't an amount I can repay.` };
+    }
+    if (asked <= 0n) return { ok: false, error: "The repayment must be more than zero." };
+    if (asked < payRaw) {
+      payRaw = asked;
+      payHuman = ethers.formatUnits(asked, decimals);
+      partial = true;
+    }
+  }
+  const remaining = partial
+    ? ethers.formatUnits(BigInt(target.totalRepaymentRaw) - payRaw, repayDecimals ?? 18)
+    : "0";
+
   return {
     ok: true,
     build: {
-      summary: `Repay loan #${target.requestId} in full: ${target.totalRepayment} ${target.symbol}.`,
+      summary: partial
+        ? `Repay ${payHuman} ${target.symbol} of loan #${target.requestId}. About ${remaining} ${target.symbol} stays owed.`
+        : `Repay loan #${target.requestId} in full: ${target.totalRepayment} ${target.symbol}.`,
       intents: [
         ...(isNative
           ? []
@@ -2680,7 +4190,7 @@ export async function buildIntents(
                 kind: "approve",
                 token: target.tokenAddress,
                 spender: diamond,
-                amount: target.totalRepayment,
+                amount: payHuman,
                 decimals: repayDecimals,
                 symbol: target.symbol,
               },
@@ -2689,10 +4199,11 @@ export async function buildIntents(
           kind: "repayLoan",
           diamond,
           requestId: target.requestId,
-          amountRaw: target.totalRepaymentRaw,
-          amount: target.totalRepayment,
+          amountRaw: payRaw.toString(),
+          amount: payHuman,
           symbol: target.symbol,
           isNative,
+          ...(partial ? { partial: true } : {}),
         },
       ],
     },

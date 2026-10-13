@@ -17,6 +17,13 @@ import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
+import { ARGUS_CHAIN_ID, ARGUS_V4, ARC_USDC, PERMIT2 } from "@/lib/argus/addresses";
+import {
+  isKnownCctpTarget,
+  isKnownCctpTransmitter,
+  isCctpDomainChain,
+} from "@/lib/bridge/cctp";
+import { isKnownSwapRouter, nativeSwapErc20 } from "@/lib/swap/kyberswap";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
 import type { PlanStep } from "./types";
@@ -100,6 +107,44 @@ export const HARD_MAX_NOTIONAL_USD = Number(
   process.env.AGENT_MAX_NOTIONAL_USD || 25_000,
 );
 
+/** The most an agent swap may quote as slippage, in bps (5%). */
+export const AGENT_MAX_SLIPPAGE_BPS = 500;
+
+/**
+ * Turns whatever a client posted as `limits` into tightening-only guardrails.
+ *
+ * `limits` is user input in the literal sense — it rides in the request body —
+ * and both entry points to the auditor (the model turn in /api/chat and the
+ * locally-built plan in /api/audit) have to clean it the same way, or a command
+ * typed to Luca and one reasoned by the model would be held to different
+ * ceilings. So it is one function, not a copy in each route.
+ *
+ * The `Number.isFinite` guard is load-bearing, not defensive dressing: a
+ * non-numeric `maxPerAction` reaches the auditor as NaN, `Math.min(NaN, cap)` is
+ * NaN, and every `stepUsd > NaN` is false — one bad field silently switched off
+ * the ceiling this whole pass exists to enforce. A bad numeric field becomes
+ * undefined (the auditor then applies its own HARD_MAX), and slippage is clamped
+ * into a sane band so a client cannot post a 100% tolerance that drives
+ * amountOutMin to ~0. `allowedActions` is the user's product switches, enforced
+ * separately, and is not cleaned here.
+ */
+export function sanitizeGuardrails(
+  raw: unknown,
+): Guardrails & { slippageBps: number } {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const finiteOrUndef = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  return {
+    maxPerAction: finiteOrUndef(r.maxPerAction),
+    maxPerDay: finiteOrUndef(r.maxPerDay),
+    minHealthFactor: finiteOrUndef(r.minHealthFactor),
+    slippageBps: Math.min(
+      Math.max(finiteOrUndef(r.slippageBps) ?? 50, 1),
+      AGENT_MAX_SLIPPAGE_BPS,
+    ),
+  };
+}
+
 /**
  * Which product each intent belongs to, for the user's `allowedActions`.
  *
@@ -137,6 +182,14 @@ const ACTION_OF: Record<IntentKind, string> = {
   /* The same product toggle. A route through two pools is still a swap, and
      gating it separately would let a user who disabled swaps be shown one. */
   swapMultiHop: "swap",
+  /* An aggregator swap is a swap: the same product toggle, so a user who
+     disabled swaps is not shown one filled by KyberSwap either. */
+  aggregatorSwap: "swap",
+  /* An Argus-launchpad swap is a swap too — same product toggle. */
+  argusSwap: "swap",
+  /* Permit2 authorisation is the enabling step for an Argus swap, like `approve`
+     — not a product; the swap it precedes carries the permission check. */
+  permit2Approve: "",
   stake: "stake",
   /* The unstake lifecycle is the same product toggle as staking: a user who
      disabled staking should not be shown a withdrawal from the vault either. */
@@ -182,6 +235,21 @@ const ACTION_OF: Record<IntentKind, string> = {
    * lands, reached by a different route.
    */
   bridge: "",
+
+  /* The destination leg of a CCTP transfer. Ungated for the same reason as
+     bridge — it is the second half of the same cross-chain move, no product
+     toggle names it — but its risk is far smaller than bridge's: it moves
+     nothing of the signer's, it submits Circle's attested message to mint the
+     USDC the burn already released. Bounded by the AUDITORS rule that pins its
+     target to MessageTransmitterV2. */
+  cctpReceive: "",
+
+  /* Wrap / unwrap. Ungated like a send: no product toggle names "convert my own
+     native currency to its wrapped form and back", it moves only the signer's
+     own funds 1:1 and is reversible, and the AUDITORS rule pins the target to
+     the chain's own wrapped-native. Bounded by the per-action cap. */
+  wrapNative: "",
+  unwrapNative: "",
 
   /* Lending. Collateral is gated with borrowing because that is what it is
      for, and because withdrawing it is the one exit that can move a position
@@ -299,9 +367,82 @@ function knownToken(
     }
   }
   const t = chainTokenByAddress(chainId, address);
-  return t
-    ? { ok: true, symbol: t.symbol, decimals: t.decimals }
+  if (t) return { ok: true, symbol: t.symbol, decimals: t.decimals };
+  /* An aggregator's native-mirror ERC20 — Arc's 0x3600 USDC face — is a real,
+     tradable token the registry omits only so it doesn't double-count native in
+     balances. A swap that routes it (see aggregatorToken) must not be refused as
+     an unknown token, so recognise it here. */
+  const mirror =
+    chainId !== undefined ? nativeSwapErc20(chainId, address) : null;
+  return mirror
+    ? { ok: true, symbol: mirror.symbol, decimals: mirror.decimals }
     : { ok: false };
+}
+
+/**
+ * A token a TRADE may name: a verified one (in the registry, with its symbol and
+ * decimals), or any well-formed address as an UNVERIFIED one.
+ *
+ * The registry is the list of tokens Kaleido has verified — it is not a
+ * whitelist of what a user may trade. Users trade tokens we have never listed (an
+ * Argus launch pasted by address, a token they added themselves), and refusing
+ * them here refused the trade, not the risk. The risk in a trade step is who
+ * gets the allowance and which contract is called, and those stay pinned
+ * (spenderReasons / routerReasons / the Argus router constant) whatever the
+ * token. What an unverified token loses is a price: its leg can't carry the USD
+ * cap, so a trade must have at least one verified side to be priced by — see
+ * `tradePriced`.
+ */
+function tradeToken(
+  chainId: number | undefined,
+  address: string,
+): { ok: boolean; verified: boolean; symbol?: string; decimals?: number } {
+  const t = knownToken(chainId, address);
+  if (t.ok) return { ...t, verified: true };
+  return { ok: ethers.isAddress(address), verified: false };
+}
+
+/**
+ * Price a trade by its verified side so the per-action USD cap still binds: the
+ * input when it is verified, else the output's floor (`amountOutMin` — a lower
+ * bound on what the trade is worth). Neither side verified means nothing to
+ * price it by, which is a block rather than an unpriced pass.
+ */
+function tradePriced(
+  inTok: { verified: boolean; symbol?: string },
+  outTok: { verified: boolean; symbol?: string },
+  amountIn: number | null,
+  minOut: number | null,
+): {
+  reasons: string[];
+  notes: string[];
+  priced?: { symbol: string; amount: string };
+} {
+  const notes: string[] = [];
+  if (!inTok.verified || !outTok.verified)
+    notes.push(
+      "one side of this trade is an unverified token (not in Kaleido's verified list) — its contract is not vetted; the trade is priced by the verified side",
+    );
+  if (inTok.verified && amountIn !== null && amountIn > 0)
+    return {
+      reasons: [],
+      notes,
+      priced: { symbol: inTok.symbol!, amount: String(amountIn) },
+    };
+  if (outTok.verified && minOut !== null && minOut > 0)
+    return {
+      reasons: [],
+      notes,
+      priced: { symbol: outTok.symbol!, amount: String(minOut) },
+    };
+  if (!inTok.verified && !outTok.verified)
+    return {
+      reasons: [
+        "neither side of this trade is a verified token, so it can't be priced against your per-action limit",
+      ],
+      notes,
+    };
+  return { reasons: [], notes };
 }
 
 /**
@@ -873,6 +1014,33 @@ function spenderReasons(
 
   const spender = str(step.spender);
   const ours = ownContracts(chainId);
+
+  /* Bridge approvals are intentionally allowed on chains where Kaleido has no
+     product deployment (for example Base mainnet).  Check the fixed bridge
+     allowlist before the local-contract guard; otherwise a legitimate CCTP or
+     LI.FI approval is rejected with the misleading "no Kaleido contracts"
+     error before its vetted spender can be considered. */
+  if (isKnownBridgeSpender(spender))
+    return {
+      reasons: [],
+      note: "this approves a bridge provider's router, not a Kaleido contract — it is the one outside address this app authorises, and only a bridge step should be pairing it",
+    };
+
+  /* An Argus trade's first step approves the input token to Uniswap's canonical
+     Permit2, which no Kaleido deployment contains. Admitted on Arc only, and
+     only as a hop: Permit2 moves nothing by itself — the `permit2Approve` rule
+     pins the one spender it may then authorise to Argus's UniversalRouter, and
+     the paired `argusSwap` carries the notional and the USD cap. Without this
+     every Argus buy and sell failed closed at its very first step. */
+  if (
+    chainId === ARGUS_CHAIN_ID &&
+    spender.toLowerCase() === PERMIT2.toLowerCase()
+  )
+    return {
+      reasons: [],
+      note: "this approves Uniswap's Permit2, the allowance hub an Argus v4 swap pulls from — not a Kaleido contract; the next step can only hand that allowance to the Argus UniversalRouter",
+    };
+
   if (ours.size === 0)
     return {
       reasons: [
@@ -881,15 +1049,15 @@ function spenderReasons(
     };
 
   if (ours.get(spender.toLowerCase())) return { reasons: [] };
-  if (isKnownBridgeSpender(spender))
-    return {
-      reasons: [],
-      note: "this approves a bridge provider's router, not a Kaleido contract — it is the one outside address this app authorises, and only a bridge step should be pairing it",
-    };
   if (isFallbackVenueRouter(chainId, spender))
     return {
       reasons: [],
       note: "this approves an external DEX router this app routes through as a fallback for a token not in Kaleido's own pools — from the venues allow-list, not a Kaleido contract",
+    };
+  if (isKnownSwapRouter(chainId, spender))
+    return {
+      reasons: [],
+      note: "this approves an aggregator's swap router (KyberSwap) on a chain where Kaleido runs no pools of its own — one recognised external router, not a Kaleido contract, and only an aggregator swap should be pairing it",
     };
 
   return {
@@ -1021,13 +1189,13 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const reasons: string[] = [];
     const tokenIn = str(s.tokenIn);
     const tokenOut = str(s.tokenOut);
-    const inTok = knownToken(chainId, tokenIn);
-    const outTok = knownToken(chainId, tokenOut);
+    const inTok = tradeToken(chainId, tokenIn);
+    const outTok = tradeToken(chainId, tokenOut);
 
     if (!inTok.ok)
-      reasons.push(`unrecognised input token ${tokenIn || "(none)"}`);
+      reasons.push(`input is not a token address: ${tokenIn || "(none)"}`);
     if (!outTok.ok)
-      reasons.push(`unrecognised output token ${tokenOut || "(none)"}`);
+      reasons.push(`output is not a token address: ${tokenOut || "(none)"}`);
     if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
       reasons.push("input and output token are the same");
 
@@ -1070,18 +1238,20 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       ...nativeFlagReasons(s, chainId, { in: tokenIn, out: tokenOut }),
     );
 
+    const price = tradePriced(inTok, outTok, amountIn, minOut);
+    reasons.push(...price.reasons);
+
     return {
       reasons,
-      ...(inTok.ok && amountIn !== null && amountIn > 0
-        ? { priced: { symbol: inTok.symbol!, amount: String(amountIn) } }
-        : {}),
+      ...(price.notes.length > 0 ? { notes: price.notes } : {}),
+      ...(price.priced ? { priced: price.priced } : {}),
       /* Handed up for the slippage check, which needs both sides priced and so
          cannot run here. Only when the step is otherwise sound — checking the
          rate on a malformed swap would report a second failure caused by the
          first. */
       ...(reasons.length === 0 &&
-      inTok.ok &&
-      outTok.ok &&
+      inTok.verified &&
+      outTok.verified &&
       amountIn !== null &&
       minOut !== null
         ? {
@@ -1289,8 +1459,19 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
   approve: (s, chainId) => {
     const reasons: string[] = [];
     const token = str(s.token);
-    const tok = knownToken(chainId, token);
-    if (!tok.ok) reasons.push(`unrecognised token ${token || "(none)"}`);
+    /* Any token the user holds may be approved — an unverified one (not in the
+       registry) included, which is how a sell of a token we never listed gets
+       its allowance. The token is the user's own; what an approve can get wrong
+       is the SPENDER, pinned below. An unverified approve is unpriced: the trade
+       it precedes carries the USD cap (see tradePriced). */
+    const tok = tradeToken(chainId, token);
+    if (!tok.ok) reasons.push(`not a token address: ${token || "(none)"}`);
+    const unverifiedNote =
+      tok.ok && !tok.verified
+        ? [
+            "this approves an unverified token (not in Kaleido's verified list) — only the spender is vetted",
+          ]
+        : [];
 
     /* The spender is the address that gains the right to move the user's funds,
        so it is pinned to the set of contracts THIS chain deploys rather than
@@ -1311,15 +1492,30 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const spender = spenderReasons(s, chainId);
     reasons.push(...spender.reasons);
 
+    /* An UNLIMITED grant is only ever to Permit2 on Arc. Permit2 is a gate, not
+       a spender: it moves nothing unless a separate, expiring Permit2 allowance
+       names a router (the `permit2Approve` rule caps that at ~30 days and pins
+       it to Argus's router). An open-ended allowance to anything else is a
+       standing right to drain the token, and no plan here needs one. */
+    if (
+      s.unlimited === true &&
+      !(
+        chainId === ARGUS_CHAIN_ID &&
+        str(s.spender).toLowerCase() === PERMIT2.toLowerCase()
+      )
+    )
+      reasons.push("an unlimited approval is only granted to Permit2 on Arc");
+
     const amount = num(s.amount);
     if (amount === null || amount <= 0)
       reasons.push("approval amount is missing or not positive");
     if (num(s.decimals) === null) reasons.push("token decimals are missing");
 
+    const notes = [...(spender.note ? [spender.note] : []), ...unverifiedNote];
     return {
       reasons,
-      ...(spender.note ? { notes: [spender.note] } : {}),
-      ...(tok.ok && amount !== null && amount > 0
+      ...(notes.length > 0 ? { notes } : {}),
+      ...(tok.verified && amount !== null && amount > 0
         ? { priced: { symbol: tok.symbol!, amount: String(amount) } }
         : {}),
     };
@@ -1404,6 +1600,12 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
    */
   transfer: (s, chainId) => {
     const reasons: string[] = [];
+    /* A send pinned to a chain is audited on that chain or not at all: its
+       token address is that chain's, and the registry checks below would be
+       asking the wrong chain. */
+    const pinned = num(s.chainId);
+    if (pinned !== null && pinned !== chainId)
+      reasons.push(`send is for chain ${pinned} but was checked against chain ${chainId}`);
     const token = str(s.token);
     const tok = knownToken(chainId, token);
     if (!tok.ok) reasons.push(`unrecognised token ${token || "(none)"}`);
@@ -1484,8 +1686,27 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
   bridge: (s, chainId) => {
     const reasons: string[] = [];
     const token = str(s.token);
-    const tok = knownToken(chainId, token);
-    if (!tok.ok) reasons.push(`unrecognised token ${token || "(none)"}`);
+    /* Resolve the source token on the chain the bridge is SIGNED on, not the
+       connected chain: a cross-source bridge (BNB on BSC while connected to Arc)
+       carries the source token as its source chain knows it, and its decimals
+       and price must be read there. Falls back to the connected chain for an
+       ordinary same-chain source. */
+    const fromChainId = num(s.fromChainId);
+    const srcChain = fromChainId ?? chainId;
+    const tok = knownToken(srcChain, token);
+    /* An unverified source is admitted on exactly the shape a trade admits it:
+       an aggregator bridge that SWAPS into a token (`toToken`) and carries a
+       minimum output, so the cross-asset block below prices the step by that
+       verified floor and the per-action USD cap still binds. This is how a token
+       we never listed (an Abstract holding moved out before the chain shuts
+       down) leaves; a same-asset bridge of an unknown token still refuses. */
+    const unverifiedSwapOut =
+      !tok.ok &&
+      ethers.isAddress(token) &&
+      !!str(s.toToken) &&
+      (str(s.provider) === "lifi" || str(s.provider) === "relay");
+    if (!tok.ok && !unverifiedSwapOut)
+      reasons.push(`unrecognised token ${token || "(none)"}`);
 
     const amount = positive(s.amount);
     if (amount === null)
@@ -1511,15 +1732,15 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
           : "isNative is set on a token that is not the native currency",
       );
 
-    /* Source must be the chain the plan is signed on; destination a different,
-       real chain. A source mismatch means the route was built for a chain the
-       wallet is not connected to. */
-    const fromChainId = num(s.fromChainId);
+    /* Source must be a real chain; destination a different, real chain. A source
+       that differs from the connected chain is NOT a refusal any more: the
+       multichain sign flow builds for a named source and switches the wallet to
+       it at signing (#242), so a cross-source bridge is by design — noted below,
+       not blocked. What still refuses is a missing source, a missing/invalid
+       destination, or the two being the same. */
     const toChainId = num(s.toChainId);
     if (fromChainId === null)
       reasons.push("the bridge is missing its source chain");
-    else if (chainId !== undefined && fromChainId !== chainId)
-      reasons.push("the bridge's source chain is not the connected chain");
     if (toChainId === null || toChainId <= 0)
       reasons.push("the bridge is missing its destination chain");
     else if (fromChainId !== null && toChainId === fromChainId)
@@ -1545,10 +1766,61 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         reasons.push(
           "a canonical portal deposit is native-currency only — this corridor cannot carry a token",
         );
+    } else if (provider === "cctp") {
+      /* CCTP's TokenMessengerV2 is a fixed address on every V2 chain, so a
+         `cctp` bridge's `to` is allow-listable exactly like a canonical target
+         — re-checked here against the same constant the resolver built it from.
+         USDC ERC20 only: a native flag would mean burning nothing, and the
+         token must actually be USDC. The value/spender checks below then hold it
+         to the ERC20 shape (no native value, spender === to === the messenger,
+         admitted through the same isKnownBridgeSpender the approve rule uses). */
+      if (!isKnownCctpTarget(str(s.to)))
+        reasons.push("the CCTP target is not TokenMessengerV2");
+      if (wantsNative)
+        reasons.push("a CCTP bridge burns the USDC token, not native currency");
+      if (tok.ok && (tok.symbol ?? "").toUpperCase() !== "USDC")
+        reasons.push("CCTP only carries USDC");
     } else if (provider !== "lifi" && provider !== "relay") {
       /* Fail closed: a canonical target is allow-listed and an aggregator's is
          bounded by the cap, so anything else is neither and is refused. */
       reasons.push(`unrecognised bridge provider "${provider || "(none)"}"`);
+    }
+
+    /* A third-party delivery ("bridge … to 0x…"). The recipient is the one field
+       here a person typed, so it gets send's account checks on the DESTINATION
+       chain, and it must be the receiver inside the route's own calldata — a
+       route that would credit anyone else (or the signer) is refused:
+         - canonical: decode depositETHTo and require its `to` argument to equal it;
+         - lifi/relay: require it as an ABI-encoded address word in the calldata
+           (their BridgeData carries the receiver as a fixed field);
+         - cctp: never built for a third party (its completion assumes the
+           signer), so a recipient on a CCTP step is refused outright. */
+    const recipient = str(s.recipient);
+    if (recipient) {
+      reasons.push(
+        ...recipientReasons(recipient, "", toChainId ?? undefined).map(
+          (r) => `delivery address: ${r}`,
+        ),
+      );
+      const data = str(s.data).toLowerCase();
+      const word = recipient.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+      if (provider === "canonical") {
+        try {
+          const [to] = new ethers.Interface([
+            "function depositETHTo(address _to, uint32 _minGasLimit, bytes _extraData)",
+          ]).decodeFunctionData("depositETHTo", str(s.data));
+          if (String(to).toLowerCase() !== recipient.toLowerCase())
+            reasons.push("the deposit credits a different address than the one you named");
+        } catch {
+          reasons.push("the canonical deposit could not be decoded to check its recipient");
+        }
+      } else if (provider === "cctp") {
+        reasons.push("a CCTP bridge can only deliver to your own wallet");
+      } else if (!data.includes(word)) {
+        reasons.push(
+          "the route's calldata does not name the delivery address as its receiver — it would credit someone else",
+        );
+      }
     }
 
     /* The value that actually leaves the wallet, against the amount on the row.
@@ -1601,18 +1873,295 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
        for a token, that the amount inside the provider's calldata is the amount
        on the row. The approve caps it at the row's amount, which is a real bound
        and not the same as having read the number. */
+    /* Cross-asset bridge (BNB→USDC): the delivered asset differs from the source,
+       so the route swaps as it moves. Validate the OUTPUT the way a same-asset
+       bridge never had to — a real destination token on the destination chain,
+       matching decimals — and, the money-path guard, REQUIRE a positive minimum
+       output. A swap-as-you-bridge is bounded only by that floor, so its absence
+       is a refusal exactly as `aggregatorSwap` refuses a missing amountOutMin. */
+    const crossAsset = !!str(s.toToken);
+    const outTok = crossAsset
+      ? tradeToken(toChainId ?? undefined, str(s.toToken))
+      : null;
+    const minOut = num(s.amountOutMin);
+    if (crossAsset) {
+      if (!outTok!.ok)
+        reasons.push(
+          `the bridge output is not a token address: ${str(s.toToken) || "(none)"}`,
+        );
+      const outDec = num(s.toDecimals);
+      if (outDec === null)
+        reasons.push("the destination token decimals are missing");
+      else if (outTok!.verified && outDec !== outTok!.decimals)
+        reasons.push(
+          `output decimals say ${outDec} but ${outTok!.symbol} has ${outTok!.decimals}`,
+        );
+      if (minOut === null || minOut <= 0)
+        reasons.push(
+          "a cross-asset bridge has no minimum output — it would deliver at any rate, and a floor is required",
+        );
+    }
+
     const notes: string[] = [];
+    if (fromChainId !== null && chainId !== undefined && fromChainId !== chainId)
+      notes.push(
+        "this bridge is signed on its source chain, not the one you're connected to — the wallet switches to it at signing",
+      );
     if (reasons.length === 0) {
       notes.push(
         "a bridge leaves this chain and no on-chain permission bounds it, so the destination chain and amount are worth confirming",
       );
-      if (!wantsNative)
+      if (!wantsNative && !crossAsset)
         notes.push(
           `the amount is inside the provider's calldata, which this check does not read — the paired approval is what limits it to ${amount} ${tok.symbol ?? str(s.symbol)}`,
         );
+      if (crossAsset)
+        notes.push(
+          "a cross-asset bridge swaps as it moves and delivers a different token; the provider's calldata is not parsed here — the required minimum output is the floor and the per-action USD cap bounds it",
+        );
+    }
+
+    /* Price by the verified side. Same-asset stays on the source amount as
+       before; cross-asset uses `tradePriced`, which binds the cap to the source
+       amount when the source is verified, else to the output floor. */
+    if (crossAsset) {
+      const priced = tradePriced(
+        { verified: tok.ok, symbol: tok.symbol },
+        { verified: outTok!.verified, symbol: outTok!.symbol },
+        amount,
+        minOut,
+      );
+      return {
+        reasons: [...reasons, ...priced.reasons],
+        notes: [...notes, ...priced.notes],
+        ...(priced.priced ? { priced: priced.priced } : {}),
+      };
     }
 
     return { reasons, notes, ...priceIf(tok.symbol, amount) };
+  },
+
+  /* --------------------------------------------------- aggregator swap -- */
+  /**
+   * A same-chain swap filled by an external aggregator, on a chain where Kaleido
+   * runs no pools of its own. Sibling of `bridge`: the router’s calldata is
+   * opaque, so the per-action cap bounds it and these facts are what this holds —
+   * a router recognised on this chain, an allowance that goes to the contract the
+   * swap calls, a slippage floor present, and no native value riding along. The
+   * router enforces the output floor; the paired approve pulls the input.
+   */
+  aggregatorSwap: (s, chainId) => {
+    const reasons: string[] = [];
+    const tokenIn = str(s.tokenIn);
+    const tokenOut = str(s.tokenOut);
+    const inTok = tradeToken(chainId, tokenIn);
+    const outTok = tradeToken(chainId, tokenOut);
+    if (!inTok.ok)
+      reasons.push(`input is not a token address: ${tokenIn || "(none)"}`);
+    if (!outTok.ok)
+      reasons.push(`output is not a token address: ${tokenOut || "(none)"}`);
+    if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
+      reasons.push("input and output token are the same");
+
+    const amount = positive(s.amountIn);
+    if (amount === null)
+      reasons.push("swap amount is missing or not positive");
+
+    const decimals = num(s.decimalsIn);
+    if (decimals === null) reasons.push("input token decimals are missing");
+    else if (inTok.verified && decimals !== inTok.decimals)
+      reasons.push(
+        `decimals say ${decimals} but ${inTok.symbol} has ${inTok.decimals}`,
+      );
+
+    if (num(s.amountOutMin) === null)
+      reasons.push(
+        "no minimum output — the swap would execute at any price. Slippage protection is required.",
+      );
+
+    reasons.push(...requireAddresses(s, "to", "spender"));
+    if (chainId === undefined)
+      reasons.push("no chain to check the swap router against");
+    else if (!isKnownSwapRouter(chainId, str(s.to)))
+      reasons.push(
+        "the swap router is not one recognised on the chain this plan targets",
+      );
+    if (str(s.spender).toLowerCase() !== str(s.to).toLowerCase())
+      reasons.push("the approval address is not the contract the swap calls");
+
+    if (num(s.value) !== 0)
+      reasons.push("an aggregator swap must not attach native value");
+
+    const price = tradePriced(inTok, outTok, amount, num(s.amountOutMin));
+    reasons.push(...price.reasons);
+    const notes = [
+      "the aggregator's calldata is not parsed here — the router enforces the output floor, and the per-action USD cap bounds the trade",
+      ...price.notes,
+    ];
+    return {
+      reasons,
+      notes,
+      ...(price.priced ? { priced: price.priced } : {}),
+    };
+  },
+
+  /* An Argus-launchpad swap: direct v4 through the UniversalRouter. Argus tokens
+     are NOT in the static registry, so — unlike the swap rules above — this does
+     NOT call knownToken (which would reject them). Instead it validates the
+     structure, pins the router to Argus's UniversalRouter constant, and prices
+     the notional by the USDC (quote) leg so the per-action USD cap still binds.
+     The v4 calldata itself is opaque here; amountOutMin (baked into it) enforces
+     the output floor at the router, exactly as for aggregatorSwap. */
+  argusSwap: (s, chainId) => {
+    const reasons: string[] = [];
+    const tokenIn = str(s.tokenIn);
+    const tokenOut = str(s.tokenOut);
+    reasons.push(...requireAddresses(s, "to", "tokenIn", "tokenOut", "hook"));
+    if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
+      reasons.push("input and output token are the same");
+    if (positive(s.amountIn) === null)
+      reasons.push("swap amount is missing or not positive");
+    if (num(s.decimalsIn) === null)
+      reasons.push("input token decimals are missing");
+    if (num(s.amountOutMin) === null)
+      reasons.push(
+        "no minimum output — the swap would execute at any price. Slippage protection is required.",
+      );
+    if (num(s.value) !== 0)
+      reasons.push("an Argus swap must not attach native value");
+    if (chainId !== ARGUS_CHAIN_ID)
+      reasons.push("Argus swaps run only on Arc mainnet (5042)");
+    if (str(s.to).toLowerCase() !== ARGUS_V4.universalRouter.toLowerCase())
+      reasons.push("the swap router is not the Argus UniversalRouter");
+    /* Price by whichever leg is USDC — the quote asset — so the USD cap applies
+       to a buy (USDC in) and a sell (USDC out) alike. */
+    const usdc = ARC_USDC.toLowerCase();
+    const usdcLeg =
+      tokenIn.toLowerCase() === usdc
+        ? positive(s.amountIn)
+        : tokenOut.toLowerCase() === usdc
+          ? positive(s.amountOut)
+          : null;
+    const notes = [
+      "the Argus v4 calldata is not parsed here — the router enforces the output floor via amountOutMin, and the per-action USD cap bounds the USDC leg",
+    ];
+    return { reasons, notes, ...priceIf("USDC", usdcLeg) };
+  },
+
+  /* Permit2 authorisation for an Argus swap — grants the UniversalRouter the
+     Permit2 allowance the v4 swap spends. Moves nothing itself; the paired swap
+     carries the notional. Pinned to Argus's router constant so it can never
+     authorise an arbitrary spender. */
+  permit2Approve: (s, chainId) => {
+    const reasons: string[] = [];
+    reasons.push(...requireAddresses(s, "token", "spender"));
+    if (chainId !== ARGUS_CHAIN_ID)
+      reasons.push("Permit2 authorisation here is only for Arc mainnet (5042)");
+    if (str(s.spender).toLowerCase() !== ARGUS_V4.universalRouter.toLowerCase())
+      reasons.push(
+        "Permit2 would authorise a spender that is not the Argus UniversalRouter",
+      );
+    /* The expiry is what bounds this grant (it may be the uint160 maximum — see
+       `unlimited`), so it must be real and short: in the future, and no more
+       than ~30 days out. */
+    const expiration = num(s.expiration);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (expiration === null || expiration <= nowSec)
+      reasons.push("the Permit2 authorisation has no future expiry");
+    else if (expiration > nowSec + 31 * 24 * 60 * 60)
+      reasons.push("the Permit2 authorisation lasts longer than 30 days");
+    return {
+      reasons,
+      notes: [
+        "authorises the UniversalRouter to pull the input via Permit2; it moves nothing on its own — the paired Argus swap carries the notional and the USD cap",
+      ],
+    };
+  },
+
+  /* ------------------------------------------------------------ cctp mint -- */
+  /**
+   * The destination leg of a CCTP transfer: `receiveMessage` on
+   * MessageTransmitterV2, minting the USDC a source-chain burn released. Unlike
+   * every debit in this table it moves nothing of the signer's — the attested
+   * message names the recipient and the amount, and the transmitter validates
+   * Circle's signature over both — so there is no notional to price. What this
+   * holds: the call goes to the transmitter this app recognises, on a CCTP
+   * chain, signed on that same (destination) chain, with attested calldata.
+   */
+  cctpReceive: (s, chainId) => {
+    const reasons: string[] = [];
+    reasons.push(...requireAddresses(s, "to"));
+    if (!isKnownCctpTransmitter(str(s.to)))
+      reasons.push("the CCTP target is not MessageTransmitterV2");
+
+    const signedChain = num(s.chainId);
+    if (signedChain === null || !isCctpDomainChain(signedChain))
+      reasons.push("the mint's destination is not a CCTP chain");
+    else if (chainId !== undefined && signedChain !== chainId)
+      reasons.push("the mint's chain is not the connected chain");
+
+    const data = str(s.data);
+    if (data === "" || data === "0x")
+      reasons.push("the attested message calldata is missing");
+
+    const notes =
+      reasons.length === 0
+        ? [
+            "this mints USDC Circle attested from your own burn — it debits nothing from this wallet, so no notional is priced",
+          ]
+        : undefined;
+    return { reasons, notes };
+  },
+
+  /* -------------------------------------------------------------- wrap -- */
+  /*
+   * Wrap / unwrap the native currency against the chain's wrapped-native. A 1:1
+   * deposit()/withdraw() on that one contract, so the whole check is: the target
+   * is the chain's registered `wrappedNative` (pinned, the same way orders and
+   * the faucet are), a positive amount, and the connected chain. No external
+   * address, no approve; priced by the amount so the per-action cap still bounds
+   * it, since it is the signer's own funds moving.
+   */
+  wrapNative: (s, chainId) => {
+    const reasons: string[] = [];
+    reasons.push(...requireAddresses(s, "to"));
+    reasons.push(
+      ...pinned(str(s.to), getContracts(chainId).wrappedNative, "wrapped-native"),
+    );
+    const amount = positive(s.amount);
+    if (amount === null) reasons.push("wrap amount is missing or not positive");
+    const signed = num(s.chainId);
+    if (chainId !== undefined && signed !== null && signed !== chainId)
+      reasons.push("the wrap's chain is not the connected chain");
+    const notes =
+      reasons.length === 0
+        ? [
+            "wrapping is a 1:1 deposit into the chain's wrapped-native — reversible any time by unwrapping",
+          ]
+        : undefined;
+    return { reasons, notes, ...priceIf(str(s.symbol), amount) };
+  },
+  unwrapNative: (s, chainId) => {
+    const reasons: string[] = [];
+    reasons.push(...requireAddresses(s, "to"));
+    reasons.push(
+      ...pinned(str(s.to), getContracts(chainId).wrappedNative, "wrapped-native"),
+    );
+    const amount = positive(s.amount);
+    if (amount === null)
+      reasons.push("unwrap amount is missing or not positive");
+    const signed = num(s.chainId);
+    if (chainId !== undefined && signed !== null && signed !== chainId)
+      reasons.push("the unwrap's chain is not the connected chain");
+    const notes =
+      reasons.length === 0
+        ? [
+            "unwrapping is a 1:1 withdraw of your own wrapped balance back to native",
+          ]
+        : undefined;
+    /* Priced by the native symbol received (the wrapped symbol may not be in the
+       price table); 1:1 with the wrapped amount either way. */
+    return { reasons, notes, ...priceIf(str(s.nativeSymbol), amount) };
   },
 
   /* ------------------------------------------------------------ lending -- */
@@ -1626,9 +2175,10 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
    * mappings, so a token can be depositable and not borrowable. See lendingToken.
    *
    * The sides come from ProtocolFacet, not from a naming convention:
-   * depositCollateral and withdrawCollateral carry `_isTokenAllowed`
-   * (`s_priceFeeds[token] != 0`), createLendingRequest and createLoanListing
-   * check `s_isLoanable`. repayLoan is gated on neither and is not checked here.
+   * depositCollateral requires the token to be in `s_collateralToken` (with a
+   * feed), withdrawCollateral carries `_isTokenAllowed` (`s_priceFeeds[token] !=
+   * 0`), createLendingRequest and createLoanListing check `s_isLoanable`.
+   * repayLoan is gated on neither and is not checked here.
    */
 
   depositCollateral: (s, chainId) => {
@@ -2300,11 +2850,52 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     if (!Array.isArray(s.tokens))
       reasons.push("no token allowlist on the grant");
 
-    /* Already a USD figure, per AgentPermissionFacet, so it is capped directly
-       rather than priced. */
+    /*
+     * The notional bounds are already USD figures (per AgentPermissionFacet), so
+     * they are capped directly rather than priced — but they ARE capped. A grant
+     * is the one step whose value is spent later, again and again, without
+     * another signature, so an unbounded per-action figure here is worse than an
+     * unbounded single transaction, not exempt from the ceiling. The bound is the
+     * same one every priced step gets: the tighter of the user's own per-action
+     * limit and this server's HARD_MAX. Without this, a hijacked model could
+     * propose "delegate to 0xATTACKER, $1,000,000,000 per action" and the auditor
+     * waved it through for being "just a permission".
+     */
+    const effectivePerAction = Math.min(
+      typeof limits.maxPerAction === "number" &&
+        Number.isFinite(limits.maxPerAction)
+        ? limits.maxPerAction
+        : HARD_MAX_NOTIONAL_USD,
+      HARD_MAX_NOTIONAL_USD,
+    );
     const perAction = num(s.maxNotionalPerAction);
     if (perAction === null || perAction <= 0)
       reasons.push("no per-action notional bound on the grant");
+    else if (perAction > effectivePerAction)
+      reasons.push(
+        `grant's per-action cap ($${perAction}) is above your $${effectivePerAction} limit`,
+      );
+
+    /* The epoch bound is the standing budget the whole mandate spends against,
+       so it must exist and be at least the per-action cap — a per-action figure
+       above the epoch figure is meaningless and, unchecked, was not caught. */
+    const perEpoch = num(s.maxNotionalPerEpoch);
+    if (perEpoch === null || perEpoch <= 0)
+      reasons.push("no per-epoch notional bound on the grant");
+    else if (perAction !== null && perAction > perEpoch)
+      reasons.push("grant's per-action cap is above its per-epoch cap");
+
+    /* The action bitmask must be a positive integer with no bit set outside the
+       six the facet defines — BORROW|LEND|REPAY|DEPOSIT|WITHDRAW|CLOSE, which is
+       0b111111 = 63 (LibAgentPermission.ACTION_*). A mask of 0 grants nothing
+       usable; a bit above 63 is a bug or an attempt to name authority the
+       contract does not model, and neither should be signed. */
+    const KNOWN_ACTION_BITS = 63;
+    const actions = num(s.allowedActions);
+    if (actions === null || !Number.isInteger(actions) || actions <= 0)
+      reasons.push("no permitted actions on the grant");
+    else if ((actions & ~KNOWN_ACTION_BITS) !== 0)
+      reasons.push("grant permits an action the protocol does not define");
 
     return { reasons };
   },
@@ -2659,9 +3250,16 @@ export async function auditPlan(opts: {
 
   /* The effective cap is the tighter of what the user asked for and what this
      server permits. `Math.min` and not `??`: a client that omits the field, or
-     sends a larger one, gets the ceiling either way. */
+     sends a larger one, gets the ceiling either way. The Number.isFinite guard is
+     load-bearing, not defensive dressing: a non-numeric maxPerAction made this
+     `Math.min(NaN, cap)` → NaN, and every `stepUsd > perAction` comparison below
+     is false against NaN, so a single bad field silently switched off the ceiling
+     this whole pass exists to enforce. A bad value falls back to HARD_MAX. */
   const perAction = Math.min(
-    limits.maxPerAction ?? HARD_MAX_NOTIONAL_USD,
+    typeof limits.maxPerAction === "number" &&
+      Number.isFinite(limits.maxPerAction)
+      ? limits.maxPerAction
+      : HARD_MAX_NOTIONAL_USD,
     HARD_MAX_NOTIONAL_USD,
   );
 

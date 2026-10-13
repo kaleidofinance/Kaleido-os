@@ -22,6 +22,21 @@
   margin-top: 8px;
 }
 
+/* A restored turn's data, from an earlier session. Dimmed so it reads as a record
+   rather than a live reading — the figures are a snapshot, and the caption above
+   says as of when. Not `display:none` and not removed, because the whole point of
+   the change is that the history now shows what happened; muted is the honest
+   middle between "gone" and "presented as current". */
+.past {
+  opacity: 0.6;
+}
+.pastNote {
+  font-size: var(--k-fs-xs, 11px);
+  color: var(--k-t3);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .card {
   background: var(--k-glass-deep);
   box-shadow: var(--k-shadow-inset);
@@ -76,6 +91,44 @@
   margin-top: 5px;
 }
 
+/* ---------- gauge ---------- */
+
+/* The track: the same recess a card is, at the height of a rule. A dent, so the
+   fill reads as sitting IN the surface rather than on it — consistent with every
+   other frame here, and it means an empty track is still legibly a track. */
+.gauge {
+  margin-top: 10px;
+  height: 8px;
+  border-radius: var(--k-r-pill);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  overflow: hidden;
+}
+/* The fill takes its colour from the tone class applied beside it — `.good` etc.
+   set `color`, and `currentColor` turns that into the bar. A nonzero reading
+   keeps a 3px minimum so a low-but-real figure never renders as an empty track,
+   which would read as no data rather than as a small number. */
+.gaugeFill {
+  height: 100%;
+  min-width: 3px;
+  background: currentColor;
+  border-radius: var(--k-r-pill);
+  transition: width 0.35s ease;
+}
+.gaugeEnds {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gaugeFill {
+    transition: none;
+  }
+}
+
 /* ---------- stats and balance rows ---------- */
 
 .rows {
@@ -117,11 +170,76 @@
   color: var(--k-t1);
   font-weight: var(--k-fw-med);
 }
+/* A balance row centres on the logo rather than the text baseline the stats rows
+   use: an 18px mark hung from a baseline sits low against its own symbol. */
+.rowBalance {
+  align-items: center;
+}
+/* Logo, then symbol. The identity of the row, read left to right. */
+.bSym {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* A fixed slot, so a token with a logo and one without still line their symbols
+   up. Empty when TokenIcon has no art for the symbol — the text names it either
+   way, which is the same bargain TokenIcon itself makes. */
+.bIcon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .bNote {
   color: var(--k-t3);
   font-size: var(--k-fs-xs);
   margin-left: 6px;
   font-weight: var(--k-fw-body);
+}
+
+/* ---------- steps (a settled plan's receipt) ---------- */
+
+/* Mark, then what happened, then when and where. Centred on the mark like a
+   balance row rather than hung from a baseline, and it reuses `.row` for the same
+   hairline-between-rows treatment a stats card gets. */
+.stepRow {
+  align-items: center;
+  gap: 9px;
+}
+.stepIcon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+.stepLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-t1);
+}
+/* The timing and hash, quietest on the row: it is provenance, read second. */
+.stepDetail {
+  flex: none;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+/* The mark's colour, by outcome — a ran step reads positive, a skipped one is
+   muted (nothing happened, and nothing is wrong), a failed one is the neg the
+   rest of the card uses for a bad number. */
+.step_done {
+  color: var(--k-pos);
+}
+.step_skipped {
+  color: var(--k-t3);
+}
+.step_failed {
+  color: var(--k-neg);
 }
 
 /* ---------- notice ---------- */
@@ -132,6 +250,23 @@
 .notice {
   border-left: 2px solid var(--k-line);
   padding-left: 11px;
+}
+/* Glyph and title on one row, the glyph tinted by tone (below) and the title
+   held at reading weight. `flex-start` so a title that wraps to two lines keeps
+   the mark against its first line rather than centring on the block. */
+.nHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+.nIcon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  /* Nudged onto the title's cap line — an icon centred on the line-box floats
+     high against text this size. */
+  margin-top: 1px;
+  color: var(--k-t3);
 }
 .nTitle {
   font-size: var(--k-fs-sm);
@@ -210,6 +345,18 @@
 .notice.bad {
   border-left-color: var(--k-neg);
 }
+/* The glyph carries the tone the rule does — the same three readings, so the
+   mark and the edge always agree. A neutral notice keeps the muted --k-t3 set on
+   .nIcon above: an info mark is not an alarm and should not borrow one's colour. */
+.notice.good .nIcon {
+  color: var(--k-pos);
+}
+.notice.warn .nIcon {
+  color: var(--k-alt);
+}
+.notice.bad .nIcon {
+  color: var(--k-neg);
+}
 /* The rule is toned; the words are not. A whole sentence in brand green reads as
    decoration and is harder to read than the same sentence in --k-t1. */
 .notice.good .nTitle,
@@ -225,4 +372,136 @@
   .mValue {
     font-size: 21px;
   }
+}
+
+/* ---- token card (paste a contract) ---- */
+.tokHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-s3);
+}
+.tokId {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.tokSym {
+  font-size: var(--k-fs-md, 15px);
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+}
+.tokName {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tokBadge {
+  flex: none;
+  font-size: var(--k-fs-xs);
+  padding: 2px 8px;
+  border-radius: var(--k-r-pill);
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+}
+.tokAddr {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  margin-top: 2px;
+}
+.tokTable {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--k-fs-sm);
+}
+.tokTable th,
+.tokTable td {
+  padding: 6px 8px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tokTable th {
+  font-weight: var(--k-fw-reg, 400);
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  border-bottom: 1px solid var(--k-line);
+}
+/* A value may wrap ("Opening surcharge" on a phone); a label may not. */
+.tokTable td {
+  font-weight: var(--k-fw-med);
+  white-space: normal;
+}
+.tokTable th + th,
+.tokTable td + td {
+  border-left: 1px solid var(--k-line);
+}
+.tokBtns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.tokSide {
+  width: 32px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.tokBtns .chip {
+  padding: 5px 10px;
+}
+.tokBtns + .tokBtns {
+  margin-top: 6px;
+}
+.tokBuy {
+  color: var(--k-pos);
+}
+.tokSell {
+  color: var(--k-neg);
+}
+.tokBuy:disabled,
+.tokSell:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* "Buy [amount] USDC [Buy]" — indented to line up under the preset chips. */
+.tokCustom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding-left: 38px;
+}
+.tokAmt {
+  width: 96px;
+  min-width: 0;
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 0;
+  border-radius: var(--k-r-pill);
+  padding: 5px 10px;
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t1);
+}
+.tokAmt:focus {
+  outline: 1px solid var(--k-brand-dim);
+}
+.tokAmt:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.tokUnit {
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+}
+.tokCustom .chip {
+  padding: 5px 12px;
 }

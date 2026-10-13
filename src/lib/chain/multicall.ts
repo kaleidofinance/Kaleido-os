@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { providerForChain } from "@/config/provider";
+import { retryRpc } from "@/lib/dex/rpcRetry";
 
 /**
  * One RPC call for many reads, on whichever chain the caller names.
@@ -90,8 +91,18 @@ export async function readContracts(
 
   try {
     const mc = new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3, provider);
-    const raw: { success: boolean; returnData: string }[] =
-      await mc.aggregate3(encoded);
+    /* Retry a throttled multicall before giving up on the whole chain. A public
+       mainnet RPC (eth.merkle.io, bsc-dataseed, mainnet.base.org, Arc's) rate-
+       limits a browser's batched read under load and the aggregate3 call throws;
+       without a retry the catch below turns that into a chain-wide `unread`, and
+       every balance on that chain silently vanishes from the sweep — which read
+       as "the portfolio only shows the one chain on a dedicated RPC". retryRpc
+       backs off and re-asks only while the error looks like throttling, the same
+       guard the pool sweep already uses. A genuinely dead chain still falls to
+       `unread` after the attempts are spent. */
+    const raw: { success: boolean; returnData: string }[] = await retryRpc(() =>
+      mc.aggregate3(encoded),
+    );
     return raw.map((r, i) => {
       if (!r.success) return { success: false, value: null };
       try {

@@ -260,6 +260,14 @@ function discover() {
       found.push({ name, absPath, skip: `unknown component "${parsed.component}"` });
       continue;
     }
+    /* A LOCAL FORK rehearsal (hardhat network `arcFork`, anvil) keeps the real
+     * chainId — 5042 — so its records would otherwise be filed as Arc MAINNET's
+     * and a leftover file would become the app's live lending registry entry.
+     * Never registered, whatever else is in the directory. */
+    if (/fork/i.test(name)) {
+      found.push({ name, absPath, skip: "local fork rehearsal record — never registered" });
+      continue;
+    }
 
     let record;
     try {
@@ -656,6 +664,25 @@ function build(chosen) {
       }
       mergeField(contracts, prov, entry.chainId, "oracleKind", kind, source);
     }
+
+    /* ordersVersion — the EIP-712 domain version the chain's KaleidoOrders signs
+     * under, from the record's `eip712` block (deploy-orders.js reads it back from
+     * the contract). Not an address, so it bypasses normalise() like oracleKind.
+     *
+     * It is part of every order's digest: V1 is "1", KaleidoOrdersV2 is "2". A
+     * frontend signing a V2 order under "1" produces a signature the contract
+     * rejects, so the app must read the version per chain rather than assume it —
+     * that is what this field is for. See lib/dex/orders.ts ordersDomain. */
+    if (entry.component === "orders" && entry.record?.eip712?.version != null) {
+      const version = String(entry.record.eip712.version);
+      if (!/^[0-9]+$/.test(version)) {
+        throw new Error(
+          `${source}: eip712.version is ${JSON.stringify(version)}, expected a ` +
+            `plain number like "1" or "2".`,
+        );
+      }
+      mergeField(contracts, prov, entry.chainId, "ordersVersion", version, source);
+    }
   }
 
   const warnings = [];
@@ -690,12 +717,32 @@ function build(chosen) {
   }
   for (const list of Object.values(seededPools)) list.sort();
 
+  /* The token PAIRS those pools hold, so the app can seed a swap/limit form on a
+     pair that actually has a pool instead of guessing from a symbol list and
+     landing on one with no market. Addresses only, lowercased, deduped per chain;
+     order sorted for a byte-stable emit. The token0/token1 come straight from the
+     pool record seed-v3-pool.js writes. */
+  const poolPairs = {};
+  for (const entry of ordered) {
+    if (entry.component !== POOL_COMPONENT) continue;
+    const a = entry.record?.token0?.address;
+    const b = entry.record?.token1?.address;
+    if (!a || !b) continue;
+    const pair = [String(a).toLowerCase(), String(b).toLowerCase()].sort();
+    const list = (poolPairs[entry.chainId] ??= []);
+    const key = pair.join("-");
+    if (!list.some((p) => p.join("-") === key)) list.push(pair);
+  }
+  for (const list of Object.values(poolPairs))
+    list.sort((x, y) => x.join("-").localeCompare(y.join("-")));
+
   return {
     deployments,
     provenance,
     registration,
     registrationProvenance,
     seededPools,
+    poolPairs,
     droppedKeys,
     warnings,
   };
@@ -707,6 +754,7 @@ function render(
   registration,
   registrationProvenance,
   seededPools,
+  poolPairs,
   sources,
 ) {
   const chainIds = Object.keys(deployments)
@@ -803,6 +851,19 @@ function render(
 
   const poolMap = poolIds.length ? `{\n${poolBody}\n}` : `{}`;
 
+  const pairIds = Object.keys(poolPairs)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const pairBody = pairIds
+    .map((id) => {
+      const items = (poolPairs[id] ?? [])
+        .map(([a, b]) => `    ["${a}", "${b}"],`)
+        .join("\n");
+      return `  ${id}: [\n${items}\n  ],`;
+    })
+    .join("\n");
+  const pairMap = pairIds.length ? `{\n${pairBody}\n}` : `{}`;
+
   const sourceList = sources.length
     ? sources.map((s) => `    "${s}",`).join("\n")
     : "";
@@ -885,6 +946,14 @@ export const GENERATED_LENDING_REGISTRATION: Record<
 export const GENERATED_SEEDED_POOLS: Record<number, string[]> = ${poolMap};
 
 /**
+ * The token PAIRS the deployer's pools hold, per chain — [token0, token1]
+ * addresses, lowercased. So a swap/limit form can seed a default pair that
+ * actually has a pool instead of guessing from a symbol list and landing on one
+ * with no market. Derived from the same pool records as GENERATED_SEEDED_POOLS.
+ */
+export const GENERATED_POOL_PAIRS: Record<number, [string, string][]> = ${pairMap};
+
+/**
  * What the generator last read, for debugging a wrong or missing address.
  */
 export const GENERATED_META: {
@@ -924,6 +993,7 @@ const {
   registration,
   registrationProvenance,
   seededPools,
+  poolPairs,
   droppedKeys,
   warnings,
 } = build(chosen);
@@ -942,6 +1012,7 @@ writeFileSync(
     registration,
     registrationProvenance,
     seededPools,
+    poolPairs,
     sources,
   ),
   "utf8",

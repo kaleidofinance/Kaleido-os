@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import {
   TERMINAL_REASONS,
   bestQuote,
+  chooseAggregator,
   decideFill,
   reconcile,
   sweepable,
@@ -444,6 +445,40 @@ const row = (over: Partial<StoredOrder> & { createdAt: string }): StoredOrder =>
     "the cap reports what it dropped, so a bounded cycle is not read as a complete one",
     take.length === 2 && dropped === 1,
     show({ take: take.length, dropped }),
+  );
+}
+
+console.log("\n— aggregator or our pools (KaleidoOrdersV2) —");
+{
+  const ok = { ok: true, reason: "" };
+  const floor = 877_000n; // 0.877 EURC per 1 USDC, the Arc case
+  check(
+    "the aggregator fills an order our thin pool cannot (Arc 2026-09-28)",
+    chooseAggregator({ terms: ok, minOut: floor, bestV3Out: 503_200n, aggregatorOut: 877_700n }),
+  );
+  check(
+    "not when the aggregator is short of the floor — that would only revert",
+    !chooseAggregator({ terms: ok, minOut: floor, bestV3Out: null, aggregatorOut: 876_999n }),
+  );
+  check(
+    "our pools win a tie",
+    !chooseAggregator({ terms: ok, minOut: floor, bestV3Out: 900_000n, aggregatorOut: 900_000n }),
+  );
+  check(
+    "our pools win when they pay more",
+    !chooseAggregator({ terms: ok, minOut: floor, bestV3Out: 910_000n, aggregatorOut: 900_000n }),
+  );
+  check(
+    "no pool quote at all → the aggregator, if it meets the floor",
+    chooseAggregator({ terms: ok, minOut: floor, bestV3Out: null, aggregatorOut: 880_000n }),
+  );
+  check(
+    "no aggregator route → never",
+    !chooseAggregator({ terms: ok, minOut: floor, bestV3Out: null, aggregatorOut: null }),
+  );
+  check(
+    "terms that refuse a fill refuse it here too, whatever the price",
+    !chooseAggregator({ terms: { ok: false, reason: "cancelled" }, minOut: floor, bestV3Out: null, aggregatorOut: 10n ** 12n }),
   );
 }
 

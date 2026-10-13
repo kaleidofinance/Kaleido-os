@@ -8,8 +8,8 @@ import TxHistory from "@/components/v2/TxHistory";
 import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import Chevron from "@/components/v2/Chevron";
-import { chainTokens } from "@/constants/tokens";
-import { getContracts } from "@/constants/registry";
+import { chainTokens, toIToken } from "@/constants/tokens";
+import { getContracts, nativeTokenOf } from "@/constants/registry";
 import { getChainMeta } from "@/constants/chains";
 import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
@@ -24,10 +24,19 @@ import {
   describeRoute,
   encodeV3Path,
   findRouteAcrossSources,
+  MAX_PRICE_IMPACT,
+  truncDecimals,
   poolSide,
   type RoutedPath,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
+import { ethers } from "ethers";
+import {
+  hasKyberSwap,
+  aggregatorToken,
+  getKyberSwapExecution,
+  nativeSwapErc20,
+} from "@/lib/swap/kyberswap";
 import s from "../trade.module.css";
 
 /*
@@ -61,11 +70,12 @@ const QUICK = [0.25, 0.5, 0.75, 1] as const;
  * by `!isConnected`, and it is discarded the moment a wallet arrives, because
  * `available` changes and the seeding effect re-runs against the real chain.
  *
- * Ethereum because it is the one chain carrying both ETH and USDT, which is
- * what a swap form should open on: an empty pair reads as broken, and "Select
- * token" twice gives a first-time visitor nothing to look at.
+ * Arc (5042), the mainnet-first launch chain, so a disconnected visitor opens on
+ * the assets this app actually trades (USDC and the Arc ecosystem tokens) rather
+ * than on Ethereum's ETH/USDT, which read as "wrong chain" for an Arc launch. An
+ * empty pair reads as broken, so it still seeds a real pair — just this chain's.
  */
-const PREVIEW_CHAIN_ID = 1;
+const PREVIEW_CHAIN_ID = 5042;
 
 /**
  * Seeding order per side, most wanted first.
@@ -96,7 +106,7 @@ const PREFER_BUY = ["USDT", "USDC", "WETH", "ETH"] as const;
  */
 const balanceText = (balance: string, unread: boolean) =>
   unread
-    ? "—"
+    ? "0"
     : Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 /**
@@ -149,7 +159,7 @@ function TokenPill({
 }
 
 export default function SwapPage() {
-  const { isConnected, chainId } = useWalletV2();
+  const { isConnected, chainId, address } = useWalletV2();
   /* Disconnected is a fixable state, not a dead end: /trade is the one shell
      without a ChainGate, so the CTA opens the connect modal itself rather than
      sitting disabled while the only way to connect lives up in the nav. */
@@ -179,7 +189,27 @@ export default function SwapPage() {
      always share a chain and this is unambiguous. */
   const swapChainId =
     tokenIn?.chainId ?? tokenOut?.chainId ?? chainId ?? PREVIEW_CHAIN_ID;
-  const available = useMemo(() => chainTokens(swapChainId), [swapChainId]);
+  const available = useMemo(() => {
+    const listed = chainTokens(swapChainId);
+    /* Arc's canonical ERC20 USDC and native USDC share a ticker, so the normal
+       DEX list keeps only the canonical token. The wrap card needs an explicit
+       native choice, however; expose it with a disambiguated name only when the
+       chain also has WUSDC, leaving ordinary USDC/EURC routing unchanged. */
+    if (
+      swapChainId === 5042 &&
+      listed.some((t) => t.symbol.toUpperCase() === "WUSDC") &&
+      !listed.some((t) => t.isNative)
+    ) {
+      const native = nativeTokenOf(getChainMeta(swapChainId), "dex");
+      if (native) {
+        return [
+          ...listed,
+          { ...toIToken(native), name: "Arc native USDC" },
+        ];
+      }
+    }
+    return listed;
+  }, [swapChainId]);
   const v3Router = getContracts(swapChainId).v3Router;
   /* Wallet on the wrong chain for a signature: quotes are read-only, so this
      gates execution only, behind a one-click switch. The gate is the shared
@@ -248,11 +278,21 @@ export default function SwapPage() {
     const outOk = validHere(tokenOut);
     if (inOk && outOk) return;
 
+    /* The SAME ASSET, not just the same address. On Arc native USDC and its
+       6-dec ERC20 face (0x3600, `native-alias`) are two addresses for one
+       balance, both ticker "USDC" — excluding by address alone seeded native
+       USDC → USDC, a pair that can never quote. A shared ticker is the same
+       asset in this registry, so a default pair never repeats one. */
+    const sameAsset = (a: IToken | null | undefined, b: IToken | null | undefined) =>
+      !!a &&
+      !!b &&
+      (a.address.toLowerCase() === b.address.toLowerCase() ||
+        a.symbol.toUpperCase() === b.symbol.toUpperCase());
     const pick = (prefs: readonly string[], not?: IToken | null) =>
       prefs.reduce<IToken | undefined>(
         (found, sym) =>
           found ??
-          available.find((t) => t.symbol === sym && t.address !== not?.address),
+          available.find((t) => t.symbol === sym && !sameAsset(t, not)),
         undefined,
       );
 
@@ -296,9 +336,9 @@ export default function SwapPage() {
     const first =
       inOk ??
       askedIn ??
-      available.find((t) => t.isNative && t.address !== outOk?.address) ??
+      available.find((t) => t.isNative && !sameAsset(t, outOk)) ??
       pick(PREFER_SELL, outOk) ??
-      available.find((t) => t.address !== outOk?.address) ??
+      available.find((t) => !sameAsset(t, outOk)) ??
       null;
     /* Excluding `first` by address, not by index: with the native asset first
        in the list, index 0 and 1 can be the same asset by symbol (native USDC
@@ -308,9 +348,9 @@ export default function SwapPage() {
        rather than opening a pair that cannot quote. */
     const second =
       outOk ??
-      (askedOut && askedOut.address !== first?.address ? askedOut : null) ??
+      (askedOut && !sameAsset(askedOut, first) ? askedOut : null) ??
       pick(PREFER_BUY, first) ??
-      available.find((t) => t.address !== first?.address) ??
+      available.find((t) => !sameAsset(t, first)) ??
       null;
 
     if (!inOk) setTokenIn(first);
@@ -351,6 +391,19 @@ export default function SwapPage() {
    * transaction disagree.
    */
   const [route, setRoute] = useState<RoutedPath | null>(null);
+  /* The KyberSwap fallback route, when our own pools returned nothing on a chain
+     that routes through the aggregator (Arc, no seeded pools yet). Carries the
+     aggregator token forms — Arc native USDC trades as its 0x3600 ERC20 mirror —
+     so the plan approves and swaps the token the calldata actually names. */
+  const [kyberRoute, setKyberRoute] = useState<{
+    to: string;
+    data: string;
+    spender: string;
+    sellAddr: string;
+    sellDec: number;
+    buyAddr: string;
+    buyDec: number;
+  } | null>(null);
 
   /**
    * The two ends as a pool can hold them.
@@ -386,12 +439,43 @@ export default function SwapPage() {
     !!buy &&
     sell.token.address.toLowerCase() === buy.token.address.toLowerCase();
 
+  /* Native against its own wrapped-native is not a swap but a 1:1 wrap: there is
+     no pool, so no quote, no route and no slippage. `samePoolSide` is exactly
+     that pair (both sides collapse to the wrapped address); the direction is
+     which side is the native currency. This drives the whole card into wrap mode
+     — the output mirrors the input, the panels that price a swap are hidden, and
+     the CTA and plan below build a deposit()/withdraw() instead. */
+  const wrappedNative = getContracts(swapChainId).wrappedNative;
+  /* Selling the wrapped-native to a non-native token: KyberSwap can't price
+     0x8c6c, so route it via the 0x3600 mirror with an unwrap leg (see the plan
+     memo). Not the native<->wrapped 1:1 case, which is wrapMode above. */
+  const sellIsWrapped =
+    !!wrappedNative &&
+    !!tokenIn &&
+    tokenIn.address.toLowerCase() === wrappedNative.toLowerCase();
+  const wrapMode: "wrap" | "unwrap" | null = samePoolSide
+    ? sell!.native
+      ? "wrap"
+      : "unwrap"
+    : null;
+
   useEffect(() => {
     const amount = parseFloat(amountIn);
-    if (!sell || !buy || !amount || amount <= 0 || samePoolSide) {
+    if (!sell || !buy || !amount || amount <= 0) {
       setAmountOut("");
       setNoRoute(false);
       setRoute(null);
+      setKyberRoute(null);
+      return;
+    }
+    /* Wrap/unwrap is 1:1 with no route to quote — mirror the input to the output
+       and skip the quoter entirely. */
+    if (samePoolSide) {
+      setAmountOut(amountIn);
+      setNoRoute(false);
+      setRoute(null);
+      setKyberRoute(null);
+      setQuoting(false);
       return;
     }
     let cancelled = false;
@@ -430,20 +514,102 @@ export default function SwapPage() {
               venue,
             })),
           ],
+          { impactCeiling: MAX_PRICE_IMPACT },
         );
         /* A quote is a positive number or it is nothing. `findBestRoute` already
            rejects null, zero and non-finite answers — a pool cannot fill a
            nonzero input with zero output, so a zero is a failure wearing a
            number's clothes, which is exactly what this page used to spend as
            `amountOutMin`. */
-        if (!cancelled) {
+        if (cancelled) return;
+
+        /* Best execution, not "our pool if it fills at all". Our Arc pools are
+           seed-shallow, so a trade larger than their depth is almost pure price
+           impact — 12k USDC through a ~$20 pool returns a handful of EURC, not a
+           fair quote. So we ALSO quote the aggregator and route to whichever
+           gives the user MORE output: small trades keep flowing through our pool
+           (and our fee), and a trade big enough to move our pool falls to
+           KyberSwap's deep Uniswap V4 liquidity automatically — no slippage
+           threshold to tune, the output comparison is the guard.
+
+           The aggregator is quoted from the RAW selected tokens, not `sell`/
+           `buy`: poolSide already swapped native into our OWN wrapped-native
+           (0x8c6c), which the aggregator has never heard of. `aggregatorToken`
+           maps the user's token to the native's ERC20 MIRROR (Arc USDC ->
+           0x3600) instead. It needs the CONNECTED `address` because KyberSwap's
+           /route/build bakes sender==recipient into the calldata; a disconnected
+           visitor keeps the pool quote and a "Connect wallet" CTA. */
+        let kyberExec: Awaited<ReturnType<typeof getKyberSwapExecution>> = null;
+        let kyberSell: ReturnType<typeof aggregatorToken> | null = null;
+        let kyberBuy: ReturnType<typeof aggregatorToken> | null = null;
+        if (hasKyberSwap(swapChainId) && address && tokenIn && tokenOut) {
+          kyberSell = aggregatorToken(
+            swapChainId,
+            sellIsWrapped ? { ...tokenIn, isNative: true } : tokenIn,
+          );
+          kyberBuy = aggregatorToken(swapChainId, tokenOut);
+          const units = ethers
+            .parseUnits(
+              /* Always trimmed to the token actually quoted. Native USDC is 18
+                 decimals but its aggregator face (0x3600) is 6, so a 25%-chip
+                 amount like 18.90951174 made parseUnits throw here — and the
+                 throw aborted the whole quote, our pool's included, showing
+                 "No route" until the user reselected USDC. */
+              truncDecimals(amountIn, kyberSell.decimals),
+              kyberSell.decimals,
+            )
+            .toString();
+          kyberExec = await getKyberSwapExecution({
+            chainId: swapChainId,
+            tokenIn: kyberSell.address,
+            tokenOut: kyberBuy.address,
+            amountUnits: units,
+            address,
+            slippageBps,
+          });
+        }
+        if (cancelled) return;
+
+        /* Both sides output the same underlying asset (a non-native token is
+           itself either way; native USDC is 0x8c6c 18-dec for our pool vs 0x3600
+           6-dec for the aggregator — both $1), so the human amounts compare
+           directly. -1 means "no quote from this source". Ties go to our pool. */
+        const ourOut = found ? Number(found.amountOut) : -1;
+        const kyberOut =
+          kyberExec && kyberBuy
+            ? Number(ethers.formatUnits(kyberExec.amountOut, kyberBuy.decimals))
+            : -1;
+
+        if (found && ourOut >= kyberOut) {
           setRoute(found);
-          setAmountOut(found ? String(found.amountOut) : "");
-          setNoRoute(!found);
+          setKyberRoute(null);
+          setAmountOut(String(found.amountOut));
+          setNoRoute(false);
+        } else if (kyberExec && kyberSell && kyberBuy) {
+          setRoute(null);
+          setKyberRoute({
+            to: kyberExec.to,
+            data: kyberExec.data,
+            spender: kyberExec.spender,
+            sellAddr: kyberSell.address,
+            sellDec: kyberSell.decimals,
+            buyAddr: kyberBuy.address,
+            buyDec: kyberBuy.decimals,
+          });
+          setAmountOut(
+            ethers.formatUnits(kyberExec.amountOut, kyberBuy.decimals),
+          );
+          setNoRoute(false);
+        } else {
+          setRoute(null);
+          setKyberRoute(null);
+          setAmountOut("");
+          setNoRoute(true);
         }
       } catch {
         if (!cancelled) {
           setRoute(null);
+          setKyberRoute(null);
           setAmountOut("");
           setNoRoute(true);
         }
@@ -459,9 +625,13 @@ export default function SwapPage() {
     amountIn,
     sell,
     buy,
+    tokenIn,
+    tokenOut,
     samePoolSide,
     swapChainId,
     v3Router,
+    address,
+    slippageBps,
   ]);
 
   /*
@@ -562,6 +732,100 @@ export default function SwapPage() {
   // from liquidity the transaction would never touch, which is a worse failure
   // than no floor at all because it looks correct.
   const plan: Intent[] = useMemo(() => {
+    /* Wrap/unwrap: a single deposit()/withdraw() on the chain's wrapped-native,
+       no approve and no route. Built from `tokenIn`/`tokenOut` (which hold the
+       user's own native + wrapped symbols) rather than the pool-side collapse. */
+    if (
+      wrapMode &&
+      tokenIn &&
+      tokenOut &&
+      wrappedNative &&
+      amountIn &&
+      parseFloat(amountIn) > 0
+    ) {
+      return [
+        wrapMode === "wrap"
+          ? {
+              kind: "wrapNative",
+              to: wrappedNative,
+              amount: amountIn,
+              decimals: tokenIn.decimals,
+              symbol: tokenIn.symbol,
+              wrappedSymbol: tokenOut.symbol,
+              chainId: swapChainId,
+            }
+          : {
+              kind: "unwrapNative",
+              to: wrappedNative,
+              amount: amountIn,
+              decimals: tokenIn.decimals,
+              symbol: tokenIn.symbol,
+              nativeSymbol: tokenOut.symbol,
+              chainId: swapChainId,
+            },
+      ];
+    }
+
+    /* KyberSwap fallback: our own pools returned no route on this chain, so the
+       plan is the aggregator's [approve, aggregatorSwap] — the same shape Luca
+       builds. The sell/buy are the aggregator token forms (Arc native USDC ->
+       0x3600 mirror), so the input always has an ERC20 to approve. */
+    if (kyberRoute && tokenIn && tokenOut && amountIn && minOut) {
+      /* Symbols from the user's RAW tokens (tokenIn/tokenOut), not `sell`/`buy`:
+         those hold poolSide's wrapped-native (0x8c6c "WETH"), and the row should
+         read the asset the user chose (USDC), while the calldata names the
+         aggregator mirror kyberRoute already resolved. */
+      /* Selling the wrapped-native: prepend an unwrap (0x8c6c -> native USDC)
+         so the 0x3600 route can pull it, and run both legs on the truncated 6-dec
+         amount the quote used. */
+      const aggIn = sellIsWrapped
+        ? truncDecimals(amountIn, kyberRoute.sellDec)
+        : amountIn;
+      const unwrap: Intent | null = sellIsWrapped
+        ? {
+            kind: "unwrapNative",
+            to: wrappedNative!,
+            amount: aggIn,
+            decimals: tokenIn.decimals,
+            symbol: tokenIn.symbol,
+            nativeSymbol:
+              nativeSwapErc20(swapChainId, kyberRoute.sellAddr)?.symbol ??
+              tokenIn.symbol,
+            chainId: swapChainId,
+          }
+        : null;
+      return [
+        ...(unwrap ? [unwrap] : []),
+        {
+          kind: "approve",
+          token: kyberRoute.sellAddr,
+          spender: kyberRoute.spender,
+          amount: aggIn,
+          decimals: kyberRoute.sellDec,
+          symbol: tokenIn.symbol,
+        },
+        {
+          kind: "aggregatorSwap",
+          to: kyberRoute.to,
+          data: kyberRoute.data,
+          value: "0",
+          tokenIn: kyberRoute.sellAddr,
+          amountIn: aggIn,
+          decimalsIn: kyberRoute.sellDec,
+          symbolIn: tokenIn.symbol,
+          tokenOut: kyberRoute.buyAddr,
+          amountOut: amountOut || "0",
+          amountOutMin: minOut,
+          decimalsOut: kyberRoute.buyDec,
+          symbolOut: tokenOut.symbol,
+          chainId: swapChainId,
+          venue: "kyberswap",
+          spender: kyberRoute.spender,
+          slippageBps,
+        },
+      ];
+    }
+
     /* The router that executes THIS route — ours for our own pools, the venue's
        for a fallback. A venue swap on a chain we have not deployed on has no
        v3Router of ours, so the gate is the route's router, not ours. The approve
@@ -628,7 +892,22 @@ export default function SwapPage() {
           };
 
     return approve ? [approve, trade] : [trade];
-  }, [sell, buy, amountIn, minOut, deadlineMin, route]);
+  }, [
+    sell,
+    buy,
+    amountIn,
+    minOut,
+    deadlineMin,
+    route,
+    kyberRoute,
+    amountOut,
+    wrapMode,
+    tokenIn,
+    tokenOut,
+    wrappedNative,
+    swapChainId,
+    slippageBps,
+  ]);
 
   const onComplete = () => {
     setReviewing(false);
@@ -639,31 +918,35 @@ export default function SwapPage() {
        stale one left here would let the next `plan` build against pools that
        were chosen for the previous trade's size. */
     setRoute(null);
+    setKyberRoute(null);
   };
 
+  /* "Wrap"/"Unwrap" instead of "Review swap" once the card is in wrap mode. The
+     quote-related states (Fetching quote…, No route) never apply there — there is
+     no quote — so they are guarded out. `samePoolSide` always implies a wrapMode,
+     so the old "same asset" dead-end is gone. */
+  const reviewVerb =
+    wrapMode === "wrap" ? "Wrap" : wrapMode === "unwrap" ? "Unwrap" : "Review swap";
   const ctaLabel = !isConnected
     ? "Connect wallet"
     : !tokenIn || !tokenOut
       ? "Select a token"
-      : /* Both of these used to arrive as "No route", which is a claim about
-           liquidity. Neither is: one is a pair that can never have a pool, the
-           other is a gap in our own deployment record. */
-        samePoolSide
-        ? `${tokenIn.symbol} and ${tokenOut.symbol} are the same asset`
-        : !sell || !buy
-          ? `No wrapped ${(!sell ? tokenIn : tokenOut).symbol} on this chain`
-          : !amountIn || parseFloat(amountIn) <= 0
-            ? "Enter an amount"
-            : insufficientBalance
-              ? `Insufficient ${tokenIn.symbol}`
-              : quoting
-                ? "Fetching quote…"
-                : noRoute
-                  ? `No route for ${tokenIn.symbol} → ${tokenOut.symbol}`
-                  : switching
-                    ? "Switching…"
-                    : wrongChain
-                      ? `Review on ${getChainMeta(swapChainId)?.shortName ?? "its network"}`
+      : !sell || !buy
+        ? `No wrapped ${(!sell ? tokenIn : tokenOut).symbol} on this chain`
+        : !amountIn || parseFloat(amountIn) <= 0
+          ? "Enter an amount"
+          : insufficientBalance
+            ? `Insufficient ${tokenIn.symbol}`
+            : !wrapMode && quoting
+              ? "Fetching quote…"
+              : !wrapMode && noRoute
+                ? `No route for ${tokenIn.symbol} → ${tokenOut.symbol}`
+                : switching
+                  ? "Switching…"
+                  : wrongChain
+                    ? `${wrapMode ? reviewVerb : "Review"} on ${getChainMeta(swapChainId)?.shortName ?? "its network"}`
+                    : wrapMode
+                      ? reviewVerb
                       : "Review swap";
 
   const ctaDisabled =
@@ -691,7 +974,13 @@ export default function SwapPage() {
         <div className={s.box}>
           <PlanReview
             intents={plan}
-            submitLabel={`Sign & swap`}
+            submitLabel={
+              wrapMode === "wrap"
+                ? "Sign & wrap"
+                : wrapMode === "unwrap"
+                  ? "Sign & unwrap"
+                  : "Sign & swap"
+            }
             onComplete={onComplete}
             onCancel={() => setReviewing(false)}
           />
@@ -721,12 +1010,17 @@ export default function SwapPage() {
               </button>
             ))}
           </div>
-          <SwapSettings
-            slippageBps={slippageBps}
-            onSlippage={setSlippageBps}
-            deadlineMin={deadlineMin}
-            onDeadline={setDeadlineMin}
-          />
+          {/* Slippage and deadline are meaningless for a 1:1 wrap — a deposit()/
+              withdraw() has no price to protect and no route to expire — so the
+              settings pill is hidden in wrap mode. */}
+          {!wrapMode && (
+            <SwapSettings
+              slippageBps={slippageBps}
+              onSlippage={setSlippageBps}
+              deadlineMin={deadlineMin}
+              onDeadline={setDeadlineMin}
+            />
+          )}
           {/* Between the settings pill and the chart toggle, which keeps the two
               ghost icon buttons together on the outside of the row. It answers
               "did that go through?" about the swaps signed on this card, so it
@@ -814,16 +1108,23 @@ export default function SwapPage() {
         {rate && (
           <div className={s.quote}>
             <span className="tabular">{rate}</span>
-            {minOut && tokenOut && (
-              <span
-                className="tabular"
-                title={`The least you will receive at ${(slippageBps / 100).toFixed(2)}% max slippage`}
-              >
-                Min{" "}
-                <b>
-                  {minOut} {tokenOut.symbol}
-                </b>
+            {wrapMode ? (
+              <span title="Wrapping and unwrapping are 1:1 — no fee, no slippage, reversible any time">
+                1:1 · no fee
               </span>
+            ) : (
+              minOut &&
+              tokenOut && (
+                <span
+                  className="tabular"
+                  title={`The least you will receive at ${(slippageBps / 100).toFixed(2)}% max slippage`}
+                >
+                  Min{" "}
+                  <b>
+                    {minOut} {tokenOut.symbol}
+                  </b>
+                </span>
+              )
             )}
           </div>
         )}
@@ -839,8 +1140,7 @@ export default function SwapPage() {
             as a warning. */}
         {route && (
           <div className={s.quote}>
-            <span title="The pools this swap is quoted through, in order">
-              {route.hops.length > 1 ? "Route " : "Pool "}
+            <span title="The pool this swap routes through">
               <b>{describeRoute(route)}</b>
               {/* Named only for a fallback venue — our own pools are the default
                   and need no label. "via Uniswap V3" tells the user this token

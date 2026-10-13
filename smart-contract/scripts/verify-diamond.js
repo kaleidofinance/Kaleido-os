@@ -51,7 +51,7 @@
  * 6. REGISTRATION STATE. Before register-tokens.js this is empty and that is
  *    correct; after it, a token missing from the arrays means the lending market
  *    silently lacks that asset. Also flags the duplicate that addLoanableToken's
- *    missing guard allows.
+ *    missing guard allowed on diamonds cut before 2026-09-27.
  *
  * Exits non-zero on any failure, so it can gate a deploy sequence.
  */
@@ -63,6 +63,7 @@ const fs = require("fs");
 const { getSelectors } = require("./libraries/diamond.js");
 const { feedFor } = require("./libraries/pyth-feeds.js");
 const { backendFor, feedPlanFor } = require("./libraries/aggregator-feeds.js");
+const { NATIVE_SYMBOL } = require("./libraries/chain-asset-rules.js");
 
 /**
  * The facets that are cut into the diamond.
@@ -78,6 +79,10 @@ const CUT_FACETS = [
   "OwnershipFacet",
   "ProtocolFacet",
   "AgentPermissionFacet",
+  /* Pause + setTokenFeed (2026-09-27, Arc mainnet hardening). Diamonds deployed
+   * before it report it unrouted — correctly: they have no pause. The same goes
+   * for OwnershipFacet's acceptOwnership/pendingOwner (two-step ownership). */
+  "LendingAdminFacet",
 ];
 
 const failures = [];
@@ -274,6 +279,35 @@ async function main() {
     fail("owner is the zero address — the diamond can never be reconfigured again.");
   }
 
+  /* Two-step ownership and the pause (both 2026-09-27). Read defensively: a
+   * diamond cut before these existed has neither selector, which the routing
+   * section above already reports as a failure. */
+  try {
+    const pending = ethers.getAddress(await ownership.pendingOwner());
+    console.log(`   pending ${pending === ethers.ZeroAddress ? "(none)" : pending}`);
+    if (pending !== ethers.ZeroAddress) {
+      warn(
+        `an ownership transfer to ${pending} is pending. Nothing changes until that ` +
+          "address calls acceptOwnership — confirm it is the intended multisig on THIS chain.",
+      );
+    }
+  } catch {
+    /* pendingOwner not routed — reported under selector routing */
+  }
+  try {
+    const admin = await ethers.getContractAt("LendingAdminFacet", diamondAddress);
+    const isPaused = await admin.paused();
+    console.log(`   paused  ${isPaused}`);
+    if (isPaused) {
+      warn(
+        "lending is PAUSED: requests, servicing, listings and borrowing are refused " +
+          "(repay, withdraw, deposit and liquidate still work). Unpause before announcing.",
+      );
+    }
+  } catch {
+    /* paused() not routed — reported under selector routing */
+  }
+
   /* ── 4. Oracle reachability ───────────────────────────────────────────── */
   console.log("\n── Oracle ──");
   const protocol = await ethers.getContractAt("ProtocolFacet", diamondAddress);
@@ -373,7 +407,22 @@ async function main() {
   const NATIVE_SENTINEL = ethers.getAddress(
     "0x0000000000000000000000000000000000000001",
   );
+  /* Which feed prices native. The chain's own native symbol first (the reviewed
+   * table register-tokens.js enforces), then what register-tokens recorded, and
+   * the environment only last. It used to read the diamond record (which never
+   * carries this) and then .env — so on Arc the fork rehearsal found it checking
+   * native USDC against BNB/USD, from a stale NATIVE_FEED_SYMBOL=BNB in .env. */
+  let tokensRecord = null;
+  try {
+    tokensRecord = JSON.parse(
+      fs.readFileSync(`deployment-tokens-${hre.network.name}.json`, "utf8"),
+    );
+  } catch {
+    /* no registration record for this network */
+  }
   const nativeFeedSymbol =
+    NATIVE_SYMBOL[chainId] ||
+    tokensRecord?.nativeFeedSymbol ||
     record?.nativeFeedSymbol ||
     (process.env.NATIVE_FEED_SYMBOL || "").trim() ||
     null;
@@ -533,7 +582,7 @@ async function main() {
   if (dupes.length) {
     fail(
       `loanable contains duplicates: ${[...new Set(dupes)].join(", ")}. ` +
-        "addLoanableToken pushes unconditionally, so it was called twice; " +
+        "addLoanableToken pushed unconditionally before 2026-09-27, so it was called twice; " +
         "getLoanableAssets returns the address twice and the UI renders it twice. " +
         "Nothing removes an entry from s_loanableToken.",
     );

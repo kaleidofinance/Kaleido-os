@@ -101,6 +101,11 @@
   },
   {
     "inputs": [],
+    "name": "Protocol__InvalidPriceFeed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "Protocol__InvalidToken",
     "type": "error"
   },
@@ -147,6 +152,11 @@
   {
     "inputs": [],
     "name": "Protocol__OwnerCreatedOrder",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "Protocol__Paused",
     "type": "error"
   },
   {
@@ -2444,32 +2454,6 @@
     "name": "liquidateUserRequest",
     "outputs": [],
     "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "pyth",
-    "outputs": [
-      {
-        "internalType": "contract IPyth",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "pythPriceOracle",
-    "outputs": [
-      {
-        "internalType": "contract IPythPriceOracle",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
     "type": "function"
   },
   {

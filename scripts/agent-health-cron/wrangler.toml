@@ -1,0 +1,57 @@
+# Cloudflare Worker config for Luca's health alarm.
+#
+# Deploy / redeploy:
+#
+#   npx wrangler deploy --config scripts/agent-health-cron/wrangler.toml
+#
+# Arm it (the value must equal the Vercel project's CRON_SECRET — the endpoint
+# compares them with timingSafeEqual and answers 401 to anything else):
+#
+#   npx wrangler secret put AGENT_HEALTH_CRON_SECRET --config scripts/agent-health-cron/wrangler.toml
+#
+# There is nothing else to configure. The endpoint reads its own providers,
+# quota and turn log from the Vercel deployment; this Worker only supplies the
+# clock and the secret. See agent-health-cron-worker.js for why an ok:false at
+# 200 is treated as failure — the sibling health-cron only checks status, which
+# would miss exactly the rotated-key case this one exists to catch.
+
+name = "kaleido-agent-health-cron"
+main = "agent-health-cron-worker.js"
+compatibility_date = "2026-09-01"
+
+# The workers.dev hostname is only a manual trigger, and its fetch handler
+# refuses anything without the same secret. No route and no custom domain,
+# because nothing but Cloudflare's scheduler needs to reach this.
+#
+# Declared above every [table] header on purpose: a bare key after one belongs
+# to that table, and `workers_dev` under [triggers] is silently the wrong
+# setting (wrangler warns and carries on).
+workers_dev = true
+
+# No per-version preview hostnames. Each is another public URL, and though the
+# secret check means they are not a hole, there is nothing here worth previewing.
+preview_urls = false
+
+# Every 15 minutes — the same cadence as the price-keeper and the health monitor,
+# so all three jobs cost the same and there is one number to reason about. What
+# sets it is how long Luca may sit unable to answer before the team is told; the
+# endpoint itself is read-only and cheap, so a tighter interval buys little.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+# The apex, deliberately. `www.kaleidofi.xyz` answers 307, and a redirect is not
+# somewhere to send a bearer token.
+APP_URL = "https://kaleidofi.xyz"
+
+# AGENT_FAILURE_RATE and AGENT_FAILURE_MIN_SAMPLE are deliberately unset. The
+# Worker defaults to alerting when more than half of the last hour's turns failed,
+# measured over at least ten turns — so one failure in a quiet hour never pages
+# anyone. Set them (as numbers) only once live volume shows the defaults are wrong;
+# the point of the minimum sample is that low traffic should not trip the alarm.
+
+# On, because a monitor that silently stops is the failure being fixed here. The
+# scheduled handler rethrows on non-200 OR ok:false so the invocation is marked
+# failed and not just logged.
+[observability]
+enabled = true

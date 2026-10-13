@@ -7,9 +7,13 @@ import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { readFaucetAssets } from "@/hooks/v2/useFaucet";
 import { readMarketRow } from "@/lib/lending/book";
 import { readStakingState } from "@/lib/staking/state";
-import { readCollateralDeposits } from "@/lib/lending/collateral";
+import { readCollateralDeposits, readFreeCollateral } from "@/lib/lending/collateral";
+import { checkLending } from "@/lib/lending/guard";
+import { readBalanceOn, readTokenBalance } from "@/lib/chain/tokenBalance";
 import { readPoolState } from "@/lib/dex/pool";
 import { resolveBridgeRoute } from "@/lib/bridge/route";
+import { resolveSwapRoute } from "@/lib/swap/route";
+import { resolveArgusPlan } from "@/lib/argus/route";
 import { providerForChain } from "@/config/provider";
 import { getContracts } from "@/constants/registry";
 import {
@@ -21,6 +25,8 @@ import {
   type LoanRef,
   type PoolPositionRef,
 } from "@/lib/v2/intents/build";
+import { outgoingLegs } from "@/lib/v2/intents/outgoing";
+import type { Intent } from "@/lib/v2/intents/types";
 import type { Command } from "@/lib/v2/intents/fromCommand";
 
 /**
@@ -46,6 +52,8 @@ export type {
   LoanRef,
   PoolPositionRef,
 } from "@/lib/v2/intents/build";
+import { fetchHeldTokens } from "@/lib/wallet/heldTokens";
+import { envVars } from "@/constants/envVars";
 export { isParsableAmount } from "@/lib/v2/intents/build";
 
 export interface PlannerOptions extends BuilderOptions {
@@ -97,13 +105,71 @@ async function browserFaucetAssets(
   return readFaucetAssets(provider, chainId, address ?? ethers.ZeroAddress);
 }
 
+const ERC20_BALANCE_ABI = ["function balanceOf(address) view returns (uint256)"];
+
+/**
+ * The first outgoing token this wallet cannot cover, as a ready-to-show refusal
+ * — or null when every leg is affordable, or cannot be checked.
+ *
+ * `buildIntents` prices a plan against the pools but never against the wallet,
+ * so "swap 999999 USDC" from a wallet holding 9,995 built a fully signable plan
+ * that could only fail at the wallet — a tester hit exactly that. This reads the
+ * balance of each token the plan spends (`outgoingLegs`) on the plan's own chain
+ * and compares in BASE UNITS, so the comparison is exact: it refuses only a
+ * shortfall it is certain of, and any balance it cannot read it lets through,
+ * leaving the chain the final arbiter rather than risk a false refusal.
+ */
+async function firstShortfall(
+  intents: readonly Intent[],
+  chainId: number | undefined,
+  address: string | undefined,
+): Promise<string | null> {
+  if (!address || chainId === undefined) return null;
+  const provider = providerForChain(chainId);
+  if (!provider) return null;
+
+  for (const leg of outgoingLegs(intents)) {
+    let need: bigint;
+    try {
+      need = ethers.parseUnits(leg.amount, leg.decimals);
+    } catch {
+      continue; // an amount that will not parse is one this gate will not judge
+    }
+    if (need <= 0n) continue;
+
+    let held: bigint;
+    try {
+      held = leg.isNative
+        ? await provider.getBalance(address)
+        : ((await new ethers.Contract(
+            leg.token,
+            ERC20_BALANCE_ABI,
+            provider,
+          ).balanceOf(address)) as bigint);
+    } catch {
+      continue; // a balance we cannot read is one the chain will check for us
+    }
+
+    if (need > held) {
+      const shown = Number(
+        ethers.formatUnits(held, leg.decimals),
+      ).toLocaleString(undefined, { maximumFractionDigits: 6 });
+      return (
+        `That would spend ${leg.amount} ${leg.symbol}, but this wallet holds ` +
+        `${shown} ${leg.symbol} on this chain. Lower the amount and I'll build it.`
+      );
+    }
+  }
+  return null;
+}
+
 export function useLocalPlanner() {
   const { getV3AmountOut, getV3MultiHopAmountOut } = useV3SwapRouter();
   const { chainId, address } = useWalletV2();
 
   const buildPlan = useCallback(
-    async (command: Command, opts: PlannerOptions): Promise<PlanResult> =>
-      buildIntents(
+    async (command: Command, opts: PlannerOptions): Promise<PlanResult> => {
+      const result = await buildIntents(
         command,
         { slippageBps: opts.slippageBps, deadlineMin: opts.deadlineMin },
         {
@@ -141,6 +207,24 @@ export function useLocalPlanner() {
              facet won't lend a token this wallet has posted as collateral, and
              a plan that ignores that can only revert at the wallet. */
           collateralDeposits: () => readCollateralDeposits(chainId, address),
+          /* The same lending pre-check the server planner runs. */
+          lendingCheck: (check) => checkLending(chainId, address, check),
+          /* What "withdraw all" withdraws — the same reader as the server. */
+          freeCollateral: () => readFreeCollateral(chainId, address),
+          /* Resolves a relative swap ("half my USDC") to a number against the
+             wallet's balance — the same reader the server planner uses, so both
+             agree. See chain/tokenBalance. */
+          tokenBalance: (token) => readTokenBalance(chainId, address, token),
+          /* Everything held on this chain, registry or not — read by the
+             "move everything off <chain>" plan (Abstract's shutdown). */
+          heldTokens: () =>
+            chainId && address
+              ? fetchHeldTokens(address, chainId, envVars.thirdwebClientId)
+              : Promise.resolve([]),
+          /* Any chain: a send "on Base" is checked there, and a short one looks
+             for the token elsewhere to offer a bridge. Same reader as the server. */
+          balanceOn: (id, token, isNative) =>
+            readBalanceOn(id, address, token, isNative),
           /* Read here rather than passed in, and read lazily, which is the whole
              reason PlanDeps takes thunks: the faucet is one more eth_call, and
              an agent page that fired it on mount would pay for it on every visit
@@ -172,11 +256,36 @@ export function useLocalPlanner() {
                 })
               : resolveBridgeRoute({
                   ...req,
-                  fromChainId: chainId,
+                  // A "from X" bridge names its own source; otherwise it leaves
+                  // the connected chain, as every bridge did before.
+                  fromChainId: req.sourceChainId ?? chainId,
                   userAddress: address ?? "",
                 }),
+          swapRoute: (req) =>
+            chainId === undefined
+              ? Promise.resolve({
+                  error: "Connect a wallet to a supported chain to swap.",
+                })
+              : resolveSwapRoute({ ...req, chainId, userAddress: address ?? "" }),
+          /* Argus-launchpad buys: a server round trip (reads launch+pool, applies
+             the server-only fee, builds v4 calldata). The build.ts branch only
+             calls this on Arc for a USDC input, and the route is inert unless
+             ARGUS_ENABLED, so it costs nothing on any other chain or token. */
+          argusPlan: (req) => resolveArgusPlan(req),
         },
-      ),
+      );
+      if (!result.ok) return result;
+      /* The wallet-balance gate. buildIntents priced this against the pools but
+         never against the wallet, so a spend larger than the balance still built
+         a signable plan (a tester typed one and reached Review). A shortfall is a
+         terminal refusal — no slot to re-ask, the amount itself is the problem. */
+      const shortfall = await firstShortfall(
+        result.build.intents,
+        chainId,
+        address,
+      );
+      return shortfall ? { ok: false, error: shortfall } : result;
+    },
     [getV3AmountOut, getV3MultiHopAmountOut, chainId, address],
   );
 

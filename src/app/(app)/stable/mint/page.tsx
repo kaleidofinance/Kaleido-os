@@ -124,14 +124,14 @@ export default function MintPage() {
         <div className={f.kv}>
           <span>Rate</span>
           <b className="tabular">
-            {rate === null ? "—" : `1 ${collateral} = ${trim(rate)} kfUSD`}
+            {rate === null ? "0" : `1 ${collateral} = ${trim(rate)} kfUSD`}
           </b>
         </div>
         <div className={f.kv}>
           <span>Minting fee</span>
           <b className="tabular">
             {stats?.mintFee === null || stats?.mintFee === undefined
-              ? "—"
+              ? "0"
               : fee && fee > 0
                 ? `${stats.mintFee}% · ${trim(fee, 2)} ${collateral}`
                 : `${stats.mintFee}%`}

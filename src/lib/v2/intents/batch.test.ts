@@ -21,7 +21,10 @@
 import { ethers } from "ethers";
 
 import {
+  argusRun,
   encodeBatch,
+  encodeForSimulation,
+  exitRun,
   isBatchable,
   pairsWith,
   planRuns,
@@ -100,7 +103,11 @@ console.log("\n— what may be bundled at all —");
      LibAgentPermission cannot scope them and the auditor's cap is the only bound.
      Those are exactly the prompts worth keeping. */
   check("a transfer is NOT", !isBatchable("transfer"));
-  check("a bridge is NOT", !isBatchable("bridge"));
+  /* A bridge has an encoder now, but ONLY for the whole-plan exit run (the
+     user's "move everything off Abstract", one signature, each bridge still
+     capped by the auditor before the plan is shown). It never pairs on its own,
+     so an ordinary bridge keeps its own prompt — asserted in the exit-run block. */
+  check("a bridge is batchable only via an exit run", isBatchable("bridge"));
   /* Not a policy exclusion — its resolver conditionally sends a pool-initialising
      transaction first, so one intent can be two transactions. */
   check("mintPoolPosition is NOT", !isBatchable("mintPoolPosition"));
@@ -394,6 +401,139 @@ console.log("\n— the multi-hop path is re-derived, not trusted —");
   ]);
   check("a path that disagrees with the hops does NOT", one(route(swapped)) === null);
   check("nor an empty one", one(route("0x")) === null);
+}
+
+console.log("\n— an aggregator swap bundles with its approve —");
+{
+  const KYBER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
+  const agg = (over: Record<string, unknown> = {}): Intent =>
+    ({
+      kind: "aggregatorSwap", to: KYBER, spender: KYBER, data: "0xe21fd0e9", value: "0",
+      tokenIn: USDC, amountIn: "50", decimalsIn: 6, symbolIn: "USDC",
+      tokenOut: WETH, amountOut: "0.02", amountOutMin: "0.019", decimalsOut: 18, symbolOut: "WETH",
+      chainId: 5042, venue: "kyberswap", slippageBps: 50, ...over,
+    }) as Intent;
+  check("approve(KYBER) → aggregatorSwap pairs", pairsWith(approve(KYBER), agg()));
+  const runs = planRuns([approve(KYBER), agg()]);
+  check("…as one bundled run", runs.length === 1 && runs[0].bundled, JSON.stringify(runs));
+  const calls = encodeBatch([approve(KYBER), agg()], [0, 1], USER);
+  check(
+    "…carrying the router's calldata unchanged, no value",
+    calls !== null && calls[1].to === KYBER && calls[1].data === "0xe21fd0e9" && !calls[1].value,
+  );
+  check("an approve to a different router does not pair", !pairsWith(approve(ROUTER), agg()));
+  check("a native-input aggregator swap never bundles", !pairsWith(approve(KYBER), agg({ value: "1000" })));
+
+  /* Selling Arc's wrapped-native routes as unwrapNative → approve → aggregatorSwap:
+     the unwrap must land on its own (it produces the native the swap then pulls),
+     so it is a lone run and only the approve+swap that follow bundle. */
+  const unwrap: Intent = {
+    kind: "unwrapNative",
+    to: "0x8c6c000000000000000000000000000000000000",
+    amount: "50",
+    decimals: 18,
+    symbol: "WETH",
+    nativeSymbol: "USDC",
+    chainId: 5042,
+  };
+  const withUnwrap = planRuns([unwrap, approve(KYBER), agg()]);
+  check(
+    "a leading unwrap is its own run, then the approve+swap bundle",
+    withUnwrap.length === 2 &&
+      !withUnwrap[0].bundled &&
+      withUnwrap[0].steps.join(",") === "0" &&
+      withUnwrap[1].bundled &&
+      withUnwrap[1].steps.join(",") === "1,2",
+    JSON.stringify(withUnwrap),
+  );
+}
+
+console.log("\n— the Argus run: approve → permit2Approve → argusSwap, one prompt —");
+{
+  const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+  const UR = "0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1";
+  const ARC_USDC = "0x3600000000000000000000000000000000000000";
+  const exp = Math.floor(Date.now() / 1000) + 30 * 86400;
+  const a: Intent = { kind: "approve", token: ARC_USDC, spender: PERMIT2, amount: "10", decimals: 6, symbol: "USDC", unlimited: true };
+  const b: Intent = { kind: "permit2Approve", token: ARC_USDC, spender: UR, amount: "10", decimals: 6, symbol: "USDC", expiration: exp, unlimited: true };
+  const c = {
+    kind: "argusSwap", to: UR, data: "0x3593564c", value: "0",
+    tokenIn: ARC_USDC, amountIn: "10", decimalsIn: 6, symbolIn: "USDC",
+    tokenOut: "0x08AdbF431569A1AaCAC2606d2aDCD18F4eBF2A71", amountOut: "1", amountOutMin: "0.9",
+    decimalsOut: 18, symbolOut: "GLITCH", chainId: 5042, hook: "",
+  } as Intent;
+
+  const runs = planRuns([a, b, c]);
+  check(
+    "the three steps are ONE bundled run",
+    runs.length === 1 && runs[0].bundled && runs[0].steps.join(",") === "0,1,2",
+    JSON.stringify(runs),
+  );
+  const calls = encodeBatch([a, b, c], [0, 1, 2], USER);
+  check("all three encode", calls !== null && calls.length === 3);
+  if (calls) {
+    const ap = ERC20_IFACE.decodeFunctionData("approve", calls[0].data);
+    check(
+      "call 1: the token approves Permit2 for the max (one-time)",
+      calls[0].to.toLowerCase() === ARC_USDC && ap[0].toLowerCase() === PERMIT2.toLowerCase() && ap[1] === ethers.MaxUint256,
+    );
+    const P2 = new ethers.Interface(["function approve(address token, address spender, uint160 amount, uint48 expiration)"]);
+    const p2 = P2.decodeFunctionData("approve", calls[1].data);
+    check(
+      "call 2: Permit2 authorises the Argus router, max amount, with the plan's expiry",
+      calls[1].to.toLowerCase() === PERMIT2.toLowerCase() &&
+        p2[0].toLowerCase() === ARC_USDC &&
+        p2[1].toLowerCase() === UR.toLowerCase() &&
+        p2[2] === (1n << 160n) - 1n &&
+        Number(p2[3]) === exp,
+    );
+    check(
+      "call 3: the server's swap calldata, unchanged",
+      calls[2].to.toLowerCase() === UR.toLowerCase() && calls[2].data === "0x3593564c" && calls[2].value === 0n,
+    );
+  }
+  const exact = encodeBatch([{ ...a, unlimited: undefined } as Intent], [0], USER);
+  check(
+    "without `unlimited` the approve stays the exact amount",
+    exact !== null && ERC20_IFACE.decodeFunctionData("approve", exact[0].data)[1] === 10_000_000n,
+  );
+
+  /* Each link is load-bearing: break any one and it is not an Argus run. */
+  const STRANGER = "0x9999999999999999999999999999999999999999";
+  check("approve to someone other than Permit2 → not a run", !argusRun({ ...a, spender: STRANGER } as Intent, b, c));
+  check("Permit2 authorising a router the swap doesn't call → not a run", !argusRun(a, { ...b, spender: STRANGER } as Intent, c));
+  check("a swap to a router that isn't Argus's → not a run", !argusRun(a, { ...b, spender: STRANGER } as Intent, { ...c, to: STRANGER } as Intent));
+  check("a different token in the middle → not a run", !argusRun(a, { ...b, token: WETH } as Intent, c));
+  check("a swap spending a different token → not a run", !argusRun(a, b, { ...c, tokenIn: WETH } as Intent));
+  const broken = planRuns([a, { ...b, spender: STRANGER } as Intent, c]);
+  check(
+    "a broken run is never bundled as three",
+    broken.every((r) => r.steps.length < 3) && broken.flatMap((r) => r.steps).join(",") === "0,1,2",
+    JSON.stringify(broken),
+  );
+}
+
+/* ---- Exit run: everything off a chain, one signature ---- */
+{
+  const R = "0x4f8C9056bb8A3616693a76922FA35d53C056E5b3";
+  const PENGU = "0x9eBe3A824Ca958e4b3Da772D2065518F009CBa62";
+  const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+  const appr = (token: string, spender = R) => ({ kind: "approve", token, spender, amount: "5000", decimals: 18, symbol: "PENGU" }) as unknown as Intent;
+  const br = (token: string, over: Record<string, unknown> = {}) => ({ kind: "bridge", to: R, data: "0xabcdef", value: "0", token, amount: "1", decimals: 18, symbol: "X", fromChainId: 2741, toChainId: 5042, toChainName: "Arc", provider: "lifi", etaSeconds: 30, ...over }) as unknown as Intent;
+  const eth = br(NATIVE, { value: "9500000000000000", isNative: true, symbol: "ETH" });
+  const plan = [appr(PENGU), br(PENGU), eth];
+  check("an exit plan (approve+bridge, ETH bridge) is one bundle", exitRun(plan) && planRuns(plan).length === 1 && planRuns(plan)[0].steps.join() === "0,1,2");
+  const calls = encodeBatch(plan, [0, 1, 2], "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc");
+  check("the bundle encodes all three calls, ETH value carried", !!calls && calls.length === 3 && calls[2].value === 9500000000000000n && calls[1].to === R);
+  check("a single bridge out of Abstract also bundles with its approve", exitRun([appr(PENGU), br(PENGU)]));
+  check("a single bridge elsewhere does NOT bundle (unchanged flow)", !exitRun([appr(PENGU), br(PENGU, { fromChainId: 8453 })]) && planRuns([appr(PENGU), br(PENGU, { fromChainId: 8453 })]).length === 2);
+  check("an approve to a different spender breaks the run", !exitRun([appr(PENGU, "0x1111111111111111111111111111111111111111"), br(PENGU), eth]));
+  check("an approve for a different token breaks the run", !exitRun([appr("0x2222222222222222222222222222222222222222"), br(PENGU), eth]));
+  check("bridges from two chains never share a bundle", !exitRun([br(PENGU), br(PENGU, { fromChainId: 8453 })]));
+  check("a CCTP leg is never bundled", !exitRun([br(PENGU), br(PENGU, { provider: "cctp" })]));
+  check("a third-party recipient is never bundled", !exitRun([br(PENGU), br(PENGU, { recipient: "0x3333333333333333333333333333333333333333" })]));
+  check("pairsWith still refuses a lone approve+bridge", !pairsWith(appr(PENGU), br(PENGU)));
+  check("bridges are still not simulated", encodeForSimulation(plan, 1, "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc") === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

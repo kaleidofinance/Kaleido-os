@@ -13,6 +13,7 @@
 // deploy, so the parser's job is to never let a hand-edited row throw on open.
 import {
   clearTxLog,
+  findLatestAcrossChains,
   readTxLog,
   recordTx,
   subscribeTxLog,
@@ -351,5 +352,32 @@ recordTx(CHAIN, ADDR, entry(HASH_A, 1));
 check("unsubscribing stops the notifications", seen.length === 2);
 
 /* -------------------------------------------------------------------------- */
+console.log("\n— findLatestAcrossChains: a bridge is found on whatever chain it left —");
+{
+  const W = "0x1111111111111111111111111111111111111111";
+  const e = (hash: string, kind: TxLogEntry["kind"], status: TxLogEntry["status"], at: number): TxLogEntry =>
+    ({ hash, kind, status, at, title: "t", detail: "d" }) as TxLogEntry;
+  // Base (8453) holds the inbound bridge; Arc (5042) — the chain the user is on
+  // now — holds only a swap. This is the case the Rewards verifier missed.
+  const logs: Record<number, TxLogEntry[]> = {
+    5042: [e(HASH_A, "aggregatorSwap", "confirmed", 300)],
+    8453: [e(HASH_B, "bridge", "confirmed", 200)],
+    56: [e(H(0xccc), "bridge", "reverted", 400)],
+  };
+  const read = (c: number) => logs[c] ?? [];
+  const hit = findLatestAcrossChains([5042, 8453, 56], W, "bridge", read);
+  check(
+    "a bridge logged on its SOURCE chain is found while the user is on Arc",
+    hit?.chainId === 8453 && hit.entry.hash === HASH_B,
+    JSON.stringify(hit),
+  );
+  check("a reverted bridge is never the candidate", hit?.entry.hash !== H(0xccc));
+  logs[1] = [e(H(0xddd), "bridge", "confirmed", 900)];
+  const newest = findLatestAcrossChains([5042, 8453, 56, 1], W, "bridge", read);
+  check("the newest confirmed bridge wins across chains", newest?.chainId === 1 && newest.entry.hash === H(0xddd), JSON.stringify(newest));
+  check("no wallet → null", findLatestAcrossChains([8453], undefined, "bridge", read) === null);
+  check("no bridge anywhere → null", findLatestAcrossChains([5042], W, "bridge", read) === null);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

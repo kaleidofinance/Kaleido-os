@@ -84,6 +84,16 @@ export interface BookEntry {
   returnDateUnix: number;
   /** Lender on a listing, borrower on a request. */
   counterparty: string;
+  /**
+   * The min/max a taker may draw from a LISTING, base units — the range
+   * `takeListing` enforces (`min_amount <= _amount <= max_amount`,
+   * ProtocolFacet). Both null on a REQUEST, which is filled in full by
+   * `fillRequest` and has no range. Carried so a caller can tell a borrower the
+   * amount a listing will actually accept, rather than pointing them at a listing
+   * whose take reverts on the range check.
+   */
+  minAmountRaw: string | null;
+  maxAmountRaw: string | null;
 }
 
 /**
@@ -168,6 +178,8 @@ export async function readOpenBook(
               interestBps: Number(l.interest),
               returnDateUnix: Number(l.returnDate),
               counterparty: String(l.author),
+              minAmountRaw: BigInt(l.min_amount).toString(),
+              maxAmountRaw: BigInt(l.max_amount).toString(),
             };
           }
           const r = await diamond.getRequest(n);
@@ -179,6 +191,9 @@ export async function readOpenBook(
             interestBps: Number(r.interest),
             returnDateUnix: Number(r.returnDate),
             counterparty: String(r.author),
+            /* A request is filled in full by fillRequest — no partial range. */
+            minAmountRaw: null,
+            maxAmountRaw: null,
           };
         } catch {
           /* An unwritten id reverts Protocol__IdNotExist. Dropped rather than
@@ -412,7 +427,12 @@ export async function readMarketRow(
       if (Number(l.listingStatus) !== 0) return null;
       const amount = BigInt(l.amount);
       if (amount <= 0n) return null;
-      return { tokenAddress: String(l.tokenAddress), amount: amount.toString() };
+      return {
+        tokenAddress: String(l.tokenAddress),
+        amount: amount.toString(),
+        interestBps: Number(l.interest),
+        returnDate: Number(l.returnDate),
+      };
     }
 
     const r = await diamond.getRequest(id);
@@ -424,7 +444,12 @@ export async function readMarketRow(
     /* `loanRequestAddr` is the borrowed token on a request; `tokenAddress` is
        what the same field is called on a listing. Same meaning, two names in the
        struct, and MarketRow uses the listing's. */
-    return { tokenAddress: String(r.loanRequestAddr), amount: amount.toString() };
+    return {
+      tokenAddress: String(r.loanRequestAddr),
+      amount: amount.toString(),
+      interestBps: Number(r.interest),
+      returnDate: Number(r.returnDate),
+    };
   } catch {
     /* An id past the counter reverts Protocol__IdNotExist, which lands here and
        means the same thing to the caller as "not open". */

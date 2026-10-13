@@ -3,6 +3,7 @@ import { ROBINHOOD_STOCK_TOKENS } from "./robinhoodTokens.generated";
 import {
   GENERATED_DEPLOYMENTS,
   GENERATED_LENDING_REGISTRATION,
+  GENERATED_POOL_PAIRS,
   GENERATED_SEEDED_POOLS,
 } from "./deployments.generated";
 
@@ -176,6 +177,14 @@ export interface ChainContracts {
    * fill at all - at a price the user never saw.
    */
   orders?: string;
+  /**
+   * The EIP-712 domain version `orders` signs under — "1" for KaleidoOrders,
+   * "2" for KaleidoOrdersV2 (which adds aggregator fills). Part of every order's
+   * digest, so signing under the wrong one yields a signature the contract
+   * rejects. Generated from the deploy record's `eip712.version`; absent means
+   * "1", which every record before V2 is.
+   */
+  ordersVersion?: string;
 
   /* -- External, NOT deployed by us ------------------------------------- */
   /**
@@ -258,6 +267,33 @@ export function getContracts(chainId: number | undefined): ChainContracts {
 /** True once the Diamond is deployed here, so trading UI can gate on it. */
 export function isDeployed(chainId: number | undefined): boolean {
   return Boolean(getContracts(chainId).diamond);
+}
+
+/**
+ * True where a DEX (v3Router) is deployed — swaps work here even without the
+ * full Diamond. Arc launched DEX-first (a v3Router, no Diamond), so isDeployed
+ * is false there while swaps are live; a "deploy pending" label off isDeployed
+ * alone reads wrong. The swap builder already gates on v3Router, not this; this
+ * is for the UI that wants to say "swaps live" rather than "deploy pending".
+ */
+export function hasSwaps(chainId: number | undefined): boolean {
+  return Boolean(getContracts(chainId).v3Router);
+}
+
+/**
+ * True for a mainnet chain announced but not launched on yet — the "Coming soon"
+ * gate. It reads the `comingSoon` flag from chains.ts but clears the moment the
+ * Diamond actually ships: a chain going live needs no edit to that flag because
+ * `isDeployed` wins here. Arc carries no flag (it is the launch chain), so it is
+ * never "coming soon" even while its Diamond is still pending.
+ *
+ * One rule, one home: the network switcher refuses a switch to such a chain and
+ * dims its row, and any page can ask the same question rather than re-deriving
+ * it from `comingSoon && !isDeployed` in five places that would drift apart.
+ */
+export function isComingSoon(chainId: number | undefined): boolean {
+  if (isDeployed(chainId)) return false;
+  return Boolean(getChainMeta(chainId)?.comingSoon);
 }
 
 /* ----------------------------------------------------------------- tokens -- */
@@ -623,6 +659,231 @@ export const TOKENS: Record<number, TokenEntry[]> = {
     },
   ],
 
+  /* -- Arc MAINNET (5042) ----------------------------------------------- *
+   * Arc’s own tradable set, and the reason the picker showed only USDC before:
+   * this chain had no TOKENS entry at all. Every address, symbol and decimal
+   * below was read off Arc mainnet (rpc.mainnet.arc.io) on 2026-09-16 — symbol()
+   * and decimals() matched and code was present for each — and taken from the
+   * KyberSwap whitelisted Arc list (the curated set the aggregator we route
+   * through actually quotes), cross-checked against LI.FI’s Arc list.
+   *
+   * Arc's native gas balance and the canonical 6-decimal ERC20 face are both
+   * USDC, but they are different interfaces. DEX swaps and V3 positions must use
+   * the ERC20 face at 0x3600; native USDC remains the gas/transfer asset. The
+   * token picker and resolver therefore prefer this ERC20 for the DEX protocol
+   * while keeping the native sentinel available to non-DEX flows. EURC and cirBTC
+   * are Circle's other Arc assets. The rest are the ecosystem majors and memes
+   * with real liquidity, ordered by market cap at capture. Third-party contracts,
+   * listed because they are tradable here — listing is not endorsement. */
+  [5042]: [
+    {
+      chainId: 5042,
+      /* Arc's canonical USDC ERC20 face. It shares the native currency's ticker
+       * but is the 6-decimal token contract that Uniswap and other AMMs trade. */
+      address: "0x3600000000000000000000000000000000000000",
+      symbol: "USDC",
+      name: "USD Coin",
+      decimals: 6,
+      tags: ["stablecoin", "native-alias"],
+    },
+    {
+      chainId: 5042,
+      address: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+      symbol: "EURC",
+      name: "Euro Coin",
+      decimals: 6,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 5042,
+      address: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+      symbol: "cirBTC",
+      name: "Circle Wrapped Bitcoin",
+      decimals: 8,
+      tags: ["wrapped-btc"],
+    },
+    {
+      /* Our own wrapped-native for the Arc mainnet DEX — the address the V3
+       * periphery was constructed with (getContracts(5042).wrappedNative,
+       * deployment-v3-arcMainnet). It is a WETH9 (deploy-weth), so the CONTRACT
+       * hardcodes symbol "WETH" / name "Wrapped Ether" (verified on-chain: 18
+       * decimals, working deposit()/withdraw(), 0 supply so far). But Arc's
+       * native is USDC, so it wraps dollars, not ether — the exact mislabel the
+       * Arc Testnet note calls out, where a third-party contract reporting
+       * "WUSDC" was used instead. No such WUSDC exists on Arc MAINNET (the
+       * testnet's 0x911b has no code here; none in the KyberSwap/LI.FI lists),
+       * so we present OUR wrapper honestly as WUSDC here: the symbol/name are
+       * the display truth, the address is what pools and `intermediateTokens`
+       * match on. Registering it is also what lets the swap router use the
+       * wrapped-native as a middle leg at all — it resolves `wrapped` by this
+       * address, and an unregistered wrapper is invisible to routing.
+       *
+       * Making the on-chain symbol itself read WUSDC would need a fresh wrapper
+       * deployment and a V3 re-point (cheap while supply is 0, but a redeploy) —
+       * deferred; the label override here is the honest, low-risk fix. */
+      chainId: 5042,
+      address: "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b",
+      symbol: "WUSDC",
+      name: "Wrapped USDC",
+      decimals: 18,
+      tags: ["wrapped-native", "stablecoin"],
+    },
+    {
+      chainId: 5042,
+      address: "0xeCe5cA8bf9220718E5727754026757512212cb3c",
+      symbol: "ARGUS",
+      name: "Argus",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xBc43CE8DEc648EA298C4275559b81D6261c90b67",
+      symbol: "TOLLY",
+      name: "Tolly",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x44B453D355835Ce1269fc11D3FA4161c0DcC0087",
+      symbol: "LIFT",
+      name: "lift.fun",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xEb64987643db71c76b2a2BE7E723DECC995E5b37",
+      symbol: "COOL",
+      name: "usdc is cool",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x2164bB17a2D38c1b5170E987b2c0416DF1EFc752",
+      symbol: "LONG",
+      name: "Long",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xA163d7624Da3B5d9182c50EaB5b8cd247Ae861bb",
+      symbol: "Minara",
+      name: "Minara",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x8bcb94279FC2c984EC34e0C1f2192df8c69EA4F0",
+      symbol: "Architects",
+      name: "Architects",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x07704B06981eA962b87296362a1281484d160000",
+      symbol: "ARCAT",
+      name: "Arcat",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x30aC39DeC8a854c5Fd03AA429E3BEF32a7E4c84a",
+      symbol: "PI",
+      name: "Pi",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x41c8A71f630c636294009fa4FB0CC4c3bBE674fe",
+      symbol: "BEANCAT",
+      name: "Bean Cat",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x2ba0f44BDfC17FbA30edA9cdBeCB908cA45B043B",
+      symbol: "CRCL",
+      name: "Circle Internet Group (Arc)",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xF3715bF5C2De299F08B81180ffb739A8372a175f",
+      symbol: "ARCANINE",
+      name: "Arcanine",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x1c98D896328C35A751Ce18323f47139A44188001",
+      symbol: "creo",
+      name: "creo.family",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x4753C45Fb550FECAA143A47968659117E6FFc2cE",
+      symbol: "BARC",
+      name: "Barc",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xc55A4468A3E1C2dfe58dDdaD0188c71D5dFFd740",
+      symbol: "BANCOR",
+      name: "Bancor",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x7f2293b6DF4934Aa5392d5Fef8eF9ca987B0393b",
+      symbol: "PCH",
+      name: "Peach",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xD626630Dc244e50272017Cc55A361d096c3a9062",
+      symbol: "PEG",
+      name: "peg",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x802D3166AD677d3AA993c85910598885568099bf",
+      symbol: "BEAN",
+      name: "Bean",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xf4cAa36a0B64d60DD1a909D502FaE9b30dfCa58b",
+      symbol: "ACTOR",
+      name: "Economic Actor",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0xcDF59E06DCbC3A6AE662F66B35aAeBd8DECCCB2C",
+      symbol: "AROS",
+      name: "Aros",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x128cC466B61f542da60c70e3aA11c10e19B84EDB",
+      symbol: "WETH",
+      name: "Wrapped Ether",
+      decimals: 18,
+    },
+    {
+      chainId: 5042,
+      address: "0x38DcCd1FEdd12F73737F6C1eE19B2D311e048909",
+      symbol: "XNAN",
+      name: "Nanite",
+      decimals: 18,
+    },
+  ],
+
   /* -- Arbitrum. Balances only; no Diamond planned here yet. ------------- */
   [42161]: [
     {
@@ -797,9 +1058,22 @@ export function resolveUserToken(
   protocol: Protocol,
 ): TokenEntry | undefined {
   const native = nativeTokenOf(meta, protocol);
+  const erc20 = findTokenBySymbol(meta?.id, input);
+  /* Arc exposes USDC twice: native 18-decimal gas value and canonical 6-decimal
+     ERC20 face. DEX callers mean the ERC20 market asset; lending/transfer callers
+     retain the native-first behavior until those flows explicitly choose a face. */
+  if (
+    protocol === "dex" &&
+    meta?.id === 5042 &&
+    erc20 &&
+    native &&
+    erc20.symbol.toLowerCase() === native.symbol.toLowerCase()
+  ) {
+    return erc20;
+  }
   if (native && native.symbol.toLowerCase() === input.toLowerCase())
     return native;
-  return findTokenBySymbol(meta?.id, input);
+  return erc20;
 }
 
 /* -------------------------------------------------------- our own tokens -- */
@@ -1246,6 +1520,18 @@ export function isSeededPool(
 }
 
 /**
+ * The token pairs that have a pool on this chain — [token0, token1] addresses,
+ * lowercased, from the deployer's pool records. A swap/limit form uses this to
+ * seed a default pair that actually has a market instead of guessing from a
+ * symbol list and opening on a pair with no pool (which quotes nothing). Empty
+ * for a chain we have opened no pools on.
+ */
+export function poolPairsFor(chainId: number | undefined): [string, string][] {
+  if (chainId === undefined) return [];
+  return GENERATED_POOL_PAIRS[chainId] ?? [];
+}
+
+/**
  * Which side of the lending market a token has to be registered on.
  *
  * The distinction is not cosmetic — it is two different mappings in
@@ -1299,15 +1585,16 @@ const hasAddress = (list: string[], address: string) =>
  * passing plans that revert — `lend 500 kfUSD` and `borrow 1 ETH` build cleanly
  * on all five chains and are loanable on none of them.
  *
- * COLLATERAL IS THE UNION of the two recorded arrays, deliberately. The gate for
- * a deposit is `s_priceFeeds[token] != 0`, and `addLoanableToken` writes
- * `s_priceFeeds` too (ProtocolFacet.sol:533-539) — so registering a token as
- * loanable also makes it depositable, whether or not it is in
- * `s_collateralToken`. Using the collateral array alone would refuse a deposit
- * the facet accepts. It happens not to bite today, because loanable ⊆ collateral
- * on all five chains, and that is a fact about these five registrations rather
- * than an invariant of the contract. The reverse union would be wrong: a
- * collateral token is NOT loanable.
+ * COLLATERAL IS THE COLLATERAL ARRAY ONLY (since 2026-09-27). It used to be the
+ * union of both arrays, because depositCollateral gated on `s_priceFeeds[token]
+ * != 0` and addLoanableToken writes a feed too — so a loanable-only token was
+ * depositable. The Arc mainnet hardening changed the contract: a deposit now
+ * requires the token to be in `s_collateralToken` (a loanable-only deposit was
+ * accepted, valued at zero, and blocked the depositor's borrows). On Arc native
+ * USDC is loanable only, so the union would have let the app and the auditor
+ * approve a deposit the contract refuses. On the five testnets loanable ⊆
+ * collateral, so the answer there is unchanged either way. A collateral token
+ * is still NOT loanable.
  *
  * It is an approximation of the feed mapping in one direction only.
  * `removeCollateralTokens` clears a feed and leaves `s_loanableToken` alone, so a
@@ -1329,13 +1616,7 @@ export function registeredLendingAssets(
   const reg = chainId === undefined ? undefined : LENDING_REGISTRATION[chainId];
   if (!reg) return { known: false, assets: [], unnamed: [] };
 
-  const addresses =
-    side === "loanable"
-      ? reg.loanable
-      : [
-          ...reg.collateral,
-          ...reg.loanable.filter((a) => !hasAddress(reg.collateral, a)),
-        ];
+  const addresses = side === "loanable" ? reg.loanable : reg.collateral;
 
   const assets: BorrowCurrencyEntry[] = [];
   const unnamed: string[] = [];
@@ -1808,6 +2089,12 @@ export function auditRegistry(chains: ChainMeta[]): string[] {
           problems.push(
             `chain ${chainId}: oracleKind is "${value}", expected "pyth" or "aggregator-v3"`,
           );
+        }
+        continue;
+      }
+      if (field === "ordersVersion") {
+        if (!/^[0-9]+$/.test(value)) {
+          problems.push(`chain ${chainId}: ordersVersion is "${value}", expected a number like "1"`);
         }
         continue;
       }

@@ -106,7 +106,16 @@ const ORDER_TYPES = {
   ],
 };
 
-describe("KaleidoOrders", function () {
+/* V2 keeps V1's order, signature, schedule and V3 fill rules byte for byte and
+   only ADDS an aggregator path, so the whole suite runs against both: anything
+   V2 changed about the V3 path by accident fails here. The aggregator path has
+   its own file, KaleidoOrdersV2.aggregator.test.js. */
+const VARIANTS = [
+  { name: "KaleidoOrders", version: "1" },
+  { name: "KaleidoOrdersV2", version: "2" },
+];
+
+for (const V of VARIANTS) describe(V.name, function () {
   /* Each case deploys a real V3 venue - factory, pool, periphery router, and a
      full-range position minted into it - because the floor is enforced by the
      router and a mock would test the assertion instead of the contract. That
@@ -215,7 +224,7 @@ describe("KaleidoOrders", function () {
       .connect(owner)
       .mint(pool.target, owner.address, MIN_TICK, MAX_TICK, liquidity);
 
-    const Orders = await ethers.getContractFactory("KaleidoOrders");
+    const Orders = await ethers.getContractFactory(V.name);
     orders = await Orders.deploy(router.target, owner.address);
     await orders.waitForDeployment();
 
@@ -233,7 +242,7 @@ describe("KaleidoOrders", function () {
 
     domain = {
       name: "Kaleido Orders",
-      version: "1",
+      version: V.version,
       chainId: (await ethers.provider.getNetwork()).chainId,
       verifyingContract: orders.target,
     };

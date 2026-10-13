@@ -1,4 +1,7 @@
 import type { IToken } from "@/constants/types/dex";
+/* Type-only as well: the caller reads the registry (lib/lending/arcLending.ts)
+   and passes the answer in, so the grammar stays free of chain reads. */
+import type { ArcLending } from "@/lib/lending/arcLending";
 /* Type-only, so this module keeps the zero runtime dependencies its header
    claims — liquidity.ts imports ethers, and an erased import brings none of it. */
 import type { RangeChoice } from "@/lib/dex/liquidity";
@@ -29,9 +32,17 @@ import type { RangeChoice } from "@/lib/dex/liquidity";
  * moment swaps span chains.
  */
 
+export interface RelativeAmount {
+  num: number;
+  den: number;
+}
+
 export interface SwapCommand {
   kind: "swap";
-  amount: string;
+  /** The exact input amount. Present unless `relative` is - exactly one is. */
+  amount?: string;
+  /** A share of the tokenIn balance, resolved to `amount` by the planner. */
+  relative?: RelativeAmount;
   tokenIn: IToken;
   tokenOut: IToken;
 }
@@ -73,6 +84,14 @@ export interface SendCommand {
   token: IToken;
   /** Recipient, `0x`-prefixed, case exactly as typed. */
   to: string;
+  /**
+   * The chain the send was asked for ("send 5 USDC to 0x… on Base"), as typed.
+   * Absent means the connected chain. Before this the words were dropped and the
+   * send was built on whatever chain the wallet was on — for an exchange deposit
+   * address that is lost funds. The builder resolves it, re-resolves the token
+   * there, and the sign flow switches the wallet to it.
+   */
+  chain?: string;
 }
 /**
  * A cross-chain move — send's sibling, and the second command in this grammar
@@ -94,6 +113,34 @@ export interface BridgeCommand {
   token: IToken;
   /** Destination chain name, as typed (case-folded). Resolved downstream. */
   toChain: string;
+  /**
+   * Source chain named with "from X", if any. Optional: absent means the chain
+   * the wallet is connected to, the only source it could ever mean before this.
+   * When present and it resolves to a supported source the wallet is NOT on, the
+   * plan is built for that chain and the sign flow switches to it. Resolved and
+   * validated in buildIntents, never here — the same contract as `toChain`.
+   */
+  fromChain?: string;
+  /**
+   * Destination token symbol, as typed, when it differs from the source asset
+   * (a cross-asset bridge, e.g. BNB→USDC). Absent means same-asset — the source
+   * token is delivered 1:1. Resolved on the destination chain downstream, never
+   * here, the same free-text contract as `toChain`.
+   */
+  toAsset?: string;
+  /**
+   * At least this much of the same asset must ARRIVE (destination units, human
+   * string). Set when the bridge funds a send: the builder tops `amount` up by
+   * the route's fees so the send that follows isn't short. Never typed.
+   */
+  receiveAtLeast?: string;
+  /**
+   * Deliver to this address on the destination chain instead of the signer's
+   * own ("bridge 100 USDC to BSC to 0x…"). Lifted out of the sentence by
+   * parseCommand before the bridge is parsed; checked by the auditor against the
+   * route's own calldata. Absent = the signer, as before.
+   */
+  recipient?: string;
 }
 export interface HelpCommand {
   kind: "help";
@@ -127,6 +174,32 @@ export interface PortfolioCommand {
   kind: "portfolio";
 }
 
+/**
+ * Someone else's balances: "check the balance of 0x…", "what does 0x… hold".
+ * An answer, not a plan — the page reads it on the server (the getBalances read
+ * the model's tool uses) and shows a balance card, so it works with no model.
+ */
+export interface LookupCommand {
+  kind: "lookup";
+  address: string;
+}
+
+/**
+ * "Move everything off Abstract to Arc": bridge every token this wallet holds on
+ * one chain to another, converted to one asset (USDC by default). Built as one
+ * bridge per held token in a single plan; see the exitChain branch in build.ts.
+ * Exists for Abstract's shutdown (2026-12-15), but names any source chain.
+ */
+export interface ExitChainCommand {
+  kind: "exitChain";
+  /** Source chain as typed ("abstract"). Resolved downstream. */
+  fromChain: string;
+  /** Destination chain as typed; "arc" when none was named. */
+  toChain: string;
+  /** What everything arrives as on the destination; "USDC" by default. */
+  toAsset: string;
+}
+
 /* The P2P family. Borrow and lend carry a rate and a term as well as an
  * amount, which is why the parser separates numbers by role rather than taking
  * them positionally. */
@@ -136,6 +209,12 @@ export interface BorrowCommand {
   token: IToken;
   interestPct: number;
   days: number;
+  /**
+   * Collateral to deposit in the same plan — "borrow 100 USDC against 150 EURC".
+   * Absent when none was named, or when it was named without an amount ("against
+   * my EURC"), which means collateral already posted.
+   */
+  collateral?: { amount: string; token: IToken };
 }
 export interface LendCommand {
   kind: "lend";
@@ -149,15 +228,34 @@ export interface DepositCommand {
   amount: string;
   token: IToken;
 }
-export interface WithdrawCommand {
-  kind: "withdraw";
-  amount: string;
-  token: IToken;
-}
+export type WithdrawCommand =
+  | {
+      kind: "withdraw";
+      amount: string;
+      token: IToken;
+      all?: undefined;
+    }
+  /**
+   * "withdraw all my collateral" / "withdraw all EURC": every free unit, read
+   * from the diamond at build time. No token = every collateral asset with a free
+   * balance.
+   */
+  | {
+      kind: "withdraw";
+      all: true;
+      token?: IToken;
+      amount?: undefined;
+    };
 export interface RepayCommand {
   kind: "repay";
   /** Omitted when the user has exactly one open loan; the planner resolves it. */
   loanId?: number;
+  /**
+   * A partial repayment, in the loan's own currency — "repay 50 USDC". Omitted
+   * means in full. The contract takes partial repayments; an amount at or above
+   * what is owed is a full repayment and is clamped to the exact figure.
+   */
+  amount?: string;
 }
 /** Draw against someone's listing. */
 export interface TakeListingCommand {
@@ -275,9 +373,10 @@ export interface IncreasePositionCommand {
  */
 export interface ProvideLiquidityCommand {
   kind: "provideLiquidity";
-  amount0: string;
+  /** At least one side is required; the builder derives the other at live pool price. */
+  amount0?: string;
   token0: IToken;
-  amount1: string;
+  amount1?: string;
   token1: IToken;
   fee?: number;
   range: RangeChoice;
@@ -426,7 +525,9 @@ export type Command =
   | ClaimTestTokensCommand
   | HelpCommand
   | ReceiveCommand
-  | PortfolioCommand;
+  | PortfolioCommand
+  | LookupCommand
+  | ExitChainCommand;
 
 /** Kinds resolved immediately, with no slot to ever ask about. */
 type ZeroSlotKind = "claimYield" | "compoundYield";
@@ -492,7 +593,7 @@ type SpecialParsedKind = "placeOrder" | "cancelOrders";
 /** Kinds that carry slots, i.e. everything that can be half-specified. */
 export type ActionKind = Exclude<
   Command["kind"],
-  "help" | "receive" | "portfolio" | ZeroSlotKind | ToolOnlyKind | HandoffKind
+  "help" | "receive" | "portfolio" | "lookup" | "exitChain" | ZeroSlotKind | ToolOnlyKind | HandoffKind
   | SpecialParsedKind
 >;
 
@@ -503,6 +604,7 @@ export type Slot =
   | "token"
   | "recipient"
   | "toChain"
+  | "fromChain"
   | "rate"
   | "days"
   | "ref";
@@ -511,6 +613,8 @@ export type Slot =
 export interface Draft {
   kind: ActionKind;
   amount?: string;
+  /** A balance share carried by a follow-up such as "swap half of it". */
+  relative?: RelativeAmount;
   tokenIn?: IToken;
   tokenOut?: IToken;
   token?: IToken;
@@ -518,9 +622,26 @@ export interface Draft {
   to?: string;
   /** Bridge destination chain name, as typed. Resolved downstream. */
   toChain?: string;
+  /** Bridge source chain named with "from X", as typed. Optional — absent means
+      the connected chain. Resolved and validated downstream. */
+  fromChain?: string;
+  /** Bridge destination token symbol, as typed, when cross-asset. Resolved
+      downstream; absent means same-asset. */
+  toAsset?: string;
+  /** The chains a bridge's source token is on, when more than one could be
+      meant — the draft asks which before it completes. */
+  sourceOptions?: string[];
+  /** A funding bridge's floor on what must arrive — see BridgeCommand. */
+  receiveAtLeast?: string;
   interestPct?: number;
   days?: number;
   loanId?: number;
+  /** A partial repay amount — see RepayCommand. */
+  repayAmount?: string;
+  /** Borrow's same-plan collateral deposit — see BorrowCommand. */
+  collateral?: { amount: string; token: IToken };
+  /** Withdraw everything free — see WithdrawCommand. */
+  all?: true;
   /** Which row a command points at, e.g. listing 3, or position 42. */
   refTarget?: "listing" | "request" | "position";
   refId?: number;
@@ -536,6 +657,11 @@ export type ParseResult =
   | { status: "ok"; command: Command }
   /** Understood the verb, still missing a slot. Ask, don't guess, don't escalate. */
   | { status: "incomplete"; draft: Draft; missing: Slot; prompt: string }
+  /** Understood the INTENT but it is one we will not build from a sentence —
+   *  a conditional/market-cap trade. Refused with a message shown as-is, and
+   *  deliberately NOT escalated to a model: escalating drops the condition and
+   *  builds a market order, which is the exact footgun this prevents. */
+  | { status: "refused"; message: string }
   /** Not a command. This is the only case that should reach a model. */
   | { status: "unknown" };
 
@@ -564,15 +690,14 @@ export type ParseResult =
  *   wallet's cooldown state (lib/staking/state.ts) and emits the one that
  *   applies. "withdraw my stake" still reads as a collateral withdrawal — the
  *   `withdraw` verb wins that sentence — which is the remaining seam.
- * - "wrap" / "unwrap" — no intent exists, so the model's answer (which can send
- *   the user to the right control) beats a local dead end.
+ * - "wrap" / "unwrap" — a first-class verb now, `parseWrap` below. The intent,
+ *   builder, auditor rule and executor all shipped (native <-> wrapped-native is
+ *   a 1:1 deposit()/withdraw()), so the grammar emits a swap of the native
+ *   currency against its wrapped-native ERC20 — WUSDC on Arc — which build.ts
+ *   turns into wrapNative/unwrapNative. Only the clean `[un]wrap <amount>` case
+ *   is caught; a relative amount or a bare verb still falls to the model, which
+ *   reads the balance the grammar cannot.
  * - "pay" — see `send` below. Two readings, one of them a repayment.
- *
- * Wrap/unwrap is a gap in the *protocol* surface, not in this grammar, and
- * closing it starts with an intent, a builder and an auditor rule — the same
- * three things unstake needed. Liquidity was never one of those: the intent, the
- * builder and the rule all exist, and the form does too — which is what made the
- * handoff the cheaper half to close first.
  */
 const VERBS: Record<ActionKind, string[]> = {
   /* "buy" (and its degen synonyms below) is here rather than absent, and these
@@ -590,6 +715,9 @@ const VERBS: Record<ActionKind, string[]> = {
        the buy-side ones are safe even when a phrasing is genuinely ambiguous —
        parseSwap's guard asks which token to spend rather than guessing a trade. */
     "dump", "unload", "ape", "cop", "grab", "snag", "flip", "yeet",
+    /* "spend 10 USDC on X" — forward, like "swap": the named amount is spent.
+       Its separator is "on" (see parseSwap), which only it reads that way. */
+    "spend",
   ],
   stake: ["stake"],
   /* One word, matched whole, so "unstake" never reads as the `stake` verb with
@@ -632,6 +760,36 @@ const ZERO_SLOT_VERBS: Record<ZeroSlotKind, string[]> = {
   claimYield: ["claim"],
   compoundYield: ["compound"],
 };
+
+/**
+ * Words that make "claim" NOT the kfUSD vault-yield claim.
+ *
+ * `claim` is the verb for collecting kfUSD/kafUSD yield, but it is also the
+ * ordinary word for collecting points, staking rewards, or an airdrop — none of
+ * which are that transaction. The zero-slot scan below reads "claim" anywhere in
+ * a sentence, so without this "claim my points" and "claim my staking rewards"
+ * both planned a kfUSD yield claim: the wrong product, built from a sentence that
+ * named a different one. A claim that names one of these is genuinely ambiguous
+ * (or simply not the yield claim), so it escalates to the model rather than being
+ * resolved to the closest guess — the same bargain the rest of this grammar
+ * makes. Unqualified "claim" and "claim yield" name none of these and still
+ * resolve locally; faucet claims are handled earlier still.
+ */
+const CLAIM_NOT_YIELD: ReadonlySet<string> = new Set([
+  "points",
+  "point",
+  "reward",
+  "rewards",
+  "airdrop",
+  "airdrops",
+  "staking",
+  "referral",
+  "referrals",
+  "quest",
+  "quests",
+  "leaderboard",
+  "season",
+]);
 
 /**
  * Whether the message names an action verb — the union of every command verb,
@@ -693,7 +851,14 @@ const FAUCET_FILLERS = new Set([
  */
 export const ALL_WORDS = new Set(["all", "everything", "every"]);
 
-const HELP_WORDS = ["help", "commands", "what can you do", "how do i use"];
+const HELP_WORDS = [
+  "help",
+  "commands",
+  "what can you do",
+  "what can luca do",
+  "what commands",
+  "how do i use",
+];
 
 /**
  * Phrases that open the receive panel. Matched as a *leading* phrase only, the
@@ -757,6 +922,34 @@ const PORTFOLIO_PHRASES = [
   "do i have any",
 ];
 
+/**
+ * The possessive-plus-noun read, with room for a qualifier the phrase list
+ * cannot enumerate.
+ *
+ * "my balance" is in PORTFOLIO_PHRASES above; "my WALLET balance", "my LENDING
+ * positions" and "my CUMULATIVE balance across all assets" are the same read
+ * with a word in the middle — and each was sent to the model, because
+ * `includes("my balance")` needs the two words adjacent. This allows up to
+ * three words between the possessive and the noun, bounded and non-greedy so it
+ * stays inside one clause and takes the nearest noun. It is gated by exactly the
+ * same two vetoes as the phrase list, so "move my portfolio to best yield" (an
+ * action) and "add to my pool" (liquidity) are untouched — the read still runs
+ * last, after every verb has had its turn.
+ */
+const PORTFOLIO_POSSESSIVE =
+  /\bmy\b(?:\s+[a-z]+){0,3}?\s+(?:balances?|portfolios?|positions?|holdings?|assets|funds|net\s+worth)\b/;
+
+/**
+ * "how much USDC do I have", "how much do I own", "how much eth have I got" —
+ * the balance question asked around a token name. PORTFOLIO_PHRASES carries the
+ * bare "how much do i have"; this catches the far more common version with the
+ * asset in the middle, which was reaching the model. Anchored on "i have/own/
+ * hold/got" so "how much USDC do I NEED to lend" (an action, and claimed by its
+ * verb before the read runs anyway) is never read as a balance.
+ */
+const PORTFOLIO_HOWMUCH =
+  /\bhow much\b[\s\S]*?\bi\s+(?:have|own|hold|got|'?ve\s+got)\b/;
+
 /** Whole requests that mean this and nothing else. Compared, not searched. */
 const PORTFOLIO_ALONE = [
   "balance",
@@ -800,7 +993,18 @@ const PORTFOLIO_VETO = new Set(["liquidity", "lp", "pool", "pools"]);
  */
 const PORTFOLIO_ACTION_VETO = new Set([
   "move", "put", "shift", "allocate", "rebalance", "deploy", "invest", "rotate",
+  /* "diversify my holdings" is a request to DO something, not a balance sheet.
+     Added after PORTFOLIO_POSSESSIVE began matching "... my holdings". */
+  "diversify",
 ]);
+
+/**
+ * Movement words with no verb of their own that, WITH a named chain, mean a
+ * bridge — "move 100 USDC to Base", "transfer 50 EURC to Arc". Without a chain
+ * they stay portfolio-action vetoes ("move my funds to the best yield" is a
+ * strategy the model handles); the named chain is the whole discriminator.
+ */
+const MOVE_WORDS = new Set(["move", "transfer"]);
 
 /* ------------------------------------------------------- open liquidity -- */
 
@@ -984,6 +1188,18 @@ const BUY_SEPARATORS = ["with", "using", "for", "->", "→", ">"];
  */
 const BUY_FORWARD_SEPARATORS = ["of"];
 
+/*
+ * Forward separators that are unambiguous about direction — SEPARATORS without
+ * "for", which a buy reads BACKWARDS ("buy KLD for 100 USDC" spends the USDC).
+ * A buy-word inside a plain forward frame — "ape 50 USDC into ARGUS", a spend
+ * token and amount before the separator and a receive token after — is a
+ * forward swap, not a buy: the buy reading (an amount of the token RECEIVED,
+ * then ask what to spend) is for "ape ARGUS" / "buy 100 ARGUS", where only the
+ * target is named. Without this, "ape 50 USDC into ARGUS" dropped the 50 USDC
+ * and asked which token to spend — the sentence had already said.
+ */
+const FORWARD_SEPARATORS = ["to", "into", "->", "\u2192", ">"];
+
 /* ---------------------------------------------------------------- amounts -- */
 
 /**
@@ -1008,6 +1224,23 @@ const BUY_FORWARD_SEPARATORS = ["of"];
 function parseAmount(raw: string): string | null {
   const m = raw.match(/^([\d,]*\.?\d+)\s*([km])?$/i);
   if (!m) return null;
+
+  /* A comma is a thousands separator here — "1,000.50" — and only that. "1,0"
+     and "12,5" are decimals in half the world, and reading them as 10 and 125
+     built a plan for ten times the amount typed. Groups after the first must
+     be exactly three digits, or this is not an amount this grammar will read;
+     the amount gets asked for instead. */
+  const intPart = m[1].split(".")[0];
+  if (intPart.includes(",")) {
+    const groups = intPart.split(",");
+    if (
+      groups[0].length === 0 ||
+      groups[0].length > 3 ||
+      groups.slice(1).some((g) => g.length !== 3)
+    ) {
+      return null;
+    }
+  }
 
   const digits = m[1].replace(/,/g, "");
   const dot = digits.indexOf(".");
@@ -1091,6 +1324,7 @@ const PROMPTS: Record<Slot, string> = {
   token: "Which token?",
   recipient: "Which address should it go to? (0x…)",
   toChain: "Which chain should it go to? (e.g. Base Sepolia)",
+  fromChain: "Which chain are you bridging from?",
   rate: "What interest rate? (e.g. 8%)",
   days: "Over what term? (e.g. 30 days)",
   ref: "Which one? For example: listing 3, request 7, or position 42.",
@@ -1130,14 +1364,239 @@ function incomplete(draft: Draft, missing: Slot): ParseResult {
   };
 }
 
+/* ---------------------------------------------------------------- context -- */
+
+/**
+ * What the caller knows about the world that the grammar, by design, does not.
+ *
+ * The grammar is chain-agnostic on purpose: it resolves symbols against the
+ * `tokens` it is handed and nothing else, which is what keeps it testable with
+ * a fixture. But the best answer to a miss often needs one more fact —
+ * "EURC isn't on Sepolia, it's on Arc" needs the chain's name and a lookup
+ * across the others; "swap 50 USDC to Sepolia" needs to know Sepolia is a
+ * chain. Each is optional, and a caller that supplies none gets the answers
+ * this grammar gave before.
+ */
+export interface ParseContext {
+  /** The connected chain's display name, for questions that name it. */
+  chainName?: string;
+  /** Other chains carrying a symbol this chain does not, by display name. */
+  elsewhere?: (symbol: string) => string[];
+  /**
+   * The chains a bridge SOURCE could be on, for a symbol the connected chain
+   * lacks: each chain's token (as its registry knows it) and name. Distinct from
+   * `elsewhere`, which returns display names for a refusal — these are
+   * resolvable, so a bridge accepts an abroad token as its source ("bridge 10
+   * BNB to Arc" while on Arc) instead of refusing it like a swap.
+   *
+   * One candidate is inferred; several are ASKED about ("which chain are you
+   * bridging from?"), never guessed. The caller narrows the list to the chains
+   * the wallet actually holds the token on when it knows, so a wallet holding
+   * ETH only on Base is not asked at all. Injected by the caller from the
+   * registry, so this file stays registry-free.
+   */
+  sourceTokens?: (symbol: string) => { token: IToken; chainName: string }[];
+  /** Whether a phrase names a chain — what turns a "swap to Sepolia" into the bridge it is. */
+  isChain?: (phrase: string) => boolean;
+  /**
+   * Resolve a bare token ADDRESS the registry doesn't carry into a provisional
+   * `IToken`, or null. Injected (and gated) by the caller — the pilot wires it
+   * only on Arc with ARGUS_ENABLED, so a "buy 0x… with 10 USDC" of an Argus
+   * launch reaches the swap branch. The returned token only needs the address to
+   * be trustworthy; its symbol/decimals are provisional and the server's launch
+   * read (build.ts's argusPlan) supplies the real ones. Keeps this file
+   * dependency-free: no env, no getAddress, no chain check leaks in here.
+   */
+  addressToken?: (word: string) => IToken | null;
+  /**
+   * USD price of the token a "$N worth of X" sentence names, looked up by the
+   * caller before parsing (see `dollarSizedToken`). With it the dollars become a
+   * token amount here; without it (or null) the sentence goes to the model.
+   */
+  usdPrice?: (token: IToken) => number | null;
+}
+
+/** Verbs whose first question is which token, and so cannot start without a vocabulary. */
+const NEEDS_TOKENS: ReadonlySet<ActionKind> = new Set<ActionKind>([
+  "swap",
+  "bridge",
+  "send",
+  "lend",
+  "borrow",
+]);
+
+/** Words that sit around a token without ever being the token that is missing. */
+const STRAY_FILLERS = new Set([
+  "the", "a", "an", "some", "of", "all", "my", "worth", "in", "on", "from",
+  "with", "using", "please", "now", "then", "and", "it", "this", "that", "me",
+  "every", "each", "any", "available", "token", "tokens",
+]);
+
+/**
+ * The word sitting where a token should be, when nothing resolved there.
+ *
+ * Scans `words[from, to)` for the first plain word that is not grammar, not a
+ * filler and not a token this sentence already named. That word is what the
+ * user typed for the missing side, and the question should quote it back
+ * rather than ask which token — 130 complete commands in the log were asked
+ * "which token?" because the one they named was not on the connected chain.
+ */
+function strayWord(
+  words: string[],
+  from: number,
+  to: number,
+  placed: Mention[],
+): string | null {
+  const taken = new Set(placed.map((m) => m.index));
+  for (let i = Math.max(0, from); i < Math.min(words.length, to); i++) {
+    if (taken.has(i)) continue;
+    const w = words[i];
+    if (!/^[a-z][a-z0-9.]*$/.test(w)) continue;
+    if (NEVER_A_TOKEN.has(w) || STRAY_FILLERS.has(w)) continue;
+    return w;
+  }
+  return null;
+}
+
+/**
+ * The question for a token this chain does not carry.
+ *
+ * Says the one thing that resolves it: where the token IS, when the registry
+ * knows; otherwise that it is unknown here — and, either way, a few of the
+ * tokens that are here, so the next message can name one.
+ */
+function unknownTokenPrompt(
+  typed: string,
+  ctx: ParseContext,
+  tokens: IToken[],
+): string {
+  const shown = /^[a-z0-9.]{1,8}$/.test(typed) ? typed.toUpperCase() : typed;
+  const here = ctx.chainName ? ` on ${ctx.chainName}` : "";
+  const sample = tokens
+    .slice(0, 6)
+    .map((t) => t.symbol)
+    .join(", ");
+  const options = sample ? ` Here you can use ${sample}.` : "";
+  const elsewhere = ctx.elsewhere?.(typed) ?? [];
+  if (elsewhere.length > 0) {
+    const where =
+      elsewhere.length === 1
+        ? elsewhere[0]
+        : `${elsewhere.slice(0, -1).join(", ")} and ${elsewhere[elsewhere.length - 1]}`;
+    return `${shown} isn't${here} — it's on ${where}. Switch chain to use it, or name a token that's here.${options}`;
+  }
+  return `I don't know a token called ${shown}${here}.${options}`;
+}
+
 /* ------------------------------------------------------------------ parse -- */
 
+/**
+ * "$10" in a BUY or SPEND sentence is 10 USDC to spend: "buy $10 of X", "buy X
+ * with $10", "spend $10 on X". normalise() strips every "$", so without this the
+ * amount survived as a bare number and a buy read it as tokens RECEIVED — and
+ * dropped it ("I price a swap by what you spend…"). Scoped to buy/spend verbs on
+ * purpose: in "swap $10 of ETH to USDC" the dollars are a size of ETH, not USDC,
+ * and that sentence is left exactly as before. A "$10 usdc" keeps its own unit.
+ */
+function dollarsAsUsdc(text: string): string {
+  if (!/\$\s?\d/.test(text)) return text;
+  if (!/\b(buy|purchase|ape|cop|grab|snag|spend)\b/i.test(text)) return text;
+  return text.replace(
+    /\$\s?(\d[\d,]*(?:\.\d+)?[km]?)(\s*usdc\b)?/gi,
+    (_m, n: string, unit?: string) => (unit ? `${n}${unit}` : `${n} usdc`),
+  );
+}
+
+/** Dollar stablecoins: "$N" of one of these IS N tokens. */
+const DOLLAR_SYMBOLS = new Set(["usdc", "usdt", "usde", "kfusd", "usd"]);
+
+/**
+ * The "$N [worth] [of] X" in a sentence, when X is a token this vocabulary knows
+ * and is not a dollar stablecoin — the case that needs a price. Exported so the
+ * caller can look up X's live price BEFORE parsing and pass it in as
+ * `ParseContext.usdPrice`; null when there is no such phrase.
+ */
+export function dollarSizedToken(
+  text: string,
+  tokens: IToken[],
+  /** Resolves a bare contract address — an Argus launch named by its address. */
+  addressToken?: (word: string) => IToken | null,
+): { usd: number; token: IToken; match: string } | null {
+  const m = dollarsAsUsdc(text).match(
+    /\$\s?(\d[\d,]*(?:\.\d+)?)([km])?\s+(?:worth\s+)?(?:of\s+)?(0x[0-9a-f]{40}|[a-z][a-z0-9.]*)/i,
+  );
+  if (!m) return null;
+  const word = m[3].toLowerCase();
+  if (DOLLAR_SYMBOLS.has(word)) return null;
+  const token = word.startsWith("0x")
+    ? tokens.find((t) => t.address.toLowerCase() === word) ?? addressToken?.(m[3]) ?? null
+    : tokens.find((t) => t.symbol.toLowerCase() === word);
+  if (!token) return null;
+  const mult = m[2]?.toLowerCase() === "k" ? 1e3 : m[2]?.toLowerCase() === "m" ? 1e6 : 1;
+  const usd = Number(m[1].replace(/,/g, "")) * mult;
+  if (!Number.isFinite(usd) || usd <= 0) return null;
+  return { usd, token, match: m[0] };
+}
+
+/**
+ * Turn the dollar size into a token amount at `price` (USD per token). Rounded
+ * DOWN at 6 significant figures (capped at the token's decimals), so the amount is
+ * never worth more than the dollars asked for. Null on a missing/invalid price.
+ */
+export function usdToTokenAmount(usd: number, price: number, decimals: number): string | null {
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const raw = usd / price;
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  const mag = Math.floor(Math.log10(raw));
+  const dp = Math.min(Math.max(0, 5 - mag), decimals, 18);
+  const f = 10 ** dp;
+  const down = Math.floor(raw * f) / f;
+  if (down <= 0) return null;
+  const fixed = down.toFixed(dp);
+  return fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed;
+}
+
+/**
+ * A dollar amount that sizes a NON-dollar token: "sell $100 worth of cirBTC",
+ * "swap $10 of ETH to USDC". normalise() strips the "$", so the bare 100 used to be
+ * read as 100 cirBTC — a $5M swap from a $100 sentence. Converting dollars into a
+ * token amount needs a live price, which this grammar does not have, so such a
+ * sentence is never built here: it goes to the model, which reads the price.
+ *
+ * Buy/spend sentences are already rewritten to "N usdc" by dollarsAsUsdc (the
+ * dollars ARE the spend), and "$100 usdc" names its own unit, so neither counts.
+ */
+function dollarSizedNonDollar(raw: string): boolean {
+  return /\$\s?\d[\d,]*(?:\.\d+)?[km]?(?![km\d.,])(?!\s*(?:worth\s+)?(?:of\s+)?(?:usdc|usdt|usde|kfusd|usd)\b)/i.test(
+    dollarsAsUsdc(raw),
+  );
+}
+
 function normalise(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s.,%>→-]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
+  return (
+    text
+      /* A pasted link is not a sentence. "app.kaleidofi.xyz/trade/agent" split
+         on its slashes yields "trade" — a swap verb — and a message about the
+         project became a swap draft asking which token to spend. Links and
+         bare paths come out before anything is read. */
+      .replace(/https?:\/\/\S+/gi, " ")
+      .replace(/\b[\w-]+(?:\.[\w-]+)+\/\S*/g, " ")
+      .replace(/(^|\s)\/[\w./-]+/g, " ")
+      .toLowerCase()
+      .replace(/[^\w\s.,%>→-]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      /* "0.0001eth", "500kfusd", "30days": an amount glued to what it counts.
+         parseAmount reads digits only, so the word matched nothing and the
+         sentence lost both its amount and its token. Split when the letters
+         could be a symbol or a unit — two or more of them, so "10k" and "2.5m"
+         keep their multiplier — and never for an address, which "0x" starts. */
+      .flatMap((w) => {
+        if (w.startsWith("0x")) return [w];
+        const m = w.match(/^(\d[\d,]*(?:\.\d+)?)([a-z][a-z0-9]+)$/);
+        return m ? [m[1], m[2]] : [w];
+      })
+  );
 }
 
 /**
@@ -1200,6 +1659,74 @@ function detectAmount(
     if (amount) return { amount, index: i };
   }
   return null;
+}
+
+/** Words that introduce a borrow's collateral: "borrow 100 USDC against 150 EURC". */
+const BACKING_WORDS: ReadonlySet<string> = new Set(["against", "using", "with", "backed", "collateralized", "collateralised"]);
+
+/**
+ * The collateral half of "borrow X against Y". `at` is the connector's index —
+ * everything before it is the loan. `collateral` is set only when a token AND an
+ * amount follow the connector: "against 150 EURC" deposits 150 EURC in the same
+ * plan, while "against my EURC" names collateral already posted, so there is
+ * nothing to deposit. Null when no connector is followed by a token (a "with"
+ * that is not about collateral stays out of it).
+ */
+function parseBacking(
+  words: string[],
+  mentions: Mention[],
+  claimed: Set<number>,
+  loanAmount: { amount: string; index: number } | null,
+): { at: number; collateral?: { amount: string; token: IToken } } | null {
+  const at = words.findIndex((w, i) => BACKING_WORDS.has(w) && mentions.some((m) => m.index > i));
+  if (at === -1) return null;
+  const mention = mentions.find((m) => m.index > at);
+  if (!mention) return null;
+  const skip = new Set(claimed);
+  if (loanAmount && loanAmount.index < at) skip.add(loanAmount.index);
+  for (let i = at + 1; i < mention.index; i++) {
+    if (skip.has(i)) continue;
+    const a = parseAmount(words[i]);
+    if (a) return { at, collateral: { amount: a, token: mention.token } };
+  }
+  return { at };
+}
+
+/**
+ * "repay" / "repay 3" / "repay loan 3" name a loan; "repay 50 USDC" names an
+ * AMOUNT. The difference is the token after the number: a loan id is never
+ * followed by a currency. Reading every number as an id was how "repay 50 USDC"
+ * targeted loan #50 — refused at best, and never a partial repayment, which the
+ * contract has always accepted. Both can appear: "repay 50 USDC on loan 3".
+ */
+function parseRepay(
+  words: string[],
+  mentions: Mention[],
+  claimed: Set<number>,
+): { loanId?: number; amount?: string } {
+  let loanId: number | undefined;
+  let amount: string | undefined;
+  const used = new Set(claimed);
+  const loanWord = words.findIndex((w) => w === "loan" || w === "id");
+  if (loanWord !== -1) {
+    const m = words[loanWord + 1]?.match(/^(\d+)$/);
+    if (m && Number(m[1]) > 0) {
+      loanId = Number(m[1]);
+      used.add(loanWord + 1);
+    }
+  }
+  for (let i = 0; i < words.length; i++) {
+    if (used.has(i)) continue;
+    const a = parseAmount(words[i]);
+    if (!a) continue;
+    if (mentions.some((m) => m.index === i + 1)) {
+      if (amount === undefined) amount = a;
+    } else if (loanId === undefined) {
+      const id = Number(a);
+      if (Number.isInteger(id) && id > 0) loanId = id;
+    }
+  }
+  return { loanId, amount };
 }
 
 /* -------------------------------------------------------------- recipient -- */
@@ -1270,6 +1797,153 @@ function detectRate(
 }
 
 /**
+ * Fraction words a remove can carry — "remove half", "remove a quarter". A real
+ * partial-removal signal, but not one this grammar will invent a number for; a
+ * sentence that carries one is handed to the model, never rounded up to "all".
+ */
+const FRACTION_WORDS = new Set([
+  "half",
+  "quarter",
+  "third",
+  "portion",
+  "fraction",
+  "partial",
+  "partially",
+]);
+
+/**
+ * The share of a position a remove asks for, when it asks for less than all of
+ * it. A bare "remove position 7" names no share and means the whole thing — the
+ * safe reading of a bare verb. But "remove 50% of position 7" used to mean the
+ * whole thing TOO: the percentage was parsed (by detectRate, as if it were an
+ * interest rate) and then dropped, so a user who asked for half would have signed
+ * away all of it. That confidently-wrong amount is the one outcome this parser
+ * exists to prevent, so a partial signal is now honoured or escalated, never
+ * silently treated as everything.
+ *
+ * Returns a clean percent in (0,100) to carry on the command; `{ ambiguous }`
+ * when a share was clearly asked for but not as a number worth guessing (a
+ * fraction word, a nonsense percentage) so the caller escalates to the model; and
+ * null when no share was named at all, i.e. remove everything.
+ */
+function detectRemoveFraction(
+  words: string[],
+  rate: { pct: number } | null,
+): { percent: number } | { ambiguous: true } | null {
+  // "50%" — already tokenised by detectRate, which cannot tell a share from a
+  // rate. Here the verb settles it: on a remove it is a share.
+  if (rate) {
+    if (rate.pct > 0 && rate.pct < 100) return { percent: rate.pct };
+    // "100%" (or more) is just "all", the same as naming no share.
+    if (rate.pct >= 100) return null;
+    return { ambiguous: true };
+  }
+  // "50 percent" — a number beside the word, which detectRate does not catch.
+  const pIdx = words.findIndex(
+    (w) => w === "percent" || w === "percentage" || w === "pct",
+  );
+  if (pIdx !== -1) {
+    for (const j of [pIdx - 1, pIdx + 1]) {
+      const m = words[j]?.match(/^(\d+(?:\.\d+)?)$/);
+      if (m) {
+        const n = Number(m[1]);
+        if (n > 0 && n < 100) return { percent: n };
+        if (n >= 100) return null;
+        return { ambiguous: true };
+      }
+    }
+    return { ambiguous: true };
+  }
+  // "half", "a quarter" — a share, but not one to turn into a number here.
+  if (words.some((w) => FRACTION_WORDS.has(w))) return { ambiguous: true };
+  return null;
+}
+
+/**
+ * Verbs that carry an interest rate, where a trailing-percent number ("8%") is
+ * that rate — not a share of a balance. Everywhere else a percentage can only be
+ * an amount.
+ */
+const RATE_VERBS: ReadonlySet<ActionKind> = new Set(["borrow", "lend"]);
+
+/**
+ * Verbs whose amount can be stated relative to a balance — "swap half my USDC",
+ * "send 50% of my ETH", "stake all my KLD".
+ *
+ * This grammar is pure and cannot read a balance, so it does not compute the
+ * number: it hands the sentence to the model, which can (getBalances). That is the
+ * same bargain `remove half` already makes (detectRemoveFraction escalates rather
+ * than guessing). What it replaces is worse — asking "How much?" at someone who
+ * just said "half", which a tester hit on "swap 50% of my USDC to KLD".
+ */
+const AMOUNT_VERBS: ReadonlySet<ActionKind> = new Set([
+  "swap", "send", "bridge", "deposit", "withdraw", "stake", "unstake",
+  "approve", "mint", "redeem", "lock", "unlock", "borrow", "lend", "takeListing",
+]);
+
+/** Words that mean "the most you can". */
+const MAX_WORDS: ReadonlySet<string> = new Set(["max", "most", "maximum"]);
+
+/** "50" / "33.5" -> an exact {num,den} out of 100 with no float; 33.5% = {335,1000}. */
+function percentToFraction(pct: string): RelativeAmount {
+  const dot = pct.indexOf(".");
+  if (dot === -1) return { num: Number(pct), den: 100 };
+  const fracLen = pct.length - dot - 1;
+  return { num: Number(pct.replace(".", "")), den: 100 * 10 ** fracLen };
+}
+
+/**
+ * The share a sentence names, as an exact fraction the planner multiplies a
+ * balance by; null when it names none or one too vague to resolve ("some", a
+ * nonsense "150%"). Distinct from hasRelativeAmount, which only asks *whether* a
+ * share was named. Only clean shares resolve: "half"/"quarter"/"third",
+ * "all"/"max", a percentage in (0,100].
+ */
+function detectRelativeAmount(words: string[]): RelativeAmount | null {
+  for (const w of words) {
+    if (w === "half") return { num: 1, den: 2 };
+    if (w === "quarter") return { num: 1, den: 4 };
+    if (w === "third") return { num: 1, den: 3 };
+    if (ALL_WORDS.has(w) || MAX_WORDS.has(w)) return { num: 1, den: 1 };
+    const pct = w.match(/^(\d+(?:\.\d+)?)%$/);
+    if (pct && Number(pct[1]) > 0 && Number(pct[1]) <= 100) {
+      return percentToFraction(pct[1]);
+    }
+  }
+  const pIdx = words.findIndex(
+    (w) => w === "percent" || w === "percentage" || w === "pct",
+  );
+  if (pIdx !== -1) {
+    for (const j of [pIdx - 1, pIdx + 1]) {
+      const m = words[j]?.match(/^(\d+(?:\.\d+)?)$/);
+      if (m && Number(m[1]) > 0 && Number(m[1]) <= 100) {
+        return percentToFraction(m[1]);
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether the sentence states its amount as a share of a balance rather than a
+ * number: "half", "a quarter", "50%", "50 percent", "all", "max". `percentAmount`
+ * is false for the rate verbs, where a trailing-percent number is the interest
+ * rate, so a borrow/lend "at 8%" is never mistaken for a share.
+ */
+function hasRelativeAmount(words: string[], percentAmount: boolean): boolean {
+  return words.some(
+    (w) =>
+      FRACTION_WORDS.has(w) ||
+      ALL_WORDS.has(w) ||
+      MAX_WORDS.has(w) ||
+      w === "percent" ||
+      w === "percentage" ||
+      w === "pct" ||
+      (percentAmount && /^\d+(?:\.\d+)?%$/.test(w)),
+  );
+}
+
+/**
  * Row reference: "listing 3", "request #7", "offer 12", "position 42".
  *
  * Its number is claimed like a rate or a term, so "borrow 500 from listing 3"
@@ -1326,6 +2000,14 @@ const DAY_UNITS: Record<string, number> = {
 /* Words that mark a swap sentence as a resting order rather than a spot trade. */
 const ORDER_MARKERS = ["limit", "resting", "gtc"];
 
+/* A future-condition clause — "sell X WHEN it REACHES $Y", "buy when it drops".
+   The signal that the user wants a resting order, not a trade now. */
+const TRIGGER =
+  /\b(when|whenever|once|as soon as)\b[\s\S]*\b(reach|reaches|reached|hit|hits|hits|drop|drops|dips?|falls?|rises?|goes?|climbs?|above|below|over|under|crosses?|>=?|<=?)\b/i;
+/* A market-cap target. Orders trigger on PRICE (minOut), not market cap, so this
+   is refused specifically rather than silently read as a price. */
+const MCAP = /\bmarket\s*cap\b|\bmarketcap\b|\bmcap\b|\bfdv\b/i;
+
 /* A recurring cadence. Present means v1 declines to the model - a schedule needs
    a fill count the grammar does not yet read, and the model handles it. */
 const RECURRING = /\b(every|each|daily|weekly|monthly|recurring|dca|repeat)\b/;
@@ -1352,7 +2034,7 @@ const RECURRING = /\b(every|each|daily|weekly|monthly|recurring|dca|repeat)\b/;
  * cancel also falls through.
  */
 function parseOrder(raw: string, tokens: IToken[]): ParseResult | null {
-  const words = normalise(raw);
+  const words = normalise(dollarsAsUsdc(raw));
   const lower = raw.toLowerCase();
 
   /* Cancel-all. Requires a plural/collective marker so "cancel order 5" and
@@ -1374,6 +2056,31 @@ function parseOrder(raw: string, tokens: IToken[]): ParseResult | null {
   const isSell = words.some((w) => ["sell", "dump", "unload"].includes(w));
   const isLimit = words.some((w) => ORDER_MARKERS.includes(w));
   const priceAt = words.findIndex((w) => w === "at" || w === "@");
+
+  /* SAFETY: a conditional or market-cap trade must never fall through to a
+     market swap with the condition dropped. v1 orders trigger on a price stated
+     as "at <price>"; a "when it reaches …" / "at $17M marketcap" phrasing is not
+     that, so refuse it here rather than let parseSwap sell now. A market order
+     that silently ignores "when it hits $17M" is worse than any refusal. */
+  const isTrade =
+    isSell ||
+    isLimit ||
+    words.some((w) => BUY_WORDS.has(w)) ||
+    /\b(swap|trade|buy)\b/i.test(lower);
+  const conditional = TRIGGER.test(lower) || MCAP.test(lower);
+  if (isTrade && conditional) {
+    return {
+      status: "refused",
+      message: MCAP.test(lower)
+        ? "I can't trigger an order on market cap yet — orders trigger on price. " +
+          "Work out the token's price at that market cap and say it as a price, " +
+          "e.g. \u201csell 100 KLD at 0.05 USDC\u201d, or set it on the Limit tab."
+        : "I can't set a conditional order from a sentence yet. Give me a price — " +
+          "\u201csell 100 KLD at 0.05 USDC\u201d rests an order at that price — " +
+          "or use the Limit tab. Without a condition I can only trade at the current price.",
+    };
+  }
+
   if (!(isSell || isLimit) || priceAt < 0) return null;
 
   /* Anything v1 cannot price correctly is handed on rather than half-read. */
@@ -1436,7 +2143,278 @@ function detectDuration(
 const MODEL_ONLY =
   /\b(every (day|week|month|hour|\d+ (days|weeks|months|hours))|daily|weekly|monthly|recurring|dca|limit (order|buy|sell)|at a price of|when (the )?price|(?<!in )orders?|grant|permission|mandate|delegat(e|ion|ed))\b/i;
 
-export function parseCommand(text: string, tokens: IToken[]): ParseResult {
+/**
+ * The chain named as a destination — "... to Base", "... to Arc Sepolia" — when
+ * a real chain sits after a forward separator, else null.
+ *
+ * This is what catches the cross-chain phrasings that lead with the wrong verb.
+ * "send 100 USDC to Base" is not a transfer to an address named "Base", and
+ * "withdraw 100 USDC to Base" is not a vault withdrawal that happens to mention
+ * a chain — both are bridges. Only a phrase the caller confirms is a chain
+ * counts, so a "to 0x…" recipient or a "to <token>" is never mistaken for one,
+ * and a caller with no chain oracle (the marketing planner) gets null and the
+ * old behaviour.
+ */
+/**
+ * The chain a send names with "on" or "via" — "send 5 USDC to 0x… on Base".
+ * Tries the two-word phrase first ("bnb chain", "arc testnet") so a qualifier
+ * isn't dropped, then the single word. Null unless the registry knows it.
+ */
+function sendChainPhrase(words: string[], ctx: ParseContext): string | null {
+  if (!ctx.isChain) return null;
+  for (let i = 0; i < words.length - 1; i++) {
+    if (words[i] !== "on" && words[i] !== "via") continue;
+    const rest = words.slice(i + 1).filter((w) => !/^0x[0-9a-f]{40}$/.test(w));
+    for (const n of [2, 1]) {
+      if (rest.length < n) continue;
+      const phrase = rest.slice(0, n).join(" ");
+      if (ctx.isChain(phrase)) return phrase;
+    }
+  }
+  return null;
+}
+
+function chainDestination(words: string[], ctx: ParseContext): string | null {
+  if (!ctx.isChain) return null;
+  const sepAt = words.findIndex((w) => w === "to" || w === "into");
+  if (sepAt < 0) return null;
+  const phrase = words
+    .slice(sepAt + 1)
+    .filter((w) => !STRAY_FILLERS.has(w))
+    .join(" ");
+  return phrase && ctx.isChain(phrase) ? phrase : null;
+}
+
+/**
+ * Wrap / unwrap as a first-class local verb.
+ *
+ * The capability has always been reachable as a swap of the native currency
+ * against its wrapped-native ERC20 (build.ts collapses that pair to a 1:1
+ * deposit()/withdraw()), but the WORDS were not verbs, so "wrap 10 usdc" fell
+ * to the model. This recognises a plain `[un]wrap <amount> [token]` and emits
+ * exactly that swap, so the reflex is instant and free. It resolves the two
+ * sides from the connected chain's own token list — the native token by
+ * `isNative`, the wrapped-native by its `wrapped-native` tag — so a chain with
+ * no wrap concept (neither present) returns null and the model answers instead.
+ * A relative amount ("half", "all", a percentage) or a bare verb also returns
+ * null: those need the balance, which the model reads and the grammar does not.
+ */
+function parseWrap(raw: string, tokens: IToken[]): ParseResult | null {
+  const m = raw.trim().match(/^(un)?wrap\b\s*(.*)$/i);
+  if (!m) return null;
+
+  const wrapped = tokens.find((t) => t.tags?.includes("wrapped-native"));
+  /* Arc's DEX vocabulary intentionally hides native USDC when canonical ERC20
+     USDC is also registered, otherwise ordinary USDC swaps become ambiguous.
+     An explicit wrap/unwrap is the one place where that hidden sentinel is
+     unambiguous: WUSDC's chain is 5042 and its native counterpart is 18-decimal
+     USDC, not the 6-decimal ERC20 entry. */
+  const native =
+    tokens.find((t) => t.isNative) ??
+    (wrapped?.chainId === 5042 && wrapped.symbol.toUpperCase() === "WUSDC"
+      ? {
+          address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          name: "Arc native USDC",
+          symbol: "USDC",
+          decimals: 18,
+          chainId: 5042,
+          verified: true,
+          isNative: true,
+        }
+      : undefined);
+  if (!wrapped || !native) return null;
+
+  const isUnwrap = Boolean(m[1]);
+  // A concrete amount only. `normalise` splits the same way the rest of the
+  // grammar does; the first token that parses as an amount is the size.
+  const amountWord = normalise(m[2]).find((w) => parseAmount(w) !== null);
+  const amount = amountWord ? parseAmount(amountWord) : null;
+  if (!amount) return null;
+
+  // The swap command carries IToken objects; build.ts reads their addresses to
+  // spot the native<->wrapped pair and emit the wrap.
+  const tokenIn = isUnwrap ? wrapped : native;
+  const tokenOut = isUnwrap ? native : wrapped;
+  return { status: "ok", command: { kind: "swap", amount, tokenIn, tokenOut } };
+}
+
+/**
+ * Does a trade sentence name two tokens joined by "and" (or "&" / ",")?
+ *
+ * True when a trade verb is present, some token is named before the joiner,
+ * and another token follows it with only fillers in between ("10", "all", "my",
+ * "sell", "100%"…) — so "swap ARGUS for TOLLY" (no joiner) and "bridge 10 USDC
+ * to BSC and send it to 0x…" (no token after "and") are untouched.
+ */
+function namesTwoTradedTokens(text: string, tokens: IToken[]): boolean {
+  if (!/\b(sell|swap|dump|trade|convert|buy)\b/i.test(text)) return false;
+  const symbols = new Set(
+    tokens.flatMap((t) => [t.symbol.toLowerCase(), ...(/^[a-z0-9.]+$/i.test(t.name) ? [t.name.toLowerCase()] : [])]),
+  );
+  const words = text
+    .toLowerCase()
+    .replace(/[,&]/g, " and ")
+    .split(/\s+/)
+    .map((w) => w.replace(/^[$]+|[.!?]+$/g, ""))
+    .filter(Boolean);
+  const filler = /^(\d[\d,]*(\.\d+)?%?|all|my|the|of|also|then|sell|swap|dump|trade|convert|buy|half|some|max|everything|\$?\d[\d,]*(\.\d+)?)$/;
+  for (let k = 0; k < words.length; k++) {
+    if (words[k] !== "and") continue;
+    if (!words.slice(0, k).some((w) => symbols.has(w))) continue;
+    for (let j = k + 1; j < words.length; j++) {
+      if (symbols.has(words[j])) return true;
+      if (!filler.test(words[j])) break;
+    }
+  }
+  return false;
+}
+
+/** "move everything off abstract to arc", "bridge all my tokens out of abstract",
+ *  "exit abstract", "migrate my funds from abstract to base as usdc". */
+function parseExitChain(text: string, tokens: IToken[]): ExitChainCommand | null {
+  const t = text.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/ +/g, " ").trim();
+  /* A named token makes it an ordinary bridge ("move all my USDC from Base to
+     Arc"), except as the asset everything arrives as ("... as USDC"). */
+  const named = new Set(tokens.map((x) => x.symbol.toLowerCase()));
+  const body = t.replace(/\b(?:as|into|in) [a-z0-9]+$/, "");
+  if (body.split(" ").some((w) => named.has(w))) return null;
+  const exitVerb = /^(exit|leave|evacuate) ([a-z]+)$/.exec(t);
+  let from: string | undefined = exitVerb?.[2];
+  if (!from) {
+    if (!/\b(move|bridge|send|withdraw|migrate|transfer|get|take|pull|evacuate|rescue)\b/.test(t)) return null;
+    if (!/\b(everything|all|all my|my) ?(funds|tokens|assets|balances?|money|coins|holdings)?\b/.test(t) || !/\b(everything|all)\b|\bmy (funds|tokens|assets|balances?|money|coins|holdings)\b/.test(t))
+      return null;
+    from = /\b(?:off|out of|from) ([a-z]+)\b/.exec(t)?.[1];
+  }
+  if (!from || from === "my" || from === "the" || from === "this") return null;
+  const to = /\bto ([a-z]+)\b/.exec(t)?.[1];
+  const asset = /\b(?:as|into|in) (usdc|eth|usdt|weth)\b/.exec(t)?.[1];
+  const toChain = to && !["usdc", "eth", "usdt", "weth", "me", "my"].includes(to) ? to : "arc";
+  return { kind: "exitChain", fromChain: from, toChain, toAsset: (asset ?? "usdc").toUpperCase() };
+}
+
+export function parseCommand(
+  text: string,
+  tokens: IToken[],
+  ctx: ParseContext = {},
+): ParseResult {
+  /* A bridge that delivers to someone else: "bridge 100 USDC to BSC to 0x…",
+     "… and send it to 0x…", "… for 0x…". The address phrase is lifted out, the
+     rest parses as an ordinary bridge, and the recipient rides on the command.
+     Anything short of a complete bridge goes to the model (which has the same
+     field) rather than dropping the address. */
+  if (/\bbridge\b/i.test(text)) {
+    const rx =
+      /\s*(?:,?\s*(?:and\s+)?(?:then\s+)?(?:send|deliver|transfer)\s+(?:it\s+)?)?(?:to|for)\s+(?:the\s+)?(?:address\s+|wallet\s+|recipient\s+)?(0x[0-9a-fA-F]{40})\b/;
+    const m = text.match(rx);
+    if (m) {
+      const rest = text.replace(m[0], " ").replace(/\s+/g, " ").trim();
+      if (/0x[0-9a-fA-F]{40}/.test(rest)) return { status: "unknown" };
+      const r = parseCommand(rest, tokens, ctx);
+      if (r.status === "ok" && r.command.kind === "bridge")
+        return { status: "ok", command: { ...r.command, recipient: m[1] } };
+      return { status: "unknown" };
+    }
+  }
+
+  /* Two tokens joined by "and" in one trade — "sell 10 ARGUS and 10 TOLLY",
+     "sell all my ARGUS and TOLLY", "sell X for USDC and sell Y for USDC". The
+     grammar builds ONE swap, so it used to keep the first token and drop the
+     second without a word, or worse, read "and TOLLY" as the token to receive
+     and swap ARGUS into it. The model builds one swap per token into a single
+     plan, so the sentence goes there instead of being half-built here. */
+  if (namesTwoTradedTokens(text, tokens)) return { status: "unknown" };
+
+  /* "Move everything off Abstract to Arc" — every holding on one chain, out.
+     Needs an all-of-it word AND a source introduced by off / out of / from, so
+     "bridge 10 USDC from Base to Arc" stays an ordinary bridge. */
+  const exit = parseExitChain(text, tokens);
+  if (exit) return { status: "ok", command: exit };
+
+  /* A balance question about another wallet. Needs the address AND a holdings
+     word, and no action verb — "send 10 USDC to 0x…" names an address too and
+     must stay a send. Typos in the verb ("chheck") don't matter: the noun decides. */
+  const lookupAddr = text.match(/\b0x[0-9a-fA-F]{40}\b/)?.[0];
+  if (
+    lookupAddr &&
+    /\b(balances?|holdings?|holds?|holding|portfolio|bags?|worth|assets|funds|tokens)\b/i.test(text) &&
+    !/\b(send|transfer|pay|swap|bridge|buy|sell|lend|borrow|repay|deposit|withdraw|stake|unstake|approve|convert|trade|mint|redeem|claim)\b/i.test(text)
+  )
+    return { status: "ok", command: { kind: "lookup", address: lookupAddr } };
+
+  if (dollarSizedNonDollar(text)) {
+    /* "$100 worth of cirBTC": with a live price, rewrite to "<amount> cirBTC" and
+       parse that; the plan's own quote then shows the dollar value to check. */
+    const sized = dollarSizedToken(text, tokens, ctx.addressToken);
+    const price = sized && ctx.usdPrice ? ctx.usdPrice(sized.token) : null;
+    const amount = sized && price ? usdToTokenAmount(sized.usd, price, sized.token.decimals) : null;
+    if (!sized || !amount) return { status: "unknown" };
+    /* An address keeps its address (the symbol of a provisional launch token is
+       not resolvable); a symbol is written back as its symbol. */
+    const named = /0x[0-9a-f]{40}$/i.test(sized.match) ? sized.match.slice(-42) : sized.token.symbol;
+    const rewritten = dollarsAsUsdc(text).replace(sized.match, `${amount} ${named}`);
+    if (dollarSizedNonDollar(rewritten)) return { status: "unknown" };
+    return parseCommand(rewritten, tokens, ctx);
+  }
+  const first = parseCommandOnce(text, tokens, ctx);
+  if (first.status !== "unknown") return first;
+  /* One retry with a misspelled verb corrected ("sedn" → send, "swpa" → swap).
+     Only on a sentence that read as nothing at all, so it can never change a
+     parse that already worked; see correctVerbTypo for what it will not touch. */
+  const fixed = correctVerbTypo(text, tokens);
+  return fixed ? parseCommandOnce(fixed, tokens, ctx) : first;
+}
+
+/**
+ * Verbs a typo is corrected to. Four letters or more, so there is room for one
+ * slip to be unambiguous — "buy", "get" and "pay" are not here.
+ */
+const TYPO_VERBS = [
+  "send", "swap", "bridge", "stake", "unstake", "deposit", "withdraw",
+  "borrow", "repay", "transfer", "supply", "lend", "convert", "exchange",
+];
+
+/**
+ * Real words one edit from a verb, which are never read as that verb: "sent"
+ * is a past send being described, "state" and "steak" are not "stake".
+ */
+const NOT_A_VERB_TYPO = new Set([
+  "sent", "seed", "sand", "spend", "swan", "swab", "swat", "state", "stage",
+  "stack", "steak", "stale", "stare", "bride", "bridges", "ridge", "lead",
+  "land", "lent", "lens", "debit", "repaid", "reply", "supple", "burrow",
+]);
+
+/**
+ * The sentence with its one misspelled verb corrected, or null.
+ *
+ * Deliberately narrow, because a wrong correction builds a plan the user did
+ * not ask for: the word must sit in the first five, be four letters or more,
+ * not already be a word the grammar knows or a token symbol on this chain, be
+ * exactly one edit (a transposition counts as one) from exactly one verb, and
+ * the sentence must carry a number — a command has an amount, a remark rarely
+ * does. Only the first such word is corrected.
+ */
+export function correctVerbTypo(text: string, tokens: IToken[]): string | null {
+  if (!/\d/.test(text)) return null;
+  const parts = text.trim().split(/\s+/);
+  const symbols = new Set(tokens.map((t) => squash(t.symbol)));
+  for (let i = 0; i < Math.min(parts.length, 5); i++) {
+    const w = parts[i].toLowerCase();
+    if (!/^[a-z]{4,}$/.test(w)) continue;
+    if (NEVER_A_TOKEN.has(w) || NOT_A_VERB_TYPO.has(w) || symbols.has(w)) continue;
+    const hits = TYPO_VERBS.filter((v) => editDistance(w, v) === 1);
+    if (hits.length !== 1) continue;
+    parts[i] = hits[0];
+    return parts.join(" ");
+  }
+  return null;
+}
+
+function parseCommandOnce(
+  text: string,
+  tokens: IToken[],
+  ctx: ParseContext,
+): ParseResult {
   const raw = text.trim();
   if (!raw) return { status: "unknown" };
 
@@ -1479,7 +2457,46 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   const order = parseOrder(raw, tokens);
   if (order) return order;
 
+  /* wrap/unwrap, before the model-only gate: a native<->wrapped-native swap the
+     builder turns into wrapNative/unwrapNative. null for anything but the clean
+     `[un]wrap <amount>` case, so the model still handles the rest. */
+  const wrap = parseWrap(raw, tokens);
+  if (wrap) return wrap;
+
   if (MODEL_ONLY.test(lower)) return { status: "unknown" };
+
+  /*
+   * A question about WHERE, or on WHICH venue, a token trades is a read for the
+   * model — not a swap. But "trade" is a swap verb, so "where does EURC trade"
+   * and "where can I trade EURC" were caught by parseSwap and answered with a
+   * clarifying question ("which token to spend?") instead of the venue answer
+   * the user asked for. Decline the question shape to the model before verb
+   * detection runs. It needs "where"/"which venue" AND a trading word, so a real
+   * command ("trade EURC for USDC") — which has neither — is untouched.
+   */
+  if (
+    /\bwhere\b[\s\S]*\b(trade|traded|trades|trading|swap|swapped|swaps|buy|bought|sell|sold|list|listed)\b/i.test(
+      lower,
+    ) ||
+    /\bwhich (dex|chain|network|venue|exchange|pool|market|pair)\b/i.test(lower)
+  ) {
+    return { status: "unknown" };
+  }
+
+  /* A how-to question is not a command, even though it names a verb. "how do I
+     bridge", "how to stake", "how does lending work" must reach the docs and
+     FAQ as questions, not open a bridge/stake draft that then asks "which
+     token?". Bounded to the leading interrogative, so "how much do I have" (a
+     portfolio read) and "how many points" are untouched — neither begins with
+     "how do/to/does/can/should i". */
+  if (
+    /^how\s+(to\b|does\b|do\s+(i|we|you|they)\b|can\s+(i|we|you)\b|should\s+(i|we|you)\b|would\s+(i|we|you)\b)/i.test(
+      lower,
+    )
+  ) {
+    return { status: "unknown" };
+  }
+
   if (
     RECEIVE_PHRASES.some(
       (p) => lower === p || lower.startsWith(`${p} `) || lower === `${p}?`,
@@ -1488,7 +2505,7 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     return { status: "ok", command: { kind: "receive" } };
   }
 
-  const words = normalise(raw);
+  const words = normalise(dollarsAsUsdc(raw));
 
   /*
    * The faucet, checked ahead of the zero-slot verbs for one specific reason:
@@ -1548,6 +2565,17 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     };
   }
 
+  // A claim that names points, staking rewards or an airdrop is not the kfUSD
+  // yield claim — see CLAIM_NOT_YIELD. It escalates rather than being resolved to
+  // the closest zero-slot verb, so a sentence about one product never plans a
+  // transaction in another. (Faucet claims were already handled above.)
+  if (
+    words.some((w) => ZERO_SLOT_VERBS.claimYield.includes(w)) &&
+    words.some((w) => CLAIM_NOT_YIELD.has(w))
+  ) {
+    return { status: "unknown" };
+  }
+
   // Checked ahead of the slotted verbs: these take no argument at all, so
   // there's nothing for the draft machinery to do.
   for (const kind of Object.keys(ZERO_SLOT_VERBS) as ZeroSlotKind[]) {
@@ -1591,6 +2619,27 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   }
 
   const verb = detectVerb(words, { hasRef: Boolean(ref) });
+
+  /* "move 100 USDC to Base", "transfer 50 EURC to Arc" — a movement word with a
+     token and a named chain is a bridge. None of these is a verb of its own:
+     "move" is a portfolio-action veto word, because "move my portfolio to best
+     yield" is a strategy for the model. A named chain is exactly what tells the
+     two apart — there is nothing to reason about when the destination is spelt
+     out — so this fires only when chainDestination confirms one, and delegates
+     to parseBridge so the amount, the "from X" source and the near-miss all read
+     the same as a plain "bridge …". Without a chain it falls through and still
+     escalates. (amount/mentions computed here — the shared ones below are scoped
+     to the has-verb path this never reaches.) */
+  if (words.some((w) => MOVE_WORDS.has(w)) && chainDestination(words, ctx)) {
+    return parseBridge(
+      words,
+      detectAmount(words),
+      findTokenMentions(words, tokens),
+      tokens,
+      ctx,
+    );
+  }
+
   if (!verb) {
     /*
      * Nothing to do, so it may be something to read. Deliberately the last thing
@@ -1602,7 +2651,9 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
       !words.some((w) => PORTFOLIO_VETO.has(w)) &&
       !words.some((w) => PORTFOLIO_ACTION_VETO.has(w)) &&
       (PORTFOLIO_ALONE.includes(bare) ||
-        PORTFOLIO_PHRASES.some((p) => lower.includes(p)))
+        PORTFOLIO_PHRASES.some((p) => lower.includes(p)) ||
+        PORTFOLIO_POSSESSIVE.test(lower) ||
+        PORTFOLIO_HOWMUCH.test(lower))
     ) {
       return { status: "ok", command: { kind: "portfolio" } };
     }
@@ -1626,15 +2677,75 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
   const amount = detectAmount(words, claimed);
   const mentions = findTokenMentions(words, tokens);
 
+  /* A relative amount — "swap half my USDC", "stake all my KLD", "send 50% of my
+     ETH" — is a share of a balance this pure grammar cannot read. Rather than ask
+     "How much?" at someone who just told us, hand it to the model, which can read
+     the balance (getBalances) and compute it. Only when no absolute amount was also
+     named, and only for verbs whose amount can be relative. See AMOUNT_VERBS. */
+  /* "withdraw all (my collateral)", "withdraw all EURC", "withdraw max": the one
+     relative amount this grammar resolves itself for a lending verb, because
+     "all" of collateral is a figure the builder reads exactly from the diamond
+     (the free balance) — no share arithmetic, nothing for a model to compute.
+     Only the whole of it: "withdraw half my EURC" still goes to the model, and a
+     named chain still makes it a bridge. */
+  if (
+    !amount &&
+    verb.kind === "withdraw" &&
+    !chainDestination(words, ctx) &&
+    (() => {
+      const rel = detectRelativeAmount(words);
+      return rel !== null && rel.num === 1 && rel.den === 1;
+    })()
+  ) {
+    const token = mentions[0]?.token;
+    return {
+      status: "ok",
+      command: token ? { kind: "withdraw", all: true, token } : { kind: "withdraw", all: true },
+    };
+  }
+
+  if (
+    !amount &&
+    verb.kind !== "swap" &&
+    AMOUNT_VERBS.has(verb.kind) &&
+    hasRelativeAmount(words, !RATE_VERBS.has(verb.kind))
+  ) {
+    // Swap is resolved deterministically below (parseSwap carries the share);
+    // the other amount verbs escalate to the model, which reads the balance.
+    return { status: "unknown" };
+  }
+
   if (verb.kind === "collectFees" || verb.kind === "removePosition") {
     // Always a position reference, never a marketplace one — "remove" here
     // never means cancelling a listing.
     if (!ref || ref.target !== "position" || !Number.isFinite(ref.id)) {
+      // A remove that named a partial share but no position — "remove half of my
+      // KLD/USDC position" — is beyond this grammar: it cannot carry the share
+      // through a slot prompt, and prompting for the position would then remove
+      // ALL of it. Hand it to the model, which can find the position and honour
+      // the share, rather than ask a question whose answer drops the "half".
+      if (verb.kind === "removePosition" && detectRemoveFraction(words, rate)) {
+        return { status: "unknown" };
+      }
       return incomplete({ kind: verb.kind }, "ref");
+    }
+    if (verb.kind === "removePosition") {
+      const share = detectRemoveFraction(words, rate);
+      // A share asked for as a word ("half") or a nonsense percentage: escalate
+      // rather than guess a number or quietly fall back to all of it.
+      if (share && "ambiguous" in share) return { status: "unknown" };
+      return {
+        status: "ok",
+        command: {
+          kind: "removePosition",
+          positionId: ref.id,
+          ...(share ? { percent: share.percent } : {}),
+        },
+      };
     }
     return {
       status: "ok",
-      command: { kind: verb.kind, positionId: ref.id },
+      command: { kind: "collectFees", positionId: ref.id },
     };
   }
 
@@ -1687,12 +2798,35 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
     return completeDraft(refDraft);
   }
 
+  /* No vocabulary means no chain: a wallet not connected, or one on a chain
+     this registry has no tokens for. Every token-naming verb would otherwise
+     open a Draft and ask "which token?" — the one question that cannot be
+     answered here — and 28 sessions in the log did exactly that. Say what is
+     actually missing. */
+  if (tokens.length === 0 && NEEDS_TOKENS.has(verb.kind)) {
+    return {
+      status: "incomplete",
+      draft: { kind: verb.kind },
+      missing: verb.kind === "swap" ? "tokenIn" : "token",
+      prompt: ctx.chainName
+        ? `I don't have any tokens for ${ctx.chainName} yet — switch to a supported chain and I'll build it.`
+        : "Connect a wallet first — which tokens you can use depends on the chain it's on.",
+    };
+  }
+
   if (verb.kind === "swap") {
-    return parseSwap(words, amount, mentions, tokens);
+    return parseSwap(
+      words,
+      amount,
+      amount ? null : detectRelativeAmount(words),
+      mentions,
+      tokens,
+      ctx,
+    );
   }
 
   if (verb.kind === "bridge") {
-    return parseBridge(words, amount, mentions, tokens);
+    return parseBridge(words, amount, mentions, tokens, ctx);
   }
 
   if (verb.kind === "send") {
@@ -1702,14 +2836,47 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
      * swap between identical tokens — start over, rather than ask for a slot
      * that is already filled with the wrong thing.
      */
+    // "send 100 USDC to Base" names a chain, not an address — a bridge. Only
+    // when no literal recipient was given, so "send 100 USDC to 0x…" stays a
+    // send even on a chain whose name someone could also type.
+    const sendChain = recipient ? null : chainDestination(words, ctx);
+    if (sendChain) {
+      return completeDraft({
+        kind: "bridge",
+        amount: amount?.amount,
+        token: mentions[0]?.token,
+        toChain: sendChain,
+      });
+    }
     if (countAddresses(words) > 1) return { status: "unknown" };
+
+    /* "on Base" / "via Base": the chain the send happens on. Only a phrase the
+       registry knows as a chain, so "on it" or "on my behalf" stay filler. */
+    const onChain = sendChainPhrase(words, ctx);
+    let token = mentions[0]?.token;
+    /* A token the connected chain lacks but the named chain carries ("send 5
+       cbBTC to 0x… on Base" from Arc): take it as that chain knows it. The
+       builder re-resolves by symbol on the named chain either way. */
+    if (!token && onChain && ctx.sourceTokens) {
+      const vAt = words.findIndex((w) => VERBS.send.includes(w));
+      const endAt = words.findIndex(
+        (w, i) => i > vAt && (w === "to" || w === "on" || w === "via"),
+      );
+      const stray = strayWord(words, vAt + 1, endAt >= 0 ? endAt : words.length, mentions);
+      const n = normChainName(onChain);
+      const hit = stray
+        ? ctx.sourceTokens(stray).find((c) => normChainName(c.chainName) === n)
+        : undefined;
+      if (hit) token = hit.token;
+    }
 
     return completeDraft({
       kind: "send",
       amount: amount?.amount,
-      token: mentions[0]?.token,
+      token,
       to: recipient?.to,
-      ...suggestion(words, mentions, tokens),
+      ...(onChain ? { fromChain: onChain } : {}),
+      ...(token ? {} : suggestion(words, mentions, tokens)),
     });
   }
 
@@ -1734,25 +2901,34 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
 
   if (verb.kind === "repay") {
     // A bare "repay" is valid: the planner resolves it when exactly one loan is
-    // open, and asks which otherwise. Only a number here names the loan.
-    const id = amount ? Number(amount.amount) : undefined;
+    // open, and asks which otherwise.
+    const parsed = parseRepay(words, mentions, claimed);
     return {
       status: "ok",
       command: {
         kind: "repay",
-        loanId: Number.isInteger(id) && (id as number) > 0 ? id : undefined,
+        ...(parsed.loanId !== undefined ? { loanId: parsed.loanId } : {}),
+        ...(parsed.amount !== undefined ? { amount: parsed.amount } : {}),
       },
     };
   }
 
   if (verb.kind === "borrow" || verb.kind === "lend") {
+    /* "borrow 100 USDC against 150 EURC": the loan is what comes BEFORE the
+       connector, the collateral after it. Reading mentions[0] alone took the
+       loan right and silently dropped the collateral — a plan that could only
+       revert for a wallet with none posted. */
+    const backing = verb.kind === "borrow" ? parseBacking(words, mentions, claimed, amount) : null;
+    const loanMentions = backing ? mentions.filter((m) => m.index < backing.at) : mentions;
+    const loanAmount = backing && amount && amount.index > backing.at ? undefined : amount?.amount;
     return completeDraft({
       kind: verb.kind,
-      amount: amount?.amount,
-      token: mentions[0]?.token,
+      amount: loanAmount,
+      token: loanMentions[0]?.token,
       interestPct: rate?.pct,
       days: duration?.days,
-      ...suggestion(words, mentions, tokens),
+      ...(backing?.collateral ? { collateral: backing.collateral } : {}),
+      ...suggestion(words, loanMentions, tokens),
     });
   }
 
@@ -1783,6 +2959,21 @@ export function parseCommand(text: string, tokens: IToken[]): ParseResult {
       );
     }
     return { status: "ok", command: { kind: "completeWithdrawal", token } };
+  }
+
+  // "withdraw 100 USDC to Base" is a bridge, not a vault/collateral withdrawal
+  // that drops the destination. Only when a chain is actually named; a plain
+  // "withdraw 100 USDC" falls through to the generic amount+token below.
+  if (verb.kind === "withdraw") {
+    const withdrawChain = chainDestination(words, ctx);
+    if (withdrawChain) {
+      return completeDraft({
+        kind: "bridge",
+        amount: amount?.amount,
+        token: mentions[0]?.token,
+        toChain: withdrawChain,
+      });
+    }
   }
 
   // deposit, withdraw, approve, mint, redeem — all amount plus token.
@@ -2087,21 +3278,53 @@ function isNegative(words: string[]): boolean {
 function parseSwap(
   words: string[],
   amount: { amount: string; index: number } | null,
-  mentions: Mention[],
+  relative: RelativeAmount | null,
+  mentions0: Mention[],
   tokens: IToken[],
+  ctx: ParseContext = {},
 ): ParseResult {
+  /*
+   * A bare token address the registry never carried becomes a provisional
+   * mention here, so an Argus launch named by address ("buy 0x… with 10 USDC")
+   * has a side to land on. Only positions the registry didn't already claim are
+   * offered to the hook, and only the caller (gated on Arc + ARGUS_ENABLED)
+   * resolves one — everywhere else `addressToken` is absent and this is a no-op.
+   */
+  let mentions = mentions0;
+  if (ctx.addressToken) {
+    const claimed = new Set(mentions.map((m) => m.index));
+    const extra: Mention[] = [];
+    for (let i = 0; i < words.length; i++) {
+      if (claimed.has(i)) continue;
+      const token = ctx.addressToken(words[i]);
+      if (token) extra.push({ token, index: i });
+    }
+    if (extra.length > 0) {
+      mentions = [...mentions, ...extra].sort((a, b) => a.index - b.index);
+    }
+  }
+
   /*
    * A purchase is the same transaction read from the other end, and every branch
    * below has to know which end it is being read from. See BUY_WORDS.
    */
-  const buying = words.some((w) => BUY_WORDS.has(w));
+  const fwdFrameAt = words.findIndex((w) => FORWARD_SEPARATORS.includes(w));
+  const forwardFramed =
+    fwdFrameAt >= 0 &&
+    mentions.some((m) => m.index < fwdFrameAt) &&
+    mentions.some((m) => m.index > fwdFrameAt);
+  const buying = words.some((w) => BUY_WORDS.has(w)) && !forwardFramed;
   const backAt = buying
     ? words.findIndex((w) => BUY_SEPARATORS.includes(w))
     : -1;
   const fwdAt = buying
     ? words.findIndex((w) => BUY_FORWARD_SEPARATORS.includes(w))
     : words.findIndex((w) => SEPARATORS.includes(w));
-  const sepAt = backAt >= 0 ? backAt : fwdAt;
+  /* "spend 10 USDC on X": "on" separates the sides, but only for "spend" —
+     everywhere else "on" names a chain ("swap 10 USDC to KLD on Base"). */
+  const spendOnAt =
+    !buying && fwdAt < 0 && words.includes("spend") ? words.indexOf("on") : -1;
+  const sepAt = backAt >= 0 ? backAt : fwdAt >= 0 ? fwdAt : spendOnAt;
   /** True when the separator we found puts the spent token on its right. */
   const inverted = backAt >= 0;
 
@@ -2155,9 +3378,25 @@ function parseSwap(
    * keeps its meaning, so answering takes one word.
    */
   if (near) {
-    const suggest = { token: near.token, typed: near.typed };
+    /* A symbol the registry carries on ANOTHER chain is not a typo, however
+       close it lands to one here: "EURC" is two edits from "USDC" and a real
+       token on Arc, and "did you mean USDC?" sent people round the slot loop.
+       Known elsewhere wins over the near miss, and the question says where. */
+    const abroad = (ctx.elsewhere?.(near.typed) ?? []).length > 0;
+    const suggest = abroad
+      ? undefined
+      : { token: near.token, typed: near.typed };
+    const ask = (draft: Draft, missing: Slot): ParseResult =>
+      abroad
+        ? {
+            status: "incomplete",
+            draft,
+            missing,
+            prompt: unknownTokenPrompt(near.typed, ctx, tokens),
+          }
+        : incomplete(draft, missing);
     if (tokenIn === near.token) {
-      return incomplete(
+      return ask(
         { kind: "swap", amount: amount?.amount, tokenOut, suggest },
         "tokenIn",
       );
@@ -2166,10 +3405,26 @@ function parseSwap(
       // Same rule as the drop below: a purchase states what comes back, so its
       // number must not survive into the side that gets spent.
       const keep = buying && !tokenIn ? undefined : amount?.amount;
-      return incomplete(
-        { kind: "swap", amount: keep, tokenIn, suggest },
-        "tokenOut",
-      );
+      return ask({ kind: "swap", amount: keep, tokenIn, suggest }, "tokenOut");
+    }
+  }
+
+  /* "swap 50 USDC to Sepolia" names a chain where a token should be. There is
+     no such swap and exactly one thing it can mean, and the caller can tell a
+     chain from a token. Read it as the bridge it is: the plan says "Bridge",
+     and nothing is signed unread. */
+  if (!tokenOut && !inverted && sepAt >= 0 && ctx.isChain) {
+    const phrase = words
+      .slice(sepAt + 1)
+      .filter((w) => !STRAY_FILLERS.has(w))
+      .join(" ");
+    if (phrase && ctx.isChain(phrase)) {
+      return completeDraft({
+        kind: "bridge",
+        amount: amount?.amount,
+        token: tokenIn,
+        toChain: phrase,
+      });
     }
   }
 
@@ -2198,14 +3453,51 @@ function parseSwap(
     tokenOut,
   };
 
-  if (!tokenIn) return incomplete(draft, "tokenIn");
-  if (!tokenOut) return incomplete(draft, "tokenOut");
+  /* An empty side may not be unnamed at all — "swap 100 USDC to EURC" on a
+     chain without EURC names a token that simply isn't here, and "which token
+     do you want to receive?" hides the only fact that matters. Quote what was
+     typed and say what is wrong with it. The spent side sits after the amount
+     (or the verb) and before the separator; the received side after it; a
+     purchase reads the two the other way round. */
+  const verbAt = words.findIndex((w) => VERBS.swap.includes(w));
+  const start = amount ? amount.index + 1 : verbAt + 1;
+  const end = sepAt >= 0 ? sepAt : words.length;
+  const spentRange: [number, number] = inverted ? [sepAt + 1, words.length] : [start, end];
+  const gotRange: [number, number] | null =
+    sepAt < 0 ? null : inverted ? [start, sepAt] : [sepAt + 1, words.length];
+  const explain = (typed: string, missing: Slot): ParseResult => ({
+    status: "incomplete",
+    draft,
+    missing,
+    prompt: unknownTokenPrompt(typed, ctx, tokens),
+  });
+
+  if (!tokenIn) {
+    const typed = strayWord(words, spentRange[0], spentRange[1], placed);
+    return typed ? explain(typed, "tokenIn") : incomplete(draft, "tokenIn");
+  }
+  if (!tokenOut) {
+    const typed = gotRange
+      ? strayWord(words, gotRange[0], gotRange[1], placed)
+      : null;
+    return typed ? explain(typed, "tokenOut") : incomplete(draft, "tokenOut");
+  }
   if (tokenIn.address.toLowerCase() === tokenOut.address.toLowerCase()) {
     // Not an incomplete draft — it's contradictory, so restart rather than
     // ask for a slot that's already filled.
     return { status: "unknown" };
   }
-  if (!amount) return incomplete(draft, "amount");
+  if (!amount) {
+    // A share was named ("half", "50%") but no number: carry it for the planner
+    // to resolve against the balance, rather than ask "How much?".
+    if (relative) {
+      return {
+        status: "ok",
+        command: { kind: "swap", relative, tokenIn, tokenOut },
+      };
+    }
+    return incomplete(draft, "amount");
+  }
 
   return {
     status: "ok",
@@ -2227,33 +3519,125 @@ function parseSwap(
  * an unknown one by name. Without a separator it still collects the asset and
  * asks for the chain, rather than guessing a destination out of trailing words.
  */
+/** A chain name as the user might say it — case, a leading "from"/"on"/"the"
+ *  and a trailing "chain"/"network" ignored — for matching against the chains a
+ *  bridge source was offered on. */
+function normChainName(x: string): string {
+  return x
+    .toLowerCase()
+    .replace(/^(from|on|the)\s+/, "")
+    .replace(/\s+(chain|network)$/, "")
+    .trim();
+}
+
 function parseBridge(
   words: string[],
   amount: { amount: string; index: number } | null,
   mentions: Mention[],
   tokens: IToken[],
+  ctx: ParseContext,
 ): ParseResult {
   const sepAt = words.findIndex((w) => SEPARATORS.includes(w));
-  const dest =
+  const destPhrase =
     sepAt >= 0
       ? words
           .slice(sepAt + 1)
           .join(" ")
           .trim()
       : "";
-  const token =
-    sepAt >= 0
-      ? mentions.find((m) => m.index < sepAt)?.token
+
+  /* Split the destination into a chain and, when cross-asset, the token to
+     receive. "arc" is a chain (same-asset); "arc usdc" is the Arc chain plus a
+     USDC leg to deliver. The longest chain-prefix wins, so a multi-word chain
+     ("base sepolia") is never misread as chain + token: only the LAST word may
+     be the asset, and only when it is a plausible symbol AND the words before it
+     are themselves a chain. An unknown destination stays whole and is refused by
+     name downstream, exactly as before. */
+  let toChain = destPhrase;
+  let toAsset: string | undefined;
+  if (destPhrase && ctx.isChain && !ctx.isChain(destPhrase)) {
+    const parts = destPhrase.split(/\s+/);
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      const prefix = parts.slice(0, -1).join(" ");
+      const looksToken =
+        /^[a-z][a-z0-9.]*$/.test(last) &&
+        !NEVER_A_TOKEN.has(last) &&
+        !STRAY_FILLERS.has(last);
+      if (looksToken && ctx.isChain(prefix)) {
+        toChain = prefix;
+        toAsset = last;
+      }
+    }
+  }
+
+  /* An explicit source: "bridge X from <chain> to <dest>". A bridge is signed on
+     its source chain, so a named source the wallet is not on is a real request,
+     not noise to drop — buildIntents builds the plan for it and the sign flow
+     switches. "from" sits before the destination separator; the source is the
+     words between it and that separator (or the rest, with no separator). Only a
+     "from" that precedes the destination counts, so "to Arc from the swap" — were
+     that ever typed — cannot read the destination as a source. */
+  const fromAt = words.findIndex((w) => w === "from");
+  const sourceEnd = sepAt >= 0 ? sepAt : words.length;
+  let fromChain =
+    fromAt >= 0 && fromAt < sourceEnd
+      ? words.slice(fromAt + 1, sourceEnd).join(" ").trim()
+      : "";
+
+  /* Where the asset words stop: at "from" if a source was named, else at the
+     destination separator, else nowhere. Everything from there on is chain
+     names, which must never be read back as the token being bridged. */
+  const cut =
+    fromAt >= 0 && fromAt < sourceEnd ? fromAt : sepAt >= 0 ? sepAt : -1;
+  let token =
+    cut >= 0
+      ? mentions.find((m) => m.index < cut)?.token
       : mentions[0]?.token;
+
+  /* Abroad source: the asset names a token this chain lacks but another carries —
+     the valid SOURCE of a bridge, not an error. Accept it and infer the source
+     chain, so "bridge 10 BNB to Arc" (BNB is on BSC) parses in one shot instead
+     of asking "which token?" and then refusing it like a swap. Only when nothing
+     resolved on the connected chain and no explicit "from" was typed. */
+  let sourceOptions: string[] | undefined;
+  if (!token && ctx.sourceTokens) {
+    const stray = strayWord(words, 0, cut >= 0 ? cut : words.length, mentions);
+    const cands = stray ? ctx.sourceTokens(stray) : [];
+    if (fromChain && cands.length > 0) {
+      /* The user NAMED the source ("bridge 0.1 ETH from Base to Arc"): take the
+         token as that chain knows it when it is a candidate, else any
+         candidate's (the symbol is what matters — the builder re-resolves it on
+         the named chain and refuses by name if it isn't there). Before this, a
+         named source skipped the lookup entirely and an off-chain token fell
+         through to the connected chain's near-miss ("did you mean WETH?"). */
+      const n = normChainName(fromChain);
+      token = (cands.find((c) => normChainName(c.chainName) === n) ?? cands[0])
+        .token;
+    } else if (cands.length === 1) {
+      token = cands[0].token;
+      fromChain = cands[0].chainName;
+    } else if (cands.length > 1) {
+      /* Several chains carry it: keep the symbol (the builder re-resolves it on
+         whichever chain is chosen) and ASK which chain — never the first. */
+      token = cands[0].token;
+      sourceOptions = cands.map((c) => c.chainName);
+    }
+  }
 
   return completeDraft({
     kind: "bridge",
     amount: amount?.amount,
     token,
-    toChain: dest || undefined,
-    // Only the words before the separator. Everything after it is the
-    // destination, and a chain name must never be read back as a token.
-    ...suggestion(sepAt >= 0 ? words.slice(0, sepAt) : words, mentions, tokens),
+    toChain: toChain || undefined,
+    fromChain: fromChain || undefined,
+    toAsset,
+    sourceOptions,
+    /* Suggest a near-miss only when no source resolved — an inferred abroad
+       source is a real token, not a guess to confirm. */
+    ...(token
+      ? {}
+      : suggestion(cut >= 0 ? words.slice(0, cut) : words, mentions, tokens)),
   });
 }
 
@@ -2278,7 +3662,13 @@ function parseBridge(
  * 1. A SENTENCE WITH ITS OWN VERB IS NOT A FOLLOW-UP. "now stake it" is a fresh
  *    instruction and belongs to the grammar; reading it as a modified swap
  *    would keep the previous verb and quietly change the action. Declined here,
- *    and the caller has already tried the parser anyway.
+ *    and the caller has already tried the parser anyway. ONE EXCEPTION: the
+ *    verb is the carried command's OWN, inside a repeat cue — "do the same swap
+ *    once again", "swap again", "repeat that swap". The grammar reads that verb,
+ *    finds no token and would ask "which token do you want to spend?" — a
+ *    generic question about a sentence that named exactly what it wants. With
+ *    the verb agreeing nothing is re-pointed, so it is read as a repeat, plus
+ *    whatever the sentence changes. See REPEAT_CUE.
  *
  * 2. DIRECTION IS READ, NEVER ASSUMED. This is the same trap `buy` set (see
  *    BUY_WORDS): for a swap, a lone token could plausibly mean either side, and
@@ -2301,7 +3691,74 @@ function parseBridge(
  * `detectRecipient` requires a literal address, so "send it to Bob" cannot
  * resolve to anybody. Changing who gets paid is not a thing to infer.
  */
-const SAME_PHRASES = ["same", "the same", "same amount", "same size", "again"];
+/**
+ * Words that point back at the previous action instead of naming a new one:
+ * "again", "once more", "the same", "same swap", "repeat that", "redo".
+ *
+ * Matching one is what makes a sentence a follow-up under rule 3 when it
+ * substitutes nothing else ("again" carries everything), and — with the verb
+ * agreeing — what lets rule 1 admit "do the same swap once again". Number
+ * words are safe inside these: parseAmount reads digits only, so "one more
+ * time" can never become an amount of 1.
+ */
+const REPEAT_CUE =
+  /\b(again|once more|one more time|repeat|redo|re-?run|(the )?same( (one|thing|action|amount|size|swap|trade|bridge|send|transfer|stake|unstake|borrow|lend|order))?|like (before|last time)|as (before|last time))\b/;
+const isRepeatCue = (lower: string): boolean => REPEAT_CUE.test(lower);
+
+/** Follow-up-only wording for the entire currently available balance. */
+const REST_CUE = /\b(rest|remaining|remainder|left)\b/;
+const followUpRelative = (words: string[]): RelativeAmount | null =>
+  detectRelativeAmount(words) ??
+  (REST_CUE.test(words.join(" ")) ? { num: 1, den: 1 } : null);
+
+/* Exact decimal arithmetic for amount edits. Amounts are already normalized
+   decimal strings by parseAmount; keeping them as scaled integers avoids the
+   rounding a Number would introduce into a signed token amount. */
+function decimalParts(value: string): { whole: bigint; scale: number } | null {
+  const m = value.match(/^(\d+)(?:\.(\d+))?$/);
+  if (!m) return null;
+  const fraction = m[2] ?? "";
+  return { whole: BigInt(m[1] + fraction), scale: fraction.length };
+}
+function decimalFormat(whole: bigint, scale: number): string {
+  if (whole < 0n) return "";
+  let raw = whole.toString().padStart(scale + 1, "0");
+  if (!scale) return raw;
+  const at = raw.length - scale;
+  const out = `${raw.slice(0, at)}.${raw.slice(at)}`.replace(/\.?0+$/, "");
+  return out || "0";
+}
+function decimalEdit(base: string, delta: { op: "add" | "sub" | "mul" | "div"; n: number }): string | null {
+  const a = decimalParts(base);
+  if (!a || !Number.isInteger(delta.n) || delta.n <= 0) return null;
+  const b = a.whole;
+  if (delta.op === "mul") return decimalFormat(b * BigInt(delta.n), a.scale);
+  if (delta.op === "div") {
+    const divisor = BigInt(delta.n);
+    if (b % divisor !== 0n) {
+      const expanded = b * 10n ** 18n;
+      return decimalFormat(expanded / divisor, a.scale + 18);
+    }
+    return decimalFormat(b / divisor, a.scale);
+  }
+  const amount = BigInt(delta.n) * 10n ** BigInt(a.scale);
+  const next = delta.op === "add" ? b + amount : b - amount;
+  return next >= 0n ? decimalFormat(next, a.scale) : null;
+}
+function arithmeticFollowUp(words: string[], last: Command): string | null {
+  if (last.kind !== "swap" || !last.amount) return null;
+  const amount = detectAmount(words)?.amount;
+  if (words.includes("double")) return decimalEdit(last.amount, { op: "mul", n: 2 });
+  if (words.includes("triple")) return decimalEdit(last.amount, { op: "mul", n: 3 });
+  if (words.includes("half") && (words.includes("reduce") || words.includes("halve")))
+    return decimalEdit(last.amount, { op: "div", n: 2 });
+  if (!amount) return null;
+  if (words.includes("add") || words.includes("increase") || words.includes("more"))
+    return decimalEdit(last.amount, { op: "add", n: Number(amount) });
+  if (words.includes("subtract") || words.includes("decrease") || words.includes("less") || words.includes("off"))
+    return decimalEdit(last.amount, { op: "sub", n: Number(amount) });
+  return null;
+}
 
 export function parseFollowUp(
   text: string,
@@ -2314,10 +3771,39 @@ export function parseFollowUp(
   const lower = raw.toLowerCase();
   /* The same sentences parseCommand refuses. A follow-up must not be the way a
      recurring buy or a delegation grant gets built after all. */
-  if (MODEL_ONLY.test(lower)) return { status: "unknown" };
+  if (MODEL_ONLY.test(lower) || dollarSizedNonDollar(raw)) return { status: "unknown" };
 
-  const words = normalise(raw);
-  if (detectVerb(words, { hasRef: detectRef(words) !== null })) {
+  const words = normalise(dollarsAsUsdc(raw));
+  /* Rule 1, with its one exception. A verb makes this a fresh command — unless
+     it is the carried command's OWN verb inside a repeat cue: "do the same swap
+     once again", "swap again", "repeat that swap". The verb agrees, so nothing
+     is being re-pointed; the sentence refers to the last plan and is read as
+     one, plus whatever it changes. "now stake it" after a swap still refuses,
+     and so does "same bridge again" — a different verb is a different action. */
+  const arithmetic = arithmeticFollowUp(words, last);
+  const mentionedHere = findTokenMentions(words, tokens).length;
+  const hasFreshBalanceContext =
+    mentionedHere > 0 && /\b(my|mine|wallet|balance|balances)\b/.test(lower);
+  const hasFreshPairContext =
+    arithmetic !== null &&
+    mentionedHere > 0 &&
+    !isRepeatCue(lower) &&
+    !/\b(it|that|this)\b/.test(lower);
+  /* A complete pair or an explicit wallet/balance phrase belongs to this
+     sentence. Never let arithmetic or relative wording pull it back onto an
+     older command when the fresh parser could not complete it locally. */
+  if (hasFreshBalanceContext || hasFreshPairContext) return { status: "unknown" };
+  const verb = detectVerb(words, { hasRef: detectRef(words) !== null });
+  const relative = followUpRelative(words);
+  const refersToPriorAction =
+    relative !== null &&
+    last.kind === "swap" &&
+    (/\b(it|that|this|transaction|trade|swap)\b/.test(lower) ||
+      REST_CUE.test(lower));
+  if (
+    verb &&
+    !(verb.kind === last.kind && (isRepeatCue(lower) || refersToPriorAction || arithmetic !== null))
+  ) {
     return { status: "unknown" };
   }
 
@@ -2326,12 +3812,50 @@ export function parseFollowUp(
 
   const next: Draft = { ...draft };
   let named = false;
+  const mentions = findTokenMentions(words, tokens);
+  const explicitReference =
+    isRepeatCue(lower) ||
+    /\b(it|that|this|transaction|trade|swap|more|less)\b/.test(lower);
+
+  /* Wrap/unwrap is represented as the same swap command internally. Preserve
+     that representation, but honour an explicit direction word in a follow-up
+     when the carried pair is native versus its wrapped token. */
+  const wrapWord = words.includes("wrap") || words.includes("unwrap");
+  if (wrapWord && next.kind === "swap" && next.tokenIn && next.tokenOut) {
+    const native = next.tokenIn.isNative ? next.tokenIn : next.tokenOut.isNative ? next.tokenOut : null;
+    const wrapped = native === next.tokenIn ? next.tokenOut : native === next.tokenOut ? next.tokenIn : null;
+    if (native && wrapped && wrapped.tags?.includes("wrapped-native")) {
+      if (words.includes("unwrap")) {
+        next.tokenIn = wrapped;
+        next.tokenOut = native;
+      } else {
+        next.tokenIn = native;
+        next.tokenOut = wrapped;
+      }
+      named = true;
+    }
+  }
 
   const amount = detectAmount(words);
-  if (amount) {
-    next.amount = amount.amount;
+  /* Once context can live beyond one turn, a bare number is too easy to apply
+     to an old trade accidentally. It must either name a side, or explicitly
+     refer back to the prior action. */
+  if (amount && mentions.length === 0 && !explicitReference && arithmetic === null) {
+    return { status: "unknown" };
+  }
+  if (arithmetic !== null) {
+    next.amount = arithmetic;
+    next.relative = undefined;
     named = true;
-  } else if (SAME_PHRASES.some((s) => lower === s || lower.includes(s))) {
+  } else if (amount) {
+    next.amount = amount.amount;
+    next.relative = undefined;
+    named = true;
+  } else if (relative && next.kind === "swap") {
+    next.amount = undefined;
+    next.relative = relative;
+    named = true;
+  } else if (isRepeatCue(lower)) {
     /* Rule 4: nothing to copy — the amount is already in the draft. This only
        records that the sentence said something, so it is not refused as empty. */
     named = true;
@@ -2351,7 +3875,6 @@ export function parseFollowUp(
    * can read and the model gets it.
    */
   const DIRECTIONAL = new Set(["to", "into", "for", "from", "with", "using"]);
-  const mentions = findTokenMentions(words, tokens);
   const covered = new Set(mentions.map((m) => m.index));
   for (let w = 0; w < words.length - 1; w++) {
     if (!DIRECTIONAL.has(words[w])) continue;
@@ -2399,13 +3922,28 @@ export function fillSlot(
   missing: Slot,
   reply: string,
   tokens: IToken[],
+  ctx: ParseContext = {},
 ): ParseResult {
   const words = normalise(reply);
+  /* A reply with its own verb is a new command, not an answer. "swap 100 USDC
+     to EURC" typed under "which token do you want to spend?" must be read
+     whole — filling one slot from it loses the rest and asks for what the
+     sentence already said. Same rule as parseFollowUp's first. */
+  if (detectVerb(words, { hasRef: detectRef(words) !== null })) {
+    return { status: "unknown" };
+  }
   const next: Draft = { ...draft };
 
   if (missing === "amount") {
     const amount = detectAmount(words);
-    if (!amount) return incomplete(draft, "amount");
+    if (!amount) {
+      // A relative reply ("half", "50%", "all") to "How much?" is still a share of
+      // a balance — escalate rather than re-ask, the same as the initial parse.
+      if (hasRelativeAmount(words, !RATE_VERBS.has(draft.kind))) {
+        return { status: "unknown" };
+      }
+      return incomplete(draft, "amount");
+    }
     next.amount = amount.amount;
   } else if (missing === "rate") {
     // A bare "8" is a rate here: the question established the units, so it
@@ -2441,6 +3979,19 @@ export function fillSlot(
       return incomplete(draft, "recipient");
     }
     next.to = answered.to;
+  } else if (missing === "fromChain") {
+    /* The answer to "which chain are you bridging from?". A chain name, taken
+       whole like toChain; matched to one of the chains we offered (ignoring
+       case and a leading "from"/"on" or trailing "chain"/"network") so "base"
+       reads as "Base", else passed through for the builder to resolve and
+       refuse by name. */
+    const answer = reply.trim();
+    if (!answer) return incomplete(draft, "fromChain");
+    const hit = (draft.sourceOptions ?? []).find(
+      (o) => normChainName(o) === normChainName(answer),
+    );
+    next.fromChain = hit ?? answer;
+    next.sourceOptions = undefined;
   } else if (missing === "toChain") {
     // A chain name, not a token or a number: take the whole reply. The resolver
     // matches it against the registry, so a wrong name comes back as a named
@@ -2472,6 +4023,50 @@ export function fillSlot(
       // The answer can be a near miss too — "usdcc" typed twice is still
       // "usdcc", and the second one deserves the same named question.
       const near = findNearMiss(words, [], tokens);
+      /* The same two answers parseSwap gives: a symbol known on another chain
+         is named with its chain, and a short reply that resolves to nothing
+         is quoted back as unknown here — both keep the slot open. */
+      const abroad = near && (ctx.elsewhere?.(near.typed) ?? []).length > 0;
+      const stray =
+        !near && words.length <= 2
+          ? words.find(
+              (w) =>
+                /^[a-z][a-z0-9.]*$/.test(w) &&
+                !NEVER_A_TOKEN.has(w) &&
+                !STRAY_FILLERS.has(w),
+            )
+          : undefined;
+      const typed = abroad ? near.typed : stray;
+      /* In a BRIDGE, a token this chain lacks is not an error — it is the SOURCE,
+         living on another chain. Accept it and infer the source chain, instead of
+         the swap-style refusal below. Guarded to kind "bridge" and the source
+         slot, so swap/send/lend keep refusing an off-chain token exactly as
+         today. */
+      if (
+        next.kind === "bridge" &&
+        missing === "token" &&
+        typed &&
+        !isAffirmative(words) &&
+        !isNegative(words) &&
+        ctx.sourceTokens
+      ) {
+        const cands = ctx.sourceTokens(typed);
+        if (cands.length > 0) {
+          next.suggest = undefined;
+          next.token = cands[0].token;
+          if (cands.length === 1) next.fromChain = cands[0].chainName;
+          else next.sourceOptions = cands.map((c) => c.chainName);
+          return completeDraft(next);
+        }
+      }
+      if (typed && !isAffirmative(words) && !isNegative(words)) {
+        return {
+          status: "incomplete",
+          draft: { ...next, suggest: undefined },
+          missing,
+          prompt: unknownTokenPrompt(typed, ctx, tokens),
+        };
+      }
       return incomplete(
         {
           ...next,
@@ -2531,6 +4126,7 @@ export function draftFromCommand(command: Command): Draft | null {
       return {
         kind: "swap",
         amount: command.amount,
+        relative: command.relative,
         tokenIn: command.tokenIn,
         tokenOut: command.tokenOut,
       };
@@ -2545,6 +4141,7 @@ export function draftFromCommand(command: Command): Draft | null {
         amount: command.amount,
         token: command.token,
         to: command.to,
+        ...(command.chain ? { fromChain: command.chain } : {}),
       };
     case "bridge":
       return {
@@ -2552,6 +4149,11 @@ export function draftFromCommand(command: Command): Draft | null {
         amount: command.amount,
         token: command.token,
         toChain: command.toChain,
+        ...(command.fromChain ? { fromChain: command.fromChain } : {}),
+        ...(command.toAsset ? { toAsset: command.toAsset } : {}),
+        ...(command.receiveAtLeast
+          ? { receiveAtLeast: command.receiveAtLeast }
+          : {}),
       };
     case "borrow":
     case "lend":
@@ -2561,9 +4163,14 @@ export function draftFromCommand(command: Command): Draft | null {
         token: command.token,
         interestPct: command.interestPct,
         days: command.days,
+        ...(command.kind === "borrow" && command.collateral ? { collateral: command.collateral } : {}),
       };
     case "repay":
-      return { kind: "repay", loanId: command.loanId };
+      return {
+        kind: "repay",
+        loanId: command.loanId,
+        ...(command.amount ? { repayAmount: command.amount } : {}),
+      };
     case "takeListing":
       return {
         kind: "takeListing",
@@ -2613,6 +4220,9 @@ export function draftFromCommand(command: Command): Draft | null {
        which reads .amount and .token off a shape these do not have. */
     case "placeOrder":
     case "cancelOrders":
+    /* A balance lookup is complete or not parsed at all — nothing to re-draft. */
+    case "lookup":
+    case "exitChain":
       return null;
     case "claimTestTokens":
       return { kind: "claimTestTokens" };
@@ -2645,6 +4255,7 @@ export function clearSlot(draft: Draft, slot: Slot): Draft {
   else if (slot === "token") next.token = undefined;
   else if (slot === "recipient") next.to = undefined;
   else if (slot === "toChain") next.toChain = undefined;
+  else if (slot === "fromChain") next.fromChain = undefined;
   else if (slot === "rate") next.interestPct = undefined;
   else if (slot === "days") next.days = undefined;
   else if (slot === "ref") {
@@ -2665,12 +4276,12 @@ export function completeDraft(draft: Draft): ParseResult {
     ) {
       return { status: "unknown" };
     }
-    if (!draft.amount) return incomplete(draft, "amount");
+    if (!draft.amount && !draft.relative) return incomplete(draft, "amount");
     return {
       status: "ok",
       command: {
         kind: "swap",
-        amount: draft.amount,
+        ...(draft.amount ? { amount: draft.amount } : { relative: draft.relative }),
         tokenIn: draft.tokenIn,
         tokenOut: draft.tokenOut,
       },
@@ -2683,7 +4294,14 @@ export function completeDraft(draft: Draft): ParseResult {
   }
 
   if (draft.kind === "repay") {
-    return { status: "ok", command: { kind: "repay", loanId: draft.loanId } };
+    return {
+      status: "ok",
+      command: {
+        kind: "repay",
+        loanId: draft.loanId,
+        ...(draft.repayAmount ? { amount: draft.repayAmount } : {}),
+      },
+    };
   }
 
   if (draft.kind === "cancel") {
@@ -2746,6 +4364,7 @@ export function completeDraft(draft: Draft): ParseResult {
         token: draft.token,
         interestPct: draft.interestPct,
         days: draft.days,
+        ...(draft.kind === "borrow" && draft.collateral ? { collateral: draft.collateral } : {}),
       },
     };
   }
@@ -2780,6 +4399,7 @@ export function completeDraft(draft: Draft): ParseResult {
         amount: draft.amount,
         token: draft.token,
         to: draft.to,
+        ...(draft.fromChain ? { chain: draft.fromChain } : {}),
       },
     };
   }
@@ -2787,6 +4407,22 @@ export function completeDraft(draft: Draft): ParseResult {
   if (draft.kind === "bridge") {
     if (!draft.token) return incomplete(draft, "token");
     if (!draft.amount) return incomplete(draft, "amount");
+    /* The source, when the token is on several chains and none was named: ask,
+       naming the options, rather than pick one — a guessed source builds the
+       plan on a chain the user may hold nothing on. */
+    if (!draft.fromChain && (draft.sourceOptions?.length ?? 0) > 1) {
+      const opts = draft.sourceOptions!;
+      const list =
+        opts.length === 2
+          ? `${opts[0]} and ${opts[1]}`
+          : `${opts.slice(0, -1).join(", ")} and ${opts[opts.length - 1]}`;
+      return {
+        status: "incomplete",
+        draft,
+        missing: "fromChain",
+        prompt: `${draft.token.symbol} is on ${list}. Which chain are you bridging from?`,
+      };
+    }
     /* Destination last, mirroring send's recipient: it is the slot the resolver
        can still reject, so it is answered against a question that already names
        the amount and asset. */
@@ -2798,6 +4434,9 @@ export function completeDraft(draft: Draft): ParseResult {
         amount: draft.amount,
         token: draft.token,
         toChain: draft.toChain,
+        ...(draft.fromChain ? { fromChain: draft.fromChain } : {}),
+        ...(draft.toAsset ? { toAsset: draft.toAsset } : {}),
+        ...(draft.receiveAtLeast ? { receiveAtLeast: draft.receiveAtLeast } : {}),
       },
     };
   }
@@ -2808,6 +4447,13 @@ export function completeDraft(draft: Draft): ParseResult {
        — fillSlot and completeDraft are both exported — it cannot fall through to
        the amount-plus-token tail below and ask for an amount the faucet ignores. */
     return { status: "ok", command: { kind: "claimTestTokens" } };
+  }
+
+  if (draft.kind === "withdraw" && draft.all) {
+    return {
+      status: "ok",
+      command: draft.token ? { kind: "withdraw", all: true, token: draft.token } : { kind: "withdraw", all: true },
+    };
   }
 
   // approve, deposit, withdraw, mint, redeem
@@ -2839,11 +4485,8 @@ export const COMMAND_HELP = [
   // is an unrecoverable loss.
   "send 50 USDC to 0x…",
   "bridge 0.05 ETH to Base Sepolia",
-  "swap 500 USDC to KLD",
-  /* The purchase form, shown with the spent side named. "buy KLD" works too and
-     asks two questions; this is the shape that resolves in one line, which is
-     what a reference list is for. */
-  "buy KLD with 500 USDC",
+  "swap 100 USDC to EURC",
+  "swap 100 USDC to WUSDC",
   "stake 100",
   "deposit 500 USDC",
   "withdraw 200 USDC",
@@ -2862,3 +4505,96 @@ export const COMMAND_HELP = [
   "collect fees position 42",
   "remove liquidity position 42",
 ].join("\n");
+
+/**
+ * The capability overview, grouped by product and formatted for the markdown
+ * renderer — what "what can you do" should return instead of a flat dump of
+ * every example on one list. Every phrasing here is the parser's own (the same
+ * verified shapes as COMMAND_HELP), rendered as inline code so a reader can copy
+ * one; the group headings are the products, so the list reads as a map of the
+ * app rather than a wall of commands.
+ *
+ * Mode-aware, and not only for the faucet. Most of these surfaces — lending, the
+ * kfUSD stablecoin, staking, our own liquidity positions, KLD itself — are not
+ * deployed on the Arc mainnet the app defaults to, so listing them to a mainnet
+ * wallet is offering a map to rooms that aren't built. With the testnet toggle
+ * off, the overview is what Arc actually does: swap through the aggregator, wrap
+ * USDC, bridge out, read your wallet. The full set returns the moment testnets are
+ * on. Trade's examples switch with it too — KLD on a testnet, a real Arc pair and
+ * the wrap on mainnet.
+ */
+export function capabilityHelp(
+  opts: { showTestnets?: boolean; arcLending?: ArcLending | null } = {},
+): string {
+  const line = (heading: string, examples: string[]) =>
+    `**${heading}**  \n${examples.map((e) => `\`${e}\``).join(" · ")}`;
+
+  const testnets = !!opts.showTestnets;
+
+  const groups: string[] = [
+    line(
+      "Trade",
+      ["swap 100 USDC to EURC", "swap 100 USDC to WUSDC"],
+    ),
+    line("Bridge", ["bridge 50 USDC to Base", "bridge 100 USDC to Arbitrum"]),
+  ];
+
+  /* Borrow & lend is shown on mainnet as soon as the Arc lending book is live
+     (read from the registry, lib/lending/arcLending.ts), with examples that work
+     THERE: native-USDC loans against the registered collateral, above the $10
+     floor. On testnets the older examples stand. */
+  const arc = opts.arcLending ?? null;
+  if (arc && !testnets) {
+    const coll = arc.collateral[0];
+    groups.push(
+      line("Borrow & lend", [
+        `deposit 20 ${coll}`,
+        /* 15, not 10: USDC trades a hair under $1, so exactly 10 USDC is under the
+           contract's $10 floor on Arc (measured: $9.998). */
+        "borrow 15 USDC at 8% for 30 days",
+        "lend 100 USDC at 10% for 60 days",
+        "repay",
+      ]),
+    );
+  }
+
+  /* The testnet-only surfaces. Gated as a block because none of kfUSD, staking or
+     our liquidity positions is on Arc mainnet — the app's default network — so on
+     mainnet the overview skips straight from Bridge to the wallet reads that work
+     everywhere. */
+  if (testnets) {
+    groups.push(
+      line("Borrow & lend", [
+        "borrow 500 USDC at 8% for 30 days",
+        "lend 1000 USDC at 10% for 60 days",
+        "deposit 500 USDC",
+        "repay",
+      ]),
+      line("kfUSD stablecoin", [
+        "mint 500 USDC",
+        "redeem 500 kfUSD",
+        "lock 500",
+        "claim yield",
+      ]),
+      line("Staking", ["stake 100", "unstake 50"]),
+      line("Liquidity", [
+        "collect fees position 42",
+        "remove liquidity position 42",
+      ]),
+    );
+  }
+
+  groups.push(
+    line("Wallet & portfolio", [
+      "my portfolio",
+      "receive",
+      "send 50 USDC to 0x…",
+    ]),
+  );
+
+  if (testnets) {
+    groups.push(line("Testnet faucet", ["faucet USDC", "faucet all"]));
+  }
+
+  return groups.join("\n\n");
+}

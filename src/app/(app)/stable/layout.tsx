@@ -127,9 +127,8 @@ function StableChrome({ children }: { children: ReactNode }) {
               <div className={s.card}>
                 <div className={s.explainTitle}>Where yield comes from</div>
                 <p className={s.explainBody}>
-                  Lending interest and pool fees on the collateral backing
-                  kfUSD. Deposit in Earn to receive it; the vault has a
-                  withdrawal notice.
+                  Lending interest and pool fees. Earn in the vault (withdrawal
+                  notice applies).
                 </p>
               </div>
             </aside>

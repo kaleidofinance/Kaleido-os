@@ -170,6 +170,39 @@ function parsePriceOverrides(spec) {
 const PRICE_OVERRIDES = parsePriceOverrides(process.env.STABLE_USD);
 
 /**
+ * Operator-supplied token addresses, keyed by lowercased symbol, parsed from
+ * TOKENS once at load:
+ *
+ *   TOKENS="usdc=0x8c6c…,eurc=0xbEf5…,cirbtc=0x171A…"
+ *
+ * The generated registry carries our own deployed contracts and the stables it
+ * knows, not a chain's whole ecosystem — Arc's EURC and cirBTC are third-party,
+ * and its pool quote asset is the wrapped-native face of USDC (reg.wrappedNative),
+ * not the 0x3600 alias the registry lists under `usdc`. This is how the operator
+ * names those addresses explicitly; every one is validated as an address, logged,
+ * and OVERRIDES a registry key of the same name, so PAIR can point at the exact
+ * contract the pool should hold rather than whatever the registry defaulted to.
+ */
+function parseTokenOverrides(spec) {
+  const out = new Map();
+  if (!spec) return out;
+  for (const raw of spec.split(",")) {
+    const part = raw.trim();
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    if (eq < 0) throw new Error(`TOKENS entry "${part}" is not symbol=address`);
+    const sym = part.slice(0, eq).trim().toLowerCase();
+    const addr = part.slice(eq + 1).trim();
+    if (!sym) throw new Error(`TOKENS entry "${part}" has no symbol`);
+    if (!ethers.isAddress(addr))
+      throw new Error(`TOKENS ${sym}: "${addr}" is not an address`);
+    out.set(sym, ethers.getAddress(addr));
+  }
+  return out;
+}
+const TOKEN_OVERRIDES = parseTokenOverrides(process.env.TOKENS);
+
+/**
  * One whole token's worth of USD, at 18 decimals, with its provenance.
  *
  * The diamond's oracle answers first, because that is the price the protocol
@@ -190,20 +223,30 @@ const PRICE_OVERRIDES = parsePriceOverrides(process.env.STABLE_USD);
  * nobody published is a gift to the first arbitrageur and a lie to every user
  * who reads the quote before they arrive.
  */
-async function priceOf(protocol, address, symbol, decimals) {
+async function priceOf(protocol, address, symbol, decimals, namedKey) {
   /* An explicit operator price wins over both feeds. This is the assertion the
      script will not make on its own — see parsePriceOverrides — so when the
      operator has made it, it is authoritative, and taking it first also gives a
-     pegged pair a clean exact ratio instead of the oracle's $0.9999 dust. */
-  const override = PRICE_OVERRIDES.get(symbol.toLowerCase());
+     pegged pair a clean exact ratio instead of the oracle's $0.9999 dust.
+
+     Matched by the TOKENS key the operator NAMED this address under FIRST, then
+     by the on-chain symbol. Key-first is deliberate: Arc's wrapped-native quote
+     asset is USDC ($1) carrying the stock WETH9 symbol "WETH", so the operator's
+     own name for it (STABLE_USD="usdc=1", matching TOKENS="usdc=0x8c6c…") must
+     price it — never the misleading symbol, which a feed reads as real ETH. */
+  const override =
+    (namedKey && PRICE_OVERRIDES.get(namedKey.toLowerCase())) ??
+    PRICE_OVERRIDES.get(symbol.toLowerCase());
   if (override !== undefined)
     return { usd: override, source: `operator override $${ethers.formatUnits(override, 18)}` };
 
-  try {
-    const usd = await protocol.getUsdValue(address, 10n ** BigInt(decimals), decimals);
-    if (usd > 0n) return { usd, source: "diamond oracle" };
-  } catch {
-    /* No feed registered for this token on this chain. Fall through. */
+  if (protocol) {
+    try {
+      const usd = await protocol.getUsdValue(address, 10n ** BigInt(decimals), decimals);
+      if (usd > 0n) return { usd, source: "diamond oracle" };
+    } catch {
+      /* No feed registered for this token on this chain. Fall through. */
+    }
   }
 
   let feed;
@@ -346,6 +389,21 @@ async function main() {
   const chainId = Number((await ethers.provider.getNetwork()).chainId);
   const reg = registryFor(chainId);
 
+  /* Operator-named token addresses (TOKENS env) override the generated registry,
+     so a pair can name a chain's ecosystem tokens (Arc's EURC/cirBTC) and the
+     exact USDC face the pool quotes against. Stated on its own line so the run
+     records what it resolved rather than resolving silently. */
+  const namedByAddr = new Map();
+  for (const [sym, addr] of TOKEN_OVERRIDES) {
+    if (reg[sym] && reg[sym].toLowerCase() !== addr.toLowerCase())
+      console.log(`  TOKENS override: ${sym} ${reg[sym]} -> ${addr}`);
+    reg[sym] = addr;
+    /* Remember the operator's name for this address, so priceOf matches an
+       override by that name and the guard below can tell an operator-named token
+       from a plain registry one. */
+    namedByAddr.set(addr.toLowerCase(), sym);
+  }
+
   const fee = num(process.env.FEE, 500);
   const usd = num(process.env.USD, 100000);
   const bandPct = num(process.env.BAND_PCT, 2);
@@ -354,8 +412,10 @@ async function main() {
     throw new Error(`PAIR ${keyA}/${keyB}: not both in the registry for chain ${chainId}`);
   if (!reg.v3Factory || !reg.v3PositionManager)
     throw new Error(`chain ${chainId} has no V3 factory or position manager`);
-  if (!reg.diamond)
-    throw new Error(`chain ${chainId} has no diamond, so no oracle to price the pool with`);
+  /* The diamond is the price oracle, but it is OPTIONAL: a DEX-only chain (Arc
+     has no diamond) can still seed a pool when every side is priced by an
+     explicit STABLE_USD override. A side with neither an oracle nor an override
+     still refuses below in priceOf, so nothing is invented. */
 
   /* token0/token1 is fixed by address order, not by the order they were named.
      Getting this backwards inverts the price. */
@@ -379,13 +439,40 @@ async function main() {
 
   /* ---- price, from the diamond's oracle where it has a feed, Hermes where it
          does not. Both sides must resolve; neither is defaulted. ---- */
-  const protocol = new ethers.Contract(reg.diamond, PROTOCOL_ABI, ethers.provider);
-  const p0 = await priceOf(protocol, a0, s0, d0);
-  const p1 = await priceOf(protocol, a1, s1, d1);
+  const protocol = reg.diamond
+    ? new ethers.Contract(reg.diamond, PROTOCOL_ABI, ethers.provider)
+    : null;
+  const p0 = await priceOf(protocol, a0, s0, d0, namedByAddr.get(a0.toLowerCase()));
+  const p1 = await priceOf(protocol, a1, s1, d1, namedByAddr.get(a1.toLowerCase()));
   const usd0 = p0.usd;
   const usd1 = p1.usd;
   if (usd0 === 0n || usd1 === 0n)
     throw new Error("a price came back zero; refusing to invent a ratio");
+
+  /* GUARD — a token the operator NAMED in TOKENS must be priced by an explicit
+     override, never a symbol-matched feed.
+
+     TOKENS names a chain's ecosystem/non-registry tokens (Arc's wrapped-native
+     USDC that reports symbol "WETH", plus EURC/cirBTC). Their on-chain symbol is
+     exactly what cannot be trusted to price them — feedFor("WETH") returns the
+     real ETH/USD feed, which once priced Arc's $1 wrapped-USDC at ~$2,400 and
+     opened the pool ~2,400x off, a gift to the first arbitrageur. So if a named
+     token's price did not come from an override, refuse and say how to price it.
+     Plain registry tokens (real WETH on Sepolia/Base) are not in TOKENS and are
+     unaffected — they price by feed as before. */
+  for (const [addr, sym, p] of [
+    [a0, s0, p0],
+    [a1, s1, p1],
+  ]) {
+    const key = namedByAddr.get(addr.toLowerCase());
+    if (key && !p.source.startsWith("operator override"))
+      throw new Error(
+        `${sym} (${addr}) was named in TOKENS as "${key}" but priced via ${p.source}, not an ` +
+          `explicit override. An operator-named token must be priced by STABLE_USD ` +
+          `(e.g. STABLE_USD="${key}=<usd>") — a symbol-matched feed priced Arc's wrapped-native ` +
+          `USDC as real ETH once and opened the pool ~2400x off. Add its price and re-run.`,
+      );
+  }
   console.log(`price: 1 ${s0} = $${ethers.formatUnits(usd0, 18)}  [${p0.source}]`);
   console.log(`price: 1 ${s1} = $${ethers.formatUnits(usd1, 18)}  [${p1.source}]`);
 
@@ -452,9 +539,21 @@ async function main() {
   }
 
 
-  /* ---- fund and approve ---- */
-  const needed0 = amount0 * 2n;
-  const needed1 = amount1 * 2n;
+  /* ---- which ranges to mint, and fund/approve for exactly those ----
+     Default is both (full-range floor + ±bandPct depth). ONLY=band mints just
+     the depth band — for topping up a pool whose full-range already landed but
+     whose band mint was interrupted (see the Arc estimateGas note on the mint
+     below); ONLY=full mints just the floor. The reserve scales with the count so
+     a band-only top-up doesn't demand double the tokens. */
+  const only = (process.env.ONLY ?? "").toLowerCase();
+  const wantFull = only !== "band";
+  const wantBand = only !== "full";
+  const rangeCount = BigInt((wantFull ? 1 : 0) + (wantBand ? 1 : 0));
+  if (rangeCount === 0n)
+    throw new Error(`ONLY="${process.env.ONLY}" selects no ranges — use "full" or "band"`);
+
+  const needed0 = amount0 * rangeCount;
+  const needed1 = amount1 * rangeCount;
   await ensureBalance(t0, me, needed0, s0, reg.wrappedNative);
   await ensureBalance(t1, me, needed1, s1, reg.wrappedNative);
   await ensureAllowance(t0, me, reg.v3PositionManager, needed0, s0);
@@ -472,13 +571,21 @@ async function main() {
   );
 
   const ranges = [
-    { label: "full range", lower: clampLo, upper: clampHi },
-    {
+    wantFull && { label: "full range", lower: clampLo, upper: clampHi },
+    wantBand && {
       label: `±${bandPct}%`,
       lower: Math.max(clampLo, align(liveTick) - bandTicks),
       upper: Math.min(clampHi, align(liveTick) + bandTicks),
     },
-  ];
+  ].filter(Boolean);
+
+  /* Explicit gasLimit so ethers does NOT call eth_estimateGas before each mint.
+     On Arc the estimate on the SECOND consecutive mint hangs — the RPC accepts
+     the call and never responds — which stalled the ±2% band mint forever after
+     the full-range one had already landed (verified: eth_call + a standalone
+     estimateGas both succeed; only the back-to-back estimate hangs). These mints
+     run ~460k gas; this ceiling clears them with headroom. Overridable. */
+  const mintGas = BigInt(process.env.MINT_GAS_LIMIT ?? "1500000");
 
   const minted = [];
   for (const r of ranges) {
@@ -501,7 +608,7 @@ async function main() {
       recipient: me,
       deadline: Math.floor(Date.now() / 1000) + 1800,
     };
-    const tx = await npm.mint(params);
+    const tx = await npm.mint(params, { gasLimit: mintGas });
     const receipt = await tx.wait();
     /* IncreaseLiquidity carries the token id; the return values of a state-
        changing call are not available to a caller off-chain. */

@@ -8,8 +8,13 @@ import { useStakingData } from "@/hooks/v2/useStakingData";
 import { useLenderPositionsAcrossChains } from "@/hooks/useLenderPositionsAcrossChains";
 import { useBorrowPositionsAcrossChains } from "@/hooks/useBorrowPositionsAcrossChains";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
+import { useDexPrices } from "@/hooks/useDexPrices";
+import { hasKyberSwap } from "@/lib/swap/kyberswap";
 import { useStablecoin } from "@/hooks/useStablecoin";
-import { useWalletBalancesAcrossChains } from "@/hooks/useWalletBalancesAcrossChains";
+import {
+  useWalletBalancesAcrossChains,
+  type ChainWalletHolding,
+} from "@/hooks/useWalletBalancesAcrossChains";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { positionAmounts, positionValueUsd } from "@/lib/dex/positionValue";
@@ -104,11 +109,17 @@ export interface Position {
   sublabel: string;
   /** Human-readable token amount. Null where the position isn't denominated in one token. */
   amount: string | null;
-  /** USD value. Null means genuinely unknown — render "—", never 0. */
+  /** USD value. Null means genuinely unknown (the page renders it as $0.00 — product decision 2026-10-03). */
   valueUsd: number | null;
   /** Annualised rate as a percentage, e.g. 14.2. Null where not applicable. */
   apy: number | null;
   state: PositionState;
+  /** Where to manage this position (a liquidity row opens its card on
+   *  /pool/positions). Rows without one are read-only. */
+  href?: string;
+  /** The chain a wallet row is on. Set on Wallet rows, which the Tokens tab
+   *  folds by token across chains. */
+  chainId?: number;
 }
 
 export type GroupId = "wallet" | "lending" | "borrowing" | "stable" | "staking";
@@ -174,7 +185,16 @@ export interface Portfolio {
   groups: PositionGroup[];
   /** Sorted most urgent first. */
   alerts: Alert[];
+  /**
+   * The wallet's nonzero token balances on every chain, raw from
+   * useWalletBalancesAcrossChains. Exposed so the agent can tell which chains
+   * actually hold a token (e.g. which chain a bridge is FROM) without a second
+   * multichain read.
+   */
+  walletHoldings: ChainWalletHolding[];
   isLoading: boolean;
+  /** Re-read the wallet's balances on every chain (the Overview's Refresh). */
+  refresh: () => void;
 }
 
 /** Health factor below which we surface a liquidation warning. */
@@ -287,8 +307,52 @@ export const usePortfolio = (): Portfolio => {
     holdings,
     unread: unreadHoldings,
     loading: walletLoading,
+    refresh: refreshWallet,
   } = useWalletBalancesAcrossChains();
   const { priceOf, loading: pricesLoading } = useSpotPrices();
+
+  /* Arc's ecosystem — EURC, cirBTC, the meme tokens — is on no majors feed, so
+     `priceOf` returns null for them and the wallet showed a dash next to a real
+     balance. Price them from the DEX (the only place they trade) for the
+     holdings spot could not value on a KyberSwap chain, and use it as the
+     fallback under `priceOf` below. */
+  const dexTokens = useMemo(
+    () => [
+      ...holdings
+        .filter(
+          (h) =>
+            !h.isNative &&
+            hasKyberSwap(h.chainId) &&
+            ethers.isAddress(h.address) &&
+            priceOf(h.symbol) === null,
+        )
+        .map((h) => ({
+          chainId: h.chainId,
+          address: h.address,
+          decimals: h.decimals,
+        })),
+      /* The legs of the connected chain's LP positions too: a pool leg the wallet
+         doesn't also hold (EURC, cirBTC on Arc) was never in this list, so the
+         position read "—" though the token trades. */
+      ...(v3Positions ?? []).flatMap((p) =>
+        [p.token0, p.token1]
+          .filter(
+            (a) =>
+              hasKyberSwap(walletChainId ?? 0) &&
+              ethers.isAddress(a) &&
+              priceOf(symbolForAddress(walletChainId, a) ?? "") === null &&
+              decimalsForAddress(walletChainId, a) !== undefined,
+          )
+          .map((a) => ({
+            chainId: walletChainId as number,
+            address: a,
+            decimals: decimalsForAddress(walletChainId, a) as number,
+          })),
+      ),
+    ],
+    [holdings, priceOf, v3Positions, walletChainId],
+  );
+  const dexPriceOf = useDexPrices(dexTokens);
 
   /*
    * Debt, priced by the diamond, per request and in total.
@@ -349,7 +413,7 @@ export const usePortfolio = (): Portfolio => {
     const rows: Position[] = holdings
       .filter((h) => !WALLET_EXCLUDES.has(h.symbol))
       .map((h) => {
-        const price = priceOf(h.symbol);
+        const price = priceOf(h.symbol) ?? dexPriceOf(h.chainId, h.address);
         const chainName =
           CHAINS_BY_ID[h.chainId]?.shortName ?? `chain ${h.chainId}`;
         return {
@@ -357,6 +421,7 @@ export const usePortfolio = (): Portfolio => {
              so the bare address collided and React dropped rows. */
           id: `wallet-${h.chainId}-${h.address}`,
           kind: "wallet" as const,
+          chainId: h.chainId,
           label: h.symbol,
           sublabel: `${chainName} · ${h.isNative ? "Native" : "Wallet"}`,
           amount: shortAmount(h.value, h.amount),
@@ -383,7 +448,7 @@ export const usePortfolio = (): Portfolio => {
       empty: "No token balances in this wallet.",
       href: "/trade/swap",
     };
-  }, [holdings, unreadHoldings, priceOf]);
+  }, [holdings, unreadHoldings, priceOf, dexPriceOf]);
 
   // --- Lending ----------------------------------------------------------
   const lendingGroup = useMemo<PositionGroup>(() => {
@@ -403,7 +468,7 @@ export const usePortfolio = (): Portfolio => {
         kind: "loan",
         label: symbol,
         sublabel: `${chainName} · Lent`,
-        amount: outstanding === null ? null : shortAmount(outstanding, "—"),
+        amount: outstanding === null ? null : shortAmount(outstanding, "0"),
         valueUsd:
           outstanding === null || price === null ? null : outstanding * price,
         apy: convertbasisPointsToPercentage(l.interestBps),
@@ -430,7 +495,7 @@ export const usePortfolio = (): Portfolio => {
         kind: "offer",
         label: symbol,
         sublabel: `${chainName} · Offer`,
-        amount: amount === null ? null : shortAmount(amount, "—"),
+        amount: amount === null ? null : shortAmount(amount, "0"),
         valueUsd: amount === null || price === null ? null : amount * price,
         apy: convertbasisPointsToPercentage(o.interestBps),
         /* Not "ok" even when live: an unfilled offer is capital sitting in the
@@ -474,7 +539,7 @@ export const usePortfolio = (): Portfolio => {
           kind: "collateral",
           label: col.symbol,
           sublabel: `${chainName} · Collateral`,
-          amount: shortAmount(col.amount, "—"),
+          amount: shortAmount(col.amount, "0"),
           /* Priced by the diamond's own oracle (getUsdValue), the same source
              the subtotal and the health factor use, so the column agrees with
              both. */
@@ -493,7 +558,7 @@ export const usePortfolio = (): Portfolio => {
           kind: "debt",
           label: d.symbol,
           sublabel: `${chainName} · Borrowed`,
-          amount: shortAmount(d.outstanding, "—"),
+          amount: shortAmount(d.outstanding, "0"),
           /* Negative: a liability in the one-addition netValue. */
           valueUsd: d.usd === null ? null : -d.usd,
           apy: convertbasisPointsToPercentage(d.interestBps),
@@ -651,6 +716,14 @@ export const usePortfolio = (): Portfolio => {
       const knownDecimals =
         decimals0 !== undefined && decimals1 !== undefined;
 
+      /* Spot first; then the wrapped native at par (WUSDC wraps native USDC 1:1 —
+         the same assumption as ASSUMED_PAR in lib/points/prices.ts); then the DEX
+         price for an Arc leg no feed carries. Shared by the capital and fee rows. */
+      const legPrice = (sym: string, addr: string) =>
+        priceOf(sym) ??
+        (sym === "WUSDC" ? 1 : null) ??
+        (walletChainId ? dexPriceOf(walletChainId, addr) : null);
+
       /* The capital row. A fully-withdrawn position (liquidity 0) still exists as
          an NFT and may still hold uncollected fees — but it holds no CAPITAL, so
          it contributes no liquidity row. Its fees are handled by the fee row
@@ -670,19 +743,20 @@ export const usePortfolio = (): Portfolio => {
 
         const valueUsd = positionValueUsd(
           amounts,
-          priceOf(symbol0),
-          priceOf(symbol1),
+          legPrice(symbol0, p.token0),
+          legPrice(symbol1, p.token1),
         );
 
         rows.push({
           id: `liquidity-${p.tokenId}`,
           kind: "liquidity",
+          href: `/pool/positions#position-${p.tokenId}`,
           label: `${symbol0} / ${symbol1}`,
           sublabel: `Liquidity · ${(Number(p.fee) / 10000).toFixed(2)}%`,
           amount: amounts
-            ? `${shortAmount(amounts.amount0, "—")} ${symbol0} + ${shortAmount(
+            ? `${shortAmount(amounts.amount0, "0")} ${symbol0} + ${shortAmount(
                 amounts.amount1,
-                "—",
+                "0",
               )} ${symbol1}`
             : null,
           valueUsd,
@@ -726,8 +800,8 @@ export const usePortfolio = (): Portfolio => {
           amount0 === null || amount1 === null
             ? null
             : { amount0, amount1 },
-          priceOf(symbol0),
-          priceOf(symbol1),
+          legPrice(symbol0, p.token0),
+          legPrice(symbol1, p.token1),
         );
 
         rows.push({
@@ -737,9 +811,9 @@ export const usePortfolio = (): Portfolio => {
           sublabel: "Uncollected fees",
           amount:
             amount0 !== null && amount1 !== null
-              ? `${shortAmount(amount0, "—")} ${symbol0} + ${shortAmount(
+              ? `${shortAmount(amount0, "0")} ${symbol0} + ${shortAmount(
                   amount1,
-                  "—",
+                  "0",
                 )} ${symbol1}`
               : null,
           valueUsd,
@@ -930,6 +1004,8 @@ export const usePortfolio = (): Portfolio => {
     unclaimedYieldUsd,
     groups,
     alerts,
+    walletHoldings: holdings,
+    refresh: refreshWallet,
     isLoading:
       Boolean(address) &&
       (stableLoading ||

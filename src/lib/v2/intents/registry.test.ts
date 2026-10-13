@@ -30,7 +30,8 @@
  * without anyone remembering to add it.
  */
 import { ALL_INTENT_KINDS } from "../../ai/auditor.ts";
-import { isRegistered } from "./registry.ts";
+import { isRegistered, renderIntent } from "./registry.ts";
+import type { Intent } from "./types.ts";
 import type { IntentKind } from "./types.ts";
 
 /* Imported for the side effect, which IS the registry: every register() call
@@ -77,6 +78,30 @@ function main() {
     !isRegistered("notAnIntentKind" as IntentKind),
     "isRegistered answers true for everything, so the check above is vacuous",
   );
+
+  console.log("\n— a cross-asset bridge row shows what you receive —");
+  {
+    const base = {
+      kind: "bridge", to: "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE", data: "0x", value: "0",
+      token: "0x0000000000000000000000000000000000000000", amount: "0.02", decimals: 18, symbol: "BNB",
+      fromChainId: 56, toChainId: 5042, toChainName: "Arc", provider: "lifi", etaSeconds: 120, isNative: true,
+    };
+    const cross = renderIntent({
+      ...base, toToken: "0x3600000000000000000000000000000000000000", toDecimals: 6, toSymbol: "USDC",
+      amountOut: "12.4", amountOutMin: "12.1", minReceivedUnits: "12100000",
+    } as Intent);
+    check("the title names the token received", cross.title === "Bridge 0.02 BNB to USDC on Arc", cross.title);
+    check(
+      "the row states the expected amount AND the guaranteed floor",
+      cross.detail.includes("Receive about 12.4 USDC") && cross.detail.includes("at least 12.1 USDC after slippage"),
+      cross.detail,
+    );
+    check("and still the arrival + irreversibility", cross.detail.includes("Arrives on Arc in about 2 min"), cross.detail);
+    const same = renderIntent(base as Intent);
+    check("a same-asset bridge reads exactly as before", same.title === "Bridge 0.02 BNB to Arc" && !same.detail.includes("Receive"), JSON.stringify(same));
+    const noQuote = renderIntent({ ...base, toSymbol: "USDC", amountOutMin: "12.1" } as Intent);
+    check("with only a floor, the floor is shown as the expectation (never blank)", noQuote.detail.includes("Receive about 12.1 USDC, at least 12.1 USDC"), noQuote.detail);
+  }
 
   console.log(`\n  ${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exit(1);

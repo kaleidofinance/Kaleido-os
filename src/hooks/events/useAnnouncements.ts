@@ -1,0 +1,66 @@
+"use client";
+
+/**
+ * Raises a notification for each new product-update announcement — once per
+ * browser. Checks on load and every few minutes; works with no wallet
+ * connected. What counts as "new" is decided by unseenAnnouncements.
+ */
+import { useEffect } from "react";
+import { visibleInterval } from "@/lib/visibleInterval";
+import {
+  unseenAnnouncements,
+  type Announcement,
+} from "@/lib/notifications/announcements";
+import { sendProductUpdateNotification } from "@/lib/notifications/emit";
+
+/* v2: the panel used to be wiped on every reload (see NotificationsContext's
+   storageKey), so announcements marked seen under v1 never stayed visible.
+   A new marker re-delivers recent ones once. */
+const KEY = "kaleido_announcements_seen_v2";
+const POLL_MS = 5 * 60_000;
+
+function loadSeen(): number | null {
+  try {
+    const v = localStorage.getItem(KEY);
+    return v === null ? null : Number(v);
+  } catch {
+    return null;
+  }
+}
+
+export default function useAnnouncements(): void {
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch("/api/announcements");
+        if (!res.ok || cancelled) return;
+        const { announcements } = (await res.json()) as {
+          announcements: Announcement[];
+        };
+        const { show, nextSeen } = unseenAnnouncements(
+          announcements ?? [],
+          loadSeen(),
+          Date.now(),
+        );
+        if (nextSeen !== null) {
+          try {
+            localStorage.setItem(KEY, String(nextSeen));
+          } catch {
+            /* storage blocked: worst case it shows again next visit */
+          }
+        }
+        for (const a of show)
+          sendProductUpdateNotification(a.title, a.body, a.url, a.cta);
+      } catch {
+        /* offline — try again next poll */
+      }
+    };
+    void check();
+    const stop = visibleInterval(() => void check(), POLL_MS);
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, []);
+}

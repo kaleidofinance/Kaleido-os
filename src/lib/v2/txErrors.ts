@@ -1,6 +1,8 @@
 import { ethers } from "ethers";
 import { ErrorType, type DecodedError } from "ethers-decode-error";
 
+import { PROTOCOL_ERROR_HELP } from "./protocolErrors";
+
 /**
  * Turning a failed transaction into a sentence a reader can act on.
  *
@@ -184,7 +186,14 @@ export function describeFailure(
         ? clamp(first)
         : "The contract refused the call.";
     }
-    if (parsed) return `The contract rejected this: ${parsed.name}.`;
+    if (parsed) {
+      /* A named custom error. Prefer a sentence a reader can act on; fall back to
+         naming it, which is still a report that can be filed. */
+      return (
+        PROTOCOL_ERROR_HELP[parsed.name] ??
+        `The contract rejected this: ${parsed.name}.`
+      );
+    }
     /* Data that no ABI here knows. Naming the selector is not friendly, but it is
        the difference between a report that can be acted on and one that cannot. */
     return `The contract rejected this with an error this build does not recognise (${data.slice(0, 10)}).`;

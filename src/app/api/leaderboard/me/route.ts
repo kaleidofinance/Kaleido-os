@@ -39,6 +39,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { supabase } from "@/lib/supabase/supabaseClient";
+import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import type {
   LeaderboardRow,
   LeaderboardStanding,
@@ -46,8 +47,13 @@ import type {
 
 export const dynamic = "force-dynamic";
 
+/* Keep the personal lookup on the same primary used by /api/leaderboard. The
+ * anon route can be served from a lagging replica, which produced the visibly
+ * contradictory state of a populated board beside an "Unranked" wallet card. */
+const db = isAdminConfigured && supabaseAdmin ? supabaseAdmin : supabase;
+
 const ROW_COLUMNS =
-  "wallet, rank, percentile, total, time_points, action_points, bonus_points";
+  "wallet, rank, percentile, total, time_points, action_points, bonus_points, volume";
 
 interface RowRecord {
   wallet: string;
@@ -57,6 +63,7 @@ interface RowRecord {
   time_points: number | string | null;
   action_points: number | string | null;
   bonus_points: number | string | null;
+  volume: number | string | null;
 }
 
 /** Same reason as the board route: Postgres `numeric` arrives as a string. */
@@ -105,13 +112,13 @@ export async function GET(request: NextRequest) {
     );
 
   const [row, count] = await Promise.all([
-    supabase
+    db
       .from("point_leaderboard")
       .select(ROW_COLUMNS)
       .eq("season", season)
       .eq("wallet", wallet)
       .maybeSingle<RowRecord>(),
-    supabase
+    db
       .from("point_leaderboard")
       .select("wallet", { count: "exact", head: true })
       .eq("season", season),
@@ -145,6 +152,7 @@ export async function GET(request: NextRequest) {
         timePoints: num(row.data.time_points),
         actionPoints: num(row.data.action_points),
         bonusPoints: num(row.data.bonus_points),
+        volume: num(row.data.volume),
       }
     : null;
 

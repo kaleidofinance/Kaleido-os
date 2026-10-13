@@ -23,6 +23,7 @@ import type {
   LeaderboardPayload,
   LeaderboardStanding,
 } from "@/lib/points/leaderboard";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 /** Long, on purpose: the board's own cache is 60s, so anything shorter would
     poll a route that returns the same bytes. Points accrue per epoch, not per
@@ -40,7 +41,10 @@ export interface LeaderboardState {
 /**
  * @param season Explicit season, or null for the one flagged `is_default`.
  */
-export function useLeaderboard(season: number | null): LeaderboardState {
+export function useLeaderboard(
+  season: number | null,
+  page = 0,
+): LeaderboardState {
   const [state, setState] = useState<LeaderboardState>({
     payload: null,
     loading: true,
@@ -49,7 +53,7 @@ export function useLeaderboard(season: number | null): LeaderboardState {
   });
 
   const load = useCallback(
-    async (signal: AbortSignal) => {
+    async (signal: AbortSignal, force = false) => {
       /* Fixture board, before the fetch: nothing has ever written to
          `point_balances`, so the real route answers with an empty rows array and
          the page renders "Nobody is ranked in this season yet". Substituted here
@@ -68,7 +72,9 @@ export function useLeaderboard(season: number | null): LeaderboardState {
         });
         return;
       }
-      const qs = season === null ? "" : `?season=${season}`;
+      // Page through the full ranked list, one PAGE_SIZE slice at a time (the
+      // route owns the page size). Season is appended only when explicitly chosen.
+      const qs = `?page=${page}${season === null ? "" : `&season=${season}`}${force ? `&refresh=${Date.now()}` : ""}`;
       try {
         const res = await fetch(`/api/leaderboard${qs}`, {
           signal,
@@ -102,7 +108,7 @@ export function useLeaderboard(season: number | null): LeaderboardState {
         }));
       }
     },
-    [season],
+    [season, page],
   );
 
   useEffect(() => {
@@ -113,13 +119,18 @@ export function useLeaderboard(season: number | null): LeaderboardState {
     setState((prev) => ({ ...prev, loading: true }));
     load(controller.signal);
 
-    const interval = setInterval(() => {
+    const stopTimer = visibleInterval(() => {
       if (!controller.signal.aborted) load(controller.signal);
     }, REFRESH_MS);
+    const refreshAfterTask = () => {
+      if (!controller.signal.aborted) void load(controller.signal, true);
+    };
+    window.addEventListener("kaleido:tasks-updated", refreshAfterTask);
 
     return () => {
       controller.abort();
-      clearInterval(interval);
+      stopTimer();
+      window.removeEventListener("kaleido:tasks-updated", refreshAfterTask);
     };
   }, [load]);
 

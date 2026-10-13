@@ -35,6 +35,19 @@
   font-size: var(--k-fs-xl);
   letter-spacing: -0.02em;
 }
+.valueLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.valueIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
 /* `.note` was here — a wrapping provenance line under the figure, `--k-fs-xs` and
    capped at 22ch. It is gone with the prop that fed it, and the mobile block below
    is the reason: a 2×2 grid gives each tile about half a phone's width, so 22ch of

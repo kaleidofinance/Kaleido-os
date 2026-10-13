@@ -1,5 +1,40 @@
 import { atom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import { Ordertype, ActiveTable, AmountFilter } from "@/constants/types/index";
+
+/**
+ * Testnet visibility — the one shared switch behind "we are on mainnet now".
+ *
+ * Winding the private testnet down for the Arc mainnet launch means the app
+ * opens on mainnet networks and the testnet-only surfaces (the faucet tab and
+ * page) step aside. It is a wind-down, not a removal: a tester flips this back on
+ * from the network switcher and everything testnet returns — which is why it is a
+ * persisted per-browser preference and not a build flag. The choice has to
+ * survive a reload for the toggle to mean anything.
+ *
+ * `false` = mainnet (the default the launch runs on). One key, one source of
+ * truth: the network switcher, the nav's faucet tab and the /faucet page all read
+ * and write THIS atom. Before it, the switcher's toggle was local component state
+ * that nothing else could see, which is exactly why flipping it changed no other
+ * page. `atomWithStorage` reads storage after mount rather than on init, so the
+ * server pass and the first client render agree on `false` and a persisted `true`
+ * applies a beat later without a hydration mismatch. Consume it through
+ * `useTestnetMode()` (hooks/v2), never by importing this atom into a component —
+ * the hook is the seam a future settings surface writes through too.
+ *
+ * THE KEY IS VERSIONED (`.v2`), and that suffix is a one-time reset, not decoration.
+ * Testers who used the private testnet have `kaleido.showTestnets: true` saved in
+ * their browser from that phase, so they would keep landing on testnet after the
+ * mainnet launch — the opposite of the default. Bumping the key orphans that old
+ * value: every browser has no `.v2` entry yet, so everyone falls back to `false`
+ * (mainnet, toggle off) on their next load, and anyone who still wants testnet
+ * simply flips it again (now stored under `.v2`). Bump the suffix again only for
+ * another deliberate global reset of this preference.
+ */
+export const showTestnetsAtom = atomWithStorage<boolean>(
+  "kaleido.showTestnets.v2",
+  false,
+);
 
 // UI and Filter Atoms
 export const selectedTokenAtom = atom<string>("All Tokens");

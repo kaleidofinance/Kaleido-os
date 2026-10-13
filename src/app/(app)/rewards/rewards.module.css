@@ -1,0 +1,342 @@
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 72px var(--k-s5) 96px;
+  position: relative;
+  isolation: isolate;
+}
+/* Immersive arena background: the page commits to a dark treatment in both
+   themes (it is a launch page), so on-arena text is forced light below and the
+   glass card supplies its own surface. Fixed so it stays put on scroll. */
+.page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(180deg, rgba(11, 20, 17, 0.72), rgba(11, 20, 17, 0.9)),
+    url("/waitlist-colosseum.webp");
+  background-size: cover;
+  background-position: center;
+}
+
+.head {
+  text-align: center;
+  margin-bottom: var(--k-s7);
+}
+.eyebrow {
+  margin: 0 0 var(--k-s3);
+  color: #b6a179;
+  font-size: var(--k-fs-xs);
+  font-weight: var(--k-fw-med);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.h1 {
+  margin: 0;
+  font-size: var(--k-fs-hero);
+  line-height: 1.08;
+  color: #f4ece0;
+}
+.lede {
+  margin: var(--k-s4) auto 0;
+  max-width: 52ch;
+  color: rgba(244, 236, 224, 0.82);
+  font-size: var(--k-fs-lg);
+  line-height: 1.55;
+}
+
+.card {
+  border-radius: var(--k-r-xl);
+  padding: var(--k-s7) var(--k-s6);
+  text-align: center;
+}
+.cardLede {
+  margin: 0 auto var(--k-s6);
+  max-width: 42ch;
+  color: var(--k-t2);
+  font-size: var(--k-fs-base);
+  line-height: 1.55;
+}
+
+.primary {
+  display: inline-block;
+  border: none;
+  border-radius: var(--k-r-pill);
+  background: var(--k-btn-solid);
+  color: var(--k-btn-solid-fg);
+  font-family: inherit;
+  font-size: var(--k-fs-base);
+  font-weight: var(--k-fw-med);
+  padding: var(--k-s4) var(--k-s7);
+  cursor: pointer;
+}
+.primary:hover:not(:disabled) {
+  background: var(--k-btn-solid-hover);
+}
+.primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.error {
+  margin: var(--k-s4) 0 0;
+  color: var(--k-neg);
+  font-size: var(--k-fs-sm);
+}
+
+.pLabel,
+.refLabel {
+  margin: 0;
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.refLabel {
+  margin-top: var(--k-s6);
+}
+.big {
+  composes: tabular from global;
+  margin: var(--k-s2) 0 0;
+  font-size: 3rem;
+  font-weight: var(--k-fw-med);
+  line-height: 1;
+  color: var(--k-brand);
+}
+.split {
+  margin: var(--k-s3) 0 0;
+  color: var(--k-t2);
+  font-size: var(--k-fs-sm);
+}
+
+.refRow {
+  display: flex;
+  gap: var(--k-s2);
+  margin-top: var(--k-s3);
+}
+.refInput {
+  flex: 1;
+  min-width: 0;
+  background: var(--k-well);
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-md);
+  color: var(--k-t1);
+  font-size: var(--k-fs-sm);
+  padding: var(--k-s3) var(--k-s4);
+}
+.copy {
+  flex: none;
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-md);
+  background: var(--k-well2);
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  font-size: var(--k-fs-sm);
+  padding: 0 var(--k-s5);
+  cursor: pointer;
+}
+.copy:hover {
+  background: var(--k-hover);
+}
+.note {
+  margin: var(--k-s6) auto 0;
+  max-width: 46ch;
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+  line-height: 1.55;
+}
+
+/* The card is a translucent white panel over the dark arena, so its effective
+   background is darker and muddier than a solid light page. --k-t3, the most
+   muted token, was tuned for a solid light surface and washes out here (the
+   uppercase labels, the task meta and the pending note all read as barely-there
+   grey in light mode). Step them up one tier to --k-t2 in light mode only; dark
+   mode already has enough contrast and is left untouched. */
+:global(:root[data-theme="light"]) .pLabel,
+:global(:root[data-theme="light"]) .refLabel,
+:global(:root[data-theme="light"]) .taskMeta,
+:global(:root[data-theme="light"]) .note {
+  color: var(--k-t2);
+}
+
+.board {
+  margin-top: var(--k-s7);
+}
+.boardHead {
+  margin: 0 0 var(--k-s4);
+  font-size: var(--k-fs-lg);
+  color: #f4ece0;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.row {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: var(--k-s4);
+  padding: var(--k-s3) var(--k-s2);
+  border-top: 1px solid rgba(244, 236, 224, 0.12);
+}
+.row:first-child {
+  border-top: 0;
+}
+.rank {
+  composes: tabular from global;
+  color: rgba(244, 236, 224, 0.5);
+  font-size: var(--k-fs-sm);
+}
+.addr {
+  composes: tabular from global;
+  color: #f4ece0;
+  font-size: var(--k-fs-sm);
+}
+.count {
+  composes: tabular from global;
+  color: var(--k-brand);
+  font-weight: var(--k-fw-med);
+  font-size: var(--k-fs-sm);
+}
+
+/* The points unit shown after the balance, e.g. "1,250 $kPoint". Sized in
+   em so it tracks .big; dimmed so the number stays the hero. */
+.unit {
+  margin-left: 0.14em;
+  font-size: 0.4em;
+  font-weight: var(--k-fw-med);
+  letter-spacing: 0.01em;
+  opacity: 0.62;
+}
+
+/* X tasks -------------------------------------------------------------------*/
+.held {
+  margin: var(--k-s2) 0 0;
+  color: var(--k-brand);
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+}
+.tasks {
+  list-style: none;
+  margin: var(--k-s3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-s2);
+}
+.task {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-s3);
+  padding: var(--k-s3);
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-md);
+  background: var(--k-well);
+}
+.taskText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  /* The card centers text (.card text-align:center) and these flex-stretched
+     spans inherit it, so a line shorter than its row's widest line centers
+     inside its box — which floated the short "Link your X account" title into
+     the middle of its wide "Linked … counts" meta. Pin the task text left. */
+  text-align: left;
+}
+.taskTitle {
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  font-size: var(--k-fs-sm);
+}
+.taskMeta {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+}
+.taskHashInput {
+  width: min(100%, 250px);
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-sm);
+  background: var(--k-well2);
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  padding: 6px 8px;
+}
+.taskHashInput::placeholder {
+  color: var(--k-t3);
+}
+.taskBtn {
+  flex: none;
+  border: 1px solid var(--k-line2);
+  border-radius: var(--k-r-md);
+  background: var(--k-well2);
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  font-size: var(--k-fs-sm);
+  padding: var(--k-s2) var(--k-s4);
+  cursor: pointer;
+}
+.taskBtn:hover {
+  background: var(--k-hover);
+}
+.taskBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.taskDone {
+  flex: none;
+  color: var(--k-brand);
+  font-weight: var(--k-fw-med);
+}
+.taskLock {
+  flex: none;
+  opacity: 0.5;
+  font-size: var(--k-fs-sm);
+}
+
+/* Arc mark inline with the hero heading; sized in em so it tracks the h1. */
+.arcMark {
+  display: inline-block;
+  height: 0.72em;
+  width: auto;
+  margin-left: 0.22em;
+  vertical-align: -0.04em;
+}
+
+/* Redeem-a-code row: input + the same pill button the tasks use. */
+.redeem {
+  display: flex;
+  gap: var(--k-s2);
+  margin-top: var(--k-s2);
+}
+.redeemInput {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  background: var(--k-well);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-sm);
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.redeemInput::placeholder {
+  color: var(--k-t3);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.redeemInput:focus {
+  outline: none;
+  border-color: var(--k-brand);
+}
+.redeemOk {
+  margin: var(--k-s2) 0 0;
+  color: var(--k-brand);
+  font-size: var(--k-fs-sm);
+}

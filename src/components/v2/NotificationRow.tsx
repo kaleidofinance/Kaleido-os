@@ -1,8 +1,18 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CATEGORY_LABELS } from "@/lib/notifications/taxonomy";
 import type { Notification } from "@/context/NotificationsContext";
 import s from "./NotificationRow.module.css";
+
+/** A link to this app: a relative path, or an absolute kaleidofi.xyz URL. */
+const isInternal = (href: string) =>
+  href.startsWith("/") || /^https?:\/\/(www\.)?kaleidofi\.xyz(\/|$)/i.test(href);
+const internalPath = (href: string) =>
+  href.startsWith("/")
+    ? href
+    : href.replace(/^https?:\/\/(www\.)?kaleidofi\.xyz/i, "") || "/";
 
 /**
  * One notification, rendered the same way in the nav panel and on
@@ -57,6 +67,17 @@ export default function NotificationRow({
   focused,
 }: NotificationRowProps) {
   const pending = n.request?.status === "pending";
+  const router = useRouter();
+
+  /* Clicking the notification itself follows its link too — it used to only
+     mark it read, so a notification with somewhere to go felt dead. A request
+     awaiting review keeps its own buttons and is not navigated from here. */
+  const openMain = () => {
+    onOpen?.(n);
+    if (pending || !n.link) return;
+    if (isInternal(n.link.href)) router.push(internalPath(n.link.href));
+    else window.open(n.link.href, "_blank", "noopener,noreferrer");
+  };
 
   /*
    * "Review", never "Approve", for a signable plan.
@@ -83,7 +104,7 @@ export default function NotificationRow({
     >
       <button
         className={s.main}
-        onClick={() => onOpen?.(n)}
+        onClick={openMain}
         aria-label={`${n.read ? "" : "Unread. "}${n.title}`}
       >
         <span className={`${s.dot} ${s[n.level]}`} aria-hidden="true" />
@@ -106,6 +127,31 @@ export default function NotificationRow({
           </span>
         </span>
       </button>
+
+      {!pending && n.link && (
+        <div className={s.actions}>
+          {/* Our own pages navigate in place; anything else opens a tab. */}
+          {isInternal(n.link.href) ? (
+            <Link
+              className={s.approve}
+              href={internalPath(n.link.href)}
+              onClick={() => onOpen?.(n)}
+            >
+              {n.link.label}
+            </Link>
+          ) : (
+            <a
+              className={s.approve}
+              href={n.link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => onOpen?.(n)}
+            >
+              {n.link.label}
+            </a>
+          )}
+        </div>
+      )}
 
       {pending && (
         <div className={s.actions}>

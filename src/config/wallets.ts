@@ -1,4 +1,4 @@
-import { createWallet, inAppWallet } from "thirdweb/wallets";
+import { createWallet, inAppWallet, type WalletId } from "thirdweb/wallets";
 
 /**
  * The wallets we offer, in the order the connect modal shows them.
@@ -17,8 +17,49 @@ import { createWallet, inAppWallet } from "thirdweb/wallets";
  */
 export const WALLETS = [
   createWallet("io.metamask"),
+  /* Bitget Wallet — partner integration (DApp Center listing + connect). Kept in
+     the top row per their listing requirement; thirdweb resolves the id to the
+     Bitget entry, shows it even when the extension is absent (with a download
+     prompt on their metadata), and carries the icon. */
+  createWallet("com.bitget.web3"),
+  /* Gate Web3 Wallet — partner integration (Gate BountyDrop campaign + DApp
+     Center listing). Kept in the top row alongside Bitget; thirdweb resolves the
+     id `net.gateweb3` to the Gate entry with its icon and download metadata. */
+  createWallet("net.gateweb3"),
   createWallet("com.coinbase.wallet"),
   createWallet("me.rainbow"),
   createWallet("walletConnect"),
+  /* Abstract Global Wallet — so users can move funds OFF Abstract before the
+     chain shuts down (2026-12-15). AGW is a smart-contract wallet behind a
+     Privy cross-app login; @abstract-foundation/agw-web announces it as an
+     EIP-6963 provider with rdns "xyz.abs.privy" (NOT thirdweb's catalogue id
+     "xyz.abs", which has no connector), and thirdweb matches an injected
+     provider by that rdns. The provider is loaded in the browser by the
+     thirdweb adapter. */
+  createWallet("xyz.abs.privy" as WalletId),
+  /* RESTORED 2026-09-15 — thirdweb's paid plan is now provisioned, so the
+     embedded/social wallet service is back. Email or social sign-in producing a
+     real EOA, for someone with no browser extension. (The connect modal surfaces
+     Social Login at the top regardless of this array position; the top-of-file
+     note explains why the entry itself is kept last.) Under the current client id
+     7ae3508f the embedded address differs from the pre-switch one — see the
+     wallet-provider-abstraction memory. */
   inAppWallet({ auth: { options: ["google", "email", "passkey"] } }),
 ];
+
+/**
+ * The app identity handed to WalletConnect when connecting an external wallet.
+ *
+ * WalletConnect needs dapp metadata to open a pairing session. Without it the
+ * session can fail to initialise — and because both connect() call sites catch
+ * and swallow the rejection, that surfaced on mobile as "tap MetaMask/Rainbow
+ * and nothing happens: no app, no QR." `name` and `url` are load-bearing; the
+ * logo is what the wallet shows on the approval screen. Passed to the connect
+ * modal, which propagates it to every wallet including the WC deep link.
+ */
+export const APP_METADATA = {
+  name: "Kaleido",
+  url: "https://kaleidofi.xyz",
+  description: "Agentic DeFi on Arc",
+  logoUrl: "https://kaleidofi.xyz/icon-192.png",
+};

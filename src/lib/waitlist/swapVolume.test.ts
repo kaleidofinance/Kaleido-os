@@ -1,0 +1,155 @@
+/**
+ * Swap-volume milestone tiers: the highest-tier-only payout and the per-tier UI
+ * state. Pure arithmetic — the DB reader (walletSwapVolumeUsd) is thin glue over
+ * Supabase, exercised by the waitlist route, not here.
+ *
+ * Run with `npx tsx src/lib/waitlist/swapVolume.test.ts`.
+ */
+import {
+  SWAP_VOLUME_TIERS,
+  swapVolumePoints,
+  highestSwapTier,
+  swapVolumeStanding,
+  latestCollateralUsd,
+  sumUsd,
+  tierIncrement,
+} from "./swapVolume.ts";
+
+let passed = 0;
+let failed = 0;
+function check(name: string, cond: boolean, got?: string) {
+  if (cond) {
+    passed++;
+    console.log(`  ok   ${name}`);
+  } else {
+    failed++;
+    console.log(`  FAIL ${name}${got === undefined ? "" : ` — ${got}`}`);
+  }
+}
+
+console.log("\n— the tier ladder —");
+check(
+  "four tiers: $10→500, $50→700, $100→1000, $300→2000",
+  JSON.stringify(SWAP_VOLUME_TIERS.map((t) => [t.threshold, t.points])) ===
+    JSON.stringify([
+      [10, 500],
+      [50, 700],
+      [100, 1000],
+      [300, 2000],
+    ]),
+  JSON.stringify(SWAP_VOLUME_TIERS),
+);
+check(
+  "tiers are sorted ascending by threshold",
+  SWAP_VOLUME_TIERS.every(
+    (t, i) => i === 0 || t.threshold > SWAP_VOLUME_TIERS[i - 1].threshold,
+  ),
+);
+
+console.log("\n— highest-tier-only payout —");
+check("below the smallest tier earns nothing", swapVolumePoints(9.99) === 0, String(swapVolumePoints(9.99)));
+check("exactly $10 earns 500", swapVolumePoints(10) === 500, String(swapVolumePoints(10)));
+check("$49.99 still only the $10 tier (500)", swapVolumePoints(49.99) === 500, String(swapVolumePoints(49.99)));
+check("exactly $50 earns 700", swapVolumePoints(50) === 700, String(swapVolumePoints(50)));
+check("$99.99 still only the $50 tier (700)", swapVolumePoints(99.99) === 700, String(swapVolumePoints(99.99)));
+check("exactly $100 earns 1000", swapVolumePoints(100) === 1000, String(swapVolumePoints(100)));
+check("well past the top tier stays 2000 (no stacking)", swapVolumePoints(100000) === 2000, String(swapVolumePoints(100000)));
+check("zero volume earns nothing", swapVolumePoints(0) === 0, String(swapVolumePoints(0)));
+
+console.log("\n— highestSwapTier —");
+check("no tier reached is null", highestSwapTier(5) === null);
+check("$75 → the $50 tier", highestSwapTier(75)?.threshold === 50, JSON.stringify(highestSwapTier(75)));
+check("$100 → the $100 tier", highestSwapTier(100)?.threshold === 100, JSON.stringify(highestSwapTier(100)));
+
+console.log("\n— swapVolumeStanding: per-tier UI state —");
+{
+  // $60: $10 + $50 met (highest = $50), $100 not met.
+  const s = swapVolumeStanding(60);
+  check("credited points = highest reached (700)", s.points === 700, String(s.points));
+  const byKey = Object.fromEntries(s.tiers.map((t) => [t.key, t]));
+  check("$10 tier is done", byKey.vol10.done === true);
+  check("$10 tier is superseded (higher tier met)", byKey.vol10.superseded === true);
+  check("$50 tier is done and NOT superseded (it is the top)", byKey.vol50.done && !byKey.vol50.superseded);
+  check("$100 tier is not done", byKey.vol100.done === false);
+  check("$100 tier is not superseded", byKey.vol100.superseded === false);
+  // The shown-points invariant: the only non-superseded, done tier carries the
+  // whole credited total, so what the UI shows sums to what is credited.
+  const shown = s.tiers
+    .filter((t) => t.done && !t.superseded)
+    .reduce((sum, t) => sum + t.displayPoints, 0);
+  check("shown (done, non-superseded) points equal credited", shown === s.points, `${shown} vs ${s.points}`);
+}
+{
+  // $100+: all three met, only the $100 tier pays.
+  const s = swapVolumeStanding(250);
+  check("$10–$100 tiers done at $250", s.tiers.filter((t) => t.threshold <= 100).every((t) => t.done));
+  check("only the $100 tier is done and non-superseded", s.tiers.filter((t) => t.done && !t.superseded).length === 1);
+  check("credited is 1000 at $250", s.points === 1000, String(s.points));
+}
+{
+  // Below everything: nothing done, nothing credited.
+  const s = swapVolumeStanding(3);
+  check("nothing done below $10", s.tiers.every((t) => !t.done));
+  check("nothing superseded below $10", s.tiers.every((t) => !t.superseded));
+  check("credited is 0 below $10", s.points === 0);
+}
+
+{
+  // $300: pays 2,000 total, shown as $100's 1,000 + the $300 tier's +1,000.
+  const s = swapVolumeStanding(300);
+  const k = Object.fromEntries(s.tiers.map((t) => [t.key, t]));
+  check("credited is 2000 at $300", s.points === 2000, String(s.points));
+  check("$300 tier shows +1000", k.vol300.displayPoints === 1000);
+  check("$100 tier is not superseded at $300", k.vol100.superseded === false);
+  check("$10 and $50 superseded at $300", k.vol10.superseded && k.vol50.superseded);
+  const shown = s.tiers.filter((t) => t.done && !t.superseded).reduce((n, t) => n + t.displayPoints, 0);
+  check("shown equals credited at $300", shown === s.points, `${shown} vs ${s.points}`);
+}
+{
+  const s = swapVolumeStanding(299.99);
+  check("credited is still 1000 just under $300", s.points === 1000, String(s.points));
+  check("$300 tier not done just under $300", !s.tiers.find((t) => t.key === "vol300")!.done);
+}
+
+// Task volume = every ledger swap (Luca AND manual, sub-$10 included) + the
+// collateral held now. These are the pure parts of walletTaskVolumeUsd.
+check("ledger rows add up, manual and agent alike", sumUsd([{ usd_value: 100 }, { usd_value: "218.65" }, { usd_value: null }]) === 318.65);
+check("no ledger rows is zero", sumUsd([]) === 0);
+check("collateral: newest snapshot per chain, not the sum of all of them",
+  latestCollateralUsd([
+    { chain_id: 5042, usd_value: 300, taken_at: "2026-10-01T00:00:00Z" },
+    { chain_id: 5042, usd_value: 250, taken_at: "2026-10-02T00:00:00Z" },
+  ]) === 250);
+check("collateral withdrawn to zero counts as zero (latest row wins)",
+  latestCollateralUsd([
+    { chain_id: 5042, usd_value: 400, taken_at: "2026-10-01T00:00:00Z" },
+    { chain_id: 5042, usd_value: 0, taken_at: "2026-10-03T00:00:00Z" },
+  ]) === 0);
+check("collateral on two chains is summed", latestCollateralUsd([
+  { chain_id: 5042, usd_value: 100, taken_at: "2026-10-02T00:00:00Z" },
+  { chain_id: 8453, usd_value: 50, taken_at: "2026-10-02T00:00:00Z" },
+]) === 150);
+check("order of snapshot rows does not matter", latestCollateralUsd([
+  { chain_id: 5042, usd_value: 250, taken_at: "2026-10-02T00:00:00Z" },
+  { chain_id: 5042, usd_value: 300, taken_at: "2026-10-01T00:00:00Z" },
+]) === 250);
+check("a malformed timestamp is ignored, not counted as newest", latestCollateralUsd([
+  { chain_id: 5042, usd_value: 999, taken_at: "not a date" },
+  { chain_id: 5042, usd_value: 120, taken_at: "2026-10-02T00:00:00Z" },
+]) === 120);
+const combined = sumUsd([{ usd_value: 200 }]) + latestCollateralUsd([{ chain_id: 5042, usd_value: 150, taken_at: "2026-10-02T00:00:00Z" }]);
+check("$200 of swaps + $150 collateral = $350 → the $300 tier (2,000 kPoint)", swapVolumePoints(combined) === 2000, String(combined));
+check("$200 of swaps alone is only the $100 tier", swapVolumePoints(200) === 1000);
+
+// tierIncrement: what a tier ADDS, given the tiers already paid.
+{
+  const tiers = (vol: number) => swapVolumeStanding(vol).tiers;
+  check("$10 wallet: the $10 tier adds its full 500", tierIncrement(tiers(10), "vol10") === 500);
+  check("$54 wallet: the $50 tier adds 200 (700 total − 500 already paid)", tierIncrement(tiers(54.36), "vol50") === 200);
+  check("$54 wallet: the $100 tier, not yet reached, would add 300 (1000 − 700)", tierIncrement(tiers(54.36), "vol100") === 300);
+  check("$350 wallet: the $300 tier adds 1000 (2000 − the $100 tier's 1000 already paid)", tierIncrement(tiers(350), "vol300") === 1000);
+  check("unknown tier key adds 0", tierIncrement(tiers(54), "nope") === 0);
+}
+
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);

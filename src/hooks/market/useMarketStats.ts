@@ -33,6 +33,8 @@ import { useCallback, useEffect, useState } from "react";
  * library both sides import. */
 import type { MarketCoverage, MarketOverview } from "@/lib/market/bookValue";
 import { MOCK_DATA, MOCK_MARKET } from "@/lib/mock";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
+import { visibleInterval } from "@/lib/visibleInterval";
 
 export type { MarketCoverage, MarketOverview };
 
@@ -48,6 +50,11 @@ export interface MarketStatsState {
 const REFRESH_MS = 60_000;
 
 export const useMarketStats = () => {
+  /* The lending book on the read chain is a testnet's at launch. With the
+     testnet toggle off (mainnet-first default) the strip must not show it — the
+     route returns the honest empty mainnet market instead. Passed through so the
+     server reads the right book; re-fetched when the toggle flips. */
+  const { showTestnets } = useTestnetMode();
   const [state, setState] = useState<MarketStatsState>({
     stats: null,
     loading: true,
@@ -55,7 +62,8 @@ export const useMarketStats = () => {
     stale: false,
   });
 
-  const load = useCallback(async (signal: AbortSignal) => {
+  const load = useCallback(
+    async (signal: AbortSignal) => {
     /* Fixture figures, before the fetch. The mirror tables are empty, so every
        tile on /leaderboard and on all four Borrow/Lend tabs renders an em dash
        under "No positions indexed yet". MOCK_MARKET is not typed-in: it folds
@@ -73,10 +81,10 @@ export const useMarketStats = () => {
       return;
     }
     try {
-      const res = await fetch("/api/market/overview", {
-        signal,
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/market/overview${showTestnets ? "?testnets=1" : ""}`,
+        { signal, cache: "no-store" },
+      );
       const body = await res.json();
 
       if (!res.ok || !body?.success) {
@@ -105,19 +113,19 @@ export const useMarketStats = () => {
         stale: prev.stats !== null,
       }));
     }
-  }, []);
+  }, [showTestnets]);
 
   useEffect(() => {
     const controller = new AbortController();
     load(controller.signal);
 
-    const interval = setInterval(() => {
+    const stopTimer = visibleInterval(() => {
       if (!controller.signal.aborted) load(controller.signal);
     }, REFRESH_MS);
 
     return () => {
       controller.abort();
-      clearInterval(interval);
+      stopTimer();
     };
   }, [load]);
 

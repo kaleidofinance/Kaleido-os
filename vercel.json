@@ -1,0 +1,17 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm ci",
+  "outputDirectory": ".next",
+  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" = \"main\" ]; then exit 1; else exit 0; fi",
+  "crons": [
+    {
+      "path": "/api/cron/points-swap",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/health/agent",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-09-28T15:56:12.443Z",
+  "hermes": "https://hermes.pyth.network",
+  "feeds": [
+    {
+      "symbols": [
+        "USDC"
+      ],
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "aggregator": "0x7003aB0bf030304f917df7c0A6750C16b5d79899",
+      "description": "USDC / USD",
+      "decimals": 8,
+      "maxAge": 97200,
+      "maxDeviationBps": 5000,
+      "seededPrice": "99983700",
+      "seededAt": 1790610860
+    },
+    {
+      "symbols": [
+        "EURC"
+      ],
+      "feedId": "0x76fa85158bf14ede77087fe3ae472f66213f6ea2f5b411cb2de472794990fa5c",
+      "aggregator": "0x95b67405cFc4312b4ff39E78D25B115788f790a6",
+      "description": "EURC / USD",
+      "decimals": 8,
+      "maxAge": 97200,
+      "maxDeviationBps": 5000,
+      "seededPrice": "114000000",
+      "seededAt": 1790610870
+    },
+    {
+      "symbols": [
+        "CIRBTC"
+      ],
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "aggregator": "0xbB74f2319494461B2591F8fbF126654Dd4c2a649",
+      "description": "BTC / USD",
+      "decimals": 8,
+      "maxAge": 97200,
+      "maxDeviationBps": 5000,
+      "seededPrice": "8328000000000",
+      "seededAt": 1790610860
+    }
+  ]
+}

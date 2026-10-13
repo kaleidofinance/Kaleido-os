@@ -110,7 +110,12 @@ export function useWalletBalances(): WalletBalances {
        consumer resolving the address against the lending registry gets a
        recognisable one. */
     const native = nativeTokenOf(CHAINS_BY_ID[chainId], "lending");
-    const tokens = registeredTokens(chainId);
+    /* On Arc, the registered 6-decimal USDC is the native balance's ERC20
+       face, not a separate holding. Keep the native row and omit this tagged
+       alias so wallet views cannot count the same balance twice. */
+    const tokens = registeredTokens(chainId).filter(
+      (t) => !t.tags?.includes("native-alias"),
+    );
 
     /* Demo mode, after the wallet check so the disconnected empty state still
        behaves. Keyed by symbol, matching the fixture's own shape — see

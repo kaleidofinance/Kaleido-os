@@ -169,6 +169,16 @@ console.log("\n— user input resolves against the right chain —");
     String(arcUsdc?.decimals),
   );
 
+  const arcMainnetUsdc = resolveUserToken(meta(5042), "usdc", "dex");
+  check(
+    "USDC on Arc mainnet DEX resolves to the canonical ERC20 face",
+    arcMainnetUsdc?.address.toLowerCase() ===
+      "0x3600000000000000000000000000000000000000" &&
+      arcMainnetUsdc.decimals === 6 &&
+      !arcMainnetUsdc.isNative,
+    JSON.stringify(arcMainnetUsdc),
+  );
+
   check(
     "case insensitive",
     resolveUserToken(meta(BASE), "ETH", "dex")?.isNative === true,
@@ -206,14 +216,8 @@ console.log("\n— deployments are checkable, not assumed —");
     "no chain is tradable without contracts recorded",
     tradable.every((id) => Object.keys(getContracts(id)).length > 0),
   );
-  check(
-    "an undeployed chain is excluded",
-    !tradable.includes(BASE),
-  );
-  check(
-    "a deployed testnet is included",
-    tradable.includes(BASE_SEPOLIA),
-  );
+  check("an undeployed chain is excluded", !tradable.includes(BASE));
+  check("a deployed testnet is included", tradable.includes(BASE_SEPOLIA));
   check(
     "getToken on an empty registry returns nothing",
     getToken(BASE, "0xabc") === undefined,
@@ -374,7 +378,8 @@ console.log("\n— our own tokens follow DEPLOYMENTS, not a second list —");
   check(
     "a really-deployed kfUSD appears without a second list",
     ownTokens(BASE_SEPOLIA).some(
-      (t) => t.symbol === "kfUSD" && t.address === DEPLOYMENTS[BASE_SEPOLIA]?.kfUSD,
+      (t) =>
+        t.symbol === "kfUSD" && t.address === DEPLOYMENTS[BASE_SEPOLIA]?.kfUSD,
     ),
     JSON.stringify(ownTokens(BASE_SEPOLIA).map((t) => t.symbol)),
   );

@@ -7,6 +7,30 @@
   gap: var(--k-s5);
 }
 
+/* On the pools landing page the tabs and table controls are one toolbar: the
+   tabs stay at the left while search and Filters use the remaining width. The
+   positions route keeps the normal stacked shell. */
+@media (min-width: 721px) {
+  .listWrap {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .listWrap > .head,
+  .listWrap > .statStrip,
+  .listWrap > .table {
+    grid-column: 1 / -1;
+  }
+  .listWrap > .tabs {
+    grid-column: 1;
+    align-self: center;
+  }
+  .listWrap > .toolbar {
+    grid-column: 2;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+}
+
 .head {
   display: flex;
   align-items: center;
@@ -218,6 +242,8 @@
 }
 .table {
   composes: k-glass from global;
+  /* Tables carry dense rows of figures: no card dither (stat cards keep it). */
+  --k-dot: 0%;
   border-radius: var(--k-r-lg);
   padding: var(--k-s2);
 }
@@ -249,7 +275,7 @@
    own width (13px text in 15px of horizontal padding) with nothing spare. */
 .pools .thead,
 .pools .row {
-  grid-template-columns: 1.8fr 1fr 1fr 1fr 0.8fr 96px;
+  grid-template-columns: minmax(260px, 1.8fr) 1fr 1.5fr 1fr 1fr 96px;
 }
 .row {
   display: grid;
@@ -274,8 +300,12 @@
   align-items: center;
   gap: var(--k-s3);
   min-width: 0;
+  overflow: hidden;
   color: inherit;
   text-decoration: none;
+}
+.pairCell > div:last-child {
+  min-width: 0;
 }
 .pairCell:hover .pairName {
   text-decoration: underline;
@@ -369,6 +399,14 @@
 .emptyLink:hover {
   color: var(--k-brand);
 }
+/* A one-line caveat under the headline strip when a cumulative volume source was
+   unavailable (see PlatformTotals.partial). Full width beneath the strip rather
+   than inside a tile — the strip's tiles deliberately carry no notes. */
+.partialNote {
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+  margin: 8px 2px 0;
+}
 
 .cards {
   display: flex;
@@ -431,6 +469,13 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.pairName > span:first-child {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 /* The identity line under a pair name: fee, venue and now the chain tag. A flex
    row rather than plain text because the tag carries a 14px logo that has to sit
@@ -514,6 +559,10 @@
   background: var(--k-danger-dim);
   color: var(--k-danger);
 }
+.badge.inactive {
+  background: var(--k-glass-deep);
+  color: var(--k-t2);
+}
 
 .range {
   margin-top: 12px;
@@ -575,6 +624,31 @@
   display: flex;
   gap: var(--k-s2);
   margin-top: 14px;
+}
+
+@media (min-width: 721px) {
+  /* Give the position card a second desktop column: the position facts and
+     removal presets stay on the left, while the three position actions occupy
+     the open space on the right instead of forming a fourth row underneath. */
+  .card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--k-s5);
+  }
+  .card > .cardTop,
+  .card > .range,
+  .card > .addNote,
+  .card > .addForm {
+    grid-column: 1 / -1;
+  }
+  .card > .actions {
+    grid-column: 2;
+    grid-row: 3 / span 2;
+    align-self: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    margin-top: 0;
+  }
 }
 /* Recessed, like `.qk` on the trade card: these now sit inside a glass card, and
    an opaque --k-well2 reads as a solid tablet floating in the blur. */
@@ -1457,7 +1531,7 @@ a.txAction:hover {
      rather than universal. A pair name on two lines reads as two separate assets,
      and naming one pool is the whole job of this column.
 
-     WHY 240px
+     WHY 280px
 
      The identity line under the name has to clear the same bar, and it is the
      wider of the two: `0.30% · V3`, then the chain logo and its shortName.
@@ -1466,30 +1540,29 @@ a.txAction:hover {
      "BSC Testnet" and 168.9 on "Base Sepolia" — the widest of the fourteen labels
      in chains.ts, and this table lists every chain we deployed to, so that is a
      row we serve rather than a hypothetical. A 132px text box wrapped four of six
-     rows and 156px still wrapped two; 240px gives 182px, which clears the worst
-     case with 13px left over for the fallback face during the font swap. Wrapping
-     is still the graceful failure — `.pairFee` keeps its flex-wrap — but it should
-     not be the normal case, and on desktop it never was.
+     rows and 156px still wrapped two; 280px leaves room for the complete pair
+     label, both token marks and the verification tick without intruding into the
+     price column. Wrapping is still the graceful failure for the fee line —
+     `.pairFee` keeps its flex-wrap — but the pair identity itself stays intact.
 
      Fixed px rather than a wider fr because a fr track only stays aligned with the
      header's while neither hits a content minimum: pin the pair column and the
      header cannot drift no matter what a row holds. The row minimum rises by the
      same 50px the column gained, so the four figure columns stay exactly where
      they were at 87.9px each — enough for a 4dp price like `1234.5678` — and the
-     whole cost of both fixes is 90px of scroll distance, not legibility.
+     whole cost of this wider identity column is paid in horizontal scroll, not
+     legibility.
 
-     WHY 760 AND NOT 650
+     WHY 800 AND NOT 650
 
-     The Deposit button added a sixth track. 650 was 240 + four figure columns +
-     five 12px gaps; the button's 96px and its own gap take the total to 758, so
-     760. Left at 650 the six tracks would have divided the old width and taken
-     22px off each figure column, which is the price column's last two digits — the
-     scroll distance is cheap here and the columns are not. Uniswap's own mobile
-     pool table sits at 760 for the same reason. */
+     The Deposit button is still the fixed final track; 280px gives the pair cell
+     enough room for the full identity row, while the figures retain their own
+     readable tracks. The extra width is cheap horizontal scroll on mobile and
+     avoids letting the identity paint over price. */
   .pools .thead,
   .pools .row {
-    grid-template-columns: 240px 1fr 1fr 1fr 0.8fr 96px;
-    min-width: 760px;
+    grid-template-columns: 280px 1fr 1fr 1fr 1fr 0.8fr 96px;
+    min-width: 860px;
   }
   .pools .pairName {
     white-space: nowrap;
@@ -1594,3 +1667,137 @@ a.txAction:hover {
   cursor: default;
 }
 
+
+/* APR cell with the kPoints pill beside it: the Kaleido mark + "kPoints", in
+   our own brand green (not another DEX's lime). */
+.aprCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+}
+.pointsPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: var(--k-fw-med);
+  line-height: 1;
+  color: var(--k-brand);
+  background: var(--k-brand-dim);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-brand) 35%, transparent);
+  border-radius: var(--k-r-pill);
+  padding: 3px 9px 3px 4px;
+  cursor: help;
+}
+.pointsMark {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #04170f url("/newklogo2.png") center / cover no-repeat;
+  flex: none;
+}
+
+
+/* ---------- pool detail v2 (Uniswap-style) ---------- */
+/* .panel composes .card, which becomes a two-column grid on desktop for the
+   position cards — that is what squeezed every panel's title into a narrow left
+   column ("Transa ctions"). Detail panels are plain stacks. */
+.detailGrid .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.detailGrid {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+.detailGrid .panelHead {
+  font-size: var(--k-fs-base);
+  color: var(--k-t1);
+  font-weight: var(--k-fw-med);
+  margin-bottom: 14px;
+}
+.priceCard {
+  gap: 14px;
+}
+.priceTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--k-s3);
+}
+.priceBig {
+  font-size: 34px;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.priceUnit {
+  font-size: var(--k-fs-lg);
+  color: var(--k-t2);
+  letter-spacing: 0;
+}
+.priceSub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: var(--k-fs-sm);
+  color: var(--k-t2);
+}
+.pricePos {
+  color: var(--k-pos);
+}
+.priceNeg {
+  color: var(--k-neg);
+}
+.flipBt {
+  border: 0;
+  font: inherit;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t2);
+  background: var(--k-glass-deep);
+  border-radius: var(--k-r-pill);
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.flipBt:hover {
+  color: var(--k-t1);
+}
+.priceSvg {
+  display: block;
+  width: 100%;
+  height: 220px;
+}
+.priceNone {
+  padding: 40px 8px;
+  text-align: center;
+  color: var(--k-t3);
+  font-size: var(--k-fs-sm);
+}
+/* Stats: balances first, then a 2x2 of label-over-value figures. */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--k-line);
+}
+.statGrid .sideStat {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 0;
+}
+.statGrid .sideStatValue {
+  font-size: var(--k-fs-xl);
+  letter-spacing: -0.02em;
+}
+@media (max-width: 960px) {
+  .detailGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

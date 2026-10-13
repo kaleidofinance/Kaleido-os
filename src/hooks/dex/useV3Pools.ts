@@ -76,344 +76,25 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { ethers } from "ethers";
 
-import { getContracts, isSeededPool } from "@/constants/registry";
-import { chainTokens } from "@/constants/tokens";
-import type { IToken, ITradingPair } from "@/constants/types/dex";
-import { FEE_TIERS } from "@/lib/dex/liquidity";
-import { readPoolTiers, type PoolState } from "@/lib/dex/pool";
-import { poolOrderInverted } from "@/constants/utils/v3Math";
-import { readVolumeWindow, type VolumeWindow } from "@/lib/dex/logWindow";
-import {
-  createPoolStore,
-  type DiscoveryChain,
-} from "@/lib/dex/poolDiscovery";
-import {
-  fetchSpotPrices,
-  priceLookup,
-  type PriceLookup,
-} from "@/lib/market/spot";
-import { retryRpc } from "@/lib/dex/rpcRetry";
+import { CHAINS_BY_ID } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
+import type { ITradingPair } from "@/constants/types/dex";
+import { createPoolStore } from "@/lib/dex/poolDiscovery";
+import { fetchSpotPricesSoon, priceLookup } from "@/lib/market/spot";
 import { MOCK_DATA } from "@/lib/mock";
+import { sweepChain } from "@/lib/dex/poolSweep";
+import { hasActiveLiquidity } from "@/lib/dex/pool";
+import { visibleInterval } from "@/lib/visibleInterval";
 
-const ERC20_ABI = ["function balanceOf(address) external view returns (uint256)"];
-
-const POOL_ABI = [
-  "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
-];
-
-/** `fee()`'s denominator — hundredths of a basis point, so 3000 is 0.30%. */
-const V3_FEE_DENOMINATOR = 1_000_000;
-
-/** Basis points of 10000, which is the unit `ITradingPair.feeBps` is in. */
-const BPS_DENOMINATOR = 10_000;
-
-/**
- * Pairs probed at once. Each one costs `FEE_TIERS.length` calls, so this is 12
- * `eth_call`s in flight — enough to finish 28 pairs in five waves without asking
- * a public node to answer 84 at once, which is how a free RPC starts returning
- * 429s instead of pools.
- */
-const PROBE_CONCURRENCY = 4;
-
-const CACHE_DURATION = 30_000;
+/* 2 min, visible tabs only (was 30s in every tab). The server caches the sweep. */
+const CACHE_DURATION = 120_000;
 
 /* Shared with every consumer, same contract as usePoolData's: the strip, the
  * table and the detail page are three views of one fetch and must not disagree.
  * Keyed by chain inside, so one chain's pools can land while another is still
  * being read — see createPoolStore. */
 const store = createPoolStore(CACHE_DURATION);
-
-const round2 = (n: number | null) =>
-  n === null || !Number.isFinite(n) ? null : Number(n.toFixed(2));
-
-/** Every unordered pair of a list, each once. */
-function unorderedPairs<T>(items: readonly T[]): [T, T][] {
-  const out: [T, T][] = [];
-  for (let i = 0; i < items.length; i += 1) {
-    for (let j = i + 1; j < items.length; j += 1) out.push([items[i], items[j]]);
-  }
-  return out;
-}
-
-/** `Promise.all` with a ceiling on how many run at once. */
-async function mapLimit<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    for (;;) {
-      const i = next;
-      next += 1;
-      if (i >= items.length) return;
-      out[i] = await fn(items[i]);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
-  return out;
-}
-
-/**
- * The ERC20s this sweep will pair up.
- *
- * The native asset is dropped rather than mapped to its wrapper: a V3 pool holds
- * WETH, never native, and `chainTokens` already carries WETH as a registered
- * token — including it as both would probe every WETH pair twice. Deduped by
- * address because `registeredTokens` concatenates three sources and USDC is
- * deliberately registered twice on two chains (see `preferRegistryNamed`).
- */
-function sweepTokens(chainId: number): IToken[] {
-  const seen = new Set<string>();
-  const out: IToken[] = [];
-  for (const token of chainTokens(chainId)) {
-    if (token.isNative) continue;
-    if (!ethers.isAddress(token.address)) continue;
-    const key = token.address.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(token);
-  }
-  return out;
-}
-
-/** A found pool, still in the caller's token order rather than the pool's. */
-interface Found {
-  state: PoolState;
-  fee: number;
-  tokenA: IToken;
-  tokenB: IToken;
-}
-
-/**
- * How much of `token`'s leg moved through the pool over the window, in USD.
- *
- * V3's `Swap` amounts are signed from the pool's side — positive is what came in
- * — so the absolute value is the leg's size and the sign is direction. Exactly
- * one leg is priced here, which is enough: both sides of a swap are one trade.
- */
-async function readWindowVolumeUsd(
-  poolAddress: string,
-  provider: ethers.Provider,
-  window: VolumeWindow,
-  leg: 0 | 1,
-  decimals: number,
-  legPriceUsd: number,
-): Promise<number | null> {
-  try {
-    const pool = new ethers.Contract(poolAddress, POOL_ABI, provider);
-    const swaps = await pool.queryFilter(
-      pool.filters.Swap(),
-      window.fromBlock,
-      window.toBlock,
-    );
-    let usd = 0;
-    for (const event of swaps) {
-      const args = (event as ethers.EventLog).args;
-      if (!args) continue;
-      const signed = args[leg === 0 ? 2 : 3] as bigint;
-      const size = signed < 0n ? -signed : signed;
-      usd += Number(ethers.formatUnits(size, decimals)) * legPriceUsd;
-    }
-    return usd;
-  } catch {
-    /* Log query refused, or a range the node would not serve. No volume, which
-     * is not the same answer as zero volume. */
-    return null;
-  }
-}
-
-async function buildPool(
-  found: Found,
-  chain: DiscoveryChain,
-  priceOf: PriceLookup,
-  window: VolumeWindow | null,
-): Promise<ITradingPair | null> {
-  try {
-    const provider = chain.provider;
-
-    /* Pool order, which is address order — the only order the contracts know.
-     * Not read back from the pool: `getPool` sorts internally and `token0()` can
-     * only ever return the smaller of the two addresses we just handed it, so a
-     * call to confirm it would be a round trip to learn something already known.
-     * `readPoolState` has already un-inverted `price` into (tokenA, tokenB)
-     * order, so it has to be re-inverted here to match token0/token1. */
-    const inverted = poolOrderInverted(
-      found.tokenA.address,
-      found.tokenB.address,
-    );
-    const token0 = inverted ? found.tokenB : found.tokenA;
-    const token1 = inverted ? found.tokenA : found.tokenB;
-
-    const priceAB = found.state.price;
-    const price =
-      priceAB === null || !Number.isFinite(priceAB) || priceAB <= 0
-        ? null
-        : inverted
-          ? 1 / priceAB
-          : priceAB;
-
-    const [balance0, balance1] = await retryRpc(() =>
-      Promise.all(
-        [token0, token1].map((t) =>
-          new ethers.Contract(t.address, ERC20_ABI, provider).balanceOf(
-            found.state.address,
-          ),
-        ),
-      ),
-    );
-
-    const amount0 = Number(ethers.formatUnits(balance0, token0.decimals));
-    const amount1 = Number(ethers.formatUnits(balance1, token1.decimals));
-
-    /* Spot first, then the pool's own quote for whichever leg spot could not
-     * price. `price` is token1 per token0, so one token0 is worth `price` token1:
-     * that gives either leg from the other with no assumption about the curve.
-     * See the header — this is what gives a KLD pool a TVL at all. */
-    const spot0 = priceOf(token0.symbol);
-    const spot1 = priceOf(token1.symbol);
-    let price0 = spot0;
-    let price1 = spot1;
-    if (price !== null) {
-      if (price0 === null && price1 !== null) price0 = price1 * price;
-      else if (price1 === null && price0 !== null) price1 = price0 / price;
-    }
-
-    const value0 = price0 === null ? null : amount0 * price0;
-    const value1 = price1 === null ? null : amount1 * price1;
-    /* Both or neither. One leg doubled is a constant-product inference and this
-     * curve is not constant product; with the derivation above, "one leg priced"
-     * only survives when the pool has no quote either, and then there is nothing
-     * to build a total from. */
-    const liquidityUsd =
-      value0 !== null && value1 !== null ? value0 + value1 : null;
-
-    let volume24h: number | null = null;
-    let fees24h: number | null = null;
-    let apr: number | null = null;
-
-    /* The priced leg for volume must come from spot, not from the derivation
-     * above: pricing a leg off the pool and then measuring the pool's volume in
-     * that unit would report volume in terms of itself. */
-    const pricedLeg: 0 | 1 | null = spot0 !== null ? 0 : spot1 !== null ? 1 : null;
-    if (window && pricedLeg !== null) {
-      const windowUsd = await readWindowVolumeUsd(
-        found.state.address,
-        provider,
-        window,
-        pricedLeg,
-        pricedLeg === 0 ? token0.decimals : token1.decimals,
-        (pricedLeg === 0 ? spot0 : spot1) as number,
-      );
-      if (windowUsd !== null) volume24h = windowUsd * window.scale;
-    }
-
-    /* Converted into bps of 10000 so one column formats both venues. Range-checked
-     * rather than trusted for the same reason usePoolData checks `swapFee()`: a
-     * fee at or above its denominator would make `fees24h` exceed the volume that
-     * produced it. */
-    const feeBps =
-      found.fee > 0 && found.fee < V3_FEE_DENOMINATOR
-        ? (found.fee / V3_FEE_DENOMINATOR) * BPS_DENOMINATOR
-        : null;
-
-    if (volume24h !== null && feeBps !== null) {
-      fees24h = volume24h * (feeBps / BPS_DENOMINATOR);
-    }
-    if (fees24h !== null && liquidityUsd !== null && liquidityUsd > 0) {
-      apr = ((fees24h * 365) / liquidityUsd) * 100;
-    }
-
-    return {
-      address: found.state.address,
-      chainId: chain.chainId,
-      version: "v3",
-      /* From the committed deployment records rather than from anything on
-         chain. A pool does not know who created it: `createAndInitialize` has
-         no memory of its caller, PoolCreated names the factory's caller only
-         in a log this sweep does not read, and the first position could have
-         been transferred since. The record is the evidence, and it is the
-         same file the seeding run wrote. */
-      seeded: isSeededPool(chain.chainId, found.state.address),
-      token0,
-      token1,
-      reserves: {
-        reserve0: balance0.toString(),
-        reserve1: balance1.toString(),
-      },
-      price,
-      /* No fungible LP supply exists on V3 — see ITradingPair.totalSupply. The
-       * pool's in-range `liquidity()` is a different quantity in different units
-       * and reporting it here would be mislabelling it. */
-      totalSupply: null,
-      volume24h: round2(volume24h),
-      volumeWindowSec: window ? window.spanSec : null,
-      liquidity: round2(liquidityUsd),
-      value0: round2(value0),
-      value1: round2(value1),
-      fees24h: round2(fees24h),
-      apr: round2(apr),
-      feeBps,
-    } satisfies ITradingPair;
-  } catch (e) {
-    console.error(`Error building V3 pool ${found.state.address}:`, e);
-    return null;
-  }
-}
-
-/**
- * Every V3 pool one chain carries, in the pairs and tiers this app trades.
- *
- * One chain's whole share of the sweep, so a caller can run five of these
- * independently and publish whichever finishes first. A chain with no V3 factory
- * recorded returns immediately and costs no requests at all — three of the five
- * deployments have never had a pool opened on them, and probing 84 addresses to
- * learn that is a waste on every refresh.
- */
-async function sweepChain(
-  chain: DiscoveryChain,
-  priceOf: PriceLookup,
-): Promise<ITradingPair[]> {
-  if (!getContracts(chain.chainId).v3Factory) return [];
-
-  const tokens = sweepTokens(chain.chainId);
-  if (tokens.length < 2) return [];
-
-  /* A window this chain's node will not give up is survivable: the pools still
-     list, with no volume rather than no pools. Volume is one column and it is
-     already nullable; the pools are the page. */
-  const window = await readVolumeWindow(chain.provider).catch(() => null);
-
-  const probed = await mapLimit(
-    unorderedPairs(tokens),
-    PROBE_CONCURRENCY,
-    async ([tokenA, tokenB]) => {
-      const tiers = await readPoolTiers(
-        chain.provider,
-        chain.chainId,
-        tokenA.address,
-        tokenB.address,
-        FEE_TIERS,
-        tokenA.decimals,
-        tokenB.decimals,
-      );
-      return [...tiers.entries()].map(
-        ([fee, state]): Found => ({ state, fee, tokenA, tokenB }),
-      );
-    },
-  );
-
-  const built = await Promise.all(
-    probed.flat().map((found) => buildPool(found, chain, priceOf, window)),
-  );
-
-  return built.filter((p): p is ITradingPair => p !== null);
-}
 
 export interface V3PoolsResult {
   pools: ITradingPair[];
@@ -423,6 +104,10 @@ export interface V3PoolsResult {
 }
 
 export function useV3Pools(): V3PoolsResult {
+  /* The shared sweep reads every deployed chain; a mainnet-first viewer should
+     not see testnet pools in the list. Filtered per consumer off the toggle so
+     the sweep stays shared and a flip re-renders without re-sweeping. */
+  const { showTestnets } = useTestnetMode();
   const [pools, setPools] = useState<ITradingPair[]>(() => store.snapshot());
   const [loading, setLoading] = useState(store.snapshot().length === 0);
   const [error, setError] = useState<string | null>(null);
@@ -433,48 +118,90 @@ export function useV3Pools(): V3PoolsResult {
      hold the first chain's rows while the rest arrived for someone else. */
   useEffect(() => store.subscribe(setPools), []);
 
-  const fetchPools = useCallback(async (force = false) => {
-    /* Demo mode has no V3 fixtures. Returning nothing rather than borrowing
+  const fetchPools = useCallback(
+    async (force = false) => {
+      /* Demo mode has no V3 fixtures. Returning nothing rather than borrowing
        MOCK_POOLS: those are V2 pairs with V2 addresses, and relabelling them
        would put the same pool on the table twice under two badges. */
-    if (MOCK_DATA) {
-      setPools([]);
-      setError(null);
-      setLoading(false);
-      return;
-    }
+      if (MOCK_DATA) {
+        setPools([]);
+        setError(null);
+        setLoading(false);
+        return;
+      }
 
-    try {
-      setLoading(true);
-      setError(null);
+      try {
+        /* Refresh in the background once a snapshot exists. Toggling loading here
+         makes the pool table visibly flash/rebuild every 30 seconds even when
+         the server returns the same cached snapshot. */
+        if (store.snapshot().length === 0) setLoading(true);
+        setError(null);
 
-      /* Prices once for the whole sweep, then one call per chain. The price table
+        /* Mainnet-first is the default, and /api/pools serves exactly that set —
+         swept once on the server and shared across every tab, instead of every
+         browser fanning hundreds of getPool calls into Arc's rate-limited RPC.
+         Try it first; on any failure (or a testnet viewer, whom the endpoint does
+         not serve) fall through to the client sweep below, unchanged. */
+        if (!showTestnets && !MOCK_DATA) {
+          try {
+            const res = await fetch("/api/pools", { cache: "no-store" });
+            if (res.ok) {
+              const body = (await res.json()) as {
+                pools?: ITradingPair[];
+                error?: string;
+              };
+              if (Array.isArray(body.pools) && !body.error) {
+                store.replace(body.pools);
+                setPools(store.snapshot());
+                return;
+              }
+            }
+          } catch {
+            /* Endpoint unreachable — fall through to the client sweep. */
+          }
+        }
+
+        /* Prices once for the whole sweep, then one call per chain. The price table
          is keyed by symbol and has no cache of its own, so fetching it inside the
          per-chain work would hit /api/prices/spot five times for one answer. */
-      setPools(
-        await store.sweep(
-          async () => priceLookup(await fetchSpotPrices()),
-          (chain, priceOf) => sweepChain(chain, priceOf),
-          force,
-        ),
-      );
-    } catch (err) {
-      /* Only reached when every chain failed — see PoolStore.sweep. A single dead
+        setPools(
+          await store.sweep(
+            async () => priceLookup(await fetchSpotPricesSoon()),
+            (chain, priceOf) => sweepChain(chain, priceOf),
+            force,
+            /* Mainnet-first: don't sweep testnet RPCs when they're hidden — see
+             PoolStore.sweep. Reading them 429'd five testnet endpoints and hung
+             the table for a viewer who could only see mainnet rows anyway. */
+            !showTestnets,
+          ),
+        );
+      } catch (err) {
+        /* Only reached when every chain failed — see PoolStore.sweep. A single dead
          endpoint is logged there and leaves the other chains' rows on screen. */
-      console.error("Error fetching V3 pools:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch V3 pools",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        console.error("Error fetching V3 pools:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch V3 pools",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [showTestnets],
+  );
 
   useEffect(() => {
     fetchPools();
-    const interval = setInterval(() => fetchPools(true), CACHE_DURATION);
-    return () => clearInterval(interval);
+    return visibleInterval(() => void fetchPools(false), CACHE_DURATION);
   }, [fetchPools]);
 
-  return { pools, loading, error, refetch: () => fetchPools(true) };
+  return {
+    pools: pools.filter(
+      (p) =>
+        hasActiveLiquidity(p) &&
+        (showTestnets || CHAINS_BY_ID[p.chainId]?.network === "mainnet"),
+    ),
+    loading,
+    error,
+    refetch: () => fetchPools(true),
+  };
 }

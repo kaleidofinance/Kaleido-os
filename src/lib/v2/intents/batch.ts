@@ -1,7 +1,10 @@
 import { ethers } from "ethers";
 
 import { encodeV3Path } from "@/lib/dex/route";
+import { ARGUS_V4, PERMIT2 } from "@/lib/argus/addresses";
 import type { Intent, IntentKind } from "./types";
+import { formatInterestRate } from "@/constants/utils/FormatInterestRate";
+import { LENDING_IFACE } from "./lendingAbi";
 
 /**
  * Which adjacent steps can be signed together, and — mostly — which cannot.
@@ -91,7 +94,11 @@ const IFACE = new ethers.Interface([
   "function serviceRequest(uint96 requestId, address token) external payable",
   "function mint(address to, uint256 kfUsdAmount, address collateralToken, uint256 collateralAmount) external",
   "function lockAssets(address assetToken, uint256 amount) external",
+  "function approve(address token, address spender, uint160 amount, uint48 expiration) external",
 ]);
+
+/** Permit2's allowance width — its `amount` is a uint160. */
+const MAX_UINT160 = (1n << 160n) - 1n;
 
 /** One EIP-5792 call. Value is a bigint so the caller hexes it once, at the edge. */
 export interface BatchCall {
@@ -118,11 +125,59 @@ const ENCODERS: Partial<Record<IntentKind, BatchEncoder>> = {
     const i = raw as Extract<Intent, { kind: "approve" }>;
     return {
       to: i.token,
-      data: IFACE.encodeFunctionData("approve", [
+      data: IFACE.encodeFunctionData("approve(address,uint256)", [
         i.spender,
-        ethers.parseUnits(i.amount, i.decimals),
+        i.unlimited ? ethers.MaxUint256 : ethers.parseUnits(i.amount, i.decimals),
       ]),
     };
+  },
+
+  /* Permit2.approve(token, router, amount, expiration) — the Argus run's middle
+     step. Same arguments the resolver sends (definitions.ts), restated here for
+     the reason the header gives. */
+  permit2Approve: (raw) => {
+    const i = raw as Extract<Intent, { kind: "permit2Approve" }>;
+    return {
+      to: PERMIT2,
+      data: IFACE.encodeFunctionData(
+        "approve(address,address,uint160,uint48)",
+        [
+          i.token,
+          i.spender,
+          i.unlimited ? MAX_UINT160 : ethers.parseUnits(i.amount, i.decimals),
+          i.expiration,
+        ],
+      ),
+    };
+  },
+
+  /* An aggregator swap's calldata is the router's own. It is perishable, so the
+     bundled path swaps in a FRESH build (freshAggregatorCall) before encoding —
+     this encoder just carries whichever call the intent holds. A native-input
+     swap attaches value and has no approve to pair with, so it never bundles. */
+  aggregatorSwap: (raw) => {
+    const i = raw as Extract<Intent, { kind: "aggregatorSwap" }>;
+    if (i.value !== "0") return null;
+    return { to: i.to, data: i.data };
+  },
+
+  /* An aggregator bridge (LI.FI / Relay) is the provider's own transaction —
+     `to`/`data`/`value` exactly as the one-step resolver sends it. Bundled ONLY
+     inside an exit run (see exitRun): pairsWith keeps excluding bridges, so an
+     ordinary approve+bridge still signs as before. Canonical and CCTP legs never
+     bundle — their post-send tracking assumes a hash of their own. */
+  bridge: (raw) => {
+    const i = raw as Extract<Intent, { kind: "bridge" }>;
+    if (i.provider !== "lifi" && i.provider !== "relay") return null;
+    if (i.recipient) return null;
+    return { to: i.to, data: i.data, value: BigInt(i.value || "0") };
+  },
+
+  /* The Argus swap is pre-built calldata (the server's, audited as bytes), so
+     its "encoding" is the call it already is — exactly what its resolver sends. */
+  argusSwap: (raw) => {
+    const i = raw as Extract<Intent, { kind: "argusSwap" }>;
+    return { to: i.to, data: i.data, value: BigInt(i.value || "0") };
   },
 
   /*
@@ -307,6 +362,8 @@ export function isBatchable(kind: IntentKind): boolean {
 export function pairsWith(approve: Intent, next: Intent): boolean {
   if (approve.kind !== "approve") return false;
   if (!isBatchable(next.kind)) return false;
+  /* Bridges bundle only as a whole exit run (exitRun), never as a lone pair. */
+  if (next.kind === "bridge") return false;
 
   const target = targetOf(next);
   return (
@@ -334,9 +391,74 @@ export interface PlanRun {
   bundled: boolean;
 }
 
+/**
+ * The one run of THREE: an Argus trade's `approve → permit2Approve → argusSwap`.
+ *
+ * It is the pair rule applied twice, link by link, plus the token held constant
+ * — so it authorises one coherent action exactly as a pair does:
+ *   • the approve's spender is Permit2, which is what the permit2Approve calls;
+ *   • the permit2Approve's spender is the router the swap calls, and that router
+ *     is Argus's UniversalRouter;
+ *   • all three move the same token.
+ * Anything else — a different spender, a swapped token, a stray router — fails
+ * one link and the steps fall back to the ordinary rules below.
+ */
+export function argusRun(a: Intent, b: Intent | undefined, c: Intent | undefined): boolean {
+  if (!b || !c) return false;
+  if (a.kind !== "approve" || b.kind !== "permit2Approve" || c.kind !== "argusSwap")
+    return false;
+  const eq = (x: string, y: string) => x.toLowerCase() === y.toLowerCase();
+  return (
+    eq(a.spender, PERMIT2) &&
+    eq(a.token, b.token) &&
+    eq(b.spender, c.to) &&
+    eq(c.to, ARGUS_V4.universalRouter) &&
+    eq(c.tokenIn, a.token)
+  );
+}
+
+/**
+ * "Move everything off a chain" as ONE signature: a plan made only of
+ * aggregator bridges and the approves that pay them, all leaving one chain.
+ *
+ * Every link is checked the way pairsWith checks one: each approve must be
+ * followed by the bridge whose router it authorises, on the same token, so the
+ * bundle grants no allowance the visible bridges don't use. Two or more bridges
+ * (an exit), or any bridge out of Abstract (2741, shutting down) — a single
+ * ordinary bridge elsewhere keeps its one-step-at-a-time flow.
+ */
+export function exitRun(intents: Intent[]): boolean {
+  if (intents.length < 2) return false;
+  const eq = (x: string, y: string) => x.toLowerCase() === y.toLowerCase();
+  let bridges = 0;
+  let from: number | null = null;
+  for (let k = 0; k < intents.length; k++) {
+    const it = intents[k];
+    if (it.kind === "bridge") {
+      if (!ENCODERS.bridge!(it)) return false;
+      if (from === null) from = it.fromChainId;
+      else if (it.fromChainId !== from) return false;
+      bridges++;
+      continue;
+    }
+    if (it.kind !== "approve") return false;
+    const next = intents[k + 1];
+    if (!next || next.kind !== "bridge") return false;
+    if (!eq(it.spender, next.to) || !eq(it.token, next.token)) return false;
+  }
+  return bridges >= 2 || (bridges >= 1 && from === 2741);
+}
+
 export function planRuns(intents: Intent[]): PlanRun[] {
+  if (exitRun(intents))
+    return [{ steps: intents.map((_, k) => k), bundled: true }];
   const runs: PlanRun[] = [];
   for (let i = 0; i < intents.length; i++) {
+    if (argusRun(intents[i], intents[i + 1], intents[i + 2])) {
+      runs.push({ steps: [i, i + 1, i + 2], bundled: true });
+      i += 2;
+      continue;
+    }
     const next = intents[i + 1];
     if (next && pairsWith(intents[i], next)) {
       runs.push({ steps: [i, i + 1], bundled: true });
@@ -386,4 +508,117 @@ export function encodeBatch(
     });
   }
   return out;
+}
+
+/**
+ * Lending steps as they are SIGNED, for simulation only — including the ones
+ * `ENCODERS` deliberately leaves out of bundles (native-value steps, and kinds that
+ * never pair with an approve). Kept separate so widening what can be SIMULATED
+ * never changes what gets BUNDLED. Each mirrors its resolver in definitions.ts
+ * argument for argument, through the same ABI (lendingAbi.ts).
+ */
+const SIM_ENCODERS: Partial<Record<IntentKind, BatchEncoder>> = {
+  depositCollateral: (raw) => {
+    const i = raw as Extract<Intent, { kind: "depositCollateral" }>;
+    const amount = ethers.parseUnits(i.amount, i.decimals);
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("depositCollateral", [i.token, amount]),
+      ...(i.isNative ? { value: amount } : {}),
+    };
+  },
+  withdrawCollateral: (raw) => {
+    const i = raw as Extract<Intent, { kind: "withdrawCollateral" }>;
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("withdrawCollateral", [i.token, ethers.parseUnits(i.amount, i.decimals)]),
+    };
+  },
+  repayLoan: (raw) => {
+    const i = raw as Extract<Intent, { kind: "repayLoan" }>;
+    const amount = BigInt(i.amountRaw);
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("repayLoan", [i.requestId, amount]),
+      ...(i.isNative ? { value: amount } : {}),
+    };
+  },
+  createLendingRequest: (raw) => {
+    const i = raw as Extract<Intent, { kind: "createLendingRequest" }>;
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("createLendingRequest", [
+        ethers.parseUnits(i.amount, i.decimals),
+        formatInterestRate(i.interestPct),
+        i.returnDate,
+        i.token,
+      ]),
+    };
+  },
+  createLoanListing: (raw) => {
+    const i = raw as Extract<Intent, { kind: "createLoanListing" }>;
+    const amount = ethers.parseUnits(i.amount, i.decimals);
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("createLoanListing", [
+        amount,
+        ethers.parseUnits(i.minAmount, i.decimals),
+        ethers.parseUnits(i.maxAmount, i.decimals),
+        i.returnDate,
+        formatInterestRate(i.interestPct),
+        i.token,
+      ]),
+      ...(i.isNative ? { value: amount } : {}),
+    };
+  },
+  borrowFromListing: (raw) => {
+    const i = raw as Extract<Intent, { kind: "borrowFromListing" }>;
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("requestLoanFromListing", [i.listingId, ethers.parseUnits(i.amount, i.decimals)]),
+    };
+  },
+  fillRequest: (raw) => {
+    const i = raw as Extract<Intent, { kind: "fillRequest" }>;
+    return {
+      to: i.diamond,
+      data: LENDING_IFACE.encodeFunctionData("serviceRequest", [i.requestId, i.token]),
+      ...(i.isNative ? { value: ethers.parseUnits(i.amount, i.decimals) } : {}),
+    };
+  },
+  closeListing: (raw) => {
+    const i = raw as Extract<Intent, { kind: "closeListing" }>;
+    return { to: i.diamond, data: LENDING_IFACE.encodeFunctionData("closeListingAd", [i.listingId]) };
+  },
+  closeRequest: (raw) => {
+    const i = raw as Extract<Intent, { kind: "closeRequest" }>;
+    return { to: i.diamond, data: LENDING_IFACE.encodeFunctionData("closeRequest", [i.requestId]) };
+  },
+};
+
+/** Kinds that change the lending diamond's ledger (not just an allowance). */
+export const LENDING_STATE_KINDS: ReadonlySet<IntentKind> = new Set(
+  Object.keys(SIM_ENCODERS) as IntentKind[],
+);
+
+/**
+ * One step's calldata for SIMULATION: the lending encoder when the kind has one
+ * (native value included), else the bundle encoder. Null when it cannot be encoded.
+ */
+export function encodeForSimulation(intents: Intent[], index: number, address: string): BatchCall | null {
+  const intent = intents[index];
+  const sim = SIM_ENCODERS[intent.kind];
+  if (sim) {
+    try {
+      return sim(intent);
+    } catch {
+      return null;
+    }
+  }
+  /* Bridges gained an encoder for exit-run BUNDLING, not for simulation: they
+     were never simulated (the provider's calldata is opaque and its quote
+     perishable), and widening what can be bundled must not change that. */
+  if (intent.kind === "bridge") return null;
+  const bundled = encodeBatch(intents, [index], address);
+  return bundled && bundled.length === 1 ? bundled[0] : null;
 }

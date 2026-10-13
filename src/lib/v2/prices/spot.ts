@@ -1,4 +1,8 @@
-import { PRICED_SYMBOLS, feedFor } from "./feeds";
+import {
+  PRICED_SYMBOLS,
+  SUPPORTED_ASSET_SYMBOLS,
+  feedFor,
+} from "./feeds";
 
 /**
  * The current USD price of one asset.
@@ -160,4 +164,4 @@ export async function getSpotPrice(
 }
 
 /** Symbols this module can price, for error messages. */
-export { PRICED_SYMBOLS };
+export { PRICED_SYMBOLS, SUPPORTED_ASSET_SYMBOLS };

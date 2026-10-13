@@ -9,9 +9,14 @@ import {
 import { formatInterestRate } from "@/constants/utils/FormatInterestRate";
 import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
 import { getContracts } from "@/constants/registry";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { initialSqrtPriceX96, sortMintParams } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
+import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
+import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
+import { LENDING_ABI } from "./lendingAbi";
+import type { Intent } from "./types";
 
 /**
  * Intent definitions. Each pairs a pure renderer with a resolver that builds an
@@ -138,17 +143,8 @@ const VAULT_ABI = [
  * artifacts/contracts/facets/ProtocolFacet.sol/ProtocolFacet.json — change a
  * width here only when the facet's own signature changes.
  */
-const PROTOCOL_ABI = [
-  "function depositCollateral(address token, uint256 amount) external payable",
-  "function withdrawCollateral(address token, uint128 amount) external",
-  "function repayLoan(uint96 requestId, uint256 amount) external payable",
-  "function createLendingRequest(uint128 amount, uint16 interest, uint256 returnDate, address token) external",
-  "function createLoanListing(uint256 amount, uint256 minAmount, uint256 maxAmount, uint256 returnDate, uint16 interest, address token) external payable",
-  "function requestLoanFromListing(uint96 listingId, uint256 amount) external",
-  "function serviceRequest(uint96 requestId, address token) external payable",
-  "function closeListingAd(uint96 listingId) external",
-  "function closeRequest(uint96 requestId) external",
-];
+/* The lending calls, shared with the simulator so a simulated step is the signed one. */
+const PROTOCOL_ABI = LENDING_ABI;
 
 const KFUSD_ABI = [
   "function mint(address to, uint256 kfUsdAmount, address collateralToken, uint256 collateralAmount) external",
@@ -213,22 +209,109 @@ const FAUCET_ABI = [
 ];
 
 /* ---------------------------------------------------------------- approve -- */
+async function waitForAllowance(
+  signer: ethers.Signer,
+  owner: string,
+  tokenAddress: string,
+  spender: string,
+  needed: bigint,
+): Promise<void> {
+  const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+  await pollUntil(async () => {
+    const allowance: bigint = await token.allowance(owner, spender);
+    return allowance >= needed;
+  }, "The token approval is not visible on-chain yet. Wait a moment and try the swap again.");
+}
+
+/**
+ * Poll `ready` until it holds, for up to ~20s, then throw `message`.
+ *
+ * Why so long: "Run all without stopping" sends the next step the instant the
+ * previous receipt lands, and the read node can trail the node that mined it
+ * by several seconds (publicnode and Arc's public RPCs both do, under load).
+ * The old 5s window was shorter than that lag on a slow block, so the step
+ * threw "approval is not visible" for an approval that was already on chain —
+ * a failure stepping manually never showed, because the click was the delay.
+ * Backs off 500ms → 2s. A read that throws counts as "not yet": a transient RPC
+ * error mid-wait must not fail a step whose precondition is simply arriving.
+ */
+async function pollUntil(ready: () => Promise<boolean>, message: string): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  let delay = 500;
+  for (;;) {
+    try {
+      if (await ready()) return;
+    } catch {
+      /* transient read failure — keep waiting */
+    }
+    if (Date.now() + delay > deadline) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    delay = Math.min(delay * 2, 2_000);
+  }
+}
+
+/**
+ * Both allowances an Argus swap spends through: the ERC20 → Permit2 allowance and
+ * Permit2's own grant to the router, unexpired. The Argus twin of
+ * waitForAllowance — without it, running the plan without stopping could send
+ * the swap before a lagging node sees the approvals just mined, and the wallet's
+ * gas estimate reverts on a trade that would have succeeded a second later.
+ */
+async function waitForPermit2Allowance(
+  signer: ethers.Signer,
+  owner: string,
+  tokenAddress: string,
+  router: string,
+  needed: bigint,
+): Promise<void> {
+  const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+  const permit2 = new ethers.Contract(
+    PERMIT2,
+    ["function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)"],
+    signer,
+  );
+  await pollUntil(async () => {
+    const erc: bigint = await token.allowance(owner, PERMIT2);
+    if (erc < needed) return false;
+    const [amount, expiration] = (await permit2.allowance(owner, tokenAddress, router)) as [bigint, bigint, bigint];
+    return amount >= needed && expiration > BigInt(Math.floor(Date.now() / 1000));
+  }, "The approvals for this swap are not visible on-chain yet. Wait a moment and try the swap again.");
+}
+
 register("approve", {
   render: (i) => ({
     title: `Approve ${i.symbol}`,
-    detail:
-      "Lets the contract move this token on your behalf. One-time per token.",
+    detail: i.unlimited
+      ? "One-time approval to Permit2, so later trades of this token skip this step. Permit2 still limits what each router can spend."
+      : "One-time approval.",
   }),
   resolve: async (ctx, i) => {
+    await requireTokenCode(ctx, i.token, i.symbol);
     const token = new ethers.Contract(i.token, ERC20_ABI, ctx.signer);
     const needed = ethers.parseUnits(i.amount, i.decimals);
 
     // No-op when the allowance already covers it — cheaper and clearer than a
     // redundant approval. The step shows as "already approved".
-    const current: bigint = await token.allowance(ctx.address, i.spender);
-    if (current >= needed) return { hash: null, skipped: true };
+    // Fail open on a flaky read. A rate-limited public RPC can answer this
+    // eth_call with ethers' SERVER_ERROR "missing response for request" (BSC's
+    // unkeyed nodes do under load). Left to throw, it aborted the whole approve
+    // before the wallet was ever prompted — the user saw the step fail and no
+    // signature request. So an unreadable allowance is treated as "unknown" and
+    // we fall through to the approval, the same stance pollUntil takes where a
+    // throwing read counts as not-yet. Worst case is a redundant approve when one
+    // was already in place, which is a dead end turned into a signable step.
+    let current: bigint | null = null;
+    try {
+      current = await token.allowance(ctx.address, i.spender);
+    } catch {
+      /* allowance unreadable right now — proceed to approve rather than dead-end */
+    }
+    if (current !== null && current >= needed) return { hash: null, skipped: true };
 
-    const tx = await token.approve(i.spender, needed);
+    const tx = await token.approve(
+      i.spender,
+      i.unlimited ? ethers.MaxUint256 : needed,
+    );
     await tx.wait();
     return { hash: tx.hash };
   },
@@ -238,15 +321,21 @@ register("approve", {
 register("swap", {
   render: (i) => ({
     title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
-    detail: `Minimum received ${i.amountOutMin} ${i.symbolOut} at the set slippage.`,
+    detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
     // `i.spender` is the V3 router for the chain this intent was built on
     // (getContracts(chainId).v3Router). It equals the paired approve step's
     // spender by construction — see the Intent type.
     const router = new ethers.Contract(i.spender, V3_ROUTER_ABI, ctx.signer);
+    /* Approval and swap are deliberately sequential. Some wallet/RPC pairs
+       return the approval receipt before their read endpoint reflects the new
+       allowance; wait briefly for the state the swap depends on instead of
+       submitting a doomed transaction and making the user sign it again. */
+    const needed = ethers.parseUnits(i.amountIn, i.decimalsIn);
+    await waitForAllowance(ctx.signer, ctx.address, i.tokenIn, i.spender, needed);
     const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
-    const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
+    const amountIn = needed;
     const amountOutMinimum = ethers.parseUnits(i.amountOutMin, i.decimalsOut);
     /* `tokenIn`/`tokenOut` are already the wrapped addresses on a native swap —
        the substitution happens where the route is chosen, so the same two fields
@@ -284,10 +373,15 @@ register("swapMultiHop", {
     /* The route is the whole reason this kind exists, so it leads the detail
        line: the user is being asked to sign a transaction that touches a token
        they never named, and the confirmation is the only place that says so. */
-    detail: `Through ${[i.hops[0].symbolIn, ...i.hops.map((h) => h.symbolOut)].join(" → ")}. Minimum received ${i.amountOutMin} ${i.symbolOut} at the set slippage.`,
+    detail: `Through ${[i.hops[0].symbolIn, ...i.hops.map((h) => h.symbolOut)].join(" → ")}. At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
   }),
   resolve: async (ctx, i) => {
     const router = new ethers.Contract(i.spender, V3_ROUTER_ABI, ctx.signer);
+    const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
+    const tokenIn = i.hops[0]?.tokenIn;
+    if (tokenIn) {
+      await waitForAllowance(ctx.signer, ctx.address, tokenIn, i.spender, amountIn);
+    }
     const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
 
     /*
@@ -310,7 +404,6 @@ register("swapMultiHop", {
       );
     }
 
-    const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
     const amountOutMinimum = ethers.parseUnits(i.amountOutMin, i.decimalsOut);
     const tx = await sendSwap(
       router,
@@ -397,9 +490,33 @@ register("cancelStakeWithdrawal", {
  * moves the caller's own balance, so there is nothing to pre-authorise and no
  * redundant step that could ever be skipped.
  */
+/**
+ * Refuse to call a token that has no contract on the chain the wallet is
+ * signing on. An ERC20 call to an empty address returns success and does
+ * nothing, so without this a wrong-chain send or approve reports "confirmed"
+ * with a real hash while no funds move.
+ */
+async function requireTokenCode(
+  ctx: { signer: ethers.Signer; chainId: number },
+  token: string,
+  symbol: string,
+): Promise<void> {
+  const provider = ctx.signer.provider;
+  if (!provider) return;
+  const code = await provider.getCode(token);
+  if (!code || code === "0x")
+    throw new Error(
+      `${symbol} has no contract at ${token} on ${CHAINS_BY_ID[ctx.chainId]?.shortName ?? `chain ${ctx.chainId}`} — this step belongs to another chain. Nothing was sent.`,
+    );
+}
+
 register("transfer", {
   render: (i) => ({
-    title: `Send ${i.amount} ${i.symbol}`,
+    title: `Send ${i.amount} ${i.symbol}${
+      i.chainId != null
+        ? ` on ${CHAINS_BY_ID[i.chainId]?.shortName ?? `chain ${i.chainId}`}`
+        : ""
+    }`,
     /*
      * The full address, deliberately, where grantAgentPermission below
      * abbreviates its agent. Address-poisoning attacks work by seeding your
@@ -412,6 +529,13 @@ register("transfer", {
     detail: `To ${i.to}. Irreversible once signed.`,
   }),
   resolve: async (ctx, i) => {
+    /* A send asked for on a named chain carries that chain's token address.
+       Signed anywhere else it would be a different token, or none — refuse. */
+    if (i.chainId != null && ctx.chainId !== i.chainId) {
+      throw new Error(
+        `This send is for ${CHAINS_BY_ID[i.chainId]?.shortName ?? `chain ${i.chainId}`} — switch your wallet to it and try again.`,
+      );
+    }
     const value = ethers.parseUnits(i.amount, i.decimals);
 
     /* `i.token` is deliberately unused here. There is no contract to address,
@@ -423,6 +547,11 @@ register("transfer", {
       return { hash: tx.hash };
     }
 
+    /* A token transfer to an address with no contract SUCCEEDS on any EVM chain
+       and moves nothing — the wallet reports success over an empty call. So the
+       token must exist on the chain actually signing (defence in depth beside
+       the chain pin above). */
+    await requireTokenCode(ctx, i.token, i.symbol);
     const token = new ethers.Contract(i.token, ERC20_ABI, ctx.signer);
     const tx = await token.transfer(i.to, value);
     await tx.wait();
@@ -445,21 +574,45 @@ register("transfer", {
  * the slow direction is deferred, and nothing here forecloses adding it.
  */
 register("bridge", {
-  render: (i) => ({
-    title: `Bridge ${i.amount} ${i.symbol} to ${i.toChainName}`,
+  render: (i) => {
     /*
      * An ETA only when the resolver returned one. A canonical deposit has no
      * honest estimate, so it states the direction rather than inventing a
      * number — the sourcing rule this whole path is built under.
      */
-    detail:
+    const arrival =
       i.etaSeconds != null
         ? `Arrives on ${i.toChainName} in about ${Math.round(
             i.etaSeconds / 60,
           )} min. Signed on this chain; irreversible once sent.`
-        : `Signed on this chain and delivered to ${i.toChainName}. Irreversible once sent.`,
-    chain: `→ ${i.toChainName}`,
-  }),
+        : `Signed on this chain and delivered to ${i.toChainName}. Irreversible once sent.`;
+    /*
+     * A cross-asset bridge (BNB → USDC) swaps as it moves, so — exactly like an
+     * aggregator swap's row — the user must see what they will RECEIVE and the
+     * guaranteed floor, not just what leaves the wallet. The expected figure is
+     * the provider's quote; the floor is the minimum the route guarantees and the
+     * auditor requires. A same-asset bridge carries neither and reads as before.
+     */
+    const out =
+      i.toSymbol && i.amountOutMin
+        ? `Receive about ${i.amountOut ?? i.amountOutMin} ${i.toSymbol}, at least ${i.amountOutMin} ${i.toSymbol} after slippage. `
+        : "";
+    return {
+      title:
+        i.toSymbol && i.toSymbol.toUpperCase() !== i.symbol.toUpperCase()
+          ? `Bridge ${i.amount} ${i.symbol} to ${i.toSymbol} on ${i.toChainName}`
+          : `Bridge ${i.amount} ${i.symbol} to ${i.toChainName}`,
+      /* A third-party delivery prints the FULL address first: a bridge to the
+         wrong address is unrecoverable, and the reader checks it here. */
+      detail:
+        (i.recipient
+          ? `Delivered to ${i.recipient} on ${i.toChainName} — not your wallet. Check every character. `
+          : "") +
+        out +
+        arrival,
+      chain: `→ ${i.toChainName}`,
+    };
+  },
   resolve: async (ctx, i) => {
     /* The gas floor is set only for a canonical deposit, whose portal burns gas
        in a gasleft() loop that makes estimateGas underrun. */
@@ -469,6 +622,225 @@ register("bridge", {
       value: BigInt(i.value),
       ...(i.gasLimit ? { gasLimit: BigInt(i.gasLimit) } : {}),
     });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/**
+ * The executable call for an aggregator swap, fetched NOW.
+ *
+ * The calldata captured at quote time is perishable (see the resolver below), so
+ * both the one-step resolver and the bundled path build it at signing through
+ * this one function — one place for the rebuild and for the refusal to sign a
+ * rebuild that points anywhere the paired approve did not authorise. Non-Kyber
+ * venues return the intent's own call unchanged.
+ */
+export async function freshAggregatorCall(
+  i: Extract<Intent, { kind: "aggregatorSwap" }>,
+  address: string,
+): Promise<{ to: string; data: string }> {
+  if (i.venue !== "kyberswap") return { to: i.to, data: i.data };
+  const fresh = await getKyberSwapExecution({
+    chainId: i.chainId,
+    tokenIn: i.tokenIn,
+    tokenOut: i.tokenOut,
+    amountUnits: ethers.parseUnits(i.amountIn, i.decimalsIn).toString(),
+    address,
+    slippageBps: i.slippageBps,
+  });
+  if (!fresh) {
+    throw new Error(
+      "The swap route expired before it could be signed. Close this and request a fresh quote.",
+    );
+  }
+  if (
+    fresh.to.toLowerCase() !== i.to.toLowerCase() ||
+    fresh.spender.toLowerCase() !== i.spender.toLowerCase()
+  ) {
+    throw new Error(
+      "The swap router changed unexpectedly between quote and signing; the swap was not sent.",
+    );
+  }
+  return { to: fresh.to, data: fresh.data };
+}
+
+register("aggregatorSwap", {
+  render: (i) => ({
+    title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
+    detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage.`,
+  }),
+  resolve: async (ctx, i) => {
+    /* Aggregator intents encode native input through the transaction value;
+       unlike the canonical swap shape they do not carry a nativeIn flag. */
+    if (i.value === "0") {
+      await waitForAllowance(
+        ctx.signer,
+        ctx.address,
+        i.tokenIn,
+        i.spender,
+        ethers.parseUnits(i.amountIn, i.decimalsIn),
+      );
+    }
+    const address = await ctx.signer.getAddress();
+
+    /* Build-at-sign-time for an aggregator route.
+     *
+     * The router calldata built when the quote was shown is perishable: it bakes
+     * in the exact pool amounts at quote time and a fixed recipient. By the time
+     * the user signs — and the paired approve above has just mined a block, which
+     * on its own moves the chain forward — those amounts no longer match and
+     * KyberSwap's router reverts ("Invalid msg.value"); a recipient captured
+     * while the wallet was still connecting reverts "sender != recipient". So we
+     * discard the stale bytes and rebuild NOW, with the connected signer as both
+     * sender and recipient, the instant before we send. This is the same split
+     * 1inch/0x/Jupiter integrate on: the quote is indicative, the executable
+     * transaction is fetched at execution — never reused from quote time. */
+    /* The router and the spender the approve authorised are the audited trust
+       boundary, and a fixed constant per chain — freshAggregatorCall refuses a
+       rebuild that points anywhere else. */
+    const { to, data } = await freshAggregatorCall(i, address);
+
+    const tx = await ctx.signer.sendTransaction({
+      to,
+      data,
+      value: BigInt(i.value),
+    });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/** Permit2's allowance width — its `amount` is a uint160. */
+export const MAX_UINT160 = (1n << 160n) - 1n;
+
+/* Permit2 authorisation for an Argus swap: Permit2.approve(token, router,
+   amount, expiration). Its own signed step — the paired `approve` only granted
+   the ERC20 allowance to Permit2; this grants the router the Permit2 allowance
+   the v4 swap spends. Moves nothing. */
+register("permit2Approve", {
+  render: (i) => ({
+    title: i.unlimited
+      ? `Authorise the Argus router for ${i.symbol}`
+      : `Authorise the router to spend ${i.amount} ${i.symbol}`,
+    detail: i.unlimited
+      ? `On Permit2, for 30 days, so trades in that window skip this step. Nothing leaves your wallet here.`
+      : `On Permit2, so the Argus swap can pull it. Nothing leaves your wallet here.`,
+  }),
+  resolve: async (ctx, i) => {
+    const permit2 = new ethers.Contract(
+      PERMIT2,
+      [
+        "function approve(address token, address spender, uint160 amount, uint48 expiration)",
+        "function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)",
+      ],
+      ctx.signer,
+    );
+    const amount = ethers.parseUnits(i.amount, i.decimals);
+    /* No-op when the router already holds enough Permit2 allowance that won't
+       lapse mid-review — the same rule as `approve`, and what makes a repeat
+       trade one transaction. Two minutes of headroom on the expiry so a grant
+       about to lapse is renewed rather than trusted. */
+    const [have, expires] = (await permit2.allowance(
+      ctx.address,
+      i.token,
+      i.spender,
+    )) as [bigint, bigint, bigint];
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (have >= amount && expires > now + 120n) {
+      return { hash: null, skipped: true };
+    }
+    const tx = await permit2.approve(
+      i.token,
+      i.spender,
+      i.unlimited ? MAX_UINT160 : amount,
+      i.expiration,
+    );
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/* An Argus-launchpad swap: send the pre-built UniversalRouter v4 calldata. Unlike
+   aggregatorSwap this is NOT rebuilt at sign time — the v4 bytes bake no recipient
+   (TAKE_ALL pays msg.sender) and carry a generous deadline, so they do not go
+   stale within the review window. The paired approve + permit2Approve steps have
+   already set the allowances by the time this runs. */
+register("argusSwap", {
+  render: (i) => ({
+    title: `Swap ${i.amountIn} ${i.symbolIn} for ${i.symbolOut}`,
+    detail: `At least ${i.amountOutMin} ${i.symbolOut} after slippage · Argus (Uniswap v4).`,
+  }),
+  resolve: async (ctx, i) => {
+    await waitForPermit2Allowance(
+      ctx.signer,
+      ctx.address,
+      i.tokenIn,
+      i.to,
+      ethers.parseUnits(i.amountIn, i.decimalsIn),
+    );
+    const tx = await ctx.signer.sendTransaction({
+      to: i.to,
+      data: i.data,
+      value: BigInt(i.value),
+    });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+register("cctpReceive", {
+  render: (i) => ({
+    title: `Complete ${i.amount} ${i.symbol} from ${i.fromChainName}`,
+    detail: `Mints the USDC Circle attested from your ${i.fromChainName} burn. Signed on this chain; no approval, nothing else leaves your wallet.`,
+    chain: `from ${i.fromChainName}`,
+  }),
+  resolve: async (ctx, i) => {
+    /* A plain call to MessageTransmitterV2 — no value, no approve. The bytes are
+       Circle's attested message + signature from the resolver. */
+    const tx = await ctx.signer.sendTransaction({ to: i.to, data: i.data });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+/* WETH9 surface — the wrapped-native contract on every chain (WUSDC on Arc). */
+const WRAPPED_NATIVE_ABI = [
+  "function deposit() payable",
+  "function withdraw(uint256 wad)",
+];
+
+register("wrapNative", {
+  render: (i) => ({
+    title: `Wrap ${i.amount} ${i.symbol} into ${i.wrappedSymbol}`,
+    detail: "1:1, no fee.",
+  }),
+  resolve: async (ctx, i) => {
+    const data = new ethers.Interface(WRAPPED_NATIVE_ABI).encodeFunctionData(
+      "deposit",
+      [],
+    );
+    const tx = await ctx.signer.sendTransaction({
+      to: i.to,
+      data,
+      value: ethers.parseUnits(i.amount, i.decimals),
+    });
+    await tx.wait();
+    return { hash: tx.hash };
+  },
+});
+
+register("unwrapNative", {
+  render: (i) => ({
+    title: `Unwrap ${i.amount} ${i.symbol} into ${i.nativeSymbol}`,
+    detail: "1:1, no fee.",
+  }),
+  resolve: async (ctx, i) => {
+    const data = new ethers.Interface(WRAPPED_NATIVE_ABI).encodeFunctionData(
+      "withdraw",
+      [ethers.parseUnits(i.amount, i.decimals)],
+    );
+    const tx = await ctx.signer.sendTransaction({ to: i.to, data });
     await tx.wait();
     return { hash: tx.hash };
   },
@@ -524,7 +896,9 @@ register("withdrawCollateral", {
 register("repayLoan", {
   render: (i) => ({
     title: `Repay ${i.amount} ${i.symbol}`,
-    detail: `Closes loan #${i.requestId} in full, principal plus interest.`,
+    detail: i.partial
+      ? `Pays down loan #${i.requestId}; the rest stays owed until you repay it.`
+      : `Closes loan #${i.requestId} in full, principal plus interest.`,
   }),
   resolve: async (ctx, i) => {
     const protocol = new ethers.Contract(i.diamond, PROTOCOL_ABI, ctx.signer);
@@ -979,10 +1353,12 @@ register("decreasePoolLiquidity", {
     const tx = await posManager.decreaseLiquidity({
       tokenId: BigInt(i.tokenId),
       liquidity: BigInt(i.liquidity),
-      // No slippage floor, matching useV3Positions.ts's own removeLiquidity —
-      // not a protection this file is weakening relative to the live button.
-      amount0Min: BigInt(0),
-      amount1Min: BigInt(0),
+      // The floors the builder computed from the position's amounts at the pool's
+      // current price (removeMinimums), so a remove reverts on a large adverse
+      // move rather than accepting any split. Absent (an unread pool) is BigInt(0)
+      // — the old unprotected behaviour, and no worse than the live button.
+      amount0Min: BigInt(i.amount0Min ?? "0"),
+      amount1Min: BigInt(i.amount1Min ?? "0"),
       deadline,
     });
     await tx.wait();
@@ -1006,7 +1382,16 @@ register("grantAgentPermission", {
      * ratio is 10000; bps to a percent is 100, and a health factor is not a
      * percentage.
      */
-    detail: `Up to $${i.maxNotionalPerAction} per action, $${i.maxNotionalPerEpoch} per period, health floor ${(i.minHealthFactorBps / 10_000).toFixed(2)}. Revocable any time.`,
+    /*
+     * The full agent address in the detail, for the same reason `send` prints
+     * its recipient in full (see the transfer render): a grant hands an address
+     * standing authority over the user's position, and an abbreviated
+     * `0x1234…abcd` is the exact shape an address-poisoning attack forges. On a
+     * `send` the loss is the amount; here it is a mandate that keeps acting, so
+     * the whole address is the one display that lets the user verify who they are
+     * delegating to. The title stays abbreviated as a heading.
+     */
+    detail: `Agent ${i.agent}. Up to $${i.maxNotionalPerAction} per action, $${i.maxNotionalPerEpoch} per period, health floor ${(i.minHealthFactorBps / 10_000).toFixed(2)}. Revocable any time.`,
   }),
   resolve: async (ctx, i) => {
     const facet = new ethers.Contract(

@@ -28,25 +28,33 @@
  * approvals; the header of route.ts has it.
  */
 
+import { formatUnits, parseUnits } from "ethers";
 import { CHAINS, type ChainMeta } from "@/constants/chains";
+import { resolveUserToken } from "@/constants/registry";
+import {
+  lifiMonetizationParams,
+  lifiAuthHeaders,
+} from "@/lib/bridge/lifiServer";
+import { CCTP_ENABLED, isCctpCorridor } from "@/lib/bridge/cctp";
+import { resolveCctpFastFee } from "@/lib/bridge/cctpFast";
 
 const RELAY_API = "https://api.relay.link";
 const LIFI_API = "https://li.quest/v1";
 
-/** Decimals for the assets we quote. Bridging is stablecoin-and-ETH shaped. */
-const DECIMALS: Record<string, number> = {
+/**
+ * Fallback decimals, ONLY for assets that have the same decimals on every chain.
+ * USDC and USDT are deliberately absent: they are 18 on BSC and 6 elsewhere, and
+ * a symbol-keyed table quoted "10 USDT from BSC" as 10×10⁶ units — 0.00000001
+ * USDT. Their decimals come from the source chain's registry (sourceDecimals).
+ */
+const UNIFORM_DECIMALS: Record<string, number> = {
   ETH: 18,
   WETH: 18,
-  USDC: 6,
-  USDT: 6,
-  // 6, per USDR's own decimals() — see BORROW_CURRENCIES in constants/registry.ts.
-  USDR: 6,
-  kfUSD: 18,
   BNB: 18,
 };
 
 export interface BridgeQuote {
-  provider: "RELAY" | "LIFI";
+  provider: "RELAY" | "LIFI" | "CCTP";
   fromChain: string;
   toChain: string;
   fromChainId: number;
@@ -58,30 +66,84 @@ export interface BridgeQuote {
   /** Seconds, if reported. Null means unknown. */
   etaSeconds: number | null;
   note: string;
+  /**
+   * Cross-asset quotes only (send `asset`, receive `toAsset`): the token
+   * received, the expected human amount and the guaranteed minimum after
+   * slippage. Null amounts mean the provider reported none — never guessed.
+   */
+  toAsset?: string;
+  amountOut?: string | null;
+  amountOutMin?: string | null;
 }
 
-/** Resolve a chain by name, shortName or id, against the real registry. */
+/* Common names people use that the registry stores differently, keyed by the
+   lower-cased alias → chain id. The registry's own name/shortName are matched
+   first, so these only fill genuine gaps: Binance calls chain 56 "BNB Chain"
+   while the registry (and BscScan) call it "BNB Smart Chain" / "BSC", and it is
+   the label the app's own network switcher shows. No testnet aliases — a testnet
+   must be named explicitly so it can never be reached by a mainnet shorthand. */
+const CHAIN_ALIASES: Record<string, number> = {
+  bnb: 56,
+  "bnb chain": 56,
+  binance: 56,
+  "binance smart chain": 56,
+  eth: 1,
+  ether: 1,
+};
+
+/** Resolve a chain by name, shortName, id or common alias, against the registry. */
 export function resolveChain(input: string | number): ChainMeta | undefined {
   if (typeof input === "number") return CHAINS.find((c) => c.id === input);
   const q = String(input).trim().toLowerCase();
   if (/^\d+$/.test(q)) return CHAINS.find((c) => c.id === Number(q));
-  return CHAINS.find(
-    (c) => c.name.toLowerCase() === q || c.shortName.toLowerCase() === q,
+
+  const match = (s: string) =>
+    CHAINS.find(
+      (c) => c.name.toLowerCase() === s || c.shortName.toLowerCase() === s,
+    );
+  const byId = (id: number | undefined) =>
+    id === undefined ? undefined : CHAINS.find((c) => c.id === id);
+
+  /* People say "Arc chain" and "BNB network" as often as the bare name, and the
+     registry stores neither suffix. So try the input as given, then again with a
+     trailing generic word removed — but only the truly generic ones:
+     "mainnet"/"testnet" are NOT stripped, because "Arc testnet" and "Arc" are
+     different chains and dropping the word would resolve a testnet request to the
+     mainnet. Aliases are consulted last, on both spellings. */
+  const stripped = q.replace(/\s+(chain|network)$/, "").trim();
+  return (
+    match(q) ??
+    match(stripped) ??
+    byId(CHAIN_ALIASES[q]) ??
+    byId(CHAIN_ALIASES[stripped])
   );
 }
 
-/** Smallest-unit amount for an asset, using its real decimals. */
-function toBaseUnits(amount: string, asset: string): string | null {
-  const decimals = DECIMALS[asset.toUpperCase()] ?? DECIMALS[asset];
-  if (decimals === undefined) return null;
-  const n = Number(amount);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  // String concatenation rather than BigInt exponentiation, which the repo's
-  // ES5 target rejects. Padding the fraction to `decimals` and appending it to
-  // the whole part is exact for 18-decimal amounts where floats are not.
-  const [whole, frac = ""] = String(n).split(".");
-  const padded = (frac + "0".repeat(decimals)).slice(0, decimals);
-  return BigInt(whole + padded).toString();
+/**
+ * The asset's decimals ON THE SOURCE CHAIN — the same registry lookup the plan
+ * builder signs with, so the quote and the plan scale the amount identically.
+ * Null when the chain doesn't carry it (and it isn't uniform everywhere).
+ */
+export function sourceDecimals(from: ChainMeta, asset: string): number | null {
+  const t =
+    resolveUserToken(from, asset, "dex") ??
+    resolveUserToken(from, asset, "lending");
+  if (t) return t.decimals;
+  return UNIFORM_DECIMALS[asset.toUpperCase()] ?? null;
+}
+
+/**
+ * Smallest-unit amount, parsed exactly from the string (a float turned 0.0000001
+ * into "1e-7" and 18-decimal amounts into rounding). Null for a non-positive or
+ * over-precise amount.
+ */
+function toBaseUnits(amount: string, decimals: number): string | null {
+  try {
+    const units = parseUnits(amount.trim(), decimals);
+    return units > BigInt(0) ? units.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 async function relayQuote(
@@ -139,12 +201,14 @@ async function lifiQuote(
   amount: string,
   units: string,
   user: string,
+  /** Receive a different token (cross-asset). Absent = same asset. */
+  toAsset?: string,
 ): Promise<BridgeQuote | null> {
   const qs = new URLSearchParams({
     fromChain: String(from.id),
     toChain: String(to.id),
     fromToken: asset,
-    toToken: asset,
+    toToken: toAsset ?? asset,
     fromAmount: units,
     fromAddress: user,
   });
@@ -155,7 +219,10 @@ async function lifiQuote(
     estimate?: {
       feeCosts?: Array<{ amountUSD?: string }>;
       executionDuration?: number;
+      toAmount?: string;
+      toAmountMin?: string;
     };
+    action?: { toToken?: { decimals?: number } };
   };
 
   const fee = data.estimate?.feeCosts?.reduce(
@@ -175,6 +242,33 @@ async function lifiQuote(
     feeUsd: fee !== undefined && fee > 0 ? fee : null,
     etaSeconds: typeof dur === "number" ? dur : null,
     note: "Quote from LI.FI. Kaleido does not execute the bridge — the user completes it with the provider.",
+    ...(toAsset ? crossAssetOut(toAsset, data) : {}),
+  };
+}
+
+/** The received token + expected/minimum amounts from a LI.FI quote, in human
+ *  units. Null amounts when LI.FI omits them or their decimals — never guessed. */
+function crossAssetOut(
+  toAsset: string,
+  data: {
+    estimate?: { toAmount?: string; toAmountMin?: string };
+    action?: { toToken?: { decimals?: number } };
+  },
+): Pick<BridgeQuote, "toAsset" | "amountOut" | "amountOutMin" | "note"> {
+  const dec = data.action?.toToken?.decimals;
+  const human = (raw: string | undefined): string | null => {
+    if (!raw || typeof dec !== "number") return null;
+    try {
+      return formatUnits(BigInt(raw), dec);
+    } catch {
+      return null;
+    }
+  };
+  return {
+    toAsset,
+    amountOut: human(data.estimate?.toAmount),
+    amountOutMin: human(data.estimate?.toAmountMin),
+    note: "Quote from LI.FI — the provider Kaleido's bridge action executes a cross-asset bridge through, so this matches what the plan will build. amountOutMin is the guaranteed floor after slippage.",
   };
 }
 
@@ -189,6 +283,8 @@ export async function getBridgeQuote(args: {
   asset: string;
   amount: string;
   address?: string;
+  /** Receive a different token on arrival (cross-asset). Absent = same asset. */
+  toAsset?: string;
 }): Promise<BridgeQuote | { error: string }> {
   const from = resolveChain(args.fromChain);
   const to = resolveChain(args.toChain);
@@ -199,14 +295,91 @@ export async function getBridgeQuote(args: {
     return { error: "Source and destination are the same chain" };
 
   const asset = args.asset.trim().toUpperCase();
-  const units = toBaseUnits(args.amount, asset);
+  const decimals = sourceDecimals(from, asset);
+  if (decimals === null) {
+    return {
+      error: `Cannot quote ${args.asset}: it isn't a token Kaleido knows on ${from.name}. Say so rather than estimating.`,
+    };
+  }
+  const units = toBaseUnits(args.amount, decimals);
   if (units === null) {
     return {
-      error: `Cannot quote ${args.asset}: unknown decimals or invalid amount. Supported: ${Object.keys(DECIMALS).join(", ")}`,
+      error: `Cannot quote ${args.amount} ${asset}: not a positive amount ${asset} can hold on ${from.name} (${decimals} decimals).`,
     };
   }
 
   const user = args.address ?? "0x0000000000000000000000000000000000000000";
+  const toAsset = args.toAsset?.trim().toUpperCase() || undefined;
+  const crossAsset = !!toAsset && toAsset !== asset;
+
+  /* CCTP first — for USDC on a CCTP corridor it is the path the executable plan
+     WILL take (resolveBridgeRoute prefers it over the aggregator). Quoting it
+     here keeps the read tool's answer honest: without this the model quotes a
+     LI.FI fee and tells the user to "complete it with LI.FI", then the bridge
+     action builds a CCTP burn — a different provider, a different cost, and a
+     completion Kaleido drives rather than hands off. Unlike Relay/LI.FI, both
+     legs are Kaleido's, so the note says so. Degrades to the free Standard lane
+     if Circle's fast-fee endpoint can't be read, and stays inert while the flag
+     is off. */
+  if (
+    !crossAsset &&
+    CCTP_ENABLED &&
+    asset === "USDC" &&
+    isCctpCorridor(from.id, to.id)
+  ) {
+    let feeUsd = 0;
+    let etaSeconds: number | null = null;
+    let lane = "Standard lane — free, waits for source-chain finality";
+    try {
+      const q = await resolveCctpFastFee({
+        sourceChainId: from.id,
+        destChainId: to.id,
+        units: BigInt(units),
+      });
+      if (q.ok) {
+        // maxFeeUnits is the fee cap in 6-decimal USDC units; USDC ≈ $1.
+        feeUsd = Number(q.maxFeeUnits) / 1e6;
+        // Fast Transfer attests in seconds against Circle's allowance.
+        etaSeconds = 20;
+        lane =
+          q.feeBps === 0
+            ? "Fast lane — free on this corridor, settles in seconds"
+            : `Fast lane — ${q.feeBps} bps, settles in seconds`;
+      }
+    } catch {
+      // Circle's fee endpoint unreachable — the burn still goes on the free
+      // Standard lane, so quote that rather than failing over to an aggregator.
+    }
+    return {
+      provider: "CCTP",
+      fromChain: from.name,
+      toChain: to.name,
+      fromChainId: from.id,
+      toChainId: to.id,
+      asset,
+      amount: args.amount,
+      feeUsd,
+      etaSeconds,
+      note: `Circle CCTP burn-and-mint — 1:1, no pool or slippage. ${lane}. Kaleido signs both legs: the burn on ${from.name} now, then the mint on ${to.name} once Circle attests (the completion banner submits it).`,
+    };
+  }
+
+  /* Cross-asset (send BNB, receive USDC): LI.FI only. It is the provider the
+     bridge action executes a cross-asset bridge through (resolveBridgeRoute
+     routes it via LI.FI, never CCTP or a portal), so quoting Relay here would
+     preview a different provider's price than the plan will sign — the same
+     reason CCTP is quoted first above for a USDC corridor. */
+  if (crossAsset) {
+    try {
+      const lifi = await lifiQuote(from, to, asset, args.amount, units, user, toAsset);
+      if (lifi) return lifi;
+    } catch {
+      // fall through to the error below
+    }
+    return {
+      error: `No route found to swap ${args.amount} ${asset} on ${from.name} into ${toAsset} on ${to.name}. Say so plainly rather than estimating.`,
+    };
+  }
 
   try {
     const relay = await relayQuote(from, to, asset, args.amount, units, user);
@@ -274,6 +447,15 @@ export async function getBridgeExecution(args: {
   /** Smallest-unit amount, already scaled by the caller. */
   units: string;
   address: string;
+  /** Receiver on the destination when it is not `address` (LI.FI `toAddress`). */
+  toAddress?: string;
+  /** Destination symbol for a CROSS-ASSET bridge (BNB→USDC). Absent = same
+   *  asset, where toToken == fromToken as before. */
+  toAsset?: string;
+  /** The source token's CONTRACT, sent instead of `asset` for a token LI.FI
+   *  can't resolve by symbol — one we don't list (an Abstract holding). Set by
+   *  the resolver only for unlisted tokens; listed ones keep the symbol path. */
+  fromTokenAddress?: string;
 }): Promise<{
   to: string;
   data: string;
@@ -290,22 +472,66 @@ export async function getBridgeExecution(args: {
   txChainId: number | null;
   /** How LI.FI resolved the symbol on the source chain. Nulls where absent. */
   fromToken: { address: string | null; decimals: number | null };
+  /**
+   * `estimate.toAmount` / `toAmountMin` — the destination-token units the
+   * solver fills, and the floor after slippage. The differentiator against a
+   * 1:1 route: this is 1:1 minus the solver's spread. Null when absent.
+   */
+  toAmount: string | null;
+  toAmountMin: string | null;
+  /** How LI.FI resolved the DESTINATION symbol, for a cross-asset output
+   *  cross-check. Same shape as `fromToken`; nulls where absent. */
+  toToken: { address: string | null; decimals: number | null };
 } | null> {
   try {
-    const qs = new URLSearchParams({
+    const params: Record<string, string> = {
       fromChain: String(args.fromChainId),
       toChain: String(args.toChainId),
-      fromToken: args.asset,
-      toToken: args.asset,
+      fromToken: args.fromTokenAddress ?? args.asset,
+      toToken: args.toAsset ?? args.asset,
       fromAmount: args.units,
       fromAddress: args.address,
-    });
-    const res = await fetch(`${LIFI_API}/quote?${qs}`);
+      ...(args.toAddress ? { toAddress: args.toAddress } : {}),
+      /* Swift by default. FASTEST picks a sub-minute route where one exists
+         — Arc’s Polymer Fast lands in ~10s — instead of the ~18-minute Standard
+         the unordered call returns. lifiIntents is denied because it is a
+         solver network whose spread runs ~2.7%, an order of magnitude over
+         Polymer’s ~0.26% for the sake of a few seconds; every Arc corridor
+         still has a Polymer route, so denying it costs availability nowhere
+         measured. */
+      order: "FASTEST",
+      denyBridges: "lifiIntents",
+    };
+
+    /* The integrator fee is authorised by an API key that is a server secret,
+       and this function runs in the browser too (useLocalPlanner). So the two
+       environments reach LI.FI by different doors: on the server we call
+       li.quest directly, adding our integrator + fee and the key header; in the
+       browser we call our own /api/bridge/quote, which adds all three
+       server-side so the key never ships in the bundle. Both return the same
+       quote shape parsed below — see src/app/api/bridge/quote/route.ts and
+       lib/bridge/lifiServer.ts. */
+    let res: Response;
+    if (typeof window === "undefined") {
+      const qs = new URLSearchParams({ ...params, ...lifiMonetizationParams() });
+      res = await fetch(`${LIFI_API}/quote?${qs}`, { headers: lifiAuthHeaders() });
+    } else {
+      const qs = new URLSearchParams(params);
+      res = await fetch(`/api/bridge/quote?${qs}`);
+    }
     if (!res.ok) return null;
 
     const data = (await res.json()) as {
-      estimate?: { executionDuration?: number; approvalAddress?: string };
-      action?: { fromToken?: { address?: string; decimals?: number } };
+      estimate?: {
+        executionDuration?: number;
+        approvalAddress?: string;
+        toAmount?: string;
+        toAmountMin?: string;
+      };
+      action?: {
+        fromToken?: { address?: string; decimals?: number };
+        toToken?: { address?: string; decimals?: number };
+      };
       transactionRequest?: {
         to?: string;
         data?: string;
@@ -322,6 +548,7 @@ export async function getBridgeExecution(args: {
     const value = BigInt(tx.value ?? "0").toString();
     const dur = data.estimate?.executionDuration;
     const from = data.action?.fromToken;
+    const to = data.action?.toToken;
 
     return {
       to: tx.to,
@@ -333,6 +560,12 @@ export async function getBridgeExecution(args: {
       fromToken: {
         address: from?.address ?? null,
         decimals: typeof from?.decimals === "number" ? from.decimals : null,
+      },
+      toAmount: data.estimate?.toAmount ?? null,
+      toAmountMin: data.estimate?.toAmountMin ?? null,
+      toToken: {
+        address: to?.address ?? null,
+        decimals: typeof to?.decimals === "number" ? to.decimals : null,
       },
     };
   } catch {

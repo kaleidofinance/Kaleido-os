@@ -1,0 +1,14 @@
+{
+  "eyebrow": "Kaleido Season 1 · Arc mainnet",
+  "hero": "2,321,529",
+  "heroUnit": "$kPoint",
+  "sub": "Distributed to the community so far — through launch tasks and early trades with **Luca**, your onchain trading agent on Arc. And counting.",
+  "stats": [
+    "Live on Arc",
+    { "v": "6,920", "k": "wallets earning" },
+    { "v": "4,094", "k": "explorers joined" }
+  ],
+  "url": "kaleidofi.xyz/rewards",
+  "background": "colosseum-bright",
+  "arc": true
+}

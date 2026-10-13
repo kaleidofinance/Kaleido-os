@@ -11,12 +11,13 @@ import {
   DEFAULT_RANGE,
   RANGES,
   RANGE_SPECS,
+  SUPPORTED_ASSET_SYMBOLS,
   feedFor,
   hasFeed,
   isPriceRange,
 } from "./feeds.ts";
 // Relative, not "@/constants/registry" — plain node has no path aliases.
-import { TOKENS } from "../../../constants/registry.ts";
+import { DEPLOYED_TOKENS, OWN_TOKENS, TOKENS } from "../../../constants/registry.ts";
 
 let pass = 0;
 let fail = 0;
@@ -137,6 +138,22 @@ console.log("\n— registry coverage —");
     ["USDC", "USDT", "DAI"].every((s) => hasFeed(s)),
   );
   check("at least one registry symbol is charted", symbols.size > 0);
+  check(
+    "every registry symbol is a supported asset",
+    [...symbols].every((s) => SUPPORTED_ASSET_SYMBOLS.includes(s)),
+  );
+  check(
+    "own Kaleido tokens are supported assets",
+    OWN_TOKENS.map((token) => token.symbol.toUpperCase()).every((s) =>
+      SUPPORTED_ASSET_SYMBOLS.includes(s),
+    ),
+  );
+  check(
+    "deployed token specs are supported assets",
+    DEPLOYED_TOKENS.map((token) => token.symbol.toUpperCase()).every((s) =>
+      SUPPORTED_ASSET_SYMBOLS.includes(s),
+    ),
+  );
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

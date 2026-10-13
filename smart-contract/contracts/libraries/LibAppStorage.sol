@@ -170,6 +170,15 @@ library LibAppStorage {
         ///      ProtocolFacet.setFeedMaxAge.
         mapping(bytes32 priceFeed => uint256 maxAgeSeconds) s_feedMaxAge;
 
+        /// @dev Set by LendingAdminFacet.pause. While true, nothing that OPENS
+        ///      risk runs — requesting, servicing, listing, borrowing from a
+        ///      listing. Everything that CLOSES or DEFENDS a position stays open
+        ///      (repay, withdraw, close, liquidate, and depositing collateral —
+        ///      a borrower must be able to top up while liquidations still run),
+        ///      so a pause never traps funds or lets a bad position ride.
+        ///      Appended last, like everything above it.
+        bool paused;
+
     }
     
         function layout() internal pure returns (Layout storage l) {

@@ -110,7 +110,7 @@ interface CatalogEntry {
  * closes on the grammar. This assertion is what caught the move — worth saying
  * because the check reads like a formality until the day it changes.
  */
-const MODEL_PATH = [
+const MODEL_PATH = [
   "grantAgentPermission",
   "placeLimitOrder",
   "increasePosition",
@@ -437,7 +437,7 @@ async function main() {
      several million dollars of ETH for a thousand. A thousand dollars cannot buy
      a whole ETH at the fixture's price, so the minimum belongs under 1. */
   const minOut = Number(
-    /Minimum received ([\d.]+)/.exec(swap?.steps[1]?.detail ?? "")?.[1],
+    /At least ([\d.]+)/.exec(swap?.steps[1]?.detail ?? "")?.[1],
   );
   check(
     "and its quoted minimum is an amount of WETH, not a USD price",

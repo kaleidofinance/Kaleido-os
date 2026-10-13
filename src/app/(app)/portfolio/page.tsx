@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import Nav from "@/components/v2/Nav";
@@ -14,23 +14,26 @@ import {
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import AvatarPicker from "./_components/AvatarPicker";
+import { Tabs, Overview, Tokens, SLICE, type TabId } from "./_components/PortfolioTabs";
+import { PointsTab, usePointsStanding, pointsTotal, referralLink } from "./_components/PointsTab";
+import { allocation } from "@/lib/portfolio/aggregate";
+import { ActivityTab } from "./_components/ActivityTab";
 import { drawShareCard } from "./shareCard";
 import s from "./portfolio.module.css";
 
 const usd = (n: number | null, dp = 2) =>
-  n === null
-    ? "—"
-    : n.toLocaleString("en-US", {
+  (n ?? 0).toLocaleString("en-US", {
         style: "currency",
         currency: "USD",
         minimumFractionDigits: dp,
         maximumFractionDigits: dp,
       });
 
-const pct = (n: number | null) => (n === null ? "—" : `${n.toFixed(2)}%`);
+const pct = (n: number | null) => `${(n ?? 0).toFixed(2)}%`;
 
 const healthText = (h: number | null) =>
-  h === null ? "—" : h === Infinity ? "∞" : h.toFixed(2);
+  /* Never 0.00 for "unknown": a zero health factor reads as liquidation. */
+  h === null || h === Infinity ? "∞" : h.toFixed(2);
 
 /**
  * Which tables fold their status chip up beside the money on a phone, instead of
@@ -62,16 +65,32 @@ const FOLD_CHIP: Record<GroupId, boolean> = {
 function PositionRow({ p, fold }: { p: Position; fold: boolean }) {
   const toneClass =
     p.state.tone === "bad" ? s.bad : p.state.tone === "warn" ? s.warn : "";
-  return (
-    <div className={`${s.row} ${fold ? s.rowFold : ""}`}>
+  /* A pair ("WUSDC / EURC") gets both logos, overlapped, the way every DEX shows
+     a pool. Each side resolves on its own; a single token is unchanged. */
+  const pair = p.label.includes(" / ") ? p.label.split(" / ") : null;
+  const body = (
+    <>
       <div className={s.asset}>
-        <span className={`${s.icon} ${hasTokenIcon(p.label) ? s.iconArt : ""}`}>
-          <TokenIcon
-            symbol={p.label}
-            size={34}
-            fallback={p.label.slice(0, 3)}
-          />
-        </span>
+        {pair ? (
+          <span className={s.pairIcons}>
+            {pair.map((sym, i) => (
+              <span
+                key={i}
+                className={`${s.icon} ${s.pairIcon} ${hasTokenIcon(sym) ? s.iconArt : ""}`}
+              >
+                <TokenIcon symbol={sym} size={26} fallback={sym.slice(0, 3)} />
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className={`${s.icon} ${hasTokenIcon(p.label) ? s.iconArt : ""}`}>
+            <TokenIcon
+              symbol={p.label}
+              size={34}
+              fallback={p.label.slice(0, 3)}
+            />
+          </span>
+        )}
         <div>
           <div className={s.aName}>{p.label}</div>
           <div className={s.aSub}>{p.sublabel}</div>
@@ -114,7 +133,17 @@ function PositionRow({ p, fold }: { p: Position; fold: boolean }) {
         </div>
         <span className={`${s.badge} ${toneClass}`}>{p.state.text}</span>
       </div>
-    </div>
+    </>
+  );
+  const cls = `${s.row} ${fold ? s.rowFold : ""}`;
+  /* A row with somewhere to go is the link to it — a liquidity position opens
+     its card on /pool/positions (Collect, Add, Remove). */
+  return p.href ? (
+    <Link href={p.href} className={`${cls} ${s.rowLink}`} title="Manage this position">
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 
@@ -126,6 +155,14 @@ export default function PortfolioPage() {
      querySelector because the card reads --k-bg and friends off `.kaleido-v2`
      (tokens.css:29), and this <main> is inside it by construction. */
   const mainRef = useRef<HTMLElement>(null);
+  const [tab, setTab] = useState<TabId>("overview");
+  /* When the figures were last read: set each time a load completes, shown as
+     "Updated 10:23 AM" on the Overview. */
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!p.isLoading && address) setUpdatedAt(Date.now());
+  }, [p.isLoading, address]);
+  const points = usePointsStanding(address ?? undefined);
 
   /*
    * Share and Deposit were markup with no handler — chrome from the first pass
@@ -177,8 +214,25 @@ export default function PortfolioPage() {
             { label: "Health factor", value: healthText(p.health) },
             { label: "Collateral", value: usd(p.collateralUsd, 0) },
             { label: "Borrowed", value: usd(p.debtUsd, 0) },
-            { label: "Unclaimed", value: usd(p.unclaimedYieldUsd) },
+            points.kind === "ok"
+              ? {
+                  label: "Season 1 points",
+                  value: pointsTotal(points.status).toLocaleString("en-US", {
+                    maximumFractionDigits: 0,
+                  }),
+                }
+              : { label: "Unclaimed", value: usd(p.unclaimedYieldUsd) },
           ],
+          /* The same bar as the Overview tab, and the sharer's invite in the
+             footer — every shared card is a way in (Portfolio v2, phase 2). */
+          allocation: allocation(p.groups).map((a) => ({
+            share: a.share,
+            color: SLICE[a.id] ?? "#888",
+          })),
+          link:
+            points.kind === "ok"
+              ? referralLink(points.status, url).replace(/^https?:\/\//, "")
+              : null,
           /* `?? null` because useWalletV2 reports an unknown chain as undefined
              while the card's contract is `string | null` — the codebase's spelling
              of "genuinely unknown", per usePortfolio's Position doc. */
@@ -309,93 +363,66 @@ export default function PortfolioPage() {
           <ChainGate product="portfolio" state={gate} />
         ) : (
           <>
-            <div>
-              {/*
-                `netValuePartial` is true whenever a group could not price
-                something it holds — a wallet with WBTC in it, a collateral figure
-                the oracle would not answer for — which makes this figure a floor
-                rather than a total. It used to say so in a sentence under the
-                number, and each group used to name its own gap under its table.
-                Neither does now: a product's headline figure is the headline
-                figure, and a paragraph of caveat under it reads as an apology for
-                the page. What is unpriced already shows as an em dash on the row
-                itself, which is where a reader is looking when they wonder. The
-                flag survives here as the number's own tooltip.
-              */}
-              <div
-                className={`${s.value} tabular`}
-                title={
-                  p.netValuePartial
-                    ? "Excludes holdings with no price feed"
-                    : undefined
-                }
-              >
-                {usd(p.netValue)}
-              </div>
-              <div className={s.eyebrow}>Net position</div>
-            </div>
+            <Tabs value={tab} onChange={setTab} />
 
-            <div className={s.strip}>
-              <div className={s.stat}>
-                <span className={s.sLabel}>Health factor</span>
-                <span className={`${s.sVal} tabular`}>
-                  {healthText(p.health)}
-                </span>
-              </div>
-              <div className={s.stat}>
-                <span className={s.sLabel}>Collateral</span>
-                <span className={`${s.sVal} tabular`}>
-                  {usd(p.collateralUsd, 0)}
-                </span>
-              </div>
-              <div className={s.stat}>
-                <span className={s.sLabel}>Borrowed</span>
-                <span className={`${s.sVal} tabular`}>{usd(p.debtUsd, 0)}</span>
-              </div>
-              <div className={s.stat}>
-                <span className={s.sLabel}>Unclaimed</span>
-                <span className={`${s.sVal} tabular`}>
-                  {usd(p.unclaimedYieldUsd)}
-                </span>
-              </div>
-            </div>
-
-            <div className={s.cols}>
+            {/* Portfolio v2: one surface, three views. Wallet holdings live in
+                Tokens (folded by token across chains); Positions keeps the four
+                protocol groups at full detail; Overview summarises both. */}
+            {tab === "overview" && (
+              <Overview
+                netValue={p.netValue}
+                partial={p.netValuePartial}
+                groups={p.groups}
+                alerts={p.alerts}
+                loading={p.isLoading}
+                updatedAt={updatedAt}
+                onRefresh={p.refresh}
+                onOpen={setTab}
+                address={address ?? undefined}
+              />
+            )}
+            {tab === "tokens" && (
+              <Tokens
+                wallet={p.groups.find((g) => g.id === "wallet")}
+                loading={p.isLoading}
+              />
+            )}
+            {tab === "points" && <PointsTab state={points} />}
+            {tab === "activity" && <ActivityTab address={address ?? undefined} />}
+            {tab === "positions" && (
               <div className={s.main}>
-                {/* Every group, every time — including the empty ones. A reader
-                    with nothing lent cannot tell "I have no offers" from "this
-                    page does not show offers" if the Lending group is absent,
-                    and the empty state is one line plus a link to the surface
-                    that fills it. The order is the hook's, which is the order
-                    money moves through the protocol: wallet, then what it was
-                    lent to, borrowed against, minted into, staked as. */}
-                {p.groups.map((g) => (
-                  <PositionGroup key={g.id} group={g} loading={p.isLoading} />
-                ))}
+              <div className={s.strip}>
+                <div className={s.stat}>
+                  <span className={s.sLabel}>Health factor</span>
+                  <span className={`${s.sVal} tabular`}>
+                    {healthText(p.health)}
+                  </span>
+                </div>
+                <div className={s.stat}>
+                  <span className={s.sLabel}>Collateral</span>
+                  <span className={`${s.sVal} tabular`}>
+                    {usd(p.collateralUsd, 0)}
+                  </span>
+                </div>
+                <div className={s.stat}>
+                  <span className={s.sLabel}>Borrowed</span>
+                  <span className={`${s.sVal} tabular`}>{usd(p.debtUsd, 0)}</span>
+                </div>
+                <div className={s.stat}>
+                  <span className={s.sLabel}>Unclaimed</span>
+                  <span className={`${s.sVal} tabular`}>
+                    {usd(p.unclaimedYieldUsd)}
+                  </span>
+                </div>
               </div>
 
-              <aside className={s.side}>
-                <div className={s.sideTitle}>Needs attention</div>
-                {p.alerts.length === 0 && (
-                  <div className={s.calm}>Nothing needs attention.</div>
-                )}
-                {p.alerts.map((a) => (
-                  <a key={a.id} href={a.href ?? "#"} className={s.alert}>
-                    <span
-                      className={`${s.aIcon} ${
-                        a.severity === "info" ? "" : s.aWarn
-                      }`}
-                    >
-                      {a.severity === "info" ? "↑" : "!"}
-                    </span>
-                    <div>
-                      <div className={s.alTitle}>{a.title}</div>
-                      <div className={s.alDetail}>{a.detail}</div>
-                    </div>
-                  </a>
-                ))}
-              </aside>
-            </div>
+                {p.groups
+                  .filter((g) => g.id !== "wallet")
+                  .map((g) => (
+                    <PositionGroup key={g.id} group={g} loading={p.isLoading} />
+                  ))}
+              </div>
+            )}
           </>
         )}
       </main>

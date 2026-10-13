@@ -87,6 +87,6 @@ export function penaltySplitBps(liquidationPenaltyBps: number): {
 
 /** Trims trailing zeros so 10 reads "10%" and 6.4 reads "6.4%". */
 export function formatBps(bps: number | null): string {
-  if (bps === null) return "—";
+  if (bps === null) return "0";
   return `${Number(bpsToPercent(bps).toFixed(2))}%`;
 }

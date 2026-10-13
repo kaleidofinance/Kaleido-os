@@ -115,7 +115,9 @@ function parseChainIds(request: NextRequest): number[] | "invalid" {
 }
 
 async function handle(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
+  // Trimmed to match the trimmed bearer — a trailing newline in the Vercel env
+  // var would otherwise fail the length check and 401 forever.
+  const secret = process.env.CRON_SECRET?.trim();
   if (!secret) {
     console.warn(
       "[health/watch] CRON_SECRET is not set — refusing, as configured. The " +

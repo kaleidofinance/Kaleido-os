@@ -115,6 +115,60 @@ function pushUrl(env) {
   return url;
 }
 
+/* The CCTP completion keeper. Its own trigger (CCTP_CRON below), because
+   Fast Transfer attests in seconds and Standard in minutes: a fifteen-minute
+   tick would leave every user watching a "waiting" bar for most of it, while
+   running the price and candle keepers every two minutes would waste their
+   RPC budget for nothing. */
+const CCTP_CRON = "*/2 * * * *";
+function cctpUrl(env) {
+  const url = new URL(`${baseUrl(env)}/api/keeper/cctp`);
+  const limit = (env.CCTP_LIMIT ?? "").trim();
+  if (limit) url.searchParams.set("limit", limit);
+  return url;
+}
+function summariseCctp(status, body) {
+  if (status === 0) return body;
+  let parsed = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return `${status} non-JSON: ${body.slice(0, 200)}`;
+  }
+  if (parsed?.error) return `${status} ${parsed.error}`;
+  return (
+    `${status} minted=${parsed?.minted?.length ?? "?"} pending=${parsed?.stillPending ?? "?"} ` +
+    `failed=${parsed?.failed?.length ?? "?"} skipped=${parsed?.skipped?.length ?? "?"} ` +
+    `errors=${parsed?.errors?.length ?? "?"}`
+  );
+}
+/* The lending liquidator rides the same two-minute trigger: a position can go
+   from healthy to underwater within one price move, and every minute it waits the
+   collateral covers less of the lender's debt. Default scope is every chain with
+   a lending diamond (the route decides); LIQUIDATE_CHAIN_IDS narrows it. */
+function liquidateUrl(env) {
+  const url = new URL(`${baseUrl(env)}/api/keeper/liquidate`);
+  const chains = (env.LIQUIDATE_CHAIN_IDS ?? "").trim();
+  if (chains) url.searchParams.set("chainId", chains);
+  const limit = (env.LIQUIDATE_LIMIT ?? "").trim();
+  if (limit) url.searchParams.set("limit", limit);
+  return url;
+}
+function summariseLiquidate(status, body) {
+  if (status === 0) return body;
+  let parsed = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return `${status} non-JSON: ${body.slice(0, 200)}`;
+  }
+  if (parsed?.error) return `${status} ${parsed.error}`;
+  const chainErrors = (parsed?.chains ?? []).filter((c) => c.status === "error").length;
+  return (
+    `${status} liquidated=${parsed?.liquidated ?? "?"} failed=${parsed?.failed ?? "?"} ` +
+    `chains=${parsed?.chains?.length ?? "?"}` + (chainErrors ? ` chainErrors=${chainErrors}` : "")
+  );
+}
 function candlesUrl(env) {
   const chains = (env.CANDLE_CHAIN_IDS ?? DEFAULT_CANDLE_CHAIN_IDS).trim();
   const url = new URL(`${baseUrl(env)}/api/keeper/candles`);
@@ -258,9 +312,13 @@ async function runAll(env) {
     );
   }
 
+  /* CCTP and liquidations ride this tick too: the account's cron cap leaves no
+     room for their own two-minute trigger (see wrangler.toml). */
   const results = await Promise.all([
     attempt(pushUrl(env), secret, summarise),
     attempt(candlesUrl(env), secret, summariseCandles),
+    attempt(cctpUrl(env), secret, summariseCctp),
+    attempt(liquidateUrl(env), secret, summariseLiquidate),
   ]);
 
   for (const r of results) (r.ok ? console.info : console.error)(r.line);
@@ -275,9 +333,34 @@ async function runAll(env) {
   return results.map((r) => r.line).join(" | ");
 }
 
+async function runCctp(env) {
+  const secret = env.KEEPER_CRON_SECRET;
+  if (!secret) {
+    throw new Error(
+      "KEEPER_CRON_SECRET is not set, so there is nothing to authenticate with. " +
+        "Set it to the same value as the Vercel project's CRON_SECRET:\n" +
+        "  npx wrangler secret put KEEPER_CRON_SECRET --config scripts/keeper-cron/wrangler.toml",
+    );
+  }
+  /* CCTP completion and liquidations: independent, overlapped, each judged on
+     its own — and the invocation fails if EITHER did, like runAll. */
+  const results = await Promise.all([
+    attempt(cctpUrl(env), secret, summariseCctp),
+    attempt(liquidateUrl(env), secret, summariseLiquidate),
+  ]);
+  for (const r of results) (r.ok ? console.info : console.error)(r.line);
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length > 0) throw new Error(failed.map((r) => r.line).join(" | "));
+  return results.map((r) => r.line).join(" | ");
+}
+
 export default {
-  /** The cron trigger. See wrangler.toml for the cadence and why. */
+  /** Two triggers, told apart by the expression Cloudflare hands back. */
   async scheduled(event, env) {
+    if (event?.cron === CCTP_CRON) {
+      await runCctp(env);
+      return;
+    }
     await runAll(env);
   },
 
@@ -301,7 +384,7 @@ export default {
         JSON.stringify({
           error: "Unauthorized.",
           armed: Boolean(env.KEEPER_CRON_SECRET),
-          targets: [pushUrl(env).toString(), candlesUrl(env).toString()],
+          targets: [pushUrl(env), candlesUrl(env), cctpUrl(env), liquidateUrl(env)].map(String),
         }),
         { status: 401, headers: { "content-type": "application/json" } },
       );

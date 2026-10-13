@@ -58,9 +58,12 @@
  * field rather than on which hook it came from.
  */
 
+import { visibleInterval } from "@/lib/visibleInterval";
 import { useCallback, useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { getContracts, isSeededPool } from "@/constants/registry";
+import { CHAINS_BY_ID } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { ITradingPair } from "@/constants/types/dex";
 import { chainTokenByAddress } from "@/constants/tokens";
 import { readVolumeWindow } from "@/lib/dex/logWindow";
@@ -70,7 +73,7 @@ import {
 } from "@/lib/dex/poolDiscovery";
 import { retryRpc } from "@/lib/dex/rpcRetry";
 import {
-  fetchSpotPrices,
+  fetchSpotPricesSoon,
   priceLookup,
   type PriceLookup,
 } from "@/lib/market/spot";
@@ -96,7 +99,7 @@ const ERC20_ABI = [
   "function decimals() external view returns (uint8)",
 ];
 
-const CACHE_DURATION = 30_000; // 30 seconds
+const CACHE_DURATION = 120_000; // 2 min, visible tabs only
 
 /* One cache for every consumer, keyed by chain inside so a chain's pairs can
  * land while another chain is still being read. Same contract as useV3Pools':
@@ -372,6 +375,10 @@ async function sweepChain(
 }
 
 export const usePoolData = () => {
+  /* Mainnet-first: the shared V2 sweep reads every deployed chain, but a viewer
+     with the testnet toggle off should not see testnet pools listed. Filtered
+     per consumer off the toggle, like the V3 table. */
+  const { showTestnets } = useTestnetMode();
   const [pools, setPools] = useState<ITradingPair[]>(() => store.snapshot());
   const [loading, setLoading] = useState(store.snapshot().length === 0);
   const [error, setError] = useState<string | null>(null);
@@ -405,9 +412,11 @@ export const usePoolData = () => {
          the table renders an em dash. */
       setPools(
         await store.sweep(
-          async () => priceLookup(await fetchSpotPrices()),
+          async () => priceLookup(await fetchSpotPricesSoon()),
           (chain, priceOf) => sweepChain(chain, priceOf),
           force,
+          /* Mainnet-first: skip testnet RPCs when hidden — see PoolStore.sweep. */
+          !showTestnets,
         ),
       );
     } catch (err: any) {
@@ -418,20 +427,18 @@ export const usePoolData = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showTestnets]);
 
   useEffect(() => {
     fetchPools();
-
-    const interval = setInterval(() => {
-      fetchPools(true); // Force refetch on interval
-    }, CACHE_DURATION);
-
-    return () => clearInterval(interval);
+    // Force refetch on interval — only while the tab is visible.
+    return visibleInterval(() => fetchPools(true), CACHE_DURATION);
   }, [fetchPools]);
 
   return {
-    pools,
+    pools: pools.filter(
+      (p) => showTestnets || CHAINS_BY_ID[p.chainId]?.network === "mainnet",
+    ),
     loading,
     error,
     refetch: () => fetchPools(true),

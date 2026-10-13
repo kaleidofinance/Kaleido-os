@@ -45,6 +45,16 @@ describe("Stablecoin Security Tests", function () {
     await kfUSD.setCollateralSupport(await USDT.getAddress(), true);
     await kfUSD.setCollateralSupport(await USDe.getAddress(), true);
 
+    /* kfUSD prices both legs from a per-collateral feed and fails closed without
+       one, so each collateral gets a $1.00 Chainlink-style feed here — which keeps
+       the "par" arithmetic these cases were written around exact. (Depeg and
+       fail-closed behaviour is covered in StablecoinFindings.test.js.) */
+    const Feed = await ethers.getContractFactory("MockAggregatorV3");
+    for (const token of [USDC, USDT, USDe]) {
+      const feed = await Feed.deploy(8, "X / USD", 100_000_000n);
+      await kfUSD.setCollateralFeed(await token.getAddress(), await feed.getAddress());
+    }
+
     // Grant MINTER_ROLE to owner for testing
     await kfUSD.grantRole(MINTER_ROLE, owner.address);
     

@@ -1,3 +1,9 @@
+import {
+  DEPLOYED_TOKENS,
+  OWN_TOKENS,
+  TOKENS,
+} from "../../../constants/registry";
+
 /**
  * Which symbols have a price feed, and what each chart range asks for.
  *
@@ -110,6 +116,27 @@ export function feedFor(symbol: string | null | undefined): string | null {
  * can name the alternatives instead of guessing at what exists.
  */
 export const PRICED_SYMBOLS: readonly string[] = Object.keys(FEEDS);
+
+/**
+ * Every asset exposed by Kaleido's canonical token registry.
+ *
+ * This is intentionally broader than PRICED_SYMBOLS. An asset can be valid
+ * for balances, swaps, or portfolio discovery without having a trustworthy
+ * third-party USD feed yet (for example tokenized equities and new community
+ * assets). Deriving this list keeps Luca's supported-asset answer aligned with
+ * the token pickers instead of maintaining a second hand-written allowlist.
+ */
+export const SUPPORTED_ASSET_SYMBOLS: readonly string[] = Object.freeze(
+  Array.from(
+    new Set([
+      ...Object.values(TOKENS)
+        .flat()
+        .map((token) => token.symbol.toUpperCase()),
+      ...DEPLOYED_TOKENS.map((token) => token.symbol.toUpperCase()),
+      ...OWN_TOKENS.map((token) => token.symbol.toUpperCase()),
+    ]),
+  ).sort(),
+);
 
 /** True when this symbol can be charted at all. */
 export const hasFeed = (symbol: string | null | undefined): boolean =>

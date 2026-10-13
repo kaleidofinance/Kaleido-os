@@ -486,7 +486,8 @@ const groups: PositionGroup[] = [
   },
 ];
 
-export const MOCK_PORTFOLIO: Portfolio = {
+/* Refresh stays the live one even in demo mode. */
+export const MOCK_PORTFOLIO: Omit<Portfolio, "refresh"> = {
   netValue: groups.reduce((acc, g) => acc + (g.subtotalUsd ?? 0), 0),
   /* False because every group priced in full — see the header. */
   netValuePartial: groups.some((g) => g.unpriced.length > 0),
@@ -495,6 +496,9 @@ export const MOCK_PORTFOLIO: Portfolio = {
   health: 1.18,
   unclaimedYieldUsd: UNCLAIMED_USD,
   groups,
+  /* No cross-chain holdings in demo mode: the agent then offers every chain
+     that carries a bridge token rather than narrowing to held ones. */
+  walletHoldings: [],
 
   /* Sorted most urgent first, as the hook does: critical, warning, info. Each one
      is raised by a row above, so removing a row here without removing its alert

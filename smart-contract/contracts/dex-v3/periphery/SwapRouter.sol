@@ -30,6 +30,12 @@ contract SwapRouter is
     using Path for bytes;
     using SafeCast for uint256;
 
+    /// @dev Placeholder for the actual input amount of a multihop exact-output swap.
+    /// The outer swap's return value is denominated in the intermediate token;
+    /// the terminal callback is the only frame that sees the user's input token.
+    uint256 private constant DEFAULT_AMOUNT_IN_CACHED = type(uint256).max;
+    uint256 private amountInCached = DEFAULT_AMOUNT_IN_CACHED;
+
     constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
 
     /// @dev Returns the pool for the given token pair and fee. The pool contract may or may not exist.
@@ -69,6 +75,9 @@ contract SwapRouter is
                 data.path = data.path.skipToken();
                 exactOutputInternal(amountToPay, msg.sender, 0, data);
             } else {
+                // This is the terminal callback: amountToPay is the actual
+                // amount taken from the user, in the user's input token.
+                amountInCached = amountToPay;
                 tokenIn = tokenOut; // swap in/out because exact output swaps are reversed
                 pay(tokenIn, data.payer, msg.sender, amountToPay);
             }
@@ -208,6 +217,9 @@ contract SwapRouter is
         );
 
         require(amountIn <= params.amountInMaximum, 'Too much requested');
+        // exactOutputSingle uses the swap return value, but the callback still
+        // writes the cache. Clear it so a later call cannot observe stale state.
+        amountInCached = DEFAULT_AMOUNT_IN_CACHED;
     }
 
     /// @inheritdoc ISwapRouter
@@ -220,13 +232,16 @@ contract SwapRouter is
     {
         // it's okay that the payer is fixed to msg.sender here, as they're only paying for the "final" exact output
         // swap, which happens first, and subsequent swaps are paid for within nested callback frames
-        amountIn = exactOutputInternal(
+        exactOutputInternal(
             params.amountOut,
             params.recipient,
             0,
             SwapCallbackData({path: params.path, payer: msg.sender})
         );
 
+        // The terminal callback recorded the amount in the user's input token.
+        amountIn = amountInCached;
         require(amountIn <= params.amountInMaximum, 'Too much requested');
+        amountInCached = DEFAULT_AMOUNT_IN_CACHED;
     }
 }

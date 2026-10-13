@@ -145,6 +145,25 @@ export function decodeSwap(log: {
 const isRateLimit = (e: unknown) =>
   /rate limit|too many requests|429/i.test(String((e as Error)?.message ?? e));
 
+/**
+ * A pruned-history error: the endpoint no longer serves logs/state for a block
+ * this old (BSC testnet's publicnode returns -32701 "History has been pruned",
+ * others word it differently). It is deterministic — retrying only burns the
+ * run's 60s budget — and the range is genuinely gone, so the caller skips that
+ * span and fills forward from what the endpoint still has, rather than failing
+ * the whole chain. Deep history is a separate backfill, off the critical path
+ * (see the module note). The message ethers surfaces embeds the JSON-RPC error,
+ * so a substring test over the coalesced message catches both the code and text.
+ */
+export const isPrunedHistory = (e: unknown) =>
+  /pruned|-32701|missing trie node|state (is )?not available|no historical/i.test(
+    String(
+      (e as { error?: { message?: string } })?.error?.message ??
+        (e as Error)?.message ??
+        e,
+    ),
+  );
+
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   let limited = 0;
   for (let attempt = 0; ; ) {
@@ -152,6 +171,8 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       if (DELAY_MS) await sleep(DELAY_MS);
       return await fn();
     } catch (e) {
+      // Permanent — do not spend the retry budget on a range that is gone.
+      if (isPrunedHistory(e)) throw e;
       if (isRateLimit(e) && limited < 8) {
         await sleep(Math.min(1000 * 2 ** limited, 30_000));
         limited++;
@@ -246,15 +267,28 @@ export async function indexChain(
        they landed in — swaps are rare on these pools, so unique blocks are few
        and one getBlock each is cheap. */
     const raw: Array<{ blockNumber: number; logIndex: number; tick: number }> = [];
+    let prunedSpans = 0;
     for (const { start, end } of planSpans(from, head, span)) {
-      const logs = await withRetry(() =>
-        provider.getLogs({
-          address: pool!.address,
-          topics: [SWAP_TOPIC],
-          fromBlock: start,
-          toBlock: end,
-        }),
-      );
+      let logs: ethers.Log[];
+      try {
+        logs = await withRetry(() =>
+          provider.getLogs({
+            address: pool!.address,
+            topics: [SWAP_TOPIC],
+            fromBlock: start,
+            toBlock: end,
+          }),
+        );
+      } catch (e) {
+        // This old range is pruned from the endpoint — skip it and fill forward
+        // from the blocks it still serves, rather than failing the whole chain
+        // and never advancing the cursor (which would retry it forever).
+        if (isPrunedHistory(e)) {
+          prunedSpans++;
+          continue;
+        }
+        throw e;
+      }
       for (const log of logs) {
         const d = decodeSwap({
           topics: log.topics as unknown as string[],
@@ -264,6 +298,13 @@ export async function indexChain(
         });
         if (d) raw.push(d);
       }
+    }
+
+    if (prunedSpans > 0) {
+      console.warn(
+        `[candleIndex] chain ${chainId} skipped ${prunedSpans} pruned span(s); ` +
+          `indexing forward from the retained history.`,
+      );
     }
 
     const blockTimes = new Map<number, number>();

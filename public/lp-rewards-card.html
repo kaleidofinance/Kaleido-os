@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kaleido LP Rewards</title>
+  <style>
+    :root{--ink:#07110e;--panel:#0d1b16;--text:#f4eee5;--muted:#aab8ae;--green:#35d18d;--sand:#d6c09a;--line:rgba(214,192,154,.22)}
+    *{box-sizing:border-box}
+    html,body{margin:0;background:#07110e}
+    body{min-height:100vh;display:grid;place-items:center;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text)}
+    .card{position:relative;isolation:isolate;overflow:hidden;width:min(1200px,100vw);aspect-ratio:1200/630;padding:64px 76px;background:linear-gradient(100deg,rgba(7,17,14,.98) 12%,rgba(7,17,14,.79) 58%,rgba(7,17,14,.93)),url('/hero-colosseum.webp') center/cover no-repeat;display:flex;flex-direction:column;justify-content:space-between}
+    .card:after{content:"";position:absolute;inset:0;z-index:-1;background:radial-gradient(circle at 82% 24%,rgba(53,209,141,.16),transparent 30%),linear-gradient(180deg,transparent 55%,rgba(7,17,14,.5))}
+    .brand{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:-.02em;font-size:24px}.mark{width:27px;height:27px;border:2px solid var(--green);border-radius:50%;position:relative}.mark:after{content:"";position:absolute;width:2px;height:31px;left:11px;top:-4px;background:var(--green);transform:rotate(35deg)}
+    .eyebrow{margin-top:48px;color:var(--sand);font:500 14px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.16em;text-transform:uppercase}.eyebrow span{color:var(--green)}
+    h1{max-width:760px;margin:18px 0 14px;font:600 clamp(38px,5vw,64px)/1.03 Georgia,serif;letter-spacing:-.035em}p{max-width:650px;margin:0;color:var(--muted);font-size:20px;line-height:1.45}
+    .footer{display:flex;align-items:flex-end;justify-content:space-between;gap:28px}.stats{display:flex;gap:12px;flex-wrap:wrap}.pill{border:1px solid var(--line);border-radius:999px;padding:11px 16px;color:var(--text);background:rgba(13,27,22,.66);font-size:14px}.pill b{color:var(--green);font-weight:600}.cta{display:inline-flex;align-items:center;gap:12px;border-radius:999px;padding:15px 22px;background:var(--green);color:#07110e;text-decoration:none;font-weight:700;white-space:nowrap}.cta:after{content:"↗";font-size:18px}
+    @media (max-width:720px){.card{padding:30px 24px}.brand{font-size:18px}.mark{width:22px;height:22px}.eyebrow{margin-top:24px;font-size:11px}h1{font-size:38px}p{font-size:16px}.footer{align-items:flex-start;flex-direction:column;gap:18px}.pill{font-size:12px;padding:9px 12px}}
+    @media print{body{display:block}.card{width:1200px;height:630px}}
+  </style>
+</head>
+<body>
+  <main class="card" aria-label="Kaleido LP rewards banner">
+    <div>
+      <div class="brand"><span class="mark" aria-hidden="true"></span><span>KaleidoFi</span></div>
+      <div class="eyebrow"><span>Liquidity campaign</span> · Arc mainnet</div>
+      <h1>Put your liquidity to work.</h1>
+      <p>Kaleido LP rewards are live. Provide in-range liquidity on Arc and earn points while your position helps deepen the market.</p>
+    </div>
+    <div class="footer">
+      <div class="stats"><div class="pill"><b>10×</b> LP campaign multiplier</div><div class="pill"><b>150</b> points / USD / day</div><div class="pill">In-range positions only</div></div>
+      <a class="cta" href="https://app.kaleidofi.xyz/liquidity">Provide liquidity</a>
+    </div>
+  </main>
+</body>
+</html>

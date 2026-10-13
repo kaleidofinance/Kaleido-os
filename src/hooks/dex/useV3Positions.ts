@@ -138,17 +138,11 @@ export const useV3Positions = () => {
                   POOL_FEE_ABI,
                   provider,
                 );
-                /* One round of reads: slot0 for price/tick, the two globals, and
-                   each of the position's two boundary ticks. All independent, so
-                   fired together rather than awaited in series. */
-                const [slot0, global0, global1, lowerTick, upperTick] =
-                  await Promise.all([
-                    poolContract.slot0(),
-                    poolContract.feeGrowthGlobal0X128(),
-                    poolContract.feeGrowthGlobal1X128(),
-                    poolContract.ticks(pos.tickLower),
-                    poolContract.ticks(pos.tickUpper),
-                  ]);
+                /* slot0 is the authoritative range read. Keep it separate from
+                   fee accounting: a rate-limited or unsupported fee-growth read
+                   must not turn a valid in-range position into a false
+                   "out-of-range" badge. */
+                const slot0 = await poolContract.slot0();
                 const currentTick = Number(slot0.tick);
                 /* Kept as a decimal string. It is only useful for valuing the
                    position (positionValue.ts) and stays null when this read
@@ -159,40 +153,56 @@ export const useV3Positions = () => {
                   currentTick >= Number(pos.tickLower) &&
                   currentTick < Number(pos.tickUpper);
 
-                /* The live uncollected figure. All the accumulators are BigInt
-                   already off ethers; feeGrowth.ts does the uint256-wrapping
-                   maths that a float cannot. A null return (impossible range)
-                   leaves the checkpoint fallback in place. */
-                const fees = uncollectedFees({
-                  tickLower: Number(pos.tickLower),
-                  tickUpper: Number(pos.tickUpper),
-                  tickCurrent: currentTick,
-                  liquidity: BigInt(pos.liquidity),
-                  feeGrowthInside0LastX128: BigInt(pos.feeGrowthInside0LastX128),
-                  feeGrowthInside1LastX128: BigInt(pos.feeGrowthInside1LastX128),
-                  tokensOwed0: BigInt(pos.tokensOwed0),
-                  tokensOwed1: BigInt(pos.tokensOwed1),
-                  token0: {
-                    feeGrowthGlobalX128: BigInt(global0),
-                    feeGrowthOutsideLowerX128: BigInt(lowerTick.feeGrowthOutside0X128),
-                    feeGrowthOutsideUpperX128: BigInt(upperTick.feeGrowthOutside0X128),
-                  },
-                  token1: {
-                    feeGrowthGlobalX128: BigInt(global1),
-                    feeGrowthOutsideLowerX128: BigInt(lowerTick.feeGrowthOutside1X128),
-                    feeGrowthOutsideUpperX128: BigInt(upperTick.feeGrowthOutside1X128),
-                  },
-                });
-                if (fees) {
-                  uncollectedFees0 = fees.amount0.toString();
-                  uncollectedFees1 = fees.amount1.toString();
+                try {
+                  const [global0, global1, lowerTick, upperTick] =
+                    await Promise.all([
+                      poolContract.feeGrowthGlobal0X128(),
+                      poolContract.feeGrowthGlobal1X128(),
+                      poolContract.ticks(pos.tickLower),
+                      poolContract.ticks(pos.tickUpper),
+                    ]);
+
+                  /* The live uncollected figure. All the accumulators are BigInt
+                     already off ethers; feeGrowth.ts does the uint256-wrapping
+                     maths that a float cannot. A null return (impossible range)
+                     leaves the checkpoint fallback in place. */
+                  const fees = uncollectedFees({
+                    tickLower: Number(pos.tickLower),
+                    tickUpper: Number(pos.tickUpper),
+                    tickCurrent: currentTick,
+                    liquidity: BigInt(pos.liquidity),
+                    feeGrowthInside0LastX128: BigInt(pos.feeGrowthInside0LastX128),
+                    feeGrowthInside1LastX128: BigInt(pos.feeGrowthInside1LastX128),
+                    tokensOwed0: BigInt(pos.tokensOwed0),
+                    tokensOwed1: BigInt(pos.tokensOwed1),
+                    token0: {
+                      feeGrowthGlobalX128: BigInt(global0),
+                      feeGrowthOutsideLowerX128: BigInt(lowerTick.feeGrowthOutside0X128),
+                      feeGrowthOutsideUpperX128: BigInt(upperTick.feeGrowthOutside0X128),
+                    },
+                    token1: {
+                      feeGrowthGlobalX128: BigInt(global1),
+                      feeGrowthOutsideLowerX128: BigInt(lowerTick.feeGrowthOutside1X128),
+                      feeGrowthOutsideUpperX128: BigInt(upperTick.feeGrowthOutside1X128),
+                    },
+                  });
+                  if (fees) {
+                    uncollectedFees0 = fees.amount0.toString();
+                    uncollectedFees1 = fees.amount1.toString();
+                  }
+                } catch (feeErr) {
+                  console.warn(
+                    "Failed to fetch fee growth for position:",
+                    tokenId.toString(),
+                    feeErr,
+                  );
                 }
               }
-            } catch (tickErr) {
+            } catch (poolErr) {
               console.warn(
-                "Failed to fetch tick for position:",
+                "Failed to fetch pool state for position:",
                 tokenId.toString(),
-                tickErr,
+                poolErr,
               );
             }
 

@@ -215,6 +215,112 @@ console.log("\n— the FAQ's own static cards survive their own validator —");
   );
 }
 
+console.log("\n— gauge: the one card with a number, so the number is guarded —");
+{
+  const ok = wire([
+    {
+      kind: "gauge",
+      label: "Health factor",
+      value: "1.62",
+      fraction: 0.31,
+      tone: "good",
+      min: "1.0",
+      max: "3.0+",
+      note: "higher is safer",
+      onClick: "steal()",
+    },
+  ]);
+  check("a valid gauge survives", ok.length === 1 && ok[0].kind === "gauge", JSON.stringify(ok));
+  check(
+    "its fields are rebuilt, the stray one dropped",
+    ok[0].fraction === 0.31 &&
+      ok[0].value === "1.62" &&
+      ok[0].tone === "good" &&
+      ok[0].min === "1.0" &&
+      ok[0].max === "3.0+" &&
+      !("onClick" in ok[0]),
+    JSON.stringify(ok[0]),
+  );
+
+  // fraction is geometry in [0,1] and the only number a card carries. A value
+  // outside the range is clamped, not honoured — an emitter that computed 1.3
+  // meant "full", not "overflow the track".
+  check("fraction above 1 clamps to 1", wire([{ kind: "gauge", label: "x", value: "1", fraction: 1.3, tone: "good" }])[0].fraction === 1);
+  check("fraction below 0 clamps to 0", wire([{ kind: "gauge", label: "x", value: "1", fraction: -5, tone: "bad" }])[0].fraction === 0);
+
+  // A non-number fraction is a malformed gauge, not a zero-filled one: dropped,
+  // so a bar that was never measured never draws.
+  check("NaN fraction drops the card", wire([{ kind: "gauge", label: "x", value: "1", fraction: NaN, tone: "good" }]).length === 0);
+  check("a string fraction drops the card", wire([{ kind: "gauge", label: "x", value: "1", fraction: "0.5", tone: "good" }]).length === 0);
+  check("a missing fraction drops the card", wire([{ kind: "gauge", label: "x", value: "1", tone: "good" }]).length === 0);
+
+  // Same required-field discipline as every other kind.
+  check("no label drops it", wire([{ kind: "gauge", value: "1", fraction: 0.5 }]).length === 0);
+  check("no value drops it", wire([{ kind: "gauge", label: "x", fraction: 0.5 }]).length === 0);
+  check("an unknown tone falls back to neutral", wire([{ kind: "gauge", label: "x", value: "1", fraction: 0.5, tone: "evil" }])[0].tone === "neutral");
+}
+
+console.log("\n— steps: a receipt, with a closed status set (local only) —");
+{
+  // steps is a LOCAL kind — a completed plan's receipt — so it is validated
+  // through localCards, not the wire (see the wire-ban section below).
+  const ok = localCards([
+    {
+      kind: "steps",
+      title: "Done — 2 transactions confirmed",
+      steps: [
+        { label: "Approve USDC", status: "done", detail: "35.3s · 0xde20…", onClick: "steal()" },
+        { label: "Swap USDC for KLD", status: "skipped" },
+        { label: "Repay loan", status: "failed", detail: "reverted" },
+      ],
+    },
+  ]);
+  check("a valid steps card survives locally", ok.length === 1 && ok[0].kind === "steps", JSON.stringify(ok));
+  check(
+    "three rows, the stray field dropped from each",
+    ok[0].steps.length === 3 && !("onClick" in ok[0].steps[0]),
+    JSON.stringify(ok[0].steps[0]),
+  );
+  check("the closed status set passes through", ok[0].steps.map((st) => st.status).join(",") === "done,skipped,failed");
+
+  // An unknown status is defaulted, not dropped — a real step is worth showing
+  // even if its enum arrived wrong.
+  check(
+    "an unknown status becomes done",
+    localCards([{ kind: "steps", steps: [{ label: "x", status: "exploded" }] }])[0].steps[0].status === "done",
+  );
+  // Same required-field and cap discipline as stats rows.
+  check(
+    "a step with no label is dropped, the rest kept",
+    localCards([{ kind: "steps", steps: [{ status: "done" }, { label: "keep", status: "done" }] }])[0].steps.length === 1,
+  );
+  check("no steps at all drops the card", localCards([{ kind: "steps", steps: [] }]).length === 0);
+  check(
+    "beyond the row cap is truncated, not a page",
+    localCards([
+      { kind: "steps", steps: Array.from({ length: 20 }, () => ({ label: "a", status: "done" })) },
+    ])[0].steps.length === 8,
+  );
+}
+
+console.log("\n— a model may not forge a receipt over the wire —");
+{
+  const receipt = {
+    kind: "steps",
+    steps: [{ label: "Swap", status: "done", detail: "13.3s · 0xFAKE…hash" }],
+  };
+  // The wire gate drops it: a steps card carries real hashes and a settled
+  // result, and a model writing one is inventing them.
+  check("cardsFromChat drops a wire steps card", wire([receipt]).length === 0, JSON.stringify(wire([receipt])));
+  // Its display siblings still pass the wire — the ban is one kind, not a lockout.
+  check(
+    "a display card beside it still survives the wire",
+    wire([receipt, { kind: "metric", label: "HF", value: "1.6" }]).length === 1,
+  );
+  // Local producers keep the receipt — that is who builds the real one.
+  check("localCards keeps the steps receipt", localCards([receipt]).length === 1);
+}
+
 console.log("\n— localCards applies the same gate —");
 check(
   "local cards pass through the validator",
@@ -229,6 +335,16 @@ check(
     },
   ])[0].rows.length === 8,
 );
+
+// connect: local-only, one closed wallet value, never from the model.
+{
+  const card = { kind: "connect", wallet: "agw", title: "Connect your Abstract Global Wallet", label: "Connect Abstract Global Wallet", body: "Signs nothing." };
+  const loc = localCards([card]);
+  check("connect card passes the local gate", loc.length === 1 && loc[0].kind === "connect" && loc[0].wallet === "agw");
+  check("connect card is forbidden from the model", wire([card]).length === 0);
+  check("an unknown wallet value is dropped", localCards([{ ...card, wallet: "metamask" }]).length === 0);
+  check("a stray href/onClick is not carried", !("href" in (localCards([{ ...card, href: "https://evil", onClick: "x" }])[0] ?? {})));
+}
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

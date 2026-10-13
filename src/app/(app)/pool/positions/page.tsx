@@ -31,6 +31,7 @@ import { pairedAmount } from "@/lib/dex/deposit";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import PairIcon from "../_components/PairIcon";
 import s from "../pool.module.css";
+import { isClosed, positionsToShow } from "@/lib/dex/visiblePositions";
 
 /**
  * Your positions — the wallet-scoped half of the Liquidity section.
@@ -117,12 +118,22 @@ function RangeBar({
   tickLower,
   tickUpper,
   currentTick,
+  inRange,
   decimals0,
   decimals1,
 }: {
   tickLower: number;
   tickUpper: number;
   currentTick: number | null;
+  /* The AUTHORITATIVE in-range verdict, from the same tick-based, half-open
+     computation the badge and the portfolio use (useV3Positions). Passed in so
+     the label here cannot disagree with the badge above it: this bar used to
+     recompute in-range from its own, separately-read `currentTick` on a CLOSED
+     price interval, so at a tick boundary — or across a block skew between the
+     two reads — it said "in range" while the badge said "out". The tick below is
+     still this bar's own, but only for WHERE to draw the marker, never for the
+     verdict. */
+  inRange: boolean;
   decimals0: number;
   decimals1: number;
 }) {
@@ -150,7 +161,6 @@ function RangeBar({
   const bandLeft = pct(lo);
   const bandRight = 100 - pct(hi);
   const markerPct = cur !== null ? pct(cur) : null;
-  const inRange = cur !== null && cur >= lo && cur <= hi;
 
   const fmt = (v: number) =>
     v >= 1000 ? v.toFixed(0) : v >= 1 ? v.toFixed(4) : v.toFixed(6);
@@ -172,7 +182,7 @@ function RangeBar({
       <div className={s.rangeLabels}>
         <span>{fmt(lo)}</span>
         <span className={inRange ? "" : s.out}>
-          {cur !== null ? (inRange ? "in range" : "out of range") : "…"}
+          {inRange ? "in range" : "out of range"}
         </span>
         <span>{fmt(hi)}</span>
       </div>
@@ -290,6 +300,14 @@ function PositionCard({
   const owedTotal = Number(fee0) + Number(fee1);
   const feeAmount0 = feeAmountToNumber(BigInt(fee0), decimalsFor(chainId, p.token0));
   const feeAmount1 = feeAmountToNumber(BigInt(fee1), decimalsFor(chainId, p.token1));
+  /* A wallet can still own an NFT after its pool has been drained. Keep that
+     position visible so its liquidity can be removed, but do not describe it as
+     merely out of range: a zero-liquidity pool has no active market at all. */
+  const inactive = poolState?.liquidity === "0";
+  /* Liquidity already removed, but the collect that should have followed never
+     landed — the tokens and fees are still owed on the NFT. Collect is the only
+     thing left to do; adding to or removing from an empty position isn't. */
+  const closed = isClosed(p);
   const canAdd =
     legs !== null &&
     account !== undefined &&
@@ -405,7 +423,8 @@ function PositionCard({
   };
 
   return (
-    <div className={s.card}>
+    /* Anchored, so /portfolio's liquidity rows can open THIS position's card. */
+    <div className={s.card} id={`position-${p.tokenId}`}>
       <div className={s.cardTop}>
         <div className={s.pair}>
           <PairIcon symbol={symbolFor(p.token0)} />
@@ -419,8 +438,10 @@ function PositionCard({
             V3 · {(p.fee / 10000).toFixed(2)}% fee · #{p.tokenId}
           </div>
         </div>
-        <span className={`${s.badge} ${p.inRange ? "" : s.out}`}>
-          {p.inRange ? "In range" : "Out of range"}
+        <span
+          className={`${s.badge} ${closed || inactive ? s.inactive : p.inRange ? "" : s.out}`}
+        >
+          {closed ? "Closed" : inactive ? "Inactive" : p.inRange ? "In range" : "Out of range"}
         </span>
       </div>
 
@@ -428,6 +449,7 @@ function PositionCard({
         tickLower={p.tickLower}
         tickUpper={p.tickUpper}
         currentTick={poolState?.tick ?? null}
+        inRange={p.inRange}
         decimals0={decimalsFor(chainId, p.token0)}
         decimals1={decimalsFor(chainId, p.token1)}
       />
@@ -440,8 +462,8 @@ function PositionCard({
         <div className={s.stat}>
           <span className={s.statLabel}>Unclaimed fees</span>
           <span className={`${s.statValue} tabular`}>
-            {shortAmount(feeAmount0, "—")} {symbolFor(p.token0)} +{" "}
-            {shortAmount(feeAmount1, "—")} {symbolFor(p.token1)}
+            {shortAmount(feeAmount0, "0")} {symbolFor(p.token0)} +{" "}
+            {shortAmount(feeAmount1, "0")} {symbolFor(p.token1)}
           </span>
         </div>
       </div>
@@ -449,6 +471,12 @@ function PositionCard({
       {/* Defaults to All, so the button below reads and behaves exactly as it did
           when full removal was the only thing it could do. Picking a share is
           additive: nobody has to notice this row to close a position. */}
+      {closed ? (
+        <p className={s.addNote}>
+          Liquidity removed. These tokens are still yours — collect them to
+          send them to your wallet.
+        </p>
+      ) : (
       <div className={s.shareRow}>
         <span className={s.shareLabel}>Remove</span>
         {SHARES.map((v) => (
@@ -462,6 +490,7 @@ function PositionCard({
           </button>
         ))}
       </div>
+      )}
 
       <div className={s.actions}>
         <button
@@ -471,36 +500,38 @@ function PositionCard({
         >
           {busy === "collect" ? "Collecting…" : "Collect fees"}
         </button>
-        <button
-          className={s.actBtn}
-          disabled={legs === null || busy !== null}
-          onClick={() => setAdding((v) => !v)}
-        >
-          {adding ? "Close" : "Add liquidity"}
-        </button>
-        <button
-          className={s.actBtn}
-          disabled={busy !== null}
-          onClick={onRemove}
-        >
-          {busy === "remove"
-            ? "Removing…"
-            : share === 100
-              ? "Remove liquidity"
-              : `Remove ${share}%`}
-        </button>
+        {!closed && (
+          <>
+            <button
+              className={s.actBtn}
+              disabled={legs === null || busy !== null}
+              onClick={() => setAdding((v) => !v)}
+            >
+              {adding ? "Close" : "Add liquidity"}
+            </button>
+            <button
+              className={s.actBtn}
+              disabled={busy !== null}
+              onClick={onRemove}
+            >
+              {busy === "remove"
+                ? "Removing…"
+                : share === 100
+                  ? "Remove liquidity"
+                  : `Remove ${share}%`}
+            </button>
+          </>
+        )}
       </div>
 
-      {legs === null && (
+      {legs === null && !closed && (
         <p className={s.addNote}>
-          One of this position&apos;s tokens isn&apos;t in this chain&apos;s
-          registry, so its decimals are unknown — adding is disabled rather than
-          guessing at how much to send. Collecting and removing don&apos;t need
-          them.
+          A token isn&apos;t in this chain&apos;s registry — adding is disabled.
+          Collecting and removing still work.
         </p>
       )}
 
-      {adding && legs !== null && (
+      {adding && legs !== null && !closed && (
         <div className={s.addForm}>
           <div className={s.priceRow}>
             <label className={s.priceBox}>
@@ -562,9 +593,8 @@ function PositionCard({
               L(amount1)) and the pool pulls only what that liquidity costs, so
               the surplus is never transferred — it stays in the wallet. */}
           <p className={s.addNote}>
-            Deposited into this position&apos;s own pool, {(p.fee / 10000).toFixed(2)}%
-            tier and range — the bounds don&apos;t move. Whichever side the range
-            doesn&apos;t need is left in your wallet.
+            Same pool, {(p.fee / 10000).toFixed(2)}% tier and range. Unused
+            tokens stay in your wallet.
           </p>
           <div className={s.actions}>
             <button
@@ -592,13 +622,33 @@ export default function PositionsPage() {
   } = useV3Positions();
   const { chainId, isConnected } = useWalletV2();
   const poolStates = usePoolStates(positions, chainId);
-  const gate = useChainGate();
+  const gate = useChainGate(undefined, "dex");
 
   // Bound to this chain so a position's raw addresses resolve against the right
   // registry — the same address means a different token on a different chain.
   const symbolFor = (address: string) => symbolForAddress(chainId, address);
 
-  const withActive = positions.filter((p) => Number(p.liquidity) > 0);
+  /* Open positions, plus closed ones that still hold tokens a collect would pay
+     (a 100% remove whose collect never landed). Filtering on liquidity alone hid
+     those — and their Collect button — while the Portfolio showed the fees as
+     ready to claim. See lib/dex/visiblePositions. */
+  const withActive = positionsToShow(positions);
+
+  /* Arriving from /portfolio as #position-<id>: the cards render after the read,
+     so the browser's own jump found nothing. Scroll once the card exists, and
+     flash it so the eye lands on the right one. */
+  const anchorReady = withActive.length;
+  useEffect(() => {
+    const id = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    if (!id.startsWith("position-")) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.animate?.(
+      [{ boxShadow: "0 0 0 2px var(--k-brand)" }, { boxShadow: "0 0 0 0 transparent" }],
+      { duration: 1800, easing: "ease-out" },
+    );
+  }, [anchorReady]);
 
   /* The third fact the two empty states below do not cover: a connected wallet
      on a chain with no PositionManager. `useV3Positions` reads nothing there, so
@@ -608,7 +658,7 @@ export default function PositionsPage() {
      registry, so it is already known, and showing a loading state for a read
      that will never happen would be a fabricated wait. */
   if (!gate.ready) {
-    return <ChainGate product="liquidity positions" state={gate} />;
+    return <ChainGate product="liquidity positions" state={gate} requires="dex" />;
   }
 
   if (loading && positions.length === 0) {
@@ -645,7 +695,7 @@ export default function PositionsPage() {
         <div className={s.emptySub}>
           {isConnected
             ? "Provide liquidity to a pool to start earning trading fees."
-            : "Positions are held as NFTs in your wallet, so there is nothing to read until one is connected."}{" "}
+            : "Connect a wallet to load them."}{" "}
           Browse{" "}
           <Link href="/pool" className={s.emptyLink}>
             all pools

@@ -1,0 +1,145 @@
+process.env.ARGUS_ENABLED = "1";
+/**
+ * Argus swap builder — the calldata it emits must decode back to the EXACT
+ * UniversalRouter v4 encoding reverse-engineered from a live Arc swap:
+ * execute(commands=0x10, [ (actions=0x06,0x0c,0x0f, params[3]) ], deadline).
+ * A mistake here sends malformed calldata to a router that moves funds, so this
+ * round-trips every field. Run with `npx tsx src/lib/argus/swap.test.ts`.
+ */
+import { AbiCoder, Interface } from "ethers";
+import { buildArgusSwapTx } from "./swap.ts";
+import { ARGUS_V4 } from "./addresses.ts";
+import type { ArgusLaunch } from "./launch.ts";
+
+let pass = 0;
+let fail = 0;
+const check = (name: string, ok: boolean, got?: string) => {
+  if (ok) { pass++; console.log(`  ok   ${name}`); }
+  else { fail++; console.log(`  FAIL ${name}${got === undefined ? "" : ` — ${got}`}`); }
+};
+
+const USDC = "0x3600000000000000000000000000000000000000";
+const TOKEN = "0x6A70f331a702d0604D9e985d7822ed22D3a0C2fb";
+const HOOK = "0x551FD9a18C67d498F3ac8C3F08b9f13EFA1Da044";
+const launch = (poolFee = 10000): ArgusLaunch => ({
+  token: TOKEN, portal: "0x00000000000000000000000000000000000000B0", hook: HOOK,
+  splitter: "0x0000000000000000000000000000000000000004", locker: "0x0000000000000000000000000000000000000005",
+  quoteAsset: USDC, buyTaxBps: 100, sellTaxBps: 100, tickStart: 0, tickBond: 800000,
+  tokenIsToken0: false, positionId: 1n, currency0: USDC, currency1: TOKEN,
+  poolId: "0x" + "11".repeat(32), poolFee,
+});
+
+const coder = AbiCoder.defaultAbiCoder();
+const iface = new Interface(["function execute(bytes commands, bytes[] inputs, uint256 deadline)"]);
+function decode(data: string) {
+  const parsed = iface.parseTransaction({ data })!;
+  const commands: string = parsed.args[0];
+  const inputs: string[] = parsed.args[1];
+  // The V4_SWAP input is always the LAST one (an input-fee command may precede it).
+  const [actions, params] = coder.decode(["bytes", "bytes[]"], inputs[inputs.length - 1]) as [string, string[]];
+  const [p0] = coder.decode(
+    ["tuple(tuple(address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks) poolKey,bool zeroForOne,uint128 amountIn,uint128 amountOutMinimum,uint160 sqrtPriceLimitX96,bytes hookData)"],
+    params[0],
+  ) as any;
+  const [settleCur, settleAmt] = coder.decode(["address", "uint256"], params[1]) as [string, bigint];
+  const [takeCur, takeAmt] = coder.decode(["address", "uint256"], params[2]) as [string, bigint];
+  return { commands, inputs, nInputs: inputs.length, actions, nParams: params.length, p0, settleCur, settleAmt, takeCur, takeAmt };
+}
+
+console.log("\n— BUY (quote→token) round-trips to ground-truth encoding —");
+{
+  const amtIn = 10n * 10n ** 6n; // 10 USDC
+  const minOut = 3_000_000n * 10n ** 18n;
+  const tx = buildArgusSwapTx({ launch: launch(), side: "buy", amountInRaw: amtIn, amountOutMinimum: minOut, deadlineSec: 111 })!;
+  check("to = UniversalRouter", tx.to.toLowerCase() === ARGUS_V4.universalRouter.toLowerCase());
+  check("value = 0 (ERC-20 quote via Permit2)", tx.value === 0n);
+  const d = decode(tx.data);
+  check("commands = 0x10 (V4_SWAP)", d.commands === "0x10", d.commands);
+  check("one input", d.nInputs === 1);
+  check("actions = 0x06 0x0c 0x0f", d.actions === "0x060c0f", d.actions);
+  check("three params", d.nParams === 3);
+  check("poolKey currency0/1 correct", d.p0.poolKey.currency0.toLowerCase() === USDC && d.p0.poolKey.currency1.toLowerCase() === TOKEN.toLowerCase());
+  check("poolKey fee/spacing/hook correct", Number(d.p0.poolKey.fee) === 10000 && Number(d.p0.poolKey.tickSpacing) === 200 && d.p0.poolKey.hooks.toLowerCase() === HOOK.toLowerCase());
+  check("buy → zeroForOne true (token is currency1)", d.p0.zeroForOne === true);
+  check("amountIn + minOut carried into swap params", BigInt(d.p0.amountIn) === amtIn && BigInt(d.p0.amountOutMinimum) === minOut);
+  check("sqrtPriceLimitX96 present and 0 (Argus router's older struct — the fix)", BigInt(d.p0.sqrtPriceLimitX96) === 0n);
+  check("SETTLE_ALL settles the INPUT (USDC, amountIn)", d.settleCur.toLowerCase() === USDC && d.settleAmt === amtIn);
+  check("TAKE_ALL takes the OUTPUT (token, minOut)", d.takeCur.toLowerCase() === TOKEN.toLowerCase() && d.takeAmt === minOut);
+  check("meta flags the input for Permit2 approval", tx.meta.approvalNeededFor.toLowerCase() === USDC);
+  check("marked unverified", tx.unverified === true);
+}
+
+console.log("\n— SELL (token→quote) flips direction + currencies —");
+{
+  const tx = buildArgusSwapTx({ launch: launch(), side: "sell", amountInRaw: 1000n * 10n ** 18n, amountOutMinimum: 1n })!;
+  const d = decode(tx.data);
+  check("sell → zeroForOne false", d.p0.zeroForOne === false);
+  check("SETTLE_ALL settles the token", d.settleCur.toLowerCase() === TOKEN.toLowerCase());
+  check("TAKE_ALL takes USDC", d.takeCur.toLowerCase() === USDC);
+}
+
+console.log("\n— pool fee is NOT hardcoded (comes from the launch) —");
+{
+  const tx = buildArgusSwapTx({ launch: launch(0), side: "buy", amountInRaw: 1n, amountOutMinimum: 0n })!;
+  check("fee=0 launch → poolKey.fee 0 (validated key, not assumed 10000)", Number(decode(tx.data).p0.poolKey.fee) === 0);
+}
+
+console.log("\n— SELL with in-swap fee (TAKE_PORTION) —");
+{
+  const FEE = "0x000000000000000000000000000000000000dEaD";
+  const amtIn = 1000n * 10n ** 18n;
+  const minOut = 1_000_000n; // 1 USDC total floor
+  const tx = buildArgusSwapTx({ launch: launch(), side: "sell", amountInRaw: amtIn, amountOutMinimum: minOut, fee: { receiver: FEE, bps: 20 } })!;
+  const parsed = iface.parseTransaction({ data: tx.data })!;
+  const [actions, params] = coder.decode(["bytes", "bytes[]"], (parsed.args[1] as string[])[0]) as [string, string[]];
+  check("actions add TAKE_PORTION before TAKE_ALL (0x06 0x0c 0x10 0x0f)", actions === "0x060c100f", actions);
+  check("four params (swap, settle, take_portion, take_all)", params.length === 4);
+  const [tpCur, tpTo, tpBips] = coder.decode(["address", "address", "uint256"], params[2]) as [string, string, bigint];
+  check("TAKE_PORTION takes USDC to the fee receiver at 20 bps", tpCur.toLowerCase() === USDC && tpTo.toLowerCase() === FEE.toLowerCase() && tpBips === 20n, `${tpCur} ${tpTo} ${tpBips}`);
+  const [taCur, taMin] = coder.decode(["address", "uint256"], params[3]) as [string, bigint];
+  check("TAKE_ALL floors the USER's USDC at minOut net of fee", taCur.toLowerCase() === USDC && taMin === (minOut * 9980n) / 10000n, `${taMin}`);
+  check("meta carries the fee", tx.meta.feeBps === 20 && (tx.meta.feeReceiver ?? "").toLowerCase() === FEE.toLowerCase());
+}
+
+console.log("\n— BUY with in-tx fee (PERMIT2_TRANSFER_FROM from the USDC input) —");
+{
+  const FEE_TO = "0x00000000000000000000000000000000000FEE00";
+  const swapAmt = 9_980_000n; // 10 USDC − 0.2%
+  const feeAmt = 20_000n;
+  const minOut = 3_000_000n * 10n ** 18n;
+  const tx = buildArgusSwapTx({
+    launch: launch(), side: "buy", amountInRaw: swapAmt, amountOutMinimum: minOut,
+    inputFee: { receiver: FEE_TO, amountRaw: feeAmt }, deadlineSec: 111,
+  })!;
+  const d = decode(tx.data);
+  check("commands = 0x02 0x10 (PERMIT2_TRANSFER_FROM, then V4_SWAP)", d.commands === "0x0210", d.commands);
+  check("two inputs", d.nInputs === 2);
+  const [fTok, fTo, fAmt] = coder.decode(["address", "address", "uint160"], d.inputs[0]) as unknown as [string, string, bigint];
+  check(
+    "the fee pulls USDC (the input currency) to the receiver, exact amount",
+    fTok.toLowerCase() === USDC && fTo.toLowerCase() === FEE_TO.toLowerCase() && fAmt === feeAmt,
+    `${fTok} ${fTo} ${fAmt}`,
+  );
+  check("the swap itself is the plain 3-action buy on the remainder", d.actions === "0x060c0f" && d.p0.amountIn === swapAmt && d.settleAmt === swapAmt, d.actions);
+  check("the user's floor is untouched (fee came off the input, not the output)", d.takeAmt === minOut, `${d.takeAmt}`);
+  check("meta carries the input fee", tx.meta.inputFeeRaw === feeAmt);
+}
+
+console.log("\n— no fee → the verified 3-action path is byte-unchanged —");
+{
+  const tx = buildArgusSwapTx({ launch: launch(), side: "sell", amountInRaw: 5n, amountOutMinimum: 2n })!;
+  const d = decode(tx.data);
+  check("actions stay 0x06 0x0c 0x0f (no TAKE_PORTION)", d.actions === "0x060c0f", d.actions);
+  check("meta feeBps 0, no receiver", tx.meta.feeBps === 0 && tx.meta.feeReceiver === null);
+}
+
+console.log("\n— gated off —");
+{
+  const prev = process.env.ARGUS_ENABLED;
+  process.env.ARGUS_ENABLED = "";
+  check("ARGUS_ENABLED off → null (cannot build a signable tx)", buildArgusSwapTx({ launch: launch(), side: "buy", amountInRaw: 1n, amountOutMinimum: 0n }) === null);
+  process.env.ARGUS_ENABLED = prev;
+}
+
+console.log(`\n${pass} passed, ${fail} failed`);
+if (fail > 0) process.exit(1);

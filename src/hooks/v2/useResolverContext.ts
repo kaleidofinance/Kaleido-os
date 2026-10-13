@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { toEthersSigner } from "@/lib/wallet/ethersSigner";
+import { withPreflight } from "@/lib/wallet/preflightSigner";
 import type { ResolverContext } from "@/lib/v2/intents";
 
 /**
@@ -20,7 +21,11 @@ export function useResolverContext(): () => ResolverContext | null {
 
   return useCallback(() => {
     if (!account || !chain) return null;
-    const signer = toEthersSigner(account, chain);
+    /* Wrapped so every step eth_calls before it opens the wallet: a step that
+       would revert is caught here and never becomes a prompt the user signs for
+       nothing. Fail-open — a flaky RPC proceeds to the real send — so this only
+       ever removes doomed prompts, never blocks a good one. See withPreflight. */
+    const signer = withPreflight(toEthersSigner(account, chain));
     return { signer, address: account.address, chainId: chain.id };
   }, [account, chain]);
 }
