@@ -33,6 +33,8 @@ export const X_TASK_POINTS = {
   absexit: 700,
   lendborrow: 500,
   lendborrowComment: 500,
+  limitorder: 500,
+  limitorderComment: 500,
   bitget: 100,
 } as const;
 
@@ -51,6 +53,8 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   absexit: "x_absexit_at",
   lendborrow: "x_lendborrow_at",
   lendborrowComment: "x_lendborrow_comment_at",
+  limitorder: "x_limitorder_at",
+  limitorderComment: "x_limitorder_comment_at",
   bitget: "x_bitget_at",
 };
 
