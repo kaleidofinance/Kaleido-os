@@ -228,6 +228,32 @@ async function computeBoard(
   const participants = count.error ? null : (count.count ?? null);
   if (participants === null) degraded.push("participants");
 
+  const pageWallets = ((rows.data ?? []) as RowRecord[]).map((row) =>
+    row.wallet.toLowerCase(),
+  );
+  const referralRows =
+    pageWallets.length === 0
+      ? { data: [], error: null }
+      : await db
+          .from("waitlist_leaderboard")
+          .select("wallet, referrals")
+          .in("wallet", pageWallets);
+  if (referralRows.error) {
+    console.error(
+      "[leaderboard] referral read failed:",
+      referralRows.error.message,
+    );
+    degraded.push("referrals");
+  }
+  const referrals = new Map(
+    (
+      (referralRows.data ?? []) as {
+        wallet: string;
+        referrals: number | string;
+      }[]
+    ).map((row) => [row.wallet.toLowerCase(), Number(row.referrals)] as const),
+  );
+
   const mapped: LeaderboardRow[] = ((rows.data ?? []) as RowRecord[]).map(
     (r) => ({
       wallet: r.wallet,
@@ -238,6 +264,9 @@ async function computeBoard(
       actionPoints: num(r.action_points),
       bonusPoints: num(r.bonus_points),
       volume: num(r.volume),
+      referrals: referralRows.error
+        ? null
+        : (referrals.get(r.wallet.toLowerCase()) ?? 0),
     }),
   );
 

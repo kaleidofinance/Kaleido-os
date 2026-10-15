@@ -42,6 +42,8 @@ export interface LeaderboardRow {
   /** Cumulative USD trading volume (Σ point_actions.usd_value). 0 for waitlist
    *  credits; fills as volume-bearing protocol actions land. */
   volume: number | null;
+  /** X-linked waitlist referrals attributed to this wallet. */
+  referrals: number | null;
 }
 
 /**

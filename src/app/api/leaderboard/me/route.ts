@@ -153,6 +153,7 @@ export async function GET(request: NextRequest) {
         actionPoints: num(row.data.action_points),
         bonusPoints: num(row.data.bonus_points),
         volume: num(row.data.volume),
+        referrals: null,
       }
     : null;
 
