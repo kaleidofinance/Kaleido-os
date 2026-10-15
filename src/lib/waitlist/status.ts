@@ -27,8 +27,8 @@ export type XTaskKey =
   | "argus"
   | "argus2"
   | "absexit"
-  | "limitorder"
-  | "limitorderComment"
+  | "argusIntegration"
+  | "argusIntegrationComment"
   | "bitget";
 
 /** On-chain transaction task keys. `arcMainnet` was retired 2026-09-23 (farmable);
