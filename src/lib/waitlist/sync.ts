@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { eligibleTaskPoints, topUpOwed, topUpRow, X_TASK_COLUMNS, type TaskRow } from "./eligible";
+import {
+  eligibleTaskPoints,
+  topUpOwed,
+  topUpRow,
+  X_TASK_COLUMNS,
+  type TaskRow,
+} from "./eligible";
 import { taskVolumeTotal } from "./swapVolume";
 
 /**
@@ -21,12 +27,16 @@ import { taskVolumeTotal } from "./swapVolume";
 const PAGE = 1000;
 
 async function pageAll<T>(
-  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  build: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: unknown }>,
 ): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await build(from, from + PAGE - 1);
-    if (error) throw new Error(String((error as { message?: string }).message ?? error));
+    if (error)
+      throw new Error(String((error as { message?: string }).message ?? error));
     out.push(...(data ?? []));
     if (!data || data.length < PAGE) return out;
   }
@@ -90,35 +100,61 @@ export async function loadSyncFacts(admin: SupabaseClient) {
   ].join(", ");
 
   const [rows, lb, credits, swaps] = await Promise.all([
-    pageAll<TaskRow & { wallet: string; activated_at: string | null }>((a, b) =>
-      admin.from("waitlist").select(cols).order("wallet").range(a, b) as never,
+    pageAll<TaskRow & { wallet: string; activated_at: string | null }>(
+      (a, b) =>
+        admin
+          .from("waitlist")
+          .select(cols)
+          .order("wallet")
+          .range(a, b) as never,
     ),
-    pageAll<{ wallet: string; referrals: number | null }>((a, b) =>
-      admin.from("waitlist_leaderboard").select("wallet, referrals").order("wallet").range(a, b) as never,
+    pageAll<{ wallet: string; active_referrals: number | null }>(
+      (a, b) =>
+        admin
+          .from("waitlist_leaderboard")
+          .select("wallet, active_referrals")
+          .order("wallet")
+          .range(a, b) as never,
     ),
-    pageAll<{ wallet: string; points: number | string }>((a, b) =>
-      admin
-        .from("point_actions")
-        .select("wallet, points")
-        .eq("source_slug", "waitlist")
-        .eq("season", 1)
-        .order("id")
-        .range(a, b) as never,
+    pageAll<{ wallet: string; points: number | string }>(
+      (a, b) =>
+        admin
+          .from("point_actions")
+          .select("wallet, points")
+          .eq("source_slug", "waitlist")
+          .eq("season", 1)
+          .order("id")
+          .range(a, b) as never,
     ),
-    pageAll<{ wallet: string; swaps_usd: number | string | null; collateral_usd: number | string | null }>((a, b) =>
-      admin
-        .from("wallet_task_volume")
-        .select("wallet, swaps_usd, collateral_usd")
-        .order("wallet")
-        .range(a, b) as never,
+    pageAll<{
+      wallet: string;
+      swaps_usd: number | string | null;
+      collateral_usd: number | string | null;
+    }>(
+      (a, b) =>
+        admin
+          .from("wallet_task_volume")
+          .select("wallet, swaps_usd, collateral_usd")
+          .order("wallet")
+          .range(a, b) as never,
     ),
   ]);
 
-  const referrals = new Map(lb.map((r) => [r.wallet.toLowerCase(), Number(r.referrals ?? 0)]));
-  const credited = sumBy(credits, (r: { points: number | string }) => Number(r.points ?? 0));
+  const referrals = new Map(
+    lb.map((r) => [r.wallet.toLowerCase(), Number(r.active_referrals ?? 0)]),
+  );
+  const credited = sumBy(credits, (r: { points: number | string }) =>
+    Number(r.points ?? 0),
+  );
   // Task volume per wallet: ledger swaps + idle collateral held now (the view).
   const swapVolumeUsd = new Map(
-    swaps.map((r) => [r.wallet.toLowerCase(), taskVolumeTotal(r.swaps_usd, r.collateral_usd)] as const),
+    swaps.map(
+      (r) =>
+        [
+          r.wallet.toLowerCase(),
+          taskVolumeTotal(r.swaps_usd, r.collateral_usd),
+        ] as const,
+    ),
   );
   return { rows, referrals, credited, swapVolumeUsd };
 }
@@ -127,8 +163,14 @@ export async function loadSyncFacts(admin: SupabaseClient) {
 export async function syncWaitlistCredits(
   admin: SupabaseClient,
   now = Date.now(),
-): Promise<{ wallets: number; toppedUp: number; points: number; errors: string[] }> {
-  const { rows, referrals, credited, swapVolumeUsd } = await loadSyncFacts(admin);
+): Promise<{
+  wallets: number;
+  toppedUp: number;
+  points: number;
+  errors: string[];
+}> {
+  const { rows, referrals, credited, swapVolumeUsd } =
+    await loadSyncFacts(admin);
   const plan = planTopUps({ rows, referrals, credited, swapVolumeUsd, now });
   const at = new Date(now).toISOString();
   const errors: string[] = [];

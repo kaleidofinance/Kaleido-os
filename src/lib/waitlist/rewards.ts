@@ -55,7 +55,10 @@ export interface WaitlistRewardProjection {
   pendingPoints: number;
   availablePoints: number;
   referrals: number;
+  activeReferrals: number;
+  pendingReferrals: number;
   referralPoints: number;
+  pendingReferralPoints: number;
   welcomePoints: number;
   tasks: WaitlistTaskReward[];
 }
@@ -88,26 +91,100 @@ function heldTask(
 /** Pure task/points projection used by the server read path and tests. */
 export function projectWaitlistRewards(
   row: WaitlistRewardRow,
-  referrals: number,
+  activeReferrals: number,
   now = Date.now(),
+  pendingReferrals = 0,
 ): WaitlistRewardProjection {
   const welcomePoints = numberValue(row.welcome_points);
-  const referralCount = Math.max(0, Math.floor(Number(referrals) || 0));
-  const referralPoints = referralCount * 50;
+  const activeReferralCount = Math.max(
+    0,
+    Math.floor(Number(activeReferrals) || 0),
+  );
+  const pendingReferralCount = Math.max(
+    0,
+    Math.floor(Number(pendingReferrals) || 0),
+  );
+  const referralPoints = activeReferralCount * 50;
+  const pendingReferralPoints = pendingReferralCount * 50;
   const tasks: WaitlistTaskReward[] = [
-    heldTask("Link your X account", WAITLIST_TASK_POINTS.linked, row.x_linked_at, now),
-    heldTask("Follow @kaleido_finance", WAITLIST_TASK_POINTS.followed, row.x_followed_at, now),
-    heldTask("Repost the Mainnet Launch post", WAITLIST_TASK_POINTS.retweeted, row.x_retweeted_at, now),
-    heldTask("Comment on the launch post", WAITLIST_TASK_POINTS.commented, row.x_commented_at, now),
-    heldTask("Like and repost the Mainnet Launch post", WAITLIST_TASK_POINTS.launch, row.x_launch_at, now),
-    heldTask("Like and repost the DefiLlama listing post", WAITLIST_TASK_POINTS.llama, row.x_llama_at, now),
-    heldTask("RT & comment on the $ARGUS listing", WAITLIST_TASK_POINTS.argus, row.x_argus_at, now),
-    heldTask("RT & comment on the $ARGUS listing (batch 2)", WAITLIST_TASK_POINTS.argus2, row.x_argus2_at, now),
-    heldTask("Like & RT the Abstract Luca bridge-out post", WAITLIST_TASK_POINTS.absexit, row.x_absexit_at, now),
-    heldTask("Like & RT the Lend & Borrow launch post", WAITLIST_TASK_POINTS.lendborrow, row.x_lendborrow_at, now),
-    heldTask("Comment on the Lend & Borrow launch post", WAITLIST_TASK_POINTS.lendborrowComment, row.x_lendborrow_comment_at, now),
-    heldTask("Like & RT the Limit Order post", WAITLIST_TASK_POINTS.limitorder, row.x_limitorder_at, now),
-    heldTask("Comment on the Limit Order post", WAITLIST_TASK_POINTS.limitorderComment, row.x_limitorder_comment_at, now),
+    heldTask(
+      "Link your X account",
+      WAITLIST_TASK_POINTS.linked,
+      row.x_linked_at,
+      now,
+    ),
+    heldTask(
+      "Follow @kaleido_finance",
+      WAITLIST_TASK_POINTS.followed,
+      row.x_followed_at,
+      now,
+    ),
+    heldTask(
+      "Repost the Mainnet Launch post",
+      WAITLIST_TASK_POINTS.retweeted,
+      row.x_retweeted_at,
+      now,
+    ),
+    heldTask(
+      "Comment on the launch post",
+      WAITLIST_TASK_POINTS.commented,
+      row.x_commented_at,
+      now,
+    ),
+    heldTask(
+      "Like and repost the Mainnet Launch post",
+      WAITLIST_TASK_POINTS.launch,
+      row.x_launch_at,
+      now,
+    ),
+    heldTask(
+      "Like and repost the DefiLlama listing post",
+      WAITLIST_TASK_POINTS.llama,
+      row.x_llama_at,
+      now,
+    ),
+    heldTask(
+      "RT & comment on the $ARGUS listing",
+      WAITLIST_TASK_POINTS.argus,
+      row.x_argus_at,
+      now,
+    ),
+    heldTask(
+      "RT & comment on the $ARGUS listing (batch 2)",
+      WAITLIST_TASK_POINTS.argus2,
+      row.x_argus2_at,
+      now,
+    ),
+    heldTask(
+      "Like & RT the Abstract Luca bridge-out post",
+      WAITLIST_TASK_POINTS.absexit,
+      row.x_absexit_at,
+      now,
+    ),
+    heldTask(
+      "Like & RT the Lend & Borrow launch post",
+      WAITLIST_TASK_POINTS.lendborrow,
+      row.x_lendborrow_at,
+      now,
+    ),
+    heldTask(
+      "Comment on the Lend & Borrow launch post",
+      WAITLIST_TASK_POINTS.lendborrowComment,
+      row.x_lendborrow_comment_at,
+      now,
+    ),
+    heldTask(
+      "Like & RT the Limit Order post",
+      WAITLIST_TASK_POINTS.limitorder,
+      row.x_limitorder_at,
+      now,
+    ),
+    heldTask(
+      "Comment on the Limit Order post",
+      WAITLIST_TASK_POINTS.limitorderComment,
+      row.x_limitorder_comment_at,
+      now,
+    ),
     {
       task: "First Arc mainnet transaction",
       points: WAITLIST_TASK_POINTS.arcMainnet,
@@ -128,9 +205,11 @@ export function projectWaitlistRewards(
     },
   ];
 
-  const pendingPoints = tasks
-    .filter((task) => task.status === "pending")
-    .reduce((sum, task) => sum + task.points, 0);
+  const pendingPoints =
+    pendingReferralPoints +
+    tasks
+      .filter((task) => task.status === "pending")
+      .reduce((sum, task) => sum + task.points, 0);
   const availableTaskPoints = tasks
     .filter((task) => task.status === "available" && task.availableAt !== null)
     .reduce((sum, task) => sum + task.points, 0);
@@ -138,17 +217,25 @@ export function projectWaitlistRewards(
   return {
     activated: Boolean(row.activated_at),
     settledWaitlistPoints: Boolean(row.activated_at)
-      ? welcomePoints + referralPoints +
+      ? welcomePoints +
+        referralPoints +
         tasks
-          .filter((task) => task.status === "settled" || task.status === "available")
+          .filter(
+            (task) => task.status === "settled" || task.status === "available",
+          )
           .reduce((sum, task) => sum + task.points, 0)
       : 0,
     // Pending means the five-hour hold only. Welcome/referral points and
     // completed holds are exposed separately as availablePoints.
     pendingPoints,
-    availablePoints: Boolean(row.activated_at) ? availableTaskPoints : welcomePoints + referralPoints + availableTaskPoints,
-    referrals: referralCount,
+    availablePoints: Boolean(row.activated_at)
+      ? availableTaskPoints
+      : welcomePoints + referralPoints + availableTaskPoints,
+    referrals: activeReferralCount + pendingReferralCount,
+    activeReferrals: activeReferralCount,
+    pendingReferrals: pendingReferralCount,
     referralPoints,
+    pendingReferralPoints,
     welcomePoints,
     tasks,
   };
@@ -172,9 +259,13 @@ export async function readWaitlistRewardState(
       .maybeSingle<WaitlistRewardRow>(),
     supabaseAdmin
       .from("waitlist_leaderboard")
-      .select("referrals")
+      .select("referrals, active_referrals, pending_referrals")
       .eq("wallet", wallet)
-      .maybeSingle<{ referrals: number | string | null }>(),
+      .maybeSingle<{
+        referrals: number | string | null;
+        active_referrals: number | string | null;
+        pending_referrals: number | string | null;
+      }>(),
     supabaseAdmin
       .from("point_actions")
       .select("points")
@@ -185,7 +276,9 @@ export async function readWaitlistRewardState(
   if (waitlist.error || !waitlist.data) return null;
   const projection = projectWaitlistRewards(
     waitlist.data,
-    numberValue(leaderboard.data?.referrals),
+    numberValue(leaderboard.data?.active_referrals),
+    Date.now(),
+    numberValue(leaderboard.data?.pending_referrals),
   );
   if (ledger.error) return projection;
 
@@ -196,7 +289,8 @@ export async function readWaitlistRewardState(
       .filter((task) => task.status !== "pending")
       .reduce((sum, task) => sum + task.points, 0);
   const credited = (ledger.data ?? []).reduce(
-    (sum, row) => sum + numberValue((row as { points?: number | string | null }).points),
+    (sum, row) =>
+      sum + numberValue((row as { points?: number | string | null }).points),
     0,
   );
   return {

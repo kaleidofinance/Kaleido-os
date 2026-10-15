@@ -66,7 +66,12 @@ const isAddress = (a: unknown): a is string =>
  *  already done; the lock only blocks new claimants. */
 function xTaskState(at: string | null, now: number, closed = false) {
   if (!at)
-    return { done: false, counted: false, countsAt: null as string | null, closed };
+    return {
+      done: false,
+      counted: false,
+      countsAt: null as string | null,
+      closed,
+    };
   const countsAtMs = new Date(at).getTime() + X_HOLD_MS;
   return {
     done: true,
@@ -200,12 +205,15 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
   // referrals + rank come from the leaderboard view (one wallet, so filter it)
   const { data: lb } = await admin
     .from("waitlist_leaderboard")
-    .select("referrals, rank")
+    .select("referrals, active_referrals, pending_referrals, rank")
     .eq("wallet", wallet)
     .single();
 
   const referrals = Number(lb?.referrals ?? 0);
-  const referralPoints = PER_REFERRAL * referrals;
+  const activeReferrals = Number(lb?.active_referrals ?? 0);
+  const pendingReferrals = Number(lb?.pending_referrals ?? 0);
+  const referralPoints = PER_REFERRAL * activeReferrals;
+  const pendingReferralPoints = PER_REFERRAL * pendingReferrals;
 
   const now = Date.now();
   // Which capped tasks have closed at the cap, so the UI can grey them out.
@@ -215,13 +223,25 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
     linked: xTaskState(row.x_linked_at as string | null, now),
     followed: xTaskState(row.x_followed_at as string | null, now),
     retweeted: xTaskState(row.x_retweeted_at as string | null, now),
-    commented: xTaskState(row.x_commented_at as string | null, now, closedX.commented),
+    commented: xTaskState(
+      row.x_commented_at as string | null,
+      now,
+      closedX.commented,
+    ),
     launch: xTaskState(row.x_launch_at as string | null, now),
     llama: xTaskState(row.x_llama_at as string | null, now),
     argus: xTaskState(row.x_argus_at as string | null, now, closedX.argus),
     argus2: xTaskState(row.x_argus2_at as string | null, now, closedX.argus2),
-    absexit: xTaskState(row.x_absexit_at as string | null, now, closedX.absexit),
-    limitorder: xTaskState(row.x_limitorder_at as string | null, now, closedX.limitorder),
+    absexit: xTaskState(
+      row.x_absexit_at as string | null,
+      now,
+      closedX.absexit,
+    ),
+    limitorder: xTaskState(
+      row.x_limitorder_at as string | null,
+      now,
+      closedX.limitorder,
+    ),
     limitorderComment: xTaskState(
       row.x_limitorder_comment_at as string | null,
       now,
@@ -247,10 +267,12 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
   // Swap-volume milestones, derived live from the wallet's credited `swap`
   // volume. Folded into `eligible` so reconcileWaitlistPoints tops the kPoint up
   // forward-only as the wallet trades higher — no stored column (see swapVolume).
-  const swapVolume = swapVolumeStanding(await walletTaskVolumeUsd(admin, wallet));
+  const swapVolume = swapVolumeStanding(
+    await walletTaskVolumeUsd(admin, wallet),
+  );
   const eligiblePoints = eligibleTaskPoints({
     row: row as Parameters<typeof eligibleTaskPoints>[0]["row"],
-    referrals,
+    referrals: activeReferrals,
     swapVolumeUsd: swapVolume.volumeUsd,
     now,
   });
@@ -264,6 +286,8 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
     wallet,
     refCode: row.ref_code as string,
     referrals,
+    activeReferrals,
+    pendingReferrals,
     rank: lb?.rank ?? null,
     // The displayed balance: welcome + referral + X-task kPoint that has cleared
     // its hold. heldPoints is the X-task kPoint still counting down.
@@ -271,6 +295,7 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
     heldPoints,
     welcomePoints,
     referralPoints,
+    pendingReferralPoints,
     xHandle: (row.x_handle as string | null) ?? null,
     xTasks,
     swapVolume,
