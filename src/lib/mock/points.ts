@@ -110,6 +110,7 @@ const S2_ROWS: LeaderboardRow[] = S2_TOTALS.map((total, i) => ({
   actionPoints: null,
   bonusPoints: null,
   volume: total * 12,
+  referrals: i,
 }));
 
 const SEASON_2: LeaderboardSeason = {
@@ -172,6 +173,7 @@ const S1_ROWS: LeaderboardRow[] = S1_SPLIT.map(
     actionPoints,
     bonusPoints,
     volume: 0,
+    referrals: i,
   }),
 );
 
@@ -261,6 +263,7 @@ const STANDING_ROWS: Record<number, Omit<LeaderboardRow, "wallet">> = {
     actionPoints: null,
     bonusPoints: null,
     volume: 0,
+    referrals: 0,
   },
   1: {
     rank: 96,
@@ -270,6 +273,7 @@ const STANDING_ROWS: Record<number, Omit<LeaderboardRow, "wallet">> = {
     actionPoints: 14_880,
     bonusPoints: 2_000,
     volume: 0,
+    referrals: 0,
   },
 };
 

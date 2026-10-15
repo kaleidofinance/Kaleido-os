@@ -16,6 +16,8 @@ export const WAITLIST_TASK_POINTS = {
   lendborrowComment: 500,
   limitorder: 500,
   limitorderComment: 500,
+  argusIntegration: 500,
+  argusIntegrationComment: 500,
   arcMainnet: 300,
   agent: 500,
   bridge: 500,
@@ -37,6 +39,8 @@ export interface WaitlistRewardRow {
   x_lendborrow_comment_at?: string | null;
   x_limitorder_at?: string | null;
   x_limitorder_comment_at?: string | null;
+  x_argus_integration_at?: string | null;
+  x_argus_integration_comment_at?: string | null;
   arc_mainnet_tx_at?: string | null;
   agent_tx_at?: string | null;
   bridge_tx_at?: string | null;
@@ -107,84 +111,21 @@ export function projectWaitlistRewards(
   const referralPoints = activeReferralCount * 50;
   const pendingReferralPoints = pendingReferralCount * 50;
   const tasks: WaitlistTaskReward[] = [
-    heldTask(
-      "Link your X account",
-      WAITLIST_TASK_POINTS.linked,
-      row.x_linked_at,
-      now,
-    ),
-    heldTask(
-      "Follow @kaleido_finance",
-      WAITLIST_TASK_POINTS.followed,
-      row.x_followed_at,
-      now,
-    ),
-    heldTask(
-      "Repost the Mainnet Launch post",
-      WAITLIST_TASK_POINTS.retweeted,
-      row.x_retweeted_at,
-      now,
-    ),
-    heldTask(
-      "Comment on the launch post",
-      WAITLIST_TASK_POINTS.commented,
-      row.x_commented_at,
-      now,
-    ),
-    heldTask(
-      "Like and repost the Mainnet Launch post",
-      WAITLIST_TASK_POINTS.launch,
-      row.x_launch_at,
-      now,
-    ),
-    heldTask(
-      "Like and repost the DefiLlama listing post",
-      WAITLIST_TASK_POINTS.llama,
-      row.x_llama_at,
-      now,
-    ),
-    heldTask(
-      "RT & comment on the $ARGUS listing",
-      WAITLIST_TASK_POINTS.argus,
-      row.x_argus_at,
-      now,
-    ),
-    heldTask(
-      "RT & comment on the $ARGUS listing (batch 2)",
-      WAITLIST_TASK_POINTS.argus2,
-      row.x_argus2_at,
-      now,
-    ),
-    heldTask(
-      "Like & RT the Abstract Luca bridge-out post",
-      WAITLIST_TASK_POINTS.absexit,
-      row.x_absexit_at,
-      now,
-    ),
-    heldTask(
-      "Like & RT the Lend & Borrow launch post",
-      WAITLIST_TASK_POINTS.lendborrow,
-      row.x_lendborrow_at,
-      now,
-    ),
-    heldTask(
-      "Comment on the Lend & Borrow launch post",
-      WAITLIST_TASK_POINTS.lendborrowComment,
-      row.x_lendborrow_comment_at,
-      now,
-    ),
-    heldTask(
-      "Like & RT the Limit Order post",
-      WAITLIST_TASK_POINTS.limitorder,
-      row.x_limitorder_at,
-      now,
-    ),
-    heldTask(
-      "Comment on the Limit Order post",
-      WAITLIST_TASK_POINTS.limitorderComment,
-      row.x_limitorder_comment_at,
-      now,
-    ),
+    heldTask("Link your X account", WAITLIST_TASK_POINTS.linked, row.x_linked_at, now),
+    heldTask("Follow @kaleido_finance", WAITLIST_TASK_POINTS.followed, row.x_followed_at, now),
+    heldTask("Repost the Mainnet Launch post", WAITLIST_TASK_POINTS.retweeted, row.x_retweeted_at, now),
+    heldTask("Comment on the launch post", WAITLIST_TASK_POINTS.commented, row.x_commented_at, now),
+    heldTask("Like and repost the Mainnet Launch post", WAITLIST_TASK_POINTS.launch, row.x_launch_at, now),
+    heldTask("Like and repost the DefiLlama listing post", WAITLIST_TASK_POINTS.llama, row.x_llama_at, now),
+    heldTask("RT & comment on the $ARGUS listing", WAITLIST_TASK_POINTS.argus, row.x_argus_at, now),
+    heldTask("RT & comment on the $ARGUS listing (batch 2)", WAITLIST_TASK_POINTS.argus2, row.x_argus2_at, now),
+    heldTask("Like & RT the Abstract Luca bridge-out post", WAITLIST_TASK_POINTS.absexit, row.x_absexit_at, now),
+    heldTask("Like & RT the Lend & Borrow launch post", WAITLIST_TASK_POINTS.lendborrow, row.x_lendborrow_at, now),
+    heldTask("Comment on the Lend & Borrow launch post", WAITLIST_TASK_POINTS.lendborrowComment, row.x_lendborrow_comment_at, now),
+    heldTask("Like & RT the Limit Order post", WAITLIST_TASK_POINTS.limitorder, row.x_limitorder_at, now),
+    heldTask("Comment on the Limit Order post", WAITLIST_TASK_POINTS.limitorderComment, row.x_limitorder_comment_at, now),
+    heldTask("Like & RT $ARGUS Integration", WAITLIST_TASK_POINTS.argusIntegration, row.x_argus_integration_at, now),
+    heldTask("Comment on ARGUS Integration", WAITLIST_TASK_POINTS.argusIntegrationComment, row.x_argus_integration_comment_at, now),
     {
       task: "First Arc mainnet transaction",
       points: WAITLIST_TASK_POINTS.arcMainnet,
@@ -253,7 +194,7 @@ export async function readWaitlistRewardState(
     supabaseAdmin
       .from("waitlist")
       .select(
-        "welcome_points, activated_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at",
+        "welcome_points, activated_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at",
       )
       .eq("wallet", wallet)
       .maybeSingle<WaitlistRewardRow>(),

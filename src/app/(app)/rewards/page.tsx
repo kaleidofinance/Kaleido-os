@@ -50,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "limitorder" | "limitorderComment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -65,7 +65,7 @@ const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 /** The $ARGUS listing post: RT + comment, first 100 wallets get +600. */
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
-const LIMIT_ORDER_TWEET_ID = "2109957257962426592";
+const ARGUS_INTEGRATION_TWEET_ID = "2110782483386220933";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -118,8 +118,8 @@ export default function WaitlistPage() {
     llama: boolean;
     argus: boolean;
     argus2: boolean;
-    limitorder: boolean;
-    limitorderComment: boolean;
+    argusIntegration: boolean;
+    argusIntegrationComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -128,8 +128,8 @@ export default function WaitlistPage() {
     llama: false,
     argus: false,
     argus2: false,
-    limitorder: false,
-    limitorderComment: false,
+    argusIntegration: false,
+    argusIntegrationComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -446,7 +446,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "limitorder" | "limitorderComment") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -454,10 +454,10 @@ export default function WaitlistPage() {
             ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
-                : task === "limitorder"
-                  ? `https://x.com/intent/retweet?tweet_id=${LIMIT_ORDER_TWEET_ID}`
-                : task === "limitorderComment"
-                  ? `https://x.com/intent/tweet?in_reply_to=${LIMIT_ORDER_TWEET_ID}`
+                : task === "argusIntegration"
+                  ? `https://x.com/intent/retweet?tweet_id=${ARGUS_INTEGRATION_TWEET_ID}`
+                : task === "argusIntegrationComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${ARGUS_INTEGRATION_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -798,43 +798,43 @@ export default function WaitlistPage() {
 
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>Like &amp; RT the Limit Order post</span>
+                      <span className={s.taskTitle}>Like &amp; RT $ARGUS Integration</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.limitorder?.done
-                          ? status.xTasks.limitorder.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.limitorder?.closed ? "Closed · all 200 spots claimed"
+                        {status.xTasks.argusIntegration?.done
+                          ? status.xTasks.argusIntegration.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.argusIntegration?.closed ? "Closed · all 200 spots claimed"
                           : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.limitorder?.done ? <span className={s.taskDone}>✓</span>
-                      : status.xTasks.limitorder?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
-                      : opened.limitorder ? (
-                        <button className={s.taskBtn} onClick={() => postXTask("limitorder")} disabled={xBusy === "limitorder"}>
-                          {xBusy === "limitorder" ? "…" : "Claim"}
+                    {status.xTasks.argusIntegration?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.argusIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.argusIntegration ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("argusIntegration")} disabled={xBusy === "argusIntegration"}>
+                          {xBusy === "argusIntegration" ? "…" : "Claim"}
                         </button>
                       ) : (
-                        <button className={s.taskBtn} onClick={() => openIntent("limitorder")}>Like &amp; RT</button>
+                        <button className={s.taskBtn} onClick={() => openIntent("argusIntegration")}>Like &amp; RT</button>
                       )}
                   </li>
 
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>Comment on the Limit Order post</span>
+                      <span className={s.taskTitle}>Comment on ARGUS Integration</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.limitorderComment?.done
-                          ? status.xTasks.limitorderComment.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.limitorderComment?.closed ? "Closed · all 200 spots claimed"
+                        {status.xTasks.argusIntegrationComment?.done
+                          ? status.xTasks.argusIntegrationComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.argusIntegrationComment?.closed ? "Closed · all 200 spots claimed"
                           : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.limitorderComment?.done ? <span className={s.taskDone}>✓</span>
-                      : status.xTasks.limitorderComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
-                      : opened.limitorderComment ? (
-                        <button className={s.taskBtn} onClick={() => postXTask("limitorderComment")} disabled={xBusy === "limitorderComment"}>
-                          {xBusy === "limitorderComment" ? "…" : "Claim"}
+                    {status.xTasks.argusIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.argusIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.argusIntegrationComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("argusIntegrationComment")} disabled={xBusy === "argusIntegrationComment"}>
+                          {xBusy === "argusIntegrationComment" ? "…" : "Claim"}
                         </button>
                       ) : (
-                        <button className={s.taskBtn} onClick={() => openIntent("limitorderComment")}>Comment</button>
+                        <button className={s.taskBtn} onClick={() => openIntent("argusIntegrationComment")}>Comment</button>
                       )}
                   </li>
 
