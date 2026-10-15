@@ -1,6 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { hasArcActivity, ARC_MAINNET_CHAIN_ID } from "@/lib/waitlist/arcMainnet";
+import {
+  hasArcActivity,
+  ARC_MAINNET_CHAIN_ID,
+} from "@/lib/waitlist/arcMainnet";
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import {
   swapVolumePoints,
@@ -137,8 +140,7 @@ async function handle(req: Request): Promise<Response> {
     .order("last_checked_at", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: true })
     .limit(limit);
-  if (pendErr)
-    return Response.json({ error: "query failed" }, { status: 500 });
+  if (pendErr) return Response.json({ error: "query failed" }, { status: 500 });
 
   const rows = pending ?? [];
   const now = new Date().toISOString();
@@ -150,7 +152,9 @@ async function handle(req: Request): Promise<Response> {
   // round-trips; the batch either resolves well inside maxDuration or the run
   // ends here having stamped nothing, which is safe — the same rows come back
   // next run.
-  const probed: { active: boolean; errored: boolean }[] = new Array(rows.length);
+  const probed: { active: boolean; errored: boolean }[] = new Array(
+    rows.length,
+  );
   let cursor = 0;
   async function probeWorker() {
     for (;;) {
@@ -167,7 +171,10 @@ async function handle(req: Request): Promise<Response> {
     }
   }
   await Promise.all(
-    Array.from({ length: Math.min(PROBE_CONCURRENCY, rows.length) }, probeWorker),
+    Array.from(
+      { length: Math.min(PROBE_CONCURRENCY, rows.length) },
+      probeWorker,
+    ),
   );
 
   // Phase 2 — credit the wallets that have transacted. Sequential: these are the
@@ -193,10 +200,10 @@ async function handle(req: Request): Promise<Response> {
     // Referral count → capped bonus, snapshotted now.
     const { data: lb } = await admin
       .from("waitlist_leaderboard")
-      .select("referrals")
+      .select("active_referrals")
       .eq("wallet", wallet)
       .single();
-    const referrals = Number(lb?.referrals ?? 0);
+    const referrals = Number(lb?.active_referrals ?? 0);
     const referralPoints = PER_REFERRAL * referrals;
     const xTaskPoints =
       (row.x_linked_at ? X_TASK_POINTS.linked : 0) +
@@ -220,7 +227,9 @@ async function handle(req: Request): Promise<Response> {
       (row.bridge_tx_at ? BRIDGE_TX_POINTS : 0);
     // Swap-volume milestone (highest reached tier). Derived from the wallet's
     // credited `swap` volume, matching standing() in api/waitlist/route.ts.
-    const swapPoints = swapVolumePoints(await walletTaskVolumeUsd(admin, wallet));
+    const swapPoints = swapVolumePoints(
+      await walletTaskVolumeUsd(admin, wallet),
+    );
     const points =
       Number(row.welcome_points) + referralPoints + xTaskPoints + swapPoints;
 

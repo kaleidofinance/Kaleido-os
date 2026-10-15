@@ -618,7 +618,10 @@ export default function WaitlistPage() {
                     <p className={s.split}>
                       {status.welcomePoints} welcome
                       {status.referralPoints > 0
-                        ? ` · ${status.referralPoints} from ${status.referrals} referral${status.referrals === 1 ? "" : "s"}`
+                        ? ` · ${status.referralPoints} from ${status.activeReferrals} active referral${status.activeReferrals === 1 ? "" : "s"}`
+                        : ""}
+                      {status.pendingReferralPoints > 0
+                        ? ` · ${status.pendingReferralPoints} referral points pending activation`
                         : ""}
                       {status.rank ? ` · rank #${status.rank}` : ""}
                     </p>
@@ -948,7 +951,7 @@ export default function WaitlistPage() {
                 <p className={s.split}>
                   {status.referrals === 0
                     ? "No referrals yet — earn 50 $kPoint for each friend who joins and links their X."
-                    : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.referralPoints.toLocaleString()} $kPoint earned`}
+                    : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.activeReferrals} active · ${status.referralPoints.toLocaleString()} $kPoint earned${status.pendingReferralPoints > 0 ? ` · ${status.pendingReferralPoints.toLocaleString()} pending activation` : ""}`}
                 </p>
 
                 {status.season1 ? null : (

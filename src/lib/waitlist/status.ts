@@ -61,11 +61,14 @@ export interface WaitlistStatus {
   wallet: string;
   refCode: string;
   referrals: number;
+  activeReferrals: number;
+  pendingReferrals: number;
   rank: number | null;
   points: number;
   heldPoints: number;
   welcomePoints: number;
   referralPoints: number;
+  pendingReferralPoints: number;
   xHandle: string | null;
   xTasks: Record<XTaskKey, XTaskState>;
   swapVolume: SwapVolumeStanding;
