@@ -172,17 +172,18 @@ export default function AgentSettings({
   // an empty allow-list is not something to sign — depending on how the facet
   // reads it, it is either a useless grant or an unbounded one.
   const grantable = chainTokens(chainId);
+  const delegatedBits = (Object.keys(settings.allowedActions) as AgentAction[]).reduce(
+    (bits, action) =>
+      settings.allowedActions[action] ? bits | ACTION_BITS[action] : bits,
+    0,
+  );
 
   const buildGrant = () => {
     if (!validAgent || !diamond || grantable.length === 0) return;
     // Bitmask from the enabled action toggles.
-    let bits = 0;
-    (Object.keys(settings.allowedActions) as AgentAction[]).forEach((a) => {
-      if (settings.allowedActions[a]) bits |= ACTION_BITS[a];
-    });
     // Only swap/staking/liquidity toggled — nothing delegatable, so the grant
     // would be empty and the auditor would refuse it. Don't offer it to sign.
-    if (bits === 0) return;
+    if (delegatedBits === 0) return;
     const grantIntent: Intent = {
       kind: "grantAgentPermission",
       diamond,
@@ -193,7 +194,7 @@ export default function AgentSettings({
       expiryUnix: Math.floor(Date.now() / 1000) + 30 * 86_400, // 30-day grant
       maxInterestBps: 0, // no rate cap by default
       minHealthFactorBps: Math.round(settings.minHealthFactor * 10_000),
-      allowedActions: bits,
+      allowedActions: delegatedBits,
       tokens: grantable.map((t) => t.address),
     };
     setGrant([grantIntent]);
@@ -525,7 +526,10 @@ export default function AgentSettings({
                     <button
                       className={s.delegateBtn}
                       disabled={
-                        !validAgent || !diamond || grantable.length === 0
+                        !validAgent ||
+                        !diamond ||
+                        grantable.length === 0 ||
+                        delegatedBits === 0
                       }
                       onClick={buildGrant}
                     >
@@ -534,6 +538,8 @@ export default function AgentSettings({
                     <p className={s.delegateNote}>
                       {grantable.length === 0
                         ? "Kaleido carries no tokens on this network, so there's nothing to delegate authority over."
+                        : delegatedBits === 0
+                          ? "Enable Borrow or Lend above; swaps, staking and liquidity cannot be delegated."
                         : "Enforced on-chain by the agent-permission facet. Revoke any time; the budget resets per day."}
                     </p>
                   </>
