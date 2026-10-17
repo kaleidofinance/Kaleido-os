@@ -81,7 +81,11 @@ export function createBrowserLocalIntentModel(
         const timer = window.setTimeout(() => {
           pending.delete(id);
           reject(new Error("browser local intent warmup timed out"));
-        }, 8_000);
+        // The first call downloads the quantized model and compiles the
+        // WebGPU/WASM graph. That can take well over eight seconds on a cold
+        // browser cache, especially on mobile. Keep the UI responsive while
+        // giving the model a realistic one-time initialization window.
+        }, 120_000);
         pending.set(id, { resolve: () => resolve(), reject, timer });
         worker.postMessage({
           id,
@@ -98,7 +102,9 @@ export function createBrowserLocalIntentModel(
         const timer = window.setTimeout(() => {
           pending.delete(id);
           reject(new Error("browser local intent timed out"));
-        }, 8_000);
+        // Inference should remain bounded after warmup; a cold start is
+        // handled by warmup() above rather than this request timer.
+        }, 30_000);
         pending.set(id, { resolve, reject, timer });
         const request: WorkerRequest = {
           id,
