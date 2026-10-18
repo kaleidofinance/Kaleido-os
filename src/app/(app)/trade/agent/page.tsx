@@ -354,7 +354,11 @@ export default function AgentPage() {
       const model =
         localIntentModelRef.current ??
         (localIntentModelRef.current = createBrowserLocalIntentModel());
-      if (!model?.warmup) return;
+      if (!model?.warmup) {
+        setLocalModelStatus("failed");
+        localIntentDisabledRef.current = true;
+        return;
+      }
       setLocalModelStatus("loading");
       void model.warmup().then(
         () => setLocalModelStatus("ready"),

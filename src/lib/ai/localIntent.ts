@@ -112,8 +112,10 @@ export function validateLocalClassification(
 
 /** Browser capability check only; it does not load a model or make network calls. */
 export function canUseBrowserLocalModel(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    ("gpu" in navigator || "WebAssembly" in window)
-  );
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return false;
+  }
+  const hasWebGpu = "gpu" in navigator;
+  const hasWasm = typeof WebAssembly !== "undefined";
+  return hasWebGpu || hasWasm;
 }
