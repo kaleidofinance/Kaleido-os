@@ -1,9 +1,4 @@
-/* Target the browser distribution explicitly. The package root can resolve to
- * Transformers.js' Node entry during Next's server compilation, which pulls
- * native onnxruntime binaries into the browser worker and breaks production
- * builds. */
-// @ts-expect-error The browser distribution is shipped as a JS entry without a declaration.
-import { pipeline } from "@huggingface/transformers/dist/transformers.js";
+import { pipeline } from "@huggingface/transformers";
 import {
   validateLocalClassification,
   type LocalIntentContext,

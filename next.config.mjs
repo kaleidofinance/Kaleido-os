@@ -91,6 +91,10 @@ const nextConfig = {
       ...config.resolve.alias,
       "pino-pretty": false,
     }
+    if (!isServer) {
+      config.resolve.alias["@huggingface/transformers$"] =
+        `${process.cwd()}/node_modules/@huggingface/transformers/dist/transformers.js`
+    }
     return config
   },
 
