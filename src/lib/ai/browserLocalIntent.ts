@@ -104,7 +104,7 @@ export function createBrowserLocalIntentModel(
           reject(new Error("browser local intent timed out"));
         // Inference should remain bounded after warmup; a cold start is
         // handled by warmup() above rather than this request timer.
-        }, 30_000);
+        }, 60_000);
         pending.set(id, { resolve, reject, timer });
         const request: WorkerRequest = {
           id,

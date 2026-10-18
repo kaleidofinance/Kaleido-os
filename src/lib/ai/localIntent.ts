@@ -46,23 +46,17 @@ export const SMALL_BROWSER_LOCAL_INTENT_MODEL =
 
 export function browserLocalIntentOptions(): Required<BrowserLocalIntentModelOptions> {
   const configured = process.env.NEXT_PUBLIC_LOCAL_INTENT_MODEL;
-  if (configured) return { modelId: configured, device: "webgpu", dtype: "q4" };
+  // A WebGPU property only means that the browser exposes the API. It does
+  // not mean an adapter can allocate this model (common on mobile, remote
+  // desktops, and browsers with blocked GPU workers). Start with the small
+  // quantized WASM model so the feature works consistently; the deterministic
+  // planner remains the fallback if the browser cannot run it.
+  if (configured) return { modelId: configured, device: "wasm", dtype: "q4" };
   if (typeof window !== "undefined") {
-    const memory =
-      (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
-    const cores = navigator.hardwareConcurrency ?? 4;
-    const webgpu = "gpu" in navigator;
-    if (webgpu && memory >= 8 && cores >= 8) {
-      return {
-        modelId: DEFAULT_BROWSER_LOCAL_INTENT_MODEL,
-        device: "webgpu",
-        dtype: "q4f16",
-      };
-    }
     return {
       modelId: SMALL_BROWSER_LOCAL_INTENT_MODEL,
-      device: webgpu ? "webgpu" : "wasm",
-      dtype: webgpu ? "q4f16" : "q4",
+      device: "wasm",
+      dtype: "q4",
     };
   }
   return {
