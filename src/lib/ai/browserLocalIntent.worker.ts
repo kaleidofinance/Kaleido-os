@@ -1,7 +1,9 @@
-/* Use the package browser export. A filesystem-relative node_modules import
- * can compile locally but produce a worker asset that Vercel cannot resolve,
- * causing the worker to fail immediately before warmup starts. */
-import { pipeline } from "@huggingface/transformers";
+/* Target the browser distribution explicitly. The package root can resolve to
+ * Transformers.js' Node entry during Next's server compilation, which pulls
+ * native onnxruntime binaries into the browser worker and breaks production
+ * builds. */
+// @ts-expect-error The browser distribution is shipped as a JS entry without a declaration.
+import { pipeline } from "@huggingface/transformers/dist/transformers.js";
 import {
   validateLocalClassification,
   type LocalIntentContext,
