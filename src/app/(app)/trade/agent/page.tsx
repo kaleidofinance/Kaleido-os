@@ -1570,6 +1570,29 @@ export default function AgentPage() {
       const question = isQuestionShaped(content);
       if (question && answerFromFaq(content)) return;
 
+      /* Live read-only market questions can be answered locally from the same
+       * public snapshot the pool screen uses. This avoids spending a reasoning
+       * request for questions such as "how many pools do we have?" while still
+       * grounding the answer in fresh data instead of asking the small browser
+       * model to invent market facts. */
+      if (question && /\b(how many|number of|list|which|what)\b/i.test(content) && /\bpools?\b/i.test(content)) {
+        try {
+          const response = await fetch("/api/pools", {
+            signal: abort.signal,
+            cache: "no-store",
+          });
+          const payload = (await response.json()) as { pools?: unknown[]; stale?: boolean };
+          const count = Array.isArray(payload.pools) ? payload.pools.length : 0;
+          const staleNote = payload.stale ? " This is the latest cached snapshot." : "";
+          note("Read the live pool snapshot locally");
+          log("local-pools");
+          say(`There are ${count} live Kaleido pools on Arc.${staleNote}`, { via: "local" });
+          return;
+        } catch {
+          if (abort.signal.aborted) return;
+        }
+      }
+
       /* A question that contains a verb. "do lp fees compound" parses as a
          compoundYield command and "can i repay part of my loan" as a repay -
          each a question answered with a transaction, the exact failure the
