@@ -630,6 +630,9 @@ function PositionCard({
 }
 
 export default function PositionsPage() {
+  const active = useV3Positions();
+  const arc = useV3Positions(5042);
+  const robinhood = useV3Positions(4663);
   const {
     positions,
     loading,
@@ -637,9 +640,11 @@ export default function PositionsPage() {
     increaseLiquidity,
     removeLiquidity,
     refresh,
-  } = useV3Positions();
+  } = active;
+  const allPositions = [...arc.positions, ...robinhood.positions];
+  const visiblePositions = positionsToShow(allPositions);
   const { chainId, isConnected } = useWalletV2();
-  const poolStates = usePoolStates(positions, chainId);
+  const poolStates = usePoolStates(allPositions, chainId);
   const gate = useChainGate(undefined, "dex");
 
   // Bound to this chain so a position's raw addresses resolve against the right
@@ -650,7 +655,7 @@ export default function PositionsPage() {
      (a 100% remove whose collect never landed). Filtering on liquidity alone hid
      those — and their Collect button — while the Portfolio showed the fees as
      ready to claim. See lib/dex/visiblePositions. */
-  const withActive = positionsToShow(positions);
+  const withActive = visiblePositions;
 
   /* Arriving from /portfolio as #position-<id>: the cards render after the read,
      so the browser's own jump found nothing. Scroll once the card exists, and
@@ -679,7 +684,7 @@ export default function PositionsPage() {
     return <ChainGate product="liquidity positions" state={gate} requires="dex" />;
   }
 
-  if (loading && positions.length === 0) {
+  if ((loading || arc.loading || robinhood.loading) && allPositions.length === 0) {
     return (
       <div className={s.cards}>
         {[0, 1].map((i) => (
@@ -730,18 +735,25 @@ export default function PositionsPage() {
 
   return (
     <div className={s.cards}>
-      {withActive.map((p) => (
-        <PositionCard
-          key={p.tokenId}
-          p={p}
-          poolState={poolStates[`${p.chainId ?? chainId ?? "unknown"}:${p.tokenId}`]}
-          chainId={chainId}
-          symbolFor={symbolFor}
-          collectFees={collectFees}
-          increaseLiquidity={increaseLiquidity}
-          removeLiquidity={removeLiquidity}
-          refresh={refresh}
-        />
+      {[...new Set(withActive.map((p) => p.chainId).filter((id): id is number => id !== undefined))].map((networkId) => (
+        <section key={networkId} aria-labelledby={`positions-${networkId}`}>
+          <h2 id={`positions-${networkId}`} className={s.pairName}>
+            {getChainMeta(networkId)?.name ?? `Network ${networkId}`}
+          </h2>
+          {withActive.filter((p) => p.chainId === networkId).map((p) => (
+            <PositionCard
+              key={`${networkId}:${p.tokenId}`}
+              p={p}
+              poolState={poolStates[`${networkId}:${p.tokenId}`]}
+              chainId={networkId}
+              symbolFor={(address) => symbolForAddress(networkId, address)}
+              collectFees={collectFees}
+              increaseLiquidity={increaseLiquidity}
+              removeLiquidity={removeLiquidity}
+              refresh={refresh}
+            />
+          ))}
+        </section>
       ))}
     </div>
   );
