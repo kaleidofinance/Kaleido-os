@@ -954,6 +954,22 @@ export const TOKENS: Record<number, TokenEntry[]> = {
       decimals: 6,
       tags: ["stablecoin"],
     },
+    {
+      chainId: 4663,
+      address: "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8",
+      symbol: "USDC",
+      name: "USD Coin (bridged)",
+      decimals: 6,
+      tags: ["stablecoin", "bridged"],
+    },
+    {
+      chainId: 4663,
+      address: "0xE246BC49b0598d7Cd9f0eAD48B885034f1254380",
+      symbol: "USDT",
+      name: "Tether USD (bridged)",
+      decimals: 6,
+      tags: ["stablecoin", "bridged"],
+    },
     ...ROBINHOOD_STOCK_TOKENS,
   ],
 };
