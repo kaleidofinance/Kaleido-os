@@ -209,7 +209,7 @@ function FeeCard({ fees, lender }: { fees: LendingFees; lender: boolean }) {
 }
 
 export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
-  const { filters, borrow, collateral } = useLendingData();
+  const { filters, borrow, collateral, filterChains, setFilterChains } = useLendingData();
   const { isConnected } = useWalletV2();
   const activeChain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
@@ -264,7 +264,6 @@ export default function BorrowBookView({ mode }: { mode: BorrowBookMode }) {
      constraint, so unchecking the last box restores the full book rather than
      emptying it. Chain is the one that matters most now the book is
      multi-chain; asset is the other axis a lender or borrower narrows by. */
-  const [filterChains, setFilterChains] = useState<number[]>([]);
   const [filterSymbols, setFilterSymbols] = useState<string[]>([]);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   /* The continuous columns filter by range, not facet: a min/max pair each,

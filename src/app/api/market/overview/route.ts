@@ -36,6 +36,7 @@ import {
   stakingContracts,
 } from "@/constants/registry";
 import { readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { lendingChains } from "@/lib/lending/chain";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import { readBookRows } from "@/lib/lending/book";
 import { getERC20Contract, getKLDVaultContract } from "@/config/contracts";
@@ -45,6 +46,7 @@ import {
   foldBook,
   toWholeUnits,
   valueBook,
+  sumMeasured,
   type BookRow,
   type Currency,
   type MarketCoverage,
@@ -53,19 +55,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/**
- * Decimals resolve through the read chain's lending-currency list rather than a
- * per-row `decimalsForAddress(chainId, address)`, and that is forced, not lazy:
- *
- *  - `readBookRows` is called with `READ_ONLY_CHAIN_ID`, so every row returned
- *    is from that chain by construction and `borrowCurrencies(READ_ONLY_CHAIN_ID)`
- *    resolves it. There is no row here whose chain is in doubt — which was NOT
- *    true of the mirror these rows used to come from, whose tables carry no
- *    chainId column at all.
- *
- * When this strip covers a second chain the shape changes: read each chain's
- * book and resolve decimals per chain, rather than widening the guess here.
- */
+/** Resolve each book against its own chain-specific lending currencies. */
 /*
  * REGISTERED assets first, then the offered list — merged, deduped by address.
  *
@@ -88,10 +78,10 @@ export const dynamic = "force-dynamic";
  * registered — and that is correct: `foldBook` folds by symbol, and both are USDC
  * at 6 decimals, so they sum into one total the way a reader would expect.
  */
-const CURRENCIES: Currency[] = (() => {
+function currenciesFor(chainId: number): Currency[] {
   const merged = [
-    ...registeredLendingAssets(READ_ONLY_CHAIN_ID, "collateral").assets,
-    ...borrowCurrencies(READ_ONLY_CHAIN_ID),
+    ...registeredLendingAssets(chainId, "collateral").assets,
+    ...borrowCurrencies(chainId),
   ];
   const seen = new Set<string>();
   return merged.filter((c) => {
@@ -100,7 +90,7 @@ const CURRENCIES: Currency[] = (() => {
     seen.add(key);
     return true;
   });
-})();
+}
 
 /**
  * An on-chain read that must not be able to hang the route.
@@ -129,7 +119,7 @@ function withTimeout<T>(work: Promise<T>, label: string, ms = 8000) {
 }
 
 /** The OPEN lending book, valued and counted, plus the count of funded loans. */
-async function lendingLeg(): Promise<{
+async function lendingLeg(chainId: number): Promise<{
   usd: number | null;
   coverage: MarketCoverage;
   openOffers: number | null;
@@ -158,8 +148,8 @@ async function lendingLeg(): Promise<{
    * "not measured" tile distinct from a real zero.
    */
   const [listingRows, requestRows] = await Promise.all([
-    readBookRows(READ_ONLY_CHAIN_ID, "listings").catch(() => null),
-    readBookRows(READ_ONLY_CHAIN_ID, "requests").catch(() => null),
+    readBookRows(chainId, "listings").catch(() => null),
+    readBookRows(chainId, "requests").catch(() => null),
   ]);
 
   /*
@@ -202,7 +192,7 @@ async function lendingLeg(): Promise<{
     tokenAddress: r.tokenAddress,
     amount: r.amount,
   }));
-  const folded = foldBook(rows, CURRENCIES);
+  const folded = foldBook(rows, currenciesFor(chainId));
 
   if (folded.unknownToken > 0) {
     console.warn(
@@ -290,40 +280,42 @@ async function kldStakedLeg(): Promise<number | null> {
   }
 }
 
-/**
- * The lending book lives on the read chain, which is a testnet at launch — no
- * mainnet chain has a lending diamond yet (Arc is DEX-first). So a mainnet-first
- * viewer must NOT be shown that testnet book's offers, requests and loans on the
- * Borrow/Lend strip: it reads as a live mainnet market that does not exist. When
- * testnets are hidden and the read chain is itself a testnet, the lending leg is
- * the honest empty market — 0 offers, 0 requests, 0 loans, $0 book — until a
- * mainnet lending deployment lands, at which point the read chain being mainnet
- * flips `readLending` true on its own. kfUSD supply and pooled KLD are protocol
- * tiles on /leaderboard, not the Borrow strip, and are left as-is.
- */
-const EMPTY_LENDING = {
-  usd: 0,
-  coverage: EMPTY_COVERAGE,
-  openOffers: 0,
-  openRequests: 0,
-  loansOutstanding: 0,
-  degraded: [] as string[],
-};
-
-async function computeOverview(testnets: boolean): Promise<MarketOverview> {
-  const readLending =
-    testnets || CHAINS_BY_ID[READ_ONLY_CHAIN_ID]?.network === "mainnet";
-  const [lending, kfUsdSupply, kldStaked] = await Promise.all([
-    readLending ? lendingLeg() : Promise.resolve(EMPTY_LENDING),
+async function computeOverview(testnets: boolean, scope: number[]): Promise<MarketOverview> {
+  const chainIds = lendingChains().filter((id) =>
+    (testnets || CHAINS_BY_ID[id]?.network === "mainnet") &&
+    (scope.length === 0 || scope.includes(id)),
+  );
+  const [legs, kfUsdSupply, kldStaked] = await Promise.all([
+    Promise.all(chainIds.map(async (chainId) => ({
+      chainId,
+      ...await withTimeout(lendingLeg(chainId), `lending:${chainId}`, 12000).catch(() => ({
+        usd: null, coverage: EMPTY_COVERAGE, openOffers: null,
+        openRequests: null, loansOutstanding: null,
+        degraded: ["lendingTvlUsd", "openOffers", "openRequests", "loansOutstanding"],
+      })),
+    }))),
     kfUsdSupplyLeg(),
     kldStakedLeg(),
   ]);
-
+  const sum = (key: "usd" | "openOffers" | "openRequests" | "loansOutstanding") =>
+    sumMeasured(legs.map((leg) => leg[key]));
+  const lending = {
+    usd: sum("usd"), openOffers: sum("openOffers"), openRequests: sum("openRequests"),
+    loansOutstanding: sum("loansOutstanding"),
+    coverage: legs.reduce((total, leg) => ({
+      rows: total.rows + leg.coverage.rows, valued: total.valued + leg.coverage.valued,
+      unpriced: total.unpriced + leg.coverage.unpriced,
+      unknownToken: total.unknownToken + leg.coverage.unknownToken,
+      malformedAmount: total.malformedAmount + leg.coverage.malformedAmount,
+    }), { ...EMPTY_COVERAGE }),
+    degraded: legs.flatMap((leg) => leg.degraded.map((field) => `${leg.chainId}:${field}`)),
+  };
   const degraded = [...lending.degraded];
   if (kfUsdSupply === null) degraded.push("kfUsdSupply");
   if (kldStaked === null) degraded.push("kldStaked");
 
   return {
+    chains: legs.map((leg) => ({ chainId: leg.chainId, lendingTvlUsd: leg.usd, openOffers: leg.openOffers, openRequests: leg.openRequests, loansOutstanding: leg.loansOutstanding, coverage: leg.coverage, degraded: leg.degraded })),
     lendingTvlUsd: lending.usd,
     openOffers: lending.openOffers,
     openRequests: lending.openRequests,
@@ -353,8 +345,9 @@ const inflight = new Map<string, Promise<MarketOverview>>();
 
 async function remember(
   testnets: boolean,
+  scope: number[],
 ): Promise<{ data: MarketOverview; stale: boolean }> {
-  const key = testnets ? "testnet" : "mainnet";
+  const key = `${testnets ? "testnet" : "mainnet"}:${scope.join(",")}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) {
     return { data: hit.data, stale: false };
@@ -363,8 +356,9 @@ async function remember(
   if (!inflight.has(key)) {
     inflight.set(
       key,
-      computeOverview(testnets)
+      computeOverview(testnets, scope)
         .then((data) => {
+          if (cache.size >= 64) cache.delete(cache.keys().next().value!);
           cache.set(key, { at: Date.now(), data });
           return data;
         })
@@ -395,7 +389,13 @@ export async function GET(request: Request) {
        hides the testnet lending book — see EMPTY_LENDING above. */
     const testnets =
       new URL(request.url).searchParams.get("testnets") === "1";
-    const { data, stale } = await remember(testnets);
+    const params = new URL(request.url).searchParams;
+    const raw = params.get("chains");
+    const scope = raw ? [...new Set(raw.split(",").map(Number))].sort((a, b) => a - b) : [];
+    if (scope.some((id) => !Number.isInteger(id) || !lendingChains().includes(id) || (!testnets && CHAINS_BY_ID[id]?.network !== "mainnet"))) {
+      return NextResponse.json({ success: false, error: "Invalid lending chain scope" }, { status: 400 });
+    }
+    const { data, stale } = await remember(testnets, scope);
     return NextResponse.json(
       { success: true, data, stale },
       { headers: { "Cache-Control": "no-store" } },
