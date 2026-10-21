@@ -115,7 +115,7 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
   const [platform, setPlatform] = useState<PlatformTotals | null>(null);
 
   useEffect(() => {
-    if (shell !== "list") return;
+    if (shell !== "list" || pathname === "/pool") return;
     let cancelled = false;
     fetch("/api/stats/platform", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : null))
@@ -128,7 +128,7 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [shell]);
+  }, [shell, pathname]);
 
   /* The strip's headline totals are PLATFORM-WIDE and CUMULATIVE — every
      Kaleido product summed (routed swaps from the agent and the manual UI,
@@ -174,7 +174,7 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
             same reason. */}
         {shell === "list" && (
           <>
-            <div className={s.statStrip}>
+            {pathname !== "/pool" && (<div className={s.statStrip}>
               <StatStrip>
                 <Stat label="Pools" value={qty(poolCount)} />
                 <Stat label="TVL" value={usd(liquidity)} />
@@ -191,7 +191,7 @@ export default function PoolLayout({ children }: { children: ReactNode }) {
                   fees are a lower bound until it recovers.
                 </p>
               ) : null}
-            </div>
+            </div>)}
 
             <div className={s.tabs}>
               {TABS.map((t) => (

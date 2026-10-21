@@ -1596,7 +1596,7 @@ export async function buildIntents(
          native currency — quote/pull the 0x3600 mirror — and prepend an unwrap
          below so the wrapped balance becomes the native the mirror pulls. */
       const sellIsWrapped =
-        !!contracts.wrappedNative &&
+        chainId === 5042 && !!contracts.wrappedNative &&
         tokenIn.address.toLowerCase() === contracts.wrappedNative.toLowerCase();
       const inTok = aggregatorToken(
         chainId,

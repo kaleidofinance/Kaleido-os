@@ -171,7 +171,7 @@ const READ_CAP = 200_000;
 
 /** Read the ledgers and bucket them. `null` only when the primary ledger
  *  (point_actions) is unavailable; missing bridge tables just drop those bars. */
-export async function readTimeseries(days = 30): Promise<DailyPoint[] | null> {
+export async function readTimeseries(days = 30, chainId?: number): Promise<DailyPoint[] | null> {
   if (!supabaseAdmin) return null;
   const actions = await supabaseAdmin
     .from("point_actions")
@@ -184,19 +184,22 @@ export async function readTimeseries(days = 30): Promise<DailyPoint[] | null> {
   const ledger = await supabaseAdmin
     .from("swap_volume")
     .select("occurred_at, usd_value, fee_paid")
-    .eq("chain_id", 5042)
+    .in("chain_id", chainId === undefined ? [5042, 4663] : [chainId])
     .limit(READ_CAP);
 
   const cctp = await supabaseAdmin
     .from("cctp_transfers")
     .select("created_at, amount")
     .neq("status", "failed")
+    .in("source_chain_id", chainId === undefined ? [5042, 4663] : [chainId])
     .limit(READ_CAP);
   const route = await supabaseAdmin
     .from("route_bridges")
     .select("created_at, usd_value")
+    .in("source_chain_id", chainId === undefined ? [5042, 4663] : [chainId])
     .limit(READ_CAP);
 
+  if (ledger.error || cctp.error || route.error) return null;
   return bucketDaily({
     actions: actions.data as ActionRow[],
     swaps: ledger.error || !ledger.data ? undefined : (ledger.data as SwapLedgerRow[]),

@@ -25,6 +25,7 @@ const KYBER_API = "https://aggregator-api.kyberswap.com";
  */
 const KYBERSWAP_CHAIN_SLUG: Record<number, string> = {
   5042: "arc",
+  4663: "robinhood",
 };
 
 /**
@@ -37,6 +38,7 @@ const KYBERSWAP_CHAIN_SLUG: Record<number, string> = {
  */
 const KYBERSWAP_ROUTERS: Record<number, string> = {
   5042: "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+  4663: "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
 };
 
 export function kyberSwapChainSlug(chainId: number): string | undefined {
@@ -272,7 +274,7 @@ export async function resolveKyberSwap(args: {
     return {
       to: d.routerAddress,
       data: d.data,
-      value: "0",
+      value: args.tokenIn.toLowerCase() === NATIVE_SENTINEL.dex.toLowerCase() ? args.amountUnits : "0",
       spender: d.routerAddress,
       amountOut: d.amountOut,
     };

@@ -16,6 +16,7 @@ import {
 } from "@/components/v2/LendingDataContext";
 import { Stat, StatStrip } from "@/components/v2/StatStrip";
 import { useMarketStats } from "@/hooks/market/useMarketStats";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { useLenderPosition } from "@/hooks/v2/useLenderPosition";
 import { DASH, qty, usd } from "@/lib/format/figures";
 import s from "./borrow.module.css";
@@ -53,11 +54,11 @@ export default function LendingLayout({ children }: { children: ReactNode }) {
 function LendingShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const mode = modeFromPath(pathname);
-  const { filters, borrow, collateral } = useLendingData();
+  const { filters, borrow, collateral, filterChains } = useLendingData();
   /* Only `stats` now. The whole state object was held as `market` so the strip's
      notes could ask it about `loading` and `degraded` — those notes are gone (see
      StatStrip), and with them the last reader of anything but the figures. */
-  const { stats } = useMarketStats();
+  const { stats, stale, error } = useMarketStats(filterChains);
   /* The same computation the /mylends sidebar reads, so the two cannot
      disagree about a lender's position. */
   const lender = useLenderPosition(filters);
@@ -193,6 +194,15 @@ function LendingShell({ children }: { children: ReactNode }) {
           </StatStrip>
         )}
 
+        {(mode === "borrow" || mode === "lend") && (
+          <p role="status">
+            {filterChains.length ? filterChains.map((id) => CHAINS_BY_ID[id]?.shortName ?? id).join(", ") : "All enabled networks"}
+            {stale ? " · Showing the last available snapshot" : ""}
+            {error && !stats ? " · Market totals unavailable" : ""}
+            {stats?.chains?.some((chain) => chain.degraded.length > 0) ? " · Some networks are unavailable; totals are incomplete" : ""}
+            {stats && stats.coverage.valued < stats.coverage.rows ? " · Some book entries could not be valued" : ""}
+          </p>
+        )}
         {children}
       </main>
 
