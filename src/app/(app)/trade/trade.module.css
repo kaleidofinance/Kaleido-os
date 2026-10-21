@@ -150,6 +150,32 @@
   display: none;
 }
 
+.swapNetwork {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  color: var(--k-t2);
+  font-size: 13px;
+}
+.swapNetwork select {
+  max-width: 75%;
+  min-height: 36px;
+  color: var(--k-t1);
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: 12px;
+  padding: 6px 10px;
+  font: inherit;
+}
+.swapNetwork select:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.cardWithNetwork .settings { top: 65px; }
+
 /* Percentage chips and the slippage gear, riding the first well's label row at
    its top-right corner — the row already says "Sell" and nothing else, so the
    controls that qualify the sell cost no height at all. They used to be a strip

@@ -274,7 +274,7 @@ export async function resolveKyberSwap(args: {
     return {
       to: d.routerAddress,
       data: d.data,
-      value: "0",
+      value: args.tokenIn.toLowerCase() === NATIVE_SENTINEL.dex.toLowerCase() ? args.amountUnits : "0",
       spender: d.routerAddress,
       amountOut: d.amountOut,
     };
