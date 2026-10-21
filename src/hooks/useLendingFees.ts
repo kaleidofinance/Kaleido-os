@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useActiveWalletChain } from "thirdweb/react";
 import { getKaleidoContract } from "@/config/contracts";
-import { providerForChain, readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { providerForChain, readOnlyProvider } from "@/config/provider";
 import { isDeployed } from "@/constants/registry";
 import type { LendingFeeRates } from "@/lib/lending/fees";
+import { defaultLendingChainId } from "@/lib/lending/chain";
 import { MOCK_DATA, MOCK_LENDING_FEES } from "@/lib/mock";
 
 /**
@@ -39,7 +40,7 @@ export function useLendingFees(targetChainId?: number): LendingFees {
      is the multichain form's chain; else the connected chain. Multi-chain —
      was pinned to LENDING_CHAIN_ID. */
   const activeChain = useActiveWalletChain();
-  const readChain = targetChainId ?? activeChain?.id ?? READ_ONLY_CHAIN_ID;
+  const readChain = targetChainId ?? activeChain?.id ?? defaultLendingChainId();
   const readProvider = providerForChain(readChain) ?? readOnlyProvider;
 
   const [rates, setRates] = useState<LendingFeeRates>({

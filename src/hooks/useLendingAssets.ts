@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { getKaleidoContract } from "@/config/contracts";
-import { providerForChain, readOnlyProvider, READ_ONLY_CHAIN_ID } from "@/config/provider";
+import { providerForChain, readOnlyProvider } from "@/config/provider";
 import { isDeployed } from "@/constants/registry";
 import { CHAINS_BY_ID } from "@/constants/chains";
-import { lendingChains } from "@/lib/lending/chain";
+import { defaultLendingChainId, lendingChains } from "@/lib/lending/chain";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import {
   readLendingAssets,
@@ -73,7 +73,7 @@ export function useLendingAssets(targetChainId?: number): LendingAssets {
      wallet's chain, and to the read chain when disconnected — a browse view.
      Lending went multi-chain — this used to be pinned to LENDING_CHAIN_ID. */
   const activeChain = useActiveWalletChain();
-  const readChain = targetChainId ?? activeChain?.id ?? READ_ONLY_CHAIN_ID;
+  const readChain = targetChainId ?? activeChain?.id ?? defaultLendingChainId();
   const readProvider = providerForChain(readChain) ?? readOnlyProvider;
 
   const [sets, setSets] = useState<{
@@ -243,7 +243,7 @@ export function useLendingAssetsAcrossChains(): LendingAssetsAcrossChains {
     if (MOCK_DATA) {
       const tag = (a: LendingAsset): ChainLendingAsset => ({
         ...a,
-        chainId: READ_ONLY_CHAIN_ID,
+        chainId: defaultLendingChainId(),
       });
       setState({
         loanable: MOCK_ASSETS.map(tag),

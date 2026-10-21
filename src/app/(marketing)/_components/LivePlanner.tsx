@@ -133,6 +133,7 @@ const VERB: Record<Command["kind"], string> = {
   receive: "Receive",
   portfolio: "Portfolio",
   lookup: "Balance lookup",
+  exitChain: "Move everything off a chain",
 };
 
 /**
@@ -759,6 +760,7 @@ function settledOf(
     case "receive":
     case "portfolio":
     case "lookup":
+    case "exitChain":
     /* Same shape: intercepted by PANEL above, so the builder never runs and
        there is nothing settled to describe. */
     case "openLiquidity":

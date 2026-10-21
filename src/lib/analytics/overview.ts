@@ -156,7 +156,7 @@ async function readTrading(chainId?: number): Promise<AnalyticsOverview["trading
       swapCount: swaps.error ? null : swapRows.length,
       cctpBridgeCount: cctp.error ? null : cctp.data?.length ?? 0,
       routeBridgeCount: routes.error ? null : routes.data?.length ?? 0,
-      partial: Boolean(swaps.error || cctp.error || routes.error),
+      partial: Boolean(swaps.error || cctp.error || routes.error || swapRows.length >= READ_CAP || (cctp.data?.length ?? 0) >= READ_CAP || (routes.data?.length ?? 0) >= READ_CAP),
     };
   }
   const totals = await readPlatformTotals();

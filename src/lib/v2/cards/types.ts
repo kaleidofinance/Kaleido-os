@@ -190,6 +190,24 @@ export interface TokenCard {
   ref?: string;
 }
 
+/**
+ * "Connect this wallet" — a card with one button that opens the wallet
+ * connector for a wallet from a CLOSED set, never a URL. LOCAL-ONLY (wire-
+ * forbidden, like `token`): Luca shows it when a plan needs a wallet the user
+ * hasn't connected, e.g. the Abstract Global Wallet for "move everything off
+ * Abstract". Connecting signs nothing; the plan still needs its own review and
+ * signatures afterwards.
+ */
+export interface ConnectCard {
+  kind: "connect";
+  /** Which connector the button opens. */
+  wallet: "agw";
+  title: string;
+  body?: string;
+  /** Button label, e.g. "Connect Abstract Global Wallet". */
+  label: string;
+}
+
 export type AgentCard =
   | MetricCard
   | StatsCard
@@ -198,6 +216,7 @@ export type AgentCard =
   | ActionsCard
   | GaugeCard
   | StepsCard
-  | TokenCard;
+  | TokenCard
+  | ConnectCard;
 
 export type CardKind = AgentCard["kind"];

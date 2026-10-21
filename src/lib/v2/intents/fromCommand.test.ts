@@ -3192,5 +3192,20 @@ console.log("\n— bridge to someone else's address —");
   check("control: bridge '... and send it to 0x...' is untouched", br.status === "ok" && br.command.kind === "bridge");
 }
 
+// "Move everything off Abstract" is one command that bridges every holding.
+{
+  const arc = chainTokens(5042);
+  const ex = (s) => parseCommand(s, arc, {});
+  const isExit = (r, to, asset) => r.status === "ok" && r.command.kind === "exitChain" && r.command.fromChain === "abstract" && r.command.toChain === to && r.command.toAsset === asset;
+  check("'move everything off abstract to arc'", isExit(ex("move everything off abstract to arc"), "arc", "USDC"), JSON.stringify(ex("move everything off abstract to arc")));
+  check("'bridge all my tokens out of Abstract' defaults to Arc", isExit(ex("bridge all my tokens out of Abstract"), "arc", "USDC"));
+  check("'exit abstract'", isExit(ex("exit abstract"), "arc", "USDC"));
+  check("'migrate my funds from abstract to base as eth'", isExit(ex("migrate my funds from abstract to base as eth"), "base", "ETH"), JSON.stringify(ex("migrate my funds from abstract to base as eth")));
+  const one = ex("move all my USDC from base to arc");
+  check("control: a named token stays an ordinary bridge", !(one.status === "ok" && one.command.kind === "exitChain"), JSON.stringify(one).slice(0, 160));
+  const br = ex("bridge 10 USDC from base to arc");
+  check("control: 'bridge 10 USDC from base to arc' is a bridge", br.status === "ok" && br.command.kind === "bridge");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

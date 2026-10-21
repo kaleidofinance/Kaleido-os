@@ -1,4 +1,7 @@
-import { transactionTaskPointsFor, type TransactionTaskTimestamps } from "./transactionTasks";
+import {
+  transactionTaskPointsFor,
+  type TransactionTaskTimestamps,
+} from "./transactionTasks";
 import { swapVolumePoints } from "./swapVolume";
 
 /**
@@ -29,6 +32,14 @@ export const X_TASK_POINTS = {
   argus: 600,
   /** $ARGUS listing, batch 2: 50 more spots at half the reward. */
   argus2: 300,
+  /** Like & RT the Abstract-exit (Luca bridge-out) post — first 200. */
+  absexit: 700,
+  lendborrow: 500,
+  lendborrowComment: 500,
+  limitorder: 500,
+  limitorderComment: 500,
+  argusIntegration: 500,
+  argusIntegrationComment: 500,
   bitget: 100,
 } as const;
 
@@ -44,6 +55,13 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   llama: "x_llama_at",
   argus: "x_argus_at",
   argus2: "x_argus2_at",
+  absexit: "x_absexit_at",
+  lendborrow: "x_lendborrow_at",
+  lendborrowComment: "x_lendborrow_comment_at",
+  limitorder: "x_limitorder_at",
+  limitorderComment: "x_limitorder_comment_at",
+  argusIntegration: "x_argus_integration_at",
+  argusIntegrationComment: "x_argus_integration_comment_at",
   bitget: "x_bitget_at",
 };
 
@@ -59,7 +77,10 @@ export type TaskRow = TransactionTaskTimestamps & {
 /** X-task points that have cleared their hold at `now`. */
 export function countedXPoints(row: TaskRow, now: number): number {
   let sum = 0;
-  for (const [key, col] of Object.entries(X_TASK_COLUMNS) as [XTaskPointKey, string][]) {
+  for (const [key, col] of Object.entries(X_TASK_COLUMNS) as [
+    XTaskPointKey,
+    string,
+  ][]) {
     const at = row[col];
     if (typeof at !== "string" || !at) continue;
     if (now >= new Date(at).getTime() + X_HOLD_MS) sum += X_TASK_POINTS[key];
@@ -68,7 +89,7 @@ export function countedXPoints(row: TaskRow, now: number): number {
 }
 
 /**
- * The task total a wallet has earned: welcome + referrals + X tasks past their
+ * The task total a wallet has earned: welcome + active referrals + X tasks past their
  * hold + transaction tasks + the highest swap-volume tier reached. Pure.
  */
 export function eligibleTaskPoints(args: {
@@ -109,7 +130,12 @@ export function topUpOwed(args: {
 /** The ledger row for a top-up. The tx_hash is stable per (wallet, eligible
  *  total), so the `unique (chain_id, tx_hash)` constraint makes two runs that
  *  race on the same top-up write it once. */
-export function topUpRow(wallet: string, eligible: number, delta: number, at: string) {
+export function topUpRow(
+  wallet: string,
+  eligible: number,
+  delta: number,
+  at: string,
+) {
   return {
     wallet,
     source_slug: "waitlist",

@@ -181,6 +181,12 @@ const EXPECTED = [
     usedBy:
       "the /api/chat per-IP rate limit (src/lib/ai/ipRate.ts, bump_ip_rate RPC)",
   },
+  {
+    migration: "20261010000000_waitlist_x_lend_borrow.sql",
+    tables: { waitlist: ["x_lendborrow_at", "x_lendborrow_comment_at"] },
+    functions: ["claim_capped_x_task"],
+    usedBy: "the first-200 Lend & Borrow X tasks in /api/waitlist/x and /rewards",
+  },
 ];
 
 /* Replayed verbatim from the route files. If these two pass, the leaderboard

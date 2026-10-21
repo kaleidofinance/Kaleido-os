@@ -26,6 +26,9 @@ export type XTaskKey =
   | "llama"
   | "argus"
   | "argus2"
+  | "absexit"
+  | "argusIntegration"
+  | "argusIntegrationComment"
   | "bitget";
 
 /** On-chain transaction task keys. `arcMainnet` was retired 2026-09-23 (farmable);
@@ -58,11 +61,14 @@ export interface WaitlistStatus {
   wallet: string;
   refCode: string;
   referrals: number;
+  activeReferrals: number;
+  pendingReferrals: number;
   rank: number | null;
   points: number;
   heldPoints: number;
   welcomePoints: number;
   referralPoints: number;
+  pendingReferralPoints: number;
   xHandle: string | null;
   xTasks: Record<XTaskKey, XTaskState>;
   swapVolume: SwapVolumeStanding;

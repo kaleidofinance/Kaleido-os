@@ -130,7 +130,7 @@ export default function LeaderboardPage() {
         ? "No points in this season yet."
         : null;
 
-  /* Five extra columns at `full`, two otherwise. The tier decides the grid, so
+  /* Five extra columns at `full`, three otherwise. The tier decides the grid, so
      the template lives in a class name rather than in inline styles. */
   const gridClass = full ? s.t5 : s.t2;
 
@@ -238,6 +238,7 @@ export default function LeaderboardPage() {
                 <span>Wallet</span>
                 <span className={s.right}>Points</span>
                 <span className={s.right}>Volume</span>
+                <span className={s.right}>Referrals</span>
                 {full ? (
                   <>
                     <span className={s.right}>Time</span>
@@ -297,6 +298,9 @@ export default function LeaderboardPage() {
                       </span>
                       <span className={`${s.right} tabular`}>
                         {vol(r.volume)}
+                      </span>
+                      <span className={`${s.right} tabular`}>
+                        {qty(r.referrals)}
                       </span>
                       {full ? (
                         <>

@@ -245,7 +245,14 @@ async function handle(req: Request): Promise<Response> {
   if (bf.mode === "invalid")
     return Response.json({ error: bf.error }, { status: 400 });
   const backfill = bf.mode === "backfill" ? bf : null;
-  if (backfill) provider = historyProvider() ?? provider;
+  /* Live runs read from the official node too, not only backfills. On the
+     failover pool the head could come from a node at the tip while getLogs
+     landed on one still behind it — which answers "no logs" for blocks it hasn't
+     seen, without an error — so the cursor walked past real swaps and recorded
+     nothing (every swap from 2026-10-06 23:30 UTC until this fix). One node for
+     head, logs and receipts keeps them consistent; retryRpc absorbs its rate
+     limits. */
+  provider = historyProvider() ?? provider;
   /* A backfill FAILS CLOSED on history it could not read: a transaction whose
      body/receipt came back empty, or whose processing threw, is a gap — not a
      skip — and a chunk with any gap reports failure so the caller retries the

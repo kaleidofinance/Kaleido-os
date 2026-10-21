@@ -336,5 +336,15 @@ check(
   ])[0].rows.length === 8,
 );
 
+// connect: local-only, one closed wallet value, never from the model.
+{
+  const card = { kind: "connect", wallet: "agw", title: "Connect your Abstract Global Wallet", label: "Connect Abstract Global Wallet", body: "Signs nothing." };
+  const loc = localCards([card]);
+  check("connect card passes the local gate", loc.length === 1 && loc[0].kind === "connect" && loc[0].wallet === "agw");
+  check("connect card is forbidden from the model", wire([card]).length === 0);
+  check("an unknown wallet value is dropped", localCards([{ ...card, wallet: "metamask" }]).length === 0);
+  check("a stray href/onClick is not carried", !("href" in (localCards([{ ...card, href: "https://evil", onClick: "x" }])[0] ?? {})));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

@@ -147,11 +147,11 @@
    one: it looks like data that failed to load. */
 .t2 .thead,
 .t2 .row {
-  grid-template-columns: 0.7fr 1.7fr 1fr 1fr;
+  grid-template-columns: 0.7fr 1.6fr 1fr 1fr 0.9fr;
 }
 .t5 .thead,
 .t5 .row {
-  grid-template-columns: 0.7fr 1.6fr 1fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: 0.7fr 1.5fr 1fr 1fr 0.9fr 1fr 1fr 1fr;
 }
 
 .rank {
@@ -231,10 +231,14 @@
        Cf. trade.module.css and Nav.module.css, the only two files that had it. */
     padding: 16px 14px calc(60px + env(safe-area-inset-bottom, 0px));
   }
-  /* Six columns inside a phone width crushes every cell. Scroll the table in its
+  /* Dense leaderboard columns inside a phone width crush every cell. Scroll the table in its
      own container instead, so the page body never scrolls sideways. */
   .table {
     overflow-x: auto;
+  }
+  .t2 .thead,
+  .t2 .row {
+    min-width: 500px;
   }
   .t5 .thead,
   .t5 .row {

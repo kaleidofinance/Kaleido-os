@@ -10,13 +10,18 @@ import {
 } from "react";
 import Link from "next/link";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useConnectAgw } from "@/lib/wallet";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { usePortfolio, type Portfolio } from "@/hooks/usePortfolio";
 import { useLocalPlanner } from "@/hooks/v2/useLocalPlanner";
 import { useChatHistory, type Msg } from "@/hooks/v2/useChatHistory";
-import { chainTokens, chainsOffering, bridgeSourceCandidates } from "@/constants/tokens";
+import {
+  chainTokens,
+  chainsOffering,
+  bridgeSourceCandidates,
+} from "@/constants/tokens";
 import { resolveChain } from "@/lib/ai/bridgeQuotes";
 import { argusAddressToken } from "@/lib/argus/token";
 import { fetchHeldTokens, heldVocabulary } from "@/lib/wallet/heldTokens";
@@ -78,10 +83,19 @@ import {
 } from "@/lib/v2/agentFollowThrough";
 import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
-import { docsReply, groundingFor, MIN_ASK_SIMILARITY, outageReply, searchDocs } from "@/lib/ai/docsSearch";
+import {
+  docsReply,
+  groundingFor,
+  MIN_ASK_SIMILARITY,
+  outageReply,
+  searchDocs,
+} from "@/lib/ai/docsSearch";
 import { visibleProse } from "@/lib/ai/actionsBlock";
 import { createBrowserLocalIntentModel } from "@/lib/ai/browserLocalIntent";
-import { canUseBrowserLocalModel, type LocalIntentClassification } from "@/lib/ai/localIntent";
+import {
+  canUseBrowserLocalModel,
+  type LocalIntentClassification,
+} from "@/lib/ai/localIntent";
 import {
   parseCommand,
   dollarSizedToken,
@@ -197,6 +211,39 @@ function historyForModel(
 
 export default function AgentPage() {
   const { chainId, address } = useWalletV2();
+  const connectAgw = useConnectAgw();
+  /* The exit request waiting on the Abstract wallet: set when the connect card
+     is shown, replayed once the wallet is on Abstract (effect below send). */
+  const [pendingExit, setPendingExitState] = useState<string | null>(null);
+  /* Kept in sessionStorage too (10 min), because connecting a different wallet
+     reloads this page's transcript and remounts it — component state alone was
+     lost exactly at the moment the wallet connected. */
+  const PENDING_EXIT_KEY = "luca:pendingExit";
+  const setPendingExit = (text: string | null) => {
+    setPendingExitState(text);
+    try {
+      if (text)
+        sessionStorage.setItem(
+          PENDING_EXIT_KEY,
+          JSON.stringify({ text, at: Date.now() }),
+        );
+      else sessionStorage.removeItem(PENDING_EXIT_KEY);
+    } catch {
+      /* private mode: the in-memory copy still works within this mount */
+    }
+  };
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(PENDING_EXIT_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw) as { text?: string; at?: number };
+      if (p.text && p.at && Date.now() - p.at < 10 * 60_000)
+        setPendingExitState(p.text);
+      else sessionStorage.removeItem(PENDING_EXIT_KEY);
+    } catch {
+      /* unreadable or blocked storage: nothing to resume */
+    }
+  }, []);
   const { settings } = useAgentSettings(address);
   const { buildPlan } = useLocalPlanner();
   const { showTestnets } = useTestnetMode();
@@ -289,8 +336,59 @@ export default function AgentPage() {
      parse on its own; replaced by the next card, dropped on Clear. */
   const [cardToken, setCardToken] = useState<CardTokenContext | null>(null);
   const [lastOutcome, setLastOutcome] = useState<FollowThrough | null>(null);
-  const localIntentModelRef = useRef<ReturnType<typeof createBrowserLocalIntentModel> | null>(null);
+  const localIntentModelRef = useRef<ReturnType<
+    typeof createBrowserLocalIntentModel
+  > | null>(null);
   const localIntentDisabledRef = useRef(false);
+  const [localModelStatus, setLocalModelStatus] = useState<
+    "checking" | "idle" | "loading" | "ready" | "failed" | "unavailable"
+  >("checking");
+  useEffect(() => {
+    if (!canUseBrowserLocalModel() || typeof window === "undefined") {
+      setLocalModelStatus("unavailable");
+      return;
+    }
+    setLocalModelStatus("idle");
+    const warm = () => {
+      if (localIntentDisabledRef.current) return;
+      const model =
+        localIntentModelRef.current ??
+        (localIntentModelRef.current = createBrowserLocalIntentModel());
+      if (!model?.warmup) {
+        setLocalModelStatus("failed");
+        localIntentDisabledRef.current = true;
+        return;
+      }
+      setLocalModelStatus("loading");
+      void model.warmup().then(
+        () => setLocalModelStatus("ready"),
+        () => {
+          localIntentDisabledRef.current = true;
+          setLocalModelStatus("failed");
+        },
+      );
+    };
+    const requestIdle = (
+      window as unknown as {
+        requestIdleCallback?: (
+          callback: () => void,
+          options?: { timeout: number },
+        ) => number;
+      }
+    ).requestIdleCallback;
+    const idle = requestIdle
+      ? requestIdle(warm, { timeout: 12_000 })
+      : window.setTimeout(warm, 12_000);
+    return () => {
+      const cancelIdle = (
+        window as unknown as {
+          cancelIdleCallback?: (id: number) => void;
+        }
+      ).cancelIdleCallback;
+      if (requestIdle && cancelIdle) cancelIdle(idle);
+      else window.clearTimeout(idle);
+    };
+  }, []);
   const [contextHydrated, setContextHydrated] = useState(false);
   const contextKeyRef = useRef<string | null>(null);
   /* The transcript hook persists the visible conversation. This companion
@@ -305,11 +403,17 @@ export default function AgentPage() {
     try {
       const raw = sessionStorage.getItem(key);
       const parsed = raw ? (JSON.parse(raw) as Partial<Command>) : null;
-      if (parsed && typeof parsed === "object" && typeof parsed.kind === "string") {
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.kind === "string"
+      ) {
         restored = parsed as Command;
       }
       const outcomeRaw = sessionStorage.getItem(`${key}.outcome`);
-      restoredOutcome = outcomeRaw ? reviveFollowThrough(JSON.parse(outcomeRaw)) : null;
+      restoredOutcome = outcomeRaw
+        ? reviveFollowThrough(JSON.parse(outcomeRaw))
+        : null;
     } catch {
       restored = null;
       restoredOutcome = null;
@@ -333,7 +437,8 @@ export default function AgentPage() {
     const key = `kaleido.v2.agentContext.${address ?? "anon"}`;
     if (!contextHydrated || contextKeyRef.current !== key) return;
     try {
-      if (lastOutcome) sessionStorage.setItem(`${key}.outcome`, JSON.stringify(lastOutcome));
+      if (lastOutcome)
+        sessionStorage.setItem(`${key}.outcome`, JSON.stringify(lastOutcome));
       else sessionStorage.removeItem(`${key}.outcome`);
     } catch {
       /* unavailable storage leaves the outcome in memory */
@@ -393,9 +498,11 @@ export default function AgentPage() {
     setHeldTokens([]);
     if (!address || !chainId) return;
     let live = true;
-    void fetchHeldTokens(address, chainId, envVars.thirdwebClientId).then((t) => {
-      if (live) setHeldTokens(t);
-    });
+    void fetchHeldTokens(address, chainId, envVars.thirdwebClientId).then(
+      (t) => {
+        if (live) setHeldTokens(t);
+      },
+    );
     return () => {
       live = false;
     };
@@ -598,6 +705,37 @@ export default function AgentPage() {
      * with the same getBalances the model's tool runs, shown as a balance card.
      * No model involved, so it answers even when the model is down.
      */
+    /* "Move everything off Abstract": the bridges are signed from Abstract, so
+       a wallet that isn't there gets a card that opens the Abstract Global
+       Wallet connector instead of a dead-end refusal. */
+    if (
+      result.command.kind === "exitChain" &&
+      /^abs/i.test(result.command.fromChain) &&
+      chainId !== 2741
+    ) {
+      note("Needs the Abstract wallet connected first");
+      const c = result.command;
+      setPendingExit(
+        `move everything off ${c.fromChain} to ${c.toChain} as ${c.toAsset.toLowerCase()}`,
+      );
+      say(
+        "Those funds are on Abstract, so the bridges have to be signed from your Abstract wallet. Connect it and I'll carry on and build the plan to move everything out.",
+        {
+          via: "local",
+          cards: [
+            {
+              kind: "connect",
+              wallet: "agw",
+              title: "Connect your Abstract Global Wallet",
+              body: "Abstract shuts down on Dec 15, 2026. Connecting signs nothing — you'll review every bridge before it's sent.",
+              label: "Connect Abstract Global Wallet",
+            },
+          ],
+        },
+      );
+      return true;
+    }
+
     if (result.command.kind === "lookup") {
       const who = result.command.address;
       const short = `${who.slice(0, 6)}…${who.slice(-4)}`;
@@ -610,14 +748,20 @@ export default function AgentPage() {
         unread?: string[];
       } = {};
       try {
-        const r = await fetch(`/api/lookup/balances?address=${who}&chainId=${onChain}`, { signal });
+        const r = await fetch(
+          `/api/lookup/balances?address=${who}&chainId=${onChain}`,
+          { signal },
+        );
         data = await r.json();
       } catch {
         data = { error: "The balance read didn't come back." };
       }
       if (signal.aborted) return true;
       if (data.error) {
-        say(`I couldn't read ${short}'s balances right now — ${data.error.split(" - ")[0]}. That isn't the same as an empty wallet.`, { via: "local" });
+        say(
+          `I couldn't read ${short}'s balances right now — ${data.error.split(" - ")[0]}. That isn't the same as an empty wallet.`,
+          { via: "local" },
+        );
         return true;
       }
       const rows = (data.holdings ?? []).map((h) => {
@@ -625,16 +769,28 @@ export default function AgentPage() {
         return {
           symbol: h.symbol,
           amount: Number.isFinite(n)
-            ? n.toLocaleString("en-US", { maximumFractionDigits: n >= 1 ? 4 : 8 })
+            ? n.toLocaleString("en-US", {
+                maximumFractionDigits: n >= 1 ? 4 : 8,
+              })
             : h.amount,
         };
       });
-      const unread = data.unread?.length ? ` I couldn't read ${data.unread.join(", ")}, so those may not be zero.` : "";
+      const unread = data.unread?.length
+        ? ` I couldn't read ${data.unread.join(", ")}, so those may not be zero.`
+        : "";
       const text =
         rows.length === 0
           ? `${short} holds none of the tokens I know on ${data.chain ?? "this chain"}.${unread}`
           : `${short} on ${data.chain ?? "this chain"}:${unread}`;
-      const cards = rows.length ? localCards([{ kind: "balance", title: `${short} · ${data.chain ?? ""}`.trim(), rows }]) : [];
+      const cards = rows.length
+        ? localCards([
+            {
+              kind: "balance",
+              title: `${short} · ${data.chain ?? ""}`.trim(),
+              rows,
+            },
+          ])
+        : [];
       say(text, { via: "local", ...(cards.length ? { cards } : {}) });
       return true;
     }
@@ -828,7 +984,8 @@ export default function AgentPage() {
     if (!verdict.ok) {
       note("A limit in your Agent Settings stops this one");
       say(
-        verdict.refusal ?? "That would cross a limit you set in Agent Settings.",
+        verdict.refusal ??
+          "That would cross a limit you set in Agent Settings.",
         { via: "local" },
       );
       return true;
@@ -884,7 +1041,10 @@ export default function AgentPage() {
       );
       return;
     }
-    say(`Your ${target.symbol} arrived on ${target.chainName}. Here's the send — check the address, then sign.`, { via: "local" });
+    say(
+      `Your ${target.symbol} arrived on ${target.chainName}. Here's the send — check the address, then sign.`,
+      { via: "local" },
+    );
     await planLocally({ status: "ok", command: then }, watch.signal);
   };
 
@@ -892,7 +1052,10 @@ export default function AgentPage() {
   const prepareAfterBridge = async (then: Command) => {
     const target = arrivalTarget(then);
     if (!target || !address) {
-      say("Bridge sent. When it lands, ask me to send it again and I'll build the send.", { via: "local" });
+      say(
+        "Bridge sent. When it lands, ask me to send it again and I'll build the send.",
+        { via: "local" },
+      );
       return;
     }
     const to = then.kind === "send" ? then.to : "";
@@ -952,6 +1115,17 @@ export default function AgentPage() {
     refreshCredits(address);
   };
 
+  /* Picks the exit back up the moment the Abstract wallet is connected, so the
+     connect card leads somewhere instead of asking the user to repeat
+     themselves. Fires once: the pending request is cleared before it runs. */
+  useEffect(() => {
+    if (!pendingExit || chainId !== 2741 || !address) return;
+    const text = pendingExit;
+    setPendingExit(null);
+    void send(text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingExit, chainId, address]);
+
   const send = async (text: string) => {
     const content = text.trim();
     if (!content || busy) return;
@@ -959,26 +1133,40 @@ export default function AgentPage() {
     /* A halted plan already carries its safe resume index. Reopen that review
        locally instead of sending "continue" to the model, which could invent a
        fresh plan and re-sign a step that already landed. */
-    if (/\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(content) &&
-        latest && typeof latest.planFrom === "number" && latest.planFrom > 0) {
+    if (
+      /\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(
+        content,
+      ) &&
+      latest &&
+      typeof latest.planFrom === "number" &&
+      latest.planFrom > 0
+    ) {
       // Capture the narrowed number in a const: TS drops control-flow narrowing of
       // a property access (latest.planFrom) inside the setMessages closure below,
       // which is the "possibly undefined" build error. A const local keeps `number`.
       const resumeFrom = latest.planFrom;
       if (!latest.plan) {
-        setMessages((m) => [...m, { role: "user", text: content }, {
-          role: "assistant",
-          text: `That plan was paused before step ${resumeFrom + 1}. I kept the safe checkpoint, but the old transaction data expired after reload. Ask me to build the action again for a fresh review.`,
-          via: "local",
-        }]);
+        setMessages((m) => [
+          ...m,
+          { role: "user", text: content },
+          {
+            role: "assistant",
+            text: `That plan was paused before step ${resumeFrom + 1}. I kept the safe checkpoint, but the old transaction data expired after reload. Ask me to build the action again for a fresh review.`,
+            via: "local",
+          },
+        ]);
         setInput("");
         return;
       }
-      setMessages((m) => [...m, { role: "user", text: content }, {
-        role: "assistant",
-        text: `I kept the completed steps. Reopen the review to resume from step ${resumeFrom + 1}.`,
-        via: "local",
-      }]);
+      setMessages((m) => [
+        ...m,
+        { role: "user", text: content },
+        {
+          role: "assistant",
+          text: `I kept the completed steps. Reopen the review to resume from step ${resumeFrom + 1}.`,
+          via: "local",
+        },
+      ]);
       setPanel({ kind: "plan" });
       setInput("");
       return;
@@ -987,9 +1175,13 @@ export default function AgentPage() {
     /* Bridge status is a live route question, not a generic model prompt.
        Read the persisted LI.FI route and ask the status proxy so Luca never
        calls a source-chain confirmation the same thing as destination arrival. */
-    if (/\b(bridge|route|transfer)\b/i.test(content) &&
-        /\b(status|complete|completed|arrived|landed|finish|finished|where)\b/i.test(content) &&
-        address) {
+    if (
+      /\b(bridge|route|transfer)\b/i.test(content) &&
+      /\b(status|complete|completed|arrived|landed|finish|finished|where)\b/i.test(
+        content,
+      ) &&
+      address
+    ) {
       const routes = readLifiPending(address);
       const cctpRoutes = readCctpPending(address);
       setMessages((m) => [...m, { role: "user", text: content }]);
@@ -1005,28 +1197,70 @@ export default function AgentPage() {
           const status = minted
             ? `completed — your ${route.amount} ${route.symbol} has been minted on ${route.destChainName}`
             : `source-confirmed and waiting for Circle attestation or destination minting on ${route.destChainName}`;
-          setMessages((m) => [...m, { role: "assistant", text: `Your CCTP bridge is ${status}.`, via: "local" }]);
+          setMessages((m) => [
+            ...m,
+            {
+              role: "assistant",
+              text: `Your CCTP bridge is ${status}.`,
+              via: "local",
+            },
+          ]);
         } catch {
-          setMessages((m) => [...m, { role: "assistant", text: `Your CCTP burn is source-confirmed, but I couldn't read the destination mint status right now. It remains pending for ${route.destChainName}.`, via: "local" }]);
+          setMessages((m) => [
+            ...m,
+            {
+              role: "assistant",
+              text: `Your CCTP burn is source-confirmed, but I couldn't read the destination mint status right now. It remains pending for ${route.destChainName}.`,
+              via: "local",
+            },
+          ]);
         }
         return;
       }
       if (routes.length === 0) {
-        setMessages((m) => [...m, { role: "assistant", text: "I don't have an active LI.FI route saved for this wallet. If you bridged elsewhere, share the source transaction hash and I can check it.", via: "local" }]);
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: "I don't have an active LI.FI route saved for this wallet. If you bridged elsewhere, share the source transaction hash and I can check it.",
+            via: "local",
+          },
+        ]);
         return;
       }
       const route = routes[0];
       try {
-        const response = await fetch(`/api/bridge/status?tx=${route.txHash}&from=${route.sourceChainId}&to=${route.destinationChainId}`, { cache: "no-store" });
-        const data = (await response.json()) as { status?: string; destinationTxHash?: string | null };
-        const status = data.status === "DONE"
-          ? `completed — your ${route.amount} ${route.symbol} arrived on ${route.destinationChainName}`
-          : data.status === "FAILED"
-            ? `failed on the route to ${route.destinationChainName}; the source transaction was confirmed, but the destination leg needs attention`
-            : `still processing after the source transaction; it has not yet arrived on ${route.destinationChainName}`;
-        setMessages((m) => [...m, { role: "assistant", text: `Your LI.FI bridge is ${status}.`, via: "local" }]);
+        const response = await fetch(
+          `/api/bridge/status?tx=${route.txHash}&from=${route.sourceChainId}&to=${route.destinationChainId}`,
+          { cache: "no-store" },
+        );
+        const data = (await response.json()) as {
+          status?: string;
+          destinationTxHash?: string | null;
+        };
+        const status =
+          data.status === "DONE"
+            ? `completed — your ${route.amount} ${route.symbol} arrived on ${route.destinationChainName}`
+            : data.status === "FAILED"
+              ? `failed on the route to ${route.destinationChainName}; the source transaction was confirmed, but the destination leg needs attention`
+              : `still processing after the source transaction; it has not yet arrived on ${route.destinationChainName}`;
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: `Your LI.FI bridge is ${status}.`,
+            via: "local",
+          },
+        ]);
       } catch {
-        setMessages((m) => [...m, { role: "assistant", text: `The source transaction is recorded, but I couldn't read LI.FI's destination status right now. The route to ${route.destinationChainName} remains pending; try again shortly.`, via: "local" }]);
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: `The source transaction is recorded, but I couldn't read LI.FI's destination status right now. The route to ${route.destinationChainName} remains pending; try again shortly.`,
+            via: "local",
+          },
+        ]);
       }
       return;
     }
@@ -1041,13 +1275,19 @@ export default function AgentPage() {
       const { providerForChain } = await import("@/config/provider");
       const provider = providerForChain(chainId);
       const currentOutcome = provider
-        ? await reconcileFollowThrough(lastOutcome, async (hash) => provider.getTransactionReceipt(hash))
+        ? await reconcileFollowThrough(lastOutcome, async (hash) =>
+            provider.getTransactionReceipt(hash),
+          )
         : lastOutcome;
       setLastOutcome(currentOutcome);
       setMessages((m) => [
         ...m,
         { role: "user", text: content },
-        { role: "assistant", text: followThroughReply(currentOutcome), via: "local" },
+        {
+          role: "assistant",
+          text: followThroughReply(currentOutcome),
+          via: "local",
+        },
       ]);
       setInput("");
       return;
@@ -1057,7 +1297,10 @@ export default function AgentPage() {
     // the user is on. "swap 500 usdc" names a different contract on each chain,
     // so there is no chain-free answer to what "usdc" means.
     const registryTokens = chainTokens(chainId);
-    const vocabulary = [...registryTokens, ...heldVocabulary(registryTokens, heldTokens)];
+    const vocabulary = [
+      ...registryTokens,
+      ...heldVocabulary(registryTokens, heldTokens),
+    ];
     /* What the grammar needs to explain a miss rather than ask again: this
        chain's name, which other chains carry a symbol it doesn't (kept to the
        viewer's network), and whether a phrase names a chain — so "swap 50
@@ -1121,9 +1364,16 @@ export default function AgentPage() {
        persisted command remains safe to rebuild. Re-run the local planner so
        balances, quotes, allowances, and bridge routes are read fresh before a
        new review appears. */
-    if (/\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(content) &&
-        latest && typeof latest.planFrom === "number" && latest.planFrom > 0 &&
-        !latest.plan && lastCommand) {
+    if (
+      /\b(resume|continue|retry(?: the)? failed step|try again)\b/i.test(
+        content,
+      ) &&
+      latest &&
+      typeof latest.planFrom === "number" &&
+      latest.planFrom > 0 &&
+      !latest.plan &&
+      lastCommand
+    ) {
       note("Rebuilding the expired plan from your original command");
       await planLocally({ status: "ok", command: lastCommand }, abort.signal);
       return;
@@ -1157,7 +1407,16 @@ export default function AgentPage() {
       // Local-first. A stated command is not a reasoning problem, and routing it
       // through a provider costs a credit, adds latency, and introduces the one
       // failure mode a grammar can't have: a confidently wrong number.
-      if (pending) {
+      /* A message that is a whole command on its own is a NEW request, not the
+         answer to the question still pending: "move everything off Abstract to
+         Arc" typed after an unanswered "Which token?" was being read as the
+         token and looped. Only a fragment ("USDC", "50") fills the slot. */
+      if (
+        pending &&
+        parseCommand(content, vocabulary, parseCtx).status === "ok"
+      )
+        setPending(null);
+      else if (pending) {
         const filled = fillSlot(
           pending.draft,
           pending.missing,
@@ -1235,7 +1494,9 @@ export default function AgentPage() {
           return;
         }
         const tradable =
-          facts.ok && !facts.isQuote && (facts.source === "argus" || facts.source === "listed");
+          facts.ok &&
+          !facts.isQuote &&
+          (facts.source === "argus" || facts.source === "listed");
         const tokenCard = tokenCardFrom(facts);
         setCardToken(
           tradable && tokenCard.kind === "token" && tokenCard.ref
@@ -1309,6 +1570,29 @@ export default function AgentPage() {
       const question = isQuestionShaped(content);
       if (question && answerFromFaq(content)) return;
 
+      /* Live read-only market questions can be answered locally from the same
+       * public snapshot the pool screen uses. This avoids spending a reasoning
+       * request for questions such as "how many pools do we have?" while still
+       * grounding the answer in fresh data instead of asking the small browser
+       * model to invent market facts. */
+      if (question && /\b(how many|number of|list|which|what)\b/i.test(content) && /\bpools?\b/i.test(content)) {
+        try {
+          const response = await fetch("/api/pools", {
+            signal: abort.signal,
+            cache: "no-store",
+          });
+          const payload = (await response.json()) as { pools?: unknown[]; stale?: boolean };
+          const count = Array.isArray(payload.pools) ? payload.pools.length : 0;
+          const staleNote = payload.stale ? " This is the latest cached snapshot." : "";
+          note("Read the live pool snapshot locally");
+          log("local-pools");
+          say(`There are ${count} live Kaleido pools on Arc.${staleNote}`, { via: "local" });
+          return;
+        } catch {
+          if (abort.signal.aborted) return;
+        }
+      }
+
       /* A question that contains a verb. "do lp fees compound" parses as a
          compoundYield command and "can i repay part of my loan" as a repay -
          each a question answered with a transaction, the exact failure the
@@ -1363,8 +1647,12 @@ export default function AgentPage() {
         const usd = await fetchUsdPrice(sized.token, chainId);
         if (usd !== null) {
           parseCtx.usdPrice = (t) =>
-            t.address.toLowerCase() === sized.token.address.toLowerCase() ? usd : null;
-          note(`Priced ${sized.token.symbol} at $${usd.toPrecision(6)} to size $${sized.usd}`);
+            t.address.toLowerCase() === sized.token.address.toLowerCase()
+              ? usd
+              : null;
+          note(
+            `Priced ${sized.token.symbol} at $${usd.toPrecision(6)} to size $${sized.usd}`,
+          );
         }
       }
       const parsed: ParseResult = askedAboutAction
@@ -1416,7 +1704,11 @@ export default function AgentPage() {
       }
       if (parsed.status !== "unknown") {
         note("Read it as a direct command — no reasoning request needed");
-        log(parsed.status === "ok" ? `command:${parsed.command.kind}` : `asks:${parsed.missing}`);
+        log(
+          parsed.status === "ok"
+            ? `command:${parsed.command.kind}`
+            : `asks:${parsed.missing}`,
+        );
         await planLocally(parsed, abort.signal);
         return;
       }
@@ -1477,18 +1769,25 @@ export default function AgentPage() {
        * parser and local docs/FAQ paths could not decide the turn. The worker is
        * lazy, so ordinary commands and known questions never download a model. */
       let localIntent: LocalIntentClassification | null = null;
-      if (!askedAboutAction && !localIntentDisabledRef.current && canUseBrowserLocalModel()) {
+      if (
+        !askedAboutAction &&
+        !localIntentDisabledRef.current &&
+        canUseBrowserLocalModel()
+      ) {
         if (!localIntentModelRef.current) {
           localIntentModelRef.current = createBrowserLocalIntentModel();
-          if (!localIntentModelRef.current) localIntentDisabledRef.current = true;
+          if (!localIntentModelRef.current)
+            localIntentDisabledRef.current = true;
         }
         if (localIntentModelRef.current) {
           try {
+            setLocalModelStatus("loading");
             localIntent = await localIntentModelRef.current.classify(content, {
               lastKind: carriedCommand?.kind,
               hasActiveTask: Boolean(pending),
               chainId,
             });
+            setLocalModelStatus("ready");
             if (localIntent.kind !== "unknown") {
               note("Used local context to interpret this turn");
               log(`local-intent:${localIntent.kind}`);
@@ -1497,6 +1796,7 @@ export default function AgentPage() {
             /* A weak device, blocked WebGPU, or a failed model download must
              * never block Luca. Disable this session and use the normal route. */
             localIntentDisabledRef.current = true;
+            setLocalModelStatus("failed");
             localIntent = null;
           }
         }
@@ -1636,7 +1936,10 @@ export default function AgentPage() {
              "the reasoning service returned an error" - which tells the user
              nothing about their question. Say what happened and give them the
              closest thing the docs have, marked as such. */
-          if ((context as { status?: string } | undefined)?.status === "provider_error") {
+          if (
+            (context as { status?: string } | undefined)?.status ===
+            "provider_error"
+          ) {
             const o = outageReply(content);
             say(o.text, { via: "local", ...(o.link ? { link: o.link } : {}) });
             return;
@@ -1967,11 +2270,7 @@ export default function AgentPage() {
   const { support: batchSupport } = useBatchCalls();
   const confirmations = useMemo(
     () =>
-      !plan
-        ? 0
-        : batchSupport.supported
-          ? planRuns(plan).length
-          : plan.length,
+      !plan ? 0 : batchSupport.supported ? planRuns(plan).length : plan.length,
     [plan, batchSupport.supported],
   );
 
@@ -2067,7 +2366,9 @@ export default function AgentPage() {
       !!settled[settled.length - 1]?.hash;
     if (then && bridged) void prepareAfterBridge(then);
     setLastOutcome({
-      kind: settled.some((step) => step.hash && !step.skipped) ? "confirmed" : "nothing",
+      kind: settled.some((step) => step.hash && !step.skipped)
+        ? "confirmed"
+        : "nothing",
       steps: settled,
       at: Date.now(),
     });
@@ -2156,6 +2457,7 @@ export default function AgentPage() {
         address={address}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        localModelStatus={localModelStatus}
       />
 
       <div className={`${s.box} ${s.raised} ${s.chat}`}>
@@ -2400,6 +2702,8 @@ export default function AgentPage() {
                           cards={m.cards}
                           onPrompt={fillPrompt}
                           onSend={(t) => void send(t)}
+                          onConnect={() => connectAgw()}
+                          agwConnected={chainId === 2741 && !!address}
                           historical={m.historical ? { at: m.ts } : undefined}
                         />
                       )}
@@ -2442,7 +2746,9 @@ export default function AgentPage() {
                               <li key={j} className={s.step}>
                                 <span className={s.marker}>{j + 1}</span>
                                 <div className={s.stepBody}>
-                                  <div className={s.stepTitle}>{displayTxTitle(v.title)}</div>
+                                  <div className={s.stepTitle}>
+                                    {displayTxTitle(v.title)}
+                                  </div>
                                   {v.detail && (
                                     <div className={s.stepDetail}>
                                       {displayTxDetail(v.detail)}

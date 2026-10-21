@@ -47,6 +47,7 @@ const KNOWN_KINDS: CardKind[] = [
   "gauge",
   "steps",
   "token",
+  "connect",
 ];
 
 const STEP_STATUSES = ["done", "skipped", "failed"] as const;
@@ -247,6 +248,14 @@ function validate(raw: unknown): AgentCard | null {
       return { kind: "actions", ...(title ? { title } : {}), actions };
     }
 
+    case "connect": {
+      if (c.wallet !== "agw") return null;
+      const label = str(c.label, LIMITS.label);
+      if (!title || !label) return null;
+      const body = str(c.body, LIMITS.body);
+      return { kind: "connect", wallet: "agw", title, label, ...(body ? { body } : {}) };
+    }
+
     case "token": {
       const symbol = str(c.symbol, LIMITS.value);
       const address = str(c.address, LIMITS.value);
@@ -324,7 +333,7 @@ function validate(raw: unknown): AgentCard | null {
  * composes the command from a token it resolved itself; a model-emitted token
  * card would be a model choosing what a tap trades.
  */
-const WIRE_FORBIDDEN: ReadonlySet<CardKind> = new Set(["steps", "token"]);
+const WIRE_FORBIDDEN: ReadonlySet<CardKind> = new Set(["steps", "token", "connect"]);
 
 function collect(raw: unknown, opts: { allowLocalOnly: boolean }): AgentCard[] {
   if (!Array.isArray(raw)) return [];

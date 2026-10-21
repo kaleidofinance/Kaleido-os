@@ -10,6 +10,9 @@ import {
   swapVolumePoints,
   highestSwapTier,
   swapVolumeStanding,
+  latestCollateralUsd,
+  sumUsd,
+  tierIncrement,
 } from "./swapVolume.ts";
 
 let passed = 0;
@@ -106,6 +109,46 @@ console.log("\n— swapVolumeStanding: per-tier UI state —");
   const s = swapVolumeStanding(299.99);
   check("credited is still 1000 just under $300", s.points === 1000, String(s.points));
   check("$300 tier not done just under $300", !s.tiers.find((t) => t.key === "vol300")!.done);
+}
+
+// Task volume = every ledger swap (Luca AND manual, sub-$10 included) + the
+// collateral held now. These are the pure parts of walletTaskVolumeUsd.
+check("ledger rows add up, manual and agent alike", sumUsd([{ usd_value: 100 }, { usd_value: "218.65" }, { usd_value: null }]) === 318.65);
+check("no ledger rows is zero", sumUsd([]) === 0);
+check("collateral: newest snapshot per chain, not the sum of all of them",
+  latestCollateralUsd([
+    { chain_id: 5042, usd_value: 300, taken_at: "2026-10-01T00:00:00Z" },
+    { chain_id: 5042, usd_value: 250, taken_at: "2026-10-02T00:00:00Z" },
+  ]) === 250);
+check("collateral withdrawn to zero counts as zero (latest row wins)",
+  latestCollateralUsd([
+    { chain_id: 5042, usd_value: 400, taken_at: "2026-10-01T00:00:00Z" },
+    { chain_id: 5042, usd_value: 0, taken_at: "2026-10-03T00:00:00Z" },
+  ]) === 0);
+check("collateral on two chains is summed", latestCollateralUsd([
+  { chain_id: 5042, usd_value: 100, taken_at: "2026-10-02T00:00:00Z" },
+  { chain_id: 8453, usd_value: 50, taken_at: "2026-10-02T00:00:00Z" },
+]) === 150);
+check("order of snapshot rows does not matter", latestCollateralUsd([
+  { chain_id: 5042, usd_value: 250, taken_at: "2026-10-02T00:00:00Z" },
+  { chain_id: 5042, usd_value: 300, taken_at: "2026-10-01T00:00:00Z" },
+]) === 250);
+check("a malformed timestamp is ignored, not counted as newest", latestCollateralUsd([
+  { chain_id: 5042, usd_value: 999, taken_at: "not a date" },
+  { chain_id: 5042, usd_value: 120, taken_at: "2026-10-02T00:00:00Z" },
+]) === 120);
+const combined = sumUsd([{ usd_value: 200 }]) + latestCollateralUsd([{ chain_id: 5042, usd_value: 150, taken_at: "2026-10-02T00:00:00Z" }]);
+check("$200 of swaps + $150 collateral = $350 → the $300 tier (2,000 kPoint)", swapVolumePoints(combined) === 2000, String(combined));
+check("$200 of swaps alone is only the $100 tier", swapVolumePoints(200) === 1000);
+
+// tierIncrement: what a tier ADDS, given the tiers already paid.
+{
+  const tiers = (vol: number) => swapVolumeStanding(vol).tiers;
+  check("$10 wallet: the $10 tier adds its full 500", tierIncrement(tiers(10), "vol10") === 500);
+  check("$54 wallet: the $50 tier adds 200 (700 total − 500 already paid)", tierIncrement(tiers(54.36), "vol50") === 200);
+  check("$54 wallet: the $100 tier, not yet reached, would add 300 (1000 − 700)", tierIncrement(tiers(54.36), "vol100") === 300);
+  check("$350 wallet: the $300 tier adds 1000 (2000 − the $100 tier's 1000 already paid)", tierIncrement(tiers(350), "vol300") === 1000);
+  check("unknown tier key adds 0", tierIncrement(tiers(54), "nope") === 0);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

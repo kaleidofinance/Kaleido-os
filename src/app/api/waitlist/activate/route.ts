@@ -1,10 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { hasArcActivity, ARC_MAINNET_CHAIN_ID } from "@/lib/waitlist/arcMainnet";
+import {
+  hasArcActivity,
+  ARC_MAINNET_CHAIN_ID,
+} from "@/lib/waitlist/arcMainnet";
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import {
   swapVolumePoints,
-  walletSwapVolumeUsd,
+  walletTaskVolumeUsd,
 } from "@/lib/waitlist/swapVolume";
 import { PER_REFERRAL, X_TASK_POINTS } from "@/lib/waitlist/eligible";
 import { TRANSACTION_TASK_POINTS } from "@/lib/waitlist/transactionTasks";
@@ -122,7 +125,7 @@ async function handle(req: Request): Promise<Response> {
   const { data: pending, error: pendErr } = await admin
     .from("waitlist")
     .select(
-      "wallet, welcome_points, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_bitget_at",
+      "wallet, welcome_points, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_bitget_at",
     )
     .is("activated_at", null)
     // X-verified only, keyed on x_user_id (the UNIQUE column — one real X account
@@ -137,8 +140,7 @@ async function handle(req: Request): Promise<Response> {
     .order("last_checked_at", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: true })
     .limit(limit);
-  if (pendErr)
-    return Response.json({ error: "query failed" }, { status: 500 });
+  if (pendErr) return Response.json({ error: "query failed" }, { status: 500 });
 
   const rows = pending ?? [];
   const now = new Date().toISOString();
@@ -150,7 +152,9 @@ async function handle(req: Request): Promise<Response> {
   // round-trips; the batch either resolves well inside maxDuration or the run
   // ends here having stamped nothing, which is safe — the same rows come back
   // next run.
-  const probed: { active: boolean; errored: boolean }[] = new Array(rows.length);
+  const probed: { active: boolean; errored: boolean }[] = new Array(
+    rows.length,
+  );
   let cursor = 0;
   async function probeWorker() {
     for (;;) {
@@ -167,7 +171,10 @@ async function handle(req: Request): Promise<Response> {
     }
   }
   await Promise.all(
-    Array.from({ length: Math.min(PROBE_CONCURRENCY, rows.length) }, probeWorker),
+    Array.from(
+      { length: Math.min(PROBE_CONCURRENCY, rows.length) },
+      probeWorker,
+    ),
   );
 
   // Phase 2 — credit the wallets that have transacted. Sequential: these are the
@@ -193,10 +200,10 @@ async function handle(req: Request): Promise<Response> {
     // Referral count → capped bonus, snapshotted now.
     const { data: lb } = await admin
       .from("waitlist_leaderboard")
-      .select("referrals")
+      .select("active_referrals")
       .eq("wallet", wallet)
       .single();
-    const referrals = Number(lb?.referrals ?? 0);
+    const referrals = Number(lb?.active_referrals ?? 0);
     const referralPoints = PER_REFERRAL * referrals;
     const xTaskPoints =
       (row.x_linked_at ? X_TASK_POINTS.linked : 0) +
@@ -207,13 +214,22 @@ async function handle(req: Request): Promise<Response> {
       (row.x_llama_at ? X_TASK_POINTS.llama : 0) +
       (row.x_argus_at ? X_TASK_POINTS.argus : 0) +
       (row.x_argus2_at ? X_TASK_POINTS.argus2 : 0) +
+      (row.x_absexit_at ? X_TASK_POINTS.absexit : 0) +
+      (row.x_lendborrow_at ? X_TASK_POINTS.lendborrow : 0) +
+      (row.x_lendborrow_comment_at ? X_TASK_POINTS.lendborrowComment : 0) +
+      (row.x_limitorder_at ? X_TASK_POINTS.limitorder : 0) +
+      (row.x_limitorder_comment_at ? X_TASK_POINTS.limitorderComment : 0) +
+      (row.x_argus_integration_at ? X_TASK_POINTS.argusIntegration : 0) +
+      (row.x_argus_integration_comment_at ? X_TASK_POINTS.argusIntegrationComment : 0) +
       (row.x_bitget_at ? X_TASK_POINTS.bitget : 0) +
       (row.arc_mainnet_tx_at ? ARC_TX_POINTS : 0) +
       (row.agent_tx_at ? AGENT_TX_POINTS : 0) +
       (row.bridge_tx_at ? BRIDGE_TX_POINTS : 0);
     // Swap-volume milestone (highest reached tier). Derived from the wallet's
     // credited `swap` volume, matching standing() in api/waitlist/route.ts.
-    const swapPoints = swapVolumePoints(await walletSwapVolumeUsd(admin, wallet));
+    const swapPoints = swapVolumePoints(
+      await walletTaskVolumeUsd(admin, wallet),
+    );
     const points =
       Number(row.welcome_points) + referralPoints + xTaskPoints + swapPoints;
 

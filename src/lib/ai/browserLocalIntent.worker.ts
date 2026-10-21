@@ -1,11 +1,12 @@
-/* Bypass the package export map so Next cannot select the Node entry while
- * compiling this dedicated browser worker. */
-// @ts-expect-error The package's browser build is shipped as a JS entry without a declaration.
-import { pipeline } from "../../../node_modules/@huggingface/transformers/dist/transformers.js";
-import { validateLocalClassification, type LocalIntentContext } from "./localIntent";
+import { pipeline } from "@huggingface/transformers";
+import {
+  validateLocalClassification,
+  type LocalIntentContext,
+} from "./localIntent";
 
 type Request = {
   id: number;
+  op: "classify" | "warmup";
   text: string;
   context: LocalIntentContext;
   options: {
@@ -43,10 +44,12 @@ async function getGenerator(request: Request) {
        * expose navigator.gpu but cannot allocate the model; retry once on the
        * CPU/WASM backend before giving up. */
       if (request.options.device !== "webgpu") throw error;
-      loadedKey = `${request.options.modelId}:wasm:${request.options.dtype}`;
+      const wasmDtype =
+        request.options.dtype === "q4f16" ? "q4" : request.options.dtype;
+      loadedKey = `${request.options.modelId}:wasm:${wasmDtype}`;
       return pipeline("text-generation", request.options.modelId, {
         device: "wasm",
-        dtype: request.options.dtype,
+        dtype: wasmDtype,
       });
     });
   }
@@ -77,6 +80,10 @@ function parseJson(text: string): unknown {
 scope.onmessage = async ({ data }) => {
   try {
     const generator = await getGenerator(data);
+    if (data.op === "warmup") {
+      scope.postMessage({ id: data.id, ok: true, value: { kind: "unknown" } });
+      return;
+    }
     const prompt = JSON.stringify({
       latest: data.text,
       context: data.context,
@@ -88,12 +95,19 @@ scope.onmessage = async ({ data }) => {
       ],
       { max_new_tokens: 80, do_sample: false },
     );
-    scope.postMessage({ id: data.id, ok: true, value: validateLocalClassification(parseJson(extractText(output))) });
+    scope.postMessage({
+      id: data.id,
+      ok: true,
+      value: validateLocalClassification(parseJson(extractText(output))),
+    });
   } catch (error) {
     scope.postMessage({
       id: data.id,
       ok: false,
-      error: error instanceof Error ? error.message.slice(0, 160) : "local model failed",
+      error:
+        error instanceof Error
+          ? error.message.slice(0, 160)
+          : "local model failed",
     });
   }
 };

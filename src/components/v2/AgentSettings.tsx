@@ -59,6 +59,13 @@ interface AgentSettingsProps {
   address?: string;
   open: boolean;
   onClose: () => void;
+  localModelStatus?:
+    | "checking"
+    | "idle"
+    | "loading"
+    | "ready"
+    | "failed"
+    | "unavailable";
 }
 
 const ACTION_LABELS: Record<AgentAction, string> = {
@@ -73,6 +80,7 @@ export default function AgentSettings({
   address,
   open,
   onClose,
+  localModelStatus = "checking",
 }: AgentSettingsProps) {
   const { settings, update, toggleAction } = useAgentSettings(address);
   const { chainId } = useWalletV2();
@@ -164,17 +172,18 @@ export default function AgentSettings({
   // an empty allow-list is not something to sign — depending on how the facet
   // reads it, it is either a useless grant or an unbounded one.
   const grantable = chainTokens(chainId);
+  const delegatedBits = (Object.keys(settings.allowedActions) as AgentAction[]).reduce(
+    (bits, action) =>
+      settings.allowedActions[action] ? bits | ACTION_BITS[action] : bits,
+    0,
+  );
 
   const buildGrant = () => {
     if (!validAgent || !diamond || grantable.length === 0) return;
     // Bitmask from the enabled action toggles.
-    let bits = 0;
-    (Object.keys(settings.allowedActions) as AgentAction[]).forEach((a) => {
-      if (settings.allowedActions[a]) bits |= ACTION_BITS[a];
-    });
     // Only swap/staking/liquidity toggled — nothing delegatable, so the grant
     // would be empty and the auditor would refuse it. Don't offer it to sign.
-    if (bits === 0) return;
+    if (delegatedBits === 0) return;
     const grantIntent: Intent = {
       kind: "grantAgentPermission",
       diamond,
@@ -185,7 +194,7 @@ export default function AgentSettings({
       expiryUnix: Math.floor(Date.now() / 1000) + 30 * 86_400, // 30-day grant
       maxInterestBps: 0, // no rate cap by default
       minHealthFactorBps: Math.round(settings.minHealthFactor * 10_000),
-      allowedActions: bits,
+      allowedActions: delegatedBits,
       tokens: grantable.map((t) => t.address),
     };
     setGrant([grantIntent]);
@@ -315,19 +324,23 @@ export default function AgentSettings({
             <section className={s.section}>
               <div className={s.sectionTitle}>Signing</div>
               {/*
-                * Three rungs, not a switch, because the old boolean was blunt in
-                * one direction and misleading in the other — and because the
-                * third rung is not this panel's to grant.
-                *
-                * `agent` is the on-chain mandate (AgentPermissionFacet): bounds
-                * signed once and enforced by the contract, which is the only
-                * thing here that genuinely acts without you. Selecting it is
-                * therefore a request to open the delegation flow below, not a
-                * preference that takes effect on click — and it is offered only
-                * where that flow can run, since a mode you cannot reach would be
-                * a promise the panel cannot keep.
-                */}
-              <div className={s.modes} role="radiogroup" aria-label="Between plan steps">
+               * Three rungs, not a switch, because the old boolean was blunt in
+               * one direction and misleading in the other — and because the
+               * third rung is not this panel's to grant.
+               *
+               * `agent` is the on-chain mandate (AgentPermissionFacet): bounds
+               * signed once and enforced by the contract, which is the only
+               * thing here that genuinely acts without you. Selecting it is
+               * therefore a request to open the delegation flow below, not a
+               * preference that takes effect on click — and it is offered only
+               * where that flow can run, since a mode you cannot reach would be
+               * a promise the panel cannot keep.
+               */}
+              <div
+                className={s.modes}
+                role="radiogroup"
+                aria-label="Between plan steps"
+              >
                 {(
                   [
                     ["manual", "Manual", "Stops after every step"],
@@ -413,6 +426,38 @@ export default function AgentSettings({
               </section>
             )}
 
+            <section className={s.section}>
+              <div className={s.sectionTitle}>On-device context model</div>
+              <div
+                className={s.localModelStatus}
+                data-status={localModelStatus}
+              >
+                <span className={s.statusDot} aria-hidden="true" />
+                <span>
+                  <strong>
+                    {localModelStatus === "loading"
+                      ? "Downloading and preparing"
+                      : localModelStatus === "ready"
+                        ? "Ready on this device"
+                        : localModelStatus === "failed"
+                          ? "Unavailable — using server model"
+                          : localModelStatus === "unavailable"
+                            ? "Not supported by this browser"
+                            : localModelStatus === "idle"
+                              ? "Waiting for an idle moment"
+                              : "Checking this browser"}
+                  </strong>
+                  <small>
+                    {localModelStatus === "loading"
+                      ? "The page stays usable while the model is cached."
+                      : localModelStatus === "ready"
+                        ? "Small context hints run locally before reasoning turns."
+                        : "Used only for context labels; transaction planning stays deterministic."}
+                  </small>
+                </span>
+              </div>
+            </section>
+
             <section className={s.section} ref={delegateRef}>
               <div className={s.sectionTitle}>
                 Delegate to an external agent
@@ -481,7 +526,10 @@ export default function AgentSettings({
                     <button
                       className={s.delegateBtn}
                       disabled={
-                        !validAgent || !diamond || grantable.length === 0
+                        !validAgent ||
+                        !diamond ||
+                        grantable.length === 0 ||
+                        delegatedBits === 0
                       }
                       onClick={buildGrant}
                     >
@@ -490,6 +538,8 @@ export default function AgentSettings({
                     <p className={s.delegateNote}>
                       {grantable.length === 0
                         ? "Kaleido carries no tokens on this network, so there's nothing to delegate authority over."
+                        : delegatedBits === 0
+                          ? "Enable Borrow or Lend above; swaps, staking and liquidity cannot be delegated."
                         : "Enforced on-chain by the agent-permission facet. Revoke any time; the budget resets per day."}
                     </p>
                   </>

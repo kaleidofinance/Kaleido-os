@@ -26,7 +26,6 @@ import {
   symbolForAddress,
 } from "@/constants/tokens";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
-import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { getContracts } from "@/constants/registry";
 import { CHAINS, getChainMeta } from "@/constants/chains";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
@@ -645,7 +644,6 @@ function NetworkPositions({ networkId }: { networkId: number }) {
   const chainId = networkId;
   const { isConnected } = useWalletV2();
   const poolStates = usePoolStates(allPositions, chainId);
-  const gate = useChainGate(undefined, "dex");
 
   // Bound to this chain so a position's raw addresses resolve against the right
   // registry — the same address means a different token on a different chain.

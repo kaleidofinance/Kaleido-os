@@ -22,9 +22,15 @@ const pending = projectWaitlistRewards(
   1,
   now,
 );
-check("unactivated welcome and referral points are available", pending.availablePoints === 150);
+check(
+  "unactivated welcome and referral points are available",
+  pending.availablePoints === 150,
+);
 check("an X task inside its hold is pending", pending.pendingPoints === 100);
-check("pending task has a five-hour unlock time", pending.tasks[0].availableAt === "2026-01-01T09:00:00.000Z");
+check(
+  "pending task has a five-hour unlock time",
+  pending.tasks[0].availableAt === "2026-01-01T09:00:00.000Z",
+);
 
 const activated = projectWaitlistRewards(
   {
@@ -36,9 +42,30 @@ const activated = projectWaitlistRewards(
   0,
   now,
 );
-check("activated settled task is marked settled", activated.tasks.find((t) => t.task === "First Arc mainnet transaction")?.status === "settled");
-check("an expired X hold is available for reconciliation", activated.availablePoints === 100);
-check("an activated X hold is no longer pending", activated.pendingPoints === 0);
+const pendingReferrals = projectWaitlistRewards(
+  { welcome_points: 100, activated_at: null },
+  0,
+  now,
+  3,
+);
+check(
+  "inactive referral points remain pending",
+  pendingReferrals.pendingReferralPoints === 150 &&
+    pendingReferrals.pendingPoints === 150,
+);
+check(
+  "activated settled task is marked settled",
+  activated.tasks.find((t) => t.task === "First Arc mainnet transaction")
+    ?.status === "settled",
+);
+check(
+  "an expired X hold is available for reconciliation",
+  activated.availablePoints === 100,
+);
+check(
+  "an activated X hold is no longer pending",
+  activated.pendingPoints === 0,
+);
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

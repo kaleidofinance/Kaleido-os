@@ -452,6 +452,10 @@ export async function getBridgeExecution(args: {
   /** Destination symbol for a CROSS-ASSET bridge (BNB→USDC). Absent = same
    *  asset, where toToken == fromToken as before. */
   toAsset?: string;
+  /** The source token's CONTRACT, sent instead of `asset` for a token LI.FI
+   *  can't resolve by symbol — one we don't list (an Abstract holding). Set by
+   *  the resolver only for unlisted tokens; listed ones keep the symbol path. */
+  fromTokenAddress?: string;
 }): Promise<{
   to: string;
   data: string;
@@ -483,7 +487,7 @@ export async function getBridgeExecution(args: {
     const params: Record<string, string> = {
       fromChain: String(args.fromChainId),
       toChain: String(args.toChainId),
-      fromToken: args.asset,
+      fromToken: args.fromTokenAddress ?? args.asset,
       toToken: args.toAsset ?? args.asset,
       fromAmount: args.units,
       fromAddress: args.address,

@@ -80,6 +80,24 @@ export type SwapVolumeTierState = SwapVolumeTier & {
   superseded: boolean;
 };
 
+/**
+ * What reaching `key` adds on the wallet's balance: the tier's points minus the
+ * highest LOWER tier the wallet has already completed (that one was paid, and
+ * only the highest tier counts). A $10 wallet paid 500; reaching $50 adds 200,
+ * not 700. Pure; works on the standing's tier list.
+ */
+export function tierIncrement(
+  tiers: readonly { key: string; threshold: number; points: number; done: boolean }[],
+  key: string,
+): number {
+  const t = tiers.find((x) => x.key === key);
+  if (!t) return 0;
+  const paidBelow = tiers
+    .filter((x) => x.done && x.threshold < t.threshold)
+    .reduce((m, x) => Math.max(m, x.points), 0);
+  return t.points - paidBelow;
+}
+
 export type SwapVolumeStanding = {
   /** Cumulative Kaleido swap volume in USD. */
   volumeUsd: number;
@@ -115,21 +133,58 @@ export function swapVolumeStanding(volumeUsd: number): SwapVolumeStanding {
 }
 
 /**
- * Cumulative Kaleido swap volume (USD) for a wallet: the sum of `usd_value` over
- * its credited `swap` actions. Best-effort — a read error returns 0 so a DB
- * hiccup can never falsely inflate a wallet's tier. `wallet` must be lowercased
- * by the caller (as everywhere else in the waitlist path).
+ * What the volume task counts, for one wallet, in USD:
+ *
+ *   swaps       every swap in the volume ledger (`swap_volume`): Luca and the
+ *               Swap page alike, including trades under $10 and back-and-forth
+ *               trades that the points scanner nets out. Points are a separate
+ *               rule; volume is what the wallet actually traded.
+ *   collateral  collateral the wallet has deposited right now, at its current
+ *               value (`point_snapshots`, source `collateral_idle`, latest row
+ *               per chain). Withdrawing it removes it from the total again.
+ *
+ * Both are read on every call, so the forward-only top-up in reconciliation
+ * picks up new volume without any stored column.
  */
-export async function walletSwapVolumeUsd(
+export async function walletTaskVolumeUsd(
   admin: SupabaseClient,
   wallet: string,
 ): Promise<number> {
   const { data, error } = await admin
-    .from("point_actions")
-    .select("usd_value")
+    .from("wallet_task_volume")
+    .select("swaps_usd, collateral_usd")
     .eq("wallet", wallet)
-    .eq("source_slug", "swap")
-    .eq("season", 1);
+    .maybeSingle();
+  // A read error counts as zero, so a DB hiccup can never inflate a tier.
   if (error || !data) return 0;
-  return data.reduce((sum, row) => sum + Number(row.usd_value ?? 0), 0);
+  return taskVolumeTotal(data.swaps_usd, data.collateral_usd);
+}
+
+/** Pure: the task volume from its two parts. Both are USD; non-numbers count 0. */
+export function taskVolumeTotal(swapsUsd: unknown, collateralUsd: unknown): number {
+  const a = Number(swapsUsd ?? 0);
+  const b = Number(collateralUsd ?? 0);
+  return (Number.isFinite(a) ? a : 0) + (Number.isFinite(b) ? b : 0);
+}
+
+/** Pure: the wallet's current collateral from its snapshot rows — the newest row
+ *  per chain, summed. Rows may arrive in any order. */
+export function latestCollateralUsd(
+  rows: readonly { chain_id: number; usd_value: unknown; taken_at: string }[],
+): number {
+  const newest = new Map<number, { usd: number; at: number }>();
+  for (const r of rows) {
+    const at = Date.parse(r.taken_at);
+    if (!Number.isFinite(at)) continue;
+    const prev = newest.get(r.chain_id);
+    if (!prev || at > prev.at) newest.set(r.chain_id, { usd: Number(r.usd_value ?? 0), at });
+  }
+  let total = 0;
+  for (const v of newest.values()) total += Number.isFinite(v.usd) ? v.usd : 0;
+  return total;
+}
+
+/** Pure: sum of `usd_value` over ledger rows. */
+export function sumUsd(rows: readonly { usd_value?: unknown }[]): number {
+  return rows.reduce((sum, r) => sum + Number(r.usd_value ?? 0), 0);
 }

@@ -24,6 +24,7 @@ import {
   utcDay,
 } from "@/lib/rewards/checkin";
 import { normalizeCode, redeemMessage } from "@/lib/rewards/redeem";
+import { tierIncrement } from "@/lib/waitlist/swapVolume";
 
 /** "Day 3/7 of streak", or "7-day streak 🔥" on a bonus day. */
 const streakLabel = (n: number) => {
@@ -49,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -64,6 +65,7 @@ const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 /** The $ARGUS listing post: RT + comment, first 100 wallets get +600. */
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
+const ARGUS_INTEGRATION_TWEET_ID = "2110782483386220933";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -78,6 +80,13 @@ const xTaskMessage = (address: string, task: XTaskKey) =>
     : `Confirm my Kaleido waitlist X ${task} for wallet ${address}.`;
 const transactionTaskMessage = (address: string) =>
   `Confirm my first Kaleido bridge transaction for wallet ${address}.`;
+
+const rewardsError = (value: unknown, fallback: string) =>
+  value === "not registered"
+    ? "Register this wallet for Arc rewards before claiming tasks."
+    : typeof value === "string" && value
+      ? value
+      : fallback;
 
 export default function WaitlistPage() {
   const account = useActiveAccount();
@@ -109,6 +118,8 @@ export default function WaitlistPage() {
     llama: boolean;
     argus: boolean;
     argus2: boolean;
+    argusIntegration: boolean;
+    argusIntegrationComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -117,6 +128,8 @@ export default function WaitlistPage() {
     llama: false,
     argus: false,
     argus2: false,
+    argusIntegration: false,
+    argusIntegrationComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -150,6 +163,7 @@ export default function WaitlistPage() {
       const d = await res.json();
       if (!res.ok) throw new Error(d?.error || "Could not load waitlist.");
       setStatus(d && d.refCode ? d : null);
+      setError(null);
       setStatusReady(true);
     } catch {
       // Never show a first-time claim button while an existing wallet's
@@ -338,7 +352,8 @@ export default function WaitlistPage() {
           body: JSON.stringify({ address: account.address, signature, task }),
         });
         const d = await res.json();
-        if (!res.ok) setError(d.error || "Couldn't record that. Try again.");
+        if (!res.ok)
+          setError(rewardsError(d.error, "Couldn't record that. Try again."));
         else await loadStatus();
       } catch (e) {
         const msg = e instanceof Error ? e.message : "";
@@ -391,7 +406,8 @@ export default function WaitlistPage() {
           }),
         });
         const d = await res.json();
-        if (!res.ok) setError(d.error || "Transaction not verified.");
+        if (!res.ok)
+          setError(rewardsError(d.error, "Transaction not verified."));
         else await loadStatus();
       } catch (e) {
         setError(
@@ -430,7 +446,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -438,6 +454,10 @@ export default function WaitlistPage() {
             ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
+                : task === "argusIntegration"
+                  ? `https://x.com/intent/retweet?tweet_id=${ARGUS_INTEGRATION_TWEET_ID}`
+                : task === "argusIntegrationComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${ARGUS_INTEGRATION_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -598,7 +618,10 @@ export default function WaitlistPage() {
                     <p className={s.split}>
                       {status.welcomePoints} welcome
                       {status.referralPoints > 0
-                        ? ` · ${status.referralPoints} from ${status.referrals} referral${status.referrals === 1 ? "" : "s"}`
+                        ? ` · ${status.referralPoints} from ${status.activeReferrals} active referral${status.activeReferrals === 1 ? "" : "s"}`
+                        : ""}
+                      {status.pendingReferralPoints > 0
+                        ? ` · ${status.pendingReferralPoints} referral points pending activation`
                         : ""}
                       {status.rank ? ` · rank #${status.rank}` : ""}
                     </p>
@@ -773,87 +796,47 @@ export default function WaitlistPage() {
                     )}
                   </li>
 
-                  {/* Batch 2 takes the row once batch 1 is full, for wallets
-                      that missed it (a batch-1 wallet keeps its ✓ row). */}
-                  {status.xTasks.argus?.closed && !status.xTasks.argus?.done ? (
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>
-                        RT &amp; comment on the $ARGUS listing · batch 2
-                      </span>
+                      <span className={s.taskTitle}>Like &amp; RT $ARGUS Integration</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.argus2?.done
-                          ? status.xTasks.argus2.counted
-                            ? "Done"
-                            : "Done · counts within 5h"
-                          : status.xTasks.argus2?.closed
-                            ? "Closed · all 50 spots claimed"
-                            : !status.xTasks.linked.done
-                              ? "Link X first"
-                              : "50 more spots · +300 $kPoint"}
+                        {status.xTasks.argusIntegration?.done
+                          ? status.xTasks.argusIntegration.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.argusIntegration?.closed ? "Closed · all 200 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.argus2?.done ? (
-                      <span className={s.taskDone}>✓</span>
-                    ) : status.xTasks.argus2?.closed || !status.xTasks.linked.done ? (
-                      <span className={s.taskLock}>🔒</span>
-                    ) : opened.argus2 ? (
-                      <button
-                        className={s.taskBtn}
-                        onClick={() => postXTask("argus2")}
-                        disabled={xBusy === "argus2"}
-                      >
-                        {xBusy === "argus2" ? "…" : "Claim"}
-                      </button>
-                    ) : (
-                      <button
-                        className={s.taskBtn}
-                        onClick={() => openIntent("argus2")}
-                      >
-                        RT &amp; comment
-                      </button>
-                    )}
+                    {status.xTasks.argusIntegration?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.argusIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.argusIntegration ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("argusIntegration")} disabled={xBusy === "argusIntegration"}>
+                          {xBusy === "argusIntegration" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("argusIntegration")}>Like &amp; RT</button>
+                      )}
                   </li>
-                  ) : (
+
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>
-                        RT &amp; comment on the $ARGUS listing
-                      </span>
+                      <span className={s.taskTitle}>Comment on ARGUS Integration</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.argus?.done
-                          ? status.xTasks.argus.counted
-                            ? "Done"
-                            : "Done · counts within 5h"
-                          : status.xTasks.argus?.closed
-                            ? "Closed · all 100 spots claimed"
-                            : !status.xTasks.linked.done
-                              ? "Link X first"
-                              : "First 100 wallets · +600 $kPoint"}
+                        {status.xTasks.argusIntegrationComment?.done
+                          ? status.xTasks.argusIntegrationComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.argusIntegrationComment?.closed ? "Closed · all 200 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.argus?.done ? (
-                      <span className={s.taskDone}>✓</span>
-                    ) : status.xTasks.argus?.closed || !status.xTasks.linked.done ? (
-                      <span className={s.taskLock}>🔒</span>
-                    ) : opened.argus ? (
-                      <button
-                        className={s.taskBtn}
-                        onClick={() => postXTask("argus")}
-                        disabled={xBusy === "argus"}
-                      >
-                        {xBusy === "argus" ? "…" : "Claim"}
-                      </button>
-                    ) : (
-                      <button
-                        className={s.taskBtn}
-                        onClick={() => openIntent("argus")}
-                      >
-                        RT &amp; comment
-                      </button>
-                    )}
+                    {status.xTasks.argusIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.argusIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.argusIntegrationComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("argusIntegrationComment")} disabled={xBusy === "argusIntegrationComment"}>
+                          {xBusy === "argusIntegrationComment" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("argusIntegrationComment")}>Comment</button>
+                      )}
                   </li>
-                  )}
 
                   {/* Swap-volume milestones. Completion is derived on-chain from
                   the wallet's credited Kaleido swap volume (see lib/waitlist/
@@ -871,8 +854,15 @@ export default function WaitlistPage() {
                           {tier.done
                             ? tier.superseded
                               ? "Done · included in higher tier"
-                              : `Done · +${tier.displayPoints} $kPoint`
-                            : `+${tier.displayPoints} $kPoint · $${(status.swapVolume?.volumeUsd ?? 0).toLocaleString(
+                              : (() => {
+                                  /* What this tier ADDED, not its total: a $10
+                                     wallet already holds 500, so $50 adds 200. */
+                                  const add = tierIncrement(status.swapVolume.tiers, tier.key);
+                                  return add < tier.points
+                                    ? `Done · +${add} $kPoint now (${tier.points} total)`
+                                    : `Done · +${add} $kPoint`;
+                                })()
+                            : `+${tierIncrement(status.swapVolume?.tiers ?? [], tier.key)} $kPoint · $${(status.swapVolume?.volumeUsd ?? 0).toLocaleString(
                                 undefined,
                                 { maximumFractionDigits: 2 },
                               )} / $${tier.threshold}`}
@@ -961,7 +951,7 @@ export default function WaitlistPage() {
                 <p className={s.split}>
                   {status.referrals === 0
                     ? "No referrals yet — earn 50 $kPoint for each friend who joins and links their X."
-                    : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.referralPoints.toLocaleString()} $kPoint earned`}
+                    : `${status.referrals} friend${status.referrals === 1 ? "" : "s"} joined & linked X · ${status.activeReferrals} active · ${status.referralPoints.toLocaleString()} $kPoint earned${status.pendingReferralPoints > 0 ? ` · ${status.pendingReferralPoints.toLocaleString()} pending activation` : ""}`}
                 </p>
 
                 {status.season1 ? null : (

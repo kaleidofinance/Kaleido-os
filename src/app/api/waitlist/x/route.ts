@@ -21,8 +21,8 @@ import { capForColumn } from "@/lib/waitlist/xCap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2";
-const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2"];
+type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "argusIntegration", "argusIntegrationComment"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
   const { data: row } = await admin
     .from("waitlist")
     .select(
-      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at",
+      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at",
     )
     .eq("wallet", wallet)
     .single();
@@ -105,8 +105,22 @@ export async function POST(req: Request) {
       .select("wallet, x_user_id")
       .or(`wallet.eq.${wallet},x_user_id.eq.${sess.id}`)
       .maybeSingle();
-    if (existing?.wallet === wallet && existing.x_user_id === sess.id)
+    if (existing?.wallet === wallet && existing.x_user_id === sess.id) {
+      /* A wallet can link X before it joins the waitlist. If it later joins,
+         wallet_x_links already contains the binding, so the old early return
+         left waitlist.x_linked_at null forever. The Rewards page then showed X
+         as linked in one request and rejected the next task as unlinked. Repair
+         the waitlist projection whenever the binding is already known. */
+      if (row && !row.x_linked_at) {
+        const { error: repairError } = await admin
+          .from("waitlist")
+          .update({ x_user_id: sess.id, x_handle: sess.handle, x_linked_at: now })
+          .eq("wallet", wallet)
+          .is("x_linked_at", null);
+        if (repairError) return Response.json({ error: "link failed" }, { status: 500 });
+      }
       return Response.json({ ok: true, already: true });
+    }
     if (existing?.wallet === wallet || existing?.x_user_id === sess.id)
       return Response.json({ error: existing.wallet === wallet ? "wallet already linked to a different X" : "this X is already linked to another wallet" }, { status: 409 });
     if (row?.x_user_id && row.x_user_id === sess.id)
@@ -146,6 +160,27 @@ export async function POST(req: Request) {
   // follow / retweet / comment: X must be linked first and the wallet must be
   // a waitlist member because these are waitlist point tasks.
   if (!row) return Response.json({ error: "not registered" }, { status: 404 });
+  if (!row.x_linked_at) {
+    /* Repair the same pre-registration-link case even when the user goes
+       straight from OAuth to Claim without pressing Link X again. */
+    const sess = xSession();
+    if (sess.id) {
+      const { data: bound } = await admin
+        .from("wallet_x_links")
+        .select("x_user_id")
+        .eq("wallet", wallet)
+        .eq("x_user_id", sess.id)
+        .maybeSingle();
+      if (bound) {
+        const { error: repairError } = await admin
+          .from("waitlist")
+          .update({ x_user_id: sess.id, x_handle: sess.handle, x_linked_at: now })
+          .eq("wallet", wallet)
+          .is("x_linked_at", null);
+        if (!repairError) row.x_linked_at = now;
+      }
+    }
+  }
   if (!row.x_linked_at)
     return Response.json({ error: "link X first" }, { status: 409 });
 
@@ -157,6 +192,8 @@ export async function POST(req: Request) {
     llama: "x_llama_at",
     argus: "x_argus_at",
     argus2: "x_argus2_at",
+    argusIntegration: "x_argus_integration_at",
+    argusIntegrationComment: "x_argus_integration_comment_at",
   };
   const col = COL[t as Exclude<Task, "link">];
   const existing = row[col as keyof typeof row];

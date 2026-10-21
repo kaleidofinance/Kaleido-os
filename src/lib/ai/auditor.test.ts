@@ -3431,6 +3431,24 @@ async function main() {
     }
   }
 
+  /* ---- an unlisted token leaving Abstract: admitted only as a priced swap-out ---- */
+  {
+    const { auditPlan: ap } = await import("./auditor");
+    const R = "0x4f8C9056bb8A3616693a76922FA35d53C056E5b3";
+    const PENGU = "0x9eBe3A824Ca958e4b3Da772D2065518F009CBa62";
+    const base = { kind: "bridge", to: R, data: "0xdeadbeef", value: "0", token: PENGU, amount: "5000", decimals: 18, symbol: "PENGU", fromChainId: 2741, toChainId: 5042, toChainName: "Arc", provider: "lifi", etaSeconds: 60, spender: R };
+    const cross = { ...base, toToken: "0x3600000000000000000000000000000000000000", toDecimals: 6, toSymbol: "USDC", amountOut: "20", amountOutMin: "19.5", minReceivedUnits: "19500000" };
+    const pricer = stubPricer;
+    const v1 = await ap({ plan: [cross], chainId: 2741, pricer } as never);
+    check("Abstract exit: an unlisted token bridged INTO USDC with a floor passes", v1.ok, JSON.stringify(v1.blocked));
+    const v2 = await ap({ plan: [base], chainId: 2741, pricer } as never);
+    check("Abstract exit: the same token bridged as itself is still refused", !v2.ok && v2.blocked.some((b) => /unrecognised token/.test(b)), JSON.stringify(v2.blocked));
+    const v3 = await ap({ plan: [cross], chainId: 2741, pricer, limits: { maxPerAction: 10 } } as never);
+    check("Abstract exit: the per-action USD cap still binds via the USDC floor", !v3.ok && v3.blocked.some((b) => /per-action limit/.test(b)), JSON.stringify(v3.blocked));
+    const { isKnownBridgeSpender } = await import("../bridge/route");
+    check("LI.FI's Abstract router is a known bridge spender", isKnownBridgeSpender(R));
+  }
+
   console.log(
     `\n${pass} passed, ${fail} failed${skipped ? `, ${skipped} skipped` : ""}\n`,
   );

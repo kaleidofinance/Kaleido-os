@@ -395,8 +395,8 @@ export default function PlanReview({
     const map = new Map<number, number>();
     for (const r of runs) {
       if (!r.bundled) continue;
-      map.set(r.steps[0], r.steps[1]);
-      map.set(r.steps[1], r.steps[0]);
+      /* Every step of a run — an exit run carries more than a pair. */
+      for (const st of r.steps) map.set(st, r.steps[st === r.steps[0] ? 1 : 0]);
     }
     return map;
   }, [runs]);
@@ -836,8 +836,9 @@ export default function PlanReview({
       /* Same CCTP burn record as the sequential path: a bundled burn confirms
          under one hash and the bridge is the pair's last step. Inert until
          CCTP_ENABLED — see runStep. */
-      const lastIntent = intents[steps[steps.length - 1]];
-      if (lastIntent.kind === "bridge") {
+      /* An exit run carries several bridges under one hash — record each, not
+         only the last. */
+      for (const lastIntent of steps.map((x) => intents[x]).filter((it) => it.kind === "bridge")) {
         const b = lastIntent as Extract<Intent, { kind: "bridge" }>;
         if (hash) {
           void postWithRetry("/api/waitlist/transaction", {
@@ -1055,7 +1056,12 @@ export default function PlanReview({
              by what is shown, so "2" means the second thing you'll confirm. */
           let shown = 0;
           return views.map((v, i) => {
-            const run = batchable ? runOf.get(i) : undefined;
+            const anyRun = batchable ? runOf.get(i) : undefined;
+            /* A run of several actions (moving every token off a chain) keeps a
+               row per bridge — collapsing to its last step would hide the rest —
+               and says once, under its last row, that it is one confirmation. */
+            const multi = !!anyRun && anyRun.steps.filter((x) => intents[x].kind !== "approve").length > 1;
+            const run = multi ? undefined : anyRun;
             if (run && i !== run.steps[run.steps.length - 1]) return null;
             shown += 1;
             const st: StepStatus = run
@@ -1083,6 +1089,11 @@ export default function PlanReview({
                   {st === "skipped" && (
                     <div className={s.stNote}>
                       Already done — no transaction needed.
+                    </div>
+                  )}
+                  {multi && !done && anyRun && i === anyRun.steps[anyRun.steps.length - 1] && (
+                    <div className={s.stNote}>
+                      {`All ${anyRun.steps.length} steps above go out together — one confirmation in your wallet.`}
                     </div>
                   )}
                   {run && !done && (

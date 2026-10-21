@@ -49,7 +49,16 @@ export const useWalletChainHandle = (): WalletChainHandle | undefined =>
   walletAdapter.useChainHandle();
 
 /** Opens the provider's connect UI. */
-export const useConnectWallet = (): (() => void) => walletAdapter.useConnect();
+export const useConnectWallet = (): (() => void) => {
+  const connect = walletAdapter.useConnect();
+  return () => connect();
+};
+
+/** Opens the connect UI straight on the Abstract Global Wallet, on Abstract. */
+export const useConnectAgw = (): (() => void) => {
+  const connect = walletAdapter.useConnect();
+  return () => connect({ wallet: "agw" });
+};
 
 /** Switches the wallet to a chain id; rejects if it fails or is declined. */
 export const useSwitchWalletChain = (): ((chainId: number) => Promise<void>) =>

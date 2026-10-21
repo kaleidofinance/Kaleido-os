@@ -4273,6 +4273,76 @@ async function main() {
     }
   }
 
+  /* ---- exitChain: everything off Abstract, one bridge per held token ---- */
+  {
+    const ABS = 2741;
+    const ROUTER = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE";
+    const PENGU: IToken = { address: "0x9eBe3A824Ca958e4b3Da772D2065518F009CBa62", symbol: "PENGU", name: "Pudgy Penguins", decimals: 18, chainId: ABS, verified: false, tags: ["held"] };
+    const DUST: IToken = { address: "0x1111111111111111111111111111111111111111", symbol: "DUST", name: "Dust", decimals: 18, chainId: ABS, verified: false, tags: ["held"] };
+    const exitDeps = (over: Partial<PlanDeps> = {}) => {
+      const routed: string[] = [];
+      const { deps } = fakeDeps({
+        chainId: ABS,
+        heldTokens: async () => [PENGU, DUST],
+        tokenBalance: async (t) => (t === PENGU.address ? 5_000n * 10n ** 18n : 0n),
+        balanceOn: async () => 10n ** 16n, // 0.01 ETH
+        bridgeRoute: async (req) => {
+          routed.push(String((req as { asset?: string }).asset));
+          return { to: ROUTER, data: "0xdeadbeef", value: "0", spender: ROUTER, toChainId: 5042, toChainName: "Arc", provider: "lifi", etaSeconds: 60 };
+        },
+        ...over,
+      });
+      /* fakeDeps forwards only the deps it knows; these two are exitChain's own. */
+      const merged = {
+        ...deps,
+        heldTokens: over.heldTokens ?? (async () => [PENGU, DUST]),
+        balanceOn: over.balanceOn ?? (async () => 10n ** 16n),
+      } as PlanDeps;
+      return { deps: merged, routed };
+    };
+    const exit = { kind: "exitChain", fromChain: "abstract", toChain: "arc", toAsset: "USDC" } as Command;
+
+    {
+      const { deps, routed } = exitDeps();
+      const r = await build(exit, deps);
+      check("exitChain bridges each held token with a balance, plus native ETH", r.ok && routed.join(",") === "PENGU,ETH", JSON.stringify(r).slice(0, 300) + " routed=" + routed.join(","));
+      check("a zero-balance holding is not bridged", !routed.includes("DUST"));
+      check("the plan is approve+bridge for the token, then the ETH bridge", kinds(r) === "approve,bridge,bridge", kinds(r));
+      const eth = r.ok ? r.build.intents[r.build.intents.length - 1] as { amount?: string } : {};
+      check("native ETH keeps a gas reserve (0.01 → 0.0095)", eth.amount === "0.0095", JSON.stringify(eth).slice(0, 200));
+    }
+    {
+      const { deps } = exitDeps({ chainId: 5042 });
+      const r = await build(exit, deps);
+      check("exitChain refuses unless the wallet is ON the source chain", !r.ok && /connect the wallet/i.test(errorOf(r)), errorOf(r));
+    }
+    {
+      const { deps } = exitDeps({ heldTokens: async () => [], balanceOn: async () => 0n });
+      const r = await build(exit, deps);
+      check("nothing held → a plain answer, no plan", !r.ok && /don't see anything to move/i.test(errorOf(r)), errorOf(r));
+    }
+    {
+      const { deps, routed } = exitDeps({ balanceOn: async () => 3n * 10n ** 14n }); // 0.0003 ETH
+      const r = await build(exit, deps);
+      check("ETH below the gas reserve is named, not silently dropped", r.ok && !routed.includes("ETH") && /0\.0003 ETH is kept for gas/.test(r.ok ? r.build.summary : ""), r.ok ? r.build.summary : errorOf(r));
+    }
+    {
+      const { deps } = exitDeps({ balanceOn: async () => null });
+      const r = await build(exit, deps);
+      check("an unreadable ETH balance is said, not silently dropped", r.ok && /couldn't read your ETH balance/.test(r.ok ? r.build.summary : ""), r.ok ? r.build.summary : errorOf(r));
+    }
+    {
+      const { deps, routed } = exitDeps({ balanceOn: async () => 8n * 10n ** 14n }); // 0.0008 ETH
+      const r = await build(exit, deps);
+      check("ETH just above the reserve is bridged (0.0008 → 0.0003)", r.ok && routed.includes("ETH"), JSON.stringify(routed));
+    }
+    {
+      const { deps } = exitDeps({ bridgeRoute: async () => ({ error: "no route" }) });
+      const r = await build(exit, deps);
+      check("unroutable legs are named, never dropped silently", !r.ok && /PENGU/.test(errorOf(r)) && /ETH/.test(errorOf(r)), errorOf(r));
+    }
+  }
+
   console.log(`\n${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exit(1);
 }

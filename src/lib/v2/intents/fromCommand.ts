@@ -184,6 +184,22 @@ export interface LookupCommand {
   address: string;
 }
 
+/**
+ * "Move everything off Abstract to Arc": bridge every token this wallet holds on
+ * one chain to another, converted to one asset (USDC by default). Built as one
+ * bridge per held token in a single plan; see the exitChain branch in build.ts.
+ * Exists for Abstract's shutdown (2026-12-15), but names any source chain.
+ */
+export interface ExitChainCommand {
+  kind: "exitChain";
+  /** Source chain as typed ("abstract"). Resolved downstream. */
+  fromChain: string;
+  /** Destination chain as typed; "arc" when none was named. */
+  toChain: string;
+  /** What everything arrives as on the destination; "USDC" by default. */
+  toAsset: string;
+}
+
 /* The P2P family. Borrow and lend carry a rate and a term as well as an
  * amount, which is why the parser separates numbers by role rather than taking
  * them positionally. */
@@ -510,7 +526,8 @@ export type Command =
   | HelpCommand
   | ReceiveCommand
   | PortfolioCommand
-  | LookupCommand;
+  | LookupCommand
+  | ExitChainCommand;
 
 /** Kinds resolved immediately, with no slot to ever ask about. */
 type ZeroSlotKind = "claimYield" | "compoundYield";
@@ -576,7 +593,7 @@ type SpecialParsedKind = "placeOrder" | "cancelOrders";
 /** Kinds that carry slots, i.e. everything that can be half-specified. */
 export type ActionKind = Exclude<
   Command["kind"],
-  "help" | "receive" | "portfolio" | "lookup" | ZeroSlotKind | ToolOnlyKind | HandoffKind
+  "help" | "receive" | "portfolio" | "lookup" | "exitChain" | ZeroSlotKind | ToolOnlyKind | HandoffKind
   | SpecialParsedKind
 >;
 
@@ -2252,6 +2269,30 @@ function namesTwoTradedTokens(text: string, tokens: IToken[]): boolean {
   return false;
 }
 
+/** "move everything off abstract to arc", "bridge all my tokens out of abstract",
+ *  "exit abstract", "migrate my funds from abstract to base as usdc". */
+function parseExitChain(text: string, tokens: IToken[]): ExitChainCommand | null {
+  const t = text.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/ +/g, " ").trim();
+  /* A named token makes it an ordinary bridge ("move all my USDC from Base to
+     Arc"), except as the asset everything arrives as ("... as USDC"). */
+  const named = new Set(tokens.map((x) => x.symbol.toLowerCase()));
+  const body = t.replace(/\b(?:as|into|in) [a-z0-9]+$/, "");
+  if (body.split(" ").some((w) => named.has(w))) return null;
+  const exitVerb = /^(exit|leave|evacuate) ([a-z]+)$/.exec(t);
+  let from: string | undefined = exitVerb?.[2];
+  if (!from) {
+    if (!/\b(move|bridge|send|withdraw|migrate|transfer|get|take|pull|evacuate|rescue)\b/.test(t)) return null;
+    if (!/\b(everything|all|all my|my) ?(funds|tokens|assets|balances?|money|coins|holdings)?\b/.test(t) || !/\b(everything|all)\b|\bmy (funds|tokens|assets|balances?|money|coins|holdings)\b/.test(t))
+      return null;
+    from = /\b(?:off|out of|from) ([a-z]+)\b/.exec(t)?.[1];
+  }
+  if (!from || from === "my" || from === "the" || from === "this") return null;
+  const to = /\bto ([a-z]+)\b/.exec(t)?.[1];
+  const asset = /\b(?:as|into|in) (usdc|eth|usdt|weth)\b/.exec(t)?.[1];
+  const toChain = to && !["usdc", "eth", "usdt", "weth", "me", "my"].includes(to) ? to : "arc";
+  return { kind: "exitChain", fromChain: from, toChain, toAsset: (asset ?? "usdc").toUpperCase() };
+}
+
 export function parseCommand(
   text: string,
   tokens: IToken[],
@@ -2283,6 +2324,12 @@ export function parseCommand(
      and swap ARGUS into it. The model builds one swap per token into a single
      plan, so the sentence goes there instead of being half-built here. */
   if (namesTwoTradedTokens(text, tokens)) return { status: "unknown" };
+
+  /* "Move everything off Abstract to Arc" — every holding on one chain, out.
+     Needs an all-of-it word AND a source introduced by off / out of / from, so
+     "bridge 10 USDC from Base to Arc" stays an ordinary bridge. */
+  const exit = parseExitChain(text, tokens);
+  if (exit) return { status: "ok", command: exit };
 
   /* A balance question about another wallet. Needs the address AND a holdings
      word, and no action verb — "send 10 USDC to 0x…" names an address too and
@@ -4175,6 +4222,7 @@ export function draftFromCommand(command: Command): Draft | null {
     case "cancelOrders":
     /* A balance lookup is complete or not parsed at all — nothing to re-draft. */
     case "lookup":
+    case "exitChain":
       return null;
     case "claimTestTokens":
       return { kind: "claimTestTokens" };

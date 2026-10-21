@@ -91,6 +91,12 @@ const nextConfig = {
       ...config.resolve.alias,
       "pino-pretty": false,
     }
+    // The worker is imported through a client component, but Next also traces
+    // that graph during its server compilation. Force the browser entry in
+    // both graphs so the package's Node/onnxruntime-native branch is never
+    // bundled into the app build.
+    config.resolve.alias["@huggingface/transformers$"] =
+      `${process.cwd()}/node_modules/@huggingface/transformers/dist/transformers.js`
     return config
   },
 
