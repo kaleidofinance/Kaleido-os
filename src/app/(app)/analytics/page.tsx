@@ -98,6 +98,8 @@ export default function AnalyticsPage() {
           </StatStrip>
           <p className={s.empty}>
             KyberSwap-ranked external liquidity; sampled figures are separate from Kaleido-owned pools.
+            {external ? ` Tracking ${external.sampledPools} of ${external.totalPools} indexed pools. Fetched ${new Date(external.asOf).toLocaleTimeString()}.` : ""}
+            {external?.stale ? " Showing the last available snapshot." : ""}
           </p>
         </section>
 
