@@ -1,5 +1,6 @@
 import { useCallback } from "react";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useActiveAccount, useActiveWalletChain, useActiveWallet } from "thirdweb/react";
+import { guardPositionSigner } from "@/lib/dex/positionNetwork";
 import { ethers } from "ethers";
 import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { useQuery } from "@tanstack/react-query";
@@ -64,10 +65,9 @@ export interface V3Position {
 export const useV3Positions = (requestedReadChainId?: number) => {
   const activeAccount = useActiveAccount();
   const activeChain = useActiveWalletChain();
-  /* Positions are read and written on the chain the wallet is on — the position
-     manager and factory are a per-chain set, and reading this chain's NFTs
-     through a manager address deployed on another chain returns whatever code
-     (if any) sits at that address there. */
+  const wallet = useActiveWallet();
+  /* Reads may target a separate chain. Writes require the live wallet to match
+     that read chain, including immediately before each submission. */
   const activeChainId = activeChain?.id;
   const chainId = requestedReadChainId ?? activeChainId;
   const { v3PositionManager, v3Factory } = getContracts(chainId);
@@ -256,8 +256,8 @@ export const useV3Positions = (requestedReadChainId?: number) => {
    */
   const getSigner = useCallback(async () => {
     if (!activeAccount || !activeChain) return null;
-    return toEthersSigner(activeAccount, activeChain);
-  }, [activeAccount, activeChain]);
+    return guardPositionSigner(toEthersSigner(activeAccount, activeChain), chainId, () => wallet?.getChain()?.id);
+  }, [activeAccount, activeChain, chainId, wallet]);
 
   const collectFees = useCallback(
     async (tokenId: string) => {

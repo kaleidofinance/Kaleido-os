@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useActiveAccount, useActiveWalletChain, useActiveWallet, useSwitchActiveWalletChain } from "thirdweb/react";
+import { defineChain } from "thirdweb";
+import { assertPositionNetwork, guardPositionSigner } from "@/lib/dex/positionNetwork";
 import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { client } from "@/config/client";
 import { useV3Positions, type V3Position } from "@/hooks/dex/useV3Positions";
@@ -229,6 +231,10 @@ function PositionCard({
 }) {
   const account = useActiveAccount();
   const chain = useActiveWalletChain();
+  const wallet = useActiveWallet();
+  const switchChain = useSwitchActiveWalletChain();
+  const positionChainId = p.chainId ?? chainId;
+  const correctNetwork = positionChainId !== undefined && chain?.id === positionChainId;
   const { v3PositionManager } = getContracts(chainId);
 
   const [busy, setBusy] = useState<"collect" | "add" | "remove" | null>(null);
@@ -312,6 +318,7 @@ function PositionCard({
      thing left to do; adding to or removing from an empty position isn't. */
   const closed = isClosed(p);
   const canAdd =
+    correctNetwork &&
     legs !== null &&
     account !== undefined &&
     chain !== undefined &&
@@ -328,6 +335,7 @@ function PositionCard({
   const onCollect = async () => {
     setBusy("collect");
     try {
+      assertPositionNetwork(positionChainId, wallet?.getChain()?.id);
       await collectFees(p.tokenId);
       toast.success("Fees collected");
       refresh();
@@ -347,7 +355,7 @@ function PositionCard({
     if (!canAdd || !legs || !account || !chain || !v3PositionManager) return;
     setBusy("add");
     try {
-      const signer = toEthersSigner(account, chain);
+      const signer = guardPositionSigner(toEthersSigner(account, chain), positionChainId, () => wallet?.getChain()?.id);
       /* The whole sequence — floor the slippage, approve, approve, increase,
          wait — is `increaseV3` in lib/dex/deposit, which is also what the agent's
          `increasePosition` resolves to. One derivation of the floor for both, for
@@ -412,6 +420,7 @@ function PositionCard({
     }
     setBusy("remove");
     try {
+      assertPositionNetwork(positionChainId, wallet?.getChain()?.id);
       await removeLiquidity(p.tokenId, liquidity);
       toast.success(
         share === 100 ? "Liquidity removed" : `Removed ${share}% of the position`,
@@ -496,9 +505,15 @@ function PositionCard({
       )}
 
       <div className={s.actions}>
+        {!correctNetwork && positionChainId !== undefined && (
+          <button className={s.actBtn} onClick={async () => {
+            try { await switchChain(defineChain(positionChainId)); }
+            catch { toast.error("Could not switch network. Please switch in your wallet."); }
+          }}>Switch to {getChainMeta(positionChainId)?.shortName ?? positionChainId}</button>
+        )}
         <button
           className={`${s.actBtn} ${s.primary}`}
-          disabled={owedTotal === 0 || busy !== null}
+          disabled={!correctNetwork || owedTotal === 0 || busy !== null}
           onClick={onCollect}
         >
           {busy === "collect" ? "Collecting…" : "Collect fees"}
@@ -507,14 +522,14 @@ function PositionCard({
           <>
             <button
               className={s.actBtn}
-              disabled={legs === null || busy !== null}
+              disabled={!correctNetwork || legs === null || busy !== null}
               onClick={() => setAdding((v) => !v)}
             >
               {adding ? "Close" : "Add liquidity"}
             </button>
             <button
               className={s.actBtn}
-              disabled={busy !== null}
+              disabled={!correctNetwork || busy !== null}
               onClick={onRemove}
             >
               {busy === "remove"
