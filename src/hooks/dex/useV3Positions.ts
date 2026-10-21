@@ -35,6 +35,8 @@ const POSITION_MANAGER_ABI = [
 const UINT128_MAX = BigInt("340282366920938463463374607431768211455");
 
 export interface V3Position {
+  /** The chain this NFT was read from. Addresses are only meaningful with it. */
+  chainId?: number;
   tokenId: string;
   token0: string;
   token1: string;
@@ -207,6 +209,7 @@ export const useV3Positions = () => {
             }
 
             return {
+              chainId: chainId as number,
               tokenId: tokenId.toString(),
               token0: pos.token0,
               token1: pos.token1,
