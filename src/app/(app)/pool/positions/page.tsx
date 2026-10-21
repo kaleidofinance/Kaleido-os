@@ -26,6 +26,7 @@ import {
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { getContracts } from "@/constants/registry";
+import { getChainMeta } from "@/constants/chains";
 import { getV3AmountRatio, tickToPrice } from "@/constants/utils/v3Math";
 import { pairedAmount } from "@/lib/dex/deposit";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
@@ -435,7 +436,7 @@ function PositionCard({
             {symbolFor(p.token0)} / {symbolFor(p.token1)}
           </div>
           <div className={s.pairFee}>
-            V3 · {(p.fee / 10000).toFixed(2)}% fee · #{p.tokenId}
+            V3 · {getChainMeta(p.chainId ?? chainId)?.shortName ?? "Unknown network"} · {(p.fee / 10000).toFixed(2)}% fee · #{p.tokenId}
           </div>
         </div>
         <span
