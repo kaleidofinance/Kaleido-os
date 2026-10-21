@@ -10,7 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
-import { useConnectAgw } from "@/lib/wallet";
+import { useConnectWallet } from "@/lib/wallet";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
@@ -211,7 +211,7 @@ function historyForModel(
 
 export default function AgentPage() {
   const { chainId, address } = useWalletV2();
-  const connectAgw = useConnectAgw();
+  const connectWallet = useConnectWallet();
   /* The exit request waiting on the Abstract wallet: set when the connect card
      is shown, replayed once the wallet is on Abstract (effect below send). */
   const [pendingExit, setPendingExitState] = useState<string | null>(null);
@@ -726,9 +726,9 @@ export default function AgentPage() {
             {
               kind: "connect",
               wallet: "agw",
-              title: "Connect your Abstract Global Wallet",
-              body: "Abstract shuts down on Dec 15, 2026. Connecting signs nothing — you'll review every bridge before it's sent.",
-              label: "Connect Abstract Global Wallet",
+              title: "Connect your source wallet",
+              body: "Connect a supported wallet holding these assets, then switch to Abstract. You'll review every bridge before it's sent.",
+              label: "Connect wallet",
             },
           ],
         },
@@ -2702,7 +2702,7 @@ export default function AgentPage() {
                           cards={m.cards}
                           onPrompt={fillPrompt}
                           onSend={(t) => void send(t)}
-                          onConnect={() => connectAgw()}
+                          onConnect={() => connectWallet()}
                           agwConnected={chainId === 2741 && !!address}
                           historical={m.historical ? { at: m.ts } : undefined}
                         />
