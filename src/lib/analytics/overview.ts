@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import { readPlatformTotals } from "@/lib/stats/platform";
+import { swapFeeBps } from "@/lib/swap/kyberswapServer";
+import { lifiFeeRate } from "@/lib/stats/platform";
 import { isErrorStatus } from "@/lib/analytics/agentStatus";
 import { readExternalPools, type ExternalPoolSnapshot } from "@/lib/market/externalPools";
 
@@ -137,7 +139,26 @@ function sumField(
 
 /* ------------------------------------------------------------- readers -- */
 
-async function readTrading(): Promise<AnalyticsOverview["trading"]> {
+async function readTrading(chainId?: number): Promise<AnalyticsOverview["trading"]> {
+  if (chainId !== undefined) {
+    if (!supabaseAdmin) return null;
+    const [swaps, cctp, routes] = await Promise.all([
+      supabaseAdmin.from("swap_volume").select("usd_value,fee_paid").eq("chain_id", chainId).limit(READ_CAP),
+      supabaseAdmin.from("cctp_transfers").select("amount").eq("source_chain_id", chainId).neq("status", "failed").limit(READ_CAP),
+      supabaseAdmin.from("route_bridges").select("usd_value").eq("source_chain_id", chainId).limit(READ_CAP),
+    ]);
+    if (swaps.error && cctp.error && routes.error) return null;
+    const swapRows = swaps.error ? [] : swaps.data ?? [];
+    const routeVolume = routes.error ? 0 : sumField(routes.data ?? [], "usd_value");
+    return {
+      volumeUsd: sumField(swapRows, "usd_value") + (cctp.error ? 0 : sumField(cctp.data ?? [], "amount")) + routeVolume,
+      feesUsd: sumField(swapRows.filter((row) => row.fee_paid !== false), "usd_value") * swapFeeBps() / 10000 + routeVolume * lifiFeeRate(),
+      swapCount: swaps.error ? null : swapRows.length,
+      cctpBridgeCount: cctp.error ? null : cctp.data?.length ?? 0,
+      routeBridgeCount: routes.error ? null : routes.data?.length ?? 0,
+      partial: Boolean(swaps.error || cctp.error || routes.error),
+    };
+  }
   const totals = await readPlatformTotals();
   if (!totals) return null;
   return {
@@ -218,13 +239,18 @@ async function readPoints(): Promise<AnalyticsOverview["points"]> {
 }
 
 /** Assemble the overview. Domains that error read as null; the page copes. */
-export async function readAnalyticsOverview(): Promise<AnalyticsOverview> {
+export async function readAnalyticsOverview(chainId?: number): Promise<AnalyticsOverview> {
   const [trading, growth, luca, points, externalMarkets] = await Promise.all([
-    readTrading(),
+    chainId === undefined ? Promise.all([readTrading(5042), readTrading(4663)]).then((parts) => {
+      const known = parts.filter((part): part is NonNullable<AnalyticsOverview["trading"]> => part !== null);
+      if (!known.length) return null;
+      const count = (key: "swapCount" | "cctpBridgeCount" | "routeBridgeCount") => known.every((part) => part[key] === null) ? null : known.reduce((total, part) => total + (part[key] ?? 0), 0);
+      return { volumeUsd: known.reduce((total, part) => total + part.volumeUsd, 0), feesUsd: known.reduce((total, part) => total + part.feesUsd, 0), swapCount: count("swapCount"), cctpBridgeCount: count("cctpBridgeCount"), routeBridgeCount: count("routeBridgeCount"), partial: known.length !== parts.length || known.some((part) => part.partial) };
+    }) : readTrading(chainId),
     readGrowth(),
     readLuca(),
     readPoints(),
-    readExternalPools(4663),
+    chainId === 5042 ? Promise.resolve(null) : readExternalPools(4663),
   ]);
   return { trading, growth, luca, points, externalMarkets };
 }

@@ -91,12 +91,13 @@ export const useV3Positions = (requestedReadChainId?: number) => {
   const {
     data,
     isLoading,
+    error,
     refetch,
   } = useQuery({
     queryKey: ["v3Positions", chainId, v3PositionManager ?? null, address ?? null],
     enabled: Boolean(address),
     queryFn: async (): Promise<V3Position[]> => {
-      if (MOCK_DATA) return MOCK_V3_POSITIONS;
+      if (MOCK_DATA) return MOCK_V3_POSITIONS.map((p) => ({ ...p, chainId }));
       if (!address || !v3PositionManager || !v3Factory || chainId === undefined) return [];
       const provider = providerForChain(chainId);
       if (!provider) return [];
@@ -229,7 +230,7 @@ export const useV3Positions = (requestedReadChainId?: number) => {
             } as V3Position;
           } catch (e) {
             console.error(`Error fetching position ${i}:`, e);
-            return null;
+            throw e;
           }
         },
       );
@@ -391,6 +392,7 @@ export const useV3Positions = (requestedReadChainId?: number) => {
   return {
     positions,
     loading: isLoading,
+    error,
     refresh,
     collectFees,
     increaseLiquidity,

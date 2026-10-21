@@ -28,7 +28,8 @@ import {
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { getContracts } from "@/constants/registry";
-import { getChainMeta } from "@/constants/chains";
+import { CHAINS, getChainMeta } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { getV3AmountRatio, tickToPrice } from "@/constants/utils/v3Math";
 import { pairedAmount } from "@/lib/dex/deposit";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
@@ -629,10 +630,8 @@ function PositionCard({
   );
 }
 
-export default function PositionsPage() {
-  const active = useV3Positions();
-  const arc = useV3Positions(5042);
-  const robinhood = useV3Positions(4663);
+function NetworkPositions({ networkId }: { networkId: number }) {
+  const active = useV3Positions(networkId);
   const {
     positions,
     loading,
@@ -641,9 +640,10 @@ export default function PositionsPage() {
     removeLiquidity,
     refresh,
   } = active;
-  const allPositions = [...arc.positions, ...robinhood.positions];
+  const allPositions = positions;
   const visiblePositions = positionsToShow(allPositions);
-  const { chainId, isConnected } = useWalletV2();
+  const chainId = networkId;
+  const { isConnected } = useWalletV2();
   const poolStates = usePoolStates(allPositions, chainId);
   const gate = useChainGate(undefined, "dex");
 
@@ -680,11 +680,9 @@ export default function PositionsPage() {
      Checked before the skeleton, not after: the gate is derived from the
      registry, so it is already known, and showing a loading state for a read
      that will never happen would be a fabricated wait. */
-  if (!gate.ready) {
-    return <ChainGate product="liquidity positions" state={gate} requires="dex" />;
-  }
+  if (active.error) return <p role="status" className={s.addNote}>Could not load {getChainMeta(networkId)?.name} positions. <button className={s.actBtn} onClick={refresh}>Retry</button></p>;
 
-  if ((loading || arc.loading || robinhood.loading) && allPositions.length === 0) {
+  if (loading && allPositions.length === 0) {
     return (
       <div className={s.cards}>
         {[0, 1].map((i) => (
@@ -757,4 +755,15 @@ export default function PositionsPage() {
       ))}
     </div>
   );
+}
+
+export default function PositionsPage() {
+  const { isConnected } = useWalletV2();
+  const { showTestnets } = useTestnetMode();
+  const chains = CHAINS.filter((chain) => {
+    const contracts = getContracts(chain.id);
+    return (showTestnets || chain.network === "mainnet") && contracts.v3PositionManager && contracts.v3Factory;
+  });
+  if (!isConnected) return <p className={s.empty}>Connect a wallet to see your positions.</p>;
+  return <>{chains.map((chain) => <section key={chain.id} aria-label={`${chain.name} positions`}><h2 className={s.pairName}>{chain.name}</h2><NetworkPositions networkId={chain.id} /></section>)}</>;
 }
