@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import { readPlatformTotals } from "@/lib/stats/platform";
 import { isErrorStatus } from "@/lib/analytics/agentStatus";
+import { readExternalPools, type ExternalPoolSnapshot } from "@/lib/market/externalPools";
 
 /**
  * The /analytics overview — headline KPIs across every Kaleido product, for the
@@ -14,6 +15,7 @@ import { isErrorStatus } from "@/lib/analytics/agentStatus";
  */
 
 export interface AnalyticsOverview {
+  externalMarkets: ExternalPoolSnapshot | null;
   trading: {
     volumeUsd: number;
     feesUsd: number;
@@ -217,11 +219,12 @@ async function readPoints(): Promise<AnalyticsOverview["points"]> {
 
 /** Assemble the overview. Domains that error read as null; the page copes. */
 export async function readAnalyticsOverview(): Promise<AnalyticsOverview> {
-  const [trading, growth, luca, points] = await Promise.all([
+  const [trading, growth, luca, points, externalMarkets] = await Promise.all([
     readTrading(),
     readGrowth(),
     readLuca(),
     readPoints(),
+    readExternalPools(4663),
   ]);
-  return { trading, growth, luca, points };
+  return { trading, growth, luca, points, externalMarkets };
 }

@@ -45,6 +45,7 @@ export default function AnalyticsPage() {
   const g = data?.growth;
   const l = data?.luca;
   const p = data?.points;
+  const external = data?.externalMarkets;
 
   const bridges =
     t && (t.cctpBridgeCount != null || t.routeBridgeCount != null)
@@ -85,6 +86,19 @@ export default function AnalyticsPage() {
               lower bound until it recovers.
             </p>
           ) : null}
+        </section>
+
+        <section className={s.section}>
+          <h2 className={s.h2}>Robinhood external markets</h2>
+          <StatStrip>
+            <Stat label="Pools indexed" value={qty(external?.totalPools ?? null)} />
+            <Stat label="Sampled TVL" value={usd(external?.sampledTvlUsd ?? null)} />
+            <Stat label="Sampled 24h volume" value={usd(external?.sampledVolume24hUsd ?? null)} />
+            <Stat label="Sampled 24h fees" value={usd(external?.sampledFees24hUsd ?? null, 2)} />
+          </StatStrip>
+          <p className={s.empty}>
+            KyberSwap-ranked external liquidity; sampled figures are separate from Kaleido-owned pools.
+          </p>
         </section>
 
         <section className={s.section}>
