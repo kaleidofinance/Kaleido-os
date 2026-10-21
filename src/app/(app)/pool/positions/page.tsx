@@ -93,24 +93,26 @@ function usePoolStates(positions: V3Position[], chainId: number | undefined) {
   useEffect(() => {
     let cancelled = false;
     positions.forEach((p) => {
-      if (p.tokenId in states) return;
+      const positionChainId = p.chainId ?? chainId;
+      const stateKey = `${positionChainId ?? "unknown"}:${p.tokenId}`;
+      if (stateKey in states) return;
       readPoolState(
-        providerForChain(chainId),
-        chainId,
+        providerForChain(positionChainId),
+        positionChainId,
         p.token0,
         p.token1,
         p.fee,
-        decimalsFor(chainId, p.token0),
-        decimalsFor(chainId, p.token1),
+        decimalsFor(positionChainId, p.token0),
+        decimalsFor(positionChainId, p.token1),
       ).then((r) => {
-        if (!cancelled) setStates((prev) => ({ ...prev, [p.tokenId]: r }));
+        if (!cancelled) setStates((prev) => ({ ...prev, [stateKey]: r }));
       });
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positions.map((p) => p.tokenId).join(","), chainId]);
+  }, [positions.map((p) => `${p.chainId ?? chainId ?? "unknown"}:${p.tokenId}`).join(","), chainId]);
 
   return states;
 }
@@ -717,7 +719,7 @@ export default function PositionsPage() {
         <PositionCard
           key={p.tokenId}
           p={p}
-          poolState={poolStates[p.tokenId]}
+          poolState={poolStates[`${p.chainId ?? chainId ?? "unknown"}:${p.tokenId}`]}
           chainId={chainId}
           symbolFor={symbolFor}
           collectFees={collectFees}
