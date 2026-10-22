@@ -107,6 +107,15 @@ export type SwapVolumeStanding = {
   points: number;
 };
 
+/** A live volume read failed. This must not be treated as zero: zero makes a
+ * transient database outage look like a wallet lost all of its progress. */
+export class TaskVolumeReadError extends Error {
+  constructor(cause?: unknown) {
+    super("Could not read wallet task volume", { cause });
+    this.name = "TaskVolumeReadError";
+  }
+}
+
 /** Build the per-tier UI state + credited points from a volume figure. */
 export function swapVolumeStanding(volumeUsd: number): SwapVolumeStanding {
   const top = highestSwapTier(volumeUsd);
@@ -155,8 +164,11 @@ export async function walletTaskVolumeUsd(
     .select("swaps_usd, collateral_usd")
     .eq("wallet", wallet)
     .maybeSingle();
-  // A read error counts as zero, so a DB hiccup can never inflate a tier.
-  if (error || !data) return 0;
+  // Never turn a failed read into zero. The rewards UI would then show every
+  // completed volume task as fresh and eligible again. Propagate the failure
+  // so the API can return a retryable 503 instead.
+  if (error) throw new TaskVolumeReadError(error);
+  if (!data) return 0;
   return taskVolumeTotal(data.swaps_usd, data.collateral_usd);
 }
 

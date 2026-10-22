@@ -1,3 +1,4 @@
+import { summarizeSwapTotals } from "./swapTotals";
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import { readPlatformTotals } from "@/lib/stats/platform";
 import { swapFeeBps } from "@/lib/swap/kyberswapServer";
@@ -142,21 +143,23 @@ function sumField(
 async function readTrading(chainId?: number): Promise<AnalyticsOverview["trading"]> {
   if (chainId !== undefined) {
     if (!supabaseAdmin) return null;
-    const [swaps, cctp, routes] = await Promise.all([
-      supabaseAdmin.from("swap_volume").select("usd_value,fee_paid").eq("chain_id", chainId).limit(READ_CAP),
+    const [swaps, cctp, routes, native] = await Promise.all([
+      supabaseAdmin.from("swap_volume").select("tx_hash,usd_value,fee_paid").eq("chain_id", chainId).limit(READ_CAP),
       supabaseAdmin.from("cctp_transfers").select("amount").eq("source_chain_id", chainId).neq("status", "failed").limit(READ_CAP),
       supabaseAdmin.from("route_bridges").select("usd_value").eq("source_chain_id", chainId).limit(READ_CAP),
+      supabaseAdmin.from("pool_volume").select("tx_hash,usd_value").eq("chain_id", chainId).limit(READ_CAP),
     ]);
-    if (swaps.error && cctp.error && routes.error) return null;
+    if (swaps.error && cctp.error && routes.error && native.error) return null;
     const swapRows = swaps.error ? [] : swaps.data ?? [];
+    const swapTotals = summarizeSwapTotals(swapRows, native.error ? [] : native.data ?? []);
     const routeVolume = routes.error ? 0 : sumField(routes.data ?? [], "usd_value");
     return {
-      volumeUsd: sumField(swapRows, "usd_value") + (cctp.error ? 0 : sumField(cctp.data ?? [], "amount")) + routeVolume,
-      feesUsd: sumField(swapRows.filter((row) => row.fee_paid !== false), "usd_value") * swapFeeBps() / 10000 + routeVolume * lifiFeeRate(),
-      swapCount: swaps.error ? null : swapRows.length,
+      volumeUsd: swapTotals.volumeUsd + (cctp.error ? 0 : sumField(cctp.data ?? [], "amount")) + routeVolume,
+      feesUsd: swapTotals.feeVolumeUsd * swapFeeBps() / 10000 + routeVolume * lifiFeeRate(),
+      swapCount: swaps.error && native.error ? null : swapTotals.swapCount,
       cctpBridgeCount: cctp.error ? null : cctp.data?.length ?? 0,
       routeBridgeCount: routes.error ? null : routes.data?.length ?? 0,
-      partial: Boolean(swaps.error || cctp.error || routes.error || swapRows.length >= READ_CAP || (cctp.data?.length ?? 0) >= READ_CAP || (routes.data?.length ?? 0) >= READ_CAP),
+      partial: Boolean(swaps.error || cctp.error || routes.error || native.error || swapTotals.partial || (native.data?.length ?? 0) >= READ_CAP || swapRows.length >= READ_CAP || (cctp.data?.length ?? 0) >= READ_CAP || (routes.data?.length ?? 0) >= READ_CAP),
     };
   }
   const totals = await readPlatformTotals();

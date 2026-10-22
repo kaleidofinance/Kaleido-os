@@ -6,6 +6,7 @@ import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { getClosedXTasks } from "@/lib/waitlist/xCap";
 import {
   swapVolumeStanding,
+  TaskVolumeReadError,
   walletTaskVolumeUsd,
 } from "@/lib/waitlist/swapVolume";
 import type { Season1Balance, WaitlistStatus } from "@/lib/waitlist/status";
@@ -308,7 +309,17 @@ export async function GET(req: Request) {
   const wallet = new URL(req.url).searchParams.get("wallet");
   if (!isAddress(wallet))
     return Response.json({ error: "bad wallet" }, { status: 400 });
-  const s = await standing(wallet.toLowerCase());
+  let s: WaitlistStatus | null;
+  try {
+    s = await standing(wallet.toLowerCase());
+  } catch (error) {
+    if (error instanceof TaskVolumeReadError)
+      return Response.json(
+        { error: "Rewards data is temporarily unavailable; please retry" },
+        { status: 503, headers: { "Retry-After": "10" } },
+      );
+    throw error;
+  }
   if (s) return Response.json(s);
 
   // `standing()` intentionally collapses the legacy-column fallbacks into a

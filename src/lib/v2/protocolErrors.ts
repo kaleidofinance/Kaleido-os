@@ -61,6 +61,10 @@ export const PROTOCOL_ERROR_ABI: JsonFragment[] = errorFragments(
   AgentPermissionFacet,
   LendingAdminFacet,
   OwnershipFacet,
+  /* LI.FI and smart-account paymasters use Solady's safeTransferFrom helper.
+     Its selector is otherwise opaque to the protocol ABIs, even though it is
+     the most useful bridge failure to explain to a user. */
+  [{ type: "error", name: "TransferFromFailed", inputs: [] }],
 );
 
 /**
@@ -72,6 +76,8 @@ export const PROTOCOL_ERROR_ABI: JsonFragment[] = errorFragments(
  * the action, not the mechanism: "deposit collateral first", not the selector.
  */
 export const PROTOCOL_ERROR_HELP: Record<string, string> = {
+  TransferFromFailed:
+    "The bridge could not pull the token amount. Refresh the quote and check that the current balance and allowance also cover the wallet fee.",
   Protocol__NoCollateralDeposited:
     "You haven't deposited any collateral yet. Deposit collateral first, then borrow against it.",
   Protocol__InsufficientCollateral:

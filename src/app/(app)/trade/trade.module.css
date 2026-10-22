@@ -405,6 +405,15 @@
   cursor: pointer;
 }
 
+/* Dollar equivalent under each amount. Keep it quiet like the balance line so
+   the token amount remains the primary value while the denomination is visible
+   for every priced asset. */
+.usdValue {
+  color: var(--k-t3);
+  font-size: var(--k-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Recessed into the well it sits in, same wash and groove as `.quick` — an opaque
    grey pill lands on the well as a patch of a different material. */
 .pill {
