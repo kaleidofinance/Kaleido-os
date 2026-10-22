@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useActiveAccount, useActiveWalletChain, useActiveWallet, useSwitchActiveWalletChain } from "thirdweb/react";
@@ -34,7 +34,12 @@ import { pairedAmount } from "@/lib/dex/deposit";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import PairIcon from "../_components/PairIcon";
 import s from "../pool.module.css";
-import { isClosed, positionsToShow } from "@/lib/dex/visiblePositions";
+import { isClosed, owedAmounts, positionsToShow } from "@/lib/dex/visiblePositions";
+import { positionAmounts, positionValueUsd } from "@/lib/dex/positionValue";
+import { useSpotPrices } from "@/hooks/useSpotPrices";
+import { useDexPrices } from "@/hooks/useDexPrices";
+import { hasKyberSwap } from "@/lib/swap/kyberswap";
+import { usePositionSummaryContext, type PositionSummary } from "../positionSummaryContext";
 
 /**
  * Your positions — the wallet-scoped half of the Liquidity section.
@@ -629,7 +634,9 @@ function PositionCard({
   );
 }
 
-function NetworkPositions({ networkId }: { networkId: number }) {
+type NetworkPositionSummary = Omit<PositionSummary, "networks"> & { loaded: boolean };
+
+function NetworkPositions({ networkId, onSummary }: { networkId: number; onSummary: (chainId: number, summary: NetworkPositionSummary) => void }) {
   const active = useV3Positions(networkId);
   const {
     positions,
@@ -644,6 +651,17 @@ function NetworkPositions({ networkId }: { networkId: number }) {
   const chainId = networkId;
   const { isConnected } = useWalletV2();
   const poolStates = usePoolStates(allPositions, chainId);
+  const { priceOf } = useSpotPrices();
+  const dexTokens = useMemo(() => allPositions.flatMap((position) => [position.token0, position.token1])
+    .filter((address, index, addresses) => addresses.findIndex((candidate) => candidate.toLowerCase() === address.toLowerCase()) === index)
+    .flatMap((address) => {
+      const decimals = decimalsForAddress(chainId, address);
+      const symbol = symbolForAddress(chainId, address);
+      return hasKyberSwap(chainId) && decimals !== undefined && priceOf(symbol) === null
+        ? [{ chainId, address, decimals }]
+        : [];
+    }), [allPositions, chainId, priceOf]);
+  const dexPriceOf = useDexPrices(dexTokens);
 
   // Bound to this chain so a position's raw addresses resolve against the right
   // registry — the same address means a different token on a different chain.
@@ -654,6 +672,47 @@ function NetworkPositions({ networkId }: { networkId: number }) {
      those — and their Collect button — while the Portfolio showed the fees as
      ready to claim. See lib/dex/visiblePositions. */
   const withActive = visiblePositions;
+  const summary = useMemo<NetworkPositionSummary>(() => {
+    if (loading) return { loaded: false, positions: null, liquidityUsd: null, feesUsd: null };
+    const open = withActive.filter((position) => !isClosed(position));
+    const tokenPrice = (address: string) => priceOf(symbolForAddress(chainId, address)) ?? dexPriceOf(chainId, address);
+    const liquidityValues = open.map((position) => {
+      const decimals0 = decimalsForAddress(chainId, position.token0);
+      const decimals1 = decimalsForAddress(chainId, position.token1);
+      if (decimals0 === undefined || decimals1 === undefined) return null;
+      return positionValueUsd(positionAmounts({
+        sqrtPriceX96: position.sqrtPriceX96,
+        tickLower: position.tickLower,
+        tickUpper: position.tickUpper,
+        liquidity: position.liquidity,
+        decimals0,
+        decimals1,
+      }), tokenPrice(position.token0), tokenPrice(position.token1));
+    });
+    const feeValues = withActive.map((position) => {
+      const decimals0 = decimalsForAddress(chainId, position.token0);
+      const decimals1 = decimalsForAddress(chainId, position.token1);
+      if (decimals0 === undefined || decimals1 === undefined) return null;
+      const [raw0, raw1] = owedAmounts(position);
+      return positionValueUsd({
+        amount0: feeAmountToNumber(raw0, decimals0),
+        amount1: feeAmountToNumber(raw1, decimals1),
+      }, tokenPrice(position.token0), tokenPrice(position.token1));
+    });
+    const completeSum = (values: (number | null)[]) => values.some((value) => value === null)
+      ? null
+      : values.reduce<number>((total, value) => total + (value ?? 0), 0);
+    return {
+      loaded: true,
+      positions: open.length,
+      liquidityUsd: completeSum(liquidityValues),
+      feesUsd: completeSum(feeValues),
+    };
+  }, [loading, withActive, chainId, priceOf, dexPriceOf]);
+
+  useEffect(() => {
+    onSummary(networkId, summary);
+  }, [networkId, onSummary, summary]);
 
   /* Arriving from /portfolio as #position-<id>: the cards render after the read,
      so the browser's own jump found nothing. Scroll once the card exists, and
@@ -758,10 +817,44 @@ function NetworkPositions({ networkId }: { networkId: number }) {
 export default function PositionsPage() {
   const { isConnected } = useWalletV2();
   const { showTestnets } = useTestnetMode();
-  const chains = CHAINS.filter((chain) => {
+  const chains = useMemo(() => CHAINS.filter((chain) => {
     const contracts = getContracts(chain.id);
     return (showTestnets || chain.network === "mainnet") && contracts.v3PositionManager && contracts.v3Factory;
-  });
+  }), [showTestnets]);
+  const { setSummary } = usePositionSummaryContext();
+  const [summaries, setSummaries] = useState<Record<number, NetworkPositionSummary>>({});
+  const updateSummary = useCallback((chainId: number, summary: NetworkPositionSummary) => {
+    setSummaries((current) => {
+      const previous = current[chainId];
+      return previous?.loaded === summary.loaded &&
+        previous?.positions === summary.positions &&
+        previous?.liquidityUsd === summary.liquidityUsd &&
+        previous?.feesUsd === summary.feesUsd
+        ? current
+        : { ...current, [chainId]: summary };
+    });
+  }, []);
+  useEffect(() => {
+    if (!isConnected) {
+      setSummary(null);
+      return;
+    }
+    const rows = chains.map((chain) => summaries[chain.id]);
+    if (rows.some((row) => !row?.loaded)) {
+      setSummary(null);
+      return;
+    }
+    const sum = (field: "liquidityUsd" | "feesUsd") => rows.some((row) => row[field] === null)
+      ? null
+      : rows.reduce((total, row) => total + (row[field] ?? 0), 0);
+    setSummary({
+      positions: rows.reduce((total, row) => total + (row.positions ?? 0), 0),
+      liquidityUsd: sum("liquidityUsd"),
+      feesUsd: sum("feesUsd"),
+      networks: rows.filter((row) => (row.positions ?? 0) > 0).length,
+    });
+  }, [chains, isConnected, setSummary, summaries]);
+  useEffect(() => () => setSummary(null), [setSummary]);
   if (!isConnected) return <p className={s.empty}>Connect a wallet to see your positions.</p>;
-  return <>{chains.map((chain) => <section key={chain.id} aria-label={`${chain.name} positions`}><h2 className={s.pairName}>{chain.name}</h2><NetworkPositions networkId={chain.id} /></section>)}</>;
+  return <>{chains.map((chain) => <section key={chain.id} aria-label={`${chain.name} positions`}><h2 className={s.pairName}>{chain.name}</h2><NetworkPositions networkId={chain.id} onSummary={updateSummary} /></section>)}</>;
 }
