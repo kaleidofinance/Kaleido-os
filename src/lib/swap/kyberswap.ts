@@ -1,3 +1,4 @@
+import { unsafeKyberQuote } from "./quoteSafety";
 /**
  * KyberSwap aggregator swap routes, for chains where Kaleido runs no pools of
  * its own (Arc, whose liquidity is Uniswap V3/V4 that our V3-fork quoter cannot
@@ -91,9 +92,11 @@ export async function quoteKyberSwap(args: {
     });
     if (!res.ok) return null;
     const json = (await res.json()) as {
-      data?: { routeSummary?: { amountOut?: unknown } };
+      data?: { routeSummary?: Record<string, unknown> };
     };
-    const out = json.data?.routeSummary?.amountOut;
+    const summary = json.data?.routeSummary;
+    if (!summary || unsafeKyberQuote(summary)) return null;
+    const out = summary.amountOut;
     return typeof out === "string" && /^\d+$/.test(out) && out !== "0"
       ? { amountOut: out }
       : null;
@@ -253,7 +256,7 @@ export async function resolveKyberSwap(args: {
       data?: { routeSummary?: RouteSummary };
     };
     const routeSummary = routeJson.data?.routeSummary;
-    if (!routeSummary) return null;
+    if (!routeSummary || unsafeKyberQuote(routeSummary)) return null;
 
     const buildRes = await fetch(`${KYBER_API}/${slug}/api/v1/route/build`, {
       method: "POST",

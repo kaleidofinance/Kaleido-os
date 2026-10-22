@@ -1,5 +1,7 @@
 "use client";
 
+import { exceedsQuoteLoss } from "@/lib/swap/quoteSafety";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import TokenSelector from "@/components/v2/TokenSelector";
@@ -11,6 +13,8 @@ import { providerForChain } from "@/config/provider";
 import { getContracts, poolPairsFor } from "@/constants/registry";
 import { chainTokenByAddress, chainTokens } from "@/constants/tokens";
 import type { IToken } from "@/constants/types/dex";
+import { useSpotPrices } from "@/hooks/useSpotPrices";
+import { usdAmount, usdText } from "@/lib/format/tokenUsd";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
@@ -448,6 +452,7 @@ function OpenOrders({
 }
 
 export default function LimitPage() {
+  const { priceOf } = useSpotPrices();
   const { address, isConnected, chainId, chainName } = useWalletV2();
   /* See swap: /trade has no ChainGate, so a disconnected CTA connects rather
      than sits disabled. */
@@ -461,6 +466,8 @@ export default function LimitPage() {
   );
   const [tokenIn, setTokenIn] = useState<IToken | null>(null);
   const [tokenOut, setTokenOut] = useState<IToken | null>(null);
+  const inputUsdPrice = tokenIn ? priceOf(tokenIn.symbol) : null;
+  const outputUsdPrice = tokenOut ? priceOf(tokenOut.symbol) : null;
   const [amountIn, setAmountIn] = useState("");
   const [price, setPrice] = useState("");
   /** Index into PRESETS, or null once the price is typed by hand. */
@@ -647,7 +654,8 @@ export default function LimitPage() {
           const v = o === null ? 0 : Number(o);
           return Number.isFinite(v) && v > m ? v : m;
         }, 0);
-        const rate = best / Number(size);
+        const badPoolQuote = inputUsdPrice !== null && outputUsdPrice !== null && exceedsQuoteLoss(Number(size) * inputUsdPrice, best * outputUsdPrice);
+        const rate = badPoolQuote ? 0 : best / Number(size);
         if (!cancelled) setPoolRate(Number.isFinite(rate) && rate > 0 ? rate : 0);
 
         /* The reference market: the same aggregator quote the Swap tab takes, for
@@ -693,7 +701,7 @@ export default function LimitPage() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [amountIn, tokenIn, tokenOut, getV3AmountOut, chainId, address]);
+  }, [amountIn, tokenIn, tokenOut, getV3AmountOut, chainId, address, inputUsdPrice, outputUsdPrice]);
 
   /* Whether Kaleido's pools can fill at the price being set, right now. Only
      worth saying when there IS a separate market reference — without one the
@@ -712,7 +720,8 @@ export default function LimitPage() {
   /* A preset is a mode, not a button: it re-derives the price every time the
      market moves, so "Market" keeps meaning market. Typing clears it. */
   useEffect(() => {
-    if (preset === null || !market) return;
+    if (preset === null) return;
+    if (!market) { setPrice(""); return; }
     setPrice(priceText(market * (1 + PRESETS[preset].over)));
   }, [preset, market]);
 
@@ -955,6 +964,11 @@ export default function LimitPage() {
               label="Select the token to buy"
             />
           </div>
+          <div className={s.sub}>
+            <span className={s.usdValue}>
+              {usdText(usdAmount(price, tokenOut?.symbol, priceOf))}
+            </span>
+          </div>
           <div className={d.presets}>
             {PRESETS.map((p, i) => (
               <button
@@ -992,6 +1006,11 @@ export default function LimitPage() {
               onClick={() => setPickerFor("in")}
               label="Select the token to sell"
             />
+          </div>
+          <div className={s.sub}>
+            <span className={s.usdValue}>
+              {usdText(usdAmount(amountIn, tokenIn?.symbol, priceOf))}
+            </span>
           </div>
           {/* The fractions sit beside the balance they are computed from, rather
               than in the card's corner as they do on Swap — that corner is the

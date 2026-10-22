@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import { unsafeKyberQuote, exceedsQuoteLoss } from "./quoteSafety";
+const fee = (n: number) => ({route: [[{poolType: "uniswap-v4", poolExtra: {fee: n}}]]});
+for (const n of [880000, 920000, 950000]) assert.equal(unsafeKyberQuote(fee(n)), true);
+assert.equal(unsafeKyberQuote(fee(500)), false);
+assert.equal(unsafeKyberQuote(fee(8388608)), false);
+assert.equal(unsafeKyberQuote({amountInUsd: "28779", amountOutUsd: "1450"}), true);
+assert.equal(unsafeKyberQuote({amountInUsd: "2391", amountOutUsd: "2393"}), false);
+assert.equal(unsafeKyberQuote({}), false);
+assert.equal(exceedsQuoteLoss(2.06, 0.246), true);
+assert.equal(exceedsQuoteLoss(100, 99.8), false);
+console.log("10 quote safety checks passed");
