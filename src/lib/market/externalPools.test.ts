@@ -5,8 +5,8 @@ async function main() {
   const row = {
     address: `0x${"a".repeat(64)}`, exchange: "uniswap-v4", chain: { id: 4663 },
     tvl: null, volume1d: "", earnFee: 0,
-    tokens: [{ address: `0x${"b".repeat(40)}`, symbol: "WETH" },
-      { address: `0x${"c".repeat(40)}`, symbol: "USDG" }],
+    tokens: [{ address: `0x${"b".repeat(40)}`, symbol: "WETH", logoURI: "https://example.com/chain-4663-token.png" },
+      { address: `0x${"c".repeat(40)}`, symbol: "USDG", logoURI: "javascript:alert(1)" }],
   };
   const fetchImpl: typeof fetch = async () => Response.json({ code: 0, data: {
     pools: [row, row, { ...row, chain: { id: 5042 } }, { ...row, tokens: null }],
@@ -19,6 +19,8 @@ async function main() {
   assert.equal(result?.sampledFees24hUsd, 0, "measured zero is retained");
   assert.equal(result?.pools[0].address.length, 66, "V4 pool IDs are retained without pretending to be addresses");
   assert.equal(result?.pools[0].tokens[0].address, row.tokens[0].address, "swap links preserve token identity");
+  assert.equal(result?.pools[0].tokens[0].logoURI, row.tokens[0].logoURI, "logo stays attached to upstream chain/address metadata");
+  assert.equal(result?.pools[0].tokens[1].logoURI, undefined, "unsafe logo URLs are discarded");
   assert.equal(result?.partial, true, "ranked sample is disclosed");
   assert.equal(await readExternalPools(1, fetchImpl), null, "unsupported chain is not substituted");
   assert.equal(await readExternalPools(4663, async () => Response.json({ code: 0, data: { pools: {} } })), null);
@@ -41,6 +43,6 @@ async function main() {
   assert.equal(arc?.pools[0].tokenSymbols.join("/"), "USDC/ARGUS", "route legs retain registered token identity");
   assert.equal(arc?.pools[0].feeTier, 0.25, "Kyber millionths become a percentage fee tier");
   assert.equal(arc?.pools[0].fees24hUsd, 0.5, "estimated fees use volume times fee percentage");
-  console.log("14 external pool checks passed");
+  console.log("16 external pool checks passed");
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

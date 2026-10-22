@@ -791,10 +791,7 @@ function NetworkPositions({ networkId, onSummary }: { networkId: number; onSumma
   return (
     <div className={s.cards}>
       {[...new Set(withActive.map((p) => p.chainId).filter((id): id is number => id !== undefined))].map((networkId) => (
-        <section key={networkId} aria-labelledby={`positions-${networkId}`}>
-          <h2 id={`positions-${networkId}`} className={s.pairName}>
-            {getChainMeta(networkId)?.name ?? `Network ${networkId}`}
-          </h2>
+        <section key={networkId} aria-label={`${getChainMeta(networkId)?.name ?? networkId} liquidity positions`}>
           {withActive.filter((p) => p.chainId === networkId).map((p) => (
             <PositionCard
               key={`${networkId}:${p.tokenId}`}

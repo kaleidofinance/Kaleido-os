@@ -69,7 +69,15 @@ export default function AnalyticsPage() {
       <main className={s.wrap}>
         <div className={s.head}>
           <h1 className={s.h1}>Analytics</h1>
-          <label>Network <select value={network} onChange={(event) => { const value = event.target.value; setNetwork(value); const url = new URL(window.location.href); url.searchParams.set("chain", value); window.history.replaceState(null, "", url); }}><option value="all">All mainnets</option><option value="5042">Arc</option><option value="4663">Robinhood</option></select></label>
+          <div className={s.networks} role="group" aria-label="Filter analytics by network">
+            {[["all", "All mainnets"], ["5042", "Arc"], ["4663", "Robinhood"]].map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={network === value}
+                className={`${s.network} ${network === value ? s.networkOn : ""}`}
+                onClick={() => { setNetwork(value); const url = new URL(window.location.href); url.searchParams.set("chain", value); window.history.replaceState(null, "", url); }}>
+                {label}
+              </button>
+            ))}
+          </div>
           <p className={s.sub}>
             <span className={s.live}>
               <span className={s.dot} aria-hidden /> Live
@@ -82,10 +90,11 @@ export default function AnalyticsPage() {
           <h2 className={s.h2}>Kaleido-routed activity · all time</h2>
           <StatStrip>
             <Stat label="Total volume" value={usd(t ? t.volumeUsd : null)} />
-            <Stat label="Total fees" value={usd(t ? t.feesUsd : null, 2)} />
+            <Stat label="Protocol fees" value={usd(t ? t.feesUsd : null, 2)} />
             <Stat label="Swaps" value={qty(t?.swapCount ?? null)} />
             <Stat label="Bridges" value={qty(bridges)} />
           </StatStrip>
+          <p className={s.sub}>Native pool swaps, aggregator trades and bridges. Each swap transaction is counted once; fees show Kaleido protocol revenue.</p>
           {t?.partial ? (
             <p className={s.empty}>
               A volume source is temporarily unavailable — these totals are a

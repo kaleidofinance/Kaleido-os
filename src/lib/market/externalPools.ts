@@ -14,7 +14,7 @@ export interface ExternalPool {
   volume24hUsd: number | null;
   fees24hUsd: number | null;
   tokenSymbols: string[];
-  tokens: Array<{ address: string; symbol: string }>;
+  tokens: Array<{ address: string; symbol: string; logoURI?: string }>;
   chainId: number;
 }
 
@@ -40,7 +40,7 @@ type RawPool = {
   volume1d?: unknown;
   earnFee?: unknown;
   chain?: { id?: unknown };
-  tokens?: Array<{ address?: unknown; symbol?: unknown }>;
+  tokens?: Array<{ address?: unknown; symbol?: unknown; logoURI?: unknown }>;
 };
 
 type RouteLeg = {
@@ -59,6 +59,18 @@ type GeckoPool = {
     fee_percentage?: unknown;
   };
 };
+
+// Upstream logos belong to the token address in this chain-scoped response.
+// Accept HTTPS images only; missing or malformed metadata keeps the placeholder.
+export function tokenLogoUri(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const n = (value: unknown): number | null => {
   if (value === null || value === undefined || value === "" || typeof value === "boolean") return null;
@@ -87,7 +99,7 @@ async function fetchExternalPools(
     const seen = new Set<string>();
     const pools = body.data.pools.flatMap((row) => {
       if (!row || typeof row.address !== "string" || !/^0x(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(row.address) || Number(row.chain?.id) !== chainId || !Array.isArray(row.tokens)) return [];
-      const tokens = row.tokens.flatMap((t) => t && typeof t.address === "string" && /^0x[0-9a-f]{40}$/i.test(t.address) && typeof t.symbol === "string" ? [{ address: t.address, symbol: t.symbol }] : []);
+      const tokens = row.tokens.flatMap((t) => t && typeof t.address === "string" && /^0x[0-9a-f]{40}$/i.test(t.address) && typeof t.symbol === "string" ? [{ address: t.address, symbol: t.symbol, logoURI: tokenLogoUri(t.logoURI) }] : []);
       if (tokens.length !== 2) return [];
       const key = `${row.exchange}:${row.address.toLowerCase()}`;
       if (seen.has(key)) return [];

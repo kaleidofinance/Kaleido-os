@@ -404,7 +404,15 @@ export default function PoolsPage() {
           const tradable = pool.tokens.every((token) => chainTokenByAddress(pool.chainId, token.address));
           const href = `/trade/swap?chain=${pool.chainId}&in=${pool.tokens[0].address}&out=${pool.tokens[1].address}`;
           return <div key={`${pool.chainId}-${pool.exchange}-${pool.address}`} className={s.row}>
-            <div className={s.pairCell}><div>
+            <div className={s.pairCell}>
+              <div className={s.pair}>
+                {pool.tokens.map((token) => (
+                  <PairIcon key={`${pool.chainId}:${token.address}`} symbol={token.symbol}
+                    logoURI={token.logoURI}
+                    allowSymbolIcon={chainTokenByAddress(pool.chainId, token.address)?.symbol === token.symbol} />
+                ))}
+              </div>
+              <div>
               <div className={s.pairName}>{pool.tokenSymbols.join(" / ")}</div>
               <div className={s.pairFee}>{pool.exchange} · External <ChainTag chainId={pool.chainId} /></div>
             </div></div>
