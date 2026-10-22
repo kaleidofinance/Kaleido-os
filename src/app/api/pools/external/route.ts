@@ -4,9 +4,10 @@ import { readExternalPools } from "@/lib/market/externalPools";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const data = await readExternalPools(4663);
+  const data = (await Promise.all([readExternalPools(5042), readExternalPools(4663)]))
+    .filter((snapshot) => snapshot !== null);
   return NextResponse.json({ data }, {
-    status: data ? 200 : 503,
+    status: data.length ? 200 : 503,
     headers: { "Cache-Control": "no-store" },
   });
 }

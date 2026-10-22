@@ -87,15 +87,16 @@ import s from "./pool.module.css";
 export default function PoolsPage() {
   const [view, setView] = useState<"all" | "kaleido" | "external">("all");
   const [venue, setVenue] = useState("");
-  const externalQuery = useQuery<ExternalPoolSnapshot>({
-    queryKey: ["external-pools", 4663],
+  const externalQuery = useQuery<ExternalPoolSnapshot[]>({
+    queryKey: ["external-pools", 5042, 4663],
     queryFn: async () => {
       const response = await fetch("/api/pools/external", { cache: "no-store" });
       if (!response.ok) throw new Error("External markets unavailable");
       return (await response.json()).data;
     }, staleTime: 60000, refetchInterval: 60000, refetchIntervalInBackground: false,
   });
-  const external = externalQuery.data;
+  const external = externalQuery.data ?? [];
+  const externalPools = external.flatMap((snapshot) => snapshot.pools);
   const v2 = usePoolData();
   const v3 = useV3Pools();
 
@@ -153,14 +154,14 @@ export default function PoolsPage() {
     [sortedPools, filters, query, view, venue],
   );
 
-  const externalVisible = (view === "kaleido" ? [] : external?.pools ?? []).filter((pool) => {
+  const externalVisible = (view === "kaleido" ? [] : externalPools).filter((pool) => {
     if (sortedPools.some((own) => own.chainId === pool.chainId && own.address.toLowerCase() === pool.address.toLowerCase())) return false;
     if (venue && venue !== pool.exchange) return false;
     if (filters.chainIds.length && !filters.chainIds.includes(pool.chainId)) return false;
     if (filters.hideEmpty && pool.tvlUsd === 0) return false;
     if (filters.venues.length && !filters.venues.some((v) => pool.exchange.toLowerCase().includes(v))) return false;
     if (filters.feeBps.length && (pool.feeTier === null || !filters.feeBps.includes(pool.feeTier * 100))) return false;
-    const hay = `${pool.tokenSymbols.join(" ")} ${pool.address} ${pool.exchange} Robinhood`.toLowerCase();
+    const hay = `${pool.tokenSymbols.join(" ")} ${pool.address} ${pool.exchange} ${CHAINS_BY_ID[pool.chainId]?.name ?? pool.chainId}`.toLowerCase();
     return query.toLowerCase().split(/[\s/,]+/).filter(Boolean).every((word) => hay.includes(word));
   });
   const sum = (values: (number | null)[]) => {
@@ -171,7 +172,7 @@ export default function PoolsPage() {
   const trackedVolume = sum([...visible.map((p) => p.volume24h), ...externalVisible.map((p) => p.volume24hUsd)]);
   const trackedFees = sum([...visible.map((p) => p.fees24h), ...externalVisible.map((p) => p.fees24hUsd)]);
   const visibleCount = visible.length + externalVisible.length;
-  const chainIds = [...new Set([...sortedPools.map((p) => p.chainId), 4663])];
+  const chainIds = [...new Set([...sortedPools.map((p) => p.chainId), ...externalPools.map((p) => p.chainId)])];
 
   /* Either sweep still running counts as loading, so the table does not settle
      into a V2-only list and then reshuffle when the V3 sweep lands. */
@@ -199,8 +200,8 @@ export default function PoolsPage() {
         </StatStrip>
         <p className={s.partialNote} role="status">
           Figures follow the filters. External liquidity is a ranked sample and is not Kaleido protocol revenue.
-          {external && view !== "kaleido" ? ` Tracking ${external.sampledPools} of ${external.totalPools} indexed Robinhood pools. Fetched ${new Date(external.asOf).toLocaleTimeString()}.` : ""}
-          {view !== "kaleido" && (externalQuery.isError || external?.stale) ? " External market data is unavailable or stale." : ""}
+          {external.length && view !== "kaleido" ? ` Tracking ${external.reduce((total, snapshot) => total + snapshot.sampledPools, 0)} aggregator-routed pools across ${external.length} networks.` : ""}
+          {view !== "kaleido" && (externalQuery.isError || external.some((snapshot) => snapshot.stale)) ? " External market data is unavailable or stale." : ""}
         </p>
       </div>
       <div className={s.marketControls}>
@@ -216,7 +217,7 @@ export default function PoolsPage() {
         <label>Venue <select aria-label="Pool venue" value={venue} onChange={(e) => setVenue(e.target.value)}>
           <option value="">All venues</option>
           {view !== "external" && <option value="kaleido">Kaleido</option>}
-          {view !== "kaleido" && [...new Set(external?.pools.map((p) => p.exchange) ?? [])].map((exchange) => <option key={exchange} value={exchange}>{exchange}</option>)}
+          {view !== "kaleido" && [...new Set(externalPools.map((p) => p.exchange))].map((exchange) => <option key={exchange} value={exchange}>{exchange}</option>)}
         </select></label>
       </div>
       {/* Rendered while loading as well, so it does not appear a beat after the
@@ -294,7 +295,7 @@ export default function PoolsPage() {
               <span className={s.skLine} />
             </div>
           ))
-        ) : sortedPools.length === 0 && !(external?.pools.length) ? (
+        ) : sortedPools.length === 0 && externalPools.length === 0 ? (
           <div className={s.tEmpty}>No pools indexed yet.</div>
         ) : visibleCount === 0 ? (
           /* Distinct from the line above it, because these are opposite facts: one
