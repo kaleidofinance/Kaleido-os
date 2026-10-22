@@ -270,22 +270,7 @@ export default function SwapPage() {
   const [slippageBps, setSlippageBps] = useState(AUTO_SLIPPAGE_BPS);
   const [deadlineMin, setDeadlineMin] = useState(20);
 
-  const selectNetwork = (id: number) => {
-    if (!networks.some((chain) => chain.id === id)) return;
-    setSelectedChainId(id);
-    setTokenIn(null);
-    setTokenOut(null);
-    setAmountOut("");
-    setNoRoute(false);
-    setRoute(null);
-    setKyberRoute(null);
-    setReviewing(false);
-    const url = new URL(window.location.href);
-    url.searchParams.set("chain", String(id));
-    url.searchParams.delete("in");
-    url.searchParams.delete("out");
-    window.history.replaceState(null, "", url);
-  };
+
 
   /*
    * Fills whichever side is not a token on this chain.
@@ -1040,13 +1025,7 @@ export default function SwapPage() {
 
   return (
     <>
-      <div className={`${s.card} ${s.cardWithNetwork}`}>
-        <label className={s.swapNetwork}>
-          Network
-          <select aria-label="Swap network" value={swapChainId} onChange={(event) => selectNetwork(Number(event.target.value))}>
-            {networks.map((chain) => <option key={chain.id} value={chain.id}>{chain.name}</option>)}
-          </select>
-        </label>
+      <div className={s.card}>
         {/* Overlays the Sell well's top-right corner. See `.settings` in
             trade.module.css for why it is a sibling of the well and not a
             child of its label row. */}

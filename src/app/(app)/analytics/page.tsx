@@ -87,7 +87,7 @@ export default function AnalyticsPage() {
         </div>
 
         <section className={s.section}>
-          <h2 className={s.h2}>Kaleido-routed activity · all time</h2>
+          <h2 className={s.h2}>Kaleido activity · all time</h2>
           <StatStrip>
             <Stat label="Total volume" value={usd(t ? t.volumeUsd : null)} />
             <Stat label="Protocol fees" value={usd(t ? t.feesUsd : null, 2)} />
