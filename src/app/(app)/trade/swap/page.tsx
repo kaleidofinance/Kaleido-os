@@ -1,5 +1,7 @@
 "use client";
 
+import { exceedsQuoteLoss } from "@/lib/swap/quoteSafety";
+
 import { useEffect, useMemo, useState } from "react";
 import TokenSelector from "@/components/v2/TokenSelector";
 import PlanReview from "@/components/v2/PlanReview";
@@ -13,6 +15,7 @@ import { getContracts, nativeTokenOf, hasSwaps } from "@/constants/registry";
 import { CHAINS, getChainMeta } from "@/constants/chains";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import type { IToken } from "@/constants/types/dex";
+import { usdAmount, usdText } from "@/lib/format/tokenUsd";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { makeBatchingQuoter } from "@/lib/dex/batchQuoter";
@@ -111,19 +114,6 @@ const balanceText = (balance: string, unread: boolean) =>
     ? "0"
     : Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
-const usdAmount = (amount: string, symbol: string | undefined, priceOf: (symbol: string) => number | null) => {
-  if (!symbol || !amount.trim()) return null;
-  const amountNumber = Number(amount);
-  const price = priceOf(symbol);
-  if (!Number.isFinite(amountNumber) || price === null || !Number.isFinite(price)) return null;
-  return amountNumber * price;
-};
-
-const usdText = (value: number | null) =>
-  value === null
-    ? "—"
-    : `$${value.toLocaleString(undefined, { maximumFractionDigits: value < 1 ? 6 : 2 })}`;
-
 /**
  * The token button on a swap side. Takes a nullable token so the form can
  * render before a pair is chosen — an unselected side is an ordinary state, not
@@ -208,6 +198,8 @@ export default function SwapPage() {
    */
   const [tokenIn, setTokenIn] = useState<IToken | null>(null);
   const [tokenOut, setTokenOut] = useState<IToken | null>(null);
+  const inputUsdPrice = tokenIn ? priceOf(tokenIn.symbol) : null;
+  const outputUsdPrice = tokenOut ? priceOf(tokenOut.symbol) : null;
   /* The chain the swap is ON, derived from the tokens rather than the wallet:
      any chain's tokens can be priced and picked with the wallet parked
      elsewhere, and the wallet only moves when you sign (the Switch CTA). Picking
@@ -604,13 +596,14 @@ export default function SwapPage() {
            itself either way; native USDC is 0x8c6c 18-dec for our pool vs 0x3600
            6-dec for the aggregator — both $1), so the human amounts compare
            directly. -1 means "no quote from this source". Ties go to our pool. */
-        const ourOut = found ? Number(found.amountOut) : -1;
+        const rawOurOut = found ? Number(found.amountOut) : -1;
+        const ourOut = inputUsdPrice !== null && outputUsdPrice !== null && exceedsQuoteLoss(amount * inputUsdPrice, rawOurOut * outputUsdPrice) ? -1 : rawOurOut;
         const kyberOut =
           kyberExec && kyberBuy
             ? Number(ethers.formatUnits(kyberExec.amountOut, kyberBuy.decimals))
             : -1;
 
-        if (found && ourOut >= kyberOut) {
+        if (found && ourOut > 0 && ourOut >= kyberOut) {
           setRoute(found);
           setKyberRoute(null);
           setAmountOut(String(found.amountOut));
@@ -663,6 +656,8 @@ export default function SwapPage() {
     v3Router,
     address,
     slippageBps,
+    inputUsdPrice,
+    outputUsdPrice,
   ]);
 
   /*

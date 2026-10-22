@@ -12,6 +12,7 @@ import {
   hasKyberSwap,
   isKnownSwapRouter,
   resolveKyberSwap,
+  quoteKyberSwap,
   aggregatorToken,
   nativeSwapErc20,
 } from "./kyberswap.ts";
@@ -73,6 +74,39 @@ console.log("\n— resolve refuses an unrouted chain without a network call —"
     slippageBps: 100,
   });
   check("an off-KyberSwap chain resolves to null", r === null);
+}
+
+console.log("\n— quote boundary excludes unsafe pools —");
+{
+  const response = (summary: Record<string, unknown>) =>
+    new Response(JSON.stringify({ data: { routeSummary: summary } }), { status: 200 });
+  const unsafe = await quoteKyberSwap({
+    chainId: ROBINHOOD,
+    tokenIn: "0x0000000000000000000000000000000000000001",
+    tokenOut: "0x0000000000000000000000000000000000000002",
+    amountUnits: "1000000",
+    fetchImpl: async () => response({
+      amountOut: "1000000",
+      amountInUsd: "100",
+      amountOutUsd: "10",
+      route: [[{ poolType: "uniswap-v4", poolExtra: { fee: 880000 } }]],
+    }),
+  });
+  check("an 88% V4 pool is excluded before aggregation", unsafe === null);
+
+  const healthy = await quoteKyberSwap({
+    chainId: ROBINHOOD,
+    tokenIn: "0x0000000000000000000000000000000000000001",
+    tokenOut: "0x0000000000000000000000000000000000000002",
+    amountUnits: "1000000",
+    fetchImpl: async () => response({
+      amountOut: "990000",
+      amountInUsd: "100",
+      amountOutUsd: "99.5",
+      route: [[{ poolType: "uniswap-v4", poolExtra: { fee: 500 } }]],
+    }),
+  });
+  check("a healthy pool remains eligible", healthy?.amountOut === "990000");
 }
 
 console.log("\n— fee params are gated on a configured receiver —");
