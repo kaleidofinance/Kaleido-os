@@ -163,7 +163,7 @@ async function season1Balance(wallet: string): Promise<Season1Balance | null> {
 const BASE_COLS = "ref_code, welcome_points, activated_at";
 const TRANSACTION_COLS = "arc_mainnet_tx_at, agent_tx_at, bridge_tx_at";
 const X_COLS =
-  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_bitget_at";
+  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_robinhood_integration_at, x_robinhood_integration_comment_at, x_bitget_at";
 const LEGACY_X_COLS =
   "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at";
 const LEGACY_COLS = `${BASE_COLS}, ${LEGACY_X_COLS}`;
@@ -235,6 +235,8 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
     argus2: xTaskState(row.x_argus2_at as string | null, now, closedX.argus2),
     absexit: xTaskState(row.x_absexit_at as string | null, now, closedX.absexit),
     argusIntegration: xTaskState(row.x_argus_integration_at as string | null, now, closedX.argusIntegration),
+    robinhoodIntegration: xTaskState(row.x_robinhood_integration_at as string | null, now, closedX.robinhoodIntegration),
+    robinhoodIntegrationComment: xTaskState(row.x_robinhood_integration_comment_at as string | null, now, closedX.robinhoodIntegrationComment),
     argusIntegrationComment: xTaskState(
       row.x_argus_integration_comment_at as string | null,
       now,
