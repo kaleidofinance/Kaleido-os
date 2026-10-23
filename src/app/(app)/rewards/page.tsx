@@ -50,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "robinhoodIntegration" | "robinhoodIntegrationComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -65,7 +65,7 @@ const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 /** The $ARGUS listing post: RT + comment, first 100 wallets get +600. */
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
-const ARGUS_INTEGRATION_TWEET_ID = "2110782483386220933";
+const ROBINHOOD_INTEGRATION_TWEET_ID = "2113593024018358570";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -118,8 +118,8 @@ export default function WaitlistPage() {
     llama: boolean;
     argus: boolean;
     argus2: boolean;
-    argusIntegration: boolean;
-    argusIntegrationComment: boolean;
+    robinhoodIntegration: boolean;
+    robinhoodIntegrationComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -128,8 +128,8 @@ export default function WaitlistPage() {
     llama: false,
     argus: false,
     argus2: false,
-    argusIntegration: false,
-    argusIntegrationComment: false,
+    robinhoodIntegration: false,
+    robinhoodIntegrationComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -446,7 +446,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "robinhoodIntegration" | "robinhoodIntegrationComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -454,10 +454,10 @@ export default function WaitlistPage() {
             ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
-                : task === "argusIntegration"
-                  ? `https://x.com/intent/retweet?tweet_id=${ARGUS_INTEGRATION_TWEET_ID}`
-                : task === "argusIntegrationComment"
-                  ? `https://x.com/intent/tweet?in_reply_to=${ARGUS_INTEGRATION_TWEET_ID}`
+                : task === "robinhoodIntegration"
+                  ? `https://x.com/intent/retweet?tweet_id=${ROBINHOOD_INTEGRATION_TWEET_ID}`
+                : task === "robinhoodIntegrationComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${ROBINHOOD_INTEGRATION_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -798,43 +798,43 @@ export default function WaitlistPage() {
 
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>Like &amp; RT $ARGUS Integration</span>
+                      <span className={s.taskTitle}>Like &amp; RT Robinhood Integration</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.argusIntegration?.done
-                          ? status.xTasks.argusIntegration.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.argusIntegration?.closed ? "Closed · all 200 spots claimed"
+                        {status.xTasks.robinhoodIntegration?.done
+                          ? status.xTasks.robinhoodIntegration.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.robinhoodIntegration?.closed ? "Closed · all 200 spots claimed"
                           : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.argusIntegration?.done ? <span className={s.taskDone}>✓</span>
-                      : status.xTasks.argusIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
-                      : opened.argusIntegration ? (
-                        <button className={s.taskBtn} onClick={() => postXTask("argusIntegration")} disabled={xBusy === "argusIntegration"}>
-                          {xBusy === "argusIntegration" ? "…" : "Claim"}
+                    {status.xTasks.robinhoodIntegration?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.robinhoodIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.robinhoodIntegration ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("robinhoodIntegration")} disabled={xBusy === "robinhoodIntegration"}>
+                          {xBusy === "robinhoodIntegration" ? "…" : "Claim"}
                         </button>
                       ) : (
-                        <button className={s.taskBtn} onClick={() => openIntent("argusIntegration")}>Like &amp; RT</button>
+                        <button className={s.taskBtn} onClick={() => openIntent("robinhoodIntegration")}>Like &amp; RT</button>
                       )}
                   </li>
 
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>Comment on ARGUS Integration</span>
+                      <span className={s.taskTitle}>Comment on Robinhood Integration</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.argusIntegrationComment?.done
-                          ? status.xTasks.argusIntegrationComment.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.argusIntegrationComment?.closed ? "Closed · all 200 spots claimed"
+                        {status.xTasks.robinhoodIntegrationComment?.done
+                          ? status.xTasks.robinhoodIntegrationComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.robinhoodIntegrationComment?.closed ? "Closed · all 200 spots claimed"
                           : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.argusIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
-                      : status.xTasks.argusIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
-                      : opened.argusIntegrationComment ? (
-                        <button className={s.taskBtn} onClick={() => postXTask("argusIntegrationComment")} disabled={xBusy === "argusIntegrationComment"}>
-                          {xBusy === "argusIntegrationComment" ? "…" : "Claim"}
+                    {status.xTasks.robinhoodIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.robinhoodIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.robinhoodIntegrationComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("robinhoodIntegrationComment")} disabled={xBusy === "robinhoodIntegrationComment"}>
+                          {xBusy === "robinhoodIntegrationComment" ? "…" : "Claim"}
                         </button>
                       ) : (
-                        <button className={s.taskBtn} onClick={() => openIntent("argusIntegrationComment")}>Comment</button>
+                        <button className={s.taskBtn} onClick={() => openIntent("robinhoodIntegrationComment")}>Comment</button>
                       )}
                   </li>
 
