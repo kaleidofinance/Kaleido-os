@@ -63,8 +63,7 @@ const db = isAdminConfigured && supabaseAdmin ? supabaseAdmin : supabase;
 const PAGE_SIZE = 100;
 
 /** Columns as PostgREST spells them; the view is snake_case like its base table. */
-const ROW_COLUMNS =
-  "wallet, rank, percentile, total, time_points, action_points, bonus_points, volume";
+const ROW_COLUMNS = "wallet, total, time_points, action_points, bonus_points";
 
 interface SeasonRecord {
   id: number;
@@ -80,8 +79,6 @@ interface SeasonRecord {
 
 interface RowRecord {
   wallet: string;
-  rank: number | null;
-  percentile: number | null;
   total: number | string | null;
   time_points: number | string | null;
   action_points: number | string | null;
@@ -180,11 +177,11 @@ async function computeBoard(
      * slice it lands at the bottom instead of the top.
      */
     db
-      .from("point_leaderboard")
+      .from("point_balances")
       .select(ROW_COLUMNS)
       .eq("season", season.id)
-      .order("rank", { ascending: true, nullsFirst: false })
-      .order("percentile", { ascending: true })
+      .is("sybil_flag", null)
+      .order("total", { ascending: false })
       .order("wallet", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1),
     /*
@@ -194,9 +191,10 @@ async function computeBoard(
      * number that looks right.
      */
     db
-      .from("point_leaderboard")
+      .from("point_balances")
       .select("wallet", { count: "exact", head: true })
-      .eq("season", season.id),
+      .eq("season", season.id)
+      .is("sybil_flag", null),
     /*
      * The selector's options. A separate read from `resolveSeason` rather than
      * one query filtered in memory: that one has to return exactly one row and
@@ -231,13 +229,20 @@ async function computeBoard(
   const pageWallets = ((rows.data ?? []) as RowRecord[]).map((row) =>
     row.wallet.toLowerCase(),
   );
-  const referralRows =
+  const [referralRows, volumeRows] =
     pageWallets.length === 0
-      ? { data: [], error: null }
-      : await db
-          .from("waitlist_leaderboard")
-          .select("wallet, referrals")
-          .in("wallet", pageWallets);
+      ? [{ data: [], error: null }, { data: [], error: null }]
+      : await Promise.all([
+          db
+            .from("waitlist_leaderboard")
+            .select("wallet, referrals")
+            .in("wallet", pageWallets),
+          db
+            .from("point_actions")
+            .select("wallet, usd_value")
+            .eq("season", season.id)
+            .in("wallet", pageWallets),
+        ]);
   if (referralRows.error) {
     console.error(
       "[leaderboard] referral read failed:",
@@ -253,21 +258,39 @@ async function computeBoard(
       }[]
     ).map((row) => [row.wallet.toLowerCase(), Number(row.referrals)] as const),
   );
+  if (volumeRows.error) {
+    console.error("[leaderboard] volume read failed:", volumeRows.error.message);
+    degraded.push("volume");
+  }
+  const volumes = new Map<string, number>();
+  for (const row of (volumeRows.data ?? []) as { wallet: string; usd_value: number | string | null }[]) {
+    const key = row.wallet.toLowerCase();
+    volumes.set(key, (volumes.get(key) ?? 0) + Number(row.usd_value ?? 0));
+  }
 
   const mapped: LeaderboardRow[] = ((rows.data ?? []) as RowRecord[]).map(
-    (r) => ({
+    (r, index) => {
+      const position = offset + index + 1;
+      const percentile = participants
+        ? Math.ceil((100 * position) / participants)
+        : null;
+      return {
       wallet: r.wallet,
-      rank: r.rank,
-      percentile: r.percentile,
+      rank:
+        season.disclosure === "full" || position <= season.public_rank_limit
+          ? position
+          : null,
+      percentile,
       total: num(r.total),
       timePoints: num(r.time_points),
       actionPoints: num(r.action_points),
       bonusPoints: num(r.bonus_points),
-      volume: num(r.volume),
+      volume: volumeRows.error ? null : (volumes.get(r.wallet.toLowerCase()) ?? 0),
       referrals: referralRows.error
         ? null
         : (referrals.get(r.wallet.toLowerCase()) ?? 0),
-    }),
+      };
+    },
   );
 
   const seasonOut: LeaderboardSeason = {
