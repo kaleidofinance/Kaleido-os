@@ -44,9 +44,9 @@ export const X_TASK_CAPS: Record<keyof typeof CAPPED_X_TASKS, number> = {
   /** Like & RT the Abstract-exit (Luca bridge-out) post: first 200. */
   absexit: 200,
   argusIntegration: 200,
-  robinhoodIntegration: 200,
+  robinhoodIntegration: 500,
   argusIntegrationComment: 200,
-  robinhoodIntegrationComment: 200,
+  robinhoodIntegrationComment: 500,
 };
 
 /** The cap for a capped task column (undefined if the column is uncapped). */

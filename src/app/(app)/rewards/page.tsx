@@ -802,8 +802,8 @@ export default function WaitlistPage() {
                       <span className={s.taskMeta}>
                         {status.xTasks.robinhoodIntegration?.done
                           ? status.xTasks.robinhoodIntegration.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.robinhoodIntegration?.closed ? "Closed · all 200 spots claimed"
-                          : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
+                          : status.xTasks.robinhoodIntegration?.closed ? "Closed · all 500 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 500 wallets · +500 $kPoint"}
                       </span>
                     </div>
                     {status.xTasks.robinhoodIntegration?.done ? <span className={s.taskDone}>✓</span>
@@ -823,8 +823,8 @@ export default function WaitlistPage() {
                       <span className={s.taskMeta}>
                         {status.xTasks.robinhoodIntegrationComment?.done
                           ? status.xTasks.robinhoodIntegrationComment.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.robinhoodIntegrationComment?.closed ? "Closed · all 200 spots claimed"
-                          : !status.xTasks.linked.done ? "Link X first" : "First 200 wallets · +500 $kPoint"}
+                          : status.xTasks.robinhoodIntegrationComment?.closed ? "Closed · all 500 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 500 wallets · +500 $kPoint"}
                       </span>
                     </div>
                     {status.xTasks.robinhoodIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
