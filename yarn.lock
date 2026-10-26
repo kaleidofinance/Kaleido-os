@@ -2,18 +2,6 @@
 # yarn lockfile v1
 
 
-"@abstract-foundation/agw-client@1.12.3":
-  version "1.12.3"
-  resolved "https://registry.npmjs.org/@abstract-foundation/agw-client/-/agw-client-1.12.3.tgz"
-  integrity sha512-sTNO0stpFqrd5M79TYFQmN2ja6P2o5boliwkfeCPIhc8A5NVemBTMDyXCxwRsaE05MNr1eOfyvEXF6caqz5msw==
-
-"@abstract-foundation/agw-web@^1.10.4":
-  version "1.10.4"
-  resolved "https://registry.npmjs.org/@abstract-foundation/agw-web/-/agw-web-1.10.4.tgz"
-  integrity sha512-JpmDuz7utxeTcHryl8PXUdMjBODEJ4FupDVtBW2So3G7Wx204QPtSE/6IJzh9Fwr35pNU1jJt6oAOzwRUhd0Eg==
-  dependencies:
-    "@abstract-foundation/agw-client" "1.12.3"
-
 "@adobe/css-tools@^4.4.0":
   version "4.5.0"
   resolved "https://registry.npmjs.org/@adobe/css-tools/-/css-tools-4.5.0.tgz"
@@ -668,30 +656,6 @@
   version "0.11.0"
   resolved "https://registry.npmjs.org/@pkgjs/parseargs/-/parseargs-0.11.0.tgz"
   integrity sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==
-
-"@privy-io/cross-app-connect@^0.5.15", "@privy-io/cross-app-connect@^0.5.2":
-  version "0.5.15"
-  resolved "https://registry.npmjs.org/@privy-io/cross-app-connect/-/cross-app-connect-0.5.15.tgz"
-  integrity sha512-7SWxlv4s+xq2cFKlhLPqlBs/fKHa4FRPGlgqOMkmyWrlozorc/6qpcYUdLC5y4W+r1B+rSdAz2wBZDCR9JwejA==
-  dependencies:
-    "@noble/curves" "^1.9.7"
-    "@noble/hashes" "^1.8.0"
-    "@privy-io/encoding" "0.2.1"
-    "@privy-io/popup" "0.0.4"
-    "@scure/base" "~1.1.2"
-    fflate "^0.8.2"
-
-"@privy-io/encoding@0.2.1":
-  version "0.2.1"
-  resolved "https://registry.npmjs.org/@privy-io/encoding/-/encoding-0.2.1.tgz"
-  integrity sha512-wNsOf/KY3LQohJRYvNwboxL4ajDqok77emQw7CxLrFJp4qfDPwTYwU5J1zF3X8wcNvJwymKZ0IAYeqHiWIQUEw==
-  dependencies:
-    "@scure/base" "^1.2.6"
-
-"@privy-io/popup@0.0.4":
-  version "0.0.4"
-  resolved "https://registry.npmjs.org/@privy-io/popup/-/popup-0.0.4.tgz"
-  integrity sha512-Lk5BqB//F9naVOR9tkHbrcGs55fM4ILS50tdsgIQ76Kr9i7Og4Ob5IRGIKb75P11f5hXTwAjMezRmWM/7uAsrw==
 
 "@protobufjs/aspromise@^1.1.1", "@protobufjs/aspromise@^1.1.2":
   version "1.1.2"
@@ -1517,15 +1481,10 @@
     radix-ui "^1.1.3"
     react-remove-scroll-bar "^2.3.8"
 
-"@scure/base@^1.2.6", "@scure/base@~1.2.2", "@scure/base@~1.2.4", "@scure/base@~1.2.5", "@scure/base@1.2.6":
+"@scure/base@~1.2.2", "@scure/base@~1.2.4", "@scure/base@~1.2.5", "@scure/base@1.2.6":
   version "1.2.6"
   resolved "https://registry.npmjs.org/@scure/base/-/base-1.2.6.tgz"
   integrity sha512-g/nm5FgUa//MCj1gV09zTJTaM6KBAHqLN907YVQqf7zC49+DcO4B1so4ZX07Ef10Twr6nuqYEH9GEggFXA4Fmg==
-
-"@scure/base@~1.1.2":
-  version "1.1.9"
-  resolved "https://registry.npmjs.org/@scure/base/-/base-1.1.9.tgz"
-  integrity sha512-8YKhl8GHiNI/pU2VMaofa2Tor7PJRAjwQLBBuilkJ9L5+13yVbC7JO/wS7piioAvPSwR3JKM1IJ/u4xQzbcXKg==
 
 "@scure/bip32@^1.5.0", "@scure/bip32@^1.7.0", "@scure/bip32@1.7.0":
   version "1.7.0"
@@ -3790,7 +3749,7 @@ fastq@^1.6.0:
   dependencies:
     reusify "^1.0.4"
 
-fflate@^0.8.2, fflate@~0.8.2:
+fflate@~0.8.2:
   version "0.8.2"
   resolved "https://registry.npmjs.org/fflate/-/fflate-0.8.2.tgz"
   integrity sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A==
@@ -6963,7 +6922,7 @@ vfile@^6.0.0:
     "@types/unist" "^3.0.0"
     vfile-message "^4.0.0"
 
-viem@^2.33.0, viem@^2.37.0, viem@2.52.0:
+viem@^2.33.0:
   version "2.52.0"
   resolved "https://registry.npmjs.org/viem/-/viem-2.52.0.tgz"
   integrity sha512-py2QPYe9e1f4DmPJCsXF7zHmyZ0PkJrBxdQZ5dvNXvzy3UzWkUn7dNfC0TMeNm6Qv1tKw3b6qXXExpx6L0oMbw==

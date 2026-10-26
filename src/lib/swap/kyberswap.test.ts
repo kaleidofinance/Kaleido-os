@@ -30,6 +30,7 @@ const check = (name, cond, detail = "") => {
 };
 
 const ARC = 5042;
+const ROBINHOOD = 4663;
 const ARC_ROUTER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
 
 // Wrapped in an async IIFE: the tsx runner emits CJS, which has no top-level
@@ -41,6 +42,9 @@ check("a non-Arc chain has no slug", kyberSwapChainSlug(1) === undefined);
 check("Arc has a KyberSwap router", kyberSwapRouter(ARC) === ARC_ROUTER);
 check("hasKyberSwap is true for Arc", hasKyberSwap(ARC) === true);
 check("hasKyberSwap is false off Arc", hasKyberSwap(1) === false);
+check("Robinhood has a KyberSwap slug", kyberSwapChainSlug(ROBINHOOD) === "robinhood");
+check("Robinhood uses the allow-listed KyberSwap router", kyberSwapRouter(ROBINHOOD) === ARC_ROUTER);
+check("hasKyberSwap is true for Robinhood", hasKyberSwap(ROBINHOOD) === true);
 
 console.log("\n— router whitelist —");
 check("the pinned router is recognised", isKnownSwapRouter(ARC, ARC_ROUTER));

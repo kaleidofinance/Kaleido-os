@@ -80,6 +80,12 @@ const FEEDS = {
     id: "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
     source: "repo",
   },
+  /* USDG/USD confirmed against Hermes /v2/price_feeds metadata (Crypto.USDG/USD). */
+  USDG: {
+    symbol: "Crypto.USDG/USD",
+    id: "0xdaa58c6a3ce7d4b9c46c32a6e646012c17c4a2b24c08dd8c5e476118b855a7da",
+    source: "hermes",
+  },
   /* Wrapped USDC, which exists because Arc Testnet's native currency IS USDC and
    * so its wrapped native is a wrapped dollar rather than a wrapped ether. Priced
    * off USDC/USD for exactly the reason WETH is priced off ETH/USD: the wrapper is

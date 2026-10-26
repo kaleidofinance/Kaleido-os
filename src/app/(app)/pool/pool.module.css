@@ -93,6 +93,39 @@
   display: flex;
   gap: 7px;
 }
+
+.marketControls {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.marketControls label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--k-t2);
+  font-size: 13px;
+  min-width: 0;
+}
+.marketControls select {
+  max-width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--k-line);
+  border-radius: 12px;
+  background: var(--k-card);
+  color: var(--k-t1);
+  padding: 6px 10px;
+  font: inherit;
+}
+.marketControls select:focus-visible,
+.marketControls button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
 /* Links, not buttons — the tabs navigate. `font: inherit` still matters: an <a>
    inherits the font but browsers colour and underline it. */
 .tab {

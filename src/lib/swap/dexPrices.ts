@@ -42,6 +42,7 @@ const KYBER_API = "https://aggregator-api.kyberswap.com";
    form the aggregator itself trades (see kyberswap.ts). */
 const QUOTE_USDC: Record<number, { address: string; decimals: number }> = {
   5042: { address: "0x3600000000000000000000000000000000000000", decimals: 6 },
+  4663: { address: "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8", decimals: 6 },
 };
 
 export interface DexPriceToken {

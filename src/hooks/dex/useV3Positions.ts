@@ -1,5 +1,6 @@
 import { useCallback } from "react";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useActiveAccount, useActiveWalletChain, useActiveWallet } from "thirdweb/react";
+import { guardPositionSigner } from "@/lib/dex/positionNetwork";
 import { ethers } from "ethers";
 import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { useQuery } from "@tanstack/react-query";
@@ -35,6 +36,8 @@ const POSITION_MANAGER_ABI = [
 const UINT128_MAX = BigInt("340282366920938463463374607431768211455");
 
 export interface V3Position {
+  /** The chain this NFT was read from. Addresses are only meaningful with it. */
+  chainId?: number;
   tokenId: string;
   token0: string;
   token1: string;
@@ -59,15 +62,17 @@ export interface V3Position {
   sqrtPriceX96: string | null;
 }
 
-export const useV3Positions = () => {
+export const useV3Positions = (requestedReadChainId?: number) => {
   const activeAccount = useActiveAccount();
   const activeChain = useActiveWalletChain();
-  /* Positions are read and written on the chain the wallet is on — the position
-     manager and factory are a per-chain set, and reading this chain's NFTs
-     through a manager address deployed on another chain returns whatever code
-     (if any) sits at that address there. */
-  const chainId = activeChain?.id;
+  const wallet = useActiveWallet();
+  /* Reads may target a separate chain. Writes require the live wallet to match
+     that read chain, including immediately before each submission. */
+  const activeChainId = activeChain?.id;
+  const chainId = requestedReadChainId ?? activeChainId;
   const { v3PositionManager, v3Factory } = getContracts(chainId);
+  const activeContracts = getContracts(activeChainId);
+  const activeV3PositionManager = activeContracts.v3PositionManager;
   const address = activeAccount?.address;
 
   /*
@@ -86,13 +91,14 @@ export const useV3Positions = () => {
   const {
     data,
     isLoading,
+    error,
     refetch,
   } = useQuery({
     queryKey: ["v3Positions", chainId, v3PositionManager ?? null, address ?? null],
     enabled: Boolean(address),
     queryFn: async (): Promise<V3Position[]> => {
-      if (MOCK_DATA) return MOCK_V3_POSITIONS;
-      if (!address || !v3PositionManager || !v3Factory) return [];
+      if (MOCK_DATA) return MOCK_V3_POSITIONS.map((p) => ({ ...p, chainId }));
+      if (!address || !v3PositionManager || !v3Factory || chainId === undefined) return [];
       const provider = providerForChain(chainId);
       if (!provider) return [];
 
@@ -207,6 +213,7 @@ export const useV3Positions = () => {
             }
 
             return {
+              chainId: chainId as number,
               tokenId: tokenId.toString(),
               token0: pos.token0,
               token1: pos.token1,
@@ -223,7 +230,7 @@ export const useV3Positions = () => {
             } as V3Position;
           } catch (e) {
             console.error(`Error fetching position ${i}:`, e);
-            return null;
+            throw e;
           }
         },
       );
@@ -250,20 +257,20 @@ export const useV3Positions = () => {
    */
   const getSigner = useCallback(async () => {
     if (!activeAccount || !activeChain) return null;
-    return toEthersSigner(activeAccount, activeChain);
-  }, [activeAccount, activeChain]);
+    return guardPositionSigner(toEthersSigner(activeAccount, activeChain), chainId, () => wallet?.getChain()?.id);
+  }, [activeAccount, activeChain, chainId, wallet]);
 
   const collectFees = useCallback(
     async (tokenId: string) => {
       const signer = await getSigner();
       if (!signer) throw new Error("Wallet not connected");
-      if (!v3PositionManager)
+      if (!activeV3PositionManager)
         throw new Error(
           "KaleidoSwap V3 position manager is not deployed on this chain",
         );
 
       const posManager = new ethers.Contract(
-        v3PositionManager,
+        activeV3PositionManager,
         POSITION_MANAGER_ABI,
         signer,
       );
@@ -279,7 +286,7 @@ export const useV3Positions = () => {
       await refetch(); // Refresh
       return tx;
     },
-    [getSigner, refetch, v3PositionManager],
+    [getSigner, refetch, activeV3PositionManager],
   );
 
   const removeLiquidity = useCallback(
@@ -291,13 +298,13 @@ export const useV3Positions = () => {
     ) => {
       const signer = await getSigner();
       if (!signer) throw new Error("Wallet not connected");
-      if (!v3PositionManager)
+      if (!activeV3PositionManager)
         throw new Error(
           "KaleidoSwap V3 position manager is not deployed on this chain",
         );
 
       const posManager = new ethers.Contract(
-        v3PositionManager,
+        activeV3PositionManager,
         POSITION_MANAGER_ABI,
         signer,
       );
@@ -326,7 +333,7 @@ export const useV3Positions = () => {
       await refetch(); // Refresh
       return collectTx;
     },
-    [getSigner, refetch, v3PositionManager],
+    [getSigner, refetch, activeV3PositionManager],
   );
 
   /**
@@ -356,13 +363,13 @@ export const useV3Positions = () => {
     ) => {
       const signer = await getSigner();
       if (!signer) throw new Error("Wallet not connected");
-      if (!v3PositionManager)
+      if (!activeV3PositionManager)
         throw new Error(
           "KaleidoSwap V3 position manager is not deployed on this chain",
         );
 
       const posManager = new ethers.Contract(
-        v3PositionManager,
+        activeV3PositionManager,
         POSITION_MANAGER_ABI,
         signer,
       );
@@ -379,12 +386,13 @@ export const useV3Positions = () => {
       await refetch(); // Refresh
       return tx;
     },
-    [getSigner, refetch, v3PositionManager],
+    [getSigner, refetch, activeV3PositionManager],
   );
 
   return {
     positions,
     loading: isLoading,
+    error,
     refresh,
     collectFees,
     increaseLiquidity,

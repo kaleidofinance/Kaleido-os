@@ -377,6 +377,20 @@ async function run() {
       `got ${message}`,
     );
 
+    const TRANSFER_FROM_FAILED = pIface.encodeErrorResult("TransferFromFailed", []);
+    const transferMessage = describeFailure(
+      await pDecoder.decode(
+        makeError("execution reverted", "CALL_EXCEPTION", { data: TRANSFER_FROM_FAILED }),
+      ),
+      makeError("execution reverted", "CALL_EXCEPTION", { data: TRANSFER_FROM_FAILED }),
+      PROTOCOL_ERROR_ABI,
+    );
+    check(
+      "bridge transferFrom failure gets an actionable sentence",
+      transferMessage === PROTOCOL_ERROR_HELP.TransferFromFailed && !transferMessage.includes("0x7939f424"),
+      `got ${transferMessage}`,
+    );
+
     /* An error in the ABI but not the friendly map is still named, not raw. */
     const UNMAPPED = pIface.encodeErrorResult("Protocol__PositionHealthy", []);
     const other = describeFailure(

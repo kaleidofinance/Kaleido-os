@@ -49,7 +49,8 @@ export interface MarketStatsState {
 
 const REFRESH_MS = 60_000;
 
-export const useMarketStats = () => {
+export const useMarketStats = (chainIds: number[] = []) => {
+  const scopeKey = [...new Set(chainIds)].sort((a, b) => a - b).join(",");
   /* The lending book on the read chain is a testnet's at launch. With the
      testnet toggle off (mainnet-first default) the strip must not show it — the
      route returns the honest empty mainnet market instead. Passed through so the
@@ -82,7 +83,7 @@ export const useMarketStats = () => {
     }
     try {
       const res = await fetch(
-        `/api/market/overview${showTestnets ? "?testnets=1" : ""}`,
+        `/api/market/overview?testnets=${showTestnets ? "1" : "0"}${scopeKey ? `&chains=${scopeKey}` : ""}`,
         { signal, cache: "no-store" },
       );
       const body = await res.json();
@@ -113,10 +114,11 @@ export const useMarketStats = () => {
         stale: prev.stats !== null,
       }));
     }
-  }, [showTestnets]);
+  }, [showTestnets, scopeKey]);
 
   useEffect(() => {
     const controller = new AbortController();
+    setState({ stats: null, loading: true, error: null, stale: false });
     load(controller.signal);
 
     const stopTimer = visibleInterval(() => {

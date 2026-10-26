@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readTimeseries } from "@/lib/analytics/timeseries";
+import { analyticsChain } from "@/lib/analytics/scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,6 +13,9 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const raw = Number(request.nextUrl.searchParams.get("days"));
   const days = Number.isFinite(raw) ? Math.max(1, Math.min(365, Math.floor(raw))) : 30;
-  const series = await readTimeseries(days);
+  let chainId: number | undefined;
+  try { chainId = analyticsChain(request.nextUrl.searchParams.get("chain")); }
+  catch { return NextResponse.json({ error: "Unsupported analytics network" }, { status: 400 }); }
+  const series = await readTimeseries(days, chainId);
   return NextResponse.json({ days, series });
 }

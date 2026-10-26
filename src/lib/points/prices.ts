@@ -45,6 +45,7 @@ if (typeof window !== "undefined") {
  * another asset's feed — on a feed the protocol liquidates on.
  */
 export const PYTH_FEEDS: Record<string, string> = {
+  USDG: "daa58c6a3ce7d4b9c46c32a6e646012c17c4a2b24c08dd8c5e476118b855a7da",
   ETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
   WETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
   USDC: "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
