@@ -3,7 +3,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   eligibleTaskPoints,
   topUpOwed,
-  topUpRow,
   X_TASK_COLUMNS,
   type TaskRow,
 } from "./eligible";
@@ -169,37 +168,18 @@ export async function syncWaitlistCredits(
   points: number;
   errors: string[];
 }> {
-  const { rows, referrals, credited, swapVolumeUsd } =
-    await loadSyncFacts(admin);
-  const plan = planTopUps({ rows, referrals, credited, swapVolumeUsd, now });
-  const at = new Date(now).toISOString();
-  const errors: string[] = [];
-  let toppedUp = 0;
-  let points = 0;
-
-  // Chunked inserts. A chunk that hits the idempotency key (23505 — another run
-  // already wrote one of these top-ups) is retried row by row so the rest land.
-  for (let i = 0; i < plan.length; i += 200) {
-    const chunk = plan.slice(i, i + 200);
-    const { error } = await admin
-      .from("point_actions")
-      .insert(chunk.map((p) => topUpRow(p.wallet, p.eligible, p.delta, at)));
-    if (!error) {
-      toppedUp += chunk.length;
-      points += chunk.reduce((s, p) => s + p.delta, 0);
-      continue;
-    }
-    for (const p of chunk) {
-      const { error: one } = await admin
-        .from("point_actions")
-        .insert(topUpRow(p.wallet, p.eligible, p.delta, at));
-      if (!one) {
-        toppedUp++;
-        points += p.delta;
-      } else if ((one as { code?: string }).code !== "23505") {
-        errors.push(`topup:${p.wallet}`);
-      }
-    }
-  }
-  return { wallets: rows.length, toppedUp, points, errors };
+  // The scheduled database job uses the same function. Its transaction lock
+  // serializes both callers; no 90k-wallet HTTP scan or stale read/write race.
+  void now; // retained for existing callers; the DB owns the credit timestamp
+  const { data, error } = await admin
+    .rpc("reward_reconcile_waitlist")
+    .abortSignal(AbortSignal.timeout(15_000));
+  if (error)
+    throw new Error("Waitlist reconciliation failed", { cause: error });
+  return data as {
+    wallets: number;
+    toppedUp: number;
+    points: number;
+    errors: string[];
+  };
 }

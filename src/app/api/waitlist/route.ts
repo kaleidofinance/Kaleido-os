@@ -3,19 +3,15 @@ import { randomInt } from "node:crypto";
 import { verifyWalletSignature } from "@/lib/auth/verifyWalletSignature";
 
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
-import { getClosedXTasks } from "@/lib/waitlist/xCap";
-import {
-  swapVolumeStanding,
-  walletTaskVolumeUsd,
-} from "@/lib/waitlist/swapVolume";
-import type { Season1Balance, WaitlistStatus } from "@/lib/waitlist/status";
+import { X_TASK_CAPS } from "@/lib/waitlist/xCap";
+import { readRewardFacts } from "@/lib/waitlist/readFacts";
+import { swapVolumeStanding, taskVolumeTotal } from "@/lib/waitlist/swapVolume";
+import type { WaitlistStatus } from "@/lib/waitlist/status";
 import {
   PER_REFERRAL,
   X_HOLD_MS,
   X_TASK_POINTS,
   eligibleTaskPoints,
-  topUpOwed,
-  topUpRow,
 } from "@/lib/waitlist/eligible";
 
 /**
@@ -81,133 +77,10 @@ function xTaskState(at: string | null, now: number, closed = false) {
   };
 }
 
-/**
- * Activated wallets can earn additional referrals or X tasks after their first
- * waitlist credit. Reconcile the positive delta into the canonical Season 1
- * ledger so the waitlist card and leaderboard cannot drift apart.
- */
-async function reconcileWaitlistPoints(
-  wallet: string,
-  eligible: number,
-  activated: boolean,
-) {
-  const admin = supabaseAdmin!;
-  const { data, error } = await admin
-    .from("point_actions")
-    .select("points")
-    .eq("wallet", wallet)
-    .eq("source_slug", "waitlist")
-    .eq("season", 1);
-  if (error) return;
-  const credited = (data ?? []).reduce(
-    (sum, row) => sum + Number(row.points ?? 0),
-    0,
-  );
-  // Bulk credits can predate activated_at. Once a wallet already has a
-  // waitlist ledger row, reconcile later task/referral deltas even if that
-  // legacy flag was never stamped. Same rule the background sync applies.
-  const delta = topUpOwed({ eligible, credited, activated });
-  if (delta <= 0) return;
-
-  await admin
-    .from("point_actions")
-    .insert(topUpRow(wallet, eligible, delta, new Date().toISOString()));
-}
-
-/**
- * The wallet's Season 1 balance — the SAME number the leaderboard shows
- * (point_balances.total, which the leaderboard view ranks on) — split by where
- * it came from. Read with the service role, after the reconcile above, so it
- * already includes any top-up that call just wrote and never lags a replica.
- * Null when the wallet has no Season 1 balance yet (not activated).
- */
-async function season1Balance(wallet: string): Promise<Season1Balance | null> {
-  const admin = supabaseAdmin!;
-  const [{ data: bal }, { data: acts }] = await Promise.all([
-    admin
-      .from("point_balances")
-      .select("total, time_points")
-      .eq("wallet", wallet)
-      .eq("season", 1)
-      .maybeSingle(),
-    admin
-      .from("point_actions")
-      .select("source_slug, points")
-      .eq("wallet", wallet)
-      .eq("season", 1)
-      .in("source_slug", ["waitlist", "swap"]),
-  ]);
-  if (!bal) return null;
-  const sum = (slug: string) =>
-    (acts ?? [])
-      .filter((a) => a.source_slug === slug)
-      .reduce((s, a) => s + Number(a.points ?? 0), 0);
-  const total = Number(bal.total ?? 0);
-  const tasks = sum("waitlist");
-  const trading = sum("swap");
-  const liquidity = Number(bal.time_points ?? 0);
-  return {
-    total,
-    tasks,
-    trading,
-    liquidity,
-    other: Math.max(0, total - tasks - trading - liquidity),
-  };
-}
-
-// Core columns, always present. X-task and transaction columns were added by
-// later migrations; the fallback must stay genuinely core-only so an older
-// production database can still find an existing wallet instead of attempting a
-// duplicate insert and surfacing the misleading generic "insert failed" error.
-const BASE_COLS = "ref_code, welcome_points, activated_at";
-const TRANSACTION_COLS = "arc_mainnet_tx_at, agent_tx_at, bridge_tx_at";
-const X_COLS =
-  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_robinhood_integration_at, x_robinhood_integration_comment_at, x_bitget_at";
-const LEGACY_X_COLS =
-  "x_handle, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_bitget_at";
-const LEGACY_COLS = `${BASE_COLS}, ${LEGACY_X_COLS}`;
-
 async function standing(wallet: string): Promise<WaitlistStatus | null> {
-  const admin = supabaseAdmin!;
-  let row: Record<string, unknown> | null = null;
-  const full = await admin
-    .from("waitlist")
-    .select(`${BASE_COLS}, ${TRANSACTION_COLS}, ${X_COLS}`)
-    .eq("wallet", wallet)
-    .single();
-  if (!full.error) {
-    row = full.data as Record<string, unknown>;
-  } else if (full.error.code === "PGRST116") {
-    return null; // no such wallet (0 rows), not a schema problem
-  } else {
-    // A transaction-task migration may be missing while the older X-task
-    // columns are already live. Preserve those task points instead of dropping
-    // back straight to core columns and making an established wallet look reset.
-    const legacy = await admin
-      .from("waitlist")
-      .select(LEGACY_COLS)
-      .eq("wallet", wallet)
-      .single();
-    if (!legacy.error && legacy.data) {
-      row = legacy.data as Record<string, unknown>;
-    } else {
-      const base = await admin
-        .from("waitlist")
-        .select(BASE_COLS)
-        .eq("wallet", wallet)
-        .single();
-      if (base.error || !base.data) return null;
-      row = base.data as Record<string, unknown>;
-    }
-  }
-  if (!row) return null;
-
-  // referrals + rank come from the leaderboard view (one wallet, so filter it)
-  const { data: lb } = await admin
-    .from("waitlist_leaderboard")
-    .select("referrals, active_referrals, pending_referrals, rank")
-    .eq("wallet", wallet)
-    .single();
+  const facts = await readRewardFacts(supabaseAdmin!, wallet);
+  if (!facts) return null;
+  const { row, referral: lb } = facts;
 
   const referrals = Number(lb?.referrals ?? 0);
   const activeReferrals = Number(lb?.active_referrals ?? 0);
@@ -216,9 +89,12 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
   const pendingReferralPoints = PER_REFERRAL * pendingReferrals;
 
   const now = Date.now();
-  // Which capped tasks have closed at the cap, so the UI can grey them out.
-  // Only `commented` is capped now; the repost tasks stay open (see xCap.ts).
-  const closedX = await getClosedXTasks();
+  const closedX = Object.fromEntries(
+    Object.entries(X_TASK_CAPS).map(([key, cap]) => [
+      key,
+      Number(facts.taskCounts[key] ?? 0) >= cap,
+    ]),
+  );
   const xTasks = {
     linked: xTaskState(row.x_linked_at as string | null, now),
     followed: xTaskState(row.x_followed_at as string | null, now),
@@ -232,10 +108,26 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
     llama: xTaskState(row.x_llama_at as string | null, now),
     argus: xTaskState(row.x_argus_at as string | null, now, closedX.argus),
     argus2: xTaskState(row.x_argus2_at as string | null, now, closedX.argus2),
-    absexit: xTaskState(row.x_absexit_at as string | null, now, closedX.absexit),
-    argusIntegration: xTaskState(row.x_argus_integration_at as string | null, now, closedX.argusIntegration),
-    robinhoodIntegration: xTaskState(row.x_robinhood_integration_at as string | null, now, closedX.robinhoodIntegration),
-    robinhoodIntegrationComment: xTaskState(row.x_robinhood_integration_comment_at as string | null, now, closedX.robinhoodIntegrationComment),
+    absexit: xTaskState(
+      row.x_absexit_at as string | null,
+      now,
+      closedX.absexit,
+    ),
+    argusIntegration: xTaskState(
+      row.x_argus_integration_at as string | null,
+      now,
+      closedX.argusIntegration,
+    ),
+    robinhoodIntegration: xTaskState(
+      row.x_robinhood_integration_at as string | null,
+      now,
+      closedX.robinhoodIntegration,
+    ),
+    robinhoodIntegrationComment: xTaskState(
+      row.x_robinhood_integration_comment_at as string | null,
+      now,
+      closedX.robinhoodIntegrationComment,
+    ),
     argusIntegrationComment: xTaskState(
       row.x_argus_integration_comment_at as string | null,
       now,
@@ -258,11 +150,10 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
   );
 
   const welcomePoints = Number(row.welcome_points);
-  // Swap-volume milestones, derived live from the wallet's credited `swap`
-  // volume. Folded into `eligible` so reconcileWaitlistPoints tops the kPoint up
-  // forward-only as the wallet trades higher — no stored column (see swapVolume).
+  // The shared snapshot includes all ledger swaps and latest held collateral.
+  // The background job credits new volume tiers without blocking this read.
   const swapVolume = swapVolumeStanding(
-    await walletTaskVolumeUsd(admin, wallet),
+    taskVolumeTotal(facts.volume?.swaps_usd, facts.volume?.collateral_usd),
   );
   const eligiblePoints = eligibleTaskPoints({
     row: row as Parameters<typeof eligibleTaskPoints>[0]["row"],
@@ -270,13 +161,12 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
     swapVolumeUsd: swapVolume.volumeUsd,
     now,
   });
-  await reconcileWaitlistPoints(
-    wallet,
-    eligiblePoints,
-    Boolean(row.activated_at),
-  );
-  const season1 = await season1Balance(wallet);
+  // The existing activation/sync clock credits matured tasks. Page reads never
+  // scan or write the ledger; the RPC reads its current settled balance.
+  const season1 = facts.season1;
   return {
+    asOf: facts.asOf,
+    stale: Date.now() - Date.parse(facts.asOf) > 180_000,
     wallet,
     refCode: row.ref_code as string,
     referrals,
@@ -310,25 +200,24 @@ export async function GET(req: Request) {
   const wallet = new URL(req.url).searchParams.get("wallet");
   if (!isAddress(wallet))
     return Response.json({ error: "bad wallet" }, { status: 400 });
-  const s = await standing(wallet.toLowerCase());
-  if (s) return Response.json(s);
-
-  // `standing()` intentionally collapses the legacy-column fallbacks into a
-  // null result, but a database outage must not look like a new wallet. Probe
-  // the core row once more so the client can distinguish “not registered” from
-  // “could not read the waitlist” and never offers an opt-in that will fail.
-  const { data, error } = await supabaseAdmin
-    .from("waitlist")
-    .select("wallet")
-    .eq("wallet", wallet.toLowerCase())
-    .maybeSingle();
-  if (error)
+  let s: WaitlistStatus | null;
+  try {
+    s = await standing(wallet.toLowerCase());
+  } catch (error) {
+    console.error("[waitlist] rewards read failed:", error);
     return Response.json(
-      { error: "Could not read waitlist status" },
-      { status: 503 },
+      { error: "Rewards data is temporarily unavailable; please retry" },
+      {
+        status: 503,
+        headers: { "Retry-After": "10", "Cache-Control": "no-store" },
+      },
     );
+  }
+  if (s) return Response.json(s, { headers: { "Cache-Control": "no-store" } });
+
   return Response.json(
-    data ? { error: "Could not load waitlist status" } : { registered: false },
+    { registered: false },
+    { headers: { "Cache-Control": "no-store" } },
   );
 }
 

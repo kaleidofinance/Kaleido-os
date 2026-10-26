@@ -60,6 +60,9 @@ export interface Season1Balance {
 }
 
 export interface WaitlistStatus {
+  /** Age of shared referral/volume aggregates; task timestamps remain live. */
+  asOf?: string;
+  stale?: boolean;
   wallet: string;
   refCode: string;
   referrals: number;

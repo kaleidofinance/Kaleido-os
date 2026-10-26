@@ -113,22 +113,28 @@ export async function GET(request: NextRequest) {
 
   const [row, count] = await Promise.all([
     db
-      .from("point_leaderboard")
+      .from("reward_board_rows")
       .select(ROW_COLUMNS)
       .eq("season", season)
       .eq("wallet", wallet)
+      .abortSignal(AbortSignal.timeout(8_000))
       .maybeSingle<RowRecord>(),
     db
-      .from("point_leaderboard")
-      .select("wallet", { count: "exact", head: true })
-      .eq("season", season),
+      .from("reward_read_metadata")
+      .select("participants")
+      .eq("id", 1)
+      .abortSignal(AbortSignal.timeout(8_000))
+      .single(),
   ]);
 
-  if (row.error) {
-    console.error("[leaderboard/me] row read failed:", row.error.message);
+  if (row.error || count.error || !count.data) {
+    console.error("[leaderboard/me] read failed:", row.error ?? count.error);
     return NextResponse.json(
       { success: false, error: "Could not read your standing" },
-      { status: 500 },
+      {
+        status: 503,
+        headers: { "Cache-Control": "no-store", "Retry-After": "10" },
+      },
     );
   }
 
@@ -161,7 +167,7 @@ export async function GET(request: NextRequest) {
     wallet,
     season,
     row: mapped,
-    participants: count.error ? null : (count.count ?? null),
+    participants: Number(count.data.participants?.[String(season)] ?? 0),
   };
 
   return NextResponse.json(

@@ -51,14 +51,17 @@ export const X_TASK_CAPS: Record<keyof typeof CAPPED_X_TASKS, number> = {
 
 /** The cap for a capped task column (undefined if the column is uncapped). */
 export const capForColumn = (col: string): number | undefined => {
-  const hit = (Object.entries(CAPPED_X_TASKS) as [keyof typeof CAPPED_X_TASKS, string][])
-    .find(([, c]) => c === col);
+  const hit = (
+    Object.entries(CAPPED_X_TASKS) as [keyof typeof CAPPED_X_TASKS, string][]
+  ).find(([, c]) => c === col);
   return hit ? X_TASK_CAPS[hit[0]] : undefined;
 };
 
 export type CappedTaskKey = keyof typeof CAPPED_X_TASKS;
 
-const CAPPED_COLUMNS: ReadonlySet<string> = new Set(Object.values(CAPPED_X_TASKS));
+const CAPPED_COLUMNS: ReadonlySet<string> = new Set(
+  Object.values(CAPPED_X_TASKS),
+);
 
 /** Whether a `waitlist` timestamp column belongs to a capped task. */
 export const isCappedColumn = (col: string): boolean => CAPPED_COLUMNS.has(col);
@@ -86,21 +89,22 @@ let cache: { at: number; val: Record<CappedTaskKey, boolean> } | null = null;
  * falsely locking it. Used by the read path to grey out closed tasks; the write
  * path (api/waitlist/x) counts live so enforcement is never stale.
  */
-export async function getClosedXTasks(): Promise<Record<CappedTaskKey, boolean>> {
+export async function getClosedXTasks(): Promise<
+  Record<CappedTaskKey, boolean>
+> {
   const admin = supabaseAdmin;
   if (!admin) return ALL_OPEN;
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.val;
 
-  const entries = await Promise.all(
-    (Object.entries(CAPPED_X_TASKS) as [CappedTaskKey, string][]).map(
-      async ([key, col]) => {
-        const { count, error } = await admin
-          .from("waitlist")
-          .select("wallet", { count: "exact", head: true })
-          .not(col, "is", null);
-        return [key, !error && (count ?? 0) >= X_TASK_CAPS[key]] as const;
-      },
-    ),
+  const { data, error } = await admin
+    .from("reward_read_metadata")
+    .select("task_counts")
+    .eq("id", 1)
+    .single();
+  if (error || !data) return cache?.val ?? ALL_OPEN;
+  const entries = (Object.keys(CAPPED_X_TASKS) as CappedTaskKey[]).map(
+    (key) =>
+      [key, Number(data.task_counts[key] ?? 0) >= X_TASK_CAPS[key]] as const,
   );
   const val = { ...ALL_OPEN, ...Object.fromEntries(entries) } as Record<
     CappedTaskKey,
