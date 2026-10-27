@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-26T18:47:49.093Z",
+  "checkedAt": "2026-10-27T14:45:39.702Z",
   "artifactRoot": "C:\\Users\\HP\\.codex\\worktrees\\283d\\merge-rewards\\smart-contract",
   "parity": [
     {
@@ -136,7 +136,7 @@
     {
       "label": "NonfungibleTokenPositionDescriptor",
       "kind": "deployment",
-      "gasUsed": "1161236"
+      "gasUsed": "1161224"
     },
     {
       "label": "NonfungiblePositionManager",
@@ -371,7 +371,7 @@
     {
       "label": "signed order fill",
       "kind": "scenario",
-      "gasUsed": "174299"
+      "gasUsed": "174308"
     },
     {
       "label": "remove liquidity",
@@ -398,9 +398,9 @@
     "OrdersV2 EIP712 domain binds chain 56"
   ],
   "fork": {
-    "currentBlockNumber": "0x7bed9b9",
-    "currentBlockTimestamp": 1793040469,
-    "currentBlockHash": "0x7fe75540fc416393db9d9c7875c70714add5a4761e0d06f2a8b42460206a2979",
+    "currentBlockNumber": "0x7c14946",
+    "currentBlockTimestamp": 1793112341,
+    "currentBlockHash": "0x65f4839e53d7592b6d0ebd0cde5d467858b5561a3212d2a88a7f2a490b1752b4",
     "hardFork": "Cancun",
     "transactionOrder": "fees",
     "environment": {
@@ -411,29 +411,29 @@
     },
     "forkConfig": {
       "forkUrl": "https://bsc-mainnet.public.blastapi.io",
-      "forkBlockNumber": 129948089,
+      "forkBlockNumber": 130107718,
       "forkRetryBackoff": 1000
     }
   },
   "poolInitCodeHash": "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938",
   "forkInjectedUSDTBalanceSlot": 1,
   "gas": {
-    "deploymentAndConfig": "35823955",
+    "deploymentAndConfig": "35823943",
     "gasPriceWei": "50000000",
-    "costBNB": "0.00179119775",
-    "costWith50PercentGasReserveBNB": "0.002686796625",
+    "costBNB": "0.00179119715",
+    "costWith50PercentGasReserveBNB": "0.002686795725",
     "walletBNB": "0.008989968228597829",
     "enoughAtObservedPrice": true,
     "excludes": "external explorer verification, liquidity seeding, user scenario transactions, other risk-policy changes and fee volatility"
   },
   "localContracts": {
-    "diamond": "0xa9047B605B179a9394e6771704026E774D03B7e0",
-    "oracle": "0x6c7203e4Ac30B62552E42A946BD58F0bd6d22F6d",
-    "factory": "0xf25CA4dEadf6077A14109B9Bcd908609e5F3C384",
-    "router": "0x66AeB8F8922765c491f2d303dbf0120DD7F0d42b",
-    "manager": "0xfab3115fe6C75CD6c33fDFC978cA145459492C1E",
-    "quoter": "0x7789c6973D41b064763C7CA5728F7Ccec579CE3e",
-    "orders": "0x01751679793Ac8A0CA52106179884d88e5bab94d"
+    "diamond": "0x76c38fEF3e6AdAEC86cFeDf65730Ac621d61aD46",
+    "oracle": "0x22Fc4381231470Ccc818a29E5C34828bcfEB9f77",
+    "factory": "0x4edCD1f0A522B8400dbba2127f648bD54637DABF",
+    "router": "0x9555b1b5795F585615929970338b02B9eC851395",
+    "manager": "0xD6daD70e18C13509B66949aEC2d6F3b03E90b434",
+    "quoter": "0x4c8bF7836c75C542442f018E1cd76e11E55C251f",
+    "orders": "0x95521b9FD2B944B5dA956E9C6813787Be0b1E593"
   },
   "status": "passed"
 }
