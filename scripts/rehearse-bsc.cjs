@@ -13,9 +13,15 @@ const {
   parseEther,
   formatEther,
   encodeBytes32String,
+  toUtf8Bytes,
 } = require("ethers");
 const root = path.resolve(process.argv[2] || "../merge-rewards/smart-contract");
-const output = path.resolve(__dirname, "../docs/product/BSC_REHEARSAL.json");
+const output = path.resolve(
+  __dirname,
+  process.env.BSC_LOAN_ONLY === "1"
+    ? "../docs/product/BSC_LOAN_LIFECYCLE.json"
+    : "../docs/product/BSC_REHEARSAL.json",
+);
 const artifacts = [];
 function walk(dir) {
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -123,6 +129,9 @@ const NATIVE = "0x0000000000000000000000000000000000000001";
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
 const USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 const USDT = "0x55d398326f99059fF775485246999027B3197955";
+const USD1 = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d";
+const FDUSD = "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409";
+const BTCB = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c";
 const FEEDS = {
   BNB: [
     "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
@@ -348,30 +357,30 @@ async function main() {
       alice,
     );
     const amount = parseEther("100");
-    async function inject(holder, value) {
+    async function inject(holder, tokenAddress, tokenInterface, value) {
       const holderAddress = await holder.getAddress();
-      for (let slot = 0; slot < 20; slot++) {
+      for (let slot = 0; slot < 100; slot++) {
         const snap = await local.send("evm_snapshot", []);
         const key = keccak256(
           AbiCoder.defaultAbiCoder().encode(["address", "uint256"], [holderAddress, slot]),
         );
         await local.send("anvil_setStorageAt", [
-          USDT,
+          tokenAddress,
           key,
           "0x" + value.toString(16).padStart(64, "0"),
         ]);
         const raw = await local.send("eth_call", [
-          { to: USDT, data: token.interface.encodeFunctionData("balanceOf", [holderAddress]) },
+          { to: tokenAddress, data: tokenInterface.encodeFunctionData("balanceOf", [holderAddress]) },
           "latest",
         ]);
         if (BigInt(raw) === value) return;
         await local.send("evm_revert", [snap]);
       }
-      throw new Error("USDT balance slot not found");
+      throw new Error("token balance slot not found");
     }
     const lender = await local.getSigner(2);
-    await inject(lender, amount);
-    await inject(alice, amount);
+    await inject(lender, USDT, token.interface, amount);
+    await inject(alice, USDT, token.interface, amount);
     await tx("re-approve WBNB collateral", wbnb.approve(address, collateral), "scenario");
     await tx("re-deposit WBNB collateral", protocol.connect(alice).depositCollateral(WBNB, collateral), "scenario");
     await tx("approve USDT repayment", token.approve(address, amount), "scenario");
@@ -391,6 +400,43 @@ async function main() {
     assert(lenderBalance > parseEther("12"));
     await tx("withdraw USDT lender balance", protocol.connect(lender).withdrawCollateral(USDT, lenderBalance), "scenario");
     check("forked USDT loan funding / repayment / withdrawal full lifecycle");
+    const candidateFeeds = [
+      [keccak256(toUtf8Bytes("USD1/USD")), "0xaD8b4e59A7f25B68945fAf0f3a3EAF027832FFB0", 108000],
+      [keccak256(toUtf8Bytes("FDUSD/USD")), "0x390180e80058A8499930F0c13963AD3E0d86Bfc9", 108000],
+      [keccak256(toUtf8Bytes("BTCB/USD")), "0x264990fbd0A4796A3E3d8E37C4d5F87a3aCa5Ebf", 600],
+    ];
+    await tx("set remaining candidate feeds", oracle.setFeeds(candidateFeeds.map((f) => f[0]), candidateFeeds.map((f) => f[1])));
+    for (const [feedId, , maxAge] of candidateFeeds) await tx("candidate feed bound", protocol.setFeedMaxAge(feedId, maxAge));
+    const candidates = [
+      ["USDC", USDC, FEEDS.USDC[0], parseEther("12")],
+      ["USD1", USD1, candidateFeeds[0][0], parseEther("12")],
+      ["FDUSD", FDUSD, candidateFeeds[1][0], parseEther("12")],
+      ["BTCB", BTCB, candidateFeeds[2][0], parseEther("0.001")],
+    ];
+    for (const [label, tokenAddress, feedId, loanAmount] of candidates) {
+      if (label !== "USDC") await tx("register " + label + " loanable", protocol.addLoanableToken(tokenAddress, feedId));
+      const candidateToken = new Contract(tokenAddress, [
+        "function balanceOf(address) view returns(uint256)",
+        "function approve(address,uint256) returns(bool)",
+      ], alice);
+      const candidateBalance = loanAmount * 10n;
+      await inject(lender, tokenAddress, candidateToken.interface, candidateBalance);
+      await inject(alice, tokenAddress, candidateToken.interface, candidateBalance);
+      await tx(label + " repayment approval", candidateToken.approve(address, candidateBalance), "scenario");
+      const candidateNow = (await local.getBlock("latest")).timestamp;
+      await tx(label + " loan request", protocol.connect(alice).createLendingRequest(loanAmount, 1000, candidateNow + 3 * 86400, tokenAddress), "scenario");
+      const candidateRequests = await protocol.getAllRequests(0, 10000);
+      const candidateId = candidateRequests[candidateRequests.length - 1].requestId;
+      await tx(label + " funding approval", candidateToken.connect(lender).approve(address, candidateBalance), "scenario");
+      await tx(label + " fund loan", protocol.connect(lender).serviceRequest(candidateId, tokenAddress), "scenario");
+      const candidateRepayment = (await protocol.getRequest(candidateId)).totalRepayment;
+      await tx(label + " repay loan", protocol.connect(alice).repayLoan(candidateId, candidateRepayment), "scenario");
+      const candidateLenderBalance = await protocol.gets_addressToAvailableBalance(await lender.getAddress(), tokenAddress);
+      assert(candidateLenderBalance > loanAmount, label + " lender balance did not accrue repayment");
+      await tx(label + " withdraw lender balance", protocol.connect(lender).withdrawCollateral(tokenAddress, candidateLenderBalance), "scenario");
+      check(label + " loan funding / repayment / withdrawal full lifecycle");
+    }
+    report.candidateLoanLifecycle = "USDC, USDT, USD1, FDUSD and BTCB passed on a local BSC fork; balances were storage-injected locally";
     report.status = "loan-only-passed";
     return;
   }
