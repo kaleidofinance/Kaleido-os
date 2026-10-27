@@ -112,6 +112,16 @@ const FEEDS = {
     id: "0x6ec879b1e9963de5ee97e9c8710b742d6228252a5e2ca12d4ae81d7fe5ee8c5d",
     source: "hermes",
   },
+  USD1: {
+    symbol: "Crypto.USD1/USD",
+    id: "0x0a2425d43486780990d8b63543029e20556be51fd756cca584212f4d539611d4",
+    source: "hermes",
+  },
+  FDUSD: {
+    symbol: "Crypto.FDUSD/USD",
+    id: "0xccdc1a08923e2e4f4b1e6ea89de6acbc5fe1948e9706f5604b8cb50bc1ed3979",
+    source: "hermes",
+  },
   BNB: {
     symbol: "Crypto.BNB/USD",
     id: "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
@@ -124,6 +134,13 @@ const FEEDS = {
     source: "hermes",
   },
   BTC: {
+    symbol: "Crypto.BTC/USD",
+    id: "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+    source: "hermes",
+  },
+  // BTCB is a wrapped BTC representation; the Chainlink BSC plan prices its
+  // token through BTC/USD, while backing/peg admission remains a separate gate.
+  BTCB: {
     symbol: "Crypto.BTC/USD",
     id: "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
     source: "hermes",
