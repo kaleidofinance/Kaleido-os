@@ -21,6 +21,23 @@ const { ethers } = hre;
 const fs = require("fs");
 const path = require("path");
 const { confirmMainnet } = require("./libraries/mainnet-guard.js");
+const { waitForCode } = require("./libraries/rpc.js");
+
+if (ethers.provider && typeof ethers.provider.send === "function") {
+  ethers.provider.getTransaction = async (hash) => {
+    const raw = await ethers.provider.send("eth_getTransactionByHash", [hash]);
+    if (!raw) return null;
+    const q = (v) => (v == null ? null : BigInt(v));
+    return new ethers.TransactionResponse({ hash: raw.hash, blockNumber: raw.blockNumber == null ? null : Number(BigInt(raw.blockNumber)), blockHash: raw.blockHash, index: raw.transactionIndex == null ? null : Number(BigInt(raw.transactionIndex)), type: raw.type == null ? 0 : Number(BigInt(raw.type)), from: raw.from, to: raw.to || null, gasLimit: q(raw.gas), nonce: Number(BigInt(raw.nonce)), data: raw.input || raw.data || "0x", value: q(raw.value), gasPrice: q(raw.gasPrice), maxPriorityFeePerGas: q(raw.maxPriorityFeePerGas), maxFeePerGas: q(raw.maxFeePerGas), chainId: q(raw.chainId), signature: null, accessList: raw.accessList || null }, ethers.provider);
+  };
+}
+
+async function deployedAddress(contract, label) {
+  const address = contract.target;
+  if (!address || !ethers.isAddress(address)) throw new Error(`${label} deployment address unavailable`);
+  await waitForCode(ethers.provider, address, label);
+  return address;
+}
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -91,22 +108,19 @@ async function main() {
   console.log("\n📦 1. Deploying KaleidoSwapV3Factory...");
   const Factory = await ethers.getContractFactory("KaleidoSwapV3Factory");
   const factory = await Factory.deploy();
-  await factory.waitForDeployment();
-  const factoryAddress = await factory.getAddress();
+  const factoryAddress = await deployedAddress(factory, "KaleidoSwapV3Factory");
   console.log("✅ Factory deployed at:", factoryAddress);
   console.log("\n📦 2. Deploying SwapRouter...");
   const SwapRouter = await ethers.getContractFactory("SwapRouter");
   const router = await SwapRouter.deploy(factoryAddress, WETH_ADDRESS);
-  await router.waitForDeployment();
-  const routerAddress = await router.getAddress();
+  const routerAddress = await deployedAddress(router, "SwapRouter");
   console.log("✅ SwapRouter deployed at:", routerAddress);
 
   // 4. Deploy NFTDescriptor (library, required by PositionDescriptor)
   console.log("\n📦 3. Deploying NFTDescriptor...");
   const NFTDescriptor = await ethers.getContractFactory("NFTDescriptor");
   const nftDescriptor = await NFTDescriptor.deploy();
-  await nftDescriptor.waitForDeployment();
-  const nftDescriptorAddress = await nftDescriptor.getAddress();
+  const nftDescriptorAddress = await deployedAddress(nftDescriptor, "NFTDescriptor");
   console.log("✅ NFTDescriptor deployed at:", nftDescriptorAddress);
 
   // 5. Deploy NonfungibleTokenPositionDescriptor (linked library)
@@ -127,8 +141,7 @@ async function main() {
     WETH_ADDRESS,
     nativeCurrencyLabelBytes
   );
-  await positionDescriptor.waitForDeployment();
-  const positionDescriptorAddress = await positionDescriptor.getAddress();
+  const positionDescriptorAddress = await deployedAddress(positionDescriptor, "NonfungibleTokenPositionDescriptor");
   console.log("✅ PositionDescriptor deployed at:", positionDescriptorAddress);
 
   // 6. Deploy NonfungiblePositionManager
@@ -141,16 +154,14 @@ async function main() {
     WETH_ADDRESS,
     positionDescriptorAddress
   );
-  await positionManager.waitForDeployment();
-  const positionManagerAddress = await positionManager.getAddress();
+  const positionManagerAddress = await deployedAddress(positionManager, "NonfungiblePositionManager");
   console.log("✅ PositionManager deployed at:", positionManagerAddress);
 
   // 7. Deploy Quoter
   console.log("\n📦 6. Deploying Quoter...");
   const Quoter = await ethers.getContractFactory("Quoter");
   const quoter = await Quoter.deploy(factoryAddress, WETH_ADDRESS);
-  await quoter.waitForDeployment();
-  const quoterAddress = await quoter.getAddress();
+  const quoterAddress = await deployedAddress(quoter, "Quoter");
   console.log("✅ Quoter deployed at:", quoterAddress);
 
   // Save deployment addresses
