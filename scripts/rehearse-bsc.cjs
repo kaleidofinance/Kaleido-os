@@ -338,6 +338,62 @@ async function main() {
   );
   assert.equal(await wbnb.balanceOf(await alice.getAddress()), collateral);
   check("real WBNB collateral / native BNB loan full lifecycle");
+  if (process.env.BSC_LOAN_ONLY === "1") {
+    const token = new Contract(
+      USDT,
+      [
+        "function balanceOf(address) view returns(uint256)",
+        "function approve(address,uint256) returns(bool)",
+      ],
+      alice,
+    );
+    const amount = parseEther("100");
+    async function inject(holder, value) {
+      const holderAddress = await holder.getAddress();
+      for (let slot = 0; slot < 20; slot++) {
+        const snap = await local.send("evm_snapshot", []);
+        const key = keccak256(
+          AbiCoder.defaultAbiCoder().encode(["address", "uint256"], [holderAddress, slot]),
+        );
+        await local.send("anvil_setStorageAt", [
+          USDT,
+          key,
+          "0x" + value.toString(16).padStart(64, "0"),
+        ]);
+        const raw = await local.send("eth_call", [
+          { to: USDT, data: token.interface.encodeFunctionData("balanceOf", [holderAddress]) },
+          "latest",
+        ]);
+        if (BigInt(raw) === value) return;
+        await local.send("evm_revert", [snap]);
+      }
+      throw new Error("USDT balance slot not found");
+    }
+    const lender = await local.getSigner(2);
+    await inject(lender, amount);
+    await inject(alice, amount);
+    await tx("re-approve WBNB collateral", wbnb.approve(address, collateral), "scenario");
+    await tx("re-deposit WBNB collateral", protocol.connect(alice).depositCollateral(WBNB, collateral), "scenario");
+    await tx("approve USDT repayment", token.approve(address, amount), "scenario");
+    const loanNow = (await local.getBlock("latest")).timestamp;
+    await tx(
+      "request USDT loan",
+      protocol.connect(alice).createLendingRequest(parseEther("12"), 1000, loanNow + 3 * 86400, USDT),
+      "scenario",
+    );
+    const loanRequests = await protocol.getAllRequests(0, 10000);
+    const loanId = loanRequests[loanRequests.length - 1].requestId;
+    await tx("approve USDT funding", token.connect(lender).approve(address, amount), "scenario");
+    await tx("fund USDT loan", protocol.connect(lender).serviceRequest(loanId, USDT), "scenario");
+    const repayment = (await protocol.getRequest(loanId)).totalRepayment;
+    await tx("repay USDT loan", protocol.connect(alice).repayLoan(loanId, repayment), "scenario");
+    const lenderBalance = await protocol.gets_addressToAvailableBalance(await lender.getAddress(), USDT);
+    assert(lenderBalance > parseEther("12"));
+    await tx("withdraw USDT lender balance", protocol.connect(lender).withdrawCollateral(USDT, lenderBalance), "scenario");
+    check("forked USDT loan funding / repayment / withdrawal full lifecycle");
+    report.status = "loan-only-passed";
+    return;
+  }
   const inputHash = keccak256(art("KaleidoSwapV3Pool").bytecode);
   const src = fs.readFileSync(
     path.join(root, "contracts/dex-v3/periphery/libraries/PoolAddress.sol"),
