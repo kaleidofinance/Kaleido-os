@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-26T12:44:02.530Z",
+  "checkedAt": "2026-10-27T19:34:15.380Z",
   "wallet": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
   "bsc": {
     "https://bsc-rpc.publicnode.com": {
@@ -7,8 +7,8 @@
       "value": {
         "url": "https://bsc-rpc.publicnode.com",
         "chainId": 56,
-        "block": "0x7be1c53",
-        "blockTime": "0x6adf4b15"
+        "block": "0x7c1df91",
+        "blockTime": "0x6ae0fcba"
       }
     },
     "balance": {
@@ -64,11 +64,11 @@
           "address": "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE",
           "description": "BNB / USD",
           "decimals": 8,
-          "round": "55340232221132195980",
-          "answer": "74021544000",
-          "updatedAt": 1793018644,
-          "answeredInRound": "55340232221132195980",
-          "observedAgeSeconds": 8
+          "round": "55340232221132199349",
+          "answer": "74736017717",
+          "updatedAt": 1793129660,
+          "answeredInRound": "55340232221132199349",
+          "observedAgeSeconds": 7
         }
       },
       "BTC": {
@@ -77,11 +77,11 @@
           "address": "0x264990fbd0A4796A3E3d8E37C4d5F87a3aCa5Ebf",
           "description": "BTC / USD",
           "decimals": 8,
-          "round": "55340232221129766170",
-          "answer": "8018770052281",
-          "updatedAt": 1793018595,
-          "answeredInRound": "55340232221129766170",
-          "observedAgeSeconds": 58
+          "round": "55340232221129767884",
+          "answer": "8053172460701",
+          "updatedAt": 1793129651,
+          "answeredInRound": "55340232221129767884",
+          "observedAgeSeconds": 17
         }
       },
       "USDC": {
@@ -90,11 +90,11 @@
           "address": "0x51597f405303C4377E36123cBc172b13269EA163",
           "description": "USDC / USD",
           "decimals": 8,
-          "round": "73786976294838212845",
-          "answer": "99976921",
-          "updatedAt": 1793017989,
-          "answeredInRound": "73786976294838212845",
-          "observedAgeSeconds": 665
+          "round": "73786976294838212968",
+          "answer": "99969696",
+          "updatedAt": 1793129245,
+          "answeredInRound": "73786976294838212968",
+          "observedAgeSeconds": 423
         }
       },
       "USDT": {
@@ -103,11 +103,11 @@
           "address": "0xB97Ad0E74fa7d920791E90258A6E2085088b4320",
           "description": "USDT / USD",
           "decimals": 8,
-          "round": "73786976294838212846",
-          "answer": "99844200",
-          "updatedAt": 1793018216,
-          "answeredInRound": "73786976294838212846",
-          "observedAgeSeconds": 438
+          "round": "73786976294838212969",
+          "answer": "99870000",
+          "updatedAt": 1793129081,
+          "answeredInRound": "73786976294838212969",
+          "observedAgeSeconds": 588
         }
       }
     },
@@ -123,12 +123,13 @@
       "ok": true,
       "value": {
         "inputBNB": "0.01",
-        "amountOut": "7414067132307523128",
-        "amountInUsd": "7.410451006281075",
-        "amountOutUsd": "7.408005873842894",
+        "amountOut": "7484307493952187319",
+        "amountInUsd": "7.473199034743833",
+        "amountOutUsd": "7.47652617413226",
         "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
         "venues": [
-          "pancake-infinity-cl"
+          "cobraswap-v2",
+          "nomiswap-stable"
         ],
         "executionSimulated": false
       }
@@ -140,8 +141,8 @@
       "value": {
         "url": "https://rpc.mainnet.arc.io",
         "chainId": 5042,
-        "block": "0x1aabd41",
-        "blockTime": "0x6adf4b24"
+        "block": "0x1ae1491",
+        "blockTime": "0x6ae0fcc8"
       }
     },
     "owner": {
