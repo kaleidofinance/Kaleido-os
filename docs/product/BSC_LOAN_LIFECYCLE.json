@@ -554,6 +554,6 @@
       "forkRetryBackoff": 1000
     }
   },
-  "candidateLoanLifecycle": "USDT, USD1, FDUSD and BTCB passed on a local BSC fork; balances were storage-injected locally",
+  "candidateLoanLifecycle": "USDC, USDT, USD1, FDUSD and BTCB passed on a local BSC fork; balances were storage-injected locally",
   "status": "loan-only-passed"
 }
