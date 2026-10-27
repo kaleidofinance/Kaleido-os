@@ -26,6 +26,8 @@ Hermes metadata independently provides exact symbol IDs `Crypto.USD1/USD` (`0a24
 
 ## Remaining admission checks
 
+The local BSC fork now also passes the full **USDT** ERC-20 loan path: WBNB collateral re-deposit, USDT funding, repayment, lender-balance withdrawal, and repayment accounting. This is isolated from the main V3 rehearsal and uses storage injection only to provision fork test balances. It does not prove mainnet liquidity or admission of USDT, and the other four candidates still need the same path-specific rehearsal.
+
 1. Verify issuer/custodian reserve evidence and actual privileged control paths. Public disclosures and token supply are not an independent reserve audit.
 2. Rehearse each proposed loan asset's transfer/approval/fund/repay/withdraw path using the real BSC token on a local fork. Test BNB/WBNB collateral conversion to that debt asset and adverse price movement, including BTCB volatility/peg risk.
 3. Review USD1/FDUSD's day-class freshness limits and depeg response. Test stale/nonpositive/incomplete rounds and feed outages; do not silently widen the global limit or substitute another stablecoin's feed.
