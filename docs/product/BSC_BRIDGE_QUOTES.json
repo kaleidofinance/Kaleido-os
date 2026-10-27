@@ -1,0 +1,120 @@
+{
+  "checkedAt": "2026-10-26T21:23:54.873Z",
+  "scope": "provider route availability only; neither source execution nor destination settlement verified",
+  "lifi": [
+    {
+      "from": 56,
+      "to": 5042,
+      "available": true,
+      "router": "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE",
+      "spender": "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE",
+      "txChainId": 56,
+      "fromToken": {
+        "address": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+        "decimals": 18
+      },
+      "toToken": {
+        "address": "0x3600000000000000000000000000000000000000",
+        "decimals": 6
+      },
+      "minOutput": "9969031",
+      "value": "0"
+    },
+    {
+      "from": 5042,
+      "to": 56,
+      "available": true,
+      "router": "0xA4072583658Fae592A3506A42431cb6316a8d40b",
+      "spender": "0xA4072583658Fae592A3506A42431cb6316a8d40b",
+      "txChainId": 5042,
+      "fromToken": {
+        "address": "0x3600000000000000000000000000000000000000",
+        "decimals": 6
+      },
+      "toToken": {
+        "address": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+        "decimals": 18
+      },
+      "minOutput": "9969437000000000000",
+      "value": "0"
+    }
+  ],
+  "relay": [
+    {
+      "from": 56,
+      "to": 5042,
+      "httpStatus": 200,
+      "available": true,
+      "steps": [
+        {
+          "kind": "transaction",
+          "id": "approve"
+        },
+        {
+          "kind": "transaction",
+          "id": "deposit"
+        }
+      ],
+      "fromCurrency": {
+        "chainId": 56,
+        "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+        "symbol": "USDC",
+        "name": "USDCoin",
+        "decimals": 18,
+        "metadata": {
+          "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+          "verified": true
+        }
+      },
+      "toCurrency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+          "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+          "verified": true
+        }
+      }
+    },
+    {
+      "from": 5042,
+      "to": 56,
+      "httpStatus": 200,
+      "available": true,
+      "steps": [
+        {
+          "kind": "transaction",
+          "id": "approve"
+        },
+        {
+          "kind": "transaction",
+          "id": "deposit"
+        }
+      ],
+      "fromCurrency": {
+        "chainId": 5042,
+        "address": "0x3600000000000000000000000000000000000000",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+          "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+          "verified": true
+        }
+      },
+      "toCurrency": {
+        "chainId": 56,
+        "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+        "symbol": "USDC",
+        "name": "USDCoin",
+        "decimals": 18,
+        "metadata": {
+          "logoURI": "https://ethereum-optimism.github.io/data/USDC/logo.png",
+          "verified": true
+        }
+      }
+    }
+  ]
+}

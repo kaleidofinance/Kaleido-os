@@ -43,6 +43,24 @@ async function main() {
   assert.equal(arc?.pools[0].tokenSymbols.join("/"), "USDC/ARGUS", "route legs retain registered token identity");
   assert.equal(arc?.pools[0].feeTier, 0.25, "Kyber millionths become a percentage fee tier");
   assert.equal(arc?.pools[0].fees24hUsd, 0.5, "estimated fees use volume times fee percentage");
-  console.log("16 external pool checks passed");
+  const bscUsdc = "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d";
+  const wbnb = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
+  const bscFetch: typeof fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "aggregator-api.kyberswap.com") {
+      assert.equal(url.pathname, "/bsc/api/v1/routes");
+      assert.equal(url.searchParams.get("amountIn"), "1000000000000000000", "BSC USDC quotes use 18 decimals");
+      return Response.json({ data: { routeSummary: { route: [[{ pool: routePool, tokenIn: bscUsdc, tokenOut: wbnb, exchange: "pancake-infinity-cl" }]] } } });
+    }
+    assert.ok(url.pathname.startsWith("/api/v2/networks/bsc/pools/multi/"));
+    return Response.json({ data: [{ id: `arc_${routePool}`, attributes: { reserve_in_usd: "999" } }, { id: `bsc_${routePool}`, attributes: { reserve_in_usd: "1500", volume_usd: { h24: "100" } } }] });
+  };
+  const bsc = await readExternalPools(56, bscFetch);
+  assert.equal(bsc?.pools.length, 1);
+  assert.equal(bsc?.pools[0].chainId, 56);
+  assert.equal(bsc?.pools[0].exchange, "pancake-infinity-cl");
+  assert.equal(bsc?.pools[0].tvlUsd, 1500, "wrong-chain enrichment is ignored");
+  assert.equal(bsc?.pools[0].feeTier, null, "absent venue fee remains unknown");
+  console.log("External pool checks passed for Arc, Robinhood and BSC");
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

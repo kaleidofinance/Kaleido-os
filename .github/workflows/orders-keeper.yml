@@ -104,6 +104,8 @@ jobs:
           # the keeper falls back to the public rpc.mainnet.arc.io, which throttles
           # at a 5-minute cadence; set the secret to a dedicated endpoint.
           RPC_URL_5042: ${{ secrets.RPC_URL_5042 }}
+          # Chain discovery still requires actual OrdersV2 deployment records.
+          RPC_URL_56: ${{ secrets.RPC_URL_56 }}
           ORDERS_CHAINS: ${{ inputs.chains }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: npm run keeper:orders

@@ -31,12 +31,17 @@ const check = (name, cond, detail = "") => {
 
 const ARC = 5042;
 const ROBINHOOD = 4663;
+const BSC = 56;
 const ARC_ROUTER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
 
 // Wrapped in an async IIFE: the tsx runner emits CJS, which has no top-level
 // await, and one check awaits resolveKyberSwap.
 async function main() {
 console.log("\n— chain routing —");
+check("BSC routes through its bsc API slug", kyberSwapChainSlug(BSC) === "bsc");
+check("BSC enables only the reviewed V2 router", hasKyberSwap(BSC) && kyberSwapRouter(BSC) === ARC_ROUTER);
+check("BSC rejects a different router", !isKnownSwapRouter(BSC, "0x6868d319c8c9a78f7d39dc3602c5c917315132d7"));
+check("BSC native BNB has no Arc ERC20 mirror", nativeSwapErc20(BSC, "0x3600000000000000000000000000000000000000") === null);
 check("Arc has a KyberSwap slug", kyberSwapChainSlug(ARC) === "arc");
 check("a non-Arc chain has no slug", kyberSwapChainSlug(1) === undefined);
 check("Arc has a KyberSwap router", kyberSwapRouter(ARC) === ARC_ROUTER);

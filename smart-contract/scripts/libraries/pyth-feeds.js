@@ -117,6 +117,12 @@ const FEEDS = {
     id: "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
     source: "hermes",
   },
+  // Canonical WBNB's deposit/withdraw wrapper is 1:1 native BNB.
+  WBNB: {
+    symbol: "Crypto.BNB/USD",
+    id: "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
+    source: "hermes",
+  },
   BTC: {
     symbol: "Crypto.BTC/USD",
     id: "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",

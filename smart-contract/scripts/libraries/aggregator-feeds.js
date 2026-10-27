@@ -131,6 +131,7 @@ const { FEEDS } = require("./pyth-feeds.js");
  *           here is not the ~1800s-heartbeat feed set that Sepolia and BSC have.
  */
 const ORACLE_BACKEND = {
+  56: "aggregator-v3",
   /* Arc MAINNET: Chainlink push feeds. See the 5042 entry in AGGREGATORS. */
   5042: "aggregator-v3",
   11155111: "aggregator-v3",
@@ -171,6 +172,15 @@ const PYTH_CONTRACTS = {
 
 /** @type {Record<number, Record<string, Aggregator>>} chainId -> token symbol -> feed */
 const AGGREGATORS = {
+  // Chainlink traditional BSC proxies, independently read 2026-10-26.
+  // Published heartbeats: BNB 27s; stablecoins 900s. Bounds include tolerance.
+  // https://reference-data-directory.vercel.app/feeds-bsc-mainnet.json
+  56: {
+    BNB: { aggregator: "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE", provider: "chainlink", decimals: 8, observedAgeSeconds: null, maxAge: 120, maxAgeBasis: "27s published heartbeat with operational tolerance; BSC fork rehearsed.", descriptionHint: "BNB / USD" },
+    WBNB: { aggregator: "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE", provider: "chainlink", decimals: 8, observedAgeSeconds: null, maxAge: 120, maxAgeBasis: "Canonical WBNB wrapper uses native BNB's feed and bound.", descriptionHint: "BNB / USD" },
+    USDC: { aggregator: "0x51597f405303C4377E36123cBc172b13269EA163", provider: "chainlink", decimals: 8, observedAgeSeconds: null, maxAge: 1200, maxAgeBasis: "900s published heartbeat plus 300s tolerance; prices underlying USDC, not Binance-Peg redemption risk.", descriptionHint: "USDC / USD" },
+    USDT: { aggregator: "0xB97Ad0E74fa7d920791E90258A6E2085088b4320", provider: "chainlink", decimals: 8, observedAgeSeconds: null, maxAge: 1200, maxAgeBasis: "900s published heartbeat plus 300s tolerance; prices underlying USDT, not Binance-Peg redemption risk.", descriptionHint: "USDT / USD" },
+  },
   /* ── Robinhood Chain Mainnet ────────────────────────────────────────────
    * Chainlink's live Robinhood mainnet directory publishes these feeds at
    * 8 decimals. WETH is priced through the ETH/USD feed because it is the
