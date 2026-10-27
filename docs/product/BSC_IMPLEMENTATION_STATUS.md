@@ -29,7 +29,7 @@ The first route-build probe using Anvil's well-known default wallet returned a K
 
 ## Production choices and next work
 
-- Initial lending asset admission requires a decision. Proposed: native BNB/WBNB collateral and Binance-Peg USDC/USDT loans. The broad fork registration should not be copied blindly into production. BTCB/USD1/FDUSD remain outside initial lending admission.
+- User selected native BNB/WBNB as collateral and USDC/USDT/USD1/FDUSD/BTCB as loan candidates, conditional on lending risk checks. None of these loan candidates is automatically admitted by that selection. The broad fork registration should not be copied into production; native BNB/WBNB borrowing is outside this selected initial scope.
 - Candidate `feeVault` reuses the recorded Arc recipient/deployment wallet `0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc`. Native/ERC20 output-fee reception was verified on the BSC fork; recheck its identity in the final deployment plan. No ownership transfer to the Arc Safe is scheduled.
 - Existing deployer wallet covers the recorded rehearsed gas set at the sampled price. Recheck current fees, balance, signer and all constructor/configuration values immediately before broadcast.
 - Execute the reviewed deploy scripts, verify addresses/source/configuration, generate the registry, and wire capabilities/ingestion/analytics to the resulting actual chain-56 manifests.

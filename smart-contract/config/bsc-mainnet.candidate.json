@@ -62,7 +62,38 @@
   "ownershipTransfer": false,
   "mintRedeem": false,
   "staking": false,
-  "productionAssetAdmission": "not-finalized; local rehearsal registers all four native/wrapped/stable representations to exercise registration paths",
+  "productionAssetAdmission": "user-selected roles; each loan candidate requires completed lending risk checks before registration",
+  "collateralAssets": ["NATIVE", "WBNB"],
+  "loanAssets": [],
+  "loanCandidates": {
+    "USDC": "pending-risk-check",
+    "USDT": "pending-risk-check",
+    "USD1": "pending-risk-check",
+    "FDUSD": "pending-risk-check",
+    "BTCB": "pending-risk-check"
+  },
+  "riskEvidence": [
+    "docs/product/BSC_LOAN_RISK_PROBE.json",
+    "docs/product/BSC_FEED_HISTORY.json",
+    "docs/product/BSC_LOAN_ASSET_RESEARCH.md"
+  ],
+  "candidateTokens": {
+    "USD1": {
+      "address": "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d",
+      "decimals": 18,
+      "status": "issuer-address-and-live-metadata-verified; lending-not-enabled"
+    },
+    "FDUSD": {
+      "address": "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409",
+      "decimals": 18,
+      "status": "issuer-address-and-live-metadata-verified; lending-not-enabled"
+    },
+    "BTCB": {
+      "address": "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
+      "decimals": 18,
+      "status": "live-metadata-verified; backing-admission-pending"
+    }
+  },
   "feeVault": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
   "feeVaultBasis": "Reuse recorded Arc fee recipient; this BSC address received native/ERC20 output fees in fork tests. Recheck identity before broadcast.",
   "sources": [

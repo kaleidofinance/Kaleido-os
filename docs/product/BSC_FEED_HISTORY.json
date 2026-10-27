@@ -1,0 +1,166 @@
+{
+  "checkedAt": "2026-10-27T06:06:14.470Z",
+  "samples": {
+    "usd1-usd": {
+      "proxy": "0xaD8b4e59A7f25B68945fAf0f3a3EAF027832FFB0",
+      "advertisedHeartbeat": 86400,
+      "rounds": [
+        {
+          "round": "18446744073709552198",
+          "updatedAt": 1793047660,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552197",
+          "updatedAt": 1792961233,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552196",
+          "updatedAt": 1792874811,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552195",
+          "updatedAt": 1792788407,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552194",
+          "updatedAt": 1792702003,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552193",
+          "updatedAt": 1792615581,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552192",
+          "updatedAt": 1792529177,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552191",
+          "updatedAt": 1792442768,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552190",
+          "updatedAt": 1792356359,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552189",
+          "updatedAt": 1792269954,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552188",
+          "updatedAt": 1792183532,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "18446744073709552187",
+          "updatedAt": 1792097128,
+          "positive": true,
+          "completed": true
+        }
+      ],
+      "maxObservedGapSeconds": 86427,
+      "minObservedGapSeconds": 86404
+    },
+    "fdusd-usd": {
+      "proxy": "0x390180e80058A8499930F0c13963AD3E0d86Bfc9",
+      "advertisedHeartbeat": 86400,
+      "rounds": [
+        {
+          "round": "36893488147419104156",
+          "updatedAt": 1793048132,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104155",
+          "updatedAt": 1792961705,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104154",
+          "updatedAt": 1792875291,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104153",
+          "updatedAt": 1792788877,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104152",
+          "updatedAt": 1792702464,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104151",
+          "updatedAt": 1792616050,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104150",
+          "updatedAt": 1792529632,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104149",
+          "updatedAt": 1792443226,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104148",
+          "updatedAt": 1792356824,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104147",
+          "updatedAt": 1792270411,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104146",
+          "updatedAt": 1792183997,
+          "positive": true,
+          "completed": true
+        },
+        {
+          "round": "36893488147419104145",
+          "updatedAt": 1792097579,
+          "positive": true,
+          "completed": true
+        }
+      ],
+      "maxObservedGapSeconds": 86427,
+      "minObservedGapSeconds": 86402
+    }
+  },
+  "limitation": "Recent rounds in current proxy phase only; sample gaps do not guarantee future heartbeats or peg/backing safety"
+}

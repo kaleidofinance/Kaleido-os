@@ -7,6 +7,20 @@ const {
 const { feedFor } = require("../scripts/libraries/pyth-feeds");
 const cfg = require("../config/bsc-mainnet.candidate.json");
 describe("BSC mainnet configuration preparation", () => {
+  it("preserves the user's collateral-only BNB/WBNB policy and gates all five loan candidates", () => {
+    expect(cfg.collateralAssets).to.deep.equal(["NATIVE", "WBNB"]);
+    expect(Object.keys(cfg.loanCandidates)).to.have.members([
+      "USDC",
+      "USDT",
+      "USD1",
+      "FDUSD",
+      "BTCB",
+    ]);
+    expect(cfg.loanAssets).not.to.include("NATIVE");
+    expect(cfg.loanAssets).not.to.include("WBNB");
+    for (const symbol of cfg.loanAssets)
+      expect(cfg.loanCandidates[symbol]).to.equal("approved");
+  });
   it("selects aggregator feeds without a Pyth backend override", () =>
     expect(backendFor(56)).to.equal("aggregator-v3"));
   it("collapses native BNB and WBNB into one feed registration", () => {
