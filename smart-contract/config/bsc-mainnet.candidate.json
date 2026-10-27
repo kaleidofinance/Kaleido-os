@@ -65,6 +65,21 @@
   "productionAssetAdmission": "user-selected roles; each loan candidate requires completed lending risk checks before registration",
   "collateralAssets": ["NATIVE", "WBNB"],
   "loanAssets": [],
+  "loanAdmissionPolicy": {
+    "status": "technical-lifecycle-passed-policy-review-required",
+    "stablecoinFeedPolicy": "USDC/USDT 1200s; USD1/FDUSD require explicit 24-hour stale-price and depeg response before enabling",
+    "btcbPolicy": "BTC/USD proxy is not a BTCB backing proof; require peg/liquidation-depth sign-off before enabling",
+    "collateralizationRatioPercent": 75,
+    "liquidationThresholdPercent": 80,
+    "liquidationPenaltyBps": 640,
+    "candidateFeedBoundsSeconds": {
+      "USDC": 1200,
+      "USDT": 1200,
+      "USD1": 108000,
+      "FDUSD": 108000,
+      "BTCB": 600
+    }
+  },
   "loanCandidates": {
     "USDC": "pending-risk-check",
     "USDT": "pending-risk-check",
