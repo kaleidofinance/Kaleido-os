@@ -4,7 +4,7 @@ import { TOKENS } from "@/constants/registry";
 
 const KYBER_POOLS = "https://earn-service.kyberswap.com/api/v1/explorer/pools";
 const KYBER_ROUTES = "https://aggregator-api.kyberswap.com";
-const GECKO_POOLS = "https://api.geckoterminal.com/api/v2/networks/arc/pools/multi";
+const GECKO_NETWORKS = "https://api.geckoterminal.com/api/v2/networks";
 
 export interface ExternalPool {
   address: string;
@@ -83,7 +83,7 @@ async function fetchExternalPools(
   chainId: number,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ExternalPoolSnapshot | null> {
-  if (chainId === 5042) return fetchArcRoutePools(fetchImpl);
+  if (chainId === 5042 || chainId === 56) return fetchRoutePools(chainId, fetchImpl);
   if (chainId !== 4663) return null;
   try {
     const res = await fetchImpl(`${KYBER_POOLS}?chainIds=${chainId}`, {
@@ -141,17 +141,18 @@ async function fetchExternalPools(
  * TVL/volume figures. A pool therefore cannot appear merely because an indexer
  * found it; it must be part of a route our swap resolver can currently build.
  */
-async function fetchArcRoutePools(fetchImpl: typeof fetch): Promise<ExternalPoolSnapshot | null> {
-  const chainId = 5042;
+async function fetchRoutePools(chainId: number, fetchImpl: typeof fetch): Promise<ExternalPoolSnapshot | null> {
+  const network = chainId === 56 ? "bsc" : "arc";
+  const usdcAddress = chainId === 56 ? "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d" : "0x3600000000000000000000000000000000000000";
   const tokens = TOKENS[chainId] ?? [];
-  const usdc = tokens.find((token) => token.address.toLowerCase() === "0x3600000000000000000000000000000000000000");
+  const usdc = tokens.find((token) => token.address.toLowerCase() === usdcAddress);
   if (!usdc) return null;
 
   try {
     const routeResults = await Promise.all(tokens.filter((token) => token.address !== usdc.address).map(async (token) => {
       try {
-        const query = new URLSearchParams({ tokenIn: usdc.address, tokenOut: token.address, amountIn: "1000000" });
-        const response = await fetchImpl(`${KYBER_ROUTES}/arc/api/v1/routes?${query}`, {
+        const query = new URLSearchParams({ tokenIn: usdc.address, tokenOut: token.address, amountIn: (10n ** BigInt(usdc.decimals)).toString() });
+        const response = await fetchImpl(`${KYBER_ROUTES}/${network}/api/v1/routes?${query}`, {
           headers: { "x-client-id": process.env.KYBERSWAP_CLIENT_ID?.trim() || "kaleido" },
           cache: "no-store",
           signal: AbortSignal.timeout(8000),
@@ -196,7 +197,7 @@ async function fetchArcRoutePools(fetchImpl: typeof fetch): Promise<ExternalPool
     const stats = new Map<string, GeckoPool>();
     for (let offset = 0; offset < pools.length; offset += 30) {
       const ids = pools.slice(offset, offset + 30).map((pool) => pool.address).join(",");
-      const response = await fetchImpl(`${GECKO_POOLS}/${ids}`, {
+      const response = await fetchImpl(`${GECKO_NETWORKS}/${network}/pools/multi/${ids}`, {
         cache: "no-store",
         signal: AbortSignal.timeout(8000),
       });
@@ -204,7 +205,8 @@ async function fetchArcRoutePools(fetchImpl: typeof fetch): Promise<ExternalPool
       const body = (await response.json()) as { data?: GeckoPool[] };
       for (const row of Array.isArray(body.data) ? body.data : []) {
         if (typeof row.id !== "string") continue;
-        const address = row.id.replace(/^arc_/i, "").toLowerCase();
+        if (!row.id.toLowerCase().startsWith(`${network}_`)) continue;
+        const address = row.id.slice(network.length + 1).toLowerCase();
         stats.set(address, row);
       }
     }
@@ -249,7 +251,7 @@ const inflight = new Map<number, Promise<ExternalPoolSnapshot | null>>();
 
 /** One bounded, shared refresh per minute. asOf is fetch time, not block time. */
 export async function readExternalPools(chainId: number, fetchImpl?: typeof fetch): Promise<ExternalPoolSnapshot | null> {
-  if (chainId !== 5042 && chainId !== 4663) return null;
+  if (chainId !== 5042 && chainId !== 4663 && chainId !== 56) return null;
   if (fetchImpl) return fetchExternalPools(chainId, fetchImpl);
   const previous = cached.get(chainId);
   if (previous && Date.now() - Date.parse(previous.asOf) < 60000) return previous;

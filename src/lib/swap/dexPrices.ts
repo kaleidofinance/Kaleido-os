@@ -41,6 +41,7 @@ const KYBER_API = "https://aggregator-api.kyberswap.com";
    dollar. On Arc that is the 0x3600 6-decimal ERC20 face of native USDC, the
    form the aggregator itself trades (see kyberswap.ts). */
 const QUOTE_USDC: Record<number, { address: string; decimals: number }> = {
+  56: { address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", decimals: 18 },
   5042: { address: "0x3600000000000000000000000000000000000000", decimals: 6 },
   4663: { address: "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8", decimals: 6 },
 };

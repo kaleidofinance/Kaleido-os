@@ -1,0 +1,439 @@
+{
+  "checkedAt": "2026-10-27T17:08:56.143Z",
+  "artifactRoot": "C:\\Users\\HP\\.codex\\worktrees\\283d\\merge-rewards\\smart-contract",
+  "parity": [
+    {
+      "name": "Diamond",
+      "address": "0xE4e7f16DB22e6bb2E505fbC504d7B2B4B995A6E3",
+      "matches": true,
+      "runtimeBytes": 244,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "DiamondCutFacet",
+      "address": "0xE8F836c0d48a07c970c66BeD358a7C3c4C7a7235",
+      "matches": true,
+      "runtimeBytes": 4258,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "DiamondLoupeFacet",
+      "address": "0x7EEB33f9E9FBd09653F893bA1f113BEcF8F7116b",
+      "matches": true,
+      "runtimeBytes": 1630,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "OwnershipFacet",
+      "address": "0x59E73C9490E43df879495dCFb1dA28c8eA03d797",
+      "matches": true,
+      "runtimeBytes": 932,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "ProtocolFacet",
+      "address": "0xfc055263Dd57A665A612fD7D24cf94Ee390De5bf",
+      "matches": true,
+      "runtimeBytes": 23625,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "AgentPermissionFacet",
+      "address": "0x22B0AD978a7F8eE943D5AE85621E312Ce1835a38",
+      "matches": true,
+      "runtimeBytes": 3304,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "LendingAdminFacet",
+      "address": "0x1D53F2601f32558C6737e7C8D8e4f67391154CA9",
+      "matches": true,
+      "runtimeBytes": 804,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "AggregatorPriceOracle",
+      "address": "0x5027ACF31cEf802d6A89D170691Fa256e079D39B",
+      "matches": true,
+      "runtimeBytes": 3603,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "KaleidoOrdersV2",
+      "address": "0x83CA08cd25a663f0a66bda93E5f3c67D382C9856",
+      "matches": true,
+      "runtimeBytes": 11651,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 11
+    },
+    {
+      "name": "KaleidoSwapV3Factory",
+      "address": "0xbB74f2319494461B2591F8fbF126654Dd4c2a649",
+      "matches": true,
+      "runtimeBytes": 24116,
+      "compiler": "0.7.6+commit.7338295f",
+      "maskedRanges": 1
+    },
+    {
+      "name": "SwapRouter",
+      "address": "0x98D4f47b6F06d30527b61ea3d68656f7Da9B442E",
+      "matches": true,
+      "runtimeBytes": 9839,
+      "compiler": "0.7.6+commit.7338295f",
+      "maskedRanges": 12
+    },
+    {
+      "name": "NonfungiblePositionManager",
+      "address": "0x55879358eC7eDA609f2264b0348D1915ee8307e1",
+      "matches": true,
+      "runtimeBytes": 22933,
+      "compiler": "0.7.6+commit.7338295f",
+      "maskedRanges": 17
+    },
+    {
+      "name": "Quoter",
+      "address": "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3",
+      "matches": true,
+      "runtimeBytes": 3727,
+      "compiler": "0.7.6+commit.7338295f",
+      "maskedRanges": 4
+    }
+  ],
+  "transactions": [
+    {
+      "label": "AggregatorPriceOracle",
+      "kind": "deployment",
+      "gasUsed": "856225"
+    },
+    {
+      "label": "oracle feeds",
+      "kind": "configuration",
+      "gasUsed": "127496"
+    },
+    {
+      "label": "KaleidoSwapV3Factory",
+      "kind": "deployment",
+      "gasUsed": "5352925"
+    },
+    {
+      "label": "SwapRouter",
+      "kind": "deployment",
+      "gasUsed": "2201102"
+    },
+    {
+      "label": "NFTDescriptor",
+      "kind": "deployment",
+      "gasUsed": "5096018"
+    },
+    {
+      "label": "NonfungibleTokenPositionDescriptor",
+      "kind": "deployment",
+      "gasUsed": "1161236"
+    },
+    {
+      "label": "NonfungiblePositionManager",
+      "kind": "deployment",
+      "gasUsed": "5173516"
+    },
+    {
+      "label": "Quoter",
+      "kind": "deployment",
+      "gasUsed": "860654"
+    },
+    {
+      "label": "KaleidoOrdersV2",
+      "kind": "deployment",
+      "gasUsed": "2636226"
+    },
+    {
+      "label": "order aggregator allowlist",
+      "kind": "configuration",
+      "gasUsed": "50566"
+    },
+    {
+      "label": "DiamondCutFacet",
+      "kind": "deployment",
+      "gasUsed": "972888"
+    },
+    {
+      "label": "Diamond",
+      "kind": "deployment",
+      "gasUsed": "315221"
+    },
+    {
+      "label": "DiamondInit",
+      "kind": "deployment",
+      "gasUsed": "124537"
+    },
+    {
+      "label": "DiamondLoupeFacet",
+      "kind": "deployment",
+      "gasUsed": "405242"
+    },
+    {
+      "label": "OwnershipFacet",
+      "kind": "deployment",
+      "gasUsed": "254758"
+    },
+    {
+      "label": "ProtocolFacet",
+      "kind": "deployment",
+      "gasUsed": "5177011"
+    },
+    {
+      "label": "AgentPermissionFacet",
+      "kind": "deployment",
+      "gasUsed": "766870"
+    },
+    {
+      "label": "LendingAdminFacet",
+      "kind": "deployment",
+      "gasUsed": "249168"
+    },
+    {
+      "label": "diamond cut",
+      "kind": "configuration",
+      "gasUsed": "2857743"
+    },
+    {
+      "label": "setPythOracle",
+      "kind": "configuration",
+      "gasUsed": "51370"
+    },
+    {
+      "label": "setFeeVault",
+      "kind": "configuration",
+      "gasUsed": "51722"
+    },
+    {
+      "label": "setBPS",
+      "kind": "configuration",
+      "gasUsed": "50944"
+    },
+    {
+      "label": "setLiquidityBps",
+      "kind": "configuration",
+      "gasUsed": "51692"
+    },
+    {
+      "label": "setPriceBounds",
+      "kind": "configuration",
+      "gasUsed": "74365"
+    },
+    {
+      "label": "setSwapRouter",
+      "kind": "configuration",
+      "gasUsed": "51099"
+    },
+    {
+      "label": "freshness BNB",
+      "kind": "configuration",
+      "gasUsed": "53635"
+    },
+    {
+      "label": "freshness USDC",
+      "kind": "configuration",
+      "gasUsed": "53647"
+    },
+    {
+      "label": "freshness USDT",
+      "kind": "configuration",
+      "gasUsed": "53647"
+    },
+    {
+      "label": "collateral 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "kind": "configuration",
+      "gasUsed": "98001"
+    },
+    {
+      "label": "loanable 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "kind": "configuration",
+      "gasUsed": "100874"
+    },
+    {
+      "label": "collateral 0x0000000000000000000000000000000000000001",
+      "kind": "configuration",
+      "gasUsed": "80673"
+    },
+    {
+      "label": "loanable 0x0000000000000000000000000000000000000001",
+      "kind": "configuration",
+      "gasUsed": "83546"
+    },
+    {
+      "label": "collateral 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      "kind": "configuration",
+      "gasUsed": "80901"
+    },
+    {
+      "label": "loanable 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      "kind": "configuration",
+      "gasUsed": "83774"
+    },
+    {
+      "label": "collateral 0x55d398326f99059fF775485246999027B3197955",
+      "kind": "configuration",
+      "gasUsed": "80901"
+    },
+    {
+      "label": "loanable 0x55d398326f99059fF775485246999027B3197955",
+      "kind": "configuration",
+      "gasUsed": "83774"
+    },
+    {
+      "label": "wrap BNB",
+      "kind": "scenario",
+      "gasUsed": "45038"
+    },
+    {
+      "label": "approve collateral",
+      "kind": "scenario",
+      "gasUsed": "46052"
+    },
+    {
+      "label": "deposit WBNB",
+      "kind": "scenario",
+      "gasUsed": "132197"
+    },
+    {
+      "label": "request BNB loan",
+      "kind": "scenario",
+      "gasUsed": "700078"
+    },
+    {
+      "label": "fund BNB loan",
+      "kind": "scenario",
+      "gasUsed": "281143"
+    },
+    {
+      "label": "repay BNB loan",
+      "kind": "scenario",
+      "gasUsed": "162743"
+    },
+    {
+      "label": "withdraw lender BNB",
+      "kind": "scenario",
+      "gasUsed": "58830"
+    },
+    {
+      "label": "withdraw WBNB collateral",
+      "kind": "scenario",
+      "gasUsed": "95148"
+    },
+    {
+      "label": "create empty pool",
+      "kind": "scenario",
+      "gasUsed": "4489741"
+    },
+    {
+      "label": "initialize local pool",
+      "kind": "scenario",
+      "gasUsed": "70390"
+    },
+    {
+      "label": "USDT manager allowance",
+      "kind": "scenario",
+      "gasUsed": "46206"
+    },
+    {
+      "label": "WBNB manager allowance",
+      "kind": "scenario",
+      "gasUsed": "46052"
+    },
+    {
+      "label": "mint local LP",
+      "kind": "scenario",
+      "gasUsed": "616780"
+    },
+    {
+      "label": "WBNB router allowance",
+      "kind": "scenario",
+      "gasUsed": "46040"
+    },
+    {
+      "label": "V3 swap",
+      "kind": "scenario",
+      "gasUsed": "127919"
+    },
+    {
+      "label": "order WBNB allowance",
+      "kind": "scenario",
+      "gasUsed": "46052"
+    },
+    {
+      "label": "signed order fill",
+      "kind": "scenario",
+      "gasUsed": "174308"
+    },
+    {
+      "label": "remove liquidity",
+      "kind": "scenario",
+      "gasUsed": "182958"
+    },
+    {
+      "label": "collect LP",
+      "kind": "scenario",
+      "gasUsed": "84523"
+    }
+  ],
+  "checks": [
+    "compiled runtime parity with live Arc (metadata/immutables normalized)",
+    "deployment runtime sizes below EIP170",
+    "oracle/DEX/orders/diamond configured on local BSC fork",
+    "BSC per-feed bounds read back",
+    "real WBNB collateral / native BNB loan full lifecycle",
+    "V3 creation hash matches periphery and pool deploys",
+    "V3 position mint with real WBNB and fork-funded real USDT",
+    "V3 swap callback executes against created pool",
+    "chain-56 signed OrdersV2 fill through real local V3 router",
+    "V3 liquidity decrease and collection",
+    "OrdersV2 EIP712 domain binds chain 56"
+  ],
+  "fork": {
+    "currentBlockNumber": "0x7c193dd",
+    "currentBlockTimestamp": 1793120936,
+    "currentBlockHash": "0xd1dbb47fca7056e477703e9f5af1ea7265a7fb0a9580c90ec84fa67dc9fefd66",
+    "hardFork": "Cancun",
+    "transactionOrder": "fees",
+    "environment": {
+      "baseFee": "0x0",
+      "chainId": 56,
+      "gasLimit": "0x42c1d80",
+      "gasPrice": "0x3b9aca00"
+    },
+    "forkConfig": {
+      "forkUrl": "https://bsc-mainnet.public.blastapi.io",
+      "forkBlockNumber": 130126813,
+      "forkRetryBackoff": 1000
+    }
+  },
+  "poolInitCodeHash": "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938",
+  "forkInjectedUSDTBalanceSlot": 1,
+  "gas": {
+    "deploymentAndConfig": "35823967",
+    "gasPriceWei": "50000000",
+    "costBNB": "0.00179119835",
+    "costWith50PercentGasReserveBNB": "0.002686797525",
+    "walletBNB": "0.008989968228597829",
+    "enoughAtObservedPrice": true,
+    "excludes": "external explorer verification, liquidity seeding, user scenario transactions, other risk-policy changes and fee volatility"
+  },
+  "localContracts": {
+    "diamond": "0x424FDe8A3d9066300519D0eE1814Ee9989E14Ed7",
+    "oracle": "0x6840A87cB42079c1322D925b403Ac70A2E853F1d",
+    "factory": "0x76c38fEF3e6AdAEC86cFeDf65730Ac621d61aD46",
+    "router": "0xd83b53948Cf3E717E4e1ad70b82BB9461C93590f",
+    "manager": "0xc735ABD970057ac8bf4958EF8919272F0C602585",
+    "quoter": "0x007B51E7c58C636f7f2048F91DB1A92ca28a0Aba",
+    "orders": "0x924B3c3d04EB6754cc7fEb65e55e0979b85f4371"
+  },
+  "status": "passed"
+}

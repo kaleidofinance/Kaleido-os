@@ -2,6 +2,54 @@ const { getSelectors, FacetCutAction } = require("./libraries/diamond.js");
 const hre = require("hardhat");
 const { ethers } = hre;
 const fs = require("fs");
+const { waitForCode } = require("./libraries/rpc.js");
+
+// Hardhat-ethers 3.0.8 formats BSC's contract-creation `to: ""` as an
+// invalid address while polling the just-sent transaction. Normalize that
+// one RPC quirk at the provider boundary so ContractFactory.deploy() can
+// proceed normally; receipts and bytecode remain verified on-chain.
+if (ethers.provider && typeof ethers.provider.send === "function") {
+  ethers.provider.getTransaction = async (hash) => {
+    const raw = await ethers.provider.send("eth_getTransactionByHash", [hash]);
+    if (!raw) return null;
+    const quantity = (value) => (value == null ? null : BigInt(value));
+    return new ethers.TransactionResponse(
+      {
+        hash: raw.hash,
+        blockNumber: raw.blockNumber == null ? null : Number(BigInt(raw.blockNumber)),
+        blockHash: raw.blockHash,
+        index: raw.transactionIndex == null ? null : Number(BigInt(raw.transactionIndex)),
+        type: raw.type == null ? 0 : Number(BigInt(raw.type)),
+        from: raw.from,
+        to: raw.to || null,
+        gasLimit: quantity(raw.gas),
+        nonce: Number(BigInt(raw.nonce)),
+        data: raw.input || raw.data || "0x",
+        value: quantity(raw.value),
+        gasPrice: quantity(raw.gasPrice),
+        maxPriorityFeePerGas: quantity(raw.maxPriorityFeePerGas),
+        maxFeePerGas: quantity(raw.maxFeePerGas),
+        chainId: quantity(raw.chainId),
+        signature: null,
+        accessList: raw.accessList || null,
+      },
+      ethers.provider,
+    );
+  };
+}
+
+// Some BSC RPCs return an empty string for the `to` field on contract-creation
+// receipts. ethers v6 then fails while parsing the mined transaction even
+// though the contract is deployed. Verify the predicted address by bytecode
+// instead of waiting through that parser path.
+async function waitForDeploymentCompat(contract, label) {
+  const address = contract.target;
+  if (!address || !ethers.isAddress(address)) {
+    throw new Error(`${label} did not expose a valid deployment address`);
+  }
+  await waitForCode(ethers.provider, address, label);
+  return address;
+}
 
 /**
  * Protocol configuration, read and validated before anything is deployed.
@@ -699,8 +747,10 @@ async function deployDiamond() {
   const diamondCutFacet = await DiamondCutFacet.deploy(
     opts({ gasLimit: 3000000 }),
   );
-  await diamondCutFacet.waitForDeployment();
-  const diamondCutFacetAddress = await diamondCutFacet.getAddress();
+  const diamondCutFacetAddress = await waitForDeploymentCompat(
+    diamondCutFacet,
+    "DiamondCutFacet",
+  );
   deployedFacets.DiamondCutFacet = diamondCutFacetAddress;
   console.log("DiamondCutFacet deployed:", diamondCutFacetAddress);
 
@@ -712,8 +762,7 @@ async function deployDiamond() {
     diamondCutFacetAddress,
     opts({ gasLimit: 3000000 }),
   );
-  await diamond.waitForDeployment();
-  const diamondAddress = await diamond.getAddress();
+  const diamondAddress = await waitForDeploymentCompat(diamond, "Diamond");
   console.log("Diamond deployed:", diamondAddress);
 
   // Deploy DiamondInit
@@ -727,8 +776,10 @@ async function deployDiamond() {
       maxPriorityFeePerGas: ethers.parseUnits("40", "gwei"),
     }),
   );
-  await diamondInit.waitForDeployment();
-  const diamondInitAddress = await diamondInit.getAddress();
+  const diamondInitAddress = await waitForDeploymentCompat(
+    diamondInit,
+    "DiamondInit",
+  );
   deployedFacets.DiamondInit = diamondInitAddress;
   console.log("DiamondInit deployed:", diamondInitAddress);
 
@@ -786,7 +837,7 @@ async function deployDiamond() {
       );
 
       // Add timeout for deployment
-      const deploymentPromise = facet.waitForDeployment();
+      const deploymentPromise = waitForDeploymentCompat(facet, FacetName);
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(
           () => reject(new Error("Deployment timeout after 300 seconds")),
@@ -795,7 +846,7 @@ async function deployDiamond() {
       );
 
       await Promise.race([deploymentPromise, timeoutPromise]);
-      const facetAddress = await facet.getAddress();
+      const facetAddress = await deploymentPromise;
       deployedFacets[FacetName] = facetAddress;
       console.log(`${FacetName} deployed at: ${facetAddress}`);
 
@@ -815,7 +866,7 @@ async function deployDiamond() {
       console.log(`✅ ${FacetName} selectors:`, functionSelectors);
 
       cut.push({
-        facetAddress: await facet.getAddress(),
+        facetAddress,
         action: FacetCutAction.Add,
         functionSelectors,
       });
@@ -829,13 +880,13 @@ async function deployDiamond() {
   console.log("Executing Diamond Cut...");
   const diamondCut = await ethers.getContractAt(
     "IDiamondCut",
-    await diamond.getAddress(),
+    diamondAddress,
   );
 
   const functionCall = diamondInit.interface.encodeFunctionData("init");
   const tx = await diamondCut.diamondCut(
     cut,
-    await diamondInit.getAddress(),
+    diamondInitAddress,
     functionCall,
     // 40,000,000 also exceeds an Ethereum block. zkSync only; estimate elsewhere.
     hre.network.config.zksync ? { gasLimit: 40000000 } : {},
@@ -852,7 +903,7 @@ async function deployDiamond() {
   // Verify that facets were added successfully
   const diamondLoupe = await ethers.getContractAt(
     "DiamondLoupeFacet",
-    await diamond.getAddress(),
+    diamondAddress,
   );
   const facetAddresses = await diamondLoupe.facetAddresses();
   console.log("Facets added to Diamond:", facetAddresses);
@@ -945,7 +996,7 @@ async function deployDiamond() {
   }
 
   /* Only now that the selectors are live can the setters be reached. */
-  await configureProtocol(await diamond.getAddress(), protocolConfig);
+  await configureProtocol(diamondAddress, protocolConfig);
 
   await writeDiamondRecord({
     diamondAddress,
