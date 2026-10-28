@@ -1581,12 +1581,16 @@ export default function AgentPage() {
             signal: abort.signal,
             cache: "no-store",
           });
-          const payload = (await response.json()) as { pools?: unknown[]; stale?: boolean };
-          const count = Array.isArray(payload.pools) ? payload.pools.length : 0;
+          if (!response.ok) throw new Error("Pool snapshot unavailable");
+          const payload = (await response.json()) as { pools?: { chainId?: number }[]; stale?: boolean };
+          if (!Array.isArray(payload.pools)) throw new Error("Pool snapshot unavailable");
+          const activeChainId = chainId ?? 5042;
+          const count = payload.pools.filter((pool) => pool.chainId === activeChainId).length;
+          const chainName = getChainMeta(activeChainId)?.shortName ?? `chain ${activeChainId}`;
           const staleNote = payload.stale ? " This is the latest cached snapshot." : "";
           note("Read the live pool snapshot locally");
           log("local-pools");
-          say(`There are ${count} live Kaleido pools on Arc.${staleNote}`, { via: "local" });
+          say(`There are ${count} live Kaleido pools on ${chainName}.${staleNote}`, { via: "local" });
           return;
         } catch {
           if (abort.signal.aborted) return;

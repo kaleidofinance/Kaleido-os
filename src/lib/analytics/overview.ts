@@ -5,6 +5,7 @@ import { swapFeeBps } from "@/lib/swap/kyberswapServer";
 import { lifiFeeRate } from "@/lib/stats/platform";
 import { isErrorStatus } from "@/lib/analytics/agentStatus";
 import { readExternalPools, type ExternalPoolSnapshot } from "@/lib/market/externalPools";
+import { ANALYTICS_MAINNET_CHAIN_IDS, EXTERNAL_MARKET_CHAIN_IDS } from "./scope";
 
 /**
  * The /analytics overview — headline KPIs across every Kaleido product, for the
@@ -18,7 +19,7 @@ import { readExternalPools, type ExternalPoolSnapshot } from "@/lib/market/exter
  */
 
 export interface AnalyticsOverview {
-  externalMarkets: ExternalPoolSnapshot | null;
+  externalMarkets: ExternalPoolSnapshot[];
   trading: {
     volumeUsd: number;
     feesUsd: number;
@@ -243,8 +244,9 @@ async function readPoints(): Promise<AnalyticsOverview["points"]> {
 
 /** Assemble the overview. Domains that error read as null; the page copes. */
 export async function readAnalyticsOverview(chainId?: number): Promise<AnalyticsOverview> {
+  const externalChainIds = EXTERNAL_MARKET_CHAIN_IDS.filter((id) => chainId === undefined || chainId === id);
   const [trading, growth, luca, points, externalMarkets] = await Promise.all([
-    chainId === undefined ? Promise.all([readTrading(5042), readTrading(4663)]).then((parts) => {
+    chainId === undefined ? Promise.all(ANALYTICS_MAINNET_CHAIN_IDS.map((id) => readTrading(id))).then((parts) => {
       const known = parts.filter((part): part is NonNullable<AnalyticsOverview["trading"]> => part !== null);
       if (!known.length) return null;
       const count = (key: "swapCount" | "cctpBridgeCount" | "routeBridgeCount") => known.every((part) => part[key] === null) ? null : known.reduce((total, part) => total + (part[key] ?? 0), 0);
@@ -253,7 +255,9 @@ export async function readAnalyticsOverview(chainId?: number): Promise<Analytics
     readGrowth(),
     readLuca(),
     readPoints(),
-    chainId === 5042 ? Promise.resolve(null) : readExternalPools(4663),
+    Promise.all(externalChainIds.map((id) => readExternalPools(id))).then((snapshots) =>
+      snapshots.filter((snapshot): snapshot is ExternalPoolSnapshot => snapshot !== null),
+    ),
   ]);
   return { trading, growth, luca, points, externalMarkets };
 }

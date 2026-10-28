@@ -74,11 +74,14 @@ async function main() {
      published, the lending book is stated as live on Arc and only kfUSD, staking
      and limit orders stay testnet-only. */
   if (ARC_LENDING) {
-    check("Arc lending live: the book is on Arc, the rest testnet-only", /peer-to-peer lending book/.test(arc) && /kfUSD\/kafUSD, KLD staking, and limit orders run only on the testnets/.test(arc));
+    check("Arc lending live: the book is on Arc", /peer-to-peer lending book/.test(arc) && /not deployed on Arc mainnet/.test(arc));
   } else {
-    check("lending/staking/limit-orders stated as testnet-only", /lending book, kfUSD\/kafUSD, KLD staking, and limit orders run only on the testnets/.test(arc));
+    check("Arc lending availability follows registration", /Arc lending is not available/.test(arc));
   }
-  check("concentrated-liquidity pools stated as available on Arc", /concentrated-liquidity pools/.test(arc) && arc.includes("available today"));
+  check("concentrated-liquidity pools stated as available on Arc", /Arc offers token swaps, concentrated-liquidity pools/.test(arc));
+  const bsc = normalizerAddendum({ chainId: 56, mainnetOnly: true });
+  check("BSC product facts include registered loan assets", bsc.includes("USD1") && bsc.includes("FDUSD") && bsc.includes("BTCB"));
+  check("BSC product facts name BNB gas and unseeded pools", bsc.includes("BNB pays gas") && bsc.includes("not seeded BSC V3 pools"));
   check("carries the escalate rule with the sentinel", arc.includes(`reply with exactly the word ${ESCALATE}`));
   check("forbids sending the user to the docs", arc.includes("never tell them to read the docs"));
   check("forbids read tools in this mode", arc.includes("Never call a read tool"));

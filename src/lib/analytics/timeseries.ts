@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import { swapFeeBps } from "@/lib/swap/kyberswapServer";
 import { lifiFeeRate } from "@/lib/stats/platform";
+import { ANALYTICS_MAINNET_CHAIN_IDS } from "./scope";
 
 /**
  * Daily time series for the /analytics charts — volume, fees, swaps and new
@@ -184,19 +185,19 @@ export async function readTimeseries(days = 30, chainId?: number): Promise<Daily
   const ledger = await supabaseAdmin
     .from("swap_volume")
     .select("occurred_at, usd_value, fee_paid")
-    .in("chain_id", chainId === undefined ? [5042, 4663] : [chainId])
+    .in("chain_id", chainId === undefined ? [...ANALYTICS_MAINNET_CHAIN_IDS] : [chainId])
     .limit(READ_CAP);
 
   const cctp = await supabaseAdmin
     .from("cctp_transfers")
     .select("created_at, amount")
     .neq("status", "failed")
-    .in("source_chain_id", chainId === undefined ? [5042, 4663] : [chainId])
+    .in("source_chain_id", chainId === undefined ? [...ANALYTICS_MAINNET_CHAIN_IDS] : [chainId])
     .limit(READ_CAP);
   const route = await supabaseAdmin
     .from("route_bridges")
     .select("created_at, usd_value")
-    .in("source_chain_id", chainId === undefined ? [5042, 4663] : [chainId])
+    .in("source_chain_id", chainId === undefined ? [...ANALYTICS_MAINNET_CHAIN_IDS] : [chainId])
     .limit(READ_CAP);
 
   if (ledger.error || cctp.error || route.error) return null;

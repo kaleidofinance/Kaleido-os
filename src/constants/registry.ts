@@ -477,6 +477,22 @@ export const TOKENS: Record<number, TokenEntry[]> = {
     },
     {
       chainId: 56,
+      address: "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d",
+      symbol: "USD1",
+      name: "World Liberty Financial USD",
+      decimals: 18,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 56,
+      address: "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409",
+      symbol: "FDUSD",
+      name: "First Digital USD",
+      decimals: 18,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 56,
       address: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
       symbol: "BTCB",
       name: "Binance-Peg BTCB",

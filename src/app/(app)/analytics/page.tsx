@@ -8,6 +8,7 @@ import { StatStrip, Stat } from "@/components/v2/StatStrip";
 import { usd, qty, pct } from "@/lib/format/figures";
 import type { AnalyticsOverview } from "@/lib/analytics/overview";
 import type { DailyPoint } from "@/lib/analytics/timeseries";
+import { ANALYTICS_MAINNET_CHAIN_IDS, EXTERNAL_MARKET_CHAIN_IDS } from "@/lib/analytics/scope";
 import { TimeChart } from "./_components/TimeChart";
 import s from "./analytics.module.css";
 
@@ -20,8 +21,8 @@ import s from "./analytics.module.css";
  */
 export default function AnalyticsPage() {
   const [network, setNetwork] = useState("all");
-  useEffect(() => { const asked = new URLSearchParams(window.location.search).get("chain"); if (asked === "5042" || asked === "4663") setNetwork(asked); }, []);
-  const lending = useMarketStats(network === "all" ? [5042, 4663] : [Number(network)]);
+  useEffect(() => { const asked = new URLSearchParams(window.location.search).get("chain"); if (asked === "5042" || asked === "4663" || asked === "56") setNetwork(asked); }, []);
+  const lending = useMarketStats(network === "all" ? [...ANALYTICS_MAINNET_CHAIN_IDS] : [Number(network)]);
   const { data } = useQuery<AnalyticsOverview>({
     queryKey: ["analytics-overview", network],
     queryFn: async () => {
@@ -50,7 +51,8 @@ export default function AnalyticsPage() {
   const g = data?.growth;
   const l = data?.luca;
   const p = data?.points;
-  const external = data?.externalMarkets;
+  const externalMarkets = data?.externalMarkets ?? [];
+  const externalChains = EXTERNAL_MARKET_CHAIN_IDS.filter((chainId) => network === "all" || Number(network) === chainId);
 
   const bridges =
     t && (t.cctpBridgeCount != null || t.routeBridgeCount != null)
@@ -70,7 +72,7 @@ export default function AnalyticsPage() {
         <div className={s.head}>
           <h1 className={s.h1}>Analytics</h1>
           <div className={s.networks} role="group" aria-label="Filter analytics by network">
-            {[["all", "All mainnets"], ["5042", "Arc"], ["4663", "Robinhood"]].map(([value, label]) => (
+            {[["all", "All mainnets"], ["5042", "Arc"], ["4663", "Robinhood"], ["56", "BNB Smart Chain"]].map(([value, label]) => (
               <button key={value} type="button" aria-pressed={network === value}
                 className={`${s.network} ${network === value ? s.networkOn : ""}`}
                 onClick={() => { setNetwork(value); const url = new URL(window.location.href); url.searchParams.set("chain", value); window.history.replaceState(null, "", url); }}>
@@ -103,8 +105,10 @@ export default function AnalyticsPage() {
           ) : null}
         </section>
 
-        {network !== "5042" && <section className={s.section}>
-          <h2 className={s.h2}>Robinhood external markets</h2>
+        {externalChains.map((chainId) => {
+          const external = externalMarkets.find((snapshot) => snapshot.chainId === chainId);
+          return <section className={s.section} key={chainId}>
+          <h2 className={s.h2}>{chainId === 56 ? "BNB Smart Chain" : "Robinhood"} external markets</h2>
           <StatStrip>
             <Stat label="Pools indexed" value={qty(external?.totalPools ?? null)} />
             <Stat label="Sampled TVL" value={usd(external?.sampledTvlUsd ?? null)} />
@@ -113,10 +117,11 @@ export default function AnalyticsPage() {
           </StatStrip>
           <p className={s.empty}>
             KyberSwap-ranked external liquidity; sampled figures are separate from Kaleido-owned pools.
-            {external ? ` Tracking ${external.sampledPools} of ${external.totalPools} indexed pools. Fetched ${new Date(external.asOf).toLocaleTimeString()}.` : ""}
+            {external ? ` Tracking ${external.sampledPools} of ${external.totalPools} indexed pools. Fetched ${new Date(external.asOf).toLocaleTimeString()}.` : " External market data is temporarily unavailable."}
             {external?.stale ? " Showing the last available snapshot." : ""}
           </p>
-        </section>}
+        </section>;
+        })}
 
         <section className={s.section}>
           <h2 className={s.h2}>Lending · open book</h2>

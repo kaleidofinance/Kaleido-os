@@ -88,7 +88,7 @@ export default function PoolsPage() {
   const [view, setView] = useState<"all" | "kaleido" | "external">("all");
   const [venue, setVenue] = useState("");
   const externalQuery = useQuery<ExternalPoolSnapshot[]>({
-    queryKey: ["external-pools", 5042, 4663],
+    queryKey: ["external-pools", 5042, 4663, 56],
     queryFn: async () => {
       const response = await fetch("/api/pools/external", { cache: "no-store" });
       if (!response.ok) throw new Error("External markets unavailable");
