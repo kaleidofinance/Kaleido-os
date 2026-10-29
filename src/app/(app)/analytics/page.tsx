@@ -107,8 +107,9 @@ export default function AnalyticsPage() {
 
         {externalChains.map((chainId) => {
           const external = externalMarkets.find((snapshot) => snapshot.chainId === chainId);
+          const chainName = chainId === 5042 ? "Arc" : chainId === 56 ? "BNB Smart Chain" : "Robinhood";
           return <section className={s.section} key={chainId}>
-          <h2 className={s.h2}>{chainId === 56 ? "BNB Smart Chain" : "Robinhood"} external markets</h2>
+          <h2 className={s.h2}>{chainName} external markets</h2>
           <StatStrip>
             <Stat label="Pools indexed" value={qty(external?.totalPools ?? null)} />
             <Stat label="Sampled TVL" value={usd(external?.sampledTvlUsd ?? null)} />
