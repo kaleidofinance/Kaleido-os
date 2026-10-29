@@ -39,6 +39,7 @@ export interface BridgeRow {
   created_at?: string | null;
   amount?: string | null; // CCTP: human USDC
   usd_value?: number | string | null; // route: priced notional
+  status?: "minted" | "pending" | "failed" | null; // CCTP lifecycle
 }
 
 const DAY_MS = 86_400_000;
@@ -146,6 +147,9 @@ export function bucketDaily(input: {
     }
   }
   for (const r of input.cctp) {
+    // Only minted CCTP burns are completed bridge activity. Keep legacy
+    // fixtures without a status compatible; database reads always include it.
+    if (r.status != null && r.status !== "minted") continue;
     const d = utcDay(r.created_at);
     const b = d ? bucket.get(d) : undefined;
     if (b) b.cctpVol += num(r.amount);
@@ -190,8 +194,8 @@ export async function readTimeseries(days = 30, chainId?: number): Promise<Daily
 
   const cctp = await supabaseAdmin
     .from("cctp_transfers")
-    .select("created_at, amount")
-    .neq("status", "failed")
+    .select("created_at, amount, status")
+    .eq("status", "minted")
     .in("source_chain_id", chainId === undefined ? [...ANALYTICS_MAINNET_CHAIN_IDS] : [chainId])
     .limit(READ_CAP);
   const route = await supabaseAdmin

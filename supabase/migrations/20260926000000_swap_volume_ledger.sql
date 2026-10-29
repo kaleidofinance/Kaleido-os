@@ -101,9 +101,9 @@ select
   max(v.occurred_at)                                                        as last_occurred_at,
   coalesce(sum(v.usd_value) filter (where v.fee_paid), 0)::numeric          as fee_volume_usd
 from public.swap_volume v
-where v.chain_id = 5042;
+;
 
 comment on view public.aggregator_swap_stats is
-  'Cumulative swap volume on Arc from swap_volume — every valued swap (aggregator routes, Argus, direct pool trades), including those below the points floor. fees_usd / fee_volume_usd cover fee-paying swaps only.';
+  'Cumulative swap volume across all supported mainnets from swap_volume — every valued swap (aggregator routes, Argus, direct pool trades), including those below the points floor. fees_usd / fee_volume_usd cover fee-paying swaps only.';
 
 grant select on public.aggregator_swap_stats to anon, authenticated;

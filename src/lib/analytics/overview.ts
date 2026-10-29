@@ -5,7 +5,7 @@ import { swapFeeBps } from "@/lib/swap/kyberswapServer";
 import { lifiFeeRate } from "@/lib/stats/platform";
 import { isErrorStatus } from "@/lib/analytics/agentStatus";
 import { readExternalPools, type ExternalPoolSnapshot } from "@/lib/market/externalPools";
-import { ANALYTICS_MAINNET_CHAIN_IDS, EXTERNAL_MARKET_CHAIN_IDS } from "./scope";
+import { EXTERNAL_MARKET_CHAIN_IDS } from "./scope";
 
 /**
  * The /analytics overview — headline KPIs across every Kaleido product, for the
@@ -146,7 +146,7 @@ async function readTrading(chainId?: number): Promise<AnalyticsOverview["trading
     if (!supabaseAdmin) return null;
     const [swaps, cctp, routes, native] = await Promise.all([
       supabaseAdmin.from("swap_volume").select("tx_hash,usd_value,fee_paid").eq("chain_id", chainId).limit(READ_CAP),
-      supabaseAdmin.from("cctp_transfers").select("amount").eq("source_chain_id", chainId).neq("status", "failed").limit(READ_CAP),
+      supabaseAdmin.from("cctp_transfers").select("amount").eq("source_chain_id", chainId).eq("status", "minted").limit(READ_CAP),
       supabaseAdmin.from("route_bridges").select("usd_value").eq("source_chain_id", chainId).limit(READ_CAP),
       supabaseAdmin.from("pool_volume").select("tx_hash,usd_value").eq("chain_id", chainId).limit(READ_CAP),
     ]);
@@ -246,12 +246,10 @@ async function readPoints(): Promise<AnalyticsOverview["points"]> {
 export async function readAnalyticsOverview(chainId?: number): Promise<AnalyticsOverview> {
   const externalChainIds = EXTERNAL_MARKET_CHAIN_IDS.filter((id) => chainId === undefined || chainId === id);
   const [trading, growth, luca, points, externalMarkets] = await Promise.all([
-    chainId === undefined ? Promise.all(ANALYTICS_MAINNET_CHAIN_IDS.map((id) => readTrading(id))).then((parts) => {
-      const known = parts.filter((part): part is NonNullable<AnalyticsOverview["trading"]> => part !== null);
-      if (!known.length) return null;
-      const count = (key: "swapCount" | "cctpBridgeCount" | "routeBridgeCount") => known.every((part) => part[key] === null) ? null : known.reduce((total, part) => total + (part[key] ?? 0), 0);
-      return { volumeUsd: known.reduce((total, part) => total + part.volumeUsd, 0), feesUsd: known.reduce((total, part) => total + part.feesUsd, 0), swapCount: count("swapCount"), cctpBridgeCount: count("cctpBridgeCount"), routeBridgeCount: count("routeBridgeCount"), partial: known.length !== parts.length || known.some((part) => part.partial) };
-    }) : readTrading(chainId),
+    // The unfiltered overview must use the same canonical all-chain ledger
+    // aggregation as /api/stats/platform. Summing the legacy per-chain reader
+    // here double-counted native pool snapshots and produced different totals.
+    readTrading(chainId),
     readGrowth(),
     readLuca(),
     readPoints(),

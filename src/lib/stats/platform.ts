@@ -13,7 +13,7 @@ import { readAggregatorStats, type AggregatorStats } from "./aggregator";
  *     already IS "trades through the route and the native pools". Fees are
  *     Kaleido's own fee revenue at the configured rate (external LP fees excluded
  *     on purpose — those are the LPs' money, not the protocol's).
- *   - CCTP BRIDGES: `cctp_transfers`. Each row an on-chain-verified USDC burn,
+ *   - CCTP BRIDGES: `cctp_transfers`. Each minted row is an on-chain-verified USDC burn,
  *     amount the human USDC figure (~1:1 USD). No per-transfer fee is stored (the
  *     CCTP fast fee is small and unrecorded), so CCTP contributes volume only.
  *   - ROUTE BRIDGES (LI.FI): `route_bridges`. Each row an on-chain-verified
@@ -104,7 +104,8 @@ export async function readBridgeStats(): Promise<BridgeStats | null> {
   const { data, error } = await supabaseAdmin
     .from("cctp_transfers")
     .select("amount, status")
-    .neq("status", "failed")
+    // Pending burns are not completed activity and must not inflate totals.
+    .eq("status", "minted")
     .limit(50_000);
   if (error || !data) return null;
   return {
