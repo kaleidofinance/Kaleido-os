@@ -1,0 +1,10 @@
+{
+  "eyebrow": "Luca · local browser model",
+  "hero": "Luca, now local.",
+  "sub": "Fast answers from Kaleido's live public snapshot. Wallet actions still require your signature.",
+  "stats": ["Local answers", "Fresh pool snapshot", "Wallet-signed actions"],
+  "url": "kaleidofi.xyz/trade/agent",
+  "background": "colosseum-bright",
+  "layout": "left",
+  "effect": "wash"
+}

@@ -50,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "robinhoodIntegration" | "robinhoodIntegrationComment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "lucaModelIntegration" | "lucaModelIntegrationComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -65,7 +65,7 @@ const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 /** The $ARGUS listing post: RT + comment, first 100 wallets get +600. */
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
-const ROBINHOOD_INTEGRATION_TWEET_ID = "2113593024018358570";
+const LUCA_MODEL_INTEGRATION_TWEET_ID = "2116171710902710303";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -118,8 +118,8 @@ export default function WaitlistPage() {
     llama: boolean;
     argus: boolean;
     argus2: boolean;
-    robinhoodIntegration: boolean;
-    robinhoodIntegrationComment: boolean;
+    lucaModelIntegration: boolean;
+    lucaModelIntegrationComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -128,8 +128,8 @@ export default function WaitlistPage() {
     llama: false,
     argus: false,
     argus2: false,
-    robinhoodIntegration: false,
-    robinhoodIntegrationComment: false,
+    lucaModelIntegration: false,
+    lucaModelIntegrationComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -446,7 +446,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "robinhoodIntegration" | "robinhoodIntegrationComment") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "lucaModelIntegration" | "lucaModelIntegrationComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -454,10 +454,10 @@ export default function WaitlistPage() {
             ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
-                : task === "robinhoodIntegration"
-                  ? `https://x.com/intent/retweet?tweet_id=${ROBINHOOD_INTEGRATION_TWEET_ID}`
-                : task === "robinhoodIntegrationComment"
-                  ? `https://x.com/intent/tweet?in_reply_to=${ROBINHOOD_INTEGRATION_TWEET_ID}`
+                : task === "lucaModelIntegration"
+                  ? `https://x.com/intent/retweet?tweet_id=${LUCA_MODEL_INTEGRATION_TWEET_ID}`
+                : task === "lucaModelIntegrationComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${LUCA_MODEL_INTEGRATION_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -798,43 +798,43 @@ export default function WaitlistPage() {
 
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>Like &amp; RT Robinhood Integration</span>
+                      <span className={s.taskTitle}>Like &amp; RT Luca Model Integration</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.robinhoodIntegration?.done
-                          ? status.xTasks.robinhoodIntegration.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.robinhoodIntegration?.closed ? "Closed · all 500 spots claimed"
-                          : !status.xTasks.linked.done ? "Link X first" : "First 500 wallets · +500 $kPoint"}
+                        {status.xTasks.lucaModelIntegration?.done
+                          ? status.xTasks.lucaModelIntegration.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.lucaModelIntegration?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.robinhoodIntegration?.done ? <span className={s.taskDone}>✓</span>
-                      : status.xTasks.robinhoodIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
-                      : opened.robinhoodIntegration ? (
-                        <button className={s.taskBtn} onClick={() => postXTask("robinhoodIntegration")} disabled={xBusy === "robinhoodIntegration"}>
-                          {xBusy === "robinhoodIntegration" ? "…" : "Claim"}
+                    {status.xTasks.lucaModelIntegration?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.lucaModelIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.lucaModelIntegration ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("lucaModelIntegration")} disabled={xBusy === "lucaModelIntegration"}>
+                          {xBusy === "lucaModelIntegration" ? "…" : "Claim"}
                         </button>
                       ) : (
-                        <button className={s.taskBtn} onClick={() => openIntent("robinhoodIntegration")}>Like &amp; RT</button>
+                        <button className={s.taskBtn} onClick={() => openIntent("lucaModelIntegration")}>Like &amp; RT</button>
                       )}
                   </li>
 
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>Comment on Robinhood Integration</span>
+                      <span className={s.taskTitle}>Comment on Luca Model Integration</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.robinhoodIntegrationComment?.done
-                          ? status.xTasks.robinhoodIntegrationComment.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.robinhoodIntegrationComment?.closed ? "Closed · all 500 spots claimed"
-                          : !status.xTasks.linked.done ? "Link X first" : "First 500 wallets · +500 $kPoint"}
+                        {status.xTasks.lucaModelIntegrationComment?.done
+                          ? status.xTasks.lucaModelIntegrationComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.lucaModelIntegrationComment?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.robinhoodIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
-                      : status.xTasks.robinhoodIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
-                      : opened.robinhoodIntegrationComment ? (
-                        <button className={s.taskBtn} onClick={() => postXTask("robinhoodIntegrationComment")} disabled={xBusy === "robinhoodIntegrationComment"}>
-                          {xBusy === "robinhoodIntegrationComment" ? "…" : "Claim"}
+                    {status.xTasks.lucaModelIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.lucaModelIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.lucaModelIntegrationComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("lucaModelIntegrationComment")} disabled={xBusy === "lucaModelIntegrationComment"}>
+                          {xBusy === "lucaModelIntegrationComment" ? "…" : "Claim"}
                         </button>
                       ) : (
-                        <button className={s.taskBtn} onClick={() => openIntent("robinhoodIntegrationComment")}>Comment</button>
+                        <button className={s.taskBtn} onClick={() => openIntent("lucaModelIntegrationComment")}>Comment</button>
                       )}
                   </li>
 
