@@ -18,6 +18,7 @@ import { isDeployed, isComingSoon, hasSwaps } from "@/constants/registry";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { client } from "@/config/client";
 import { WALLETS } from "@/config/wallets";
+import { fallbackVenues } from "@/constants/venues";
 import ChainIcon from "./ChainIcon";
 import Portal from "./Portal";
 import s from "./NetworkSelector.module.css";
@@ -57,6 +58,8 @@ function ChainRow({
   comingSoon: boolean;
   onSelect: (m: ChainMeta) => void;
 }) {
+  const hasExternalVenue = fallbackVenues(meta.id).length > 0;
+
   return (
     <button
       className={`${s.row} ${comingSoon ? s.rowSoon : ""}`}
@@ -77,7 +80,7 @@ function ChainRow({
         <div className={s.rs}>
           {comingSoon
             ? "Coming soon"
-            : isDeployed(meta.id)
+            : isDeployed(meta.id) || hasExternalVenue
               ? "Trading live"
               : hasSwaps(meta.id)
                 ? "Swaps live"
