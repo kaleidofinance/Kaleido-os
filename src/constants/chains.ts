@@ -136,7 +136,6 @@ export const CHAINS: ChainMeta[] = [
     iconId: "robinhood",
     color: "#00c805",
     tradable: true,
-    comingSoon: true,
   },
   {
     id: 46630,
@@ -208,7 +207,6 @@ export const CHAINS: ChainMeta[] = [
     iconId: "binance-smart-chain",
     color: "#f0b90b",
     tradable: true,
-    comingSoon: true,
   },
   {
     id: 97,
