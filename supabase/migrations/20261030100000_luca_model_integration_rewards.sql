@@ -34,36 +34,27 @@ begin
 end;
 $$;
 
--- Keep the read-model task counts current after every scheduled refresh.
+-- Include the new counts in the wallet facts response without rebuilding the
+-- existing materialized-view schema.
 do $$
 declare definition text;
 begin
   definition := pg_get_functiondef(
-    'kaleido_rewards_private.refresh_read_models()'::regprocedure
+    'public.reward_wallet_facts(text)'::regprocedure
   );
   if position('x_luca_model_integration_at' in definition) = 0 then
     definition := replace(
       definition,
-      'refresh materialized view concurrently kaleido_rewards_private.metadata;',
-      'refresh materialized view concurrently kaleido_rewards_private.metadata;
-  update kaleido_rewards_private.metadata
-  set task_counts = task_counts || jsonb_build_object(
-    ''lucaModelIntegration'', (select count(*) from public.waitlist where x_luca_model_integration_at is not null),
-    ''lucaModelIntegrationComment'', (select count(*) from public.waitlist where x_luca_model_integration_comment_at is not null)
-  )
-  where id = 1;'
+      '''taskCounts'', m.task_counts,' ,
+      '''taskCounts'', m.task_counts || jsonb_build_object(
+      ''lucaModelIntegration'', (select count(*) from public.waitlist where x_luca_model_integration_at is not null),
+      ''lucaModelIntegrationComment'', (select count(*) from public.waitlist where x_luca_model_integration_comment_at is not null)
+    ),'
     );
     execute definition;
   end if;
 end;
 $$;
-
-update kaleido_rewards_private.metadata
-set task_counts = task_counts || jsonb_build_object(
-  'lucaModelIntegration', (select count(*) from public.waitlist where x_luca_model_integration_at is not null),
-  'lucaModelIntegrationComment', (select count(*) from public.waitlist where x_luca_model_integration_comment_at is not null)
-)
-where id = 1;
 
 notify pgrst, 'reload schema';
 commit;
