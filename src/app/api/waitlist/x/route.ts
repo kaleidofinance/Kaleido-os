@@ -21,8 +21,8 @@ import { capForColumn } from "@/lib/waitlist/xCap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment" | "robinhoodIntegration" | "robinhoodIntegrationComment";
-const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "robinhoodIntegration", "robinhoodIntegrationComment"];
+type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment" | "lucaModelIntegration" | "lucaModelIntegrationComment";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "lucaModelIntegration", "lucaModelIntegrationComment"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
   const { data: row } = await admin
     .from("waitlist")
     .select(
-      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_robinhood_integration_at, x_robinhood_integration_comment_at",
+      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_luca_model_integration_at, x_luca_model_integration_comment_at",
     )
     .eq("wallet", wallet)
     .single();
@@ -195,9 +195,9 @@ export async function POST(req: Request) {
     argus: "x_argus_at",
     argus2: "x_argus2_at",
     argusIntegration: "x_argus_integration_at",
-    robinhoodIntegration: "x_robinhood_integration_at",
     argusIntegrationComment: "x_argus_integration_comment_at",
-    robinhoodIntegrationComment: "x_robinhood_integration_comment_at",
+    lucaModelIntegration: "x_luca_model_integration_at",
+    lucaModelIntegrationComment: "x_luca_model_integration_comment_at",
   };
   const col = COL[t as Exclude<Task, "link">];
   const existing = row[col as keyof typeof row];

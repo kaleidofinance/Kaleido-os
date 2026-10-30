@@ -26,9 +26,9 @@ check("the cap is 1,000 claims", X_TASK_CAP === 1000);
 // capped.
 const capped = Object.keys(CAPPED_X_TASKS).sort();
 check(
-  "the capped tasks include historical ARGUS and new Robinhood tasks",
+  "the capped tasks include historical ARGUS and new Luca tasks",
   JSON.stringify(capped) ===
-    JSON.stringify(["absexit", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "commented", "robinhoodIntegration", "robinhoodIntegrationComment"]),
+    JSON.stringify(["absexit", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "commented", "lucaModelIntegration", "lucaModelIntegrationComment", "robinhoodIntegration", "robinhoodIntegrationComment"]),
 );
 check("argus is first-100", X_TASK_CAPS.argus === 100 && capForColumn("x_argus_at") === 100);
 check("argus batch 2 is 50", capForColumn("x_argus2_at") === 50);
@@ -37,6 +37,8 @@ check("ARGUS Integration Like & RT is first-200", capForColumn("x_argus_integrat
 check("ARGUS Integration comment is first-200", capForColumn("x_argus_integration_comment_at") === 200);
 check("Robinhood Like & RT is first-500", capForColumn("x_robinhood_integration_at") === 500);
 check("Robinhood comment is first-500", capForColumn("x_robinhood_integration_comment_at") === 500);
+check("Luca Model Like & RT is first-300", capForColumn("x_luca_model_integration_at") === 300);
+check("Luca Model comment is first-300", capForColumn("x_luca_model_integration_comment_at") === 300);
 check("comment keeps the 1,000 cap", capForColumn("x_commented_at") === 1000);
 check("an uncapped column has no cap", capForColumn("x_llama_at") === undefined);
 check("linked is not capped", !("linked" in CAPPED_X_TASKS));

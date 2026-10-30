@@ -33,6 +33,8 @@ export const CAPPED_X_TASKS = {
   robinhoodIntegration: "x_robinhood_integration_at",
   argusIntegrationComment: "x_argus_integration_comment_at",
   robinhoodIntegrationComment: "x_robinhood_integration_comment_at",
+  lucaModelIntegration: "x_luca_model_integration_at",
+  lucaModelIntegrationComment: "x_luca_model_integration_comment_at",
 } as const;
 
 /** Per-task claim cap. `commented` keeps the original X_TASK_CAP; the $ARGUS
@@ -47,6 +49,8 @@ export const X_TASK_CAPS: Record<keyof typeof CAPPED_X_TASKS, number> = {
   robinhoodIntegration: 500,
   argusIntegrationComment: 200,
   robinhoodIntegrationComment: 500,
+  lucaModelIntegration: 300,
+  lucaModelIntegrationComment: 300,
 };
 
 /** The cap for a capped task column (undefined if the column is uncapped). */
@@ -75,6 +79,8 @@ const ALL_OPEN: Record<CappedTaskKey, boolean> = {
   robinhoodIntegration: false,
   argusIntegrationComment: false,
   robinhoodIntegrationComment: false,
+  lucaModelIntegration: false,
+  lucaModelIntegrationComment: false,
 };
 
 // A task closes once and stays closed (new claims are rejected, so its count

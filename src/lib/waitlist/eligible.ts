@@ -42,6 +42,10 @@ export const X_TASK_POINTS = {
   robinhoodIntegration: 500,
   argusIntegrationComment: 500,
   robinhoodIntegrationComment: 500,
+  /** Like & RT the Luca local-browser-model post; first 300 wallets. */
+  lucaModelIntegration: 300,
+  /** Comment on the Luca local-browser-model post; first 300 wallets. */
+  lucaModelIntegrationComment: 300,
   bitget: 100,
 } as const;
 
@@ -66,6 +70,8 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   robinhoodIntegration: "x_robinhood_integration_at",
   argusIntegrationComment: "x_argus_integration_comment_at",
   robinhoodIntegrationComment: "x_robinhood_integration_comment_at",
+  lucaModelIntegration: "x_luca_model_integration_at",
+  lucaModelIntegrationComment: "x_luca_model_integration_comment_at",
   bitget: "x_bitget_at",
 };
 
