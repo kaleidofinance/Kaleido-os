@@ -32,20 +32,22 @@ export type {
  * Provider selection.
  *
  * Set AI_PROVIDER to force one, or leave it unset and the first configured key
- * wins (AgentRouter, then Claude, then OpenAI). Model is overridable per
+ * wins (Ollama, then AgentRouter, Claude, OpenAI, Gemini, Gateway). Model is overridable per
  * provider so you can pin a cheaper one without touching code. Adding a
  * provider means one adapter file and one branch here — nothing else in the app
  * changes.
  *
- *   AI_PROVIDER=agentrouter|agentrouter-openai|claude|openai   (optional)
+ *   AI_PROVIDER=agentrouter|agentrouter-openai|claude|openai|ollama   (optional)
  *   AGENTROUTER_API_KEY=...     AGENTROUTER_MODEL=claude-opus-4-8
  *                               AGENTROUTER_OPENAI_MODEL=gpt-5.6-sol
  *                               AGENTROUTER_USER_AGENT=...   (required, see .env)
  *   ANTHROPIC_API_KEY=...       ANTHROPIC_MODEL=claude-opus-5
  *   OPENAI_API_KEY=...          OPENAI_MODEL=gpt-5
  *                               OPENAI_BASE_URL=...  (any compatible gateway)
+ *   OLLAMA_API_KEY=...          OLLAMA_MODEL=gemma4:31b
  *
- * AgentRouter is checked first because configuring it is an explicit act: the
+ * Ollama is checked first when configured so it is the default cloud model;
+ * the other providers remain available as explicit choices and fallbacks. The
  * two direct providers are the defaults you get from having a vendor account
  * lying around, so a router key present in the environment is the stronger
  * signal about intent. The bare `agentrouter` fall-through picks the Messages
@@ -153,8 +155,20 @@ export const isGatewayModel = (id: string): id is GatewayModel =>
 
 export const GATEWAY_MODEL_IDS = Object.keys(GATEWAY_MODELS) as GatewayModel[];
 
+/** Ollama Cloud models, reached through its OpenAI-compatible API. */
+export const OLLAMA_MODELS = {
+  "gemma4:31b": { label: "Gemma 4 31B · Ollama" },
+} as const satisfies Record<string, { label: string }>;
+
+export type OllamaModel = keyof typeof OLLAMA_MODELS;
+
+export const isOllamaModel = (id: string): id is OllamaModel =>
+  Object.hasOwn(OLLAMA_MODELS, id);
+
+export const OLLAMA_MODEL_IDS = Object.keys(OLLAMA_MODELS) as OllamaModel[];
+
 export const isSelectableModel = (id: string): boolean =>
-  isRouterModel(id) || isGeminiModel(id) || isGatewayModel(id);
+  isRouterModel(id) || isGeminiModel(id) || isGatewayModel(id) || isOllamaModel(id);
 
 /* Provider builders, one per configured backend. Module-level so both
    getProvider (which picks one) and getProviderChain (which orders them for
@@ -244,6 +258,15 @@ const buildGateway = (id?: string): ChatProvider | null =>
       )
     : null;
 
+const buildOllama = (id?: string): ChatProvider | null =>
+  process.env.OLLAMA_API_KEY
+    ? new OpenAIProvider(
+        process.env.OLLAMA_API_KEY,
+        id || process.env.OLLAMA_MODEL || "gemma4:31b",
+        { baseUrl: "https://ollama.com/v1", id: "ollama" },
+      )
+    : null;
+
 export function getProvider(model?: string): ChatProvider | null {
   const forced = process.env.AI_PROVIDER?.toLowerCase();
   const routerKey = process.env.AGENTROUTER_API_KEY;
@@ -263,6 +286,9 @@ export function getProvider(model?: string): ChatProvider | null {
   if (process.env.AI_GATEWAY_API_KEY && model && isGatewayModel(model)) {
     return buildGateway(model);
   }
+  if (process.env.OLLAMA_API_KEY && model && isOllamaModel(model)) {
+    return buildOllama(model);
+  }
 
   if (forced === "agentrouter") return buildAgentRouter();
   if (forced === "agentrouter-openai") return buildAgentRouterOpenAi();
@@ -270,10 +296,17 @@ export function getProvider(model?: string): ChatProvider | null {
   if (forced === "openai") return buildOpenAi();
   if (forced === "gemini") return buildGemini();
   if (forced === "gateway" || forced === "ai-gateway") return buildGateway();
+  if (forced === "ollama") return buildOllama();
 
   /* Precedence when nothing is forced: first configured key wins. */
   if (routerKey) return buildAgentRouter();
-  return buildClaude() ?? buildOpenAi() ?? buildGemini() ?? buildGateway();
+  return (
+    buildOllama() ??
+    buildClaude() ??
+    buildOpenAi() ??
+    buildGemini() ??
+    buildGateway()
+  );
 }
 
 /**
@@ -296,6 +329,7 @@ export function getProviderChain(model?: string): ChatProvider[] {
     buildAgentRouter,
     buildClaude,
     buildOpenAi,
+    buildOllama,
   ]) {
     const p = build();
     if (p && !seen.has(p.id)) {

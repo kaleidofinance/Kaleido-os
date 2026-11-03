@@ -9,6 +9,8 @@ import {
   GEMINI_MODEL_IDS,
   GATEWAY_MODELS,
   GATEWAY_MODEL_IDS,
+  OLLAMA_MODELS,
+  OLLAMA_MODEL_IDS,
 } from "@/lib/ai";
 import {
   runAgent,
@@ -93,6 +95,9 @@ export async function GET(request: NextRequest) {
     ...(process.env.AI_GATEWAY_API_KEY
       ? GATEWAY_MODEL_IDS.map((id) => ({ id, label: GATEWAY_MODELS[id].label }))
       : []),
+    ...(process.env.OLLAMA_API_KEY
+      ? OLLAMA_MODEL_IDS.map((id) => ({ id, label: OLLAMA_MODELS[id].label }))
+      : []),
   ];
   return NextResponse.json({
     provider: Boolean(getProvider()),
@@ -103,6 +108,9 @@ export async function GET(request: NextRequest) {
         ? (process.env.AI_GATEWAY_MODEL ?? "openai/gpt-5")
         : process.env.AI_PROVIDER === "gemini"
           ? (process.env.GEMINI_MODEL ?? "gemini-flash-latest")
+          : process.env.AI_PROVIDER === "ollama" ||
+              (!process.env.AI_PROVIDER && process.env.OLLAMA_API_KEY)
+            ? (process.env.OLLAMA_MODEL ?? "gemma4:31b")
           : (process.env.AGENTROUTER_MODEL ?? null),
     ...usage,
   });
