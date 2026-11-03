@@ -11,8 +11,8 @@ else degrades rather than stopping.
 
 | Env var | What it does | Unset |
 | --- | --- | --- |
-| `AGENTROUTER_API_KEY` / `GEMINI_API_KEY` / `AI_GATEWAY_API_KEY` | The model backends, in `getProviderChain` order. At least one is required to reason. | No provider → open questions fail; direct commands still work. |
-| `AI_PROVIDER` | Forces the default backend (e.g. `gateway`). | First configured key wins. |
+| `AGENTROUTER_API_KEY` / `GEMINI_API_KEY` / `AI_GATEWAY_API_KEY` / `OLLAMA_API_KEY` | The model backends, in `getProviderChain` order. At least one is required to reason. | No provider → open questions fail; direct commands still work. |
+| `AI_PROVIDER` | Forces the default backend (e.g. `gateway` or `ollama`). | First configured key wins. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Lets the quota counter and the turn log write. | Quota **fails open** (unbounded spend) and no turns are logged — both only visible in `metered:false` below. |
 | `CRON_SECRET` | Guards `/api/health/agent` and the keeper/health routes. | The health endpoint refuses (503). |
 
