@@ -695,15 +695,17 @@ export default function AgentPage() {
       if (held.isLoading) {
         note("Some reads didn't come back — answering from the rest");
       }
-      if (result.command.chainId !== undefined) {
-        const meta = getChainMeta(result.command.chainId);
-        const chainName = result.command.chainName ?? meta?.shortName ?? "that chain";
+      const scopedChainId = "chainId" in result.command ? result.command.chainId : undefined;
+      const scopedChainName = "chainName" in result.command ? result.command.chainName : undefined;
+      if (scopedChainId !== undefined) {
+        const meta = getChainMeta(scopedChainId);
+        const chainName = scopedChainName ?? meta?.shortName ?? "that chain";
         if (meta?.network === "testnet" && !showTestnets) {
           say(`Turn on testnet networks to check wallet balances on ${chainName}.`, { via: "local" });
           return true;
         }
         const rows = held.walletHoldings
-          .filter((holding) => holding.chainId === result.command.chainId)
+          .filter((holding) => holding.chainId === scopedChainId)
           .map((holding) => ({
             symbol: holding.symbol,
             amount: holding.amount,
