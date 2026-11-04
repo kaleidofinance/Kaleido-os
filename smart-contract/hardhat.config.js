@@ -236,6 +236,13 @@ module.exports = {
       accounts: accounts(),
       timeout: 120000,
     },
+    // --- Kinetiq Elysium (HyperEVM-settled Orbit L2 testnet) ---
+    elysiumTestnet: {
+      url: rpc("ELYSIUM_TESTNET_RPC", "https://testnet-rpc.elysium.kinetiq.xyz"),
+      chainId: 99801,
+      accounts: accounts(),
+      timeout: 120000,
+    },
     /* A LOCAL anvil fork of Arc mainnet, for rehearsing the mainnet runbook:
      *   anvil --fork-url https://rpc.mainnet.arc.io --chain-id 5042
      * Hardwired to 127.0.0.1 and signed by anvil's own PUBLIC test account #0

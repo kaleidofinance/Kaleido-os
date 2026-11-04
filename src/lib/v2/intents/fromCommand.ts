@@ -172,6 +172,9 @@ export interface ReceiveCommand {
  */
 export interface PortfolioCommand {
   kind: "portfolio";
+  /** Explicit chain scope for wallet-balance questions. Absent means whole wallet. */
+  chainId?: number;
+  chainName?: string;
 }
 
 /**
@@ -1398,6 +1401,8 @@ export interface ParseContext {
   sourceTokens?: (symbol: string) => { token: IToken; chainName: string }[];
   /** Whether a phrase names a chain — what turns a "swap to Sepolia" into the bridge it is. */
   isChain?: (phrase: string) => boolean;
+  /** Resolve an explicitly named chain for a read-only balance question. */
+  balanceChain?: (text: string) => { chainId: number; chainName: string } | undefined;
   /**
    * Resolve a bare token ADDRESS the registry doesn't carry into a provisional
    * `IToken`, or null. Injected (and gated) by the caller — the pilot wires it
@@ -2655,7 +2660,16 @@ function parseCommandOnce(
         PORTFOLIO_POSSESSIVE.test(lower) ||
         PORTFOLIO_HOWMUCH.test(lower))
     ) {
-      return { status: "ok", command: { kind: "portfolio" } };
+      const scope = ctx.balanceChain?.(text);
+      /* A chain-qualified request must never fall through to the all-wallet
+         portfolio answer. If the chain cannot be resolved, let the agent ask
+         or explain the limitation instead of silently widening the request. */
+      if (!scope && /\b(?:on|in|across)\b/i.test(text))
+        return { status: "unknown" };
+      return {
+        status: "ok",
+        command: { kind: "portfolio", ...(scope ?? {}) },
+      };
     }
     return { status: "unknown" };
   }

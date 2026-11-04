@@ -92,6 +92,7 @@ import {
 } from "@/lib/ai/docsSearch";
 import { visibleProse } from "@/lib/ai/actionsBlock";
 import { createBrowserLocalIntentModel } from "@/lib/ai/browserLocalIntent";
+import { poolQuestion, poolSnapshotAnswer, personalPortfolioQuestion } from "@/lib/ai/localMarketAnswer";
 import {
   canUseBrowserLocalModel,
   type LocalIntentClassification,
@@ -693,6 +694,35 @@ export default function AgentPage() {
       if (signal.aborted) return true;
       if (held.isLoading) {
         note("Some reads didn't come back — answering from the rest");
+      }
+      if (result.command.chainId !== undefined) {
+        const meta = getChainMeta(result.command.chainId);
+        const chainName = result.command.chainName ?? meta?.shortName ?? "that chain";
+        if (meta?.network === "testnet" && !showTestnets) {
+          say(`Turn on testnet networks to check wallet balances on ${chainName}.`, { via: "local" });
+          return true;
+        }
+        const rows = held.walletHoldings
+          .filter((holding) => holding.chainId === result.command.chainId)
+          .map((holding) => ({
+            symbol: holding.symbol,
+            amount: holding.amount,
+            note: chainName,
+          }));
+        const unread = (held.walletUnread ?? []).filter((item) =>
+          item.toLowerCase().endsWith(` on ${chainName.toLowerCase()}`),
+        );
+        const cards = rows.length
+          ? localCards([{ kind: "balance", title: `Wallet balances · ${chainName}`, rows }])
+          : [];
+        const walletLoading = held.walletLoading ?? held.isLoading;
+        const answer = rows.length
+          ? `Your registered wallet balances on ${chainName}:${unread.length || walletLoading ? " Some registered assets could not be checked, so this may be incomplete." : ""}`
+          : unread.length || walletLoading
+            ? `I couldn't confirm all registered wallet balances on ${chainName}. Some reads did not finish, so I won't report an empty balance.`
+            : `I found no nonzero balances for registered tokens in your wallet on ${chainName}. Tokens outside Kaleido's registry may not appear.`;
+        say(answer, { via: "local", ...(cards.length ? { cards } : {}) });
+        return true;
       }
       const answer = portfolioAnswer(held, { connected: Boolean(address) });
       const cards = localCards(answer.cards);
@@ -1329,6 +1359,22 @@ export default function AgentPage() {
         return held.length > 0 ? held : all;
       },
       isChain: (phrase) => resolveChain(phrase) !== undefined,
+      balanceChain: (text) => {
+        if (!/\bbalances?\b/i.test(text)) return undefined;
+        const words = text.toLowerCase().match(/[a-z0-9-]+/g) ?? [];
+        let match: { chainId: number; chainName: string; length: number } | undefined;
+        for (let i = 0; i < words.length; i++) {
+          if (!["on", "in", "across"].includes(words[i])) continue;
+          const start = words[i + 1] === "the" ? i + 2 : i + 1;
+          for (let length = 1; length <= 4 && start + length <= words.length; length++) {
+            const meta = resolveChain(words.slice(start, start + length).join(" "));
+            if (meta && (!match || length > match.length)) {
+              match = { chainId: meta.id, chainName: meta.shortName, length };
+            }
+          }
+        }
+        return match ? { chainId: match.chainId, chainName: match.chainName } : undefined;
+      },
       /* On Arc, let a bare token address be a swap side so an Argus launch named
          by address reaches the build branch. Chain-gated here; the real arming
          switch is the SERVER's ARGUS_ENABLED (the plan route refuses when off),
@@ -1570,30 +1616,39 @@ export default function AgentPage() {
       const question = isQuestionShaped(content);
       if (question && answerFromFaq(content)) return;
 
-      /* Live read-only market questions can be answered locally from the same
-       * public snapshot the pool screen uses. This avoids spending a reasoning
-       * request for questions such as "how many pools do we have?" while still
-       * grounding the answer in fresh data instead of asking the small browser
-       * model to invent market facts. */
-      if (question && /\b(how many|number of|list|which|what)\b/i.test(content) && /\bpools?\b/i.test(content)) {
-        try {
-          const response = await fetch("/api/pools", {
-            signal: abort.signal,
-            cache: "no-store",
-          });
-          if (!response.ok) throw new Error("Pool snapshot unavailable");
-          const payload = (await response.json()) as { pools?: { chainId?: number }[]; stale?: boolean };
-          if (!Array.isArray(payload.pools)) throw new Error("Pool snapshot unavailable");
-          const activeChainId = chainId ?? 5042;
-          const count = payload.pools.filter((pool) => pool.chainId === activeChainId).length;
-          const chainName = getChainMeta(activeChainId)?.shortName ?? `chain ${activeChainId}`;
-          const staleNote = payload.stale ? " This is the latest cached snapshot." : "";
-          note("Read the live pool snapshot locally");
-          log("local-pools");
-          say(`There are ${count} live Kaleido pools on ${chainName}.${staleNote}`, { via: "local" });
-          return;
-        } catch {
-          if (abort.signal.aborted) return;
+      // Read-only wallet questions use the same partial-read rules as the
+      // portfolio panel and never spend a cloud reasoning request.
+      if (personalPortfolioQuestion(content)) {
+        log("local-portfolio");
+        await planLocally({ status: "ok", command: { kind: "portfolio" } }, abort.signal);
+        return;
+      }
+
+      const marketQuestion = poolQuestion(content);
+      if (marketQuestion) {
+        const onChain = chainId ?? ARGUS_CHAIN_ID;
+        const meta = getChainMeta(onChain);
+        if (meta?.network === "mainnet") {
+          try {
+            const response = await fetch("/api/pools", {
+              signal: abort.signal,
+              cache: "no-store",
+            });
+            if (!response.ok) throw new Error("Pool snapshot unavailable");
+            const payload: unknown = await response.json();
+            if (abort.signal.aborted) return;
+            note("Read the pool market snapshot");
+            log(`local-pools:${marketQuestion}`);
+            say(poolSnapshotAnswer(marketQuestion, payload, {
+              chainId: onChain,
+              chainName: meta.shortName,
+            }), { via: "local", link: { label: "View pools", href: "/pool" } });
+            return;
+          } catch {
+            if (abort.signal.aborted) return;
+            say("I couldn't read the pool snapshot right now. Try again shortly.", { via: "local" });
+            return;
+          }
         }
       }
 
@@ -2912,8 +2967,8 @@ export default function AgentPage() {
                   send(input);
                 }
               }}
-              placeholder="Move my idle USDC to the best yield"
-              aria-label="Tell Luca what you want to do"
+              placeholder="Ask Luca about your wallet, a market, or what you want to do…"
+              aria-label="Message Luca"
             />
             {/* Send, and stop while a turn is in flight — the same button,
                 deliberately, because the cancel has to be where the eye already
@@ -2924,16 +2979,19 @@ export default function AgentPage() {
                 "Stop" on hover. A cancel you have to point at to discover is one
                 most people never find, and the transcript above is already
                 reporting the wait. */}
-            <button
-              type="button"
-              className={s.send}
-              disabled={!busy && !input.trim()}
-              onClick={() => (busy ? stop() : send(input))}
-              title={busy ? "Stop this request" : "Send"}
-              aria-label={busy ? "Stop this request" : "Send"}
-            >
-              <span aria-hidden="true">{busy ? "■" : "↑"}</span>
-            </button>
+            <div className={s.composerActions}>
+              <span className={s.composerHint}>Enter to send · Shift+Enter for a new line</span>
+              <button
+                type="button"
+                className={s.send}
+                disabled={!busy && !input.trim()}
+                onClick={() => (busy ? stop() : send(input))}
+                title={busy ? "Stop this request" : "Send"}
+                aria-label={busy ? "Stop this request" : "Send"}
+              >
+                <span aria-hidden="true">{busy ? "■" : "↑"}</span>
+              </button>
+            </div>
           </div>
 
           {/* The signature caveat belongs to whichever surface is asking for the

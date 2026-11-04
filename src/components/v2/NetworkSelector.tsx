@@ -47,6 +47,21 @@ interface NetworkSelectorProps {
   onClose: () => void;
 }
 
+/* Product order: show the live launch chains first, with BNB Smart Chain
+   ahead of Base in both the mainnet and testnet lists. Keep this separate from
+   the canonical registry order so the registry can remain grouped by chain
+   family without changing wallet/data-reader semantics. */
+const NETWORK_DISPLAY_ORDER: Record<number, number> = {
+  5042: 10,
+  5042002: 10,
+  4663: 20,
+  46630: 20,
+  56: 30,
+  97: 30,
+  8453: 40,
+  84532: 40,
+};
+
 function ChainRow({
   meta,
   active,
@@ -124,12 +139,15 @@ export default function NetworkSelector({
        so nothing a wallet holds there disappears, it just is not a place to
        switch TO. Deploying or marking a chain tradable reveals it here on its own. */
     const shown = (c: ChainMeta) => Boolean(c.tradable) || isDeployed(c.id);
+    const byProductOrder = (a: ChainMeta, b: ChainMeta) =>
+      (NETWORK_DISPLAY_ORDER[a.id] ?? 1000) -
+        (NETWORK_DISPLAY_ORDER[b.id] ?? 1000);
     const mainnets = CHAINS.filter(
       (c) => c.network === "mainnet" && shown(c),
-    );
+    ).sort(byProductOrder);
     const testnets = CHAINS.filter(
       (c) => c.network === "testnet" && shown(c),
-    );
+    ).sort(byProductOrder);
     return { mainnets, testnets };
   }, []);
 
