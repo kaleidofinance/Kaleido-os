@@ -1,0 +1,366 @@
+{
+  "checkedAt": "2026-10-26T12:44:02.530Z",
+  "wallet": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "bsc": {
+    "https://bsc-rpc.publicnode.com": {
+      "ok": true,
+      "value": {
+        "url": "https://bsc-rpc.publicnode.com",
+        "chainId": 56,
+        "block": "0x7be1c53",
+        "blockTime": "0x6adf4b15"
+      }
+    },
+    "balance": {
+      "ok": true,
+      "value": "0.008989968228597829"
+    },
+    "gasPriceWei": {
+      "ok": true,
+      "value": "0x2faf080"
+    },
+    "tokens": {
+      "WBNB": {
+        "ok": true,
+        "value": {
+          "address": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+          "codeBytes": 3124,
+          "symbol": "WBNB",
+          "decimals": 18
+        }
+      },
+      "USDC": {
+        "ok": true,
+        "value": {
+          "address": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+          "codeBytes": 1596,
+          "symbol": "USDC",
+          "decimals": 18
+        }
+      },
+      "USDT": {
+        "ok": true,
+        "value": {
+          "address": "0x55d398326f99059fF775485246999027B3197955",
+          "codeBytes": 4413,
+          "symbol": "USDT",
+          "decimals": 18
+        }
+      },
+      "BTCB": {
+        "ok": true,
+        "value": {
+          "address": "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
+          "codeBytes": 4413,
+          "symbol": "BTCB",
+          "decimals": 18
+        }
+      }
+    },
+    "feeds": {
+      "BNB": {
+        "ok": true,
+        "value": {
+          "address": "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE",
+          "description": "BNB / USD",
+          "decimals": 8,
+          "round": "55340232221132195980",
+          "answer": "74021544000",
+          "updatedAt": 1793018644,
+          "answeredInRound": "55340232221132195980",
+          "observedAgeSeconds": 8
+        }
+      },
+      "BTC": {
+        "ok": true,
+        "value": {
+          "address": "0x264990fbd0A4796A3E3d8E37C4d5F87a3aCa5Ebf",
+          "description": "BTC / USD",
+          "decimals": 8,
+          "round": "55340232221129766170",
+          "answer": "8018770052281",
+          "updatedAt": 1793018595,
+          "answeredInRound": "55340232221129766170",
+          "observedAgeSeconds": 58
+        }
+      },
+      "USDC": {
+        "ok": true,
+        "value": {
+          "address": "0x51597f405303C4377E36123cBc172b13269EA163",
+          "description": "USDC / USD",
+          "decimals": 8,
+          "round": "73786976294838212845",
+          "answer": "99976921",
+          "updatedAt": 1793017989,
+          "answeredInRound": "73786976294838212845",
+          "observedAgeSeconds": 665
+        }
+      },
+      "USDT": {
+        "ok": true,
+        "value": {
+          "address": "0xB97Ad0E74fa7d920791E90258A6E2085088b4320",
+          "description": "USDT / USD",
+          "decimals": 8,
+          "round": "73786976294838212846",
+          "answer": "99844200",
+          "updatedAt": 1793018216,
+          "answeredInRound": "73786976294838212846",
+          "observedAgeSeconds": 438
+        }
+      }
+    },
+    "kyberRouter": {
+      "ok": true,
+      "value": {
+        "address": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+        "codeBytes": 18652,
+        "codeHash": "0xe3ebca8e2e93d25ffe58633779fbd60452793976b812e36612a11ffddd13a4b3"
+      }
+    },
+    "kyberQuote": {
+      "ok": true,
+      "value": {
+        "inputBNB": "0.01",
+        "amountOut": "7414067132307523128",
+        "amountInUsd": "7.410451006281075",
+        "amountOutUsd": "7.408005873842894",
+        "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+        "venues": [
+          "pancake-infinity-cl"
+        ],
+        "executionSimulated": false
+      }
+    }
+  },
+  "arc": {
+    "https://rpc.mainnet.arc.io": {
+      "ok": true,
+      "value": {
+        "url": "https://rpc.mainnet.arc.io",
+        "chainId": 5042,
+        "block": "0x1aabd41",
+        "blockTime": "0x6adf4b24"
+      }
+    },
+    "owner": {
+      "ok": true,
+      "value": "0x4c72B4799d374D2Ad9a8C9716766f8325808B94F"
+    },
+    "settings": {
+      "getPythPriceOracle": {
+        "ok": true,
+        "value": "0x5027ACF31cEf802d6A89D170691Fa256e079D39B"
+      },
+      "getBPS": {
+        "ok": true,
+        "value": "500"
+      },
+      "getLiquidityBPS": {
+        "ok": true,
+        "value": "640"
+      },
+      "getPriceMaxAge": {
+        "ok": true,
+        "value": "300"
+      },
+      "getPriceMaxConfBps": {
+        "ok": true,
+        "value": "100"
+      },
+      "getAllCollateralToken": {
+        "ok": true,
+        "value": [
+          "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+          "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0"
+        ]
+      },
+      "getLoanableAssets": {
+        "ok": true,
+        "value": [
+          "0x0000000000000000000000000000000000000001"
+        ]
+      }
+    },
+    "facets": {
+      "ok": true,
+      "value": [
+        {
+          "address": "0xE8F836c0d48a07c970c66BeD358a7C3c4C7a7235",
+          "selectors": [
+            "0x1f931c1c"
+          ]
+        },
+        {
+          "address": "0x7EEB33f9E9FBd09653F893bA1f113BEcF8F7116b",
+          "selectors": [
+            "0xcdffacc6",
+            "0x52ef6b2c",
+            "0xadfca15e",
+            "0x7a0ed627",
+            "0x01ffc9a7"
+          ]
+        },
+        {
+          "address": "0x59E73C9490E43df879495dCFb1dA28c8eA03d797",
+          "selectors": [
+            "0x79ba5097",
+            "0x8da5cb5b",
+            "0xe30c3978",
+            "0xf2fde38b"
+          ]
+        },
+        {
+          "address": "0xfc055263Dd57A665A612fD7D24cf94Ee390De5bf",
+          "selectors": [
+            "0x5d3d093b",
+            "0xeb703464",
+            "0x88bd6585",
+            "0x8abccd73",
+            "0xe8bec08f",
+            "0x27d978c9",
+            "0xf5dee316",
+            "0x9e5f65b5",
+            "0xe4fdb6f1",
+            "0x5068a88a",
+            "0xa5d5db0c",
+            "0x066f3c65",
+            "0x7d1a4450",
+            "0xb202dc20",
+            "0xba22c231",
+            "0xe6be9027",
+            "0xa8e35fcd",
+            "0x5e66ee0f",
+            "0x719a2d39",
+            "0x10b27025",
+            "0xfe6bcd7c",
+            "0xcdab39a2",
+            "0xeb510caf",
+            "0x88071159",
+            "0xbfb8c262",
+            "0x4aee821b",
+            "0x86f5483f",
+            "0x9e9667d5",
+            "0x30c27304",
+            "0x5a74b7af",
+            "0xa8682c76",
+            "0x519247ac",
+            "0xf84268d6",
+            "0xd9e5a3ee",
+            "0x077001b9",
+            "0xfd9ca008",
+            "0xe843e3ad",
+            "0xafbbd8fb",
+            "0xaccea8a5",
+            "0xa1920c9e",
+            "0xf6738de3",
+            "0x1f99b09d",
+            "0x599219dd",
+            "0x8c01a928",
+            "0x1143e606",
+            "0xf2cc0ba5",
+            "0x7a1b61f9",
+            "0x527ed126",
+            "0x1e2c1a4a",
+            "0x5eb5cf16",
+            "0xf9f22ec2",
+            "0xa5772d93",
+            "0xc147a892",
+            "0x7ada5403",
+            "0xfbf7151b",
+            "0x64ca03f8",
+            "0x5362d091",
+            "0xa591f97f",
+            "0xd0626cec",
+            "0xd3fa94f8",
+            "0xe944fe1c",
+            "0x19b9dfb5",
+            "0x622bd118",
+            "0x41273657",
+            "0x42e292c1",
+            "0x87afb80a"
+          ]
+        },
+        {
+          "address": "0x22B0AD978a7F8eE943D5AE85621E312Ce1835a38",
+          "selectors": [
+            "0x3150203e",
+            "0xda0b8a2d",
+            "0xfedaaf6c",
+            "0xe18ef3dc",
+            "0xd12796ef",
+            "0x2e3ba558"
+          ]
+        },
+        {
+          "address": "0x1D53F2601f32558C6737e7C8D8e4f67391154CA9",
+          "selectors": [
+            "0x8456cb59",
+            "0x5c975abb",
+            "0x56dd626c",
+            "0x3f4ba83a"
+          ]
+        }
+      ]
+    },
+    "contracts": {
+      "diamond": {
+        "ok": true,
+        "value": {
+          "address": "0xE4e7f16DB22e6bb2E505fbC504d7B2B4B995A6E3",
+          "codeBytes": 244,
+          "codeHash": "0x8f48ba94aa87e03a4f7d4bbba3da2f4b1ae4cf79a79cc6da472cc8a61130982d"
+        }
+      },
+      "orders": {
+        "ok": true,
+        "value": {
+          "address": "0x83CA08cd25a663f0a66bda93E5f3c67D382C9856",
+          "codeBytes": 11651,
+          "codeHash": "0xb62e615748ed601adfa2ae330558e90f132c562b368790bb8bc12232b8733939"
+        }
+      },
+      "oracle": {
+        "ok": true,
+        "value": {
+          "address": "0x5027ACF31cEf802d6A89D170691Fa256e079D39B",
+          "codeBytes": 3603,
+          "codeHash": "0x583cffe4f892f6d0150b64efaf754acf58a0a13a4247e67f7b803eb7ae09d6ad"
+        }
+      },
+      "factory": {
+        "ok": true,
+        "value": {
+          "address": "0xbB74f2319494461B2591F8fbF126654Dd4c2a649",
+          "codeBytes": 24116,
+          "codeHash": "0xb02fb86871ab75511065b468ca831b5e977ade355ef5d0ae6128a4ad6511a8ee"
+        }
+      },
+      "router": {
+        "ok": true,
+        "value": {
+          "address": "0x98D4f47b6F06d30527b61ea3d68656f7Da9B442E",
+          "codeBytes": 9839,
+          "codeHash": "0x593255f8cd4502ffc4e60b14a94b107c98c7aded894603f4954a90a1a706859f"
+        }
+      },
+      "manager": {
+        "ok": true,
+        "value": {
+          "address": "0x55879358eC7eDA609f2264b0348D1915ee8307e1",
+          "codeBytes": 22933,
+          "codeHash": "0xd70fb8883303a400cb02325664b4b508829baefe15b035a91be6d712f0437ab4"
+        }
+      },
+      "quoter": {
+        "ok": true,
+        "value": {
+          "address": "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3",
+          "codeBytes": 3727,
+          "codeHash": "0xd63fe22efcae120f7cf2b2e93902f53ae6ed6fff85926d8f834de93bebaa0bba"
+        }
+      }
+    }
+  }
+}

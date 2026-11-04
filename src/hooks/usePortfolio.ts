@@ -192,6 +192,10 @@ export interface Portfolio {
    * multichain read.
    */
   walletHoldings: ChainWalletHolding[];
+  /** Registered wallet balances that could not be read, with chain labels. */
+  walletUnread?: string[];
+  /** Wallet sweep status, separate from unrelated lending and position reads. */
+  walletLoading?: boolean;
   isLoading: boolean;
   /** Re-read the wallet's balances on every chain (the Overview's Refresh). */
   refresh: () => void;
@@ -1005,6 +1009,8 @@ export const usePortfolio = (): Portfolio => {
     groups,
     alerts,
     walletHoldings: holdings,
+    walletUnread: unreadHoldings,
+    walletLoading,
     refresh: refreshWallet,
     isLoading:
       Boolean(address) &&

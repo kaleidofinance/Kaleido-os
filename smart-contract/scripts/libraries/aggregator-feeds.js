@@ -136,6 +136,8 @@ const ORACLE_BACKEND = {
   11155111: "aggregator-v3",
   84532: "aggregator-v3",
   97: "aggregator-v3",
+  /* Robinhood MAINNET: Chainlink feeds published by the network. */
+  4663: "aggregator-v3",
   46630: "aggregator-v3",
   /* Arc TESTNET: self-hosted feeds in the mainnet shape — see the 5042002 note. */
   5042002: "aggregator-v3",
@@ -169,6 +171,68 @@ const PYTH_CONTRACTS = {
 
 /** @type {Record<number, Record<string, Aggregator>>} chainId -> token symbol -> feed */
 const AGGREGATORS = {
+  /* ── Robinhood Chain Mainnet ────────────────────────────────────────────
+   * Chainlink's live Robinhood mainnet directory publishes these feeds at
+   * 8 decimals. WETH is priced through the ETH/USD feed because it is the
+   * canonical 1:1 wrapped native asset. USDG, USDC and USDT are kept as
+   * separate feed entries so a later asset-registration decision cannot
+   * silently reuse the wrong stablecoin feed. The directory's crypto feeds
+   * use an approximately 24-hour heartbeat; the 90000s bound is the same
+   * stable-asset ceiling used elsewhere in this deployment family, while
+   * ETH remains deliberately tighter and must be re-walked before lending
+   * collateral is registered.
+   */
+  4663: {
+    ETH: {
+      aggregator: "0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 90000,
+      maxAgeBasis:
+        "Chainlink Robinhood mainnet ETH/USD feed; walk round history before " +
+        "registering volatile collateral and tighten this bound if the observed " +
+        "heartbeat permits it.",
+      descriptionHint: "ETH / USD",
+    },
+    WETH: {
+      aggregator: "0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 90000,
+      maxAgeBasis: "Same ETH/USD feed as native ETH.",
+      descriptionHint: "ETH / USD",
+    },
+    USDG: {
+      aggregator: "0x61B7e5650328764B076A108EFF5fa7282a1B9aD2",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 90000,
+      maxAgeBasis: "Chainlink Robinhood mainnet USDG/USD feed; stablecoin ceiling.",
+      descriptionHint: "USDG / USD",
+    },
+    USDC: {
+      aggregator: "0x9e6f4605992a899eE2999999F3Ec80C41F452546",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 90000,
+      maxAgeBasis: "Chainlink Robinhood mainnet USDC/USD feed; stablecoin ceiling.",
+      descriptionHint: "USDC / USD",
+    },
+    USDT: {
+      aggregator: "0xbf3550B6fAe1671da7C238Af12e03Ac586BEf3B1",
+      provider: "chainlink",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 90000,
+      maxAgeBasis: "Chainlink Robinhood mainnet USDT/USD feed; stablecoin ceiling.",
+      descriptionHint: "USDT / USD",
+    },
+  },
+
   /* ── Sepolia ─────────────────────────────────────────────────────────────
    * The chain that forced per-feed bounds to exist. ETH/USD measured 1,594s old
    * and USDC/USD 13,438s in the same block — an 8x spread. One global bound

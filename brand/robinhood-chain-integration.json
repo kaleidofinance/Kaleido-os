@@ -1,0 +1,11 @@
+{
+  "eyebrow": "KALEIDO X ROBINHOOD",
+  "hero": "Now LIVE on",
+  "heroSize": "medium",
+  "sub": "Robinhood Chain",
+  "subSize": "chain",
+  "description": "Trade, route and track assets across Robinhood Chain through Kaleido, with **Luca** helping you find the path.",
+  "stats": ["Multi-chain trading", "Swap and limit", "One Kaleido interface"],
+  "url": "app.kaleidofi.xyz/trade",
+  "subLogo": "tokens/robinhood-chain.svg"
+}

@@ -86,10 +86,8 @@ export interface WalletAdapter {
 
   /**
    * Opens the provider's connect UI. Dismissing it is a no-op, not an error.
-   * `{ wallet: "agw" }` opens it straight on the Abstract Global Wallet, on
-   * Abstract — for the "move everything off Abstract" flow.
    */
-  useConnect: () => (opts?: { wallet?: "agw" }) => void;
+  useConnect: () => () => void;
 
   /**
    * Switches the wallet to `chainId`, building the chain from the app registry.

@@ -89,6 +89,15 @@
   .hero .u{color:var(--green);font-size:.38em;letter-spacing:-.01em;margin-left:.12em}
   .sub{max-width:60%;color:var(--muted);font-size:27px;line-height:1.4;margin-top:18px;text-shadow:0 1px 14px rgba(0,0,0,.85)}
   .card.center .sub{max-width:74%}
+  .subRow{position:relative;width:100%;display:block;text-align:center;margin-top:18px}
+  .subRow .sub{margin:0;max-width:none}
+  .subLogo{position:absolute;width:58px;height:58px;object-fit:contain;left:calc(50% - 360px);top:-8px;filter:drop-shadow(0 0 16px rgba(53,209,141,.35))}
+  .hero.medium{font-size:48px;line-height:1.1;margin:24px 0 18px}
+  .sub.chain{font-family:"KSerif",Georgia,serif;font-size:88px;font-weight:600;line-height:1.05;color:#fff;letter-spacing:-.025em;white-space:nowrap}
+  .subRow:has(.chain){display:flex;width:100%;align-items:center;justify-content:center;gap:20px;margin-top:0}
+  .card.center .subRow .sub.chain{margin:0;max-width:none}
+  .subRow:has(.chain) .subLogo{position:static;width:100px;height:100px;flex:none}
+  .description{max-width:70%;color:var(--muted);font-size:24px;line-height:1.35;margin:14px auto 0;text-shadow:0 1px 14px rgba(0,0,0,.85)}
   .sub b{color:#fff;font-weight:600}
 
   .foot{display:flex;flex-direction:column;gap:22px;width:100%}
@@ -120,7 +129,8 @@
         <img class="toklogo" id="toklogo" alt="" hidden>
         <div class="hero" id="hero"></div>
       </div>
-      <div class="sub" id="sub"></div>
+      <div class="subRow"><img class="subLogo" id="subLogo" alt="Robinhood Chain logo" hidden><div class="sub" id="sub"></div></div>
+      <div class="description" id="description"></div>
     </div>
     <div class="foot">
       <div class="stats" id="stats"></div>
@@ -200,8 +210,13 @@
     const hero = document.getElementById("hero");
     hero.innerHTML = esc(C.hero || "") + (C.heroUnit ? `<span class="u">${esc(C.heroUnit)}</span>` : "");
     if ((C.hero || "").length > 16) hero.classList.add("small"); // a sentence, not a stat
+    if (C.heroSize) hero.classList.add(C.heroSize);
     const sub = document.getElementById("sub");
+    if (C.subSize) sub.classList.add(C.subSize);
     if (C.sub) sub.innerHTML = md(C.sub); else sub.style.display = "none";
+    if (C.subLogo) { const logo = document.getElementById("subLogo"); logo.src = "../public/" + C.subLogo; logo.hidden = false; }
+    const description = document.getElementById("description");
+    if (C.description) description.innerHTML = md(C.description); else description.style.display = "none";
 
     const stats = document.getElementById("stats");
     (C.stats || []).forEach((item, i) => {
