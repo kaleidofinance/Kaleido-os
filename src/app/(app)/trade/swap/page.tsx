@@ -9,11 +9,12 @@ import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import Chevron from "@/components/v2/Chevron";
 import { chainTokens, toIToken } from "@/constants/tokens";
-import { getContracts, nativeTokenOf } from "@/constants/registry";
-import { getChainMeta } from "@/constants/chains";
+import { getContracts, nativeTokenOf, hasSwaps } from "@/constants/registry";
+import { CHAINS, getChainMeta } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import type { IToken } from "@/constants/types/dex";
-import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
+import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { makeBatchingQuoter } from "@/lib/dex/batchQuoter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import {
@@ -173,8 +174,18 @@ function TokenPill({
 }
 
 export default function SwapPage() {
-  const { isConnected, chainId, address } = useWalletV2();
   const { priceOf } = useSpotPrices();
+  const { isConnected, chainId, address } = useWalletV2();
+  const { showTestnets } = useTestnetMode();
+  const networks = useMemo(() => CHAINS.filter((chain) =>
+    (showTestnets || chain.network === "mainnet") &&
+    (hasSwaps(chain.id) || hasKyberSwap(chain.id)),
+  ), [showTestnets]);
+  const [selectedChainId, setSelectedChainId] = useState<number | null>(null);
+  useEffect(() => {
+    const asked = Number(new URLSearchParams(window.location.search).get("chain"));
+    if (networks.some((chain) => chain.id === asked)) setSelectedChainId(asked);
+  }, []);
   /* Disconnected is a fixable state, not a dead end: /trade is the one shell
      without a ChainGate, so the CTA opens the connect modal itself rather than
      sitting disabled while the only way to connect lives up in the nav. */
@@ -202,8 +213,9 @@ export default function SwapPage() {
      elsewhere, and the wallet only moves when you sign (the Switch CTA). Picking
      a token on a new chain clears the other side (onSelect below), so both ends
      always share a chain and this is unambiguous. */
-  const swapChainId =
-    tokenIn?.chainId ?? tokenOut?.chainId ?? chainId ?? PREVIEW_CHAIN_ID;
+  const candidateChainId = selectedChainId ?? chainId ?? PREVIEW_CHAIN_ID;
+  const swapChainId = networks.some((chain) => chain.id === candidateChainId)
+    ? candidateChainId : PREVIEW_CHAIN_ID;
   const available = useMemo(() => {
     const listed = chainTokens(swapChainId);
     /* Arc's canonical ERC20 USDC and native USDC share a ticker, so the normal
@@ -257,6 +269,8 @@ export default function SwapPage() {
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
   const [slippageBps, setSlippageBps] = useState(AUTO_SLIPPAGE_BPS);
   const [deadlineMin, setDeadlineMin] = useState(20);
+
+
 
   /*
    * Fills whichever side is not a token on this chain.
@@ -414,6 +428,7 @@ export default function SwapPage() {
     to: string;
     data: string;
     spender: string;
+    value: string;
     sellAddr: string;
     sellDec: number;
     buyAddr: string;
@@ -560,7 +575,7 @@ export default function SwapPage() {
         if (hasKyberSwap(swapChainId) && address && tokenIn && tokenOut) {
           kyberSell = aggregatorToken(
             swapChainId,
-            sellIsWrapped ? { ...tokenIn, isNative: true } : tokenIn,
+            sellIsWrapped && swapChainId === 5042 ? { ...tokenIn, isNative: true } : tokenIn,
           );
           kyberBuy = aggregatorToken(swapChainId, tokenOut);
           const units = ethers
@@ -606,6 +621,7 @@ export default function SwapPage() {
             to: kyberExec.to,
             data: kyberExec.data,
             spender: kyberExec.spender,
+            value: kyberExec.value,
             sellAddr: kyberSell.address,
             sellDec: kyberSell.decimals,
             buyAddr: kyberBuy.address,
@@ -724,11 +740,11 @@ export default function SwapPage() {
      when that number is one we read. Unread keeps whatever the last successful
      read said, which is the right thing to keep showing and the wrong thing to
      paste into the field as though it were current. */
+  const sellUsd = usdAmount(amountIn, tokenIn?.symbol, priceOf);
+  const buyUsd = quoting ? null : usdAmount(amountOut, tokenOut?.symbol, priceOf);
+
   const quickDisabled =
     !isConnected || !tokenIn || balanceInUnread || !Number(balanceIn);
-
-  const sellUsd = usdAmount(amountIn, tokenIn?.symbol, priceOf);
-  const buyUsd = usdAmount(amountOut, tokenOut?.symbol, priceOf);
 
   // A swap is a two-step plan: approve the router to move tokenIn, then swap.
   // The approve resolver no-ops when allowance already covers it, so the step
@@ -796,10 +812,10 @@ export default function SwapPage() {
       /* Selling the wrapped-native: prepend an unwrap (0x8c6c -> native USDC)
          so the 0x3600 route can pull it, and run both legs on the truncated 6-dec
          amount the quote used. */
-      const aggIn = sellIsWrapped
+      const aggIn = sellIsWrapped && swapChainId === 5042
         ? truncDecimals(amountIn, kyberRoute.sellDec)
         : amountIn;
-      const unwrap: Intent | null = sellIsWrapped
+      const unwrap: Intent | null = sellIsWrapped && swapChainId === 5042
         ? {
             kind: "unwrapNative",
             to: wrappedNative!,
@@ -814,19 +830,19 @@ export default function SwapPage() {
         : null;
       return [
         ...(unwrap ? [unwrap] : []),
-        {
-          kind: "approve",
+        ...(kyberRoute.value === "0" ? [{
+          kind: "approve" as const,
           token: kyberRoute.sellAddr,
           spender: kyberRoute.spender,
           amount: aggIn,
           decimals: kyberRoute.sellDec,
           symbol: tokenIn.symbol,
-        },
+        }] : []),
         {
           kind: "aggregatorSwap",
           to: kyberRoute.to,
           data: kyberRoute.data,
-          value: "0",
+          value: kyberRoute.value,
           tokenIn: kyberRoute.sellAddr,
           amountIn: aggIn,
           decimalsIn: kyberRoute.sellDec,
@@ -1181,6 +1197,11 @@ export default function SwapPage() {
            wallet — the swap switches only at signing. */
         switchOnSelect={false}
         onSelect={(t) => {
+          if (!networks.some((chain) => chain.id === t.chainId)) return;
+          setSelectedChainId(t.chainId!);
+          setAmountOut("");
+          setRoute(null);
+          setKyberRoute(null);
           if (pickerFor === "in") {
             setTokenIn(t);
             /* A token on a new chain moves the whole card there — clear the

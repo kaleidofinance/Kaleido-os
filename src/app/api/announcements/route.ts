@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase/serverClient";
  * edge for a minute — every open tab polls this.
  */
 export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   if (!supabaseAdmin) return NextResponse.json({ announcements: [] });

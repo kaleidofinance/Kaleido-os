@@ -45,11 +45,13 @@ if (typeof window !== "undefined") {
  * another asset's feed — on a feed the protocol liquidates on.
  */
 export const PYTH_FEEDS: Record<string, string> = {
+  USDG: "daa58c6a3ce7d4b9c46c32a6e646012c17c4a2b24c08dd8c5e476118b855a7da",
   ETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
   WETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
   USDC: "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
   USDT: "2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
   BNB: "2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
+  WBNB: "2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
 };
 
 /**

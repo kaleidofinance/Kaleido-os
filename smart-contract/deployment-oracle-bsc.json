@@ -1,0 +1,19 @@
+{
+  "network": "bsc",
+  "chainId": 56,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "oracleKind": "aggregator-v3",
+  "contracts": {
+    "priceOracle": "0x55879358eC7eDA609f2264b0348D1915ee8307e1",
+    "pythContract": null
+  },
+  "feedRegistrationTx": "0x44c61ff0505165fd01f05104024a742ce7ec0efa41f1c8becc09c885ece534ea",
+  "feeds": [
+    { "feedId": "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f", "symbols": ["BNB", "WBNB"], "aggregator": "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE", "provider": "chainlink", "decimals": 8, "maxAge": 120 },
+    { "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a", "symbols": ["USDC"], "aggregator": "0x51597f405303C4377E36123cBc172b13269EA163", "provider": "chainlink", "decimals": 8, "maxAge": 1200 },
+    { "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b", "symbols": ["USDT"], "aggregator": "0xB97Ad0E74fa7d920791E90258A6E2085088b4320", "provider": "chainlink", "decimals": 8, "maxAge": 1200 },
+    { "feedId": "0x0a2425d43486780990d8b63543029e20556be51fd756cca584212f4d539611d4", "symbols": ["USD1"], "aggregator": "0xaD8b4e59A7f25B68945fAf0f3a3EAF027832FFB0", "provider": "chainlink", "decimals": 8, "maxAge": 108000 },
+    { "feedId": "0xccdc1a08923e2e4f4b1e6ea89de6acbc5fe1948e9706f5604b8cb50bc1ed3979", "symbols": ["FDUSD"], "aggregator": "0x390180e80058A8499930F0c13963AD3E0d86Bfc9", "provider": "chainlink", "decimals": 8, "maxAge": 108000 },
+    { "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43", "symbols": ["BTC", "BTCB"], "aggregator": "0x264990fbd0A4796A3E3d8E37C4d5F87a3aCa5Ebf", "provider": "chainlink", "decimals": 8, "maxAge": 600 }
+  ]
+}

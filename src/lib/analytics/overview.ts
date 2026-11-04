@@ -1,6 +1,11 @@
+import { summarizeSwapTotals } from "./swapTotals";
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import { readPlatformTotals } from "@/lib/stats/platform";
+import { swapFeeBps } from "@/lib/swap/kyberswapServer";
+import { lifiFeeRate } from "@/lib/stats/platform";
 import { isErrorStatus } from "@/lib/analytics/agentStatus";
+import { readExternalPools, type ExternalPoolSnapshot } from "@/lib/market/externalPools";
+import { EXTERNAL_MARKET_CHAIN_IDS } from "./scope";
 
 /**
  * The /analytics overview — headline KPIs across every Kaleido product, for the
@@ -14,6 +19,7 @@ import { isErrorStatus } from "@/lib/analytics/agentStatus";
  */
 
 export interface AnalyticsOverview {
+  externalMarkets: ExternalPoolSnapshot[];
   trading: {
     volumeUsd: number;
     feesUsd: number;
@@ -135,7 +141,28 @@ function sumField(
 
 /* ------------------------------------------------------------- readers -- */
 
-async function readTrading(): Promise<AnalyticsOverview["trading"]> {
+async function readTrading(chainId?: number): Promise<AnalyticsOverview["trading"]> {
+  if (chainId !== undefined) {
+    if (!supabaseAdmin) return null;
+    const [swaps, cctp, routes, native] = await Promise.all([
+      supabaseAdmin.from("swap_volume").select("tx_hash,usd_value,fee_paid").eq("chain_id", chainId).limit(READ_CAP),
+      supabaseAdmin.from("cctp_transfers").select("amount").eq("source_chain_id", chainId).eq("status", "minted").limit(READ_CAP),
+      supabaseAdmin.from("route_bridges").select("usd_value").eq("source_chain_id", chainId).limit(READ_CAP),
+      supabaseAdmin.from("pool_volume").select("tx_hash,usd_value").eq("chain_id", chainId).limit(READ_CAP),
+    ]);
+    if (swaps.error && cctp.error && routes.error && native.error) return null;
+    const swapRows = swaps.error ? [] : swaps.data ?? [];
+    const swapTotals = summarizeSwapTotals(swapRows, native.error ? [] : native.data ?? []);
+    const routeVolume = routes.error ? 0 : sumField(routes.data ?? [], "usd_value");
+    return {
+      volumeUsd: swapTotals.volumeUsd + (cctp.error ? 0 : sumField(cctp.data ?? [], "amount")) + routeVolume,
+      feesUsd: swapTotals.feeVolumeUsd * swapFeeBps() / 10000 + routeVolume * lifiFeeRate(),
+      swapCount: swaps.error && native.error ? null : swapTotals.swapCount,
+      cctpBridgeCount: cctp.error ? null : cctp.data?.length ?? 0,
+      routeBridgeCount: routes.error ? null : routes.data?.length ?? 0,
+      partial: Boolean(swaps.error || cctp.error || routes.error || native.error || swapTotals.partial || (native.data?.length ?? 0) >= READ_CAP || swapRows.length >= READ_CAP || (cctp.data?.length ?? 0) >= READ_CAP || (routes.data?.length ?? 0) >= READ_CAP),
+    };
+  }
   const totals = await readPlatformTotals();
   if (!totals) return null;
   return {
@@ -216,12 +243,19 @@ async function readPoints(): Promise<AnalyticsOverview["points"]> {
 }
 
 /** Assemble the overview. Domains that error read as null; the page copes. */
-export async function readAnalyticsOverview(): Promise<AnalyticsOverview> {
-  const [trading, growth, luca, points] = await Promise.all([
-    readTrading(),
+export async function readAnalyticsOverview(chainId?: number): Promise<AnalyticsOverview> {
+  const externalChainIds = EXTERNAL_MARKET_CHAIN_IDS.filter((id) => chainId === undefined || chainId === id);
+  const [trading, growth, luca, points, externalMarkets] = await Promise.all([
+    // The unfiltered overview must use the same canonical all-chain ledger
+    // aggregation as /api/stats/platform. Summing the legacy per-chain reader
+    // here double-counted native pool snapshots and produced different totals.
+    readTrading(chainId),
     readGrowth(),
     readLuca(),
     readPoints(),
+    Promise.all(externalChainIds.map((id) => readExternalPools(id))).then((snapshots) =>
+      snapshots.filter((snapshot): snapshot is ExternalPoolSnapshot => snapshot !== null),
+    ),
   ]);
-  return { trading, growth, luca, points };
+  return { trading, growth, luca, points, externalMarkets };
 }

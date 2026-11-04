@@ -80,6 +80,12 @@ const FEEDS = {
     id: "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
     source: "repo",
   },
+  /* USDG/USD confirmed against Hermes /v2/price_feeds metadata (Crypto.USDG/USD). */
+  USDG: {
+    symbol: "Crypto.USDG/USD",
+    id: "0xdaa58c6a3ce7d4b9c46c32a6e646012c17c4a2b24c08dd8c5e476118b855a7da",
+    source: "hermes",
+  },
   /* Wrapped USDC, which exists because Arc Testnet's native currency IS USDC and
    * so its wrapped native is a wrapped dollar rather than a wrapped ether. Priced
    * off USDC/USD for exactly the reason WETH is priced off ETH/USD: the wrapper is
@@ -106,12 +112,35 @@ const FEEDS = {
     id: "0x6ec879b1e9963de5ee97e9c8710b742d6228252a5e2ca12d4ae81d7fe5ee8c5d",
     source: "hermes",
   },
+  USD1: {
+    symbol: "Crypto.USD1/USD",
+    id: "0x0a2425d43486780990d8b63543029e20556be51fd756cca584212f4d539611d4",
+    source: "hermes",
+  },
+  FDUSD: {
+    symbol: "Crypto.FDUSD/USD",
+    id: "0xccdc1a08923e2e4f4b1e6ea89de6acbc5fe1948e9706f5604b8cb50bc1ed3979",
+    source: "hermes",
+  },
   BNB: {
     symbol: "Crypto.BNB/USD",
     id: "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
     source: "hermes",
   },
+  // Canonical WBNB's deposit/withdraw wrapper is 1:1 native BNB.
+  WBNB: {
+    symbol: "Crypto.BNB/USD",
+    id: "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
+    source: "hermes",
+  },
   BTC: {
+    symbol: "Crypto.BTC/USD",
+    id: "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+    source: "hermes",
+  },
+  // BTCB is a wrapped BTC representation; the Chainlink BSC plan prices its
+  // token through BTC/USD, while backing/peg admission remains a separate gate.
+  BTCB: {
     symbol: "Crypto.BTC/USD",
     id: "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
     source: "hermes",

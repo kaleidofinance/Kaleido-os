@@ -30,7 +30,10 @@ const out = bucketDaily({
     { wallet: "0xC", source_slug: "swap", usd_value: 999, occurred_at: "2026-08-01T00:00:00Z" }, // outside window
     { wallet: "0xB", source_slug: "lend", usd_value: 5, occurred_at: "2026-09-22T09:00:00Z" }, // not a swap
   ],
-  cctp: [{ created_at: "2026-09-22T00:00:00Z", amount: "10" }],
+  cctp: [
+    { created_at: "2026-09-22T00:00:00Z", amount: "10", status: "minted" },
+    { created_at: "2026-09-22T02:00:00Z", amount: "100000", status: "pending" },
+  ],
   route: [{ created_at: "2026-09-21T00:00:00Z", usd_value: 200 }],
   days: 3,
   swapFeeRate: 0.002,
@@ -51,7 +54,7 @@ check("fees = swapVol*rate + routeVol*rate", approx(d21.feesUsd, 50 * 0.002 + 20
 
 console.log("\n— 09-22 —");
 const d22 = out[2];
-check("two swaps' volume + cctp", approx(d22.volumeUsd, 140), d22.volumeUsd); // (100+30) swap + 10 cctp
+check("two swaps' volume + completed cctp only", approx(d22.volumeUsd, 140), d22.volumeUsd); // (100+30) swap + 10 minted cctp; pending is excluded
 check("two swaps (the lend is excluded)", d22.swaps === 2, d22.swaps);
 check("0xB new; 0xA already seen 09-21 so not new again", d22.newWallets === 1, d22.newWallets);
 check("cctp adds volume but no fee", approx(d22.feesUsd, 130 * 0.002), d22.feesUsd);

@@ -1,0 +1,559 @@
+{
+  "checkedAt": "2026-10-27T17:15:26.318Z",
+  "artifactRoot": "C:\\Users\\HP\\.codex\\worktrees\\283d\\merge-rewards\\smart-contract",
+  "parity": [
+    {
+      "name": "Diamond",
+      "address": "0xE4e7f16DB22e6bb2E505fbC504d7B2B4B995A6E3",
+      "matches": true,
+      "runtimeBytes": 244,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "DiamondCutFacet",
+      "address": "0xE8F836c0d48a07c970c66BeD358a7C3c4C7a7235",
+      "matches": true,
+      "runtimeBytes": 4258,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "DiamondLoupeFacet",
+      "address": "0x7EEB33f9E9FBd09653F893bA1f113BEcF8F7116b",
+      "matches": true,
+      "runtimeBytes": 1630,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "OwnershipFacet",
+      "address": "0x59E73C9490E43df879495dCFb1dA28c8eA03d797",
+      "matches": true,
+      "runtimeBytes": 932,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "ProtocolFacet",
+      "address": "0xfc055263Dd57A665A612fD7D24cf94Ee390De5bf",
+      "matches": true,
+      "runtimeBytes": 23625,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "AgentPermissionFacet",
+      "address": "0x22B0AD978a7F8eE943D5AE85621E312Ce1835a38",
+      "matches": true,
+      "runtimeBytes": 3304,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "LendingAdminFacet",
+      "address": "0x1D53F2601f32558C6737e7C8D8e4f67391154CA9",
+      "matches": true,
+      "runtimeBytes": 804,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "AggregatorPriceOracle",
+      "address": "0x5027ACF31cEf802d6A89D170691Fa256e079D39B",
+      "matches": true,
+      "runtimeBytes": 3603,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 0
+    },
+    {
+      "name": "KaleidoOrdersV2",
+      "address": "0x83CA08cd25a663f0a66bda93E5f3c67D382C9856",
+      "matches": true,
+      "runtimeBytes": 11651,
+      "compiler": "0.8.24+commit.e11b9ed9",
+      "maskedRanges": 11
+    },
+    {
+      "name": "KaleidoSwapV3Factory",
+      "address": "0xbB74f2319494461B2591F8fbF126654Dd4c2a649",
+      "matches": true,
+      "runtimeBytes": 24116,
+      "compiler": "0.7.6+commit.7338295f",
+      "maskedRanges": 1
+    },
+    {
+      "name": "SwapRouter",
+      "address": "0x98D4f47b6F06d30527b61ea3d68656f7Da9B442E",
+      "matches": true,
+      "runtimeBytes": 9839,
+      "compiler": "0.7.6+commit.7338295f",
+      "maskedRanges": 12
+    },
+    {
+      "name": "NonfungiblePositionManager",
+      "address": "0x55879358eC7eDA609f2264b0348D1915ee8307e1",
+      "matches": true,
+      "runtimeBytes": 22933,
+      "compiler": "0.7.6+commit.7338295f",
+      "maskedRanges": 17
+    },
+    {
+      "name": "Quoter",
+      "address": "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3",
+      "matches": true,
+      "runtimeBytes": 3727,
+      "compiler": "0.7.6+commit.7338295f",
+      "maskedRanges": 4
+    }
+  ],
+  "transactions": [
+    {
+      "label": "AggregatorPriceOracle",
+      "kind": "deployment",
+      "gasUsed": "856225"
+    },
+    {
+      "label": "oracle feeds",
+      "kind": "configuration",
+      "gasUsed": "127496"
+    },
+    {
+      "label": "KaleidoSwapV3Factory",
+      "kind": "deployment",
+      "gasUsed": "5352925"
+    },
+    {
+      "label": "SwapRouter",
+      "kind": "deployment",
+      "gasUsed": "2201102"
+    },
+    {
+      "label": "NFTDescriptor",
+      "kind": "deployment",
+      "gasUsed": "5096018"
+    },
+    {
+      "label": "NonfungibleTokenPositionDescriptor",
+      "kind": "deployment",
+      "gasUsed": "1161236"
+    },
+    {
+      "label": "NonfungiblePositionManager",
+      "kind": "deployment",
+      "gasUsed": "5173516"
+    },
+    {
+      "label": "Quoter",
+      "kind": "deployment",
+      "gasUsed": "860654"
+    },
+    {
+      "label": "KaleidoOrdersV2",
+      "kind": "deployment",
+      "gasUsed": "2636226"
+    },
+    {
+      "label": "order aggregator allowlist",
+      "kind": "configuration",
+      "gasUsed": "50566"
+    },
+    {
+      "label": "DiamondCutFacet",
+      "kind": "deployment",
+      "gasUsed": "972888"
+    },
+    {
+      "label": "Diamond",
+      "kind": "deployment",
+      "gasUsed": "315221"
+    },
+    {
+      "label": "DiamondInit",
+      "kind": "deployment",
+      "gasUsed": "124537"
+    },
+    {
+      "label": "DiamondLoupeFacet",
+      "kind": "deployment",
+      "gasUsed": "405242"
+    },
+    {
+      "label": "OwnershipFacet",
+      "kind": "deployment",
+      "gasUsed": "254758"
+    },
+    {
+      "label": "ProtocolFacet",
+      "kind": "deployment",
+      "gasUsed": "5177011"
+    },
+    {
+      "label": "AgentPermissionFacet",
+      "kind": "deployment",
+      "gasUsed": "766870"
+    },
+    {
+      "label": "LendingAdminFacet",
+      "kind": "deployment",
+      "gasUsed": "249168"
+    },
+    {
+      "label": "diamond cut",
+      "kind": "configuration",
+      "gasUsed": "2857743"
+    },
+    {
+      "label": "setPythOracle",
+      "kind": "configuration",
+      "gasUsed": "51370"
+    },
+    {
+      "label": "setFeeVault",
+      "kind": "configuration",
+      "gasUsed": "51722"
+    },
+    {
+      "label": "setBPS",
+      "kind": "configuration",
+      "gasUsed": "50944"
+    },
+    {
+      "label": "setLiquidityBps",
+      "kind": "configuration",
+      "gasUsed": "51692"
+    },
+    {
+      "label": "setPriceBounds",
+      "kind": "configuration",
+      "gasUsed": "74365"
+    },
+    {
+      "label": "setSwapRouter",
+      "kind": "configuration",
+      "gasUsed": "51099"
+    },
+    {
+      "label": "freshness BNB",
+      "kind": "configuration",
+      "gasUsed": "53635"
+    },
+    {
+      "label": "freshness USDC",
+      "kind": "configuration",
+      "gasUsed": "53647"
+    },
+    {
+      "label": "freshness USDT",
+      "kind": "configuration",
+      "gasUsed": "53647"
+    },
+    {
+      "label": "collateral 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "kind": "configuration",
+      "gasUsed": "98001"
+    },
+    {
+      "label": "loanable 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "kind": "configuration",
+      "gasUsed": "100874"
+    },
+    {
+      "label": "collateral 0x0000000000000000000000000000000000000001",
+      "kind": "configuration",
+      "gasUsed": "80673"
+    },
+    {
+      "label": "loanable 0x0000000000000000000000000000000000000001",
+      "kind": "configuration",
+      "gasUsed": "83546"
+    },
+    {
+      "label": "collateral 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      "kind": "configuration",
+      "gasUsed": "80901"
+    },
+    {
+      "label": "loanable 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      "kind": "configuration",
+      "gasUsed": "83774"
+    },
+    {
+      "label": "collateral 0x55d398326f99059fF775485246999027B3197955",
+      "kind": "configuration",
+      "gasUsed": "80901"
+    },
+    {
+      "label": "loanable 0x55d398326f99059fF775485246999027B3197955",
+      "kind": "configuration",
+      "gasUsed": "83774"
+    },
+    {
+      "label": "wrap BNB",
+      "kind": "scenario",
+      "gasUsed": "45038"
+    },
+    {
+      "label": "approve collateral",
+      "kind": "scenario",
+      "gasUsed": "46052"
+    },
+    {
+      "label": "deposit WBNB",
+      "kind": "scenario",
+      "gasUsed": "132197"
+    },
+    {
+      "label": "request BNB loan",
+      "kind": "scenario",
+      "gasUsed": "700078"
+    },
+    {
+      "label": "fund BNB loan",
+      "kind": "scenario",
+      "gasUsed": "281143"
+    },
+    {
+      "label": "repay BNB loan",
+      "kind": "scenario",
+      "gasUsed": "162743"
+    },
+    {
+      "label": "withdraw lender BNB",
+      "kind": "scenario",
+      "gasUsed": "58830"
+    },
+    {
+      "label": "withdraw WBNB collateral",
+      "kind": "scenario",
+      "gasUsed": "95148"
+    },
+    {
+      "label": "re-approve WBNB collateral",
+      "kind": "scenario",
+      "gasUsed": "46052"
+    },
+    {
+      "label": "re-deposit WBNB collateral",
+      "kind": "scenario",
+      "gasUsed": "112297"
+    },
+    {
+      "label": "approve USDT repayment",
+      "kind": "scenario",
+      "gasUsed": "46206"
+    },
+    {
+      "label": "request USDT loan",
+      "kind": "scenario",
+      "gasUsed": "682994"
+    },
+    {
+      "label": "approve USDT funding",
+      "kind": "scenario",
+      "gasUsed": "46206"
+    },
+    {
+      "label": "fund USDT loan",
+      "kind": "scenario",
+      "gasUsed": "319146"
+    },
+    {
+      "label": "repay USDT loan",
+      "kind": "scenario",
+      "gasUsed": "192454"
+    },
+    {
+      "label": "withdraw USDT lender balance",
+      "kind": "scenario",
+      "gasUsed": "54818"
+    },
+    {
+      "label": "set remaining candidate feeds",
+      "kind": "configuration",
+      "gasUsed": "127484"
+    },
+    {
+      "label": "candidate feed bound",
+      "kind": "configuration",
+      "gasUsed": "53659"
+    },
+    {
+      "label": "candidate feed bound",
+      "kind": "configuration",
+      "gasUsed": "53659"
+    },
+    {
+      "label": "candidate feed bound",
+      "kind": "configuration",
+      "gasUsed": "53647"
+    },
+    {
+      "label": "USDC repayment approval",
+      "kind": "scenario",
+      "gasUsed": "53452"
+    },
+    {
+      "label": "USDC loan request",
+      "kind": "scenario",
+      "gasUsed": "736126"
+    },
+    {
+      "label": "USDC funding approval",
+      "kind": "scenario",
+      "gasUsed": "53452"
+    },
+    {
+      "label": "USDC fund loan",
+      "kind": "scenario",
+      "gasUsed": "355300"
+    },
+    {
+      "label": "USDC repay loan",
+      "kind": "scenario",
+      "gasUsed": "201963"
+    },
+    {
+      "label": "USDC withdraw lender balance",
+      "kind": "scenario",
+      "gasUsed": "60632"
+    },
+    {
+      "label": "register USD1 loanable",
+      "kind": "configuration",
+      "gasUsed": "103633"
+    },
+    {
+      "label": "USD1 repayment approval",
+      "kind": "scenario",
+      "gasUsed": "60616"
+    },
+    {
+      "label": "USD1 loan request",
+      "kind": "scenario",
+      "gasUsed": "745828"
+    },
+    {
+      "label": "USD1 funding approval",
+      "kind": "scenario",
+      "gasUsed": "60616"
+    },
+    {
+      "label": "USD1 fund loan",
+      "kind": "scenario",
+      "gasUsed": "393116"
+    },
+    {
+      "label": "USD1 repay loan",
+      "kind": "scenario",
+      "gasUsed": "214040"
+    },
+    {
+      "label": "USD1 withdraw lender balance",
+      "kind": "scenario",
+      "gasUsed": "66368"
+    },
+    {
+      "label": "register FDUSD loanable",
+      "kind": "configuration",
+      "gasUsed": "103645"
+    },
+    {
+      "label": "FDUSD repayment approval",
+      "kind": "scenario",
+      "gasUsed": "60246"
+    },
+    {
+      "label": "FDUSD loan request",
+      "kind": "scenario",
+      "gasUsed": "791714"
+    },
+    {
+      "label": "FDUSD funding approval",
+      "kind": "scenario",
+      "gasUsed": "60246"
+    },
+    {
+      "label": "FDUSD fund loan",
+      "kind": "scenario",
+      "gasUsed": "418402"
+    },
+    {
+      "label": "FDUSD repay loan",
+      "kind": "scenario",
+      "gasUsed": "212014"
+    },
+    {
+      "label": "FDUSD withdraw lender balance",
+      "kind": "scenario",
+      "gasUsed": "65862"
+    },
+    {
+      "label": "register BTCB loanable",
+      "kind": "configuration",
+      "gasUsed": "103645"
+    },
+    {
+      "label": "BTCB repayment approval",
+      "kind": "scenario",
+      "gasUsed": "46182"
+    },
+    {
+      "label": "BTCB loan request",
+      "kind": "scenario",
+      "gasUsed": "796286"
+    },
+    {
+      "label": "BTCB funding approval",
+      "kind": "scenario",
+      "gasUsed": "46182"
+    },
+    {
+      "label": "BTCB fund loan",
+      "kind": "scenario",
+      "gasUsed": "430438"
+    },
+    {
+      "label": "BTCB repay loan",
+      "kind": "scenario",
+      "gasUsed": "192442"
+    },
+    {
+      "label": "BTCB withdraw lender balance",
+      "kind": "scenario",
+      "gasUsed": "54808"
+    }
+  ],
+  "checks": [
+    "compiled runtime parity with live Arc (metadata/immutables normalized)",
+    "deployment runtime sizes below EIP170",
+    "oracle/DEX/orders/diamond configured on local BSC fork",
+    "BSC per-feed bounds read back",
+    "real WBNB collateral / native BNB loan full lifecycle",
+    "forked USDT loan funding / repayment / withdrawal full lifecycle",
+    "USDC loan funding / repayment / withdrawal full lifecycle",
+    "USD1 loan funding / repayment / withdrawal full lifecycle",
+    "FDUSD loan funding / repayment / withdrawal full lifecycle",
+    "BTCB loan funding / repayment / withdrawal full lifecycle"
+  ],
+  "fork": {
+    "currentBlockNumber": "0x7c1973f",
+    "currentBlockTimestamp": 1793121326,
+    "currentBlockHash": "0x3fe7ebe5d9e1c96f556935318a5c67920a107a14a0b5e0c69b210c3bd4b9ab13",
+    "hardFork": "Cancun",
+    "transactionOrder": "fees",
+    "environment": {
+      "baseFee": "0x0",
+      "chainId": 56,
+      "gasLimit": "0x42c1d80",
+      "gasPrice": "0x3b9aca00"
+    },
+    "forkConfig": {
+      "forkUrl": "https://bsc-mainnet.public.blastapi.io",
+      "forkBlockNumber": 130127679,
+      "forkRetryBackoff": 1000
+    }
+  },
+  "candidateLoanLifecycle": "USDC, USDT, USD1, FDUSD and BTCB passed on a local BSC fork; balances were storage-injected locally",
+  "status": "loan-only-passed"
+}

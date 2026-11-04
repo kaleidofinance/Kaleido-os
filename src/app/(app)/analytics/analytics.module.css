@@ -119,3 +119,8 @@
   cursor: pointer;
   text-decoration: underline;
 }
+
+.networks { display: flex; flex-wrap: wrap; gap: var(--k-s2); }
+.network { font: inherit; font-size: var(--k-fs-sm); padding: var(--k-s2) var(--k-s4); border: 1px solid var(--k-glass-line); border-radius: var(--k-r-pill); background: var(--k-glass); color: var(--k-t2); cursor: pointer; }
+.network:hover { background: var(--k-brand-dim); color: var(--k-t1); }
+.networkOn { background: var(--k-t1); color: var(--k-bg); }

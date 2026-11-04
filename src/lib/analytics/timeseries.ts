@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 import { swapFeeBps } from "@/lib/swap/kyberswapServer";
 import { lifiFeeRate } from "@/lib/stats/platform";
+import { ANALYTICS_MAINNET_CHAIN_IDS } from "./scope";
 
 /**
  * Daily time series for the /analytics charts — volume, fees, swaps and new
@@ -38,6 +39,7 @@ export interface BridgeRow {
   created_at?: string | null;
   amount?: string | null; // CCTP: human USDC
   usd_value?: number | string | null; // route: priced notional
+  status?: "minted" | "pending" | "failed" | null; // CCTP lifecycle
 }
 
 const DAY_MS = 86_400_000;
@@ -145,6 +147,9 @@ export function bucketDaily(input: {
     }
   }
   for (const r of input.cctp) {
+    // Only minted CCTP burns are completed bridge activity. Keep legacy
+    // fixtures without a status compatible; database reads always include it.
+    if (r.status != null && r.status !== "minted") continue;
     const d = utcDay(r.created_at);
     const b = d ? bucket.get(d) : undefined;
     if (b) b.cctpVol += num(r.amount);
@@ -171,7 +176,7 @@ const READ_CAP = 200_000;
 
 /** Read the ledgers and bucket them. `null` only when the primary ledger
  *  (point_actions) is unavailable; missing bridge tables just drop those bars. */
-export async function readTimeseries(days = 30): Promise<DailyPoint[] | null> {
+export async function readTimeseries(days = 30, chainId?: number): Promise<DailyPoint[] | null> {
   if (!supabaseAdmin) return null;
   const actions = await supabaseAdmin
     .from("point_actions")
@@ -184,19 +189,22 @@ export async function readTimeseries(days = 30): Promise<DailyPoint[] | null> {
   const ledger = await supabaseAdmin
     .from("swap_volume")
     .select("occurred_at, usd_value, fee_paid")
-    .eq("chain_id", 5042)
+    .in("chain_id", chainId === undefined ? [...ANALYTICS_MAINNET_CHAIN_IDS] : [chainId])
     .limit(READ_CAP);
 
   const cctp = await supabaseAdmin
     .from("cctp_transfers")
-    .select("created_at, amount")
-    .neq("status", "failed")
+    .select("created_at, amount, status")
+    .eq("status", "minted")
+    .in("source_chain_id", chainId === undefined ? [...ANALYTICS_MAINNET_CHAIN_IDS] : [chainId])
     .limit(READ_CAP);
   const route = await supabaseAdmin
     .from("route_bridges")
     .select("created_at, usd_value")
+    .in("source_chain_id", chainId === undefined ? [...ANALYTICS_MAINNET_CHAIN_IDS] : [chainId])
     .limit(READ_CAP);
 
+  if (ledger.error || cctp.error || route.error) return null;
   return bucketDaily({
     actions: actions.data as ActionRow[],
     swaps: ledger.error || !ledger.data ? undefined : (ledger.data as SwapLedgerRow[]),

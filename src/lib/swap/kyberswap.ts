@@ -18,13 +18,14 @@ import { NATIVE_SENTINEL } from "@/constants/registry";
 const KYBER_API = "https://aggregator-api.kyberswap.com";
 
 /**
- * Chains we route swaps through KyberSwap on, by the slug its API expects. Only
- * Arc today: it is the chain we launched on with no Kaleido pools. Extend this
- * as we reach another chain the same way; a chain absent here has no KyberSwap
+ * Chains we route swaps through KyberSwap on, by the slug its API expects.
+ * A chain absent here has no KyberSwap
  * swap route and the planner falls back to refusing (or to our own pools).
  */
 const KYBERSWAP_CHAIN_SLUG: Record<number, string> = {
+  56: "bsc",
   5042: "arc",
+  4663: "robinhood",
 };
 
 /**
@@ -36,7 +37,10 @@ const KYBERSWAP_CHAIN_SLUG: Record<number, string> = {
  * an approve to an address we never checked.
  */
 const KYBERSWAP_ROUTERS: Record<number, string> = {
+  // Official BSC V2 deployment; live code and quote target checked 2026-10-26.
+  56: "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
   5042: "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+  4663: "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
 };
 
 export function kyberSwapChainSlug(chainId: number): string | undefined {
@@ -272,7 +276,7 @@ export async function resolveKyberSwap(args: {
     return {
       to: d.routerAddress,
       data: d.data,
-      value: "0",
+      value: args.tokenIn.toLowerCase() === NATIVE_SENTINEL.dex.toLowerCase() ? args.amountUnits : "0",
       spender: d.routerAddress,
       amountOut: d.amountOut,
     };

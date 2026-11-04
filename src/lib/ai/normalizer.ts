@@ -3,6 +3,7 @@ import type { ChatProvider } from "./types";
 import { chainTokens } from "@/constants/tokens";
 import { getChainMeta } from "@/constants/chains";
 import { arcLending, type ArcLending } from "@/lib/lending/arcLending";
+import { getContracts, registeredLendingAssets } from "@/constants/registry";
 
 /**
  * The normalizer tier: a cheap model between the grammar and the reasoning model.
@@ -93,9 +94,16 @@ const orList = (xs: string[]) =>
 /** The Arc-mainnet product line, with or without the lending book. Pure. */
 export function arcMainnetLine(lending: ArcLending | null): string {
   if (!lending) {
-    return "Arc mainnet is live with real value, and on Arc mainnet exactly THREE things are available today: (1) token swaps, routed through an aggregator across Arc's DEXes; (2) concentrated-liquidity pools (V3-style positions with a price range and a fee tier); and (3) bridging — USDC into or out of Arc via Circle CCTP (a 1:1 burn-and-mint, no pool, no slippage, between Arc, Base and Ethereum), and to or from other chains — including BNB Smart Chain and Robinhood Chain — via a bridge aggregator, other assets via an aggregator too. Bridging INTO Arc works even from a chain where no other Kaleido product is live yet: if a user is connected to such a chain (e.g. BNB Smart Chain or Robinhood Chain) and asks to bridge into Arc, that is supported — build it, never tell them Kaleido is unavailable there. USDC is the gas token on Arc. EVERYTHING ELSE is NOT on Arc mainnet yet — the lending book, kfUSD/kafUSD, KLD staking, and limit orders run only on the testnets (Sepolia, Base Sepolia, BNB Smart Chain Testnet, Robinhood Chain Testnet, Arc Testnet), where tokens come from a faucet and nothing is real money. If asked to do any of those on Arc, say plainly it is not on Arc mainnet yet and offer a swap, a liquidity pool, or a bridge instead.";
+    return "Arc mainnet is live with real value. Arc offers token swaps, concentrated-liquidity pools and bridging, including native USDC through Circle CCTP. USDC pays gas. Arc lending is not available without registered lending assets. kfUSD mint/redeem and KLD staking are not deployed on Arc mainnet. Product availability is chain-specific; do not apply Arc's limits to BNB Smart Chain or Robinhood Chain.";
   }
-  return `Arc mainnet is live with real value, and on Arc mainnet exactly FOUR things are available today: (1) token swaps, routed through an aggregator across Arc's DEXes; (2) concentrated-liquidity pools (V3-style positions with a price range and a fee tier); (3) bridging — USDC into or out of Arc via Circle CCTP (a 1:1 burn-and-mint, no pool, no slippage, between Arc, Base and Ethereum), and to or from other chains — including BNB Smart Chain and Robinhood Chain — via a bridge aggregator, other assets via an aggregator too; and (4) the peer-to-peer lending book — borrow ${orList(lending.loanable)} (native USDC, the gas token) against ${orList(lending.collateral)} collateral, up to 75% of the collateral's value with a $10 minimum loan, or lend ${orList(lending.loanable)} at a rate and term you set. Bridging INTO Arc works even from a chain where no other Kaleido product is live yet: if a user is connected to such a chain (e.g. BNB Smart Chain or Robinhood Chain) and asks to bridge into Arc, that is supported — build it, never tell them Kaleido is unavailable there. USDC is the gas token on Arc, and it is NOT accepted as collateral. EVERYTHING ELSE is NOT on Arc mainnet yet — kfUSD/kafUSD, KLD staking, and limit orders run only on the testnets (Sepolia, Base Sepolia, BNB Smart Chain Testnet, Robinhood Chain Testnet, Arc Testnet), where tokens come from a faucet and nothing is real money. If asked to do any of those on Arc, say plainly it is not on Arc mainnet yet and offer a swap, a liquidity pool, a loan, or a bridge instead.`;
+  return `Arc mainnet is live with real value. Arc offers token swaps, concentrated-liquidity pools, bridging and the peer-to-peer lending book. Borrow ${orList(lending.loanable)} against ${orList(lending.collateral)} collateral, or lend ${orList(lending.loanable)} at a rate and term you set. Native USDC pays gas and is not collateral. kfUSD mint/redeem and KLD staking are not deployed on Arc mainnet. Product availability is chain-specific; do not apply Arc's limits to BNB Smart Chain or Robinhood Chain.`;
+}
+
+export function bscMainnetLine(): string {
+  if (!getContracts(56).diamond) return "BNB Smart Chain supports bridging; Kaleido product availability requires its mainnet deployment.";
+  const collateral = registeredLendingAssets(56, "collateral").assets.map((asset) => asset.symbol);
+  const loanable = registeredLendingAssets(56, "loanable").assets.map((asset) => asset.symbol);
+  return `BNB Smart Chain mainnet is deployed. BNB pays gas. Kaleido offers swaps through its own V3 periphery when a pool has liquidity and through vetted aggregator routes otherwise, V3 liquidity positions, bridging, and a peer-to-peer lending book with ${orList(collateral)} collateral and ${orList(loanable)} loan assets. Kaleido has not seeded BSC V3 pools, so do not promise an immediate native-pool swap, LP fee income, or an executable limit-order fill. kfUSD mint/redeem and KLD staking are not deployed on BSC mainnet.`;
 }
 
 /** The points line, with or without lending on Arc mainnet. Pure. */
@@ -115,6 +123,7 @@ export function arcPointsLine(lending: ArcLending | null): string {
 export const PRODUCT_STATE: readonly string[] = [
   "Kaleido is a multichain DeFi app. Products: token swaps; bridging between chains; a peer-to-peer lending book (lenders post an amount, a rate and a term; borrowers take them against collateral); concentrated-liquidity pools (V3-style positions with a price range and a fee tier); the kfUSD stablecoin (minted against USDC, USDT or USDe; lock it into kafUSD to earn the protocol's fees); KLD staking into a vault for stKLD; limit orders; and a points program.",
   arcMainnetLine(ARC_LENDING),
+  bscMainnetLine(),
   "KLD, Kaleido's own token, has NOT launched. There is no mainnet KLD, no market and no price; it cannot be bought, sold or bridged anywhere yet. The token event is planned for the end of September 2026, with an exchange listing after that. Today 'KLD' exists only as a testnet token (from the faucet) for practising staking and pools. If someone asks to buy, sell, price or hold KLD on a mainnet, say plainly that it has not launched, and offer the testnet or the points program instead. Never quote a KLD price.",
   arcPointsLine(ARC_LENDING),
   "Not offered, so say so rather than improvise: leverage or perpetuals, short selling, fiat on/off-ramps (no bank withdrawals), recurring/DCA orders, stop-losses, TWAP. A limit order (buy or sell at a price) IS offered.",
@@ -154,7 +163,7 @@ export const GLOSSARY: readonly string[] = [
  * offered to 'keep it on testnet to practise lending / mint kfUSD / stake KLD',
  * which the UI deliberately hides. This forbids that.
  */
-export const MAINNET_DIRECTIVE = `MAINNET MODE (testnets are hidden by default): do NOT mention the testnets, the faucet, or practising on one, and never suggest moving funds to a testnet. Treat any product not on Arc mainnet yet as coming soon, and steer only to what is live on Arc: token swaps, concentrated-liquidity pools, ${ARC_LENDING ? "the lending book, " : ""}and bridging. Reference mainnet activity only. Answer plainly only if the user explicitly asks about a testnet; otherwise never raise one.`;
+export const MAINNET_DIRECTIVE = `MAINNET MODE (testnets are hidden by default): do NOT mention the testnets, the faucet, or practising on one, and never suggest moving funds to a testnet. Use the selected mainnet's deployed contracts and registered assets to decide which actions are available. Arc, Robinhood and BNB Smart Chain differ. Do not suggest kfUSD mint/redeem or KLD staking on mainnet. Reference mainnet activity only. Answer plainly only if the user explicitly asks about a testnet; otherwise never raise one.`;
 
 export function normalizerAddendum(opts: {
   chainId?: number;

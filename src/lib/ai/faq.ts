@@ -387,7 +387,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "best network",
     ],
     answer:
-      "Kaleido is multichain: swaps, loans, liquidity and kfUSD run on Arc, Base, Robinhood Chain, BNB Smart Chain and Ethereum. Your wallet can also sit on Polygon, Arbitrum, Hyperliquid or Abstract, where the app reads your balances but the products don't open. Whichever network you're on, each page tells you if it needs a different one. If you are picking one to start on, use Base Sepolia — it is the fastest of the five to get funded on, and positions are per chain, so it is worth staying on one while you learn the app.",
+      "Kaleido's live mainnets include Arc, Robinhood Chain and BNB Smart Chain. Swaps, liquidity, loans and bridge routes depend on the selected chain's deployed contracts and available assets. BNB pays gas on BSC; its Kaleido V3 pools have not been seeded, so swaps use available aggregator liquidity. kfUSD mint/redeem and KLD staking have not launched on these mainnets. Your wallet can also sit on other networks where the app reads balances. Positions remain on the chain where you opened them.",
     /* A nine-item list read out in prose is a list you have to re-read to count,
        and the split that matters — where the products open versus where only
        balances read — is the thing prose buries. It mirrors the `tradable` flag
@@ -577,7 +577,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "the catch",
     ],
     answer:
-      "Depends which network you've selected — the name in the network switcher tells you. Arc mainnet is live, with real value at stake. The testnet toggle also opens practice networks (Sepolia, Base Sepolia, BNB Smart Chain Testnet, Robinhood Chain Testnet and Arc Testnet), where the tokens come from a faucet and none of it is real money — that's the point, you can borrow, get liquidated and find out what that feels like without risking anything. The token event follows by the end of September 2026; that roadmap is on the landing page.",
+      "Check the network switcher: Arc, Robinhood Chain and BNB Smart Chain are live mainnets where transactions use real funds. The testnet toggle opens practice networks (Sepolia, Base Sepolia, BNB Smart Chain Testnet, Robinhood Chain Testnet and Arc Testnet) with test tokens. Each position stays on the chain where it was opened. KLD has not launched on mainnet.",
   },
   {
     /*

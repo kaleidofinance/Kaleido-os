@@ -48,6 +48,16 @@
 const hre = require("hardhat");
 const { ethers } = hre;
 const fs = require("fs");
+const { waitForCode } = require("./libraries/rpc.js");
+
+if (ethers.provider && typeof ethers.provider.send === "function") {
+  ethers.provider.getTransaction = async (hash) => {
+    const raw = await ethers.provider.send("eth_getTransactionByHash", [hash]);
+    if (!raw) return null;
+    const q = (v) => (v == null ? null : BigInt(v));
+    return new ethers.TransactionResponse({ hash: raw.hash, blockNumber: raw.blockNumber == null ? null : Number(BigInt(raw.blockNumber)), blockHash: raw.blockHash, index: raw.transactionIndex == null ? null : Number(BigInt(raw.transactionIndex)), type: raw.type == null ? 0 : Number(BigInt(raw.type)), from: raw.from, to: raw.to || null, gasLimit: q(raw.gas), nonce: Number(BigInt(raw.nonce)), data: raw.input || raw.data || "0x", value: q(raw.value), gasPrice: q(raw.gasPrice), maxPriorityFeePerGas: q(raw.maxPriorityFeePerGas), maxFeePerGas: q(raw.maxFeePerGas), chainId: q(raw.chainId), signature: null, accessList: raw.accessList || null }, ethers.provider);
+  };
+}
 
 /**
  * The V3 router this chain's periphery was deployed with.
@@ -278,8 +288,8 @@ async function main() {
   console.log(`\nDeploying ${contractName}...`);
   const Orders = await ethers.getContractFactory(contractName);
   const orders = await Orders.deploy(routerAddress, owner);
-  await orders.waitForDeployment();
-  const ordersAddress = await orders.getAddress();
+  const ordersAddress = orders.target;
+  await waitForCode(ethers.provider, ordersAddress, "KaleidoOrders");
   console.log(`${contractName} deployed to:`, ordersAddress);
 
   /* Read the immutable back rather than trusting the argument. It cannot be

@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import useDataFiltersPanel from "@/hooks/useDataFilterPanel";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import {
   useLendingAssetsAcrossChains,
@@ -31,6 +33,8 @@ export type CollateralIntent = {
 };
 
 interface LendingData {
+  filterChains: number[];
+  setFilterChains: (ids: number[]) => void;
   filters: FiltersPanel;
   borrow: BorrowV2;
   /**
@@ -89,6 +93,9 @@ const LendingDataContext = createContext<LendingData | null>(null);
  */
 export function LendingDataProvider({ children }: { children: ReactNode }) {
   const filters = useDataFiltersPanel();
+  const [filterChains, setFilterChains] = useState<number[]>([]);
+  const { showTestnets } = useTestnetMode();
+  const visibleFilterChains = filterChains.filter((id) => showTestnets || CHAINS_BY_ID[id]?.network === "mainnet");
   /* The chain the open form acts on; a picker sets it, forms reset it on close. */
   const [formChainId, setFormChainId] = useState<number | undefined>(undefined);
   const borrow = useBorrowV2(formChainId);
@@ -115,6 +122,8 @@ export function LendingDataProvider({ children }: { children: ReactNode }) {
   return (
     <LendingDataContext.Provider
       value={{
+        filterChains: visibleFilterChains,
+        setFilterChains,
         filters,
         borrow,
         assetsAcrossChains,

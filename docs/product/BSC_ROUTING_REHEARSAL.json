@@ -1,0 +1,60 @@
+{
+  "checkedAt": "2026-10-26T21:13:45.441Z",
+  "cases": [
+    {
+      "label": "BNB to USDT",
+      "amountIn": "1000000000000000",
+      "router": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+      "spender": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+      "quotedOutput": "741062669870806309",
+      "value": "1000000000000000",
+      "simulated": true,
+      "feeReceived": "1485095530803219",
+      "received": "741062669870806310",
+      "localGasUsed": "319210",
+      "passed": true
+    },
+    {
+      "label": "USDT to BNB",
+      "amountIn": "1000000000000000000",
+      "forkBalanceSlot": 1,
+      "router": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+      "spender": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+      "quotedOutput": "1345949672185623",
+      "value": "0",
+      "simulated": true,
+      "feeReceived": "2697187478798",
+      "received": "1345896551920573",
+      "localGasUsed": "255074",
+      "passed": true
+    },
+    {
+      "label": "USDT to USDC",
+      "amountIn": "1000000000000000000",
+      "forkBalanceSlot": 1,
+      "router": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+      "spender": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+      "quotedOutput": "996587802497890201",
+      "value": "0",
+      "simulated": true,
+      "feeReceived": "1997169944885551",
+      "received": "996587802497890203",
+      "localGasUsed": "257289",
+      "passed": true
+    }
+  ],
+  "scope": "Real route builds and local BSC fork executions only; no mainnet transactions",
+  "fee": {
+    "bps": 20,
+    "receiver": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc"
+  },
+  "keeper": {
+    "passed": true,
+    "simulated": true,
+    "router": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+    "received": "741062669870806310",
+    "gasUsed": "384871",
+    "scope": "OrdersV2 real Kyber calldata fill on local BSC fork; not the database/scheduled keeper service"
+  },
+  "status": "passed"
+}

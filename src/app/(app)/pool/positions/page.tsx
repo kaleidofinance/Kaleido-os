@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { useActiveAccount, useActiveWalletChain, useActiveWallet, useSwitchActiveWalletChain } from "thirdweb/react";
+import { defineChain } from "thirdweb";
+import { assertPositionNetwork, guardPositionSigner } from "@/lib/dex/positionNetwork";
 import { toEthersSigner } from "@/lib/wallet/ethersSigner";
 import { client } from "@/config/client";
 import { useV3Positions, type V3Position } from "@/hooks/dex/useV3Positions";
@@ -24,14 +26,20 @@ import {
   symbolForAddress,
 } from "@/constants/tokens";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
-import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { getContracts } from "@/constants/registry";
+import { CHAINS, getChainMeta } from "@/constants/chains";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { getV3AmountRatio, tickToPrice } from "@/constants/utils/v3Math";
 import { pairedAmount } from "@/lib/dex/deposit";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import PairIcon from "../_components/PairIcon";
 import s from "../pool.module.css";
-import { isClosed, positionsToShow } from "@/lib/dex/visiblePositions";
+import { isClosed, owedAmounts, positionsToShow } from "@/lib/dex/visiblePositions";
+import { positionAmounts, positionValueUsd } from "@/lib/dex/positionValue";
+import { useSpotPrices } from "@/hooks/useSpotPrices";
+import { useDexPrices } from "@/hooks/useDexPrices";
+import { hasKyberSwap } from "@/lib/swap/kyberswap";
+import { usePositionSummaryContext, type PositionSummary } from "../positionSummaryContext";
 
 /**
  * Your positions — the wallet-scoped half of the Liquidity section.
@@ -92,24 +100,26 @@ function usePoolStates(positions: V3Position[], chainId: number | undefined) {
   useEffect(() => {
     let cancelled = false;
     positions.forEach((p) => {
-      if (p.tokenId in states) return;
+      const positionChainId = p.chainId ?? chainId;
+      const stateKey = `${positionChainId ?? "unknown"}:${p.tokenId}`;
+      if (stateKey in states) return;
       readPoolState(
-        providerForChain(chainId),
-        chainId,
+        providerForChain(positionChainId),
+        positionChainId,
         p.token0,
         p.token1,
         p.fee,
-        decimalsFor(chainId, p.token0),
-        decimalsFor(chainId, p.token1),
+        decimalsFor(positionChainId, p.token0),
+        decimalsFor(positionChainId, p.token1),
       ).then((r) => {
-        if (!cancelled) setStates((prev) => ({ ...prev, [p.tokenId]: r }));
+        if (!cancelled) setStates((prev) => ({ ...prev, [stateKey]: r }));
       });
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positions.map((p) => p.tokenId).join(","), chainId]);
+  }, [positions.map((p) => `${p.chainId ?? chainId ?? "unknown"}:${p.tokenId}`).join(","), chainId]);
 
   return states;
 }
@@ -226,6 +236,10 @@ function PositionCard({
 }) {
   const account = useActiveAccount();
   const chain = useActiveWalletChain();
+  const wallet = useActiveWallet();
+  const switchChain = useSwitchActiveWalletChain();
+  const positionChainId = p.chainId ?? chainId;
+  const correctNetwork = positionChainId !== undefined && chain?.id === positionChainId;
   const { v3PositionManager } = getContracts(chainId);
 
   const [busy, setBusy] = useState<"collect" | "add" | "remove" | null>(null);
@@ -309,6 +323,7 @@ function PositionCard({
      thing left to do; adding to or removing from an empty position isn't. */
   const closed = isClosed(p);
   const canAdd =
+    correctNetwork &&
     legs !== null &&
     account !== undefined &&
     chain !== undefined &&
@@ -325,6 +340,7 @@ function PositionCard({
   const onCollect = async () => {
     setBusy("collect");
     try {
+      assertPositionNetwork(positionChainId, wallet?.getChain()?.id);
       await collectFees(p.tokenId);
       toast.success("Fees collected");
       refresh();
@@ -344,7 +360,7 @@ function PositionCard({
     if (!canAdd || !legs || !account || !chain || !v3PositionManager) return;
     setBusy("add");
     try {
-      const signer = toEthersSigner(account, chain);
+      const signer = guardPositionSigner(toEthersSigner(account, chain), positionChainId, () => wallet?.getChain()?.id);
       /* The whole sequence — floor the slippage, approve, approve, increase,
          wait — is `increaseV3` in lib/dex/deposit, which is also what the agent's
          `increasePosition` resolves to. One derivation of the floor for both, for
@@ -409,6 +425,7 @@ function PositionCard({
     }
     setBusy("remove");
     try {
+      assertPositionNetwork(positionChainId, wallet?.getChain()?.id);
       await removeLiquidity(p.tokenId, liquidity);
       toast.success(
         share === 100 ? "Liquidity removed" : `Removed ${share}% of the position`,
@@ -435,7 +452,7 @@ function PositionCard({
             {symbolFor(p.token0)} / {symbolFor(p.token1)}
           </div>
           <div className={s.pairFee}>
-            V3 · {(p.fee / 10000).toFixed(2)}% fee · #{p.tokenId}
+            V3 · {getChainMeta(p.chainId ?? chainId)?.shortName ?? "Unknown network"} · {(p.fee / 10000).toFixed(2)}% fee · #{p.tokenId}
           </div>
         </div>
         <span
@@ -493,9 +510,15 @@ function PositionCard({
       )}
 
       <div className={s.actions}>
+        {!correctNetwork && positionChainId !== undefined && (
+          <button className={s.actBtn} onClick={async () => {
+            try { await switchChain(defineChain(positionChainId)); }
+            catch { toast.error("Could not switch network. Please switch in your wallet."); }
+          }}>Switch to {getChainMeta(positionChainId)?.shortName ?? positionChainId}</button>
+        )}
         <button
           className={`${s.actBtn} ${s.primary}`}
-          disabled={owedTotal === 0 || busy !== null}
+          disabled={!correctNetwork || owedTotal === 0 || busy !== null}
           onClick={onCollect}
         >
           {busy === "collect" ? "Collecting…" : "Collect fees"}
@@ -504,14 +527,14 @@ function PositionCard({
           <>
             <button
               className={s.actBtn}
-              disabled={legs === null || busy !== null}
+              disabled={!correctNetwork || legs === null || busy !== null}
               onClick={() => setAdding((v) => !v)}
             >
               {adding ? "Close" : "Add liquidity"}
             </button>
             <button
               className={s.actBtn}
-              disabled={busy !== null}
+              disabled={!correctNetwork || busy !== null}
               onClick={onRemove}
             >
               {busy === "remove"
@@ -611,7 +634,10 @@ function PositionCard({
   );
 }
 
-export default function PositionsPage() {
+type NetworkPositionSummary = Omit<PositionSummary, "networks"> & { loaded: boolean };
+
+function NetworkPositions({ networkId, onSummary }: { networkId: number; onSummary: (chainId: number, summary: NetworkPositionSummary) => void }) {
+  const active = useV3Positions(networkId);
   const {
     positions,
     loading,
@@ -619,10 +645,23 @@ export default function PositionsPage() {
     increaseLiquidity,
     removeLiquidity,
     refresh,
-  } = useV3Positions();
-  const { chainId, isConnected } = useWalletV2();
-  const poolStates = usePoolStates(positions, chainId);
-  const gate = useChainGate(undefined, "dex");
+  } = active;
+  const allPositions = positions;
+  const visiblePositions = positionsToShow(allPositions);
+  const chainId = networkId;
+  const { isConnected } = useWalletV2();
+  const poolStates = usePoolStates(allPositions, chainId);
+  const { priceOf } = useSpotPrices();
+  const dexTokens = useMemo(() => allPositions.flatMap((position) => [position.token0, position.token1])
+    .filter((address, index, addresses) => addresses.findIndex((candidate) => candidate.toLowerCase() === address.toLowerCase()) === index)
+    .flatMap((address) => {
+      const decimals = decimalsForAddress(chainId, address);
+      const symbol = symbolForAddress(chainId, address);
+      return hasKyberSwap(chainId) && decimals !== undefined && priceOf(symbol) === null
+        ? [{ chainId, address, decimals }]
+        : [];
+    }), [allPositions, chainId, priceOf]);
+  const dexPriceOf = useDexPrices(dexTokens);
 
   // Bound to this chain so a position's raw addresses resolve against the right
   // registry — the same address means a different token on a different chain.
@@ -632,7 +671,48 @@ export default function PositionsPage() {
      (a 100% remove whose collect never landed). Filtering on liquidity alone hid
      those — and their Collect button — while the Portfolio showed the fees as
      ready to claim. See lib/dex/visiblePositions. */
-  const withActive = positionsToShow(positions);
+  const withActive = visiblePositions;
+  const summary = useMemo<NetworkPositionSummary>(() => {
+    if (loading) return { loaded: false, positions: null, liquidityUsd: null, feesUsd: null };
+    const open = withActive.filter((position) => !isClosed(position));
+    const tokenPrice = (address: string) => priceOf(symbolForAddress(chainId, address)) ?? dexPriceOf(chainId, address);
+    const liquidityValues = open.map((position) => {
+      const decimals0 = decimalsForAddress(chainId, position.token0);
+      const decimals1 = decimalsForAddress(chainId, position.token1);
+      if (decimals0 === undefined || decimals1 === undefined) return null;
+      return positionValueUsd(positionAmounts({
+        sqrtPriceX96: position.sqrtPriceX96,
+        tickLower: position.tickLower,
+        tickUpper: position.tickUpper,
+        liquidity: position.liquidity,
+        decimals0,
+        decimals1,
+      }), tokenPrice(position.token0), tokenPrice(position.token1));
+    });
+    const feeValues = withActive.map((position) => {
+      const decimals0 = decimalsForAddress(chainId, position.token0);
+      const decimals1 = decimalsForAddress(chainId, position.token1);
+      if (decimals0 === undefined || decimals1 === undefined) return null;
+      const [raw0, raw1] = owedAmounts(position);
+      return positionValueUsd({
+        amount0: feeAmountToNumber(raw0, decimals0),
+        amount1: feeAmountToNumber(raw1, decimals1),
+      }, tokenPrice(position.token0), tokenPrice(position.token1));
+    });
+    const completeSum = (values: (number | null)[]) => values.some((value) => value === null)
+      ? null
+      : values.reduce<number>((total, value) => total + (value ?? 0), 0);
+    return {
+      loaded: true,
+      positions: open.length,
+      liquidityUsd: completeSum(liquidityValues),
+      feesUsd: completeSum(feeValues),
+    };
+  }, [loading, withActive, chainId, priceOf, dexPriceOf]);
+
+  useEffect(() => {
+    onSummary(networkId, summary);
+  }, [networkId, onSummary, summary]);
 
   /* Arriving from /portfolio as #position-<id>: the cards render after the read,
      so the browser's own jump found nothing. Scroll once the card exists, and
@@ -657,11 +737,9 @@ export default function PositionsPage() {
      Checked before the skeleton, not after: the gate is derived from the
      registry, so it is already known, and showing a loading state for a read
      that will never happen would be a fabricated wait. */
-  if (!gate.ready) {
-    return <ChainGate product="liquidity positions" state={gate} requires="dex" />;
-  }
+  if (active.error) return <p role="status" className={s.addNote}>Could not load {getChainMeta(networkId)?.name} positions. <button className={s.actBtn} onClick={refresh}>Retry</button></p>;
 
-  if (loading && positions.length === 0) {
+  if (loading && allPositions.length === 0) {
     return (
       <div className={s.cards}>
         {[0, 1].map((i) => (
@@ -712,19 +790,68 @@ export default function PositionsPage() {
 
   return (
     <div className={s.cards}>
-      {withActive.map((p) => (
-        <PositionCard
-          key={p.tokenId}
-          p={p}
-          poolState={poolStates[p.tokenId]}
-          chainId={chainId}
-          symbolFor={symbolFor}
-          collectFees={collectFees}
-          increaseLiquidity={increaseLiquidity}
-          removeLiquidity={removeLiquidity}
-          refresh={refresh}
-        />
+      {[...new Set(withActive.map((p) => p.chainId).filter((id): id is number => id !== undefined))].map((networkId) => (
+        <section key={networkId} aria-label={`${getChainMeta(networkId)?.name ?? networkId} liquidity positions`}>
+          {withActive.filter((p) => p.chainId === networkId).map((p) => (
+            <PositionCard
+              key={`${networkId}:${p.tokenId}`}
+              p={p}
+              poolState={poolStates[`${networkId}:${p.tokenId}`]}
+              chainId={networkId}
+              symbolFor={(address) => symbolForAddress(networkId, address)}
+              collectFees={collectFees}
+              increaseLiquidity={increaseLiquidity}
+              removeLiquidity={removeLiquidity}
+              refresh={refresh}
+            />
+          ))}
+        </section>
       ))}
     </div>
   );
+}
+
+export default function PositionsPage() {
+  const { isConnected } = useWalletV2();
+  const { showTestnets } = useTestnetMode();
+  const chains = useMemo(() => CHAINS.filter((chain) => {
+    const contracts = getContracts(chain.id);
+    return (showTestnets || chain.network === "mainnet") && contracts.v3PositionManager && contracts.v3Factory;
+  }), [showTestnets]);
+  const { setSummary } = usePositionSummaryContext();
+  const [summaries, setSummaries] = useState<Record<number, NetworkPositionSummary>>({});
+  const updateSummary = useCallback((chainId: number, summary: NetworkPositionSummary) => {
+    setSummaries((current) => {
+      const previous = current[chainId];
+      return previous?.loaded === summary.loaded &&
+        previous?.positions === summary.positions &&
+        previous?.liquidityUsd === summary.liquidityUsd &&
+        previous?.feesUsd === summary.feesUsd
+        ? current
+        : { ...current, [chainId]: summary };
+    });
+  }, []);
+  useEffect(() => {
+    if (!isConnected) {
+      setSummary(null);
+      return;
+    }
+    const rows = chains.map((chain) => summaries[chain.id]);
+    if (rows.some((row) => !row?.loaded)) {
+      setSummary(null);
+      return;
+    }
+    const sum = (field: "liquidityUsd" | "feesUsd") => rows.some((row) => row[field] === null)
+      ? null
+      : rows.reduce((total, row) => total + (row[field] ?? 0), 0);
+    setSummary({
+      positions: rows.reduce((total, row) => total + (row.positions ?? 0), 0),
+      liquidityUsd: sum("liquidityUsd"),
+      feesUsd: sum("feesUsd"),
+      networks: rows.filter((row) => (row.positions ?? 0) > 0).length,
+    });
+  }, [chains, isConnected, setSummary, summaries]);
+  useEffect(() => () => setSummary(null), [setSummary]);
+  if (!isConnected) return <p className={s.empty}>Connect a wallet to see your positions.</p>;
+  return <>{chains.map((chain) => <section key={chain.id} aria-label={`${chain.name} positions`}><h2 className={s.pairName}>{chain.name}</h2><NetworkPositions networkId={chain.id} onSummary={updateSummary} /></section>)}</>;
 }

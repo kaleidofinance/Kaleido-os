@@ -297,7 +297,7 @@ function PoolHeader({ pool }: { pool: ITradingPair }) {
               form has no chain parameter: switching networks is the wallet's, and
               a link cannot do it. */}
           <Link
-            href={`/trade/swap?in=${pool.token0.address}&out=${pool.token1.address}`}
+            href={`/trade/swap?chain=${pool.chainId}&in=${pool.token0.address}&out=${pool.token1.address}`}
             className={`${s.bt} ${s.btWhite}`}
           >
             Swap

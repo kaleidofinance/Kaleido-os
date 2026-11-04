@@ -1,0 +1,31 @@
+{
+  "network": "bsc",
+  "chainId": 56,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-10-27T21:13:52.706Z",
+  "contracts": {
+    "diamond": "0x7d8Ff941f156492a745763C521EF468cfB78Af65",
+    "priceOracle": "0x55879358eC7eDA609f2264b0348D1915ee8307e1"
+  },
+  "facets": {
+    "DiamondCutFacet": "0x7Ad04316A1E2601054c691bD066Af91f411dA41B",
+    "DiamondInit": "0xF87F5261DA2a0D0293e75C11FD4AD16C15E31Aa5",
+    "DiamondLoupeFacet": "0xc1C0b8DCDAA448Eef7Fd2fEf95bED0320fb7fD22",
+    "OwnershipFacet": "0x9B799C18A2F58d4C952F2A8F71240FA8761C595d",
+    "ProtocolFacet": "0xef28cE00207Ad665CC6E92f4FF856fdcD7F25aa1",
+    "AgentPermissionFacet": "0xC1896949b9687eDa4D6c87d858f8D11B527776F0",
+    "LendingAdminFacet": "0x8b159345D484c48f926A0b3308bD55CB365a69A9"
+  },
+  "config": {
+    "feeVault": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+    "swapRouter": null,
+    "protocolFeeBps": 500,
+    "liquidationPenaltyBps": 640,
+    "priceMaxAgeSeconds": 300,
+    "priceMaxConfBps": 100
+  },
+  "stillRequired": [
+    "register-tokens.js — addCollateralToken / addLoanableToken, or no asset is usable",
+    "transfer ownership to a multisig"
+  ]
+}

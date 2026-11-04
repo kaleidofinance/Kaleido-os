@@ -6,6 +6,7 @@ import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
  * raw table has no public policy). Public, cacheable briefly.
  */
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const short = (w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`;
 

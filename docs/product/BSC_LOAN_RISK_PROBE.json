@@ -1,0 +1,542 @@
+{
+  "checkedAt": "2026-10-27T06:03:11.236Z",
+  "tokens": {
+    "USDC": {
+      "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "symbol": {
+        "ok": true,
+        "value": "USDC"
+      },
+      "name": {
+        "ok": true,
+        "value": "USD Coin"
+      },
+      "decimals": {
+        "ok": true,
+        "value": "18"
+      },
+      "totalSupply": {
+        "ok": true,
+        "value": "1588999877439803986446539541"
+      },
+      "owner": {
+        "ok": false,
+        "error": "execution reverted"
+      },
+      "paused": {
+        "ok": false,
+        "error": "execution reverted"
+      },
+      "codeBytes": {
+        "ok": true,
+        "value": 1596
+      },
+      "implementationSlot": {
+        "ok": true,
+        "value": "0x000000000000000000000000ba5fe23f8a3a24bed3236f05f2fcf35fd0bf0b5c"
+      },
+      "adminSlot": {
+        "ok": true,
+        "value": "0x000000000000000000000000d2f93484f2d319194cba95c5171b18c1d8cfd6c4"
+      },
+      "quotes": [
+        {
+          "amount": "100",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "135650006017607103",
+              "amountInUsd": "100.0421195864452",
+              "amountOutUsd": "100.0860842453003",
+              "venues": [
+                "flux-prop"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "1000",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "1356337072817319418",
+              "amountInUsd": "1000.415134153212",
+              "amountOutUsd": "1000.7405861625845",
+              "venues": [
+                "pancake-infinity-cl-fairflow",
+                "kipseli-prop"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "10000",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "13563860177870160660",
+              "amountInUsd": "10005.007808220827",
+              "amountOutUsd": "10007.766990276277",
+              "venues": [
+                "prism-prop"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "USDT": {
+      "address": "0x55d398326f99059ff775485246999027b3197955",
+      "symbol": {
+        "ok": true,
+        "value": "USDT"
+      },
+      "name": {
+        "ok": true,
+        "value": "Tether USD"
+      },
+      "decimals": {
+        "ok": true,
+        "value": "18"
+      },
+      "totalSupply": {
+        "ok": true,
+        "value": "9184991859520259774116723649"
+      },
+      "owner": {
+        "ok": true,
+        "value": "0xF68a4b64162906efF0fF6aE34E2bB1Cd42FEf62d"
+      },
+      "paused": {
+        "ok": false,
+        "error": "execution reverted"
+      },
+      "codeBytes": {
+        "ok": true,
+        "value": 4413
+      },
+      "implementationSlot": {
+        "ok": true,
+        "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "adminSlot": {
+        "ok": true,
+        "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "quotes": [
+        {
+          "amount": "100",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "135472819143326682",
+              "amountInUsd": "99.9044620530001",
+              "amountOutUsd": "99.95535118492661",
+              "venues": [
+                "flux-prop"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "1000",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "1354627716333250333",
+              "amountInUsd": "999.0374701868385",
+              "amountOutUsd": "999.4793787207833",
+              "venues": [
+                "metric-propamm/pancake-v3"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "10000",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "13538217138192293270",
+              "amountInUsd": "9990.44620530001",
+              "amountOutUsd": "9988.84689211446",
+              "venues": [
+                "pmm-13/kipseli-prop",
+                "kipseli-prop",
+                "pancake-v3"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "USD1": {
+      "address": "0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d",
+      "symbol": {
+        "ok": true,
+        "value": "USD1"
+      },
+      "name": {
+        "ok": true,
+        "value": "World Liberty Financial USD"
+      },
+      "decimals": {
+        "ok": true,
+        "value": "18"
+      },
+      "totalSupply": {
+        "ok": true,
+        "value": "1177132104964029398426742180"
+      },
+      "owner": {
+        "ok": true,
+        "value": "0xEE9B1A09AEDAceD9dCDA74964EA447feb93861C2"
+      },
+      "paused": {
+        "ok": true,
+        "value": false
+      },
+      "codeBytes": {
+        "ok": true,
+        "value": 2104
+      },
+      "implementationSlot": {
+        "ok": true,
+        "value": "0x000000000000000000000000694aa534bdef8ed63244eb902e7914e527891f08"
+      },
+      "adminSlot": {
+        "ok": true,
+        "value": "0x000000000000000000000000a032fe6c496732bdfc0d235066f55f171fa4aece"
+      },
+      "quotes": [
+        {
+          "amount": "100",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "135482760888024245",
+              "amountInUsd": "99.93893350213732",
+              "amountOutUsd": "99.96268646139698",
+              "venues": [
+                "pancake-infinity-cl",
+                "flux-prop"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "1000",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "1354695513025041916",
+              "amountInUsd": "999.1171255696077",
+              "amountOutUsd": "999.5294008741574",
+              "venues": [
+                "topazdex-v3",
+                "kipseli-prop"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "10000",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "13546001157169197256",
+              "amountInUsd": "9993.921013607614",
+              "amountOutUsd": "9994.590142719167",
+              "venues": [
+                "topazdex-v3",
+                "pancake-infinity-cl",
+                "uniswap-v4",
+                "kipseli-prop",
+                "flux-prop",
+                "pancake-v3"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "FDUSD": {
+      "address": "0xc5f0f7b66764f6ec8c8dff7ba683102295e16409",
+      "symbol": {
+        "ok": true,
+        "value": "FDUSD"
+      },
+      "name": {
+        "ok": true,
+        "value": "First Digital USD"
+      },
+      "decimals": {
+        "ok": true,
+        "value": "18"
+      },
+      "totalSupply": {
+        "ok": true,
+        "value": "57552946180000000000000000"
+      },
+      "owner": {
+        "ok": true,
+        "value": "0xfa771871d3d5c85e156D3d379E2FF7699C4d6a66"
+      },
+      "paused": {
+        "ok": true,
+        "value": false
+      },
+      "codeBytes": {
+        "ok": true,
+        "value": 2104
+      },
+      "implementationSlot": {
+        "ok": true,
+        "value": "0x000000000000000000000000a6b2c3d2910246fb0adb02e5f6b39e29026e6d50"
+      },
+      "adminSlot": {
+        "ok": true,
+        "value": "0x000000000000000000000000bb812b978e41929e86ad9ea8c1025710fee85957"
+      },
+      "quotes": [
+        {
+          "amount": "100",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "135266479353455787",
+              "amountInUsd": "99.77340076761247",
+              "amountOutUsd": "99.80310834912832",
+              "venues": [
+                "pancake-v3",
+                "pancake-infinity-cl",
+                "flux-prop"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "1000",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "1352435024335466109",
+              "amountInUsd": "997.5171190144026",
+              "amountOutUsd": "997.8615538311495",
+              "venues": [
+                "pancake-v3",
+                "prism-prop"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "10000",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "13519696931491796244",
+              "amountInUsd": "9977.556091686334",
+              "amountOutUsd": "9975.18220441938",
+              "venues": [
+                "pancake-v3",
+                "prism-prop",
+                "kipseli-prop",
+                "metric-propamm/kipseli-prop",
+                "uniswapv3"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "BTCB": {
+      "address": "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c",
+      "symbol": {
+        "ok": true,
+        "value": "BTCB"
+      },
+      "name": {
+        "ok": true,
+        "value": "BTCB Token"
+      },
+      "decimals": {
+        "ok": true,
+        "value": "18"
+      },
+      "totalSupply": {
+        "ok": true,
+        "value": "65300969964784133902393"
+      },
+      "owner": {
+        "ok": true,
+        "value": "0xF68a4b64162906efF0fF6aE34E2bB1Cd42FEf62d"
+      },
+      "paused": {
+        "ok": false,
+        "error": "execution reverted"
+      },
+      "codeBytes": {
+        "ok": true,
+        "value": 4413
+      },
+      "implementationSlot": {
+        "ok": true,
+        "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "adminSlot": {
+        "ok": true,
+        "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "quotes": [
+        {
+          "amount": "0.001",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "108232454367046092",
+              "amountInUsd": "79.83082929981079",
+              "amountOutUsd": "79.85670523633999",
+              "venues": [
+                "flux-prop"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "0.01",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "1082314425465131027",
+              "amountInUsd": "798.446499972365",
+              "amountOutUsd": "798.5595868897092",
+              "venues": [
+                "elfomofi",
+                "pancake-v3"
+              ]
+            }
+          }
+        },
+        {
+          "amount": "0.1",
+          "quote": {
+            "ok": true,
+            "value": {
+              "amountOut": "10822559811254340317",
+              "amountInUsd": "7983.082929981078",
+              "amountOutUsd": "7985.164651436931",
+              "venues": [
+                "elfomofi",
+                "flux-prop",
+                "metric-propamm/pancake-v3",
+                "pancake-v3",
+                "uniswapv3",
+                "metric-propamm/kipseli-prop"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "feeds": {
+    "usd1-usd": {
+      "proxy": "0xaD8b4e59A7f25B68945fAf0f3a3EAF027832FFB0",
+      "heartbeat": 86400,
+      "deviationPercent": 0.3,
+      "category": "low",
+      "live": {
+        "ok": true,
+        "value": {
+          "description": "USD1 / USD",
+          "decimals": 8,
+          "answer": "0.99849536",
+          "updatedAt": 1793047660,
+          "ageSeconds": 33359,
+          "completed": true,
+          "positive": true
+        }
+      }
+    },
+    "fdusd-usd": {
+      "proxy": "0x390180e80058A8499930F0c13963AD3E0d86Bfc9",
+      "heartbeat": 86400,
+      "deviationPercent": 0.3,
+      "category": "medium",
+      "live": {
+        "ok": true,
+        "value": {
+          "description": "FDUSD / USD",
+          "decimals": 8,
+          "answer": "0.99648522",
+          "updatedAt": 1793048132,
+          "ageSeconds": 32888,
+          "completed": true,
+          "positive": true
+        }
+      }
+    },
+    "btc-usd": {
+      "proxy": "0x264990fbd0A4796A3E3d8E37C4d5F87a3aCa5Ebf",
+      "heartbeat": 60,
+      "deviationPercent": 0.1,
+      "category": "low",
+      "live": {
+        "ok": true,
+        "value": {
+          "description": "BTC / USD",
+          "decimals": 8,
+          "answer": "79768.86966515",
+          "updatedAt": 1793080974,
+          "ageSeconds": 46,
+          "completed": true,
+          "positive": true
+        }
+      }
+    },
+    "usdc-usd": {
+      "proxy": "0x51597f405303C4377E36123cBc172b13269EA163",
+      "heartbeat": 900,
+      "deviationPercent": 0.1,
+      "category": "low",
+      "live": {
+        "ok": true,
+        "value": {
+          "description": "USDC / USD",
+          "decimals": 8,
+          "answer": "0.99971073",
+          "updatedAt": 1793080503,
+          "ageSeconds": 518,
+          "completed": true,
+          "positive": true
+        }
+      }
+    },
+    "usdt-usd": {
+      "proxy": "0xB97Ad0E74fa7d920791E90258A6E2085088b4320",
+      "heartbeat": 900,
+      "deviationPercent": 0.1,
+      "category": "low",
+      "live": {
+        "ok": true,
+        "value": {
+          "description": "USDT / USD",
+          "decimals": 8,
+          "answer": "0.99834",
+          "updatedAt": 1793080168,
+          "ageSeconds": 854,
+          "completed": true,
+          "positive": true
+        }
+      }
+    }
+  },
+  "admission": "pending; evidence only",
+  "limitations": [
+    "optional method failures do not prove absence of privileged controls",
+    "positive supply and quotes do not verify backing or liquidation depth",
+    "latest-state reads are independent, not a pinned-block audit"
+  ],
+  "block": "0x7c03965"
+}

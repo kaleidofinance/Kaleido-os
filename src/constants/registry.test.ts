@@ -10,6 +10,7 @@ import {
   resolveUserToken,
   getToken,
   getContracts,
+  registeredLendingAssets,
   isDeployed,
   auditRegistry,
   auditDeployPlan,
@@ -43,6 +44,7 @@ const ABSTRACT_TESTNET = 11124;
 const BASE = 8453;
 const ARBITRUM = 42161;
 const BSC_TESTNET = 97;
+const BSC_MAINNET = 56;
 const ARC_TESTNET = 5042002;
 const POLYGON = 137;
 const HYPERLIQUID = 999;
@@ -222,6 +224,22 @@ console.log("\n— deployments are checkable, not assumed —");
     "getToken on an empty registry returns nothing",
     getToken(BASE, "0xabc") === undefined,
   );
+}
+
+console.log("\n— BSC mainnet assets reach the app —");
+{
+  const tokens = TOKENS[BSC_MAINNET];
+  const loanable = registeredLendingAssets(BSC_MAINNET, "loanable");
+  const collateral = registeredLendingAssets(BSC_MAINNET, "collateral");
+  check("BSC is in the tradable chain selector", tradableChains(CHAINS).some((chain) => chain.id === BSC_MAINNET));
+  check("BSC has all five loan tokens", ["USDC", "USDT", "USD1", "FDUSD", "BTCB"].every((symbol) =>
+    tokens.some((token) => token.symbol === symbol) && loanable.assets.some((asset) => asset.symbol === symbol)),
+  );
+  check("BSC loan token decimals match mainnet", loanable.assets.every((asset) => asset.decimals === 18));
+  check("BSC collateral includes native BNB and WBNB", ["BNB", "WBNB"].every((symbol) =>
+    collateral.assets.some((asset) => asset.symbol === symbol)),
+  );
+  check("BSC market registrations have no unnamed assets", loanable.unnamed.length === 0 && collateral.unnamed.length === 0);
 }
 
 console.log("\n— registry audit —");

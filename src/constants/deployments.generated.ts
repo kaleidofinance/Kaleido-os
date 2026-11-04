@@ -23,6 +23,21 @@
 import type { ChainContracts, LendingRegistration } from "./registry";
 
 export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
+  56: {
+    diamond: "0x7d8Ff941f156492a745763C521EF468cfB78Af65", // deployment-diamond-bsc.json
+    oracleKind: "aggregator-v3", // deployment-oracle-bsc.json
+    orders: "0x5ba063DCd7fA4aE67d9414dF6719E493549540f1", // deployment-orders-bsc.json
+    ordersVersion: "1", // deployment-orders-bsc.json
+    poolInitCodeHash:
+      "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-bsc-1793136484372.json
+    priceOracle: "0x55879358eC7eDA609f2264b0348D1915ee8307e1", // deployment-diamond-bsc.json
+    v3Factory: "0x4078f601db2AcD4eB0004d6bAB032b034dd31d23", // deployment-v3-bsc-1793136484372.json
+    v3PositionDescriptor: "0x0b261e219181b5Ea3468a394502074F88f7c01C6", // deployment-v3-bsc-1793136484372.json
+    v3PositionManager: "0x754DFC59f56b8dC928cA83E50B514E7Ef7809F3b", // deployment-v3-bsc-1793136484372.json
+    v3Quoter: "0xe903e3D2f6772805BB1bB5B750A635DC029A30fa", // deployment-v3-bsc-1793136484372.json
+    v3Router: "0x219b28a181193B376224C43203a3c45584d2459A", // deployment-orders-bsc.json
+    wrappedNative: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", // deployment-v3-bsc-1793136484372.json
+  },
   97: {
     diamond: "0x2E7dd52073d6653F610607dA9B947ba59B585bf8", // deployment-diamond-bscTestnet.json
     faucet: "0x5B8Ce8F0a44ED4F73CFD9b6E7DC1E15Ebe7F6e8e", // deployment-faucet-bscTestnet.json
@@ -201,6 +216,20 @@ export const GENERATED_LENDING_REGISTRATION: Record<
   number,
   LendingRegistration
 > = {
+  56: {
+    // deployment-tokens-bsc.json
+    collateral: [
+      "0x0000000000000000000000000000000000000001",
+      "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    ],
+    loanable: [
+      "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      "0x55d398326f99059fF775485246999027B3197955",
+      "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d",
+      "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409",
+      "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
+    ],
+  },
   97: {
     // deployment-tokens-bscTestnet.json
     collateral: [
@@ -392,7 +421,7 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-10-02T22:35:39.118Z",
+  generatedAt: "2026-10-27T21:31:00.621Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
@@ -402,6 +431,7 @@ export const GENERATED_META: {
     "deployment-diamond-arcMainnet.json",
     "deployment-diamond-arcTestnet.json",
     "deployment-diamond-baseTestnet.json",
+    "deployment-diamond-bsc.json",
     "deployment-diamond-bscTestnet.json",
     "deployment-diamond-robinhoodTestnet.json",
     "deployment-diamond-sepolia.json",
@@ -418,12 +448,14 @@ export const GENERATED_META: {
     "deployment-oracle-arcMainnet.json",
     "deployment-oracle-arcTestnet.json",
     "deployment-oracle-baseTestnet.json",
+    "deployment-oracle-bsc.json",
     "deployment-oracle-bscTestnet.json",
     "deployment-oracle-robinhoodTestnet.json",
     "deployment-oracle-sepolia.json",
     "deployment-orders-arcMainnet.json",
     "deployment-orders-arcTestnet.json",
     "deployment-orders-baseTestnet.json",
+    "deployment-orders-bsc.json",
     "deployment-orders-bscTestnet.json",
     "deployment-orders-robinhoodTestnet.json",
     "deployment-orders-sepolia.json",
@@ -461,12 +493,14 @@ export const GENERATED_META: {
     "deployment-tokens-arcMainnet.json",
     "deployment-tokens-arcTestnet.json",
     "deployment-tokens-baseTestnet.json",
+    "deployment-tokens-bsc.json",
     "deployment-tokens-bscTestnet.json",
     "deployment-tokens-robinhoodTestnet.json",
     "deployment-tokens-sepolia.json",
     "deployment-v3-arcMainnet-1789855914870.json",
     "deployment-v3-arcTestnet-1787358306379.json",
     "deployment-v3-baseTestnet-1787327167156.json",
+    "deployment-v3-bsc-1793136484372.json",
     "deployment-v3-bscTestnet-1787453320471.json",
     "deployment-v3-robinhoodTestnet-1787450008885.json",
     "deployment-v3-sepolia-1787339244721.json",

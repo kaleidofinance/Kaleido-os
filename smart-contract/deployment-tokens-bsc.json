@@ -1,0 +1,203 @@
+{
+  "network": "bsc",
+  "chainId": 56,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-10-27T21:21:02.251Z",
+  "diamond": "0x7d8Ff941f156492a745763C521EF468cfB78Af65",
+  "oracle": "0x55879358eC7eDA609f2264b0348D1915ee8307e1",
+  "oracleKind": "aggregator-v3",
+  "pyth": null,
+  "nativeFeedSymbol": "BNB",
+  "hermesVerified": true,
+  "registered": [
+    {
+      "kind": "collateral",
+      "symbol": "BNB",
+      "address": "0x0000000000000000000000000000000000000001",
+      "onChainSymbol": null,
+      "decimals": 18,
+      "feedSymbol": "Crypto.BNB/USD",
+      "feedId": "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 5,
+      "feedMaxAge": 120,
+      "maxAgeBasis": "27s published heartbeat with operational tolerance; BSC fork rehearsed.",
+      "effectiveMaxAge": 120,
+      "txHash": "0x5409878f2a7ba8bc60dee207bb3bce5cbf44e9c4157620ac0667dc9da2169a8a",
+      "skipped": false
+    },
+    {
+      "kind": "collateral",
+      "symbol": "WBNB",
+      "address": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "onChainSymbol": "WBNB",
+      "decimals": 18,
+      "feedSymbol": "Crypto.BNB/USD",
+      "feedId": "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 5,
+      "feedMaxAge": 120,
+      "maxAgeBasis": "Canonical WBNB wrapper uses native BNB's feed and bound.",
+      "effectiveMaxAge": 120,
+      "txHash": "0x4e2b22257caa9af17cb502840659c29c350fb4f9873e1bd3532d5fdaa9093bc7",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDC",
+      "address": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      "onChainSymbol": "USDC",
+      "decimals": 18,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 375,
+      "feedMaxAge": 1200,
+      "maxAgeBasis": "900s published heartbeat plus 300s tolerance; prices underlying USDC, not Binance-Peg redemption risk.",
+      "effectiveMaxAge": 1200,
+      "txHash": "0xbb5dfba487c9cdb63e14248f989be6704388bd67562e4efc47f2c97041b38bd8",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDT",
+      "address": "0x55d398326f99059fF775485246999027B3197955",
+      "onChainSymbol": "USDT",
+      "decimals": 18,
+      "feedSymbol": "Crypto.USDT/USD",
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 569,
+      "feedMaxAge": 1200,
+      "maxAgeBasis": "900s published heartbeat plus 300s tolerance; prices underlying USDT, not Binance-Peg redemption risk.",
+      "effectiveMaxAge": 1200,
+      "txHash": "0x0a303958a6c0aa41d87ee1672f336daa03925292234e07c1eed4913e5226c1de",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USD1",
+      "address": "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d",
+      "onChainSymbol": "USD1",
+      "decimals": 18,
+      "feedSymbol": "Crypto.USD1/USD",
+      "feedId": "0x0a2425d43486780990d8b63543029e20556be51fd756cca584212f4d539611d4",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 1872,
+      "feedMaxAge": 108000,
+      "maxAgeBasis": "86400s published heartbeat plus reviewed operational tolerance; issuer controls and depeg response remain admission gates.",
+      "effectiveMaxAge": 108000,
+      "txHash": "0x3a0a71aa08bd64c38a946148c912dda8e2ea14baebeae5a51f23251643c9bcca",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "FDUSD",
+      "address": "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409",
+      "onChainSymbol": "FDUSD",
+      "decimals": 18,
+      "feedSymbol": "Crypto.FDUSD/USD",
+      "feedId": "0xccdc1a08923e2e4f4b1e6ea89de6acbc5fe1948e9706f5604b8cb50bc1ed3979",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 1402,
+      "feedMaxAge": 108000,
+      "maxAgeBasis": "86400s published heartbeat plus reviewed operational tolerance; issuer controls and depeg response remain admission gates.",
+      "effectiveMaxAge": 108000,
+      "txHash": "0x206ed00cb90ee2e575d59cdc0c8ebce9879f3935b70f1ae7c4dadc3feb49270d",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "BTCB",
+      "address": "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
+      "onChainSymbol": "BTCB",
+      "decimals": 18,
+      "feedSymbol": "Crypto.BTC/USD",
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 25,
+      "feedMaxAge": 600,
+      "maxAgeBasis": "BTCB candidate uses BTC/USD only as a price reference; this does not prove BTCB backing or peg safety.",
+      "effectiveMaxAge": 600,
+      "txHash": "0x94018340b0579fa7d17fb28c010ba373e7334371d25081cf4d2684b3cab7dc7b",
+      "skipped": false
+    }
+  ],
+  "feedBounds": [
+    {
+      "feedId": "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
+      "symbols": [
+        "BNB",
+        "WBNB"
+      ],
+      "maxAge": 120,
+      "basis": "Canonical WBNB wrapper uses native BNB's feed and bound.",
+      "txHash": "0x2a6f2f95b90dd4bb2f20ecf820d32baf2e700a4c72a3f3521a21fc00b75b9daa",
+      "skipped": false
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "maxAge": 1200,
+      "basis": "900s published heartbeat plus 300s tolerance; prices underlying USDC, not Binance-Peg redemption risk.",
+      "txHash": "0xfcfcefe9a6b549895b0c922b9669956a61847fdad73c30288ccb7d029386e7c2",
+      "skipped": false
+    },
+    {
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "symbols": [
+        "USDT"
+      ],
+      "maxAge": 1200,
+      "basis": "900s published heartbeat plus 300s tolerance; prices underlying USDT, not Binance-Peg redemption risk.",
+      "txHash": "0x6151cf04d486a02a4abb65b54e27595fe525f2663435bf73e230953f376c63cf",
+      "skipped": false
+    },
+    {
+      "feedId": "0x0a2425d43486780990d8b63543029e20556be51fd756cca584212f4d539611d4",
+      "symbols": [
+        "USD1"
+      ],
+      "maxAge": 108000,
+      "basis": "86400s published heartbeat plus reviewed operational tolerance; issuer controls and depeg response remain admission gates.",
+      "txHash": "0xe190b170fc7170cb85fc7427f8148d3bebd084502cfcab8f3b47f64173d5e7f3",
+      "skipped": false
+    },
+    {
+      "feedId": "0xccdc1a08923e2e4f4b1e6ea89de6acbc5fe1948e9706f5604b8cb50bc1ed3979",
+      "symbols": [
+        "FDUSD"
+      ],
+      "maxAge": 108000,
+      "basis": "86400s published heartbeat plus reviewed operational tolerance; issuer controls and depeg response remain admission gates.",
+      "txHash": "0xa45510149512432fd1015950bb7f0275d10637f88dac6128c7fcb2af28a6b455",
+      "skipped": false
+    },
+    {
+      "feedId": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+      "symbols": [
+        "BTC",
+        "BTCB"
+      ],
+      "maxAge": 600,
+      "basis": "BTCB candidate uses BTC/USD only as a price reference; this does not prove BTCB backing or peg safety.",
+      "txHash": "0x08366dfcc854435e70efa2c53ba3b4fbf06d68d96aff621baa8dfbf6bdc569b7",
+      "skipped": false
+    }
+  ],
+  "onChain": {
+    "collateral": [
+      "0x0000000000000000000000000000000000000001",
+      "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
+    ],
+    "loanable": [
+      "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      "0x55d398326f99059fF775485246999027B3197955",
+      "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d",
+      "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409",
+      "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c"
+    ]
+  }
+}

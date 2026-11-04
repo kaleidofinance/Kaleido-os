@@ -50,8 +50,16 @@ export interface MarketCoverage {
   malformedAmount: number;
 }
 
+/** Successful chains contribute a lower bound; all failures remain unavailable. */
+export function sumMeasured(values: readonly (number | null)[]): number | null {
+  if (values.length === 0) return 0;
+  const known = values.filter((value): value is number => value !== null);
+  return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
+}
+
 /** Headline figures for the protocol stat strips. Every field is nullable. */
 export interface MarketOverview {
+  chains?: Array<{ chainId: number; lendingTvlUsd: number | null; openOffers: number | null; openRequests: number | null; loansOutstanding: number | null; coverage: MarketCoverage; degraded: string[] }>;
   /** USD value of the OPEN lending book (offers + requests). */
   lendingTvlUsd: number | null;
   /** OPEN rows in `kaleido_listings` — offers a borrower can take right now. */

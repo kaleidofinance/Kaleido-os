@@ -150,6 +150,8 @@
   display: none;
 }
 
+
+
 /* Percentage chips and the slippage gear, riding the first well's label row at
    its top-right corner — the row already says "Sell" and nothing else, so the
    controls that qualify the sell cost no height at all. They used to be a strip

@@ -10,6 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import { useConnectWallet } from "@/lib/wallet";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
@@ -211,6 +212,7 @@ function historyForModel(
 
 export default function AgentPage() {
   const { chainId, address } = useWalletV2();
+  const connectWallet = useConnectWallet();
   /* The exit request waiting on the Abstract wallet: set when the connect card
      is shown, replayed once the wallet is on Abstract (effect below send). */
   const [pendingExit, setPendingExitState] = useState<string | null>(null);
@@ -733,7 +735,9 @@ export default function AgentPage() {
      * with the same getBalances the model's tool runs, shown as a balance card.
      * No model involved, so it answers even when the model is down.
      */
-    /* Abstract exits still require the source wallet on its source chain. */
+    /* "Move everything off Abstract": the bridges are signed from Abstract, so
+       a wallet that isn't there gets a card that opens the Abstract Global
+       Wallet connector instead of a dead-end refusal. */
     if (
       result.command.kind === "exitChain" &&
       /^abs/i.test(result.command.fromChain) &&
@@ -745,8 +749,19 @@ export default function AgentPage() {
         `move everything off ${c.fromChain} to ${c.toChain} as ${c.toAsset.toLowerCase()}`,
       );
       say(
-        "Those bridges must be signed from the wallet holding your funds on Abstract. Connect a supported wallet and switch it to Abstract to continue. The dedicated Abstract Global Wallet connector is no longer available here.",
-        { via: "local" },
+        "Those funds are on Abstract, so the bridges have to be signed from your Abstract wallet. Connect it and I'll carry on and build the plan to move everything out.",
+        {
+          via: "local",
+          cards: [
+            {
+              kind: "connect",
+              wallet: "agw",
+              title: "Connect your source wallet",
+              body: "Connect a supported wallet holding these assets, then switch to Abstract. You'll review every bridge before it's sent.",
+              label: "Connect wallet",
+            },
+          ],
+        },
       );
       return true;
     }
@@ -1601,7 +1616,8 @@ export default function AgentPage() {
       const question = isQuestionShaped(content);
       if (question && answerFromFaq(content)) return;
 
-      // Reuse the portfolio's own loading, missing-price and partial-read rules.
+      // Read-only wallet questions use the same partial-read rules as the
+      // portfolio panel and never spend a cloud reasoning request.
       if (personalPortfolioQuestion(content)) {
         log("local-portfolio");
         await planLocally({ status: "ok", command: { kind: "portfolio" } }, abort.signal);
@@ -1610,8 +1626,6 @@ export default function AgentPage() {
 
       const marketQuestion = poolQuestion(content);
       if (marketQuestion) {
-        // /api/pools serves mainnets only. Testnet requests retain the existing
-        // gated server reader instead of treating missing mainnet rows as zero.
         const onChain = chainId ?? ARGUS_CHAIN_ID;
         const meta = getChainMeta(onChain);
         if (meta?.network === "mainnet") {
@@ -1626,7 +1640,8 @@ export default function AgentPage() {
             note("Read the pool market snapshot");
             log(`local-pools:${marketQuestion}`);
             say(poolSnapshotAnswer(marketQuestion, payload, {
-              chainId: onChain, chainName: meta.shortName,
+              chainId: onChain,
+              chainName: meta.shortName,
             }), { via: "local", link: { label: "View pools", href: "/pool" } });
             return;
           } catch {
@@ -2746,6 +2761,7 @@ export default function AgentPage() {
                           cards={m.cards}
                           onPrompt={fillPrompt}
                           onSend={(t) => void send(t)}
+                          onConnect={() => connectWallet()}
                           agwConnected={chainId === 2741 && !!address}
                           historical={m.historical ? { at: m.ts } : undefined}
                         />
