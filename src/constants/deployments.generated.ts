@@ -134,6 +134,21 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
     wrappedNative: "0x4200000000000000000000000000000000000006", // deployment-dex-baseTestnet.json
     yieldTreasury: "0x3305F04C7DDb32C23F250620CBa50C8DE61f67B5", // deployment-stablecoin-baseTestnet-1788709726722.json
   },
+  99801: {
+    diamond: "0x311D0abDcA9EDf8072eA58B12c7843C633a65552", // deployment-diamond-elysiumTestnet.json
+    oracleKind: "aggregator-v3", // deployment-oracle-elysiumTestnet-1793898495839.json
+    poolInitCodeHash:
+      "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-elysiumTestnet-1793890873295.json
+    priceOracle: "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE", // deployment-diamond-elysiumTestnet.json
+    v2Factory: "0xbB74f2319494461B2591F8fbF126654Dd4c2a649", // deployment-dex-elysiumTestnet-1793893523751.json
+    v2Router: "0x51aCdcb394210db1bB4e2C8d4569cd734a374188", // deployment-dex-elysiumTestnet-1793893523751.json
+    v3Factory: "0xd27eB978D2a018F5E23FA2D2CA4a70122A3a669C", // deployment-v3-elysiumTestnet-1793890873295.json
+    v3PositionDescriptor: "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382", // deployment-v3-elysiumTestnet-1793890873295.json
+    v3PositionManager: "0x95b67405cFc4312b4ff39E78D25B115788f790a6", // deployment-v3-elysiumTestnet-1793890873295.json
+    v3Quoter: "0x2990EBECDa02BE9f1a55548F306624f97dF6D9EC", // deployment-v3-elysiumTestnet-1793890873295.json
+    v3Router: "0xEc42bD9f20737aA2C50E2334856Db8BA8023c351", // deployment-v3-elysiumTestnet-1793890873295.json
+    wrappedNative: "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b", // deployment-dex-elysiumTestnet-1793893523751.json
+  },
   5042002: {
     diamond: "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3", // deployment-diamond-arcTestnet.json
     faucet: "0x41D38A5b47887B98957cD2Bbe53528c2be0a3238", // deployment-faucet-arcTestnet.json
@@ -280,6 +295,21 @@ export const GENERATED_LENDING_REGISTRATION: Record<
       "0x688Fc5D842F863d5DA4A0E5d553A7bE6524dAbB9",
     ],
   },
+  99801: {
+    // deployment-tokens-elysiumTestnet.json
+    collateral: [
+      "0x0000000000000000000000000000000000000001",
+      "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b",
+      "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564",
+    ],
+    loanable: [
+      "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564",
+      "0x55879358eC7eDA609f2264b0348D1915ee8307e1",
+      "0xBf24907810bd15135f38dFe59998585dC4C60E71",
+      "0xD0a6bFe795AD429c9c9E55e0Ef9d710b4b7A13eA",
+      "0x7d8Ff941f156492a745763C521EF468cfB78Af65",
+    ],
+  },
   5042002: {
     // deployment-tokens-arcTestnet.json
     collateral: [
@@ -421,11 +451,12 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-10-27T21:31:00.621Z",
+  generatedAt: "2026-11-05T20:34:44.198Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
     "deployment-dex-bscTestnet.json",
+    "deployment-dex-elysiumTestnet-1793893523751.json",
     "deployment-dex-robinhoodTestnet.json",
     "deployment-dex-sepolia.json",
     "deployment-diamond-arcMainnet.json",
@@ -433,6 +464,7 @@ export const GENERATED_META: {
     "deployment-diamond-baseTestnet.json",
     "deployment-diamond-bsc.json",
     "deployment-diamond-bscTestnet.json",
+    "deployment-diamond-elysiumTestnet.json",
     "deployment-diamond-robinhoodTestnet.json",
     "deployment-diamond-sepolia.json",
     "deployment-faucet-arcTestnet.json",
@@ -450,6 +482,7 @@ export const GENERATED_META: {
     "deployment-oracle-baseTestnet.json",
     "deployment-oracle-bsc.json",
     "deployment-oracle-bscTestnet.json",
+    "deployment-oracle-elysiumTestnet-1793898495839.json",
     "deployment-oracle-robinhoodTestnet.json",
     "deployment-oracle-sepolia.json",
     "deployment-orders-arcMainnet.json",
@@ -495,6 +528,7 @@ export const GENERATED_META: {
     "deployment-tokens-baseTestnet.json",
     "deployment-tokens-bsc.json",
     "deployment-tokens-bscTestnet.json",
+    "deployment-tokens-elysiumTestnet.json",
     "deployment-tokens-robinhoodTestnet.json",
     "deployment-tokens-sepolia.json",
     "deployment-v3-arcMainnet-1789855914870.json",
@@ -502,6 +536,7 @@ export const GENERATED_META: {
     "deployment-v3-baseTestnet-1787327167156.json",
     "deployment-v3-bsc-1793136484372.json",
     "deployment-v3-bscTestnet-1787453320471.json",
+    "deployment-v3-elysiumTestnet-1793890873295.json",
     "deployment-v3-robinhoodTestnet-1787450008885.json",
     "deployment-v3-sepolia-1787339244721.json",
   ],

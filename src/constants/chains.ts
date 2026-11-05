@@ -374,6 +374,7 @@ export const CHAINS: ChainMeta[] = [
     },
     iconId: "elysium",
     color: "#6ee7b7",
+    tradable: true,
   },
 
   // ---- Abstract, last (deprioritised: balance reading only, never tradable) --

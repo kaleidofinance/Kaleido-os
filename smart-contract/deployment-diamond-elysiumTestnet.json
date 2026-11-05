@@ -1,0 +1,32 @@
+{
+  "network": "elysiumTestnet",
+  "chainId": 99801,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-11-05T17:55:03.310Z",
+  "contracts": {
+    "diamond": "0x311D0abDcA9EDf8072eA58B12c7843C633a65552",
+    "priceOracle": "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE"
+  },
+  "facets": {
+    "DiamondCutFacet": "0xCD0623deB613121043eB403DC68e029C7eb65b14",
+    "DiamondLoupeFacet": "0x89d6f16262ED7be4f0b77118Bf7e47eD002F4070",
+    "OwnershipFacet": "0x0b9AD40abdeE52e1AED165A9d9d2d36D77b89Bb8",
+    "ProtocolFacet": "0xE86ed0a1d4B3AF3fa348A5dad8bd51e5506C2584",
+    "AgentPermissionFacet": "0x8dF7362C853597FAFb472660eC5Bf114542eF84B",
+    "LendingAdminFacet": "0x4078f601db2AcD4eB0004d6bAB032b034dd31d23"
+  },
+  "config": {
+    "feeVault": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+    "swapRouter": "0x51aCdcb394210db1bB4e2C8d4569cd734a374188",
+    "protocolFeeBps": 1000,
+    "liquidationPenaltyBps": 640,
+    "priceMaxAgeSeconds": 300,
+    "priceMaxConfBps": 100
+  },
+  "stillRequired": [
+    "register-tokens.js — addCollateralToken / addLoanableToken, or no asset is usable",
+    "transfer ownership to a multisig"
+  ],
+  "resumedFrom": "RESUME_DIAMOND",
+  "facetsProvenance": "read back from DiamondLoupeFacet.facets() and matched to artifacts by selector set — this run did not deploy them"
+}

@@ -1,0 +1,28 @@
+{
+  "network": "elysiumTestnet",
+  "chainId": 99801,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-11-05T18:08:00.000Z",
+  "diamond": "0x311D0abDcA9EDf8072eA58B12c7843C633a65552",
+  "oracle": "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE",
+  "oracleKind": "aggregator-v3",
+  "pyth": null,
+  "nativeFeedSymbol": "HYPE",
+  "hermesVerified": false,
+  "note": "Elysium testnet only: synthetic ERC20s and self-hosted synthetic feeds. Do not reuse for mainnet.",
+  "registered": [
+    { "kind": "collateral", "symbol": "HYPE", "address": "0x0000000000000000000000000000000000000001", "feedSymbol": "HYPE/USD", "feedId": "0xc5f3d8462b1cf323f17cd65568a8349b94a47e414db695620043be926eb5fbfd", "txHash": "0x41ece24c021e037bc53eea2bcc9830bd83869f1b6ab18c95685d61ebeed05436" },
+    { "kind": "collateral", "symbol": "WETH", "address": "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b", "feedSymbol": "HYPE/USD", "feedId": "0xc5f3d8462b1cf323f17cd65568a8349b94a47e414db695620043be926eb5fbfd", "txHash": "0x7de70831495e91daef3c04440190a006eae4c999dbcc93fe0106701b161e0527" },
+    { "kind": "collateral", "symbol": "USDC", "address": "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564", "feedSymbol": "USDC/USD", "feedId": "0xff064b881a0c0fff844177f881a313ff894bfc6093d33b5514e34d7faa41b7ef", "txHash": "0xee28be47ae53f45adcedac24e43f28a37677cd718b60b04ba57075772eaa48c1" },
+    { "kind": "loanable", "symbol": "USDC", "address": "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564", "feedSymbol": "USDC/USD", "feedId": "0xff064b881a0c0fff844177f881a313ff894bfc6093d33b5514e34d7faa41b7ef", "txHash": "0xa4068c8b753f1b0a2dfee50315ca78ea8f510a805c62c49e5bf7b1a6b6898777" },
+    { "kind": "loanable", "symbol": "USDT", "address": "0x55879358eC7eDA609f2264b0348D1915ee8307e1", "feedSymbol": "USDT/USD", "feedId": "0x91879a0c0be4e43cacda1599ac414205651f4a62b614b6be9e5318a182c33eb0", "txHash": "0x2ed4f62e5f7dcf0791461f1b8e009e74060e37b321c372a1e7f045a8123522a0" },
+    { "kind": "loanable", "symbol": "USD1", "address": "0xBf24907810bd15135f38dFe59998585dC4C60E71", "feedSymbol": "USD1/USD", "feedId": "0x3aac3e50cce70ffaf716223335a7d33538156b398ee60a63ea2373fef57c5489", "txHash": "0x2d3e609e38d108192d9d5e11349bf89ab1aa4f27eccdf3b8df240b90de91eab3" },
+    { "kind": "loanable", "symbol": "FDUSD", "address": "0xD0a6bFe795AD429c9c9E55e0Ef9d710b4b7A13eA", "feedSymbol": "FDUSD/USD", "feedId": "0x11f7afea4e9a9fa4c035def1eeb1f0fe22fcff6294775301f929306c7e48cd8e", "txHash": "0xc563fcb1f0812bc71314fea43e35168c2ccd899012f27ec597189b55ac7c723d" },
+    { "kind": "loanable", "symbol": "BTCB", "address": "0x7d8Ff941f156492a745763C521EF468cfB78Af65", "feedSymbol": "BTC/USD", "feedId": "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489", "txHash": "0xfb1b5cff5cd60756ac63a114e4b26d00911651ae8c15110bfce7c59397738155" }
+  ],
+  "feedBounds": [],
+  "onChain": {
+    "collateral": ["0x0000000000000000000000000000000000000001", "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b", "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564"],
+    "loanable": ["0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564", "0x55879358eC7eDA609f2264b0348D1915ee8307e1", "0xBf24907810bd15135f38dFe59998585dC4C60E71", "0xD0a6bFe795AD429c9c9E55e0Ef9d710b4b7A13eA", "0x7d8Ff941f156492a745763C521EF468cfB78Af65"]
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "network": "elysiumTestnet",
+  "chainId": 99801,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-11-05T17:08:15.447Z",
+  "backend": "aggregator-v3",
+  "oracle": "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE",
+  "note": "Self-hosted synthetic testnet feeds only; do not reuse for mainnet.",
+  "feeds": [
+    {
+      "feedId": "0xc5f3d8462b1cf323f17cd65568a8349b94a47e414db695620043be926eb5fbfd",
+      "description": "HYPE/USD",
+      "symbols": [
+        "HYPE",
+        "WETH"
+      ],
+      "aggregator": "0xc1C0b8DCDAA448Eef7Fd2fEf95bED0320fb7fD22",
+      "decimals": 8,
+      "answer": "2500000000",
+      "updatedAt": 1793898446,
+      "maxAge": 86400
+    },
+    {
+      "feedId": "0xff064b881a0c0fff844177f881a313ff894bfc6093d33b5514e34d7faa41b7ef",
+      "description": "USDC/USD",
+      "symbols": [
+        "USDC"
+      ],
+      "aggregator": "0xef28cE00207Ad665CC6E92f4FF856fdcD7F25aa1",
+      "decimals": 8,
+      "answer": "100000000",
+      "updatedAt": 1793898446,
+      "maxAge": 86400
+    },
+    {
+      "feedId": "0x91879a0c0be4e43cacda1599ac414205651f4a62b614b6be9e5318a182c33eb0",
+      "description": "USDT/USD",
+      "symbols": [
+        "USDT"
+      ],
+      "aggregator": "0x8b159345D484c48f926A0b3308bD55CB365a69A9",
+      "decimals": 8,
+      "answer": "100000000",
+      "updatedAt": 1793898446,
+      "maxAge": 86400
+    },
+    {
+      "feedId": "0x3aac3e50cce70ffaf716223335a7d33538156b398ee60a63ea2373fef57c5489",
+      "description": "USD1/USD",
+      "symbols": [
+        "USD1"
+      ],
+      "aggregator": "0x179c08A52f9535E2c5B26ABA4a820532564fb7Bd",
+      "decimals": 8,
+      "answer": "100000000",
+      "updatedAt": 1793898446,
+      "maxAge": 86400
+    },
+    {
+      "feedId": "0x11f7afea4e9a9fa4c035def1eeb1f0fe22fcff6294775301f929306c7e48cd8e",
+      "description": "FDUSD/USD",
+      "symbols": [
+        "FDUSD"
+      ],
+      "aggregator": "0x4915d58FC901a87681683Fdf63D7e04998AfEC4A",
+      "decimals": 8,
+      "answer": "100000000",
+      "updatedAt": 1793898446,
+      "maxAge": 86400
+    },
+    {
+      "feedId": "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489",
+      "description": "BTC/USD",
+      "symbols": [
+        "BTCB"
+      ],
+      "aggregator": "0x695119274eDF54d4Df9386128E138007fDec1CA2",
+      "decimals": 8,
+      "answer": "10000000000000",
+      "updatedAt": 1793898446,
+      "maxAge": 86400
+    }
+  ]
+}
