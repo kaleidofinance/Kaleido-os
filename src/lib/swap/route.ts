@@ -1,5 +1,8 @@
 import { ethers } from "ethers";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
+import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
+import { getPeachTradeExecution } from "@/lib/peach/route";
+import { chainTokenByAddress } from "@/constants/tokens";
 import type {
   SwapRouteRequest,
   AggregatorSwapRoute,
@@ -34,14 +37,20 @@ export async function resolveSwapRoute(
   if (BigInt(units) <= 0n)
     return { error: `A swap needs a positive amount, not ${args.amount}.` };
 
-  const exec = await getKyberSwapExecution({
+  const request = {
     chainId: args.chainId,
     tokenIn: args.tokenIn,
     tokenOut: args.tokenOut,
     amountUnits: units,
     address: args.userAddress,
     slippageBps: args.slippageBps,
-  });
+  };
+  const unknownArcAsset = args.chainId === 5042 &&
+    (!chainTokenByAddress(args.chainId, args.tokenIn) || !chainTokenByAddress(args.chainId, args.tokenOut));
+  const peach = unknownArcAsset ? await getPeachTradeExecution(request) : null;
+  const kyber = peach ? null : await getKyberSwapExecution(request);
+  const fly = !peach && !kyber && hasFlyTrade(args.chainId) ? await getFlyTradeExecution(request) : null;
+  const exec = peach ?? kyber ?? fly;
   if (!exec)
     return {
       error:
@@ -54,6 +63,6 @@ export async function resolveSwapRoute(
     value: exec.value,
     spender: exec.spender,
     amountOut: exec.amountOut,
-    venue: "kyberswap",
+    venue: peach ? "peach" : kyber ? "kyberswap" : "fly",
   };
 }

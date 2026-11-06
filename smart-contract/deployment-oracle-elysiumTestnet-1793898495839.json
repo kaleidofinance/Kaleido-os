@@ -1,0 +1,12 @@
+{
+  "network": "elysiumTestnet",
+  "chainId": 99801,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-11-05T17:08:15.839Z",
+  "oracleKind": "aggregator-v3",
+  "contracts": {
+    "priceOracle": "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE",
+    "pythContract": null
+  },
+  "feeds": []
+}

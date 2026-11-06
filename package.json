@@ -46,6 +46,7 @@
     "test:txdisplay": "tsx src/lib/v2/txDisplay.test.ts",
     "test:txerrors": "tsx src/lib/v2/txErrors.test.ts",
     "test:kyberswap": "tsx src/lib/swap/kyberswap.test.ts",
+    "test:flytrade": "tsx src/lib/swap/flytrade.test.ts",
     "test:cctp": "tsx src/lib/bridge/cctp.test.ts",
     "test:cctpmint": "tsx src/lib/bridge/cctpAttestation.test.ts",
     "test:cctpfast": "tsx src/lib/bridge/cctpFast.test.ts",
@@ -143,6 +144,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",
+    "@masterpeach/launchpad-sdk": "1.0.0",
     "@pythnetwork/hermes-client": "^2.0.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/themes": "^3.1.4",
