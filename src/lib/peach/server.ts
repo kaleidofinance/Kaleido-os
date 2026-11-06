@@ -19,8 +19,9 @@ export async function resolvePeachTrade(args: {
     const deployment = sdk.arcMainnetLaunchpadDeployment;
     const chain = sdk.defineLaunchpadChain({
       slug: "arc-mainnet", chainId: PEACH_CHAIN_ID, family: "evm",
-      nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 }, rpcUrls: [RPC],
+      nativeCurrency: { symbol: "USDC", decimals: 18 }, rpcUrls: [RPC],
       explorerUrl: CHAINS_BY_ID[PEACH_CHAIN_ID]?.blockExplorer.url ?? "https://arcscan.app",
+      apiBaseUrl: "https://api.peach.ag", realtimeUrl: "wss://api.peach.ag",
       deployment, quoteTokens: deployment.economics.quoteTokens,
       capabilities: { create: false, bondingTrade: true, partnerAttribution: false }, confirmations: 2,
     });
