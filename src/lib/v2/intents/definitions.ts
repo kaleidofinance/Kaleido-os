@@ -13,6 +13,8 @@ import { CHAINS_BY_ID } from "@/constants/chains";
 import { initialSqrtPriceX96, sortMintParams } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
+import { getFlyTradeExecution } from "@/lib/swap/flytrade";
+import { getPeachTradeExecution } from "@/lib/peach/route";
 import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
 import { LENDING_ABI } from "./lendingAbi";
@@ -640,8 +642,9 @@ export async function freshAggregatorCall(
   i: Extract<Intent, { kind: "aggregatorSwap" }>,
   address: string,
 ): Promise<{ to: string; data: string }> {
-  if (i.venue !== "kyberswap") return { to: i.to, data: i.data };
-  const fresh = await getKyberSwapExecution({
+  if (i.venue !== "kyberswap" && i.venue !== "fly" && i.venue !== "peach") return { to: i.to, data: i.data };
+  const resolver = i.venue === "kyberswap" ? getKyberSwapExecution : i.venue === "fly" ? getFlyTradeExecution : getPeachTradeExecution;
+  const fresh = await resolver({
     chainId: i.chainId,
     tokenIn: i.tokenIn,
     tokenOut: i.tokenOut,

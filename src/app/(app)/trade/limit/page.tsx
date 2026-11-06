@@ -33,6 +33,7 @@ import {
   getKyberSwapExecution,
   hasKyberSwap,
 } from "@/lib/swap/kyberswap";
+import { getFlyTradeExecution } from "@/lib/swap/flytrade";
 import s from "../trade.module.css";
 import d from "../deferred.module.css";
 import l from "./limit.module.css";
@@ -656,6 +657,13 @@ export default function LimitPage() {
           const sell = aggregatorToken(chainId, tokenIn);
           const buy = aggregatorToken(chainId, tokenOut);
           const exec = await getKyberSwapExecution({
+            chainId,
+            tokenIn: sell.address,
+            tokenOut: buy.address,
+            amountUnits: ethers.parseUnits(truncTo(size, sell.decimals), sell.decimals).toString(),
+            address,
+            slippageBps: 50,
+          }) ?? await getFlyTradeExecution({
             chainId,
             tokenIn: sell.address,
             tokenOut: buy.address,

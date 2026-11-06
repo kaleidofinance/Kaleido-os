@@ -24,6 +24,9 @@ import {
   isCctpDomainChain,
 } from "@/lib/bridge/cctp";
 import { isKnownSwapRouter, nativeSwapErc20 } from "@/lib/swap/kyberswap";
+import { isKnownFlyTradeRouter } from "@/lib/swap/flytrade";
+import { PEACH_CHAIN_ID, PEACH_FACTORY, PEACH_QUOTE_TOKEN } from "@/lib/peach/route";
+import { providerForChain } from "@/config/provider";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
 import type { PlanStep } from "./types";
@@ -48,6 +51,20 @@ export interface Pricer {
     usd: number | null;
     source: string;
   }>;
+}
+
+async function peachCurveMatches(step: PlanStep, chainId: number | undefined): Promise<boolean> {
+  if (chainId !== PEACH_CHAIN_ID || str(step.venue) !== "peach") return false;
+  const tokenIn = str(step.tokenIn), tokenOut = str(step.tokenOut);
+  const quote = PEACH_QUOTE_TOKEN.toLowerCase();
+  const launch = tokenIn.toLowerCase() === quote ? tokenOut : tokenIn;
+  if (!ethers.isAddress(launch) || tokenIn.toLowerCase() === tokenOut.toLowerCase()) return false;
+  try {
+    const provider = providerForChain(chainId);
+    if (!provider) return false;
+    const curve = await new ethers.Contract(PEACH_FACTORY, ["function curveFor(address) view returns (address)"], provider).curveFor(launch);
+    return ethers.isAddress(curve) && curve.toLowerCase() === str(step.to).toLowerCase() && curve.toLowerCase() === str(step.spender).toLowerCase();
+  } catch { return false; }
 }
 
 export const defaultPricer: Pricer = async (symbol, amount) => {
@@ -1054,10 +1071,10 @@ function spenderReasons(
       reasons: [],
       note: "this approves an external DEX router this app routes through as a fallback for a token not in Kaleido's own pools — from the venues allow-list, not a Kaleido contract",
     };
-  if (isKnownSwapRouter(chainId, spender))
+  if (isKnownSwapRouter(chainId, spender) || isKnownFlyTradeRouter(chainId, spender))
     return {
       reasons: [],
-      note: "this approves an aggregator's swap router (KyberSwap) on a chain where Kaleido runs no pools of its own — one recognised external router, not a Kaleido contract, and only an aggregator swap should be pairing it",
+      note: "this approves a recognised external aggregator router (KyberSwap or Fly.trade) on a chain where Kaleido runs no pools of its own — not a Kaleido contract, and only an aggregator swap should be pairing it",
     };
 
   return {
@@ -1952,10 +1969,20 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
    */
   aggregatorSwap: (s, chainId) => {
     const reasons: string[] = [];
+    const peach = str(s.venue) === "peach";
     const tokenIn = str(s.tokenIn);
     const tokenOut = str(s.tokenOut);
-    const inTok = tradeToken(chainId, tokenIn);
-    const outTok = tradeToken(chainId, tokenOut);
+    const rawInTok = tradeToken(chainId, tokenIn);
+    const rawOutTok = tradeToken(chainId, tokenOut);
+    /* Peach launch tokens are intentionally not in the static registry. The
+       async factory check below proves the curve/token relationship; here we
+       only allow the one known quote-token side through the shape gate. */
+    const inTok = peach && !rawInTok.ok && tokenOut.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()
+      ? { ok: true, verified: false, symbol: str(s.symbolIn), decimals: num(s.decimalsIn) ?? 0 }
+      : rawInTok;
+    const outTok = peach && !rawOutTok.ok && tokenIn.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()
+      ? { ok: true, verified: false, symbol: str(s.symbolOut), decimals: num(s.decimalsOut) ?? 0 }
+      : rawOutTok;
     if (!inTok.ok)
       reasons.push(`input is not a token address: ${tokenIn || "(none)"}`);
     if (!outTok.ok)
@@ -1982,12 +2009,18 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     reasons.push(...requireAddresses(s, "to", "spender"));
     if (chainId === undefined)
       reasons.push("no chain to check the swap router against");
-    else if (!isKnownSwapRouter(chainId, str(s.to)))
+    else if (!isKnownSwapRouter(chainId, str(s.to)) && !isKnownFlyTradeRouter(chainId, str(s.to)))
       reasons.push(
         "the swap router is not one recognised on the chain this plan targets",
       );
     if (str(s.spender).toLowerCase() !== str(s.to).toLowerCase())
       reasons.push("the approval address is not the contract the swap calls");
+
+    if (peach) {
+      if (chainId !== PEACH_CHAIN_ID) reasons.push("Peach launchpad trades are Arc-mainnet only");
+      if (tokenIn.toLowerCase() !== PEACH_QUOTE_TOKEN.toLowerCase() && tokenOut.toLowerCase() !== PEACH_QUOTE_TOKEN.toLowerCase())
+        reasons.push("a Peach trade must have Arc USDC as one side");
+    }
 
     if (num(s.value) !== 0)
       reasons.push("an aggregator swap must not attach native value");
@@ -3294,6 +3327,14 @@ export async function auditPlan(opts: {
     }
 
     const shape = rule(step, chainId, limits);
+    if (
+      shape.reasons.length === 0 &&
+      kind === "aggregatorSwap" &&
+      str(step.venue) === "peach" &&
+      !(await peachCurveMatches(step, chainId))
+    ) {
+      shape.reasons.push("the Peach launch token does not resolve to the curve being called");
+    }
     if (shape.reasons.length > 0 || chainId === undefined) {
       audited.blocked = shape.reasons.join("; ") || "chain unknown";
       if (shape.reasons.length > 0) blocked.push(`${kind}: ${audited.blocked}`);

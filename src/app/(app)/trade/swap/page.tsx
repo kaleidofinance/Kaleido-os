@@ -39,6 +39,7 @@ import {
   getKyberSwapExecution,
   nativeSwapErc20,
 } from "@/lib/swap/kyberswap";
+import { getFlyTradeExecution } from "@/lib/swap/flytrade";
 import s from "../trade.module.css";
 
 /*
@@ -590,6 +591,13 @@ export default function SwapPage() {
             )
             .toString();
           kyberExec = await getKyberSwapExecution({
+            chainId: swapChainId,
+            tokenIn: kyberSell.address,
+            tokenOut: kyberBuy.address,
+            amountUnits: units,
+            address,
+            slippageBps,
+          }) ?? await getFlyTradeExecution({
             chainId: swapChainId,
             tokenIn: kyberSell.address,
             tokenOut: kyberBuy.address,
