@@ -32,6 +32,8 @@ export async function POST(req: Request) {
       nativeCurrency: { symbol: "USDC", decimals: 18 },
       rpcUrls: [RPC],
       explorerUrl: CHAINS_BY_ID[PEACH_CHAIN_ID]?.blockExplorer.url ?? "https://arcscan.app",
+      apiBaseUrl: "https://api.peach.ag",
+      realtimeUrl: "wss://api.peach.ag",
       deployment: sdk.arcMainnetLaunchpadDeployment,
       quoteTokens: sdk.arcMainnetLaunchpadDeployment.economics.quoteTokens,
       capabilities: { create: false, bondingTrade: true, partnerAttribution: false },
