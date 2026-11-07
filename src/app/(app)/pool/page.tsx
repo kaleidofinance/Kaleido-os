@@ -90,10 +90,15 @@ export default function PoolsPage() {
   const externalQuery = useQuery<ExternalPoolSnapshot[]>({
     queryKey: ["external-pools", 5042, 4663, 56],
     queryFn: async () => {
-      const response = await fetch("/api/pools/external", { cache: "no-store" });
+      const response = await fetch("/api/pools/external", {
+        cache: "no-store",
+      });
       if (!response.ok) throw new Error("External markets unavailable");
       return (await response.json()).data;
-    }, staleTime: 60000, refetchInterval: 60000, refetchIntervalInBackground: false,
+    },
+    staleTime: 60000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
   const external = externalQuery.data ?? [];
   const externalPools = external.flatMap((snapshot) => snapshot.pools);
@@ -107,7 +112,10 @@ export default function PoolsPage() {
      deployments — the table is cross-chain, so one chain being unreadable is a
      missing block of rows, not an empty page. The read chain is named only when
      that set is empty, which is when there is genuinely nothing to enumerate. */
-  const gate = useChainGate(discoveryChainIds()[0] ?? READ_ONLY_CHAIN_ID, "dex");
+  const gate = useChainGate(
+    discoveryChainIds()[0] ?? READ_ONLY_CHAIN_ID,
+    "dex",
+  );
 
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<PoolFilters>(NO_FILTERS);
@@ -150,129 +158,188 @@ export default function PoolsPage() {
   );
 
   const visible = useMemo(
-    () => view === "external" || (venue && venue !== "kaleido") ? [] : applyPoolFilters(sortedPools, filters, query),
+    () =>
+      view === "external" || (venue && venue !== "kaleido")
+        ? []
+        : applyPoolFilters(sortedPools, filters, query),
     [sortedPools, filters, query, view, venue],
   );
 
-  const externalVisible = (view === "kaleido" ? [] : externalPools).filter((pool) => {
-    if (sortedPools.some((own) => own.chainId === pool.chainId && own.address.toLowerCase() === pool.address.toLowerCase())) return false;
-    if (venue && venue !== pool.exchange) return false;
-    if (filters.chainIds.length && !filters.chainIds.includes(pool.chainId)) return false;
-    if (filters.hideEmpty && pool.tvlUsd === 0) return false;
-    if (filters.venues.length && !filters.venues.some((v) => pool.exchange.toLowerCase().includes(v))) return false;
-    if (filters.feeBps.length && (pool.feeTier === null || !filters.feeBps.includes(pool.feeTier * 100))) return false;
-    const hay = `${pool.tokenSymbols.join(" ")} ${pool.address} ${pool.exchange} ${CHAINS_BY_ID[pool.chainId]?.name ?? pool.chainId}`.toLowerCase();
-    return query.toLowerCase().split(/[\s/,]+/).filter(Boolean).every((word) => hay.includes(word));
-  });
+  const externalVisible = (view === "kaleido" ? [] : externalPools).filter(
+    (pool) => {
+      if (
+        sortedPools.some(
+          (own) =>
+            own.chainId === pool.chainId &&
+            own.address.toLowerCase() === pool.address.toLowerCase(),
+        )
+      )
+        return false;
+      if (venue && venue !== pool.exchange) return false;
+      if (filters.chainIds.length && !filters.chainIds.includes(pool.chainId))
+        return false;
+      if (filters.hideEmpty && pool.tvlUsd === 0) return false;
+      if (
+        filters.venues.length &&
+        !filters.venues.some((v) => pool.exchange.toLowerCase().includes(v))
+      )
+        return false;
+      if (
+        filters.feeBps.length &&
+        (pool.feeTier === null || !filters.feeBps.includes(pool.feeTier * 100))
+      )
+        return false;
+      const hay =
+        `${pool.tokenSymbols.join(" ")} ${pool.address} ${pool.exchange} ${CHAINS_BY_ID[pool.chainId]?.name ?? pool.chainId}`.toLowerCase();
+      return query
+        .toLowerCase()
+        .split(/[\s/,]+/)
+        .filter(Boolean)
+        .every((word) => hay.includes(word));
+    },
+  );
   const sum = (values: (number | null)[]) => {
     const known = values.filter((v): v is number => v !== null);
     return known.length ? known.reduce((a, b) => a + b, 0) : null;
   };
-  const trackedTvl = sum([...visible.map((p) => p.liquidity), ...externalVisible.map((p) => p.tvlUsd)]);
-  const trackedVolume = sum([...visible.map((p) => p.volume24h), ...externalVisible.map((p) => p.volume24hUsd)]);
-  const trackedFees = sum([...visible.map((p) => p.fees24h), ...externalVisible.map((p) => p.fees24hUsd)]);
+  const trackedTvl = sum([
+    ...visible.map((p) => p.liquidity),
+    ...externalVisible.map((p) => p.tvlUsd),
+  ]);
+  const trackedVolume = sum([
+    ...visible.map((p) => p.volume24h),
+    ...externalVisible.map((p) => p.volume24hUsd),
+  ]);
+  const trackedFees = sum([
+    ...visible.map((p) => p.fees24h),
+    ...externalVisible.map((p) => p.fees24hUsd),
+  ]);
   const visibleCount = visible.length + externalVisible.length;
-  const chainIds = [...new Set([...sortedPools.map((p) => p.chainId), ...externalPools.map((p) => p.chainId)])];
+  const chainIds = [
+    ...new Set([
+      ...sortedPools.map((p) => p.chainId),
+      ...externalPools.map((p) => p.chainId),
+    ]),
+  ];
 
   /* Either sweep still running counts as loading, so the table does not settle
      into a V2-only list and then reshuffle when the V3 sweep lands. */
-  const loading = (view !== "external" && (v2.loading || v3.loading)) || (view !== "kaleido" && externalQuery.isLoading);
+  const loading =
+    (view !== "external" && (v2.loading || v3.loading)) ||
+    (view !== "kaleido" && externalQuery.isLoading);
 
-  const filterCount = activeFilterCount(filters);
+  const filterCount =
+    activeFilterCount(filters) +
+    Number(view !== "all") +
+    Number(Boolean(venue));
   const narrowed = visible.length !== sortedPools.length;
   const clearAll = () => {
     setQuery("");
     setFilters(NO_FILTERS);
     setVenue("");
+    setView("all");
   };
 
   /* After both hooks, never between them. */
-  if (!gate.ready) return <ChainGate product="pool list" state={gate} requires="dex" />;
+  if (!gate.ready)
+    return <ChainGate product="pool list" state={gate} requires="dex" />;
 
   return (
     <>
       <div className={s.statStrip}>
         <StatStrip>
-          <Stat label="Pools shown" value={loading && !visibleCount ? DASH : String(visibleCount)} />
+          <Stat
+            label="Pools shown"
+            value={loading && !visibleCount ? DASH : String(visibleCount)}
+          />
           <Stat label="Tracked TVL" value={usd(trackedTvl)} />
           <Stat label="24h volume" value={usd(trackedVolume)} />
           <Stat label="24h fees" value={usd(trackedFees, 2)} />
         </StatStrip>
         <p className={s.partialNote} role="status">
-          Figures follow the filters. External liquidity is a ranked sample and is not Kaleido protocol revenue.
-          {external.length && view !== "kaleido" ? ` Tracking ${external.reduce((total, snapshot) => total + snapshot.sampledPools, 0)} aggregator-routed pools across ${external.length} networks.` : ""}
-          {view !== "kaleido" && (externalQuery.isError || external.some((snapshot) => snapshot.stale)) ? " External market data is unavailable or stale." : ""}
+          Figures follow the filters. External liquidity is a ranked sample and
+          is not Kaleido protocol revenue.
+          {external.length && view !== "kaleido"
+            ? ` Tracking ${external.reduce((total, snapshot) => total + snapshot.sampledPools, 0)} aggregator-routed pools across ${external.length} networks.`
+            : ""}
+          {view !== "kaleido" &&
+          (externalQuery.isError || external.some((snapshot) => snapshot.stale))
+            ? " External market data is unavailable or stale."
+            : ""}
         </p>
-      </div>
-      <div className={s.marketControls}>
-        <div className={s.tabs} role="group" aria-label="Pool source">
-          {(["all", "kaleido", "external"] as const).map((value) => <button key={value} className={`${s.tab} ${view === value ? s.tabOn : ""}`} aria-pressed={view === value} onClick={() => { setView(value); setVenue(""); }}>
-            {value === "all" ? "All" : value === "kaleido" ? "Kaleido" : "External"}
-          </button>)}
-        </div>
-        <label>Network <select aria-label="Pool network" value={filters.chainIds.length === 1 ? filters.chainIds[0] : ""} onChange={(e) => setFilters({ ...filters, chainIds: e.target.value ? [Number(e.target.value)] : [] })}>
-          <option value="">All enabled networks</option>
-          {chainIds.map((id) => <option key={id} value={id}>{CHAINS_BY_ID[id]?.name ?? id}</option>)}
-        </select></label>
-        <label>Venue <select aria-label="Pool venue" value={venue} onChange={(e) => setVenue(e.target.value)}>
-          <option value="">All venues</option>
-          {view !== "external" && <option value="kaleido">Kaleido</option>}
-          {view !== "kaleido" && [...new Set(externalPools.map((p) => p.exchange))].map((exchange) => <option key={exchange} value={exchange}>{exchange}</option>)}
-        </select></label>
       </div>
       {/* Rendered while loading as well, so it does not appear a beat after the
           rows and push the table down. Absent only when there is genuinely
           nothing to search. */}
-      <div className={s.toolbar}>
-          <div className={s.search}>
-            <svg
-              className={s.searchIcon}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
+      <div className={`${s.toolbar} ${s.poolToolbar}`}>
+        <button
+          type="button"
+          className={s.filterBt}
+          aria-haspopup="dialog"
+          onClick={() => setPanelOpen(true)}
+        >
+          {filters.chainIds.length === 1
+            ? (CHAINS_BY_ID[filters.chainIds[0]]?.shortName ?? "Network")
+            : filters.chainIds.length
+              ? `${filters.chainIds.length} networks`
+              : "All networks"}{" "}
+          ▾
+        </button>
+        <button
+          type="button"
+          className={s.filterBt}
+          aria-haspopup="dialog"
+          onClick={() => setPanelOpen(true)}
+        >
+          {venue || "All venues"} ▾
+        </button>
+        <div className={s.search}>
+          <svg
+            className={s.searchIcon}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-4.3-4.3" strokeLinecap="round" />
+          </svg>
+          <input
+            className={s.searchInput}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search pools, tokens, networks or an address"
+            aria-label="Search pools"
+          />
+          {query ? (
+            <button
+              type="button"
+              className={s.searchClear}
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
             >
-              <circle cx="11" cy="11" r="7" />
-              <path d="M20 20l-4.3-4.3" strokeLinecap="round" />
-            </svg>
-            <input
-              className={s.searchInput}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search pools, tokens, networks or an address"
-              aria-label="Search pools"
-            />
-            {query ? (
-              <button
-                type="button"
-                className={s.searchClear}
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-              >
-                ✕
-              </button>
-            ) : null}
-          </div>
-          {/* Only once something is hidden. A permanent "13 of 13 pools" is noise,
+              ✕
+            </button>
+          ) : null}
+        </div>
+        {/* Only once something is hidden. A permanent "13 of 13 pools" is noise,
               and the number is only interesting as the answer to "what did I just
               filter out". */}
-          {narrowed ? (
-            <span className={s.resultNote}>
-              {visibleCount} pools shown
-            </span>
+        {narrowed ? (
+          <span className={s.resultNote}>{visibleCount} pools shown</span>
+        ) : null}
+        <button
+          className={`${s.filterBt} ${filterCount ? s.filterBtOn : ""}`}
+          onClick={() => setPanelOpen(true)}
+          aria-haspopup="dialog"
+        >
+          Filters
+          {filterCount ? (
+            <span className={s.filterCount}>{filterCount}</span>
           ) : null}
-          <button
-            className={`${s.filterBt} ${filterCount ? s.filterBtOn : ""}`}
-            onClick={() => setPanelOpen(true)}
-            aria-haspopup="dialog"
-          >
-            Filters
-            {filterCount ? (
-              <span className={s.filterCount}>{filterCount}</span>
-            ) : null}
-          </button>
-        </div>
+        </button>
+      </div>
 
       <div className={`${s.table} ${s.pools}`}>
         <div className={s.thead}>
@@ -368,7 +435,9 @@ export default function PoolsPage() {
                   in the pill's tooltip rather than spelled out in the cell. */}
               <span className={`${s.right} tabular ${s.aprCell}`}>
                 {pct(p.apr)}
-                {lpPoints && p.version === "v3" && p.chainId === lpPoints.chainId ? (
+                {lpPoints &&
+                p.version === "v3" &&
+                p.chainId === lpPoints.chainId ? (
                   <span
                     className={s.pointsPill}
                     title={`Earns ${lpPoints.perUsdPerDay.toLocaleString("en-US", { maximumFractionDigits: 2 })} Season 1 points per $1 of in-range liquidity per day${lpPoints.boost > 1 ? ` (${lpPoints.boost}× campaign boost)` : ""}`}
@@ -382,12 +451,8 @@ export default function PoolsPage() {
                   window was empty on nearly every row. Totals come from the
                   per-pool ledger the swap indexer writes (poolVolume.ts); fees
                   are that volume at the pool's fee rate. */}
-              <span className={`${s.right} tabular`}>
-                {usd(p.volume24h)}
-              </span>
-              <span className={`${s.right} tabular`}>
-                {usd(p.fees24h)}
-              </span>
+              <span className={`${s.right} tabular`}>{usd(p.volume24h)}</span>
+              <span className={`${s.right} tabular`}>{usd(p.fees24h)}</span>
               {/* A sibling of the pair link, not inside it — nesting a button in an
                   anchor is invalid, and the click would have to be swallowed. */}
               <button
@@ -401,27 +466,56 @@ export default function PoolsPage() {
           ))
         )}
         {externalVisible.map((pool) => {
-          const tradable = pool.tokens.every((token) => chainTokenByAddress(pool.chainId, token.address));
+          const tradable = pool.tokens.every((token) =>
+            chainTokenByAddress(pool.chainId, token.address),
+          );
           const href = `/trade/swap?chain=${pool.chainId}&in=${pool.tokens[0].address}&out=${pool.tokens[1].address}`;
-          return <div key={`${pool.chainId}-${pool.exchange}-${pool.address}`} className={s.row}>
-            <div className={s.pairCell}>
-              <div className={s.pair}>
-                {pool.tokens.map((token) => (
-                  <PairIcon key={`${pool.chainId}:${token.address}`} symbol={token.symbol}
-                    logoURI={token.logoURI}
-                    allowSymbolIcon={chainTokenByAddress(pool.chainId, token.address)?.symbol === token.symbol} />
-                ))}
+          return (
+            <div
+              key={`${pool.chainId}-${pool.exchange}-${pool.address}`}
+              className={s.row}
+            >
+              <div className={s.pairCell}>
+                <div className={s.pair}>
+                  {pool.tokens.map((token) => (
+                    <PairIcon
+                      key={`${pool.chainId}:${token.address}`}
+                      symbol={token.symbol}
+                      logoURI={token.logoURI}
+                      allowSymbolIcon={
+                        chainTokenByAddress(pool.chainId, token.address)
+                          ?.symbol === token.symbol
+                      }
+                    />
+                  ))}
+                </div>
+                <div>
+                  <div className={s.pairName}>
+                    {pool.tokenSymbols.join(" / ")}
+                  </div>
+                  <div className={s.pairFee}>
+                    {pool.exchange} · External{" "}
+                    <ChainTag chainId={pool.chainId} />
+                  </div>
+                </div>
               </div>
-              <div>
-              <div className={s.pairName}>{pool.tokenSymbols.join(" / ")}</div>
-              <div className={s.pairFee}>{pool.exchange} · External <ChainTag chainId={pool.chainId} /></div>
-            </div></div>
-            <span className={`${s.right} tabular`}>{usd(pool.tvlUsd)}</span>
-            <span className={s.right}>{DASH}</span>
-            <span className={`${s.right} tabular`}>{usd(pool.volume24hUsd)}</span>
-            <span className={`${s.right} tabular`}>{usd(pool.fees24hUsd)}</span>
-            {tradable ? <Link className={s.depositBt} href={href}>Swap</Link> : <span className={s.right}>Market data</span>}
-          </div>;
+              <span className={`${s.right} tabular`}>{usd(pool.tvlUsd)}</span>
+              <span className={s.right}>{DASH}</span>
+              <span className={`${s.right} tabular`}>
+                {usd(pool.volume24hUsd)}
+              </span>
+              <span className={`${s.right} tabular`}>
+                {usd(pool.fees24hUsd)}
+              </span>
+              {tradable ? (
+                <Link className={s.depositBt} href={href}>
+                  Swap
+                </Link>
+              ) : (
+                <span className={s.right}>Market data</span>
+              )}
+            </div>
+          );
         })}
       </div>
 
@@ -431,6 +525,15 @@ export default function PoolsPage() {
              offered — otherwise ticking one chain would remove every other chain's
              checkbox and there would be no way back. */
           pools={sortedPools}
+          chainIds={chainIds}
+          exchanges={[...new Set(externalPools.map((p) => p.exchange))]}
+          source={view}
+          onSourceChange={(next) => {
+            setView(next);
+            setVenue("");
+          }}
+          exchange={venue}
+          onExchangeChange={setVenue}
           filters={filters}
           onChange={setFilters}
           onClose={() => setPanelOpen(false)}

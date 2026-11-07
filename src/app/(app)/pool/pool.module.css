@@ -94,38 +94,6 @@
   gap: 7px;
 }
 
-.marketControls {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.marketControls label {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  color: var(--k-t2);
-  font-size: 13px;
-  min-width: 0;
-}
-.marketControls select {
-  max-width: 100%;
-  min-height: 40px;
-  border: 1px solid var(--k-line);
-  border-radius: 12px;
-  background: var(--k-card);
-  color: var(--k-t1);
-  padding: 6px 10px;
-  font: inherit;
-}
-.marketControls select:focus-visible,
-.marketControls button:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
-}
 /* Links, not buttons — the tabs navigate. `font: inherit` still matters: an <a>
    inherits the font but browsers colour and underline it. */
 .tab {
@@ -186,6 +154,24 @@
      ~170px content minimum and the row overflows instead of shrinking. */
   flex: 1;
   min-width: 140px;
+}
+.listWrap > .poolToolbar {
+  grid-column: 1 / -1;
+}
+.poolToolbar {
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+}
+.poolToolbar > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.poolToolbar .search {
+  min-width: 160px;
+}
+.poolToolbar .resultNote {
+  display: none;
 }
 .searchIcon {
   position: absolute;
@@ -1700,7 +1686,6 @@ a.txAction:hover {
   cursor: default;
 }
 
-
 /* APR cell with the kPoints pill beside it: the Kaleido mark + "kPoints", in
    our own brand green (not another DEX's lime). */
 .aprCell {
@@ -1719,7 +1704,8 @@ a.txAction:hover {
   line-height: 1;
   color: var(--k-brand);
   background: var(--k-brand-dim);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-brand) 35%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--k-brand) 35%, transparent);
   border-radius: var(--k-r-pill);
   padding: 3px 9px 3px 4px;
   cursor: help;
@@ -1731,7 +1717,6 @@ a.txAction:hover {
   background: #04170f url("/newklogo2.png") center / cover no-repeat;
   flex: none;
 }
-
 
 /* ---------- pool detail v2 (Uniswap-style) ---------- */
 /* .panel composes .card, which becomes a two-column grid on desktop for the

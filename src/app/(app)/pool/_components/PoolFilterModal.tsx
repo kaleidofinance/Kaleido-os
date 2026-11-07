@@ -2,12 +2,7 @@
 
 import type { ReactNode } from "react";
 import type { ITradingPair } from "@/constants/types/dex";
-import {
-  NO_FILTERS,
-  poolFacets,
-  toggle,
-  type PoolFilters,
-} from "../filters";
+import { NO_FILTERS, poolFacets, toggle, type PoolFilters } from "../filters";
 import { feeLabel } from "../format";
 import ChainTag from "./ChainTag";
 import PoolModal from "./PoolModal";
@@ -36,12 +31,24 @@ export default function PoolFilterModal({
   filters,
   onChange,
   onClose,
+  chainIds,
+  exchanges,
+  source,
+  onSourceChange,
+  exchange,
+  onExchangeChange,
 }: {
   /** Every row before filtering — the options are drawn from these. */
   pools: readonly ITradingPair[];
   filters: PoolFilters;
   onChange: (next: PoolFilters) => void;
   onClose: () => void;
+  chainIds: number[];
+  exchanges: string[];
+  source: "all" | "kaleido" | "external";
+  onSourceChange: (value: "all" | "kaleido" | "external") => void;
+  exchange: string;
+  onExchangeChange: (value: string) => void;
 }) {
   const facets = poolFacets(pools);
 
@@ -59,12 +66,56 @@ export default function PoolFilterModal({
 
   return (
     <PoolModal title="Filter pools" onClose={onClose}>
+      <div className={s.mBox}>
+        <div className={s.bl}>Pool source</div>
+        <div className={s.tabs} role="group" aria-label="Pool source">
+          {(["all", "kaleido", "external"] as const).map((value) => (
+            <button
+              type="button"
+              key={value}
+              className={`${s.tab} ${source === value ? s.tabOn : ""}`}
+              aria-pressed={source === value}
+              onClick={() => onSourceChange(value)}
+            >
+              {value === "all"
+                ? "All"
+                : value === "kaleido"
+                  ? "Kaleido"
+                  : "External"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={s.mBox}>
+        <div className={s.bl}>Venue</div>
+        {[
+          "",
+          ...(source !== "external" ? ["kaleido"] : []),
+          ...(source !== "kaleido" ? exchanges : []),
+        ].map((value) => (
+          <label key={value} className={s.fRow}>
+            <input
+              type="radio"
+              name="pool-exchange"
+              checked={exchange === value}
+              onChange={() => onExchangeChange(value)}
+            />
+            <span className={s.fLabel}>
+              {value === ""
+                ? "All venues"
+                : value === "kaleido"
+                  ? "Kaleido"
+                  : value}
+            </span>
+          </label>
+        ))}
+      </div>
       {/* Only offered when both venues are actually listed. With one venue in the
           table the control is a checkbox that either changes nothing or empties the
           list, which is not a filter. */}
       {facets.venues.length > 1 ? (
         <div className={s.mBox}>
-          <div className={s.bl}>Venue</div>
+          <div className={s.bl}>Pool type</div>
           {facets.venues.map((v) =>
             row(
               v,
@@ -83,10 +134,16 @@ export default function PoolFilterModal({
         </div>
       ) : null}
 
-      {facets.chainIds.length > 1 ? (
+      {chainIds.length > 0 ? (
         <div className={s.mBox}>
           <div className={s.bl}>Network</div>
-          {facets.chainIds.map((id) =>
+          {row(
+            "all-networks",
+            "All networks",
+            filters.chainIds.length === 0,
+            () => onChange({ ...filters, chainIds: [] }),
+          )}
+          {chainIds.map((id) =>
             row(
               String(id),
               /* The same tag the row carries, so the checkbox and the thing it
@@ -99,7 +156,10 @@ export default function PoolFilterModal({
               </>,
               filters.chainIds.includes(id),
               () =>
-                onChange({ ...filters, chainIds: toggle(filters.chainIds, id) }),
+                onChange({
+                  ...filters,
+                  chainIds: toggle(filters.chainIds, id),
+                }),
             ),
           )}
         </div>
@@ -147,8 +207,14 @@ export default function PoolFilterModal({
       <div className={s.fActions}>
         <button
           className={s.preset}
-          onClick={() => onChange(NO_FILTERS)}
+          onClick={() => {
+            onChange(NO_FILTERS);
+            onSourceChange("all");
+            onExchangeChange("");
+          }}
           disabled={
+            source === "all" &&
+            !exchange &&
             filters.venues.length === 0 &&
             filters.chainIds.length === 0 &&
             filters.feeBps.length === 0 &&
