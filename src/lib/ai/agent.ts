@@ -272,43 +272,6 @@ export async function runAgent(
       trace.push(...ran);
       events?.onReads?.(ran);
       contextBlock = JSON.stringify(resolved, null, 2);
-    } else if (served.size === 0 && input.address) {
-      /* The seed grounds a turn that never touched the chain at all — not every
-         round that happens to ask for nothing.
-
-         `served.size` and not a "did I seed yet" flag, because that flag only
-         stopped the seed running twice; it never asked whether the read had
-         already happened by the model's own request. Instrumented on 2026-08-31:
-         round 0 the model called getPortfolio and got zeros, round 1 it asked for
-         nothing because it was writing the answer — and the seed fired anyway,
-         re-read the same address, got collateral and health factor unavailable
-         this time, and forced a further round whose reply opened by correcting
-         the answer the user had just watched appear. A round with no reads after
-         a read has landed means the model is done, so the loop should end there
-         and let its text stand. */
-      const portfolio = await runReadTool(
-        "getPortfolio",
-        { address: input.address },
-        input.chainId,
-      );
-      /* Traced like any other read, and deliberately not flagged as ours: it
-         grounded the answer either way, and "your balances were read" is the part
-         the user cares about — not whose idea the call was. */
-      const seed = { name: "getPortfolio", args: { address: input.address } };
-      served.set(readKey(seed.name, seed.args), portfolio);
-      trace.push(seed);
-      events?.onReads?.([seed]);
-      contextBlock = JSON.stringify(
-        [
-          {
-            tool: "getPortfolio",
-            args: { address: input.address },
-            result: portfolio,
-          },
-        ],
-        null,
-        2,
-      );
     } else {
       // Nothing left to ground on — whatever text the model has is final.
       break;

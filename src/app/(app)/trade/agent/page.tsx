@@ -83,6 +83,12 @@ import {
 import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
 import {
+  isDirectInstruction,
+  isDirectFollowUp,
+  isSlotReply,
+  isStableExplanation,
+} from "@/lib/ai/turnPolicy";
+import {
   docsReply,
   groundingFor,
   MIN_ASK_SIMILARITY,
@@ -1476,6 +1482,15 @@ export default function AgentPage() {
         }).catch(() => {});
       };
 
+      const direct = isDirectInstruction(content);
+      const slotReply = isSlotReply(
+        content,
+        (value) =>
+          vocabulary.some(
+            (t) => t.symbol.toLowerCase() === value.toLowerCase(),
+          ) || Boolean(parseCtx.isChain?.(value)),
+      );
+
       // Local-first. A stated command is not a reasoning problem, and routing it
       // through a provider costs a credit, adds latency, and introduces the one
       // failure mode a grammar can't have: a confidently wrong number.
@@ -1485,10 +1500,11 @@ export default function AgentPage() {
          token and looped. Only a fragment ("USDC", "50") fills the slot. */
       if (
         pending &&
+        direct &&
         parseCommand(content, vocabulary, parseCtx).status === "ok"
       )
         setPending(null);
-      else if (pending) {
+      else if (pending && slotReply) {
         const filled = fillSlot(
           pending.draft,
           pending.missing,
@@ -1505,7 +1521,7 @@ export default function AgentPage() {
         // The reply didn't answer the question, so drop the draft and let the
         // message be read fresh rather than trapping the user in a slot loop.
         setPending(null);
-      }
+      } else if (pending) setPending(null);
 
       /*
        * Paste-a-contract net. A message that is ONLY a contract (or a chart /
@@ -1590,6 +1606,7 @@ export default function AgentPage() {
       // doesn't need reasoning. A miss here is silent: most real questions are
       // open-ended, so falling through is the expected case, not a failure.
       const answerFromFaq = (text: string): boolean => {
+        if (!isStableExplanation(text)) return false;
         const faq = matchFaq(text);
         if (!faq) return false;
         note("Matched a question I already know the answer to");
@@ -1628,7 +1645,7 @@ export default function AgentPage() {
        * isPersonalHealthQuestion for the split — a personal marker plus a health
        * term, so "what is health factor" still falls through to the FAQ below.
        */
-      if (isPersonalHealthQuestion(content)) {
+      if (direct && isPersonalHealthQuestion(content)) {
         note("Reading your live health factor");
         log("health");
         const held = await readPortfolio(abort.signal);
@@ -1644,7 +1661,7 @@ export default function AgentPage() {
 
       // Read-only wallet questions use the same partial-read rules as the
       // portfolio panel and never spend a cloud reasoning request.
-      if (personalPortfolioQuestion(content)) {
+      if (direct && personalPortfolioQuestion(content)) {
         log("local-portfolio");
         await planLocally(
           { status: "ok", command: { kind: "portfolio" } },
@@ -1653,7 +1670,7 @@ export default function AgentPage() {
         return;
       }
 
-      const marketQuestion = poolQuestion(content);
+      const marketQuestion = direct ? poolQuestion(content) : null;
       if (marketQuestion) {
         const onChain = chainId ?? ARGUS_CHAIN_ID;
         const meta = getChainMeta(onChain);
@@ -1720,7 +1737,7 @@ export default function AgentPage() {
         ) {
           note("Read this as a question about the action, not the action");
           log(`docs:${exact.slug}`);
-          if (!address) {
+          if (!address && isStableExplanation(content)) {
             /* No wallet means no model turn (the route meters by wallet), so
                the section is quoted as before. */
             const reply = docsReply(exact);
@@ -1734,9 +1751,10 @@ export default function AgentPage() {
       /* "$100 worth of cirBTC" (or of an Argus meme by address): read that token's
          live price first, so the grammar converts dollars to an amount instead of
          reading 100 as 100 tokens. No price → the grammar hands it to the model. */
-      const sized = askedAboutAction
-        ? null
-        : dollarSizedToken(content, vocabulary, parseCtx.addressToken);
+      const sized =
+        askedAboutAction || !direct
+          ? null
+          : dollarSizedToken(content, vocabulary, parseCtx.addressToken);
       if (sized) {
         const usd = await fetchUsdPrice(sized.token, chainId);
         if (usd !== null) {
@@ -1749,9 +1767,10 @@ export default function AgentPage() {
           );
         }
       }
-      const parsed: ParseResult = askedAboutAction
-        ? { status: "unknown" }
-        : parseCommand(content, vocabulary, parseCtx);
+      const parsed: ParseResult =
+        askedAboutAction || !direct
+          ? { status: "unknown" }
+          : parseCommand(content, vocabulary, parseCtx);
       /* A referential sentence that names the last plan's own verb — "do the
          same swap once again", "swap again", "repeat that swap" — parses as a
          Draft with an empty slot: the grammar reads the verb and finds no
@@ -1775,7 +1794,7 @@ export default function AgentPage() {
          purely a buy/sell of it (cardFollowUp returns null otherwise); the
          rewritten command is the card's own, so it takes the same plan →
          audit → review → signature path as a tap. */
-      if (parsed.status !== "ok" && cardToken && !askedAboutAction) {
+      if (direct && parsed.status !== "ok" && cardToken && !askedAboutAction) {
         const rewritten = cardFollowUp(content, cardToken);
         const onCard = rewritten
           ? parseCommand(rewritten, vocabulary, parseCtx)
@@ -1811,7 +1830,7 @@ export default function AgentPage() {
          declined the sentence outright. Order matters: a sentence with its own
          verb is a fresh command and parseFollowUp refuses it anyway, so this
          can never re-point an instruction at the previous action. */
-      if (carriedCommand && !askedAboutAction) {
+      if (carriedCommand && !askedAboutAction && isDirectFollowUp(content)) {
         const followed = parseFollowUp(content, vocabulary, carriedCommand);
         if (followed.status !== "unknown") {
           note("Read it as a follow-up to the last plan");
@@ -1846,7 +1865,7 @@ export default function AgentPage() {
         if (hit) {
           note("Found the section of the docs that answers this");
           log(`docs:${hit.slug}`);
-          if (!address) {
+          if (!address && isStableExplanation(content)) {
             const reply = docsReply(hit);
             say(reply.text, { via: "local", link: reply.link });
             return;
@@ -1865,6 +1884,8 @@ export default function AgentPage() {
       let localIntent: LocalIntentClassification | null = null;
       if (
         !askedAboutAction &&
+        direct &&
+        localModelStatus === "ready" &&
         !localIntentDisabledRef.current &&
         canUseBrowserLocalModel()
       ) {
@@ -1876,13 +1897,18 @@ export default function AgentPage() {
         if (localIntentModelRef.current) {
           try {
             setLocalModelStatus("loading");
-            localIntent = await localIntentModelRef.current.classify(content, {
-              lastKind: carriedCommand?.kind,
-              hasActiveTask: Boolean(pending),
-              chainId,
-            });
+            localIntent = await Promise.race([
+              localIntentModelRef.current.classify(content, {
+                lastKind: carriedCommand?.kind,
+                hasActiveTask: Boolean(pending),
+                chainId,
+              }),
+              new Promise<null>((resolve) =>
+                window.setTimeout(() => resolve(null), 150),
+              ),
+            ]);
             setLocalModelStatus("ready");
-            if (localIntent.kind !== "unknown") {
+            if (localIntent && localIntent.kind !== "unknown") {
               note("Used local context to interpret this turn");
               log(`local-intent:${localIntent.kind}`);
             }
@@ -1961,11 +1987,8 @@ export default function AgentPage() {
              a quota refusal, the legacy proxy and anything that fails before
              dispatch still reply in plain JSON, which is why the content type
              below decides how to read this and not the flag above. */
-          /* Ask for the normalizer tier first — a cheap single-shot read of
-             the sentence with the dialect glossary, which builds the plan or
-             answers the question itself and hands the turn to the full model
-             only when it says it cannot. See lib/ai/normalizer.ts. */
-          tier: "normalize",
+          // Reach the streaming agent directly; no serial classifier/normalizer wait.
+          tier: "agent",
           stream: true,
         }),
       });
