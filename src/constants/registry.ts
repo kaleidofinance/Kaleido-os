@@ -900,6 +900,57 @@ export const TOKENS: Record<number, TokenEntry[]> = {
     },
   ],
 
+  /* -- Elysium Testnet synthetic assets (99801) -------------------------- */
+  [99801]: [
+    {
+      chainId: 99801,
+      address: "0x8c6c0A4C5500c2bC196383B4D85feb7f08a5C75b",
+      symbol: "WETH",
+      name: "Wrapped Ether",
+      decimals: 18,
+      tags: ["wrapped-native"],
+    },
+    {
+      chainId: 99801,
+      address: "0xB7E60c8fE8f7F86ee51F24426F4c75BaB44a6564",
+      symbol: "USDC",
+      name: "USD Coin",
+      decimals: 6,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 99801,
+      address: "0x55879358eC7eDA609f2264b0348D1915ee8307e1",
+      symbol: "USDT",
+      name: "Tether USD",
+      decimals: 6,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 99801,
+      address: "0xBf24907810bd15135f38dFe59998585dC4C60E71",
+      symbol: "USD1",
+      name: "World Liberty USD",
+      decimals: 18,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 99801,
+      address: "0xD0a6bFe795AD429c9c9E55e0Ef9d710b4b7A13eA",
+      symbol: "FDUSD",
+      name: "First Digital USD",
+      decimals: 18,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 99801,
+      address: "0x7d8Ff941f156492a745763C521EF468cfB78Af65",
+      symbol: "BTCB",
+      name: "Bitcoin BEP2",
+      decimals: 18,
+    },
+  ],
+
   /* -- Arbitrum. Balances only; no Diamond planned here yet. ------------- */
   [42161]: [
     {
