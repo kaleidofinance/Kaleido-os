@@ -3023,9 +3023,6 @@ export default function AgentPage() {
                 most people never find, and the transcript above is already
                 reporting the wait. */}
             <div className={s.composerActions}>
-              <span className={s.composerHint}>
-                Shift + Enter for a new line
-              </span>
               <button
                 type="button"
                 className={s.send}

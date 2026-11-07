@@ -1014,11 +1014,6 @@
   gap: 12px;
   min-height: 34px;
 }
-.composerHint {
-  color: var(--k-t3);
-  font-size: var(--k-fs-xs);
-  line-height: 1.35;
-}
 /* Round and brand-filled at 34px, agreeing with the gear and the chart toggle so
    the card's round controls are one size. An icon button rather than the old
    full-width block: that block spent 17px of padding and a 17px label across the
@@ -1310,9 +1305,6 @@
   .sendRow {
     padding: 10px 12px 6px;
     border-radius: 18px;
-  }
-  .composerHint {
-    visibility: hidden;
   }
   .send {
     width: 44px;
