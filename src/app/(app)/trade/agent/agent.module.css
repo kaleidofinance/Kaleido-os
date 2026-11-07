@@ -772,13 +772,11 @@
   display: none;
 }
 
-/* Empty state, centred in the transcript's box by `margin: auto 0` — the thread
-   is a flex column, so auto block margins split the free space above and below.
-   Centred rather than top-aligned because with the composer docked there is a
-   lot of free height here, and a menu pinned to the top of it reads as content
-   that failed to load. */
+/* Keep starter prompts beside the composer. A top auto margin takes the spare
+   thread height above this group, so the suggestions read as ways to start
+   typing rather than as content centered in an otherwise empty screen. */
 .empty {
-  margin: auto 0;
+  margin: auto 0 0;
   display: flex;
   flex-direction: column;
   gap: 11px;
