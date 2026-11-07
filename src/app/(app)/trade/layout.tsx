@@ -34,12 +34,13 @@ const TABS = [
 
 export default function TradeLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const isAgent = pathname === "/trade/agent";
 
   return (
     <ChartPanelProvider>
       <div className={s.shell}>
         <Nav />
-        <main className={s.hero}>
+        <main className={`${s.hero} ${isAgent ? s.agentHero : ""}`}>
           <div className={s.tabs}>
             {TABS.map((t) => (
               <Link
@@ -56,7 +57,7 @@ export default function TradeLayout({ children }: { children: ReactNode }) {
               otherwise exist in three copies free to drift, and the toggle that
               opens it lives inside the page, beside that tab's own settings
               gear. The provider is what joins the two halves. */}
-          <div className={s.stage}>
+          <div className={`${s.stage} ${isAgent ? s.agentStage : ""}`}>
             <ChartSlot />
             {children}
           </div>

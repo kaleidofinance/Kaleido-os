@@ -38,7 +38,6 @@ import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import chart from "@/components/v2/ChartPanel.module.css";
 import TxHistory from "@/components/v2/TxHistory";
 import hist from "@/components/v2/TxHistory.module.css";
-import Headline from "./Headline";
 import { getChainMeta } from "@/constants/chains";
 import { intentsFromChat } from "@/lib/v2/intents/fromChat";
 import { traceFromChat } from "@/lib/v2/agentTurn";
@@ -92,7 +91,11 @@ import {
 } from "@/lib/ai/docsSearch";
 import { visibleProse } from "@/lib/ai/actionsBlock";
 import { createBrowserLocalIntentModel } from "@/lib/ai/browserLocalIntent";
-import { poolQuestion, poolSnapshotAnswer, personalPortfolioQuestion } from "@/lib/ai/localMarketAnswer";
+import {
+  poolQuestion,
+  poolSnapshotAnswer,
+  personalPortfolioQuestion,
+} from "@/lib/ai/localMarketAnswer";
 import {
   canUseBrowserLocalModel,
   type LocalIntentClassification,
@@ -695,13 +698,18 @@ export default function AgentPage() {
       if (held.isLoading) {
         note("Some reads didn't come back — answering from the rest");
       }
-      const scopedChainId = "chainId" in result.command ? result.command.chainId : undefined;
-      const scopedChainName = "chainName" in result.command ? result.command.chainName : undefined;
+      const scopedChainId =
+        "chainId" in result.command ? result.command.chainId : undefined;
+      const scopedChainName =
+        "chainName" in result.command ? result.command.chainName : undefined;
       if (scopedChainId !== undefined) {
         const meta = getChainMeta(scopedChainId);
         const chainName = scopedChainName ?? meta?.shortName ?? "that chain";
         if (meta?.network === "testnet" && !showTestnets) {
-          say(`Turn on testnet networks to check wallet balances on ${chainName}.`, { via: "local" });
+          say(
+            `Turn on testnet networks to check wallet balances on ${chainName}.`,
+            { via: "local" },
+          );
           return true;
         }
         const rows = held.walletHoldings
@@ -715,7 +723,13 @@ export default function AgentPage() {
           item.toLowerCase().endsWith(` on ${chainName.toLowerCase()}`),
         );
         const cards = rows.length
-          ? localCards([{ kind: "balance", title: `Wallet balances · ${chainName}`, rows }])
+          ? localCards([
+              {
+                kind: "balance",
+                title: `Wallet balances · ${chainName}`,
+                rows,
+              },
+            ])
           : [];
         const walletLoading = held.walletLoading ?? held.isLoading;
         const answer = rows.length
@@ -1364,18 +1378,28 @@ export default function AgentPage() {
       balanceChain: (text) => {
         if (!/\bbalances?\b/i.test(text)) return undefined;
         const words = text.toLowerCase().match(/[a-z0-9-]+/g) ?? [];
-        let match: { chainId: number; chainName: string; length: number } | undefined;
+        let match:
+          | { chainId: number; chainName: string; length: number }
+          | undefined;
         for (let i = 0; i < words.length; i++) {
           if (!["on", "in", "across"].includes(words[i])) continue;
           const start = words[i + 1] === "the" ? i + 2 : i + 1;
-          for (let length = 1; length <= 4 && start + length <= words.length; length++) {
-            const meta = resolveChain(words.slice(start, start + length).join(" "));
+          for (
+            let length = 1;
+            length <= 4 && start + length <= words.length;
+            length++
+          ) {
+            const meta = resolveChain(
+              words.slice(start, start + length).join(" "),
+            );
             if (meta && (!match || length > match.length)) {
               match = { chainId: meta.id, chainName: meta.shortName, length };
             }
           }
         }
-        return match ? { chainId: match.chainId, chainName: match.chainName } : undefined;
+        return match
+          ? { chainId: match.chainId, chainName: match.chainName }
+          : undefined;
       },
       /* On Arc, let a bare token address be a swap side so an Argus launch named
          by address reaches the build branch. Chain-gated here; the real arming
@@ -1622,7 +1646,10 @@ export default function AgentPage() {
       // portfolio panel and never spend a cloud reasoning request.
       if (personalPortfolioQuestion(content)) {
         log("local-portfolio");
-        await planLocally({ status: "ok", command: { kind: "portfolio" } }, abort.signal);
+        await planLocally(
+          { status: "ok", command: { kind: "portfolio" } },
+          abort.signal,
+        );
         return;
       }
 
@@ -1641,14 +1668,20 @@ export default function AgentPage() {
             if (abort.signal.aborted) return;
             note("Read the pool market snapshot");
             log(`local-pools:${marketQuestion}`);
-            say(poolSnapshotAnswer(marketQuestion, payload, {
-              chainId: onChain,
-              chainName: meta.shortName,
-            }), { via: "local", link: { label: "View pools", href: "/pool" } });
+            say(
+              poolSnapshotAnswer(marketQuestion, payload, {
+                chainId: onChain,
+                chainName: meta.shortName,
+              }),
+              { via: "local", link: { label: "View pools", href: "/pool" } },
+            );
             return;
           } catch {
             if (abort.signal.aborted) return;
-            say("I couldn't read the pool snapshot right now. Try again shortly.", { via: "local" });
+            say(
+              "I couldn't read the pool snapshot right now. Try again shortly.",
+              { via: "local" },
+            );
             return;
           }
         }
@@ -2533,11 +2566,11 @@ export default function AgentPage() {
             a <label> for a textarea that is now three regions away. */}
         <div className={s.head}>
           <span className={s.avatar} aria-hidden />
-          {/* Rotates through what Luca can do while the thread is empty, and is a
-              fixed label the moment there is one — the header must not advertise
-              over the answer you are reading. Headline.tsx carries the rest. */}
+          {/* Stable identity stays in the header while the conversation below
+                carries the changing context. */}
           <span className={s.headName}>
-            <Headline rotate={messages.length === 0} />
+            Luca
+            <span className={s.headSubtitle}>Your onchain assistant</span>
           </span>
           <span className={s.headMeta}>
             {credits && (
@@ -2616,7 +2649,9 @@ export default function AgentPage() {
                 )}
               </svg>
             </button>
-            <ChartToggle className={chart.toggleRound} />
+            <span className={s.desktopTool}>
+              <ChartToggle className={chart.toggleRound} />
+            </span>
             {/* Same log the swap card shows — a swap Luca signed for you is still
                 your swap, so both surfaces read one history rather than each
                 keeping its own. `.triggerRound` is TxHistory's own 30px variant,
@@ -2964,12 +2999,16 @@ export default function AgentPage() {
               onKeyDown={(e) => {
                 // Enter sends, Shift+Enter breaks the line. A textarea is here
                 // for wrapping, not for composing paragraphs.
-                if (e.key === "Enter" && !e.shiftKey) {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing
+                ) {
                   e.preventDefault();
                   send(input);
                 }
               }}
-              placeholder="Ask Luca about your wallet, a market, or what you want to do…"
+              placeholder="Message Luca…"
               aria-label="Message Luca"
             />
             {/* Send, and stop while a turn is in flight — the same button,
@@ -2982,7 +3021,9 @@ export default function AgentPage() {
                 most people never find, and the transcript above is already
                 reporting the wait. */}
             <div className={s.composerActions}>
-              <span className={s.composerHint}>Enter to send · Shift+Enter for a new line</span>
+              <span className={s.composerHint}>
+                Shift + Enter for a new line
+              </span>
               <button
                 type="button"
                 className={s.send}
@@ -3014,7 +3055,7 @@ export default function AgentPage() {
                does, and a footnote is a cheaper shape for that than a row. */
             <p className={`${s.foot} ${s.live}`}>
               <span className={s.dot} />
-              Reads your positions · signs with your wallet
+              You approve every transaction
             </p>
           )}
         </div>

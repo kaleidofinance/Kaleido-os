@@ -150,8 +150,6 @@
   display: none;
 }
 
-
-
 /* Percentage chips and the slippage gear, riding the first well's label row at
    its top-right corner — the row already says "Sell" and nothing else, so the
    controls that qualify the sell cost no height at all. They used to be a strip
@@ -571,4 +569,20 @@
 
 .routeVenue {
   color: var(--k-t3);
+}
+
+/* Conversations use the available screen, rather than the swap form's height. */
+.agentHero {
+  justify-content: flex-start;
+  padding-top: 8px;
+}
+.agentStage {
+  flex: 1 1 0;
+  min-height: 0;
+}
+@media (max-width: 720px) {
+  .agentHero {
+    padding: 6px 8px 8px;
+    gap: 8px;
+  }
 }
