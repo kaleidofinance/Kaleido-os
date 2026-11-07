@@ -31,23 +31,28 @@ function CustomBuy({
         setValue("");
       }}
     >
-      <input
-        className={`${s.tokAmt} tabular`}
-        inputMode="decimal"
-        autoComplete="off"
-        placeholder="Amount"
-        aria-label="USDC amount to spend"
-        value={value}
-        disabled={disabled}
-        onChange={(e) => setValue(e.target.value)}
-      />
-      <span className={s.tokUnit}>USDC</span>
+      <label className={s.tokAmountField}>
+        <span className={s.tokInputLabel}>Spend amount</span>
+        <span className={s.tokAmountRow}>
+          <input
+            className={`${s.tokAmt} tabular`}
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="0.00"
+            aria-label="USDC amount to spend"
+            value={value}
+            disabled={disabled}
+            onChange={(e) => setValue(e.target.value)}
+          />
+          <span className={s.tokUnit}>USDC</span>
+        </span>
+      </label>
       <button
         type="submit"
-        className={`${s.chip} ${s.tokBuy}`}
+        className={s.tokSubmit}
         disabled={disabled || !command}
       >
-        Buy
+        Review buy
       </button>
     </form>
   );
@@ -208,7 +213,14 @@ function whenLabel(at?: number): string {
   return `from ${Math.round(hrs / 24)}d ago`;
 }
 
-export default function AgentCards({ cards, onPrompt, onSend, onConnect, agwConnected, historical }: Props) {
+export default function AgentCards({
+  cards,
+  onPrompt,
+  onSend,
+  onConnect,
+  agwConnected,
+  historical,
+}: Props) {
   if (!cards.length) return null;
 
   return (
@@ -396,11 +408,13 @@ export default function AgentCards({ cards, onPrompt, onSend, onConnect, agwConn
             const act = (command: string) =>
               historical ? undefined : () => (onSend ?? onPrompt)(command);
             return (
-              <div key={i} className={s.card}>
+              <div key={i} className={`${s.card} ${s.tokenCard}`}>
                 <div className={s.tokHead}>
                   <div className={s.tokId}>
                     <span className={s.tokSym}>{card.symbol}</span>
-                    {card.name && <span className={s.tokName}>{card.name}</span>}
+                    {card.name && (
+                      <span className={s.tokName}>{card.name}</span>
+                    )}
                   </div>
                   {card.badge && (
                     <span className={`${s.tokBadge} ${s[card.badge.tone]}`}>
@@ -443,20 +457,25 @@ export default function AgentCards({ cards, onPrompt, onSend, onConnect, agwConn
                 )}
                 {card.note && <div className={s.mNote}>{card.note}</div>}
                 {card.buys.length > 0 && (
-                  <div className={s.tokBtns}>
-                    <span className={s.tokSide}>Buy</span>
-                    {card.buys.map((b, j) => (
-                      <button
-                        key={j}
-                        type="button"
-                        className={`${s.chip} ${s.tokBuy}`}
-                        aria-label={`Buy with ${b.label} of your USDC`}
-                        disabled={Boolean(b.disabled) || Boolean(historical)}
-                        onClick={b.disabled ? undefined : act(b.command)}
-                      >
-                        {b.label}
-                      </button>
-                    ))}
+                  <div className={s.tokTradeGroup}>
+                    <div className={s.tokGroupLabel}>
+                      <span>Buy</span>
+                      <span>Share of USDC balance</span>
+                    </div>
+                    <div className={s.tokPresets}>
+                      {card.buys.map((b, j) => (
+                        <button
+                          key={j}
+                          type="button"
+                          className={`${s.chip} ${s.tokBuy}`}
+                          aria-label={`Buy with ${b.label} of your USDC`}
+                          disabled={Boolean(b.disabled) || Boolean(historical)}
+                          onClick={b.disabled ? undefined : act(b.command)}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {card.ref && card.buys.length > 0 && (
@@ -467,24 +486,33 @@ export default function AgentCards({ cards, onPrompt, onSend, onConnect, agwConn
                     disabled={
                       Boolean(historical) || card.buys.every((b) => b.disabled)
                     }
-                    onBuy={historical ? undefined : (cmd) => (onSend ?? onPrompt)(cmd)}
+                    onBuy={
+                      historical
+                        ? undefined
+                        : (cmd) => (onSend ?? onPrompt)(cmd)
+                    }
                   />
                 )}
                 {card.sells.length > 0 && (
-                  <div className={s.tokBtns}>
-                    <span className={s.tokSide}>Sell</span>
-                    {card.sells.map((b, j) => (
-                      <button
-                        key={j}
-                        type="button"
-                        className={`${s.chip} ${s.tokSell}`}
-                        aria-label={`Sell ${b.label} of your ${card.symbol}`}
-                        disabled={Boolean(historical)}
-                        onClick={act(b.command)}
-                      >
-                        {b.label}
-                      </button>
-                    ))}
+                  <div className={`${s.tokTradeGroup} ${s.tokSellGroup}`}>
+                    <div className={s.tokGroupLabel}>
+                      <span>Sell</span>
+                      <span>Share of {card.symbol} balance</span>
+                    </div>
+                    <div className={s.tokPresets}>
+                      {card.sells.map((b, j) => (
+                        <button
+                          key={j}
+                          type="button"
+                          className={`${s.chip} ${s.tokSell}`}
+                          aria-label={`Sell ${b.label} of your ${card.symbol}`}
+                          disabled={Boolean(historical)}
+                          onClick={act(b.command)}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
