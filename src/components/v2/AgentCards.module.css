@@ -14,15 +14,16 @@
    these is already blurred; darkening plus an inset top edge is the whole cue. */
 
 .wrap {
+  --agent-card-pad: clamp(8px, 1vw, 10px);
   max-width: 560px;
   width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--k-s2);
+  gap: 6px;
   /* The prose above is the sentence; the cards are what it points at. Matches
      `.steps`, which sits in the same slot for the same reason. */
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 /* A restored turn's data, from an earlier session. Dimmed so it reads as a record
@@ -44,7 +45,10 @@
   background: var(--k-glass-deep);
   box-shadow: var(--k-shadow-inset);
   border-radius: var(--k-r-md);
-  padding: 12px 13px;
+  padding: var(--agent-card-pad) 10px;
+  min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 /* Card heading. Quieter and smaller than the values under it — it says what the
@@ -53,7 +57,7 @@
   font-size: var(--k-fs-xs);
   color: var(--k-t3);
   letter-spacing: 0.02em;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 /* ---------- metric ---------- */
@@ -70,7 +74,7 @@
   align-items: baseline;
   gap: 6px;
   margin-top: 3px;
-  font-size: 24px;
+  font-size: clamp(18px, 1.6vw, 20px);
   font-weight: var(--k-fw-med);
   letter-spacing: -0.02em;
   line-height: 1.15;
@@ -91,7 +95,7 @@
   font-size: var(--k-fs-xs);
   color: var(--k-t3);
   line-height: 1.45;
-  margin-top: 5px;
+  margin-top: 3px;
 }
 
 /* ---------- gauge ---------- */
@@ -100,8 +104,8 @@
    fill reads as sitting IN the surface rather than on it — consistent with every
    other frame here, and it means an empty track is still legibly a track. */
 .gauge {
-  margin-top: 10px;
-  height: 8px;
+  margin-top: 6px;
+  height: 6px;
   border-radius: var(--k-r-pill);
   background: var(--k-glass-deep);
   box-shadow: var(--k-shadow-inset);
@@ -145,7 +149,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--k-s3);
-  padding: 7px 0;
+  padding: 4px 0;
   font-size: var(--k-fs-sm);
 }
 /* Hairlines between rows, not around them. Same treatment as `.step + .step`,
@@ -161,7 +165,11 @@
   white-space: nowrap;
 }
 .rValue {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 65%;
+  text-align: right;
+  overflow-wrap: anywhere;
   color: var(--k-t1);
   font-weight: var(--k-fw-med);
 }
@@ -289,7 +297,7 @@
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--k-s2);
+  gap: 5px;
 }
 /* The suggestion chips from the empty state, reused verbatim — and the reuse is
    the argument. These do exactly what those do: put a sentence in the prompt
@@ -305,7 +313,8 @@
   font: inherit;
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
-  padding: 6px 12px;
+  padding: 5px 10px;
+  min-height: 32px;
   border-radius: var(--k-r-pill);
   cursor: pointer;
 }
@@ -370,17 +379,22 @@
 
 @media (max-width: 720px) {
   .card {
-    padding: 11px 12px;
+    padding: var(--agent-card-pad) 10px;
   }
   .mValue {
-    font-size: 21px;
+    font-size: 18px;
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .actions .chip {
+    min-height: 44px;
   }
 }
 
 /* ---- token card (paste a contract) ---- */
 .tokenCard {
   min-width: 0;
-  padding: 12px;
+  padding: var(--agent-card-pad) 10px;
   border: 1px solid var(--k-line);
   border-radius: var(--k-r-md);
 }
@@ -484,7 +498,7 @@
 }
 /* Fixed columns keep every percentage on one line even inside a narrow chat. */
 .tokTradeGroup {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 .tokGroupLabel {
   display: flex;
@@ -535,7 +549,7 @@
   outline-offset: 3px;
 }
 .tokSellGroup {
-  padding-top: 10px;
+  padding-top: 8px;
   border-top: 1px solid var(--k-line);
 }
 .tokCustom {
