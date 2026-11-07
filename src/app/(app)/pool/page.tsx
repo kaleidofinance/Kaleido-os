@@ -256,17 +256,6 @@ export default function PoolsPage() {
           <Stat label="24h volume" value={usd(trackedVolume)} />
           <Stat label="24h fees" value={usd(trackedFees, 2)} />
         </StatStrip>
-        <p className={s.partialNote} role="status">
-          Figures follow the filters. External liquidity is a ranked sample and
-          is not Kaleido protocol revenue.
-          {external.length && view !== "kaleido"
-            ? ` Tracking ${external.reduce((total, snapshot) => total + snapshot.sampledPools, 0)} aggregator-routed pools across ${external.length} networks.`
-            : ""}
-          {view !== "kaleido" &&
-          (externalQuery.isError || external.some((snapshot) => snapshot.stale))
-            ? " External market data is unavailable or stale."
-            : ""}
-        </p>
       </div>
       {/* Rendered while loading as well, so it does not appear a beat after the
           rows and push the table down. Absent only when there is genuinely
