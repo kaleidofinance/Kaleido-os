@@ -377,6 +377,10 @@ export const FAQ_TOPICS: FaqTopic[] = [
     id: "chains",
     triggers: [
       "multichain",
+      "how many chains",
+      "how many chain",
+      "how many networks",
+      "number of chains",
       "which chains",
       "cross chain",
       "other networks",
@@ -387,28 +391,15 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "best network",
     ],
     answer:
-      "Kaleido's live mainnets include Arc, Robinhood Chain and BNB Smart Chain. Swaps, liquidity, loans and bridge routes depend on the selected chain's deployed contracts and available assets. BNB pays gas on BSC; its Kaleido V3 pools have not been seeded, so swaps use available aggregator liquidity. kfUSD mint/redeem and KLD staking have not launched on these mainnets. Your wallet can also sit on other networks where the app reads balances. Positions remain on the chain where you opened them.",
-    /* A nine-item list read out in prose is a list you have to re-read to count,
-       and the split that matters — where the products open versus where only
-       balances read — is the thing prose buries. It mirrors the `tradable` flag
-       in chains.ts, so this card and the network picker can't disagree.
-
-       Grouped into seven rows because `cardsFromChat` caps a stats card at
-       MAX_ROWS = 8 and silently truncates past it (fromChat.ts:128), and a
-       truncated network list is a wrong one. Row values stay inside LIMITS.value
-       = 24 characters for the same reason. */
+      "Kaleido is live on 3 mainnets: Arc, BNB Smart Chain and Robinhood Chain. It also has 6 deployed testnets: Arc, Sepolia, Base Sepolia, BNB Smart Chain, Robinhood Chain and Elysium. Other networks may be balance-reading only; product availability depends on the selected chain's deployment and assets.",
     cards: [
       {
         kind: "stats",
         title: "Networks",
         rows: [
-          { label: "Arc", value: "products" },
-          { label: "Base", value: "products" },
-          { label: "Robinhood Chain", value: "products" },
-          { label: "BNB Smart Chain", value: "products" },
-          { label: "Ethereum", value: "products" },
-          { label: "Polygon, Arbitrum", value: "balances only" },
-          { label: "Hyperliquid, Abstract", value: "balances only" },
+          { label: "Mainnets", value: "3 live" },
+          { label: "Testnets", value: "6 deployed" },
+          { label: "Other networks", value: "balances only" },
         ],
       },
     ],

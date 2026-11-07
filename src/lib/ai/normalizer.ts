@@ -122,6 +122,7 @@ export function arcPointsLine(lending: ArcLending | null): string {
  */
 export const PRODUCT_STATE: readonly string[] = [
   "Kaleido is a multichain DeFi app. Products: token swaps; bridging between chains; a peer-to-peer lending book (lenders post an amount, a rate and a term; borrowers take them against collateral); concentrated-liquidity pools (V3-style positions with a price range and a fee tier); the kfUSD stablecoin (minted against USDC, USDT or USDe; lock it into kafUSD to earn the protocol's fees); KLD staking into a vault for stKLD; limit orders; and a points program.",
+  "Network inventory: Kaleido is live on 3 mainnets — Arc, BNB Smart Chain and Robinhood Chain — plus 6 deployed testnets — Arc, Sepolia, Base Sepolia, BNB Smart Chain, Robinhood Chain and Elysium. Other networks may be balance-reading only. If asked how many chains are live, answer from this inventory and do not call a lending or portfolio tool.",
   arcMainnetLine(ARC_LENDING),
   bscMainnetLine(),
   "KLD, Kaleido's own token, has NOT launched. There is no mainnet KLD, no market and no price; it cannot be bought, sold or bridged anywhere yet. The token event is planned for the end of September 2026, with an exchange listing after that. Today 'KLD' exists only as a testnet token (from the faucet) for practising staking and pools. If someone asks to buy, sell, price or hold KLD on a mainnet, say plainly that it has not launched, and offer the testnet or the points program instead. Never quote a KLD price.",

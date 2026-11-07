@@ -44,6 +44,10 @@ check(
 check("slippage", matchFaq("what is slippage tolerance")?.id === "slippage");
 check("chains", matchFaq("which chains do you support")?.id === "chains");
 check(
+  "chain count",
+  matchFaq("how many chain kaleido is live on")?.id === "chains",
+);
+check(
   "model credits",
   matchFaq("how many reasoning requests do I get")?.id === "model-credits",
 );
