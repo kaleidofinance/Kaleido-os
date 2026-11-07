@@ -47,6 +47,14 @@ const ARGUS: TokenFacts = {
   snipeActive: false,
   bonded: false,
 };
+const PEACH: TokenFacts = {
+  ok: true,
+  source: "peach",
+  address: "0x632e63d5db3ca8d99b73e8699bf30b7a08c4f04f",
+  symbol: "EXP",
+  name: "Experience Required",
+  decimals: 18,
+};
 
 console.log("\n— paste detection is narrow —");
 {
@@ -101,6 +109,17 @@ console.log("\n— an Argus launch gets the full card —");
       card.sells.map((s) => s.label).join(",") === "10%,25%,50%,75%,100%",
     );
     check("no surcharge note when clear", card.note === undefined);
+  }
+}
+
+console.log("\n— a Peach launch gets the same address-trading card —");
+{
+  const card = tokenCardFrom(PEACH);
+  check("Peach kind is token", card.kind === "token");
+  if (card.kind === "token") {
+    check("Peach badge", card.badge?.text === "Peach launch");
+    check("Peach buy uses the contract address", card.buys[0].command.includes(PEACH.address));
+    check("Peach sell uses the contract address", card.sells[0].command.includes(PEACH.address));
   }
 }
 

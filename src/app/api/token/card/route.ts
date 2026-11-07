@@ -1,5 +1,7 @@
 import { Contract, getAddress, isAddress } from "ethers";
+import { createPublicClient, defineChain, http } from "viem";
 import { providerForChain } from "@/config/provider";
+import { CHAINS_BY_ID } from "@/constants/chains";
 import { chainTokens } from "@/constants/tokens";
 import { ARC_USDC, ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
 import { readArgusLaunch, readArgusPoolState } from "@/lib/argus/launch";
@@ -103,7 +105,47 @@ export async function GET(req: Request) {
     /* an Argus read hiccup is not fatal — fall through to the registry */
   }
 
-  // 2. A token this chain's registry already lists.
+  // 2. A Peach launch. Peach's SDK is the source of truth for launch-token
+  // membership; unlike Argus, its curve quote is resolved when the card action
+  // is pressed, so the card only needs identity here.
+  try {
+    const sdk = await import("@masterpeach/launchpad-sdk");
+    const rpc = CHAINS_BY_ID[chainId]?.rpcUrls?.[0];
+    const peachClient = rpc
+      ? createPublicClient({
+          chain: defineChain({
+            id: chainId,
+            name: "Arc",
+            nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+            rpcUrls: { default: { http: [rpc] } },
+          }),
+          transport: http(rpc),
+        })
+      : null;
+    if (!peachClient) throw new Error("Arc RPC unavailable");
+    const isPeach = await sdk.isLaunchpadToken(
+      { publicClient: peachClient, deployment: sdk.arcMainnetLaunchpadDeployment },
+      address as `0x${string}`,
+    );
+    if (isPeach) {
+      const [symbol, name, dec] = await ercReads;
+      const decimals = dec ?? 18;
+      return json({
+        ok: true,
+        source: "peach",
+        address,
+        symbol,
+        name,
+        decimals,
+        priceUsd: null,
+        marketCapUsd: null,
+      });
+    }
+  } catch {
+    /* a Peach lookup hiccup is not fatal — fall through to the registry */
+  }
+
+  // 3. A token this chain's registry already lists.
   const listed = chainTokens(chainId).find(
     (t) => t.address.toLowerCase() === address.toLowerCase(),
   );
@@ -119,7 +161,7 @@ export async function GET(req: Request) {
     });
   }
 
-  // 3. Any readable ERC-20 — identity only; the card won't route it. No symbol
+  // 4. Any readable ERC-20 — identity only; the card won't route it. No symbol
   //    or decimals back means it isn't a token (a wallet, a pair, a router).
   const [symbol, name, decimals] = await ercReads;
   if (symbol === undefined || decimals === undefined) {
