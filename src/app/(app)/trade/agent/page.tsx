@@ -2546,7 +2546,9 @@ export default function AgentPage() {
     : "";
 
   return (
-    <div className={`${s.card} ${expanded ? s.wide : ""}`}>
+    <div
+      className={`${s.card} ${expanded ? s.wide : ""} ${messages.length === 0 && panel.kind === "idle" ? s.emptyState : ""}`}
+    >
       <AgentSettings
         address={address}
         open={settingsOpen}

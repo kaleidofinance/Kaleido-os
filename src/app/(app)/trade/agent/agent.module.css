@@ -35,6 +35,14 @@
   overflow: hidden;
 }
 
+/* The starter screen only has a handful of suggestions, so it should not claim
+   the full conversation height. Once a real turn arrives, the card returns to
+   filling the stage and the transcript gains the room to scroll. */
+.emptyState {
+  height: min(62dvh, 560px);
+  align-self: center;
+}
+
 /* The settings gear, at the right end of the card's header.
 
    The negative margins are the point: a 30px button in a 20px row would push the
@@ -1265,6 +1273,9 @@
   outline-offset: 3px;
 }
 @media (max-width: 720px) {
+  .emptyState {
+    height: min(54dvh, 460px);
+  }
   .chat {
     border-radius: 18px;
   }
