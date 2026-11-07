@@ -47,6 +47,7 @@
     "test:txerrors": "tsx src/lib/v2/txErrors.test.ts",
     "test:kyberswap": "tsx src/lib/swap/kyberswap.test.ts",
     "test:flytrade": "tsx src/lib/swap/flytrade.test.ts",
+    "test:lifi": "tsx src/lib/swap/lifi.test.ts",
     "test:cctp": "tsx src/lib/bridge/cctp.test.ts",
     "test:cctpmint": "tsx src/lib/bridge/cctpAttestation.test.ts",
     "test:cctpfast": "tsx src/lib/bridge/cctpFast.test.ts",

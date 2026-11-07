@@ -1,0 +1,14 @@
+{
+  "eyebrow": "Integration · Arc launchpad",
+  "hero": "",
+  "partnerLockup": {
+    "left": { "name": "Kaleidofi", "logo": "newklogo2.png" },
+    "right": { "name": "Peach", "logo": "peach-logo.png" }
+  },
+  "description": "Tokens launched on Peach are now discoverable and tradable through Luca on Arc.",
+  "stats": ["Launch → trade", "Live on Arc", "Luca routed"],
+  "url": "kaleidofi.xyz/trade",
+  "background": "colosseum-dark",
+  "layout": "center",
+  "effect": "spotlight"
+}

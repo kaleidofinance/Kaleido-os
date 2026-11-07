@@ -14,6 +14,7 @@ import { initialSqrtPriceX96, sortMintParams } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution } from "@/lib/swap/flytrade";
+import { getLifiSwapExecution } from "@/lib/swap/lifi";
 import { getPeachTradeExecution } from "@/lib/peach/route";
 import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
@@ -237,7 +238,10 @@ async function waitForAllowance(
  * Backs off 500ms → 2s. A read that throws counts as "not yet": a transient RPC
  * error mid-wait must not fail a step whose precondition is simply arriving.
  */
-async function pollUntil(ready: () => Promise<boolean>, message: string): Promise<void> {
+async function pollUntil(
+  ready: () => Promise<boolean>,
+  message: string,
+): Promise<void> {
   const deadline = Date.now() + 20_000;
   let delay = 500;
   for (;;) {
@@ -269,14 +273,22 @@ async function waitForPermit2Allowance(
   const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
   const permit2 = new ethers.Contract(
     PERMIT2,
-    ["function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)"],
+    [
+      "function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)",
+    ],
     signer,
   );
   await pollUntil(async () => {
     const erc: bigint = await token.allowance(owner, PERMIT2);
     if (erc < needed) return false;
-    const [amount, expiration] = (await permit2.allowance(owner, tokenAddress, router)) as [bigint, bigint, bigint];
-    return amount >= needed && expiration > BigInt(Math.floor(Date.now() / 1000));
+    const [amount, expiration] = (await permit2.allowance(
+      owner,
+      tokenAddress,
+      router,
+    )) as [bigint, bigint, bigint];
+    return (
+      amount >= needed && expiration > BigInt(Math.floor(Date.now() / 1000))
+    );
   }, "The approvals for this swap are not visible on-chain yet. Wait a moment and try the swap again.");
 }
 
@@ -308,7 +320,8 @@ register("approve", {
     } catch {
       /* allowance unreadable right now — proceed to approve rather than dead-end */
     }
-    if (current !== null && current >= needed) return { hash: null, skipped: true };
+    if (current !== null && current >= needed)
+      return { hash: null, skipped: true };
 
     const tx = await token.approve(
       i.spender,
@@ -335,7 +348,13 @@ register("swap", {
        allowance; wait briefly for the state the swap depends on instead of
        submitting a doomed transaction and making the user sign it again. */
     const needed = ethers.parseUnits(i.amountIn, i.decimalsIn);
-    await waitForAllowance(ctx.signer, ctx.address, i.tokenIn, i.spender, needed);
+    await waitForAllowance(
+      ctx.signer,
+      ctx.address,
+      i.tokenIn,
+      i.spender,
+      needed,
+    );
     const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
     const amountIn = needed;
     const amountOutMinimum = ethers.parseUnits(i.amountOutMin, i.decimalsOut);
@@ -382,7 +401,13 @@ register("swapMultiHop", {
     const amountIn = ethers.parseUnits(i.amountIn, i.decimalsIn);
     const tokenIn = i.hops[0]?.tokenIn;
     if (tokenIn) {
-      await waitForAllowance(ctx.signer, ctx.address, tokenIn, i.spender, amountIn);
+      await waitForAllowance(
+        ctx.signer,
+        ctx.address,
+        tokenIn,
+        i.spender,
+        amountIn,
+      );
     }
     const deadline = Math.floor(Date.now() / 1000) + 60 * (i.deadlineMin ?? 20);
 
@@ -642,8 +667,21 @@ export async function freshAggregatorCall(
   i: Extract<Intent, { kind: "aggregatorSwap" }>,
   address: string,
 ): Promise<{ to: string; data: string }> {
-  if (i.venue !== "kyberswap" && i.venue !== "fly" && i.venue !== "peach") return { to: i.to, data: i.data };
-  const resolver = i.venue === "kyberswap" ? getKyberSwapExecution : i.venue === "fly" ? getFlyTradeExecution : getPeachTradeExecution;
+  if (
+    i.venue !== "kyberswap" &&
+    i.venue !== "fly" &&
+    i.venue !== "peach" &&
+    i.venue !== "lifi"
+  )
+    return { to: i.to, data: i.data };
+  const resolver =
+    i.venue === "kyberswap"
+      ? getKyberSwapExecution
+      : i.venue === "fly"
+        ? getFlyTradeExecution
+        : i.venue === "lifi"
+          ? getLifiSwapExecution
+          : getPeachTradeExecution;
   const fresh = await resolver({
     chainId: i.chainId,
     tokenIn: i.tokenIn,

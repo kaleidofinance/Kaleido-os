@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
+import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
 import { getPeachTradeExecution } from "@/lib/peach/route";
 import { chainTokenByAddress } from "@/constants/tokens";
 import type {
@@ -13,14 +14,15 @@ import type {
  *
  * The same-chain sibling of lib/bridge/route.ts, and trusted the same way — the
  * `to`/`data` it returns are the origin of an `aggregatorSwap` Intent, come from
- * KyberSwap rather than the model, and target a router the auditor whitelists
- * (isKnownSwapRouter). Isomorphic on purpose: serverPlanDeps and useLocalPlanner
- * both call it, so a swap planned in the chat and one planned on a page produce
- * the identical transaction, and getKyberSwapExecution keeps the fee/key
- * server-side either way (browser via /api/swap/quote).
+ * a vetted provider rather than the model, and target a router the auditor
+ * whitelists. Isomorphic on purpose: serverPlanDeps and useLocalPlanner both
+ * call it, so a swap planned in the chat and one planned on a page produce the
+ * identical transaction. Provider credentials stay server-side through each
+ * provider's API proxy.
  *
  * Used only where Kaleido runs no pools of its own — build.ts reaches it after
- * establishing there is no v3Router and no V3 venue but `hasKyberSwap(chainId)`.
+ * establishing there is no v3Router and no V3 venue. Every available external
+ * provider is quoted concurrently and the highest executable amountOut wins.
  */
 export async function resolveSwapRoute(
   args: SwapRouteRequest & { chainId: number; userAddress: string },
@@ -45,12 +47,49 @@ export async function resolveSwapRoute(
     address: args.userAddress,
     slippageBps: args.slippageBps,
   };
-  const unknownArcAsset = args.chainId === 5042 &&
-    (!chainTokenByAddress(args.chainId, args.tokenIn) || !chainTokenByAddress(args.chainId, args.tokenOut));
-  const peach = unknownArcAsset ? await getPeachTradeExecution(request) : null;
-  const kyber = peach ? null : await getKyberSwapExecution(request);
-  const fly = !peach && !kyber && hasFlyTrade(args.chainId) ? await getFlyTradeExecution(request) : null;
-  const exec = peach ?? kyber ?? fly;
+  const unknownArcAsset =
+    args.chainId === 5042 &&
+    (!chainTokenByAddress(args.chainId, args.tokenIn) ||
+      !chainTokenByAddress(args.chainId, args.tokenOut));
+  /* Peach is a launchpad route, not a general-purpose swap aggregator. Arc
+     launch tokens are resolved exclusively through Peach, just as Argus
+     launches have their own route. Never compare a launchpad quote against
+     KyberSwap, Fly.trade, or LI.FI. */
+  if (unknownArcAsset) {
+    const peach = await getPeachTradeExecution(request);
+    if (peach) {
+      return {
+        to: peach.to,
+        data: peach.data,
+        value: peach.value,
+        spender: peach.spender,
+        amountOut: peach.amountOut,
+        venue: "peach",
+      };
+    }
+  }
+  const [kyber, fly, lifi] = await Promise.all([
+    getKyberSwapExecution(request),
+    hasFlyTrade(args.chainId)
+      ? getFlyTradeExecution(request)
+      : Promise.resolve(null),
+    hasLifiSwap(args.chainId)
+      ? getLifiSwapExecution(request)
+      : Promise.resolve(null),
+  ]);
+  const candidates = [
+    { exec: kyber, venue: "kyberswap" },
+    { exec: fly, venue: "fly" },
+    { exec: lifi, venue: "lifi" },
+  ].filter((c): c is { exec: NonNullable<typeof c.exec>; venue: string } =>
+    Boolean(c.exec),
+  );
+  const best = candidates.sort((a, b) => {
+    const aOut = BigInt(a.exec.amountOut);
+    const bOut = BigInt(b.exec.amountOut);
+    return aOut === bOut ? 0 : aOut > bOut ? -1 : 1;
+  })[0];
+  const exec = best?.exec;
   if (!exec)
     return {
       error:
@@ -63,6 +102,6 @@ export async function resolveSwapRoute(
     value: exec.value,
     spender: exec.spender,
     amountOut: exec.amountOut,
-    venue: peach ? "peach" : kyber ? "kyberswap" : "fly",
+    venue: best!.venue,
   };
 }

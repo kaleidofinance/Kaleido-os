@@ -17,7 +17,12 @@ import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
-import { ARGUS_CHAIN_ID, ARGUS_V4, ARC_USDC, PERMIT2 } from "@/lib/argus/addresses";
+import {
+  ARGUS_CHAIN_ID,
+  ARGUS_V4,
+  ARC_USDC,
+  PERMIT2,
+} from "@/lib/argus/addresses";
 import {
   isKnownCctpTarget,
   isKnownCctpTransmitter,
@@ -25,7 +30,12 @@ import {
 } from "@/lib/bridge/cctp";
 import { isKnownSwapRouter, nativeSwapErc20 } from "@/lib/swap/kyberswap";
 import { isKnownFlyTradeRouter } from "@/lib/swap/flytrade";
-import { PEACH_CHAIN_ID, PEACH_FACTORY, PEACH_QUOTE_TOKEN } from "@/lib/peach/route";
+import { isKnownLifiSwapRouter } from "@/lib/swap/lifi";
+import {
+  PEACH_CHAIN_ID,
+  PEACH_FACTORY,
+  PEACH_QUOTE_TOKEN,
+} from "@/lib/peach/route";
 import { providerForChain } from "@/config/provider";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
@@ -53,18 +63,36 @@ export interface Pricer {
   }>;
 }
 
-async function peachCurveMatches(step: PlanStep, chainId: number | undefined): Promise<boolean> {
+async function peachCurveMatches(
+  step: PlanStep,
+  chainId: number | undefined,
+): Promise<boolean> {
   if (chainId !== PEACH_CHAIN_ID || str(step.venue) !== "peach") return false;
-  const tokenIn = str(step.tokenIn), tokenOut = str(step.tokenOut);
+  const tokenIn = str(step.tokenIn),
+    tokenOut = str(step.tokenOut);
   const quote = PEACH_QUOTE_TOKEN.toLowerCase();
   const launch = tokenIn.toLowerCase() === quote ? tokenOut : tokenIn;
-  if (!ethers.isAddress(launch) || tokenIn.toLowerCase() === tokenOut.toLowerCase()) return false;
+  if (
+    !ethers.isAddress(launch) ||
+    tokenIn.toLowerCase() === tokenOut.toLowerCase()
+  )
+    return false;
   try {
     const provider = providerForChain(chainId);
     if (!provider) return false;
-    const curve = await new ethers.Contract(PEACH_FACTORY, ["function curveFor(address) view returns (address)"], provider).curveFor(launch);
-    return ethers.isAddress(curve) && curve.toLowerCase() === str(step.to).toLowerCase() && curve.toLowerCase() === str(step.spender).toLowerCase();
-  } catch { return false; }
+    const curve = await new ethers.Contract(
+      PEACH_FACTORY,
+      ["function curveFor(address) view returns (address)"],
+      provider,
+    ).curveFor(launch);
+    return (
+      ethers.isAddress(curve) &&
+      curve.toLowerCase() === str(step.to).toLowerCase() &&
+      curve.toLowerCase() === str(step.spender).toLowerCase()
+    );
+  } catch {
+    return false;
+  }
 }
 
 export const defaultPricer: Pricer = async (symbol, amount) => {
@@ -1071,7 +1099,10 @@ function spenderReasons(
       reasons: [],
       note: "this approves an external DEX router this app routes through as a fallback for a token not in Kaleido's own pools — from the venues allow-list, not a Kaleido contract",
     };
-  if (isKnownSwapRouter(chainId, spender) || isKnownFlyTradeRouter(chainId, spender))
+  if (
+    isKnownSwapRouter(chainId, spender) ||
+    isKnownFlyTradeRouter(chainId, spender)
+  )
     return {
       reasons: [],
       note: "this approves a recognised external aggregator router (KyberSwap or Fly.trade) on a chain where Kaleido runs no pools of its own — not a Kaleido contract, and only an aggregator swap should be pairing it",
@@ -1622,7 +1653,9 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
        asking the wrong chain. */
     const pinned = num(s.chainId);
     if (pinned !== null && pinned !== chainId)
-      reasons.push(`send is for chain ${pinned} but was checked against chain ${chainId}`);
+      reasons.push(
+        `send is for chain ${pinned} but was checked against chain ${chainId}`,
+      );
     const token = str(s.token);
     const tok = knownToken(chainId, token);
     if (!tok.ok) reasons.push(`unrecognised token ${token || "(none)"}`);
@@ -1827,9 +1860,13 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
             "function depositETHTo(address _to, uint32 _minGasLimit, bytes _extraData)",
           ]).decodeFunctionData("depositETHTo", str(s.data));
           if (String(to).toLowerCase() !== recipient.toLowerCase())
-            reasons.push("the deposit credits a different address than the one you named");
+            reasons.push(
+              "the deposit credits a different address than the one you named",
+            );
         } catch {
-          reasons.push("the canonical deposit could not be decoded to check its recipient");
+          reasons.push(
+            "the canonical deposit could not be decoded to check its recipient",
+          );
         }
       } else if (provider === "cctp") {
         reasons.push("a CCTP bridge can only deliver to your own wallet");
@@ -1920,7 +1957,11 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     }
 
     const notes: string[] = [];
-    if (fromChainId !== null && chainId !== undefined && fromChainId !== chainId)
+    if (
+      fromChainId !== null &&
+      chainId !== undefined &&
+      fromChainId !== chainId
+    )
       notes.push(
         "this bridge is signed on its source chain, not the one you're connected to — the wallet switches to it at signing",
       );
@@ -1977,12 +2018,28 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     /* Peach launch tokens are intentionally not in the static registry. The
        async factory check below proves the curve/token relationship; here we
        only allow the one known quote-token side through the shape gate. */
-    const inTok = peach && !rawInTok.ok && tokenOut.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()
-      ? { ok: true, verified: false, symbol: str(s.symbolIn), decimals: num(s.decimalsIn) ?? 0 }
-      : rawInTok;
-    const outTok = peach && !rawOutTok.ok && tokenIn.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()
-      ? { ok: true, verified: false, symbol: str(s.symbolOut), decimals: num(s.decimalsOut) ?? 0 }
-      : rawOutTok;
+    const inTok =
+      peach &&
+      !rawInTok.ok &&
+      tokenOut.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()
+        ? {
+            ok: true,
+            verified: false,
+            symbol: str(s.symbolIn),
+            decimals: num(s.decimalsIn) ?? 0,
+          }
+        : rawInTok;
+    const outTok =
+      peach &&
+      !rawOutTok.ok &&
+      tokenIn.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()
+        ? {
+            ok: true,
+            verified: false,
+            symbol: str(s.symbolOut),
+            decimals: num(s.decimalsOut) ?? 0,
+          }
+        : rawOutTok;
     if (!inTok.ok)
       reasons.push(`input is not a token address: ${tokenIn || "(none)"}`);
     if (!outTok.ok)
@@ -1991,8 +2048,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       reasons.push("input and output token are the same");
 
     const amount = positive(s.amountIn);
-    if (amount === null)
-      reasons.push("swap amount is missing or not positive");
+    if (amount === null) reasons.push("swap amount is missing or not positive");
 
     const decimals = num(s.decimalsIn);
     if (decimals === null) reasons.push("input token decimals are missing");
@@ -2009,7 +2065,11 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     reasons.push(...requireAddresses(s, "to", "spender"));
     if (chainId === undefined)
       reasons.push("no chain to check the swap router against");
-    else if (!isKnownSwapRouter(chainId, str(s.to)) && !isKnownFlyTradeRouter(chainId, str(s.to)))
+    else if (
+      !isKnownSwapRouter(chainId, str(s.to)) &&
+      !isKnownFlyTradeRouter(chainId, str(s.to)) &&
+      !isKnownLifiSwapRouter(chainId, str(s.to))
+    )
       reasons.push(
         "the swap router is not one recognised on the chain this plan targets",
       );
@@ -2017,8 +2077,12 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       reasons.push("the approval address is not the contract the swap calls");
 
     if (peach) {
-      if (chainId !== PEACH_CHAIN_ID) reasons.push("Peach launchpad trades are Arc-mainnet only");
-      if (tokenIn.toLowerCase() !== PEACH_QUOTE_TOKEN.toLowerCase() && tokenOut.toLowerCase() !== PEACH_QUOTE_TOKEN.toLowerCase())
+      if (chainId !== PEACH_CHAIN_ID)
+        reasons.push("Peach launchpad trades are Arc-mainnet only");
+      if (
+        tokenIn.toLowerCase() !== PEACH_QUOTE_TOKEN.toLowerCase() &&
+        tokenOut.toLowerCase() !== PEACH_QUOTE_TOKEN.toLowerCase()
+      )
         reasons.push("a Peach trade must have Arc USDC as one side");
     }
 
@@ -2159,7 +2223,11 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const reasons: string[] = [];
     reasons.push(...requireAddresses(s, "to"));
     reasons.push(
-      ...pinned(str(s.to), getContracts(chainId).wrappedNative, "wrapped-native"),
+      ...pinned(
+        str(s.to),
+        getContracts(chainId).wrappedNative,
+        "wrapped-native",
+      ),
     );
     const amount = positive(s.amount);
     if (amount === null) reasons.push("wrap amount is missing or not positive");
@@ -2178,7 +2246,11 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const reasons: string[] = [];
     reasons.push(...requireAddresses(s, "to"));
     reasons.push(
-      ...pinned(str(s.to), getContracts(chainId).wrappedNative, "wrapped-native"),
+      ...pinned(
+        str(s.to),
+        getContracts(chainId).wrappedNative,
+        "wrapped-native",
+      ),
     );
     const amount = positive(s.amount);
     if (amount === null)
@@ -3032,9 +3104,12 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const inTok = knownToken(chainId, tokenIn);
     const outTok = knownToken(chainId, tokenOut);
 
-    reasons.push(...pinned(str(s.orders), getContracts(chainId).orders, "orders"));
+    reasons.push(
+      ...pinned(str(s.orders), getContracts(chainId).orders, "orders"),
+    );
 
-    if (!inTok.ok) reasons.push(`unrecognised input token ${tokenIn || "(none)"}`);
+    if (!inTok.ok)
+      reasons.push(`unrecognised input token ${tokenIn || "(none)"}`);
     if (!outTok.ok)
       reasons.push(`unrecognised output token ${tokenOut || "(none)"}`);
     if (tokenIn && tokenIn.toLowerCase() === tokenOut.toLowerCase())
@@ -3055,7 +3130,9 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       );
 
     if (num(s.decimalsIn) === null || num(s.decimalsOut) === null)
-      reasons.push("token decimals are missing, so the amount cannot be parsed");
+      reasons.push(
+        "token decimals are missing, so the amount cannot be parsed",
+      );
 
     const maxFills = num(s.maxFills);
     if (maxFills === null || maxFills < 1 || !Number.isInteger(maxFills))
@@ -3074,8 +3151,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       );
     /* The window has to hold the fills being signed for, or the order does fewer
        than it says. The contract has no view that reports this, and it is not a
-       revert either: fills simply stop. */
-    else if (
+       revert either: fills simply stop. */ else if (
       maxFills !== null &&
       interval !== null &&
       maxFills > 1 &&
@@ -3333,7 +3409,9 @@ export async function auditPlan(opts: {
       str(step.venue) === "peach" &&
       !(await peachCurveMatches(step, chainId))
     ) {
-      shape.reasons.push("the Peach launch token does not resolve to the curve being called");
+      shape.reasons.push(
+        "the Peach launch token does not resolve to the curve being called",
+      );
     }
     if (shape.reasons.length > 0 || chainId === undefined) {
       audited.blocked = shape.reasons.join("; ") || "chain unknown";

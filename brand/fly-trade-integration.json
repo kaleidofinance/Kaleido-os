@@ -1,0 +1,12 @@
+{
+  "eyebrow": "Integration · Multichain liquidity",
+  "hero": "Now live on",
+  "heroSize": "medium",
+  "partnerLockup": true,
+  "description": "Cross-chain liquidity routing across Arc, Robinhood Chain, and BNB Smart Chain.",
+  "stats": ["Cross-chain liquidity", "Luca routing"],
+  "url": "kaleidofi.xyz/trade",
+  "background": "colosseum-bright",
+  "layout": "center",
+  "effect": "wash"
+}
