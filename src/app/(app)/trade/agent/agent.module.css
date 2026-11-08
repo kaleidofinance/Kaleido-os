@@ -39,7 +39,7 @@
    the full conversation height. Once a real turn arrives, the card returns to
    filling the stage and the transcript gains the room to scroll. */
 .emptyState {
-  height: min(62dvh, 560px);
+  height: min(43dvh, 380px);
   align-self: center;
 }
 
