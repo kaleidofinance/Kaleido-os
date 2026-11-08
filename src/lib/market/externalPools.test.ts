@@ -9,7 +9,9 @@ async function main() {
     [56, "bsc"],
   ] as const) {
     const tokens = TOKENS[chainId];
-    const base = tokens.find((t) => t.symbol === "USDC")!;
+    const base = tokens.find(
+      (t) => t.symbol === (chainId === 4663 ? "USDG" : "USDC"),
+    )!;
     const quote = tokens.find(
       (t) => t.symbol === (chainId === 56 ? "WBNB" : "WETH"),
     )!;
@@ -21,6 +23,9 @@ async function main() {
       | "zero-output"
       | "unknown-tvl"
       | "empty-tvl"
+      | "depeg"
+      | "bad-rate"
+      | "no-pricing"
       | "launch" = "valid";
     const mock: typeof fetch = async (input) => {
       const url = new URL(String(input));
@@ -45,6 +50,13 @@ async function main() {
           data: {
             routeSummary: {
               amountOut: mode === "zero-output" ? "0" : "123456",
+              amountInUsd: mode === "depeg" ? "0.21" : "1",
+              amountOutUsd:
+                mode === "no-pricing"
+                  ? null
+                  : mode === "bad-rate"
+                    ? "0.7"
+                    : "0.999",
               route: [
                 [
                   {
@@ -90,6 +102,9 @@ async function main() {
       "zero-output",
       "unknown-tvl",
       "empty-tvl",
+      "depeg",
+      "bad-rate",
+      "no-pricing",
       "launch",
     ] as const) {
       mode = rejected;

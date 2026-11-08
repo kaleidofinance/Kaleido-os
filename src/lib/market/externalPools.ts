@@ -98,9 +98,9 @@ async function fetchRoutePools(
   const tokens = (TOKENS[chainId] ?? []).filter((token) =>
     CORE_ASSETS[chainId]?.includes(token.symbol),
   );
-  const usdc =
-    tokens.find((token) => token.symbol === "USDC") ??
-    tokens.find((token) => token.symbol === "USDG");
+  const usdc = tokens.find(
+    (token) => token.symbol === (chainId === 4663 ? "USDG" : "USDC"),
+  );
   if (!usdc) return null;
 
   try {
@@ -129,7 +129,12 @@ async function fetchRoutePools(
             const body = (await response.json()) as {
               code?: number;
               data?: {
-                routeSummary?: { amountOut?: string; route?: RouteLeg[][] };
+                routeSummary?: {
+                  amountOut?: string;
+                  amountInUsd?: unknown;
+                  amountOutUsd?: unknown;
+                  route?: RouteLeg[][];
+                };
               };
             };
             const summary = body.data?.routeSummary;
@@ -140,6 +145,18 @@ async function fetchRoutePools(
               !/^\d+$/.test(summary.amountOut) ||
               BigInt(summary.amountOut) <= 0n ||
               !Array.isArray(summary.route)
+            )
+              return [];
+            // The probe spends one unit of a USD stable asset. Reject absent
+            // pricing, a depegged base, and a fill whose USD values differ by
+            // more than 5% in either direction (including suspicious overquotes).
+            const inputUsd = n(summary.amountInUsd);
+            const outputUsd = n(summary.amountOutUsd);
+            if (
+              inputUsd === null ||
+              outputUsd === null ||
+              Math.abs(inputUsd - 1) > 0.05 ||
+              Math.abs(outputUsd / inputUsd - 1) > 0.05
             )
               return [];
             const legs = summary.route.flat();
