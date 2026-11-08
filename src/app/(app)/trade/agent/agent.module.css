@@ -1300,7 +1300,7 @@
 @media (max-width: 720px) {
   .emptyState {
     height: min(43dvh, 380px);
-    align-self: flex-start;
+    align-self: center;
   }
   .chat {
     border-radius: 18px;
