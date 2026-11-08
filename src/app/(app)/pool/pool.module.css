@@ -1524,8 +1524,8 @@ a.txAction:hover {
 @media (max-width: 960px) {
   .pools .thead,
   .pools .row {
-    grid-template-columns: 220px 130px 110px 130px 120px 96px;
-    min-width: 866px;
+    grid-template-columns: 190px 120px 100px 120px 110px 96px;
+    min-width: 796px;
   }
   .pools .thead > :not(:first-child),
   .pools .row > :not(.pairCell) {
