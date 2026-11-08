@@ -1516,6 +1516,24 @@ a.txAction:hover {
 }
 
 /* ---------- mobile ---------- */
+/* Keep the six pool columns readable before the full desktop layout has room.
+   Fractional tracks let a wide identity cell steal space from TVL/APR on small
+   screens, which makes values appear concatenated even though they are separate
+   cells. Fixed readable tracks are intentional here: the table scrolls inside
+   its own card instead of letting numbers overlap. */
+@media (max-width: 960px) {
+  .pools .thead,
+  .pools .row {
+    grid-template-columns: 220px 130px 110px 130px 120px 96px;
+    min-width: 866px;
+  }
+  .pools .thead > :not(:first-child),
+  .pools .row > :not(.pairCell) {
+    min-width: 0;
+    white-space: nowrap;
+  }
+}
+
 @media (max-width: 720px) {
   .wrap {
     /* env() adds the home-indicator inset the fixed tab bar itself reserves — a
@@ -1578,14 +1596,6 @@ a.txAction:hover {
      enough room for the full identity row, while the figures retain their own
      readable tracks. The extra width is cheap horizontal scroll on mobile and
      avoids letting the identity paint over price. */
-  .pools .thead,
-  .pools .row {
-    /* Six tracks for six cells: a flexible identity column, four figures, and
-       the action. The previous seven-track template left an empty phantom
-       column that squeezed the real figures out of the phone viewport. */
-    grid-template-columns: minmax(160px, 1.55fr) repeat(4, minmax(100px, 1fr)) minmax(96px, auto);
-    min-width: 720px;
-  }
   .pools .pairName {
     white-space: normal;
     overflow-wrap: anywhere;
