@@ -440,14 +440,17 @@ export default function PoolsPage() {
                           </div>
                         </div>
                       </Link>
-                      <span className={`${s.right} tabular`}>
+                      <span className={`${s.right} tabular`} data-label="TVL">
                         {usd(p.liquidity)}
                       </span>
                       {/* APR, with a Points pill on pools that earn Season 1 points (in-range
                   liquidity in Kaleido V3 pools on the chain the points-lp cron
                   reads) — the badge convention the big DEX tables use. The rate is
                   in the pill's tooltip rather than spelled out in the cell. */}
-                      <span className={`${s.right} tabular ${s.aprCell}`}>
+                      <span
+                        className={`${s.right} tabular ${s.aprCell}`}
+                        data-label="APR"
+                      >
                         {pct(p.apr)}
                         {lpPoints &&
                         p.version === "v3" &&
@@ -466,10 +469,16 @@ export default function PoolsPage() {
                   window was empty on nearly every row. Totals come from the
                   per-pool ledger the swap indexer writes (poolVolume.ts); fees
                   are that volume at the pool's fee rate. */}
-                      <span className={`${s.right} tabular`}>
+                      <span
+                        className={`${s.right} tabular`}
+                        data-label="24h volume"
+                      >
                         {usd(p.volume24h)}
                       </span>
-                      <span className={`${s.right} tabular`}>
+                      <span
+                        className={`${s.right} tabular`}
+                        data-label="24h fees"
+                      >
                         {usd(p.fees24h)}
                       </span>
                       {/* A sibling of the pair link, not inside it — nesting a button in an
@@ -519,14 +528,22 @@ export default function PoolsPage() {
                           </div>
                         </div>
                       </div>
-                      <span className={`${s.right} tabular`}>
+                      <span className={`${s.right} tabular`} data-label="TVL">
                         {usd(pool.tvlUsd)}
                       </span>
-                      <span className={s.right}>{DASH}</span>
-                      <span className={`${s.right} tabular`}>
+                      <span className={s.right} data-label="APR">
+                        {DASH}
+                      </span>
+                      <span
+                        className={`${s.right} tabular`}
+                        data-label="24h volume"
+                      >
                         {usd(pool.volume24hUsd)}
                       </span>
-                      <span className={`${s.right} tabular`}>
+                      <span
+                        className={`${s.right} tabular`}
+                        data-label="24h fees"
+                      >
                         {usd(pool.fees24hUsd)}
                       </span>
                       {tradable ? (

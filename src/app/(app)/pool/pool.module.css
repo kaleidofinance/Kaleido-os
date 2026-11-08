@@ -1665,6 +1665,61 @@ a.txAction:hover {
       background: linear-gradient(var(--k-glass), var(--k-glass)), var(--k-bg);
     }
   }
+  /* On a phone the six-column desktop table is the wrong topology: a sideways
+     scroll hides the figures that explain the pool and makes the first row look
+     like columns are colliding. Reflow each row into a compact card instead.
+     The pair leads, the four measures form a readable 2x2, and the action closes
+     the card. `data-label` keeps the meaning visible after the table header hides. */
+  .table.pools {
+    overflow: visible;
+  }
+  .pools .thead {
+    display: none;
+  }
+  .pools .row {
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+    padding: 14px;
+  }
+  .pools .row > .pairCell {
+    position: static;
+    grid-column: 1 / -1;
+    align-self: center;
+    margin-left: 0;
+    padding-left: 0;
+    min-width: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .pools .row > [data-label] {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-self: stretch;
+    gap: 3px;
+    text-align: left;
+    white-space: normal;
+  }
+  .pools .row > [data-label]::before {
+    content: attr(data-label);
+    color: var(--k-t3);
+    font-size: var(--k-fs-xs);
+    line-height: 1.2;
+    font-weight: var(--k-fw-reg);
+  }
+  .pools .row > [data-label] .pointsPill {
+    align-self: flex-start;
+  }
+  .pools .row > .depositBt,
+  .pools .row > .right:not([data-label]) {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .pools .row > .depositBt {
+    margin-top: 2px;
+  }
   /* One column: a 300px sidebar beside a chart inside 280px leaves neither
      readable. Stats go under the chart rather than above it, because the chart
      is what the page is for. */
