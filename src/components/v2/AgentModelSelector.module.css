@@ -1,0 +1,123 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 150px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: transparent;
+  color: var(--k-t1);
+  font: inherit;
+  cursor: pointer;
+}
+.trigger > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trigger:hover {
+  background: var(--k-hover);
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--k-scrim);
+  z-index: 100;
+}
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  width: min(400px, calc(100vw - 24px));
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--k-card);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-xl);
+  box-shadow: var(--k-shadow-modal);
+  padding: 16px;
+  color: var(--k-t1);
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: var(--k-fw-med);
+}
+.close {
+  border: 0;
+  background: transparent;
+  color: var(--k-t2);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+.description {
+  margin: 4px 0 12px;
+  color: var(--k-t2);
+  font-size: 13px;
+}
+.options {
+  overflow-y: auto;
+  min-height: 0;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px;
+  border-radius: var(--k-r-md);
+  cursor: pointer;
+}
+.option:hover,
+.option:has(input:checked) {
+  background: var(--k-hover);
+}
+.option input {
+  accent-color: var(--k-brand);
+  flex: none;
+}
+.option > span {
+  min-width: 0;
+}
+.name {
+  display: block;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.detail {
+  display: block;
+  font-size: 11px;
+  color: var(--k-t3);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.status {
+  color: var(--k-t2);
+  font-size: 13px;
+  padding: 8px;
+}
+.trigger:focus-visible,
+.close:focus-visible,
+.option:focus-within {
+  outline: 2px solid var(--k-brand);
+  outline-offset: 2px;
+}
+@media (max-width: 720px) {
+  .trigger {
+    max-width: 115px;
+    min-height: 40px;
+  }
+}

@@ -1015,6 +1015,9 @@
   min-height: 34px;
 }
 .composerTools {
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
   display: flex;
   align-items: center;
   min-width: 0;

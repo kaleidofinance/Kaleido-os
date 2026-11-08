@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useConnectWallet } from "@/lib/wallet";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
+import AgentModelSelector from "@/components/v2/AgentModelSelector";
 import { useBorrowV2 } from "@/hooks/v2/useBorrowV2";
 import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { usePortfolio, type Portfolio } from "@/hooks/usePortfolio";
@@ -254,7 +255,8 @@ export default function AgentPage() {
       /* unreadable or blocked storage: nothing to resume */
     }
   }, []);
-  const { settings } = useAgentSettings(address);
+  const settingsStore = useAgentSettings(address);
+  const { settings, update } = settingsStore;
   const { buildPlan } = useLocalPlanner();
   const { showTestnets } = useTestnetMode();
   /* Recent transaction kinds, newest first, so the starting-point chips lead with
@@ -2573,6 +2575,7 @@ export default function AgentPage() {
       className={`${s.card} ${expanded ? s.wide : ""} ${messages.length === 0 && panel.kind === "idle" ? s.emptyState : ""}`}
     >
       <AgentSettings
+        settingsStore={settingsStore}
         address={address}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -2593,9 +2596,7 @@ export default function AgentPage() {
           <span className={s.avatar} aria-hidden />
           {/* Stable identity stays in the header while the conversation below
                 carries the changing context. */}
-          <span className={s.headName}>
-            Luca
-          </span>
+          <span className={s.headName}>Luca</span>
         </div>
 
         {/* The panels take the transcript's box rather than appearing below it.
@@ -2952,6 +2953,10 @@ export default function AgentPage() {
                 reporting the wait. */}
             <div className={s.composerActions}>
               <div className={s.composerTools}>
+                <AgentModelSelector
+                  value={settings.model}
+                  onChange={(model) => update({ model })}
+                />
                 {credits && (
                   <span
                     className="tabular"

@@ -56,6 +56,7 @@ const ACTION_BITS: Record<AgentAction, number> = {
  * rather than by anything on this device.
  */
 interface AgentSettingsProps {
+  settingsStore?: ReturnType<typeof useAgentSettings>;
   address?: string;
   open: boolean;
   onClose: () => void;
@@ -77,12 +78,15 @@ const ACTION_LABELS: Record<AgentAction, string> = {
 };
 
 export default function AgentSettings({
+  settingsStore,
   address,
   open,
   onClose,
   localModelStatus = "checking",
 }: AgentSettingsProps) {
-  const { settings, update, toggleAction } = useAgentSettings(address);
+  const localSettingsStore = useAgentSettings(address);
+  const { settings, update, toggleAction } =
+    settingsStore ?? localSettingsStore;
   const { chainId } = useWalletV2();
   const [agentAddr, setAgentAddr] = useState("");
   const [grant, setGrant] = useState<Intent[] | null>(null);
@@ -172,7 +176,9 @@ export default function AgentSettings({
   // an empty allow-list is not something to sign — depending on how the facet
   // reads it, it is either a useless grant or an unbounded one.
   const grantable = chainTokens(chainId);
-  const delegatedBits = (Object.keys(settings.allowedActions) as AgentAction[]).reduce(
+  const delegatedBits = (
+    Object.keys(settings.allowedActions) as AgentAction[]
+  ).reduce(
     (bits, action) =>
       settings.allowedActions[action] ? bits | ACTION_BITS[action] : bits,
     0,
@@ -493,8 +499,8 @@ export default function AgentSettings({
                       {mandate.remainingBudgetUsd != null
                         ? `, $${mandate.remainingBudgetUsd.toLocaleString()} left this period`
                         : ""}
-                      . It enforces your caps, health floor and allowed actions on
-                      chain.
+                      . It enforces your caps, health floor and allowed actions
+                      on chain.
                     </p>
                     <button
                       className={s.delegateBtn}
@@ -504,8 +510,8 @@ export default function AgentSettings({
                       {revoking ? "Revoking…" : "Revoke delegation"}
                     </button>
                     <p className={s.delegateNote}>
-                      Revoking is immediate and unconditional — the agent can act
-                      until the transaction lands, then not at all.
+                      Revoking is immediate and unconditional — the agent can
+                      act until the transaction lands, then not at all.
                     </p>
                   </>
                 ) : (
@@ -540,7 +546,7 @@ export default function AgentSettings({
                         ? "Kaleido carries no tokens on this network, so there's nothing to delegate authority over."
                         : delegatedBits === 0
                           ? "Enable Borrow or Lend above; swaps, staking and liquidity cannot be delegated."
-                        : "Enforced on-chain by the agent-permission facet. Revoke any time; the budget resets per day."}
+                          : "Enforced on-chain by the agent-permission facet. Revoke any time; the budget resets per day."}
                     </p>
                   </>
                 )}
