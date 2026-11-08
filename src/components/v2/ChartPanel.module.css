@@ -51,9 +51,9 @@
 .slot {
   flex: 1 1 0;
   min-width: 0;
+  min-height: 0;
   max-width: 560px;
   display: flex;
-  min-height: 0;
 }
 
 /* Below this the card alone fills the width, and a chart squeezed beside it is

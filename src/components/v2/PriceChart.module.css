@@ -9,7 +9,8 @@
   flex-direction: column;
   width: 100%;
   min-width: 0;
-  min-height: 260px;
+  height: 100%;
+  min-height: 0;
   padding: 17px 18px;
   border: 1px solid var(--k-line);
   border-radius: var(--k-r-xl);
@@ -126,7 +127,7 @@
 .plot {
   position: relative;
   flex: 1 1 auto;
-  min-height: 120px;
+  min-height: 0;
   margin: 12px 0;
   border-radius: var(--k-r-md);
   overflow: hidden;
