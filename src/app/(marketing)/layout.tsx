@@ -1,5 +1,6 @@
 import "../(app)/tokens.css";
 import type { ReactNode } from "react";
+import FloatingCoins from "@/components/v2/FloatingCoins";
 
 import s from "./layout.module.css";
 
@@ -35,6 +36,7 @@ import s from "./layout.module.css";
 export default function MarketingLayout({ children }: { children: ReactNode }) {
   return (
     <div className="kaleido-v2">
+      <FloatingCoins />
       <div className={s.shell}>{children}</div>
     </div>
   );

@@ -1,6 +1,7 @@
 import "./tokens.css";
 import type { ReactNode } from "react";
 import CctpCompletionBanner from "@/components/v2/CctpCompletionBanner";
+import FloatingCoins from "@/components/v2/FloatingCoins";
 import LifiLifecycleWatcher from "@/components/v2/LifiLifecycleWatcher";
 
 /**
@@ -25,6 +26,7 @@ import LifiLifecycleWatcher from "@/components/v2/LifiLifecycleWatcher";
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="kaleido-v2">
+      <FloatingCoins />
       {children}
 
       {/* Global CCTP "finish your transfer" bar — floats over the shell on every

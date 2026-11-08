@@ -41,16 +41,6 @@ export default function TradeLayout({ children }: { children: ReactNode }) {
       <div className={s.shell}>
         <Nav />
         <main className={`${s.hero} ${isAgent ? s.agentHero : ""}`}>
-          {isAgent && (
-            <div className={s.ambientCoins} aria-hidden="true">
-              <img className={s.coinOne} src="/USDC.svg" alt="" />
-              <img className={s.coinTwo} src="/eth.svg" alt="" />
-              <img className={s.coinThree} src="/tokens/robinhood-chain.svg" alt="" />
-              <img className={s.coinFour} src="/usdt.svg" alt="" />
-              <img className={s.coinFive} src="/newklogo2.png" alt="" />
-              <img className={s.coinSix} src="/arc-mark.png" alt="" />
-            </div>
-          )}
           <div className={s.tabs}>
             {TABS.map((t) => (
               <Link
