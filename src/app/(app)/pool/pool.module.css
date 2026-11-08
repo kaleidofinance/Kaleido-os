@@ -1580,8 +1580,11 @@ a.txAction:hover {
      avoids letting the identity paint over price. */
   .pools .thead,
   .pools .row {
-    grid-template-columns: 280px 1fr 1fr 1fr 1fr 0.8fr 96px;
-    min-width: 860px;
+    /* Six tracks for six cells: a flexible identity column, four figures, and
+       the action. The previous seven-track template left an empty phantom
+       column that squeezed the real figures out of the phone viewport. */
+    grid-template-columns: minmax(190px, 1.55fr) repeat(4, minmax(100px, 1fr)) minmax(96px, auto);
+    min-width: 760px;
   }
   .pools .pairName {
     white-space: nowrap;
