@@ -1587,7 +1587,8 @@ a.txAction:hover {
     min-width: 720px;
   }
   .pools .pairName {
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   /* A card that scrolls sideways should clip at its own border. The scroll clip is
      the padding box, so `.table`'s 8px of horizontal padding sits *inside* it and
