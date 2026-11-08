@@ -2595,7 +2595,6 @@ export default function AgentPage() {
                 carries the changing context. */}
           <span className={s.headName}>
             Luca
-            <span className={s.headSubtitle}>Your onchain assistant</span>
           </span>
         </div>
 
