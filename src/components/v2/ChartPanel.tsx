@@ -5,7 +5,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import PriceChart from "./PriceChart";
@@ -198,15 +200,38 @@ export function ChartToggle({ className }: { className?: string }) {
  */
 export function ChartSlot() {
   const { open, ready, pair, side, setSide } = useChartPanel();
-  if (!ready || !open) return null;
-
+  const slotRef = useRef<HTMLDivElement>(null);
   // Falls back to base when the second side is absent, so a one-token tab cannot
   // land on an empty panel by having `side` left at 1 by the tab before it.
   const symbol = side === 1 ? (pair.quote ?? pair.base) : pair.base;
+
+  useLayoutEffect(() => {
+    const slot = slotRef.current;
+    const stage = slot?.parentElement;
+    if (!slot || !stage) return;
+
+    // The chart is a sibling of the route's card. Follow that card's measured
+    // height instead of letting the chart's own plot minimum make the row taller.
+    const card = Array.from(stage.children).find(
+      (child) => child !== slot,
+    ) as HTMLElement | undefined;
+    if (!card) return;
+
+    const sync = () => {
+      slot.style.height = `${card.getBoundingClientRect().height}px`;
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [open, ready, symbol]);
+
+  if (!ready || !open) return null;
+
   if (!symbol) return null;
 
   return (
-    <div className={s.slot}>
+    <div ref={slotRef} className={s.slot}>
       <PriceChart symbol={symbol} pair={pair} side={side} onSide={setSide} />
     </div>
   );
