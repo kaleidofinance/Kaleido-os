@@ -2573,6 +2573,9 @@ export default function AgentPage() {
   return (
     <div
       className={`${s.card} ${expanded ? s.wide : ""} ${messages.length === 0 && panel.kind === "idle" ? s.emptyState : ""}`}
+      data-agent-state={
+        messages.length === 0 && panel.kind === "idle" ? "empty" : "active"
+      }
     >
       <AgentSettings
         settingsStore={settingsStore}

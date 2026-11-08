@@ -581,10 +581,20 @@
 .agentHero {
   justify-content: flex-start;
   padding-top: 8px;
+  gap: 8px;
 }
 .agentStage {
   flex: 1 1 0;
   min-height: 0;
+}
+/* The idle card is intentionally shorter than a live conversation. Keep it at
+   the top of its stage so the mode tabs sit beside the card as one control
+   group; a live transcript still stretches through the available stage. */
+.agentStage:has([data-agent-state="empty"]) {
+  align-items: flex-start;
+}
+.agentStage:has([data-agent-state="empty"]) > [data-agent-state="empty"] {
+  align-self: flex-start;
 }
 @media (max-width: 720px) {
   .agentHero {
