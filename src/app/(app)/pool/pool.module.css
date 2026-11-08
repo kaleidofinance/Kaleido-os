@@ -308,6 +308,15 @@
 .row:hover {
   background: var(--k-row-hover);
 }
+/* Touch browsers can keep `:hover` latched after a tap. On the pool list that
+   creates a dark rounded band behind the first row, which looks like a stray
+   shadow rather than interaction feedback. Hover remains available to precise
+   pointers; touch rows stay on the neutral table surface. */
+@media (hover: none) {
+  .pools .row:hover {
+    background: transparent;
+  }
+}
 .right {
   text-align: right;
   justify-self: end;
