@@ -240,6 +240,25 @@ export default function PoolsPage() {
     setView("all");
   };
 
+  /* Rank the rows after both sources have been filtered. Native pools and
+     aggregator snapshots use different TVL fields, so sorting each source
+     independently and then appending one below the other makes the table lie
+     about which pool is deepest. Keep one tagged list for the final render. */
+  const rankedRows = [
+    ...visible.map((pool, position) => ({
+      kind: "kaleido" as const,
+      pool,
+      tvl: pool.liquidity ?? -1,
+      position,
+    })),
+    ...externalVisible.map((pool, position) => ({
+      kind: "external" as const,
+      pool,
+      tvl: pool.tvlUsd ?? -1,
+      position: visible.length + position,
+    })),
+  ].sort((a, b) => b.tvl - a.tvl || a.position - b.position);
+
   /* After both hooks, never between them. */
   if (!gate.ready)
     return <ChainGate product="pool list" state={gate} requires="dex" />;
@@ -365,15 +384,19 @@ export default function PoolsPage() {
             </button>
           </div>
         ) : (
-          visible.map((p) => (
-            /* Keyed by chain as well as venue: a pool address is CREATE2-derived, so
+          rankedRows.map((entry) =>
+            entry.kind === "kaleido"
+              ? (() => {
+                  const p = entry.pool;
+                  /* Keyed by chain as well as venue: a pool address is CREATE2-derived, so
                two chains can in principle hold the same address, and two rows with
                one key is a React reconciliation bug rather than a display one. */
-            <div
-              key={`${p.chainId}-${p.version}-${p.address}`}
-              className={s.row}
-            >
-              {/* The pair cell now goes to /pool/[address] rather than out to the
+                  return (
+                    <div
+                      key={`${p.chainId}-${p.version}-${p.address}`}
+                      className={s.row}
+                    >
+                      {/* The pair cell now goes to /pool/[address] rather than out to the
                   block explorer. The explorer link did not disappear — it moved to
                   the copyable address chip on that page, beside the fee, the
                   balances and the depth curve, which is more than a row can carry.
@@ -386,20 +409,20 @@ export default function PoolsPage() {
                   moment this table went cross-chain. The detail page falls back to
                   matching on address when it is absent, so a pasted or bookmarked
                   URL from before still resolves. */}
-              <Link
-                className={s.pairCell}
-                href={`/pool/${p.address}?chain=${p.chainId}`}
-              >
-                <div className={s.pair}>
-                  <PairIcon symbol={p.token0.symbol} />
-                  <PairIcon symbol={p.token1.symbol} />
-                </div>
-                <div>
-                  <div className={s.pairName}>
-                    <span>
-                      {p.token0.symbol} / {p.token1.symbol}
-                    </span>
-                    {/* Beside the pair name, not on the fee line below: the
+                      <Link
+                        className={s.pairCell}
+                        href={`/pool/${p.address}?chain=${p.chainId}`}
+                      >
+                        <div className={s.pair}>
+                          <PairIcon symbol={p.token0.symbol} />
+                          <PairIcon symbol={p.token1.symbol} />
+                        </div>
+                        <div>
+                          <div className={s.pairName}>
+                            <span>
+                              {p.token0.symbol} / {p.token1.symbol}
+                            </span>
+                            {/* Beside the pair name, not on the fee line below: the
                         fee line wraps, so on a narrow row the tick used to drop
                         under everything else. It is an identity mark on the
                         pair, so it belongs with the pair's name. Only when it is
@@ -407,105 +430,117 @@ export default function PoolsPage() {
                         deployment record, covering a stranger's pool and one of
                         ours whose record never got committed alike. See
                         SeededTick. */}
-                    {p.seeded ? <SeededTick /> : null}
-                  </div>
-                  <div className={s.pairFee}>
-                    <span>
-                      {feeLabel(p.feeBps)} · {p.version.toUpperCase()}
-                    </span>
-                    <ChainTag chainId={p.chainId} />
-                  </div>
-                </div>
-              </Link>
-              <span className={`${s.right} tabular`}>{usd(p.liquidity)}</span>
-              {/* APR, with a Points pill on pools that earn Season 1 points (in-range
+                            {p.seeded ? <SeededTick /> : null}
+                          </div>
+                          <div className={s.pairFee}>
+                            <span>
+                              {feeLabel(p.feeBps)} · {p.version.toUpperCase()}
+                            </span>
+                            <ChainTag chainId={p.chainId} />
+                          </div>
+                        </div>
+                      </Link>
+                      <span className={`${s.right} tabular`}>
+                        {usd(p.liquidity)}
+                      </span>
+                      {/* APR, with a Points pill on pools that earn Season 1 points (in-range
                   liquidity in Kaleido V3 pools on the chain the points-lp cron
                   reads) — the badge convention the big DEX tables use. The rate is
                   in the pill's tooltip rather than spelled out in the cell. */}
-              <span className={`${s.right} tabular ${s.aprCell}`}>
-                {pct(p.apr)}
-                {lpPoints &&
-                p.version === "v3" &&
-                p.chainId === lpPoints.chainId ? (
-                  <span
-                    className={s.pointsPill}
-                    title={`Earns ${lpPoints.perUsdPerDay.toLocaleString("en-US", { maximumFractionDigits: 2 })} Season 1 points per $1 of in-range liquidity per day${lpPoints.boost > 1 ? ` (${lpPoints.boost}× campaign boost)` : ""}`}
-                  >
-                    <span className={s.pointsMark} aria-hidden />
-                    {lpPoints.boost > 1 ? `${lpPoints.boost}× ` : ""}kPoints
-                  </span>
-                ) : null}
-              </span>
-              {/* All-time, not 24h: our pools are young and thin, so a 24h
+                      <span className={`${s.right} tabular ${s.aprCell}`}>
+                        {pct(p.apr)}
+                        {lpPoints &&
+                        p.version === "v3" &&
+                        p.chainId === lpPoints.chainId ? (
+                          <span
+                            className={s.pointsPill}
+                            title={`Earns ${lpPoints.perUsdPerDay.toLocaleString("en-US", { maximumFractionDigits: 2 })} Season 1 points per $1 of in-range liquidity per day${lpPoints.boost > 1 ? ` (${lpPoints.boost}× campaign boost)` : ""}`}
+                          >
+                            <span className={s.pointsMark} aria-hidden />
+                            {lpPoints.boost > 1 ? `${lpPoints.boost}× ` : ""}
+                            kPoints
+                          </span>
+                        ) : null}
+                      </span>
+                      {/* All-time, not 24h: our pools are young and thin, so a 24h
                   window was empty on nearly every row. Totals come from the
                   per-pool ledger the swap indexer writes (poolVolume.ts); fees
                   are that volume at the pool's fee rate. */}
-              <span className={`${s.right} tabular`}>{usd(p.volume24h)}</span>
-              <span className={`${s.right} tabular`}>{usd(p.fees24h)}</span>
-              {/* A sibling of the pair link, not inside it — nesting a button in an
+                      <span className={`${s.right} tabular`}>
+                        {usd(p.volume24h)}
+                      </span>
+                      <span className={`${s.right} tabular`}>
+                        {usd(p.fees24h)}
+                      </span>
+                      {/* A sibling of the pair link, not inside it — nesting a button in an
                   anchor is invalid, and the click would have to be swallowed. */}
-              <button
-                className={s.depositBt}
-                onClick={() => setDepositInto(p)}
-                aria-label={`Deposit into ${p.token0.symbol} / ${p.token1.symbol} on chain ${p.chainId}`}
-              >
-                Deposit
-              </button>
-            </div>
-          ))
+                      <button
+                        className={s.depositBt}
+                        onClick={() => setDepositInto(p)}
+                        aria-label={`Deposit into ${p.token0.symbol} / ${p.token1.symbol} on chain ${p.chainId}`}
+                      >
+                        Deposit
+                      </button>
+                    </div>
+                  );
+                })()
+              : (() => {
+                  const pool = entry.pool;
+                  const tradable = pool.tokens.every((token) =>
+                    chainTokenByAddress(pool.chainId, token.address),
+                  );
+                  const href = `/trade/swap?chain=${pool.chainId}&in=${pool.tokens[0].address}&out=${pool.tokens[1].address}`;
+                  return (
+                    <div
+                      key={`${pool.chainId}-${pool.exchange}-${pool.address}`}
+                      className={s.row}
+                    >
+                      <div className={s.pairCell}>
+                        <div className={s.pair}>
+                          {pool.tokens.map((token) => (
+                            <PairIcon
+                              key={`${pool.chainId}:${token.address}`}
+                              symbol={token.symbol}
+                              logoURI={token.logoURI}
+                              allowSymbolIcon={
+                                chainTokenByAddress(pool.chainId, token.address)
+                                  ?.symbol === token.symbol
+                              }
+                            />
+                          ))}
+                        </div>
+                        <div>
+                          <div className={s.pairName}>
+                            {pool.tokenSymbols.join(" / ")}
+                          </div>
+                          <div className={s.pairFee}>
+                            {pool.exchange} · External{" "}
+                            <ChainTag chainId={pool.chainId} />
+                          </div>
+                        </div>
+                      </div>
+                      <span className={`${s.right} tabular`}>
+                        {usd(pool.tvlUsd)}
+                      </span>
+                      <span className={s.right}>{DASH}</span>
+                      <span className={`${s.right} tabular`}>
+                        {usd(pool.volume24hUsd)}
+                      </span>
+                      <span className={`${s.right} tabular`}>
+                        {usd(pool.fees24hUsd)}
+                      </span>
+                      {tradable ? (
+                        <Link className={s.depositBt} href={href}>
+                          Swap
+                        </Link>
+                      ) : (
+                        <span className={s.right}>Market data</span>
+                      )}
+                    </div>
+                  );
+                })(),
+          )
         )}
-        {externalVisible.map((pool) => {
-          const tradable = pool.tokens.every((token) =>
-            chainTokenByAddress(pool.chainId, token.address),
-          );
-          const href = `/trade/swap?chain=${pool.chainId}&in=${pool.tokens[0].address}&out=${pool.tokens[1].address}`;
-          return (
-            <div
-              key={`${pool.chainId}-${pool.exchange}-${pool.address}`}
-              className={s.row}
-            >
-              <div className={s.pairCell}>
-                <div className={s.pair}>
-                  {pool.tokens.map((token) => (
-                    <PairIcon
-                      key={`${pool.chainId}:${token.address}`}
-                      symbol={token.symbol}
-                      logoURI={token.logoURI}
-                      allowSymbolIcon={
-                        chainTokenByAddress(pool.chainId, token.address)
-                          ?.symbol === token.symbol
-                      }
-                    />
-                  ))}
-                </div>
-                <div>
-                  <div className={s.pairName}>
-                    {pool.tokenSymbols.join(" / ")}
-                  </div>
-                  <div className={s.pairFee}>
-                    {pool.exchange} · External{" "}
-                    <ChainTag chainId={pool.chainId} />
-                  </div>
-                </div>
-              </div>
-              <span className={`${s.right} tabular`}>{usd(pool.tvlUsd)}</span>
-              <span className={s.right}>{DASH}</span>
-              <span className={`${s.right} tabular`}>
-                {usd(pool.volume24hUsd)}
-              </span>
-              <span className={`${s.right} tabular`}>
-                {usd(pool.fees24hUsd)}
-              </span>
-              {tradable ? (
-                <Link className={s.depositBt} href={href}>
-                  Swap
-                </Link>
-              ) : (
-                <span className={s.right}>Market data</span>
-              )}
-            </div>
-          );
-        })}
       </div>
 
       {panelOpen ? (
