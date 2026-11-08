@@ -50,7 +50,6 @@ export default function AgentModelSelector({
           title={label}
         >
           <span>{label}</span>
-          <span aria-hidden="true">⌄</span>
         </button>
       </Dialog.Trigger>
       <Dialog.Portal container={portalHost}>

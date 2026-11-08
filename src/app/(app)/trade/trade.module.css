@@ -19,6 +19,8 @@
 }
 
 .hero {
+  position: relative;
+  isolation: isolate;
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -41,6 +43,8 @@
 }
 
 .tabs {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 4px;
   flex: none;
@@ -63,6 +67,8 @@
    either of them knowing the other's — the row's height comes from the card, and
    the panel's plot is the flexible part that absorbs it. */
 .stage {
+  position: relative;
+  z-index: 1;
   flex: 0 1 auto;
   min-height: 0;
   width: 100%;
@@ -580,9 +586,82 @@
   flex: 1 1 0;
   min-height: 0;
 }
+.ambientCoins {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.32;
+  filter: saturate(0.82);
+}
+.ambientCoins img {
+  position: absolute;
+  width: clamp(28px, 3.8vw, 52px);
+  height: clamp(28px, 3.8vw, 52px);
+  object-fit: contain;
+  opacity: 0.5;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45));
+  animation: coinFloat 13s ease-in-out infinite alternate;
+}
+.coinOne {
+  top: 16%;
+  left: 8%;
+  transform: rotate(-14deg);
+}
+.coinTwo {
+  top: 30%;
+  right: 12%;
+  width: clamp(34px, 4.6vw, 64px) !important;
+  height: clamp(34px, 4.6vw, 64px) !important;
+  animation-delay: -4s !important;
+  transform: rotate(12deg);
+}
+.coinThree {
+  top: 57%;
+  left: 5%;
+  width: clamp(24px, 3.1vw, 44px) !important;
+  height: clamp(24px, 3.1vw, 44px) !important;
+  animation-delay: -8s !important;
+  transform: rotate(18deg);
+}
+.coinFour {
+  top: 72%;
+  right: 7%;
+  animation-delay: -2s !important;
+  transform: rotate(-20deg);
+}
+.coinFive {
+  top: 12%;
+  right: 30%;
+  width: clamp(20px, 2.8vw, 38px) !important;
+  height: clamp(20px, 2.8vw, 38px) !important;
+  animation-delay: -6s !important;
+  transform: rotate(8deg);
+}
+.coinSix {
+  bottom: 12%;
+  left: 28%;
+  width: clamp(22px, 3vw, 42px) !important;
+  height: clamp(22px, 3vw, 42px) !important;
+  animation-delay: -10s !important;
+  transform: rotate(-10deg);
+}
+@keyframes coinFloat {
+  from { translate: 0 0; }
+  to { translate: 0 -12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ambientCoins img { animation: none; }
+}
 @media (max-width: 720px) {
   .agentHero {
     padding: 6px 8px 8px;
     gap: 8px;
   }
+  .ambientCoins { opacity: 0.2; }
+  .ambientCoins img { width: 30px; height: 30px; opacity: 0.42; }
+  .coinTwo { width: 38px !important; height: 38px !important; }
+  .coinThree { display: none; }
+  .coinFive { display: none; }
 }
