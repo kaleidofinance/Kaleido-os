@@ -1583,8 +1583,8 @@ a.txAction:hover {
     /* Six tracks for six cells: a flexible identity column, four figures, and
        the action. The previous seven-track template left an empty phantom
        column that squeezed the real figures out of the phone viewport. */
-    grid-template-columns: minmax(190px, 1.55fr) repeat(4, minmax(100px, 1fr)) minmax(96px, auto);
-    min-width: 760px;
+    grid-template-columns: minmax(160px, 1.55fr) repeat(4, minmax(100px, 1fr)) minmax(96px, auto);
+    min-width: 720px;
   }
   .pools .pairName {
     white-space: nowrap;
