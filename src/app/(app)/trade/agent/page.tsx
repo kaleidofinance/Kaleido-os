@@ -2597,100 +2597,6 @@ export default function AgentPage() {
             Luca
             <span className={s.headSubtitle}>Your onchain assistant</span>
           </span>
-          <span className={s.headMeta}>
-            {credits && (
-              <span className="tabular" title="Reasoning requests left today">
-                {credits.remaining}/{credits.quota}
-                <span className={s.creditsWord}> left</span>
-              </span>
-            )}
-            {/* A persisted thread needs a way out, and it is a safety control
-                rather than a convenience: this transcript survives reloads and
-                route changes, and it holds what you asked about your own
-                positions. On a shared machine the only honest answer to "how do I
-                get rid of this" cannot be "close the tab".
-
-                Clears storage as well as state — `clear` empties the array, and
-                the hook removes the key when the array is empty. */}
-            {messages.length > 0 && (
-              <button
-                type="button"
-                className={s.clear}
-                onClick={() => {
-                  clearThread();
-                  setPending(null);
-                  setCardToken(null);
-                  afterBridgeRef.current = null;
-                  arrivalWatchRef.current?.abort();
-                  if (address) clearWatch(watchStore(), address);
-                  setPanel({ kind: "idle" });
-                }}
-                title="Delete this conversation from this device"
-              >
-                Clear
-              </button>
-            )}
-            {/* Compact ↔ expanded. A view control, so it sits with the other view
-                controls rather than in settings: it changes nothing about the
-                conversation or the account, and it is the sort of thing you press
-                mid-read and press back. Hidden below 721px, where the card is
-                already the width of the screen and there is nothing to widen
-                into — see the media query in agent.module.css. */}
-            <button
-              type="button"
-              className={`${s.expand} ${expanded ? s.expandOn : ""}`}
-              onClick={toggleWide}
-              aria-pressed={expanded}
-              aria-label={
-                expanded
-                  ? "Collapse the conversation"
-                  : "Expand the conversation"
-              }
-              title={expanded ? "Compact view" : "Expanded view"}
-            >
-              <svg
-                viewBox="0 0 16 16"
-                width="13"
-                height="13"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-                focusable="false"
-              >
-                {expanded ? (
-                  /* Arrows pointing in: pressing this makes it smaller. */
-                  <>
-                    <path d="M9.5 6.5h4M9.5 6.5v-4M9.5 6.5 14 2" />
-                    <path d="M6.5 9.5h-4M6.5 9.5v4M6.5 9.5 2 14" />
-                  </>
-                ) : (
-                  <>
-                    <path d="M10 2.5h3.5V6M13.5 2.5 9.5 6.5" />
-                    <path d="M6 13.5H2.5V10M2.5 13.5l4-4" />
-                  </>
-                )}
-              </svg>
-            </button>
-            <span className={s.desktopTool}>
-              <ChartToggle className={chart.toggleRound} />
-            </span>
-            {/* Same log the swap card shows — a swap Luca signed for you is still
-                your swap, so both surfaces read one history rather than each
-                keeping its own. `.triggerRound` is TxHistory's own 30px variant,
-                the same escape hatch ChartToggle offers above, because this
-                header's controls are circles. */}
-            <TxHistory className={hist.triggerRound} />
-            <button
-              className={s.gear}
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Agent settings"
-            >
-              ⚙
-            </button>
-          </span>
         </div>
 
         {/* The panels take the transcript's box rather than appearing below it.
@@ -3046,6 +2952,103 @@ export default function AgentPage() {
                 most people never find, and the transcript above is already
                 reporting the wait. */}
             <div className={s.composerActions}>
+              <div className={s.composerTools}>
+                {credits && (
+                  <span
+                    className="tabular"
+                    title="Reasoning requests left today"
+                  >
+                    {credits.remaining}/{credits.quota}
+                    <span className={s.creditsWord}> left</span>
+                  </span>
+                )}
+                {/* A persisted thread needs a way out, and it is a safety control
+                rather than a convenience: this transcript survives reloads and
+                route changes, and it holds what you asked about your own
+                positions. On a shared machine the only honest answer to "how do I
+                get rid of this" cannot be "close the tab".
+
+                Clears storage as well as state — `clear` empties the array, and
+                the hook removes the key when the array is empty. */}
+                {messages.length > 0 && (
+                  <button
+                    type="button"
+                    className={s.clear}
+                    onClick={() => {
+                      clearThread();
+                      setPending(null);
+                      setCardToken(null);
+                      afterBridgeRef.current = null;
+                      arrivalWatchRef.current?.abort();
+                      if (address) clearWatch(watchStore(), address);
+                      setPanel({ kind: "idle" });
+                    }}
+                    title="Delete this conversation from this device"
+                  >
+                    Clear
+                  </button>
+                )}
+                {/* Compact ↔ expanded. A view control, so it sits with the other view
+                controls rather than in settings: it changes nothing about the
+                conversation or the account, and it is the sort of thing you press
+                mid-read and press back. Hidden below 721px, where the card is
+                already the width of the screen and there is nothing to widen
+                into — see the media query in agent.module.css. */}
+                <button
+                  type="button"
+                  className={`${s.expand} ${expanded ? s.expandOn : ""}`}
+                  onClick={toggleWide}
+                  aria-pressed={expanded}
+                  aria-label={
+                    expanded
+                      ? "Collapse the conversation"
+                      : "Expand the conversation"
+                  }
+                  title={expanded ? "Compact view" : "Expanded view"}
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    {expanded ? (
+                      /* Arrows pointing in: pressing this makes it smaller. */
+                      <>
+                        <path d="M9.5 6.5h4M9.5 6.5v-4M9.5 6.5 14 2" />
+                        <path d="M6.5 9.5h-4M6.5 9.5v4M6.5 9.5 2 14" />
+                      </>
+                    ) : (
+                      <>
+                        <path d="M10 2.5h3.5V6M13.5 2.5 9.5 6.5" />
+                        <path d="M6 13.5H2.5V10M2.5 13.5l4-4" />
+                      </>
+                    )}
+                  </svg>
+                </button>
+                <span className={s.desktopTool}>
+                  <ChartToggle className={chart.toggleRound} />
+                </span>
+                {/* Same log the swap card shows — a swap Luca signed for you is still
+                your swap, so both surfaces read one history rather than each
+                keeping its own. `.triggerRound` is TxHistory's own 30px variant,
+                the same escape hatch ChartToggle offers above, because this
+                header's controls are circles. */}
+                <TxHistory className={hist.triggerRound} />
+                <button
+                  className={s.gear}
+                  onClick={() => setSettingsOpen(true)}
+                  aria-label="Agent settings"
+                >
+                  ⚙
+                </button>
+              </div>
               <button
                 type="button"
                 className={s.send}
