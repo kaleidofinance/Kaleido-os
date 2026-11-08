@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery } from "@tanstack/react-query";
 import s from "./AgentModelSelector.module.css";
@@ -18,6 +18,8 @@ export default function AgentModelSelector({
   onChange: (model: string | undefined) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+  useEffect(() => { setPortalHost(document.getElementById("k-portal")); }, []);
   const catalog = useQuery<Catalog>({
     queryKey: ["agent-model-catalog"],
     queryFn: async ({ signal }) => {
@@ -51,7 +53,7 @@ export default function AgentModelSelector({
           <span aria-hidden="true">⌄</span>
         </button>
       </Dialog.Trigger>
-      <Dialog.Portal>
+      <Dialog.Portal container={portalHost}>
         <Dialog.Overlay className={s.overlay} />
         <Dialog.Content className={s.modal}>
           <div className={s.head}>
