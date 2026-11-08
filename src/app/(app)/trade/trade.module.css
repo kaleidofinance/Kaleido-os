@@ -579,7 +579,10 @@
 
 /* Conversations use the available screen, rather than the swap form's height. */
 .agentHero {
-  justify-content: flex-start;
+  /* Keep the mode tabs and idle card together as one centered group. A live
+     conversation still uses the full-height stage below. */
+  justify-content: center;
+  justify-content: safe center;
   padding-top: 8px;
   gap: 8px;
 }
@@ -587,10 +590,11 @@
   flex: 1 1 0;
   min-height: 0;
 }
-/* The idle card is intentionally shorter than a live conversation. Keep it at
-   the top of its stage so the mode tabs sit beside the card as one control
-   group; a live transcript still stretches through the available stage. */
+/* The idle card is intentionally shorter than a live conversation. Let the
+   stage shrink to the card so `.agentHero` can center the tabs + card group;
+   a live transcript still stretches through the available stage. */
 .agentStage:has([data-agent-state="empty"]) {
+  flex: 0 1 auto;
   align-items: flex-start;
 }
 .agentStage:has([data-agent-state="empty"]) > [data-agent-state="empty"] {
