@@ -150,7 +150,7 @@ export default function StakePage() {
   /* Both the protocol totals and the personal figures come from the KLD vault
      and stKLD, so there is no half-useful state to preserve here: with no
      deployment, "Total staked" is as unknowable as "Your stake". */
-  const gate = useChainGate();
+  const gate = useChainGate(undefined, "staking");
 
   return (
     <>

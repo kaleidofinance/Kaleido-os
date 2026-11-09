@@ -342,7 +342,11 @@ function NetworkFilter({
  * listed. That is the same honesty the empty state keeps — the panel states
  * what it can see rather than speculating about a future entry.
  */
-type TokenCategory = { id: string; label: string; test: (t: IToken) => boolean };
+type TokenCategory = {
+  id: string;
+  label: string;
+  test: (t: IToken) => boolean;
+};
 
 const hasTag = (t: IToken, tag: string) => (t.tags ?? []).includes(tag);
 
@@ -414,26 +418,34 @@ export default function TokenSelector({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  /* Mainnets first, then testnets, each in registry order — the same ordering
-     NetworkSelector uses, so the two lists never disagree about precedence.
-     Gated on the testnet toggle like every other multichain surface (#225/#232):
-     with it off, the network filter AND the "all networks" token list it feeds
-     show only mainnet, so a mainnet-first user never picks or sees a testnet. */
+  /* Keep the token list on the same exclusive network mode as NetworkSelector:
+     testnet mode shows testnet assets only, while the default shows mainnet
+     assets only. Mixing both sets here lets a hidden-mode token leak into a
+     quote even when every other multichain surface is scoped correctly. */
   const { showTestnets } = useTestnetMode();
   const chains = useMemo(
-    () => [
-      ...CHAINS.filter((c) => c.network === "mainnet"),
-      ...(showTestnets ? CHAINS.filter((c) => c.network !== "mainnet") : []),
-    ],
+    () =>
+      CHAINS.filter(
+        (c) => c.network === (showTestnets ? "testnet" : "mainnet"),
+      ),
     [showTestnets],
   );
+  const selectedNetwork =
+    network !== "all" &&
+    getChainMeta(network)?.network === (showTestnets ? "testnet" : "mainnet")
+      ? network
+      : "all";
+
+  useEffect(() => {
+    if (network !== selectedNetwork) setNetwork(selectedNetwork);
+  }, [network, selectedNetwork]);
 
   const available = useMemo(
     () =>
-      network === "all"
+      selectedNetwork === "all"
         ? tokensAcrossChains(chains.map((c) => c.id))
-        : chainTokens(network),
-    [network, chains],
+        : chainTokens(selectedNetwork),
+    [selectedNetwork, chains],
   );
 
   /* Everything selectable in the current network view, the excluded token
@@ -546,13 +558,17 @@ export default function TokenSelector({
               />
               <NetworkFilter
                 chains={chains}
-                value={network}
+                value={selectedNetwork}
                 onChange={setNetwork}
               />
             </div>
 
             {categoryTabs.length > 0 && (
-              <div className={s.cats} role="tablist" aria-label="Token categories">
+              <div
+                className={s.cats}
+                role="tablist"
+                aria-label="Token categories"
+              >
                 <button
                   type="button"
                   className={`${s.cat} ${category === null ? s.catOn : ""}`}
@@ -587,9 +603,9 @@ export default function TokenSelector({
                  the registry. No "yet": the panel states what it can see, and
                  speculating about a future entry is release talk. */
                 <div className={s.empty}>
-                  {network === "all"
+                  {selectedNetwork === "all"
                     ? "No tokens are registered on any network."
-                    : `No tokens are available on ${getChainMeta(network)?.shortName ?? chainLabel}.`}
+                    : `No tokens are available on ${getChainMeta(selectedNetwork)?.shortName ?? chainLabel}.`}
                 </div>
               ) : results.length === 0 ? (
                 <div className={s.empty}>No token matches “{query}”.</div>
@@ -599,7 +615,9 @@ export default function TokenSelector({
                     key={`${t.chainId}:${t.address}`}
                     token={t}
                     onSelect={handleSelect}
-                    switches={Boolean(wallet) && switchOnSelect && t.chainId !== chainId}
+                    switches={
+                      Boolean(wallet) && switchOnSelect && t.chainId !== chainId
+                    }
                     disabled={switching}
                   />
                 ))

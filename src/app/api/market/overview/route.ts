@@ -282,7 +282,7 @@ async function kldStakedLeg(): Promise<number | null> {
 
 async function computeOverview(testnets: boolean, scope: number[]): Promise<MarketOverview> {
   const chainIds = lendingChains().filter((id) =>
-    (testnets || CHAINS_BY_ID[id]?.network === "mainnet") &&
+    CHAINS_BY_ID[id]?.network === (testnets ? "testnet" : "mainnet") &&
     (scope.length === 0 || scope.includes(id)),
   );
   const [legs, kfUsdSupply, kldStaked] = await Promise.all([
@@ -392,7 +392,7 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const raw = params.get("chains");
     const scope = raw ? [...new Set(raw.split(",").map(Number))].sort((a, b) => a - b) : [];
-    if (scope.some((id) => !Number.isInteger(id) || !lendingChains().includes(id) || (!testnets && CHAINS_BY_ID[id]?.network !== "mainnet"))) {
+    if (scope.some((id) => !Number.isInteger(id) || !lendingChains().includes(id) || CHAINS_BY_ID[id]?.network !== (testnets ? "testnet" : "mainnet"))) {
       return NextResponse.json({ success: false, error: "Invalid lending chain scope" }, { status: 400 });
     }
     const { data, stale } = await remember(testnets, scope);

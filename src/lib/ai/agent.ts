@@ -6,6 +6,7 @@ import {
   type ChatProvider,
   type ChatResult,
   type Guardrails,
+  type NetworkMode,
   type ReadCall,
 } from "./index";
 import { readKey } from "./readKey";
@@ -74,12 +75,10 @@ export interface AgentInput {
    * Defaults to MAX_READ_ROUNDS; never raises it.
    */
   maxReadRounds?: number;
-  /**
-   * The user has testnets hidden (mainnet-first default). Passed to the read
-   * tools so a cross-chain sweep (getChains) never surfaces a testnet balance
-   * to a mainnet user. Absent reads as mainnet-only, the app's default.
-   */
+  /** Mainnet-first prompt directive; kept for the model's product facts. */
   mainnetOnly?: boolean;
+  /** Exclusive network mode used by live read tools and chain sweeps. */
+  networkMode?: NetworkMode;
   /**
    * Text appended after the base prompt and the docs reference — the
    * normalizer's product facts, glossary and rules. Last, so its rules win
@@ -250,7 +249,13 @@ export async function runAgent(
         fresh.map(async (r) => {
           served.set(
             readKey(r.name, r.args),
-            await runReadTool(r.name, r.args, input.chainId, input.mainnetOnly),
+            await runReadTool(
+              r.name,
+              r.args,
+              input.chainId,
+              input.mainnetOnly,
+              input.networkMode,
+            ),
           );
         }),
       );
@@ -376,45 +381,45 @@ export async function runAgentWithFailover(
        out to the next provider instead — a hung backend does not un-hang on a
        retry. */
     for (let retry = 0; ; retry++) {
-    const attempt = runAgent(providers[i], input, guarded);
-    try {
-      /* No watchdog on the last provider, or on the JSON path (no events): let it
+      const attempt = runAgent(providers[i], input, guarded);
+      try {
+        /* No watchdog on the last provider, or on the JSON path (no events): let it
          run to its own timeout, since there is no backend left to fail over to and
          no first-token signal to judge a stall by. */
-      if (isLast || !events) return await attempt;
+        if (isLast || !events) return await attempt;
 
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const stalled = new Promise<"stall">((resolve) => {
-        timer = setTimeout(() => resolve("stall"), STALL_MS);
-      });
-      const outcome = await Promise.race([
-        attempt.then((r) => ({ kind: "done" as const, r })),
-        stalled.then(() => ({ kind: "stall" as const })),
-      ]);
-      clearTimeout(timer);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const stalled = new Promise<"stall">((resolve) => {
+          timer = setTimeout(() => resolve("stall"), STALL_MS);
+        });
+        const outcome = await Promise.race([
+          attempt.then((r) => ({ kind: "done" as const, r })),
+          stalled.then(() => ({ kind: "stall" as const })),
+        ]);
+        clearTimeout(timer);
 
-      if (outcome.kind === "done") return outcome.r;
-      /* The deadline fired. If the provider has shown any life it is slow, not
+        if (outcome.kind === "done") return outcome.r;
+        /* The deadline fired. If the provider has shown any life it is slow, not
          hung — wait for it to finish, and let a real error propagate. */
-      if (dirty) return await attempt;
-      /* Hung with nothing emitted: move on. Swallow the abandoned attempt's
+        if (dirty) return await attempt;
+        /* Hung with nothing emitted: move on. Swallow the abandoned attempt's
          eventual rejection so it cannot surface as an unhandled rejection. */
-      attempt.catch(() => {});
-      lastError = new Error(
-        `Provider ${providers[i].id} stalled (no output in ${STALL_MS}ms).`,
-      );
-      break;
-    } catch (err) {
-      lastError = err;
-      /* Already streamed — cannot retry or fail over without doubling the reply. */
-      if (dirty) throw err;
-      /* A transient error with nothing shown yet: try this provider again before
+        attempt.catch(() => {});
+        lastError = new Error(
+          `Provider ${providers[i].id} stalled (no output in ${STALL_MS}ms).`,
+        );
+        break;
+      } catch (err) {
+        lastError = err;
+        /* Already streamed — cannot retry or fail over without doubling the reply. */
+        if (dirty) throw err;
+        /* A transient error with nothing shown yet: try this provider again before
          moving on. Cheap insurance for the common single-provider chain. */
-      if (retry < RETRY_PER_PROVIDER) continue;
-      /* Retries spent. Surface on the last provider; otherwise fail over. */
-      if (isLast) throw err;
-      break;
-    }
+        if (retry < RETRY_PER_PROVIDER) continue;
+        /* Retries spent. Surface on the last provider; otherwise fail over. */
+        if (isLast) throw err;
+        break;
+      }
     }
   }
   throw lastError;

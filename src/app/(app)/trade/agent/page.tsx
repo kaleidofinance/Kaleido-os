@@ -83,6 +83,7 @@ import {
 } from "@/lib/v2/agentFollowThrough";
 import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { matchFaq, isQuestionShaped } from "@/lib/ai/faq";
+import { isCurrentChainQuestion } from "@/lib/ai/walletContext";
 import {
   isDirectInstruction,
   isDirectFollowUp,
@@ -1362,16 +1363,16 @@ export default function AgentPage() {
     const parseCtx: ParseContext = {
       chainName: getChainMeta(chainId)?.shortName,
       elsewhere: (symbol) =>
-        chainsOffering(symbol, showTestnets ? undefined : "mainnet"),
+        chainsOffering(symbol, showTestnets ? "testnet" : "mainnet"),
       /* The chains a bridge source could be on, for a token the connected chain
          lacks (BNB → BSC). Narrowed to chains the wallet actually HOLDS it on
          when the balances are loaded, so one holding is inferred and several are
          asked about — never the first chain in the list. With no known holding
          every chain that has the token is offered. */
       sourceTokens: (symbol) => {
-        const all = bridgeSourceCandidates(
-          symbol,
-          showTestnets ? undefined : "mainnet",
+        const mode = showTestnets ? "testnet" : "mainnet";
+        const all = bridgeSourceCandidates(symbol, mode).filter(
+          (candidate) => getChainMeta(candidate.chainId)?.network === mode,
         );
         const s = symbol.toLowerCase();
         const heldOn = new Set(
@@ -1658,6 +1659,17 @@ export default function AgentPage() {
         return;
       }
 
+      if (isCurrentChainQuestion(content)) {
+        const meta = getChainMeta(chainId);
+        say(!address || chainId === undefined
+          ? "Connect your wallet to see its current network."
+          : meta
+            ? `Your wallet is connected to ${meta.name}.`
+            : `Your wallet is connected to an unrecognised network (chain ID ${chainId}).`,
+          { via: "local" });
+        return;
+      }
+
       const question = isQuestionShaped(content);
       if (question && answerFromFaq(content)) return;
 
@@ -1676,7 +1688,14 @@ export default function AgentPage() {
       if (marketQuestion) {
         const onChain = chainId ?? ARGUS_CHAIN_ID;
         const meta = getChainMeta(onChain);
-        if (meta?.network === "mainnet") {
+        if (meta?.network === (showTestnets ? "testnet" : "mainnet")) {
+          if (showTestnets) {
+            say(
+              "I can read live pool data for mainnet right now. Testnet pool snapshots are not published yet.",
+              { via: "local" },
+            );
+            return;
+          }
           try {
             const response = await fetch("/api/pools", {
               signal: abort.signal,
@@ -2585,23 +2604,11 @@ export default function AgentPage() {
         localModelStatus={localModelStatus}
       />
 
-      <div className={`${s.box} ${s.raised} ${s.chat}`}>
-        {/* Names who you are talking to, and carries everything that qualifies
-            the conversation rather than participating in it: the credit count,
-            Clear, the chart toggle and the settings gear.
-
-            This is one row where there were two label rows plus a subline, and
-            the consolidation is most of the height the transcript gained. The
-            gear and the toggle keep the corner they had — the swap card keeps its
-            own gear in the same place — but they are no longer sitting on top of
-            a <label> for a textarea that is now three regions away. */}
-        <div className={s.head}>
-          <span className={s.avatar} aria-hidden />
-          {/* Stable identity stays in the header while the conversation below
-                carries the changing context. */}
-          <span className={s.headName}>Luca</span>
-        </div>
-
+      <div
+        className={`${s.box} ${s.raised} ${s.chat}`}
+        role="region"
+        aria-label="Luca agent chat"
+      >
         {/* The panels take the transcript's box rather than appearing below it.
             They are modes of the conversation, not additions to it: you are
             reviewing what Luca just proposed, and Back returns you to the words

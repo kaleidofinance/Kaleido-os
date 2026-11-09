@@ -179,7 +179,7 @@ export default function SwapPage() {
   const { isConnected, chainId, address } = useWalletV2();
   const { showTestnets } = useTestnetMode();
   const networks = useMemo(() => CHAINS.filter((chain) =>
-    (showTestnets || chain.network === "mainnet") &&
+    chain.network === (showTestnets ? "testnet" : "mainnet") &&
     (hasSwaps(chain.id) || hasKyberSwap(chain.id)),
   ), [showTestnets]);
   const [selectedChainId, setSelectedChainId] = useState<number | null>(null);

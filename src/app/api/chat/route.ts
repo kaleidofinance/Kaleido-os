@@ -51,6 +51,7 @@ import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
 import { chainTokens } from "@/constants/tokens";
 import { validateLocalClassification } from "@/lib/ai/localIntent";
+import { walletChainContext } from "@/lib/ai/walletContext";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -111,7 +112,7 @@ export async function GET(request: NextRequest) {
           : process.env.AI_PROVIDER === "ollama" ||
               (!process.env.AI_PROVIDER && process.env.OLLAMA_API_KEY)
             ? (process.env.OLLAMA_MODEL ?? "gemma4:31b")
-          : (process.env.AGENTROUTER_MODEL ?? null),
+            : (process.env.AGENTROUTER_MODEL ?? null),
     ...usage,
   });
 }
@@ -358,6 +359,8 @@ export async function POST(request: NextRequest) {
          (no testnet balance surfaced) and the system facts (no testnet
          steering). */
       const mainnetOnly = body.showTestnets !== true;
+      const networkMode: "mainnet" | "testnet" =
+        body.showTestnets === true ? "testnet" : "mainnet";
 
       const agentInput = {
         message: String(body.message ?? ""),
@@ -375,6 +378,7 @@ export async function POST(request: NextRequest) {
            normalizer tier below replaces this with its fuller addendum. */
         systemAddendum: [
           productFacts(mainnetOnly),
+          walletChainContext(chainId),
           "For current balances, prices, quotes, liquidity, supported chains, protocol activity, revenue, lending rates, or portfolio analysis, call the relevant live read tools before stating facts. Docs and product descriptions are background only; fresh tool results take precedence. Choose tools relevant to the question, preserve any named chain scope, and never read lending positions merely because a wallet is connected. Ask independent reads together. Answer stable conceptual questions directly and concisely. Propose transactions only when the user requests an action; questions mentioning a trade or loan are not transaction instructions.",
           ...(localIntent.kind !== "unknown"
             ? [
@@ -384,6 +388,7 @@ export async function POST(request: NextRequest) {
             : []),
         ].join("\n"),
         mainnetOnly,
+        networkMode,
       };
 
       /**
@@ -470,7 +475,7 @@ export async function POST(request: NextRequest) {
           });
         } catch (buildErr) {
           console.error("[chat] plan build/audit failed:", buildErr);
-        await logAgentTurn({
+          await logAgentTurn({
             status: "build_error",
             provider: result.provider,
             model: result.model,
@@ -480,10 +485,10 @@ export async function POST(request: NextRequest) {
             readCount: result.trace.length,
             stream: streamed,
             chainId,
-          address: meterAddress,
-          jevRoute,
-          jevConfidence,
-          jevNormalizerSkipped,
+            address: meterAddress,
+            jevRoute,
+            jevConfidence,
+            jevNormalizerSkipped,
             error: String(
               (buildErr as { name?: string })?.name ?? "build_error",
             ).slice(0, 60),
@@ -629,7 +634,7 @@ export async function POST(request: NextRequest) {
            and the auditor then dropped its plan — a different fact from a clean
            answer, and one worth being able to count. failed_over is the outage
            signal: the answer came from a backend other than the primary. */
-          await logAgentTurn({
+        await logAgentTurn({
           status: verdict.ok ? "ok" : "refused",
           provider: result.provider,
           model: result.model,
@@ -643,10 +648,10 @@ export async function POST(request: NextRequest) {
           readCount: result.trace.length,
           stream: streamed,
           chainId,
-            address: meterAddress,
-            jevRoute,
-            jevConfidence,
-            jevNormalizerSkipped,
+          address: meterAddress,
+          jevRoute,
+          jevConfidence,
+          jevNormalizerSkipped,
         });
 
         return {
@@ -850,7 +855,7 @@ export async function POST(request: NextRequest) {
               const quick = await runAgent(cheap, {
                 ...agentInput,
                 maxReadRounds: 0,
-                systemAddendum: normalizerAddendum({ chainId, mainnetOnly }),
+                systemAddendum: `${normalizerAddendum({ chainId, mainnetOnly })}\n${walletChainContext(chainId)}`,
               });
               const bail =
                 quick.executes.length === 0 &&

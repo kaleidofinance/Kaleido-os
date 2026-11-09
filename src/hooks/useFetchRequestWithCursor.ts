@@ -144,7 +144,7 @@ function useBook<T>(
   const chains = useMemo(
     () =>
       lendingChains().filter(
-        (id) => showTestnets || CHAINS_BY_ID[id]?.network === "mainnet",
+        (id) => CHAINS_BY_ID[id]?.network === (showTestnets ? "testnet" : "mainnet"),
       ),
     [showTestnets],
   );

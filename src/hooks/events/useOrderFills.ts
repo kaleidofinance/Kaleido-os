@@ -51,7 +51,7 @@ export default function useOrderFills(): void {
   useEffect(() => {
     if (!address) return;
     const chains = Object.values(CHAINS_BY_ID)
-      .filter((c) => showTestnets || c.network === "mainnet")
+      .filter((c) => c.network === (showTestnets ? "testnet" : "mainnet"))
       .map((c) => c.id)
       .filter((id) => !!getContracts(id).orders);
     if (chains.length === 0) return;

@@ -9,6 +9,7 @@ import { chainTokenByAddress } from "@/constants/tokens";
 import type { ExternalPoolSnapshot } from "@/lib/market/externalPools";
 import { usePoolData } from "@/hooks/dex/usePoolData";
 import { useV3Pools } from "@/hooks/dex/useV3Pools";
+import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import { READ_ONLY_CHAIN_ID } from "@/config/provider";
 import { discoveryChainIds } from "@/lib/dex/poolDiscovery";
@@ -102,6 +103,10 @@ export default function PoolsPage() {
   });
   const external = externalQuery.data ?? [];
   const externalPools = external.flatMap((snapshot) => snapshot.pools);
+  const { showTestnets } = useTestnetMode();
+  const modeExternalPools = externalPools.filter(
+    (pool) => CHAINS_BY_ID[pool.chainId]?.network === (showTestnets ? "testnet" : "mainnet"),
+  );
   const v2 = usePoolData();
   const v3 = useV3Pools();
 
@@ -165,7 +170,7 @@ export default function PoolsPage() {
     [sortedPools, filters, query, view, venue],
   );
 
-  const externalVisible = (view === "kaleido" ? [] : externalPools).filter(
+  const externalVisible = (view === "kaleido" ? [] : modeExternalPools).filter(
     (pool) => {
       if (
         sortedPools.some(
@@ -218,7 +223,7 @@ export default function PoolsPage() {
   const chainIds = [
     ...new Set([
       ...sortedPools.map((p) => p.chainId),
-      ...externalPools.map((p) => p.chainId),
+      ...modeExternalPools.map((p) => p.chainId),
     ]),
   ];
 
@@ -370,7 +375,7 @@ export default function PoolsPage() {
               <span className={s.skLine} />
             </div>
           ))
-        ) : sortedPools.length === 0 && externalPools.length === 0 ? (
+        ) : sortedPools.length === 0 && modeExternalPools.length === 0 ? (
           <div className={s.tEmpty}>No pools indexed yet.</div>
         ) : visibleCount === 0 ? (
           /* Distinct from the line above it, because these are opposite facts: one
@@ -567,7 +572,7 @@ export default function PoolsPage() {
              checkbox and there would be no way back. */
           pools={sortedPools}
           chainIds={chainIds}
-          exchanges={[...new Set(externalPools.map((p) => p.exchange))]}
+          exchanges={[...new Set(modeExternalPools.map((p) => p.exchange))]}
           source={view}
           onSourceChange={(next) => {
             setView(next);

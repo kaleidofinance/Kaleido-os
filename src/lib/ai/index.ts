@@ -5,6 +5,7 @@ import type { ChatProvider } from "./types";
 
 export { TOOL_CATALOG, EXECUTE_TOOLS } from "./toolCatalog";
 export { isReadTool, runReadTool } from "./readTools";
+export type { NetworkMode } from "./readTools";
 export {
   canUseBrowserLocalModel,
   browserLocalIntentOptions,
@@ -168,7 +169,10 @@ export const isOllamaModel = (id: string): id is OllamaModel =>
 export const OLLAMA_MODEL_IDS = Object.keys(OLLAMA_MODELS) as OllamaModel[];
 
 export const isSelectableModel = (id: string): boolean =>
-  isRouterModel(id) || isGeminiModel(id) || isGatewayModel(id) || isOllamaModel(id);
+  isRouterModel(id) ||
+  isGeminiModel(id) ||
+  isGatewayModel(id) ||
+  isOllamaModel(id);
 
 /* Provider builders, one per configured backend. Module-level so both
    getProvider (which picks one) and getProviderChain (which orders them for
@@ -181,7 +185,8 @@ const buildAgentRouter = (id?: string): ChatProvider | null =>
         process.env.AGENTROUTER_API_KEY,
         id || process.env.AGENTROUTER_MODEL || "claude-opus-5",
         {
-          baseUrl: process.env.AGENTROUTER_BASE_URL || "https://agentrouter.org",
+          baseUrl:
+            process.env.AGENTROUTER_BASE_URL || "https://agentrouter.org",
           id: "agentrouter",
           maxTokens: 8192,
           userAgent: process.env.AGENTROUTER_USER_AGENT,
@@ -384,7 +389,7 @@ export function buildSystemPrompt(opts: {
     "- Be brief. Two or three sentences is a normal answer. Six is a long one, and needs a reason.",
     "- Lead with the answer. No preamble, no restating the question, no summary of what you just did.",
     "- Report what is true, not what you did not find. One line covers an empty result; do not enumerate every position that was absent.",
-    "- Don't reassure or narrate the routine. No \"this is safe\", \"one-time\", \"reversible any time\", \"no approval needed\", \"the floor is enforced on-chain\". State the action and its numbers; the user knows what a swap or an approval is. Name a caution only when there is a real one.",
+    '- Don\'t reassure or narrate the routine. No "this is safe", "one-time", "reversible any time", "no approval needed", "the floor is enforced on-chain". State the action and its numbers; the user knows what a swap or an approval is. Name a caution only when there is a real one.',
     "- A dollar figure is a USD size, not a token amount. 'sell $100 worth of cirBTC', 'swap $50 of ETH', 'bridge $10 of BNB' mean: read the token's live price, then convert — amount = dollars / price. Never pass the dollar number as the token amount. Only for a dollar stablecoin (USDC, USDT, USDe, kfUSD) is $N the same as N tokens. If you cannot read a price, ask for a token amount instead of guessing.",
     "- Never mention your own machinery. No tool names, no 'tool call', 'read', 'round', 'context', 'query', 'indexer', 'client-side', 'reasoning engine', or 'the data I got back'. The user asked about their money, not how you looked it up.",
     "- Never refer to the interface as something the user should go operate — you are the interface.",
@@ -466,7 +471,7 @@ export function buildSystemPrompt(opts: {
     "```cards",
     '[{"kind": "metric", "label": "Health factor", "value": "1.62"}]',
     "```",
-    "- A JSON array, at most 3 cards. Every value is a STRING you have already formatted (\"1,240.55\", not 1240.55) — the frame does not format. Use only figures you actually read this turn; never invent one for a card, and never restate in a card a single number the prose already gave.",
+    '- A JSON array, at most 3 cards. Every value is a STRING you have already formatted ("1,240.55", not 1240.55) — the frame does not format. Use only figures you actually read this turn; never invent one for a card, and never restate in a card a single number the prose already gave.',
     "- The kinds and their shapes:",
     '  - metric — one figure: {"kind":"metric","label","value","unit"?,"note"?}',
     '  - stats — a label/value column: {"kind":"stats","title"?,"rows":[{"label","value","tone"?}]}. tone is "good" | "warn" | "bad" and tints the value.',
@@ -495,7 +500,8 @@ export function buildSystemPrompt(opts: {
     try {
       const c = getContracts(chainId);
       const absent: string[] = [];
-      if (!c.diamond) absent.push("peer-to-peer lending, borrowing and collateral");
+      if (!c.diamond)
+        absent.push("peer-to-peer lending, borrowing and collateral");
       if (!c.kldVault) absent.push("KLD staking");
       if (!c.kfUSD) absent.push("the kfUSD / kafUSD stablecoin");
       if (!c.kld) absent.push("KLD (do not offer to trade or stake it)");

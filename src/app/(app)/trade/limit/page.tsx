@@ -14,6 +14,7 @@ import type { IToken } from "@/constants/types/dex";
 import { useTokenBalance } from "@/hooks/dex/useTokenBalance";
 import { useV3SwapRouter } from "@/hooks/dex/useV3SwapRouter";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
+import ChainGate, { useChainGate } from "@/components/v2/ChainGate";
 import Chevron from "@/components/v2/Chevron";
 import { useConnectWallet } from "@/hooks/v2/useChainAction";
 import type { Intent } from "@/lib/v2/intents";
@@ -451,6 +452,7 @@ export default function LimitPage() {
   /* See swap: /trade has no ChainGate, so a disconnected CTA connects rather
      than sits disabled. */
   const openConnect = useConnectWallet();
+  const gate = useChainGate(undefined, "orders");
   const { orders: ordersAddress } = getContracts(chainId);
 
   const available = useMemo(
@@ -867,6 +869,10 @@ export default function LimitPage() {
     if (placing) setAmountIn("");
     setReloadKey((k) => k + 1);
   };
+
+  if (!gate.ready) {
+    return <ChainGate product="limit orders" state={gate} requires="orders" />;
+  }
 
   if (reviewing) {
     const label = reviewing.some((i) => i.kind === "cancelAllOrders")

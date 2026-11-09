@@ -816,7 +816,7 @@ export default function PositionsPage() {
   const { showTestnets } = useTestnetMode();
   const chains = useMemo(() => CHAINS.filter((chain) => {
     const contracts = getContracts(chain.id);
-    return (showTestnets || chain.network === "mainnet") && contracts.v3PositionManager && contracts.v3Factory;
+    return chain.network === (showTestnets ? "testnet" : "mainnet") && contracts.v3PositionManager && contracts.v3Factory;
   }), [showTestnets]);
   const { setSummary } = usePositionSummaryContext();
   const [summaries, setSummaries] = useState<Record<number, NetworkPositionSummary>>({});

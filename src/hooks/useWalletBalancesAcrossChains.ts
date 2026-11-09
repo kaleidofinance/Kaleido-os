@@ -63,7 +63,7 @@ export function useWalletBalancesAcrossChains(): WalletBalancesAcrossChains {
      then shows only what the toggle admits. */
   const chains = useMemo(
     () =>
-      CHAINS.filter((c) => showTestnets || c.network === "mainnet").map(
+      CHAINS.filter((c) => c.network === (showTestnets ? "testnet" : "mainnet")).map(
         (c) => c.id,
       ),
     [showTestnets],

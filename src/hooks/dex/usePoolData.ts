@@ -375,9 +375,8 @@ async function sweepChain(
 }
 
 export const usePoolData = () => {
-  /* Mainnet-first: the shared V2 sweep reads every deployed chain, but a viewer
-     with the testnet toggle off should not see testnet pools listed. Filtered
-     per consumer off the toggle, like the V3 table. */
+  /* The shared V2 sweep follows the exclusive network mode, so a viewer never
+     sees mainnet and testnet pools mixed in one table. */
   const { showTestnets } = useTestnetMode();
   const [pools, setPools] = useState<ITradingPair[]>(() => store.snapshot());
   const [loading, setLoading] = useState(store.snapshot().length === 0);
@@ -415,8 +414,8 @@ export const usePoolData = () => {
           async () => priceLookup(await fetchSpotPricesSoon()),
           (chain, priceOf) => sweepChain(chain, priceOf),
           force,
-          /* Mainnet-first: skip testnet RPCs when hidden — see PoolStore.sweep. */
-          !showTestnets,
+          /* Sweep only the active network mode — see PoolStore.sweep. */
+          showTestnets,
         ),
       );
     } catch (err: any) {
@@ -437,7 +436,7 @@ export const usePoolData = () => {
 
   return {
     pools: pools.filter(
-      (p) => showTestnets || CHAINS_BY_ID[p.chainId]?.network === "mainnet",
+      (p) => CHAINS_BY_ID[p.chainId]?.network === (showTestnets ? "testnet" : "mainnet"),
     ),
     loading,
     error,

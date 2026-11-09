@@ -165,7 +165,7 @@ export interface PoolStore {
     prepare: () => Promise<C>,
     perChain: (chain: DiscoveryChain, context: C) => Promise<ITradingPair[]>,
     force: boolean,
-    mainnetOnly: boolean,
+    testnets: boolean,
   ): Promise<ITradingPair[]>;
   /**
    * Replace the cache with a pre-computed list — the server-swept pools from
@@ -189,7 +189,7 @@ export function createPoolStore(ttlMs: number): PoolStore {
   const listeners = new Set<(pools: ITradingPair[]) => void>();
   let completedAt = 0;
   let inFlight: Promise<ITradingPair[]> | null = null;
-  let lastMainnetOnly: boolean | null = null;
+  let lastTestnets: boolean | null = null;
 
   const snapshot = () =>
     discoveryChains().flatMap((c) => byChain.get(c.chainId) ?? []);
@@ -224,16 +224,14 @@ export function createPoolStore(ttlMs: number): PoolStore {
       publish();
     },
 
-    sweep(prepare, perChain, force, mainnetOnly) {
-      /* Mainnet-first: with testnets hidden (the Arc-launch default) the sweep
-         must not read testnet chains at all. Reading them anyway hammered five
-         testnet RPCs into 429s and stalled the whole table for 20s per chain —
-         for a viewer who could only ever see mainnet rows. A change of mode
+    sweep(prepare, perChain, force, testnets) {
+      /* The active mode is exclusive: mainnet mode reads mainnets only, and
+         testnet mode reads testnets only. Reading the hidden set hammered public
+         RPCs and let the pool table mix networks after a toggle. A mode change
          forces a fresh sweep rather than serving a snapshot built for the other
          set. */
-      const modeChanged =
-        lastMainnetOnly !== null && lastMainnetOnly !== mainnetOnly;
-      lastMainnetOnly = mainnetOnly;
+      const modeChanged = lastTestnets !== null && lastTestnets !== testnets;
+      lastTestnets = testnets;
 
       /* An in-flight sweep is joined rather than duplicated, force or not: two
          consumers mounting in the same tick would otherwise each read five
@@ -251,7 +249,7 @@ export function createPoolStore(ttlMs: number): PoolStore {
       const run = (async () => {
         const context = await prepare();
         const chains = discoveryChains().filter(
-          (c) => !mainnetOnly || c.meta.network === "mainnet",
+          (c) => c.meta.network === (testnets ? "testnet" : "mainnet"),
         );
 
         const settled = await Promise.allSettled(

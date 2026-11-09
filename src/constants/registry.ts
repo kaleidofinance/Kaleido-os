@@ -255,8 +255,34 @@ export interface ChainContracts {
  * such entry should say why it is there and be removed once the generator
  * carries it.
  */
+/*
+ * Robinhood mainnet's Kaleido deployment was confirmed on-chain, but its JSON
+ * deployment records were never committed. A later registry regeneration for
+ * BSC therefore dropped chain 4663 from the generated file. Keep the verified
+ * addresses at the documented override seam until those deployment records are
+ * restored; otherwise the app treats a live LP stack as undeployed.
+ */
+const RECOVERED_ROBINHOOD_MAINNET: ChainContracts = {
+  diamond: "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
+  oracleKind: "aggregator-v3",
+  orders: "0x33fC0885f1290eF93330d181114cbe4CE4F34047",
+  ordersVersion: "2",
+  poolInitCodeHash:
+    "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938",
+  priceOracle: "0xd27eB978D2a018F5E23FA2D2CA4a70122A3a669C",
+  v2Factory: "0x3De7B404C0bfe455cf4dc6fD2c82553750BB03D0",
+  v2Router: "0x8D1B50546908c98F09a906a22d0d441FEe154d40",
+  v3Factory: "0xe106644dc8E49B46CAbA0C155387719c979b415E",
+  v3PositionDescriptor: "0xCD0623deB613121043eB403DC68e029C7eb65b14",
+  v3PositionManager: "0x311D0abDcA9EDf8072eA58B12c7843C633a65552",
+  v3Quoter: "0xa5a9B2DeFDA5CD4a81080F4b34D15B42701caEbC",
+  v3Router: "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE",
+  wrappedNative: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+};
+
 export const DEPLOYMENTS: Record<number, ChainContracts> = {
   ...GENERATED_DEPLOYMENTS,
+  4663: RECOVERED_ROBINHOOD_MAINNET,
 };
 
 export function getContracts(chainId: number | undefined): ChainContracts {
@@ -278,6 +304,23 @@ export function isDeployed(chainId: number | undefined): boolean {
  */
 export function hasSwaps(chainId: number | undefined): boolean {
   return Boolean(getContracts(chainId).v3Router);
+}
+
+/** Whether the signed limit-order keeper is deployed on this chain. */
+export function hasOrders(chainId: number | undefined): boolean {
+  return Boolean(getContracts(chainId).orders);
+}
+
+/** Whether the kfUSD/kafUSD stablecoin surface is deployed on this chain. */
+export function hasStablecoin(chainId: number | undefined): boolean {
+  const contracts = getContracts(chainId);
+  return Boolean(contracts.kfUSD && contracts.kafUSD);
+}
+
+/** Whether KLD staking has both receipt and vault contracts on this chain. */
+export function hasStaking(chainId: number | undefined): boolean {
+  const contracts = getContracts(chainId);
+  return Boolean(contracts.kld && contracts.stKLD && contracts.kldVault);
 }
 
 /**
@@ -1560,8 +1603,28 @@ export interface LendingRegistration {
  * apart on Arc, where kfUSD and the 0x3600 USDC predeploy were passed and
  * neither registered.
  */
+/* Same recovery for the mainnet token-registration snapshot that was dropped
+ * with the deployment block. These values were read back from the live diamond
+ * during the original deployment wave. */
+const RECOVERED_ROBINHOOD_LENDING: LendingRegistration = {
+  collateral: [
+    "0x0000000000000000000000000000000000000001",
+    "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+    "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8",
+    "0xE246BC49b0598d7Cd9f0eAD48B885034f1254380",
+  ],
+  loanable: [
+    "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+    "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8",
+    "0xE246BC49b0598d7Cd9f0eAD48B885034f1254380",
+  ],
+};
+
 export const LENDING_REGISTRATION: Record<number, LendingRegistration> = {
   ...GENERATED_LENDING_REGISTRATION,
+  4663: RECOVERED_ROBINHOOD_LENDING,
 };
 
 /**
@@ -1942,13 +2005,22 @@ export interface DeployTarget {
   counterparties: string[];
   /** Symbols we must deploy ourselves because the chain has no issuance. */
   mocks: string[];
+  /**
+   * Own-token symbols required before this target is considered complete.
+   * The original five full-stack targets default to KLD and stKLD; a partial
+   * target such as Elysium can explicitly set this to an empty list while its
+   * DEX/lending surfaces are still usable.
+   */
+  requiredOwnTokens?: string[];
   /** Why this chain is in the wave, and what is unresolved about it. */
   note: string;
 }
 
 /**
  * Testnet wave: Sepolia, Base Sepolia, BSC testnet, Robinhood testnet, Arc
- * testnet — every chain chains.ts marks `tradable` and `testnet`.
+ * testnet, and the partial Elysium testnet rollout. Every entry is a planned
+ * testnet surface; `requiredOwnTokens` distinguishes the five full-stack
+ * targets from Elysium's DEX/lending-only deployment.
  *
  * Ordered by how much has to be built before the app is exercisable, not by
  * business priority. Sepolia and Base Sepolia both already carry WETH and USDC,
@@ -1996,6 +2068,14 @@ export const TESTNET_WAVE: readonly DeployTarget[] = [
     counterparties: ["USDC", "WUSDC", "EURC", "cirBTC"],
     mocks: ["WETH", "USDT", "USDe"],
     note: "Native currency is USDC, so the wrapped native is wrapped USDC. This entry claimed the chain had no counterparties and that kfUSD's USDC_ADDRESS would therefore have to point at the wrapped native, with a WETH9 wrapper reporting Wrapped Ether while holding dollars — all three of which probing the chain on 2026-08-21 disproved. WUSDC at 0x911b4000 carries the WETH9 deposit/withdraw surface (verified 1:1 both ways) and reports its own name honestly, so no WETH9 is deployed here; the 6-decimal USDC at the 0x3600 predeploy is kfUSD's reserve. Do not call WUSDC canonical, which this note previously did: Circle's docs state there is no wrapped USDC on Arc, and it is third-party code — trusted here because its verified source is WETH9 verbatim with no owner, mint, pause or upgrade path, not because it is official. EURC and cirBTC are canonical, both Circle FiatTokenProxy deployments, both faucet-funded on the deployer on 2026-08-22. The thing to keep in mind is that 0x3600 is the ERC20 face of the native balance rather than a token beside it, so it must not be registered as a lending asset alongside NATIVE — that would put one balance in the collateral set twice, at two decimal scalings. Of the four counterparties only WUSDC is priceable for lending today: EURC needs FX.EUR/USD, which is not relayed here, and cirBTC is a custodial claim on bitcoin rather than bitcoin, so it is not given Crypto.BTC/USD's id. WETH stays a mock and is the point of the chain's lending market: Arc relays Crypto.ETH/USD at 4s, its freshest feed, while USDC/USD — its own gas token — measured 58,510s, so ether is the only asset here worth pricing tightly.",
+  },
+  {
+    chainId: 99801,
+    step: 6,
+    counterparties: ["WETH", "USDC", "USDT", "USD1", "FDUSD", "BTCB"],
+    mocks: [],
+    requiredOwnTokens: [],
+    note: "Elysium is a partial testnet rollout: its DEX, oracle, lending Diamond and registered assets are live, while KLD/stKLD, kfUSD and limit-order contracts are not. Keep the chain available to swap, pool and lending surfaces; capability gates must keep staking, stablecoin and limit-order pages closed until those contracts are deployed.",
   },
 ];
 

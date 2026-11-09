@@ -132,8 +132,8 @@ export function chainTokens(
  * "EURC isn't on Sepolia, it's on Arc" instead of asking which token again.
  *
  * `network` narrows to the viewer's world (a mainnet viewer is not sent to a
- * testnet) and falls back to every chain when nothing there carries it, since
- * a true answer on the wrong network still beats "I don't know it".
+ * testnet). When a mode is active, an empty result stays empty rather than
+ * leaking a token from the opposite network into the agent's explanation.
  */
 export function chainsOffering(
   symbol: string,
@@ -146,7 +146,7 @@ export function chainsOffering(
   const narrowed = network
     ? carrying.filter((c) => c.network === network)
     : carrying;
-  return (narrowed.length > 0 ? narrowed : carrying).map((c) => c.shortName);
+  return (network ? narrowed : carrying).map((c) => c.shortName);
 }
 
 /**
