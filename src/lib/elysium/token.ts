@@ -24,6 +24,7 @@ export function elysiumAddressToken(word: string): IToken | null {
     decimals: 18,
     chainId: ELYSIUM_CHAIN_ID,
     logoURI: "",
+    verified: false,
     tags: ["elysium"],
   };
 }
