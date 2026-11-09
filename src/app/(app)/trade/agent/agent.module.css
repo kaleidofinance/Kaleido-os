@@ -589,6 +589,10 @@
    buttons in here set their own `cursor: pointer`, and an element's own value
    beats an inherited one, so they are unaffected. */
 .head {
+  /* The agent card is intentionally title-free. Keep the legacy selector
+     inert so an older cached markup shape cannot bring the Luca headline or
+     its reserved row height back on desktop or mobile. The accessible region
+     label lives on `.chat` instead. */
   flex: none;
   display: flex;
   align-items: center;
@@ -598,6 +602,14 @@
   cursor: default;
   font-size: var(--k-fs-sm);
   color: var(--k-t2);
+}
+
+/* No visible Luca title row: the card is identified by its accessible region
+   label and starts directly with the conversation/composer. Keep this legacy
+   selector inert so cached or older markup cannot reintroduce the headline or
+   reserve its row height on either breakpoint. */
+.head {
+  display: none;
 }
 /* One line, and the one thing in this row allowed to give.
 
