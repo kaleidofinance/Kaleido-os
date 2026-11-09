@@ -424,13 +424,23 @@
   white-space: nowrap;
 }
 .tokBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: none;
   font-size: var(--k-fs-xs);
-  padding: 5px 9px;
+  padding: 4px 9px;
   line-height: 1.4;
   border-radius: var(--k-r-pill);
   background: var(--k-glass-deep);
   box-shadow: var(--k-shadow-inset);
+}
+.tokBadgeIcon {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--k-r-pill);
+  object-fit: contain;
+  flex-shrink: 0;
 }
 .tokAddr {
   font-size: var(--k-fs-xs);

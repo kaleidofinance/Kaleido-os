@@ -300,13 +300,22 @@ function validate(raw: unknown): AgentCard | null {
       };
       const badgeRaw = c.badge as Record<string, unknown> | undefined;
       const badgeText = badgeRaw ? str(badgeRaw.text, LIMITS.label) : null;
+      const badgeIconUrl = badgeRaw ? str(badgeRaw.iconUrl, LIMITS.body) : null;
       return {
         kind: "token",
         symbol,
         address,
         ...(name ? { name } : {}),
         ...(price ? { price } : {}),
-        ...(badgeText ? { badge: { text: badgeText, tone: tone(badgeRaw!.tone) } } : {}),
+        ...(badgeText
+          ? {
+              badge: {
+                text: badgeText,
+                tone: tone(badgeRaw!.tone),
+                ...(badgeIconUrl ? { iconUrl: badgeIconUrl } : {}),
+              },
+            }
+          : {}),
         rows,
         ...(note ? { note } : {}),
         buys: buttons(c.buys, true),

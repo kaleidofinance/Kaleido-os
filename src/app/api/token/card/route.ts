@@ -98,6 +98,7 @@ export async function GET(req: Request) {
           return json({
             ok: true,
             source: "elysium",
+            launchpadId: launch.launchpad,
             launchpadLabel: launch.launchpadLabel,
             address,
             symbol,

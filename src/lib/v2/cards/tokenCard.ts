@@ -25,6 +25,8 @@ export interface TokenFacts {
   source?: "argus" | "peach" | "elysium" | "listed" | "unknown";
   /** Optional launchpad badge text (e.g. "Montra launch", "BOXA launch" on Elysium). */
   launchpadLabel?: string;
+  /** Optional launchpad identifier (e.g. "montra", "boxa", "argus", "peach"). */
+  launchpadId?: string;
   /** Checksummed contract address. */
   address: string;
   symbol?: string;
@@ -108,6 +110,43 @@ const HIGH_TAX_BPS = 500;
 
 function notice(tone: CardTone, title: string, body?: string): NoticeCard {
   return { kind: "notice", tone, title, ...(body ? { body } : {}) };
+}
+
+const ELYSIUM_LAUNCHPAD_ICONS: Record<string, string> = {
+  montra: "/launchpads/montra.svg",
+  boxa: "/launchpads/boxa.svg",
+  ascend: "/launchpads/ascend.svg",
+  mesa: "/launchpads/mesa.svg",
+  volta: "/launchpads/volta.svg",
+  kleos: "/launchpads/kleos.svg",
+  elyspump: "/launchpads/elyspump.svg",
+  eleos: "/launchpads/eleos.svg",
+  rons: "/launchpads/rons.svg",
+  obol: "/launchpads/obol.svg",
+  kstr: "/launchpads/kstr.svg",
+  quoted: "/launchpads/quoted.svg",
+};
+
+export function resolveLaunchpadIcon(
+  source?: string,
+  launchpadId?: string,
+  label?: string,
+): string | undefined {
+  if (source === "argus") return "/tokens/argus.png";
+  if (source === "peach") return "/peach-logo.png";
+  if (source === "elysium") {
+    if (launchpadId && ELYSIUM_LAUNCHPAD_ICONS[launchpadId.toLowerCase()]) {
+      return ELYSIUM_LAUNCHPAD_ICONS[launchpadId.toLowerCase()];
+    }
+    if (label) {
+      const matchKey = Object.keys(ELYSIUM_LAUNCHPAD_ICONS).find((k) =>
+        label.toLowerCase().includes(k),
+      );
+      if (matchKey) return ELYSIUM_LAUNCHPAD_ICONS[matchKey];
+    }
+    return "/icons/elysium.svg";
+  }
+  return undefined;
 }
 
 /**
@@ -201,11 +240,27 @@ export function tokenCardFrom(
       : {}),
     badge:
       facts.source === "argus"
-        ? { text: "Argus launch", tone: "neutral" }
+        ? {
+            text: "Argus launch",
+            tone: "neutral",
+            iconUrl: "/tokens/argus.png",
+          }
         : facts.source === "peach"
-          ? { text: "Peach launch", tone: "good" }
+          ? {
+              text: "Peach launch",
+              tone: "good",
+              iconUrl: "/peach-logo.png",
+            }
           : facts.source === "elysium"
-            ? { text: facts.launchpadLabel ?? "Elysium launch", tone: "good" }
+            ? {
+                text: facts.launchpadLabel ?? "Elysium launch",
+                tone: "good",
+                iconUrl: resolveLaunchpadIcon(
+                  facts.source,
+                  facts.launchpadId,
+                  facts.launchpadLabel,
+                ),
+              }
             : { text: "Listed", tone: "good" },
     rows,
     ...(facts.snipeActive

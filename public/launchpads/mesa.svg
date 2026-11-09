@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+  <defs>
+    <linearGradient id="mesaGrad" x1="6" y1="10" x2="26" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="16" fill="#291e0a"/>
+  <path d="M11 11H21L25 21H7L11 11Z" fill="url(#mesaGrad)"/>
+  <path d="M13 14H19L21 19H11L13 14Z" fill="#1c1407"/>
+</svg>
