@@ -25,6 +25,8 @@ import {
 } from "@/constants/tokens";
 import { resolveChain } from "@/lib/ai/bridgeQuotes";
 import { argusAddressToken } from "@/lib/argus/token";
+import { ELYSIUM_CHAIN_ID } from "@/lib/elysium/addresses";
+import { elysiumAddressToken } from "@/lib/elysium/token";
 import { fetchHeldTokens, heldVocabulary } from "@/lib/wallet/heldTokens";
 import { envVars } from "@/constants/envVars";
 import type { IToken } from "@/constants/types/dex";
@@ -1417,7 +1419,11 @@ export default function AgentPage() {
          switch is the SERVER's ARGUS_ENABLED (the plan route refuses when off),
          so this is inert until the pilot is turned on. */
       addressToken:
-        chainId === ARGUS_CHAIN_ID ? (w) => argusAddressToken(w) : undefined,
+        chainId === ARGUS_CHAIN_ID
+          ? (w) => argusAddressToken(w)
+          : chainId === ELYSIUM_CHAIN_ID
+            ? (w) => elysiumAddressToken(w)
+            : undefined,
     };
 
     /* Structured agent context survives turns and reloads. parseFollowUp requires
@@ -1589,7 +1595,10 @@ export default function AgentPage() {
         const tradable =
           facts.ok &&
           !facts.isQuote &&
-          (facts.source === "argus" || facts.source === "listed");
+          (facts.source === "argus" ||
+            facts.source === "peach" ||
+            facts.source === "elysium" ||
+            facts.source === "listed");
         const tokenCard = tokenCardFrom(facts);
         setCardToken(
           tradable && tokenCard.kind === "token" && tokenCard.ref

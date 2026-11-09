@@ -3,6 +3,7 @@ import { CHAINS, getChainMeta } from "./chains";
 import {
   isNativeSentinel,
   nativeTokenOf,
+  normaliseTokenSymbol,
   registeredTokens,
   resolveUserToken,
   type Protocol,
@@ -139,9 +140,9 @@ export function chainsOffering(
   symbol: string,
   network?: "mainnet" | "testnet",
 ): string[] {
-  const s = symbol.toLowerCase();
+  const s = normaliseTokenSymbol(symbol);
   const carrying = CHAINS.filter((c) =>
-    chainTokens(c.id).some((t) => t.symbol.toLowerCase() === s),
+    chainTokens(c.id).some((t) => normaliseTokenSymbol(t.symbol) === s),
   );
   const narrowed = network
     ? carrying.filter((c) => c.network === network)
@@ -172,9 +173,9 @@ export function bridgeSourceCandidates(
   symbol: string,
   network?: "mainnet" | "testnet",
 ): { token: IToken; chainName: string; chainId: number }[] {
-  const s = symbol.toLowerCase();
+  const s = normaliseTokenSymbol(symbol);
   const carrying = CHAINS.filter((c) =>
-    chainTokens(c.id).some((t) => t.symbol.toLowerCase() === s),
+    chainTokens(c.id).some((t) => normaliseTokenSymbol(t.symbol) === s),
   );
   const narrowed = network
     ? carrying.filter((c) => c.network === network)

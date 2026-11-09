@@ -11,8 +11,13 @@ function ok(name: string, value: boolean, detail = "") {
 }
 
 ok("BSC has a LI.FI same-chain route", hasLifiSwap(56));
-ok("Elysium remains fail-closed", !hasLifiSwap(99801));
+ok("Elysium mainnet has a LI.FI same-chain route", hasLifiSwap(99901));
+ok("Elysium testnet remains fail-closed", !hasLifiSwap(99801));
 ok("the reviewed router is pinned", isKnownLifiSwapRouter(56, ROUTER));
+ok(
+  "the reviewed Elysium mainnet router is pinned",
+  isKnownLifiSwapRouter(99901, "0x24E6dA91AA4A8FEe2447F542c92E006243bd6Dc5"),
+);
 ok(
   "a router on the wrong chain is refused",
   !isKnownLifiSwapRouter(5042, ROUTER),

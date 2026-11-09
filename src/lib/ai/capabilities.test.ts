@@ -27,6 +27,15 @@ const arc = getCapabilitySnapshot({ chainId: 5042, networkMode: "mainnet" });
 assert.equal(capabilityFor(arc, "launchpads")?.status, "available");
 assert.match(capabilityPrompt(arc), /Argus and Peach/);
 
+const elysiumMainnet = getCapabilitySnapshot({
+  chainId: 99901,
+  networkMode: "mainnet",
+});
+assert.equal(elysiumMainnet.chainName, "Elysium");
+assert.equal(capabilityFor(elysiumMainnet, "wallet.read")?.status, "available");
+assert.equal(capabilityFor(elysiumMainnet, "swap")?.status, "available");
+assert.equal(capabilityFor(elysiumMainnet, "lending")?.status, "not_configured");
+
 const unknown = getCapabilitySnapshot({
   chainId: 999999,
   networkMode: "testnet",

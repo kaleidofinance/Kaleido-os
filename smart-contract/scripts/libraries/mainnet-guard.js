@@ -24,6 +24,7 @@ const MAINNETS = {
   4663: "Robinhood Chain",
   5042: "Arc",
   8453: "Base",
+  99901: "Elysium",
 };
 
 /**

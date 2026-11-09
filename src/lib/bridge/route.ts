@@ -102,11 +102,50 @@ export function isKnownBridgeAddress(
   fromChainId: number,
   address: string,
 ): boolean {
-  const corridors = CANONICAL_CORRIDORS[fromChainId];
-  if (!corridors || !address) return false;
+  if (!address) return false;
   const lower = address.toLowerCase();
+  const orbit = ORBIT_CORRIDORS[fromChainId];
+  if (orbit && Object.values(orbit).some((c) => c.inbox.toLowerCase() === lower))
+    return true;
+  const corridors = CANONICAL_CORRIDORS[fromChainId];
+  if (!corridors) return false;
   return Object.values(corridors).some(
     (c) => c.l1Bridge.toLowerCase() === lower,
+  );
+}
+
+/**
+ * Arbitrum Orbit native corridors: parent chain → child chain → the rollup's
+ * Inbox. `depositEth()` (selector 0x439370b1, payable, no args) credits
+ * `msg.sender` on the child with the attached value — for an EOA there is no
+ * address aliasing, so the signer receives it.
+ *
+ * One entry, verified 2026-11-09: Elysium (99901) settles to HyperEVM (999);
+ * its Inbox `0xce59…2cff` carries 2,242 bytes on 999 and is the same address
+ * Kalos's bridge (kalos-bridge-core.js ELYSIUM_BRIDGE.inbox) deposits through.
+ *
+ * Used only as a FALLBACK for native HYPE when no aggregator quotes the
+ * corridor, and never for a third-party recipient (depositEth has no `to`).
+ * The reverse leg (99901→999 via ArbSys.withdrawEth) needs a ~6-day challenge
+ * window and a later Outbox claim, so it is deliberately not built here — the
+ * aggregator's 1-second fill is the only Elysium→HyperEVM route offered.
+ */
+const ORBIT_CORRIDORS: Record<number, Record<number, { inbox: string }>> = {
+  999: {
+    99901: { inbox: "0xce59f8B65ad41C9DAE4c07A0571a39824bD92cff" },
+  },
+};
+
+/** `Inbox.depositEth()` — no arguments, so the calldata is the bare selector. */
+export const ORBIT_DEPOSIT_ETH_DATA = "0x439370b1";
+
+/** Whether a canonical-provider bridge step is an Orbit `depositEth` (no recipient argument). */
+export function isOrbitDeposit(fromChainId: number, to: string, data: string): boolean {
+  const orbit = ORBIT_CORRIDORS[fromChainId];
+  return (
+    !!orbit &&
+    (data || "").toLowerCase() === ORBIT_DEPOSIT_ETH_DATA &&
+    Object.values(orbit).some((c) => c.inbox.toLowerCase() === (to || "").toLowerCase())
   );
 }
 
@@ -158,8 +197,35 @@ const LIFI_ROBINHOOD_ROUTER = "0xB477751B76CF82d00a686A1232f5fCD772414Af3";
  */
 const LIFI_ABSTRACT_ROUTER = "0x4f8C9056bb8A3616693a76922FA35d53C056E5b3";
 
+/**
+ * LI.FI's diamond on Elysium mainnet (99901) \u2014 taken from LI.FI's own chain
+ * registry (`GET li.quest/v1/chains` \u2192 diamondAddress for 99901), verified
+ * on-chain (254 bytes at `0x24E6\u2026`, while `0x1231\u2026` holds `0x`) and confirmed
+ * as both `transactionRequest.to` and `estimate.approvalAddress` on live
+ * Elysium-source bridge quotes.
+ */
+const LIFI_ELYSIUM_ROUTER = "0x24E6dA91AA4A8FEe2447F542c92E006243bd6Dc5";
+
+/**
+ * LI.FI's diamond on HyperEVM / Hyperliquid mainnet (999) — not the
+ * deterministic 0x1231… either. Measured 2026-11-09: eth_getCode at `0x0a07…`
+ * on 999 carries 5,176 bytes, and live 999→99901 quotes for all eight Kalos
+ * assets (HYPE, USDC, KNTQ, WHYPE, kHYPE, USD₮0, UBTC, UETH via
+ * relaydepository) name it as both `transactionRequest.to` and
+ * `estimate.approvalAddress`. Without it every HyperEVM→Elysium token bridge
+ * was refused at the spender check.
+ */
+const LIFI_HYPEREVM_ROUTER = "0x0a0758d937d1059c356D4714e57F5df0239bce1A";
+
 /** Every router LI.FI names as a spender/target across our corridors. */
-const KNOWN_BRIDGE_SPENDERS = [LIFI_DIAMOND, LIFI_ARC_ROUTER, LIFI_ROBINHOOD_ROUTER, LIFI_ABSTRACT_ROUTER];
+const KNOWN_BRIDGE_SPENDERS = [
+  LIFI_DIAMOND,
+  LIFI_ARC_ROUTER,
+  LIFI_ROBINHOOD_ROUTER,
+  LIFI_ABSTRACT_ROUTER,
+  LIFI_ELYSIUM_ROUTER,
+  LIFI_HYPEREVM_ROUTER,
+];
 
 /**
  * Whether an address is a bridge router this resolver would itself authorise an
@@ -263,6 +329,16 @@ async function tryAggregatorRoute(
     address: i.userAddress,
     ...(i.recipient ? { toAddress: i.recipient } : {}),
     toAsset: i.crossAsset ? i.toAsset : undefined,
+    /* A cross-asset output we already resolved is asked for by contract, so
+       the provider can't pick a same-symbol twin (USDC vs USDCe on Elysium);
+       the output cross-check below then compares like with like. */
+    ...(i.crossAsset &&
+    i.toTokenAddress &&
+    ethers.isAddress(i.toTokenAddress) &&
+    !/^0x0{40}$/i.test(i.toTokenAddress) &&
+    !/^0xe{40}$/i.test(i.toTokenAddress)
+      ? { toTokenAddress: i.toTokenAddress }
+      : {}),
     /* A token we don't list (an Abstract holding moved out before shutdown) is
        unknown to LI.FI by symbol, so ask by contract. Only then: a listed
        token keeps the symbol path every existing corridor was measured on. */
@@ -661,6 +737,24 @@ export async function resolveBridgeRoute(
   //    corridor. Null on a testnet or an unrouted corridor, which becomes an
   //    honest refusal; {error} on a cross-check failure, surfaced as-is.
   const agg = await tryAggregatorRoute(input);
+  /* 3) Orbit fallback — native HYPE HyperEVM→Elysium when no solver quotes it.
+     Self-delivery only: depositEth credits msg.sender and takes no recipient. */
+  const orbit =
+    isNative && !crossAsset && !thirdParty
+      ? ORBIT_CORRIDORS[fromChainId]?.[dest.id]
+      : undefined;
+  if (agg === null && orbit && ethers.isAddress(userAddress))
+    return {
+      to: orbit.inbox,
+      data: ORBIT_DEPOSIT_ETH_DATA,
+      value: units,
+      toChainId: dest.id,
+      toChainName: dest.shortName,
+      provider: "canonical",
+      // The sequencer credits a parent-chain deposit in about a minute
+      // (Kalos's DEPOSIT_WAIT_MS = 60s); not a guarantee, so no fixed ETA.
+      etaSeconds: null,
+    };
   if (agg === null)
     return {
       error: `No executable route for ${asset} to ${dest.shortName} right now. Kaleido can quote one via Relay or LI.FI for you to complete with the provider.`,

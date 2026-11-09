@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <title>Kaleido — Arc Builders Fund</title>
 <style>
-  @font-face{font-family:"KSerif";src:url("../src/app/fonts/lora-var.woff2") format("woff2");font-weight:100 900;font-display:block}
-  @font-face{font-family:"KSans";src:url("../src/app/fonts/GeistVF.woff") format("woff");font-weight:100 900;font-display:block}
+  @font-face{font-family:"KSerif";src:url("fonts/lora-600.ttf") format("truetype");font-weight:100 900;font-display:block}
+  @font-face{font-family:"KSans";src:url("fonts/geist-400.ttf") format("truetype");font-weight:400;font-display:block}@font-face{font-family:"KSans";src:url("fonts/geist-500.ttf") format("truetype");font-weight:500;font-display:block}@font-face{font-family:"KSans";src:url("fonts/geist-600.ttf") format("truetype");font-weight:600;font-display:block}@font-face{font-family:"KSans";src:url("fonts/geist-700.ttf") format("truetype");font-weight:700;font-display:block}
   :root{
     --bg:#07110e;--panel:#0b1712;--panel2:rgba(255,255,255,.035);--line:rgba(217,195,154,.16);
     --text:#f4eee5;--muted:#b9c3ba;--dim:#7d877d;--green:#35d18d;--green2:#5fd08a;--sand:#e7d7b6;
@@ -18,10 +18,7 @@
     padding:0.62in 0.78in 0.52in;display:flex;flex-direction:column;
     background:radial-gradient(circle at 90% 6%,rgba(53,209,140,.12),transparent 34%),linear-gradient(135deg,#0a1712,#07110e 70%)}
   .slide + .slide{margin-top:20px}
-  .grid-bg{position:absolute;inset:0;z-index:-1;opacity:.5;
-    background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 46px),
-      repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0 1px,transparent 1px 46px);
-    -webkit-mask:radial-gradient(80% 80% at 60% 40%,#000 55%,transparent 100%)}
+  .grid-bg{display:none}
 
   .head{display:flex;align-items:center;justify-content:space-between}
   .brand{display:flex;align-items:center;gap:11px}
@@ -104,7 +101,7 @@
   .split{display:grid;grid-template-columns:1.04fr .96fr;gap:38px;align-items:center;width:100%;margin-top:6px}
   .split h2{margin-top:0}
   .media{display:flex;flex-direction:column;gap:9px;align-items:center;min-width:0}
-  .shot{max-width:100%;border:1px solid var(--line);border-radius:13px;box-shadow:0 18px 44px rgba(0,0,0,.55);display:block}
+  .shot{max-width:100%;border:1px solid var(--line);border-radius:13px;box-shadow:0 0 0 4px rgba(0,0,0,.28);display:block}
   .shot.tall{max-height:5.75in;width:auto}
   .shot.svg{width:100%;border:0;box-shadow:none;border-radius:0}
   .stack{display:flex;flex-direction:column;gap:15px;width:100%;align-items:center}
@@ -118,17 +115,13 @@
      A strong left-weighted scrim keeps text fully legible over it. Product slides
      keep the quiet dark exterior; statement slides get the branded voxel arenas. */
   .slide::before{content:"";position:absolute;inset:0;z-index:-3;
-    background:url("bg-hero.webp") center/cover no-repeat;opacity:.6}
-  .slide::after{content:"";position:absolute;inset:0;z-index:-3;pointer-events:none;
-    background:
-      linear-gradient(90deg, rgba(7,17,14,.95) 0%, rgba(7,17,14,.85) 33%, rgba(7,17,14,.56) 64%, rgba(7,17,14,.42) 100%),
-      linear-gradient(180deg, rgba(7,17,14,.42) 0%, transparent 30%, rgba(7,17,14,.72) 100%),
-      radial-gradient(60% 50% at 90% 6%, rgba(53,209,140,.12), transparent 55%)}
+    background:url("bg-hero-slide.jpg") center/100% 100% no-repeat}
+  .slide::after{content:none}
   /* branded voxel Kaleido-colosseum on the statement slides (pre-blurred + darkened assets) */
-  .slide:nth-of-type(2)::before{background-image:url("bg-5.webp");opacity:.62}
-  .slide:nth-of-type(3)::before{background-image:url("bg-3.webp");opacity:.62}
-  .slide:nth-of-type(11)::before{background-image:url("bg-4.webp");opacity:.62}
-  .slide:nth-of-type(16)::before{background-image:url("bg-4.webp");opacity:.62}
+  .slide:nth-of-type(2)::before{background-image:url("bg-5-slide.jpg")}
+  .slide:nth-of-type(3)::before{background-image:url("bg-3-slide.jpg")}
+  .slide:nth-of-type(11)::before{background-image:url("bg-4-slide.jpg")}
+  .slide:nth-of-type(18)::before{background-image:url("bg-4-slide.jpg")}
 
   @page{size:13.333in 7.5in;margin:0}
   @media print{
@@ -147,9 +140,9 @@
   <div class="body">
     <span class="tag">Agentic DeFi · Live on <img class="arclogo" src="../public/arc-mark.png" alt="Arc">Arc mainnet</span>
     <h1>The autonomous finance operating system, built on <img class="arclogo" src="../public/arc-mark.png" alt="">Arc.</h1>
-    <p class="lead">Trade, earn, borrow, bridge and launch — in plain language, through one AI agent. <b>Non-custodial. Audited. Native to Arc.</b></p>
+    <p class="lead">Trade, earn, borrow, bridge and launch — in plain language, through one AI agent. <b>Non-custodial. Fail-closed. Native to Arc.</b></p>
   </div>
-  <div class="foot"><span>kaleidofi.xyz</span><span class="n">01 / 16</span></div>
+  <div class="foot"><span>kaleidofi.xyz</span><span class="n">01 / 18</span></div>
 </section>
 
 <!-- 2 · Vision -->
@@ -159,7 +152,7 @@
     <h2>Finance is going autonomous. It needs an operating system.</h2>
     <p class="lead">The next wave of onchain finance won't be clicked through twenty tabs — it will be <b>delegated to agents</b>. Kaleido is the coordination layer: one AI agent orchestrating every core DeFi primitive across one non-custodial surface. We built it on Arc, where stablecoin gas and sub-second finality make agent-driven finance genuinely usable for the first time.</p>
   </div>
-  <div class="foot"><span>Kaleido — the OS for autonomous finance</span><span class="n">02 / 16</span></div>
+  <div class="foot"><span>Kaleido — the OS for autonomous finance</span><span class="n">02 / 18</span></div>
 </section>
 
 <!-- 3 · Why Arc -->
@@ -173,7 +166,7 @@
       <div class="card"><div class="ic">◈</div><div class="t">Circle-grade rails</div><div class="d">USDC-native money movement and opt-in privacy make Kaleido institution-ready and compliant by design.</div></div>
     </div>
   </div>
-  <div class="foot"><span>Purpose-built for Arc's economic OS</span><span class="n">03 / 16</span></div>
+  <div class="foot"><span>Purpose-built for Arc's economic OS</span><span class="n">03 / 18</span></div>
 </section>
 
 <!-- 4 · Product ecosystem -->
@@ -184,16 +177,16 @@
     <div class="prods">
       <div class="prod"><div class="t">Luca — AI agent</div><div class="d">Plain-language intent → audited plan → your signature.</div></div>
       <div class="prod"><div class="t">Spot DEX</div><div class="d">Own V3 pools + aggregator routing across all Arc liquidity.</div></div>
-      <div class="prod"><div class="t">Limit orders & DCA</div><div class="d">Signed, non-custodial, keeper-filled. Live on Arc.</div></div>
+      <div class="prod"><div class="t">Limit orders & DCA</div><div class="d">Signed, non-custodial, filled at the best aggregator route. Live on Arc.</div></div>
       <div class="prod"><div class="t">Lending & borrowing</div><div class="d">Over-collateralized credit markets.</div></div>
-      <div class="prod"><div class="t">Staking — stKLD</div><div class="d">Stake $KLD, earn protocol yield as stKLD.</div></div>
+      <div class="prod"><div class="t">Staking — stKLD</div><div class="d">Stake $KLD for protocol yield as stKLD, from TGE.</div></div>
       <div class="prod"><div class="t">kfUSD / kafUSD</div><div class="d">Over-collateralized stablecoin + a yield version.</div></div>
-      <div class="prod"><div class="t">Cross-chain</div><div class="d">Circle CCTP + LI.FI, in one step inside Luca.</div></div>
+      <div class="prod"><div class="t">Cross-chain</div><div class="d">Circle CCTP + LI.FI, in one step — even straight to another wallet.</div></div>
       <div class="prod"><div class="t">Launchpad trading</div><div class="d">Argus integration — paste a contract, trade instantly.</div></div>
-      <div class="prod"><div class="t">Points & analytics</div><div class="d">Season 1 rewards and a public analytics dashboard.</div></div>
+      <div class="prod"><div class="t">Points & analytics</div><div class="d">Season 1 rewards, a public dashboard, and DefiLlama tracking.</div></div>
     </div>
   </div>
-  <div class="foot"><span>Non-custodial across every product</span><span class="n">04 / 16</span></div>
+  <div class="foot"><span>Non-custodial across every product</span><span class="n">04 / 18</span></div>
 </section>
 
 <!-- 5 · Luca -->
@@ -210,12 +203,12 @@
         </div>
       </div>
       <div class="media">
-        <img class="shot tall" src="shots/mock-agent.png" alt="Luca building and auditing a swap plan">
+        <img class="shot tall" src="shots/mock-agent-deck.jpg" alt="Luca building and auditing a swap plan">
         <div class="shotcap">Plan → auditor pass → review &amp; sign, in one card</div>
       </div>
     </div>
   </div>
-  <div class="foot"><span>Plan · audit · sign — you stay in control</span><span class="n">05 / 16</span></div>
+  <div class="foot"><span>Plan · audit · sign — you stay in control</span><span class="n">05 / 18</span></div>
 </section>
 
 <!-- 6 · Trade -->
@@ -227,19 +220,19 @@
         <h2>Spot, limit, recurring — and instant launch trading.</h2>
         <div class="rows" style="margin-top:20px;gap:14px;max-width:100%">
           <div class="row"><span class="b">↔</span><div><div class="t">Spot DEX + aggregation</div><div class="d">Our own V3 pools plus aggregator routing — every trade takes the best path across Arc's liquidity.</div></div></div>
-          <div class="row"><span class="b">⌵</span><div><div class="t">Limit orders &amp; recurring buys — live</div><div class="d">A signed order, not a custodial deposit. A keeper fills it at the user's price, no keeper fee.</div></div></div>
+          <div class="row"><span class="b">⌵</span><div><div class="t">Limit orders &amp; recurring buys — live</div><div class="d">A signed order, not a custodial deposit. A keeper fills it at the user's price through the best aggregator route, no keeper fee.</div></div></div>
           <div class="row"><span class="b">◎</span><div><div class="t">Launchpad trading — Argus integrated</div><div class="d">Paste any Argus contract for an instant card — price, market cap, taxes — with one-tap buy &amp; sell.</div></div></div>
         </div>
       </div>
       <div class="media">
         <div class="stack">
-          <img class="shot" src="shots/mock-swap.png" alt="Kaleido swap interface">
-          <img class="shot" src="shots/mock-token.png" alt="Argus launch token card with one-tap buy and sell">
+          <img class="shot" src="shots/mock-swap-deck.jpg" alt="Kaleido swap interface">
+          <img class="shot" src="shots/mock-token-deck.jpg" alt="Argus launch token card with one-tap buy and sell">
         </div>
       </div>
     </div>
   </div>
-  <div class="foot"><span>One agent, every way to trade</span><span class="n">06 / 16</span></div>
+  <div class="foot"><span>One agent, every way to trade</span><span class="n">06 / 18</span></div>
 </section>
 
 <!-- 7 · Earn & borrow -->
@@ -251,20 +244,20 @@
         <h2>Yield and credit, natively.</h2>
         <div class="rows" style="margin-top:20px;gap:14px;max-width:100%">
           <div class="row"><span class="b">%</span><div><div class="t">Lending &amp; borrowing</div><div class="d">Over-collateralized markets — supply to earn, borrow against collateral, all through Luca.</div></div></div>
-          <div class="row"><span class="b">◆</span><div><div class="t">Staking → stKLD</div><div class="d">Stake $KLD for a share of protocol revenue, held as liquid stKLD.</div></div></div>
+          <div class="row"><span class="b">◆</span><div><div class="t">Staking → stKLD (at TGE)</div><div class="d">Stake $KLD for a share of protocol revenue, held as liquid stKLD.</div></div></div>
           <div class="row"><span class="b">$</span><div><div class="t">kfUSD &amp; kafUSD</div><div class="d">A native over-collateralized stablecoin, and kafUSD which routes protocol yield to holders.</div></div></div>
         </div>
       </div>
       <div class="media">
         <div class="stack">
-          <img class="shot" src="shots/mock-borrow.png" alt="Kaleido order-book lending & borrowing market with health factor">
-          <img class="shot" src="shots/mock-portfolio.png" alt="Portfolio — one onchain balance sheet">
+          <img class="shot" src="shots/mock-borrow-deck.jpg" alt="Kaleido order-book lending & borrowing market with health factor">
+          <img class="shot" src="shots/mock-portfolio-deck.jpg" alt="Portfolio — one onchain balance sheet">
         </div>
         <div class="shotcap">Order-book lending &amp; borrowing, and every position on one balance sheet</div>
       </div>
     </div>
   </div>
-  <div class="foot"><span>A full onchain balance sheet</span><span class="n">07 / 16</span></div>
+  <div class="foot"><span>A full onchain balance sheet</span><span class="n">07 / 18</span></div>
 </section>
 
 <!-- 8 · Stablecoin -->
@@ -281,17 +274,17 @@
         </div>
       </div>
       <div class="media">
-        <img class="shot tall" src="shots/mock-stable.png" alt="Minting kfUSD against USDC collateral">
+        <img class="shot tall" src="shots/mock-stable-deck.jpg" alt="Minting kfUSD against USDC collateral">
         <div class="shotcap">Mint kfUSD against collateral, or hold kafUSD to earn</div>
       </div>
     </div>
   </div>
-  <div class="foot"><span>kfUSD · kafUSD — the native dollar of Kaleido</span><span class="n">08 / 16</span></div>
+  <div class="foot"><span>kfUSD · kafUSD — the native dollar of Kaleido</span><span class="n">08 / 18</span></div>
 </section>
 
 <!-- 9 · Staking -->
 <section class="slide"><div class="grid-bg"></div>
-  <div class="head"><div class="brand"><span class="mark"></span><span class="bword">Kaleido<i>fi</i></span></div><span class="kicker">Staking</span></div>
+  <div class="head"><div class="brand"><span class="mark"></span><span class="bword">Kaleido<i>fi</i></span></div><span class="kicker">Staking · at TGE</span></div>
   <div class="body">
     <div class="split">
       <div class="col">
@@ -303,12 +296,12 @@
         </div>
       </div>
       <div class="media">
-        <img class="shot tall" src="shots/mock-stake.png" alt="Staking KLD for liquid stKLD">
+        <img class="shot tall" src="shots/mock-stake-deck.jpg" alt="Staking KLD for liquid stKLD">
         <div class="shotcap">Stake KLD, receive liquid stKLD that compounds protocol revenue</div>
       </div>
     </div>
   </div>
-  <div class="foot"><span>stKLD — liquid staking on Kaleido</span><span class="n">09 / 16</span></div>
+  <div class="foot"><span>stKLD — liquid staking on Kaleido</span><span class="n">09 / 18</span></div>
 </section>
 
 <!-- 10 · Move -->
@@ -321,12 +314,12 @@
         <p class="lead">Kaleido bridges into and out of Arc through <b>Circle's CCTP</b> — burning and minting native USDC 1:1 — with LI.FI routing for everything else. One step inside Luca: the agent picks the corridor, the user signs once, and the funds arrive as canonical USDC. No gas needed on the destination — the completion keeper finishes the mint.</p>
       </div>
       <div class="media">
-        <img class="shot tall" src="shots/mock-bridge.png" alt="Luca bridging USDC across chains via Circle CCTP">
+        <img class="shot tall" src="shots/mock-bridge-deck.jpg" alt="Luca bridging USDC across chains via Circle CCTP">
         <div class="shotcap">Bridge in one step — burn on Arc, the keeper mints native USDC on the destination</div>
       </div>
     </div>
   </div>
-  <div class="foot"><span>Circle CCTP · LI.FI · one-step in Luca</span><span class="n">10 / 16</span></div>
+  <div class="foot"><span>Circle CCTP · LI.FI · one-step in Luca</span><span class="n">10 / 18</span></div>
 </section>
 
 <!-- 9 · Trust -->
@@ -337,35 +330,37 @@
     <div class="two">
       <div class="li"><span class="dot">✓</span><span class="tx"><b>Non-custodial.</b> The user signs every action. Kaleido never holds or moves funds on its own.</span></div>
       <div class="li"><span class="dot">✓</span><span class="tx"><b>Fail-closed auditor.</b> Every agent plan is checked and blocked unless it is provably safe.</span></div>
-      <div class="li"><span class="dot">✓</span><span class="tx"><b>Aegis Sentinel.</b> Autonomous security infrastructure guarding the protocol.</span></div>
-      <div class="li"><span class="dot">✓</span><span class="tx"><b>Transparent settlement.</b> Everything clears onchain on Arc's Circle-grade rails.</span></div>
+      <div class="li"><span class="dot">✓</span><span class="tx"><b>Simulated before you sign.</b> Every plan is preflighted on chain before the wallet opens; a step that would fail never reaches it.</span></div>
+      <div class="li"><span class="dot">✓</span><span class="tx"><b>Admin behind a Safe.</b> Protocol ownership sits in a Safe multisig, with an independent audit (Guardian) scoped for the lending core.</span></div>
     </div>
   </div>
-  <div class="foot"><span>Safety is the product, not a footnote</span><span class="n">11 / 16</span></div>
+  <div class="foot"><span>Safety is the product, not a footnote</span><span class="n">11 / 18</span></div>
 </section>
 
 <!-- 10 · Traction -->
 <section class="slide"><div class="grid-bg"></div>
   <div class="head"><div class="brand"><span class="mark"></span><span class="bword">Kaleido<i>fi</i></span></div><span class="kicker">Traction</span></div>
   <div class="body">
-    <h2>Live on <img class="arclogo" src="../public/arc-mark.png" alt="">Arc, instrumented in public.</h2>
-    <p class="lead" style="margin-top:12px">Every product reports to a public, real-time analytics dashboard and an onchain points leaderboard — anyone can verify usage as it happens.</p>
+    <h2>Real users before real volume.</h2>
+    <p class="lead" style="margin-top:12px">A community built through five testnets and Season 1 points, now arriving on <img class="arclogo" src="../public/arc-mark.png" alt="">Arc mainnet. Every number is public, live and per-wallet.</p>
     <div class="duo">
       <div class="frame">
-        <img class="shot" src="shots/analytics-deck.png" alt="Kaleido live analytics dashboard">
-        <div class="shotcap">Live analytics — trading, growth and agent metrics, refreshed every 30s</div>
+        <div class="stats" style="margin-top:0;grid-template-columns:repeat(2,1fr);gap:12px">
+          <div class="stat" style="padding:16px 18px"><div class="n" style="font-size:34px">10,700+</div><div class="k">Waitlist members</div></div>
+          <div class="stat" style="padding:16px 18px"><div class="n" style="font-size:34px">7,000+</div><div class="k">Wallets earning Season 1 points</div></div>
+          <div class="stat" style="padding:16px 18px"><div class="n" style="font-size:34px">3,077</div><div class="k">Private-testnet registrants</div></div>
+          <div class="stat" style="padding:16px 18px"><div class="n" style="font-size:34px">5</div><div class="k">Testnets running the full protocol</div></div>
+          <div class="stat" style="padding:16px 18px"><div class="n" style="font-size:34px">378</div><div class="k">Referred users</div></div>
+          <div class="stat" style="padding:16px 18px"><div class="n" style="font-size:34px">Day 1</div><div class="k">Live on Arc mainnet, Sep 16</div></div>
+        </div>
       </div>
       <div class="frame">
-        <img class="shot" src="shots/leaderboard-deck.png" alt="Kaleido Season 1 points leaderboard">
-        <div class="shotcap">Season 1 points leaderboard — onchain, per-wallet</div>
+        <img class="shot" src="shots/leaderboard-deck.jpg" alt="Kaleido Season 1 points leaderboard">
+        <div class="shotcap">Season 1 points leaderboard — onchain, per-wallet. Lending live since Sep 29; listed on DefiLlama.</div>
       </div>
     </div>
-    <div class="two" style="margin-top:20px">
-      <div class="li"><span class="dot">›</span><span class="tx"><b>Live on Arc mainnet</b>, with the full protocol deployed across five chains in test.</span></div>
-      <div class="li"><span class="dot">›</span><span class="tx"><b>Shipped:</b> Luca, spot + limit + DCA trading, lending, staking, stablecoin, CCTP, Argus.</span></div>
-    </div>
   </div>
-  <div class="foot"><span>Building in public, shipping weekly</span><span class="n">12 / 16</span></div>
+  <div class="foot"><span>Building in public, shipping weekly</span><span class="n">12 / 18</span></div>
 </section>
 
 <!-- 11 · Business model -->
@@ -381,7 +376,7 @@
     </div>
     <p class="lead" style="margin-top:24px">Every stream scales with agent-driven volume — the more Luca does for users, the more the protocol earns. Premium agent tiers extend this over time.</p>
   </div>
-  <div class="foot"><span>Revenue compounds with agent usage</span><span class="n">13 / 16</span></div>
+  <div class="foot"><span>Revenue compounds with agent usage</span><span class="n">13 / 18</span></div>
 </section>
 
 <!-- 12 · Token & points -->
@@ -391,7 +386,7 @@
     <h2>Aligned participation.</h2>
     <p class="lead"><b>$KLD</b> is the ecosystem's utility and staking token — stake for stKLD and a share of protocol revenue. A live <b>Season 1 points program</b> already rewards real usage across trading, liquidity and tasks, and converts into the token allocation at TGE. Rewards are earned onchain, not farmed — every point traces to a real action.</p>
   </div>
-  <div class="foot"><span>Usage → points → $KLD at TGE</span><span class="n">14 / 16</span></div>
+  <div class="foot"><span>Usage → points → $KLD at TGE</span><span class="n">14 / 18</span></div>
 </section>
 
 <!-- 13 · Roadmap -->
@@ -400,32 +395,83 @@
   <div class="body">
     <h2>From <img class="arclogo" src="../public/arc-mark.png" alt="">Arc mainnet to multichain.</h2>
     <div class="rail">
-      <div class="mile on"><div class="when">Shipped</div><div class="what"><b>Live on Arc.</b> Agent, trading, lending, staking, stablecoin, CCTP, Argus.</div></div>
-      <div class="mile on"><div class="when">Sep 2026</div><div class="what"><b>Mainnet.</b> Full protocol on Arc for the network's own launch.</div></div>
-      <div class="mile"><div class="when">Late Sep 2026</div><div class="what"><b>TGE.</b> $KLD generation; Season 1 points convert.</div></div>
-      <div class="mile"><div class="when">Q4 2026</div><div class="what"><b>Listings & multichain.</b> CEX listings and expansion beyond Arc.</div></div>
+      <div class="mile on"><div class="when">Sep 16, 2026</div><div class="what"><b>Live on Arc mainnet.</b> Agent, spot + limit trading, CCTP, Argus — on the network's launch day.</div></div>
+      <div class="mile on"><div class="when">Sep 29 – Oct 2026</div><div class="what"><b>Lending live, DefiLlama listed.</b> Credit markets on Arc mainnet; TVL and volume tracked publicly.</div></div>
+      <div class="mile"><div class="when">Q4 2026</div><div class="what"><b>TGE.</b> $KLD generation; Season 1 points convert.</div></div>
+      <div class="mile"><div class="when">After TGE</div><div class="what"><b>Listings & multichain.</b> CEX listings and expansion beyond Arc.</div></div>
     </div>
     <p class="lead" style="margin-top:26px">Beyond launch: deeper agent autonomy, institutional features, and Kaleido as the default agentic-finance layer wherever Circle's rails go.</p>
   </div>
-  <div class="foot"><span>A dated, executable plan</span><span class="n">15 / 16</span></div>
+  <div class="foot"><span>A dated, executable plan</span><span class="n">15 / 18</span></div>
+</section>
+
+<!-- Team -->
+<section class="slide"><div class="grid-bg"></div>
+  <div class="head"><div class="brand"><span class="mark"></span><span class="bword">Kaleido<i>fi</i></span></div><span class="kicker">Team</span></div>
+  <div class="body">
+    <h2>The team shipping it.</h2>
+    <div class="stats" style="grid-template-columns:repeat(4,1fr);gap:14px;margin-top:26px">
+      <div class="stat" style="padding:22px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="width:46px;height:46px;border-radius:50%;background:rgba(53,209,140,.14);color:var(--green);display:grid;place-items:center;font-family:var(--serif);font-weight:600;font-size:18px">MK</div>
+        <div><div style="font-weight:600;font-size:18px;color:#fff">Mac King</div><div style="color:var(--green);font-size:13.5px;font-weight:600;margin-top:3px">Co-Founder &amp; CEO</div></div>
+        <div class="k" style="margin-top:0;line-height:1.45">4x founder with deep expertise in DeFi protocols, smart-contract security and modular architecture. Drives strategy and ecosystem growth.</div>
+        <div style="font-size:13px;margin-top:auto"><a href="https://www.linkedin.com/in/mac-king/" style="color:var(--green);text-decoration:none">LinkedIn</a> · <a href="https://x.com/0xmacking" style="color:var(--green);text-decoration:none">X</a></div>
+      </div>
+      <div class="stat" style="padding:22px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="width:46px;height:46px;border-radius:50%;background:rgba(53,209,140,.14);color:var(--green);display:grid;place-items:center;font-family:var(--serif);font-weight:600;font-size:18px">AB</div>
+        <div><div style="font-weight:600;font-size:18px;color:#fff">Anointing Babajide</div><div style="color:var(--green);font-size:13.5px;font-weight:600;margin-top:3px">Protocol Lead &amp; CTO</div></div>
+        <div class="k" style="margin-top:0;line-height:1.45">Senior blockchain engineer with deep DeFi and Solidity expertise. Owns the backend and smart contracts, including modular integrations.</div>
+        <div style="font-size:13px;margin-top:auto"><a href="https://www.linkedin.com/in/mojowlekaz" style="color:var(--green);text-decoration:none">LinkedIn</a> · <a href="https://x.com/anointingmlabs" style="color:var(--green);text-decoration:none">X</a></div>
+      </div>
+      <div class="stat" style="padding:22px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="width:46px;height:46px;border-radius:50%;background:rgba(53,209,140,.14);color:var(--green);display:grid;place-items:center;font-family:var(--serif);font-weight:600;font-size:18px">DM</div>
+        <div><div style="font-weight:600;font-size:18px;color:#fff">Dauda Mustapha</div><div style="color:var(--green);font-size:13.5px;font-weight:600;margin-top:3px">Lead Software Architect &amp; COO</div></div>
+        <div class="k" style="margin-top:0;line-height:1.45">Full-stack engineer specialising in React/Next.js and Web3 integration. Oversees technical design, roadmap and security measures.</div>
+        <div style="font-size:13px;margin-top:auto"><a href="https://www.linkedin.com/in/mustapha-dauda-05370822a" style="color:var(--green);text-decoration:none">LinkedIn</a></div>
+      </div>
+      <div class="stat" style="padding:22px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="width:46px;height:46px;border-radius:50%;background:rgba(53,209,140,.14);color:var(--green);display:grid;place-items:center;font-family:var(--serif);font-weight:600;font-size:18px">EA</div>
+        <div><div style="font-weight:600;font-size:18px;color:#fff">Eniola Araokanmi</div><div style="color:var(--green);font-size:13.5px;font-weight:600;margin-top:3px">Co-Founder &amp; CMO</div></div>
+        <div class="k" style="margin-top:0;line-height:1.45">Web3 marketing strategist focused on growth, community and ecosystem engagement. Leads Kaleido's brand and go-to-market.</div>
+        <div style="font-size:13px;margin-top:auto"><a href="https://www.linkedin.com/in/eniola-araokanmi-a34125369/" style="color:var(--green);text-decoration:none">LinkedIn</a></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Founders who build, audit and ship</span><span class="n">16 / 18</span></div>
+</section>
+
+<!-- 14 · The ask -->
+<section class="slide"><div class="grid-bg"></div>
+  <div class="head"><div class="brand"><span class="mark"></span><span class="bword">Kaleido<i>fi</i></span></div><span class="kicker">The ask</span></div>
+  <div class="body">
+    <h2>Up to $100k to turn a live product into Arc volume.</h2>
+    <div class="stats" style="grid-template-columns:repeat(4,1fr);gap:14px;margin-top:26px">
+      <div class="stat"><div class="n" style="font-size:36px">$35k</div><div class="k"><b style="color:#fff">Security.</b> Independent audit of the lending core and agent auditor.</div></div>
+      <div class="stat"><div class="n" style="font-size:36px">$30k</div><div class="k"><b style="color:#fff">Liquidity.</b> Deepen Kaleido's native USDC pools on Arc.</div></div>
+      <div class="stat"><div class="n" style="font-size:36px">$20k</div><div class="k"><b style="color:#fff">Engineering.</b> Agent autonomy, institutional features, infra.</div></div>
+      <div class="stat"><div class="n" style="font-size:36px">$15k</div><div class="k"><b style="color:#fff">Growth.</b> Convert the 10k+ community into Arc users.</div></div>
+    </div>
+    <p class="lead" style="margin-top:26px"><b>What Arc gets:</b> native USDC volume routed through one agent, liquidity that stays on Arc, and a ready community moved onto Arc's rails, all tracked publicly on DefiLlama.</p>
+  </div>
+  <div class="foot"><span>Capital, matched to milestones</span><span class="n">17 / 18</span></div>
 </section>
 
 <!-- 14 · Ask / contact -->
 <section class="slide"><div class="grid-bg"></div>
-  <div class="head"><div class="brand"><span class="mark"></span><span class="bword">Kaleido<i>fi</i></span></div><span class="kicker">The ask</span></div>
+  <div class="head"><div class="brand"><span class="mark"></span><span class="bword">Kaleido<i>fi</i></span></div><span class="kicker">Contact</span></div>
   <div class="body">
     <h2>Let's build the Economic OS on <img class="arclogo" src="../public/arc-mark.png" alt="">Arc together.</h2>
-    <p class="lead">Kaleido is the agentic-finance layer Arc needs — already live, already shipping. With the <b>Builders Fund's capital and hands-on support from Arc's core teams</b>, we accelerate the agent, deepen liquidity, and bring institutional users onto Arc's rails.</p>
+    <p class="lead">Kaleido is the agentic-finance layer Arc needs — already live, already shipping. With the <b>Builders Fund's capital and hands-on support from Arc's core teams</b>, we deepen liquidity, finish the audit, and bring our community onto Arc's rails.</p>
     <div class="contact">
       <span class="chip"><b>Kaleido Finance Ltd</b></span>
-      <span class="chip">Mac King · Founder &amp; CEO</span>
+      <span class="chip">Mac King · Co-Founder &amp; CEO</span>
       <span class="chip">mac@kaleidofi.xyz</span>
       <span class="chip">Telegram <b>@macrew15</b></span>
       <span class="chip">X <b>@0xmacking</b></span>
       <span class="chip">kaleidofi.xyz</span>
     </div>
   </div>
-  <div class="foot"><span>Building the operating system for autonomous finance</span><span class="n">16 / 16</span></div>
+  <div class="foot"><span>Building the operating system for autonomous finance</span><span class="n">18 / 18</span></div>
 </section>
 
 </body>

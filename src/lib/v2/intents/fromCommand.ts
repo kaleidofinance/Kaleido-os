@@ -1269,10 +1269,14 @@ function parseAmount(raw: string): string | null {
 
 /* ----------------------------------------------------------------- tokens -- */
 
+function normTokenKey(s: string): string {
+  return s.toLowerCase().replace(/\u20ae/g, "t");
+}
+
 function findToken(word: string, tokens: IToken[]): IToken | undefined {
-  const w = word.toLowerCase();
+  const w = normTokenKey(word);
   return tokens.find(
-    (t) => t.symbol.toLowerCase() === w || t.name.toLowerCase() === w,
+    (t) => normTokenKey(t.symbol) === w || normTokenKey(t.name) === w,
   );
 }
 
@@ -1588,6 +1592,7 @@ function normalise(text: string): string[] {
       .replace(/\b[\w-]+(?:\.[\w-]+)+\/\S*/g, " ")
       .replace(/(^|\s)\/[\w./-]+/g, " ")
       .toLowerCase()
+      .replace(/\u20ae/g, "t")
       .replace(/[^\w\s.,%>→-]/g, " ")
       .split(/\s+/)
       .filter(Boolean)

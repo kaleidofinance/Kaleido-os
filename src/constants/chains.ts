@@ -358,14 +358,30 @@ export const CHAINS: ChainMeta[] = [
   },
 
   // ---- Kinetiq Elysium (Arbitrum Orbit L2 settling to HyperEVM) ---------
-  // Elysium mainnet is not live yet. Keep the testnet explicit so a future
-  // mainnet chain id cannot be confused with the unrelated legacy Elysium
-  // network (1339).
+  // Elysium mainnet (99901) and testnet (99801) are paired; keep both explicit
+  // so neither can be confused with the unrelated legacy Elysium network (1339).
+  {
+    id: 99901,
+    name: "Elysium",
+    shortName: "Elysium",
+    network: "mainnet",
+    pairChainId: 99801,
+    nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
+    rpcUrls: ["https://rpc.elysium.kinetiq.xyz"],
+    blockExplorer: {
+      name: "Elysium Explorer",
+      url: "https://elysium.kinetiq.xyz/explorer",
+    },
+    iconId: "elysium",
+    color: "#6ee7b7",
+    tradable: true,
+  },
   {
     id: 99801,
     name: "Elysium Testnet",
     shortName: "Elysium",
     network: "testnet",
+    pairChainId: 99901,
     nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
     rpcUrls: ["https://testnet-rpc.elysium.kinetiq.xyz"],
     blockExplorer: {

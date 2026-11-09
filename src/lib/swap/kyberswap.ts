@@ -26,6 +26,7 @@ const KYBERSWAP_CHAIN_SLUG: Record<number, string> = {
   56: "bsc",
   5042: "arc",
   4663: "robinhood",
+  99901: "elysium",
 };
 
 /**
@@ -41,6 +42,8 @@ const KYBERSWAP_ROUTERS: Record<number, string> = {
   56: "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
   5042: "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
   4663: "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
+  // Official Elysium V2 deployment; live code and quote target checked 2026-11-09.
+  99901: "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5",
 };
 
 export function kyberSwapChainSlug(chainId: number): string | undefined {
