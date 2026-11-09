@@ -215,10 +215,9 @@ function historyForModel(
 }
 
 /*
- * The empty card's starting points live in ./suggestions, so that a plain tsx
- * test can run all seven through the real parser — see the comment there. The
- * list is short and the reasoning behind each item is long, which is the other
- * reason it is not inline.
+ * The empty card's starting points live in ./suggestions, so a plain tsx test
+ * can exercise the activity-aware row without importing this client page. The
+ * row is intentionally short and state-derived rather than a product catalogue.
  */
 
 export default function AgentPage() {
@@ -260,20 +259,10 @@ export default function AgentPage() {
   const { settings, update } = settingsStore;
   const { buildPlan } = useLocalPlanner();
   const { showTestnets } = useTestnetMode();
-  /* Recent transaction kinds, newest first, so the starting-point chips lead with
-     the natural next step after what the wallet last did and don't offer back a
-     thing it just finished. Read here rather than in suggestions.ts because the tx
-     log is a wallet-bound React store; the chip logic itself stays a pure function
-     the test can exercise. */
+  /* The chip row is derived from this wallet's activity, not a canned testnet
+     catalogue. The log is a wallet-bound React store; the pure ranking function
+     lives in suggestions.ts so it remains directly testable. */
   const { entries: txEntries } = useTxLog();
-  const recentKinds = useMemo(
-    () => txEntries.slice(0, 6).map((e) => e.kind),
-    [txEntries],
-  );
-  const suggestions = useMemo(
-    () => computeSuggestions({ showTestnets, recentKinds }),
-    [showTestnets, recentKinds],
-  );
   // Open loans, so "repay" resolves on its own when there's only one.
   const { loans } = useBorrowV2();
   // V3 positions, so "collect fees position 42" / "remove position 42" can
@@ -289,6 +278,20 @@ export default function AgentPage() {
    * often asked for.
    */
   const portfolio = usePortfolio();
+  const suggestions = useMemo(
+    () =>
+      computeSuggestions({
+        recentEntries: txEntries.slice(0, 6),
+        walletSymbols: portfolio.walletHoldings.map((holding) => holding.symbol),
+      }),
+    [portfolio.walletHoldings, txEntries],
+  );
+  const suggestionHeading =
+    txEntries.length > 0
+      ? "Based on your activity"
+      : portfolio.walletHoldings.length > 0
+        ? "Based on your balances"
+        : "Start with";
   /*
    * The latest portfolio, readable from inside an async turn.
    *
@@ -661,19 +664,17 @@ export default function AgentPage() {
           via: "local",
           /* A few of the list above as chips — the list is reference you read to
              find out what exists, and these are a way in, which a line of text
-             cannot be. Drawn from computeSuggestions so they follow the same rules
-             as the empty card: dropped on mainnet when they need a testnet-only
-             surface, ranked by what the wallet last did, and each one parses to a
-             known command. Clicking fills the box; nothing sends. */
+             cannot be. Drawn from computeSuggestions so the help card and empty
+             card both reflect this wallet's live balances and activity. Clicking
+             fills the box; nothing sends. */
           cards: localCards([
             {
               kind: "actions",
-              title: "Try one",
-              /* The same mode-gated, activity-ranked chips the empty card shows, so
-                 the "what can I do" answer never offers a faucet or a KLD stake to a
-                 mainnet wallet that has neither. Label is the request itself —
-                 clicking fills the box with exactly it, and a second wording to
-                 maintain is a second thing to drift from what actually parses. */
+              title: suggestionHeading,
+              /* The same wallet-derived chips the empty card shows. No faucet,
+                 stake, mint, lending, or arbitrary swap is suggested unless the
+                 wallet has a real signal for it. Label is the request itself —
+                 clicking fills the box with exactly it. */
               actions: suggestions.map((p) => ({ label: p, prompt: p })),
             },
           ]),
@@ -2668,7 +2669,7 @@ export default function AgentPage() {
                  where they matter. Seven tappable examples teach the same thing
                  by being pressed, and cost a third of the height. */
               <div className={s.empty}>
-                <div className={s.emptyTitle}>Try one</div>
+                <div className={s.emptyTitle}>{suggestionHeading}</div>
                 <div className={s.suggest}>
                   {suggestions.map((sug) => (
                     <button
