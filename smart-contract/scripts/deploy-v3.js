@@ -72,6 +72,9 @@ async function main() {
   if (chainId === 56 && (nativeLabel !== "BNB" || WETH_ADDRESS.toLowerCase() !== "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c")) {
     throw new Error("BSC requires NATIVE_LABEL=BNB and canonical WBNB; nothing was sent.");
   }
+  if (chainId === 99901 && (nativeLabel !== "HYPE" || WETH_ADDRESS.toLowerCase() !== "0xba876237b0f021a6c6d852d6c26e107997cc5e81")) {
+    throw new Error("Elysium mainnet requires NATIVE_LABEL=HYPE and canonical WHYPE; nothing was sent.");
+  }
   confirmMainnet({ chainId, script: "deploy-v3", explicit: ["WRAPPED_NATIVE", "NATIVE_LABEL"], plan: [["deployer", deployer.address], ["wrapped native", WETH_ADDRESS], ["native label", nativeLabel]] });
 
   // Pool init code hash. This is the keccak of the pool's creation bytecode,

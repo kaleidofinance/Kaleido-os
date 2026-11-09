@@ -943,6 +943,171 @@ export const TOKENS: Record<number, TokenEntry[]> = {
     },
   ],
 
+  /* -- Elysium MAINNET (99901) ------------------------------------------- *
+   * Verified on-chain against https://rpc.elysium.kinetiq.xyz on 2026-11-09
+   * (symbol(), name(), decimals() and runtime bytecode confirmed for every
+   * entry) and cross-checked against KyberSwap and LI.FI's Elysium lists.
+   * Native currency is HYPE (18 decimals); WHYPE carries the WETH9
+   * deposit()/withdraw() surface. Elysium mainnet is 99901; the synthetic
+   * testnet assets on 99801 below are separate mock deployments. */
+  [99901]: [
+    {
+      chainId: 99901,
+      address: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+      symbol: "WHYPE",
+      name: "Wrapped HYPE",
+      decimals: 18,
+      tags: ["wrapped-native"],
+    },
+    {
+      chainId: 99901,
+      address: "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65",
+      symbol: "USDC",
+      name: "USD Coin",
+      decimals: 6,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 99901,
+      address: "0x3BdE42a1dA8F1D95564f2c4a51a0cF73a725674C",
+      symbol: "USD\u20ae0",
+      name: "USD\u20ae0",
+      decimals: 6,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 99901,
+      address: "0x248888D396A546A69A188f3Deb476964e581E9d0",
+      symbol: "kHYPE",
+      name: "Staked HYPE",
+      decimals: 18,
+    },
+    {
+      chainId: 99901,
+      address: "0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0",
+      symbol: "KNTQ",
+      name: "Kinetiq Governance Token",
+      decimals: 18,
+    },
+    {
+      chainId: 99901,
+      address: "0x7A66A75fe41Bc26867C17fe1bc7D1C076EBd4eCd",
+      symbol: "UETH",
+      name: "Unit Ethereum",
+      decimals: 18,
+    },
+    {
+      chainId: 99901,
+      address: "0xE9C29585EAe4B9a55b02a9605AEa892B40d972E8",
+      symbol: "UBTC",
+      name: "Unit Bitcoin",
+      decimals: 8,
+      tags: ["wrapped-btc"],
+    },
+    {
+      chainId: 99901,
+      address: "0xd78eC40Ac7412069cA0f223413c7E5E1d18f4315",
+      symbol: "USOL",
+      name: "Unit Solana",
+      decimals: 9,
+    },
+    {
+      chainId: 99901,
+      address: "0x46b131573Ca7c2674b652BbeB7FC16D530396aEC",
+      symbol: "PURR",
+      name: "Purr",
+      decimals: 18,
+    },
+    {
+      chainId: 99901,
+      address: "0xa60a69b0508500a0181C299Ba4EAC4B81E19aC96",
+      symbol: "kmHYPE",
+      name: "Kinetiq Markets Staked HYPE",
+      decimals: 18,
+    },
+    {
+      chainId: 99901,
+      address: "0x119e8ab9F722295DC32F284Ef8D4cf95671C485E",
+      symbol: "vkHYPE",
+      name: "Kinetiq Earn Vault",
+      decimals: 18,
+    },
+    {
+      chainId: 99901,
+      address: "0xF2012a08B042c6a555880025A2e36bBAe7F8AECd",
+      symbol: "sKNTQ",
+      name: "Staked KNTQ",
+      decimals: 18,
+    },
+    {
+      chainId: 99901,
+      address: "0x8df4f39d592de2aAee15838B265C2392d19A4128",
+      symbol: "e/acc",
+      name: "elysium accelerationism",
+      decimals: 18,
+    },
+  ],
+
+  /* -- Hyperliquid / HyperEVM Mainnet (999) ------------------------------- */
+  /* Canonical parent-chain assets for the HyperEVM <-> Elysium (99901) bridge
+     corridor, verified on-chain at https://rpc.hyperliquid.xyz/evm (eth_getCode
+     non-empty + symbol()/decimals() read 2026-11-09). Native HYPE (18-dec) is
+     derived from chains.ts via nativeTokenOf(). */
+  [999]: [
+    {
+      chainId: 999,
+      address: "0x5555555555555555555555555555555555555555",
+      symbol: "WHYPE",
+      name: "Wrapped HYPE",
+      decimals: 18,
+      tags: ["wrapped-native"],
+    },
+    {
+      chainId: 999,
+      address: "0xb88339CB7199b77E23DB6E890353E22632Ba630f",
+      symbol: "USDC",
+      name: "USD Coin",
+      decimals: 6,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 999,
+      address: "0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb",
+      symbol: "USD\u20ae0",
+      name: "USD\u20ae0",
+      decimals: 6,
+      tags: ["stablecoin"],
+    },
+    {
+      chainId: 999,
+      address: "0xfD739d4e423301CE9385c1fb8850539D657C296D",
+      symbol: "kHYPE",
+      name: "Kinetiq Staked HYPE",
+      decimals: 18,
+    },
+    {
+      chainId: 999,
+      address: "0x000000000000780555bD0BCA3791f89f9542c2d6",
+      symbol: "KNTQ",
+      name: "Kinetiq Governance Token",
+      decimals: 18,
+    },
+    {
+      chainId: 999,
+      address: "0xBe6727B535545C67d5cAa73dEa54865B92CF7907",
+      symbol: "UETH",
+      name: "Unit Ethereum",
+      decimals: 18,
+    },
+    {
+      chainId: 999,
+      address: "0x9FDBdA0A5e284c32744D2f17Ee5c74B284993463",
+      symbol: "UBTC",
+      name: "Unit Bitcoin",
+      decimals: 8,
+    },
+  ],
+
   /* -- Elysium Testnet synthetic assets (99801) -------------------------- */
   [99801]: [
     {
@@ -1132,12 +1297,23 @@ export function getTokens(chainId: number | undefined): TokenEntry[] {
  * on all five, USDC on two. The pickers already offered those, so the resolver
  * and the UI disagreed about what the chain had.
  */
+/**
+ * Normalises a token symbol for case-insensitive user-input matching, folding
+ * the tugrik sign (\u20ae, `\u20ae`) used by `USD\u20ae0` on HyperEVM (999) and Elysium
+ * (99901) to ASCII `t` so `"USDT0"` and `"USD\u20ae0"` resolve identically.
+ */
+export function normaliseTokenSymbol(symbol: string): string {
+  return symbol.toLowerCase().replace(/\u20ae/g, "t");
+}
+
 export function findTokenBySymbol(
   chainId: number | undefined,
   symbol: string,
 ): TokenEntry | undefined {
-  const s = symbol.toLowerCase();
-  return registeredTokens(chainId).find((t) => t.symbol.toLowerCase() === s);
+  const s = normaliseTokenSymbol(symbol);
+  return registeredTokens(chainId).find(
+    (t) => normaliseTokenSymbol(t.symbol) === s,
+  );
 }
 
 /* ----------------------------------------------------------------- native -- */

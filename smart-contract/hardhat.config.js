@@ -236,10 +236,16 @@ module.exports = {
       accounts: accounts(),
       timeout: 120000,
     },
-    // --- Kinetiq Elysium (HyperEVM-settled Orbit L2 testnet) ---
+    // --- Kinetiq Elysium (HyperEVM-settled Orbit L2) ---
     elysiumTestnet: {
       url: rpc("ELYSIUM_TESTNET_RPC", "https://testnet-rpc.elysium.kinetiq.xyz"),
       chainId: 99801,
+      accounts: accounts(),
+      timeout: 120000,
+    },
+    elysium: {
+      url: rpc("ELYSIUM_RPC", "https://rpc.elysium.kinetiq.xyz"),
+      chainId: 99901,
       accounts: accounts(),
       timeout: 120000,
     },
@@ -297,6 +303,8 @@ module.exports = {
       robinhood: process.env.ROBINHOOD_EXPLORER_API_KEY || "blockscout",
       arcTestnet: process.env.ARCSCAN_API_KEY || "blockscout",
       arcMainnet: process.env.ARCSCAN_API_KEY || "blockscout",
+      elysiumTestnet: process.env.ELYSIUM_EXPLORER_API_KEY || "blockscout",
+      elysium: process.env.ELYSIUM_EXPLORER_API_KEY || "blockscout",
     },
     customChains: [
       {
@@ -353,6 +361,22 @@ module.exports = {
         urls: {
           apiURL: "https://arc-scan.org/api",
           browserURL: "https://arc-scan.org/",
+        },
+      },
+      {
+        network: "elysiumTestnet",
+        chainId: 99801,
+        urls: {
+          apiURL: "https://elysium.kinetiq.xyz/testnet-explorer/api",
+          browserURL: "https://elysium.kinetiq.xyz/testnet-explorer/",
+        },
+      },
+      {
+        network: "elysium",
+        chainId: 99901,
+        urls: {
+          apiURL: "https://elysium.kinetiq.xyz/explorer/api",
+          browserURL: "https://elysium.kinetiq.xyz/explorer/",
         },
       },
     ],

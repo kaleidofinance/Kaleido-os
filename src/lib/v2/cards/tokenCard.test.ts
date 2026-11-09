@@ -123,6 +123,28 @@ console.log("\n— a Peach launch gets the same address-trading card —");
   }
 }
 
+console.log("\n— an Elysium launch gets its launchpad badge and address-trading card —");
+{
+  const ELYSIUM_MONTRA: TokenFacts = {
+    ok: true,
+    source: "elysium",
+    launchpadLabel: "Montra launch",
+    address: "0x732dc25f6dcf250a819b1040b23b89aab33fb248",
+    symbol: "MNT",
+    name: "Montra Token",
+    decimals: 18,
+    priceUsd: 0.0004215,
+    marketCapUsd: 421_500,
+  };
+  const card = tokenCardFrom(ELYSIUM_MONTRA);
+  check("Elysium kind is token", card.kind === "token");
+  if (card.kind === "token") {
+    check("Elysium badge uses launchpadLabel", card.badge?.text === "Montra launch");
+    check("Elysium buy uses the contract address", card.buys[0].command.includes(ELYSIUM_MONTRA.address));
+    check("Elysium sell uses the contract address", card.sells[0].command.includes(ELYSIUM_MONTRA.address));
+  }
+}
+
 console.log("\n— the opening surcharge greys the buys —");
 {
   const card = tokenCardFrom({ ...ARGUS, snipeActive: true });

@@ -3,6 +3,7 @@ import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
 import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
 import { getPeachTradeExecution } from "@/lib/peach/route";
+import { ELYSIUM_CHAIN_ID, getElysiumTradeExecution } from "@/lib/elysium/route";
 import { chainTokenByAddress } from "@/constants/tokens";
 import type {
   SwapRouteRequest,
@@ -65,6 +66,23 @@ export async function resolveSwapRoute(
         spender: peach.spender,
         amountOut: peach.amountOut,
         venue: "peach",
+      };
+    }
+  }
+  const unknownElysiumAsset =
+    args.chainId === ELYSIUM_CHAIN_ID &&
+    (!chainTokenByAddress(args.chainId, args.tokenIn) ||
+      !chainTokenByAddress(args.chainId, args.tokenOut));
+  if (unknownElysiumAsset) {
+    const elysium = await getElysiumTradeExecution(request);
+    if (elysium) {
+      return {
+        to: elysium.to,
+        data: elysium.data,
+        value: elysium.value,
+        spender: elysium.spender,
+        amountOut: elysium.amountOut,
+        venue: "elysium",
       };
     }
   }

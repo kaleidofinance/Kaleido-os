@@ -21,6 +21,15 @@ assert.equal(elysium.chainName, "Elysium Testnet");
 assert.equal(capabilityFor(elysium, "swap")?.status, "available");
 assert.equal(capabilityFor(elysium, "lending")?.status, "available");
 
+const elysiumMainnet = getCapabilitySnapshot({
+  chainId: 99901,
+  networkMode: "mainnet",
+});
+assert.equal(elysiumMainnet.chainName, "Elysium");
+assert.equal(capabilityFor(elysiumMainnet, "wallet.read")?.status, "available");
+assert.equal(capabilityFor(elysiumMainnet, "swap")?.status, "available");
+assert.equal(capabilityFor(elysiumMainnet, "lending")?.status, "not_configured");
+
 const unknown = getCapabilitySnapshot({
   chainId: 999999,
   networkMode: "testnet",

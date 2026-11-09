@@ -16,6 +16,7 @@ import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution } from "@/lib/swap/flytrade";
 import { getLifiSwapExecution } from "@/lib/swap/lifi";
 import { getPeachTradeExecution } from "@/lib/peach/route";
+import { getElysiumTradeExecution } from "@/lib/elysium/route";
 import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
 import { LENDING_ABI } from "./lendingAbi";
@@ -671,6 +672,7 @@ export async function freshAggregatorCall(
     i.venue !== "kyberswap" &&
     i.venue !== "fly" &&
     i.venue !== "peach" &&
+    i.venue !== "elysium" &&
     i.venue !== "lifi"
   )
     return { to: i.to, data: i.data, value: i.value };
@@ -681,7 +683,9 @@ export async function freshAggregatorCall(
         ? getFlyTradeExecution
         : i.venue === "lifi"
           ? getLifiSwapExecution
-          : getPeachTradeExecution;
+          : i.venue === "elysium"
+            ? getElysiumTradeExecution
+            : getPeachTradeExecution;
   const fresh = await resolver({
     chainId: i.chainId,
     tokenIn: i.tokenIn,
