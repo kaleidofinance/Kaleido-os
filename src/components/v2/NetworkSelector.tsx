@@ -15,6 +15,7 @@ import {
 } from "@/constants/chains";
 import { defineChain } from "thirdweb/chains";
 import { isDeployed, isComingSoon, hasSwaps } from "@/constants/registry";
+import { hasKyberSwap } from "@/lib/swap/kyberswap";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import { client } from "@/config/client";
 import { WALLETS } from "@/config/wallets";
@@ -60,6 +61,8 @@ const NETWORK_DISPLAY_ORDER: Record<number, number> = {
   97: 30,
   8453: 40,
   84532: 40,
+  99901: 50,
+  99801: 50,
 };
 
 function ChainRow({
@@ -73,7 +76,8 @@ function ChainRow({
   comingSoon: boolean;
   onSelect: (m: ChainMeta) => void;
 }) {
-  const hasExternalVenue = fallbackVenues(meta.id).length > 0;
+  const hasExternalVenue =
+    fallbackVenues(meta.id).length > 0 || meta.id === 99901;
 
   return (
     <button
@@ -97,7 +101,7 @@ function ChainRow({
             ? "Coming soon"
             : isDeployed(meta.id) || hasExternalVenue
               ? "Trading live"
-              : hasSwaps(meta.id)
+              : hasSwaps(meta.id) || hasKyberSwap(meta.id)
                 ? "Swaps live"
                 : meta.tradable
                   ? "Balances only · deploy pending"

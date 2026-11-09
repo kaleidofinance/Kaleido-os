@@ -54,6 +54,7 @@ import {
   findRouteAcrossSources,
   intermediateTokens,
   poolSide,
+  truncDecimals,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import {
@@ -1448,19 +1449,21 @@ async function aggregatorQuote(
     return null;
   const inI = toIToken(inEntry);
   const outI = toIToken(outEntry);
+  const wrapped = getContracts(chainId).wrappedNative;
+  const sellIsWrapped = chainId === 5042 && !!wrapped && inI.address.toLowerCase() === wrapped.toLowerCase();
   const inTok = aggregatorToken(chainId, {
     ...inI,
-    isNative: isNativeSentinel(inI.address, "dex"),
+    isNative: sellIsWrapped || isNativeSentinel(inI.address, "dex"),
   });
   const outTok = aggregatorToken(chainId, {
     ...outI,
     isNative: isNativeSentinel(outI.address, "dex"),
   });
-  // A native input with no ERC20 mirror cannot be approved; the plan bails too.
+  // Match the plan builder until native-value aggregator calls pass the auditor.
   if (inTok.isNative) return null;
   let units: string;
   try {
-    units = ethers.parseUnits(amount, inTok.decimals).toString();
+    units = ethers.parseUnits(sellIsWrapped ? truncDecimals(amount, inTok.decimals) : amount, inTok.decimals).toString();
   } catch {
     return null;
   }

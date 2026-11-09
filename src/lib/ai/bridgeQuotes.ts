@@ -51,6 +51,8 @@ const UNIFORM_DECIMALS: Record<string, number> = {
   ETH: 18,
   WETH: 18,
   BNB: 18,
+  HYPE: 18,
+  WHYPE: 18,
 };
 
 export interface BridgeQuote {
@@ -89,7 +91,40 @@ const CHAIN_ALIASES: Record<string, number> = {
   "binance smart chain": 56,
   eth: 1,
   ether: 1,
+  /* Chain 999 is registered as "Hyperliquid"; its EVM is universally called
+     HyperEVM (Kalos, Kinetiq and the Elysium bridge UI all label it so). */
+  hyperevm: 999,
+  "hyper evm": 999,
+  "hyperliquid evm": 999,
 };
+
+/**
+ * Chains where LI.FI / Relay must be asked by CONTRACT, never by symbol.
+ *
+ * Measured 2026-11-09: on Elysium (99901) LI.FI lists USDC (0xb47c…0B65) as
+ * `USDCe`, so `toToken=USDC` 404s; and `HYPE` by symbol fails on both 999 and
+ * 99901. The zero address (native) and each ERC20's contract return 200 with a
+ * `relaydepository` route for all eight Kalos assets (HYPE, USDC, KNTQ, WHYPE,
+ * kHYPE, USD₮0, UBTC, UETH) in both directions.
+ */
+const ADDRESS_QUOTED_CHAINS: ReadonlySet<number> = new Set([999, 99901]);
+
+/** The zero address — LI.FI's and Relay's spelling of a chain's native asset. */
+const PROVIDER_NATIVE = "0x0000000000000000000000000000000000000000";
+
+/**
+ * The token reference to send a provider for `asset` on `chainId`: the
+ * registry contract (or the zero address for native) on an address-quoted
+ * chain, else the symbol unchanged. Falls back to the symbol when the registry
+ * doesn't carry it, so an unknown token still gets the provider's honest 404.
+ */
+export function providerTokenRef(chainId: number, asset: string): string {
+  if (!ADDRESS_QUOTED_CHAINS.has(chainId)) return asset;
+  const meta = CHAINS.find((c) => c.id === chainId);
+  const t = resolveUserToken(meta, asset, "dex");
+  if (!t) return asset;
+  return t.isNative ? PROVIDER_NATIVE : t.address;
+}
 
 /** Resolve a chain by name, shortName, id or common alias, against the registry. */
 export function resolveChain(input: string | number): ChainMeta | undefined {
@@ -161,8 +196,8 @@ async function relayQuote(
       user,
       originChainId: from.id,
       destinationChainId: to.id,
-      originCurrency: asset,
-      destinationCurrency: asset,
+      originCurrency: providerTokenRef(from.id, asset),
+      destinationCurrency: providerTokenRef(to.id, asset),
       amount: units,
       tradeType: "EXACT_INPUT",
     }),
@@ -207,8 +242,8 @@ async function lifiQuote(
   const qs = new URLSearchParams({
     fromChain: String(from.id),
     toChain: String(to.id),
-    fromToken: asset,
-    toToken: toAsset ?? asset,
+    fromToken: providerTokenRef(from.id, asset),
+    toToken: providerTokenRef(to.id, toAsset ?? asset),
     fromAmount: units,
     fromAddress: user,
   });
@@ -456,6 +491,9 @@ export async function getBridgeExecution(args: {
    *  can't resolve by symbol — one we don't list (an Abstract holding). Set by
    *  the resolver only for unlisted tokens; listed ones keep the symbol path. */
   fromTokenAddress?: string;
+  /** The destination token's CONTRACT, sent instead of the symbol when the
+   *  resolver already knows it (a cross-asset output it will cross-check). */
+  toTokenAddress?: string;
 }): Promise<{
   to: string;
   data: string;
@@ -487,8 +525,11 @@ export async function getBridgeExecution(args: {
     const params: Record<string, string> = {
       fromChain: String(args.fromChainId),
       toChain: String(args.toChainId),
-      fromToken: args.fromTokenAddress ?? args.asset,
-      toToken: args.toAsset ?? args.asset,
+      fromToken:
+        args.fromTokenAddress ?? providerTokenRef(args.fromChainId, args.asset),
+      toToken:
+        args.toTokenAddress ??
+        providerTokenRef(args.toChainId, args.toAsset ?? args.asset),
       fromAmount: args.units,
       fromAddress: args.address,
       ...(args.toAddress ? { toAddress: args.toAddress } : {}),

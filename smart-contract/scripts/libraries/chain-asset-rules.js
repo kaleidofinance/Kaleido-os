@@ -36,6 +36,8 @@ const NATIVE_SYMBOL = {
   8453: "ETH",
   46630: "ETH",
   84532: "ETH",
+  99801: "HYPE",
+  99901: "HYPE",
   5042002: "USDC",
   11155111: "ETH",
 };

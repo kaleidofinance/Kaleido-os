@@ -9,7 +9,7 @@ import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import Chevron from "@/components/v2/Chevron";
 import { chainTokens, toIToken } from "@/constants/tokens";
-import { getContracts, nativeTokenOf, hasSwaps } from "@/constants/registry";
+import { getContracts, nativeTokenOf, hasSwaps, isNativeSentinel } from "@/constants/registry";
 import { CHAINS, getChainMeta } from "@/constants/chains";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import type { IToken } from "@/constants/types/dex";
@@ -864,7 +864,7 @@ export default function SwapPage() {
         : null;
       return [
         ...(unwrap ? [unwrap] : []),
-        ...(kyberRoute.value === "0" ? [{
+        ...(!isNativeSentinel(kyberRoute.sellAddr, "dex") ? [{
           kind: "approve" as const,
           token: kyberRoute.sellAddr,
           spender: kyberRoute.spender,

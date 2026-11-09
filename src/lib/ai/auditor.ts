@@ -36,6 +36,12 @@ import {
   PEACH_FACTORY,
   PEACH_QUOTE_TOKEN,
 } from "@/lib/peach/route";
+import {
+  ELYSIUM_CHAIN_ID,
+  isElysiumQuoteToken,
+  isKnownElysiumLaunchRouter,
+} from "@/lib/elysium/addresses";
+import { readElysiumLaunch } from "@/lib/elysium/launch";
 import { providerForChain } from "@/config/provider";
 import { valueOf } from "@/lib/points/prices";
 import type { IntentKind } from "@/lib/v2/intents/types";
@@ -90,6 +96,32 @@ async function peachCurveMatches(
       curve.toLowerCase() === str(step.to).toLowerCase() &&
       curve.toLowerCase() === str(step.spender).toLowerCase()
     );
+  } catch {
+    return false;
+  }
+}
+
+async function elysiumLaunchMatches(
+  step: PlanStep,
+  chainId: number | undefined,
+): Promise<boolean> {
+  if (chainId !== ELYSIUM_CHAIN_ID || str(step.venue) !== "elysium")
+    return false;
+  const tokenIn = str(step.tokenIn);
+  const tokenOut = str(step.tokenOut);
+  const inIsQuote = isElysiumQuoteToken(tokenIn);
+  const outIsQuote = isElysiumQuoteToken(tokenOut);
+  if (inIsQuote === outIsQuote) return false;
+  const launchAddr = inIsQuote ? tokenOut : tokenIn;
+  if (
+    !ethers.isAddress(launchAddr) ||
+    !isKnownElysiumLaunchRouter(chainId, str(step.to)) ||
+    !isKnownElysiumLaunchRouter(chainId, str(step.spender))
+  )
+    return false;
+  try {
+    const launch = await readElysiumLaunch(launchAddr);
+    return launch !== null;
   } catch {
     return false;
   }
@@ -1086,6 +1118,17 @@ function spenderReasons(
       note: "this approves Uniswap's Permit2, the allowance hub an Argus v4 swap pulls from — not a Kaleido contract; the next step can only hand that allowance to the Argus UniversalRouter",
     };
 
+  if (
+    isKnownSwapRouter(chainId, spender) ||
+    isKnownFlyTradeRouter(chainId, spender) ||
+    isKnownLifiSwapRouter(chainId, spender) ||
+    isKnownElysiumLaunchRouter(chainId, spender)
+  )
+    return {
+      reasons: [],
+      note: "this approves a recognised external aggregator router (KyberSwap or Fly.trade) on a chain where Kaleido runs no pools of its own — not a Kaleido contract, and only an aggregator swap should be pairing it",
+    };
+
   if (ours.size === 0)
     return {
       reasons: [
@@ -1098,14 +1141,6 @@ function spenderReasons(
     return {
       reasons: [],
       note: "this approves an external DEX router this app routes through as a fallback for a token not in Kaleido's own pools — from the venues allow-list, not a Kaleido contract",
-    };
-  if (
-    isKnownSwapRouter(chainId, spender) ||
-    isKnownFlyTradeRouter(chainId, spender)
-  )
-    return {
-      reasons: [],
-      note: "this approves a recognised external aggregator router (KyberSwap or Fly.trade) on a chain where Kaleido runs no pools of its own — not a Kaleido contract, and only an aggregator swap should be pairing it",
     };
 
   return {
@@ -2011,17 +2046,19 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
   aggregatorSwap: (s, chainId) => {
     const reasons: string[] = [];
     const peach = str(s.venue) === "peach";
+    const elysium = str(s.venue) === "elysium";
     const tokenIn = str(s.tokenIn);
     const tokenOut = str(s.tokenOut);
     const rawInTok = tradeToken(chainId, tokenIn);
     const rawOutTok = tradeToken(chainId, tokenOut);
-    /* Peach launch tokens are intentionally not in the static registry. The
-       async factory check below proves the curve/token relationship; here we
-       only allow the one known quote-token side through the shape gate. */
+    /* Peach and Elysium launch tokens are intentionally not in the static registry.
+       The async launch check below proves the pool/token relationship; here we
+       only allow the known quote-token side through the shape gate. */
     const inTok =
-      peach &&
+      ((peach && tokenOut.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()) ||
+        (elysium && isElysiumQuoteToken(tokenOut))) &&
       !rawInTok.ok &&
-      tokenOut.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()
+      ethers.isAddress(tokenIn)
         ? {
             ok: true,
             verified: false,
@@ -2030,9 +2067,10 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
           }
         : rawInTok;
     const outTok =
-      peach &&
+      ((peach && tokenIn.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()) ||
+        (elysium && isElysiumQuoteToken(tokenIn))) &&
       !rawOutTok.ok &&
-      tokenIn.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()
+      ethers.isAddress(tokenOut)
         ? {
             ok: true,
             verified: false,
@@ -2068,7 +2106,8 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     else if (
       !isKnownSwapRouter(chainId, str(s.to)) &&
       !isKnownFlyTradeRouter(chainId, str(s.to)) &&
-      !isKnownLifiSwapRouter(chainId, str(s.to))
+      !isKnownLifiSwapRouter(chainId, str(s.to)) &&
+      !(elysium && isKnownElysiumLaunchRouter(chainId, str(s.to)))
     )
       reasons.push(
         "the swap router is not one recognised on the chain this plan targets",
@@ -2084,6 +2123,15 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         tokenOut.toLowerCase() !== PEACH_QUOTE_TOKEN.toLowerCase()
       )
         reasons.push("a Peach trade must have Arc USDC as one side");
+    }
+
+    if (elysium) {
+      if (chainId !== ELYSIUM_CHAIN_ID)
+        reasons.push("Elysium launchpad trades are Elysium-mainnet only");
+      if (!isElysiumQuoteToken(tokenIn) && !isElysiumQuoteToken(tokenOut))
+        reasons.push(
+          "an Elysium launchpad trade must have USDC, WHYPE, or KNTQ as one side",
+        );
     }
 
     if (num(s.value) !== 0)
@@ -3411,6 +3459,16 @@ export async function auditPlan(opts: {
     ) {
       shape.reasons.push(
         "the Peach launch token does not resolve to the curve being called",
+      );
+    }
+    if (
+      shape.reasons.length === 0 &&
+      kind === "aggregatorSwap" &&
+      str(step.venue) === "elysium" &&
+      !(await elysiumLaunchMatches(step, chainId))
+    ) {
+      shape.reasons.push(
+        "the Elysium launch token does not resolve to an active launchpad pool",
       );
     }
     if (shape.reasons.length > 0 || chainId === undefined) {

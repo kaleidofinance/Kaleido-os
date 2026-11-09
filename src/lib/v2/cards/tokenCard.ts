@@ -20,9 +20,11 @@ export interface TokenFacts {
   ok: boolean;
   /** Why there is no tradable token: shown on the notice card. */
   reason?: string;
-  /** argus/peach = launchpad tokens; listed = registry; unknown = readable
+  /** argus/peach/elysium = launchpad tokens; listed = registry; unknown = readable
    *  ERC-20 that we do not route yet. */
-  source?: "argus" | "peach" | "listed" | "unknown";
+  source?: "argus" | "peach" | "elysium" | "listed" | "unknown";
+  /** Optional launchpad badge text (e.g. "Montra launch", "BOXA launch" on Elysium). */
+  launchpadLabel?: string;
   /** Checksummed contract address. */
   address: string;
   symbol?: string;
@@ -143,9 +145,14 @@ export function tokenCardFrom(
     );
   }
 
-  /* An Argus launch is traded by address (the grammar resolves it on Arc); a
-     listed token by its symbol, so it takes the same route a typed command does. */
-  const ref = facts.source === "argus" || facts.source === "peach" ? facts.address : symbol;
+  /* An Argus/Peach/Elysium launch is traded by address (the grammar resolves it);
+     a listed token by its symbol, so it takes the same route a typed command does. */
+  const ref =
+    facts.source === "argus" ||
+    facts.source === "peach" ||
+    facts.source === "elysium"
+      ? facts.address
+      : symbol;
   const buys = (presets.buys ?? DEFAULT_BUY_PCT).map((pct) => ({
     label: `${pct}%`,
     command: `buy ${ref} with ${pct}% of my usdc`,
@@ -197,7 +204,9 @@ export function tokenCardFrom(
         ? { text: "Argus launch", tone: "neutral" }
         : facts.source === "peach"
           ? { text: "Peach launch", tone: "good" }
-        : { text: "Listed", tone: "good" },
+          : facts.source === "elysium"
+            ? { text: facts.launchpadLabel ?? "Elysium launch", tone: "good" }
+            : { text: "Listed", tone: "good" },
     rows,
     ...(facts.snipeActive
       ? {

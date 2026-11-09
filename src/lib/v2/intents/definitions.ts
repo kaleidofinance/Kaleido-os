@@ -8,7 +8,7 @@ import {
 } from "@/lib/dex/orders";
 import { formatInterestRate } from "@/constants/utils/FormatInterestRate";
 import agentPermissionAbi from "@/abi/AgentPermissionFacet.json";
-import { getContracts } from "@/constants/registry";
+import { getContracts, isNativeSentinel } from "@/constants/registry";
 import { CHAINS_BY_ID } from "@/constants/chains";
 import { initialSqrtPriceX96, sortMintParams } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
@@ -16,6 +16,7 @@ import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution } from "@/lib/swap/flytrade";
 import { getLifiSwapExecution } from "@/lib/swap/lifi";
 import { getPeachTradeExecution } from "@/lib/peach/route";
+import { getElysiumTradeExecution } from "@/lib/elysium/route";
 import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
 import { LENDING_ABI } from "./lendingAbi";
@@ -666,14 +667,15 @@ register("bridge", {
 export async function freshAggregatorCall(
   i: Extract<Intent, { kind: "aggregatorSwap" }>,
   address: string,
-): Promise<{ to: string; data: string }> {
+): Promise<{ to: string; data: string; value: string }> {
   if (
     i.venue !== "kyberswap" &&
     i.venue !== "fly" &&
     i.venue !== "peach" &&
+    i.venue !== "elysium" &&
     i.venue !== "lifi"
   )
-    return { to: i.to, data: i.data };
+    return { to: i.to, data: i.data, value: i.value };
   const resolver =
     i.venue === "kyberswap"
       ? getKyberSwapExecution
@@ -681,7 +683,9 @@ export async function freshAggregatorCall(
         ? getFlyTradeExecution
         : i.venue === "lifi"
           ? getLifiSwapExecution
-          : getPeachTradeExecution;
+          : i.venue === "elysium"
+            ? getElysiumTradeExecution
+            : getPeachTradeExecution;
   const fresh = await resolver({
     chainId: i.chainId,
     tokenIn: i.tokenIn,
@@ -703,7 +707,10 @@ export async function freshAggregatorCall(
       "The swap router changed unexpectedly between quote and signing; the swap was not sent.",
     );
   }
-  return { to: fresh.to, data: fresh.data };
+  if (BigInt(fresh.value) !== BigInt(i.value)) {
+    throw new Error("The swap's native value changed; request and review a new quote.");
+  }
+  return { to: fresh.to, data: fresh.data, value: fresh.value };
 }
 
 register("aggregatorSwap", {
@@ -714,7 +721,7 @@ register("aggregatorSwap", {
   resolve: async (ctx, i) => {
     /* Aggregator intents encode native input through the transaction value;
        unlike the canonical swap shape they do not carry a nativeIn flag. */
-    if (i.value === "0") {
+    if (!isNativeSentinel(i.tokenIn, "dex")) {
       await waitForAllowance(
         ctx.signer,
         ctx.address,
@@ -740,12 +747,12 @@ register("aggregatorSwap", {
     /* The router and the spender the approve authorised are the audited trust
        boundary, and a fixed constant per chain — freshAggregatorCall refuses a
        rebuild that points anywhere else. */
-    const { to, data } = await freshAggregatorCall(i, address);
+    const { to, data, value } = await freshAggregatorCall(i, address);
 
     const tx = await ctx.signer.sendTransaction({
       to,
       data,
-      value: BigInt(i.value),
+      value: BigInt(value),
     });
     await tx.wait();
     return { hash: tx.hash };

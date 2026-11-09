@@ -6,6 +6,12 @@ import { chainTokens } from "@/constants/tokens";
 import { ARC_USDC, ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
 import { readArgusLaunch, readArgusPoolState } from "@/lib/argus/launch";
 import { isSnipeWindow } from "@/lib/argus/poolMath";
+import {
+  ELYSIUM_CHAIN_ID,
+  ELYSIUM_USDC,
+  isElysiumQuoteToken,
+} from "@/lib/elysium/addresses";
+import { readElysiumLaunch } from "@/lib/elysium/launch";
 import type { TokenFacts } from "@/lib/v2/cards/tokenCard";
 
 export const runtime = "nodejs";
@@ -45,15 +51,18 @@ export async function GET(req: Request) {
   }
   const address = getAddress(rawAddr);
 
-  if (chainId !== ARGUS_CHAIN_ID) {
+  if (chainId !== ARGUS_CHAIN_ID && chainId !== ELYSIUM_CHAIN_ID) {
     return json({
       ok: false,
       address,
-      reason: "Token cards from a pasted contract are on Arc for now — switch to Arc and paste it again.",
+      reason: "Token cards from a pasted contract are on Arc and Elysium for now — switch to Arc or Elysium and paste it again.",
     });
   }
 
-  if (address.toLowerCase() === ARC_USDC.toLowerCase()) {
+  if (chainId === ARGUS_CHAIN_ID && address.toLowerCase() === ARC_USDC.toLowerCase()) {
+    return json({ ok: true, isQuote: true, address, symbol: "USDC", name: "USD Coin", decimals: 6 });
+  }
+  if (chainId === ELYSIUM_CHAIN_ID && address.toLowerCase() === ELYSIUM_USDC.toLowerCase()) {
     return json({ ok: true, isQuote: true, address, symbol: "USDC", name: "USD Coin", decimals: 6 });
   }
 
@@ -71,7 +80,45 @@ export async function GET(req: Request) {
     erc.totalSupply().catch(() => null),
   ]);
 
+  if (chainId === ELYSIUM_CHAIN_ID) {
+    try {
+      const [symbol, name, dec, supply] = await ercReads;
+      const decimals = dec ?? 18;
+      if (!isElysiumQuoteToken(address)) {
+        const launch = await readElysiumLaunch(address, decimals);
+        if (launch) {
+          const priceUsd =
+            launch.priceUsd != null && launch.priceUsd > 0
+              ? launch.priceUsd
+              : null;
+          const marketCapUsd =
+            priceUsd != null && supply != null
+              ? priceUsd * (Number(supply) / 10 ** decimals)
+              : null;
+          return json({
+            ok: true,
+            source: "elysium",
+            launchpadLabel: launch.launchpadLabel,
+            address,
+            symbol,
+            name,
+            decimals,
+            priceUsd,
+            marketCapUsd,
+            ...(launch.buyTaxBps != null ? { buyTaxBps: launch.buyTaxBps } : {}),
+            ...(launch.sellTaxBps != null
+              ? { sellTaxBps: launch.sellTaxBps }
+              : {}),
+          });
+        }
+      }
+    } catch {
+      /* an Elysium launch lookup hiccup is not fatal — fall through to the registry */
+    }
+  }
+
   // 1. An Argus launch — the verified buy + sell path, so it gets the full card.
+  if (chainId === ARGUS_CHAIN_ID) {
   try {
     const launch = await readArgusLaunch(address);
     if (launch) {
@@ -143,6 +190,7 @@ export async function GET(req: Request) {
     }
   } catch {
     /* a Peach lookup hiccup is not fatal — fall through to the registry */
+  }
   }
 
   // 3. A token this chain's registry already lists.

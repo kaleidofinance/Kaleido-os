@@ -197,7 +197,7 @@ export function providerForChain(
   const provider = new FailoverJsonRpcProvider(
     urls,
     { chainId, name: meta.name },
-    { staticNetwork: true },
+    { staticNetwork: true, batchMaxCount: 4 },
   );
   chainProviderCache.set(chainId, provider);
   return provider;
