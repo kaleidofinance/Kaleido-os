@@ -76,7 +76,8 @@ function ChainRow({
   comingSoon: boolean;
   onSelect: (m: ChainMeta) => void;
 }) {
-  const hasExternalVenue = fallbackVenues(meta.id).length > 0;
+  const hasExternalVenue =
+    fallbackVenues(meta.id).length > 0 || meta.id === 99901;
 
   return (
     <button
