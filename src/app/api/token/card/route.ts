@@ -51,12 +51,12 @@ export async function GET(req: Request) {
   }
   const address = getAddress(rawAddr);
 
-  if (chainId !== ARGUS_CHAIN_ID && chainId !== ELYSIUM_CHAIN_ID) {
-    return json({
-      ok: false,
-      address,
-      reason: "Token cards from a pasted contract are on Arc and Elysium for now — switch to Arc or Elysium and paste it again.",
-    });
+  const provider = providerForChain(chainId);
+  if (!provider) {
+    return json(
+      { ok: false, address, reason: "No RPC available for this chain right now." },
+      503,
+    );
   }
 
   if (chainId === ARGUS_CHAIN_ID && address.toLowerCase() === ARC_USDC.toLowerCase()) {
@@ -66,8 +66,6 @@ export async function GET(req: Request) {
     return json({ ok: true, isQuote: true, address, symbol: "USDC", name: "USD Coin", decimals: 6 });
   }
 
-  const provider = providerForChain(chainId);
-  if (!provider) return json({ ok: false, address, reason: "No RPC for this chain right now." }, 503);
   const erc = new Contract(address, ERC20, provider);
   /* Start the ERC-20 reads now, alongside the Portal lookup rather than after
      it: Arc's public RPCs are slow (~1–2s a round trip), and a paste should feel
@@ -217,7 +215,7 @@ export async function GET(req: Request) {
     return json({
       ok: false,
       address,
-      reason: "That address isn't a token contract on Arc (it may be a wallet or a trading pair).",
+      reason: "That address isn't a token contract on this network (it may be a wallet or a trading pair).",
     });
   }
   return json({ ok: true, source: "unknown", address, symbol, name, decimals });

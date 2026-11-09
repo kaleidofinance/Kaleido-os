@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useActiveWallet, useSwitchActiveWalletChain } from "thirdweb/react";
 import { defineChain } from "thirdweb/chains";
+import { isAddress } from "ethers";
 import { toast } from "sonner";
 import { chainTokens, tokensAcrossChains } from "@/constants/tokens";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
@@ -97,6 +98,28 @@ function TokenRow({
      chain is the (chainId, address) confusion this registry exists to stop. */
   const meta = getChainMeta(token.chainId);
 
+  const launchpadTag = (token.tags ?? []).find(
+    (tag) =>
+      tag !== "custom" &&
+      tag !== "argus" &&
+      tag !== "peach" &&
+      tag !== "elysium" &&
+      tag !== "meme" &&
+      tag !== "stablecoin" &&
+      tag !== "stock" &&
+      tag !== "wrapped-native" &&
+      tag !== "wrapped-btc" &&
+      tag !== "governance",
+  );
+  const isCustom = token.tags?.includes("custom");
+  const launchpadLabel = launchpadTag
+    ? `${launchpadTag.charAt(0).toUpperCase() + launchpadTag.slice(1)} launch`
+    : token.tags?.includes("argus")
+    ? "Argus launch"
+    : token.tags?.includes("peach")
+    ? "Peach launch"
+    : null;
+
   return (
     <button
       className={s.row}
@@ -107,18 +130,25 @@ function TokenRow({
           is already a filled circle, so keeping the plate behind it draws a ring
           of a second colour around every branded row. */}
       <span
-        className={`${s.tki} ${hasTokenIcon(token.symbol) ? s.tkiArt : ""}`}
+        className={`${s.tki} ${hasTokenIcon(token.symbol) || token.logoURI ? s.tkiArt : ""}`}
       >
-        {/* `chainLabel={false}` — the row's second line already reads
-            "USDC · Ethereum", so an aria-label on the badge would have a screen
-            reader announce the chain twice per row. */}
-        <TokenIcon
-          symbol={token.symbol}
-          size={34}
-          fallback={token.symbol.slice(0, 3)}
-          chainId={token.chainId}
-          chainLabel={false}
-        />
+        {token.logoURI ? (
+          <img
+            src={token.logoURI}
+            alt=""
+            width={34}
+            height={34}
+            style={{ borderRadius: "50%", display: "block", objectFit: "contain" }}
+          />
+        ) : (
+          <TokenIcon
+            symbol={token.symbol}
+            size={34}
+            fallback={token.symbol.slice(0, 3)}
+            chainId={token.chainId}
+            chainLabel={false}
+          />
+        )}
       </span>
       <div className={s.rb}>
         <div className={s.rn}>
@@ -131,6 +161,8 @@ function TokenRow({
           {token.symbol} · {meta?.shortName ?? "Unknown chain"}
         </div>
       </div>
+      {launchpadLabel && <span className={s.tag}>{launchpadLabel}</span>}
+      {!launchpadLabel && isCustom && <span className={s.tag}>Custom token</span>}
       {/* Said before the click, not after. The wallet's own confirmation is the
           consent gate, but a prompt you did not expect reads as the site
           misbehaving — and the reason this row switches networks is not
@@ -486,6 +518,111 @@ export default function TokenSelector({
     );
   }, [pool, query, category]);
 
+  const [resolvedToken, setResolvedToken] = useState<IToken | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
+  const trimmedQuery = query.trim();
+  const isPastedAddress = isAddress(trimmedQuery);
+  const inPool = useMemo(() => {
+    if (!isPastedAddress) return null;
+    return pool.find((t) => t.address.toLowerCase() === trimmedQuery.toLowerCase()) ?? null;
+  }, [pool, isPastedAddress, trimmedQuery]);
+
+  useEffect(() => {
+    if (!isPastedAddress || inPool) {
+      setResolvedToken(null);
+      setResolving(false);
+      setResolveError(null);
+      return;
+    }
+
+    const abort = new AbortController();
+    setResolving(true);
+    setResolveError(null);
+    setResolvedToken(null);
+
+    const primaryChainId =
+      selectedNetwork !== "all" ? selectedNetwork : (chainId ?? 5042);
+
+    const tryFetchOnChain = async (cId: number) => {
+      try {
+        const res = await fetch(`/api/token/card?chainId=${cId}&address=${trimmedQuery}`, {
+          signal: abort.signal,
+          cache: "no-store",
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data?.ok && (data.symbol || data.name) ? { data, chainId: cId } : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const fetchToken = async () => {
+      try {
+        let result = await tryFetchOnChain(primaryChainId);
+
+        // If on "all" networks and primary didn't match, check other major launchpad chains
+        if (!result && selectedNetwork === "all") {
+          const fallbacks = [99901, 5042].filter((c) => c !== primaryChainId);
+          for (const fallbackChain of fallbacks) {
+            if (abort.signal.aborted) return;
+            result = await tryFetchOnChain(fallbackChain);
+            if (result) break;
+          }
+        }
+
+        if (abort.signal.aborted) return;
+
+        if (result) {
+          const { data, chainId: resolvedChainId } = result;
+          const customToken: IToken = {
+            chainId: resolvedChainId,
+            address: data.address || trimmedQuery,
+            name: data.name || data.symbol || "Custom Token",
+            symbol: data.symbol || "TOKEN",
+            decimals: typeof data.decimals === "number" ? data.decimals : 18,
+            logoURI: data.launchpadId
+              ? `/launchpads/${data.launchpadId}.svg`
+              : undefined,
+            tags: [
+              ...(data.source && data.source !== "unknown" && data.source !== "listed"
+                ? [data.source]
+                : []),
+              ...(data.launchpadId ? [data.launchpadId] : []),
+              "custom",
+            ],
+            verified:
+              data.source === "argus" ||
+              data.source === "peach" ||
+              data.source === "elysium" ||
+              data.source === "listed",
+          };
+          setResolvedToken(customToken);
+          setResolveError(null);
+        } else {
+          setResolveError(
+            `Address is not an ERC-20 contract on ${getChainMeta(primaryChainId)?.shortName ?? "this network"}.`,
+          );
+        }
+      } catch {
+        if (!abort.signal.aborted) {
+          setResolveError("Couldn't reach token lookup. Try again in a moment.");
+        }
+      } finally {
+        if (!abort.signal.aborted) {
+          setResolving(false);
+        }
+      }
+    };
+
+    fetchToken();
+    return () => {
+      abort.abort();
+    };
+  }, [trimmedQuery, isPastedAddress, inPool, selectedNetwork, chainId]);
+
   /*
    * Switch first, hand back second.
    *
@@ -596,7 +733,7 @@ export default function TokenSelector({
             )}
 
             <div className={s.list}>
-              {available.length === 0 ? (
+              {available.length === 0 && !resolving && !resolvedToken ? (
                 /* Not a failed search — the chain genuinely has no tokens in the
                  registry, which is every chain while `TOKENS` is chain-keyed and
                  empty. Saying "no match" here would blame the query for a gap in
@@ -607,8 +744,49 @@ export default function TokenSelector({
                     ? "No tokens are registered on any network."
                     : `No tokens are available on ${getChainMeta(selectedNetwork)?.shortName ?? chainLabel}.`}
                 </div>
+              ) : resolving ? (
+                <div className={s.empty}>
+                  <span
+                    className={s.skPill}
+                    style={{
+                      display: "inline-block",
+                      width: 14,
+                      height: 14,
+                      verticalAlign: "middle",
+                      marginRight: 8,
+                      borderRadius: "50%",
+                    }}
+                  />
+                  Resolving contract address…
+                </div>
+              ) : resolvedToken ? (
+                <div>
+                  <div className={s.customHeader}>Custom token</div>
+                  <TokenRow
+                    key={`${resolvedToken.chainId}:${resolvedToken.address}`}
+                    token={resolvedToken}
+                    onSelect={handleSelect}
+                    switches={
+                      Boolean(wallet) && switchOnSelect && resolvedToken.chainId !== chainId
+                    }
+                    disabled={switching}
+                  />
+                </div>
               ) : results.length === 0 ? (
-                <div className={s.empty}>No token matches “{query}”.</div>
+                <div className={s.empty}>
+                  {resolveError ? (
+                    <>
+                      <div style={{ color: "var(--k-red, #ff5555)", marginBottom: 4 }}>
+                        Token lookup failed
+                      </div>
+                      <div style={{ fontSize: "12px", opacity: 0.8 }}>
+                        {resolveError}
+                      </div>
+                    </>
+                  ) : (
+                    `No token matches “${query}”.`
+                  )}
+                </div>
               ) : (
                 results.map((t) => (
                   <TokenRow
