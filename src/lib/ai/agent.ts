@@ -264,6 +264,7 @@ export async function runAgent(
               input.chainId,
               input.mainnetOnly,
               input.networkMode,
+              input.address,
             ),
           );
         }),

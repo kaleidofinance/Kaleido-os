@@ -61,6 +61,9 @@ import {
   hasKyberSwap,
   quoteKyberSwap,
 } from "@/lib/swap/kyberswap";
+import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
+import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
+import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
 import { serverPathQuoter, serverQuote, serverPositions } from "./planDeps";
 import { readPoolState } from "@/lib/dex/pool";
 import { getBridgeQuote } from "./bridgeQuotes";
@@ -1439,8 +1442,10 @@ async function aggregatorQuote(
   inEntry: Parameters<typeof toIToken>[0],
   outEntry: Parameters<typeof toIToken>[0],
   amount: string,
+  address?: string,
 ): Promise<Json | null> {
-  if (!hasKyberSwap(chainId)) return null;
+  if (!hasKyberSwap(chainId) && !hasFlyTrade(chainId) && !hasLifiSwap(chainId))
+    return null;
   const inI = toIToken(inEntry);
   const outI = toIToken(outEntry);
   const inTok = aggregatorToken(chainId, {
@@ -1459,24 +1464,47 @@ async function aggregatorQuote(
   } catch {
     return null;
   }
-  const q = await quoteKyberSwap({
+  const request = {
     chainId,
     tokenIn: inTok.address,
     tokenOut: outTok.address,
     amountUnits: units,
-  });
-  if (!q) return null;
-  const out = Number(ethers.formatUnits(q.amountOut, outTok.decimals));
+    address: address ?? "",
+    slippageBps: 100,
+  };
+  const candidates: { venue: string; amountOut: number }[] = [];
+  if (address && ethers.isAddress(address)) {
+    const [kyber, fly, lifi] = await Promise.all([
+      hasKyberSwap(chainId) ? getKyberSwapExecution(request) : Promise.resolve(null),
+      hasFlyTrade(chainId) ? getFlyTradeExecution(request) : Promise.resolve(null),
+      hasLifiSwap(chainId) ? getLifiSwapExecution(request) : Promise.resolve(null),
+    ]);
+    if (kyber) candidates.push({ venue: "KyberSwap", amountOut: Number(ethers.formatUnits(kyber.amountOut, outTok.decimals)) });
+    if (fly) candidates.push({ venue: "Fly.trade", amountOut: Number(ethers.formatUnits(fly.amountOut, outTok.decimals)) });
+    if (lifi) candidates.push({ venue: "LI.FI", amountOut: Number(ethers.formatUnits(lifi.amountOut, outTok.decimals)) });
+  } else if (hasKyberSwap(chainId)) {
+    const q = await quoteKyberSwap({
+      chainId,
+      tokenIn: inTok.address,
+      tokenOut: outTok.address,
+      amountUnits: units,
+    });
+    if (q) candidates.push({ venue: "KyberSwap", amountOut: Number(ethers.formatUnits(q.amountOut, outTok.decimals)) });
+  }
+  const best = candidates.sort((a, b) => b.amountOut - a.amountOut)[0];
+  if (!best) return null;
+  const out = best.amountOut;
   const rate = out / Number(amount);
   return {
     routable: true,
     via: "aggregator",
+    venue: best.venue,
     tokenIn: inTok.symbol,
     tokenOut: outTok.symbol,
     amountIn: amount,
     amountOut: out,
     rate: `1 ${inTok.symbol} ≈ ${Number(rate.toPrecision(6))} ${outTok.symbol}`,
-    note: "Routed through the KyberSwap aggregator across this chain's DEXes rather than a Kaleido pool — the swap action builds exactly this route. Indicative, not a floor: the minimum is set from the user's slippage at build time.",
+    note: `Routed through the best available external aggregator (${best.venue}) rather than a Kaleido pool. Indicative, not a floor: the minimum is set from the user's slippage at build time.`,
   };
 }
 
@@ -1509,7 +1537,7 @@ async function aggregatorQuote(
  * time, and the note says so, because a model that relays this number as
  * guaranteed has promised something no pool can honour.
  */
-async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
+async function getSwapRoute(args: Json, chainId: number, address?: string): Promise<Json> {
   const inSym = String(args.tokenIn ?? "").trim();
   const outSym = String(args.tokenOut ?? "").trim();
   /* Default rather than required. "Is there a route from ETH to KLD?" is a real
@@ -1526,7 +1554,9 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
       error: "Two token symbols are required, e.g. tokenIn ETH, tokenOut KLD",
     };
 
-  if (!getContracts(chainId).v3Router)
+  const hasExternalAggregator =
+    hasKyberSwap(chainId) || hasFlyTrade(chainId) || hasLifiSwap(chainId);
+  if (!getContracts(chainId).v3Router && fallbackVenues(chainId).length === 0 && !hasExternalAggregator)
     return {
       routable: false,
       note: "Kaleido's DEX isn't deployed on this chain, so no swap can be routed here — not a liquidity problem.",
@@ -1567,33 +1597,32 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
        buildIntents uses, so the route this tool reports is the route the plan
        will build. Capped at two intermediates, unlike the Swap card's unbounded
        search: this runs inside a chat turn already several round trips deep. */
-    const path = await findRouteAcrossSources(
-      chainId,
-      sell.token,
-      buy.token,
-      amount,
-      [
-        {
-          quote: serverPathQuoter(chainId),
-          router: getContracts(chainId).v3Router,
-          venue: null,
-        },
-        ...fallbackVenues(chainId).map((venue) => ({
-          quote: serverPathQuoter(chainId, venue.quoter),
-          router: venue.router,
-          venue,
-        })),
-      ],
-      { maxIntermediates: 2 },
-    );
+    const hasNativeSource =
+      Boolean(getContracts(chainId).v3Router) || fallbackVenues(chainId).length > 0;
+    const path = hasNativeSource
+      ? await findRouteAcrossSources(
+          chainId,
+          sell.token,
+          buy.token,
+          amount,
+          [
+            {
+              quote: serverPathQuoter(chainId),
+              router: getContracts(chainId).v3Router,
+              venue: null,
+            },
+            ...fallbackVenues(chainId).map((venue) => ({
+              quote: serverPathQuoter(chainId, venue.quoter),
+              router: venue.router,
+              venue,
+            })),
+          ],
+          { maxIntermediates: 2 },
+        )
+      : null;
 
+    const aggregator = await aggregatorQuote(chainId, inEntry, outEntry, amount, address);
     if (!path) {
-      const aggregator = await aggregatorQuote(
-        chainId,
-        inEntry,
-        outEntry,
-        amount,
-      );
       if (aggregator) return aggregator;
       return {
         routable: false,
@@ -1605,7 +1634,10 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
       };
     }
 
-    const rate = path.amountOut / Number(amount);
+    const nativeOut = Number(path.amountOut);
+    const aggregatorOut = aggregator ? Number(aggregator.amountOut ?? -1) : -1;
+    if (aggregator && aggregatorOut > nativeOut) return aggregator;
+    const rate = nativeOut / Number(amount);
     return {
       routable: true,
       tokenIn: sell.token.symbol,
@@ -2182,7 +2214,7 @@ async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
 
 const HANDLERS: Record<
   string,
-  (args: Json, chainId: number, networkMode?: NetworkMode) => Promise<Json>
+  (args: Json, chainId: number, networkMode?: NetworkMode, address?: string) => Promise<Json>
 > = {
   getQuote,
   getPortfolio,
@@ -2199,7 +2231,8 @@ const HANDLERS: Record<
   getPrice,
   getChains,
   getBridgeRoute,
-  getSwapRoute,
+  getSwapRoute: (args, chainId, _networkMode, address) =>
+    getSwapRoute(args, chainId, address),
   getAgentMandate,
   getPoints,
 };
@@ -2227,11 +2260,12 @@ export async function runReadTool(
    * old API; networkMode is the authoritative scope now. */
   _mainnetOnly?: boolean,
   networkMode: NetworkMode = "mainnet",
+  address?: string,
 ): Promise<Json> {
   const handler = HANDLERS[name];
   if (!handler) return { error: `Unknown read tool: ${name}` };
   try {
-    return await handler(args, chainId ?? READ_ONLY_CHAIN_ID, networkMode);
+    return await handler(args, chainId ?? READ_ONLY_CHAIN_ID, networkMode, address);
   } catch (err) {
     return { error: `${name} threw: ${(err as Error).message}` };
   }

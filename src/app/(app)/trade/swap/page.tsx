@@ -39,7 +39,8 @@ import {
   getKyberSwapExecution,
   nativeSwapErc20,
 } from "@/lib/swap/kyberswap";
-import { getFlyTradeExecution } from "@/lib/swap/flytrade";
+import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
+import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
 import s from "../trade.module.css";
 
 /*
@@ -434,6 +435,7 @@ export default function SwapPage() {
     sellDec: number;
     buyAddr: string;
     buyDec: number;
+    venue: "kyberswap" | "fly" | "lifi";
   } | null>(null);
 
   /**
@@ -570,10 +572,16 @@ export default function SwapPage() {
            0x3600) instead. It needs the CONNECTED `address` because KyberSwap's
            /route/build bakes sender==recipient into the calldata; a disconnected
            visitor keeps the pool quote and a "Connect wallet" CTA. */
-        let kyberExec: Awaited<ReturnType<typeof getKyberSwapExecution>> = null;
+        let aggregatorExec: Awaited<ReturnType<typeof getKyberSwapExecution>> = null;
+        let aggregatorVenue: "kyberswap" | "fly" | "lifi" | null = null;
         let kyberSell: ReturnType<typeof aggregatorToken> | null = null;
         let kyberBuy: ReturnType<typeof aggregatorToken> | null = null;
-        if (hasKyberSwap(swapChainId) && address && tokenIn && tokenOut) {
+        if (
+          address &&
+          tokenIn &&
+          tokenOut &&
+          (hasKyberSwap(swapChainId) || hasFlyTrade(swapChainId) || hasLifiSwap(swapChainId))
+        ) {
           kyberSell = aggregatorToken(
             swapChainId,
             sellIsWrapped && swapChainId === 5042 ? { ...tokenIn, isNative: true } : tokenIn,
@@ -590,21 +598,38 @@ export default function SwapPage() {
               kyberSell.decimals,
             )
             .toString();
-          kyberExec = await getKyberSwapExecution({
+          const request = {
             chainId: swapChainId,
             tokenIn: kyberSell.address,
             tokenOut: kyberBuy.address,
             amountUnits: units,
             address,
             slippageBps,
-          }) ?? await getFlyTradeExecution({
-            chainId: swapChainId,
-            tokenIn: kyberSell.address,
-            tokenOut: kyberBuy.address,
-            amountUnits: units,
-            address,
-            slippageBps,
-          });
+          };
+          const [kyber, fly, lifi] = await Promise.all([
+            hasKyberSwap(swapChainId) ? getKyberSwapExecution(request) : Promise.resolve(null),
+            hasFlyTrade(swapChainId) ? getFlyTradeExecution(request) : Promise.resolve(null),
+            hasLifiSwap(swapChainId) ? getLifiSwapExecution(request) : Promise.resolve(null),
+          ]);
+          const candidates = [
+            { exec: kyber, venue: "kyberswap" as const },
+            { exec: fly, venue: "fly" as const },
+            { exec: lifi, venue: "lifi" as const },
+          ].filter((candidate): candidate is {
+            exec: NonNullable<typeof candidate.exec>;
+            venue: "kyberswap" | "fly" | "lifi";
+          } => Boolean(candidate.exec));
+          const best = candidates.reduce<typeof candidates[number] | null>(
+            (current, candidate) => {
+              if (!current) return candidate;
+              return BigInt(candidate.exec.amountOut) > BigInt(current.exec.amountOut)
+                ? candidate
+                : current;
+            },
+            null,
+          );
+          aggregatorExec = best?.exec ?? null;
+          aggregatorVenue = best?.venue ?? null;
         }
         if (cancelled) return;
 
@@ -613,30 +638,31 @@ export default function SwapPage() {
            6-dec for the aggregator — both $1), so the human amounts compare
            directly. -1 means "no quote from this source". Ties go to our pool. */
         const ourOut = found ? Number(found.amountOut) : -1;
-        const kyberOut =
-          kyberExec && kyberBuy
-            ? Number(ethers.formatUnits(kyberExec.amountOut, kyberBuy.decimals))
+        const aggregatorOut =
+          aggregatorExec && kyberBuy
+            ? Number(ethers.formatUnits(aggregatorExec.amountOut, kyberBuy.decimals))
             : -1;
 
-        if (found && ourOut >= kyberOut) {
+        if (found && ourOut >= aggregatorOut) {
           setRoute(found);
           setKyberRoute(null);
           setAmountOut(String(found.amountOut));
           setNoRoute(false);
-        } else if (kyberExec && kyberSell && kyberBuy) {
+        } else if (aggregatorExec && aggregatorVenue && kyberSell && kyberBuy) {
           setRoute(null);
           setKyberRoute({
-            to: kyberExec.to,
-            data: kyberExec.data,
-            spender: kyberExec.spender,
-            value: kyberExec.value,
+            to: aggregatorExec.to,
+            data: aggregatorExec.data,
+            spender: aggregatorExec.spender,
+            value: aggregatorExec.value,
             sellAddr: kyberSell.address,
             sellDec: kyberSell.decimals,
             buyAddr: kyberBuy.address,
             buyDec: kyberBuy.decimals,
+            venue: aggregatorVenue,
           });
           setAmountOut(
-            ethers.formatUnits(kyberExec.amountOut, kyberBuy.decimals),
+            ethers.formatUnits(aggregatorExec.amountOut, kyberBuy.decimals),
           );
           setNoRoute(false);
         } else {
@@ -861,7 +887,7 @@ export default function SwapPage() {
           decimalsOut: kyberRoute.buyDec,
           symbolOut: tokenOut.symbol,
           chainId: swapChainId,
-          venue: "kyberswap",
+          venue: kyberRoute.venue,
           spender: kyberRoute.spender,
           slippageBps,
         },

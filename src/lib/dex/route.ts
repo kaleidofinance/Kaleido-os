@@ -517,16 +517,14 @@ export interface RouteSource {
 }
 
 /**
- * The first source that can fill this swap, in the order given — OUR pools first,
- * external venues only after. This is the fallback the mainnet plan calls for: a
- * token we have not seeded is still tradable through a venue that has, and "no
- * route" means no source could fill it rather than "our pools couldn't".
+ * Quote every configured source and return the best fill for this exact size.
  *
- * First-hit, not best-fill: our own liquidity is preferred whenever it can fill
- * the order at all, so a venue is reached only when `findBestRoute` on the source
- * ahead of it returned null. Sources are tried in sequence rather than in
- * parallel for the same reason — the second quote is not paid unless the first
- * came up empty.
+ * Native Kaleido pools and external venues are deliberately one candidate set:
+ * the user cares about output, not which integration happened to answer first.
+ * Source order remains the deterministic tie-break, so native liquidity wins an
+ * exact tie and the result is stable across the Swap page, Luca, and the plan
+ * builder. A source that cannot quote is ignored; `null` still means no source
+ * could fill the trade.
  */
 export async function findRouteAcrossSources(
   chainId: number | undefined,
@@ -536,18 +534,28 @@ export async function findRouteAcrossSources(
   sources: RouteSource[],
   opts: { maxIntermediates?: number; impactCeiling?: number } = {},
 ): Promise<RoutedPath | null> {
-  for (const src of sources) {
-    const path = await findBestRoute(
-      chainId,
-      tokenIn,
-      tokenOut,
-      amountIn,
-      src.quote,
-      opts,
-    );
-    if (path) return { ...path, router: src.router, venue: src.venue };
+  const candidates = await Promise.all(
+    sources.map(async (src) => {
+      const path = await findBestRoute(
+        chainId,
+        tokenIn,
+        tokenOut,
+        amountIn,
+        src.quote,
+        opts,
+      );
+      return path ? { ...path, router: src.router, venue: src.venue } : null;
+    }),
+  );
+
+  let best: RoutedPath | null = null;
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (!best || Number(candidate.amountOut) > Number(best.amountOut)) {
+      best = candidate;
+    }
   }
-  return null;
+  return best;
 }
 
 /**
