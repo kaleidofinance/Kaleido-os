@@ -108,7 +108,7 @@ console.log("\n— Robinhood mainnet carries WETH and USDG as quote-asset legs �
   );
 }
 
-console.log("\n— findRouteAcrossSources: our pools first, venue only as fallback —");
+console.log("\n— findRouteAcrossSources: best fill across native and external sources —");
 const runAsync = async () => {
   const A = { address: "0x" + "a".repeat(40), symbol: "A", decimals: 18 };
   const B = { address: "0x" + "b".repeat(40), symbol: "B", decimals: 18 };
@@ -140,16 +140,27 @@ const runAsync = async () => {
     JSON.stringify(fellBack && { venue: fellBack.venue?.id, router: fellBack.router }),
   );
 
-  // Ours fills → the venue is never quoted (first-hit; our liquidity preferred).
+  // Both sources are quoted, and the higher output wins even when it is external.
   venueCalls = 0;
   const ours = await findRouteAcrossSources(SEPOLIA, A, B, "1", [
     { quote: hitQuote, router: OUR_ROUTER, venue: null },
     { quote: venueQuote, router: VENUE.router, venue: VENUE },
   ]);
   check(
-    "prefers our pools and does not quote the venue when ours fills",
-    !!ours && ours.venue === null && ours.router === OUR_ROUTER && venueCalls === 0,
+    "chooses the best output across sources",
+    !!ours && ours.venue === VENUE && ours.router === VENUE.router && venueCalls > 0,
     JSON.stringify({ venue: ours && ours.venue, router: ours && ours.router, venueCalls }),
+  );
+
+  // Equal output keeps the earlier source, so native liquidity is the stable tie-break.
+  const tie = await findRouteAcrossSources(SEPOLIA, A, B, "1", [
+    { quote: hitQuote, router: OUR_ROUTER, venue: null },
+    { quote: async () => "5", router: VENUE.router, venue: VENUE },
+  ]);
+  check(
+    "keeps source order for an exact tie",
+    !!tie && tie.venue === null && tie.router === OUR_ROUTER,
+    JSON.stringify({ venue: tie && tie.venue, router: tie && tie.router }),
   );
 
   // Nobody can fill → null, not a throw.

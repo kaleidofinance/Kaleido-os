@@ -104,9 +104,8 @@ export interface V3PoolsResult {
 }
 
 export function useV3Pools(): V3PoolsResult {
-  /* The shared sweep reads every deployed chain; a mainnet-first viewer should
-     not see testnet pools in the list. Filtered per consumer off the toggle so
-     the sweep stays shared and a flip re-renders without re-sweeping. */
+  /* The shared sweep follows the exclusive network mode; a flip re-renders and
+     forces a fresh sweep for the other network set. */
   const { showTestnets } = useTestnetMode();
   const [pools, setPools] = useState<ITradingPair[]>(() => store.snapshot());
   const [loading, setLoading] = useState(store.snapshot().length === 0);
@@ -137,11 +136,9 @@ export function useV3Pools(): V3PoolsResult {
         if (store.snapshot().length === 0) setLoading(true);
         setError(null);
 
-        /* Mainnet-first is the default, and /api/pools serves exactly that set —
-         swept once on the server and shared across every tab, instead of every
-         browser fanning hundreds of getPool calls into Arc's rate-limited RPC.
-         Try it first; on any failure (or a testnet viewer, whom the endpoint does
-         not serve) fall through to the client sweep below, unchanged. */
+        /* The server cache serves the mainnet set. Testnet mode falls through to
+           the client sweep because that endpoint intentionally does not publish
+           testnet rows. */
         if (!showTestnets && !MOCK_DATA) {
           try {
             const res = await fetch("/api/pools", { cache: "no-store" });
@@ -172,7 +169,7 @@ export function useV3Pools(): V3PoolsResult {
             /* Mainnet-first: don't sweep testnet RPCs when they're hidden — see
              PoolStore.sweep. Reading them 429'd five testnet endpoints and hung
              the table for a viewer who could only see mainnet rows anyway. */
-            !showTestnets,
+            showTestnets,
           ),
         );
       } catch (err) {
@@ -198,7 +195,7 @@ export function useV3Pools(): V3PoolsResult {
     pools: pools.filter(
       (p) =>
         hasActiveLiquidity(p) &&
-        (showTestnets || CHAINS_BY_ID[p.chainId]?.network === "mainnet"),
+        CHAINS_BY_ID[p.chainId]?.network === (showTestnets ? "testnet" : "mainnet"),
     ),
     loading,
     error,

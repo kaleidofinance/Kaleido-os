@@ -78,6 +78,8 @@
     "test:routeselect": "tsx src/lib/bridge/routeSelect.test.ts",
     "test:suggestions": "tsx \"src/app/(app)/trade/agent/suggestions.test.ts\"",
     "test:turn": "tsx src/lib/v2/agentTurn.test.ts",
+    "test:turncontext": "tsx src/lib/ai/turnContext.test.ts",
+    "test:capabilitysnapshot": "tsx src/lib/ai/capabilities.test.ts",
     "test:chatstream": "tsx src/lib/v2/chatStream.test.ts",
     "test:actions": "tsx src/lib/ai/actionsBlock.test.ts",
     "test:readkey": "tsx src/lib/ai/readKey.test.ts",

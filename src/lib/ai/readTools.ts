@@ -61,6 +61,9 @@ import {
   hasKyberSwap,
   quoteKyberSwap,
 } from "@/lib/swap/kyberswap";
+import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
+import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
+import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
 import { serverPathQuoter, serverQuote, serverPositions } from "./planDeps";
 import { readPoolState } from "@/lib/dex/pool";
 import { getBridgeQuote } from "./bridgeQuotes";
@@ -107,20 +110,22 @@ import { readWaitlistRewardState } from "@/lib/waitlist/rewards";
 
 type Json = Record<string, unknown>;
 
+export type NetworkMode = "mainnet" | "testnet";
+
 let livePoolsCache: { at: number; pools: Json[] } | null = null;
 let livePoolsInflight: Promise<Json[]> | null = null;
 const LIVE_POOLS_TIMEOUT_MS = 12_000;
 
 async function readLivePools(
   chainId?: number,
-  mainnetOnly = true,
+  networkMode: NetworkMode = "mainnet",
 ): Promise<Json[]> {
   const now = Date.now();
   const select = (all: Json[]) =>
     all.filter(
       (p) =>
         (!chainId || p.chainId === chainId) &&
-        (!mainnetOnly || getChainMeta(Number(p.chainId))?.network === "mainnet"),
+        getChainMeta(Number(p.chainId))?.network === networkMode,
     );
   if (livePoolsCache && now - livePoolsCache.at < 30_000) {
     return select(livePoolsCache.pools);
@@ -130,24 +135,34 @@ async function readLivePools(
       const results = await getPrices(PRICEABLE);
       const usd: Record<string, number> = {};
       results.forEach((r, symbol) => {
-        if (r.usd !== null && Number.isFinite(r.usd) && r.usd > 0) usd[symbol] = r.usd;
+        if (r.usd !== null && Number.isFinite(r.usd) && r.usd > 0)
+          usd[symbol] = r.usd;
       });
-      const priceOf = priceLookup({ usd, asOf: new Date().toISOString() } as SpotPrices);
+      const priceOf = priceLookup({
+        usd,
+        asOf: new Date().toISOString(),
+      } as SpotPrices);
       const chains = discoveryChains();
-      const settled = await Promise.allSettled(chains.map((c) => sweepChain(c, priceOf)));
-      return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).map((p) => ({
-        chainId: p.chainId,
-        chain: chains.find((c) => c.chainId === p.chainId)?.meta.shortName ?? `chain ${p.chainId}`,
-        pair: `${p.token0.symbol}/${p.token1.symbol}`,
-        address: p.address,
-        version: p.version,
-        feePct: p.feeBps === null ? null : p.feeBps / 100,
-        liquidityUsd: p.liquidity,
-        volume24hUsd: p.volume24h,
-        fees24hUsd: p.fees24h,
-        aprPct: p.apr,
-        price: p.price,
-      }));
+      const settled = await Promise.allSettled(
+        chains.map((c) => sweepChain(c, priceOf)),
+      );
+      return settled
+        .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+        .map((p) => ({
+          chainId: p.chainId,
+          chain:
+            chains.find((c) => c.chainId === p.chainId)?.meta.shortName ??
+            `chain ${p.chainId}`,
+          pair: `${p.token0.symbol}/${p.token1.symbol}`,
+          address: p.address,
+          version: p.version,
+          feePct: p.feeBps === null ? null : p.feeBps / 100,
+          liquidityUsd: p.liquidity,
+          volume24hUsd: p.volume24h,
+          fees24hUsd: p.fees24h,
+          aprPct: p.apr,
+          price: p.price,
+        }));
     })().finally(() => {
       livePoolsInflight = null;
     });
@@ -155,7 +170,10 @@ async function readLivePools(
   const pools = await Promise.race([
     livePoolsInflight,
     new Promise<Json[]>((_, reject) =>
-      setTimeout(() => reject(new Error("Live pool discovery timed out.")), LIVE_POOLS_TIMEOUT_MS),
+      setTimeout(
+        () => reject(new Error("Live pool discovery timed out.")),
+        LIVE_POOLS_TIMEOUT_MS,
+      ),
     ),
   ]);
   livePoolsCache = { at: Date.now(), pools };
@@ -293,8 +311,7 @@ async function getPortfolio(args: Json, chainId: number): Promise<Json> {
 
     /* Sentinel first, on the bigint, then scale. Doing it the other way round is
        what let 1.16e59 reach the model — see NO_DEBT_SENTINEL. */
-    const noDebt =
-      healthRaw !== null && BigInt(healthRaw) === NO_DEBT_SENTINEL;
+    const noDebt = healthRaw !== null && BigInt(healthRaw) === NO_DEBT_SENTINEL;
     const health =
       healthRaw === null || noDebt ? null : Number(healthRaw) * HEALTH_SCALE;
 
@@ -314,7 +331,10 @@ async function getPortfolio(args: Json, chainId: number): Promise<Json> {
         : healthRaw === null
           ? "The health factor could not be read. Say so rather than implying the position is fine."
           : undefined,
-      note: "Positions are per chain — this is chain " + chainId + " only. Liquidation occurs at health factor 1.0. Liquidity, staking and vault positions are read client-side and may not appear here.",
+      note:
+        "Positions are per chain — this is chain " +
+        chainId +
+        " only. Liquidation occurs at health factor 1.0. Liquidity, staking and vault positions are read client-side and may not appear here.",
     };
   } catch (err) {
     return { error: `getPortfolio failed: ${(err as Error).message}` };
@@ -426,7 +446,9 @@ async function getLendingAccount(args: Json, chainId: number): Promise<Json> {
     read(() => admin.paused() as Promise<boolean>),
     read(() => contract.getAccountCollateralValue(address) as Promise<bigint>),
     read(() => contract.getLoanCollectedInUsd(address) as Promise<bigint>),
-    read(() => contract.getServicedRequestByLender(address) as Promise<unknown[]>),
+    read(
+      () => contract.getServicedRequestByLender(address) as Promise<unknown[]>,
+    ),
     readFreeCollateral(chainId, address).catch(() => null),
   ]);
 
@@ -451,7 +473,10 @@ async function getLendingAccount(args: Json, chainId: number): Promise<Json> {
       registeredLendingAssetAt(chainId, "collateral", token).entry;
     return asset
       ? { symbol: asset.symbol, decimals: asset.decimals }
-      : { symbol: `${token.slice(0, 6)}…${token.slice(-4)}`, decimals: getTokenDecimals(chainId, token) };
+      : {
+          symbol: `${token.slice(0, 6)}…${token.slice(-4)}`,
+          decimals: getTokenDecimals(chainId, token),
+        };
   };
   const fmt = (raw: bigint, decimals: number) =>
     Number(Number(ethers.formatUnits(raw, decimals)).toFixed(6));
@@ -468,7 +493,12 @@ async function getLendingAccount(args: Json, chainId: number): Promise<Json> {
         const status = LOAN_STATUS[Number(r[10])] ?? "unknown";
         const quote =
           status === "active" && owed > 0n
-            ? await read(() => contract.getRepaymentFee(requestId, owed) as Promise<[bigint, bigint]>)
+            ? await read(
+                () =>
+                  contract.getRepaymentFee(requestId, owed) as Promise<
+                    [bigint, bigint]
+                  >,
+              )
             : null;
         return {
           requestId,
@@ -555,11 +585,26 @@ async function getStaking(args: Json, chainId: number): Promise<Json> {
   const kld = staking.kld!;
 
   const r = await readContracts(chainId, [
-    { target: vault, iface: KLD_VAULT_IFACE, method: "getTotalPooledKld", args: [kld] },
+    {
+      target: vault,
+      iface: KLD_VAULT_IFACE,
+      method: "getTotalPooledKld",
+      args: [kld],
+    },
     { target: vault, iface: KLD_VAULT_IFACE, method: "getTotalStakers" },
     { target: stKld, iface: STKLD_IFACE, method: "balanceOf", args: [address] },
-    { target: vault, iface: KLD_VAULT_IFACE, method: "getWithdrawalTimeLeft", args: [address] },
-    { target: vault, iface: KLD_VAULT_IFACE, method: "hasWithdrawalRequest", args: [address] },
+    {
+      target: vault,
+      iface: KLD_VAULT_IFACE,
+      method: "getWithdrawalTimeLeft",
+      args: [address],
+    },
+    {
+      target: vault,
+      iface: KLD_VAULT_IFACE,
+      method: "hasWithdrawalRequest",
+      args: [address],
+    },
   ]);
 
   const num18 = (x: { success: boolean; value: unknown }): number | null =>
@@ -568,7 +613,8 @@ async function getStaking(args: Json, chainId: number): Promise<Json> {
       : null;
 
   const totalStaked = num18(r[0]);
-  const stakers = r[1].success && r[1].value !== null ? Number(r[1].value) : null;
+  const stakers =
+    r[1].success && r[1].value !== null ? Number(r[1].value) : null;
   const staked = num18(r[2]);
   const cooldownLeft =
     r[3].success && r[3].value !== null ? Math.max(0, Number(r[3].value)) : 0;
@@ -637,10 +683,30 @@ async function getVault(args: Json, chainId: number): Promise<Json> {
   }
 
   const r = await readContracts(chainId, [
-    { target: kfUSD, iface: STABLE_VAULT_IFACE, method: "balanceOf", args: [address] },
-    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "balanceOf", args: [address] },
-    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "withdrawalAmount", args: [address] },
-    { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "withdrawalRequestTime", args: [address] },
+    {
+      target: kfUSD,
+      iface: STABLE_VAULT_IFACE,
+      method: "balanceOf",
+      args: [address],
+    },
+    {
+      target: kafUSD,
+      iface: STABLE_VAULT_IFACE,
+      method: "balanceOf",
+      args: [address],
+    },
+    {
+      target: kafUSD,
+      iface: STABLE_VAULT_IFACE,
+      method: "withdrawalAmount",
+      args: [address],
+    },
+    {
+      target: kafUSD,
+      iface: STABLE_VAULT_IFACE,
+      method: "withdrawalRequestTime",
+      args: [address],
+    },
     { target: kafUSD, iface: STABLE_VAULT_IFACE, method: "cooldownPeriod" },
   ]);
 
@@ -969,7 +1035,10 @@ function symbolFor(chainId: number, address: string): string {
  * native USDC (address(1)). Matching both is what makes "USDC offers" find
  * native-USDC rows instead of reporting an empty book. Empty = unknown asset.
  */
-export function bookAssetAddresses(chainId: number, asset: string): Set<string> {
+export function bookAssetAddresses(
+  chainId: number,
+  asset: string,
+): Set<string> {
   if (!asset) return new Set();
   const token = chainTokenBySymbol(chainId, asset);
   const lendingAsset = findRegisteredLendingAsset(chainId, "loanable", asset);
@@ -1037,10 +1106,7 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
 
     const nowSec = Math.floor(Date.now() / 1000);
     const offers = book.entries
-      .filter(
-        (e) =>
-          !asset || matchAddresses.has(e.tokenAddress.toLowerCase()),
-      )
+      .filter((e) => !asset || matchAddresses.has(e.tokenAddress.toLowerCase()))
       .map((e) => {
         let amount: string | null = null;
         try {
@@ -1081,7 +1147,8 @@ async function getMarkets(args: Json, chainId: number): Promise<Json> {
           wantAmount === null
             ? null
             : minAmount !== null && maxAmount !== null
-              ? wantAmount >= Number(minAmount) && wantAmount <= Number(maxAmount)
+              ? wantAmount >= Number(minAmount) &&
+                wantAmount <= Number(maxAmount)
               : amount !== null && wantAmount >= Number(amount);
 
         return {
@@ -1220,15 +1287,16 @@ const INDEXED_CHAINS = [
 async function getChains(
   args: Json,
   _chainId: number,
-  mainnetOnly?: boolean,
+  networkMode: NetworkMode = "mainnet",
 ): Promise<Json> {
   const address = String(args.address ?? "");
   const asset = String(args.asset ?? "").toUpperCase();
-  /* Mainnet-first users have testnets hidden in the UI, so a cross-chain sweep
-     must not surface a testnet balance the app itself would not show. */
-  const chains = mainnetOnly
-    ? INDEXED_CHAINS.filter((id) => getChainMeta(id)?.network !== "testnet")
-    : INDEXED_CHAINS;
+  /* Match the app's exclusive network mode. The old boolean allowed a false
+     value to mean both networks, which let mainnet balances leak into testnet
+     mode. */
+  const chains = INDEXED_CHAINS.filter(
+    (id) => getChainMeta(id)?.network === networkMode,
+  );
 
   if (!ethers.isAddress(address)) {
     return { error: "A valid wallet address is required" };
@@ -1374,8 +1442,10 @@ async function aggregatorQuote(
   inEntry: Parameters<typeof toIToken>[0],
   outEntry: Parameters<typeof toIToken>[0],
   amount: string,
+  address?: string,
 ): Promise<Json | null> {
-  if (!hasKyberSwap(chainId)) return null;
+  if (!hasKyberSwap(chainId) && !hasFlyTrade(chainId) && !hasLifiSwap(chainId))
+    return null;
   const inI = toIToken(inEntry);
   const outI = toIToken(outEntry);
   const inTok = aggregatorToken(chainId, {
@@ -1394,24 +1464,47 @@ async function aggregatorQuote(
   } catch {
     return null;
   }
-  const q = await quoteKyberSwap({
+  const request = {
     chainId,
     tokenIn: inTok.address,
     tokenOut: outTok.address,
     amountUnits: units,
-  });
-  if (!q) return null;
-  const out = Number(ethers.formatUnits(q.amountOut, outTok.decimals));
+    address: address ?? "",
+    slippageBps: 100,
+  };
+  const candidates: { venue: string; amountOut: number }[] = [];
+  if (address && ethers.isAddress(address)) {
+    const [kyber, fly, lifi] = await Promise.all([
+      hasKyberSwap(chainId) ? getKyberSwapExecution(request) : Promise.resolve(null),
+      hasFlyTrade(chainId) ? getFlyTradeExecution(request) : Promise.resolve(null),
+      hasLifiSwap(chainId) ? getLifiSwapExecution(request) : Promise.resolve(null),
+    ]);
+    if (kyber) candidates.push({ venue: "KyberSwap", amountOut: Number(ethers.formatUnits(kyber.amountOut, outTok.decimals)) });
+    if (fly) candidates.push({ venue: "Fly.trade", amountOut: Number(ethers.formatUnits(fly.amountOut, outTok.decimals)) });
+    if (lifi) candidates.push({ venue: "LI.FI", amountOut: Number(ethers.formatUnits(lifi.amountOut, outTok.decimals)) });
+  } else if (hasKyberSwap(chainId)) {
+    const q = await quoteKyberSwap({
+      chainId,
+      tokenIn: inTok.address,
+      tokenOut: outTok.address,
+      amountUnits: units,
+    });
+    if (q) candidates.push({ venue: "KyberSwap", amountOut: Number(ethers.formatUnits(q.amountOut, outTok.decimals)) });
+  }
+  const best = candidates.sort((a, b) => b.amountOut - a.amountOut)[0];
+  if (!best) return null;
+  const out = best.amountOut;
   const rate = out / Number(amount);
   return {
     routable: true,
     via: "aggregator",
+    venue: best.venue,
     tokenIn: inTok.symbol,
     tokenOut: outTok.symbol,
     amountIn: amount,
     amountOut: out,
     rate: `1 ${inTok.symbol} ≈ ${Number(rate.toPrecision(6))} ${outTok.symbol}`,
-    note: "Routed through the KyberSwap aggregator across this chain's DEXes rather than a Kaleido pool — the swap action builds exactly this route. Indicative, not a floor: the minimum is set from the user's slippage at build time.",
+    note: `Routed through the best available external aggregator (${best.venue}) rather than a Kaleido pool. Indicative, not a floor: the minimum is set from the user's slippage at build time.`,
   };
 }
 
@@ -1444,7 +1537,7 @@ async function aggregatorQuote(
  * time, and the note says so, because a model that relays this number as
  * guaranteed has promised something no pool can honour.
  */
-async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
+async function getSwapRoute(args: Json, chainId: number, address?: string): Promise<Json> {
   const inSym = String(args.tokenIn ?? "").trim();
   const outSym = String(args.tokenOut ?? "").trim();
   /* Default rather than required. "Is there a route from ETH to KLD?" is a real
@@ -1457,9 +1550,13 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
   const amount = sized ? raw : "1";
 
   if (!inSym || !outSym)
-    return { error: "Two token symbols are required, e.g. tokenIn ETH, tokenOut KLD" };
+    return {
+      error: "Two token symbols are required, e.g. tokenIn ETH, tokenOut KLD",
+    };
 
-  if (!getContracts(chainId).v3Router)
+  const hasExternalAggregator =
+    hasKyberSwap(chainId) || hasFlyTrade(chainId) || hasLifiSwap(chainId);
+  if (!getContracts(chainId).v3Router && fallbackVenues(chainId).length === 0 && !hasExternalAggregator)
     return {
       routable: false,
       note: "Kaleido's DEX isn't deployed on this chain, so no swap can be routed here — not a liquidity problem.",
@@ -1500,28 +1597,32 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
        buildIntents uses, so the route this tool reports is the route the plan
        will build. Capped at two intermediates, unlike the Swap card's unbounded
        search: this runs inside a chat turn already several round trips deep. */
-    const path = await findRouteAcrossSources(
-      chainId,
-      sell.token,
-      buy.token,
-      amount,
-      [
-        {
-          quote: serverPathQuoter(chainId),
-          router: getContracts(chainId).v3Router,
-          venue: null,
-        },
-        ...fallbackVenues(chainId).map((venue) => ({
-          quote: serverPathQuoter(chainId, venue.quoter),
-          router: venue.router,
-          venue,
-        })),
-      ],
-      { maxIntermediates: 2 },
-    );
+    const hasNativeSource =
+      Boolean(getContracts(chainId).v3Router) || fallbackVenues(chainId).length > 0;
+    const path = hasNativeSource
+      ? await findRouteAcrossSources(
+          chainId,
+          sell.token,
+          buy.token,
+          amount,
+          [
+            {
+              quote: serverPathQuoter(chainId),
+              router: getContracts(chainId).v3Router,
+              venue: null,
+            },
+            ...fallbackVenues(chainId).map((venue) => ({
+              quote: serverPathQuoter(chainId, venue.quoter),
+              router: venue.router,
+              venue,
+            })),
+          ],
+          { maxIntermediates: 2 },
+        )
+      : null;
 
+    const aggregator = await aggregatorQuote(chainId, inEntry, outEntry, amount, address);
     if (!path) {
-      const aggregator = await aggregatorQuote(chainId, inEntry, outEntry, amount);
       if (aggregator) return aggregator;
       return {
         routable: false,
@@ -1533,7 +1634,10 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
       };
     }
 
-    const rate = path.amountOut / Number(amount);
+    const nativeOut = Number(path.amountOut);
+    const aggregatorOut = aggregator ? Number(aggregator.amountOut ?? -1) : -1;
+    if (aggregator && aggregatorOut > nativeOut) return aggregator;
+    const rate = nativeOut / Number(amount);
     return {
       routable: true,
       tokenIn: sell.token.symbol,
@@ -1591,7 +1695,9 @@ async function getSwapRoute(args: Json, chainId: number): Promise<Json> {
  * (KaleidoOrders.sol:183), and an ABI fragment is what decodes the returned word.
  * See `swapInputFor` in dex/orders.ts for what the value does.
  */
-const ORDERS_FEE_ABI = ["function fillerFeeBps() external view returns (uint16)"];
+const ORDERS_FEE_ABI = [
+  "function fillerFeeBps() external view returns (uint16)",
+];
 
 /**
  * Resting limit orders and recurring buys, from our own store.
@@ -1718,7 +1824,11 @@ async function getOrders(args: Json, chainId: number): Promise<Json> {
         pair: pairLabelFor(o, tin?.symbol, tout?.symbol),
         kind: o.maxFills > 1 ? "recurring buy" : "limit order",
         ...(o.maxFills > 1
-          ? { every: describeInterval(o.interval), fillsDone: row.fills, fillsLeft }
+          ? {
+              every: describeInterval(o.interval),
+              fillsDone: row.fills,
+              fillsLeft,
+            }
           : {}),
         expiresIn: describeDuration(Math.max(0, o.expiry - now)),
         /* Unconditional, and phrased as an answer rather than as a flag. An absent
@@ -1856,17 +1966,20 @@ async function getPositions(args: Json, chainId: number): Promise<Json> {
     );
     return {
       positions: rows,
-      note:
-        "Each id is one liquidity position. Deposited amounts and unclaimed fees show in the app's Liquidity → Your positions tab, not here; to act, use collectFees, increasePosition or removePosition with the id, so the user need not look it up. 'out of range' earns no fees until the price returns or the range is moved.",
+      note: "Each id is one liquidity position. Deposited amounts and unclaimed fees show in the app's Liquidity → Your positions tab, not here; to act, use collectFees, increasePosition or removePosition with the id, so the user need not look it up. 'out of range' earns no fees until the price returns or the range is moved.",
     };
   } catch (err) {
     return { error: `getPositions failed: ${(err as Error).message}` };
   }
 }
 
-async function getLivePools(_args: Json, chainId: number, mainnetOnly = true): Promise<Json> {
+async function getLivePools(
+  _args: Json,
+  chainId: number,
+  networkMode: NetworkMode = "mainnet",
+): Promise<Json> {
   try {
-    const pools = await readLivePools(chainId, mainnetOnly);
+    const pools = await readLivePools(chainId, networkMode);
     return {
       chainId,
       chain: getChainMeta(chainId)?.shortName ?? `chain ${chainId}`,
@@ -1877,34 +1990,68 @@ async function getLivePools(_args: Json, chainId: number, mainnetOnly = true): P
         : "No live Kaleido liquidity pools were discovered on this chain. Do not invent a pair; say the current inventory is empty or unavailable.",
     };
   } catch (err) {
-    return { error: `Could not read live Kaleido liquidity pools: ${(err as Error).message}` };
+    return {
+      error: `Could not read live Kaleido liquidity pools: ${(err as Error).message}`,
+    };
   }
 }
 
-async function getPoolMarket(args: Json, chainId: number, mainnetOnly = true): Promise<Json> {
+async function getPoolMarket(
+  args: Json,
+  chainId: number,
+  networkMode: NetworkMode = "mainnet",
+): Promise<Json> {
   try {
-    const all = await readLivePools(chainId, mainnetOnly);
-    const metric = args.metric === "volume" || args.metric === "apr" ? args.metric : "liquidity";
+    const all = await readLivePools(chainId, networkMode);
+    const metric =
+      args.metric === "volume" || args.metric === "apr"
+        ? args.metric
+        : "liquidity";
     const limit = Math.min(20, Math.max(1, Number(args.limit) || 10));
-    const ranked = [...all].sort((a, b) => {
-      const av = Number(a[metric === "volume" ? "volume24hUsd" : metric === "apr" ? "aprPct" : "liquidityUsd"] ?? -1);
-      const bv = Number(b[metric === "volume" ? "volume24hUsd" : metric === "apr" ? "aprPct" : "liquidityUsd"] ?? -1);
-      return bv - av;
-    }).slice(0, limit);
-    const sum = (key: string) => all.reduce((n, p) => n + (Number(p[key] ?? 0) || 0), 0);
+    const ranked = [...all]
+      .sort((a, b) => {
+        const av = Number(
+          a[
+            metric === "volume"
+              ? "volume24hUsd"
+              : metric === "apr"
+                ? "aprPct"
+                : "liquidityUsd"
+          ] ?? -1,
+        );
+        const bv = Number(
+          b[
+            metric === "volume"
+              ? "volume24hUsd"
+              : metric === "apr"
+                ? "aprPct"
+                : "liquidityUsd"
+          ] ?? -1,
+        );
+        return bv - av;
+      })
+      .slice(0, limit);
+    const sum = (key: string) =>
+      all.reduce((n, p) => n + (Number(p[key] ?? 0) || 0), 0);
     return {
       chainId,
       chain: getChainMeta(chainId)?.shortName ?? `chain ${chainId}`,
       metric,
       count: all.length,
-      totals: { liquidityUsd: sum("liquidityUsd"), volume24hUsd: sum("volume24hUsd"), fees24hUsd: sum("fees24hUsd") },
+      totals: {
+        liquidityUsd: sum("liquidityUsd"),
+        volume24hUsd: sum("volume24hUsd"),
+        fees24hUsd: sum("fees24hUsd"),
+      },
       pools: ranked,
       note: all.length
         ? `Ranked live Kaleido pools on this chain by ${metric}. These are current snapshots, not guaranteed returns or execution prices.`
         : "No live pools were discovered on this chain, so no ranking is available.",
     };
   } catch (err) {
-    return { error: `Could not read live pool market data: ${(err as Error).message}` };
+    return {
+      error: `Could not read live pool market data: ${(err as Error).message}`,
+    };
   }
 }
 
@@ -1988,11 +2135,7 @@ async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
     const expiry = Number(p.expiry);
     const revoked = Boolean(p.revoked);
     const expired = nowSec > expiry;
-    const status = revoked
-      ? "revoked"
-      : expired
-        ? "expired"
-        : "active";
+    const status = revoked ? "revoked" : expired ? "expired" : "active";
 
     const bits = Number(p.allowedActions);
     const allowedActions = AGENT_ACTIONS.filter(([b]) => (bits & b) !== 0).map(
@@ -2071,28 +2214,28 @@ async function getAgentMandate(args: Json, chainId: number): Promise<Json> {
 
 const HANDLERS: Record<
   string,
-  (args: Json, chainId: number, mainnetOnly?: boolean) => Promise<Json>
-> =
-  {
-    getQuote,
-    getPortfolio,
-    getLoans,
-    getLendingAccount,
-    getStaking,
-    getVault,
-    getPositions,
-    getLivePools,
-    getPoolMarket,
-    getBalances,
-    getMarkets,
-    getOrders,
-    getPrice,
-    getChains,
-    getBridgeRoute,
-    getSwapRoute,
-    getAgentMandate,
-    getPoints,
-  };
+  (args: Json, chainId: number, networkMode?: NetworkMode, address?: string) => Promise<Json>
+> = {
+  getQuote,
+  getPortfolio,
+  getLoans,
+  getLendingAccount,
+  getStaking,
+  getVault,
+  getPositions,
+  getLivePools,
+  getPoolMarket,
+  getBalances,
+  getMarkets,
+  getOrders,
+  getPrice,
+  getChains,
+  getBridgeRoute,
+  getSwapRoute: (args, chainId, _networkMode, address) =>
+    getSwapRoute(args, chainId, address),
+  getAgentMandate,
+  getPoints,
+};
 
 export function isReadTool(name: string): boolean {
   return name in HANDLERS;
@@ -2113,12 +2256,16 @@ export async function runReadTool(
   name: string,
   args: Json,
   chainId?: number,
-  mainnetOnly?: boolean,
+  /** Deprecated positional argument retained for callers compiled against the
+   * old API; networkMode is the authoritative scope now. */
+  _mainnetOnly?: boolean,
+  networkMode: NetworkMode = "mainnet",
+  address?: string,
 ): Promise<Json> {
   const handler = HANDLERS[name];
   if (!handler) return { error: `Unknown read tool: ${name}` };
   try {
-    return await handler(args, chainId ?? READ_ONLY_CHAIN_ID, mainnetOnly);
+    return await handler(args, chainId ?? READ_ONLY_CHAIN_ID, networkMode, address);
   } catch (err) {
     return { error: `${name} threw: ${(err as Error).message}` };
   }

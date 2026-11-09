@@ -12,6 +12,10 @@ import {
   getContracts,
   registeredLendingAssets,
   isDeployed,
+  hasSwaps,
+  hasOrders,
+  hasStablecoin,
+  hasStaking,
   auditRegistry,
   auditDeployPlan,
   ownTokens,
@@ -51,6 +55,7 @@ const HYPERLIQUID = 999;
 const SEPOLIA = 11155111;
 const BASE_SEPOLIA = 84532;
 const ROBINHOOD_TESTNET = 46630;
+const ELYSIUM_TESTNET = 99801;
 
 console.log("\n— native asset is read per chain, never assumed —");
 {
@@ -224,6 +229,26 @@ console.log("\n— deployments are checkable, not assumed —");
     "getToken on an empty registry returns nothing",
     getToken(BASE, "0xabc") === undefined,
   );
+}
+
+console.log("\n— Robinhood mainnet keeps its live Kaleido stack —");
+{
+  const rh = getContracts(4663);
+  check("Robinhood mainnet is in the tradable chain selector", tradableChains(CHAINS).some((chain) => chain.id === 4663));
+  check("Robinhood mainnet Diamond is registered", rh.diamond === "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382");
+  check("Robinhood mainnet V3 factory is registered", rh.v3Factory === "0xe106644dc8E49B46CAbA0C155387719c979b415E");
+  check("Robinhood mainnet V3 router is registered", rh.v3Router === "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE");
+  check("Robinhood mainnet is swap-capable", hasSwaps(4663));
+  check("Robinhood mainnet position manager is registered", rh.v3PositionManager === "0x311D0abDcA9EDf8072eA58B12c7843C633a65552");
+  check("Robinhood mainnet lending registration is restored", registeredLendingAssets(4663, "loanable").assets.length === 4);
+}
+
+console.log("\n— Elysium exposes only deployed capabilities —");
+{
+  check("Elysium testnet has swaps", hasSwaps(ELYSIUM_TESTNET));
+  check("Elysium testnet has no limit-order keeper", !hasOrders(ELYSIUM_TESTNET));
+  check("Elysium testnet has no stablecoin surface", !hasStablecoin(ELYSIUM_TESTNET));
+  check("Elysium testnet has no staking surface", !hasStaking(ELYSIUM_TESTNET));
 }
 
 console.log("\n— BSC mainnet assets reach the app —");
@@ -443,12 +468,13 @@ console.log("\n— the testnet wave is checked against what exists —");
     problems.join("; "),
   );
   {
-    const missing = TESTNET_WAVE.map((t) => t.chainId).filter((id) => {
-      const symbols = ownTokens(id).map((t) => t.symbol);
-      return !symbols.includes("KLD") || !symbols.includes("stKLD");
-    });
+    const missing = TESTNET_WAVE.filter((t) => {
+      const required = t.requiredOwnTokens ?? ["KLD", "stKLD"];
+      const symbols = ownTokens(t.chainId).map((t) => t.symbol);
+      return required.some((symbol) => !symbols.includes(symbol));
+    }).map((t) => t.chainId);
     check(
-      "and every wave chain really resolves KLD and stKLD",
+      "and every wave chain resolves its required own tokens",
       missing.length === 0,
       `chains missing one or both: ${missing.join(", ")}`,
     );
@@ -456,13 +482,14 @@ console.log("\n— the testnet wave is checked against what exists —");
 
   const wave = TESTNET_WAVE.map((t) => t.chainId);
   check(
-    "the wave is exactly the five chains asked for",
-    wave.length === 5 &&
+    "the wave includes all six planned testnet surfaces",
+    wave.length === 6 &&
       wave.includes(SEPOLIA) &&
       wave.includes(BASE_SEPOLIA) &&
       wave.includes(BSC_TESTNET) &&
       wave.includes(ROBINHOOD_TESTNET) &&
-      wave.includes(ARC_TESTNET),
+      wave.includes(ARC_TESTNET) &&
+      wave.includes(ELYSIUM_TESTNET),
     wave.join(","),
   );
   // The wave and chains.ts must not drift apart. Every chain marked tradable and

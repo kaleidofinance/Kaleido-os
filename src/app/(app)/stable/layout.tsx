@@ -37,7 +37,7 @@ function StableChrome({ children }: { children: ReactNode }) {
   /* Gated in the layout, once, rather than in each of mint/redeem/earn: all
      three read the same three contracts, so the answer cannot differ between
      them, and three copies of it would be three chances to drift. */
-  const gate = useChainGate();
+  const gate = useChainGate(undefined, "stablecoin");
   return (
     <main className={s.wrap}>
       <div className={s.peg}>

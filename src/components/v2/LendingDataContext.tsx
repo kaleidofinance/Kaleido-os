@@ -95,7 +95,9 @@ export function LendingDataProvider({ children }: { children: ReactNode }) {
   const filters = useDataFiltersPanel();
   const [filterChains, setFilterChains] = useState<number[]>([]);
   const { showTestnets } = useTestnetMode();
-  const visibleFilterChains = filterChains.filter((id) => showTestnets || CHAINS_BY_ID[id]?.network === "mainnet");
+  const visibleFilterChains = filterChains.filter(
+    (id) => CHAINS_BY_ID[id]?.network === (showTestnets ? "testnet" : "mainnet"),
+  );
   /* The chain the open form acts on; a picker sets it, forms reset it on close. */
   const [formChainId, setFormChainId] = useState<number | undefined>(undefined);
   const borrow = useBorrowV2(formChainId);

@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { CHAINS, getChainMeta } from "@/constants/chains";
-import { hasSwaps, isDeployed, tradableChains } from "@/constants/registry";
+import {
+  hasOrders,
+  hasStablecoin,
+  hasStaking,
+  hasSwaps,
+  isDeployed,
+  tradableChains,
+} from "@/constants/registry";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useConnectWallet } from "@/hooks/v2/useChainAction";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
@@ -49,6 +56,12 @@ export type ChainGateState =
   | { ready: false; reason: "unknown-chain" }
   | {
       ready: false;
+      reason: "network-hidden";
+      chainName: string;
+      expectedNetwork: "mainnet" | "testnet";
+    }
+  | {
+      ready: false;
       reason: "undeployed";
       chainName: string;
       /**
@@ -87,20 +100,37 @@ export type ChainGateState =
 /**
  * What a surface needs on the chain to have something to read.
  *
- * "protocol" — the Diamond (`isDeployed`), for lending/stable/staking. "dex" —
- * a v3Router (`hasSwaps`), for the pool surfaces. They diverge on Arc, which
+ * "protocol" — the Diamond (`isDeployed`), for lending. "dex" — a v3Router
+ * (`hasSwaps`), for pool surfaces. The narrower "orders", "stablecoin" and
+ * "staking" capabilities keep partially deployed chains such as Elysium from
+ * rendering forms whose contracts do not exist yet. They diverge on Arc, which
  * launched DEX-first: its pools are live and seeded while its Diamond is still
  * pending, so a pool page gated on the Diamond wrongly showed "nothing here yet"
- * and locked its buttons. Gate the pool pages on the DEX they actually use.
+ * and locked its buttons. Gate each surface on the capability it actually uses.
  */
-export type ChainGateCapability = "protocol" | "dex";
+export type ChainGateCapability =
+  | "protocol"
+  | "dex"
+  | "orders"
+  | "stablecoin"
+  | "staking";
 
 export function useChainGate(
   readChainId?: number,
   requires: ChainGateCapability = "protocol",
 ): ChainGateState {
   const { chainId: walletChainId, isConnected } = useWalletV2();
-  const present = requires === "dex" ? hasSwaps : isDeployed;
+  const { showTestnets } = useTestnetMode();
+  const present =
+    requires === "dex"
+      ? hasSwaps
+      : requires === "orders"
+        ? hasOrders
+        : requires === "stablecoin"
+          ? hasStablecoin
+          : requires === "staking"
+            ? hasStaking
+            : isDeployed;
 
   if (readChainId !== undefined) {
     if (MOCK_DATA || present(readChainId)) return { ready: true };
@@ -116,6 +146,16 @@ export function useChainGate(
 
   const meta = getChainMeta(walletChainId);
   if (!meta) return { ready: false, reason: "unknown-chain" };
+
+  const expectedNetwork = showTestnets ? "testnet" : "mainnet";
+  if (meta.network !== expectedNetwork) {
+    return {
+      ready: false,
+      reason: "network-hidden",
+      chainName: meta.name,
+      expectedNetwork,
+    };
+  }
 
   if (!MOCK_DATA && !present(walletChainId)) {
     return {
@@ -152,18 +192,22 @@ export default function ChainGate({
   /* Deployed AND intended. `tradable` alone is an intention, and reading it as a
      fact is what put "Trading live" under nine chains with no contracts.
 
-     Gated on the testnet toggle: at mainnet launch a "switch to …" CTA must not
-     name the testnet chains a product happens to be deployed on (Sepolia, the
-     testnet Base/BNB/Robinhood) — a mainnet-first user was never shown them and
-     should not be sent there. With the toggle off, only mainnet chains are
-     offered; if none carries this product yet, `live` is empty and the plain
-     empty state below is shown instead of a testnet switch. */
+     Gated on the selected network mode: a mainnet surface names only mainnet
+     chains, and a testnet surface names only testnet chains. The picker and the
+     data loaders use the same exclusive rule, so a hidden network cannot leak
+     into a recovery CTA. */
   const carries =
     requires === "dex"
       ? CHAINS.filter((c) => c.tradable && hasSwaps(c.id))
-      : tradableChains(CHAINS);
+      : requires === "orders"
+        ? CHAINS.filter((c) => c.tradable && hasOrders(c.id))
+        : requires === "stablecoin"
+          ? CHAINS.filter((c) => c.tradable && hasStablecoin(c.id))
+          : requires === "staking"
+            ? CHAINS.filter((c) => c.tradable && hasStaking(c.id))
+            : tradableChains(CHAINS);
   const live = carries.filter(
-    (c) => showTestnets || c.network === "mainnet",
+    (c) => c.network === (showTestnets ? "testnet" : "mainnet"),
   );
 
   let title: string;
@@ -178,6 +222,12 @@ export default function ChainGate({
     title = "Unrecognised network";
     body =
       "Your wallet is on a network Kaleido doesn't carry, so there is nothing here to read. Switch to one it does.";
+    action = { label: "Choose network", onClick: () => setPicker(true) };
+  } else if (state.reason === "network-hidden") {
+    const networkLabel =
+      state.expectedNetwork === "testnet" ? "testnet" : "mainnet";
+    title = `Switch to ${networkLabel}`;
+    body = `${product} is scoped to ${networkLabel} networks, but your wallet is on ${state.chainName}.`;
     action = { label: "Choose network", onClick: () => setPicker(true) };
   } else if (state.switchable && live.length > 0) {
     /* The wallet is on a network this surface can't read, and there is at least

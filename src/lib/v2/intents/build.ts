@@ -43,6 +43,8 @@ import {
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { hasKyberSwap, aggregatorToken, nativeSwapErc20 } from "@/lib/swap/kyberswap";
+import { hasFlyTrade } from "@/lib/swap/flytrade";
+import { hasLifiSwap } from "@/lib/swap/lifi";
 import { ARC_USDC, ARC_USDC_DECIMALS, ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
 import { PERMIT2 } from "@/lib/argus/swap";
 import type { Intent } from "@/lib/v2/intents";
@@ -1581,7 +1583,11 @@ export async function buildIntents(
       plan: PlanResult;
       out: number;
     } | null> => {
-      if (chainId === undefined || !hasKyberSwap(chainId) || !deps.swapRoute) {
+      if (
+        chainId === undefined ||
+        (!hasKyberSwap(chainId) && !hasFlyTrade(chainId) && !hasLifiSwap(chainId)) ||
+        !deps.swapRoute
+      ) {
         return null;
       }
       /* Trade the ERC20 the aggregator can actually pull. On Arc "USDC" is the
@@ -1687,7 +1693,7 @@ export async function buildIntents(
       chainId !== undefined &&
       !contracts.v3Router &&
       fallbackVenues(chainId).length === 0 &&
-      hasKyberSwap(chainId) &&
+      (hasKyberSwap(chainId) || hasFlyTrade(chainId) || hasLifiSwap(chainId)) &&
       deps.swapRoute
     ) {
       const kyber = await tryKyberSwap();

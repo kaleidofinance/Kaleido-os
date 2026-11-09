@@ -51,6 +51,9 @@ import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import type { ChatMessage } from "@/lib/ai/types";
 import { chainTokens } from "@/constants/tokens";
 import { validateLocalClassification } from "@/lib/ai/localIntent";
+import { walletChainContext } from "@/lib/ai/walletContext";
+import { createTurnContext, turnContextError } from "@/lib/ai/turnContext";
+import { getCapabilitySnapshot } from "@/lib/ai/capabilities";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -111,7 +114,7 @@ export async function GET(request: NextRequest) {
           : process.env.AI_PROVIDER === "ollama" ||
               (!process.env.AI_PROVIDER && process.env.OLLAMA_API_KEY)
             ? (process.env.OLLAMA_MODEL ?? "gemma4:31b")
-          : (process.env.AGENTROUTER_MODEL ?? null),
+            : (process.env.AGENTROUTER_MODEL ?? null),
     ...usage,
   });
 }
@@ -209,6 +212,38 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     /*
+     * Establish one immutable scope for this turn before quota/provider work.
+     * Chain, mode, wallet identity, and request id are validated together so
+     * no downstream branch can accidentally fall back to a different chain or
+     * treat a mainnet request as a testnet request.
+     */
+    const turn = createTurnContext({
+      address: body?.address,
+      chainId: body?.chainId,
+      showTestnets: body?.showTestnets,
+      requestId: body?.requestId,
+    });
+    const scopeError = turnContextError(turn);
+    if (scopeError) {
+      return NextResponse.json(
+        {
+          response: scopeError,
+          context: {
+            status: "invalid_turn_scope",
+            requestId: turn.requestId,
+            networkMode: turn.networkMode,
+            chainId: turn.requestedChainId ?? null,
+            chainStatus: turn.chainStatus,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const { chainId, mainnetOnly, networkMode } = turn;
+    const capabilities = getCapabilitySnapshot({ chainId, networkMode });
+
+    /*
      * Per-IP rate limit, before anything else spends work or quota.
      *
      * The quota below is keyed on a wallet address the caller supplies and does
@@ -267,9 +302,7 @@ export async function POST(request: NextRequest) {
        local-only branch — so a garbage string cannot become its own metered
        identity, and the counter is keyed on a canonical form rather than on
        whatever casing the caller sent. */
-    const meterAddress = /^0x[0-9a-fA-F]{40}$/.test(String(body.address ?? ""))
-      ? String(body.address).toLowerCase()
-      : undefined;
+    const meterAddress = turn.address;
     if (provider) {
       // Quota is spent here, at the point of dispatch, and nowhere earlier.
       // A turn the client answered locally never reaches this route at all, so
@@ -302,7 +335,7 @@ export async function POST(request: NextRequest) {
                 ? "quota_anonymous"
                 : "quota_exhausted",
           latencyMs: Date.now() - startedAt,
-          chainId: typeof body.chainId === "number" ? body.chainId : null,
+          chainId: chainId ?? null,
           address: meterAddress,
         });
         return NextResponse.json(
@@ -320,6 +353,7 @@ export async function POST(request: NextRequest) {
                 quota: quota.quota,
                 remaining: global ? quota.remaining : 0,
               },
+              capabilities,
             },
           },
           { status: 429 },
@@ -332,9 +366,6 @@ export async function POST(request: NextRequest) {
        * plan mixes chains: token symbols resolve in the builder, contract
        * addresses resolve in the deps, and the pins are checked in the auditor.
        */
-      const chainId =
-        typeof body.chainId === "number" ? body.chainId : undefined;
-
       /*
        * Client limits are untrusted input, and they reach three places: the
        * auditor (which treats them as tightening-only), the planner's slippage
@@ -357,12 +388,12 @@ export async function POST(request: NextRequest) {
          direct call is held to the same posture. Threads to the read tools
          (no testnet balance surfaced) and the system facts (no testnet
          steering). */
-      const mainnetOnly = body.showTestnets !== true;
-
       const agentInput = {
         message: String(body.message ?? ""),
         address: meterAddress,
-        chainId: body.chainId,
+        chainId,
+        requestId: turn.requestId,
+        capabilities,
         limits: safeLimits,
         /* The conversation this message belongs to. Sanitised and bounded — see
            historyFromBody. Without it the model received only the sentence the
@@ -375,6 +406,7 @@ export async function POST(request: NextRequest) {
            normalizer tier below replaces this with its fuller addendum. */
         systemAddendum: [
           productFacts(mainnetOnly),
+          walletChainContext(chainId),
           "For current balances, prices, quotes, liquidity, supported chains, protocol activity, revenue, lending rates, or portfolio analysis, call the relevant live read tools before stating facts. Docs and product descriptions are background only; fresh tool results take precedence. Choose tools relevant to the question, preserve any named chain scope, and never read lending positions merely because a wallet is connected. Ask independent reads together. Answer stable conceptual questions directly and concisely. Propose transactions only when the user requests an action; questions mentioning a trade or loan are not transaction instructions.",
           ...(localIntent.kind !== "unknown"
             ? [
@@ -384,6 +416,7 @@ export async function POST(request: NextRequest) {
             : []),
         ].join("\n"),
         mainnetOnly,
+        networkMode,
       };
 
       /**
@@ -455,7 +488,7 @@ export async function POST(request: NextRequest) {
           built = await planFromToolCalls(
             result.executes,
             chainId,
-            serverPlanDeps(body.address, chainId),
+            serverPlanDeps(meterAddress, chainId),
             {
               slippageBps: safeLimits.slippageBps,
               deadlineMin: 20,
@@ -470,7 +503,7 @@ export async function POST(request: NextRequest) {
           });
         } catch (buildErr) {
           console.error("[chat] plan build/audit failed:", buildErr);
-        await logAgentTurn({
+          await logAgentTurn({
             status: "build_error",
             provider: result.provider,
             model: result.model,
@@ -480,10 +513,10 @@ export async function POST(request: NextRequest) {
             readCount: result.trace.length,
             stream: streamed,
             chainId,
-          address: meterAddress,
-          jevRoute,
-          jevConfidence,
-          jevNormalizerSkipped,
+            address: meterAddress,
+            jevRoute,
+            jevConfidence,
+            jevNormalizerSkipped,
             error: String(
               (buildErr as { name?: string })?.name ?? "build_error",
             ).slice(0, 60),
@@ -502,6 +535,7 @@ export async function POST(request: NextRequest) {
                 quota: quota.quota,
                 remaining: quota.remaining,
               },
+              capabilities,
             },
           };
         }
@@ -570,7 +604,7 @@ export async function POST(request: NextRequest) {
                   const rebuilt = await planFromToolCalls(
                     result.executes,
                     chainId,
-                    serverPlanDeps(body.address, chainId),
+                    serverPlanDeps(meterAddress, chainId),
                     { slippageBps: safeLimits.slippageBps, deadlineMin: 20 },
                     userText,
                   );
@@ -629,7 +663,7 @@ export async function POST(request: NextRequest) {
            and the auditor then dropped its plan — a different fact from a clean
            answer, and one worth being able to count. failed_over is the outage
            signal: the answer came from a backend other than the primary. */
-          await logAgentTurn({
+        await logAgentTurn({
           status: verdict.ok ? "ok" : "refused",
           provider: result.provider,
           model: result.model,
@@ -643,10 +677,10 @@ export async function POST(request: NextRequest) {
           readCount: result.trace.length,
           stream: streamed,
           chainId,
-            address: meterAddress,
-            jevRoute,
-            jevConfidence,
-            jevNormalizerSkipped,
+          address: meterAddress,
+          jevRoute,
+          jevConfidence,
+          jevNormalizerSkipped,
         });
 
         return {
@@ -706,6 +740,7 @@ export async function POST(request: NextRequest) {
               quota: quota.quota,
               remaining: quota.remaining,
             },
+            capabilities,
           },
         };
       };
@@ -769,6 +804,8 @@ export async function POST(request: NextRequest) {
             : "I couldn't complete that just now — the reasoning service returned an error. Try again shortly.",
           context: {
             status: blocked ? "provider_blocked" : "provider_error",
+            requestId: turn.requestId,
+            capabilities,
             /* Reported so the UI's counter follows the refund. Absent when
                there was nothing to hand back, which the client already treats
                as "leave the count alone". */
@@ -850,7 +887,7 @@ export async function POST(request: NextRequest) {
               const quick = await runAgent(cheap, {
                 ...agentInput,
                 maxReadRounds: 0,
-                systemAddendum: normalizerAddendum({ chainId, mainnetOnly }),
+                systemAddendum: `${normalizerAddendum({ chainId, mainnetOnly })}\n${walletChainContext(chainId)}`,
               });
               const bail =
                 quick.executes.length === 0 &&
@@ -961,13 +998,22 @@ export async function POST(request: NextRequest) {
          means. Forwarding it risks asking for a body this branch then tries to
          read as JSON. */
       const { stream: _stream, ...engineBody } = body;
+      const scopedEngineBody = {
+        ...engineBody,
+        address: meterAddress,
+        ...(chainId !== undefined ? { chainId } : {}),
+        showTestnets: networkMode === "testnet",
+        networkMode,
+        requestId: turn.requestId,
+        capabilities,
+      };
       // Forward the request to the AI Engine API
       const response = await fetch(`${AI_ENGINE_API_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(engineBody),
+        body: JSON.stringify(scopedEngineBody),
         // Use configurable timeout for AI response generation
         signal: AbortSignal.timeout(AI_ENGINE_TIMEOUT),
       });
@@ -1008,7 +1054,7 @@ export async function POST(request: NextRequest) {
         //
         // Two deliberate choices here, both about which way this fails:
         //
-        // 1. `body.chainId` only — NOT `result.chainId`. `result` is model
+        // 1. The validated turn chain only — NOT `result.chainId`. `result` is model
         //    output, so honouring it would let the model nominate the chain
         //    whose whitelist it is checked against, i.e. choose its own
         //    security policy. The wallet's connected chain is the only
@@ -1017,9 +1063,6 @@ export async function POST(request: NextRequest) {
         //    which meant a request with no chain got a populated whitelist
         //    and could pass. An unknown chain must yield an EMPTY whitelist
         //    so the check below fails closed.
-        const chainId: number | undefined =
-          typeof body.chainId === "number" ? body.chainId : undefined;
-
         const MULTICHAIN_WHITELIST: Record<string, string[]> = {
           "8453": ["Base", "Aave", "Aerodrome", "Uniswap"], // Base
           "84532": ["Base", "Aave", "Aerodrome", "Uniswap"], // Base Sepolia
@@ -1057,7 +1100,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return NextResponse.json(data);
+      return NextResponse.json({
+        ...data,
+        context: {
+          ...(data.context ?? {}),
+          requestId: turn.requestId,
+          capabilities,
+        },
+      });
     } catch (fetchError: any) {
       console.error("Error connecting to AI Engine:", fetchError);
 
@@ -1071,6 +1121,8 @@ export async function POST(request: NextRequest) {
              the tag, a network failure to the engine reached the user as a
              bare apology while a provider 5xx got the graceful path. */
           status: "provider_error",
+          requestId: turn.requestId,
+          capabilities,
           conversation_id: body.conversation_id || "fallback-" + Date.now(),
         },
         error_details: {
