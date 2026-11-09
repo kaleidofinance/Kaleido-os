@@ -38,6 +38,8 @@ const MAX_READ_ROUNDS = 3;
 
 export interface AgentInput {
   message: string;
+  /** Stable id shared by every provider/tool phase of one server turn. */
+  requestId?: string;
   address?: string;
   chainId?: number;
   limits?: Guardrails;

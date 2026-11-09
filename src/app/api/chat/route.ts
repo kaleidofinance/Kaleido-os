@@ -52,6 +52,7 @@ import type { ChatMessage } from "@/lib/ai/types";
 import { chainTokens } from "@/constants/tokens";
 import { validateLocalClassification } from "@/lib/ai/localIntent";
 import { walletChainContext } from "@/lib/ai/walletContext";
+import { createTurnContext, turnContextError } from "@/lib/ai/turnContext";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -210,6 +211,37 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     /*
+     * Establish one immutable scope for this turn before quota/provider work.
+     * Chain, mode, wallet identity, and request id are validated together so
+     * no downstream branch can accidentally fall back to a different chain or
+     * treat a mainnet request as a testnet request.
+     */
+    const turn = createTurnContext({
+      address: body?.address,
+      chainId: body?.chainId,
+      showTestnets: body?.showTestnets,
+      requestId: body?.requestId,
+    });
+    const scopeError = turnContextError(turn);
+    if (scopeError) {
+      return NextResponse.json(
+        {
+          response: scopeError,
+          context: {
+            status: "invalid_turn_scope",
+            requestId: turn.requestId,
+            networkMode: turn.networkMode,
+            chainId: turn.requestedChainId ?? null,
+            chainStatus: turn.chainStatus,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const { chainId, mainnetOnly, networkMode } = turn;
+
+    /*
      * Per-IP rate limit, before anything else spends work or quota.
      *
      * The quota below is keyed on a wallet address the caller supplies and does
@@ -268,9 +300,7 @@ export async function POST(request: NextRequest) {
        local-only branch — so a garbage string cannot become its own metered
        identity, and the counter is keyed on a canonical form rather than on
        whatever casing the caller sent. */
-    const meterAddress = /^0x[0-9a-fA-F]{40}$/.test(String(body.address ?? ""))
-      ? String(body.address).toLowerCase()
-      : undefined;
+    const meterAddress = turn.address;
     if (provider) {
       // Quota is spent here, at the point of dispatch, and nowhere earlier.
       // A turn the client answered locally never reaches this route at all, so
@@ -303,7 +333,7 @@ export async function POST(request: NextRequest) {
                 ? "quota_anonymous"
                 : "quota_exhausted",
           latencyMs: Date.now() - startedAt,
-          chainId: typeof body.chainId === "number" ? body.chainId : null,
+          chainId: chainId ?? null,
           address: meterAddress,
         });
         return NextResponse.json(
@@ -333,9 +363,6 @@ export async function POST(request: NextRequest) {
        * plan mixes chains: token symbols resolve in the builder, contract
        * addresses resolve in the deps, and the pins are checked in the auditor.
        */
-      const chainId =
-        typeof body.chainId === "number" ? body.chainId : undefined;
-
       /*
        * Client limits are untrusted input, and they reach three places: the
        * auditor (which treats them as tightening-only), the planner's slippage
@@ -358,14 +385,11 @@ export async function POST(request: NextRequest) {
          direct call is held to the same posture. Threads to the read tools
          (no testnet balance surfaced) and the system facts (no testnet
          steering). */
-      const mainnetOnly = body.showTestnets !== true;
-      const networkMode: "mainnet" | "testnet" =
-        body.showTestnets === true ? "testnet" : "mainnet";
-
       const agentInput = {
         message: String(body.message ?? ""),
         address: meterAddress,
-        chainId: body.chainId,
+        chainId,
+        requestId: turn.requestId,
         limits: safeLimits,
         /* The conversation this message belongs to. Sanitised and bounded — see
            historyFromBody. Without it the model received only the sentence the
@@ -460,7 +484,7 @@ export async function POST(request: NextRequest) {
           built = await planFromToolCalls(
             result.executes,
             chainId,
-            serverPlanDeps(body.address, chainId),
+            serverPlanDeps(meterAddress, chainId),
             {
               slippageBps: safeLimits.slippageBps,
               deadlineMin: 20,
@@ -575,7 +599,7 @@ export async function POST(request: NextRequest) {
                   const rebuilt = await planFromToolCalls(
                     result.executes,
                     chainId,
-                    serverPlanDeps(body.address, chainId),
+                    serverPlanDeps(meterAddress, chainId),
                     { slippageBps: safeLimits.slippageBps, deadlineMin: 20 },
                     userText,
                   );
@@ -966,13 +990,21 @@ export async function POST(request: NextRequest) {
          means. Forwarding it risks asking for a body this branch then tries to
          read as JSON. */
       const { stream: _stream, ...engineBody } = body;
+      const scopedEngineBody = {
+        ...engineBody,
+        address: meterAddress,
+        ...(chainId !== undefined ? { chainId } : {}),
+        showTestnets: networkMode === "testnet",
+        networkMode,
+        requestId: turn.requestId,
+      };
       // Forward the request to the AI Engine API
       const response = await fetch(`${AI_ENGINE_API_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(engineBody),
+        body: JSON.stringify(scopedEngineBody),
         // Use configurable timeout for AI response generation
         signal: AbortSignal.timeout(AI_ENGINE_TIMEOUT),
       });
@@ -1013,7 +1045,7 @@ export async function POST(request: NextRequest) {
         //
         // Two deliberate choices here, both about which way this fails:
         //
-        // 1. `body.chainId` only — NOT `result.chainId`. `result` is model
+        // 1. The validated turn chain only — NOT `result.chainId`. `result` is model
         //    output, so honouring it would let the model nominate the chain
         //    whose whitelist it is checked against, i.e. choose its own
         //    security policy. The wallet's connected chain is the only
@@ -1022,9 +1054,6 @@ export async function POST(request: NextRequest) {
         //    which meant a request with no chain got a populated whitelist
         //    and could pass. An unknown chain must yield an EMPTY whitelist
         //    so the check below fails closed.
-        const chainId: number | undefined =
-          typeof body.chainId === "number" ? body.chainId : undefined;
-
         const MULTICHAIN_WHITELIST: Record<string, string[]> = {
           "8453": ["Base", "Aave", "Aerodrome", "Uniswap"], // Base
           "84532": ["Base", "Aave", "Aerodrome", "Uniswap"], // Base Sepolia
