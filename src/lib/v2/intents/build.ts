@@ -1609,6 +1609,8 @@ export async function buildIntents(
         sellIsWrapped ? { ...tokenIn, isNative: true } : tokenIn,
       );
       const outTok = aggregatorToken(chainId, tokenOut);
+      // The auditor currently rejects native-value aggregator calls. Keep the
+      // route closed until that boundary can safely validate their spend.
       if (inTok.isNative) return null;
       /* Both the unwrap and the aggregator leg run at the mirror's 6 decimals; a
          Max sell of an 18-decimal wrapped balance has more fractional digits than
@@ -1646,7 +1648,7 @@ export async function buildIntents(
         kind: "aggregatorSwap",
         to: route.to,
         data: route.data,
-        value: "0",
+        value: route.value,
         tokenIn: inTok.address,
         amountIn: aggAmount,
         decimalsIn: inTok.decimals,
