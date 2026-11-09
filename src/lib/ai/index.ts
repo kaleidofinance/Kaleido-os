@@ -7,6 +7,18 @@ export { TOOL_CATALOG, EXECUTE_TOOLS } from "./toolCatalog";
 export { isReadTool, runReadTool } from "./readTools";
 export type { NetworkMode } from "./readTools";
 export {
+  capabilityFor,
+  capabilityPrompt,
+  getCapabilitySnapshot,
+  registeredChainIds,
+} from "./capabilities";
+export type {
+  CapabilityRecord,
+  CapabilitySnapshot,
+  CapabilityStatus,
+  CapabilitySurface,
+} from "./capabilities";
+export {
   canUseBrowserLocalModel,
   browserLocalIntentOptions,
   DEFAULT_BROWSER_LOCAL_INTENT_MODEL,

@@ -10,6 +10,7 @@ import {
   type ReadCall,
 } from "./index";
 import { readKey } from "./readKey";
+import { capabilityPrompt, type CapabilitySnapshot } from "./capabilities";
 
 /**
  * The agent loop.
@@ -40,6 +41,8 @@ export interface AgentInput {
   message: string;
   /** Stable id shared by every provider/tool phase of one server turn. */
   requestId?: string;
+  /** Server-owned capability snapshot for this chain/mode scope. */
+  capabilities?: CapabilitySnapshot;
   address?: string;
   chainId?: number;
   limits?: Guardrails;
@@ -176,9 +179,13 @@ export async function runAgent(
      to be in front of the current message or the round-trips would interleave
      with them and the model would read the tool results as answering an older
      question. */
-  const systemFinal = input.systemAddendum
-    ? `${systemWithDocs}\n\n${input.systemAddendum}`
-    : systemWithDocs;
+  const systemFinal = [
+    systemWithDocs,
+    input.capabilities ? capabilityPrompt(input.capabilities) : null,
+    input.systemAddendum ?? null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
 
   const messages: ChatMessage[] = [
     ...(input.history ?? []),

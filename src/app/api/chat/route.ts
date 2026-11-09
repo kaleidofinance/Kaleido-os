@@ -53,6 +53,7 @@ import { chainTokens } from "@/constants/tokens";
 import { validateLocalClassification } from "@/lib/ai/localIntent";
 import { walletChainContext } from "@/lib/ai/walletContext";
 import { createTurnContext, turnContextError } from "@/lib/ai/turnContext";
+import { getCapabilitySnapshot } from "@/lib/ai/capabilities";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -240,6 +241,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { chainId, mainnetOnly, networkMode } = turn;
+    const capabilities = getCapabilitySnapshot({ chainId, networkMode });
 
     /*
      * Per-IP rate limit, before anything else spends work or quota.
@@ -351,6 +353,7 @@ export async function POST(request: NextRequest) {
                 quota: quota.quota,
                 remaining: global ? quota.remaining : 0,
               },
+              capabilities,
             },
           },
           { status: 429 },
@@ -390,6 +393,7 @@ export async function POST(request: NextRequest) {
         address: meterAddress,
         chainId,
         requestId: turn.requestId,
+        capabilities,
         limits: safeLimits,
         /* The conversation this message belongs to. Sanitised and bounded — see
            historyFromBody. Without it the model received only the sentence the
@@ -531,6 +535,7 @@ export async function POST(request: NextRequest) {
                 quota: quota.quota,
                 remaining: quota.remaining,
               },
+              capabilities,
             },
           };
         }
@@ -735,6 +740,7 @@ export async function POST(request: NextRequest) {
               quota: quota.quota,
               remaining: quota.remaining,
             },
+            capabilities,
           },
         };
       };
@@ -798,6 +804,8 @@ export async function POST(request: NextRequest) {
             : "I couldn't complete that just now — the reasoning service returned an error. Try again shortly.",
           context: {
             status: blocked ? "provider_blocked" : "provider_error",
+            requestId: turn.requestId,
+            capabilities,
             /* Reported so the UI's counter follows the refund. Absent when
                there was nothing to hand back, which the client already treats
                as "leave the count alone". */
@@ -997,6 +1005,7 @@ export async function POST(request: NextRequest) {
         showTestnets: networkMode === "testnet",
         networkMode,
         requestId: turn.requestId,
+        capabilities,
       };
       // Forward the request to the AI Engine API
       const response = await fetch(`${AI_ENGINE_API_URL}/chat`, {
@@ -1091,7 +1100,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return NextResponse.json(data);
+      return NextResponse.json({
+        ...data,
+        context: {
+          ...(data.context ?? {}),
+          requestId: turn.requestId,
+          capabilities,
+        },
+      });
     } catch (fetchError: any) {
       console.error("Error connecting to AI Engine:", fetchError);
 
@@ -1105,6 +1121,8 @@ export async function POST(request: NextRequest) {
              the tag, a network failure to the engine reached the user as a
              bare apology while a provider 5xx got the graceful path. */
           status: "provider_error",
+          requestId: turn.requestId,
+          capabilities,
           conversation_id: body.conversation_id || "fallback-" + Date.now(),
         },
         error_details: {
