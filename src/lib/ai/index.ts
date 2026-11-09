@@ -7,6 +7,20 @@ export { TOOL_CATALOG, EXECUTE_TOOLS } from "./toolCatalog";
 export { isReadTool, runReadTool } from "./readTools";
 export type { NetworkMode } from "./readTools";
 export {
+  evidenceOk,
+  evidencePartial,
+  evidenceUnavailable,
+  evidenceUnsupported,
+} from "./evidence";
+export type {
+  EvidenceCoverage,
+  EvidenceInput,
+  EvidenceNetworkMode,
+  EvidenceResult,
+  EvidenceScope,
+  EvidenceStatus,
+} from "./evidence";
+export {
   capabilityFor,
   capabilityPrompt,
   getCapabilitySnapshot,

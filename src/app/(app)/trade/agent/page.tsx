@@ -104,6 +104,7 @@ import {
   poolSnapshotAnswer,
   personalPortfolioQuestion,
 } from "@/lib/ai/localMarketAnswer";
+import { launchpadAnswer } from "@/lib/ai/localProtocolAnswer";
 import {
   canUseBrowserLocalModel,
   type LocalIntentClassification,
@@ -1672,6 +1673,18 @@ export default function AgentPage() {
       }
 
       const question = isQuestionShaped(content);
+      if (question) {
+        const launchpads = launchpadAnswer(content, {
+          chainId,
+          showTestnets,
+        });
+        if (launchpads) {
+          note("Read the registered launchpad integrations");
+          log("local-launchpads");
+          say(launchpads, { via: "local" });
+          return;
+        }
+      }
       if (question && answerFromFaq(content)) return;
 
       // Read-only wallet questions use the same partial-read rules as the

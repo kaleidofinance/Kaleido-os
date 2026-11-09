@@ -1,5 +1,7 @@
 # Luca protocol coverage and future integration plan
 
+For the broader product vision, online research, durable strategies, contract development and launchpad creation, use the [full agent implementation plan](./LUCA_FULL_AGENT_IMPLEMENTATION_PLAN.md). This document retains the protocol-coverage checklist and historical gap snapshot; revalidate those observations against current source before implementation.
+
 **Status:** proposal and implementation checklist, 9 November 2026. Existing code and local uncommitted changes are not evidence of production deployment or live transaction acceptance. This plan extends [LUCA_AGENT_HARNESS.md](./LUCA_AGENT_HARNESS.md) and reconciles its target architecture with [MULTICHAIN_INTERFACE_MAP.md](./MULTICHAIN_INTERFACE_MAP.md). The current product decision is that testnet mode and mainnet mode are exclusive; browse scope, connected wallet chain, and action chain remain distinct within the selected mode.
 
 ## Outcome

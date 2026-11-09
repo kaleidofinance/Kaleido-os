@@ -14,16 +14,14 @@ import {
 } from "@/lib/ai";
 import {
   runAgent,
-  runAgentWithFailover,
-  type AgentInput,
   type AgentRun,
 } from "@/lib/ai/agent";
+import { runTurn } from "@/lib/ai/turnRunner";
 import { planFromToolCalls } from "@/lib/ai/fromToolCall";
 import {
   getNormalizerProviders,
   isEscalation,
   normalizerAddendum,
-  productFacts,
 } from "@/lib/ai/normalizer";
 import {
   classifyLucaRoute,
@@ -33,7 +31,7 @@ import {
   type JevRoute,
 } from "@/lib/ai/jev";
 import { serverPlanDeps } from "@/lib/ai/planDeps";
-import { auditPlan, refusalText, sanitizeGuardrails } from "@/lib/ai/auditor";
+import { auditPlan, refusalText } from "@/lib/ai/auditor";
 import {
   consumeModelRequest,
   peekModelUsage,
@@ -48,12 +46,12 @@ import {
 } from "@/lib/ai/simulatePlan";
 import { logAgentTurn } from "@/lib/ai/turnLog";
 import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
-import type { ChatMessage } from "@/lib/ai/types";
 import { chainTokens } from "@/constants/tokens";
-import { validateLocalClassification } from "@/lib/ai/localIntent";
+import { launchpadAnswer } from "@/lib/ai/localProtocolAnswer";
 import { walletChainContext } from "@/lib/ai/walletContext";
 import { createTurnContext, turnContextError } from "@/lib/ai/turnContext";
 import { getCapabilitySnapshot } from "@/lib/ai/capabilities";
+import { createAgentInput } from "@/lib/ai/turnCoordinator";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -127,86 +125,6 @@ const AI_ENGINE_TIMEOUT = parseInt(
   10,
 );
 
-/**
- * How many prior messages of a conversation travel to the model.
- *
- * Six, i.e. roughly three exchanges. The number is bounded for two separate
- * reasons and the smaller one decides it: cost is per-token on every round of a
- * turn, and the client controls this array, so an unbounded field is a way to
- * make one request cost as much as a hundred. Three exchanges is what the
- * observed failure needs — "use USDC" answering an offer Luca made one or two
- * turns earlier — and a conversation longer than that has usually moved on.
- */
-const MAX_HISTORY_MESSAGES = 6;
-
-/** Longest a single remembered message may be, in characters. */
-const MAX_HISTORY_CHARS = 2_000;
-
-/**
- * The conversation so far, from a request body, fit to send to a provider.
- *
- * Everything here is client input, which is the whole reason this function
- * exists rather than passing `body.history` through. It is not a trust boundary
- * in the auditor's sense — nothing in a prompt can sign anything, and the
- * auditor still checks the built plan — but three things would go wrong without
- * it: a non-array or a wrong-shaped entry would reach an adapter and throw
- * mid-turn; an unbounded array would let a caller inflate the token bill of a
- * single quota-metered request; and a role outside the two the interface names
- * would be silently reinterpreted by whichever provider received it.
- *
- * Trailing slice, not leading: the messages nearest the current one are the ones
- * it is likely to be a reply to. Empty strings drop out, because a frame-only
- * turn — a card, a plan, a receive panel with no prose — has nothing to say to a
- * model, and an empty `content` is rejected outright by some providers.
- */
-function historyFromBody(raw: unknown): ChatMessage[] {
-  if (!Array.isArray(raw)) return [];
-  const clean: ChatMessage[] = [];
-  for (const entry of raw) {
-    if (!entry || typeof entry !== "object") continue;
-    const { role, content } = entry as { role?: unknown; content?: unknown };
-    if (role !== "user" && role !== "assistant") continue;
-    if (typeof content !== "string") continue;
-    const text = content.trim().slice(0, MAX_HISTORY_CHARS);
-    if (!text) continue;
-    clean.push({ role, content: text });
-  }
-  return clean.slice(-MAX_HISTORY_MESSAGES);
-}
-
-/**
- * Docs sections the client found for this question, re-checked here.
- *
- * The client sends the two closest sections so the model can answer from the
- * protocol's own text rather than reconstruct it from tool calls. It arrives
- * from a browser, so it is bounded and shaped before it is trusted: at most
- * three entries, each field a string with a hard length cap, the href a docs
- * path and nothing else. A client that sends garbage gets no grounding, not an
- * error - the turn still works, it just costs the model a read or two more.
- */
-function groundingFromBody(raw: unknown): AgentInput["grounding"] {
-  if (!Array.isArray(raw)) return undefined;
-  const out: NonNullable<AgentInput["grounding"]> = [];
-  for (const g of raw.slice(0, 3)) {
-    if (!g || typeof g !== "object") continue;
-    const { title, heading, href, text } = g as Record<string, unknown>;
-    if (
-      typeof title !== "string" ||
-      typeof text !== "string" ||
-      typeof href !== "string"
-    )
-      continue;
-    if (!/^\/docs\/[a-z0-9-]+(#[a-z0-9-]+)?$/.test(href)) continue;
-    out.push({
-      title: title.slice(0, 80),
-      heading: typeof heading === "string" ? heading.slice(0, 80) : "",
-      href,
-      text: text.slice(0, 900),
-    });
-  }
-  return out.length ? out : undefined;
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -242,6 +160,26 @@ export async function POST(request: NextRequest) {
 
     const { chainId, mainnetOnly, networkMode } = turn;
     const capabilities = getCapabilitySnapshot({ chainId, networkMode });
+
+    /* Keep this verified protocol fact local even for API callers that do not
+       use the browser's local-first dispatcher. It prevents the legacy engine
+       or a stale docs index from answering that Kaleido has no launchpad
+       integrations, while launch/deploy actions still continue to the planner
+       and auditor. */
+    const localLaunchpadAnswer = launchpadAnswer(String(body.message ?? ""), {
+      chainId,
+      showTestnets: networkMode === "testnet",
+    });
+    if (localLaunchpadAnswer) {
+      return NextResponse.json({
+        response: localLaunchpadAnswer,
+        context: {
+          status: "local_protocol_catalog",
+          requestId: turn.requestId,
+          capabilities,
+        },
+      });
+    }
 
     /*
      * Per-IP rate limit, before anything else spends work or quota.
@@ -381,43 +319,13 @@ export async function POST(request: NextRequest) {
       /* One sanitiser for both audit entry points — see sanitizeGuardrails. The
          locally-built plan path (/api/audit) cleans limits the same way, so a
          typed command and a reasoned one are held to the same ceiling. */
-      const safeLimits = sanitizeGuardrails(body.limits);
-      const localIntent = validateLocalClassification(body.localIntent);
       /* Testnets are hidden by default in the UI (mainnet-first). The page
          sends the flag; absent reads as mainnet-only, so an older client or a
          direct call is held to the same posture. Threads to the read tools
          (no testnet balance surfaced) and the system facts (no testnet
          steering). */
-      const agentInput = {
-        message: String(body.message ?? ""),
-        address: meterAddress,
-        chainId,
-        requestId: turn.requestId,
-        capabilities,
-        limits: safeLimits,
-        /* The conversation this message belongs to. Sanitised and bounded — see
-           historyFromBody. Without it the model received only the sentence the
-           local grammar could not parse, which on a local-first page is often a
-           bare reply to something Luca itself said. */
-        history: historyFromBody(body.history),
-        grounding: groundingFromBody(body.grounding),
-        /* The product as it is today, for the full model too — so it never
-           recommends a competitor or a product that is not on this chain. The
-           normalizer tier below replaces this with its fuller addendum. */
-        systemAddendum: [
-          productFacts(mainnetOnly),
-          walletChainContext(chainId),
-          "For current balances, prices, quotes, liquidity, supported chains, protocol activity, revenue, lending rates, or portfolio analysis, call the relevant live read tools before stating facts. Docs and product descriptions are background only; fresh tool results take precedence. Choose tools relevant to the question, preserve any named chain scope, and never read lending positions merely because a wallet is connected. Ask independent reads together. Answer stable conceptual questions directly and concisely. Propose transactions only when the user requests an action; questions mentioning a trade or loan are not transaction instructions.",
-          ...(localIntent.kind !== "unknown"
-            ? [
-                "A browser-local classifier supplied a non-authoritative context hint. Treat it only as a tie-breaker for conversation reference; verify the user's words and history yourself. Never use it for transaction arguments.",
-                `Local hint: kind=${localIntent.kind}; reference=${localIntent.reference ?? "none"}.`,
-              ]
-            : []),
-        ].join("\n"),
-        mainnetOnly,
-        networkMode,
-      };
+      const agentInput = createAgentInput(body, turn, capabilities);
+      const safeLimits = agentInput.limits as { slippageBps: number };
 
       /**
        * Everything that happens after the model stops talking: build, audit,
@@ -460,7 +368,7 @@ export async function POST(request: NextRequest) {
            document slipped in is not in here. */
         const userText = [
           agentInput.message,
-          ...agentInput.history
+          ...(agentInput.history ?? [])
             .filter((m) => m.role === "user")
             .map((m) => m.content),
         ].join("\n");
@@ -935,7 +843,7 @@ export async function POST(request: NextRequest) {
             let round = "";
 
             try {
-              const result = await runAgentWithFailover(providers, agentInput, {
+              const result = await runTurn({ providers, input: agentInput, events: {
                 onText: (d) => {
                   round += d;
                   send({ t: "text", d });
@@ -945,7 +853,7 @@ export async function POST(request: NextRequest) {
                   round = "";
                   send({ t: "round", ...(note ? { note } : {}), reads });
                 },
-              });
+              } });
               send({ t: "done", ...(await settle(result, true)) });
             } catch (aiError: any) {
               send({ t: "error", ...(await recover(aiError, true)) });
@@ -984,7 +892,7 @@ export async function POST(request: NextRequest) {
 
       try {
         return NextResponse.json(
-          await settle(await runAgentWithFailover(providers, agentInput)),
+          await settle(await runTurn({ providers, input: agentInput })),
         );
       } catch (aiError: any) {
         return NextResponse.json(await recover(aiError));

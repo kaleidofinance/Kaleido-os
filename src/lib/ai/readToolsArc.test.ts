@@ -26,6 +26,7 @@ async function main() {
   console.log("\n— getPortfolio on a chain with no lending Diamond —");
   const pf = (await runReadTool("getPortfolio", { address: ADDR }, 8453)) as Record<string, unknown>;
   check("a chain without lending degrades instead of erroring", pf.supported === false && !("error" in pf), JSON.stringify(pf).slice(0, 160));
+  check("unsupported product state is explicit evidence", (pf.evidence as Record<string, unknown>)?.status === "unsupported");
   check("it names the chain", pf.chain === "Base", String(pf.chain));
   check("the note says lending is not here", typeof pf.note === "string" && pf.note.includes("isn't deployed on Base"), String(pf.note).slice(0, 160));
   check("holdings are pointed at getBalances", String(pf.note).includes("getBalances"));
@@ -33,6 +34,7 @@ async function main() {
   check("an unregistered chain is still an error", typeof unk.error === "string" && unk.error.includes("registry"), String(unk.error));
   const bad = (await runReadTool("getPortfolio", { address: "nope" }, 5042)) as Record<string, unknown>;
   check("a bad address is still refused first", typeof bad.error === "string" && bad.error.includes("address"));
+  check("failed read is not presented as zero", (bad.evidence as Record<string, unknown>)?.status === "unavailable");
 
   console.log("\n— the aggregator quote seam —");
   check("Arc has the aggregator", hasKyberSwap(5042));

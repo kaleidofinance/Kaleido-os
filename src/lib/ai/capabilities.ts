@@ -7,9 +7,10 @@ import {
   registeredLendingAssets,
 } from "@/constants/registry";
 import { chainTokens } from "@/constants/tokens";
-import { hasFlyTrade } from "@/lib/swap/flytrade";
-import { hasKyberSwap } from "@/lib/swap/kyberswap";
-import { hasLifiSwap } from "@/lib/swap/lifi";
+import {
+  aggregatorIntegrations,
+  launchpadIntegrations,
+} from "./integrationCatalog";
 import type { NetworkMode } from "./readTools";
 
 /** Status is deliberately more precise than a boolean. A registry entry is
@@ -200,12 +201,11 @@ export function getCapabilitySnapshot(args: {
   const lending = registeredLendingAssets(chainId, "loanable");
   const collateral = registeredLendingAssets(chainId, "collateral");
   const hasLending = Boolean(contracts.diamond);
-  const aggregatorNames = [
-    hasKyberSwap(scopedChainId) ? "KyberSwap" : null,
-    hasLifiSwap(scopedChainId) ? "LI.FI" : null,
-    hasFlyTrade(scopedChainId) ? "Fly.trade" : null,
-  ].filter((name): name is string => Boolean(name));
+  const aggregators = aggregatorIntegrations(scopedChainId, networkMode);
+  const aggregatorNames = aggregators.map((item) => item.name);
   const swapConfigured = hasV3 || aggregatorNames.length > 0;
+  const launchpads = launchpadIntegrations(scopedChainId, networkMode);
+  const launchpadsConfigured = launchpads.length > 0;
 
   const records: CapabilityRecord[] = [
     record(scope, {
@@ -296,6 +296,19 @@ export function getCapabilitySnapshot(args: {
       reason: hasStablecoin(chainId)
         ? undefined
         : "No complete kfUSD/kafUSD deployment is registered for this chain.",
+    }),
+    record(scope, {
+      id: "launchpads",
+      product: "launchpad integrations",
+      status: launchpadsConfigured ? "available" : "not_configured",
+      surfaces: surfaces(launchpadsConfigured ? "available" : "not_configured"),
+      source:
+        launchpads.length > 0
+          ? launchpads.map((item) => item.source).join("; ")
+          : "canonical launchpad integration catalog",
+      reason: launchpadsConfigured
+        ? `${launchpads.map((item) => item.name).join(" and ")} are registered on Arc mainnet. ${launchpads.map((item) => item.reason).join(" ")}`
+        : "No launchpad integration is registered for this chain.",
     }),
     record(scope, {
       id: "bridge.quote",

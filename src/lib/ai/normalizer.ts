@@ -4,6 +4,7 @@ import { chainTokens } from "@/constants/tokens";
 import { getChainMeta } from "@/constants/chains";
 import { arcLending, type ArcLending } from "@/lib/lending/arcLending";
 import { getContracts, registeredLendingAssets } from "@/constants/registry";
+import { launchpadIntegrations } from "./integrationCatalog";
 
 /**
  * The normalizer tier: a cheap model between the grammar and the reasoning model.
@@ -87,6 +88,7 @@ export function isEscalation(text: string, executes: number): boolean {
 
 /** The Arc mainnet lending book, from the registry (lib/lending/arcLending.ts). */
 export const ARC_LENDING: ArcLending | null = arcLending();
+const ARC_LAUNCHPADS = launchpadIntegrations(5042, "mainnet");
 
 const orList = (xs: string[]) =>
   xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}`;
@@ -125,6 +127,7 @@ export const PRODUCT_STATE: readonly string[] = [
   "Network inventory: Kaleido is live on 3 mainnets — Arc, BNB Smart Chain and Robinhood Chain — plus 6 deployed testnets — Arc, Sepolia, Base Sepolia, BNB Smart Chain, Robinhood Chain and Elysium. Other networks may be balance-reading only. If asked how many chains are live, answer from this inventory and do not call a lending or portfolio tool.",
   arcMainnetLine(ARC_LENDING),
   bscMainnetLine(),
+  `Arc mainnet has ${ARC_LAUNCHPADS.length} launchpad integrations: ${ARC_LAUNCHPADS.map((item) => item.name).join(" and ")}. They are launchpad adapters, separate from swap aggregators. Luca can inspect a pasted launch token and build a trade only after live metadata plus curve or pool verification passes; not every launch is automatically routeable. No launchpad integration is registered on BNB Smart Chain or Robinhood Chain.`,
   "KLD, Kaleido's own token, has NOT launched. There is no mainnet KLD, no market and no price; it cannot be bought, sold or bridged anywhere yet. The token event is planned for the end of September 2026, with an exchange listing after that. Today 'KLD' exists only as a testnet token (from the faucet) for practising staking and pools. If someone asks to buy, sell, price or hold KLD on a mainnet, say plainly that it has not launched, and offer the testnet or the points program instead. Never quote a KLD price.",
   arcPointsLine(ARC_LENDING),
   "Not offered, so say so rather than improvise: leverage or perpetuals, short selling, fiat on/off-ramps (no bank withdrawals), recurring/DCA orders, stop-losses, TWAP. A limit order (buy or sell at a price) IS offered.",

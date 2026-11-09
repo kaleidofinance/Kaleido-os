@@ -11,6 +11,7 @@ import {
 } from "./index";
 import { readKey } from "./readKey";
 import { capabilityPrompt, type CapabilitySnapshot } from "./capabilities";
+import type { TurnContext } from "./turnContext";
 
 /**
  * The agent loop.
@@ -41,6 +42,13 @@ export interface AgentInput {
   message: string;
   /** Stable id shared by every provider/tool phase of one server turn. */
   requestId?: string;
+  /**
+   * The server-validated scope for this turn. When present, this is authoritative
+   * over the legacy scalar fields below; keeping it as one object prevents a
+   * provider/read branch from accidentally mixing a chain or mode from another
+   * request path.
+   */
+  context?: TurnContext;
   /** Server-owned capability snapshot for this chain/mode scope. */
   capabilities?: CapabilitySnapshot;
   address?: string;
@@ -152,9 +160,17 @@ export async function runAgent(
   input: AgentInput,
   events?: AgentEvents,
 ): Promise<AgentRun> {
+  const scopedAddress = input.context ? input.context.address : input.address;
+  const scopedChainId = input.context ? input.context.chainId : input.chainId;
+  const scopedMainnetOnly = input.context
+    ? input.context.mainnetOnly
+    : input.mainnetOnly;
+  const scopedNetworkMode = input.context
+    ? input.context.networkMode
+    : input.networkMode;
   const system = buildSystemPrompt({
-    address: input.address,
-    chainId: input.chainId,
+    address: scopedAddress,
+    chainId: scopedChainId,
     limits: input.limits,
   });
 
@@ -261,10 +277,10 @@ export async function runAgent(
             await runReadTool(
               r.name,
               r.args,
-              input.chainId,
-              input.mainnetOnly,
-              input.networkMode,
-              input.address,
+              scopedChainId,
+              scopedMainnetOnly,
+              scopedNetworkMode,
+              scopedAddress,
             ),
           );
         }),
@@ -302,7 +318,11 @@ export async function runAgent(
         `Tool results:\n\n${contextBlock}\n\n` +
         "Use only this data — don't estimate. If you now have enough to answer or " +
         "propose a plan, do so; call execute tools for anything signable. If you still " +
-        "need more information, call another read tool." +
+        "need more information, call another read tool. Read results may include an " +
+        "evidence object: status=ok is observed data, partial means some requested " +
+        "coverage failed, unavailable means the read did not complete, and unsupported " +
+        "means the product or chain does not support that operation. Never turn an " +
+        "unavailable or unsupported result into zero, success, or a guessed value." +
         /* Saying that a repeat was a repeat is what stops a third round. Without
            it the model asks again, spends the round cap, and every round it
            spends is another paragraph the user watches get demoted to a line of
