@@ -37,21 +37,25 @@ $$;
 -- Include the new counts in the wallet facts response without rebuilding the
 -- existing materialized-view schema.
 do $$
-declare definition text;
+declare
+  definition text;
+  updated_definition text;
 begin
   definition := pg_get_functiondef(
     'public.reward_wallet_facts(text)'::regprocedure
   );
-  if position('x_elysium_integration_at' in definition) = 0 then
-    definition := replace(
+  if position('''elysiumIntegration''' in definition) = 0 then
+    updated_definition := replace(
       definition,
-      '''taskCounts'', m.task_counts,' ,
-      '''taskCounts'', m.task_counts || jsonb_build_object(
+      '''lucaModelIntegrationComment'', (select count(*) from public.waitlist where x_luca_model_integration_comment_at is not null)',
+      '''lucaModelIntegrationComment'', (select count(*) from public.waitlist where x_luca_model_integration_comment_at is not null),
       ''elysiumIntegration'', (select count(*) from public.waitlist where x_elysium_integration_at is not null),
-      ''elysiumIntegrationComment'', (select count(*) from public.waitlist where x_elysium_integration_comment_at is not null)
-    ),'
+      ''elysiumIntegrationComment'', (select count(*) from public.waitlist where x_elysium_integration_comment_at is not null)'
     );
-    execute definition;
+    if updated_definition = definition then
+      raise exception 'Could not extend reward_wallet_facts with Elysium task counts';
+    end if;
+    execute updated_definition;
   end if;
 end;
 $$;
