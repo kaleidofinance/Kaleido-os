@@ -969,6 +969,52 @@ async function main() {
     }
   }
 
+  console.log("\n— Elysium native HYPE through an aggregator —");
+  {
+    const ELYSIUM = 99901;
+    const ROUTER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
+    const hype: IToken = tk("HYPE", 18, NATIVE_SENTINEL.dex);
+    const kntq: IToken = tk(
+      "KNTQ",
+      18,
+      "0xe45a355d9e9cad2ad85f2d03e3ee3102a036acf0",
+    );
+    const routed: SwapRouteRequest[] = [];
+    const swapRoute = async (req: SwapRouteRequest) => {
+      routed.push(req);
+      return {
+        to: ROUTER,
+        data: "0xkyber",
+        value: "2000000000000000000",
+        spender: ROUTER,
+        amountOut: "375000000000000000000",
+        venue: "kyberswap",
+      };
+    };
+    const { deps } = fakeDeps({ chainId: ELYSIUM });
+    const r = await build(
+      { kind: "swap", amount: "2", tokenIn: hype, tokenOut: kntq },
+      { ...deps, swapRoute },
+    );
+    check(
+      "native HYPE is one direct aggregator transaction",
+      kinds(r) === "aggregatorSwap",
+      kinds(r),
+    );
+    check(
+      "the aggregator receives the native HYPE sentinel",
+      routed.length === 1 && same(routed[0].tokenIn, NATIVE_SENTINEL.dex),
+      JSON.stringify(routed),
+    );
+    check(
+      "the swap carries exactly the reviewed native HYPE value",
+      same(at(r, 0).tokenIn, NATIVE_SENTINEL.dex) &&
+        at(r, 0).symbolIn === "HYPE" &&
+        at(r, 0).value === "2000000000000000000",
+      JSON.stringify(at(r, 0)),
+    );
+  }
+
   console.log("\n— swapping the chain's own currency —");
   /*
    * The default state of the Swap card, and until the wrapped substitution went

@@ -32,6 +32,7 @@ const check = (name, cond, detail = "") => {
 const ARC = 5042;
 const ROBINHOOD = 4663;
 const BSC = 56;
+const ELYSIUM = 99901;
 const ARC_ROUTER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
 
 // Wrapped in an async IIFE: the tsx runner emits CJS, which has no top-level
@@ -50,6 +51,9 @@ check("hasKyberSwap is false off Arc", hasKyberSwap(1) === false);
 check("Robinhood has a KyberSwap slug", kyberSwapChainSlug(ROBINHOOD) === "robinhood");
 check("Robinhood uses the allow-listed KyberSwap router", kyberSwapRouter(ROBINHOOD) === ARC_ROUTER);
 check("hasKyberSwap is true for Robinhood", hasKyberSwap(ROBINHOOD) === true);
+check("Elysium has a KyberSwap slug", kyberSwapChainSlug(ELYSIUM) === "elysium");
+check("Elysium uses the allow-listed KyberSwap router", kyberSwapRouter(ELYSIUM) === ARC_ROUTER);
+check("hasKyberSwap is true for Elysium", hasKyberSwap(ELYSIUM) === true);
 
 console.log("\n— router whitelist —");
 check("the pinned router is recognised", isKnownSwapRouter(ARC, ARC_ROUTER));
@@ -129,6 +133,17 @@ check("a non-native token is unchanged", outTok.address === cir.address && outTo
 
 const noMirror = aggregatorToken(1, nativeUsdc);
 check("a native token on a chain with no mirror is unchanged", noMirror.isNative === true);
+const nativeHype = aggregatorToken(ELYSIUM, {
+  ...nativeUsdc,
+  symbol: "HYPE",
+});
+check(
+  "Elysium native HYPE stays native rather than becoming WHYPE",
+  nativeHype.address === nativeUsdc.address &&
+    nativeHype.symbol === "HYPE" &&
+    nativeHype.decimals === 18 &&
+    nativeHype.isNative === true,
+);
 
 /* The wrapped-native (0x8c6c, 18-dec) is not native and KyberSwap can't price
    it, so the builder/page force `isNative: true` to route it as the gas token.
