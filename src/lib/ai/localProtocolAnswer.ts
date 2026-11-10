@@ -1,5 +1,9 @@
 import { ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
-import { launchpadIntegrations } from "./integrationCatalog";
+import { getChainMeta } from "@/constants/chains";
+import {
+  integrationNameList,
+  launchpadIntegrations,
+} from "./integrationCatalog";
 
 const ARC_CHAIN_ID = ARGUS_CHAIN_ID;
 
@@ -32,28 +36,42 @@ export function launchpadAnswer(
 ): string | null {
   if (!launchpadQuestion(text)) return null;
 
-  const arcLaunchpads = launchpadIntegrations(ARC_CHAIN_ID, "mainnet");
-  const launchpadNames = arcLaunchpads.map((item) => item.name);
-  const launchpadCount = arcLaunchpads.length;
-  const launchpadList = launchpadNames.join(" and ");
   const asksArc = /\barc\b/i.test(text);
-  const asksOtherChain = /\b(?:bnb|bsc|binance|robinhood|elysium|base|sepolia)\b/i.test(text);
-  const arcScope = asksArc || (!asksOtherChain && opts.chainId === ARC_CHAIN_ID);
+  const asksElysium = /\belysium\b/i.test(text);
+  const asksBsc = /\b(?:bnb|bsc|binance)\b/i.test(text);
+  const asksRobinhood = /\brobinhood\b/i.test(text);
+  const asksBase = /\bbase\b/i.test(text);
+  const asksSepolia = /\bsepolia\b/i.test(text);
+  const explicitChainId = asksArc
+    ? ARC_CHAIN_ID
+    : asksElysium
+      ? 99901
+      : asksBsc
+        ? 56
+        : asksRobinhood
+          ? 4663
+          : undefined;
+  const explicitlyUnsupported = asksBase || asksSepolia;
+  const chainId = explicitChainId ?? opts.chainId;
+  const meta = getChainMeta(chainId);
+  const mode = meta?.network ?? (opts.showTestnets ? "testnet" : "mainnet");
+  const scoped = explicitlyUnsupported
+    ? []
+    : launchpadIntegrations(chainId, mode);
 
-  if (arcScope || launchpadIntegrations(opts.chainId, "mainnet").length > 0) {
-    return `Kaleido currently integrates ${launchpadCount} launchpads on Arc: ${launchpadList}. They are separate from swap aggregators. Luca can inspect a pasted launch token and build a trade only after live metadata plus curve or pool verification passes, so a launch is not automatically routeable.`;
+  if (scoped.length > 0) {
+    return `Kaleido currently integrates ${scoped.length} launchpads on ${meta?.name ?? "this chain"}: ${integrationNameList(scoped)}. They are separate from swap aggregators. Luca can inspect a pasted launch token and build a trade only after live metadata plus pool verification passes, so a launch is not automatically routeable.`;
   }
 
-  if (opts.showTestnets) {
-    return "Launchpad integrations are currently registered on Arc mainnet only: Argus and Peach. The testnet catalog has no launchpad adapter yet.";
+  if (
+    explicitChainId !== undefined ||
+    explicitlyUnsupported ||
+    chainId !== undefined
+  ) {
+    return `No launchpad trading adapter is registered on ${meta?.name ?? "that chain"}. Kaleido's registered launchpad integrations are on Arc and Elysium mainnet; testnet catalogues do not imply mainnet support.`;
   }
 
-  if (asksOtherChain || opts.chainId !== ARC_CHAIN_ID) {
-    if (!asksOtherChain && opts.chainId === undefined) {
-      return `Kaleido currently integrates ${launchpadCount} launchpads on Arc: ${launchpadList}. They are separate from swap aggregators. Luca verifies a pasted launch token before building a trade.`;
-    }
-    return `Kaleido currently has ${launchpadCount} launchpad integrations, all on Arc: ${launchpadList}. No launchpad adapter is registered on this chain yet.`;
-  }
-
-  return null;
+  const arc = launchpadIntegrations(ARC_CHAIN_ID, "mainnet");
+  const elysium = launchpadIntegrations(99901, "mainnet");
+  return `Kaleido currently integrates ${arc.length + elysium.length} launchpads across two mainnets: ${arc.length} on Arc (${integrationNameList(arc)}) and ${elysium.length} on Elysium. They are separate from swap aggregators, and every pasted token still requires live pool verification before Luca builds a trade.`;
 }
