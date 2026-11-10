@@ -187,6 +187,12 @@ const EXPECTED = [
     functions: ["claim_capped_x_task"],
     usedBy: "the first-200 Lend & Borrow X tasks in /api/waitlist/x and /rewards",
   },
+  {
+    migration: "20261110130000_elysium_integration_rewards.sql",
+    tables: { waitlist: ["x_elysium_integration_at", "x_elysium_integration_comment_at"] },
+    functions: ["claim_capped_x_task"],
+    usedBy: "the first-300 Elysium Mainnet Live X tasks in /api/waitlist/x and /rewards",
+  },
 ];
 
 /* Replayed verbatim from the route files. If these two pass, the leaderboard

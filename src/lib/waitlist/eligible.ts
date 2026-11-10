@@ -46,6 +46,10 @@ export const X_TASK_POINTS = {
   lucaModelIntegration: 300,
   /** Comment on the Luca local-browser-model post; first 300 wallets. */
   lucaModelIntegrationComment: 300,
+  /** Like & RT the Elysium Mainnet post; first 300 wallets. */
+  elysiumIntegration: 300,
+  /** Comment on the Elysium Mainnet post; first 300 wallets. */
+  elysiumIntegrationComment: 300,
   bitget: 100,
 } as const;
 
@@ -72,6 +76,8 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   robinhoodIntegrationComment: "x_robinhood_integration_comment_at",
   lucaModelIntegration: "x_luca_model_integration_at",
   lucaModelIntegrationComment: "x_luca_model_integration_comment_at",
+  elysiumIntegration: "x_elysium_integration_at",
+  elysiumIntegrationComment: "x_elysium_integration_comment_at",
   bitget: "x_bitget_at",
 };
 

@@ -50,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "lucaModelIntegration" | "lucaModelIntegrationComment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -65,7 +65,7 @@ const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 /** The $ARGUS listing post: RT + comment, first 100 wallets get +600. */
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
-const LUCA_MODEL_INTEGRATION_TWEET_ID = "2116171710902710303";
+const ELYSIUM_INTEGRATION_TWEET_ID = "2120123682999648614";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -118,8 +118,8 @@ export default function WaitlistPage() {
     llama: boolean;
     argus: boolean;
     argus2: boolean;
-    lucaModelIntegration: boolean;
-    lucaModelIntegrationComment: boolean;
+    elysiumIntegration: boolean;
+    elysiumIntegrationComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -128,8 +128,8 @@ export default function WaitlistPage() {
     llama: false,
     argus: false,
     argus2: false,
-    lucaModelIntegration: false,
-    lucaModelIntegrationComment: false,
+    elysiumIntegration: false,
+    elysiumIntegrationComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -446,7 +446,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "lucaModelIntegration" | "lucaModelIntegrationComment") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -454,10 +454,10 @@ export default function WaitlistPage() {
             ? `https://x.com/intent/retweet?tweet_id=${ANNOUNCE_TWEET_ID ?? ""}`
             : task === "comment"
               ? `https://x.com/intent/tweet?in_reply_to=${ANNOUNCE_TWEET_ID ?? ""}`
-                : task === "lucaModelIntegration"
-                  ? `https://x.com/intent/retweet?tweet_id=${LUCA_MODEL_INTEGRATION_TWEET_ID}`
-                : task === "lucaModelIntegrationComment"
-                  ? `https://x.com/intent/tweet?in_reply_to=${LUCA_MODEL_INTEGRATION_TWEET_ID}`
+                : task === "elysiumIntegration"
+                  ? `https://x.com/intent/retweet?tweet_id=${ELYSIUM_INTEGRATION_TWEET_ID}`
+                : task === "elysiumIntegrationComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${ELYSIUM_INTEGRATION_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -798,43 +798,43 @@ export default function WaitlistPage() {
 
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>Like &amp; RT Luca Model Integration</span>
+                      <span className={s.taskTitle}>Like &amp; RT Elysium Mainnet Live</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.lucaModelIntegration?.done
-                          ? status.xTasks.lucaModelIntegration.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.lucaModelIntegration?.closed ? "Closed · all 300 spots claimed"
+                        {status.xTasks.elysiumIntegration?.done
+                          ? status.xTasks.elysiumIntegration.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.elysiumIntegration?.closed ? "Closed · all 300 spots claimed"
                           : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.lucaModelIntegration?.done ? <span className={s.taskDone}>✓</span>
-                      : status.xTasks.lucaModelIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
-                      : opened.lucaModelIntegration ? (
-                        <button className={s.taskBtn} onClick={() => postXTask("lucaModelIntegration")} disabled={xBusy === "lucaModelIntegration"}>
-                          {xBusy === "lucaModelIntegration" ? "…" : "Claim"}
+                    {status.xTasks.elysiumIntegration?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.elysiumIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.elysiumIntegration ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("elysiumIntegration")} disabled={xBusy === "elysiumIntegration"}>
+                          {xBusy === "elysiumIntegration" ? "…" : "Claim"}
                         </button>
                       ) : (
-                        <button className={s.taskBtn} onClick={() => openIntent("lucaModelIntegration")}>Like &amp; RT</button>
+                        <button className={s.taskBtn} onClick={() => openIntent("elysiumIntegration")}>Like &amp; RT</button>
                       )}
                   </li>
 
                   <li className={s.task}>
                     <div className={s.taskText}>
-                      <span className={s.taskTitle}>Comment on Luca Model Integration</span>
+                      <span className={s.taskTitle}>Comment on Elysium Mainnet Live</span>
                       <span className={s.taskMeta}>
-                        {status.xTasks.lucaModelIntegrationComment?.done
-                          ? status.xTasks.lucaModelIntegrationComment.counted ? "Done" : "Done · counts within 5h"
-                          : status.xTasks.lucaModelIntegrationComment?.closed ? "Closed · all 300 spots claimed"
+                        {status.xTasks.elysiumIntegrationComment?.done
+                          ? status.xTasks.elysiumIntegrationComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.elysiumIntegrationComment?.closed ? "Closed · all 300 spots claimed"
                           : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
                       </span>
                     </div>
-                    {status.xTasks.lucaModelIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
-                      : status.xTasks.lucaModelIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
-                      : opened.lucaModelIntegrationComment ? (
-                        <button className={s.taskBtn} onClick={() => postXTask("lucaModelIntegrationComment")} disabled={xBusy === "lucaModelIntegrationComment"}>
-                          {xBusy === "lucaModelIntegrationComment" ? "…" : "Claim"}
+                    {status.xTasks.elysiumIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.elysiumIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.elysiumIntegrationComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("elysiumIntegrationComment")} disabled={xBusy === "elysiumIntegrationComment"}>
+                          {xBusy === "elysiumIntegrationComment" ? "…" : "Claim"}
                         </button>
                       ) : (
-                        <button className={s.taskBtn} onClick={() => openIntent("lucaModelIntegrationComment")}>Comment</button>
+                        <button className={s.taskBtn} onClick={() => openIntent("elysiumIntegrationComment")}>Comment</button>
                       )}
                   </li>
 

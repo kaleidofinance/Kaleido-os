@@ -53,20 +53,14 @@ function NetworkElysium({
   className?: string;
 }) {
   return (
-    <svg
-      viewBox="0 0 32 32"
+    <img
+      src="/icons/elysium.svg"
       width={size}
       height={size}
-      fill="none"
       className={className}
-      xmlns="http://www.w3.org/2000/svg"
-      role="img"
-      aria-label="Elysium"
-    >
-      <circle cx="16" cy="16" r="15" fill="#06231c" stroke="#10b981" strokeWidth="1.2" strokeOpacity="0.4" />
-      <path d="M7 16 A 9 9 0 0 1 25 16 A 9 5.5 0 0 1 12 20.5" stroke="#34d399" strokeWidth="1.75" strokeLinecap="round" strokeDasharray="28 8" />
-      <path d="M11 10.5 H21 C22 10.5 22.5 11.2 22 12 L19.5 14.5 H13 V15.5 H19 C19.8 15.5 20.2 16.2 19.5 17 L17 19.5 H13 V21.5 H21 C21.8 21.5 22.2 22.2 21.5 23 L19.5 24.5 H10 C8.9 24.5 8 23.6 8 22.5 V12.5 C8 11.4 8.9 10.5 10 10.5 Z" fill="#6ee7b7" />
-    </svg>
+      alt="Elysium"
+      style={{ borderRadius: "50%", display: "inline-block", verticalAlign: "middle" }}
+    />
   );
 }
 
