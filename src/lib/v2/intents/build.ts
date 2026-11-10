@@ -436,7 +436,7 @@ export interface SwapRouteRequest {
 export interface AggregatorSwapRoute {
   to: string;
   data: string;
-  /** "0" — an ERC20 swap attaches no native value. */
+  /** "0" for ERC20 input; the exact raw input amount for native input. */
   value: string;
   /** The router to approve; equal to `to` by construction. */
   spender: string;
@@ -1571,14 +1571,15 @@ export async function buildIntents(
       // ap null / argus:false → not an Argus launch; fall through to normal routing.
     }
 
-    /* KyberSwap as a venue: builds an [approve, aggregatorSwap] plan from the
+    /* KyberSwap as a venue: builds an [approve, aggregatorSwap] plan for ERC20
+       input, or a single value-bearing aggregatorSwap for native input, from the
        route the aggregator returns, `{ ok: false }` when it has no route for
        the pair, or null where KyberSwap isn't wired for this chain. Used two
        ways below — as the only venue on chains where Kaleido runs no pools of
        its own, and as a fallback when our own pools exist but hold no
        liquidity for this pair yet (Arc at launch). The aggregator handles
-       wrapping, discovery and the calldata; we pair its router call with an
-       approve and our own fee (added server-side). */
+       discovery and the calldata; ERC20 input is paired with an approval while
+       native input is carried as the router call's audited value. */
     const tryKyberSwap = async (): Promise<{
       plan: PlanResult;
       out: number;
@@ -1594,8 +1595,8 @@ export async function buildIntents(
          native gas token, whose sentinel has no ERC20 code — an approve on it
          dies "could not decode result data" — so route and approve its 0x3600
          mirror instead. The user still sees the symbol (USDC); everything else
-         uses the mirror's address and decimals. A native input with no mirror
-         cannot be approved, so bail rather than build a doomed approve. */
+         uses the mirror's address and decimals. A conventional native input
+         stays the sentinel and is sent directly as value, with no approval. */
       /* Selling the chain's own wrapped-native (Arc's 0x8c6c, a WETH9 wrapper of
          native USDC): the aggregator has never heard of it and answers "token not
          found", so a large trade falls to our thin native pool. Route it like the
@@ -1609,9 +1610,6 @@ export async function buildIntents(
         sellIsWrapped ? { ...tokenIn, isNative: true } : tokenIn,
       );
       const outTok = aggregatorToken(chainId, tokenOut);
-      // The auditor currently rejects native-value aggregator calls. Keep the
-      // route closed until that boundary can safely validate their spend.
-      if (inTok.isNative) return null;
       /* Both the unwrap and the aggregator leg run at the mirror's 6 decimals; a
          Max sell of an 18-decimal wrapped balance has more fractional digits than
          that, so parseUnits(amount, 6) would throw. Truncate DOWN once and use the
@@ -1636,14 +1634,16 @@ export async function buildIntents(
       const minOut = (Number(out) * (1 - opts.slippageBps / 10000)).toFixed(
         outTok.decimals > 6 ? 6 : outTok.decimals,
       );
-      const approve: Intent = {
-        kind: "approve",
-        token: inTok.address,
-        spender: route.spender,
-        amount: aggAmount,
-        decimals: inTok.decimals,
-        symbol: inTok.symbol,
-      };
+      const approve: Intent | null = inTok.isNative
+        ? null
+        : {
+            kind: "approve",
+            token: inTok.address,
+            spender: route.spender,
+            amount: aggAmount,
+            decimals: inTok.decimals,
+            symbol: inTok.symbol,
+          };
       const swap: Intent = {
         kind: "aggregatorSwap",
         to: route.to,
@@ -1680,7 +1680,11 @@ export async function buildIntents(
           ok: true,
           build: {
             summary: `Swap ${aggAmount} ${tokenIn.symbol} for about ${out} ${tokenOut.symbol}.`,
-            intents: unwrap ? [unwrap, approve, swap] : [approve, swap],
+            intents: [
+              ...(unwrap ? [unwrap] : []),
+              ...(approve ? [approve] : []),
+              swap,
+            ],
           },
         },
         out: Number(out),

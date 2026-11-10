@@ -2039,9 +2039,10 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
    * A same-chain swap filled by an external aggregator, on a chain where Kaleido
    * runs no pools of its own. Sibling of `bridge`: the router’s calldata is
    * opaque, so the per-action cap bounds it and these facts are what this holds —
-   * a router recognised on this chain, an allowance that goes to the contract the
-   * swap calls, a slippage floor present, and no native value riding along. The
-   * router enforces the output floor; the paired approve pulls the input.
+   * a router recognised on this chain, a spender that matches that router, a
+   * slippage floor present, and either no value for ERC20 input or exactly the
+   * reviewed raw amount for native input. The router enforces the output floor;
+   * an ERC20 input's paired approval bounds its pull.
    */
   aggregatorSwap: (s, chainId) => {
     const reasons: string[] = [];
@@ -2134,13 +2135,28 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         );
     }
 
-    if (num(s.value) !== 0)
-      reasons.push("an aggregator swap must not attach native value");
+    const nativeIn = isNativeSentinel(tokenIn, "dex");
+    if (nativeIn && amount !== null && decimals !== null) {
+      try {
+        const expected = ethers.parseUnits(str(s.amountIn), decimals);
+        if (BigInt(str(s.value)) !== expected)
+          reasons.push(
+            "the aggregator's native value does not equal the reviewed input amount",
+          );
+      } catch {
+        reasons.push("the aggregator's native value is malformed");
+      }
+    } else if (num(s.value) !== 0) {
+      reasons.push("an ERC20 aggregator swap must not attach native value");
+    }
 
     const price = tradePriced(inTok, outTok, amount, num(s.amountOutMin));
     reasons.push(...price.reasons);
     const notes = [
       "the aggregator's calldata is not parsed here — the router enforces the output floor, and the per-action USD cap bounds the trade",
+      ...(nativeIn
+        ? ["the attached native value exactly matches the reviewed input amount"]
+        : []),
       ...price.notes,
     ];
     return {
