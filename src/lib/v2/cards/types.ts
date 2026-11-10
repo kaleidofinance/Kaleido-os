@@ -171,8 +171,8 @@ export interface TokenCard {
   address: string;
   /** Headline price, pre-formatted ("$0.0000412"). Absent when unknown. */
   price?: string;
-  /** Source/status tag: "Argus launch", "Listed on Arc". */
-  badge?: { text: string; tone: CardTone };
+  /** Source/status tag: "Argus launch", "Listed on Arc", with optional launchpad logo icon. */
+  badge?: { text: string; tone: CardTone; iconUrl?: string };
   /** Label/value facts: market cap, buy tax, sell tax, status. */
   rows: { label: string; value: string; tone?: CardTone }[];
   /** One line of caveat under the facts. */

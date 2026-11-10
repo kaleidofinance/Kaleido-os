@@ -318,6 +318,15 @@
   overflow-y: auto;
 }
 
+.customHeader {
+  padding: 8px 18px 4px;
+  font-size: var(--k-fs-xs);
+  color: var(--k-t3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--k-fw-med);
+}
+
 .row {
   display: flex;
   align-items: center;

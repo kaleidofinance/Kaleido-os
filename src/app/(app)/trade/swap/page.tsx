@@ -32,7 +32,7 @@ import {
   type RoutedPath,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
-import { ethers } from "ethers";
+import { ethers, isAddress } from "ethers";
 import {
   hasKyberSwap,
   aggregatorToken,
@@ -41,6 +41,8 @@ import {
 } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
 import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
+import { getPeachTradeExecution } from "@/lib/peach/route";
+import { getElysiumTradeExecution } from "@/lib/elysium/route";
 import s from "../trade.module.css";
 
 /*
@@ -210,6 +212,7 @@ export default function SwapPage() {
    */
   const [tokenIn, setTokenIn] = useState<IToken | null>(null);
   const [tokenOut, setTokenOut] = useState<IToken | null>(null);
+  const [customTokens, setCustomTokens] = useState<IToken[]>([]);
   /* The chain the swap is ON, derived from the tokens rather than the wallet:
      any chain's tokens can be priced and picked with the wallet parked
      elsewhere, and the wallet only moves when you sign (the Switch CTA). Picking
@@ -220,6 +223,7 @@ export default function SwapPage() {
     ? candidateChainId : PREVIEW_CHAIN_ID;
   const available = useMemo(() => {
     const listed = chainTokens(swapChainId);
+    let list = listed;
     /* Arc's canonical ERC20 USDC and native USDC share a ticker, so the normal
        DEX list keeps only the canonical token. The wrap card needs an explicit
        native choice, however; expose it with a disambiguated name only when the
@@ -231,14 +235,19 @@ export default function SwapPage() {
     ) {
       const native = nativeTokenOf(getChainMeta(swapChainId), "dex");
       if (native) {
-        return [
+        list = [
           ...listed,
           { ...toIToken(native), name: "Arc native USDC" },
         ];
       }
     }
-    return listed;
-  }, [swapChainId]);
+    const chainCustom = customTokens.filter(
+      (ct) =>
+        ct.chainId === swapChainId &&
+        !list.some((t) => t.address.toLowerCase() === ct.address.toLowerCase()),
+    );
+    return [...list, ...chainCustom];
+  }, [swapChainId, customTokens]);
   const v3Router = getContracts(swapChainId).v3Router;
   /* Wallet on the wrong chain for a signature: quotes are read-only, so this
      gates execution only, behind a one-click switch. The gate is the shared
@@ -301,7 +310,9 @@ export default function SwapPage() {
        chains would otherwise look valid on both. */
     const validHere = (t: IToken | null) =>
       t &&
-      available.some((a) => a.chainId === t.chainId && a.address === t.address)
+      t.chainId === swapChainId &&
+      (available.some((a) => a.chainId === t.chainId && a.address.toLowerCase() === t.address.toLowerCase()) ||
+        isAddress(t.address))
         ? t
         : null;
 
@@ -435,7 +446,7 @@ export default function SwapPage() {
     sellDec: number;
     buyAddr: string;
     buyDec: number;
-    venue: "kyberswap" | "fly" | "lifi";
+    venue: "kyberswap" | "fly" | "lifi" | "peach" | "elysium";
   } | null>(null);
 
   /**
@@ -573,14 +584,18 @@ export default function SwapPage() {
            /route/build bakes sender==recipient into the calldata; a disconnected
            visitor keeps the pool quote and a "Connect wallet" CTA. */
         let aggregatorExec: Awaited<ReturnType<typeof getKyberSwapExecution>> = null;
-        let aggregatorVenue: "kyberswap" | "fly" | "lifi" | null = null;
+        let aggregatorVenue: "kyberswap" | "fly" | "lifi" | "peach" | "elysium" | null = null;
         let kyberSell: ReturnType<typeof aggregatorToken> | null = null;
         let kyberBuy: ReturnType<typeof aggregatorToken> | null = null;
         if (
           address &&
           tokenIn &&
           tokenOut &&
-          (hasKyberSwap(swapChainId) || hasFlyTrade(swapChainId) || hasLifiSwap(swapChainId))
+          (hasKyberSwap(swapChainId) ||
+            hasFlyTrade(swapChainId) ||
+            hasLifiSwap(swapChainId) ||
+            swapChainId === 5042 ||
+            swapChainId === 99901)
         ) {
           kyberSell = aggregatorToken(
             swapChainId,
@@ -606,18 +621,22 @@ export default function SwapPage() {
             address,
             slippageBps,
           };
-          const [kyber, fly, lifi] = await Promise.all([
+          const [kyber, fly, lifi, peach, elysium] = await Promise.all([
             hasKyberSwap(swapChainId) ? getKyberSwapExecution(request) : Promise.resolve(null),
             hasFlyTrade(swapChainId) ? getFlyTradeExecution(request) : Promise.resolve(null),
             hasLifiSwap(swapChainId) ? getLifiSwapExecution(request) : Promise.resolve(null),
+            swapChainId === 5042 ? getPeachTradeExecution(request) : Promise.resolve(null),
+            swapChainId === 99901 ? getElysiumTradeExecution(request) : Promise.resolve(null),
           ]);
           const candidates = [
             { exec: kyber, venue: "kyberswap" as const },
             { exec: fly, venue: "fly" as const },
             { exec: lifi, venue: "lifi" as const },
+            { exec: peach, venue: "peach" as const },
+            { exec: elysium, venue: "elysium" as const },
           ].filter((candidate): candidate is {
             exec: NonNullable<typeof candidate.exec>;
-            venue: "kyberswap" | "fly" | "lifi";
+            venue: "kyberswap" | "fly" | "lifi" | "peach" | "elysium";
           } => Boolean(candidate.exec));
           const best = candidates.reduce<typeof candidates[number] | null>(
             (current, candidate) => {
@@ -1219,6 +1238,26 @@ export default function SwapPage() {
             </span>
           </div>
         )}
+        {kyberRoute && (
+          <div className={s.quote}>
+            <span title="The venue routing this swap">
+              <b>{kyberRoute.venue === "elysium" ? "Uniswap v4" : "Aggregator route"}</b>
+              <span className={s.routeVenue}>
+                {" "}· via {
+                  kyberRoute.venue === "elysium"
+                    ? "Elysium"
+                    : kyberRoute.venue === "peach"
+                    ? "Peach"
+                    : kyberRoute.venue === "fly"
+                    ? "Fly.trade"
+                    : kyberRoute.venue === "lifi"
+                    ? "LI.FI"
+                    : "KyberSwap"
+                }
+              </span>
+            </span>
+          </div>
+        )}
       </div>
 
       <TokenSelector
@@ -1233,6 +1272,15 @@ export default function SwapPage() {
         onSelect={(t) => {
           if (!networks.some((chain) => chain.id === t.chainId)) return;
           setSelectedChainId(t.chainId!);
+          setCustomTokens((prev) =>
+            prev.some(
+              (ct) =>
+                ct.chainId === t.chainId &&
+                ct.address.toLowerCase() === t.address.toLowerCase(),
+            )
+              ? prev
+              : [...prev, t],
+          );
           setAmountOut("");
           setRoute(null);
           setKyberRoute(null);

@@ -418,7 +418,16 @@ export default function AgentCards({
                   </div>
                   {card.badge && (
                     <span className={`${s.tokBadge} ${s[card.badge.tone]}`}>
-                      {card.badge.text}
+                      {card.badge.iconUrl && (
+                        <img
+                          src={card.badge.iconUrl}
+                          alt=""
+                          className={s.tokBadgeIcon}
+                          width={14}
+                          height={14}
+                        />
+                      )}
+                      <span>{card.badge.text}</span>
                     </span>
                   )}
                 </div>

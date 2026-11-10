@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+  <defs>
+    <linearGradient id="quotedGrad" x1="6" y1="6" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="16" fill="#04221e"/>
+  <!-- Open quote marks -->
+  <path d="M10 18C10 15 11.5 13 14 12V14.5C12.5 15 12 16 12 17H14V21H10V18ZM18 18C18 15 19.5 13 22 12V14.5C20.5 15 20 16 20 17H22V21H18V18Z" fill="url(#quotedGrad)"/>
+</svg>
