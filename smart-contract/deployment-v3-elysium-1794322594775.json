@@ -1,0 +1,35 @@
+{
+  "network": "elysium",
+  "chainId": 99901,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-11-10T14:56:35.324Z",
+  "contracts": {
+    "factory": "0x89d6f16262ED7be4f0b77118Bf7e47eD002F4070",
+    "router": "0x0b9AD40abdeE52e1AED165A9d9d2d36D77b89Bb8",
+    "positionManager": "0x4078f601db2AcD4eB0004d6bAB032b034dd31d23",
+    "positionDescriptor": "0x8dF7362C853597FAFb472660eC5Bf114542eF84B",
+    "nftDescriptor": "0xE86ed0a1d4B3AF3fa348A5dad8bd51e5506C2584",
+    "quoter": "0x219b28a181193B376224C43203a3c45584d2459A",
+    "weth": "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+    "poolInitCodeHash": "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938"
+  },
+  "transactions": {
+    "factory": "0x04158e7ec02e1d395d413c831263134ec47fb4c82e6ffe09838212fff2baec70",
+    "router": "0x429c2d8e29e7a19d400aaea54280036a30eb5cd9151d162a85726e87d2243546",
+    "nftDescriptor": "0x246fb18b39823c1a5048b37877942a74370d13fbec2a3a1168d819b08f6fa8eb",
+    "positionDescriptor": "0x62d3610136efd2c1a1b98260fa3036f3fc27aec6b2e707d10bf8158f420045eb",
+    "positionManager": "0x9d4c322ccca762972a202eddb33bc447674f9b3a60b6470c8ad7a062047f7da2",
+    "quoter": "0xfd0aaa963a176e8697080e4aee4c85d800e1ac26503a39892399e09d024"
+  },
+  "gasUsed": {
+    "factory": "5352925",
+    "router": "2201090",
+    "nftDescriptor": "5096018",
+    "positionDescriptor": "1161248",
+    "positionManager": "5173504",
+    "quoter": "860642",
+    "total": "19845427"
+  },
+  "explorer": "https://elysium.kinetiq.xyz/explorer",
+  "sourceVerified": true
+}

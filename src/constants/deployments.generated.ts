@@ -169,7 +169,17 @@ export const GENERATED_DEPLOYMENTS: Record<number, ChainContracts> = {
   99901: {
     diamond: "0x7d8Ff941f156492a745763C521EF468cfB78Af65", // deployment-diamond-elysium.json
     oracleKind: "aggregator-v3", // deployment-oracle-elysium.json
+    poolInitCodeHash:
+      "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938", // deployment-v3-elysium-1794322594775.json
     priceOracle: "0xA7e0A9391C181527C12d7E2C1Bef3A0051c6FB04", // deployment-diamond-elysium.json
+    v2Factory: "0x0b261e219181b5Ea3468a394502074F88f7c01C6", // deployment-dex-elysium.json
+    v2Router: "0x754DFC59f56b8dC928cA83E50B514E7Ef7809F3b", // deployment-dex-elysium.json
+    v3Factory: "0x89d6f16262ED7be4f0b77118Bf7e47eD002F4070", // deployment-v3-elysium-1794322594775.json
+    v3PositionDescriptor: "0x8dF7362C853597FAFb472660eC5Bf114542eF84B", // deployment-v3-elysium-1794322594775.json
+    v3PositionManager: "0x4078f601db2AcD4eB0004d6bAB032b034dd31d23", // deployment-v3-elysium-1794322594775.json
+    v3Quoter: "0x219b28a181193B376224C43203a3c45584d2459A", // deployment-v3-elysium-1794322594775.json
+    v3Router: "0x0b9AD40abdeE52e1AED165A9d9d2d36D77b89Bb8", // deployment-v3-elysium-1794322594775.json
+    wrappedNative: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81", // deployment-dex-elysium.json
   },
   5042002: {
     diamond: "0x898e9774b58d23d2EFEF3eb940782d9Ee1a03fa3", // deployment-diamond-arcTestnet.json
@@ -501,11 +511,12 @@ export const GENERATED_META: {
   generatedAt: string | null;
   sources: string[];
 } = {
-  generatedAt: "2026-11-10T09:10:09.614Z",
+  generatedAt: "2026-11-10T15:37:29.480Z",
   sources: [
     "deployment-dex-arcTestnet.json",
     "deployment-dex-baseTestnet.json",
     "deployment-dex-bscTestnet.json",
+    "deployment-dex-elysium.json",
     "deployment-dex-elysiumTestnet-1793893523751.json",
     "deployment-dex-robinhood.json",
     "deployment-dex-robinhoodTestnet.json",
@@ -594,6 +605,7 @@ export const GENERATED_META: {
     "deployment-v3-baseTestnet-1787327167156.json",
     "deployment-v3-bsc-1793136484372.json",
     "deployment-v3-bscTestnet-1787453320471.json",
+    "deployment-v3-elysium-1794322594775.json",
     "deployment-v3-elysiumTestnet-1793890873295.json",
     "deployment-v3-robinhood-1792584006243.json",
     "deployment-v3-robinhoodTestnet-1787450008885.json",
