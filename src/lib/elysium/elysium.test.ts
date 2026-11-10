@@ -139,10 +139,8 @@ async function main() {
 
   // 4. Live on-chain launch detection + quoting + AllowanceHolder/Settler simulation
   console.log("Probing live Elysium Mainnet (99901) launchpad pools...");
-  const [montraLaunch, boxaLaunch] = await Promise.all([
-    readElysiumLaunch(MONTRA_TOKEN),
-    readElysiumLaunch(BOXA_TOKEN),
-  ]);
+  const montraLaunch = await readElysiumLaunch(MONTRA_TOKEN);
+  const boxaLaunch = await readElysiumLaunch(BOXA_TOKEN);
 
   assert.ok(montraLaunch, "Montra launch token detected on Shared PoolManager");
   assert.equal(montraLaunch.launchpad, "montra");

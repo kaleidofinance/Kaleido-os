@@ -258,8 +258,12 @@ export const ELYSIUM_QUOTE_TOKENS = [
 ] as const;
 
 export function isElysiumQuoteToken(address: string): boolean {
-  const lower = address.toLowerCase();
-  return ELYSIUM_QUOTE_TOKENS.some((q) => q.toLowerCase() === lower);
+  const lower = (address || "").toLowerCase();
+  return (
+    ELYSIUM_QUOTE_TOKENS.some((q) => q.toLowerCase() === lower) ||
+    lower === ELYSIUM_SETTLER_ETH.toLowerCase() ||
+    lower === "0x0000000000000000000000000000000000000000"
+  );
 }
 
 export function isKnownElysiumLaunchRouter(

@@ -261,9 +261,12 @@ export async function resolveElysiumTrade(args: {
   if (amountIn <= 0n) return null;
 
   const side: "buy" | "sell" = inIsQuote ? "buy" : "sell";
-  const userQuote = getAddress(
-    (inIsQuote ? args.tokenIn : args.tokenOut).toLowerCase(),
-  );
+  const rawQuote = inIsQuote ? args.tokenIn : args.tokenOut;
+  const normalizedQuote =
+    same(rawQuote, ELYSIUM_SETTLER_ETH) || same(rawQuote, ZeroAddress)
+      ? ELYSIUM_WHYPE
+      : rawQuote;
+  const userQuote = getAddress(normalizedQuote.toLowerCase());
   const launchToken = getAddress(
     (inIsQuote ? args.tokenOut : args.tokenIn).toLowerCase(),
   );
@@ -289,8 +292,18 @@ export async function resolveElysiumTrade(args: {
       : 0n;
 
   const actions: string[] = [];
-  const sellToken = getAddress(args.tokenIn.toLowerCase());
-  const buyToken = getAddress(args.tokenOut.toLowerCase());
+  const sellToken = getAddress(
+    (same(args.tokenIn, ELYSIUM_SETTLER_ETH) || same(args.tokenIn, ZeroAddress)
+      ? ELYSIUM_WHYPE
+      : args.tokenIn
+    ).toLowerCase(),
+  );
+  const buyToken = getAddress(
+    (same(args.tokenOut, ELYSIUM_SETTLER_ETH) || same(args.tokenOut, ZeroAddress)
+      ? ELYSIUM_WHYPE
+      : args.tokenOut
+    ).toLowerCase(),
+  );
 
   // 1. Pull ERC-20 input from user into Settler through AllowanceHolder
   actions.push(

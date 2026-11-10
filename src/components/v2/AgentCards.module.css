@@ -404,6 +404,78 @@
   justify-content: space-between;
   gap: var(--k-s3);
 }
+.tokSymRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.tokRefreshBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--k-r-pill);
+  border: 1px solid var(--k-line);
+  background: var(--k-glass);
+  color: var(--k-t2);
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+  transition: color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+.tokRefreshBtn:hover:not(:disabled) {
+  color: var(--k-t1);
+  border-color: var(--k-brand);
+  transform: rotate(30deg);
+}
+.tokRefreshBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.spinning svg {
+  animation: spinRefresh 800ms linear infinite;
+}
+@keyframes spinRefresh {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.tokStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--k-glass-deep);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-md);
+}
+.tokStatCol {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.tokStatLabel {
+  font-size: 11px;
+  color: var(--k-t3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tokStatVal {
+  font-size: 14px;
+  font-weight: var(--k-fw-med);
+  color: var(--k-t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tokId {
   display: flex;
   flex-direction: column;

@@ -280,9 +280,15 @@ const RECOVERED_ROBINHOOD_MAINNET: ChainContracts = {
   wrappedNative: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
 };
 
+const ELYSIUM_MAINNET_CONTRACTS: ChainContracts = {
+  wrappedNative: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+  usdc: "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65",
+};
+
 export const DEPLOYMENTS: Record<number, ChainContracts> = {
   ...GENERATED_DEPLOYMENTS,
   4663: RECOVERED_ROBINHOOD_MAINNET,
+  99901: ELYSIUM_MAINNET_CONTRACTS,
 };
 
 export function getContracts(chainId: number | undefined): ChainContracts {

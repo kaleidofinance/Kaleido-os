@@ -122,6 +122,11 @@ const NATIVE_SWAP_ERC20: Record<
     symbol: "USDC",
     decimals: 6,
   },
+  99901: {
+    address: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+    symbol: "WHYPE",
+    decimals: 18,
+  },
 };
 
 export interface AggregatorToken {

@@ -13,6 +13,7 @@ import {
   toThirdwebChainOptions,
   type ChainMeta,
 } from "@/constants/chains";
+import { isDeployed } from "@/constants/registry";
 import ChainIcon from "./ChainIcon";
 import TokenIcon, { hasTokenIcon } from "./TokenIcon";
 import VerifiedBadge, { verifiedTitleFor } from "./VerifiedBadge";
@@ -382,6 +383,49 @@ type TokenCategory = {
 
 const hasTag = (t: IToken, tag: string) => (t.tags ?? []).includes(tag);
 
+const NETWORK_DISPLAY_ORDER: Record<number, number> = {
+  5042: 10,
+  5042002: 10,
+  4663: 20,
+  46630: 20,
+  56: 30,
+  97: 30,
+  8453: 40,
+  84532: 40,
+  99901: 50,
+  99801: 50,
+};
+
+const CUSTOM_TOKENS_STORAGE_KEY = "kaleido_user_custom_tokens";
+
+function loadStoredCustomTokens(): IToken[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CUSTOM_TOKENS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistCustomToken(token: IToken): IToken[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const existing = loadStoredCustomTokens();
+    const key = `${token.chainId}:${token.address.toLowerCase()}`;
+    const filtered = existing.filter(
+      (t) => `${t.chainId}:${t.address.toLowerCase()}` !== key,
+    );
+    const updated = [token, ...filtered];
+    localStorage.setItem(CUSTOM_TOKENS_STORAGE_KEY, JSON.stringify(updated));
+    return updated;
+  } catch {
+    return [];
+  }
+}
+
 const CATEGORIES: TokenCategory[] = [
   {
     /* The blue-chips: a chain's gas asset and its wrapper, wrapped BTC, and our
@@ -396,6 +440,7 @@ const CATEGORIES: TokenCategory[] = [
       hasTag(t, "governance"),
   },
   { id: "stable", label: "Stablecoins", test: (t) => hasTag(t, "stablecoin") },
+  { id: "custom", label: "Custom", test: (t) => hasTag(t, "custom") },
   { id: "stock", label: "Stocks", test: (t) => hasTag(t, "stock") },
   { id: "meme", label: "Memes", test: (t) => hasTag(t, "meme") },
 ];
@@ -450,18 +495,26 @@ export default function TokenSelector({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  const [customTokens, setCustomTokens] = useState<IToken[]>([]);
+
+  useEffect(() => {
+    setCustomTokens(loadStoredCustomTokens());
+  }, [open]);
+
   /* Keep the token list on the same exclusive network mode as NetworkSelector:
      testnet mode shows testnet assets only, while the default shows mainnet
      assets only. Mixing both sets here lets a hidden-mode token leak into a
      quote even when every other multichain surface is scoped correctly. */
   const { showTestnets } = useTestnetMode();
-  const chains = useMemo(
-    () =>
-      CHAINS.filter(
-        (c) => c.network === (showTestnets ? "testnet" : "mainnet"),
-      ),
-    [showTestnets],
-  );
+  const chains = useMemo(() => {
+    const shown = (c: ChainMeta) => Boolean(c.tradable) || isDeployed(c.id);
+    const byProductOrder = (a: ChainMeta, b: ChainMeta) =>
+      (NETWORK_DISPLAY_ORDER[a.id] ?? 1000) -
+      (NETWORK_DISPLAY_ORDER[b.id] ?? 1000);
+    return CHAINS.filter(
+      (c) => c.network === (showTestnets ? "testnet" : "mainnet") && shown(c),
+    ).sort(byProductOrder);
+  }, [showTestnets]);
   const selectedNetwork =
     network !== "all" &&
     getChainMeta(network)?.network === (showTestnets ? "testnet" : "mainnet")
@@ -472,13 +525,29 @@ export default function TokenSelector({
     if (network !== selectedNetwork) setNetwork(selectedNetwork);
   }, [network, selectedNetwork]);
 
-  const available = useMemo(
-    () =>
+  const available = useMemo(() => {
+    const base =
       selectedNetwork === "all"
         ? tokensAcrossChains(chains.map((c) => c.id))
-        : chainTokens(selectedNetwork),
-    [selectedNetwork, chains],
-  );
+        : chainTokens(selectedNetwork);
+    const filteredCustom = customTokens.filter((ct) =>
+      selectedNetwork === "all"
+        ? chains.some((c) => c.id === ct.chainId)
+        : ct.chainId === selectedNetwork,
+    );
+    const seen = new Set(
+      base.map((t) => `${t.chainId}:${t.address.toLowerCase()}`),
+    );
+    const extra: IToken[] = [];
+    for (const ct of filteredCustom) {
+      const key = `${ct.chainId}:${ct.address.toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        extra.push(ct);
+      }
+    }
+    return [...base, ...extra];
+  }, [selectedNetwork, chains, customTokens]);
 
   /* Everything selectable in the current network view, the excluded token
      (the swap's other side) already removed — the base both the category row
@@ -601,6 +670,8 @@ export default function TokenSelector({
           };
           setResolvedToken(customToken);
           setResolveError(null);
+          const updated = persistCustomToken(customToken);
+          setCustomTokens(updated);
         } else {
           setResolveError(
             `Address is not an ERC-20 contract on ${getChainMeta(primaryChainId)?.shortName ?? "this network"}.`,
@@ -638,6 +709,11 @@ export default function TokenSelector({
    * through as-is.
    */
   const handleSelect = async (token: IToken) => {
+    if (token.tags?.includes("custom")) {
+      const updated = persistCustomToken(token);
+      setCustomTokens(updated);
+    }
+
     if (!wallet || token.chainId === chainId || !switchOnSelect) {
       onSelect(token);
       return;
