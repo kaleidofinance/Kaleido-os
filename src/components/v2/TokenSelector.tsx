@@ -386,14 +386,14 @@ const hasTag = (t: IToken, tag: string) => (t.tags ?? []).includes(tag);
 const NETWORK_DISPLAY_ORDER: Record<number, number> = {
   5042: 10,
   5042002: 10,
+  99901: 15,
+  99801: 15,
   4663: 20,
   46630: 20,
   56: 30,
   97: 30,
   8453: 40,
   84532: 40,
-  99901: 50,
-  99801: 50,
 };
 
 const CUSTOM_TOKENS_STORAGE_KEY = "kaleido_user_custom_tokens";

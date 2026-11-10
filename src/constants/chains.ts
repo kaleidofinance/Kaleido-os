@@ -120,6 +120,42 @@ export const CHAINS: ChainMeta[] = [
     tradable: true,
   },
 
+  // ---- Kinetiq Elysium (Arbitrum Orbit L2 settling to HyperEVM) ---------
+  // Elysium mainnet (99901) and testnet (99801) are paired; keep both explicit
+  // so neither can be confused with the unrelated legacy Elysium network (1339).
+  {
+    id: 99901,
+    name: "Elysium",
+    shortName: "Elysium",
+    network: "mainnet",
+    pairChainId: 99801,
+    nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
+    rpcUrls: ["https://rpc.elysium.kinetiq.xyz"],
+    blockExplorer: {
+      name: "Elysium Explorer",
+      url: "https://elysium.kinetiq.xyz/explorer",
+    },
+    iconId: "elysium",
+    color: "#6ee7b7",
+    tradable: true,
+  },
+  {
+    id: 99801,
+    name: "Elysium Testnet",
+    shortName: "Elysium",
+    network: "testnet",
+    pairChainId: 99901,
+    nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
+    rpcUrls: ["https://testnet-rpc.elysium.kinetiq.xyz"],
+    blockExplorer: {
+      name: "Elysium Explorer",
+      url: "https://elysium.kinetiq.xyz/testnet-explorer",
+    },
+    iconId: "elysium",
+    color: "#6ee7b7",
+    tradable: true,
+  },
+
   // ---- Robinhood Chain (Arbitrum Orbit L2, launched 2025) ----
   {
     id: 4663,
@@ -355,42 +391,6 @@ export const CHAINS: ChainMeta[] = [
     },
     iconId: "hyperliquid",
     color: "#97fce4",
-  },
-
-  // ---- Kinetiq Elysium (Arbitrum Orbit L2 settling to HyperEVM) ---------
-  // Elysium mainnet (99901) and testnet (99801) are paired; keep both explicit
-  // so neither can be confused with the unrelated legacy Elysium network (1339).
-  {
-    id: 99901,
-    name: "Elysium",
-    shortName: "Elysium",
-    network: "mainnet",
-    pairChainId: 99801,
-    nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
-    rpcUrls: ["https://rpc.elysium.kinetiq.xyz"],
-    blockExplorer: {
-      name: "Elysium Explorer",
-      url: "https://elysium.kinetiq.xyz/explorer",
-    },
-    iconId: "elysium",
-    color: "#6ee7b7",
-    tradable: true,
-  },
-  {
-    id: 99801,
-    name: "Elysium Testnet",
-    shortName: "Elysium",
-    network: "testnet",
-    pairChainId: 99901,
-    nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
-    rpcUrls: ["https://testnet-rpc.elysium.kinetiq.xyz"],
-    blockExplorer: {
-      name: "Elysium Explorer",
-      url: "https://elysium.kinetiq.xyz/testnet-explorer",
-    },
-    iconId: "elysium",
-    color: "#6ee7b7",
-    tradable: true,
   },
 
   // ---- Abstract, last (deprioritised: balance reading only, never tradable) --
