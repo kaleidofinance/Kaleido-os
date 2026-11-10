@@ -695,12 +695,17 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getPortfolio",
     kind: "read",
     description:
-      "The user's lending COLLATERAL value and health factor on the connected chain — how safe the borrowing position is, not net worth. Call this first for any 'what should I do' request that turns on safety. It is collateral and health ONLY: for the loans themselves (amounts owed, rates, due dates, the requestId a repay needs) call getLoans; for liquidity (LP) positions call getPositions; for wallet balances call getBalances. Do not present it as the whole portfolio.",
+      "The user's lending COLLATERAL value and health factor on one chain — how safe the borrowing position is, not net worth. Use targetChain for a named read such as BSC while the wallet is connected elsewhere; omit it for the connected chain. Call this first for any 'what should I do' request that turns on safety. It is collateral and health ONLY: for the loans themselves (amounts owed, rates, due dates, the requestId a repay needs) call getLoans; for liquidity (LP) positions call getPositions; for wallet balances call getBalances. Do not present it as the whole portfolio.",
     parameters: {
       type: "object",
       additionalProperties: false,
       properties: {
         address: { type: "string", description: "Wallet address" },
+        targetChain: {
+          type: "string",
+          description:
+            "Optional named chain or numeric chain ID for this read-only check; must belong to the selected mainnet/testnet mode.",
+        },
       },
       required: ["address"],
     },
@@ -709,12 +714,17 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getLoans",
     kind: "read",
     description:
-      "The user's borrowing position on the connected chain: collateral deposited, each open loan (amount still owed, interest rate, due date, and the requestId a repay targets), total debt, and the health factor. Call this for 'what do I owe', 'what are my loans', 'when is my loan due', 'am I close to liquidation', or before proposing a repay — so the user never has to look up a requestId. Distinct from getPortfolio, which is collateral value and health only; and from getPositions, which is liquidity, not loans. Per chain — the chain the wallet is on.",
+      "The user's borrowing position on one chain: collateral deposited, each open loan (amount still owed, interest rate, due date, and the requestId a repay targets), total debt, and the health factor. Use targetChain for a named read while the wallet is connected elsewhere; omit it for the connected chain. Call this for 'what do I owe', 'what are my loans', 'when is my loan due', 'am I close to liquidation', or before proposing a repay — so the user never has to look up a requestId. Distinct from getPortfolio, which is collateral value and health only; and from getPositions, which is liquidity, not loans.",
     parameters: {
       type: "object",
       additionalProperties: false,
       properties: {
         address: { type: "string", description: "Wallet address" },
+        targetChain: {
+          type: "string",
+          description:
+            "Optional named chain or numeric chain ID for this read-only check; must belong to the selected mainnet/testnet mode.",
+        },
       },
       required: ["address"],
     },
@@ -723,12 +733,17 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getLendingAccount",
     kind: "read",
     description:
-      "The user's lending ACCOUNT on the connected chain, beyond the loans themselves: whether lending is paused, borrowing capacity (75% of collateral value minus debt — 'how much can I borrow'), free collateral per asset ('how much can I withdraw', what 'withdraw all' takes), and the loans this wallet FUNDED as a lender with what each borrower still owes, what the lender nets after the protocol fee, and the fee itself. Call this for 'how much can I borrow', 'what can I withdraw', 'what am I earning from lending', 'who owes me', 'is lending paused'. For the user's own borrowed loans call getLoans. Per chain.",
+      "The user's lending ACCOUNT on one chain, beyond the loans themselves: whether lending is paused, borrowing capacity (75% of collateral value minus debt — 'how much can I borrow'), free collateral per asset ('how much can I withdraw', what 'withdraw all' takes), and the loans this wallet FUNDED as a lender with what each borrower still owes, what the lender nets after the protocol fee, and the fee itself. Use targetChain for a named read while the wallet is connected elsewhere; omit it for the connected chain. Call this for 'how much can I borrow', 'what can I withdraw', 'what am I earning from lending', 'who owes me', 'is lending paused'. For the user's own borrowed loans call getLoans.",
     parameters: {
       type: "object",
       additionalProperties: false,
       properties: {
         address: { type: "string", description: "Wallet address" },
+        targetChain: {
+          type: "string",
+          description:
+            "Optional named chain or numeric chain ID for this read-only check; must belong to the selected mainnet/testnet mode.",
+        },
       },
       required: ["address"],
     },
@@ -737,12 +752,17 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getStaking",
     kind: "read",
     description:
-      "The user's KLD staking on the connected chain: how much KLD they have staked (held as the stKLD receipt), the vault's total staked and staker count, and any withdrawal in progress with the cooldown left on it. Call this for 'how much have I staked', 'what are my staking rewards', 'can I unstake yet', or 'when does my unstake unlock'. Staking earns by the stKLD/KLD value rising, not an APY — do not quote a percentage. Per chain — staking is deployed independently on each. Not the kfUSD/kafUSD vault (getVault) and not lending collateral (getLoans).",
+      "The user's KLD staking on one chain: how much KLD they have staked (held as the stKLD receipt), the vault's total staked and staker count, and any withdrawal in progress with the cooldown left on it. Use targetChain for a named read while the wallet is connected elsewhere; omit it for the connected chain. Call this for 'how much have I staked', 'what are my staking rewards', 'can I unstake yet', or 'when does my unstake unlock'. Staking earns by the stKLD/KLD value rising, not an APY — do not quote a percentage. Staking is deployed independently per chain. Not the kfUSD/kafUSD vault (getVault) and not lending collateral (getLoans).",
     parameters: {
       type: "object",
       additionalProperties: false,
       properties: {
         address: { type: "string", description: "Wallet address" },
+        targetChain: {
+          type: "string",
+          description:
+            "Optional named chain or numeric chain ID for this read-only check; must belong to the selected mainnet/testnet mode.",
+        },
       },
       required: ["address"],
     },
@@ -751,12 +771,17 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getVault",
     kind: "read",
     description:
-      "The user's stablecoin-vault position on the connected chain: how much kfUSD they hold (the stablecoin, minted 1:1 against collateral) and how much kafUSD (the yield vault — locking kfUSD mints it and its value rises as yield accrues), plus any kafUSD withdrawal in progress with the cooldown left on it. Call this for 'how much kfUSD do I have', 'what's in my kafUSD vault', 'is my vault earning', or 'can I withdraw from the vault yet'. kafUSD earns by appreciating, not an APY — do not quote a percentage. Per chain. Not KLD staking (getStaking) and not lending (getLoans).",
+      "The user's stablecoin-vault position on one chain: how much kfUSD they hold (the stablecoin, minted 1:1 against collateral) and how much kafUSD (the yield vault — locking kfUSD mints it and its value rises as yield accrues), plus any kafUSD withdrawal in progress with the cooldown left on it. Use targetChain for a named read while the wallet is connected elsewhere; omit it for the connected chain. Call this for 'how much kfUSD do I have', 'what's in my kafUSD vault', 'is my vault earning', or 'can I withdraw from the vault yet'. kafUSD earns by appreciating, not an APY — do not quote a percentage. Not KLD staking (getStaking) and not lending (getLoans).",
     parameters: {
       type: "object",
       additionalProperties: false,
       properties: {
         address: { type: "string", description: "Wallet address" },
+        targetChain: {
+          type: "string",
+          description:
+            "Optional named chain or numeric chain ID for this read-only check; must belong to the selected mainnet/testnet mode.",
+        },
       },
       required: ["address"],
     },
@@ -779,12 +804,17 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getPositions",
     kind: "read",
     description:
-      "The user's liquidity (LP) positions on the connected chain, each with its id, pair, fee tier and whether it is in range. Call this for 'what liquidity positions do I have', to find which need attention (out of range earns no fees), or to identify the position id before adding to (increasePosition), collecting fees from (collectFees) or removing (removePosition) one — so the user never has to look the id up themselves.",
+      "The user's liquidity (LP) positions on one chain, each with its id, pair, fee tier and whether it is in range. Use targetChain for a named read while the wallet is connected elsewhere; omit it for the connected chain. Call this for 'what liquidity positions do I have', to find which need attention (out of range earns no fees), or to identify the position id before adding to (increasePosition), collecting fees from (collectFees) or removing (removePosition) one — so the user never has to look the id up themselves.",
     parameters: {
       type: "object",
       additionalProperties: false,
       properties: {
         address: { type: "string", description: "Wallet address" },
+        targetChain: {
+          type: "string",
+          description:
+            "Optional named chain or numeric chain ID for this read-only check; must belong to the selected mainnet/testnet mode.",
+        },
       },
       required: ["address"],
     },
@@ -837,12 +867,17 @@ export const TOOL_CATALOG: ToolSpec[] = [
     name: "getBalances",
     kind: "read",
     description:
-      "What the wallet actually holds on the chain it is connected to: the native gas asset plus every registered token, in token units. Use for 'what do I have', 'what is my balance', or to check the user can cover an amount before planning it. Distinct from getPortfolio and getLoans, which report the lending position — collateral posted and loans owed, value that has LEFT the wallet; and from getChains, which takes one named symbol and looks for it across every chain.",
+      "What the wallet actually holds on one chain: the native gas asset plus every registered token, in token units. Use targetChain for a named read such as BSC while the wallet is connected elsewhere; omit it for the connected chain. Use for 'what do I have', 'what is my balance', or to check the user can cover an amount before planning it. Distinct from getPortfolio and getLoans, which report the lending position — collateral posted and loans owed, value that has LEFT the wallet; and from getChains, which takes one named symbol and looks for it across every chain.",
     parameters: {
       type: "object",
       additionalProperties: false,
       properties: {
         address: { type: "string", description: "Wallet address" },
+        targetChain: {
+          type: "string",
+          description:
+            "Optional named chain or numeric chain ID for this read-only check; must belong to the selected mainnet/testnet mode.",
+        },
       },
       required: ["address"],
     },

@@ -1092,6 +1092,64 @@ async function getBalances(args: Json, chainId: number): Promise<Json> {
   };
 }
 
+const TARGET_CHAIN_READS = new Set([
+  "getBalances",
+  "getPortfolio",
+  "getLoans",
+  "getLendingAccount",
+  "getStaking",
+  "getVault",
+  "getPositions",
+]);
+
+export interface ReadChainResolution {
+  chainId: number;
+  error?: string;
+}
+
+/**
+ * Resolve a read's optional named target without changing the wallet/action
+ * chain for the turn.  Balance and lending reads are explicitly read-only, so
+ * asking "what is my BSC balance?" while the wallet is connected to Arc is
+ * safe; proposals still use the validated turn chain and never inherit this
+ * override.
+ */
+export function resolveReadChain(
+  name: string,
+  args: Json,
+  connectedChainId: number | undefined,
+  networkMode: NetworkMode,
+): ReadChainResolution {
+  const fallback = connectedChainId ?? READ_ONLY_CHAIN_ID;
+  if (!TARGET_CHAIN_READS.has(name)) return { chainId: fallback };
+
+  const rawTarget = args.targetChain ?? args.chain ?? args.chainId;
+  if (rawTarget === undefined || rawTarget === null || rawTarget === "") {
+    return { chainId: fallback };
+  }
+
+  const target = chainIdFromArgument(rawTarget);
+  if (target === undefined) {
+    return {
+      chainId: fallback,
+      error:
+        "That target chain is not in Kaleido's registry, so Luca cannot safely read it.",
+    };
+  }
+
+  const meta = getChainMeta(target);
+  if (!meta || meta.network !== networkMode) {
+    return {
+      chainId: fallback,
+      error: `${meta?.name ?? `Chain ${target}`} belongs to ${
+        meta?.network ?? "a different network mode"
+      }; switch network mode before asking Luca to read it.`,
+    };
+  }
+
+  return { chainId: target };
+}
+
 /**
  * Resolves a token address to its symbol; falls back to a short address.
  *
@@ -2487,12 +2545,22 @@ export async function runReadTool(
 ): Promise<Json> {
   const handler = HANDLERS[name];
   if (!handler) return { error: `Unknown read tool: ${name}` };
+  const requested = resolveReadChain(name, args, chainId, networkMode);
+  if (requested.error) {
+    return withEvidence(
+      name,
+      args,
+      { error: requested.error },
+      requested.chainId,
+      networkMode,
+    );
+  }
   try {
-    const resolvedChainId = chainId ?? READ_ONLY_CHAIN_ID;
+    const resolvedChainId = requested.chainId;
     const result = await handler(args, resolvedChainId, networkMode, address);
     return withEvidence(name, args, result, resolvedChainId, networkMode);
   } catch (err) {
-    const resolvedChainId = chainId ?? READ_ONLY_CHAIN_ID;
+    const resolvedChainId = requested.chainId;
     const result = { error: `${name} threw: ${(err as Error).message}` };
     return withEvidence(name, args, result, resolvedChainId, networkMode);
   }
