@@ -391,13 +391,13 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "best network",
     ],
     answer:
-      "Kaleido is live on 3 mainnets: Arc, BNB Smart Chain and Robinhood Chain. It also has 6 deployed testnets: Arc, Sepolia, Base Sepolia, BNB Smart Chain, Robinhood Chain and Elysium. Other networks may be balance-reading only; product availability depends on the selected chain's deployment and assets.",
+      "Kaleido is live on 4 mainnets: Arc, Elysium, BNB Smart Chain and Robinhood Chain. It also has 6 deployed testnets: Arc, Sepolia, Base Sepolia, BNB Smart Chain, Robinhood Chain and Elysium. Other networks may be balance-reading only; product availability depends on the selected chain's deployment and assets.",
     cards: [
       {
         kind: "stats",
         title: "Networks",
         rows: [
-          { label: "Mainnets", value: "3 live" },
+          { label: "Mainnets", value: "4 live" },
           { label: "Testnets", value: "6 deployed" },
           { label: "Other networks", value: "balances only" },
         ],
@@ -468,7 +468,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "morning",
     ],
     answer:
-      "Hey — I'm Luca. Tell me what you want to do in plain language and I'll build the transactions for you to review and sign; nothing goes on-chain without your signature. Not sure where to start? Try \"what can I do here\", \"what's my balance\", or just name a trade like \"swap 50 USDC for KLD\".",
+      'Hey — I\'m Luca. Tell me what you want to do in plain language and I\'ll build the transactions for you to review and sign; nothing goes on-chain without your signature. Not sure where to start? Try "what can I do here", "what\'s my balance", or just name a trade like "swap 50 USDC for KLD".',
   },
   {
     /*
@@ -568,7 +568,7 @@ export const FAQ_TOPICS: FaqTopic[] = [
       "the catch",
     ],
     answer:
-      "Check the network switcher: Arc, Robinhood Chain and BNB Smart Chain are live mainnets where transactions use real funds. The testnet toggle opens practice networks (Sepolia, Base Sepolia, BNB Smart Chain Testnet, Robinhood Chain Testnet and Arc Testnet) with test tokens. Each position stays on the chain where it was opened. KLD has not launched on mainnet.",
+      "Check the network switcher: Arc, Elysium, Robinhood Chain and BNB Smart Chain are live mainnets where transactions use real funds. The testnet toggle opens practice networks (Sepolia, Base Sepolia, BNB Smart Chain Testnet, Robinhood Chain Testnet, Arc Testnet and Elysium Testnet) with test tokens. Each position stays on the chain where it was opened. KLD has not launched on mainnet.",
   },
   {
     /*

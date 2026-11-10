@@ -9,6 +9,7 @@ import {
 import { chainTokens } from "@/constants/tokens";
 import {
   aggregatorIntegrations,
+  integrationNameList,
   launchpadIntegrations,
 } from "./integrationCatalog";
 import type { NetworkMode } from "./readTools";
@@ -114,8 +115,7 @@ const STATUS_RANK: Record<CapabilityStatus, number> = {
 
 function strongestStatus(statuses: CapabilityStatus[]): CapabilityStatus {
   return statuses.reduce(
-    (best, status) =>
-      STATUS_RANK[status] > STATUS_RANK[best] ? status : best,
+    (best, status) => (STATUS_RANK[status] > STATUS_RANK[best] ? status : best),
     "unknown" as CapabilityStatus,
   );
 }
@@ -125,7 +125,9 @@ function aggregateSnapshot(networkMode: NetworkMode): CapabilitySnapshot {
     (chain) => getCapabilitySnapshot({ chainId: chain.id, networkMode }),
   );
   const ids = Array.from(
-    new Set(perChain.flatMap((snapshot) => snapshot.records.map((item) => item.id))),
+    new Set(
+      perChain.flatMap((snapshot) => snapshot.records.map((item) => item.id)),
+    ),
   );
   const records = ids.map((id) => {
     const matches = perChain
@@ -197,7 +199,9 @@ export function getCapabilitySnapshot(args: {
   const hasV3 = Boolean(
     contracts.v3Factory && contracts.v3Quoter && contracts.v3Router,
   );
-  const hasLpManager = Boolean(contracts.v3Factory && contracts.v3PositionManager);
+  const hasLpManager = Boolean(
+    contracts.v3Factory && contracts.v3PositionManager,
+  );
   const lending = registeredLendingAssets(chainId, "loanable");
   const collateral = registeredLendingAssets(chainId, "collateral");
   const hasLending = Boolean(contracts.diamond);
@@ -246,12 +250,11 @@ export function getCapabilitySnapshot(args: {
     record(scope, {
       id: "lending",
       product: "lending and borrowing",
-      status:
-        !hasLending
-          ? "not_configured"
-          : lending.known && collateral.known
-            ? "available"
-            : "degraded",
+      status: !hasLending
+        ? "not_configured"
+        : lending.known && collateral.known
+          ? "available"
+          : "degraded",
       surfaces: surfaces(
         !hasLending
           ? "not_configured"
@@ -291,7 +294,9 @@ export function getCapabilitySnapshot(args: {
       id: "stablecoin",
       product: "stablecoin",
       status: hasStablecoin(chainId) ? "available" : "not_configured",
-      surfaces: surfaces(hasStablecoin(chainId) ? "available" : "not_configured"),
+      surfaces: surfaces(
+        hasStablecoin(chainId) ? "available" : "not_configured",
+      ),
       source: "stablecoin contract registry",
       reason: hasStablecoin(chainId)
         ? undefined
@@ -307,7 +312,7 @@ export function getCapabilitySnapshot(args: {
           ? launchpads.map((item) => item.source).join("; ")
           : "canonical launchpad integration catalog",
       reason: launchpadsConfigured
-        ? `${launchpads.map((item) => item.name).join(" and ")} are registered on Arc mainnet. ${launchpads.map((item) => item.reason).join(" ")}`
+        ? `${integrationNameList(launchpads)} are registered on ${meta.name}. ${launchpads.map((item) => item.reason).join(" ")}`
         : "No launchpad integration is registered for this chain.",
     }),
     record(scope, {

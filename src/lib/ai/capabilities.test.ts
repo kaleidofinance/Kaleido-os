@@ -34,7 +34,13 @@ const elysiumMainnet = getCapabilitySnapshot({
 assert.equal(elysiumMainnet.chainName, "Elysium");
 assert.equal(capabilityFor(elysiumMainnet, "wallet.read")?.status, "available");
 assert.equal(capabilityFor(elysiumMainnet, "swap")?.status, "available");
-assert.equal(capabilityFor(elysiumMainnet, "lending")?.status, "not_configured");
+assert.equal(capabilityFor(elysiumMainnet, "liquidity")?.status, "available");
+assert.equal(capabilityFor(elysiumMainnet, "lending")?.status, "available");
+assert.equal(capabilityFor(elysiumMainnet, "launchpads")?.status, "available");
+assert.match(
+  capabilityFor(elysiumMainnet, "launchpads")?.reason ?? "",
+  /12|Montra/,
+);
 
 const unknown = getCapabilitySnapshot({
   chainId: 999999,

@@ -1,5 +1,6 @@
 import { ARGUS_CHAIN_ID, argusEnabled } from "@/lib/argus/addresses";
 import { PEACH_CHAIN_ID } from "@/lib/peach/route";
+import { ELYSIUM_CHAIN_ID, ELYSIUM_LAUNCHPADS } from "@/lib/elysium/addresses";
 import { hasFlyTrade } from "@/lib/swap/flytrade";
 import { hasKyberSwap } from "@/lib/swap/kyberswap";
 import { hasLifiSwap } from "@/lib/swap/lifi";
@@ -33,6 +34,14 @@ export interface IntegrationDescriptor {
 
 const MAINNET = "mainnet" as const;
 
+export function integrationNameList(
+  items: readonly IntegrationDescriptor[],
+): string {
+  const names = items.map((item) => item.name);
+  if (names.length < 2) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 function launchpad(
   id: string,
   name: string,
@@ -63,7 +72,11 @@ function launchpad(
   };
 }
 
-function aggregator(id: string, name: string, chainId: number): IntegrationDescriptor {
+function aggregator(
+  id: string,
+  name: string,
+  chainId: number,
+): IntegrationDescriptor {
   return {
     id,
     name,
@@ -79,7 +92,8 @@ function aggregator(id: string, name: string, chainId: number): IntegrationDescr
       trade: "available",
     },
     source: `${name} reviewed aggregator adapter`,
-    reason: "Liquidity, quote freshness and executable calldata are checked at request time.",
+    reason:
+      "Liquidity, quote freshness and executable calldata are checked at request time.",
   };
 }
 
@@ -115,9 +129,24 @@ export function integrationsForChain(
     );
   }
 
-  if (hasKyberSwap(chainId)) out.push(aggregator("kyberswap", "KyberSwap", chainId));
+  if (chainId === ELYSIUM_CHAIN_ID) {
+    out.push(
+      ...ELYSIUM_LAUNCHPADS.map((item) =>
+        launchpad(
+          `elysium-${item.id}`,
+          item.name,
+          ELYSIUM_CHAIN_ID,
+          `${item.name} is Elysium-mainnet only; pasted tokens still require live pool and route verification.`,
+        ),
+      ),
+    );
+  }
+
+  if (hasKyberSwap(chainId))
+    out.push(aggregator("kyberswap", "KyberSwap", chainId));
   if (hasLifiSwap(chainId)) out.push(aggregator("lifi", "LI.FI", chainId));
-  if (hasFlyTrade(chainId)) out.push(aggregator("flytrade", "Fly.trade", chainId));
+  if (hasFlyTrade(chainId))
+    out.push(aggregator("flytrade", "Fly.trade", chainId));
   return out;
 }
 
