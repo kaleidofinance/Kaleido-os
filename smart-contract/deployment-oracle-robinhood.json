@@ -1,0 +1,66 @@
+{
+  "network": "robinhood",
+  "chainId": 4663,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-10-21T09:52:20.840Z",
+  "oracleKind": "aggregator-v3",
+  "contracts": {
+    "priceOracle": "0xd27eB978D2a018F5E23FA2D2CA4a70122A3a669C",
+    "pythContract": null
+  },
+  "feeds": [
+    {
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "aggregator": "0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet ETH/USD feed; walk round history before registering volatile collateral and tighten this bound if the observed heartbeat permits it.",
+      "priceAtDeploy": 2462.46247958,
+      "ageSecondsAtDeploy": 2089
+    },
+    {
+      "feedId": "0xdaa58c6a3ce7d4b9c46c32a6e646012c17c4a2b24c08dd8c5e476118b855a7da",
+      "symbols": [
+        "USDG"
+      ],
+      "aggregator": "0x61B7e5650328764B076A108EFF5fa7282a1B9aD2",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet USDG/USD feed; stablecoin ceiling.",
+      "priceAtDeploy": 1.00003481,
+      "ageSecondsAtDeploy": 65234
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "aggregator": "0x9e6f4605992a899eE2999999F3Ec80C41F452546",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet USDC/USD feed; stablecoin ceiling.",
+      "priceAtDeploy": 0.99980037,
+      "ageSecondsAtDeploy": 65203
+    },
+    {
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "symbols": [
+        "USDT"
+      ],
+      "aggregator": "0xbf3550B6fAe1671da7C238Af12e03Ac586BEf3B1",
+      "provider": "chainlink",
+      "decimals": 8,
+      "maxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet USDT/USD feed; stablecoin ceiling.",
+      "priceAtDeploy": 0.99882979,
+      "ageSecondsAtDeploy": 65202
+    }
+  ]
+}
