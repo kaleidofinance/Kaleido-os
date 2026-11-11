@@ -148,6 +148,16 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
       now,
       closedX.elysiumIntegrationComment,
     ),
+    elysiumLending: xTaskState(
+      row.x_elysium_lending_at as string | null,
+      now,
+      closedX.elysiumLending,
+    ),
+    elysiumLendingComment: xTaskState(
+      row.x_elysium_lending_comment_at as string | null,
+      now,
+      closedX.elysiumLendingComment,
+    ),
     argusIntegrationComment: xTaskState(
       row.x_argus_integration_comment_at as string | null,
       now,

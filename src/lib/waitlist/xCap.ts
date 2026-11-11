@@ -37,6 +37,8 @@ export const CAPPED_X_TASKS = {
   lucaModelIntegrationComment: "x_luca_model_integration_comment_at",
   elysiumIntegration: "x_elysium_integration_at",
   elysiumIntegrationComment: "x_elysium_integration_comment_at",
+  elysiumLending: "x_elysium_lending_at",
+  elysiumLendingComment: "x_elysium_lending_comment_at",
 } as const;
 
 /** Per-task claim cap. `commented` keeps the original X_TASK_CAP; the $ARGUS
@@ -55,6 +57,8 @@ export const X_TASK_CAPS: Record<keyof typeof CAPPED_X_TASKS, number> = {
   lucaModelIntegrationComment: 300,
   elysiumIntegration: 300,
   elysiumIntegrationComment: 300,
+  elysiumLending: 300,
+  elysiumLendingComment: 300,
 };
 
 /** The cap for a capped task column (undefined if the column is uncapped). */
@@ -87,6 +91,8 @@ const ALL_OPEN: Record<CappedTaskKey, boolean> = {
   lucaModelIntegrationComment: false,
   elysiumIntegration: false,
   elysiumIntegrationComment: false,
+  elysiumLending: false,
+  elysiumLendingComment: false,
 };
 
 // A task closes once and stays closed (new claims are rejected, so its count
