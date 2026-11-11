@@ -50,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -66,6 +66,7 @@ const MAINNET_LAUNCH_TWEET_ID = "2101296214293500009";
 const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
 const ELYSIUM_INTEGRATION_TWEET_ID = "2120123682999648614";
+const ELYSIUM_LENDING_TWEET_ID = "2120544123119870428";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -120,6 +121,8 @@ export default function WaitlistPage() {
     argus2: boolean;
     elysiumIntegration: boolean;
     elysiumIntegrationComment: boolean;
+    elysiumLending: boolean;
+    elysiumLendingComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -130,6 +133,8 @@ export default function WaitlistPage() {
     argus2: false,
     elysiumIntegration: false,
     elysiumIntegrationComment: false,
+    elysiumLending: false,
+    elysiumLendingComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -446,7 +451,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -458,6 +463,10 @@ export default function WaitlistPage() {
                   ? `https://x.com/intent/retweet?tweet_id=${ELYSIUM_INTEGRATION_TWEET_ID}`
                 : task === "elysiumIntegrationComment"
                   ? `https://x.com/intent/tweet?in_reply_to=${ELYSIUM_INTEGRATION_TWEET_ID}`
+                : task === "elysiumLending"
+                  ? `https://x.com/intent/retweet?tweet_id=${ELYSIUM_LENDING_TWEET_ID}`
+                : task === "elysiumLendingComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${ELYSIUM_LENDING_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -835,6 +844,48 @@ export default function WaitlistPage() {
                         </button>
                       ) : (
                         <button className={s.taskBtn} onClick={() => openIntent("elysiumIntegrationComment")}>Comment</button>
+                      )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Like &amp; RT Elysium Lending Live</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.elysiumLending?.done
+                          ? status.xTasks.elysiumLending.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.elysiumLending?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.elysiumLending?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.elysiumLending?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.elysiumLending ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("elysiumLending")} disabled={xBusy === "elysiumLending"}>
+                          {xBusy === "elysiumLending" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("elysiumLending")}>Like &amp; RT</button>
+                      )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Comment on Elysium Lending Live</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.elysiumLendingComment?.done
+                          ? status.xTasks.elysiumLendingComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.elysiumLendingComment?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.elysiumLendingComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.elysiumLendingComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.elysiumLendingComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("elysiumLendingComment")} disabled={xBusy === "elysiumLendingComment"}>
+                          {xBusy === "elysiumLendingComment" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("elysiumLendingComment")}>Comment</button>
                       )}
                   </li>
 

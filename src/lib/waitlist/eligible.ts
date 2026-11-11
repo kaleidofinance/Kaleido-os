@@ -50,6 +50,10 @@ export const X_TASK_POINTS = {
   elysiumIntegration: 300,
   /** Comment on the Elysium Mainnet post; first 300 wallets. */
   elysiumIntegrationComment: 300,
+  /** Like & RT the Elysium Lending Live post; first 300 wallets. */
+  elysiumLending: 300,
+  /** Comment on the Elysium Lending Live post; first 300 wallets. */
+  elysiumLendingComment: 300,
   bitget: 100,
 } as const;
 
@@ -78,6 +82,8 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   lucaModelIntegrationComment: "x_luca_model_integration_comment_at",
   elysiumIntegration: "x_elysium_integration_at",
   elysiumIntegrationComment: "x_elysium_integration_comment_at",
+  elysiumLending: "x_elysium_lending_at",
+  elysiumLendingComment: "x_elysium_lending_comment_at",
   bitget: "x_bitget_at",
 };
 

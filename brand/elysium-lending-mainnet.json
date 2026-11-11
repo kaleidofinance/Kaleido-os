@@ -1,0 +1,13 @@
+{
+  "eyebrow": "KALEIDO X ELYSIUM",
+  "hero": "Lending is LIVE on",
+  "heroSize": "medium",
+  "sub": "Elysium Mainnet",
+  "subSize": "chain",
+  "subLogo": "icons/elysium.svg",
+  "description": "Lend HYPE. Borrow USDC. Stay onchain.",
+  "url": "app.kaleidofi.xyz/borrow",
+  "background": "colosseum5",
+  "layout": "center",
+  "effect": "spotlight"
+}

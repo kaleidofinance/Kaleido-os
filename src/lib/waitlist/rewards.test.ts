@@ -67,5 +67,20 @@ check(
   activated.pendingPoints === 0,
 );
 
+const elysiumLending = projectWaitlistRewards(
+  {
+    welcome_points: 0,
+    activated_at: "2026-01-01T00:00:00.000Z",
+    x_elysium_lending_at: "2026-01-01T00:00:00.000Z",
+    x_elysium_lending_comment_at: "2026-01-01T00:00:00.000Z",
+  },
+  0,
+  now,
+);
+check(
+  "Elysium Lending Like & RT and Comment award 300 kPoint each",
+  elysiumLending.availablePoints === 600,
+);
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
