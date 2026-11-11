@@ -78,6 +78,12 @@ interface TokenSelectorProps {
    *  passes false: it prices any chain read-only and switches only at signing,
    *  so a pick must come back on its own chain without moving the wallet. */
   switchOnSelect?: boolean;
+  /**
+   * Optional product constraint. Swap accepts native assets; a V3 liquidity
+   * position accepts ERC-20 contracts only. Filtering here prevents a caller
+   * from offering a row it has to silently replace after selection.
+   */
+  tokenFilter?: (token: IToken) => boolean;
 }
 
 function TokenRow({
@@ -451,6 +457,7 @@ export default function TokenSelector({
   onSelect,
   exclude,
   switchOnSelect = true,
+  tokenFilter,
 }: TokenSelectorProps) {
   const [query, setQuery] = useState("");
   /* "all" is only the value before the first open. The effect below points it at
@@ -546,8 +553,9 @@ export default function TokenSelector({
         extra.push(ct);
       }
     }
-    return [...base, ...extra];
-  }, [selectedNetwork, chains, customTokens]);
+    const combined = [...base, ...extra];
+    return tokenFilter ? combined.filter(tokenFilter) : combined;
+  }, [selectedNetwork, chains, customTokens, tokenFilter]);
 
   /* Everything selectable in the current network view, the excluded token
      (the swap's other side) already removed — the base both the category row
