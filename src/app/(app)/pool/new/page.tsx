@@ -44,6 +44,10 @@ import TokenIcon from "@/components/v2/TokenIcon";
 import { useSpotPrices } from "@/hooks/useSpotPrices";
 import { useDexPrices } from "@/hooks/useDexPrices";
 import type { IToken } from "@/constants/types/dex";
+import {
+  isPoolPositionToken,
+  poolPositionTokens,
+} from "@/lib/dex/positionTokens";
 import s from "../pool.module.css";
 
 /**
@@ -162,10 +166,7 @@ export default function NewPositionPage() {
   // whose gas token is USDC, is a trap: the position manager reverts trying to
   // transferFrom a 0xEeee… sentinel that is not a real ERC20. The wrapped form
   // (WETH, WUSDC) is a separate registered token and stays selectable.
-  const available = useMemo(
-    () => chainTokens(chainId).filter((t) => !t.isNative),
-    [chainId],
-  );
+  const available = useMemo(() => poolPositionTokens(chainId), [chainId]);
   const [token0, setToken0] = useState<IToken | null>(null);
   const [token1, setToken1] = useState<IToken | null>(null);
   const [pickerFor, setPickerFor] = useState<"0" | "1" | null>(null);
@@ -249,10 +250,7 @@ export default function NewPositionPage() {
     if (!wanted) return;
 
     const validHere = (t: IToken | null) =>
-      t &&
-      available.some((a) => a.chainId === t.chainId && a.address === t.address)
-        ? t
-        : null;
+      t && t.chainId === chainId && isPoolPositionToken(t) ? t : null;
 
     const ok0 = validHere(token0);
     const ok1 = validHere(token1);
@@ -1204,6 +1202,7 @@ export default function NewPositionPage() {
         open={pickerFor !== null}
         onClose={() => setPickerFor(null)}
         exclude={pickerFor === "0" ? token1 : token0}
+        tokenFilter={isPoolPositionToken}
         onSelect={(t) => {
           if (pickerFor === "0") setToken0(t);
           else setToken1(t);

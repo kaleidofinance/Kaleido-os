@@ -95,6 +95,7 @@
     "test:products": "tsx \"src/app/(marketing)/_components/products.test.ts\"",
     "test:docs": "tsx \"src/app/(marketing)/docs/docs.test.ts\"",
     "test:poolcurve": "tsx \"src/app/(app)/pool/poolCurve.test.ts\"",
+    "test:positiontokens": "tsx src/lib/dex/positionTokens.test.ts",
     "test:poolfilters": "tsx \"src/app/(app)/pool/filters.test.ts\"",
     "test:poolsnapshot": "tsx src/lib/dex/poolSnapshot.test.ts",
     "test:deposit": "tsx src/lib/dex/deposit.test.ts",
