@@ -1,6 +1,8 @@
 import { kyberSwapChainSlug } from "./kyberswap";
 import { ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
 import { readArgusLaunch, readArgusPoolState } from "@/lib/argus/launch";
+import { ELYSIUM_CHAIN_ID, ELYSIUM_KNTQ } from "@/lib/elysium/addresses";
+import { readElysiumQuoteUsdPrices } from "@/lib/elysium/launch";
 
 /** Argus quote assets that are a US dollar (native USDC, its 0x3600 mirror and the
  *  wrapped-native 0x8c6c that wraps it 1:1). A launch quoted in anything else is
@@ -134,8 +136,13 @@ export async function dexTokenPrices(
 
   const prices = await mapLimit(tokens, 5, async (t) => {
     const p = await priceOne(slug, usdc, t);
-    if (p !== null || chainId !== ARGUS_CHAIN_ID) return p;
-    return argusPrice(t.address);
+    if (p !== null) return p;
+    if (chainId === ARGUS_CHAIN_ID) return argusPrice(t.address);
+    if (chainId === ELYSIUM_CHAIN_ID && t.address.toLowerCase() === ELYSIUM_KNTQ.toLowerCase()) {
+      const quote = await readElysiumQuoteUsdPrices().catch(() => null);
+      return quote?.kntqUsd ?? null;
+    }
+    return null;
   });
   const out: Record<string, number> = {};
   tokens.forEach((t, i) => {
