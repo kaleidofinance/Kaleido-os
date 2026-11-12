@@ -82,5 +82,20 @@ check(
   elysiumLending.availablePoints === 600,
 );
 
+const peach = projectWaitlistRewards(
+  {
+    welcome_points: 0,
+    activated_at: "2026-01-01T00:00:00.000Z",
+    x_peach_integration_at: "2026-01-01T00:00:00.000Z",
+    x_peach_integration_comment_at: "2026-01-01T00:00:00.000Z",
+  },
+  0,
+  now,
+);
+check(
+  "Peach Launchpad Like & RT and Comment award 300 kPoint each",
+  peach.availablePoints === 600,
+);
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

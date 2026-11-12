@@ -54,6 +54,10 @@ export const X_TASK_POINTS = {
   elysiumLending: 300,
   /** Comment on the Elysium Lending Live post; first 300 wallets. */
   elysiumLendingComment: 300,
+  /** Like & RT the Peach Launchpad integration post; first 300 wallets. */
+  peachIntegration: 300,
+  /** Comment on the Peach Launchpad integration post; first 300 wallets. */
+  peachIntegrationComment: 300,
   bitget: 100,
 } as const;
 
@@ -84,6 +88,8 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   elysiumIntegrationComment: "x_elysium_integration_comment_at",
   elysiumLending: "x_elysium_lending_at",
   elysiumLendingComment: "x_elysium_lending_comment_at",
+  peachIntegration: "x_peach_integration_at",
+  peachIntegrationComment: "x_peach_integration_comment_at",
   bitget: "x_bitget_at",
 };
 
