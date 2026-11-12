@@ -50,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -67,6 +67,7 @@ const ARGUS_TWEET_ID =
   process.env.NEXT_PUBLIC_ARGUS_TWEET_ID ?? "2104598739604373636";
 const ELYSIUM_INTEGRATION_TWEET_ID = "2120123682999648614";
 const ELYSIUM_LENDING_TWEET_ID = "2120544123119870428";
+const PEACH_INTEGRATION_TWEET_ID = "2120892376160075859";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -123,6 +124,8 @@ export default function WaitlistPage() {
     elysiumIntegrationComment: boolean;
     elysiumLending: boolean;
     elysiumLendingComment: boolean;
+    peachIntegration: boolean;
+    peachIntegrationComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -135,6 +138,8 @@ export default function WaitlistPage() {
     elysiumIntegrationComment: false,
     elysiumLending: false,
     elysiumLendingComment: false,
+    peachIntegration: false,
+    peachIntegrationComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -451,7 +456,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -467,6 +472,10 @@ export default function WaitlistPage() {
                   ? `https://x.com/intent/retweet?tweet_id=${ELYSIUM_LENDING_TWEET_ID}`
                 : task === "elysiumLendingComment"
                   ? `https://x.com/intent/tweet?in_reply_to=${ELYSIUM_LENDING_TWEET_ID}`
+                : task === "peachIntegration"
+                  ? `https://x.com/intent/retweet?tweet_id=${PEACH_INTEGRATION_TWEET_ID}`
+                : task === "peachIntegrationComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${PEACH_INTEGRATION_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -703,6 +712,7 @@ export default function WaitlistPage() {
                       </button>
                     )}
                   </li>
+
                   <li className={s.task}>
                     <div className={s.taskText}>
                       <span className={s.taskTitle}>Link your X account</span>
@@ -886,6 +896,48 @@ export default function WaitlistPage() {
                         </button>
                       ) : (
                         <button className={s.taskBtn} onClick={() => openIntent("elysiumLendingComment")}>Comment</button>
+                      )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Like &amp; RT Peach Launchpad Integration</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.peachIntegration?.done
+                          ? status.xTasks.peachIntegration.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.peachIntegration?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.peachIntegration?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.peachIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.peachIntegration ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("peachIntegration")} disabled={xBusy === "peachIntegration"}>
+                          {xBusy === "peachIntegration" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("peachIntegration")}>Like &amp; RT</button>
+                      )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Comment on Peach Launchpad Integration</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.peachIntegrationComment?.done
+                          ? status.xTasks.peachIntegrationComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.peachIntegrationComment?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.peachIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.peachIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.peachIntegrationComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("peachIntegrationComment")} disabled={xBusy === "peachIntegrationComment"}>
+                          {xBusy === "peachIntegrationComment" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("peachIntegrationComment")}>Comment</button>
                       )}
                   </li>
 

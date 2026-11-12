@@ -5,8 +5,8 @@
     "left": { "name": "Kaleidofi", "logo": "newklogo2.png" },
     "right": { "name": "Peach", "logo": "peach-logo.png" }
   },
-  "description": "Tokens launched on Peach are now discoverable and tradable through Luca on Arc.",
-  "stats": ["Launch → trade", "Live on Arc", "Luca routed"],
+  "description": "Peach-launched tokens are now tradable on Kaleido through Luca, our AI trading agent. Paste a contract and Luca verifies the launch and routes the trade — the same flow used across 12+ Elysium launchpads.",
+  "stats": ["AI-routed trade", "Live on Arc", "12+ Elysium launchpads"],
   "url": "kaleidofi.xyz/trade",
   "background": "colosseum-dark",
   "layout": "center",

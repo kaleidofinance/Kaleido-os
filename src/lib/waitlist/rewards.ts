@@ -26,6 +26,8 @@ export const WAITLIST_TASK_POINTS = {
   elysiumIntegrationComment: 300,
   elysiumLending: 300,
   elysiumLendingComment: 300,
+  peachIntegration: 300,
+  peachIntegrationComment: 300,
   arcMainnet: 300,
   agent: 500,
   bridge: 500,
@@ -57,6 +59,8 @@ export interface WaitlistRewardRow {
   x_elysium_integration_comment_at?: string | null;
   x_elysium_lending_at?: string | null;
   x_elysium_lending_comment_at?: string | null;
+  x_peach_integration_at?: string | null;
+  x_peach_integration_comment_at?: string | null;
   arc_mainnet_tx_at?: string | null;
   agent_tx_at?: string | null;
   bridge_tx_at?: string | null;
@@ -148,6 +152,8 @@ export function projectWaitlistRewards(
     heldTask("Comment on Elysium Mainnet Live", WAITLIST_TASK_POINTS.elysiumIntegrationComment, row.x_elysium_integration_comment_at, now),
     heldTask("Like & RT Elysium Lending Live", WAITLIST_TASK_POINTS.elysiumLending, row.x_elysium_lending_at, now),
     heldTask("Comment on Elysium Lending Live", WAITLIST_TASK_POINTS.elysiumLendingComment, row.x_elysium_lending_comment_at, now),
+    heldTask("Like & RT Peach Launchpad Integration", WAITLIST_TASK_POINTS.peachIntegration, row.x_peach_integration_at, now),
+    heldTask("Comment on Peach Launchpad Integration", WAITLIST_TASK_POINTS.peachIntegrationComment, row.x_peach_integration_comment_at, now),
     {
       task: "First Arc mainnet transaction",
       points: WAITLIST_TASK_POINTS.arcMainnet,
@@ -216,7 +222,7 @@ export async function readWaitlistRewardState(
     supabaseAdmin
       .from("waitlist")
       .select(
-        "welcome_points, activated_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_robinhood_integration_at, x_robinhood_integration_comment_at, x_luca_model_integration_at, x_luca_model_integration_comment_at, x_elysium_integration_at, x_elysium_integration_comment_at, x_elysium_lending_at, x_elysium_lending_comment_at, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at",
+        "welcome_points, activated_at, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_robinhood_integration_at, x_robinhood_integration_comment_at, x_luca_model_integration_at, x_luca_model_integration_comment_at, x_elysium_integration_at, x_elysium_integration_comment_at, x_elysium_lending_at, x_elysium_lending_comment_at, x_peach_integration_at, x_peach_integration_comment_at, arc_mainnet_tx_at, agent_tx_at, bridge_tx_at",
       )
       .eq("wallet", wallet)
       .maybeSingle<WaitlistRewardRow>(),
