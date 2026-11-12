@@ -1,13 +1,20 @@
 /** Routing is separate from the transaction grammar: a mentioned verb is not consent. */
 export function isDirectInstruction(text: string): boolean {
   const t = text.trim().toLowerCase();
+  /* A transaction can be sized in USD: "bridge $10 worth HYPE" is still an
+     executable command. Keep `worth` as a conversational cue for sentences
+     such as "show me what my portfolio is worth", but do not let it divert an
+     explicit transaction to the cloud model before the local dollar-sizing
+     parser gets a chance to read it. */
+  const transactionPrefix = /^(?:(?:hey\s+)?luca[,!]?[ \t]+)?(?:please\s+)?(?:(?:can|could|would) you[ \t]+)?(?:please\s+)?(?:swap|trade|convert|exchange|sell|buy|purchase|dump|unload|ape|cop|grab|snag|flip|yeet|spend|stake|unstake|approve|allow|send|transfer|bridge|vrdige|borrow|lend|supply|offer|deposit|collateralise|collateralize|withdraw|repay|payback|take|draw|fill|fund|cancel|mint|redeem|lock|unlock|complete|collect|remove|faucet|claim|compound|add|increase|provide|reinvest|move|exit|migrate|wrap|unwrap)\b/;
   if (
     /\b(?:explain|analyse|analyze|compare|recommend|should|would it|worth|best|cheapest|safest|why|how does|how do|what if|later|thinking|think)\b/.test(
       t,
-    )
+    ) &&
+    !(transactionPrefix.test(t) && /\bworth\b/.test(t))
   )
     return false;
-  return /^(?:(?:hey\s+)?luca[,!]?\s+)?(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:please\s+)?(?:swap|trade|convert|exchange|sell|buy|purchase|dump|unload|ape|cop|grab|snag|flip|yeet|spend|stake|unstake|approve|allow|send|transfer|bridge|borrow|lend|supply|offer|deposit|collateralise|collateralize|withdraw|repay|payback|take|draw|fill|fund|cancel|mint|redeem|lock|unlock|complete|collect|remove|faucet|claim|compound|add|increase|provide|reinvest|move|exit|migrate|wrap|unwrap|show|check|list|repeat|redo|receive|help)\b/.test(
+  return /^(?:(?:hey\s+)?luca[,!]?\s+)?(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:please\s+)?(?:swap|trade|convert|exchange|sell|buy|purchase|dump|unload|ape|cop|grab|snag|flip|yeet|spend|stake|unstake|approve|allow|send|transfer|bridge|vrdige|borrow|lend|supply|offer|deposit|collateralise|collateralize|withdraw|repay|payback|take|draw|fill|fund|cancel|mint|redeem|lock|unlock|complete|collect|remove|faucet|claim|compound|add|increase|provide|reinvest|move|exit|migrate|wrap|unwrap|show|check|list|repeat|redo|receive|help)\b/.test(
     t,
   );
 }

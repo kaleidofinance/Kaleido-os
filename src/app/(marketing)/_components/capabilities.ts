@@ -640,16 +640,19 @@ export const READS: Group = {
     {
       name: "getBalances",
       params: ["address"],
+      optional: ["targetChain"],
       prompt: "what am I holding?",
     },
     {
       name: "getPortfolio",
       params: ["address"],
+      optional: ["targetChain"],
       prompt: "how healthy is my position?",
     },
     {
       name: "getLoans",
       params: ["address"],
+      optional: ["targetChain"],
       /* The borrowing position — collateral, each open loan with its due date and
          the requestId a repay needs, and the health factor. getPortfolio is only
          collateral value and health; this is the loans themselves. */
@@ -658,6 +661,7 @@ export const READS: Group = {
     {
       name: "getLendingAccount",
       params: ["address"],
+      optional: ["targetChain"],
       /* Capacity, free collateral, pause state, and the loans this wallet
          funded as a lender — the account around the loans getLoans lists. */
       prompt: "how much more can I borrow, and what am I earning from lending?",
@@ -665,6 +669,7 @@ export const READS: Group = {
     {
       name: "getStaking",
       params: ["address"],
+      optional: ["targetChain"],
       /* The staked KLD (held as stKLD), the vault totals, and any withdrawal
          cooldown. The question pairs the stake with the unstake lifecycle, which
          is the pair this read answers. */
@@ -673,6 +678,7 @@ export const READS: Group = {
     {
       name: "getVault",
       params: ["address"],
+      optional: ["targetChain"],
       /* kfUSD held and the kafUSD yield-vault position, with any withdrawal
          cooldown. Phrased for the yield question, which is the one the vault is
          for — the value rises rather than paying an APY. */
@@ -689,6 +695,7 @@ export const READS: Group = {
     {
       name: "getPositions",
       params: ["address"],
+      optional: ["targetChain"],
       /* A different read from getPortfolio, which is the lending position — this
          is the liquidity positions, each with whether it is in range. The
          question names the thing the read is for: which ones have drifted out of
@@ -753,8 +760,50 @@ export const READS: Group = {
       prompt: "what can my agent do on my behalf right now?",
     },
     {
+      name: "getIntegrations",
+      params: [],
+      optional: ["chainId"],
+      prompt: "which aggregators and launchpads are integrated here?",
+    },
+    {
+      name: "getProtocolCapabilities",
+      params: [],
+      optional: ["targetChain"],
+      prompt: "what can Kaleido do on this chain?",
+    },
+    {
+      name: "getLendingAssets",
+      params: [],
+      optional: ["targetChain"],
+      prompt: "which assets are actually lendable here?",
+    },
+    {
+      name: "getYieldSources",
+      params: [],
+      optional: ["targetChain", "limit", "includePools"],
+      prompt: "where can I earn yield on this chain right now?",
+    },
+    {
+      name: "getExternalPools",
+      params: [],
+      optional: ["targetChain", "asset", "limit"],
+      prompt: "which approved external pools are visible here?",
+    },
+    {
+      name: "getAnalytics",
+      params: [],
+      optional: ["scope", "targetChain", "metric"],
+      prompt: "what is Kaleido's live all-time volume and revenue across chains?",
+    },
+    {
+      name: "researchSources",
+      params: ["urls"],
+      prompt: "research these official protocol sources",
+    },
+    {
       name: "getLivePools",
       params: [],
+      optional: ["targetChain"],
       /* No params: it lists the connected chain's live pools. Phrased as a
          question so the parser does not read it as a pool action. */
       prompt: "which liquidity pools are live right now?",
@@ -764,7 +813,7 @@ export const READS: Group = {
       params: [],
       /* metric is liquidity/volume/apr, limit caps the ranking — both optional,
          so a bare 'which pool has the most volume' is a valid ask. */
-      optional: ["metric", "limit"],
+      optional: ["targetChain", "metric", "limit"],
       prompt: "which pool has the most 24h volume?",
     },
   ],

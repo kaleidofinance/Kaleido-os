@@ -11,6 +11,7 @@ import {
 } from "./index";
 import { readKey } from "./readKey";
 import { capabilityPrompt, type CapabilitySnapshot } from "./capabilities";
+import { targetChainHint } from "./targetChain";
 import type { TurnContext } from "./turnContext";
 
 /**
@@ -92,6 +93,8 @@ export interface AgentInput {
   mainnetOnly?: boolean;
   /** Exclusive network mode used by live read tools and chain sweeps. */
   networkMode?: NetworkMode;
+  /** Server-validated hint that this turn requires a live-analysis preflight. */
+  analysisMode?: "live";
   /**
    * Text appended after the base prompt and the docs reference — the
    * normalizer's product facts, glossary and rules. Last, so its rules win
@@ -208,6 +211,103 @@ export async function runAgent(
     { role: "user", content: input.message },
   ];
 
+  const trace: ReadCall[] = [];
+  /* Every read this turn has already run, by readKey. A preflight read is
+     seeded below for live yield/lending analysis, and model-requested reads
+     share this map so the same chain question is never fetched twice. */
+  const served = new Map<string, unknown>();
+
+  const liveYieldQuestion =
+    input.analysisMode === "live" &&
+    /\b(?:yield|lend(?:ing)?|borrow(?:ing)?|loan|apy|apr|rate|liquidity|pool|stake|staking|vault)\b/i.test(
+      input.message,
+    );
+  const liveExternalQuestion =
+    input.analysisMode === "live" &&
+    /\b(?:external|protocol|venue|aggregator|across\s+(?:protocol|chain|market)|compare)\b/i.test(
+      input.message,
+    );
+  const liveCapabilityQuestion =
+    input.analysisMode === "live" &&
+    /\b(?:support(?:s|ed)?|integrat(?:e|ed|ion)|launchpad|aggregator|capabilit(?:y|ies)|what\s+can\s+(?:kaleido|luca)|available)\b/i.test(
+      input.message,
+    );
+  const liveAnalyticsQuestion =
+    input.analysisMode === "live" &&
+    /\b(?:analytics?|revenue|protocol\s+fees?|all[-\s]?time|activity|total\s+(?:volume|fees)|how\s+much\s+(?:volume|revenue)|swaps?|bridges?)\b/i.test(
+      input.message,
+    );
+  const targetChain = targetChainHint(
+    input.message,
+    scopedNetworkMode ?? "mainnet",
+  );
+  const preflights: ReadCall[] = [];
+  if (input.maxReadRounds !== 0) {
+    if (liveYieldQuestion) {
+      preflights.push({
+        name: "getYieldSources",
+        args: { limit: 12, ...(targetChain ? { targetChain } : {}) },
+      });
+    }
+    if (liveExternalQuestion) {
+      preflights.push({
+        name: "getExternalPools",
+        args: { limit: 12, ...(targetChain ? { targetChain } : {}) },
+      });
+    }
+    if (liveCapabilityQuestion) {
+      preflights.push({
+        name: "getProtocolCapabilities",
+        args: targetChain ? { targetChain } : {},
+      });
+    }
+    if (liveAnalyticsQuestion) {
+      preflights.push({
+        name: "getAnalytics",
+        args: targetChain ? { targetChain } : { scope: "all" },
+      });
+    }
+  }
+  if (preflights.length > 0) {
+    await Promise.all(
+      preflights.map(async (preflight) => {
+        served.set(
+          readKey(preflight.name, preflight.args),
+          await runReadTool(
+            preflight.name,
+            preflight.args,
+            scopedChainId,
+            scopedMainnetOnly,
+            scopedNetworkMode,
+            scopedAddress,
+          ),
+        );
+      }),
+    );
+    trace.push(...preflights);
+    messages.push({
+      role: "assistant",
+      content: "(live analysis preflight)",
+    });
+    messages.push({
+      role: "user",
+      content:
+        "Live preflight tool result:\n\n" +
+        JSON.stringify(
+          [
+            ...preflights.map((preflight) => ({
+              tool: preflight.name,
+              args: preflight.args,
+              result: served.get(readKey(preflight.name, preflight.args)),
+            })),
+          ],
+          null,
+          2,
+        ) +
+        "\n\nUse this live data before answering. Do not turn unavailable or unsupported into zero or a guess.",
+    });
+  }
+
   /* One call site for the model, so every round streams or none does. Streaming
      is chosen per turn rather than per provider: the caller asking for deltas is
      what makes them worth the different code path. */
@@ -220,7 +320,6 @@ export async function runAgent(
       : provider.chat({ system: systemFinal, messages, tools: TOOL_CATALOG });
 
   let result = await ask();
-  const trace: ReadCall[] = [];
   /* Grounding passes that ran. Incremented once per loop iteration that fed a
      context block back and re-asked — so a turn answered on the first call
      without a tool stays 0, and the count matches how many times the model was
@@ -248,8 +347,6 @@ export async function runAgent(
    * a second "checked your positions" is noise in a transcript whose whole purpose
    * is to be short.
    */
-  const served = new Map<string, unknown>();
-
   const roundCap = Math.min(
     MAX_READ_ROUNDS,
     input.maxReadRounds ?? MAX_READ_ROUNDS,

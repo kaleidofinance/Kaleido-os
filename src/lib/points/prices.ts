@@ -107,6 +107,11 @@ const cache = new Map<
   { at: number; usd: number | null; via: "pyth" | "coingecko" }
 >();
 
+/* Major assets with a verified CoinGecko id but no Pyth id. Luca uses the
+ * shared spot endpoint for dollar-sized commands, so these must be present in
+ * the same table as the Pyth-backed symbols. */
+const COINGECKO_ONLY = new Set(["HYPE"]);
+
 export interface PriceResult {
   /** USD price, or null when the asset has no meaningful USD price. */
   usd: number | null;
@@ -194,11 +199,9 @@ async function fetchPyth(symbols: string[]): Promise<Map<string, number>> {
  * retrying at once, which is the worst moment to spend five rate-limit tokens
  * where one would do.
  *
- * Coverage is total rather than partial, which is why this is worth doing: the
- * CoinGecko allowlist carries ETH, WETH, USDC, USDT and BNB, and those are
- * exactly the five keys in PYTH_FEEDS. A fallback that covered three of five
- * would leave the caps half-enforced, which is harder to reason about than
- * either extreme.
+ * CoinGecko also carries symbols without a Pyth feed (currently HYPE). Those
+ * are requested directly by `getPrices` rather than being treated as unpriced
+ * merely because Hermes has no corresponding feed id.
  */
 async function fetchCoinGecko(symbols: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
@@ -269,6 +272,7 @@ export async function getPrices(
 ): Promise<Map<string, PriceResult>> {
   const out = new Map<string, PriceResult>();
   const needPyth: string[] = [];
+  const needCoinGeckoOnly: string[] = [];
 
   for (const raw of symbols) {
     const s = raw.trim();
@@ -276,6 +280,8 @@ export async function getPrices(
       out.set(s, { usd: null, source: "unpriced" });
     } else if (PYTH_FEEDS[s]) {
       needPyth.push(s);
+    } else if (COINGECKO_ONLY.has(s)) {
+      needCoinGeckoOnly.push(s);
     } else if (ASSUMED_PAR[s] !== undefined) {
       out.set(s, { usd: ASSUMED_PAR[s], source: "assumed-par" });
     } else {
@@ -333,6 +339,43 @@ export async function getPrices(
     }
   }
 
+  /* A CoinGecko-only asset has no Hermes branch to populate its cache. Fetch it
+     explicitly, but degrade only that symbol to `unpriced` if CoinGecko is
+     unavailable; unrelated Pyth-backed rows should still render. */
+  if (needCoinGeckoOnly.length > 0) {
+    const now = Date.now();
+    const stale = needCoinGeckoOnly.filter((s) => {
+      const hit = cache.get(s);
+      return !hit || now - hit.at >= TTL_MS;
+    });
+    if (stale.length > 0) {
+      let fresh = new Map<string, number>();
+      try {
+        fresh = await fetchCoinGecko(stale);
+      } catch (err) {
+        console.warn(
+          `[points/prices] CoinGecko-only lookup failed (${(err as Error).message})`,
+        );
+      }
+      for (const s of stale) {
+        cache.set(s, {
+          at: now,
+          usd: fresh.get(s) ?? null,
+          via: "coingecko",
+        });
+      }
+    }
+    for (const s of needCoinGeckoOnly) {
+      const hit = cache.get(s);
+      out.set(
+        s,
+        hit?.usd === undefined || hit.usd === null
+          ? { usd: null, source: "unpriced" }
+          : { usd: hit.usd, source: "coingecko" },
+      );
+    }
+  }
+
   return out;
 }
 
@@ -364,4 +407,5 @@ export async function valueOf(
 export const PRICEABLE = [
   ...Object.keys(PYTH_FEEDS),
   ...Object.keys(ASSUMED_PAR),
+  ...COINGECKO_ONLY,
 ];

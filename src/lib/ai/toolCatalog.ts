@@ -827,7 +827,12 @@ export const TOOL_CATALOG: ToolSpec[] = [
     parameters: {
       type: "object",
       additionalProperties: false,
-      properties: {},
+      properties: {
+        targetChain: {
+          type: "string",
+          description: "Optional registered chain name or numeric chain ID",
+        },
+      },
     },
   },
   {
@@ -839,6 +844,10 @@ export const TOOL_CATALOG: ToolSpec[] = [
       type: "object",
       additionalProperties: false,
       properties: {
+        targetChain: {
+          type: "string",
+          description: "Optional registered chain name or numeric chain ID",
+        },
         metric: { type: "string", enum: ["liquidity", "volume", "apr"] },
         limit: { type: "number", description: "Maximum ranked pools to return, 1–20" },
       },
@@ -883,10 +892,100 @@ export const TOOL_CATALOG: ToolSpec[] = [
     },
   },
   {
+    name: "getLendingAssets",
+    kind: "read",
+    description:
+      "Read the live on-chain lending registration for the active chain: which assets are accepted as collateral and which are actually loanable. Use this before answering what can be lent, borrowed, or used as collateral, especially on Elysium. An empty market is not the same as an unavailable lending deployment, and a static token registry is not sufficient evidence.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        targetChain: {
+          type: "string",
+          description: "Optional registered chain name or numeric chain ID",
+        },
+      },
+    },
+  },
+  {
+    name: "getYieldSources",
+    kind: "read",
+    description:
+      "Rank live Kaleido yield surfaces on the active chain in one read: fixed-APR lending offers plus pool APR snapshots. Use this for requests to find yield, compare Kaleido lending and LP opportunities, or identify the best current source. It excludes external protocols and never treats a missing read as 0%; external rates require a reviewed adapter or cited research source.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        targetChain: {
+          type: "string",
+          description: "Optional registered chain name or numeric chain ID",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum ranked sources to return, 1–20",
+        },
+        includePools: {
+          type: "boolean",
+          description: "Include pool APR snapshots; defaults to true",
+        },
+      },
+    },
+  },
+  {
+    name: "getExternalPools",
+    kind: "read",
+    description:
+      "Inspect Kaleido's approved external-pool inventory on a registered chain for protocol research. This is a dated, conservative snapshot of pools discovered through reviewed aggregator routes; it is not Kaleido TVL, not a live quote, and never authorizes execution. Use it to compare external liquidity context, then call a fresh reviewed aggregator quote before proposing a trade. Pass targetChain when the user names another chain in the active network mode, plus an optional asset symbol and limit.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        targetChain: {
+          type: "string",
+          description: "Optional registered chain name or numeric chain ID",
+        },
+        asset: {
+          type: "string",
+          description: "Optional token symbol filter, e.g. USDC",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum pools to return, 1–20",
+        },
+      },
+    },
+  },
+  {
+    name: "getAnalytics",
+    kind: "read",
+    description:
+      "Read Kaleido's canonical activity and revenue ledger. Use this for current or all-time volume, protocol fees, swaps, bridges, revenue, or cross-chain activity questions. It includes native Kaleido-pool swaps and approved aggregator-routed swaps, plus completed bridge activity and configured integrator fees; it excludes external LP fees and unverified pool samples. Pass scope=all for the whole mainnet protocol, or targetChain for one named chain. Partial results are explicitly marked and must not be presented as complete totals.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["all"],
+          description: "Use all to read the canonical all-mainnet ledger",
+        },
+        targetChain: {
+          type: "string",
+          description: "Optional registered mainnet chain name or numeric chain ID",
+        },
+        metric: {
+          type: "string",
+          enum: ["overview", "volume", "revenue", "fees", "swaps", "bridges"],
+          description: "Optional focus metric; defaults to overview",
+        },
+      },
+    },
+  },
+  {
     name: "getMarkets",
     kind: "read",
     description:
-      "Open borrow/lend offers and pool rates on Kaleido, and comparable rates on external protocols where indexed, for a given asset. Use to find the best venue across protocols, and to get the listingId or requestId that takeListing and fillRequest need. Pass amount (the size the user wants) to rank offers that can cover it first and get a bestFit pick; the ranking is objective, not advice.",
+      "Open borrow/lend offers on Kaleido for a given asset. This read currently covers Kaleido's own on-chain order book only; it does not prove or report an external protocol's rate. Use it to get the listingId or requestId that takeListing and fillRequest need. Pass amount (the size the user wants) to rank offers that can cover it first and get a bestFit pick; the ranking is objective, not advice.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -971,6 +1070,22 @@ export const TOOL_CATALOG: ToolSpec[] = [
         chainId: {
           type: "number",
           description: "Optional registered chain id when the user named another chain",
+        },
+      },
+    },
+  },
+  {
+    name: "getProtocolCapabilities",
+    kind: "read",
+    description:
+      "Read Kaleido's operation-level capability snapshot for a registered chain: wallet reads, swaps, liquidity, lending, limits, staking, stablecoin, bridges, launchpads and reviewed aggregators. Use this for 'what does Kaleido support here?' or 'which launchpads/aggregators are integrated?'. The snapshot describes configured surfaces, not current liquidity, quote success, provider health, or a completed action; use the relevant read/quote tool before claiming a specific pair or route works. Pass targetChain when the user names another chain in the active network mode.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        targetChain: {
+          type: "string",
+          description: "Optional registered chain name or numeric chain ID",
         },
       },
     },

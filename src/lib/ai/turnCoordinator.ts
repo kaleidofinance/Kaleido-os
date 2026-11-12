@@ -14,6 +14,8 @@ export interface TurnRequestBody {
   message?: unknown;
   limits?: unknown;
   localIntent?: unknown;
+  /** Client routing hint: dynamic protocol questions must use live reads. */
+  analysisMode?: unknown;
   history?: unknown;
   grounding?: unknown;
 }
@@ -63,6 +65,7 @@ export function createAgentInput(
   capabilities: CapabilitySnapshot,
 ): AgentInput {
   const localIntent = validateLocalClassification(body.localIntent);
+  const liveAnalysis = body.analysisMode === "live";
   return {
     message: String(body.message ?? ""),
     context,
@@ -76,6 +79,15 @@ export function createAgentInput(
     systemAddendum: [
       productFacts(context.mainnetOnly),
       walletChainContext(context.chainId),
+      ...(liveAnalysis
+        ? [
+            "This is a live protocol-analysis turn. Use fresh chain/provider reads before answering; do not answer from FAQ, docs, product copy, or remembered rates. If the requested live source is not configured or a read fails, say that explicitly with the chain and scope instead of inventing a yield, venue, or capability.",
+            "For lending or yield questions, call getYieldSources first. It combines the live lending registration, fixed-APR offers, and pool APR snapshots. Use getLendingAssets or getMarkets for drill-down, and do not describe an asset as lendable from the general token registry alone.",
+            "For external protocol, venue, aggregator, or cross-market questions, call getExternalPools first when a curated inventory is relevant. Treat it as dated research evidence only: it is not Kaleido TVL, a live quote, or permission to execute. Request a fresh reviewed aggregator quote before describing a route as executable.",
+            "For questions about what Kaleido supports, which launchpads or aggregators are integrated, or whether a product is available on a chain, call getProtocolCapabilities first. It reports configured operation surfaces only; follow it with the relevant live read or quote for pair- or route-specific availability.",
+            "For analytics, revenue, volume, fees, swaps, bridges, or protocol activity questions, call getAnalytics first. Use scope=all for a whole-protocol question and targetChain for a named chain. Its trading totals include native and approved aggregator-routed activity; its accounting field defines what is excluded. Never reconstruct revenue from pool rows or treat a partial ledger as complete.",
+          ]
+        : []),
       "For current balances, prices, quotes, liquidity, supported chains, protocol activity, revenue, lending rates, or portfolio analysis, call the relevant live read tools before stating facts. Docs and product descriptions are background only; fresh tool results take precedence. Choose tools relevant to the question, preserve any named chain scope, and never read lending positions merely because a wallet is connected. Ask independent reads together. Answer stable conceptual questions directly and concisely. Propose transactions only when the user requests an action; questions mentioning a trade or loan are not transaction instructions.",
       ...(localIntent.kind !== "unknown"
         ? [
@@ -86,5 +98,6 @@ export function createAgentInput(
     ].join("\n"),
     mainnetOnly: context.mainnetOnly,
     networkMode: context.networkMode,
+    ...(liveAnalysis ? { analysisMode: "live" as const } : {}),
   };
 }

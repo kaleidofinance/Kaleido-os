@@ -17,10 +17,15 @@ export interface ExternalPoolRegistryEntry {
   fees24hUsd: number | null;
   tokens: Array<{ address: string; symbol: string }>;
   tokenSymbols: string[];
+  /** Provider provenance captured by the audited refresh job. */
+  provider?: "kyberswap" | "lifi" | "fly.trade";
+  routeProbedAt?: string;
+  metricsSource?: string;
+  metricsAsOf?: string;
 }
 
 /** Last one-time Kyber route + pool-metrics scan used to approve this list. */
-export const EXTERNAL_POOL_REGISTRY_SCANNED_AT = "2026-11-09T00:00:00.000Z";
+export const EXTERNAL_POOL_REGISTRY_SCANNED_AT = "2026-11-11T23:41:45.000Z";
 
 export const EXTERNAL_POOL_REGISTRY: readonly ExternalPoolRegistryEntry[] = [
   // Arc mainnet
@@ -96,6 +101,67 @@ export const EXTERNAL_POOL_REGISTRY: readonly ExternalPoolRegistryEntry[] = [
       { address: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c", symbol: "BTCB" },
     ],
     tokenSymbols: ["USDT", "BTCB"],
+  },
+
+  // Elysium mainnet. Both pools passed an executable Kyber route probe and a
+  // dated GeckoTerminal reserve/volume check on the same review run.
+  {
+    address: "0x97796d80b6a1db78632f7451196b04f307329eb6",
+    chainId: 99901,
+    exchange: "aero-cl",
+    feeTier: null,
+    tvlUsd: 728625.0399,
+    volume24hUsd: 4726191.82095473,
+    fees24hUsd: null,
+    tokens: [
+      { address: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81", symbol: "WHYPE" },
+      { address: "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65", symbol: "USDC" },
+    ],
+    tokenSymbols: ["WHYPE", "USDC"],
+    provider: "kyberswap",
+    routeProbedAt: "2026-11-11T23:41:44.000Z",
+    metricsSource: "GeckoTerminal",
+    metricsAsOf: "2026-11-11T23:41:44.000Z",
+  },
+  {
+    address: "0xde07161f99a7c01c56f602e73f31918cbdac9bbc",
+    chainId: 99901,
+    exchange: "ramses-v3",
+    feeTier: null,
+    tvlUsd: 193125.3845,
+    volume24hUsd: 293487.294785442,
+    fees24hUsd: null,
+    tokens: [
+      { address: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81", symbol: "WHYPE" },
+      { address: "0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0", symbol: "KNTQ" },
+    ],
+    tokenSymbols: ["WHYPE", "KNTQ"],
+    provider: "kyberswap",
+    routeProbedAt: "2026-11-11T23:41:45.000Z",
+    metricsSource: "GeckoTerminal",
+    metricsAsOf: "2026-11-11T23:41:45.000Z",
+  },
+  {
+    // Uniswap v4 exposes a bytes32 PoolId rather than a pair contract address.
+    // GeckoTerminal accepts that PoolId for metrics, so keep it as-is and do
+    // not truncate it into an explorer address.
+    address:
+      "0xf9b8a9101438145d62c9f03156b203c6c573931167e2d36f9061a32575706c8a",
+    chainId: 99901,
+    exchange: "uniswap-v4",
+    feeTier: null,
+    tvlUsd: 150732.7348,
+    volume24hUsd: 1530920.47058748,
+    fees24hUsd: null,
+    tokens: [
+      { address: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81", symbol: "WHYPE" },
+      { address: "0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0", symbol: "KNTQ" },
+    ],
+    tokenSymbols: ["WHYPE", "KNTQ"],
+    provider: "kyberswap",
+    routeProbedAt: "2026-11-11T23:41:45.000Z",
+    metricsSource: "GeckoTerminal",
+    metricsAsOf: "2026-11-11T23:41:45.000Z",
   },
 
   // Robinhood Chain mainnet. GeckoTerminal has no reserve for this pool, but
