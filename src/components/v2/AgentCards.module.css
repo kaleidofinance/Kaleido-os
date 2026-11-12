@@ -393,12 +393,17 @@
 
 /* ---- token card (paste a contract) ---- */
 .tokenCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
   min-width: 0;
   padding: var(--agent-card-pad) 10px;
   border: 1px solid var(--k-line);
   border-radius: var(--k-r-md);
 }
 .tokHead {
+  grid-column: 1 / -1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -446,6 +451,7 @@
   }
 }
 .tokStatsGrid {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
   gap: 8px;
@@ -454,6 +460,9 @@
   background: var(--k-glass-deep);
   border: 1px solid var(--k-line);
   border-radius: var(--k-r-md);
+}
+.tokenCard > .mNote {
+  grid-column: 1 / -1;
 }
 .tokStatCol {
   display: flex;
@@ -520,6 +529,7 @@
   margin-top: 8px;
 }
 .tokTable {
+  grid-column: 1 / -1;
   width: 100%;
   margin-top: 10px;
   border-collapse: collapse;
@@ -580,7 +590,14 @@
 }
 /* Fixed columns keep every percentage on one line even inside a narrow chat. */
 .tokTradeGroup {
-  margin-top: 8px;
+  min-width: 0;
+}
+.tokTradeGrid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
 }
 .tokGroupLabel {
   display: flex;
@@ -631,10 +648,11 @@
   outline-offset: 3px;
 }
 .tokSellGroup {
-  padding-top: 8px;
-  border-top: 1px solid var(--k-line);
+  padding-left: 12px;
+  border-left: 1px solid var(--k-line);
 }
 .tokCustom {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
@@ -708,7 +726,18 @@
 }
 @media (max-width: 480px) {
   .tokenCard {
+    display: block;
     padding: 10px;
+  }
+  .tokTradeGrid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .tokSellGroup {
+    padding-top: 8px;
+    padding-left: 0;
+    border-top: 1px solid var(--k-line);
+    border-left: 0;
   }
   .tokPresets .chip {
     min-height: 44px;

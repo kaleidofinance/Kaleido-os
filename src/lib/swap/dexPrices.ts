@@ -44,6 +44,10 @@ const QUOTE_USDC: Record<number, { address: string; decimals: number }> = {
   56: { address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", decimals: 18 },
   5042: { address: "0x3600000000000000000000000000000000000000", decimals: 6 },
   4663: { address: "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8", decimals: 6 },
+  /* Elysium's canonical USDC (the quote asset used by KyberSwap's Elysium
+     routes). Keeping this chain-specific prevents KNTQ and other Elysium
+     assets from being silently returned as unpriced. */
+  99901: { address: "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65", decimals: 6 },
 };
 
 export interface DexPriceToken {
