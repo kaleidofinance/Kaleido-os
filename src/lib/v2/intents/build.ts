@@ -429,6 +429,21 @@ export interface SwapRouteRequest {
 }
 
 /**
+ * Keep a contract-address buy human-readable all the way into the sign review.
+ * The parser marks tokens resolved by /api/token/card with identityResolved;
+ * ordinary registry swaps keep the compact symbol-only summary they had before.
+ */
+function displayTokenIdentity(
+  token: Pick<IToken, "symbol"> &
+    Partial<Pick<IToken, "name" | "identityResolved" | "launchpadLabel">>,
+): string {
+  if (!token.identityResolved) return token.symbol;
+  const name = token.name && token.name !== token.symbol ? ` (${token.name})` : "";
+  const launchpad = token.launchpadLabel ? ` · ${token.launchpadLabel}` : "";
+  return `${token.symbol}${name}${launchpad}`;
+}
+
+/**
  * A resolved aggregator swap — the trusted origin of an `aggregatorSwap`
  * Intent’s `to`/`data`. From KyberSwap via the resolver, targeting a router the
  * auditor whitelists. See lib/swap/route.ts.
@@ -1679,7 +1694,7 @@ export async function buildIntents(
         plan: {
           ok: true,
           build: {
-            summary: `Swap ${aggAmount} ${tokenIn.symbol} for about ${out} ${tokenOut.symbol}.`,
+            summary: `Swap ${aggAmount} ${tokenIn.symbol} for about ${out} ${displayTokenIdentity(tokenOut)}.`,
             intents: [
               ...(unwrap ? [unwrap] : []),
               ...(approve ? [approve] : []),
@@ -1987,7 +2002,7 @@ export async function buildIntents(
     return {
       ok: true,
       build: {
-        summary: `Swap ${amount} ${sell.token.symbol} for about ${out} ${buy.token.symbol}, ${describeRoute(path)}.`,
+        summary: `Swap ${amount} ${sell.token.symbol} for about ${out} ${displayTokenIdentity(buy.token)}, ${describeRoute(path)}.`,
         intents: approve ? [approve, trade] : [trade],
       },
     };

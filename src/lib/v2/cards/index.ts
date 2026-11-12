@@ -14,6 +14,7 @@ export { figureCards, type FigureContext } from "./figures";
 export { portfolioAnswer, type PortfolioAnswer } from "./portfolio";
 export {
   tokenCardFrom,
+  tokenFactsToAddressToken,
   pastedTokenAddress,
   customBuyCommand,
   cardFollowUp,

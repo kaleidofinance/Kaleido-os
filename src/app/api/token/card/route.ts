@@ -135,6 +135,8 @@ export async function GET(req: Request) {
       return json({
         ok: true,
         source: "argus",
+        launchpadId: "argus",
+        launchpadLabel: "Argus launch",
         address,
         symbol,
         name,
@@ -179,6 +181,8 @@ export async function GET(req: Request) {
       return json({
         ok: true,
         source: "peach",
+        launchpadId: "peach",
+        launchpadLabel: "Peach launch",
         address,
         symbol,
         name,

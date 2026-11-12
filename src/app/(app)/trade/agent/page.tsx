@@ -51,6 +51,7 @@ import {
   figureCards,
   localCards,
   pastedTokenAddress,
+  tokenFactsToAddressToken,
   tokenCardFrom,
   cardFollowUp,
   type CardTokenContext,
@@ -355,6 +356,9 @@ export default function AgentPage() {
      registry doesn't carry. Read by cardFollowUp only when a message fails to
      parse on its own; replaced by the next card, dropped on Clear. */
   const [cardToken, setCardToken] = useState<CardTokenContext | null>(null);
+  /* Identity read for a contract-address command. Kept for the duration of the
+     turn so the local plan can render the same name/source the lookup returned. */
+  const tokenIdentityRef = useRef<TokenFacts | null>(null);
   const [lastOutcome, setLastOutcome] = useState<FollowThrough | null>(null);
   const localIntentModelRef = useRef<ReturnType<
     typeof createBrowserLocalIntentModel
@@ -1057,7 +1061,18 @@ export default function AgentPage() {
       then && built.build.intents.some((it) => it.kind === "bridge")
         ? then
         : null;
-    say(built.build.summary, { via: "local", plan: built.build.intents });
+    const identityFacts = tokenIdentityRef.current;
+    const identityCard =
+      identityFacts?.ok &&
+      !identityFacts.isQuote &&
+      identityFacts.source !== "unknown"
+        ? tokenCardFrom(identityFacts)
+        : null;
+    say(built.build.summary, {
+      via: "local",
+      plan: built.build.intents,
+      ...(identityCard ? { cards: localCards([identityCard]) } : {}),
+    });
     return true;
   };
 
@@ -1189,6 +1204,7 @@ export default function AgentPage() {
   const send = async (text: string) => {
     const content = text.trim();
     if (!content || busy) return;
+    tokenIdentityRef.current = null;
 
     /* A halted plan already carries its safe resume index. Reopen that review
        locally instead of sending "continue" to the model, which could invent a
@@ -1361,6 +1377,28 @@ export default function AgentPage() {
       ...registryTokens,
       ...heldVocabulary(registryTokens, heldTokens),
     ];
+    /* A command can name a token by contract address on any supported EVM
+       chain. The server identity read below fills this closure before parsing;
+       Arc/Elysium keep their existing provisional fallback if the read is
+       unavailable, so a transient metadata RPC failure never changes routing. */
+    let resolvedTokenFacts: TokenFacts | null = null;
+    let resolvedAddress: string | null = null;
+    const fallbackAddressToken =
+      chainId === ARGUS_CHAIN_ID
+        ? argusAddressToken
+        : chainId === ELYSIUM_CHAIN_ID
+          ? elysiumAddressToken
+          : undefined;
+    const addressToken = (word: string): IToken | null => {
+      if (
+        resolvedTokenFacts &&
+        resolvedAddress &&
+        word.toLowerCase() === resolvedAddress.toLowerCase()
+      ) {
+        return tokenFactsToAddressToken(resolvedTokenFacts, chainId ?? 0);
+      }
+      return fallbackAddressToken?.(word) ?? null;
+    };
     /* What the grammar needs to explain a miss rather than ask again: this
        chain's name, which other chains carry a symbol it doesn't (kept to the
        viewer's network), and whether a phrase names a chain — so "swap 50
@@ -1419,12 +1457,7 @@ export default function AgentPage() {
          by address reaches the build branch. Chain-gated here; the real arming
          switch is the SERVER's ARGUS_ENABLED (the plan route refuses when off),
          so this is inert until the pilot is turned on. */
-      addressToken:
-        chainId === ARGUS_CHAIN_ID
-          ? (w) => argusAddressToken(w)
-          : chainId === ELYSIUM_CHAIN_ID
-            ? (w) => elysiumAddressToken(w)
-            : undefined,
+      addressToken,
     };
 
     /* Structured agent context survives turns and reloads. parseFollowUp requires
@@ -1613,6 +1646,41 @@ export default function AgentPage() {
           { via: "local", cards: localCards([tokenCard]) },
         );
         return;
+      }
+
+      /* A command containing one contract address is still a trade command,
+         not a card-only lookup. Resolve its ERC-20 identity before the grammar
+         runs so the plan and review never fall back to `0x1234…abcd`. The same
+         endpoint also reports the launchpad (Argus, Peach, or an Elysium
+         launchpad) when the address is a verified launch token. */
+      const commandAddresses = content.match(/\b0x[0-9a-fA-F]{40}\b/g) ?? [];
+      if (commandAddresses.length === 1) {
+        const commandAddress = commandAddresses[0];
+        note("Resolving the token identity before building the trade");
+        log("token-identity");
+        try {
+          const res = await fetch(
+            `/api/token/card?chainId=${chainId ?? ""}&address=${commandAddress}`,
+            { signal: abort.signal, cache: "no-store" },
+          );
+          const facts = (await res.json()) as TokenFacts;
+          const identity = tokenFactsToAddressToken(facts, chainId ?? 0);
+          if (identity) {
+            resolvedTokenFacts = facts;
+            resolvedAddress = commandAddress;
+            tokenIdentityRef.current = facts;
+            const launch = facts.launchpadLabel
+              ? ` · ${facts.launchpadLabel}`
+              : "";
+            note(
+              `Confirmed ${facts.name ?? facts.symbol} (${facts.symbol})${launch}`,
+            );
+          }
+        } catch {
+          /* The provisional chain resolver remains available below. A failed
+             identity read must not turn a normal command into a hard error. */
+        }
+        if (abort.signal.aborted) return;
       }
 
       // Second local net: static questions with a fixed, known answer. Checked
