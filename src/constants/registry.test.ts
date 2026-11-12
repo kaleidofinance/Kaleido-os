@@ -56,6 +56,7 @@ const SEPOLIA = 11155111;
 const BASE_SEPOLIA = 84532;
 const ROBINHOOD_TESTNET = 46630;
 const ELYSIUM_TESTNET = 99801;
+const ELYSIUM_MAINNET = 99901;
 
 console.log("\n— native asset is read per chain, never assumed —");
 {
@@ -234,20 +235,63 @@ console.log("\n— deployments are checkable, not assumed —");
 console.log("\n— Robinhood mainnet keeps its live Kaleido stack —");
 {
   const rh = getContracts(4663);
-  check("Robinhood mainnet is in the tradable chain selector", tradableChains(CHAINS).some((chain) => chain.id === 4663));
-  check("Robinhood mainnet Diamond is registered", rh.diamond === "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382");
-  check("Robinhood mainnet V3 factory is registered", rh.v3Factory === "0xe106644dc8E49B46CAbA0C155387719c979b415E");
-  check("Robinhood mainnet V3 router is registered", rh.v3Router === "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE");
+  check(
+    "Robinhood mainnet is in the tradable chain selector",
+    tradableChains(CHAINS).some((chain) => chain.id === 4663),
+  );
+  check(
+    "Robinhood mainnet Diamond is registered",
+    rh.diamond === "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
+  );
+  check(
+    "Robinhood mainnet V3 factory is registered",
+    rh.v3Factory === "0xe106644dc8E49B46CAbA0C155387719c979b415E",
+  );
+  check(
+    "Robinhood mainnet V3 router is registered",
+    rh.v3Router === "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE",
+  );
   check("Robinhood mainnet is swap-capable", hasSwaps(4663));
-  check("Robinhood mainnet position manager is registered", rh.v3PositionManager === "0x311D0abDcA9EDf8072eA58B12c7843C633a65552");
-  check("Robinhood mainnet lending registration is restored", registeredLendingAssets(4663, "loanable").assets.length === 4);
+  check(
+    "Robinhood mainnet position manager is registered",
+    rh.v3PositionManager === "0x311D0abDcA9EDf8072eA58B12c7843C633a65552",
+  );
+  check(
+    "Robinhood mainnet lending registration is restored",
+    registeredLendingAssets(4663, "loanable").assets.length === 4,
+  );
 }
 
 console.log("\n— Elysium exposes only deployed capabilities —");
 {
+  const mainnet = getContracts(ELYSIUM_MAINNET);
+  check(
+    "Elysium mainnet has the Kaleido V3 factory",
+    mainnet.v3Factory === "0x89d6f16262ED7be4f0b77118Bf7e47eD002F4070",
+  );
+  check(
+    "Elysium mainnet has the Kaleido V3 router",
+    mainnet.v3Router === "0x0b9AD40abdeE52e1AED165A9d9d2d36D77b89Bb8",
+  );
+  check(
+    "Elysium mainnet has the Kaleido position manager",
+    mainnet.v3PositionManager === "0x4078f601db2AcD4eB0004d6bAB032b034dd31d23",
+  );
+  check(
+    "Elysium mainnet has the Kaleido V2 fallback",
+    mainnet.v2Factory === "0x0b261e219181b5Ea3468a394502074F88f7c01C6" &&
+      mainnet.v2Router === "0x754DFC59f56b8dC928cA83E50B514E7Ef7809F3b",
+  );
+  check("Elysium mainnet is swap-capable", hasSwaps(ELYSIUM_MAINNET));
   check("Elysium testnet has swaps", hasSwaps(ELYSIUM_TESTNET));
-  check("Elysium testnet has no limit-order keeper", !hasOrders(ELYSIUM_TESTNET));
-  check("Elysium testnet has no stablecoin surface", !hasStablecoin(ELYSIUM_TESTNET));
+  check(
+    "Elysium testnet has no limit-order keeper",
+    !hasOrders(ELYSIUM_TESTNET),
+  );
+  check(
+    "Elysium testnet has no stablecoin surface",
+    !hasStablecoin(ELYSIUM_TESTNET),
+  );
   check("Elysium testnet has no staking surface", !hasStaking(ELYSIUM_TESTNET));
 }
 
@@ -256,15 +300,32 @@ console.log("\n— BSC mainnet assets reach the app —");
   const tokens = TOKENS[BSC_MAINNET];
   const loanable = registeredLendingAssets(BSC_MAINNET, "loanable");
   const collateral = registeredLendingAssets(BSC_MAINNET, "collateral");
-  check("BSC is in the tradable chain selector", tradableChains(CHAINS).some((chain) => chain.id === BSC_MAINNET));
-  check("BSC has all five loan tokens", ["USDC", "USDT", "USD1", "FDUSD", "BTCB"].every((symbol) =>
-    tokens.some((token) => token.symbol === symbol) && loanable.assets.some((asset) => asset.symbol === symbol)),
+  check(
+    "BSC is in the tradable chain selector",
+    tradableChains(CHAINS).some((chain) => chain.id === BSC_MAINNET),
   );
-  check("BSC loan token decimals match mainnet", loanable.assets.every((asset) => asset.decimals === 18));
-  check("BSC collateral includes native BNB and WBNB", ["BNB", "WBNB"].every((symbol) =>
-    collateral.assets.some((asset) => asset.symbol === symbol)),
+  check(
+    "BSC has all five loan tokens",
+    ["USDC", "USDT", "USD1", "FDUSD", "BTCB"].every(
+      (symbol) =>
+        tokens.some((token) => token.symbol === symbol) &&
+        loanable.assets.some((asset) => asset.symbol === symbol),
+    ),
   );
-  check("BSC market registrations have no unnamed assets", loanable.unnamed.length === 0 && collateral.unnamed.length === 0);
+  check(
+    "BSC loan token decimals match mainnet",
+    loanable.assets.every((asset) => asset.decimals === 18),
+  );
+  check(
+    "BSC collateral includes native BNB and WBNB",
+    ["BNB", "WBNB"].every((symbol) =>
+      collateral.assets.some((asset) => asset.symbol === symbol),
+    ),
+  );
+  check(
+    "BSC market registrations have no unnamed assets",
+    loanable.unnamed.length === 0 && collateral.unnamed.length === 0,
+  );
 }
 
 console.log("\n— registry audit —");

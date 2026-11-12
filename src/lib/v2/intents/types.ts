@@ -335,7 +335,7 @@ export type Intent =
       to: string;
       /** The router’s own calldata. Opaque, bounded by the auditor’s USD cap. */
       data: string;
-      /** Wei to send; "0" — an ERC20 swap attaches no native value. */
+      /** Wei to send: "0" for ERC20 input, exact raw amount for native input. */
       value: string;
       /** The input token leaving the wallet. */
       tokenIn: string;

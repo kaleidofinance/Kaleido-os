@@ -110,8 +110,10 @@ export async function quoteKyberSwap(args: {
  * not decode result data". KyberSwap quotes, and its router pulls, the `0x3600`
  * ERC20 FACE of native USDC: a 6-decimal mirror whose `balanceOf` is the native
  * balance and whose `transferFrom` moves it (verified on-chain). So a swap of
- * native USDC must approve and route THAT, not the sentinel. Every other token
- * trades as itself.
+ * native USDC must approve and route THAT, not the sentinel. A conventional
+ * wrapped-native token is not such a face: Elysium HYPE, for example, must stay
+ * the native sentinel so the aggregator can attach the reviewed input as
+ * `msg.value`. Every other token trades as itself.
  */
 const NATIVE_SWAP_ERC20: Record<
   number,

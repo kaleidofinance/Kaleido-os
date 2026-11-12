@@ -1,0 +1,216 @@
+{
+  "network": "robinhood",
+  "chainId": 4663,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-10-21T10:05:28.285Z",
+  "diamond": "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
+  "oracle": "0xd27eB978D2a018F5E23FA2D2CA4a70122A3a669C",
+  "oracleKind": "aggregator-v3",
+  "pyth": null,
+  "nativeFeedSymbol": "ETH",
+  "hermesVerified": true,
+  "registered": [
+    {
+      "kind": "collateral",
+      "symbol": "ETH",
+      "address": "0x0000000000000000000000000000000000000001",
+      "onChainSymbol": null,
+      "decimals": 18,
+      "feedSymbol": "Crypto.ETH/USD",
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "feedSource": "repo",
+      "priceAgeSeconds": 81,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet ETH/USD feed; walk round history before registering volatile collateral and tighten this bound if the observed heartbeat permits it.",
+      "effectiveMaxAge": 90000,
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "kind": "collateral",
+      "symbol": "WETH",
+      "address": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+      "onChainSymbol": "WETH",
+      "decimals": 18,
+      "feedSymbol": "Crypto.ETH/USD",
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "feedSource": "repo",
+      "priceAgeSeconds": 81,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Same ETH/USD feed as native ETH.",
+      "effectiveMaxAge": 90000,
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "kind": "collateral",
+      "symbol": "USDG",
+      "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      "onChainSymbol": "USDG",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDG/USD",
+      "feedId": "0xdaa58c6a3ce7d4b9c46c32a6e646012c17c4a2b24c08dd8c5e476118b855a7da",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 65987,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet USDG/USD feed; stablecoin ceiling.",
+      "effectiveMaxAge": 90000,
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "kind": "collateral",
+      "symbol": "USDC",
+      "address": "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 65956,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet USDC/USD feed; stablecoin ceiling.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0xdfd47b1fa3bf5bc96ffccd24228c58d916799b76f316313750925af06068fc1f",
+      "skipped": false
+    },
+    {
+      "kind": "collateral",
+      "symbol": "USDT",
+      "address": "0xE246BC49b0598d7Cd9f0eAD48B885034f1254380",
+      "onChainSymbol": "USDT",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDT/USD",
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 65955,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet USDT/USD feed; stablecoin ceiling.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0xa31531107ce844baa1029b7f39734ccd8a89116d49b7397c2672c63f3342e5c4",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "WETH",
+      "address": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+      "onChainSymbol": "WETH",
+      "decimals": 18,
+      "feedSymbol": "Crypto.ETH/USD",
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "feedSource": "repo",
+      "priceAgeSeconds": 81,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Same ETH/USD feed as native ETH.",
+      "effectiveMaxAge": 90000,
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDG",
+      "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      "onChainSymbol": "USDG",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDG/USD",
+      "feedId": "0xdaa58c6a3ce7d4b9c46c32a6e646012c17c4a2b24c08dd8c5e476118b855a7da",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 65987,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet USDG/USD feed; stablecoin ceiling.",
+      "effectiveMaxAge": 90000,
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDC",
+      "address": "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 65956,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet USDC/USD feed; stablecoin ceiling.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0xa68c03bce817517268288bb71d6b137e0e5b80c01fe563178433c5cd7f3f80ba",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDT",
+      "address": "0xE246BC49b0598d7Cd9f0eAD48B885034f1254380",
+      "onChainSymbol": "USDT",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDT/USD",
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 65955,
+      "feedMaxAge": 90000,
+      "maxAgeBasis": "Chainlink Robinhood mainnet USDT/USD feed; stablecoin ceiling.",
+      "effectiveMaxAge": 90000,
+      "txHash": "0x30f5b665e04066da3e780e287484a62a2b6b2af8a5e18bc07a5e3d8d4297af64",
+      "skipped": false
+    }
+  ],
+  "feedBounds": [
+    {
+      "feedId": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+      "symbols": [
+        "ETH",
+        "WETH"
+      ],
+      "maxAge": 90000,
+      "basis": "Same ETH/USD feed as native ETH.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0xdaa58c6a3ce7d4b9c46c32a6e646012c17c4a2b24c08dd8c5e476118b855a7da",
+      "symbols": [
+        "USDG"
+      ],
+      "maxAge": 90000,
+      "basis": "Chainlink Robinhood mainnet USDG/USD feed; stablecoin ceiling.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "maxAge": 90000,
+      "basis": "Chainlink Robinhood mainnet USDC/USD feed; stablecoin ceiling.",
+      "txHash": null,
+      "skipped": true
+    },
+    {
+      "feedId": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
+      "symbols": [
+        "USDT"
+      ],
+      "maxAge": 90000,
+      "basis": "Chainlink Robinhood mainnet USDT/USD feed; stablecoin ceiling.",
+      "txHash": null,
+      "skipped": true
+    }
+  ],
+  "onChain": {
+    "collateral": [
+      "0x0000000000000000000000000000000000000001",
+      "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+      "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8",
+      "0xE246BC49b0598d7Cd9f0eAD48B885034f1254380"
+    ],
+    "loanable": [
+      "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+      "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8",
+      "0xE246BC49b0598d7Cd9f0eAD48B885034f1254380"
+    ]
+  }
+}

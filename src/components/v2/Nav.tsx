@@ -21,6 +21,7 @@ import {
   toThirdwebChainOptions,
 } from "@/constants/chains";
 import { client } from "@/config/client";
+import { isSupportedChain } from "@/config/chain";
 import { envVars } from "@/constants/envVars";
 import { WALLETS, APP_METADATA } from "@/config/wallets";
 import ChainIcon from "./ChainIcon";
@@ -554,13 +555,23 @@ export default function Nav() {
 
   const openConnect = async () => {
     try {
-      await connect({
+      const connectedWallet = await connect({
         client,
         wallets: WALLETS,
         chain: ARC_MAINNET,
         size: "compact",
         appMetadata: APP_METADATA,
       });
+      if (connectedWallet) {
+        const c = connectedWallet.getChain();
+        if (!c || !isSupportedChain(c.id)) {
+          try {
+            await connectedWallet.switchChain(ARC_MAINNET);
+          } catch {
+            /* User declined network switch in wallet prompt */
+          }
+        }
+      }
     } catch {
       /* Closing the modal rejects, and so does a wallet declining. Neither is
          worth a toast — the user did it on purpose. The one case worth naming

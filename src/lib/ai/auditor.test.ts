@@ -75,6 +75,7 @@ const skip = (name: string, why: string) => {
    test. Anything not listed resolves to null, matching getPrices. */
 const PRICES: Record<string, number> = {
   ETH: 3000,
+  HYPE: 70,
   WETH: 3000,
   USDC: 1,
   USDT: 1,
@@ -285,6 +286,50 @@ async function main() {
       pricer: stubPricer,
       ...overrides,
     });
+
+  /* ---------------------------------------------------------------------- *
+   * Elysium: Kyber accepts native HYPE directly. The value-bearing router call
+   * is safe only when msg.value exactly equals the amount the user reviewed.
+   * ---------------------------------------------------------------------- */
+  {
+    const ELYSIUM = 99901;
+    const KYBER = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5";
+    const KNTQ = "0xe45a355d9e9cad2ad85f2d03e3ee3102a036acf0";
+    const nativeSwap = {
+      kind: "aggregatorSwap",
+      to: KYBER,
+      data: "0x",
+      value: "2000000000000000000",
+      tokenIn: NATIVE_SENTINEL.dex,
+      amountIn: "2",
+      decimalsIn: 18,
+      symbolIn: "HYPE",
+      tokenOut: KNTQ,
+      amountOut: "375",
+      amountOutMin: "373",
+      decimalsOut: 18,
+      symbolOut: "KNTQ",
+      chainId: ELYSIUM,
+      venue: "kyberswap",
+      spender: KYBER,
+      slippageBps: 50,
+    } as Step;
+    const okv = await audit([nativeSwap], { chainId: ELYSIUM });
+    check(
+      "an exact-value native HYPE aggregator swap is accepted",
+      okv.blocked.length === 0,
+      okv.blocked.join("; ") || "(passed)",
+    );
+    const badv = await audit(
+      [{ ...nativeSwap, value: "1000000000000000000" }],
+      { chainId: ELYSIUM },
+    );
+    check(
+      "a native aggregator value different from the reviewed amount is refused",
+      badv.blocked.some((b) => /native value does not equal/i.test(b)),
+      badv.blocked.join("; ") || "(passed)",
+    );
+  }
 
   const tokens = chainTokens(CHAIN);
   const usdc = tokens.find((t) => t.symbol === "USDC");

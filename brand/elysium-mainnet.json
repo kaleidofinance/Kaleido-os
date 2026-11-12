@@ -1,0 +1,14 @@
+{
+  "eyebrow": "KALEIDO X ELYSIUM",
+  "hero": "Now LIVE on",
+  "heroSize": "medium",
+  "sub": "Elysium Mainnet",
+  "subSize": "chain",
+  "subLogo": "icons/elysium.svg",
+  "description": "Trade, route and discover assets across **Elysium Mainnet** through Kaleido. Native HYPE, WHYPE, USDC and **+12 Launchpads** guided by **Luca**.",
+  "stats": ["Elysium Mainnet", { "v": "HYPE", "k": "gas token" }, "+12 Launchpads"],
+  "url": "kaleidofi.xyz/trade",
+  "background": "colosseum4",
+  "layout": "center",
+  "effect": "spotlight"
+}

@@ -1,0 +1,128 @@
+{
+  "network": "elysium",
+  "chainId": 99901,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-11-10T09:09:22.589Z",
+  "diamond": "0x7d8Ff941f156492a745763C521EF468cfB78Af65",
+  "oracle": "0xA7e0A9391C181527C12d7E2C1Bef3A0051c6FB04",
+  "oracleKind": "aggregator-v3",
+  "pyth": null,
+  "nativeFeedSymbol": "HYPE",
+  "hermesVerified": true,
+  "registered": [
+    {
+      "kind": "collateral",
+      "symbol": "HYPE",
+      "address": "0x0000000000000000000000000000000000000001",
+      "onChainSymbol": null,
+      "decimals": 18,
+      "feedSymbol": "Crypto.HYPE/USD",
+      "feedId": "0x4279e31cc369bbcc2faf022b382b080e32a8e689ff20fbc530d2a603eb6cd98b",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 381,
+      "feedMaxAge": 86400,
+      "maxAgeBasis": "Self-hosted pushable feed for HYPE native asset on Elysium Mainnet.",
+      "effectiveMaxAge": 86400,
+      "txHash": "0xc691799a17014da9608e702044048b75d8be06aa40bf387234f6e3cc40ec0bc4",
+      "skipped": false
+    },
+    {
+      "kind": "collateral",
+      "symbol": "WHYPE",
+      "address": "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+      "onChainSymbol": "WHYPE",
+      "decimals": 18,
+      "feedSymbol": "Crypto.HYPE/USD",
+      "feedId": "0x4279e31cc369bbcc2faf022b382b080e32a8e689ff20fbc530d2a603eb6cd98b",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 381,
+      "feedMaxAge": 86400,
+      "maxAgeBasis": "1:1 wrapped native HYPE wrapper uses HYPE/USD feed.",
+      "effectiveMaxAge": 86400,
+      "txHash": "0x09863ee5656467e0d9faa476e41b0565fd10b8caa45ead13b972ff6b5bb65169",
+      "skipped": false
+    },
+    {
+      "kind": "collateral",
+      "symbol": "USDC",
+      "address": "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 381,
+      "feedMaxAge": 86400,
+      "maxAgeBasis": "Self-hosted pushable feed for USDC on Elysium Mainnet.",
+      "effectiveMaxAge": 86400,
+      "txHash": "0xe46d210d536c6fad42899b9ce00e6d2c367072c35b10f18f265b3edc043881ef",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "USDC",
+      "address": "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65",
+      "onChainSymbol": "USDC",
+      "decimals": 6,
+      "feedSymbol": "Crypto.USDC/USD",
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "feedSource": "repo",
+      "priceAgeSeconds": 381,
+      "feedMaxAge": 86400,
+      "maxAgeBasis": "Self-hosted pushable feed for USDC on Elysium Mainnet.",
+      "effectiveMaxAge": 86400,
+      "txHash": "0xf1b13175252564da9690a01af85ca2fa139ee321e6a134104067f7c5cc16b4dc",
+      "skipped": false
+    },
+    {
+      "kind": "loanable",
+      "symbol": "WHYPE",
+      "address": "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+      "onChainSymbol": "WHYPE",
+      "decimals": 18,
+      "feedSymbol": "Crypto.HYPE/USD",
+      "feedId": "0x4279e31cc369bbcc2faf022b382b080e32a8e689ff20fbc530d2a603eb6cd98b",
+      "feedSource": "hermes",
+      "priceAgeSeconds": 381,
+      "feedMaxAge": 86400,
+      "maxAgeBasis": "1:1 wrapped native HYPE wrapper uses HYPE/USD feed.",
+      "effectiveMaxAge": 86400,
+      "txHash": "0x2612a6d44b1a07f084258495d077475487b66a50b26992b7479e5165208ebb4d",
+      "skipped": false
+    }
+  ],
+  "feedBounds": [
+    {
+      "feedId": "0x4279e31cc369bbcc2faf022b382b080e32a8e689ff20fbc530d2a603eb6cd98b",
+      "symbols": [
+        "HYPE",
+        "WHYPE"
+      ],
+      "maxAge": 86400,
+      "basis": "1:1 wrapped native HYPE wrapper uses HYPE/USD feed.",
+      "txHash": "0x94eeaf4242e91bfb4115628ad7ca73d202f3d29aa56b29c6ad351f161c18a31c",
+      "skipped": false
+    },
+    {
+      "feedId": "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "symbols": [
+        "USDC"
+      ],
+      "maxAge": 86400,
+      "basis": "Self-hosted pushable feed for USDC on Elysium Mainnet.",
+      "txHash": "0xbd31b8c58b1ffd86ecf1b2782ddcf2c55cf575515b10ee618f94c2ed99fff9bc",
+      "skipped": false
+    }
+  ],
+  "onChain": {
+    "collateral": [
+      "0x0000000000000000000000000000000000000001",
+      "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+      "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65"
+    ],
+    "loanable": [
+      "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65",
+      "0xbA876237B0F021A6c6D852d6c26E107997cC5E81"
+    ]
+  }
+}

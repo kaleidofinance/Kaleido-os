@@ -21,8 +21,8 @@ import { capForColumn } from "@/lib/waitlist/xCap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment" | "lucaModelIntegration" | "lucaModelIntegrationComment";
-const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "lucaModelIntegration", "lucaModelIntegrationComment"];
+type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment" | "lucaModelIntegration" | "lucaModelIntegrationComment" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "lucaModelIntegration", "lucaModelIntegrationComment", "elysiumIntegration", "elysiumIntegrationComment", "elysiumLending", "elysiumLendingComment"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   if (!isAddress(address) || typeof signature !== "string" || !TASKS.includes(task as Task))
     return Response.json({ error: "bad input" }, { status: 400 });
   const t = task as Task;
-  if (t === "argusIntegration" || t === "argusIntegrationComment")
+  if (t === "argusIntegration" || t === "argusIntegrationComment" || t === "lucaModelIntegration" || t === "lucaModelIntegrationComment")
     return Response.json({ error: "task closed", closed: true }, { status: 409 });
 
   // The wallet must sign the exact task message. Keep accepting the original
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
   const { data: row } = await admin
     .from("waitlist")
     .select(
-      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_luca_model_integration_at, x_luca_model_integration_comment_at",
+      "wallet, x_user_id, x_linked_at, x_followed_at, x_retweeted_at, x_commented_at, x_launch_at, x_llama_at, x_argus_at, x_argus2_at, x_absexit_at, x_lendborrow_at, x_lendborrow_comment_at, x_limitorder_at, x_limitorder_comment_at, x_argus_integration_at, x_argus_integration_comment_at, x_luca_model_integration_at, x_luca_model_integration_comment_at, x_elysium_integration_at, x_elysium_integration_comment_at, x_elysium_lending_at, x_elysium_lending_comment_at",
     )
     .eq("wallet", wallet)
     .single();
@@ -198,6 +198,10 @@ export async function POST(req: Request) {
     argusIntegrationComment: "x_argus_integration_comment_at",
     lucaModelIntegration: "x_luca_model_integration_at",
     lucaModelIntegrationComment: "x_luca_model_integration_comment_at",
+    elysiumIntegration: "x_elysium_integration_at",
+    elysiumIntegrationComment: "x_elysium_integration_comment_at",
+    elysiumLending: "x_elysium_lending_at",
+    elysiumLendingComment: "x_elysium_lending_comment_at",
   };
   const col = COL[t as Exclude<Task, "link">];
   const existing = row[col as keyof typeof row];

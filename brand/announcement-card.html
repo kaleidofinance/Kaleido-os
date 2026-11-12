@@ -17,6 +17,7 @@
   @font-face{font-family:"KSans";src:url("../src/app/fonts/GeistVF.woff") format("woff");font-weight:100 900;font-display:block}
   :root{--ink:#0a1512;--text:#f4eee5;--muted:#eaf1ea;--green:#35d18d;--sand:#e7d7b6}
   *{box-sizing:border-box;margin:0}
+  [hidden]{display:none !important}
   html,body{width:100%;height:100%;background:var(--ink)}
   .card{
     position:relative;isolation:isolate;overflow:hidden;
@@ -137,9 +138,9 @@
         <div class="hero" id="hero"></div>
       </div>
       <div class="partnerLockup" id="partnerLockup" hidden>
-        <div class="partnerBrand" id="partnerLeftBrand"><img id="partnerLeftLogo" src="../public/newklogo2.png" alt=""><span id="partnerLeftName">Kaleido<i>fi</i></span></div>
+        <div class="partnerBrand" id="partnerLeftBrand"><img id="partnerLeftLogo" alt=""><span id="partnerLeftName"></span></div>
         <span class="partnerX">×</span>
-        <div class="partnerBrand" id="partnerRightBrand"><img id="partnerRightLogo" src="../public/fly-trade-logo.png" alt=""><span id="partnerRightName">Fly.trade</span></div>
+        <div class="partnerBrand" id="partnerRightBrand"><img id="partnerRightLogo" alt=""><span id="partnerRightName"></span></div>
       </div>
       <div class="subRow"><img class="subLogo" id="subLogo" alt="Robinhood Chain logo" hidden><div class="sub" id="sub"></div></div>
       <div class="description" id="description"></div>
@@ -165,6 +166,10 @@
       "colosseum-dark": "../public/hero-colosseum.webp",
       "colosseum": "../public/colosseum.webp",
       "colosseum-exterior": "../public/colosseum.webp",
+      "colosseum1": "../public/colosseum1.png",
+      "colosseum3": "../public/colosseum3.png",
+      "colosseum4": "../public/colosseum4.png",
+      "colosseum5": "../public/colosseum5.png",
       "plain": null,
     };
     const LAYOUTS = ["left", "center", "right"]; // "right" is opt-in only

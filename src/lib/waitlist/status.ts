@@ -33,6 +33,10 @@ export type XTaskKey =
   | "robinhoodIntegrationComment"
   | "lucaModelIntegration"
   | "lucaModelIntegrationComment"
+  | "elysiumIntegration"
+  | "elysiumIntegrationComment"
+  | "elysiumLending"
+  | "elysiumLendingComment"
   | "bitget";
 
 /** On-chain transaction task keys. `arcMainnet` was retired 2026-09-23 (farmable);

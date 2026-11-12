@@ -67,6 +67,24 @@ const FEEDS = {
     id: "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
     source: "repo",
   },
+  /* HYPE native asset on Hyperliquid & Elysium, verified against Hermes /v2/price_feeds. */
+  HYPE: {
+    symbol: "Crypto.HYPE/USD",
+    id: "0x4279e31cc369bbcc2faf022b382b080e32a8e689ff20fbc530d2a603eb6cd98b",
+    source: "hermes",
+  },
+  /* WHYPE is priced off HYPE/USD: 1:1 wrapped native token. */
+  WHYPE: {
+    symbol: "Crypto.HYPE/USD",
+    id: "0x4279e31cc369bbcc2faf022b382b080e32a8e689ff20fbc530d2a603eb6cd98b",
+    source: "hermes",
+  },
+  /* Kinetiq Staked HYPE on Elysium, verified against Hermes /v2/price_feeds. */
+  KHYPE: {
+    symbol: "Crypto.KHYPE/USD",
+    id: "0x2837a61ae8165c018b0e406ac32b1527270e57b81f0069260afbef71b9cf8ffe",
+    source: "hermes",
+  },
   /* WETH is priced off ETH/USD. Pyth publishes no separate WETH feed, and one
    * would be redundant — WETH is redeemable 1:1 by contract, not by market. */
   WETH: {

@@ -23,7 +23,8 @@ import { toast } from "sonner";
 
 import { client } from "@/config/client";
 
-import { WALLETS } from "@/config/wallets";
+import { WALLETS, APP_METADATA } from "@/config/wallets";
+import { isSupportedChain } from "@/config/chain";
 import {
   CHAINS_BY_ID,
   getChainMeta,
@@ -192,7 +193,21 @@ function useBatch() {
 function Root({ children }: { children: ReactNode }) {
   return (
     <ThirdwebProvider>
-      <AutoConnect wallets={WALLETS} client={client} />
+      <AutoConnect
+        wallets={WALLETS}
+        client={client}
+        appMetadata={APP_METADATA}
+        onConnect={async (wallet) => {
+          const c = wallet.getChain();
+          if (c && !isSupportedChain(c.id)) {
+            try {
+              await wallet.switchChain(ARC_MAINNET);
+            } catch {
+              /* ignore auto-connect switch decline */
+            }
+          }
+        }}
+      />
       {children}
     </ThirdwebProvider>
   );
@@ -204,7 +219,11 @@ export const thirdwebAdapter: WalletAdapter = {
   id: "thirdweb",
   Root,
   useAddress: () => useActiveAccount()?.address,
-  useChainId: () => useActiveWalletChain()?.id,
+  useChainId: () => {
+    const account = useActiveAccount();
+    const chain = useActiveWalletChain();
+    return account ? chain?.id : undefined;
+  },
   useAccountHandle: () => useActiveAccount(),
   useChainHandle: () => useActiveWalletChain(),
   useConnect: () => {
@@ -215,9 +234,23 @@ export const thirdwebAdapter: WalletAdapter = {
         wallets: WALLETS,
         chain: ARC_MAINNET,
         size: "compact",
-      }).catch(() => {
-        /* Dismissing the modal rejects — a choice, not a fault. */
-      });
+        appMetadata: APP_METADATA,
+      })
+        .then(async (wallet) => {
+          if (wallet) {
+            const currentChain = wallet.getChain();
+            if (!currentChain || !isSupportedChain(currentChain.id)) {
+              try {
+                await wallet.switchChain(ARC_MAINNET);
+              } catch {
+                /* User declined network switch in wallet prompt */
+              }
+            }
+          }
+        })
+        .catch(() => {
+          /* Dismissing the modal rejects — a choice, not a fault. */
+        });
     };
   },
   useSwitchChain: () => {

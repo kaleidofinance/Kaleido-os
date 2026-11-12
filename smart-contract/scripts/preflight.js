@@ -94,6 +94,8 @@ const NATIVE_CURRENCY = {
    * cosmetically wrong and functionally right — recorded in the deploy plan rather
    * than papered over. */
   5042002: { label: "USDC", feedSymbol: "USDC" },
+  99801: { label: "HYPE", feedSymbol: "HYPE" },
+  99901: { label: "HYPE", feedSymbol: "HYPE" },
 };
 
 /**

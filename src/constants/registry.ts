@@ -255,34 +255,15 @@ export interface ChainContracts {
  * such entry should say why it is there and be removed once the generator
  * carries it.
  */
-/*
- * Robinhood mainnet's Kaleido deployment was confirmed on-chain, but its JSON
- * deployment records were never committed. A later registry regeneration for
- * BSC therefore dropped chain 4663 from the generated file. Keep the verified
- * addresses at the documented override seam until those deployment records are
- * restored; otherwise the app treats a live LP stack as undeployed.
- */
-const RECOVERED_ROBINHOOD_MAINNET: ChainContracts = {
-  diamond: "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
-  oracleKind: "aggregator-v3",
-  orders: "0x33fC0885f1290eF93330d181114cbe4CE4F34047",
-  ordersVersion: "2",
-  poolInitCodeHash:
-    "0xcc2ce4a3b82b174879c877ec55dd52475d3e31a30b7ba006307e278f22942938",
-  priceOracle: "0xd27eB978D2a018F5E23FA2D2CA4a70122A3a669C",
-  v2Factory: "0x3De7B404C0bfe455cf4dc6fD2c82553750BB03D0",
-  v2Router: "0x8D1B50546908c98F09a906a22d0d441FEe154d40",
-  v3Factory: "0xe106644dc8E49B46CAbA0C155387719c979b415E",
-  v3PositionDescriptor: "0xCD0623deB613121043eB403DC68e029C7eb65b14",
-  v3PositionManager: "0x311D0abDcA9EDf8072eA58B12c7843C633a65552",
-  v3Quoter: "0xa5a9B2DeFDA5CD4a81080F4b34D15B42701caEbC",
-  v3Router: "0xfDf400A54B8cbAD151382e50fB94CdC2843aE6eE",
-  wrappedNative: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+const ELYSIUM_MAINNET_CONTRACTS: ChainContracts = {
+  ...(GENERATED_DEPLOYMENTS[99901] ?? {}),
+  wrappedNative: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+  usdc: "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65",
 };
 
 export const DEPLOYMENTS: Record<number, ChainContracts> = {
   ...GENERATED_DEPLOYMENTS,
-  4663: RECOVERED_ROBINHOOD_MAINNET,
+  99901: ELYSIUM_MAINNET_CONTRACTS,
 };
 
 export function getContracts(chainId: number | undefined): ChainContracts {
@@ -1782,25 +1763,8 @@ export interface LendingRegistration {
 /* Same recovery for the mainnet token-registration snapshot that was dropped
  * with the deployment block. These values were read back from the live diamond
  * during the original deployment wave. */
-const RECOVERED_ROBINHOOD_LENDING: LendingRegistration = {
-  collateral: [
-    "0x0000000000000000000000000000000000000001",
-    "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
-    "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
-    "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8",
-    "0xE246BC49b0598d7Cd9f0eAD48B885034f1254380",
-  ],
-  loanable: [
-    "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
-    "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
-    "0x80e0e24718dbFcad49ECAA6F1e6C89A190586cA8",
-    "0xE246BC49b0598d7Cd9f0eAD48B885034f1254380",
-  ],
-};
-
 export const LENDING_REGISTRATION: Record<number, LendingRegistration> = {
   ...GENERATED_LENDING_REGISTRATION,
-  4663: RECOVERED_ROBINHOOD_LENDING,
 };
 
 /**

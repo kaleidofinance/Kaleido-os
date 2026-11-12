@@ -89,9 +89,12 @@ export function isEscalation(text: string, executes: number): boolean {
 /** The Arc mainnet lending book, from the registry (lib/lending/arcLending.ts). */
 export const ARC_LENDING: ArcLending | null = arcLending();
 const ARC_LAUNCHPADS = launchpadIntegrations(5042, "mainnet");
+const ELYSIUM_LAUNCHPADS = launchpadIntegrations(99901, "mainnet");
 
 const orList = (xs: string[]) =>
-  xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}`;
+  xs.length <= 1
+    ? xs.join("")
+    : `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}`;
 
 /** The Arc-mainnet product line, with or without the lending book. Pure. */
 export function arcMainnetLine(lending: ArcLending | null): string {
@@ -102,9 +105,14 @@ export function arcMainnetLine(lending: ArcLending | null): string {
 }
 
 export function bscMainnetLine(): string {
-  if (!getContracts(56).diamond) return "BNB Smart Chain supports bridging; Kaleido product availability requires its mainnet deployment.";
-  const collateral = registeredLendingAssets(56, "collateral").assets.map((asset) => asset.symbol);
-  const loanable = registeredLendingAssets(56, "loanable").assets.map((asset) => asset.symbol);
+  if (!getContracts(56).diamond)
+    return "BNB Smart Chain supports bridging; Kaleido product availability requires its mainnet deployment.";
+  const collateral = registeredLendingAssets(56, "collateral").assets.map(
+    (asset) => asset.symbol,
+  );
+  const loanable = registeredLendingAssets(56, "loanable").assets.map(
+    (asset) => asset.symbol,
+  );
   return `BNB Smart Chain mainnet is deployed. BNB pays gas. Kaleido offers swaps through its own V3 periphery when a pool has liquidity and through vetted aggregator routes otherwise, V3 liquidity positions, bridging, and a peer-to-peer lending book with ${orList(collateral)} collateral and ${orList(loanable)} loan assets. Kaleido has not seeded BSC V3 pools, so do not promise an immediate native-pool swap, LP fee income, or an executable limit-order fill. kfUSD mint/redeem and KLD staking are not deployed on BSC mainnet.`;
 }
 
@@ -112,7 +120,7 @@ export function bscMainnetLine(): string {
 export function arcPointsLine(lending: ArcLending | null): string {
   return lending
     ? "Points are live and accrue from activity — swapping, providing liquidity, lending and borrowing on Arc mainnet, and staking on the testnets — weighted by how long a position is held. They come before the token. There is no airdrop to claim."
-    : 'Points are live and accrue from activity — swapping and providing liquidity on Arc mainnet, and lending, borrowing and staking on the testnets — weighted by how long a position is held. They come before the token. There is no airdrop to claim.';
+    : "Points are live and accrue from activity — swapping and providing liquidity on Arc mainnet, and lending, borrowing and staking on the testnets — weighted by how long a position is held. They come before the token. There is no airdrop to claim.";
 }
 
 /**
@@ -124,10 +132,10 @@ export function arcPointsLine(lending: ArcLending | null): string {
  */
 export const PRODUCT_STATE: readonly string[] = [
   "Kaleido is a multichain DeFi app. Products: token swaps; bridging between chains; a peer-to-peer lending book (lenders post an amount, a rate and a term; borrowers take them against collateral); concentrated-liquidity pools (V3-style positions with a price range and a fee tier); the kfUSD stablecoin (minted against USDC, USDT or USDe; lock it into kafUSD to earn the protocol's fees); KLD staking into a vault for stKLD; limit orders; and a points program.",
-  "Network inventory: Kaleido is live on 3 mainnets — Arc, BNB Smart Chain and Robinhood Chain — plus 6 deployed testnets — Arc, Sepolia, Base Sepolia, BNB Smart Chain, Robinhood Chain and Elysium. Other networks may be balance-reading only. If asked how many chains are live, answer from this inventory and do not call a lending or portfolio tool.",
+  "Network inventory: Kaleido is live on 4 mainnets — Arc, Elysium, BNB Smart Chain and Robinhood Chain — plus 6 deployed testnets — Arc, Sepolia, Base Sepolia, BNB Smart Chain, Robinhood Chain and Elysium. Other networks may be balance-reading only. If asked how many chains are live, answer from this inventory and do not call a lending or portfolio tool.",
   arcMainnetLine(ARC_LENDING),
   bscMainnetLine(),
-  `Arc mainnet has ${ARC_LAUNCHPADS.length} launchpad integrations: ${ARC_LAUNCHPADS.map((item) => item.name).join(" and ")}. They are launchpad adapters, separate from swap aggregators. Luca can inspect a pasted launch token and build a trade only after live metadata plus curve or pool verification passes; not every launch is automatically routeable. No launchpad integration is registered on BNB Smart Chain or Robinhood Chain.`,
+  `Arc mainnet has ${ARC_LAUNCHPADS.length} launchpad integrations: ${ARC_LAUNCHPADS.map((item) => item.name).join(" and ")}. Elysium mainnet has ${ELYSIUM_LAUNCHPADS.length}: ${ELYSIUM_LAUNCHPADS.map((item) => item.name).join(", ")}. They are launchpad adapters, separate from swap aggregators. Luca can inspect a pasted launch token and build a trade only after live metadata plus pool verification passes; not every launch is automatically routeable. No launchpad integration is registered on BNB Smart Chain or Robinhood Chain.`,
   "KLD, Kaleido's own token, has NOT launched. There is no mainnet KLD, no market and no price; it cannot be bought, sold or bridged anywhere yet. The token event is planned for the end of September 2026, with an exchange listing after that. Today 'KLD' exists only as a testnet token (from the faucet) for practising staking and pools. If someone asks to buy, sell, price or hold KLD on a mainnet, say plainly that it has not launched, and offer the testnet or the points program instead. Never quote a KLD price.",
   arcPointsLine(ARC_LENDING),
   "Not offered, so say so rather than improvise: leverage or perpetuals, short selling, fiat on/off-ramps (no bank withdrawals), recurring/DCA orders, stop-losses, TWAP. A limit order (buy or sell at a price) IS offered.",
@@ -167,7 +175,7 @@ export const GLOSSARY: readonly string[] = [
  * offered to 'keep it on testnet to practise lending / mint kfUSD / stake KLD',
  * which the UI deliberately hides. This forbids that.
  */
-export const MAINNET_DIRECTIVE = `MAINNET MODE (testnets are hidden by default): do NOT mention the testnets, the faucet, or practising on one, and never suggest moving funds to a testnet. Use the selected mainnet's deployed contracts and registered assets to decide which actions are available. Arc, Robinhood and BNB Smart Chain differ. Do not suggest kfUSD mint/redeem or KLD staking on mainnet. Reference mainnet activity only. Answer plainly only if the user explicitly asks about a testnet; otherwise never raise one.`;
+export const MAINNET_DIRECTIVE = `MAINNET MODE (testnets are hidden by default): do NOT mention the testnets, the faucet, or practising on one, and never suggest moving funds to a testnet. Use the selected mainnet's deployed contracts and registered assets to decide which actions are available. Arc, Elysium, Robinhood and BNB Smart Chain differ. Do not suggest kfUSD mint/redeem or KLD staking on mainnet. Reference mainnet activity only. Answer plainly only if the user explicitly asks about a testnet; otherwise never raise one.`;
 
 export function normalizerAddendum(opts: {
   chainId?: number;

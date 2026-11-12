@@ -26,6 +26,7 @@
 const hre = require("hardhat");
 const { ethers } = hre;
 const fs = require("fs");
+const { confirmMainnet } = require("./libraries/mainnet-guard.js");
 
 /**
  * zkSync needs the pair's creation code declared up front as a factory
@@ -66,13 +67,38 @@ async function main() {
   }
   console.log("  wrapped native:", wethAddress);
 
-  // 1. Factory. feeToSetter starts as the deployer and must be handed to the
-  //    multisig alongside Diamond ownership — it controls the V2 protocol fee.
-  console.log("\nDeploying KaleidoSwapFactory...");
   const feeToSetter = process.env.V2_FEE_TO_SETTER || deployer.address;
   if (!ethers.isAddress(feeToSetter)) {
     throw new Error(`V2_FEE_TO_SETTER is not a valid address: ${feeToSetter}`);
   }
+  const feeTo = process.env.V2_FEE_TO || ethers.ZeroAddress;
+  if (!ethers.isAddress(feeTo)) {
+    throw new Error(`V2_FEE_TO is not a valid address: ${feeTo}`);
+  }
+  if (
+    chainId === 99901 &&
+    wethAddress.toLowerCase() !==
+      "0xba876237b0f021a6c6d852d6c26e107997cc5e81"
+  ) {
+    throw new Error(
+      "Elysium mainnet requires canonical WHYPE; nothing was sent.",
+    );
+  }
+  confirmMainnet({
+    chainId,
+    script: "deploy-v2",
+    explicit: ["WRAPPED_NATIVE"],
+    plan: [
+      ["deployer", deployer.address],
+      ["wrapped native", wethAddress],
+      ["feeToSetter", feeToSetter],
+      ["feeTo", feeTo === ethers.ZeroAddress ? "off" : feeTo],
+    ],
+  });
+
+  // 1. Factory. feeToSetter starts as the deployer and must be handed to the
+  //    multisig alongside Diamond ownership — it controls the V2 protocol fee.
+  console.log("\nDeploying KaleidoSwapFactory...");
   const Factory = await ethers.getContractFactory("KaleidoSwapFactory");
   const overrides = isZkSync
     ? {
@@ -101,12 +127,7 @@ async function main() {
   //    still the deployer rather than the multisig. V2_FEE_TO turns it on at
   //    deploy time for the chains that want it; the deployer is feeToSetter here,
   //    so it is authorised. For already-deployed chains, use set-dex-fees.js.
-  let feeTo = ethers.ZeroAddress;
-  if (process.env.V2_FEE_TO) {
-    feeTo = process.env.V2_FEE_TO;
-    if (!ethers.isAddress(feeTo)) {
-      throw new Error(`V2_FEE_TO is not a valid address: ${feeTo}`);
-    }
+  if (feeTo !== ethers.ZeroAddress) {
     console.log("\nSetting V2 protocol fee recipient (feeTo)...");
     await (await factory.setFeeTo(feeTo)).wait();
     console.log("  feeTo:", feeTo);

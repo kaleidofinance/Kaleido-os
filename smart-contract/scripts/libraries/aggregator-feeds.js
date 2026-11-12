@@ -142,6 +142,9 @@ const ORACLE_BACKEND = {
   46630: "aggregator-v3",
   /* Arc TESTNET: self-hosted feeds in the mainnet shape — see the 5042002 note. */
   5042002: "aggregator-v3",
+  /* Kinetiq Elysium TESTNET (99801) & MAINNET (99901): self-hosted PushablePriceFeeds */
+  99801: "aggregator-v3",
+  99901: "aggregator-v3",
 };
 
 /**
@@ -729,6 +732,66 @@ const AGGREGATORS = {
       maxAge: 97200,
       maxAgeBasis: "Parity with the 5042 BTC/USD bound used for cirBTC.",
       descriptionHint: "BTC / USD",
+    },
+  },
+  /* Elysium TESTNET (99801) */
+  99801: {
+    HYPE: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 86400,
+      maxAgeBasis: "Self-hosted pushable feed for HYPE native asset on Elysium Testnet.",
+      descriptionHint: "HYPE / USD",
+    },
+    WHYPE: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 86400,
+      maxAgeBasis: "1:1 wrapped native HYPE wrapper uses HYPE/USD feed.",
+      descriptionHint: "HYPE / USD",
+    },
+    USDC: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 86400,
+      maxAgeBasis: "Self-hosted pushable feed for USDC on Elysium Testnet.",
+      descriptionHint: "USDC / USD",
+    },
+  },
+  /* Elysium MAINNET (99901) */
+  99901: {
+    HYPE: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 86400,
+      maxAgeBasis: "Self-hosted pushable feed for HYPE native asset on Elysium Mainnet.",
+      descriptionHint: "HYPE / USD",
+    },
+    WHYPE: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 86400,
+      maxAgeBasis: "1:1 wrapped native HYPE wrapper uses HYPE/USD feed.",
+      descriptionHint: "HYPE / USD",
+    },
+    USDC: {
+      aggregator: null,
+      provider: "kaleido-push",
+      decimals: 8,
+      observedAgeSeconds: null,
+      maxAge: 86400,
+      maxAgeBasis: "Self-hosted pushable feed for USDC on Elysium Mainnet.",
+      descriptionHint: "USDC / USD",
     },
   },
 };

@@ -1,0 +1,27 @@
+{
+  "network": "elysium",
+  "chainId": 99901,
+  "deployer": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+  "timestamp": "2026-11-10T15:02:45.600Z",
+  "contracts": {
+    "v2Factory": "0x0b261e219181b5Ea3468a394502074F88f7c01C6",
+    "v2Router": "0x754DFC59f56b8dC928cA83E50B514E7Ef7809F3b",
+    "wrappedNative": "0xbA876237B0F021A6c6D852d6c26E107997cC5E81"
+  },
+  "transactions": {
+    "v2Factory": "0x2d0b5223edbbe191ef53219814527aef13321aec0fa0c7852045b49a6a415722",
+    "v2Router": "0x8515091122e6a59b72e1714deb3af8e2ee82378dc454b232d11aba7778038128"
+  },
+  "gasUsed": {
+    "v2Factory": "2778068",
+    "v2Router": "3967918",
+    "total": "6745986"
+  },
+  "notes": {
+    "feeToSetter": "0x0Ce7f8Aeaad60b9E19ACBe9803518182adC351Bc",
+    "feeTo": "0x0000000000000000000000000000000000000000",
+    "pairResolution": "factory.getPair — no init code hash to keep in sync"
+  },
+  "explorer": "https://elysium.kinetiq.xyz/explorer",
+  "sourceVerified": true
+}
