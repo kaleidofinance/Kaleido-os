@@ -1539,7 +1539,7 @@ export function dollarSizedToken(
   if (DOLLAR_SYMBOLS.has(word)) return null;
   const token = word.startsWith("0x")
     ? tokens.find((t) => t.address.toLowerCase() === word) ?? addressToken?.(m[3]) ?? null
-    : tokens.find((t) => t.symbol.toLowerCase() === word);
+    : findToken(word, tokens) ?? tokenAlias(word, tokens);
   if (!token) return null;
   const mult = m[2]?.toLowerCase() === "k" ? 1e3 : m[2]?.toLowerCase() === "m" ? 1e6 : 1;
   const usd = Number(m[1].replace(/,/g, "")) * mult;
@@ -2384,6 +2384,13 @@ const TYPO_VERBS = [
   "borrow", "repay", "transfer", "supply", "lend", "convert", "exchange",
 ];
 
+/* A frequent keyboard slip in "bridge" is transposition plus the initial
+ * consonant typo. It is still explicit enough to correct safely because the
+ * intended verb is unambiguous and the command carries a numeric amount. */
+const TYPO_VERB_ALIASES: Record<string, string> = {
+  vrdige: "bridge",
+};
+
 /**
  * Real words one edit from a verb, which are never read as that verb: "sent"
  * is a past send being described, "state" and "steak" are not "stake".
@@ -2412,6 +2419,11 @@ export function correctVerbTypo(text: string, tokens: IToken[]): string | null {
     const w = parts[i].toLowerCase();
     if (!/^[a-z]{4,}$/.test(w)) continue;
     if (NEVER_A_TOKEN.has(w) || NOT_A_VERB_TYPO.has(w) || symbols.has(w)) continue;
+    const alias = TYPO_VERB_ALIASES[w];
+    if (alias) {
+      parts[i] = alias;
+      return parts.join(" ");
+    }
     const hits = TYPO_VERBS.filter((v) => editDistance(w, v) === 1);
     if (hits.length !== 1) continue;
     parts[i] = hits[0];
@@ -3039,10 +3051,24 @@ const TOKEN_ALIASES: Record<string, string[]> = {
   euro: ["EURC"],
   eur: ["EURC"],
   hyperliquid: ["HYPE"],
+  /* Common Elysium typo. Keep this explicit rather than applying fuzzy
+     correction while sizing money; the parser may only convert when the
+     intended asset is unambiguous in the current chain vocabulary. */
+  hyoe: ["HYPE"],
   matic: ["POL", "WPOL"],
   usdcoin: ["USDC"],
   kaleidousd: ["kfUSD"],
 };
+
+function tokenAlias(word: string, tokens: IToken[]): IToken | null {
+  const aliases = TOKEN_ALIASES[squash(word)];
+  if (!aliases) return null;
+  for (const symbol of aliases) {
+    const token = findToken(symbol, tokens);
+    if (token) return token;
+  }
+  return null;
+}
 
 /**
  * Lowercased with the punctuation dropped, so "st-kld", "kf usd" and "USD.C"

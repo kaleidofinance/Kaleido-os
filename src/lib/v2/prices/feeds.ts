@@ -103,7 +103,12 @@ const FEEDS: Record<string, string> = {
 /** The feed id for a symbol, or null when there is nothing to draw. */
 export function feedFor(symbol: string | null | undefined): string | null {
   if (typeof symbol !== "string") return null;
-  return FEEDS[symbol.trim().toUpperCase()] ?? null;
+  const normalized = symbol.trim().toUpperCase();
+  /* Hyoe is a recurring keyboard typo for Elysium's native HYPE. Keep the
+     correction inside the allowlist boundary so cloud read tools can still
+     price the typo without adding it to the public priced-symbol vocabulary. */
+  const canonical = normalized === "HYOE" ? "HYPE" : normalized;
+  return FEEDS[canonical] ?? null;
 }
 
 /**

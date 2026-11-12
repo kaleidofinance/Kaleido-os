@@ -26,6 +26,21 @@ export interface AnalyticsOverview {
     swapCount: number | null;
     cctpBridgeCount: number | null;
     routeBridgeCount: number | null;
+    /** Attribution of the ledgers used for the headline totals. These are
+     * deliberately nullable: a missing ledger is unknown, not zero. */
+    sourceBreakdown: {
+      swapVolumeUsd: number | null;
+      swapFeesUsd: number | null;
+      cctpBridgeVolumeUsd: number | null;
+      routeBridgeVolumeUsd: number | null;
+      routeBridgeFeesUsd: number | null;
+    };
+    /** What the canonical ledger includes/excludes, so Luca does not mistake
+     * external LP fees or a 24h pool sample for protocol revenue. */
+    accounting: {
+      included: string[];
+      excluded: string[];
+    };
     /** True when a volume source was unavailable, so the totals understate —
      *  the page names it rather than showing an understated sum as complete. */
     partial: boolean;
@@ -160,6 +175,22 @@ async function readTrading(chainId?: number): Promise<AnalyticsOverview["trading
       swapCount: swaps.error && native.error ? null : swapTotals.swapCount,
       cctpBridgeCount: cctp.error ? null : cctp.data?.length ?? 0,
       routeBridgeCount: routes.error ? null : routes.data?.length ?? 0,
+      sourceBreakdown: {
+        swapVolumeUsd: swaps.error && native.error ? null : swapTotals.volumeUsd,
+        swapFeesUsd: swaps.error ? null : swapTotals.feeVolumeUsd * swapFeeBps() / 10000,
+        cctpBridgeVolumeUsd: cctp.error ? null : sumField(cctp.data ?? [], "amount"),
+        routeBridgeVolumeUsd: routes.error ? null : routeVolume,
+        routeBridgeFeesUsd: routes.error ? null : routeVolume * lifiFeeRate(),
+      },
+      accounting: {
+        included: [
+          "Kaleido native-pool swaps",
+          "approved aggregator-routed swaps",
+          "completed CCTP bridges",
+          "LI.FI route-bridge volume and configured integrator fee",
+        ],
+        excluded: ["external LP fees", "unverified pool samples"],
+      },
       partial: Boolean(swaps.error || cctp.error || routes.error || native.error || swapTotals.partial || (native.data?.length ?? 0) >= READ_CAP || swapRows.length >= READ_CAP || (cctp.data?.length ?? 0) >= READ_CAP || (routes.data?.length ?? 0) >= READ_CAP),
     };
   }
@@ -171,6 +202,22 @@ async function readTrading(chainId?: number): Promise<AnalyticsOverview["trading
     swapCount: totals.breakdown.swapCount,
     cctpBridgeCount: totals.breakdown.cctpBridgeCount,
     routeBridgeCount: totals.breakdown.routeBridgeCount,
+    sourceBreakdown: {
+      swapVolumeUsd: totals.breakdown.swapVolumeUsd,
+      swapFeesUsd: totals.breakdown.swapFeesUsd,
+      cctpBridgeVolumeUsd: totals.breakdown.cctpBridgeVolumeUsd,
+      routeBridgeVolumeUsd: totals.breakdown.routeBridgeVolumeUsd,
+      routeBridgeFeesUsd: totals.breakdown.bridgeFeesUsd,
+    },
+    accounting: {
+      included: [
+        "Kaleido native-pool swaps",
+        "approved aggregator-routed swaps",
+        "completed CCTP bridges",
+        "LI.FI route-bridge volume and configured integrator fee",
+      ],
+      excluded: ["external LP fees", "unverified pool samples"],
+    },
     partial: totals.partial,
   };
 }

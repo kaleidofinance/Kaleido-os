@@ -3106,6 +3106,51 @@ console.log("\n— dollar sizes converted with a live price —");
   check("usdToTokenAmount never exceeds the dollars", Number(usdToTokenAmount(100, 3, 18)) * 3 <= 100);
   check("usdToTokenAmount respects decimals", usdToTokenAmount(1, 3, 2) === "0.33");
   check("usdToTokenAmount keeps an integer's zeros", usdToTokenAmount(100, 0.0004, 18) === "250000" && usdToTokenAmount(1000, 1, 6) === "1000");
+
+  const hype = {
+    address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+    name: "HYPE",
+    symbol: "HYPE",
+    decimals: 18,
+    chainId: 99901,
+  };
+  const elysium = [...TOKENS, hype];
+  const bridge = parseCommand(
+    "bridge $10 worth Hyoe from Elysium to HyperEVM",
+    elysium,
+    {
+      isChain: (value) =>
+        ["elysium", "hyperevm"].includes(value.toLowerCase()),
+      usdPrice: (token) => (token.symbol === "HYPE" ? 71.54 : null),
+    },
+  );
+  check(
+    "the Elysium dollar-sized Hyoe typo is normalized to HYPE before bridging",
+    bridge.status === "ok" &&
+      bridge.command.kind === "bridge" &&
+      bridge.command.token.symbol === "HYPE" &&
+      bridge.command.amount === "0.139781" &&
+      bridge.command.fromChain === "elysium" &&
+      bridge.command.toChain === "hyperevm",
+    JSON.stringify(bridge).slice(0, 240),
+  );
+  const verbTypo = parseCommand(
+    "Vrdige $10 worth Hyoe from Elysium to HyperEVM",
+    elysium,
+    {
+      isChain: (value) =>
+        ["elysium", "hyperevm"].includes(value.toLowerCase()),
+      usdPrice: (token) => (token.symbol === "HYPE" ? 71.54 : null),
+    },
+  );
+  check(
+    "the bridge verb typo is corrected without sending the turn to the model",
+    verbTypo.status === "ok" &&
+      verbTypo.command.kind === "bridge" &&
+      verbTypo.command.token.symbol === "HYPE" &&
+      verbTypo.command.amount === "0.139781",
+    JSON.stringify(verbTypo).slice(0, 240),
+  );
 }
 
 console.log("\n— a dollar size of an Argus launch named by address —");

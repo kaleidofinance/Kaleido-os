@@ -1,0 +1,11 @@
+name = "kaleido-external-pools-cron"
+main = "external-pools-cron-worker.js"
+compatibility_date = "2026-11-11"
+workers_dev = true
+preview_urls = false
+
+[triggers]
+crons = ["0 3 * * *"]
+
+[vars]
+APP_URL = "https://kaleidofi.xyz"

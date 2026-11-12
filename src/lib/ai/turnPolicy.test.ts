@@ -25,6 +25,8 @@ for (const text of [
 for (const text of [
   "swap 100 USDC to EURC",
   "please bridge 50 USDC to BSC",
+  "bridge $10 worth Hyoe from Elysium to HyperEVM",
+  "Vrdige $10 worth Hyoe from Elysium to HyperEVM",
   "can you swap 10 USDC to USDT",
   "lend",
   "move everything off Abstract to Arc",

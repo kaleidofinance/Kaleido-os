@@ -107,6 +107,7 @@ import {
   personalPortfolioQuestion,
 } from "@/lib/ai/localMarketAnswer";
 import { launchpadAnswer } from "@/lib/ai/localProtocolAnswer";
+import { isLiveAnalysisRequest } from "@/lib/ai/liveAnalysis";
 import {
   canUseBrowserLocalModel,
   type LocalIntentClassification,
@@ -285,7 +286,7 @@ export default function AgentPage() {
     () =>
       computeSuggestions({
         recentEntries: txEntries.slice(0, 6),
-        walletSymbols: portfolio.walletHoldings.map((holding) => holding.symbol),
+      walletSymbols: portfolio.walletHoldings.map((holding) => holding.symbol),
       }),
     [portfolio.walletHoldings, txEntries],
   );
@@ -1682,6 +1683,9 @@ export default function AgentPage() {
       }
 
       const question = isQuestionShaped(content);
+      /* Dynamic protocol questions are not stable FAQ/docs answers. Keep them
+         on the server agent path so it can read current chain/provider state. */
+      const liveAnalysisRequest = isLiveAnalysisRequest(content);
       if (question) {
         const launchpads = launchpadAnswer(content, {
           chainId,
@@ -1694,7 +1698,7 @@ export default function AgentPage() {
           return;
         }
       }
-      if (question && answerFromFaq(content)) return;
+      if (question && !liveAnalysisRequest && answerFromFaq(content)) return;
 
       // Read-only wallet questions use the same partial-read rules as the
       // portfolio panel and never spend a cloud reasoning request.
@@ -1767,7 +1771,7 @@ export default function AgentPage() {
          in Luca's own words from that same section — but the grammar must
          still be kept off it, or "repay" reads as a repay. */
       let askedAboutAction = false;
-      if (question) {
+      if (question && !liveAnalysisRequest) {
         const exact = searchDocs(content);
         if (
           exact &&
@@ -1812,7 +1816,7 @@ export default function AgentPage() {
         }
       }
       const parsed: ParseResult =
-        askedAboutAction || !direct
+        liveAnalysisRequest || askedAboutAction || !direct
           ? { status: "unknown" }
           : parseCommand(content, vocabulary, parseCtx);
       /* A referential sentence that names the last plan's own verb — "do the
@@ -1874,7 +1878,12 @@ export default function AgentPage() {
          declined the sentence outright. Order matters: a sentence with its own
          verb is a fresh command and parseFollowUp refuses it anyway, so this
          can never re-point an instruction at the previous action. */
-      if (carriedCommand && !askedAboutAction && isDirectFollowUp(content)) {
+      if (
+        carriedCommand &&
+        !askedAboutAction &&
+        !liveAnalysisRequest &&
+        isDirectFollowUp(content)
+      ) {
         const followed = parseFollowUp(content, vocabulary, carriedCommand);
         if (followed.status !== "unknown") {
           note("Read it as a follow-up to the last plan");
@@ -1890,7 +1899,7 @@ export default function AgentPage() {
         }
       }
 
-      if (!question && answerFromFaq(content)) return;
+      if (!question && !liveAnalysisRequest && answerFromFaq(content)) return;
 
       /* Third local net: the docs. Only reached once the FAQ has had both its
          chances and the grammar has declined the sentence, which is the
@@ -1904,7 +1913,10 @@ export default function AgentPage() {
          it. Those go to the model, which can call getPositions to find the
          position and build the step. Questions and non-action sentences still
          get the docs net. */
-      if (question || !containsActionVerb(content)) {
+      if (
+        (question && !liveAnalysisRequest) ||
+        (!question && !containsActionVerb(content))
+      ) {
         const hit = searchDocs(content);
         if (hit) {
           note("Found the section of the docs that answers this");
@@ -1928,6 +1940,7 @@ export default function AgentPage() {
       let localIntent: LocalIntentClassification | null = null;
       if (
         !askedAboutAction &&
+        !liveAnalysisRequest &&
         direct &&
         localModelStatus === "ready" &&
         !localIntentDisabledRef.current &&
@@ -1998,12 +2011,16 @@ export default function AgentPage() {
              answer from the protocol's own text instead of reconstructing it
              from tool calls. Re-checked server-side like everything else that
              arrives from a client. */
-          grounding: groundingFor(content, 2).map((g) => ({
-            title: g.title,
-            heading: g.heading,
-            href: g.href,
-            text: g.text,
-          })),
+          ...(liveAnalysisRequest
+            ? { analysisMode: "live" }
+            : {
+                grounding: groundingFor(content, 2).map((g) => ({
+                  title: g.title,
+                  heading: g.heading,
+                  href: g.href,
+                  text: g.text,
+                })),
+              }),
           // No fallback. The old `?? 11124` silently told the server every
           // disconnected user was on Abstract Testnet, so answers came back
           // confidently scoped to a chain the user wasn't on. Undefined is the

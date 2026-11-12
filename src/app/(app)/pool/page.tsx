@@ -89,7 +89,7 @@ export default function PoolsPage() {
   const [view, setView] = useState<"all" | "kaleido" | "external">("all");
   const [venue, setVenue] = useState("");
   const externalQuery = useQuery<ExternalPoolSnapshot[]>({
-    queryKey: ["external-pools", 5042, 4663, 56],
+    queryKey: ["external-pools", 5042, 4663, 56, 99901],
     queryFn: async () => {
       const response = await fetch("/api/pools/external", {
         cache: "no-store",
@@ -527,7 +527,10 @@ export default function PoolsPage() {
                           <div className={s.pairName}>
                             {pool.tokenSymbols.join(" / ")}
                           </div>
-                          <div className={s.pairFee}>
+                          <div
+                            className={s.pairFee}
+                            title={`Curated ${pool.provider ?? "external"} route; metrics from ${pool.metricsSource ?? "dated registry snapshot"}${pool.metricsAsOf ? ` as of ${pool.metricsAsOf}` : ""}`}
+                          >
                             {pool.exchange} · External{" "}
                             <ChainTag chainId={pool.chainId} />
                           </div>

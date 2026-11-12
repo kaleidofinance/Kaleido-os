@@ -36,6 +36,7 @@ import type {
   WalletAdapter,
   WalletChainHandle,
 } from "../adapter";
+import { canonicalThirdwebChain } from "../canonicalChain";
 
 /**
  * The thirdweb implementation of {@link WalletAdapter} — the only file that
@@ -70,9 +71,12 @@ function getSigner(
   // (`ethers6Adapter.signer.toEthers` returns a Signer, not a Promise). The
   // handles ARE thirdweb's own account/chain objects — this adapter is the one
   // place that knows that and narrows them back.
+  const canonicalChain = canonicalThirdwebChain(
+    chain as ToEthersArgs["chain"],
+  );
   return ethers6Adapter.signer.toEthers({
     client,
-    chain: chain as ToEthersArgs["chain"],
+    chain: canonicalChain,
     account: account as ToEthersArgs["account"],
   });
 }
@@ -137,10 +141,10 @@ function useBatch() {
         wallet,
         calls: calls.map((c) =>
           prepareTransaction({
-            /* The wallet's own active chain object, not defineChain(id): the app
-               registers per-chain RPC through toThirdwebChainOptions, and
-               rebuilding from the id alone throws that away. */
-            chain,
+            /* The active wallet object can carry thirdweb's fallback RPC. Keep
+               the wallet/account for signing, but use the registry transport
+               for transaction preparation and simulation. */
+            chain: canonicalThirdwebChain(chain),
             client,
             to: c.to,
             data: c.data as `0x${string}`,

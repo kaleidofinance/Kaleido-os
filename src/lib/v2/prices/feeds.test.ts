@@ -40,6 +40,7 @@ check(
   feedFor("WETH") === feedFor("ETH"),
 );
 check("WBNB prices as BNB", feedFor("WBNB") === feedFor("BNB"));
+check("Hyoe typo prices as HYPE", feedFor("hyoe") === feedFor("HYPE"));
 check(
   "every BTC wrapper shares one feed",
   feedFor("WBTC") === "bitcoin" &&
