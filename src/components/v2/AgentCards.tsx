@@ -253,47 +253,74 @@ function TokenCardView({
         )}
       </div>
 
-      <div className={s.tokStatsGrid}>
-        {currentCard.price && (
-          <div className={s.tokStatCol}>
-            <span className={s.tokStatLabel}>Price</span>
-            <span className={`${s.tokStatVal} tabular`}>{currentCard.price}</span>
-          </div>
-        )}
-        {currentCard.rows.map((row, j) => (
-          <div key={j} className={s.tokStatCol}>
-            <span className={s.tokStatLabel}>{row.label}</span>
-            <span className={`${s.tokStatVal} ${s[row.tone ?? "neutral"]} tabular`}>
-              {row.value}
-            </span>
-          </div>
-        ))}
-      </div>
+      {(currentCard.price || currentCard.rows.length > 0) && (
+        <div className={s.tokStatsGrid}>
+          {currentCard.price && (
+            <div className={s.tokStatCol}>
+              <span className={s.tokStatLabel}>Price</span>
+              <span className={`${s.tokStatVal} tabular`}>{currentCard.price}</span>
+            </div>
+          )}
+          {currentCard.rows.map((row, j) => (
+            <div key={j} className={s.tokStatCol}>
+              <span className={s.tokStatLabel}>{row.label}</span>
+              <span className={`${s.tokStatVal} ${s[row.tone ?? "neutral"]} tabular`}>
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {currentCard.note && <div className={s.mNote}>{currentCard.note}</div>}
 
-      {currentCard.buys.length > 0 && (
-        <div className={s.tokTradeGroup}>
-          <div className={s.tokGroupLabel}>
-            <span>Buy</span>
-            <span>Share of USDC balance</span>
+      <div className={s.tokTradeGrid}>
+        {currentCard.buys.length > 0 && (
+          <div className={s.tokTradeGroup}>
+            <div className={s.tokGroupLabel}>
+              <span>Buy</span>
+              <span>Share of USDC balance</span>
+            </div>
+            <div className={s.tokPresets}>
+              {currentCard.buys.map((b, j) => (
+                <button
+                  key={j}
+                  type="button"
+                  className={`${s.chip} ${s.tokBuy}`}
+                  aria-label={`Buy with ${b.label} of your USDC`}
+                  disabled={Boolean(b.disabled) || Boolean(historical)}
+                  onClick={b.disabled ? undefined : act(b.command)}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className={s.tokPresets}>
-            {currentCard.buys.map((b, j) => (
-              <button
-                key={j}
-                type="button"
-                className={`${s.chip} ${s.tokBuy}`}
-                aria-label={`Buy with ${b.label} of your USDC`}
-                disabled={Boolean(b.disabled) || Boolean(historical)}
-                onClick={b.disabled ? undefined : act(b.command)}
-              >
-                {b.label}
-              </button>
-            ))}
+        )}
+
+        {currentCard.sells.length > 0 && (
+          <div className={`${s.tokTradeGroup} ${s.tokSellGroup}`}>
+            <div className={s.tokGroupLabel}>
+              <span>Sell</span>
+              <span>Share of {currentCard.symbol} balance</span>
+            </div>
+            <div className={s.tokPresets}>
+              {currentCard.sells.map((b, j) => (
+                <button
+                  key={j}
+                  type="button"
+                  className={`${s.chip} ${s.tokSell}`}
+                  aria-label={`Sell ${b.label} of your ${currentCard.symbol}`}
+                  disabled={Boolean(historical)}
+                  onClick={act(b.command)}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {currentCard.ref && currentCard.buys.length > 0 && (
         <CustomBuy
@@ -307,29 +334,6 @@ function TokenCardView({
               : (cmd) => (onSend ?? onPrompt)(cmd)
           }
         />
-      )}
-
-      {currentCard.sells.length > 0 && (
-        <div className={`${s.tokTradeGroup} ${s.tokSellGroup}`}>
-          <div className={s.tokGroupLabel}>
-            <span>Sell</span>
-            <span>Share of {currentCard.symbol} balance</span>
-          </div>
-          <div className={s.tokPresets}>
-            {currentCard.sells.map((b, j) => (
-              <button
-                key={j}
-                type="button"
-                className={`${s.chip} ${s.tokSell}`}
-                aria-label={`Sell ${b.label} of your ${currentCard.symbol}`}
-                disabled={Boolean(historical)}
-                onClick={act(b.command)}
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
-        </div>
       )}
     </div>
   );
