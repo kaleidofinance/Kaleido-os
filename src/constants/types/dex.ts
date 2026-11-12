@@ -9,6 +9,11 @@ export interface IToken {
   tags?: string[];
   isNative?: boolean;
   priceUrl?: string;
+  /** Identity read from the pasted contract before a plan is built. */
+  identityResolved?: boolean;
+  /** Launchpad attribution returned by the token identity resolver. */
+  launchpadLabel?: string;
+  launchpadId?: string;
 }
 
 export interface ITokenBalance {

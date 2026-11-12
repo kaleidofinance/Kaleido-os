@@ -14,6 +14,7 @@ import {
   formatBps,
   customBuyCommand,
   cardFollowUp,
+  tokenFactsToAddressToken,
   type TokenFacts,
 } from "./tokenCard.ts";
 import { localCards, cardsFromChat } from "./fromChat.ts";
@@ -55,6 +56,23 @@ const PEACH: TokenFacts = {
   name: "Experience Required",
   decimals: 18,
 };
+
+{
+  const resolved = tokenFactsToAddressToken(
+    { ...PEACH, launchpadId: "peach", launchpadLabel: "Peach launch" },
+    5042,
+  );
+  check(
+    "resolved identity keeps name and symbol",
+    resolved?.name === PEACH.name && resolved?.symbol === PEACH.symbol,
+  );
+  check("resolved identity keeps launchpad", resolved?.launchpadLabel === "Peach launch");
+  check("resolved identity tags Peach", resolved?.tags?.includes("peach") === true);
+  check(
+    "quote identity is not a trade token",
+    tokenFactsToAddressToken({ ...PEACH, isQuote: true }, 5042) === null,
+  );
+}
 
 console.log("\n— paste detection is narrow —");
 {

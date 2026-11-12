@@ -1,4 +1,5 @@
 import type { AgentCard, CardTone, NoticeCard, TokenCard } from "./types";
+import type { IToken } from "@/constants/types/dex";
 
 /**
  * Paste a contract → a token card whose buttons are agent commands.
@@ -42,6 +43,48 @@ export interface TokenFacts {
   bonded?: boolean;
   /** True when the pasted address IS the chain's quote asset (USDC). */
   isQuote?: boolean;
+}
+
+/**
+ * Turn the server's contract identity read into the parser token used by a
+ * command plan. This is deliberately separate from the card renderer: a
+ * contract can be readable without being a listed/launchpad token, and its
+ * verified identity is still useful in the confirmation before routing decides
+ * whether the swap is executable.
+ */
+export function tokenFactsToAddressToken(
+  facts: TokenFacts,
+  chainId: number,
+): IToken | null {
+  if (
+    !facts.ok ||
+    facts.isQuote ||
+    !facts.address ||
+    !facts.symbol ||
+    facts.decimals == null
+  ) {
+    return null;
+  }
+
+  const launchpadTag =
+    facts.source === "argus" ||
+    facts.source === "peach" ||
+    facts.source === "elysium"
+      ? facts.source
+      : undefined;
+
+  return {
+    address: facts.address,
+    name: facts.name || facts.symbol,
+    symbol: facts.symbol,
+    decimals: facts.decimals,
+    chainId,
+    verified: facts.source !== "unknown",
+    ...(launchpadTag ? { tags: [launchpadTag] } : {}),
+    ...(facts.launchpadLabel ? { launchpadLabel: facts.launchpadLabel } : {}),
+    ...(facts.launchpadId ? { launchpadId: facts.launchpadId } : {}),
+    identityResolved: true,
+  };
 }
 
 /** Default one-tap sizes, both as a share of balance: buys spend that share of
