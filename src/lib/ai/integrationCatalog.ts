@@ -4,6 +4,7 @@ import { ELYSIUM_CHAIN_ID, ELYSIUM_LAUNCHPADS } from "@/lib/elysium/addresses";
 import { hasFlyTrade } from "@/lib/swap/flytrade";
 import { hasKyberSwap } from "@/lib/swap/kyberswap";
 import { hasLifiSwap } from "@/lib/swap/lifi";
+import { evaluateIntegration, type IntegrationReadiness } from "./integrationReadiness";
 
 export type IntegrationKind = "launchpad" | "aggregator";
 export type IntegrationOperation =
@@ -173,4 +174,16 @@ export function integrationOperationStatus(
   operation: IntegrationOperation,
 ): IntegrationStatus {
   return item.operations[operation] ?? "not_configured";
+}
+
+/** Catalog view consumed by planning/analysis: configured is not the same as
+ * ready; every quote or execution still needs a live request-time check. */
+export function integrationReadinessForChain(
+  chainId: number | undefined,
+  operation: IntegrationOperation,
+  networkMode: "mainnet" | "testnet" = "mainnet",
+): IntegrationReadiness[] {
+  return integrationsForChain(chainId, networkMode).map((item) =>
+    evaluateIntegration(item, operation),
+  );
 }
