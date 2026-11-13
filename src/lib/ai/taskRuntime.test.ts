@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { createTask, persistTask, transitionTask, type AgentTask, type TaskStore } from "./taskRuntime";
+import {
+  canResumeTask,
+  createTask,
+  persistTask,
+  resumeTask,
+  transitionTask,
+  type AgentTask,
+  type TaskStore,
+} from "./taskRuntime";
 
 const task = createTask({
   id: "task-1",
@@ -36,6 +44,17 @@ const completed = transitionTask(
   { eventId: "event-4", status: "awaiting_approval" },
 );
 assert.equal(completed.status, "awaiting_approval");
+
+const paused = transitionTask(researching, {
+  eventId: "event-pause",
+  status: "paused",
+});
+assert.equal(canResumeTask(paused), true);
+assert.equal(
+  resumeTask(paused, "event-resume", "2026-11-09T00:00:03.000Z").status,
+  "researching",
+);
+assert.equal(canResumeTask(completed), false);
 
 const writes: Array<{ task: AgentTask; expectedRevision: number }> = [];
 const store: TaskStore = {

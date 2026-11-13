@@ -75,6 +75,40 @@ const TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   failed: ["researching", "preparing", "cancelled"],
 };
 
+const TERMINAL_STATUSES = new Set<TaskStatus>(["completed", "cancelled"]);
+
+export function isTerminalTaskStatus(status: TaskStatus): boolean {
+  return TERMINAL_STATUSES.has(status);
+}
+
+/**
+ * Choose a safe restart point after a worker restart or operator resume.
+ * Failed and paused work must be re-read before preparation; partially completed
+ * work can continue from preparation after receipt reconciliation.
+ */
+export function resumeStatus(status: TaskStatus): TaskStatus {
+  if (status === "partially_completed") return "preparing";
+  if (status === "failed" || status === "paused") return "researching";
+  return status;
+}
+
+export function canResumeTask(task: AgentTask): boolean {
+  return !isTerminalTaskStatus(task.status) && task.status !== "awaiting_approval";
+}
+
+export function resumeTask(
+  task: AgentTask,
+  eventId: string,
+  now?: string,
+): AgentTask {
+  if (!canResumeTask(task)) {
+    throw new Error(`Task cannot resume from ${task.status}.`);
+  }
+  const next = resumeStatus(task.status);
+  if (next === task.status) return task;
+  return transitionTask(task, { eventId, status: next, now });
+}
+
 function validTimestamp(value: string | undefined): string {
   return value && !Number.isNaN(Date.parse(value)) ? value : new Date().toISOString();
 }
