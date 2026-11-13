@@ -54,6 +54,7 @@ import { getCapabilitySnapshot } from "@/lib/ai/capabilities";
 import { createAgentInput } from "@/lib/ai/turnCoordinator";
 import { canUseLocalCatalog } from "@/lib/ai/intentRouter";
 import { resolveQuotaIdentity } from "@/lib/ai/quotaIdentity";
+import { guardLegacyPlan, legacyEngineRequest } from "@/lib/ai/legacyEngine";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -932,14 +933,10 @@ export async function POST(request: NextRequest) {
         capabilities,
       };
       // Forward the request to the AI Engine API
-      const response = await fetch(`${AI_ENGINE_API_URL}/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(scopedEngineBody),
-        // Use configurable timeout for AI response generation
-        signal: AbortSignal.timeout(AI_ENGINE_TIMEOUT),
+      const response = await legacyEngineRequest({
+        url: AI_ENGINE_API_URL,
+        body: scopedEngineBody,
+        timeoutMs: AI_ENGINE_TIMEOUT,
       });
 
       if (!response.ok) {
@@ -954,74 +951,12 @@ export async function POST(request: NextRequest) {
 
       const data = await response.json();
 
-      // --- ASL-4 PHASE 1: ADVERSARIAL AUDITOR PASS ---
-      // This logic simulates a secondary Auditor Agent verifying the proposal.
-      if (data.context?.functionData?.result) {
-        const result = data.context.functionData.result;
-
-        // 🛡️ Security Gate: Threshold Verification
-        const amount = parseFloat(result.amount || "0");
-        if (amount > 1000) {
-          console.warn(`[Safety] Blocked high-value action: ${amount} units.`);
-          return NextResponse.json({
-            response:
-              "I've drafted a high-value strategy, but the safety checks blocked it for your protection (Exceeds $1,000 limit). Please break your request into smaller chunks.",
-            context: {
-              status: "blocked_by_safety_check",
-              reason: "threshold_exceeded",
-            },
-          });
-        }
-
-        // 🛡️ Security Gate: Omni-Chain Destination Verification
-        // We validate the destination protocol against a chain-specific whitelist.
-        //
-        // Two deliberate choices here, both about which way this fails:
-        //
-        // 1. The validated turn chain only — NOT `result.chainId`. `result` is model
-        //    output, so honouring it would let the model nominate the chain
-        //    whose whitelist it is checked against, i.e. choose its own
-        //    security policy. The wallet's connected chain is the only
-        //    trustworthy source.
-        // 2. No default. This used to fall back to 11124 (Abstract Testnet),
-        //    which meant a request with no chain got a populated whitelist
-        //    and could pass. An unknown chain must yield an EMPTY whitelist
-        //    so the check below fails closed.
-        const MULTICHAIN_WHITELIST: Record<string, string[]> = {
-          "8453": ["Base", "Aave", "Aerodrome", "Uniswap"], // Base
-          "84532": ["Base", "Aave", "Aerodrome", "Uniswap"], // Base Sepolia
-          "137": ["Polygon", "Aave", "Quickswap"], // Polygon
-          "56": ["BSC", "Pancakeswap", "Venus", "Stargate"], // BSC
-          "97": ["BSC", "Pancakeswap", "Venus", "Stargate"], // BSC Testnet
-          "1": ["Ethereum", "Aave", "Uniswap", "Lido"], // Mainnet
-          "11155111": ["Ethereum", "Aave", "Uniswap", "Lido"], // Sepolia
-          "4663": ["Robinhood"], // Robinhood Chain
-          "46630": ["Robinhood"], // Robinhood Testnet
-          "5042002": ["Arc", "USDC"], // Arc Testnet
-        };
-
-        const allowedNames =
-          chainId === undefined
-            ? []
-            : MULTICHAIN_WHITELIST[chainId.toString()] || [];
-        const isWhitelisted = allowedNames.some(
-          (name) =>
-            result.target?.toLowerCase().includes(name.toLowerCase()) ||
-            result.protocol?.toLowerCase().includes(name.toLowerCase()),
-        );
-
-        if (!isWhitelisted && result.target) {
-          console.warn(
-            `[Safety] Blocked unverified destination on Chain ${chainId ?? "unknown"}: ${result.target}`,
-          );
-          return NextResponse.json({
-            response: `This transaction was blocked by safety checks. The protocol "${result.target}" is not currently whitelisted for high-security operations on Chain ID ${chainId ?? "unknown"}.`,
-            context: {
-              status: "blocked_by_safety_check",
-              reason: "unvetted_omnichain_target",
-            },
-          });
-        }
+      const guard = guardLegacyPlan(data, { chainId });
+      if (guard.blocked) {
+        return NextResponse.json({
+          response: guard.response,
+          context: guard.context,
+        });
       }
 
       return NextResponse.json({
