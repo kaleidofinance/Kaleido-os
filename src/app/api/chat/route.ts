@@ -52,6 +52,8 @@ import { walletChainContext } from "@/lib/ai/walletContext";
 import { createTurnContext, turnContextError } from "@/lib/ai/turnContext";
 import { getCapabilitySnapshot } from "@/lib/ai/capabilities";
 import { createAgentInput } from "@/lib/ai/turnCoordinator";
+import { canUseLocalCatalog } from "@/lib/ai/intentRouter";
+import { resolveQuotaIdentity } from "@/lib/ai/quotaIdentity";
 
 /**
  * A turn is not a fast request and never was. Measured against the live
@@ -166,10 +168,13 @@ export async function POST(request: NextRequest) {
        or a stale docs index from answering that Kaleido has no launchpad
        integrations, while launch/deploy actions still continue to the planner
        and auditor. */
-    const localLaunchpadAnswer = launchpadAnswer(String(body.message ?? ""), {
-      chainId,
-      showTestnets: networkMode === "testnet",
-    });
+    const message = String(body.message ?? "");
+    const localLaunchpadAnswer = canUseLocalCatalog(message)
+      ? launchpadAnswer(message, {
+          chainId,
+          showTestnets: networkMode === "testnet",
+        })
+      : null;
     if (localLaunchpadAnswer) {
       return NextResponse.json({
         response: localLaunchpadAnswer,
@@ -240,7 +245,18 @@ export async function POST(request: NextRequest) {
        local-only branch — so a garbage string cannot become its own metered
        identity, and the counter is keyed on a canonical form rather than on
        whatever casing the caller sent. */
-    const meterAddress = turn.address;
+    const quotaIdentity = await resolveQuotaIdentity({
+      address: body.address,
+      signature: body.quotaSignature,
+      signedAt: body.quotaSignedAt,
+    });
+    if (quotaIdentity.error) {
+      return NextResponse.json(
+        { response: quotaIdentity.error, context: { status: "invalid_quota_session" } },
+        { status: 401 },
+      );
+    }
+    const meterAddress = quotaIdentity.address ?? turn.address;
     if (provider) {
       // Quota is spent here, at the point of dispatch, and nowhere earlier.
       // A turn the client answered locally never reaches this route at all, so
