@@ -15,6 +15,7 @@ import { encodeV3Path } from "@/lib/dex/route";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution } from "@/lib/swap/flytrade";
 import { getLifiSwapExecution } from "@/lib/swap/lifi";
+import { getSynthraExecution } from "@/lib/swap/synthra";
 import { getPeachTradeExecution } from "@/lib/peach/route";
 import { getElysiumTradeExecution } from "@/lib/elysium/route";
 import { PERMIT2 } from "@/lib/argus/swap";
@@ -668,6 +669,30 @@ export async function freshAggregatorCall(
   i: Extract<Intent, { kind: "aggregatorSwap" }>,
   address: string,
 ): Promise<{ to: string; data: string; value: string }> {
+  if (i.venue === "synthra") {
+    const fresh = await getSynthraExecution({
+      chainId: i.chainId,
+      tokenIn: i.tokenIn,
+      tokenOut: i.tokenOut,
+      decimalsOut: i.decimalsOut,
+      amountUnits: ethers.parseUnits(i.amountIn, i.decimalsIn).toString(),
+      address,
+      slippageBps: i.slippageBps,
+    });
+    if (
+      !fresh ||
+      fresh.to.toLowerCase() !== i.to.toLowerCase() ||
+      fresh.spender.toLowerCase() !== i.spender.toLowerCase() ||
+      BigInt(fresh.value) !== BigInt(i.value) ||
+      BigInt(fresh.minimumOut) <
+        ethers.parseUnits(i.amountOutMin, i.decimalsOut)
+    ) {
+      throw new Error(
+        "The Synthra route changed or expired. Request and review a fresh quote.",
+      );
+    }
+    return { to: fresh.to, data: fresh.data, value: fresh.value };
+  }
   if (
     i.venue !== "kyberswap" &&
     i.venue !== "fly" &&
@@ -708,7 +733,9 @@ export async function freshAggregatorCall(
     );
   }
   if (BigInt(fresh.value) !== BigInt(i.value)) {
-    throw new Error("The swap's native value changed; request and review a new quote.");
+    throw new Error(
+      "The swap's native value changed; request and review a new quote.",
+    );
   }
   return { to: fresh.to, data: fresh.data, value: fresh.value };
 }

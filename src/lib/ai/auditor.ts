@@ -30,6 +30,7 @@ import {
 } from "@/lib/bridge/cctp";
 import { isKnownSwapRouter, nativeSwapErc20 } from "@/lib/swap/kyberswap";
 import { isKnownFlyTradeRouter } from "@/lib/swap/flytrade";
+import { isSynthraRouter } from "@/lib/swap/synthra";
 import { isKnownLifiSwapRouter } from "@/lib/swap/lifi";
 import {
   PEACH_CHAIN_ID,
@@ -2107,6 +2108,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     else if (
       !isKnownSwapRouter(chainId, str(s.to)) &&
       !isKnownFlyTradeRouter(chainId, str(s.to)) &&
+      !(str(s.venue) === "synthra" && isSynthraRouter(chainId, str(s.to))) &&
       !isKnownLifiSwapRouter(chainId, str(s.to)) &&
       !(elysium && isKnownElysiumLaunchRouter(chainId, str(s.to)))
     )
@@ -2155,7 +2157,9 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const notes = [
       "the aggregator's calldata is not parsed here — the router enforces the output floor, and the per-action USD cap bounds the trade",
       ...(nativeIn
-        ? ["the attached native value exactly matches the reviewed input amount"]
+        ? [
+            "the attached native value exactly matches the reviewed input amount",
+          ]
         : []),
       ...price.notes,
     ];
