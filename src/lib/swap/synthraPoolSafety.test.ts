@@ -38,6 +38,21 @@ async function main() {
     ),
     null,
   );
+  assert.equal(
+    (
+      await verifySynthraPoolRoute(
+        {
+          ...raw,
+          warnings: ["low_tvl_pool"],
+          debug: { risk: { ...raw.debug.risk, minPoolTvlUsd: 50 } },
+        },
+        99901,
+        async () => pool,
+        { allowLowTvl: true },
+      )
+    )?.length,
+    1,
+  );
   assert.equal(await verifySynthraPoolRoute(raw, 99901, async () => a), null);
   assert.equal(
     await verifySynthraPoolRoute(

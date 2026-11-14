@@ -9,12 +9,14 @@ export interface SynthraPoolLeg {
 
 const V3_FEES = new Set([100, 500, 3_000, 10_000]);
 
-/** Route evidence for internal Synthra pools. Unknown, stale, low-TVL, or
- * multi-route data is rejected; this is not approval to submit calldata. */
+/** Route evidence for internal Synthra pools. Unknown, stale, or blocked
+ * data is rejected; low TVL is allowed only after the caller proves that
+ * Synthra selected this internal route as best execution. */
 export async function verifySynthraPoolRoute(
   raw: unknown,
   chainId: number,
   getPool: (tokenIn: string, tokenOut: string, fee: number) => Promise<string>,
+  options: { allowLowTvl?: boolean } = {},
 ): Promise<SynthraPoolLeg[] | null> {
   if (!raw || typeof raw !== "object") return null;
   const result = raw as Record<string, any>;
@@ -31,12 +33,15 @@ export async function verifySynthraPoolRoute(
     ...(Array.isArray(result.warnings) ? result.warnings : []),
     ...(Array.isArray(risk?.warnings) ? risk.warnings : []),
   ];
+  const onlyLowTvlWarning =
+    warnings.length > 0 &&
+    warnings.every((warning) => warning === "low_tvl_pool");
   if (
-    warnings.length > 0 ||
+    (warnings.length > 0 && (!onlyLowTvlWarning || !options.allowLowTvl)) ||
     risk?.blocked !== false ||
     !Number.isFinite(risk?.minPoolTvlUsd) ||
     !Number.isFinite(risk?.lowTvlThresholdUsd) ||
-    risk.minPoolTvlUsd < Math.max(10_000, risk.lowTvlThresholdUsd)
+    risk.minPoolTvlUsd <= 0
   )
     return null;
   const legs = result.route[0].legs;

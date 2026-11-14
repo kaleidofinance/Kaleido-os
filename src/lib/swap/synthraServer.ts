@@ -43,6 +43,35 @@ async function advertisedChains(): Promise<Set<number>> {
   return ids;
 }
 
+/** Ask Synthra which execution family won before accepting a low-TVL internal
+ * route. The transaction endpoint alone does not prove that the internal pool
+ * beat the external execution network. */
+async function selectedInternalQuote(
+  input: SynthraQuoteRequest,
+  key: string,
+): Promise<boolean> {
+  const response = await fetch(`${API}/v1/swap/quote`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": key },
+    body: JSON.stringify({ ...input, tradeType: "EXACT_INPUT" }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) return false;
+  const raw = await response.json();
+  const selected = raw?.quote;
+  return (
+    raw?.state === "Success" &&
+    (raw?.chosen === "internal" || raw?.chosen === "synthra-internal") &&
+    (selected?.source === "internal" ||
+      selected?.source === "synthra-internal") &&
+    selected?.state === "Success" &&
+    selected?.amountIn === input.amount &&
+    /^\d+$/.test(selected?.amountOut ?? "") &&
+    BigInt(selected.amountOut) > 0n
+  );
+}
+
 export interface SynthraQuoteRequest {
   user: string;
   sourceChainId: number;
@@ -175,6 +204,7 @@ export async function inspectSynthraInternalHypeSwap(
   )
     return null;
   if (!(await advertisedChains()).has(99901)) return null;
+  if (!(await selectedInternalQuote(input, key))) return null;
   const response = await fetch(`${API}/v1/swap`, {
     method: "POST",
     cache: "no-store",
@@ -232,22 +262,27 @@ export async function inspectSynthraInternalHypeSwap(
     ["function getPool(address,address,uint24) view returns(address)"],
     provider,
   );
-  const legs = await verifySynthraPoolRoute(raw, 99901, async (a, b, fee) => {
-    const poolAddress: string = await factory.getPool(a, b, fee);
-    if (
-      poolAddress === ethers.ZeroAddress ||
-      (await provider.getCode(poolAddress)) === "0x"
-    )
-      throw new Error("Pool is not deployed");
-    const pool = new ethers.Contract(
-      poolAddress,
-      ["function liquidity() view returns (uint128)"],
-      provider,
-    );
-    if (BigInt(await pool.liquidity()) <= 0n)
-      throw new Error("Pool has no active liquidity");
-    return poolAddress;
-  });
+  const legs = await verifySynthraPoolRoute(
+    raw,
+    99901,
+    async (a, b, fee) => {
+      const poolAddress: string = await factory.getPool(a, b, fee);
+      if (
+        poolAddress === ethers.ZeroAddress ||
+        (await provider.getCode(poolAddress)) === "0x"
+      )
+        throw new Error("Pool is not deployed");
+      const pool = new ethers.Contract(
+        poolAddress,
+        ["function liquidity() view returns (uint128)"],
+        provider,
+      );
+      if (BigInt(await pool.liquidity()) <= 0n)
+        throw new Error("Pool has no active liquidity");
+      return poolAddress;
+    },
+    { allowLowTvl: true },
+  );
   if (
     !legs ||
     raw.route?.[0]?.amountIn !== input.amount ||
