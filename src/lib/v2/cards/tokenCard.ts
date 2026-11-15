@@ -23,7 +23,7 @@ export interface TokenFacts {
   reason?: string;
   /** argus/peach/elysium = launchpad tokens; listed = registry; unknown = readable
    *  ERC-20 that we do not route yet. */
-  source?: "argus" | "peach" | "elysium" | "listed" | "unknown";
+  source?: "argus" | "peach" | "elysium" | "synthra" | "listed" | "unknown";
   /** Optional launchpad badge text (e.g. "Montra launch", "BOXA launch" on Elysium). */
   launchpadLabel?: string;
   /** Optional launchpad identifier (e.g. "montra", "boxa", "argus", "peach"). */
@@ -36,6 +36,7 @@ export interface TokenFacts {
   /** USD per whole token (the quote is USDC on Arc), or null if unreadable. */
   priceUsd?: number | null;
   marketCapUsd?: number | null;
+  imageUrl?: string;
   buyTaxBps?: number;
   sellTaxBps?: number;
   /** Opening surcharge is live — buying now can cost up to ~99%. */
@@ -69,7 +70,8 @@ export function tokenFactsToAddressToken(
   const launchpadTag =
     facts.source === "argus" ||
     facts.source === "peach" ||
-    facts.source === "elysium"
+    facts.source === "elysium" ||
+    facts.source === "synthra"
       ? facts.source
       : undefined;
 
@@ -145,8 +147,7 @@ export function formatUsdCompact(v: number): string {
 }
 
 /** 100 → "1%", 250 → "2.5%". */
-export const formatBps = (bps: number) =>
-  `${Number((bps / 100).toFixed(2))}%`;
+export const formatBps = (bps: number) => `${Number((bps / 100).toFixed(2))}%`;
 
 /** A tax above this reads as a warning — round trips get expensive fast. */
 const HIGH_TAX_BPS = 500;
@@ -177,6 +178,7 @@ export function resolveLaunchpadIcon(
 ): string | undefined {
   if (source === "argus") return "/tokens/argus.png";
   if (source === "peach") return "/peach-logo.png";
+  if (source === "synthra") return undefined;
   if (source === "elysium") {
     if (launchpadId && ELYSIUM_LAUNCHPAD_ICONS[launchpadId.toLowerCase()]) {
       return ELYSIUM_LAUNCHPAD_ICONS[launchpadId.toLowerCase()];
@@ -223,16 +225,17 @@ export function tokenCardFrom(
     return notice(
       "neutral",
       `${symbol} isn't a supported launch or listed token`,
-      "Luca trades Argus and Peach launches plus listed tokens from a pasted contract.",
+      "Luca trades Argus, Peach, and Synthra launches plus listed tokens from a pasted contract.",
     );
   }
 
-  /* An Argus/Peach/Elysium launch is traded by address (the grammar resolves it);
+  /* An Argus/Peach/Elysium/Synthra launch is traded by address (the grammar resolves it);
      a listed token by its symbol, so it takes the same route a typed command does. */
   const ref =
     facts.source === "argus" ||
     facts.source === "peach" ||
-    facts.source === "elysium"
+    facts.source === "elysium" ||
+    facts.source === "synthra"
       ? facts.address
       : symbol;
   const buys = (presets.buys ?? DEFAULT_BUY_PCT).map((pct) => ({
@@ -247,7 +250,10 @@ export function tokenCardFrom(
 
   const rows: TokenCard["rows"] = [];
   if (facts.marketCapUsd != null) {
-    rows.push({ label: "Market cap", value: formatUsdCompact(facts.marketCapUsd) });
+    rows.push({
+      label: "Market cap",
+      value: formatUsdCompact(facts.marketCapUsd),
+    });
   }
   if (facts.buyTaxBps != null) {
     rows.push({
@@ -304,7 +310,17 @@ export function tokenCardFrom(
                   facts.launchpadLabel,
                 ),
               }
-            : { text: "Listed", tone: "good" },
+            : facts.source === "synthra"
+              ? {
+                  text: "Synthra launch",
+                  tone: "good",
+                  iconUrl: resolveLaunchpadIcon(
+                    facts.source,
+                    facts.launchpadId,
+                    facts.launchpadLabel,
+                  ),
+                }
+              : { text: "Listed", tone: "good" },
     rows,
     ...(facts.snipeActive
       ? {
@@ -326,7 +342,10 @@ export function tokenCardFrom(
  * through the same grammar → plan → audit → review → signature path as a tap.
  */
 export function customBuyCommand(ref: string, raw: string): string | null {
-  const t = raw.trim().replace(/^\$\s*/, "").replace(/,/g, "");
+  const t = raw
+    .trim()
+    .replace(/^\$\s*/, "")
+    .replace(/,/g, "");
   if (!/^\d+(\.\d+)?$/.test(t)) return null;
   if (!(Number(t) > 0) || t.length > 24) return null;
   return `buy ${ref} with ${t} usdc`;
@@ -338,12 +357,45 @@ export interface CardTokenContext {
   symbol: string;
 }
 
-const CARD_BUY_VERBS = new Set(["buy", "ape", "get", "grab", "snag", "cop", "purchase", "spend"]);
+const CARD_BUY_VERBS = new Set([
+  "buy",
+  "ape",
+  "get",
+  "grab",
+  "snag",
+  "cop",
+  "purchase",
+  "spend",
+]);
 const CARD_SELL_VERBS = new Set(["sell", "dump", "unload"]);
-const CARD_USD_WORDS = new Set(["usdc", "usd", "dollar", "dollars", "bucks", "$"]);
+const CARD_USD_WORDS = new Set([
+  "usdc",
+  "usd",
+  "dollar",
+  "dollars",
+  "bucks",
+  "$",
+]);
 const CARD_FILLERS = new Set([
-  "of", "with", "for", "worth", "me", "some", "please", "pls", "now", "on",
-  "the", "token", "coin", "my", "into", "in", "more", "a", "bit",
+  "of",
+  "with",
+  "for",
+  "worth",
+  "me",
+  "some",
+  "please",
+  "pls",
+  "now",
+  "on",
+  "the",
+  "token",
+  "coin",
+  "my",
+  "into",
+  "in",
+  "more",
+  "a",
+  "bit",
 ]);
 
 /**
@@ -365,9 +417,16 @@ export function cardFollowUp(
   text: string,
   card: CardTokenContext,
 ): string | null {
-  const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
+  const t = text
+    .trim()
+    .toLowerCase()
+    .replace(/[!?.]+$/, "");
   if (!t || t.includes(card.ref.toLowerCase())) return null;
-  const words = t.replace(/\$/g, " $ ").replace(/%/g, " % ").split(/\s+/).filter(Boolean);
+  const words = t
+    .replace(/\$/g, " $ ")
+    .replace(/%/g, " % ")
+    .split(/\s+/)
+    .filter(Boolean);
   const verb = words[0];
   const buying = CARD_BUY_VERBS.has(verb);
   if (!buying && !CARD_SELL_VERBS.has(verb)) return null;
@@ -390,10 +449,23 @@ export function cardFollowUp(
       } else amount = v;
       continue;
     }
-    if (CARD_USD_WORDS.has(w)) { usd = true; continue; }
-    if (w === sym || w === "it" || w === "this" || w === "that") { named = true; continue; }
-    if (w === "all" || w === "everything" || w === "max") { all = true; continue; }
-    if (w === "half") { if (amount || pct) return null; pct = "50"; continue; }
+    if (CARD_USD_WORDS.has(w)) {
+      usd = true;
+      continue;
+    }
+    if (w === sym || w === "it" || w === "this" || w === "that") {
+      named = true;
+      continue;
+    }
+    if (w === "all" || w === "everything" || w === "max") {
+      all = true;
+      continue;
+    }
+    if (w === "half") {
+      if (amount || pct) return null;
+      pct = "50";
+      continue;
+    }
     if (CARD_FILLERS.has(w)) continue;
     return null;
   }

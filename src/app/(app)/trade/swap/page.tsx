@@ -16,6 +16,7 @@ import {
   nativeTokenOf,
   hasSwaps,
   isNativeSentinel,
+  NATIVE_SENTINEL,
 } from "@/constants/registry";
 import { CHAINS, getChainMeta } from "@/constants/chains";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
@@ -52,6 +53,7 @@ import { getSynthraExecution } from "@/lib/swap/synthra";
 import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
 import { getPeachTradeExecution } from "@/lib/peach/route";
 import { getElysiumTradeExecution } from "@/lib/elysium/route";
+import { getSynthraLaunchpadTradeExecution } from "@/lib/synthraLaunchpad/route";
 import s from "../trade.module.css";
 
 /*
@@ -453,8 +455,18 @@ export default function SwapPage() {
     sellDec: number;
     buyAddr: string;
     buyDec: number;
-    venue: "kyberswap" | "fly" | "lifi" | "peach" | "elysium" | "synthra";
+    venue:
+      | "kyberswap"
+      | "fly"
+      | "lifi"
+      | "peach"
+      | "elysium"
+      | "synthra"
+      | "synthra-launchpad";
     minimumOut?: string;
+    nativeIn?: boolean;
+    nativeOut?: boolean;
+    gasLimit?: string;
   } | null>(null);
 
   /**
@@ -600,8 +612,12 @@ export default function SwapPage() {
           | "peach"
           | "elysium"
           | "synthra"
+          | "synthra-launchpad"
           | null = null;
         let synthraMinimumOut: string | undefined;
+        let launchpadNativeIn = false;
+        let launchpadNativeOut = false;
+        let launchpadGasLimit: string | undefined;
         let kyberSell: ReturnType<typeof aggregatorToken> | null = null;
         let kyberBuy: ReturnType<typeof aggregatorToken> | null = null;
         if (
@@ -640,8 +656,8 @@ export default function SwapPage() {
             address,
             slippageBps,
           };
-          const [kyber, fly, lifi, peach, elysium, synthra] = await Promise.all(
-            [
+          const [kyber, fly, lifi, peach, elysium, synthra, synthraLaunchpad] =
+            await Promise.all([
               hasKyberSwap(swapChainId)
                 ? getKyberSwapExecution(request)
                 : Promise.resolve(null),
@@ -662,8 +678,8 @@ export default function SwapPage() {
                 decimalsIn: kyberSell.decimals,
                 decimalsOut: kyberBuy.decimals,
               }),
-            ],
-          );
+              getSynthraLaunchpadTradeExecution(request),
+            ]);
           const sources: Array<{
             exec: Awaited<ReturnType<typeof getKyberSwapExecution>>;
             venue:
@@ -672,7 +688,8 @@ export default function SwapPage() {
               | "lifi"
               | "peach"
               | "elysium"
-              | "synthra";
+              | "synthra"
+              | "synthra-launchpad";
           }> = [
             { exec: kyber, venue: "kyberswap" as const },
             { exec: fly, venue: "fly" as const },
@@ -680,6 +697,7 @@ export default function SwapPage() {
             { exec: peach, venue: "peach" as const },
             { exec: elysium, venue: "elysium" as const },
             { exec: synthra, venue: "synthra" as const },
+            { exec: synthraLaunchpad, venue: "synthra-launchpad" as const },
           ];
           const candidates = sources.filter(
             (
@@ -694,7 +712,8 @@ export default function SwapPage() {
                 | "lifi"
                 | "peach"
                 | "elysium"
-                | "synthra";
+                | "synthra"
+                | "synthra-launchpad";
             } => Boolean(candidate.exec),
           );
           const best = candidates.reduce<(typeof candidates)[number] | null>(
@@ -709,8 +728,17 @@ export default function SwapPage() {
           );
           aggregatorExec = best?.exec ?? null;
           aggregatorVenue = best?.venue ?? null;
+          if (best?.venue === "synthra-launchpad" && synthraLaunchpad) {
+            launchpadNativeIn = synthraLaunchpad.nativeIn;
+            launchpadNativeOut = synthraLaunchpad.nativeOut;
+            launchpadGasLimit = synthraLaunchpad.gasLimit;
+          }
           synthraMinimumOut =
-            best?.venue === "synthra" ? synthra?.minimumOut : undefined;
+            best?.venue === "synthra"
+              ? synthra?.minimumOut
+              : best?.venue === "synthra-launchpad"
+                ? synthraLaunchpad?.minimumOut
+                : undefined;
         }
         if (cancelled) return;
 
@@ -747,12 +775,19 @@ export default function SwapPage() {
             data: aggregatorExec.data,
             spender: aggregatorExec.spender,
             value: aggregatorExec.value,
-            sellAddr: kyberSell.address,
+            sellAddr: launchpadNativeIn
+              ? NATIVE_SENTINEL.dex
+              : kyberSell.address,
             sellDec: kyberSell.decimals,
-            buyAddr: kyberBuy.address,
+            buyAddr: launchpadNativeOut
+              ? NATIVE_SENTINEL.dex
+              : kyberBuy.address,
             buyDec: kyberBuy.decimals,
             venue: aggregatorVenue,
             ...(synthraMinimumOut ? { minimumOut: synthraMinimumOut } : {}),
+            ...(launchpadNativeIn ? { nativeIn: true } : {}),
+            ...(launchpadNativeOut ? { nativeOut: true } : {}),
+            ...(launchpadGasLimit ? { gasLimit: launchpadGasLimit } : {}),
           });
           setAmountOut(
             ethers.formatUnits(aggregatorExec.amountOut, kyberBuy.decimals),
@@ -966,8 +1001,9 @@ export default function SwapPage() {
           : null;
       return [
         ...(unwrap ? [unwrap] : []),
-        ...(!isNativeSentinel(kyberRoute.sellAddr, "dex")
-          ? [
+        ...(kyberRoute.nativeIn || isNativeSentinel(kyberRoute.sellAddr, "dex")
+          ? []
+          : [
               {
                 kind: "approve" as const,
                 token: kyberRoute.sellAddr,
@@ -976,18 +1012,21 @@ export default function SwapPage() {
                 decimals: kyberRoute.sellDec,
                 symbol: tokenIn.symbol,
               },
-            ]
-          : []),
+            ]),
         {
           kind: "aggregatorSwap",
           to: kyberRoute.to,
           data: kyberRoute.data,
           value: kyberRoute.value,
-          tokenIn: kyberRoute.sellAddr,
+          tokenIn: kyberRoute.nativeIn
+            ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+            : kyberRoute.sellAddr,
           amountIn: aggIn,
           decimalsIn: kyberRoute.sellDec,
           symbolIn: tokenIn.symbol,
-          tokenOut: kyberRoute.buyAddr,
+          tokenOut: kyberRoute.nativeOut
+            ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+            : kyberRoute.buyAddr,
           amountOut: amountOut || "0",
           amountOutMin: minOut,
           decimalsOut: kyberRoute.buyDec,
@@ -996,6 +1035,7 @@ export default function SwapPage() {
           venue: kyberRoute.venue,
           spender: kyberRoute.spender,
           slippageBps,
+          ...(kyberRoute.gasLimit ? { gasLimit: kyberRoute.gasLimit } : {}),
         },
       ];
     }
@@ -1339,7 +1379,9 @@ export default function SwapPage() {
               <b>
                 {kyberRoute.venue === "elysium"
                   ? "Uniswap v4"
-                  : "Aggregator route"}
+                  : kyberRoute.venue === "synthra-launchpad"
+                    ? "Synthra LaunchPad"
+                    : "Aggregator route"}
               </b>
               <span className={s.routeVenue}>
                 {" "}
@@ -1348,13 +1390,15 @@ export default function SwapPage() {
                   ? "Elysium"
                   : kyberRoute.venue === "synthra"
                     ? "Synthra"
-                    : kyberRoute.venue === "peach"
-                      ? "Peach"
-                      : kyberRoute.venue === "fly"
-                        ? "Fly.trade"
-                        : kyberRoute.venue === "lifi"
-                          ? "LI.FI"
-                          : "KyberSwap"}
+                    : kyberRoute.venue === "synthra-launchpad"
+                      ? "Synthra LaunchPad"
+                      : kyberRoute.venue === "peach"
+                        ? "Peach"
+                        : kyberRoute.venue === "fly"
+                          ? "Fly.trade"
+                          : kyberRoute.venue === "lifi"
+                            ? "LI.FI"
+                            : "KyberSwap"}
               </span>
             </span>
           </div>

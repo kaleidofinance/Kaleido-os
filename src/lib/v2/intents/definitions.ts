@@ -17,6 +17,7 @@ import { getFlyTradeExecution } from "@/lib/swap/flytrade";
 import { getLifiSwapExecution } from "@/lib/swap/lifi";
 import { getSynthraExecution } from "@/lib/swap/synthra";
 import { getPeachTradeExecution } from "@/lib/peach/route";
+import { getSynthraLaunchpadTradeExecution } from "@/lib/synthraLaunchpad/route";
 import { getElysiumTradeExecution } from "@/lib/elysium/route";
 import { PERMIT2 } from "@/lib/argus/swap";
 import { register } from "./registry";
@@ -671,6 +672,29 @@ export async function freshAggregatorCall(
   i: Extract<Intent, { kind: "aggregatorSwap" }>,
   address: string,
 ): Promise<{ to: string; data: string; value: string }> {
+  if (i.venue === "synthra-launchpad") {
+    const fresh = await getSynthraLaunchpadTradeExecution({
+      chainId: i.chainId,
+      tokenIn: i.tokenIn,
+      tokenOut: i.tokenOut,
+      amountUnits: ethers.parseUnits(i.amountIn, i.decimalsIn).toString(),
+      address,
+      slippageBps: i.slippageBps,
+    });
+    if (
+      !fresh ||
+      fresh.to.toLowerCase() !== i.to.toLowerCase() ||
+      fresh.spender.toLowerCase() !== i.spender.toLowerCase() ||
+      BigInt(fresh.value) !== BigInt(i.value) ||
+      BigInt(fresh.minimumOut) <
+        ethers.parseUnits(i.amountOutMin, i.decimalsOut)
+    ) {
+      throw new Error(
+        "The Synthra launchpad quote changed or expired. Request a fresh quote.",
+      );
+    }
+    return { to: fresh.to, data: fresh.data, value: fresh.value };
+  }
   if (i.venue === "synthra") {
     const fresh = await getSynthraExecution({
       chainId: i.chainId,
@@ -700,6 +724,7 @@ export async function freshAggregatorCall(
     i.venue !== "kyberswap" &&
     i.venue !== "fly" &&
     i.venue !== "peach" &&
+    i.venue !== "synthra-launchpad" &&
     i.venue !== "elysium" &&
     i.venue !== "lifi"
   )
@@ -783,6 +808,7 @@ register("aggregatorSwap", {
       to,
       data,
       value: BigInt(value),
+      ...(i.gasLimit ? { gasLimit: BigInt(i.gasLimit) } : {}),
     });
     await tx.wait();
     return { hash: tx.hash };

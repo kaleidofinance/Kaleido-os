@@ -32,6 +32,8 @@ import {
 import { isKnownSwapRouter, nativeSwapErc20 } from "@/lib/swap/kyberswap";
 import { isKnownFlyTradeRouter } from "@/lib/swap/flytrade";
 import { isSynthraRouter } from "@/lib/swap/synthra";
+import { isSynthraLaunchpad } from "@/lib/swap/synthraDeployments";
+import { readSynthraLaunchpadToken } from "@/lib/synthraLaunchpad/server";
 import { isKnownLifiSwapRouter } from "@/lib/swap/lifi";
 import {
   PEACH_CHAIN_ID,
@@ -124,6 +126,57 @@ async function elysiumLaunchMatches(
   try {
     const launch = await readElysiumLaunch(launchAddr);
     return launch !== null;
+  } catch {
+    return false;
+  }
+}
+
+function isSynthraLaunchpadQuote(
+  chainId: number | undefined,
+  address: string,
+): boolean {
+  if (chainId === 4663) {
+    return [
+      "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+      "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    ].includes(address.toLowerCase());
+  }
+  if (chainId === 5042) {
+    return [
+      "0x3600000000000000000000000000000000000000",
+      "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    ].includes(address.toLowerCase());
+  }
+  return false;
+}
+
+async function synthraLaunchpadMatches(
+  step: PlanStep,
+  chainId: number | undefined,
+): Promise<boolean> {
+  if (
+    (chainId !== 4663 && chainId !== 5042) ||
+    str(step.venue) !== "synthra-launchpad"
+  )
+    return false;
+  const tokenIn = str(step.tokenIn),
+    tokenOut = str(step.tokenOut);
+  const inIsQuote = isSynthraLaunchpadQuote(chainId, tokenIn);
+  const outIsQuote = isSynthraLaunchpadQuote(chainId, tokenOut);
+  if (inIsQuote === outIsQuote) return false;
+  const launch = inIsQuote ? tokenOut : tokenIn;
+  if (
+    !ethers.isAddress(launch) ||
+    !isSynthraLaunchpad(chainId, str(step.to)) ||
+    str(step.spender).toLowerCase() !== str(step.to).toLowerCase()
+  )
+    return false;
+  try {
+    const record = await readSynthraLaunchpadToken(launch, chainId);
+    return Boolean(
+      record?.active &&
+        record.launchPad.toLowerCase() === str(step.to).toLowerCase(),
+    );
   } catch {
     return false;
   }
@@ -2067,6 +2120,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const reasons: string[] = [];
     const peach = str(s.venue) === "peach";
     const elysium = str(s.venue) === "elysium";
+    const synthraLaunchpad = str(s.venue) === "synthra-launchpad";
     const tokenIn = str(s.tokenIn);
     const tokenOut = str(s.tokenOut);
     const rawInTok = tradeToken(chainId, tokenIn);
@@ -2076,6 +2130,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
        only allow the known quote-token side through the shape gate. */
     const inTok =
       ((peach && tokenOut.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()) ||
+        (synthraLaunchpad && isSynthraLaunchpadQuote(chainId, tokenOut)) ||
         (elysium && isElysiumQuoteToken(tokenOut))) &&
       !rawInTok.ok &&
       ethers.isAddress(tokenIn)
@@ -2088,6 +2143,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         : rawInTok;
     const outTok =
       ((peach && tokenIn.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()) ||
+        (synthraLaunchpad && isSynthraLaunchpadQuote(chainId, tokenIn)) ||
         (elysium && isElysiumQuoteToken(tokenIn))) &&
       !rawOutTok.ok &&
       ethers.isAddress(tokenOut)
@@ -2127,6 +2183,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       !isKnownSwapRouter(chainId, str(s.to)) &&
       !isKnownFlyTradeRouter(chainId, str(s.to)) &&
       !(str(s.venue) === "synthra" && isSynthraRouter(chainId, str(s.to))) &&
+      !(synthraLaunchpad && ethers.isAddress(str(s.to))) &&
       !isKnownLifiSwapRouter(chainId, str(s.to)) &&
       !(elysium && isKnownElysiumLaunchRouter(chainId, str(s.to)))
     )
@@ -2155,10 +2212,18 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         );
     }
 
+    if (synthraLaunchpad && chainId !== 4663 && chainId !== 5042) {
+      reasons.push(
+        "Synthra LaunchPad direct trades are Arc or Robinhood mainnet only",
+      );
+    }
+
     const nativeIn = isNativeSentinel(tokenIn, "dex");
     if (nativeIn && amount !== null && decimals !== null) {
       try {
-        const expected = ethers.parseUnits(str(s.amountIn), decimals);
+        const expected =
+          ethers.parseUnits(str(s.amountIn), decimals) *
+          (synthraLaunchpad && chainId === 5042 ? 1_000_000_000_000n : 1n);
         if (BigInt(str(s.value)) !== expected)
           reasons.push(
             "the aggregator's native value does not equal the reviewed input amount",
@@ -3037,7 +3102,6 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         `grant's health floor (${(hfBps / 10_000).toFixed(2)}) is below your ${limits.minHealthFactor}`,
       );
     }
-
     if (!Array.isArray(s.tokens))
       reasons.push("no token allowlist on the grant");
 
@@ -3507,6 +3571,16 @@ export async function auditPlan(opts: {
     ) {
       shape.reasons.push(
         "the Elysium launch token does not resolve to an active launchpad pool",
+      );
+    }
+    if (
+      shape.reasons.length === 0 &&
+      kind === "aggregatorSwap" &&
+      str(step.venue) === "synthra-launchpad" &&
+      !(await synthraLaunchpadMatches(step, chainId))
+    ) {
+      shape.reasons.push(
+        "the Synthra launch token does not resolve to the active LaunchPad contract",
       );
     }
     if (shape.reasons.length > 0 || chainId === undefined) {

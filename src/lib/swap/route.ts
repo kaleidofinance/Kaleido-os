@@ -4,6 +4,7 @@ import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
 import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
 import { getSynthraExecution } from "@/lib/swap/synthra";
 import { getPeachTradeExecution } from "@/lib/peach/route";
+import { getSynthraLaunchpadTradeExecution } from "@/lib/synthraLaunchpad/route";
 import {
   ELYSIUM_CHAIN_ID,
   getElysiumTradeExecution,
@@ -72,6 +73,23 @@ export async function resolveSwapRoute(
         venue: "peach",
       };
     }
+  }
+  const synthraLaunchpad = await getSynthraLaunchpadTradeExecution(request);
+  if (synthraLaunchpad) {
+    return {
+      to: synthraLaunchpad.to,
+      data: synthraLaunchpad.data,
+      value: synthraLaunchpad.value,
+      spender: synthraLaunchpad.spender,
+      amountOut: synthraLaunchpad.amountOut,
+      minimumOut: synthraLaunchpad.minimumOut,
+      venue: "synthra-launchpad",
+      nativeIn: synthraLaunchpad.nativeIn,
+      nativeOut: synthraLaunchpad.nativeOut,
+      ...(synthraLaunchpad.gasLimit
+        ? { gasLimit: synthraLaunchpad.gasLimit }
+        : {}),
+    };
   }
   const unknownElysiumAsset =
     args.chainId === ELYSIUM_CHAIN_ID &&

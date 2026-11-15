@@ -2,6 +2,7 @@ import { NATIVE_SENTINEL } from "@/constants/registry";
 import {
   isSynthraExecutor,
   isSynthraInternalRouter,
+  isSynthraLaunchpad,
 } from "./synthraDeployments";
 
 export const SYNTHRA_ELYSIUM_ROUTER =
@@ -13,7 +14,8 @@ export function isSynthraRouter(
 ): boolean {
   return (
     isSynthraInternalRouter(chainId, address) ||
-    isSynthraExecutor(chainId, address)
+    isSynthraExecutor(chainId, address) ||
+    isSynthraLaunchpad(chainId, address)
   );
 }
 

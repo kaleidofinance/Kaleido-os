@@ -470,6 +470,11 @@ export interface AggregatorSwapRoute {
   amountOut: string;
   /** Exact output floor in base units when provided by the route. */
   minimumOut?: string;
+  /** Direct launchpad quote legs may be paid/received as native value. */
+  nativeIn?: boolean;
+  nativeOut?: boolean;
+  /** Synthra closing buys need an explicit gas floor. */
+  gasLimit?: string;
   /** The venue that produced to/data, e.g. "kyberswap". */
   venue: string;
 }
@@ -1722,7 +1727,11 @@ export async function buildIntents(
         : (Number(out) * (1 - opts.slippageBps / 10000)).toFixed(
             outTok.decimals > 6 ? 6 : outTok.decimals,
           );
-      const approve: Intent | null = inTok.isNative
+      const nativeIn = Boolean(route.nativeIn) || inTok.isNative;
+      const nativeOut = Boolean(route.nativeOut);
+      const routeTokenIn = nativeIn ? NATIVE_SENTINEL.dex : inTok.address;
+      const routeTokenOut = nativeOut ? NATIVE_SENTINEL.dex : outTok.address;
+      const approve: Intent | null = nativeIn
         ? null
         : {
             kind: "approve",
@@ -1737,11 +1746,11 @@ export async function buildIntents(
         to: route.to,
         data: route.data,
         value: route.value,
-        tokenIn: inTok.address,
+        tokenIn: routeTokenIn,
         amountIn: aggAmount,
         decimalsIn: inTok.decimals,
         symbolIn: inTok.symbol,
-        tokenOut: outTok.address,
+        tokenOut: routeTokenOut,
         amountOut: out,
         amountOutMin: minOut,
         decimalsOut: outTok.decimals,
@@ -1750,6 +1759,7 @@ export async function buildIntents(
         venue: route.venue,
         spender: route.spender,
         slippageBps: opts.slippageBps,
+        ...(route.gasLimit ? { gasLimit: route.gasLimit } : {}),
       };
       const unwrap: Intent | null = sellIsWrapped
         ? {

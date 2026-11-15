@@ -68,6 +68,12 @@ export const SYNTHRA_EXECUTORS: Readonly<Record<number, readonly string[]>> = {
   99901: ["0x8f419898da502d3f49ef379775507210de2bfe3a"],
 };
 
+/** Direct Synthra LaunchPad write contracts (Arc + Robinhood mainnet). */
+export const SYNTHRA_LAUNCHPADS: Readonly<Record<number, readonly string[]>> = {
+  4663: ["0x3D26D96BC9d1C3FcAE0D156E830c723051364847"],
+  5042: ["0x18D33De5eefB2F91B09385f35f6a1317659cc1F9"],
+};
+
 const lower = (value: string) => value.toLowerCase();
 
 export function synthraInternalRoutersFor(chainId: number): readonly string[] {
@@ -82,6 +88,10 @@ export function synthraInternalFactoriesFor(
 
 export function synthraExecutorsFor(chainId: number): readonly string[] {
   return SYNTHRA_EXECUTORS[chainId] ?? [];
+}
+
+export function synthraLaunchpadsFor(chainId: number): readonly string[] {
+  return SYNTHRA_LAUNCHPADS[chainId] ?? [];
 }
 
 export function isSynthraInternalRouter(
@@ -103,6 +113,18 @@ export function isSynthraExecutor(
   return (
     typeof chainId === "number" &&
     synthraExecutorsFor(chainId).some(
+      (candidate) => lower(candidate) === lower(address),
+    )
+  );
+}
+
+export function isSynthraLaunchpad(
+  chainId: number | undefined,
+  address: string,
+): boolean {
+  return (
+    typeof chainId === "number" &&
+    synthraLaunchpadsFor(chainId).some(
       (candidate) => lower(candidate) === lower(address),
     )
   );

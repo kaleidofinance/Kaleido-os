@@ -359,6 +359,8 @@ export type Intent =
       venue: string;
       /** The router the paired approve authorises; equal to `to` by construction. */
       spender: string;
+      /** Explicit gas floor for a closing launchpad buy. */
+      gasLimit?: string;
       /**
        * The slippage tolerance the route was quoted at, in bps. Carried so the
        * resolver can REBUILD the router calldata at sign time (aggregator routes

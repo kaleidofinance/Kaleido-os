@@ -111,6 +111,7 @@ function TokenRow({
       tag !== "argus" &&
       tag !== "peach" &&
       tag !== "elysium" &&
+      tag !== "synthra" &&
       tag !== "meme" &&
       tag !== "stablecoin" &&
       tag !== "stock" &&
@@ -122,10 +123,12 @@ function TokenRow({
   const launchpadLabel = launchpadTag
     ? `${launchpadTag.charAt(0).toUpperCase() + launchpadTag.slice(1)} launch`
     : token.tags?.includes("argus")
-    ? "Argus launch"
-    : token.tags?.includes("peach")
-    ? "Peach launch"
-    : null;
+      ? "Argus launch"
+      : token.tags?.includes("peach")
+        ? "Peach launch"
+        : token.tags?.includes("synthra")
+          ? "Synthra launch"
+          : null;
 
   return (
     <button
@@ -145,7 +148,11 @@ function TokenRow({
             alt=""
             width={34}
             height={34}
-            style={{ borderRadius: "50%", display: "block", objectFit: "contain" }}
+            style={{
+              borderRadius: "50%",
+              display: "block",
+              objectFit: "contain",
+            }}
           />
         ) : (
           <TokenIcon
@@ -169,7 +176,9 @@ function TokenRow({
         </div>
       </div>
       {launchpadLabel && <span className={s.tag}>{launchpadLabel}</span>}
-      {!launchpadLabel && isCustom && <span className={s.tag}>Custom token</span>}
+      {!launchpadLabel && isCustom && (
+        <span className={s.tag}>Custom token</span>
+      )}
       {/* Said before the click, not after. The wallet's own confirmation is the
           consent gate, but a prompt you did not expect reads as the site
           misbehaving — and the reason this row switches networks is not
@@ -603,7 +612,11 @@ export default function TokenSelector({
   const isPastedAddress = isAddress(trimmedQuery);
   const inPool = useMemo(() => {
     if (!isPastedAddress) return null;
-    return pool.find((t) => t.address.toLowerCase() === trimmedQuery.toLowerCase()) ?? null;
+    return (
+      pool.find(
+        (t) => t.address.toLowerCase() === trimmedQuery.toLowerCase(),
+      ) ?? null
+    );
   }, [pool, isPastedAddress, trimmedQuery]);
 
   useEffect(() => {
@@ -624,13 +637,18 @@ export default function TokenSelector({
 
     const tryFetchOnChain = async (cId: number) => {
       try {
-        const res = await fetch(`/api/token/card?chainId=${cId}&address=${trimmedQuery}`, {
-          signal: abort.signal,
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/token/card?chainId=${cId}&address=${trimmedQuery}`,
+          {
+            signal: abort.signal,
+            cache: "no-store",
+          },
+        );
         if (!res.ok) return null;
         const data = await res.json();
-        return data?.ok && (data.symbol || data.name) ? { data, chainId: cId } : null;
+        return data?.ok && (data.symbol || data.name)
+          ? { data, chainId: cId }
+          : null;
       } catch {
         return null;
       }
@@ -660,11 +678,15 @@ export default function TokenSelector({
             name: data.name || data.symbol || "Custom Token",
             symbol: data.symbol || "TOKEN",
             decimals: typeof data.decimals === "number" ? data.decimals : 18,
-            logoURI: data.launchpadId
-              ? `/launchpads/${data.launchpadId}.svg`
-              : undefined,
+            logoURI:
+              data.imageUrl ??
+              (data.launchpadId && data.launchpadId !== "synthra"
+                ? `/launchpads/${data.launchpadId}.svg`
+                : undefined),
             tags: [
-              ...(data.source && data.source !== "unknown" && data.source !== "listed"
+              ...(data.source &&
+              data.source !== "unknown" &&
+              data.source !== "listed"
                 ? [data.source]
                 : []),
               ...(data.launchpadId ? [data.launchpadId] : []),
@@ -674,6 +696,7 @@ export default function TokenSelector({
               data.source === "argus" ||
               data.source === "peach" ||
               data.source === "elysium" ||
+              data.source === "synthra" ||
               data.source === "listed",
           };
           setResolvedToken(customToken);
@@ -687,7 +710,9 @@ export default function TokenSelector({
         }
       } catch {
         if (!abort.signal.aborted) {
-          setResolveError("Couldn't reach token lookup. Try again in a moment.");
+          setResolveError(
+            "Couldn't reach token lookup. Try again in a moment.",
+          );
         }
       } finally {
         if (!abort.signal.aborted) {
@@ -851,7 +876,9 @@ export default function TokenSelector({
                     token={resolvedToken}
                     onSelect={handleSelect}
                     switches={
-                      Boolean(wallet) && switchOnSelect && resolvedToken.chainId !== chainId
+                      Boolean(wallet) &&
+                      switchOnSelect &&
+                      resolvedToken.chainId !== chainId
                     }
                     disabled={switching}
                   />
@@ -860,7 +887,12 @@ export default function TokenSelector({
                 <div className={s.empty}>
                   {resolveError ? (
                     <>
-                      <div style={{ color: "var(--k-red, #ff5555)", marginBottom: 4 }}>
+                      <div
+                        style={{
+                          color: "var(--k-red, #ff5555)",
+                          marginBottom: 4,
+                        }}
+                      >
                         Token lookup failed
                       </div>
                       <div style={{ fontSize: "12px", opacity: 0.8 }}>
