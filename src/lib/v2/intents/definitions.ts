@@ -614,7 +614,9 @@ register("bridge", {
         ? `Arrives on ${i.toChainName} in about ${Math.round(
             i.etaSeconds / 60,
           )} min. Signed on this chain; irreversible once sent.`
-        : `Signed on this chain and delivered to ${i.toChainName}. Irreversible once sent.`;
+        : i.provider === "synthra"
+          ? `Source transaction is signed; Synthra will settle it on ${i.toChainName}. Luca will check the provider status before calling it complete.`
+          : `Signed on this chain and delivered to ${i.toChainName}. Irreversible once sent.`;
     /*
      * A cross-asset bridge (BNB → USDC) swaps as it moves, so — exactly like an
      * aggregator swap's row — the user must see what they will RECEIVE and the
@@ -674,6 +676,7 @@ export async function freshAggregatorCall(
       chainId: i.chainId,
       tokenIn: i.tokenIn,
       tokenOut: i.tokenOut,
+      decimalsIn: i.decimalsIn,
       decimalsOut: i.decimalsOut,
       amountUnits: ethers.parseUnits(i.amountIn, i.decimalsIn).toString(),
       address,

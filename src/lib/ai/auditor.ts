@@ -17,6 +17,7 @@ import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
+import { isKnownSynthraExternalSpender } from "@/lib/swap/synthraExternalSpenders";
 import {
   ARGUS_CHAIN_ID,
   ARGUS_V4,
@@ -1098,7 +1099,10 @@ function spenderReasons(
      allowlist before the local-contract guard; otherwise a legitimate CCTP or
      LI.FI approval is rejected with the misleading "no Kaleido contracts"
      error before its vetted spender can be considered. */
-  if (isKnownBridgeSpender(spender))
+  if (
+    isKnownBridgeSpender(spender) ||
+    isKnownSynthraExternalSpender(chainId, spender)
+  )
     return {
       reasons: [],
       note: "this approves a bridge provider's router, not a Kaleido contract — it is the one outside address this app authorises, and only a bridge step should be pairing it",
@@ -1123,6 +1127,7 @@ function spenderReasons(
     isKnownSwapRouter(chainId, spender) ||
     isKnownFlyTradeRouter(chainId, spender) ||
     isKnownLifiSwapRouter(chainId, spender) ||
+    isSynthraRouter(chainId, spender) ||
     isKnownElysiumLaunchRouter(chainId, spender)
   )
     return {
@@ -1790,7 +1795,9 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       !tok.ok &&
       ethers.isAddress(token) &&
       !!str(s.toToken) &&
-      (str(s.provider) === "lifi" || str(s.provider) === "relay");
+      (str(s.provider) === "lifi" ||
+        str(s.provider) === "relay" ||
+        str(s.provider) === "synthra");
     if (!tok.ok && !unverifiedSwapOut)
       reasons.push(`unrecognised token ${token || "(none)"}`);
 
@@ -1866,6 +1873,13 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         reasons.push("a CCTP bridge burns the USDC token, not native currency");
       if (tok.ok && (tok.symbol ?? "").toUpperCase() !== "USDC")
         reasons.push("CCTP only carries USDC");
+    } else if (provider === "synthra") {
+      if (!/^[A-Za-z0-9._:-]{8,256}$/.test(str(s.statusRequestId)))
+        reasons.push("the Synthra execution status id is missing or malformed");
+      if (!wantsNative && !ethers.isAddress(str(s.spender)))
+        reasons.push(
+          "the Synthra token bridge is missing its provider spender",
+        );
     } else if (provider !== "lifi" && provider !== "relay") {
       /* Fail closed: a canonical target is allow-listed and an aggregator's is
          bounded by the cap, so anything else is neither and is refused. */
@@ -1948,7 +1962,11 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       const spender = str(s.spender);
       if (!spender)
         reasons.push("a token bridge is missing its router to approve");
-      else if (!isKnownBridgeSpender(spender))
+      else if (
+        provider !== "synthra" &&
+        !isKnownBridgeSpender(spender) &&
+        !isKnownSynthraExternalSpender(fromChainId ?? chainId, spender)
+      )
         reasons.push(
           "the bridge router being approved is not one this app recognises",
         );

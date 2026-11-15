@@ -42,4 +42,36 @@ assert.equal(
   false,
 );
 assert.equal(verifySynthraInternalCall({ ...base, wallet: b }), false);
+assert.equal(
+  verifySynthraInternalCall({
+    ...base,
+    to: "0x18D33De5eefB2F91B09385f35f6a1317659cc1F9",
+  }),
+  false,
+);
+
+const arcLeg = {
+  ...leg,
+  tokenIn: { address: a, chainId: 5042 },
+  tokenOut: { address: b, chainId: 5042 },
+};
+const arcPath = ethers.solidityPacked(
+  ["address", "uint24", "address"],
+  [a, 500, b],
+);
+const arcData = iface.encodeFunctionData("exactInput", [
+  [arcPath, a, 100n, 90n],
+]);
+assert.equal(
+  verifySynthraInternalCall({
+    ...base,
+    chainId: 5042,
+    to: "0x0abd8A8F8c6188C55f7e817273FCb7d9c3699962",
+    data: arcData,
+    value: "0",
+    nativeInput: false,
+    legs: [arcLeg],
+  }),
+  true,
+);
 console.log("Synthra internal calldata checks passed");

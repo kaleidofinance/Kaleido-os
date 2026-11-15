@@ -14,10 +14,12 @@ import { freshAggregatorCall } from "@/lib/v2/intents/definitions";
 import { useResolverContext } from "@/hooks/v2/useResolverContext";
 import { useSwitchWalletChain } from "@/lib/wallet";
 import { useBatchCalls } from "@/hooks/v2/useBatchCalls";
-import { recordTx, txFromError } from "@/lib/v2/txLog";
+import { recordTx, txFromError } from "@/lib/v2/txLog";
+
 import { postWithRetry } from "@/lib/v2/postWithRetry";
 import { recordCctpBurn } from "@/lib/bridge/cctpPending";
 import { recordLifiPending } from "@/lib/bridge/lifiPending";
+import { recordSynthraPending } from "@/lib/bridge/synthraPending";
 import { describeFailure, isRejection } from "@/lib/v2/txErrors";
 import { displayTxDetail, displayTxTitle } from "@/lib/v2/txDisplay";
 import { PROTOCOL_ERROR_ABI } from "@/lib/v2/protocolErrors";
@@ -286,8 +288,14 @@ export default function PlanReview({
     const ctx = getContext();
     const burn = intents.find(
       (it) =>
-        it.kind === "bridge" && (it as { provider?: string }).provider === "cctp",
-    ) as (Extract<Intent, { kind: "bridge" }> & { toChainId: number; toChainName: string }) | undefined;
+        it.kind === "bridge" &&
+        (it as { provider?: string }).provider === "cctp",
+    ) as
+      | (Extract<Intent, { kind: "bridge" }> & {
+          toChainId: number;
+          toChainName: string;
+        })
+      | undefined;
     if (!ctx?.address || !burn) {
       setDestGas(null);
       return;
@@ -311,7 +319,10 @@ export default function PlanReview({
         let keeper = false;
         try {
           const res = await fetch("/api/cctp/status", { cache: "no-store" });
-          if (res.ok) keeper = Boolean(((await res.json()) as { keeper?: boolean }).keeper);
+          if (res.ok)
+            keeper = Boolean(
+              ((await res.json()) as { keeper?: boolean }).keeper,
+            );
         } catch {
           /* Unknown reads as "no keeper" — the cautious reading. */
         }
@@ -405,7 +416,8 @@ export default function PlanReview({
      the approvals inside it are how that trade is signed, not separate asks. */
   const runOf = useMemo(() => {
     const map = new Map<number, (typeof runs)[number]>();
-    for (const r of runs) if (r.bundled) for (const st of r.steps) map.set(st, r);
+    for (const r of runs)
+      if (r.bundled) for (const st of r.steps) map.set(st, r);
     return map;
   }, [runs]);
   /**
@@ -477,7 +489,8 @@ export default function PlanReview({
    */
   const pauseAfter = (i: number, skipped: boolean) => {
     if (noPauseRef.current) return false;
-    if (stepMode !== "manual" || skipped || i >= intents.length - 1) return false;
+    if (stepMode !== "manual" || skipped || i >= intents.length - 1)
+      return false;
     setNext(i + 1);
     setRunning(false);
     return true;
@@ -505,7 +518,8 @@ export default function PlanReview({
       ...ctx,
       signer: new Proxy(ctx.signer, {
         get(target, property, receiver) {
-          if (property !== "sendTransaction") return Reflect.get(target, property, receiver);
+          if (property !== "sendTransaction")
+            return Reflect.get(target, property, receiver);
           return async (...args: Parameters<typeof target.sendTransaction>) => {
             const tx = await target.sendTransaction(...args);
             if (tx?.hash) {
@@ -548,29 +562,36 @@ export default function PlanReview({
         /* Manual swaps and Luca swaps share this confirmed resolver seam. Notify
            the waitlist verifier opportunistically; a non-waitlisted wallet or a
            temporary API failure must never block a completed trade. */
-        if (["swap", "swapMultiHop", "aggregatorSwap"].includes(intents[i].kind)) {
+        if (
+          ["swap", "swapMultiHop", "aggregatorSwap"].includes(intents[i].kind)
+        ) {
           void postWithRetry("/api/waitlist/transaction", {
-              address: ctx.address,
-              task: "agent",
-              txHash: result.hash,
-              chainId: ctx.chainId,
-              operation: intents[i].kind,
-              provider: intents[i].kind === "aggregatorSwap" ? "kyberswap" : "kaleido",
-            });
+            address: ctx.address,
+            task: "agent",
+            txHash: result.hash,
+            chainId: ctx.chainId,
+            operation: intents[i].kind,
+            provider:
+              intents[i].kind === "aggregatorSwap" ? "kyberswap" : "kaleido",
+          });
         }
         if (intents[i].kind === "bridge") {
           void postWithRetry("/api/waitlist/transaction", {
-              address: ctx.address,
-              task: "bridge",
-              txHash: result.hash,
-              chainId: ctx.chainId,
-              operation: "bridge",
-              provider: (intents[i] as Extract<Intent, { kind: "bridge" }>).provider,
-              amount: (intents[i] as Extract<Intent, { kind: "bridge" }>).amount,
-              symbol: (intents[i] as Extract<Intent, { kind: "bridge" }>).symbol,
-              sourceChainId: (intents[i] as Extract<Intent, { kind: "bridge" }>).fromChainId,
-              destinationChainId: (intents[i] as Extract<Intent, { kind: "bridge" }>).toChainId,
-            });
+            address: ctx.address,
+            task: "bridge",
+            txHash: result.hash,
+            chainId: ctx.chainId,
+            operation: "bridge",
+            provider: (intents[i] as Extract<Intent, { kind: "bridge" }>)
+              .provider,
+            amount: (intents[i] as Extract<Intent, { kind: "bridge" }>).amount,
+            symbol: (intents[i] as Extract<Intent, { kind: "bridge" }>).symbol,
+            sourceChainId: (intents[i] as Extract<Intent, { kind: "bridge" }>)
+              .fromChainId,
+            destinationChainId: (
+              intents[i] as Extract<Intent, { kind: "bridge" }>
+            ).toChainId,
+          });
         }
       }
       /* A CCTP burn is only half a transfer: the USDC is minted on the
@@ -604,12 +625,23 @@ export default function PlanReview({
              reach the pool page's platform totals. Fire-and-forget, chain-
              verified server-side; a failure never touches the completed bridge. */
           void postWithRetry("/api/bridge/record", {
-              txHash: result.hash,
-              sourceChainId: b.fromChainId,
-              wallet: ctx.address,
-              amount: b.amount,
-              symbol: b.symbol,
-            });
+            txHash: result.hash,
+            sourceChainId: b.fromChainId,
+            wallet: ctx.address,
+            amount: b.amount,
+            symbol: b.symbol,
+          });
+        } else if (b.provider === "synthra" && b.statusRequestId) {
+          recordSynthraPending(ctx.address, {
+            txHash: result.hash,
+            requestId: b.statusRequestId,
+            sourceChainId: b.fromChainId,
+            destinationChainId: b.toChainId,
+            destinationChainName: b.toChainName,
+            amount: b.amount,
+            symbol: b.symbol,
+            createdAt: Date.now(),
+          });
         }
       }
       return pauseAfter(i, !!result.skipped) ? "paused" : "done";
@@ -775,7 +807,10 @@ export default function PlanReview({
          receipt wait failed — the calls may yet land, and re-signing them one by
          one could execute the swap twice. Stop and say so instead. */
       if ((err as { sent?: boolean } | null)?.sent) {
-        console.warn("[PlanReview] bundle accepted but unconfirmed, not re-signing:", err);
+        console.warn(
+          "[PlanReview] bundle accepted but unconfirmed, not re-signing:",
+          err,
+        );
         for (const i of steps) setStep(i, "failed");
         setRunning(false);
         setNext(steps[0]);
@@ -838,21 +873,27 @@ export default function PlanReview({
          CCTP_ENABLED — see runStep. */
       /* An exit run carries several bridges under one hash — record each, not
          only the last. */
-      for (const lastIntent of steps.map((x) => intents[x]).filter((it) => it.kind === "bridge")) {
+      for (const lastIntent of steps
+        .map((x) => intents[x])
+        .filter((it) => it.kind === "bridge")) {
         const b = lastIntent as Extract<Intent, { kind: "bridge" }>;
         if (hash) {
           void postWithRetry("/api/waitlist/transaction", {
-              address: ctx.address,
-              task: "bridge",
-              txHash: hash,
-              chainId: ctx.chainId,
-              operation: "bridge",
-              provider: (lastIntent as Extract<Intent, { kind: "bridge" }>).provider,
-              amount: (lastIntent as Extract<Intent, { kind: "bridge" }>).amount,
-              symbol: (lastIntent as Extract<Intent, { kind: "bridge" }>).symbol,
-              sourceChainId: (lastIntent as Extract<Intent, { kind: "bridge" }>).fromChainId,
-              destinationChainId: (lastIntent as Extract<Intent, { kind: "bridge" }>).toChainId,
-            });
+            address: ctx.address,
+            task: "bridge",
+            txHash: hash,
+            chainId: ctx.chainId,
+            operation: "bridge",
+            provider: (lastIntent as Extract<Intent, { kind: "bridge" }>)
+              .provider,
+            amount: (lastIntent as Extract<Intent, { kind: "bridge" }>).amount,
+            symbol: (lastIntent as Extract<Intent, { kind: "bridge" }>).symbol,
+            sourceChainId: (lastIntent as Extract<Intent, { kind: "bridge" }>)
+              .fromChainId,
+            destinationChainId: (
+              lastIntent as Extract<Intent, { kind: "bridge" }>
+            ).toChainId,
+          });
         }
         if (b.provider === "cctp") {
           recordCctpBurn(ctx.address, {
@@ -878,12 +919,23 @@ export default function PlanReview({
              reach the pool page's platform totals. Fire-and-forget, chain-
              verified server-side; a failure never touches the completed bridge. */
           void postWithRetry("/api/bridge/record", {
-              txHash: hash,
-              sourceChainId: b.fromChainId,
-              wallet: ctx.address,
-              amount: b.amount,
-              symbol: b.symbol,
-            });
+            txHash: hash,
+            sourceChainId: b.fromChainId,
+            wallet: ctx.address,
+            amount: b.amount,
+            symbol: b.symbol,
+          });
+        } else if (b.provider === "synthra" && b.statusRequestId) {
+          recordSynthraPending(ctx.address, {
+            txHash: hash,
+            requestId: b.statusRequestId,
+            sourceChainId: b.fromChainId,
+            destinationChainId: b.toChainId,
+            destinationChainName: b.toChainName,
+            amount: b.amount,
+            symbol: b.symbol,
+            createdAt: Date.now(),
+          });
         }
       }
     }
@@ -1060,7 +1112,10 @@ export default function PlanReview({
             /* A run of several actions (moving every token off a chain) keeps a
                row per bridge — collapsing to its last step would hide the rest —
                and says once, under its last row, that it is one confirmation. */
-            const multi = !!anyRun && anyRun.steps.filter((x) => intents[x].kind !== "approve").length > 1;
+            const multi =
+              !!anyRun &&
+              anyRun.steps.filter((x) => intents[x].kind !== "approve").length >
+                1;
             const run = multi ? undefined : anyRun;
             if (run && i !== run.steps[run.steps.length - 1]) return null;
             shown += 1;
@@ -1069,14 +1124,24 @@ export default function PlanReview({
                 ? "failed"
                 : run.steps.some((x) => statuses[x] === "pending")
                   ? "pending"
-                  : run.steps.every((x) => statuses[x] === "done" || statuses[x] === "skipped")
+                  : run.steps.every(
+                        (x) =>
+                          statuses[x] === "done" || statuses[x] === "skipped",
+                      )
                     ? "done"
                     : "idle"
               : statuses[i];
             const approvals = run
               ? run.steps
                   .slice(0, -1)
-                  .map((x) => intents[x] as { kind: string; symbol?: string; unlimited?: boolean })
+                  .map(
+                    (x) =>
+                      intents[x] as {
+                        kind: string;
+                        symbol?: string;
+                        unlimited?: boolean;
+                      },
+                  )
               : [];
             const oneTime = approvals.some((a) => a.unlimited);
             const sym = approvals.find((a) => a.symbol)?.symbol;
@@ -1085,17 +1150,24 @@ export default function PlanReview({
                 <span className={s.marker}>{mark(st, shown)}</span>
                 <div className={s.body}>
                   <div className={s.stTitle}>{displayTxTitle(v.title)}</div>
-                  {v.detail && <div className={s.stDetail}>{displayTxDetail(v.detail)}</div>}
+                  {v.detail && (
+                    <div className={s.stDetail}>
+                      {displayTxDetail(v.detail)}
+                    </div>
+                  )}
                   {st === "skipped" && (
                     <div className={s.stNote}>
                       Already done — no transaction needed.
                     </div>
                   )}
-                  {multi && !done && anyRun && i === anyRun.steps[anyRun.steps.length - 1] && (
-                    <div className={s.stNote}>
-                      {`All ${anyRun.steps.length} steps above go out together — one confirmation in your wallet.`}
-                    </div>
-                  )}
+                  {multi &&
+                    !done &&
+                    anyRun &&
+                    i === anyRun.steps[anyRun.steps.length - 1] && (
+                      <div className={s.stNote}>
+                        {`All ${anyRun.steps.length} steps above go out together — one confirmation in your wallet.`}
+                      </div>
+                    )}
                   {run && !done && (
                     <div className={s.stNote}>
                       {oneTime
@@ -1120,11 +1192,13 @@ export default function PlanReview({
           {shortfall.want}.
         </div>
       )}
-      {destGas && !running && next === 0 && (
-        destGas.keeper ? (
+      {destGas &&
+        !running &&
+        next === 0 &&
+        (destGas.keeper ? (
           <div className={s.stNote}>
-            No gas needed on {destGas.chain}: once Circle attests, the mint there
-            is completed for you.
+            No gas needed on {destGas.chain}: once Circle attests, the mint
+            there is completed for you.
           </div>
         ) : (
           <div className={s.shortfall}>
@@ -1132,8 +1206,7 @@ export default function PlanReview({
             other side, and nothing can pay it for you yet. Add a little{" "}
             {destGas.chain} gas first — the mint there is what needs it.
           </div>
-        )
-      )}
+        ))}
 
       <div className={s.actions}>
         {!done && onCancel && (
@@ -1158,7 +1231,10 @@ export default function PlanReview({
           <button
             className={s.primary}
             onClick={() => run()}
-            disabled={running || (next === 0 && (!!shortfall || (!!destGas && !destGas.keeper)))}
+            disabled={
+              running ||
+              (next === 0 && (!!shortfall || (!!destGas && !destGas.keeper)))
+            }
           >
             {running
               ? "Signing…"
@@ -1182,7 +1258,10 @@ export default function PlanReview({
         <button
           className={s.alt}
           onClick={() => run(true)}
-          disabled={running || (next === 0 && (!!shortfall || (!!destGas && !destGas.keeper)))}
+          disabled={
+            running ||
+            (next === 0 && (!!shortfall || (!!destGas && !destGas.keeper)))
+          }
         >
           {next > 0
             ? `Run the remaining ${intents.length - next} without stopping`

@@ -11,6 +11,9 @@ export interface SynthraQuoteIdentity {
 export interface SynthraValidatedQuote {
   quoteId: string;
   expiresAt: number;
+  /** Present for external execution and used to poll settlement status. */
+  executionRequestId?: string;
+  chosen?: "internal" | "external" | string;
   amountOut: string;
   minimumAmountOut: string;
   /** Provider steps are untrusted data; validation here does not authorize signing. */
@@ -31,6 +34,11 @@ export function validateSynthraQuote(
     typeof a === "string" && a.toLowerCase() === b.toLowerCase();
   const integer = (a: unknown): a is string =>
     typeof a === "string" && /^\d+$/.test(a);
+  const requestId = q?.executionRequestId ?? r.executionRequestId;
+  const validRequestId =
+    requestId === undefined ||
+    (typeof requestId === "string" &&
+      /^[A-Za-z0-9._:-]{8,256}$/.test(requestId));
   if (
     r.state !== "Success" ||
     q?.state !== "Success" ||
@@ -58,7 +66,8 @@ export function validateSynthraQuote(
     BigInt(q.minimumAmountOut) <= 0n ||
     BigInt(q.minimumAmountOut) > BigInt(q.amountOut) ||
     !Array.isArray(q.steps) ||
-    q.steps.length === 0
+    q.steps.length === 0 ||
+    !validRequestId
   )
     return null;
   if (
@@ -78,6 +87,8 @@ export function validateSynthraQuote(
   return {
     quoteId: r.quoteId,
     expiresAt: r.expiresAt,
+    ...(typeof requestId === "string" ? { executionRequestId: requestId } : {}),
+    ...(typeof r.chosen === "string" ? { chosen: r.chosen } : {}),
     amountOut: q.amountOut,
     minimumAmountOut: q.minimumAmountOut,
     steps: q.steps,

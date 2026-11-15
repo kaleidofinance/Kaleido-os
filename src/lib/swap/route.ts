@@ -98,7 +98,11 @@ export async function resolveSwapRoute(
     hasLifiSwap(args.chainId)
       ? getLifiSwapExecution(request)
       : Promise.resolve(null),
-    getSynthraExecution({ ...request, decimalsOut: args.decimalsOut }),
+    getSynthraExecution({
+      ...request,
+      decimalsIn: args.decimalsIn,
+      decimalsOut: args.decimalsOut,
+    }),
   ]);
   const candidates = [
     { exec: kyber, venue: "kyberswap" },

@@ -659,6 +659,7 @@ export default function SwapPage() {
                 : Promise.resolve(null),
               getSynthraExecution({
                 ...request,
+                decimalsIn: kyberSell.decimals,
                 decimalsOut: kyberBuy.decimals,
               }),
             ],

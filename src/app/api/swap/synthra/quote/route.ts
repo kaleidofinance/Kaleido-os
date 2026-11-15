@@ -10,6 +10,7 @@ export async function GET(request: Request) {
       chainId: Number(p.get("chainId")),
       tokenIn: p.get("tokenIn") ?? "",
       tokenOut: p.get("tokenOut") ?? "",
+      decimalsIn: Number(p.get("decimalsIn")),
       decimalsOut: Number(p.get("decimalsOut")),
       amountUnits: p.get("amountUnits") ?? "",
       address: p.get("address") ?? "",

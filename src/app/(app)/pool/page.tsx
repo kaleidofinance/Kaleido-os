@@ -105,7 +105,9 @@ export default function PoolsPage() {
   const externalPools = external.flatMap((snapshot) => snapshot.pools);
   const { showTestnets } = useTestnetMode();
   const modeExternalPools = externalPools.filter(
-    (pool) => CHAINS_BY_ID[pool.chainId]?.network === (showTestnets ? "testnet" : "mainnet"),
+    (pool) =>
+      CHAINS_BY_ID[pool.chainId]?.network ===
+      (showTestnets ? "testnet" : "mainnet"),
   );
   const v2 = usePoolData();
   const v3 = useV3Pools();
@@ -529,7 +531,7 @@ export default function PoolsPage() {
                           </div>
                           <div
                             className={s.pairFee}
-                            title={`Curated ${pool.provider ?? "external"} route; metrics from ${pool.metricsSource ?? "dated registry snapshot"}${pool.metricsAsOf ? ` as of ${pool.metricsAsOf}` : ""}`}
+                            title={`${pool.provider === "synthra" ? "Synthra indexed metadata; execution still requires a fresh best-execution quote" : `Curated ${pool.provider ?? "external"} route`}; metrics from ${pool.metricsSource ?? "dated registry snapshot"}${pool.metricsAsOf ? ` as of ${pool.metricsAsOf}` : ""}`}
                           >
                             {pool.exchange} · External{" "}
                             <ChainTag chainId={pool.chainId} />

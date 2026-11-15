@@ -371,6 +371,8 @@ export interface BridgeRoute {
   /** "canonical" | "lifi" — how the auditor decides what to re-check. */
   provider: string;
   etaSeconds: number | null;
+  /** Provider execution id for asynchronous Synthra settlement tracking. */
+  statusRequestId?: string;
   /**
    * The router to approve, on an ERC20 leg only. Vetted by the resolver against
    * `isKnownBridgeSpender` and against `to`, so the builder can pair an approve
@@ -2854,6 +2856,9 @@ export async function buildIntents(
             toChainName: route.toChainName,
             provider: route.provider,
             etaSeconds: route.etaSeconds,
+            ...(route.statusRequestId
+              ? { statusRequestId: route.statusRequestId }
+              : {}),
             isNative,
             ...(command.recipient ? { recipient: command.recipient } : {}),
             ...(route.spender ? { spender: route.spender } : {}),

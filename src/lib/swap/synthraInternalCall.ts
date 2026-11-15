@@ -1,12 +1,15 @@
 import { ethers } from "ethers";
 import type { SynthraPoolLeg } from "./synthraPoolSafety";
+import { isSynthraInternalRouter } from "./synthraDeployments";
 
 const MULTICALL = new ethers.Interface([
   "function multicall(uint256 deadline,bytes[] data) payable returns (bytes[] results)",
   "function exactInput((bytes path,address recipient,uint256 amountIn,uint256 amountOutMinimum) params) payable returns (uint256 amountOut)",
 ]);
 
-/** Decode only the single exact-input SwapRouter02 shape inspected on Elysium. */
+/** Decode the documented exact-input SwapRouter02 shape on Synthra's internal
+ * deployments. Both direct exactInput and deadline-wrapped multicall are
+ * accepted; no other router method is admitted. */
 export function verifySynthraInternalCall(input: {
   chainId: number;
   to: string;
@@ -20,21 +23,29 @@ export function verifySynthraInternalCall(input: {
   nowSeconds?: number;
 }): boolean {
   try {
-    if (
-      input.chainId !== 99901 ||
-      input.to.toLowerCase() !== "0xa50ede66a573ee5bb37e28af5789b76ae5feb828"
-    )
+    if (!isSynthraInternalRouter(input.chainId, input.to)) return false;
+    const exact = (data: string) =>
+      MULTICALL.decodeFunctionData("exactInput", data)[0];
+    const parsed = new ethers.Interface([
+      "function exactInput((bytes path,address recipient,uint256 amountIn,uint256 amountOutMinimum) params) payable returns(uint256 amountOut)",
+      "function multicall(uint256 deadline,bytes[] data) payable returns(bytes[] results)",
+    ]).parseTransaction({ data: input.data });
+    if (!parsed) return false;
+    let params: any;
+    if (parsed.name === "exactInput") {
+      params = parsed.args[0];
+    } else if (parsed.name === "multicall") {
+      const deadline = parsed.args[0] as bigint;
+      const calls = parsed.args[1] as string[];
+      if (
+        deadline <= BigInt(input.nowSeconds ?? Math.floor(Date.now() / 1000)) ||
+        calls.length !== 1
+      )
+        return false;
+      params = exact(calls[0]);
+    } else {
       return false;
-    const [deadline, calls] = MULTICALL.decodeFunctionData(
-      "multicall",
-      input.data,
-    );
-    if (
-      deadline <= BigInt(input.nowSeconds ?? Math.floor(Date.now() / 1000)) ||
-      calls.length !== 1
-    )
-      return false;
-    const [params] = MULTICALL.decodeFunctionData("exactInput", calls[0]);
+    }
     if (
       params.recipient.toLowerCase() !== input.wallet.toLowerCase() ||
       params.amountIn !== BigInt(input.amountIn) ||

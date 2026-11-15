@@ -62,4 +62,27 @@ assert.equal(
   ),
   null,
 );
+const withExecutionId = {
+  ...valid,
+  chosen: "external",
+  quote: {
+    ...valid.quote,
+    executionRequestId: "0x1234567890abcdef",
+  },
+};
+assert.equal(
+  validateSynthraQuote(withExecutionId, input, 1000)?.executionRequestId,
+  "0x1234567890abcdef",
+);
+assert.equal(
+  validateSynthraQuote(
+    {
+      ...withExecutionId,
+      quote: { ...withExecutionId.quote, executionRequestId: "bad id" },
+    },
+    input,
+    1000,
+  ),
+  null,
+);
 console.log("Synthra quote validation passed");
