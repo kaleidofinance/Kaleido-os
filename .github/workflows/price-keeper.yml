@@ -80,9 +80,12 @@
 
 name: price-keeper
 
+# RETIRED CRON: We are on Mainnet now. Mainnets (Arc, Robinhood, BSC) use native
+# Chainlink feeds relayed automatically on-chain. Testnet keeper cron is retired.
+# Kept workflow_dispatch for manual runs if ever needed.
 on:
-  schedule:
-    - cron: "*/20 * * * *"
+  # schedule:
+  #   - cron: "*/20 * * * *"
   workflow_dispatch: {}
 
 # Never let a slow run overlap the next scheduled one; skip rather than queue.

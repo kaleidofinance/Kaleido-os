@@ -431,7 +431,7 @@ async function main() {
 
   const chainIds = Object.keys(GENERATED_DEPLOYMENTS)
     .map(Number)
-    .filter((id) => CHAINS_BY_ID[id]);
+    .filter((id) => CHAINS_BY_ID[id] && CHAINS_BY_ID[id].network === "mainnet");
 
   const subs = await subscribedWallets();
   if (subs) console.log(`  subscribed wallets: ${subs.size}`);

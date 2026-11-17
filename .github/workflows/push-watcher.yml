@@ -68,12 +68,9 @@ jobs:
           PUSH_SEND_SECRET: ${{ secrets.PUSH_SEND_SECRET }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # Optional per-chain RPC overrides for the public endpoints in chains.ts,
-          # which rate-limit. Named RPC_URL_<chainId>: 11155111 Sepolia, 84532 Base
-          # Sepolia, 5042002 Arc, 46630 Robinhood, 97 BSC.
-          RPC_URL_11155111: ${{ secrets.RPC_URL_11155111 }}
-          RPC_URL_84532: ${{ secrets.RPC_URL_84532 }}
-          RPC_URL_5042002: ${{ secrets.RPC_URL_5042002 }}
-          RPC_URL_46630: ${{ secrets.RPC_URL_46630 }}
-          RPC_URL_97: ${{ secrets.RPC_URL_97 }}
+          # Mainnet per-chain RPC overrides: 56 BSC, 4663 Robinhood, 5042 Arc, 99901 Elysium.
+          RPC_URL_56: ${{ secrets.RPC_URL_56 }}
+          RPC_URL_4663: ${{ secrets.RPC_URL_4663 }}
+          RPC_URL_5042: ${{ secrets.RPC_URL_5042 }}
+          RPC_URL_99901: ${{ secrets.RPC_URL_99901 }}
         run: node --import tsx scripts/push-watcher.mjs

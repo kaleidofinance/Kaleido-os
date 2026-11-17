@@ -197,6 +197,7 @@ async function main() {
   const chains = Object.keys(DEPLOYMENTS)
     .map(Number)
     .filter((id) => Boolean(getContracts(id).orders))
+    .filter((id) => CHAINS_BY_ID[id]?.network === "mainnet")
     .filter((id) => only.length === 0 || only.includes(id));
 
   if (chains.length === 0) {
