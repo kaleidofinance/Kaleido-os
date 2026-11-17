@@ -19,6 +19,7 @@ node_modules/
 # Deployment / run logs
 *.log
 DEPLOY_LOG_ISOLATED.txt
+pushfeeds-*.json
 
 # One-off operational scratch scripts (bridge claims, state probes). Named
 # *.tmp.js by convention so they never reach a commit.

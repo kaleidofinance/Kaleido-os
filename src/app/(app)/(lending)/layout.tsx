@@ -95,30 +95,27 @@ function LendingShell({ children }: { children: ReactNode }) {
             ))}
           </div>
 
-          {mode !== "mine" && (
-            <div className={s.headActions}>
-              <button
-                className={s.ghostBtn}
-                onClick={() => collateral.openDeposit()}
-              >
-                Collateral
-              </button>
-              {/*
-               * /mylends lists the user's own lend offers, so its primary
-               * action is another offer. Keying this off `mode === "lend"`
-               * alone put "+ Post request" there — the borrower side of the
-               * book, and the one thing that tab is not about.
-               */}
-              <button
-                className={s.whiteBtn}
-                onClick={() =>
-                  isLender ? setOfferOpen(true) : setRequestOpen(true)
-                }
-              >
-                {isLender ? "+ Post offer" : "+ Post request"}
-              </button>
-            </div>
-          )}
+          <div className={s.headActions}>
+            <button
+              className={s.ghostBtn}
+              onClick={() => collateral.openDeposit()}
+            >
+              Collateral
+            </button>
+            {/*
+             * /mylends lists the user's own lend offers, so its primary
+             * action is another offer. /myloans lists borrow requests/loans,
+             * so its primary action is another request.
+             */}
+            <button
+              className={s.whiteBtn}
+              onClick={() =>
+                isLender ? setOfferOpen(true) : setRequestOpen(true)
+              }
+            >
+              {isLender ? "+ Post offer" : "+ Post request"}
+            </button>
+          </div>
         </div>
 
         {/*
