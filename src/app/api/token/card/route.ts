@@ -13,6 +13,7 @@ import {
 } from "@/lib/elysium/addresses";
 import { readElysiumLaunch } from "@/lib/elysium/launch";
 import type { TokenFacts } from "@/lib/v2/cards/tokenCard";
+import { readSynthraLaunchpadToken } from "@/lib/synthraLaunchpad/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,23 +48,50 @@ export async function GET(req: Request) {
   const chainId = Number(url.searchParams.get("chainId"));
 
   if (!isAddress(rawAddr)) {
-    return json({ ok: false, address: rawAddr, reason: "That isn't a contract address." }, 400);
+    return json(
+      { ok: false, address: rawAddr, reason: "That isn't a contract address." },
+      400,
+    );
   }
   const address = getAddress(rawAddr);
 
   const provider = providerForChain(chainId);
   if (!provider) {
     return json(
-      { ok: false, address, reason: "No RPC available for this chain right now." },
+      {
+        ok: false,
+        address,
+        reason: "No RPC available for this chain right now.",
+      },
       503,
     );
   }
 
-  if (chainId === ARGUS_CHAIN_ID && address.toLowerCase() === ARC_USDC.toLowerCase()) {
-    return json({ ok: true, isQuote: true, address, symbol: "USDC", name: "USD Coin", decimals: 6 });
+  if (
+    chainId === ARGUS_CHAIN_ID &&
+    address.toLowerCase() === ARC_USDC.toLowerCase()
+  ) {
+    return json({
+      ok: true,
+      isQuote: true,
+      address,
+      symbol: "USDC",
+      name: "USD Coin",
+      decimals: 6,
+    });
   }
-  if (chainId === ELYSIUM_CHAIN_ID && address.toLowerCase() === ELYSIUM_USDC.toLowerCase()) {
-    return json({ ok: true, isQuote: true, address, symbol: "USDC", name: "USD Coin", decimals: 6 });
+  if (
+    chainId === ELYSIUM_CHAIN_ID &&
+    address.toLowerCase() === ELYSIUM_USDC.toLowerCase()
+  ) {
+    return json({
+      ok: true,
+      isQuote: true,
+      address,
+      symbol: "USDC",
+      name: "USD Coin",
+      decimals: 6,
+    });
   }
 
   const erc = new Contract(address, ERC20, provider);
@@ -72,9 +100,18 @@ export async function GET(req: Request) {
      instant. Both the Argus and the unknown-token paths need these; the listed
      path simply ignores them. */
   const ercReads = Promise.all([
-    erc.symbol().then(String).catch(() => undefined),
-    erc.name().then(String).catch(() => undefined),
-    erc.decimals().then(Number).catch(() => undefined),
+    erc
+      .symbol()
+      .then(String)
+      .catch(() => undefined),
+    erc
+      .name()
+      .then(String)
+      .catch(() => undefined),
+    erc
+      .decimals()
+      .then(Number)
+      .catch(() => undefined),
     erc.totalSupply().catch(() => null),
   ]);
 
@@ -104,7 +141,9 @@ export async function GET(req: Request) {
             decimals,
             priceUsd,
             marketCapUsd,
-            ...(launch.buyTaxBps != null ? { buyTaxBps: launch.buyTaxBps } : {}),
+            ...(launch.buyTaxBps != null
+              ? { buyTaxBps: launch.buyTaxBps }
+              : {}),
             ...(launch.sellTaxBps != null
               ? { sellTaxBps: launch.sellTaxBps }
               : {}),
@@ -118,82 +157,114 @@ export async function GET(req: Request) {
 
   // 1. An Argus launch — the verified buy + sell path, so it gets the full card.
   if (chainId === ARGUS_CHAIN_ID) {
-  try {
-    const launch = await readArgusLaunch(address);
-    if (launch) {
-      const [state, [symbol, name, dec, supply]] = await Promise.all([
-        readArgusPoolState(launch),
-        ercReads,
-      ]);
-      const decimals = dec ?? 18;
-      // The quote is USDC on Arc, so price-in-quote is price in USD.
-      const priceUsd = state && state.pricePerTokenInQuote > 0 ? state.pricePerTokenInQuote : null;
-      const marketCapUsd =
-        priceUsd != null && supply != null
-          ? priceUsd * (Number(supply) / 10 ** decimals)
-          : null;
-      return json({
-        ok: true,
-        source: "argus",
-        launchpadId: "argus",
-        launchpadLabel: "Argus launch",
-        address,
-        symbol,
-        name,
-        decimals,
-        priceUsd,
-        marketCapUsd,
-        buyTaxBps: launch.buyTaxBps,
-        sellTaxBps: launch.sellTaxBps,
-        snipeActive: state ? isSnipeWindow(state.snipeBps) : false,
-        bonded: state?.bonded ?? false,
-      });
+    try {
+      const launch = await readArgusLaunch(address);
+      if (launch) {
+        const [state, [symbol, name, dec, supply]] = await Promise.all([
+          readArgusPoolState(launch),
+          ercReads,
+        ]);
+        const decimals = dec ?? 18;
+        // The quote is USDC on Arc, so price-in-quote is price in USD.
+        const priceUsd =
+          state && state.pricePerTokenInQuote > 0
+            ? state.pricePerTokenInQuote
+            : null;
+        const marketCapUsd =
+          priceUsd != null && supply != null
+            ? priceUsd * (Number(supply) / 10 ** decimals)
+            : null;
+        return json({
+          ok: true,
+          source: "argus",
+          launchpadId: "argus",
+          launchpadLabel: "Argus launch",
+          address,
+          symbol,
+          name,
+          decimals,
+          priceUsd,
+          marketCapUsd,
+          buyTaxBps: launch.buyTaxBps,
+          sellTaxBps: launch.sellTaxBps,
+          snipeActive: state ? isSnipeWindow(state.snipeBps) : false,
+          bonded: state?.bonded ?? false,
+        });
+      }
+    } catch {
+      /* an Argus read hiccup is not fatal — fall through to the registry */
     }
-  } catch {
-    /* an Argus read hiccup is not fatal — fall through to the registry */
+
+    // 2. A Peach launch. Peach's SDK is the source of truth for launch-token
+    // membership; unlike Argus, its curve quote is resolved when the card action
+    // is pressed, so the card only needs identity here.
+    try {
+      const sdk = await import("@masterpeach/launchpad-sdk");
+      const rpc = CHAINS_BY_ID[chainId]?.rpcUrls?.[0];
+      const peachClient = rpc
+        ? createPublicClient({
+            chain: defineChain({
+              id: chainId,
+              name: "Arc",
+              nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+              rpcUrls: { default: { http: [rpc] } },
+            }),
+            transport: http(rpc),
+          })
+        : null;
+      if (!peachClient) throw new Error("Arc RPC unavailable");
+      const isPeach = await sdk.isLaunchpadToken(
+        {
+          publicClient: peachClient,
+          deployment: sdk.arcMainnetLaunchpadDeployment,
+        },
+        address as `0x${string}`,
+      );
+      if (isPeach) {
+        const [symbol, name, dec] = await ercReads;
+        const decimals = dec ?? 18;
+        return json({
+          ok: true,
+          source: "peach",
+          launchpadId: "peach",
+          launchpadLabel: "Peach launch",
+          address,
+          symbol,
+          name,
+          decimals,
+          priceUsd: null,
+          marketCapUsd: null,
+        });
+      }
+    } catch {
+      /* a Peach lookup hiccup is not fatal — fall through to the registry */
+    }
   }
 
-  // 2. A Peach launch. Peach's SDK is the source of truth for launch-token
-  // membership; unlike Argus, its curve quote is resolved when the card action
-  // is pressed, so the card only needs identity here.
-  try {
-    const sdk = await import("@masterpeach/launchpad-sdk");
-    const rpc = CHAINS_BY_ID[chainId]?.rpcUrls?.[0];
-    const peachClient = rpc
-      ? createPublicClient({
-          chain: defineChain({
-            id: chainId,
-            name: "Arc",
-            nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-            rpcUrls: { default: { http: [rpc] } },
-          }),
-          transport: http(rpc),
-        })
-      : null;
-    if (!peachClient) throw new Error("Arc RPC unavailable");
-    const isPeach = await sdk.isLaunchpadToken(
-      { publicClient: peachClient, deployment: sdk.arcMainnetLaunchpadDeployment },
-      address as `0x${string}`,
-    );
-    if (isPeach) {
-      const [symbol, name, dec] = await ercReads;
-      const decimals = dec ?? 18;
-      return json({
-        ok: true,
-        source: "peach",
-        launchpadId: "peach",
-        launchpadLabel: "Peach launch",
-        address,
-        symbol,
-        name,
-        decimals,
-        priceUsd: null,
-        marketCapUsd: null,
-      });
+  // Synthra LaunchPad identity is the source of truth on Arc and Robinhood.
+  // The REST snapshot supplies live status/price and metadata while the direct
+  // trade route re-quotes the curve at sign time.
+  if (chainId === 4663 || chainId === 5042) {
+    try {
+      const launch = await readSynthraLaunchpadToken(address, chainId);
+      if (launch) {
+        return json({
+          ok: true,
+          source: "synthra",
+          launchpadId: launch.launchpadId,
+          launchpadLabel: launch.launchpadLabel,
+          address,
+          symbol: launch.symbol,
+          name: launch.name,
+          decimals: launch.decimals,
+          priceUsd: launch.priceUsd ?? null,
+          marketCapUsd: launch.marketCapUsd ?? null,
+          ...(launch.imageUrl ? { imageUrl: launch.imageUrl } : {}),
+        } as TokenFacts & { imageUrl?: string });
+      }
+    } catch {
+      /* a Synthra lookup hiccup is not fatal — fall through to registry */
     }
-  } catch {
-    /* a Peach lookup hiccup is not fatal — fall through to the registry */
-  }
   }
 
   // 3. A token this chain's registry already lists.
@@ -219,7 +290,8 @@ export async function GET(req: Request) {
     return json({
       ok: false,
       address,
-      reason: "That address isn't a token contract on this network (it may be a wallet or a trading pair).",
+      reason:
+        "That address isn't a token contract on this network (it may be a wallet or a trading pair).",
     });
   }
   return json({ ok: true, source: "unknown", address, symbol, name, decimals });

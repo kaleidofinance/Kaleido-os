@@ -8,6 +8,8 @@ import {
   isKnownCctpTarget,
 } from "@/lib/bridge/cctp";
 import { resolveCctpFastFee } from "@/lib/bridge/cctpFast";
+import { getSynthraExternalExecution } from "@/lib/swap/synthra";
+import { isKnownSynthraExternalSpender } from "@/lib/swap/synthraExternalSpenders";
 import type {
   BridgeRoute,
   BridgeRouteAlternative,
@@ -105,7 +107,10 @@ export function isKnownBridgeAddress(
   if (!address) return false;
   const lower = address.toLowerCase();
   const orbit = ORBIT_CORRIDORS[fromChainId];
-  if (orbit && Object.values(orbit).some((c) => c.inbox.toLowerCase() === lower))
+  if (
+    orbit &&
+    Object.values(orbit).some((c) => c.inbox.toLowerCase() === lower)
+  )
     return true;
   const corridors = CANONICAL_CORRIDORS[fromChainId];
   if (!corridors) return false;
@@ -140,12 +145,18 @@ const ORBIT_CORRIDORS: Record<number, Record<number, { inbox: string }>> = {
 export const ORBIT_DEPOSIT_ETH_DATA = "0x439370b1";
 
 /** Whether a canonical-provider bridge step is an Orbit `depositEth` (no recipient argument). */
-export function isOrbitDeposit(fromChainId: number, to: string, data: string): boolean {
+export function isOrbitDeposit(
+  fromChainId: number,
+  to: string,
+  data: string,
+): boolean {
   const orbit = ORBIT_CORRIDORS[fromChainId];
   return (
     !!orbit &&
     (data || "").toLowerCase() === ORBIT_DEPOSIT_ETH_DATA &&
-    Object.values(orbit).some((c) => c.inbox.toLowerCase() === (to || "").toLowerCase())
+    Object.values(orbit).some(
+      (c) => c.inbox.toLowerCase() === (to || "").toLowerCase(),
+    )
   );
 }
 
@@ -309,6 +320,70 @@ interface ResolveInput {
   toDecimals?: number;
 }
 
+const ZERO_ADDRESS = ethers.ZeroAddress;
+
+/**
+ * Synthra external execution: one source-chain deposit whose destination
+ * settles asynchronously. An ERC-20 source gets the normal approval step to
+ * the provider transaction target. Quotes with multiple source transactions
+ * remain refused rather than being flattened into a partial bridge row.
+ */
+async function trySynthraRoute(i: ResolveInput): Promise<BridgeRoute | null> {
+  if (i.recipient) return null;
+  const tokenIn = i.isNative ? ZERO_ADDRESS : i.tokenAddress;
+  const destinationToken = chainTokenBySymbol(i.dest.id, i.asset)?.address;
+  const tokenOut = i.crossAsset
+    ? (i.toTokenAddress ?? ZERO_ADDRESS)
+    : i.isNative
+      ? ZERO_ADDRESS
+      : (i.toTokenAddress ?? destinationToken);
+  /* A token bridge needs concrete source and destination deployments. The
+     symbol alone is not enough to ask the execution network safely. */
+  if (!tokenIn || !tokenOut) return null;
+  const execution = await getSynthraExternalExecution({
+    sourceChainId: i.fromChainId,
+    destinationChainId: i.dest.id,
+    tokenIn,
+    tokenOut,
+    decimalsIn: i.decimals,
+    decimalsOut: i.crossAsset ? (i.toDecimals ?? i.decimals) : i.decimals,
+    amountUnits: i.units,
+    address: i.userAddress,
+    slippageBps: 50,
+  });
+  if (!execution) return null;
+  const tx = execution.transaction;
+  if (tx.chainId !== i.fromChainId) return null;
+  if (i.isNative && BigInt(tx.value) !== BigInt(i.units)) return null;
+  if (
+    !i.isNative &&
+    (BigInt(tx.value) !== 0n ||
+      !execution.spender ||
+      !isKnownSynthraExternalSpender(i.fromChainId, execution.spender))
+  )
+    return null;
+  return {
+    to: tx.to,
+    data: tx.data,
+    value: tx.value,
+    toChainId: i.dest.id,
+    toChainName: i.dest.shortName,
+    provider: "synthra",
+    etaSeconds: null,
+    receivedUnits: execution.quote.amountOut,
+    statusRequestId: execution.executionRequestId,
+    ...(execution.spender ? { spender: execution.spender } : {}),
+    ...(i.crossAsset
+      ? {
+          toToken: i.toTokenAddress,
+          toDecimals: i.toDecimals,
+          toSymbol: i.toAsset,
+          minReceivedUnits: execution.quote.minimumAmountOut,
+        }
+      : {}),
+  };
+}
+
 /**
  * The instant aggregator leg — LI.FI's own executable calldata, a solver that
  * fronts the destination funds so the user signs once and receives in seconds
@@ -446,7 +521,10 @@ async function tryAggregatorRoute(
     return {
       error: `The provider's ${i.asset} on this chain is ${exec.fromToken.address}, not the ${i.asset} Kaleido would approve (${i.tokenAddress}). Refusing rather than bridging a different token than the one shown.`,
     };
-  if (exec.fromToken.decimals !== null && exec.fromToken.decimals !== i.decimals)
+  if (
+    exec.fromToken.decimals !== null &&
+    exec.fromToken.decimals !== i.decimals
+  )
     return {
       error: `The provider says ${i.asset} has ${exec.fromToken.decimals} decimals and Kaleido scaled the amount at ${i.decimals}. Refusing rather than sending the wrong size.`,
     };
@@ -557,12 +635,18 @@ export function pickBridgeRoutes(opts: {
   if (route === "instant") {
     const primary = instant ?? exact;
     if (!primary) return null;
-    return { primary, alternative: primary === instant ? (exact ?? null) : null };
+    return {
+      primary,
+      alternative: primary === instant ? (exact ?? null) : null,
+    };
   }
   if (route === "exact") {
     const primary = exact ?? instant;
     if (!primary) return null;
-    return { primary, alternative: primary === exact ? (instant ?? null) : null };
+    return {
+      primary,
+      alternative: primary === exact ? (instant ?? null) : null,
+    };
   }
 
   // Auto: take the instant fill only when it is BOTH genuinely fast (a quoted
@@ -603,7 +687,8 @@ export async function resolveBridgeRoute(
      skipped for it — its pending-mint tracking and completion keeper assume the
      mint lands in the signer's own wallet. */
   const thirdParty =
-    !!recipient && recipient.toLowerCase() !== (userAddress ?? "").toLowerCase();
+    !!recipient &&
+    recipient.toLowerCase() !== (userAddress ?? "").toLowerCase();
   if (recipient && !ethers.isAddress(recipient))
     return { error: `${recipient} isn't a valid address to deliver to.` };
   /* Cross-asset when a distinct destination symbol was requested. Such a bridge
@@ -676,7 +761,9 @@ export async function resolveBridgeRoute(
       wantInstant
         ? tryAggregatorRoute(input)
         : Promise.resolve<BridgeRoute | { error: string } | null>(null),
-      wantExact ? tryCctpRoute(input) : Promise.resolve<BridgeRoute | null>(null),
+      wantExact
+        ? tryCctpRoute(input)
+        : Promise.resolve<BridgeRoute | null>(null),
     ]);
     const instantOk = instant && !("error" in instant) ? instant : null;
 
@@ -737,6 +824,11 @@ export async function resolveBridgeRoute(
   //    corridor. Null on a testnet or an unrouted corridor, which becomes an
   //    honest refusal; {error} on a cross-check failure, surfaced as-is.
   const agg = await tryAggregatorRoute(input);
+  // Synthra is a safe fallback when LI.FI has no executable route. Its current
+  // bridge adapter admits only one native source transaction and carries the
+  // provider request id for later settlement polling.
+  const synthra = agg === null ? await trySynthraRoute(input) : null;
+  if (synthra) return synthra;
   /* 3) Orbit fallback — native HYPE HyperEVM→Elysium when no solver quotes it.
      Self-delivery only: depositEth credits msg.sender and takes no recipient. */
   const orbit =

@@ -42,10 +42,18 @@ import {
   poolSide,
 } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
-import { hasKyberSwap, aggregatorToken, nativeSwapErc20 } from "@/lib/swap/kyberswap";
+import {
+  hasKyberSwap,
+  aggregatorToken,
+  nativeSwapErc20,
+} from "@/lib/swap/kyberswap";
 import { hasFlyTrade } from "@/lib/swap/flytrade";
 import { hasLifiSwap } from "@/lib/swap/lifi";
-import { ARC_USDC, ARC_USDC_DECIMALS, ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
+import {
+  ARC_USDC,
+  ARC_USDC_DECIMALS,
+  ARGUS_CHAIN_ID,
+} from "@/lib/argus/addresses";
 import { PERMIT2 } from "@/lib/argus/swap";
 import type { Intent } from "@/lib/v2/intents";
 import type { Command, Draft, Slot } from "@/lib/v2/intents/fromCommand";
@@ -363,6 +371,8 @@ export interface BridgeRoute {
   /** "canonical" | "lifi" — how the auditor decides what to re-check. */
   provider: string;
   etaSeconds: number | null;
+  /** Provider execution id for asynchronous Synthra settlement tracking. */
+  statusRequestId?: string;
   /**
    * The router to approve, on an ERC20 leg only. Vetted by the resolver against
    * `isKnownBridgeSpender` and against `to`, so the builder can pair an approve
@@ -438,7 +448,8 @@ function displayTokenIdentity(
     Partial<Pick<IToken, "name" | "identityResolved" | "launchpadLabel">>,
 ): string {
   if (!token.identityResolved) return token.symbol;
-  const name = token.name && token.name !== token.symbol ? ` (${token.name})` : "";
+  const name =
+    token.name && token.name !== token.symbol ? ` (${token.name})` : "";
   const launchpad = token.launchpadLabel ? ` · ${token.launchpadLabel}` : "";
   return `${token.symbol}${name}${launchpad}`;
 }
@@ -457,6 +468,13 @@ export interface AggregatorSwapRoute {
   spender: string;
   /** Expected output in the out-token’s base units. */
   amountOut: string;
+  /** Exact output floor in base units when provided by the route. */
+  minimumOut?: string;
+  /** Direct launchpad quote legs may be paid/received as native value. */
+  nativeIn?: boolean;
+  nativeOut?: boolean;
+  /** Synthra closing buys need an explicit gas floor. */
+  gasLimit?: string;
   /** The venue that produced to/data, e.g. "kyberswap". */
   venue: string;
 }
@@ -678,7 +696,12 @@ export interface ArgusPlanResult {
   tokenIn?: { address: string; symbol: string; decimals: number };
   /** The fee cut, always taken inside the swap tx. BUY: USDC pulled from the input (PERMIT2_TRANSFER_FROM). SELL: USDC
    *  taken from the output in-swap (already reflected in amountOut/min — no transfer). */
-  fee?: { receiver: string | null; amountRaw: string; bps: number; inSwap?: boolean };
+  fee?: {
+    receiver: string | null;
+    amountRaw: string;
+    bps: number;
+    inSwap?: boolean;
+  };
   /** BUY: the whole USDC input the router pulls via Permit2 — swap + in-tx fee. */
   totalInRaw?: string;
   /** The amount actually swapped, base units. BUY: USDC in (after fee). SELL: the
@@ -967,7 +990,9 @@ async function lendingRefusal(
       amountRaw,
       decimals: args.decimals,
       ...(args.pending?.length ? { pendingCollateral: args.pending } : {}),
-      ...(args.interestBps && args.seconds ? { interestBps: args.interestBps, seconds: args.seconds } : {}),
+      ...(args.interestBps && args.seconds
+        ? { interestBps: args.interestBps, seconds: args.seconds }
+        : {}),
     })
     .catch(() => null);
   return error ? { ok: false, error } : null;
@@ -1168,17 +1193,31 @@ export async function buildIntents(
   if (command.kind === "exitChain") {
     const src = resolveChain(command.fromChain);
     const dest = resolveChain(command.toChain);
-    if (!src) return { ok: false, error: `I don't recognise the chain "${command.fromChain}".` };
-    if (!dest) return { ok: false, error: `I don't recognise the chain "${command.toChain}".` };
+    if (!src)
+      return {
+        ok: false,
+        error: `I don't recognise the chain "${command.fromChain}".`,
+      };
+    if (!dest)
+      return {
+        ok: false,
+        error: `I don't recognise the chain "${command.toChain}".`,
+      };
     if (src.id === dest.id)
-      return { ok: false, error: `That moves funds from ${src.shortName} to itself. Name where they should go, e.g. "to Arc".` };
+      return {
+        ok: false,
+        error: `That moves funds from ${src.shortName} to itself. Name where they should go, e.g. "to Arc".`,
+      };
     if (chainId !== src.id)
       return {
         ok: false,
         error: `The bridges are signed from ${src.shortName}, so connect the wallet that holds your funds there (for Abstract, the Abstract Global Wallet) and switch it to ${src.shortName} first.`,
       };
     if (!deps.heldTokens || !deps.tokenBalance || !deps.balanceOn)
-      return { ok: false, error: `I can't read everything this wallet holds on ${src.shortName} from here. Try again from the Luca page.` };
+      return {
+        ok: false,
+        error: `I can't read everything this wallet holds on ${src.shortName} from here. Try again from the Luca page.`,
+      };
 
     const legs: { token: IToken; raw: bigint }[] = [];
     for (const t of await deps.heldTokens()) {
@@ -1190,7 +1229,9 @@ export async function buildIntents(
        dropped without a word: too little to bridge, or an unreadable balance,
        is said out loud in the reply. */
     const native = nativeTokenOf(CHAINS_BY_ID[src.id], "dex");
-    const nativeRaw = native ? await deps.balanceOn(src.id, native.address, true) : null;
+    const nativeRaw = native
+      ? await deps.balanceOn(src.id, native.address, true)
+      : null;
     const reserve = ethers.parseUnits("0.0005", native?.decimals ?? 18);
     let nativeNote = "";
     if (native) {
@@ -1198,29 +1239,49 @@ export async function buildIntents(
         nativeNote = ` I couldn't read your ${native.symbol} balance on ${src.shortName} just now, so ${native.symbol} isn't in this plan — ask again in a moment.`;
       else if (nativeRaw > reserve)
         legs.push({
-          token: { address: native.address, symbol: native.symbol, name: native.name, decimals: native.decimals, chainId: src.id, verified: true, isNative: true },
+          token: {
+            address: native.address,
+            symbol: native.symbol,
+            name: native.name,
+            decimals: native.decimals,
+            chainId: src.id,
+            verified: true,
+            isNative: true,
+          },
           raw: nativeRaw - reserve,
         });
       else if (nativeRaw > 0n)
         nativeNote = ` Your ${Number(ethers.formatUnits(nativeRaw, native.decimals)).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${native.symbol} is kept for gas — too little to bridge after paying for the other steps.`;
     }
     if (legs.length === 0)
-      return { ok: false, error: `I don't see anything to move in this wallet on ${src.shortName}.${nativeNote}` };
+      return {
+        ok: false,
+        error: `I don't see anything to move in this wallet on ${src.shortName}.${nativeNote}`,
+      };
 
     const intents: Intent[] = [];
     const moved: string[] = [];
     const skipped: string[] = [];
     for (const leg of legs) {
       const amount = ethers.formatUnits(leg.raw, leg.token.decimals);
-      const same = leg.token.symbol.toUpperCase() === command.toAsset.toUpperCase();
+      const same =
+        leg.token.symbol.toUpperCase() === command.toAsset.toUpperCase();
       const r = await buildIntents(
-        { kind: "bridge", amount, token: leg.token, toChain: command.toChain, ...(same ? {} : { toAsset: command.toAsset }) },
+        {
+          kind: "bridge",
+          amount,
+          token: leg.token,
+          toChain: command.toChain,
+          ...(same ? {} : { toAsset: command.toAsset }),
+        },
         opts,
         deps,
       );
       if (r.ok) {
         intents.push(...r.build.intents);
-        moved.push(`${Number(amount).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${leg.token.symbol}`);
+        moved.push(
+          `${Number(amount).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${leg.token.symbol}`,
+        );
       } else
         /* "No executable route" means no bridge carries it and no DEX on the
            source chain will swap it — typical for a token that only exists
@@ -1233,7 +1294,9 @@ export async function buildIntents(
     }
     const stuckHint =
       ` Tokens that only exist on ${src.shortName} can't be bridged — they need a buyer there first.` +
-      (src.id === 2741 ? " Try selling them on an Abstract DEX, or Abstract's official Migration Hub (migrate.abs.xyz), then ask me again to move the proceeds." : "");
+      (src.id === 2741
+        ? " Try selling them on an Abstract DEX, or Abstract's official Migration Hub (migrate.abs.xyz), then ask me again to move the proceeds."
+        : "");
     if (intents.length === 0)
       return {
         ok: false,
@@ -1408,7 +1471,9 @@ export async function buildIntents(
       // The pool's quote asset is the 6-dec ERC20 USDC (0x3600…), whatever
       // representation the user picked. Approve, permit2, fee and swap all move
       // that one address.
-      const amountInRaw = ethers.parseUnits(amount, ARC_USDC_DECIMALS).toString();
+      const amountInRaw = ethers
+        .parseUnits(amount, ARC_USDC_DECIMALS)
+        .toString();
       const ap = await deps.argusPlan({
         tokenIn: ARC_USDC,
         tokenOut: tokenOut.address,
@@ -1416,7 +1481,13 @@ export async function buildIntents(
         slippageBps: opts.slippageBps,
       });
       if (ap && ap.argus) {
-        if (ap.blocked || !ap.to || !ap.data || !ap.tokenOut || !ap.swapAmountRaw) {
+        if (
+          ap.blocked ||
+          !ap.to ||
+          !ap.data ||
+          !ap.tokenOut ||
+          !ap.swapAmountRaw
+        ) {
           return {
             ok: false,
             error: ap.reason ?? "This Argus launch can't be traded right now.",
@@ -1511,7 +1582,9 @@ export async function buildIntents(
       }
       // Argus clones a fixed 1e18-supply LaunchToken, so launch tokens are 18-dec;
       // the grammar's synthetic token carries that and the server confirms it.
-      const amountInRaw = ethers.parseUnits(amount, tokenIn.decimals).toString();
+      const amountInRaw = ethers
+        .parseUnits(amount, tokenIn.decimals)
+        .toString();
       const ap = await deps.argusPlan({
         tokenIn: tokenIn.address,
         tokenOut: ARC_USDC,
@@ -1601,7 +1674,9 @@ export async function buildIntents(
     } | null> => {
       if (
         chainId === undefined ||
-        (!hasKyberSwap(chainId) && !hasFlyTrade(chainId) && !hasLifiSwap(chainId)) ||
+        (!hasKyberSwap(chainId) &&
+          !hasFlyTrade(chainId) &&
+          !hasLifiSwap(chainId)) ||
         !deps.swapRoute
       ) {
         return null;
@@ -1618,7 +1693,8 @@ export async function buildIntents(
          native currency — quote/pull the 0x3600 mirror — and prepend an unwrap
          below so the wrapped balance becomes the native the mirror pulls. */
       const sellIsWrapped =
-        chainId === 5042 && !!contracts.wrappedNative &&
+        chainId === 5042 &&
+        !!contracts.wrappedNative &&
         tokenIn.address.toLowerCase() === contracts.wrappedNative.toLowerCase();
       const inTok = aggregatorToken(
         chainId,
@@ -1646,10 +1722,16 @@ export async function buildIntents(
         return { plan: { ok: false, error: route.error }, out: 0 };
 
       const out = ethers.formatUnits(route.amountOut, outTok.decimals);
-      const minOut = (Number(out) * (1 - opts.slippageBps / 10000)).toFixed(
-        outTok.decimals > 6 ? 6 : outTok.decimals,
-      );
-      const approve: Intent | null = inTok.isNative
+      const minOut = route.minimumOut
+        ? ethers.formatUnits(route.minimumOut, outTok.decimals)
+        : (Number(out) * (1 - opts.slippageBps / 10000)).toFixed(
+            outTok.decimals > 6 ? 6 : outTok.decimals,
+          );
+      const nativeIn = Boolean(route.nativeIn) || inTok.isNative;
+      const nativeOut = Boolean(route.nativeOut);
+      const routeTokenIn = nativeIn ? NATIVE_SENTINEL.dex : inTok.address;
+      const routeTokenOut = nativeOut ? NATIVE_SENTINEL.dex : outTok.address;
+      const approve: Intent | null = nativeIn
         ? null
         : {
             kind: "approve",
@@ -1664,11 +1746,11 @@ export async function buildIntents(
         to: route.to,
         data: route.data,
         value: route.value,
-        tokenIn: inTok.address,
+        tokenIn: routeTokenIn,
         amountIn: aggAmount,
         decimalsIn: inTok.decimals,
         symbolIn: inTok.symbol,
-        tokenOut: outTok.address,
+        tokenOut: routeTokenOut,
         amountOut: out,
         amountOutMin: minOut,
         decimalsOut: outTok.decimals,
@@ -1677,6 +1759,7 @@ export async function buildIntents(
         venue: route.venue,
         spender: route.spender,
         slippageBps: opts.slippageBps,
+        ...(route.gasLimit ? { gasLimit: route.gasLimit } : {}),
       };
       const unwrap: Intent | null = sellIsWrapped
         ? {
@@ -2009,8 +2092,16 @@ export async function buildIntents(
   }
 
   if (command.kind === "placeOrder") {
-    const { tokenIn, tokenOut, amount, price, basis, everyDays, fills, expiryDays } =
-      command;
+    const {
+      tokenIn,
+      tokenOut,
+      amount,
+      price,
+      basis,
+      everyDays,
+      fills,
+      expiryDays,
+    } = command;
 
     /* KaleidoOrders (#60). Absent means orders are not deployed on this chain -
        the same chain-scoped guard every branch here makes, and the reason the
@@ -2061,7 +2152,10 @@ export async function buildIntents(
        through and reverts the second - see the note on placeOrder in types.ts.
        Computed in base units then formatted, so a per-fill amount with full
        precision is not rounded before being multiplied. */
-    const totalIn = ethers.formatUnits(amountInBase * BigInt(fills), tokenIn.decimals);
+    const totalIn = ethers.formatUnits(
+      amountInBase * BigInt(fills),
+      tokenIn.decimals,
+    );
 
     /* How far the floor sits from the pool right now, appended to the summary
        the user reads before signing.
@@ -2082,7 +2176,11 @@ export async function buildIntents(
     try {
       const sell = poolSide(chainId, tokenIn);
       const buy = poolSide(chainId, tokenOut);
-      if (sell && buy && sell.token.address.toLowerCase() !== buy.token.address.toLowerCase()) {
+      if (
+        sell &&
+        buy &&
+        sell.token.address.toLowerCase() !== buy.token.address.toLowerCase()
+      ) {
         const path = await findBestRoute(
           chainId,
           sell.token,
@@ -2090,8 +2188,21 @@ export async function buildIntents(
           amount,
           (tokens, fees, amountIn, decimalsIn, decimalsOut) =>
             tokens.length === 2
-              ? deps.quote({ tokenIn: tokens[0], tokenOut: tokens[1], amountIn, fee: fees[0], decimalsIn, decimalsOut })
-              : deps.quotePath({ tokens, fees, amountIn, decimalsIn, decimalsOut }),
+              ? deps.quote({
+                  tokenIn: tokens[0],
+                  tokenOut: tokens[1],
+                  amountIn,
+                  fee: fees[0],
+                  decimalsIn,
+                  decimalsOut,
+                })
+              : deps.quotePath({
+                  tokens,
+                  fees,
+                  amountIn,
+                  decimalsIn,
+                  decimalsOut,
+                }),
         );
         const market = path ? Number(path.amountOut) : 0;
         const floor = Number(minOut);
@@ -2163,7 +2274,6 @@ export async function buildIntents(
       },
     };
   }
-
 
   if (command.kind === "stake") {
     /* All three addresses come from the plan's chain, together. The vault used
@@ -2429,8 +2539,7 @@ export async function buildIntents(
       }
     }
 
-    const onOtherChain =
-      sendChainId !== undefined && sendChainId !== chainId;
+    const onOtherChain = sendChainId !== undefined && sendChainId !== chainId;
     const chainLabel = onOtherChain
       ? ` on ${CHAINS_BY_ID[sendChainId!]?.shortName ?? `chain ${sendChainId}`}`
       : "";
@@ -2564,7 +2673,10 @@ export async function buildIntents(
     if (toAsset) {
       const dest = resolveChain(toChain);
       if (!dest) {
-        return { ok: false, error: `I don't recognise the chain "${toChain}".` };
+        return {
+          ok: false,
+          error: `I don't recognise the chain "${toChain}".`,
+        };
       }
       const onDest =
         resolveUserToken(CHAINS_BY_ID[dest.id], toAsset, "dex") ??
@@ -2641,8 +2753,16 @@ export async function buildIntents(
     if (command.receiveAtLeast && !crossAsset) {
       const destMeta = resolveChain(toChain);
       const destEntry = destMeta
-        ? (resolveUserToken(CHAINS_BY_ID[destMeta.id], srcToken.symbol, "dex") ??
-          resolveUserToken(CHAINS_BY_ID[destMeta.id], srcToken.symbol, "lending"))
+        ? (resolveUserToken(
+            CHAINS_BY_ID[destMeta.id],
+            srcToken.symbol,
+            "dex",
+          ) ??
+          resolveUserToken(
+            CHAINS_BY_ID[destMeta.id],
+            srcToken.symbol,
+            "lending",
+          ))
         : undefined;
       const destDecimals = destEntry?.decimals ?? srcToken.decimals;
       const target = ethers.parseUnits(command.receiveAtLeast, destDecimals);
@@ -2746,6 +2866,9 @@ export async function buildIntents(
             toChainName: route.toChainName,
             provider: route.provider,
             etaSeconds: route.etaSeconds,
+            ...(route.statusRequestId
+              ? { statusRequestId: route.statusRequestId }
+              : {}),
             isNative,
             ...(command.recipient ? { recipient: command.recipient } : {}),
             ...(route.spender ? { spender: route.spender } : {}),
@@ -2757,7 +2880,10 @@ export async function buildIntents(
                   toSymbol: route.toSymbol,
                   amountOut: outHuman ?? undefined,
                   amountOutMin: route.minReceivedUnits
-                    ? ethers.formatUnits(route.minReceivedUnits, route.toDecimals)
+                    ? ethers.formatUnits(
+                        route.minReceivedUnits,
+                        route.toDecimals,
+                      )
                     : undefined,
                   minReceivedUnits: route.minReceivedUnits,
                 }
@@ -3031,11 +3157,17 @@ export async function buildIntents(
        not free and stays; the health check on chain still judges the rest. */
     let wanted: { address: string; symbol: string } | undefined;
     if (command.token) {
-      const cur = toLendingCurrency(chainId, "collateral", command.token.symbol);
+      const cur = toLendingCurrency(
+        chainId,
+        "collateral",
+        command.token.symbol,
+      );
       if (!cur) return unsupported(chainId, "collateral", command.token.symbol);
       wanted = cur;
     }
-    const free = deps.freeCollateral ? await deps.freeCollateral().catch(() => null) : null;
+    const free = deps.freeCollateral
+      ? await deps.freeCollateral().catch(() => null)
+      : null;
     if (!free) {
       return {
         ok: false,
@@ -3043,7 +3175,9 @@ export async function buildIntents(
       };
     }
     const rows = free.filter(
-      (f) => f.raw > 0n && (!wanted || f.address.toLowerCase() === wanted.address.toLowerCase()),
+      (f) =>
+        f.raw > 0n &&
+        (!wanted || f.address.toLowerCase() === wanted.address.toLowerCase()),
     );
     if (rows.length === 0) {
       return {
@@ -3051,7 +3185,10 @@ export async function buildIntents(
         error: `You have no free ${wanted ? `${wanted.symbol} ` : ""}collateral to withdraw on this chain. Collateral backing an open loan stays locked until the loan is repaid.`,
       };
     }
-    const legs = rows.map((f) => ({ ...f, amount: ethers.formatUnits(f.raw, f.decimals) }));
+    const legs = rows.map((f) => ({
+      ...f,
+      amount: ethers.formatUnits(f.raw, f.decimals),
+    }));
     return {
       ok: true,
       build: {
@@ -3112,8 +3249,17 @@ export async function buildIntents(
     const pending: PendingCollateral[] = [];
     let backingText = "";
     if (command.collateral) {
-      const coll = toLendingCurrency(chainId, "collateral", command.collateral.token.symbol);
-      if (!coll) return unsupported(chainId, "collateral", command.collateral.token.symbol);
+      const coll = toLendingCurrency(
+        chainId,
+        "collateral",
+        command.collateral.token.symbol,
+      );
+      if (!coll)
+        return unsupported(
+          chainId,
+          "collateral",
+          command.collateral.token.symbol,
+        );
       if (coll.address.toLowerCase() === cur.address.toLowerCase()) {
         return {
           ok: false,
@@ -3142,7 +3288,11 @@ export async function buildIntents(
         isNative: collNative,
       });
       try {
-        pending.push({ token: coll.address, amountRaw: ethers.parseUnits(collAmount, coll.decimals), decimals: coll.decimals });
+        pending.push({
+          token: coll.address,
+          amountRaw: ethers.parseUnits(collAmount, coll.decimals),
+          decimals: coll.decimals,
+        });
       } catch {
         /* unparseable → not counted; the check under-counts, never over */
       }
@@ -3281,7 +3431,9 @@ export async function buildIntents(
       amount: command.amount,
       decimals,
       interestBps: row.interestBps,
-      seconds: row.returnDate ? row.returnDate - Math.floor(Date.now() / 1000) : undefined,
+      seconds: row.returnDate
+        ? row.returnDate - Math.floor(Date.now() / 1000)
+        : undefined,
     });
     if (refused) return refused;
     return {
@@ -3677,10 +3829,18 @@ export async function buildIntents(
     let resolvedAmount0 = amount0;
     let resolvedAmount1 = amount1;
     if (!resolvedAmount0 && !resolvedAmount1) {
-      return { ok: false, error: `Tell me how much ${token0.symbol} or ${token1.symbol} to add.` };
+      return {
+        ok: false,
+        error: `Tell me how much ${token0.symbol} or ${token1.symbol} to add.`,
+      };
     }
     if (!resolvedAmount0 || !resolvedAmount1) {
-      if (!state || state.price === null || !Number.isFinite(state.price) || state.price <= 0) {
+      if (
+        !state ||
+        state.price === null ||
+        !Number.isFinite(state.price) ||
+        state.price <= 0
+      ) {
         return {
           ok: false,
           error: `I can calculate the other side only from a live ${token0.symbol}/${token1.symbol} price. This pool has no price yet, so give me both amounts to set its opening price.`,
@@ -3689,9 +3849,15 @@ export async function buildIntents(
       const trim = (n: number, decimals: number) =>
         n.toFixed(Math.min(decimals, 18)).replace(/\.?0+$/, "");
       if (resolvedAmount0)
-        resolvedAmount1 = trim(Number(resolvedAmount0) * state.price, token1.decimals);
+        resolvedAmount1 = trim(
+          Number(resolvedAmount0) * state.price,
+          token1.decimals,
+        );
       else
-        resolvedAmount0 = trim(Number(resolvedAmount1) / state.price, token0.decimals);
+        resolvedAmount0 = trim(
+          Number(resolvedAmount1) / state.price,
+          token0.decimals,
+        );
     }
 
     /* The branch above fills the missing side from the live price, but TypeScript
@@ -3699,7 +3865,10 @@ export async function buildIntents(
        local invariant before handing values to the intent builder so no partial
        approve or mint can ever be emitted. */
     if (!resolvedAmount0 || !resolvedAmount1) {
-      return { ok: false, error: `Tell me both ${token0.symbol} and ${token1.symbol} amounts.` };
+      return {
+        ok: false,
+        error: `Tell me both ${token0.symbol} and ${token1.symbol} amounts.`,
+      };
     }
     const finalAmount0 = resolvedAmount0;
     const finalAmount1 = resolvedAmount1;
@@ -4190,9 +4359,13 @@ export async function buildIntents(
     try {
       asked = ethers.parseUnits(command.amount, decimals);
     } catch {
-      return { ok: false, error: `"${command.amount}" isn't an amount I can repay.` };
+      return {
+        ok: false,
+        error: `"${command.amount}" isn't an amount I can repay.`,
+      };
     }
-    if (asked <= 0n) return { ok: false, error: "The repayment must be more than zero." };
+    if (asked <= 0n)
+      return { ok: false, error: "The repayment must be more than zero." };
     if (asked < payRaw) {
       payRaw = asked;
       payHuman = ethers.formatUnits(asked, decimals);
@@ -4200,7 +4373,10 @@ export async function buildIntents(
     }
   }
   const remaining = partial
-    ? ethers.formatUnits(BigInt(target.totalRepaymentRaw) - payRaw, repayDecimals ?? 18)
+    ? ethers.formatUnits(
+        BigInt(target.totalRepaymentRaw) - payRaw,
+        repayDecimals ?? 18,
+      )
     : "0";
 
   return {

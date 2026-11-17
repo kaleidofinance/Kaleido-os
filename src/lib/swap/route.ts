@@ -2,8 +2,13 @@ import { ethers } from "ethers";
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
 import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
+import { getSynthraExecution } from "@/lib/swap/synthra";
 import { getPeachTradeExecution } from "@/lib/peach/route";
-import { ELYSIUM_CHAIN_ID, getElysiumTradeExecution } from "@/lib/elysium/route";
+import { getSynthraLaunchpadTradeExecution } from "@/lib/synthraLaunchpad/route";
+import {
+  ELYSIUM_CHAIN_ID,
+  getElysiumTradeExecution,
+} from "@/lib/elysium/route";
 import { chainTokenByAddress } from "@/constants/tokens";
 import type {
   SwapRouteRequest,
@@ -69,6 +74,23 @@ export async function resolveSwapRoute(
       };
     }
   }
+  const synthraLaunchpad = await getSynthraLaunchpadTradeExecution(request);
+  if (synthraLaunchpad) {
+    return {
+      to: synthraLaunchpad.to,
+      data: synthraLaunchpad.data,
+      value: synthraLaunchpad.value,
+      spender: synthraLaunchpad.spender,
+      amountOut: synthraLaunchpad.amountOut,
+      minimumOut: synthraLaunchpad.minimumOut,
+      venue: "synthra-launchpad",
+      nativeIn: synthraLaunchpad.nativeIn,
+      nativeOut: synthraLaunchpad.nativeOut,
+      ...(synthraLaunchpad.gasLimit
+        ? { gasLimit: synthraLaunchpad.gasLimit }
+        : {}),
+    };
+  }
   const unknownElysiumAsset =
     args.chainId === ELYSIUM_CHAIN_ID &&
     (!chainTokenByAddress(args.chainId, args.tokenIn) ||
@@ -86,7 +108,7 @@ export async function resolveSwapRoute(
       };
     }
   }
-  const [kyber, fly, lifi] = await Promise.all([
+  const [kyber, fly, lifi, synthra] = await Promise.all([
     getKyberSwapExecution(request),
     hasFlyTrade(args.chainId)
       ? getFlyTradeExecution(request)
@@ -94,11 +116,17 @@ export async function resolveSwapRoute(
     hasLifiSwap(args.chainId)
       ? getLifiSwapExecution(request)
       : Promise.resolve(null),
+    getSynthraExecution({
+      ...request,
+      decimalsIn: args.decimalsIn,
+      decimalsOut: args.decimalsOut,
+    }),
   ]);
   const candidates = [
     { exec: kyber, venue: "kyberswap" },
     { exec: fly, venue: "fly" },
     { exec: lifi, venue: "lifi" },
+    { exec: synthra, venue: "synthra" },
   ].filter((c): c is { exec: NonNullable<typeof c.exec>; venue: string } =>
     Boolean(c.exec),
   );
@@ -121,5 +149,8 @@ export async function resolveSwapRoute(
     spender: exec.spender,
     amountOut: exec.amountOut,
     venue: best!.venue,
+    ...(best!.venue === "synthra" && synthra
+      ? { minimumOut: synthra.minimumOut }
+      : {}),
   };
 }

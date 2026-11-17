@@ -76,6 +76,10 @@ import {
 import { receiptFromSettled } from "@/lib/v2/cards/receipt";
 import { readLifiPending } from "@/lib/bridge/lifiPending";
 import { readCctpPending } from "@/lib/bridge/cctpPending";
+import {
+  readSynthraPending,
+  removeSynthraPending,
+} from "@/lib/bridge/synthraPending";
 import { isCctpMinted } from "@/lib/bridge/cctpAttestation";
 import {
   asksAboutLastResult,
@@ -287,7 +291,9 @@ export default function AgentPage() {
     () =>
       computeSuggestions({
         recentEntries: txEntries.slice(0, 6),
-      walletSymbols: portfolio.walletHoldings.map((holding) => holding.symbol),
+        walletSymbols: portfolio.walletHoldings.map(
+          (holding) => holding.symbol,
+        ),
       }),
     [portfolio.walletHoldings, txEntries],
   );
@@ -1260,8 +1266,49 @@ export default function AgentPage() {
     ) {
       const routes = readLifiPending(address);
       const cctpRoutes = readCctpPending(address);
+      const synthraRoutes = readSynthraPending(address);
       setMessages((m) => [...m, { role: "user", text: content }]);
       setInput("");
+      if (synthraRoutes.length > 0) {
+        const route = synthraRoutes[0];
+        try {
+          const response = await fetch(
+            `/api/bridge/status?provider=synthra&requestId=${encodeURIComponent(route.requestId)}&tx=${route.txHash}&from=${route.sourceChainId}&to=${route.destinationChainId}`,
+            { cache: "no-store" },
+          );
+          const data = (await response.json()) as {
+            status?: string;
+            destinationTxHash?: string | null;
+          };
+          if (data.status === "DONE") {
+            removeSynthraPending(address, route.requestId);
+          }
+          const status =
+            data.status === "DONE"
+              ? `completed — your ${route.amount} ${route.symbol} arrived on ${route.destinationChainName}`
+              : data.status === "FAILED"
+                ? `failed or was refunded on the route to ${route.destinationChainName}; check the provider result before retrying`
+                : `source-confirmed and still settling on ${route.destinationChainName}`;
+          setMessages((m) => [
+            ...m,
+            {
+              role: "assistant",
+              text: `Your Synthra bridge is ${status}.`,
+              via: "local",
+            },
+          ]);
+        } catch {
+          setMessages((m) => [
+            ...m,
+            {
+              role: "assistant",
+              text: `The source transaction is recorded, but I couldn't read Synthra's destination status right now. The route to ${route.destinationChainName} remains pending; try again shortly.`,
+              via: "local",
+            },
+          ]);
+        }
+        return;
+      }
       if (routes.length === 0 && cctpRoutes.length > 0) {
         const route = cctpRoutes[0];
         try {
@@ -1741,12 +1788,14 @@ export default function AgentPage() {
 
       if (isCurrentChainQuestion(content)) {
         const meta = getChainMeta(chainId);
-        say(!address || chainId === undefined
-          ? "Connect your wallet to see its current network."
-          : meta
-            ? `Your wallet is connected to ${meta.name}.`
-            : `Your wallet is connected to an unrecognised network (chain ID ${chainId}).`,
-          { via: "local" });
+        say(
+          !address || chainId === undefined
+            ? "Connect your wallet to see its current network."
+            : meta
+              ? `Your wallet is connected to ${meta.name}.`
+              : `Your wallet is connected to an unrecognised network (chain ID ${chainId}).`,
+          { via: "local" },
+        );
         return;
       }
 

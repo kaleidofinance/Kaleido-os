@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readExternalPools } from "@/lib/market/externalPools";
+import { readSynthraPools } from "@/lib/market/synthraPools";
 
 // The inventory is checked in and refreshed deliberately, not by each request.
 export const revalidate = 3600;
@@ -11,6 +12,9 @@ export async function GET() {
       readExternalPools(4663),
       readExternalPools(56),
       readExternalPools(99901),
+      readSynthraPools(4663),
+      readSynthraPools(5042),
+      readSynthraPools(99901),
     ])
   ).filter((snapshot) => snapshot !== null);
   return NextResponse.json(

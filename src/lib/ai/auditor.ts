@@ -17,6 +17,7 @@ import { isTradedTier, spacingFor } from "@/lib/dex/liquidity";
 import { encodeV3Path } from "@/lib/dex/route";
 import { fallbackVenues } from "@/constants/venues";
 import { isKnownBridgeAddress, isKnownBridgeSpender } from "@/lib/bridge/route";
+import { isKnownSynthraExternalSpender } from "@/lib/swap/synthraExternalSpenders";
 import {
   ARGUS_CHAIN_ID,
   ARGUS_V4,
@@ -30,6 +31,9 @@ import {
 } from "@/lib/bridge/cctp";
 import { isKnownSwapRouter, nativeSwapErc20 } from "@/lib/swap/kyberswap";
 import { isKnownFlyTradeRouter } from "@/lib/swap/flytrade";
+import { isSynthraRouter } from "@/lib/swap/synthra";
+import { isSynthraLaunchpad } from "@/lib/swap/synthraDeployments";
+import { readSynthraLaunchpadToken } from "@/lib/synthraLaunchpad/server";
 import { isKnownLifiSwapRouter } from "@/lib/swap/lifi";
 import {
   PEACH_CHAIN_ID,
@@ -122,6 +126,57 @@ async function elysiumLaunchMatches(
   try {
     const launch = await readElysiumLaunch(launchAddr);
     return launch !== null;
+  } catch {
+    return false;
+  }
+}
+
+function isSynthraLaunchpadQuote(
+  chainId: number | undefined,
+  address: string,
+): boolean {
+  if (chainId === 4663) {
+    return [
+      "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+      "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    ].includes(address.toLowerCase());
+  }
+  if (chainId === 5042) {
+    return [
+      "0x3600000000000000000000000000000000000000",
+      "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    ].includes(address.toLowerCase());
+  }
+  return false;
+}
+
+async function synthraLaunchpadMatches(
+  step: PlanStep,
+  chainId: number | undefined,
+): Promise<boolean> {
+  if (
+    (chainId !== 4663 && chainId !== 5042) ||
+    str(step.venue) !== "synthra-launchpad"
+  )
+    return false;
+  const tokenIn = str(step.tokenIn),
+    tokenOut = str(step.tokenOut);
+  const inIsQuote = isSynthraLaunchpadQuote(chainId, tokenIn);
+  const outIsQuote = isSynthraLaunchpadQuote(chainId, tokenOut);
+  if (inIsQuote === outIsQuote) return false;
+  const launch = inIsQuote ? tokenOut : tokenIn;
+  if (
+    !ethers.isAddress(launch) ||
+    !isSynthraLaunchpad(chainId, str(step.to)) ||
+    str(step.spender).toLowerCase() !== str(step.to).toLowerCase()
+  )
+    return false;
+  try {
+    const record = await readSynthraLaunchpadToken(launch, chainId);
+    return Boolean(
+      record?.active &&
+        record.launchPad.toLowerCase() === str(step.to).toLowerCase(),
+    );
   } catch {
     return false;
   }
@@ -1097,7 +1152,10 @@ function spenderReasons(
      allowlist before the local-contract guard; otherwise a legitimate CCTP or
      LI.FI approval is rejected with the misleading "no Kaleido contracts"
      error before its vetted spender can be considered. */
-  if (isKnownBridgeSpender(spender))
+  if (
+    isKnownBridgeSpender(spender) ||
+    isKnownSynthraExternalSpender(chainId, spender)
+  )
     return {
       reasons: [],
       note: "this approves a bridge provider's router, not a Kaleido contract — it is the one outside address this app authorises, and only a bridge step should be pairing it",
@@ -1122,6 +1180,7 @@ function spenderReasons(
     isKnownSwapRouter(chainId, spender) ||
     isKnownFlyTradeRouter(chainId, spender) ||
     isKnownLifiSwapRouter(chainId, spender) ||
+    isSynthraRouter(chainId, spender) ||
     isKnownElysiumLaunchRouter(chainId, spender)
   )
     return {
@@ -1789,7 +1848,9 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       !tok.ok &&
       ethers.isAddress(token) &&
       !!str(s.toToken) &&
-      (str(s.provider) === "lifi" || str(s.provider) === "relay");
+      (str(s.provider) === "lifi" ||
+        str(s.provider) === "relay" ||
+        str(s.provider) === "synthra");
     if (!tok.ok && !unverifiedSwapOut)
       reasons.push(`unrecognised token ${token || "(none)"}`);
 
@@ -1865,6 +1926,13 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         reasons.push("a CCTP bridge burns the USDC token, not native currency");
       if (tok.ok && (tok.symbol ?? "").toUpperCase() !== "USDC")
         reasons.push("CCTP only carries USDC");
+    } else if (provider === "synthra") {
+      if (!/^[A-Za-z0-9._:-]{8,256}$/.test(str(s.statusRequestId)))
+        reasons.push("the Synthra execution status id is missing or malformed");
+      if (!wantsNative && !ethers.isAddress(str(s.spender)))
+        reasons.push(
+          "the Synthra token bridge is missing its provider spender",
+        );
     } else if (provider !== "lifi" && provider !== "relay") {
       /* Fail closed: a canonical target is allow-listed and an aggregator's is
          bounded by the cap, so anything else is neither and is refused. */
@@ -1947,7 +2015,11 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
       const spender = str(s.spender);
       if (!spender)
         reasons.push("a token bridge is missing its router to approve");
-      else if (!isKnownBridgeSpender(spender))
+      else if (
+        provider !== "synthra" &&
+        !isKnownBridgeSpender(spender) &&
+        !isKnownSynthraExternalSpender(fromChainId ?? chainId, spender)
+      )
         reasons.push(
           "the bridge router being approved is not one this app recognises",
         );
@@ -2048,6 +2120,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const reasons: string[] = [];
     const peach = str(s.venue) === "peach";
     const elysium = str(s.venue) === "elysium";
+    const synthraLaunchpad = str(s.venue) === "synthra-launchpad";
     const tokenIn = str(s.tokenIn);
     const tokenOut = str(s.tokenOut);
     const rawInTok = tradeToken(chainId, tokenIn);
@@ -2057,6 +2130,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
        only allow the known quote-token side through the shape gate. */
     const inTok =
       ((peach && tokenOut.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()) ||
+        (synthraLaunchpad && isSynthraLaunchpadQuote(chainId, tokenOut)) ||
         (elysium && isElysiumQuoteToken(tokenOut))) &&
       !rawInTok.ok &&
       ethers.isAddress(tokenIn)
@@ -2069,6 +2143,7 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         : rawInTok;
     const outTok =
       ((peach && tokenIn.toLowerCase() === PEACH_QUOTE_TOKEN.toLowerCase()) ||
+        (synthraLaunchpad && isSynthraLaunchpadQuote(chainId, tokenIn)) ||
         (elysium && isElysiumQuoteToken(tokenIn))) &&
       !rawOutTok.ok &&
       ethers.isAddress(tokenOut)
@@ -2107,6 +2182,8 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     else if (
       !isKnownSwapRouter(chainId, str(s.to)) &&
       !isKnownFlyTradeRouter(chainId, str(s.to)) &&
+      !(str(s.venue) === "synthra" && isSynthraRouter(chainId, str(s.to))) &&
+      !(synthraLaunchpad && ethers.isAddress(str(s.to))) &&
       !isKnownLifiSwapRouter(chainId, str(s.to)) &&
       !(elysium && isKnownElysiumLaunchRouter(chainId, str(s.to)))
     )
@@ -2135,10 +2212,18 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         );
     }
 
+    if (synthraLaunchpad && chainId !== 4663 && chainId !== 5042) {
+      reasons.push(
+        "Synthra LaunchPad direct trades are Arc or Robinhood mainnet only",
+      );
+    }
+
     const nativeIn = isNativeSentinel(tokenIn, "dex");
     if (nativeIn && amount !== null && decimals !== null) {
       try {
-        const expected = ethers.parseUnits(str(s.amountIn), decimals);
+        const expected =
+          ethers.parseUnits(str(s.amountIn), decimals) *
+          (synthraLaunchpad && chainId === 5042 ? 1_000_000_000_000n : 1n);
         if (BigInt(str(s.value)) !== expected)
           reasons.push(
             "the aggregator's native value does not equal the reviewed input amount",
@@ -2155,7 +2240,9 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
     const notes = [
       "the aggregator's calldata is not parsed here — the router enforces the output floor, and the per-action USD cap bounds the trade",
       ...(nativeIn
-        ? ["the attached native value exactly matches the reviewed input amount"]
+        ? [
+            "the attached native value exactly matches the reviewed input amount",
+          ]
         : []),
       ...price.notes,
     ];
@@ -3015,7 +3102,6 @@ export const AUDITORS: Record<IntentKind, Auditor> = {
         `grant's health floor (${(hfBps / 10_000).toFixed(2)}) is below your ${limits.minHealthFactor}`,
       );
     }
-
     if (!Array.isArray(s.tokens))
       reasons.push("no token allowlist on the grant");
 
@@ -3485,6 +3571,16 @@ export async function auditPlan(opts: {
     ) {
       shape.reasons.push(
         "the Elysium launch token does not resolve to an active launchpad pool",
+      );
+    }
+    if (
+      shape.reasons.length === 0 &&
+      kind === "aggregatorSwap" &&
+      str(step.venue) === "synthra-launchpad" &&
+      !(await synthraLaunchpadMatches(step, chainId))
+    ) {
+      shape.reasons.push(
+        "the Synthra launch token does not resolve to the active LaunchPad contract",
       );
     }
     if (shape.reasons.length > 0 || chainId === undefined) {

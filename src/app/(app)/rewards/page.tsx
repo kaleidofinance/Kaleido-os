@@ -50,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment" | "synthraIntegration" | "synthraIntegrationComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -68,6 +68,7 @@ const ARGUS_TWEET_ID =
 const ELYSIUM_INTEGRATION_TWEET_ID = "2120123682999648614";
 const ELYSIUM_LENDING_TWEET_ID = "2120544123119870428";
 const PEACH_INTEGRATION_TWEET_ID = "2120892376160075859";
+const SYNTHRA_INTEGRATION_TWEET_ID = "2122674818864533684";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -126,6 +127,8 @@ export default function WaitlistPage() {
     elysiumLendingComment: boolean;
     peachIntegration: boolean;
     peachIntegrationComment: boolean;
+    synthraIntegration: boolean;
+    synthraIntegrationComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -140,6 +143,8 @@ export default function WaitlistPage() {
     elysiumLendingComment: false,
     peachIntegration: false,
     peachIntegrationComment: false,
+    synthraIntegration: false,
+    synthraIntegrationComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -456,7 +461,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment" | "synthraIntegration" | "synthraIntegrationComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -476,6 +481,10 @@ export default function WaitlistPage() {
                   ? `https://x.com/intent/retweet?tweet_id=${PEACH_INTEGRATION_TWEET_ID}`
                 : task === "peachIntegrationComment"
                   ? `https://x.com/intent/tweet?in_reply_to=${PEACH_INTEGRATION_TWEET_ID}`
+                : task === "synthraIntegration"
+                  ? `https://x.com/intent/retweet?tweet_id=${SYNTHRA_INTEGRATION_TWEET_ID}`
+                : task === "synthraIntegrationComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${SYNTHRA_INTEGRATION_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -938,6 +947,48 @@ export default function WaitlistPage() {
                         </button>
                       ) : (
                         <button className={s.taskBtn} onClick={() => openIntent("peachIntegrationComment")}>Comment</button>
+                      )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Like &amp; RT Synthra SynRoute + LaunchPad Integration</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.synthraIntegration?.done
+                          ? status.xTasks.synthraIntegration.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.synthraIntegration?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.synthraIntegration?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.synthraIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.synthraIntegration ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("synthraIntegration")} disabled={xBusy === "synthraIntegration"}>
+                          {xBusy === "synthraIntegration" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("synthraIntegration")}>Like &amp; RT</button>
+                      )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Comment on Synthra SynRoute + LaunchPad Integration</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.synthraIntegrationComment?.done
+                          ? status.xTasks.synthraIntegrationComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.synthraIntegrationComment?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.synthraIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.synthraIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.synthraIntegrationComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("synthraIntegrationComment")} disabled={xBusy === "synthraIntegrationComment"}>
+                          {xBusy === "synthraIntegrationComment" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("synthraIntegrationComment")}>Comment</button>
                       )}
                   </li>
 

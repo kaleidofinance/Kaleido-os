@@ -16,7 +16,7 @@ export interface ExternalPool {
   tokenSymbols: string[];
   tokens: Array<{ address: string; symbol: string; logoURI?: string }>;
   chainId: number;
-  provider?: "kyberswap" | "lifi" | "fly.trade";
+  provider?: "kyberswap" | "lifi" | "fly.trade" | "synthra";
   routeProbedAt?: string;
   metricsSource?: string;
   metricsAsOf?: string;
@@ -24,7 +24,7 @@ export interface ExternalPool {
 
 export interface ExternalPoolSnapshot {
   chainId: number;
-  source: "registry";
+  source: "registry" | "synthra";
   totalPools: number;
   sampledPools: number;
   pools: ExternalPool[];

@@ -58,6 +58,10 @@ export const X_TASK_POINTS = {
   peachIntegration: 300,
   /** Comment on the Peach Launchpad integration post; first 300 wallets. */
   peachIntegrationComment: 300,
+  /** Like & RT the Synthra SynRoute + LaunchPad integration post; first 300 wallets. */
+  synthraIntegration: 300,
+  /** Comment on the Synthra SynRoute + LaunchPad integration post; first 300 wallets. */
+  synthraIntegrationComment: 300,
   bitget: 100,
 } as const;
 
@@ -90,6 +94,8 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   elysiumLendingComment: "x_elysium_lending_comment_at",
   peachIntegration: "x_peach_integration_at",
   peachIntegrationComment: "x_peach_integration_comment_at",
+  synthraIntegration: "x_synthra_integration_at",
+  synthraIntegrationComment: "x_synthra_integration_comment_at",
   bitget: "x_bitget_at",
 };
 

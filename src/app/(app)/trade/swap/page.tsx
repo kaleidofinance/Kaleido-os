@@ -11,7 +11,13 @@ import { ChartToggle, usePublishChartPair } from "@/components/v2/ChartPanel";
 import TokenIcon, { hasTokenIcon } from "@/components/v2/TokenIcon";
 import Chevron from "@/components/v2/Chevron";
 import { chainTokens, toIToken } from "@/constants/tokens";
-import { getContracts, nativeTokenOf, hasSwaps, isNativeSentinel } from "@/constants/registry";
+import {
+  getContracts,
+  nativeTokenOf,
+  hasSwaps,
+  isNativeSentinel,
+  NATIVE_SENTINEL,
+} from "@/constants/registry";
 import { CHAINS, getChainMeta } from "@/constants/chains";
 import { useTestnetMode } from "@/hooks/v2/useTestnetMode";
 import type { IToken } from "@/constants/types/dex";
@@ -43,9 +49,11 @@ import {
   nativeSwapErc20,
 } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
+import { getSynthraExecution } from "@/lib/swap/synthra";
 import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
 import { getPeachTradeExecution } from "@/lib/peach/route";
 import { getElysiumTradeExecution } from "@/lib/elysium/route";
+import { getSynthraLaunchpadTradeExecution } from "@/lib/synthraLaunchpad/route";
 import s from "../trade.module.css";
 
 /*
@@ -63,7 +71,6 @@ import s from "../trade.module.css";
  * agent's planner calls too, so the card and the chat cannot route the same
  * request through different pools.
  */
-
 
 /** Quick sell amounts, as fractions of the sell-side balance. */
 const QUICK = [0.25, 0.5, 0.75, 1] as const;
@@ -171,13 +178,20 @@ export default function SwapPage() {
   const { priceOf } = useSpotPrices();
   const { isConnected, chainId, address } = useWalletV2();
   const { showTestnets } = useTestnetMode();
-  const networks = useMemo(() => CHAINS.filter((chain) =>
-    chain.network === (showTestnets ? "testnet" : "mainnet") &&
-    (hasSwaps(chain.id) || hasKyberSwap(chain.id)),
-  ), [showTestnets]);
+  const networks = useMemo(
+    () =>
+      CHAINS.filter(
+        (chain) =>
+          chain.network === (showTestnets ? "testnet" : "mainnet") &&
+          (hasSwaps(chain.id) || hasKyberSwap(chain.id)),
+      ),
+    [showTestnets],
+  );
   const [selectedChainId, setSelectedChainId] = useState<number | null>(null);
   useEffect(() => {
-    const asked = Number(new URLSearchParams(window.location.search).get("chain"));
+    const asked = Number(
+      new URLSearchParams(window.location.search).get("chain"),
+    );
     if (networks.some((chain) => chain.id === asked)) setSelectedChainId(asked);
   }, []);
   /* Disconnected is a fixable state, not a dead end: /trade is the one shell
@@ -212,7 +226,8 @@ export default function SwapPage() {
      always share a chain and this is unambiguous. */
   const candidateChainId = selectedChainId ?? chainId ?? PREVIEW_CHAIN_ID;
   const swapChainId = networks.some((chain) => chain.id === candidateChainId)
-    ? candidateChainId : PREVIEW_CHAIN_ID;
+    ? candidateChainId
+    : PREVIEW_CHAIN_ID;
   const available = useMemo(() => {
     const listed = chainTokens(swapChainId);
     let list = listed;
@@ -227,10 +242,7 @@ export default function SwapPage() {
     ) {
       const native = nativeTokenOf(getChainMeta(swapChainId), "dex");
       if (native) {
-        list = [
-          ...listed,
-          { ...toIToken(native), name: "Arc native USDC" },
-        ];
+        list = [...listed, { ...toIToken(native), name: "Arc native USDC" }];
       }
     }
     const chainCustom = customTokens.filter(
@@ -273,8 +285,6 @@ export default function SwapPage() {
   const [slippageBps, setSlippageBps] = useState(AUTO_SLIPPAGE_BPS);
   const [deadlineMin, setDeadlineMin] = useState(20);
 
-
-
   /*
    * Fills whichever side is not a token on this chain.
    *
@@ -303,7 +313,11 @@ export default function SwapPage() {
     const validHere = (t: IToken | null) =>
       t &&
       t.chainId === swapChainId &&
-      (available.some((a) => a.chainId === t.chainId && a.address.toLowerCase() === t.address.toLowerCase()) ||
+      (available.some(
+        (a) =>
+          a.chainId === t.chainId &&
+          a.address.toLowerCase() === t.address.toLowerCase(),
+      ) ||
         isAddress(t.address))
         ? t
         : null;
@@ -317,7 +331,10 @@ export default function SwapPage() {
        balance, both ticker "USDC" — excluding by address alone seeded native
        USDC → USDC, a pair that can never quote. A shared ticker is the same
        asset in this registry, so a default pair never repeats one. */
-    const sameAsset = (a: IToken | null | undefined, b: IToken | null | undefined) =>
+    const sameAsset = (
+      a: IToken | null | undefined,
+      b: IToken | null | undefined,
+    ) =>
       !!a &&
       !!b &&
       (a.address.toLowerCase() === b.address.toLowerCase() ||
@@ -438,7 +455,18 @@ export default function SwapPage() {
     sellDec: number;
     buyAddr: string;
     buyDec: number;
-    venue: "kyberswap" | "fly" | "lifi" | "peach" | "elysium";
+    venue:
+      | "kyberswap"
+      | "fly"
+      | "lifi"
+      | "peach"
+      | "elysium"
+      | "synthra"
+      | "synthra-launchpad";
+    minimumOut?: string;
+    nativeIn?: boolean;
+    nativeOut?: boolean;
+    gasLimit?: string;
   } | null>(null);
 
   /**
@@ -575,8 +603,21 @@ export default function SwapPage() {
            0x3600) instead. It needs the CONNECTED `address` because KyberSwap's
            /route/build bakes sender==recipient into the calldata; a disconnected
            visitor keeps the pool quote and a "Connect wallet" CTA. */
-        let aggregatorExec: Awaited<ReturnType<typeof getKyberSwapExecution>> = null;
-        let aggregatorVenue: "kyberswap" | "fly" | "lifi" | "peach" | "elysium" | null = null;
+        let aggregatorExec: Awaited<ReturnType<typeof getKyberSwapExecution>> =
+          null;
+        let aggregatorVenue:
+          | "kyberswap"
+          | "fly"
+          | "lifi"
+          | "peach"
+          | "elysium"
+          | "synthra"
+          | "synthra-launchpad"
+          | null = null;
+        let synthraMinimumOut: string | undefined;
+        let launchpadNativeIn = false;
+        let launchpadNativeOut = false;
+        let launchpadGasLimit: string | undefined;
         let kyberSell: ReturnType<typeof aggregatorToken> | null = null;
         let kyberBuy: ReturnType<typeof aggregatorToken> | null = null;
         if (
@@ -591,7 +632,9 @@ export default function SwapPage() {
         ) {
           kyberSell = aggregatorToken(
             swapChainId,
-            sellIsWrapped && swapChainId === 5042 ? { ...tokenIn, isNative: true } : tokenIn,
+            sellIsWrapped && swapChainId === 5042
+              ? { ...tokenIn, isNative: true }
+              : tokenIn,
           );
           kyberBuy = aggregatorToken(swapChainId, tokenOut);
           const units = ethers
@@ -613,27 +656,71 @@ export default function SwapPage() {
             address,
             slippageBps,
           };
-          const [kyber, fly, lifi, peach, elysium] = await Promise.all([
-            hasKyberSwap(swapChainId) ? getKyberSwapExecution(request) : Promise.resolve(null),
-            hasFlyTrade(swapChainId) ? getFlyTradeExecution(request) : Promise.resolve(null),
-            hasLifiSwap(swapChainId) ? getLifiSwapExecution(request) : Promise.resolve(null),
-            swapChainId === 5042 ? getPeachTradeExecution(request) : Promise.resolve(null),
-            swapChainId === 99901 ? getElysiumTradeExecution(request) : Promise.resolve(null),
-          ]);
-          const candidates = [
+          const [kyber, fly, lifi, peach, elysium, synthra, synthraLaunchpad] =
+            await Promise.all([
+              hasKyberSwap(swapChainId)
+                ? getKyberSwapExecution(request)
+                : Promise.resolve(null),
+              hasFlyTrade(swapChainId)
+                ? getFlyTradeExecution(request)
+                : Promise.resolve(null),
+              hasLifiSwap(swapChainId)
+                ? getLifiSwapExecution(request)
+                : Promise.resolve(null),
+              swapChainId === 5042
+                ? getPeachTradeExecution(request)
+                : Promise.resolve(null),
+              swapChainId === 99901
+                ? getElysiumTradeExecution(request)
+                : Promise.resolve(null),
+              getSynthraExecution({
+                ...request,
+                decimalsIn: kyberSell.decimals,
+                decimalsOut: kyberBuy.decimals,
+              }),
+              getSynthraLaunchpadTradeExecution(request),
+            ]);
+          const sources: Array<{
+            exec: Awaited<ReturnType<typeof getKyberSwapExecution>>;
+            venue:
+              | "kyberswap"
+              | "fly"
+              | "lifi"
+              | "peach"
+              | "elysium"
+              | "synthra"
+              | "synthra-launchpad";
+          }> = [
             { exec: kyber, venue: "kyberswap" as const },
             { exec: fly, venue: "fly" as const },
             { exec: lifi, venue: "lifi" as const },
             { exec: peach, venue: "peach" as const },
             { exec: elysium, venue: "elysium" as const },
-          ].filter((candidate): candidate is {
-            exec: NonNullable<typeof candidate.exec>;
-            venue: "kyberswap" | "fly" | "lifi" | "peach" | "elysium";
-          } => Boolean(candidate.exec));
-          const best = candidates.reduce<typeof candidates[number] | null>(
+            { exec: synthra, venue: "synthra" as const },
+            { exec: synthraLaunchpad, venue: "synthra-launchpad" as const },
+          ];
+          const candidates = sources.filter(
+            (
+              candidate,
+            ): candidate is {
+              exec: NonNullable<
+                Awaited<ReturnType<typeof getKyberSwapExecution>>
+              >;
+              venue:
+                | "kyberswap"
+                | "fly"
+                | "lifi"
+                | "peach"
+                | "elysium"
+                | "synthra"
+                | "synthra-launchpad";
+            } => Boolean(candidate.exec),
+          );
+          const best = candidates.reduce<(typeof candidates)[number] | null>(
             (current, candidate) => {
               if (!current) return candidate;
-              return BigInt(candidate.exec.amountOut) > BigInt(current.exec.amountOut)
+              return BigInt(candidate.exec.amountOut) >
+                BigInt(current.exec.amountOut)
                 ? candidate
                 : current;
             },
@@ -641,6 +728,17 @@ export default function SwapPage() {
           );
           aggregatorExec = best?.exec ?? null;
           aggregatorVenue = best?.venue ?? null;
+          if (best?.venue === "synthra-launchpad" && synthraLaunchpad) {
+            launchpadNativeIn = synthraLaunchpad.nativeIn;
+            launchpadNativeOut = synthraLaunchpad.nativeOut;
+            launchpadGasLimit = synthraLaunchpad.gasLimit;
+          }
+          synthraMinimumOut =
+            best?.venue === "synthra"
+              ? synthra?.minimumOut
+              : best?.venue === "synthra-launchpad"
+                ? synthraLaunchpad?.minimumOut
+                : undefined;
         }
         if (cancelled) return;
 
@@ -660,7 +758,9 @@ export default function SwapPage() {
             : rawOurOut;
         const aggregatorOut =
           aggregatorExec && kyberBuy
-            ? Number(ethers.formatUnits(aggregatorExec.amountOut, kyberBuy.decimals))
+            ? Number(
+                ethers.formatUnits(aggregatorExec.amountOut, kyberBuy.decimals),
+              )
             : -1;
 
         if (found && ourOut > 0 && ourOut >= aggregatorOut) {
@@ -675,11 +775,19 @@ export default function SwapPage() {
             data: aggregatorExec.data,
             spender: aggregatorExec.spender,
             value: aggregatorExec.value,
-            sellAddr: kyberSell.address,
+            sellAddr: launchpadNativeIn
+              ? NATIVE_SENTINEL.dex
+              : kyberSell.address,
             sellDec: kyberSell.decimals,
-            buyAddr: kyberBuy.address,
+            buyAddr: launchpadNativeOut
+              ? NATIVE_SENTINEL.dex
+              : kyberBuy.address,
             buyDec: kyberBuy.decimals,
             venue: aggregatorVenue,
+            ...(synthraMinimumOut ? { minimumOut: synthraMinimumOut } : {}),
+            ...(launchpadNativeIn ? { nativeIn: true } : {}),
+            ...(launchpadNativeOut ? { nativeOut: true } : {}),
+            ...(launchpadGasLimit ? { gasLimit: launchpadGasLimit } : {}),
           });
           setAmountOut(
             ethers.formatUnits(aggregatorExec.amountOut, kyberBuy.decimals),
@@ -738,10 +846,13 @@ export default function SwapPage() {
     Number(balanceIn) < parseFloat(amountIn || "0");
 
   const minOut = useMemo(() => {
+    if (kyberRoute?.venue === "synthra" && kyberRoute.minimumOut) {
+      return ethers.formatUnits(kyberRoute.minimumOut, kyberRoute.buyDec);
+    }
     if (!amountOut || !buy) return "";
     const n = Number(amountOut) * (1 - slippageBps / 10000);
     return n.toFixed(buy.token.decimals > 6 ? 6 : buy.token.decimals);
-  }, [amountOut, slippageBps, buy]);
+  }, [amountOut, slippageBps, buy, kyberRoute]);
 
   /*
    * The executed rate, quoted per unit of the sell token.
@@ -797,7 +908,9 @@ export default function SwapPage() {
      read said, which is the right thing to keep showing and the wrong thing to
      paste into the field as though it were current. */
   const sellUsd = usdAmount(amountIn, tokenIn?.symbol, priceOf);
-  const buyUsd = quoting ? null : usdAmount(amountOut, tokenOut?.symbol, priceOf);
+  const buyUsd = quoting
+    ? null
+    : usdAmount(amountOut, tokenOut?.symbol, priceOf);
 
   const quickDisabled =
     !isConnected || !tokenIn || balanceInUnread || !Number(balanceIn);
@@ -868,42 +981,52 @@ export default function SwapPage() {
       /* Selling the wrapped-native: prepend an unwrap (0x8c6c -> native USDC)
          so the 0x3600 route can pull it, and run both legs on the truncated 6-dec
          amount the quote used. */
-      const aggIn = sellIsWrapped && swapChainId === 5042
-        ? truncDecimals(amountIn, kyberRoute.sellDec)
-        : amountIn;
-      const unwrap: Intent | null = sellIsWrapped && swapChainId === 5042
-        ? {
-            kind: "unwrapNative",
-            to: wrappedNative!,
-            amount: aggIn,
-            decimals: tokenIn.decimals,
-            symbol: tokenIn.symbol,
-            nativeSymbol:
-              nativeSwapErc20(swapChainId, kyberRoute.sellAddr)?.symbol ??
-              tokenIn.symbol,
-            chainId: swapChainId,
-          }
-        : null;
+      const aggIn =
+        sellIsWrapped && swapChainId === 5042
+          ? truncDecimals(amountIn, kyberRoute.sellDec)
+          : amountIn;
+      const unwrap: Intent | null =
+        sellIsWrapped && swapChainId === 5042
+          ? {
+              kind: "unwrapNative",
+              to: wrappedNative!,
+              amount: aggIn,
+              decimals: tokenIn.decimals,
+              symbol: tokenIn.symbol,
+              nativeSymbol:
+                nativeSwapErc20(swapChainId, kyberRoute.sellAddr)?.symbol ??
+                tokenIn.symbol,
+              chainId: swapChainId,
+            }
+          : null;
       return [
         ...(unwrap ? [unwrap] : []),
-        ...(!isNativeSentinel(kyberRoute.sellAddr, "dex") ? [{
-          kind: "approve" as const,
-          token: kyberRoute.sellAddr,
-          spender: kyberRoute.spender,
-          amount: aggIn,
-          decimals: kyberRoute.sellDec,
-          symbol: tokenIn.symbol,
-        }] : []),
+        ...(kyberRoute.nativeIn || isNativeSentinel(kyberRoute.sellAddr, "dex")
+          ? []
+          : [
+              {
+                kind: "approve" as const,
+                token: kyberRoute.sellAddr,
+                spender: kyberRoute.spender,
+                amount: aggIn,
+                decimals: kyberRoute.sellDec,
+                symbol: tokenIn.symbol,
+              },
+            ]),
         {
           kind: "aggregatorSwap",
           to: kyberRoute.to,
           data: kyberRoute.data,
           value: kyberRoute.value,
-          tokenIn: kyberRoute.sellAddr,
+          tokenIn: kyberRoute.nativeIn
+            ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+            : kyberRoute.sellAddr,
           amountIn: aggIn,
           decimalsIn: kyberRoute.sellDec,
           symbolIn: tokenIn.symbol,
-          tokenOut: kyberRoute.buyAddr,
+          tokenOut: kyberRoute.nativeOut
+            ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+            : kyberRoute.buyAddr,
           amountOut: amountOut || "0",
           amountOutMin: minOut,
           decimalsOut: kyberRoute.buyDec,
@@ -912,6 +1035,7 @@ export default function SwapPage() {
           venue: kyberRoute.venue,
           spender: kyberRoute.spender,
           slippageBps,
+          ...(kyberRoute.gasLimit ? { gasLimit: kyberRoute.gasLimit } : {}),
         },
       ];
     }
@@ -1016,7 +1140,11 @@ export default function SwapPage() {
      no quote — so they are guarded out. `samePoolSide` always implies a wrapMode,
      so the old "same asset" dead-end is gone. */
   const reviewVerb =
-    wrapMode === "wrap" ? "Wrap" : wrapMode === "unwrap" ? "Unwrap" : "Review swap";
+    wrapMode === "wrap"
+      ? "Wrap"
+      : wrapMode === "unwrap"
+        ? "Unwrap"
+        : "Review swap";
   const ctaLabel = !isConnected
     ? "Connect wallet"
     : !tokenIn || !tokenOut
@@ -1144,7 +1272,9 @@ export default function SwapPage() {
               now a chip in the corner, beside the fractions it belongs with.
               Two Maxes doing the same thing on one card is one too many. */}
           <div className={s.sub}>
-            <span className={s.usdValue}>{tokenIn ? usdText(sellUsd) : "—"}</span>
+            <span className={s.usdValue}>
+              {tokenIn ? usdText(sellUsd) : "—"}
+            </span>
             <span>
               {isConnected && !balanceInLoading && tokenIn && (
                 <>Balance {balanceText(balanceIn, balanceInUnread)}</>
@@ -1178,7 +1308,9 @@ export default function SwapPage() {
           {/* Carries a balance the buy side has no real use for, so the two
               wells measure the same. See `balanceOut` above. */}
           <div className={s.sub}>
-            <span className={s.usdValue}>{tokenOut ? usdText(buyUsd) : "—"}</span>
+            <span className={s.usdValue}>
+              {tokenOut ? usdText(buyUsd) : "—"}
+            </span>
             <span>
               {isConnected && !balanceOutLoading && tokenOut && (
                 <>Balance {balanceText(balanceOut, balanceOutUnread)}</>
@@ -1244,19 +1376,29 @@ export default function SwapPage() {
         {kyberRoute && (
           <div className={s.quote}>
             <span title="The venue routing this swap">
-              <b>{kyberRoute.venue === "elysium" ? "Uniswap v4" : "Aggregator route"}</b>
+              <b>
+                {kyberRoute.venue === "elysium"
+                  ? "Uniswap v4"
+                  : kyberRoute.venue === "synthra-launchpad"
+                    ? "Synthra LaunchPad"
+                    : "Aggregator route"}
+              </b>
               <span className={s.routeVenue}>
-                {" "}· via {
-                  kyberRoute.venue === "elysium"
-                    ? "Elysium"
-                    : kyberRoute.venue === "peach"
-                    ? "Peach"
-                    : kyberRoute.venue === "fly"
-                    ? "Fly.trade"
-                    : kyberRoute.venue === "lifi"
-                    ? "LI.FI"
-                    : "KyberSwap"
-                }
+                {" "}
+                · via{" "}
+                {kyberRoute.venue === "elysium"
+                  ? "Elysium"
+                  : kyberRoute.venue === "synthra"
+                    ? "Synthra"
+                    : kyberRoute.venue === "synthra-launchpad"
+                      ? "Synthra LaunchPad"
+                      : kyberRoute.venue === "peach"
+                        ? "Peach"
+                        : kyberRoute.venue === "fly"
+                          ? "Fly.trade"
+                          : kyberRoute.venue === "lifi"
+                            ? "LI.FI"
+                            : "KyberSwap"}
               </span>
             </span>
           </div>

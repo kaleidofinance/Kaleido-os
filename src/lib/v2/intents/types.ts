@@ -292,6 +292,8 @@ export type Intent =
       recipient?: string;
       /** Seconds, or null when genuinely unknown — never a fabricated ETA. */
       etaSeconds: number | null;
+      /** Synthra execution id for asynchronous destination settlement. */
+      statusRequestId?: string;
       /** True for the chain's native currency: sent as `value`, no approve. */
       isNative?: boolean;
       /**
@@ -357,6 +359,8 @@ export type Intent =
       venue: string;
       /** The router the paired approve authorises; equal to `to` by construction. */
       spender: string;
+      /** Explicit gas floor for a closing launchpad buy. */
+      gasLimit?: string;
       /**
        * The slippage tolerance the route was quoted at, in bps. Carried so the
        * resolver can REBUILD the router calldata at sign time (aggregator routes

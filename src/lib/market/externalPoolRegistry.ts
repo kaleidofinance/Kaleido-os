@@ -18,7 +18,7 @@ export interface ExternalPoolRegistryEntry {
   tokens: Array<{ address: string; symbol: string }>;
   tokenSymbols: string[];
   /** Provider provenance captured by the audited refresh job. */
-  provider?: "kyberswap" | "lifi" | "fly.trade";
+  provider?: "kyberswap" | "lifi" | "fly.trade" | "synthra";
   routeProbedAt?: string;
   metricsSource?: string;
   metricsAsOf?: string;
