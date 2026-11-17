@@ -138,23 +138,3 @@ jobs:
           # reason the cadence is 20 minutes.
           PUSH_ALL: "1"
         run: npx hardhat run scripts/push-aggregator.js --network robinhoodTestnet
-
-  elysium:
-    name: Elysium — push HYPE + USDC self-hosted feeds
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: smart-contract/package-lock.json
-      - run: npm ci
-      - name: Push Elysium feeds
-        env:
-          KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
-          ELYSIUM_RPC: ${{ secrets.ELYSIUM_RPC }}
-          HERMES_ENDPOINT: ${{ secrets.HERMES_ENDPOINT }}
-          PUSH_ALL: "1"
-        run: npx hardhat run scripts/push-aggregator.js --network elysium
