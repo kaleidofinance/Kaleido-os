@@ -246,10 +246,15 @@ const useGetValueAndHealth = (targetChainId?: number) => {
          * read by no component), so the zero was invisible; it would not have
          * stayed invisible once something rendered it.
          */
+        let onChainCollateralUsd: number | null = null;
         try {
           const res = await contract.getAccountCollateralValue(address);
           setData(res);
           setAvailBal(res);
+          const parsed = Number(ethers.formatUnits(res, 18));
+          if (Number.isFinite(parsed)) {
+            onChainCollateralUsd = parsed;
+          }
         } catch (error) {
           setData(null);
           setAvailBal(null);
@@ -554,7 +559,9 @@ const useGetValueAndHealth = (targetChainId?: number) => {
           contribution(usdtAmount, usdtPriceUsd),
           contribution(kfusdAmount, kfusdPriceUsd),
         ];
-        if (parts.every((p) => p !== null)) {
+        if (onChainCollateralUsd !== null) {
+          setCollateralVal(onChainCollateralUsd.toFixed(2));
+        } else if (parts.every((p) => p !== null)) {
           const totalCollateralValue = parts.reduce<number>(
             (sum, p) => sum + (p ?? 0),
             0,
