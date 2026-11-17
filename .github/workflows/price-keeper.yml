@@ -95,10 +95,10 @@ defaults:
     working-directory: smart-contract
 
 jobs:
-  # Two independent jobs on purpose: an Arc RPC outage must not stop the Robinhood
-  # push, and vice versa. Each is a full, self-contained keeper for its chain.
+  # Independent jobs on purpose: an RPC outage on one chain must not stop
+  # the pushes on other chains. Each is a full, self-contained keeper for its chain.
   arc:
-    name: Arc — relay USDC/WUSDC Pyth update
+    name: Arc — push self-hosted feeds
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -109,18 +109,13 @@ jobs:
           cache: npm
           cache-dependency-path: smart-contract/package-lock.json
       - run: npm ci
-      - name: Push Arc USDC/WUSDC
+      - name: Push Arc feeds
         env:
           KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
           ARC_TESTNET_RPC: ${{ secrets.ARC_TESTNET_RPC }}
           HERMES_ENDPOINT: ${{ secrets.HERMES_ENDPOINT }}
-          # PUSH_ALL forces the push even though USDC is nominally still inside its
-          # 25h bound — resetting the clock every run is the point. PUSH_FEEDS
-          # scopes it to USDC so we never spend a fee re-pushing the Pyth-relayed
-          # ETH/BTC feeds.
           PUSH_ALL: "1"
-          PUSH_FEEDS: "USDC"
-        run: npx hardhat run scripts/push-prices.js --network arcTestnet
+        run: npx hardhat run scripts/push-aggregator.js --network arcTestnet
 
   robinhood:
     name: Robinhood — push ETH + USDC self-hosted feeds
@@ -143,3 +138,23 @@ jobs:
           # reason the cadence is 20 minutes.
           PUSH_ALL: "1"
         run: npx hardhat run scripts/push-aggregator.js --network robinhoodTestnet
+
+  elysium:
+    name: Elysium — push HYPE + USDC self-hosted feeds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: smart-contract/package-lock.json
+      - run: npm ci
+      - name: Push Elysium feeds
+        env:
+          KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
+          ELYSIUM_RPC: ${{ secrets.ELYSIUM_RPC }}
+          HERMES_ENDPOINT: ${{ secrets.HERMES_ENDPOINT }}
+          PUSH_ALL: "1"
+        run: npx hardhat run scripts/push-aggregator.js --network elysium

@@ -102,11 +102,12 @@ const CONFIRMATIONS = Number(process.env.CONFIRMATIONS || "5");
  * could never clear it; five identical failures is the signature of a request that
  * is malformed for the endpoint rather than an endpoint under load. */
 const RANGE = 1000;
+const rangeFor = (chainId) => (chainId === 84532 ? 200 : RANGE);
 /* A backstop on catch-up per run: if a chain fell far behind (a long outage),
  * process at most this many blocks now and continue from the new checkpoint next
  * run, rather than issue hundreds of getLogs in one invocation. This advances the
  * checkpoint — it is a bounded catch-up, not a skip — and is logged when it bites. */
-const MAX_SCAN = 100_000;
+const MAX_SCAN = 10_000;
 /* First-run look-back when there is no checkpoint store at all (pure local dry
  * run): scan a small recent window so there is something to see, without a table. */
 const DRY_LOOKBACK = 2_000;
@@ -262,10 +263,10 @@ async function sendPush(wallet, news) {
 /* ── Per-chain scan ──────────────────────────────────────────────────────────*/
 
 /** Decode the logs in [from, to] into { wallet, requestId, news, block, index }. */
-async function collectTargets(contract, from, to) {
+async function collectTargets(contract, from, to, range = RANGE) {
   const out = [];
-  for (let lo = from; lo <= to; lo += RANGE) {
-    const hi = Math.min(lo + RANGE - 1, to);
+  for (let lo = from; lo <= to; lo += range) {
+    const hi = Math.min(lo + range - 1, to);
     const [serviced, repaid, liquidated] = await Promise.all([
       retry(`RequestServiced ${lo}-${hi}`, () =>
         contract.queryFilter(contract.filters.RequestServiced(), lo, hi),
@@ -359,7 +360,7 @@ async function watchChain(chainId, subs) {
     return;
   }
 
-  let from = HAVE_SUPABASE ? checkpoint + 1 : Math.max(1, to - DRY_LOOKBACK);
+  let from = (HAVE_SUPABASE && BROADCAST) ? checkpoint + 1 : Math.max(1, to - DRY_LOOKBACK);
   if (from > to) {
     console.log(`  nothing new since ${checkpoint}.`);
     return;
@@ -380,7 +381,8 @@ async function watchChain(chainId, subs) {
 
 async function scanRange(chainId, contract, from, to, subs, label) {
   console.log(`  scanning ${from}-${to}…`);
-  const targets = await collectTargets(contract, from, to);
+  const range = rangeFor(chainId);
+  const targets = await collectTargets(contract, from, to, range);
 
   const deliverable = targets.filter((t) => !subs || subs.has(t.wallet));
   const skipped = targets.length - deliverable.length;

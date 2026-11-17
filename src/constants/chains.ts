@@ -112,7 +112,6 @@ export const CHAINS: ChainMeta[] = [
     rpcUrls: [
       "https://rpc.testnet.arc.network",
       "https://rpc.quicknode.testnet.arc.network",
-      "https://rpc.blockdaemon.testnet.arc.network",
     ],
     blockExplorer: { name: "ArcScan", url: "https://testnet.arcscan.app" },
     iconId: "arc",
