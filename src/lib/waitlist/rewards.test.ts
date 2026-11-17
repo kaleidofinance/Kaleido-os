@@ -97,5 +97,20 @@ check(
   peach.availablePoints === 600,
 );
 
+const synthra = projectWaitlistRewards(
+  {
+    welcome_points: 0,
+    activated_at: "2026-01-01T00:00:00.000Z",
+    x_synthra_integration_at: "2026-01-01T00:00:00.000Z",
+    x_synthra_integration_comment_at: "2026-01-01T00:00:00.000Z",
+  },
+  0,
+  now,
+);
+check(
+  "Synthra Like & RT and Comment award 300 kPoint each",
+  synthra.availablePoints === 600,
+);
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

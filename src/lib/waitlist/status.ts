@@ -39,6 +39,8 @@ export type XTaskKey =
   | "elysiumLendingComment"
   | "peachIntegration"
   | "peachIntegrationComment"
+  | "synthraIntegration"
+  | "synthraIntegrationComment"
   | "bitget";
 
 /** On-chain transaction task keys. `arcMainnet` was retired 2026-09-23 (farmable);
