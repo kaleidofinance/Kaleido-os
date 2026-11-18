@@ -1383,6 +1383,129 @@
 
 /* ---------- expanded ---------- */
 
+/* Durable multi-step task banner */
+.taskBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin: 8px 16px 0;
+  background: var(--k-surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--k-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  font-size: var(--k-fs-xs, 12px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.taskMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.taskBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--k-t2);
+  flex-shrink: 0;
+}
+
+.task_created,
+.task_researching,
+.task_preparing,
+.task_checking {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.task_awaiting_approval {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.task_executing {
+  background: var(--k-brand-dim, rgba(16, 185, 129, 0.15));
+  color: var(--k-brand, #34d399);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.task_paused {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.taskTitle {
+  color: var(--k-t1);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.taskResumeBtn {
+  background: var(--k-brand, #10b981);
+  color: #000;
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.taskResumeBtn:hover {
+  filter: brightness(1.1);
+}
+
+.taskCancelBtn {
+  background: transparent;
+  border: 1px solid var(--k-border, rgba(255, 255, 255, 0.15));
+  color: var(--k-t2);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.taskCancelBtn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--k-t1);
+}
+
+.taskDismissBtn {
+  background: transparent;
+  border: 0;
+  color: var(--k-t3);
+  padding: 2px 4px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.taskDismissBtn:hover {
+  color: var(--k-t1);
+}
+
 /* The same card, wider, on request. Not a second surface and not a route of its
    own: the transcript, the composer and the scroll position are the ones you were
    already looking at, so the toggle is a view of the conversation rather than a

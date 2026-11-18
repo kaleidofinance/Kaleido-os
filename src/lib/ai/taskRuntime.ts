@@ -26,6 +26,7 @@ export interface TaskStep {
 export interface AgentTask {
   id: string;
   idempotencyKey: string;
+  address?: string;
   objective: string;
   contextVersion: string;
   status: TaskStatus;
@@ -40,6 +41,7 @@ export interface AgentTask {
 export interface CreateTaskInput {
   id: string;
   idempotencyKey: string;
+  address?: string;
   objective: string;
   contextVersion: string;
   steps?: TaskStep[];
@@ -121,6 +123,7 @@ export function createTask(input: CreateTaskInput): AgentTask {
   return {
     id: input.id,
     idempotencyKey: input.idempotencyKey,
+    ...(input.address ? { address: input.address.toLowerCase() } : {}),
     objective: input.objective.trim(),
     contextVersion: input.contextVersion,
     status: "created",

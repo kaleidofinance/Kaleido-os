@@ -20,6 +20,8 @@ import { useV3Positions } from "@/hooks/dex/useV3Positions";
 import { usePortfolio, type Portfolio } from "@/hooks/usePortfolio";
 import { useLocalPlanner } from "@/hooks/v2/useLocalPlanner";
 import { useChatHistory, type Msg } from "@/hooks/v2/useChatHistory";
+import { useAgentTasks } from "@/hooks/v2/useAgentTasks";
+import { isTerminalTaskStatus } from "@/lib/ai/taskRuntime";
 import {
   chainTokens,
   chainsOffering,
@@ -336,6 +338,11 @@ export default function AgentPage() {
   const [readOnlyMode, setReadOnlyMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panel, setPanel] = useState<Panel>({ kind: "idle" });
+  const [dismissedTaskId, setDismissedTaskId] = useState<string | null>(null);
+  const { activeTask, resumeTask, cancelTask } = useAgentTasks(
+    address,
+    activeAccount,
+  );
   /** A command awaiting one more slot. Kept so a bare "kld" completes it. */
   const [pending, setPending] = useState<{
     draft: Draft;
@@ -2817,6 +2824,77 @@ export default function AgentPage() {
         role="region"
         aria-label="Luca agent chat"
       >
+        {activeTask && activeTask.id !== dismissedTaskId && (
+          <div
+            className={s.taskBanner}
+            role="status"
+            aria-label="Active durable task"
+          >
+            <div className={s.taskMeta}>
+              <span
+                className={`${s.taskBadge} ${s[`task_${activeTask.status}`] ?? ""}`}
+              >
+                {activeTask.status.replace("_", " ")}
+              </span>
+              <span className={s.taskTitle} title={activeTask.objective}>
+                {activeTask.objective}
+              </span>
+            </div>
+            <div className={s.taskActions}>
+              {activeTask.status === "paused" && (
+                <button
+                  type="button"
+                  className={s.taskResumeBtn}
+                  onClick={async () => {
+                    const ok = await resumeTask(activeTask);
+                    if (ok) {
+                      setMessages((prev) => [
+                        ...prev,
+                        {
+                          role: "assistant",
+                          text: `Resumed task: ${activeTask.objective}`,
+                          via: "local",
+                        },
+                      ]);
+                    }
+                  }}
+                >
+                  Resume
+                </button>
+              )}
+              {!isTerminalTaskStatus(activeTask.status) && (
+                <button
+                  type="button"
+                  className={s.taskCancelBtn}
+                  onClick={async () => {
+                    const ok = await cancelTask(activeTask);
+                    if (ok) {
+                      setMessages((prev) => [
+                        ...prev,
+                        {
+                          role: "assistant",
+                          text: `Cancelled task: ${activeTask.objective}`,
+                          via: "local",
+                        },
+                      ]);
+                    }
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="button"
+                className={s.taskDismissBtn}
+                onClick={() => setDismissedTaskId(activeTask.id)}
+                title="Dismiss task banner"
+                aria-label="Dismiss task banner"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
         {/* The panels take the transcript's box rather than appearing below it.
             They are modes of the conversation, not additions to it: you are
             reviewing what Luca just proposed, and Back returns you to the words
