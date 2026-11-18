@@ -2253,7 +2253,7 @@ async function getSwapRoute(args: Json, chainId: number, address?: string): Prom
     if (entry) return toIToken(entry);
     if (ethers.isAddress(sym)) {
       const listed = chainTokenByAddress(chainId, sym);
-      if (listed) return toIToken(listed);
+      if (listed) return listed;
       const { facts } = await resolveTokenFacts(chainId, sym);
       return tokenFactsToAddressToken(facts, chainId);
     }

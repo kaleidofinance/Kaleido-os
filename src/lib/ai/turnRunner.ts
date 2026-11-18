@@ -53,7 +53,7 @@ export interface SettleTurnArgs {
   safeLimits: { slippageBps: number } & Record<string, unknown>;
   allowedActions?: unknown;
   primaryProvider?: ChatProvider | null;
-  quota: { used: number; quota: number; remaining: number };
+  quota: { used: number; quota: number; remaining: number; unmetered?: boolean };
   capabilities: CapabilitySnapshot;
   startedAt: number;
   requestId: string;
@@ -331,7 +331,7 @@ export async function recoverAgentTurn(args: {
   primaryProvider?: ChatProvider | null;
   chainId?: number;
   meterAddress?: string;
-  quota: { used: number; quota: number; remaining: number };
+  quota: { used: number; quota: number; remaining: number; unmetered?: boolean };
   capabilities: CapabilitySnapshot;
   startedAt: number;
   requestId: string;
@@ -360,7 +360,9 @@ export async function recoverAgentTurn(args: {
     String(errObj?.message ?? ""),
   );
   const refunded = blocked
-    ? await releaseModelRequest(meterAddress, quota)
+    ? await releaseModelRequest(meterAddress, {
+        unmetered: quota.unmetered ?? false,
+      })
     : null;
 
   await logAgentTurn({

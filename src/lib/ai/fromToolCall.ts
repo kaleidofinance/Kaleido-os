@@ -102,7 +102,7 @@ function dexToken(
   if (entry) return toIToken(entry);
   if (chainId !== undefined && ethers.isAddress(symbol.trim())) {
     const byAddr = chainTokenByAddress(chainId, symbol.trim());
-    if (byAddr) return toIToken(byAddr);
+    if (byAddr) return byAddr;
   }
   return undefined;
 }
