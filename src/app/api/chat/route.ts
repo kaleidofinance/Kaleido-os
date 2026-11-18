@@ -354,6 +354,7 @@ export async function POST(request: NextRequest) {
           safeLimits,
           allowedActions: body.limits?.allowedActions,
           primaryProvider: provider,
+          readOnly: agentInput.readOnly,
           quota,
           capabilities,
           startedAt,

@@ -16,6 +16,7 @@ export interface TurnRequestBody {
   localIntent?: unknown;
   /** Client routing hint: dynamic protocol questions must use live reads. */
   analysisMode?: unknown;
+  readOnly?: unknown;
   history?: unknown;
   grounding?: unknown;
 }
@@ -66,6 +67,7 @@ export function createAgentInput(
 ): AgentInput {
   const localIntent = validateLocalClassification(body.localIntent);
   const liveAnalysis = body.analysisMode === "live";
+  const readOnly = body.readOnly === true;
   return {
     message: String(body.message ?? ""),
     context,
@@ -99,5 +101,6 @@ export function createAgentInput(
     mainnetOnly: context.mainnetOnly,
     networkMode: context.networkMode,
     ...(liveAnalysis ? { analysisMode: "live" as const } : {}),
+    ...(readOnly ? { readOnly: true } : {}),
   };
 }

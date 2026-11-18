@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 
 import { getProviderChain } from "@/lib/ai";
+import { acceptanceSummary, buildAcceptanceMatrix } from "@/lib/ai/acceptanceMatrix";
 import { GLOBAL_DAILY_MODEL_REQUESTS } from "@/lib/ai/credits";
+import { taskPersistenceStatus } from "@/lib/ai/taskCheckpoint";
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
 
 export const dynamic = "force-dynamic";
@@ -215,11 +217,16 @@ async function handle(request: NextRequest) {
   }
 
   const ok = chain.length > 0 && metered && alerts.length === 0;
+  const includeMatrix = request.nextUrl.searchParams.get("acceptance") === "1";
+  const mainnetMatrix = buildAcceptanceMatrix("mainnet");
 
   return NextResponse.json({
     ok,
     providers: { primary: chain[0] ?? null, chain, count: chain.length },
     metered,
+    taskStore: taskPersistenceStatus(),
+    acceptance: acceptanceSummary(mainnetMatrix),
+    ...(includeMatrix ? { acceptanceMatrix: mainnetMatrix } : {}),
     globalQuota,
     lastGoodTurnAt,
     window1h,

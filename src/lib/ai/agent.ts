@@ -96,6 +96,8 @@ export interface AgentInput {
   networkMode?: NetworkMode;
   /** Server-validated hint that this turn requires a live-analysis preflight. */
   analysisMode?: "live";
+  /** When true, strip all execute tools and forbid transaction proposals. */
+  readOnly?: boolean;
   /**
    * Text appended after the base prompt and the docs reference — the
    * normalizer's product facts, glossary and rules. Last, so its rules win
@@ -202,6 +204,9 @@ export async function runAgent(
   const systemFinal = [
     systemWithDocs,
     input.capabilities ? capabilityPrompt(input.capabilities) : null,
+    input.readOnly
+      ? "READ-ONLY RESEARCH MODE: Do not call execute tools or propose signable transactions. Answer, analyze, and cite live reads or sourced research only."
+      : null,
     input.systemAddendum ?? null,
   ]
     .filter((part): part is string => Boolean(part))
@@ -309,7 +314,9 @@ export async function runAgent(
     });
   }
 
-  const tools = filterToolsForTurn(input.capabilities);
+  const tools = filterToolsForTurn(input.capabilities, {
+    readOnly: input.readOnly,
+  });
 
   /* One call site for the model, so every round streams or none does. Streaming
      is chosen per turn rather than per provider: the caller asking for deltas is

@@ -53,6 +53,7 @@ export interface SettleTurnArgs {
   safeLimits: { slippageBps: number } & Record<string, unknown>;
   allowedActions?: unknown;
   primaryProvider?: ChatProvider | null;
+  readOnly?: boolean;
   quota: { used: number; quota: number; remaining: number; unmetered?: boolean };
   capabilities: CapabilitySnapshot;
   startedAt: number;
@@ -82,6 +83,7 @@ export async function settleAgentTurn(
     safeLimits,
     allowedActions,
     primaryProvider,
+    readOnly = false,
     quota,
     capabilities,
     startedAt,
@@ -103,7 +105,7 @@ export async function settleAgentTurn(
   let verdict: Awaited<ReturnType<typeof auditPlan>>;
   try {
     built = await planFromToolCalls(
-      result.executes,
+      readOnly ? [] : result.executes,
       chainId,
       serverPlanDeps(meterAddress, chainId),
       {

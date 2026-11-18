@@ -333,6 +333,7 @@ export default function AgentPage() {
   } = useChatHistory(address);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [readOnlyMode, setReadOnlyMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panel, setPanel] = useState<Panel>({ kind: "idle" });
   /** A command awaiting one more slot. Kept so a bare "kld" completes it. */
@@ -2186,6 +2187,7 @@ export default function AgentPage() {
                   text: g.text,
                 })),
               }),
+          ...(readOnlyMode ? { readOnly: true } : {}),
           // No fallback. The old `?? 11124` silently told the server every
           // disconnected user was on Abstract Testnet, so answers came back
           // confidently scoped to a chain the user wasn't on. Undefined is the
@@ -3173,6 +3175,19 @@ export default function AgentPage() {
                   value={settings.model}
                   onChange={(model) => update({ model })}
                 />
+                <button
+                  type="button"
+                  className={`${s.modeToggle} ${readOnlyMode ? s.modeToggleActive : ""}`}
+                  aria-pressed={readOnlyMode}
+                  onClick={() => setReadOnlyMode((v) => !v)}
+                  title={
+                    readOnlyMode
+                      ? "Research mode (read-only): Luca will not propose signable transactions"
+                      : "Switch to Research mode (read-only, no transaction proposals)"
+                  }
+                >
+                  {readOnlyMode ? "Research · Read-only" : "Prepare actions"}
+                </button>
                 {credits && (
                   <span
                     className="tabular"

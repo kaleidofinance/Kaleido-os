@@ -57,6 +57,30 @@ const provider: ChatProvider = {
   assert.equal(settled.context.failedOver, true);
   assert.match(settled.response, /fallback-model answered this turn/);
 
+  // readOnly mode suppresses execute calls even if the model emitted one.
+  const roSettled = await settleAgentTurn({
+    result: {
+      text: "Here is my research.",
+      reads: [],
+      executes: [{ name: "swap", args: { amount: "10", tokenIn: "USDC", tokenOut: "WETH" } }],
+      provider: "turn-runner-test",
+      model: "turn-runner-test",
+      trace: [],
+      rounds: 0,
+    },
+    chainId: 4663,
+    userText: "research only",
+    safeLimits: { slippageBps: 50 },
+    primaryProvider: provider,
+    readOnly: true,
+    quota: { used: 1, quota: 25, remaining: 24 },
+    capabilities: robinhoodCaps,
+    startedAt: Date.now(),
+    requestId: "req-ro",
+  });
+  assert.equal(roSettled.outcome.kind, "answer");
+  assert.deepEqual(roSettled.context.plan, []);
+
   console.log("Turn runner checks passed.");
 })().catch((error) => {
   console.error(error);
