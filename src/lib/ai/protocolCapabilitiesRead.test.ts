@@ -35,7 +35,7 @@ const capability = (result: any, id: string) =>
   );
   assert.equal(elysium.status, "ok");
   assert.equal(elysium.data.chainId, 99901);
-  assert.equal(capability(elysium, "launchpads")?.status, "not_configured");
+  assert.equal(capability(elysium, "launchpads")?.status, "available");
 
   const wrongMode = await runReadTool(
     "getProtocolCapabilities",

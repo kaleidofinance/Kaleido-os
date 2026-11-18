@@ -29,6 +29,36 @@ interface OpenAIToolCall {
   function: { name: string; arguments: string };
 }
 
+function toOpenAIMessages(system: string, messages: ChatInput["messages"]) {
+  return [
+    { role: "system", content: system },
+    ...messages.map((m) => {
+      if (m.role === "tool") {
+        return {
+          role: "tool",
+          tool_call_id: m.toolCallId,
+          content: m.content,
+        };
+      }
+      if (m.role === "assistant" && m.toolCalls?.length) {
+        return {
+          role: "assistant",
+          content: m.content || null,
+          tool_calls: m.toolCalls.map((tc) => ({
+            id: tc.id,
+            type: "function",
+            function: {
+              name: tc.name,
+              arguments: JSON.stringify(tc.args),
+            },
+          })),
+        };
+      }
+      return { role: m.role, content: m.content };
+    }),
+  ];
+}
+
 export interface OpenAIOptions {
   /** Include the version segment — "/chat/completions" is appended. */
   baseUrl?: string;
@@ -93,10 +123,7 @@ export class OpenAIProvider implements ChatProvider {
       body: JSON.stringify({
         model: this.model,
         ...(this.maxTokens ? { max_completion_tokens: this.maxTokens } : {}),
-        messages: [
-          { role: "system", content: system },
-          ...messages.map((m) => ({ role: m.role, content: m.content })),
-        ],
+        messages: toOpenAIMessages(system, messages),
         tools: tools.map((t) => ({
           type: "function",
           function: {
@@ -138,8 +165,15 @@ export class OpenAIProvider implements ChatProvider {
     for (const c of calls) {
       const parsed = args(c);
       if (!parsed) continue;
-      const call = { name: c.function.name, args: parsed };
-      (EXECUTE_TOOLS.has(c.function.name) ? executes : reads).push(call);
+      if (EXECUTE_TOOLS.has(c.function.name)) {
+        executes.push({ name: c.function.name, args: parsed });
+      } else {
+        reads.push({
+          ...(c.id ? { id: c.id } : {}),
+          name: c.function.name,
+          args: parsed,
+        });
+      }
     }
 
     return {
@@ -223,7 +257,7 @@ export class OpenAIProvider implements ChatProvider {
        belongs to and only the first one for a slot carries the function name,
        so appending in arrival order would splice two calls' arguments together
        the moment a model asks for more than one tool. */
-    const parts = new Map<number, { name: string; args: string }>();
+    const parts = new Map<number, { id?: string; name: string; args: string }>();
 
     for await (const payload of sseData(res.body)) {
       if (payload === "[DONE]") break;
@@ -234,6 +268,7 @@ export class OpenAIProvider implements ChatProvider {
             content?: string | null;
             tool_calls?: Array<{
               index?: number;
+              id?: string;
               function?: { name?: string; arguments?: string };
             }>;
           };
@@ -266,6 +301,7 @@ export class OpenAIProvider implements ChatProvider {
       for (const tc of delta.tool_calls ?? []) {
         const slot = tc.index ?? 0;
         const part = parts.get(slot) ?? { name: "", args: "" };
+        if (tc.id) part.id = tc.id;
         if (tc.function?.name) part.name = tc.function.name;
         part.args += tc.function?.arguments ?? "";
         parts.set(slot, part);
@@ -276,7 +312,7 @@ export class OpenAIProvider implements ChatProvider {
       .sort(([a], [b]) => a - b)
       .filter(([, p]) => p.name)
       .map(([slot, p]) => ({
-        id: `stream-${slot}`,
+        id: p.id ?? `stream-${slot}`,
         function: { name: p.name, arguments: p.args },
       }));
 

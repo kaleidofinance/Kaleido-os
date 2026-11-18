@@ -66,6 +66,15 @@ import {
 import { getKyberSwapExecution } from "@/lib/swap/kyberswap";
 import { getFlyTradeExecution, hasFlyTrade } from "@/lib/swap/flytrade";
 import { getLifiSwapExecution, hasLifiSwap } from "@/lib/swap/lifi";
+import { getSynthraExecution } from "@/lib/swap/synthra";
+import {
+  synthraExecutorsFor,
+  synthraInternalRoutersFor,
+} from "@/lib/swap/synthraDeployments";
+import { resolveSwapRoute } from "@/lib/swap/route";
+import { resolveTokenFacts } from "@/lib/v2/cards/resolveTokenServer";
+import { tokenFactsToAddressToken } from "@/lib/v2/cards/tokenCard";
+import type { IToken } from "@/constants/types/dex";
 import { serverPathQuoter, serverQuote, serverPositions } from "./planDeps";
 import { readPoolState } from "@/lib/dex/pool";
 import { getBridgeQuote } from "./bridgeQuotes";
@@ -1549,6 +1558,7 @@ const TARGET_CHAIN_READS = new Set([
   "getPositions",
   "getExternalPools",
   "getProtocolCapabilities",
+  "getIntegrations",
   "getAnalytics",
   "getLendingAssets",
   "getYieldSources",
@@ -2058,19 +2068,29 @@ async function getBridgeRoute(args: Json): Promise<Json> {
  * token could not be bought when it could. Same token mapping as the plan
  * (native USDC → its ERC20 mirror), same /routes call, same fee parameters.
  */
+const hasSynthra = (chainId: number) =>
+  synthraInternalRoutersFor(chainId).length > 0 ||
+  synthraExecutorsFor(chainId).length > 0;
+
 async function aggregatorQuote(
   chainId: number,
-  inEntry: Parameters<typeof toIToken>[0],
-  outEntry: Parameters<typeof toIToken>[0],
+  inI: IToken,
+  outI: IToken,
   amount: string,
   address?: string,
 ): Promise<Json | null> {
-  if (!hasKyberSwap(chainId) && !hasFlyTrade(chainId) && !hasLifiSwap(chainId))
+  if (
+    !hasKyberSwap(chainId) &&
+    !hasFlyTrade(chainId) &&
+    !hasLifiSwap(chainId) &&
+    !hasSynthra(chainId)
+  )
     return null;
-  const inI = toIToken(inEntry);
-  const outI = toIToken(outEntry);
   const wrapped = getContracts(chainId).wrappedNative;
-  const sellIsWrapped = chainId === 5042 && !!wrapped && inI.address.toLowerCase() === wrapped.toLowerCase();
+  const sellIsWrapped =
+    chainId === 5042 &&
+    !!wrapped &&
+    inI.address.toLowerCase() === wrapped.toLowerCase();
   const inTok = aggregatorToken(chainId, {
     ...inI,
     isNative: sellIsWrapped || isNativeSentinel(inI.address, "dex"),
@@ -2079,11 +2099,14 @@ async function aggregatorQuote(
     ...outI,
     isNative: isNativeSentinel(outI.address, "dex"),
   });
-  // Match the plan builder until native-value aggregator calls pass the auditor.
-  if (inTok.isNative) return null;
   let units: string;
   try {
-    units = ethers.parseUnits(sellIsWrapped ? truncDecimals(amount, inTok.decimals) : amount, inTok.decimals).toString();
+    units = ethers
+      .parseUnits(
+        sellIsWrapped ? truncDecimals(amount, inTok.decimals) : amount,
+        inTok.decimals,
+      )
+      .toString();
   } catch {
     return null;
   }
@@ -2097,14 +2120,46 @@ async function aggregatorQuote(
   };
   const candidates: { venue: string; amountOut: number }[] = [];
   if (address && ethers.isAddress(address)) {
-    const [kyber, fly, lifi] = await Promise.all([
-      hasKyberSwap(chainId) ? getKyberSwapExecution(request) : Promise.resolve(null),
-      hasFlyTrade(chainId) ? getFlyTradeExecution(request) : Promise.resolve(null),
-      hasLifiSwap(chainId) ? getLifiSwapExecution(request) : Promise.resolve(null),
+    const [kyber, fly, lifi, synthra] = await Promise.all([
+      hasKyberSwap(chainId)
+        ? getKyberSwapExecution(request)
+        : Promise.resolve(null),
+      hasFlyTrade(chainId)
+        ? getFlyTradeExecution(request)
+        : Promise.resolve(null),
+      hasLifiSwap(chainId)
+        ? getLifiSwapExecution(request)
+        : Promise.resolve(null),
+      hasSynthra(chainId)
+        ? getSynthraExecution({
+            ...request,
+            decimalsIn: inTok.decimals,
+            decimalsOut: outTok.decimals,
+          })
+        : Promise.resolve(null),
     ]);
-    if (kyber) candidates.push({ venue: "KyberSwap", amountOut: Number(ethers.formatUnits(kyber.amountOut, outTok.decimals)) });
-    if (fly) candidates.push({ venue: "Fly.trade", amountOut: Number(ethers.formatUnits(fly.amountOut, outTok.decimals)) });
-    if (lifi) candidates.push({ venue: "LI.FI", amountOut: Number(ethers.formatUnits(lifi.amountOut, outTok.decimals)) });
+    if (kyber)
+      candidates.push({
+        venue: "KyberSwap",
+        amountOut: Number(ethers.formatUnits(kyber.amountOut, outTok.decimals)),
+      });
+    if (fly)
+      candidates.push({
+        venue: "Fly.trade",
+        amountOut: Number(ethers.formatUnits(fly.amountOut, outTok.decimals)),
+      });
+    if (lifi)
+      candidates.push({
+        venue: "LI.FI",
+        amountOut: Number(ethers.formatUnits(lifi.amountOut, outTok.decimals)),
+      });
+    if (synthra)
+      candidates.push({
+        venue: "Synthra",
+        amountOut: Number(
+          ethers.formatUnits(synthra.amountOut, outTok.decimals),
+        ),
+      });
   } else if (hasKyberSwap(chainId)) {
     const q = await quoteKyberSwap({
       chainId,
@@ -2112,7 +2167,11 @@ async function aggregatorQuote(
       tokenOut: outTok.address,
       amountUnits: units,
     });
-    if (q) candidates.push({ venue: "KyberSwap", amountOut: Number(ethers.formatUnits(q.amountOut, outTok.decimals)) });
+    if (q)
+      candidates.push({
+        venue: "KyberSwap",
+        amountOut: Number(ethers.formatUnits(q.amountOut, outTok.decimals)),
+      });
   }
   const best = candidates.sort((a, b) => b.amountOut - a.amountOut)[0];
   if (!best) return null;
@@ -2178,7 +2237,10 @@ async function getSwapRoute(args: Json, chainId: number, address?: string): Prom
     };
 
   const hasExternalAggregator =
-    hasKyberSwap(chainId) || hasFlyTrade(chainId) || hasLifiSwap(chainId);
+    hasKyberSwap(chainId) ||
+    hasFlyTrade(chainId) ||
+    hasLifiSwap(chainId) ||
+    hasSynthra(chainId);
   if (!getContracts(chainId).v3Router && fallbackVenues(chainId).length === 0 && !hasExternalAggregator)
     return {
       routable: false,
@@ -2186,22 +2248,31 @@ async function getSwapRoute(args: Json, chainId: number, address?: string): Prom
     };
 
   const meta = getChainMeta(chainId);
-  const inEntry = resolveUserToken(meta, inSym, "dex");
-  const outEntry = resolveUserToken(meta, outSym, "dex");
-  if (!inEntry || !outEntry)
+  const resolveTokenSide = async (sym: string): Promise<IToken | null> => {
+    const entry = resolveUserToken(meta, sym, "dex");
+    if (entry) return toIToken(entry);
+    if (ethers.isAddress(sym)) {
+      const listed = chainTokenByAddress(chainId, sym);
+      if (listed) return toIToken(listed);
+      const { facts } = await resolveTokenFacts(chainId, sym);
+      return tokenFactsToAddressToken(facts, chainId);
+    }
+    return null;
+  };
+  const [inTok, outTok] = await Promise.all([
+    resolveTokenSide(inSym),
+    resolveTokenSide(outSym),
+  ]);
+  if (!inTok || !outTok)
     return {
-      error: `I don't know a token called ${!inEntry ? inSym : outSym} on this chain.`,
+      error: `I don't know a token called ${!inTok ? inSym : outSym} on this chain.`,
       tokens: chainTokens(chainId)
         .map((t) => t.symbol)
         .join(", "),
     };
 
-  /* The wrapped substitution, from the same function build.ts uses. Without it
-     this tool would answer "no route" for every native pair — which is the
-     default state of the Swap card — and would be quoting a sentinel while doing
-     it. */
-  const sell = poolSide(chainId, toIToken(inEntry));
-  const buy = poolSide(chainId, toIToken(outEntry));
+  const sell = poolSide(chainId, inTok);
+  const buy = poolSide(chainId, outTok);
   if (!sell || !buy)
     return {
       routable: false,
@@ -2244,7 +2315,37 @@ async function getSwapRoute(args: Json, chainId: number, address?: string): Prom
         )
       : null;
 
-    const aggregator = await aggregatorQuote(chainId, inEntry, outEntry, amount, address);
+    const customAsset =
+      !chainTokenByAddress(chainId, inTok.address) ||
+      !chainTokenByAddress(chainId, outTok.address);
+    let aggregator = await aggregatorQuote(chainId, inTok, outTok, amount, address);
+    if (!aggregator && customAsset && address && ethers.isAddress(address)) {
+      const resolved = await resolveSwapRoute({
+        chainId,
+        userAddress: address,
+        tokenIn: inTok.address,
+        tokenOut: outTok.address,
+        decimalsIn: inTok.decimals,
+        decimalsOut: outTok.decimals,
+        amount,
+        slippageBps: 100,
+      });
+      if (!("error" in resolved)) {
+        const out = Number(ethers.formatUnits(resolved.amountOut, outTok.decimals));
+        const rate = out / Number(amount);
+        aggregator = {
+          routable: true,
+          via: resolved.venue ?? "launchpad",
+          venue: resolved.venue ?? "launchpad",
+          tokenIn: inTok.symbol,
+          tokenOut: outTok.symbol,
+          amountIn: amount,
+          amountOut: out,
+          rate: `1 ${inTok.symbol} ≈ ${Number(rate.toPrecision(6))} ${outTok.symbol}`,
+          note: `Routed through ${resolved.venue ?? "the verified launchpad/external route"}. Indicative, not a floor: the minimum is set from the user's slippage at build time.`,
+        };
+      }
+    }
     if (!path) {
       if (aggregator) return aggregator;
       return {
@@ -2896,6 +2997,7 @@ const EVIDENCE_READS = new Set([
   "getYieldSources",
   "getExternalPools",
   "getProtocolCapabilities",
+  "getIntegrations",
   "getAnalytics",
   "researchSources",
 ]);

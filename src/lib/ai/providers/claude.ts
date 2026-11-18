@@ -28,9 +28,46 @@ import { parseToolArgs } from "./toolArgs";
 
 interface AnthropicBlock {
   type: string;
+  id?: string;
   text?: string;
   name?: string;
   input?: Record<string, unknown>;
+}
+
+function toAnthropicMessages(messages: ChatInput["messages"]) {
+  const out: Array<{ role: "user" | "assistant"; content: unknown }> = [];
+  for (const m of messages) {
+    if (m.role === "tool") {
+      const part = {
+        type: "tool_result",
+        tool_use_id: m.toolCallId,
+        content: m.content,
+      };
+      const prev = out[out.length - 1];
+      if (prev && prev.role === "user" && Array.isArray(prev.content)) {
+        prev.content.push(part);
+      } else {
+        out.push({ role: "user", content: [part] });
+      }
+      continue;
+    }
+    if (m.role === "assistant" && m.toolCalls?.length) {
+      const blocks: Array<Record<string, unknown>> = [];
+      if (m.content) blocks.push({ type: "text", text: m.content });
+      for (const tc of m.toolCalls) {
+        blocks.push({
+          type: "tool_use",
+          id: tc.id,
+          name: tc.name,
+          input: tc.args,
+        });
+      }
+      out.push({ role: "assistant", content: blocks });
+      continue;
+    }
+    out.push({ role: m.role, content: m.content });
+  }
+  return out;
 }
 
 export interface ClaudeOptions {
@@ -99,7 +136,7 @@ export class ClaudeProvider implements ChatProvider {
         model: this.model,
         max_tokens: this.maxTokens,
         system,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: toAnthropicMessages(messages),
         tools: tools.map((t) => ({
           name: t.name,
           description: t.description,
@@ -164,7 +201,11 @@ export class ClaudeProvider implements ChatProvider {
     // whole catalog is reachable, not just whichever tool got hardcoded.
     const reads: ReadCall[] = toolUses
       .filter((b) => !EXECUTE_TOOLS.has(b.name as string))
-      .map((b) => ({ name: b.name as string, args: b.input ?? {} }));
+      .map((b) => ({
+        ...(b.id ? { id: b.id } : {}),
+        name: b.name as string,
+        args: b.input ?? {},
+      }));
 
     return { text, executes, reads, provider: this.id, model: this.model };
   }
@@ -247,7 +288,7 @@ export class ClaudeProvider implements ChatProvider {
        response's own ordering survives without a sort. */
     const open = new Map<
       number,
-      { type: string; name?: string; text: string; json: string }
+      { type: string; id?: string; name?: string; text: string; json: string }
     >();
     const closed: AnthropicBlock[] = [];
     let stopReason: string | undefined;
@@ -256,7 +297,7 @@ export class ClaudeProvider implements ChatProvider {
       let ev: {
         type?: string;
         index?: number;
-        content_block?: { type?: string; name?: string };
+        content_block?: { type?: string; id?: string; name?: string };
         delta?: {
           type?: string;
           text?: string;
@@ -276,6 +317,7 @@ export class ClaudeProvider implements ChatProvider {
         case "content_block_start":
           open.set(ev.index ?? 0, {
             type: ev.content_block?.type ?? "text",
+            id: ev.content_block?.id,
             name: ev.content_block?.name,
             text: "",
             json: "",
@@ -307,7 +349,12 @@ export class ClaudeProvider implements ChatProvider {
               this.id,
             );
             if (args) {
-              closed.push({ type: "tool_use", name: block.name, input: args });
+              closed.push({
+                type: "tool_use",
+                id: block.id,
+                name: block.name,
+                input: args,
+              });
             }
           } else if (block.type === "text") {
             closed.push({ type: "text", text: block.text });

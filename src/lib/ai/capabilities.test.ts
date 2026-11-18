@@ -25,7 +25,7 @@ assert.equal(capabilityFor(elysium, "launchpads")?.status, "not_configured");
 
 const arc = getCapabilitySnapshot({ chainId: 5042, networkMode: "mainnet" });
 assert.equal(capabilityFor(arc, "launchpads")?.status, "available");
-assert.match(capabilityPrompt(arc), /Argus and Peach/);
+assert.match(capabilityPrompt(arc), /Argus, Peach and Synthra LaunchPad/);
 
 const elysiumMainnet = getCapabilitySnapshot({
   chainId: 99901,

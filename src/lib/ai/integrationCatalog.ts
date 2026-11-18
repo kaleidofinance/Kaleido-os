@@ -4,6 +4,11 @@ import { ELYSIUM_CHAIN_ID, ELYSIUM_LAUNCHPADS } from "@/lib/elysium/addresses";
 import { hasFlyTrade } from "@/lib/swap/flytrade";
 import { hasKyberSwap } from "@/lib/swap/kyberswap";
 import { hasLifiSwap } from "@/lib/swap/lifi";
+import {
+  synthraExecutorsFor,
+  synthraInternalRoutersFor,
+  synthraLaunchpadsFor,
+} from "@/lib/swap/synthraDeployments";
 import { evaluateIntegration, type IntegrationReadiness } from "./integrationReadiness";
 
 export type IntegrationKind = "launchpad" | "aggregator";
@@ -143,6 +148,23 @@ export function integrationsForChain(
     );
   }
 
+  if (synthraLaunchpadsFor(chainId).length > 0) {
+    out.push(
+      launchpad(
+        "synthra-launchpad",
+        "Synthra LaunchPad",
+        chainId,
+        "Synthra LaunchPad is live on this mainnet; pasted tokens still require live launch and curve verification.",
+      ),
+    );
+  }
+
+  if (
+    synthraInternalRoutersFor(chainId).length > 0 ||
+    synthraExecutorsFor(chainId).length > 0
+  ) {
+    out.push(aggregator("synthra", "Synthra", chainId));
+  }
   if (hasKyberSwap(chainId))
     out.push(aggregator("kyberswap", "KyberSwap", chainId));
   if (hasLifiSwap(chainId)) out.push(aggregator("lifi", "LI.FI", chainId));

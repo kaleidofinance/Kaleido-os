@@ -5,4 +5,8 @@ const unvetted = guardLegacyPlan({ context: { functionData: { result: { target: 
 if (!unvetted.blocked || unvetted.context?.reason !== "unvetted_omnichain_target") throw new Error("destination guard failed");
 const safe = guardLegacyPlan({ context: { functionData: { result: { target: "Robinhood Router" } } } }, { chainId: 4663 });
 if (safe.blocked) throw new Error("whitelisted destination should pass");
+const arcSafe = guardLegacyPlan({ context: { functionData: { result: { target: "Synthra LaunchPad" } } } }, { chainId: 5042 });
+if (arcSafe.blocked) throw new Error("Arc mainnet Synthra target should pass");
+const elysiumSafe = guardLegacyPlan({ context: { functionData: { result: { target: "Kaleido Pool" } } } }, { chainId: 99901 });
+if (elysiumSafe.blocked) throw new Error("Elysium mainnet Kaleido target should pass");
 console.log("Legacy engine guard checks passed.");

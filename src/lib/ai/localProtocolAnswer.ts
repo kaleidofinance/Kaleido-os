@@ -1,5 +1,5 @@
 import { ARGUS_CHAIN_ID } from "@/lib/argus/addresses";
-import { getChainMeta } from "@/constants/chains";
+import { CHAINS, getChainMeta } from "@/constants/chains";
 import {
   integrationNameList,
   launchpadIntegrations,
@@ -63,15 +63,25 @@ export function launchpadAnswer(
     return `Kaleido currently integrates ${scoped.length} launchpads on ${meta?.name ?? "this chain"}: ${integrationNameList(scoped)}. They are separate from swap aggregators. Luca can inspect a pasted launch token and build a trade only after live metadata plus pool verification passes, so a launch is not automatically routeable.`;
   }
 
+  const byMainnet = CHAINS.filter((c) => c.network === "mainnet")
+    .map((c) => ({
+      chain: c,
+      items: launchpadIntegrations(c.id, "mainnet"),
+    }))
+    .filter((entry) => entry.items.length > 0);
+
   if (
     explicitChainId !== undefined ||
     explicitlyUnsupported ||
     chainId !== undefined
   ) {
-    return `No launchpad trading adapter is registered on ${meta?.name ?? "that chain"}. Kaleido's registered launchpad integrations are on Arc and Elysium mainnet; testnet catalogues do not imply mainnet support.`;
+    const names = byMainnet.map((e) => e.chain.shortName).join(", ");
+    return `No launchpad trading adapter is registered on ${meta?.name ?? "that chain"}. Kaleido's registered launchpad integrations are on ${names} mainnet; testnet catalogues do not imply mainnet support.`;
   }
 
-  const arc = launchpadIntegrations(ARC_CHAIN_ID, "mainnet");
-  const elysium = launchpadIntegrations(99901, "mainnet");
-  return `Kaleido currently integrates ${arc.length + elysium.length} launchpads across two mainnets: ${arc.length} on Arc (${integrationNameList(arc)}) and ${elysium.length} on Elysium. They are separate from swap aggregators, and every pasted token still requires live pool verification before Luca builds a trade.`;
+  const total = byMainnet.reduce((sum, e) => sum + e.items.length, 0);
+  const summary = byMainnet
+    .map((e) => `${e.items.length} on ${e.chain.shortName} (${integrationNameList(e.items)})`)
+    .join(", ");
+  return `Kaleido currently integrates ${total} launchpads across ${byMainnet.length} mainnets: ${summary}. They are separate from swap aggregators, and every pasted token still requires live pool verification before Luca builds a trade.`;
 }

@@ -16,8 +16,11 @@ import {
   runAgent,
   type AgentRun,
 } from "@/lib/ai/agent";
-import { runTurn } from "@/lib/ai/turnRunner";
-import { planFromToolCalls } from "@/lib/ai/fromToolCall";
+import {
+  recoverAgentTurn,
+  runTurn,
+  settleAgentTurn,
+} from "@/lib/ai/turnRunner";
 import {
   getNormalizerProviders,
   isEscalation,
@@ -30,20 +33,11 @@ import {
   shouldSkipNormalizer,
   type JevRoute,
 } from "@/lib/ai/jev";
-import { serverPlanDeps } from "@/lib/ai/planDeps";
-import { auditPlan, refusalText } from "@/lib/ai/auditor";
 import {
   consumeModelRequest,
   peekModelUsage,
-  releaseModelRequest,
 } from "@/lib/ai/credits";
 import { condenseNote, type ChatStreamEvent } from "@/lib/v2/chatStream";
-import { splitCards, splitReasoning } from "@/lib/ai/actionsBlock";
-import {
-  simulatePlan,
-  rpcCallFor,
-  isStaleQuoteRevert,
-} from "@/lib/ai/simulatePlan";
 import { logAgentTurn } from "@/lib/ai/turnLog";
 import { checkIpRate, clientIp } from "@/lib/ai/ipRate";
 import { chainTokens } from "@/constants/tokens";
@@ -343,401 +337,51 @@ export async function POST(request: NextRequest) {
          steering). */
       const agentInput = createAgentInput(body, turn, capabilities);
       const safeLimits = agentInput.limits as { slippageBps: number };
+      const userText = [
+        agentInput.message,
+        ...(agentInput.history ?? [])
+          .filter((m) => m.role === "user")
+          .map((m) => m.content),
+      ].join("\n");
 
-      /**
-       * Everything that happens after the model stops talking: build, audit,
-       * assemble the reply.
-       *
-       * Factored out because there are now two ways to run a turn and only one
-       * correct way to finish one. A streamed turn that built its own payload
-       * would be a second copy of the auditor call — and a copy that forgot it
-       * would stream a plan nothing had checked.
-       */
-      const settle = async (result: AgentRun, streamed = false) => {
-        /* The model's card blocks — display cards and offered actions — come off
-           the prose first, so every use of the reply below is the reader's
-           version. Doing it here rather than at each of the three concatenations
-           means a refusal, a build note and a clean answer cannot disagree about
-           whether the blocks are still in. `reply.cards` is raw; the client's
-           cardsFromChat validates it and forbids a `steps` receipt. */
-        /* The reasoning line comes off first, before the card blocks, so what
-           splitCards and every concatenation below see is prose with the model's
-           private "why" already lifted out. It travels in `context.reasoning`
-           and is rendered into the folded record (traceFromChat), never the
-           answer — see the "Showing your reasoning" section of the system prompt. */
-        const reasoned = splitReasoning(result.text);
-        const reply = splitCards(reasoned.text);
-        const reasoning = reasoned.reasoning;
-
-        /*
-         * Verbs become intents here, before anything is audited.
-         *
-         * The model chose a verb and the arguments the user actually stated;
-         * this is where contract addresses, decimals, fee tiers, quotes and
-         * slippage floors get filled in — from the registry and from chain
-         * reads, through the same builder the typed-command path uses. Doing
-         * it at the route rather than in each provider adapter means one
-         * translation, not one per provider.
-         */
-        /* Everything the user themselves typed this turn — this message plus
-           their earlier turns — so the planner can refuse to send to or delegate
-           to an address the user never named. An address a tool result or a
-           document slipped in is not in here. */
-        const userText = [
-          agentInput.message,
-          ...(agentInput.history ?? [])
-            .filter((m) => m.role === "user")
-            .map((m) => m.content),
-        ].join("\n");
-
-        /*
-         * Build then audit, inside one try — because a throw HERE is ours, not
-         * the model's. The model answered; it is the builder or the auditor that
-         * failed. Letting it propagate sent it to `recover`, which tags it
-         * `provider_error` and puts "the model is unavailable" underneath a reply
-         * the model produced perfectly well. So this branch keeps the prose,
-         * reports a distinct `build_error`, and logs it under its own prefix, so a
-         * builder bug is triaged as a builder bug rather than a model outage.
-         *
-         * (What each does: the builder fills in contract addresses, decimals, fee
-         * tiers, quotes and slippage floors from the registry and chain reads, the
-         * same way the typed path does; the auditor then verifies the BUILT plan —
-         * real addresses, real amountOutMin values — and drops a rejected plan
-         * whole, never trimmed to its passing steps, since the steps are ordered
-         * and interdependent. `limits`/`allowedActions` are client input, treated
-         * as tightening-only.)
-         */
-        let built: Awaited<ReturnType<typeof planFromToolCalls>>;
-        let verdict: Awaited<ReturnType<typeof auditPlan>>;
-        try {
-          built = await planFromToolCalls(
-            result.executes,
-            chainId,
-            serverPlanDeps(meterAddress, chainId),
-            {
-              slippageBps: safeLimits.slippageBps,
-              deadlineMin: 20,
-            },
-            userText,
-          );
-          verdict = await auditPlan({
-            plan: built.plan,
-            chainId,
-            limits: safeLimits,
-            allowedActions: body.limits?.allowedActions,
-          });
-        } catch (buildErr) {
-          console.error("[chat] plan build/audit failed:", buildErr);
-          await logAgentTurn({
-            status: "build_error",
-            provider: result.provider,
-            model: result.model,
-            latencyMs: Date.now() - startedAt,
-            failedOver: !!provider && result.provider !== provider.id,
-            rounds: result.rounds,
-            readCount: result.trace.length,
-            stream: streamed,
-            chainId,
-            address: meterAddress,
-            jevRoute,
-            jevConfidence,
-            jevNormalizerSkipped,
-            error: String(
-              (buildErr as { name?: string })?.name ?? "build_error",
-            ).slice(0, 60),
-          });
-          return {
-            response: `${reply.text}\n\n---\n\nI worked that out, but couldn't prepare the steps to sign — try again, or use a direct command like \`swap 500 USDC to EURC\`.`,
-            context: {
-              status: "build_error",
-              provider: result.provider,
-              model: result.model,
-              ...(reply.cards.length ? { cards: reply.cards } : {}),
-              ...(reasoning ? { reasoning } : {}),
-              reads: result.trace,
-              credits: {
-                used: quota.used,
-                quota: quota.quota,
-                remaining: quota.remaining,
-              },
-              capabilities,
-            },
-          };
-        }
-
-        if (!verdict.ok) {
-          console.warn(
-            "[chat] auditor rejected plan:",
-            JSON.stringify(verdict.blocked),
-          );
-        }
-
-        /*
-         * Simulate the built plan against the current block before offering it as
-         * signable — the propose-time counterpart to the sign-time preflight
-         * (withPreflight). It fakes each approve into the step it authorises and
-         * eth_calls the plan, so a first-time swap whose floor the market has moved
-         * past is called out here rather than at the wallet.
-         *
-         * Only when the auditor PASSED a plan we have a wallet to simulate from.
-         * Bounded by a race so a slow or unreachable RPC cannot hold the turn.
-         * Surface only, with one deterministic exception (the stale-quote retry
-         * below): a predicted revert is stated, the plan still offered — the market
-         * may move again by signing, and the preflight re-checks against real state
-         * then — and anything short of a decoded, honoured revert says nothing.
-         */
-        let simNote = "";
-        if (
-          verdict.ok &&
-          built.plan.length > 0 &&
-          meterAddress &&
-          chainId !== undefined
-        ) {
-          const rpc = rpcCallFor(chainId);
-          const from = meterAddress;
-          if (rpc) {
-            /* One bounded simulation of a plan. The cast is the PlanStep↔Intent
-               identity the wire already relies on (intentsFromChat); the race caps
-               it so the RPC can never hold the turn. */
-            const simOnce = (plan: typeof built.plan) =>
-              Promise.race([
-                simulatePlan(
-                  plan as unknown as Parameters<typeof simulatePlan>[0],
-                  chainId,
-                  from,
-                  rpc,
-                ),
-                new Promise<null>((r) => setTimeout(() => r(null), 5000)),
-              ]);
-
-            try {
-              let sim = await simOnce(built.plan);
-
-              /* A slippage-floor revert is very often a quote that went stale in the
-                 beat between pricing and simulating: the pool moved and the same plan
-                 re-priced now would clear. On exactly that reason, rebuild ONCE with a
-                 fresh quote — which re-audits like any built plan — and re-simulate.
-                 No model call and no new quota: deterministic self-correction, bounded
-                 to a single retry. A second failure is surfaced, never chased. */
-              if (
-                sim &&
-                !sim.ok &&
-                sim.firstFailure &&
-                isStaleQuoteRevert(sim.firstFailure.reason)
-              ) {
-                try {
-                  const rebuilt = await planFromToolCalls(
-                    result.executes,
-                    chainId,
-                    serverPlanDeps(meterAddress, chainId),
-                    { slippageBps: safeLimits.slippageBps, deadlineMin: 20 },
-                    userText,
-                  );
-                  if (rebuilt.plan.length > 0) {
-                    const reverdict = await auditPlan({
-                      plan: rebuilt.plan,
-                      chainId,
-                      limits: safeLimits,
-                      allowedActions: body.limits?.allowedActions,
-                    });
-                    if (reverdict.ok) {
-                      const resim = await simOnce(rebuilt.plan);
-                      if (resim && resim.ok) {
-                        /* The fresh quote clears it — offer the re-priced plan, and
-                           say so rather than pretending nothing was wrong. */
-                        built = rebuilt;
-                        verdict = reverdict;
-                        sim = resim;
-                        simNote =
-                          "\n\n---\n\nThe first pricing would have slipped past your limit, so I re-priced it against the current market before offering it.";
-                      }
-                    }
-                  }
-                } catch {
-                  /* Fail open — keep the original plan and surface the prediction. */
-                }
-              }
-
-              /* Still predicted to revert — not a stale quote, or the re-price did
-                 not clear it. State it, keep the plan, let the preflight and the user
-                 take it from here. */
-              if (sim && !sim.ok && sim.firstFailure) {
-                const f = sim.firstFailure;
-                const where =
-                  built.plan.length > 1 ? `step ${f.index + 1}` : "this";
-                simNote =
-                  `\n\n---\n\nI simulated it against the chain as it stands and ${where} looks like it would revert` +
-                  (f.reason ? ` — ${f.reason}` : "") +
-                  `. The market may move again before you sign, so I've still prepared it and I re-check each step at signing; or ask me to rebuild it.`;
-              }
-            } catch {
-              /* Fail open — a simulation that throws is no reason to hold a plan. */
-            }
-          }
-        }
-
-        /* A verb that couldn't be built is reported, not swallowed. Computed after
-           the simulation because a stale-quote retry above can replace `built` with
-           a freshly-priced plan, and these notes must describe the plan actually
-           offered — not the one the retry discarded. */
-        const buildNotes = built.errors.length
-          ? `\n\n---\n\nI couldn't prepare some of that:\n${built.errors.map((e) => `• ${e}`).join("\n")}`
-          : "";
-
-        /* The record of a turn that ran. `refused` is a turn the model answered
-           and the auditor then dropped its plan — a different fact from a clean
-           answer, and one worth being able to count. failed_over is the outage
-           signal: the answer came from a backend other than the primary. */
-        await logAgentTurn({
-          status: verdict.ok ? "ok" : "refused",
-          provider: result.provider,
-          model: result.model,
-          latencyMs: Date.now() - startedAt,
-          failedOver: !!provider && result.provider !== provider.id,
-          planSteps: verdict.ok ? built.plan.length : 0,
-          auditOk: built.plan.length > 0 ? verdict.ok : null,
-          /* How hard the turn worked, not just how it ended: the grounding passes
-             the loop ran and the reads they made. */
-          rounds: result.rounds,
-          readCount: result.trace.length,
-          stream: streamed,
+      const settle = (result: AgentRun, streamed = false) =>
+        settleAgentTurn({
+          result,
+          streamed,
           chainId,
-          address: meterAddress,
-          jevRoute,
-          jevConfidence,
-          jevNormalizerSkipped,
+          meterAddress,
+          userText,
+          safeLimits,
+          allowedActions: body.limits?.allowedActions,
+          primaryProvider: provider,
+          quota,
+          capabilities,
+          startedAt,
+          requestId: turn.requestId,
+          jev: {
+            route: jevRoute,
+            confidence: jevConfidence,
+            normalizerSkipped: jevNormalizerSkipped,
+          },
         });
 
-        return {
-          response: verdict.ok
-            ? `${reply.text}${buildNotes}${simNote}`
-            : /* The model's own words, then the refusal. Dropping the prose
-                 would hide the analysis the user paid a request for. */
-              `${reply.text}${buildNotes}\n\n---\n\n${refusalText(verdict)}`,
-          context: {
-            plan: verdict.ok ? built.plan : [],
-            provider: result.provider,
-            model: result.model,
-            /* The cards the answer carried — display cards and any offered
-               actions. Sent unvalidated on purpose: `cardsFromChat` on the client
-               is the gate every card passes through, local or model, and it is
-               where the caps, the rebuild and the `steps` ban live; a second
-               half-implementation here would be a second thing to keep in step
-               with it. Omitted rather than sent empty, so a reply that carried
-               nothing does not imply it might have. */
-            ...(reply.cards.length ? { cards: reply.cards } : {}),
-            /* The distilled "why" behind this answer, when the model offered one.
-               Rendered as the lead line of the folded record (traceFromChat), not
-               the prose — so a turn's reasoning sits with the reads it made rather
-               than in the answer the reads produced. Omitted when the model wrote
-               none, which is the common case. */
-            ...(reasoning ? { reasoning } : {}),
-            /* What the model read before answering, in the order it ran.
-               Reported so the turn can show its own work: the frontend renders
-               these as the thought process under the reply (traceFromChat in
-               src/lib/v2/agentTurn.ts), which is the only part of the reasoning
-               this route can state as fact — no provider thinking is requested,
-               so there is no chain of thought to forward, but which questions
-               it asked about the chain is a matter of record.
-
-               Sent on the streaming path too, identically, even though the
-               client was already told about each read as it happened. Keeping
-               one payload shape means one `settle` and one thing to reason
-               about; the client's job is simply not to draw them twice.
-
-               Names and arguments, no results. A result is the data the answer
-               was built from and it is already in the prose; echoing it here
-               would send the same portfolio twice and put it in a place the
-               client would have to re-validate. */
-            reads: result.trace,
-            /* Reported either way. A caller that sees `plan: []` deserves to
-               know whether the model proposed nothing or proposed something
-               that was refused — those are different answers, and the old gate
-               conflated them by returning a bare sentence. */
-            audit: {
-              ok: verdict.ok,
-              blocked: verdict.blocked,
-              notes: verdict.notes,
-              totalUsd: verdict.totalUsd,
-            },
-            credits: {
-              used: quota.used,
-              quota: quota.quota,
-              remaining: quota.remaining,
-            },
-            capabilities,
-          },
-        };
-      };
-
-      /**
-       * The turn failed. Works out whether it can ever succeed, hands back the
-       * credit when it cannot, and returns the reply either way.
-       */
-      const recover = async (aiError: any, streamed = false) => {
-        console.error("[chat] provider failed:", aiError);
-        /*
-         * "Try again shortly" is only true of a failure that might pass next
-         * time, and one class here never will.
-         *
-         * AgentRouter screens the user's own wording and answers 400
-         * `content-blocked` to anything shaped like a transfer instruction
-         * naming uppercase currency codes. Measured against the live gateway:
-         * "swap 100 USDC to KLD", "move 100 USDC to KLD" and "100 USDC to KLD"
-         * are all refused, as is "swap 100 EUR to GBP" — so the screen is about
-         * money-movement phrasing, not about crypto. "exchange 100 USDC for
-         * KLD" passes, every conversational question passes, and the same text
-         * passes when the *assistant* says it. Retrying is futile and so is
-         * switching model: the Anthropic- and OpenAI-shaped paths on that
-         * gateway refuse identically.
-         *
-         * Which makes the honest reply an actionable one. Almost every refused
-         * phrasing is a direct command `parseCommand` already owns, so it
-         * resolves locally, faster, and without spending a request — naming
-         * that form turns a dead end into the path that works.
-         */
-        const blocked = /content[-_ ]?blocked|content[-_ ]?filter/i.test(
-          String(aiError?.message ?? ""),
-        );
-        /* A refused request never reached a model, so the allowance it was
-           charged goes back. Only on this branch: a timeout or a 5xx may well
-           have generated tokens upstream, and handing those back would make the
-           ceiling refundable by making the provider fail. */
-        const refunded = blocked
-          ? await releaseModelRequest(meterAddress, quota)
-          : null;
-
-        /* A failed turn, with a short error class rather than the raw message —
-           enough to tell a gateway content-block from a 5xx or a timeout when
-           reading the log, never a user's words. */
-        await logAgentTurn({
-          status: blocked ? "provider_blocked" : "provider_error",
-          provider: provider?.id ?? null,
-          latencyMs: Date.now() - startedAt,
-          stream: streamed,
+      const recover = (aiError: unknown, streamed = false) =>
+        recoverAgentTurn({
+          aiError,
+          streamed,
+          primaryProvider: provider,
           chainId,
-          address: meterAddress,
-          jevRoute,
-          jevConfidence,
-          jevNormalizerSkipped,
-          error: String(aiError?.name ?? aiError?.code ?? "error").slice(0, 60),
-        });
-
-        return {
-          response: blocked
-            ? "The model gateway refused that wording — it screens messages shaped like a transfer instruction. Say it as a command, like `swap 100 USDC to EURC`, and it runs here without a reasoning request. Questions about your positions or the markets are unaffected."
-            : "I couldn't complete that just now — the reasoning service returned an error. Try again shortly.",
-          context: {
-            status: blocked ? "provider_blocked" : "provider_error",
-            requestId: turn.requestId,
-            capabilities,
-            /* Reported so the UI's counter follows the refund. Absent when
-               there was nothing to hand back, which the client already treats
-               as "leave the count alone". */
-            ...(refunded ? { credits: refunded } : {}),
+          meterAddress,
+          quota,
+          capabilities,
+          startedAt,
+          requestId: turn.requestId,
+          jev: {
+            route: jevRoute,
+            confidence: jevConfidence,
+            normalizerSkipped: jevNormalizerSkipped,
           },
-        };
-      };
+        });
 
       /*
        * The streamed turn.

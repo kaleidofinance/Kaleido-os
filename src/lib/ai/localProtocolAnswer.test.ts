@@ -21,7 +21,7 @@ assert.match(
     chainId: 5042,
     showTestnets: false,
   }) ?? "",
-  /2 launchpads on Arc: Argus and Peach/,
+  /3 launchpads on Arc: Argus, Peach and Synthra LaunchPad/,
 );
 assert.match(
   launchpadAnswer("how many launchpad integrations?", {
@@ -41,7 +41,7 @@ assert.match(
   launchpadAnswer("how many launchpad integrations?", {
     showTestnets: false,
   }) ?? "",
-  /14 launchpads across two mainnets/,
+  /16 launchpads across 3 mainnets/,
 );
 assert.match(
   launchpadAnswer("which launchpads are live?", {

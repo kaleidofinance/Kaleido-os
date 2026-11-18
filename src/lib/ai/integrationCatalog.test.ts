@@ -8,7 +8,7 @@ import {
 const arcLaunchpads = launchpadIntegrations(5042);
 assert.deepEqual(
   arcLaunchpads.map((item) => item.name),
-  ["Argus", "Peach"],
+  ["Argus", "Peach", "Synthra LaunchPad"],
 );
 assert.equal(
   arcLaunchpads.every((item) => item.networkMode === "mainnet"),
@@ -28,6 +28,14 @@ assert.equal(
 );
 
 assert.deepEqual(launchpadIntegrations(56), []);
+assert.deepEqual(
+  launchpadIntegrations(4663).map((item) => item.name),
+  ["Synthra LaunchPad"],
+);
+assert.deepEqual(
+  aggregatorIntegrations(4663).map((item) => item.name),
+  ["Synthra", "KyberSwap", "LI.FI", "Fly.trade"],
+);
 assert.deepEqual(launchpadIntegrations(99801, "testnet"), []);
 const elysiumLaunchpads = launchpadIntegrations(99901);
 assert.equal(elysiumLaunchpads.length, 12);

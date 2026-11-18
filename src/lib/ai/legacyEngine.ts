@@ -10,13 +10,15 @@ const MULTICHAIN_WHITELIST: Record<string, string[]> = {
   "8453": ["Base", "Aave", "Aerodrome", "Uniswap"],
   "84532": ["Base", "Aave", "Aerodrome", "Uniswap"],
   "137": ["Polygon", "Aave", "Quickswap"],
-  "56": ["BSC", "Pancakeswap", "Venus", "Stargate"],
+  "56": ["BSC", "Kaleido", "Pancakeswap", "Venus", "Stargate", "KyberSwap", "LI.FI", "Fly.trade"],
   "97": ["BSC", "Pancakeswap", "Venus", "Stargate"],
   "1": ["Ethereum", "Aave", "Uniswap", "Lido"],
   "11155111": ["Ethereum", "Aave", "Uniswap", "Lido"],
-  "4663": ["Robinhood"],
+  "4663": ["Robinhood", "Kaleido", "Synthra", "Fly.trade"],
   "46630": ["Robinhood"],
+  "5042": ["Arc", "Kaleido", "USDC", "Synthra", "Argus", "Peach", "KyberSwap", "LI.FI", "Fly.trade"],
   "5042002": ["Arc", "USDC"],
+  "99901": ["Elysium", "Kaleido", "Synthra", "KyberSwap", "LI.FI", "Fly.trade"],
 };
 
 /** Shared policy for the legacy provider path and the typed agent path. */

@@ -9,6 +9,7 @@ import {
   type NetworkMode,
   type ReadCall,
 } from "./index";
+import { filterToolsForTurn } from "./toolCatalog";
 import { readKey } from "./readKey";
 import { capabilityPrompt, type CapabilitySnapshot } from "./capabilities";
 import { targetChainHint } from "./targetChain";
@@ -308,16 +309,18 @@ export async function runAgent(
     });
   }
 
+  const tools = filterToolsForTurn(input.capabilities);
+
   /* One call site for the model, so every round streams or none does. Streaming
      is chosen per turn rather than per provider: the caller asking for deltas is
      what makes them worth the different code path. */
   const ask = () =>
     events?.onText && provider.chatStream
       ? provider.chatStream(
-          { system: systemFinal, messages, tools: TOOL_CATALOG },
+          { system: systemFinal, messages, tools },
           events.onText,
         )
-      : provider.chat({ system: systemFinal, messages, tools: TOOL_CATALOG });
+      : provider.chat({ system: systemFinal, messages, tools });
 
   let result = await ask();
   /* Grounding passes that ran. Incremented once per loop iteration that fed a
@@ -355,7 +358,6 @@ export async function runAgent(
     // Execute verbs mean it had what it needed — stop.
     if (result.executes.length > 0) break;
 
-    let contextBlock: string | null = null;
     let repeated = 0;
 
     if (result.reads.length > 0) {
@@ -383,12 +385,6 @@ export async function runAgent(
         }),
       );
 
-      const resolved = result.reads.map((r) => ({
-        tool: r.name,
-        args: r.args,
-        result: served.get(readKey(r.name, r.args)),
-      }));
-
       /* Recorded after the await, so the trace lists reads that ran rather than
          reads that were requested: a tool that throws takes the whole round down
          with it, and it should not leave a line claiming it was consulted. A
@@ -399,37 +395,37 @@ export async function runAgent(
       const ran = fresh.map((r) => ({ name: r.name, args: r.args }));
       trace.push(...ran);
       events?.onReads?.(ran);
-      contextBlock = JSON.stringify(resolved, null, 2);
+
+      const toolCalls = result.reads.map((r, idx) => ({
+        id: r.id ?? `call_${round}_${idx}`,
+        name: r.name,
+        args: r.args,
+      }));
+      messages.push({
+        role: "assistant",
+        content: result.text,
+        toolCalls,
+      });
+      const repeatHint = repeated
+        ? "\n\nNote: You already asked for some of this earlier in the turn; it will not change within this turn — answer from it rather than reading again."
+        : "";
+      for (let idx = 0; idx < result.reads.length; idx++) {
+        const r = result.reads[idx];
+        const tc = toolCalls[idx];
+        const payload = served.get(readKey(r.name, r.args));
+        messages.push({
+          role: "tool",
+          toolCallId: tc.id,
+          name: r.name,
+          content:
+            JSON.stringify(payload, null, 2) +
+            (idx === result.reads.length - 1 ? repeatHint : ""),
+        });
+      }
     } else {
       // Nothing left to ground on — whatever text the model has is final.
       break;
     }
-
-    messages.push({
-      role: "assistant",
-      content: result.text || "(tool calls only)",
-    });
-    messages.push({
-      role: "user",
-      content:
-        `Tool results:\n\n${contextBlock}\n\n` +
-        "Use only this data — don't estimate. If you now have enough to answer or " +
-        "propose a plan, do so; call execute tools for anything signable. If you still " +
-        "need more information, call another read tool. Read results may include an " +
-        "evidence object: status=ok is observed data, partial means some requested " +
-        "coverage failed, unavailable means the read did not complete, and unsupported " +
-        "means the product or chain does not support that operation. Never turn an " +
-        "unavailable or unsupported result into zero, success, or a guessed value." +
-        /* Saying that a repeat was a repeat is what stops a third round. Without
-           it the model asks again, spends the round cap, and every round it
-           spends is another paragraph the user watches get demoted to a line of
-           thought process. */
-        (repeated
-          ? " You already asked for some of this, and what is above is what came " +
-            "back the first time. It will not change within this turn — answer " +
-            "from it rather than reading again."
-          : ""),
-    });
 
     rounds++;
     result = await ask();

@@ -26,10 +26,28 @@ export interface ToolSpec {
   kind: "execute" | "read";
 }
 
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
+export interface AssistantToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
 }
+
+export type ChatMessage =
+  | {
+      role: "user";
+      content: string;
+    }
+  | {
+      role: "assistant";
+      content: string;
+      toolCalls?: AssistantToolCall[];
+    }
+  | {
+      role: "tool";
+      toolCallId: string;
+      name: string;
+      content: string;
+    };
 
 /** One step of a plan — a serialisable intent matching the registry union. */
 export interface PlanStep {
@@ -39,6 +57,7 @@ export interface PlanStep {
 
 /** A READ tool the model asked for — awaiting server-side execution. */
 export interface ReadCall {
+  id?: string;
   name: string;
   args: Record<string, unknown>;
 }

@@ -1,3 +1,4 @@
+import type { CapabilitySnapshot } from "./capabilities";
 import type { ToolSpec } from "./types";
 
 /**
@@ -1193,3 +1194,76 @@ export const EXECUTE_TOOLS = new Set(
  * that never entered the plan.
  */
 export const DECLARED_TOOLS = new Set(TOOL_CATALOG.map((t) => t.name));
+
+const LENDING_TOOLS = new Set([
+  "deposit",
+  "withdraw",
+  "borrow",
+  "lend",
+  "takeListing",
+  "fillRequest",
+  "repay",
+  "cancel",
+  "getLoans",
+  "getLendingAccount",
+  "getMarkets",
+]);
+const STAKING_TOOLS = new Set(["stake", "unstake", "getStaking"]);
+const STABLECOIN_TOOLS = new Set([
+  "mint",
+  "redeem",
+  "lock",
+  "unlock",
+  "completeWithdrawal",
+  "claimYield",
+  "compoundYield",
+  "getVault",
+]);
+const LIQUIDITY_TOOLS = new Set([
+  "provideLiquidity",
+  "increasePosition",
+  "removePosition",
+  "collectFees",
+  "getPositions",
+]);
+const ORDER_TOOLS = new Set(["placeLimitOrder", "cancelOrders", "getOrders"]);
+
+/**
+ * Filter TOOL_CATALOG to tools eligible for this turn's chain capabilities
+ * and mode. Reduces token bloat and prevents smaller models from calling
+ * tools for undeployed products.
+ */
+export function filterToolsForTurn(
+  capabilities?: CapabilitySnapshot,
+  opts?: { readOnly?: boolean },
+): ToolSpec[] {
+  const excluded = new Set<string>();
+  if (capabilities) {
+    if (capabilities.networkMode === "mainnet") {
+      excluded.add("claimTestTokens");
+    }
+    if (capabilities.chainId !== undefined) {
+      const statusOf = (id: string) =>
+        capabilities.records.find((r) => r.id === id)?.status;
+      if (statusOf("lending") === "not_configured") {
+        LENDING_TOOLS.forEach((n) => excluded.add(n));
+      }
+      if (statusOf("staking") === "not_configured") {
+        STAKING_TOOLS.forEach((n) => excluded.add(n));
+      }
+      if (statusOf("stablecoin") === "not_configured") {
+        STABLECOIN_TOOLS.forEach((n) => excluded.add(n));
+      }
+      if (statusOf("liquidity") === "not_configured") {
+        LIQUIDITY_TOOLS.forEach((n) => excluded.add(n));
+      }
+      if (statusOf("limit-orders") === "not_configured") {
+        ORDER_TOOLS.forEach((n) => excluded.add(n));
+      }
+    }
+  }
+  return TOOL_CATALOG.filter((tool) => {
+    if (opts?.readOnly && tool.kind === "execute") return false;
+    return !excluded.has(tool.name);
+  });
+}

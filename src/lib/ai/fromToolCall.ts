@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import { getChainMeta } from "@/constants/chains";
 import { envVars } from "@/constants/envVars";
-import { bridgeSourceCandidates, toIToken } from "@/constants/tokens";
+import { bridgeSourceCandidates, chainTokenByAddress, toIToken } from "@/constants/tokens";
 import {
   findBorrowCurrency,
   getContracts,
@@ -10,6 +10,8 @@ import {
 import type { IToken } from "@/constants/types/dex";
 import type { RangeChoice } from "@/lib/dex/liquidity";
 import type { PendingCollateral } from "@/lib/lending/guard";
+import { resolveTokenFacts } from "@/lib/v2/cards/resolveTokenServer";
+import { tokenFactsToAddressToken } from "@/lib/v2/cards/tokenCard";
 import {
   buildIntents,
   type PlanDeps,
@@ -97,7 +99,24 @@ function dexToken(
 ): IToken | undefined {
   if (!symbol) return undefined;
   const entry = resolveUserToken(getChainMeta(chainId), symbol, "dex");
-  return entry ? toIToken(entry) : undefined;
+  if (entry) return toIToken(entry);
+  if (chainId !== undefined && ethers.isAddress(symbol.trim())) {
+    const byAddr = chainTokenByAddress(chainId, symbol.trim());
+    if (byAddr) return toIToken(byAddr);
+  }
+  return undefined;
+}
+
+async function resolveDexToken(
+  chainId: number | undefined,
+  symbolOrAddress: string,
+): Promise<IToken | undefined> {
+  const sync = dexToken(chainId, symbolOrAddress);
+  if (sync) return sync;
+  const trimmed = symbolOrAddress.trim();
+  if (chainId === undefined || !ethers.isAddress(trimmed)) return undefined;
+  const { facts } = await resolveTokenFacts(chainId, trimmed);
+  return tokenFactsToAddressToken(facts, chainId) ?? undefined;
 }
 
 /**
@@ -695,7 +714,36 @@ export async function planFromToolCalls(
       continue;
     }
 
-    const command = toCommand(call, chainId);
+    let command: Command | string;
+    if (call.name === "swap") {
+      const a = call.args ?? {};
+      const amount = amountOf(a.amount);
+      if (!amount) {
+        errors.push("swap: no amount given");
+        continue;
+      }
+      const inSym = str(a.tokenIn);
+      const outSym = str(a.tokenOut);
+      const [tokenIn, tokenOut] = await Promise.all([
+        resolveDexToken(chainId, inSym),
+        resolveDexToken(chainId, outSym),
+      ]);
+      if (!tokenIn) {
+        errors.push(
+          `swap: I don't know a token called ${inSym || "(none)"} on this chain`,
+        );
+        continue;
+      }
+      if (!tokenOut) {
+        errors.push(
+          `swap: I don't know a token called ${outSym || "(none)"} on this chain`,
+        );
+        continue;
+      }
+      command = { kind: "swap", amount, tokenIn, tokenOut };
+    } else {
+      command = toCommand(call, chainId);
+    }
     if (typeof command === "string") {
       errors.push(command);
       continue;
