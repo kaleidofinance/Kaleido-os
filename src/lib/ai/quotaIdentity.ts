@@ -1,6 +1,10 @@
 import { verifyWalletSignature } from "@/lib/auth/verifyWalletSignature";
 
-const MAX_AGE_MS = 10 * 60_000;
+const MAX_AGE_MS = 12 * 60 * 60_000;
+
+export function quotaSessionMessage(address: string, signedAt: number): string {
+  return `Kaleido Luca quota session:${address.toLowerCase()}:${signedAt}`;
+}
 
 export interface QuotaIdentityInput {
   address?: unknown;
@@ -26,7 +30,7 @@ export async function resolveQuotaIdentity(input: QuotaIdentityInput): Promise<{
   if (!Number.isFinite(signedAt) || Math.abs(Date.now() - signedAt) > MAX_AGE_MS) {
     return { authenticated: false, error: "The quota signature expired. Please sign again." };
   }
-  const message = `Kaleido Luca quota session:${address}:${signedAt}`;
+  const message = quotaSessionMessage(address, signedAt);
   const valid = await verifyWalletSignature(address, message, signature);
   return valid
     ? { address, authenticated: true }

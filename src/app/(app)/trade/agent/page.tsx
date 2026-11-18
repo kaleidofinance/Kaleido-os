@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
+import { useActiveAccount } from "thirdweb/react";
+import { quotaSessionMessage } from "@/lib/ai/quotaIdentity";
 import { useWalletV2 } from "@/hooks/v2/useWalletV2";
 import { useConnectWallet } from "@/lib/wallet";
 import { useAgentSettings } from "@/hooks/v2/useAgentSettings";
@@ -231,6 +233,7 @@ function historyForModel(
 
 export default function AgentPage() {
   const { chainId, address } = useWalletV2();
+  const activeAccount = useActiveAccount();
   const connectWallet = useConnectWallet();
   /* The exit request waiting on the Abstract wallet: set when the connect card
      is shown, replayed once the wallet is on Abstract (effect below send). */
@@ -2097,6 +2100,51 @@ export default function AgentPage() {
       }
       log("model");
 
+      let quotaAuth: { quotaSignature: string; quotaSignedAt: number } | null = null;
+      if (address && activeAccount?.signMessage) {
+        const key = `luca:quotaSession:${address.toLowerCase()}`;
+        try {
+          const cached = sessionStorage.getItem(key);
+          if (cached) {
+            const parsed = JSON.parse(cached) as {
+              signature?: string;
+              signedAt?: number;
+            };
+            if (
+              typeof parsed.signature === "string" &&
+              typeof parsed.signedAt === "number" &&
+              Date.now() - parsed.signedAt < 11 * 60 * 60_000
+            ) {
+              quotaAuth = {
+                quotaSignature: parsed.signature,
+                quotaSignedAt: parsed.signedAt,
+              };
+            }
+          }
+        } catch {
+          /* ignore storage read errors */
+        }
+        if (!quotaAuth) {
+          try {
+            const signedAt = Date.now();
+            const signature = await activeAccount.signMessage({
+              message: quotaSessionMessage(address, signedAt),
+            });
+            quotaAuth = { quotaSignature: signature, quotaSignedAt: signedAt };
+            try {
+              sessionStorage.setItem(
+                key,
+                JSON.stringify({ signature, signedAt }),
+              );
+            } catch {
+              /* ignore storage write errors */
+            }
+          } catch {
+            /* User declined signature or wallet unsupported; proceed unauthenticated */
+          }
+        }
+      }
+
       /* Only genuine questions reach the model.
        *
        * No trace line for crossing that boundary. The one that used to be here
@@ -2144,6 +2192,7 @@ export default function AgentPage() {
           // truth when no wallet is connected, and the server can say so.
           chainId,
           address,
+          ...(quotaAuth ?? {}),
           /* Testnets hidden by default (useTestnetMode). Sent so the server's
              reads and facts match the UI's posture — no testnet balances
              surfaced, no steering to a testnet the user cannot see. */

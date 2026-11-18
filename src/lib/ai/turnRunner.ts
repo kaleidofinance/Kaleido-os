@@ -247,9 +247,9 @@ export async function settleAgentTurn(
           const where =
             built.plan.length > 1 ? `step ${f.index + 1}` : "this";
           simNote =
-            `\n\n---\n\nI simulated it against the chain as it stands and ${where} looks like it would revert` +
+            `\n\n---\n\nI simulated it against the chain as it stands and ${where} would revert` +
             (f.reason ? ` — ${f.reason}` : "") +
-            `. The market may move again before you sign, so I've still prepared it and I re-check each step at signing; or ask me to rebuild it.`;
+            `. I withheld the signable steps so you don't submit a failing transaction; adjust the amount, slippage, or balance and try again.`;
         } else {
           simState = "unavailable";
         }
@@ -283,22 +283,28 @@ export async function settleAgentTurn(
     jevNormalizerSkipped: jev?.normalizerSkipped ?? false,
   });
 
-  const hasPlan = verdict.ok && built.plan.length > 0;
+  const hasPlan = verdict.ok && built.plan.length > 0 && simState !== "failed";
   const outcome = !verdict.ok
     ? classifyTurn(result, { kind: "refusal", reason: "audit_rejected" })
-    : hasPlan
+    : simState === "failed" && built.plan.length > 0
       ? classifyTurn(result, {
-          kind: "plan",
-          plan: { audit: "passed", simulation: simState },
+          kind: "unavailable",
+          reason: "simulation_reverted",
+          retryable: true,
         })
-      : classifyTurn(result, { kind: "answer" });
+      : hasPlan
+        ? classifyTurn(result, {
+            kind: "plan",
+            plan: { audit: "passed", simulation: simState },
+          })
+        : classifyTurn(result, { kind: "answer" });
 
   return {
     response: verdict.ok
       ? `${reply.text}${fallbackNote}${buildNotes}${simNote}`
       : `${reply.text}${fallbackNote}${buildNotes}\n\n---\n\n${refusalText(verdict)}`,
     context: {
-      plan: verdict.ok ? built.plan : [],
+      plan: hasPlan ? built.plan : [],
       requestId,
       outcome: outcome.kind,
       provider: result.provider,
