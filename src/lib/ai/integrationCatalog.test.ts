@@ -27,6 +27,11 @@ assert.equal(
   "not_configured",
 );
 
+assert.deepEqual(
+  aggregatorIntegrations(5042).map((item) => item.name),
+  ["Synthra", "KyberSwap", "LI.FI", "Fly.trade", "Tower Exchange"],
+);
+
 assert.deepEqual(launchpadIntegrations(56), []);
 assert.deepEqual(
   launchpadIntegrations(4663).map((item) => item.name),

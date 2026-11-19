@@ -22,7 +22,7 @@ import { runReadTool } from "./readTools";
     (arcData.integrations as Array<Record<string, unknown>>).map(
       (item) => item.name,
     ),
-    ["Argus", "Peach", "Synthra LaunchPad", "Synthra", "KyberSwap", "LI.FI", "Fly.trade"],
+    ["Argus", "Peach", "Synthra LaunchPad", "Synthra", "KyberSwap", "LI.FI", "Fly.trade", "Tower Exchange"],
   );
   const argusOperations = (
     (arcData.integrations as Array<Record<string, unknown>>)[0]?.operations ?? {}

@@ -4,6 +4,7 @@ import { ELYSIUM_CHAIN_ID, ELYSIUM_LAUNCHPADS } from "@/lib/elysium/addresses";
 import { hasFlyTrade } from "@/lib/swap/flytrade";
 import { hasKyberSwap } from "@/lib/swap/kyberswap";
 import { hasLifiSwap } from "@/lib/swap/lifi";
+import { hasTowerSwap } from "@/lib/swap/tower";
 import {
   synthraExecutorsFor,
   synthraInternalRoutersFor,
@@ -170,6 +171,8 @@ export function integrationsForChain(
   if (hasLifiSwap(chainId)) out.push(aggregator("lifi", "LI.FI", chainId));
   if (hasFlyTrade(chainId))
     out.push(aggregator("flytrade", "Fly.trade", chainId));
+  if (hasTowerSwap(chainId))
+    out.push(aggregator("tower", "Tower Exchange", chainId));
   return out;
 }
 
