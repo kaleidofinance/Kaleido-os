@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaleido × Tower Exchange — Partnership</title>
+<meta name="description" content="Kaleido has integrated Tower Exchange — the liquidity layer for regional stablecoins on Arc. Swap EURC, MXNB, BRLA, cNGN, and ZAR through Luca with Circle StableFX routing.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Kaleido × Tower Exchange — Partnership">
+<meta property="og:description" content="Their regional liquidity, our AI agent. Every Arc stablecoin pair is instantly tradable in Luca via Tower Exchange and Circle StableFX.">
+<meta property="og:image" content="https://kaleidofi.xyz/tower-exchange-og.png">
+<meta property="og:url" content="https://kaleidofi.xyz/kaleido-x-tower.html">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kaleido × Tower Exchange — Partnership">
+<meta name="twitter:description" content="Their regional liquidity, our AI agent. Every Arc stablecoin pair is instantly tradable in Luca via Tower Exchange.">
+<meta name="twitter:image" content="https://kaleidofi.xyz/tower-exchange-og.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --ink:#0a1512;--ink2:#0c1a15;--panel:rgba(255,255,255,.04);--line:rgba(214,192,154,.18);
+    --text:#f4eee5;--muted:#c4cec5;--green:#35d18d;--sand:#e7d7b6;--tower-blue:#7bb8ff;--tower-cyan:#00e5ff;
+    --serif:"Lora",Georgia,serif;--sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ink);color:var(--text);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased}
+  a{color:inherit}
+  .wrap{max-width:920px;margin:0 auto;padding:0 22px 72px}
+
+  /* hero */
+  .hero{position:relative;isolation:isolate;overflow:hidden;margin:0 -22px;padding:64px 22px 44px;text-align:center}
+  .hero::before{content:"";position:absolute;inset:0;z-index:-1;
+    background:
+      linear-gradient(180deg, rgba(6,15,12,.6) 0%, rgba(6,15,12,.86) 55%, var(--ink) 100%),
+      radial-gradient(60% 40% at 50% 0%, rgba(123,184,255,.16), transparent 62%),
+      url("/waitlist-colosseum.webp") center top/cover no-repeat}
+  .kicker{color:var(--green);font-weight:700;font-size:13px;letter-spacing:.24em;text-transform:uppercase}
+  .lock{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:14px 30px;margin:20px 0 6px}
+  .co{display:flex;align-items:center;gap:14px}
+  .logo{width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none;
+    box-shadow:0 0 0 2px rgba(231,215,182,.3),0 0 30px rgba(53,209,141,.28)}
+  .logo.tower{background:#0e1e2c;box-shadow:0 0 0 2px rgba(123,184,255,.35),0 0 30px rgba(123,184,255,.28);padding:10px}
+  .kmark{background:var(--ink2) url("/newklogo2.png") center/cover no-repeat}
+  .name{font-family:var(--serif);font-weight:600;font-size:clamp(34px,7vw,52px);letter-spacing:-.02em;line-height:1;color:#fff}
+  .name i{font-style:normal;color:var(--green)}
+  .name i.t{color:var(--tower-blue)}
+  .x{font-family:var(--serif);font-size:clamp(28px,6vw,44px);color:var(--green);opacity:.85}
+  .lede{color:var(--muted);font-size:clamp(17px,2.4vw,21px);line-height:1.5;max-width:64ch;margin:14px auto 0}
+  .lede b{color:#fff;font-weight:600}
+
+  section{margin-top:44px}
+  h2{font-family:var(--serif);font-weight:600;font-size:14px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--sand);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .rows{display:flex;flex-direction:column;gap:16px}
+  .row{display:flex;gap:15px;align-items:flex-start}
+  .tick{color:var(--green);font-size:20px;line-height:1.3;flex:none}
+  .num{width:28px;height:28px;border-radius:50%;background:var(--green);color:#06120c;font-weight:800;font-size:14px;
+    display:grid;place-items:center;flex:none;margin-top:1px}
+  .row .h{font-weight:600;font-size:19px;color:#fff}
+  .row .d{color:var(--muted);font-size:17px;line-height:1.5;margin-top:3px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px 34px}
+
+  .stats{margin-top:40px;display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);
+    border-radius:16px;background:var(--panel);overflow:hidden}
+  .stat{padding:22px 24px}
+  .stat + .stat{border-left:1px solid var(--line)}
+  .stat .n{font-family:var(--serif);font-weight:600;font-size:32px;color:var(--green)}
+  .stat .k{font-size:14px;color:var(--muted);margin-top:4px}
+
+  .cta{margin-top:40px;text-align:center;border-top:1px solid var(--line);padding-top:34px}
+  .cta .t{font-family:var(--serif);font-size:clamp(20px,3vw,26px);color:#fff;font-weight:600}
+  .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px}
+  .btn{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:13px 22px;font-weight:600;font-size:16px;text-decoration:none}
+  .btn.primary{background:var(--green);color:#06120c}
+  .btn.ghost{border:1px solid var(--line);color:var(--text);background:rgba(216,197,162,.04)}
+  .foot{margin-top:26px;text-align:center;color:#7d877d;font-size:13px}
+
+  /* ── live integration showcase: the real remittance/swap card ── */
+  .showcase{margin-top:30px;display:flex;flex-direction:column;align-items:center;gap:16px}
+  .frame{width:100%;max-width:540px;border:1px solid var(--line);border-radius:20px;background:
+    linear-gradient(180deg, rgba(16,32,26,.94), rgba(10,21,18,.96));box-shadow:0 30px 80px -30px rgba(0,0,0,.8);
+    padding:20px;position:relative}
+  .luca{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px;margin-bottom:12px}
+  .luca .d{width:22px;height:22px;border-radius:50%;background:var(--ink2) url("/newklogo2.png") center/cover no-repeat;flex:none}
+  .paste{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--sand);
+    background:rgba(216,197,162,.06);border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-bottom:12px;
+    display:flex;align-items:center;gap:8px}
+  .paste .you{color:#7d877d}
+  .tcard{border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.03);padding:18px}
+  .thead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .tid{display:flex;align-items:center;gap:9px;min-width:0}
+  .tlogo{width:32px;height:32px;border-radius:50%;object-fit:contain;flex:none;background:#0e1e2c;padding:5px}
+  .tsym{font-weight:600;font-size:18px;color:#fff}
+  .tname{font-size:13px;color:#8a9389}
+  .tbadge{flex:none;font-size:11px;color:var(--tower-blue);border:1px solid rgba(123,184,255,.3);border-radius:999px;padding:3px 9px;background:rgba(123,184,255,.08)}
+  .troute{display:flex;align-items:center;gap:10px;margin:14px 0 8px;font-size:20px;font-weight:600;color:#fff}
+  .troute .arrow{color:var(--green);font-size:16px}
+  .tprice{font-family:var(--serif);font-size:26px;color:var(--green);margin-bottom:12px}
+  .ttable{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;margin-bottom:14px}
+  .ttable th{font-weight:500;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#7d877d;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  .ttable td{font-weight:600;color:var(--text);padding:7px 8px}
+  .ttable th+th,.ttable td+td{border-left:1px solid var(--line)}
+  .ttable td.good{color:var(--green)}
+  .pillsRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .chip{font-size:12px;border-radius:999px;padding:6px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--muted)}
+  .chip.active{color:#07110e;background:var(--green);font-weight:600;border-color:var(--green)}
+  .shot-cap{color:var(--muted);font-size:16px;text-align:center;max-width:56ch}
+  .shot-cap b{color:#fff;font-weight:600}
+
+  @media (max-width:640px){
+    .two{grid-template-columns:1fr}
+    .stats{grid-template-columns:1fr}
+    .stat + .stat{border-left:0;border-top:1px solid var(--line)}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="kicker">Partnership proposal · Arc mainnet</div>
+      <div class="lock">
+        <div class="co"><span class="logo kmark"></span><span class="name">Kaleido<i>fi</i></span></div>
+        <span class="x">×</span>
+        <div class="co"><img class="logo tower" src="/tower-favicon.svg" alt="Tower Exchange"><span class="name">Tower <i class="t">Exchange</i></span></div>
+      </div>
+      <p class="lede">Tower Exchange is the liquidity layer for regional stablecoins on Arc. Kaleido is Arc's agentic trading layer — our AI agent <b>Luca</b> executes swaps, yields, and limits in conversational language with audited safety. We have already integrated Tower into Kaleido. Here is what is live, and what we can build together.</p>
+    </header>
+
+    <div class="showcase">
+      <div class="frame">
+        <div class="luca"><span class="d"></span> Luca · Agent on Arc (5042)</div>
+        <div class="paste"><span class="you">you ›</span> Swap 1,000 USDC to Mexican Peso (MXNB) via Tower</div>
+        <div class="tcard">
+          <div class="thead">
+            <div class="tid">
+              <img class="tlogo" src="/tower-favicon.svg" alt="Tower">
+              <div>
+                <div class="tsym">USDC → MXNB</div>
+                <div class="tname">Tower Aggregator · Circle StableFX</div>
+              </div>
+            </div>
+            <span class="tbadge">Zero Slippage RFQ</span>
+          </div>
+          <div class="troute">1,000 USDC <span class="arrow">→</span> 18,240 MXNB</div>
+          <div class="tprice">1 USDC = 18.24 MXNB</div>
+          <table class="ttable">
+            <thead><tr><th>Executor</th><th>Gas Token</th><th>Slippage</th><th>Status</th></tr></thead>
+            <tbody><tr><td>TowerSwapExecutor</td><td>USDC</td><td class="good">0.00%</td><td class="good">Audited</td></tr></tbody>
+          </table>
+          <div class="pillsRow">
+            <span class="chip active">Pre-Simulated ✓</span>
+            <span class="chip">Circle StableFX</span>
+            <span class="chip">Arc Mainnet (5042)</span>
+          </div>
+        </div>
+      </div>
+      <div class="shot-cap">Users ask Luca in plain words — <b>Tower executes</b> behind the scenes with optimal DEX aggregation and institutional Circle StableFX routing.</div>
+    </div>
+
+    <section>
+      <h2>What's already live</h2>
+      <div class="rows">
+        <div class="row"><span class="tick">✓</span><div>
+          <div class="h">Tower DEX aggregation is live inside Kaleido Swap &amp; Luca.</div>
+          <div class="d">Kaleido users can now quote and execute through Tower Exchange's smart order routing directly in Kaleido Swap and via Luca's conversational trading agent.</div>
+        </div></div>
+        <div class="row"><span class="tick">✓</span><div>
+          <div class="h">Support for all major Arc regional stablecoins.</div>
+          <div class="d">Native quoting and routing for <b>EURC</b>, <b>MXNB</b> (Mexican Peso), <b>BRLA</b> (Brazilian Real), <b>cNGN</b> (Nigerian Naira), and <b>ZAR</b> (South African Rand).</div>
+        </div></div>
+        <div class="row"><span class="tick">✓</span><div>
+          <div class="h">Circle StableFX &amp; CCTP layered into routing.</div>
+          <div class="d">24/7 RFQ pricing for institutional liquidity with zero slippage across global stablecoins, powered by Circle Alliance synergies.</div>
+        </div></div>
+        <div class="row"><span class="tick">✓</span><div>
+          <div class="h">Non-custodial, fail-closed verification.</div>
+          <div class="d">Every transaction is validated by Kaleido's pre-simulation engine before presentation to the user for signature. We never hold custody of funds.</div>
+        </div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Why it's a win for Tower</h2>
+      <div class="two">
+        <div class="row"><span class="tick">→</span><div class="d"><b style="color:#fff">Conversational remittance &amp; FX interface</b> — users swap local currencies via natural chat with Luca.</div></div>
+        <div class="row"><span class="tick">→</span><div class="d"><b style="color:#fff">Immediate distribution</b> to 6,900+ active Arc wallets and 124+ automated agent tools.</div></div>
+        <div class="row"><span class="tick">→</span><div class="d"><b style="color:#fff">Zero custody risk</b> — Kaleido users sign their own transactions via TowerSwapExecutor.</div></div>
+        <div class="row"><span class="tick">→</span><div class="d"><b style="color:#fff">Liquidity compounding</b> — routing volume compounds into Tower's analytics and Circle Alliance metrics.</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What we propose</h2>
+      <div class="rows">
+        <div class="row"><span class="num">1</span><div><div class="h">Co-market the integration.</div><div class="d">A coordinated announcement on X and Telegram showcasing seamless regional stablecoin swapping on Arc (announcement card and copy ready).</div></div></div>
+        <div class="row"><span class="num">2</span><div><div class="h">A joint stablecoin swap &amp; remittance campaign.</div><div class="d">Incentivize EURC, MXNB, and BRLA swaps with Kaleido Season 1 points, driving organic routing volume through Tower.</div></div></div>
+        <div class="row"><span class="num">3</span><div><div class="h">Pair kfUSD with regional stablecoins on Arc.</div><div class="d">Seed deep liquidity pools pairing kfUSD (Kaleido's native yield-bearing stablecoin) with MXNB, BRLA, and EURC on Arc DEXs via Tower routing.</div></div></div>
+        <div class="row"><span class="num">4</span><div><div class="h">Co-promote with Circle Alliance.</div><div class="d">Highlight Arc's position as the home of next-generation FX alongside Circle's StableFX and CCTP infrastructure.</div></div></div>
+      </div>
+    </section>
+
+    <div class="stats">
+      <div class="stat"><div class="n">2.3M+</div><div class="k">$kPoint distributed</div></div>
+      <div class="stat"><div class="n">6,900+</div><div class="k">wallets earning</div></div>
+      <div class="stat"><div class="n">5042</div><div class="k">Arc mainnet live</div></div>
+    </div>
+
+    <div class="cta">
+      <div class="t">Let's align on the launch announcement and campaign.</div>
+      <div class="btns">
+        <a class="btn primary" href="https://t.me/macrew15">Chat with our founder — Telegram ↗</a>
+        <a class="btn ghost" href="https://kaleidofi.xyz/trade">Try it on Kaleido ↗</a>
+        <a class="btn ghost" href="https://kaleidofi.xyz">kaleidofi.xyz</a>
+      </div>
+      <div class="foot">Mac King · Founder, Kaleido &nbsp;·&nbsp; Telegram <a href="https://t.me/macrew15" style="color:var(--green);text-decoration:none">@macrew15</a> &nbsp;·&nbsp; X <a href="https://x.com/0xmacking" style="color:var(--green);text-decoration:none">@0xmacking</a></div>
+    </div>
+  </div>
+</body>
+</html>

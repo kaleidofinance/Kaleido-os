@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kaleido × Tower Exchange — Regional Stablecoins on Arc</title>
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Kaleido × Tower Exchange — Regional Stablecoins on Arc">
+  <meta property="og:description" content="Regional stablecoins, routed in one click. EURC, MXNB, BRLA, cNGN, and ZAR liquidity on Arc via Tower Exchange & Circle StableFX.">
+  <meta property="og:image" content="https://kaleidofi.xyz/tower-exchange-og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Kaleido × Tower Exchange — Regional Stablecoins on Arc">
+  <meta name="twitter:description" content="Regional stablecoins, routed in one click. Aggregated Arc DEX liquidity and Circle StableFX via Luca.">
+  <meta name="twitter:image" content="https://kaleidofi.xyz/tower-exchange-og.png">
+  <style>
+    :root{
+      --ink:#07110e;--panel:#0d1b16;--text:#f4eee5;--muted:#aab8ae;--green:#35d18d;--sand:#d6c09a;
+      --tower-blue:#7bb8ff;--line:rgba(214,192,154,.22)
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;background:#07110e}
+    body{min-height:100vh;display:grid;place-items:center;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text)}
+    .card{position:relative;isolation:isolate;overflow:hidden;width:min(1200px,100vw);aspect-ratio:1200/630;padding:64px 76px;background:linear-gradient(100deg,rgba(7,17,14,.98) 10%,rgba(7,17,14,.84) 52%,rgba(7,17,14,.66)),url('/hero-colosseum.webp') center/cover no-repeat;display:flex;flex-direction:column;justify-content:space-between}
+    .card:after{content:"";position:absolute;inset:0;z-index:-1;background:radial-gradient(circle at 82% 20%,rgba(123,184,255,.16),transparent 34%),radial-gradient(circle at 20% 80%,rgba(53,209,141,.14),transparent 32%),linear-gradient(180deg,transparent 48%,rgba(7,17,14,.62))}
+    .brandRow{display:flex;align-items:center;gap:14px;font-weight:700;letter-spacing:-.02em;font-size:24px}
+    .mark{width:28px;height:28px;border-radius:50%;display:inline-block;background:#12a866 url('/newklogo2.png') center/cover no-repeat;flex:none}
+    .tmark{width:28px;height:28px;border-radius:50%;display:inline-block;background:#0e1e2c url('/tower-favicon.svg') center/cover no-repeat;flex:none;box-shadow:0 0 0 1px rgba(123,184,255,.3)}
+    .xsep{color:var(--muted);font-weight:400;font-size:20px;margin:0 2px}
+    .towerName{color:var(--tower-blue)}
+    .eyebrow{margin-top:40px;color:var(--sand);font:500 14px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.16em;text-transform:uppercase}
+    .eyebrow span{color:var(--green)}
+    h1{max-width:820px;margin:18px 0 14px;font:600 clamp(38px,4.8vw,64px)/1.04 Georgia,serif;letter-spacing:-.035em}
+    p{max-width:720px;margin:0;color:var(--muted);font-size:20px;line-height:1.45}
+    p b{color:#fff;font-weight:600}
+    .footer{display:flex;align-items:flex-end;justify-content:space-between;gap:28px}
+    .pills{display:flex;gap:10px;flex-wrap:wrap}
+    .pill{border:1px solid var(--line);border-radius:999px;padding:11px 16px;color:var(--text);background:rgba(13,27,22,.68);font-size:14px}
+    .pill b{color:var(--green);font-weight:600}
+    .pill.tower b{color:var(--tower-blue)}
+    .cta{display:inline-flex;align-items:center;gap:12px;border-radius:999px;padding:15px 24px;background:var(--green);color:#07110e;text-decoration:none;font-weight:700;white-space:nowrap}
+    .cta:after{content:"↗";font-size:18px}
+    @media (max-width:720px){.card{padding:30px 24px}.brandRow{font-size:18px}.mark,.tmark{width:22px;height:22px}.eyebrow{margin-top:24px;font-size:11px}h1{font-size:38px}p{font-size:16px}.footer{align-items:flex-start;flex-direction:column;gap:18px}.pill{font-size:12px;padding:9px 12px}}
+    @media print{body{display:block}.card{width:1200px;height:630px}}
+  </style>
+</head>
+<body>
+  <main class="card" aria-label="Kaleido x Tower Exchange announcement card">
+    <div>
+      <div class="brandRow">
+        <span class="mark" aria-hidden="true"></span>
+        <span>KaleidoFi</span>
+        <span class="xsep">×</span>
+        <span class="tmark" aria-hidden="true"></span>
+        <span class="towerName">Tower Exchange</span>
+      </div>
+      <div class="eyebrow"><span>Arc Ecosystem Integration</span> · Mainnet 5042</div>
+      <h1>Regional stablecoins, routed in one click.</h1>
+      <p>Swap <b>EURC</b>, <b>MXNB</b>, <b>BRLA</b>, <b>cNGN</b>, and <b>ZAR</b> with zero manual hops. Tower aggregates every Arc DEX while <b>Circle StableFX</b> delivers 24/7 RFQ pricing directly into <b>Luca</b>.</p>
+    </div>
+    <div class="footer">
+      <div class="pills">
+        <div class="pill tower"><b>Circle StableFX</b> 24/7 RFQ</div>
+        <div class="pill"><b>TowerSwapExecutor</b> on Arc</div>
+        <div class="pill"><b>Zero Slippage</b> FX Routing</div>
+      </div>
+      <a class="cta" href="https://kaleidofi.xyz/trade">Trade on Arc</a>
+    </div>
+  </main>
+</body>
+</html>

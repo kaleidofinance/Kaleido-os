@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kaleido × Tower Exchange Announcement Banner</title>
+<style>
+  @font-face{font-family:"KSerif";src:url("../src/app/fonts/lora-var.woff2") format("woff2");font-weight:100 900;font-display:block}
+  @font-face{font-family:"KSans";src:url("../src/app/fonts/GeistVF.woff") format("woff");font-weight:100 900;font-display:block}
+  :root{
+    --ink:#07120e;--text:#f4eee5;--muted:#c4cfc6;--green:#35d18d;--tower-cyan:#00e5ff;
+    --k-card:#141b18;--k-line:rgba(255,255,255,.09);--k-t1:#ffffff;--k-t2:#a8b4ab;--k-t3:#6a796e;
+    --k-brand:#00b383;--k-brand-fg:#04170f;--k-pos:#4cc46a;--k-glass-deep:rgba(0,0,0,.5);
+    --k-shadow-inset:inset 0 1px 2px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{width:1200px;height:630px;overflow:hidden;background:var(--ink)}
+  body{position:relative;font-family:"KSans",system-ui,sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
+
+  /* Backdrop: Dark atmospheric Arc colosseum with cyan/emerald ambient glow */
+  .bg{position:absolute;inset:0;background:url("../public/colosseum4.png") 60% 40%/cover no-repeat;filter:saturate(.7) brightness(.32) blur(1px);transform:scale(1.02)}
+  .wash{position:absolute;inset:0;background:
+    radial-gradient(45% 55% at 78% 45%,rgba(0,229,255,.12),transparent 70%),
+    radial-gradient(55% 65% at 20% 40%,rgba(53,209,141,.15),transparent 75%),
+    linear-gradient(90deg,rgba(7,18,14,.98) 0%,rgba(7,18,14,.92) 42%,rgba(7,18,14,.6) 72%,rgba(7,18,14,.4) 100%),
+    linear-gradient(180deg,transparent 65%,rgba(7,18,14,.85) 100%)}
+
+  /* Left: Copy & Branding */
+  .copy{position:absolute;left:56px;top:44px;bottom:42px;width:570px;display:flex;flex-direction:column}
+  .brandRow{display:flex;align-items:center;gap:14px}
+  .brandBadge{width:40px;height:40px;border-radius:50%;background:#0c1a15 url("../public/newklogo2.png") center/cover no-repeat;
+    box-shadow:0 0 0 1px rgba(231,215,182,.28),0 0 20px rgba(53,209,141,.3)}
+  .word{font-family:"KSerif",Georgia,serif;font-weight:600;font-size:29px;letter-spacing:-.01em}
+  .word i{font-style:normal;color:var(--green)}
+  .plus{color:rgba(255,255,255,.3);font-size:20px;font-weight:300}
+  .partnerTag{display:inline-flex;align-items:center;gap:7px;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.25);padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600;color:var(--tower-cyan);letter-spacing:.02em}
+
+  .mid{margin-top:auto;margin-bottom:auto}
+  .eyebrow{color:var(--green);font-weight:700;font-size:13.5px;letter-spacing:.22em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+  .hero{font-family:"KSerif",Georgia,serif;font-weight:600;color:#fff;font-size:58px;line-height:1.05;letter-spacing:-.03em;margin:14px 0 0;text-shadow:0 3px 25px rgba(0,0,0,.6)}
+  .hero i{font-style:normal;color:var(--tower-cyan)}
+  .sub{color:var(--muted);font-size:18.5px;line-height:1.48;margin-top:16px;max-width:500px}
+  .sub b{color:#fff;font-weight:600}
+
+  .currencies{display:flex;align-items:center;gap:8px;margin-top:16px;flex-wrap:wrap}
+  .currPill{font-size:12px;font-weight:600;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:4px 9px;color:var(--text)}
+  .currPill.highlight{background:rgba(0,229,255,.1);border-color:rgba(0,229,255,.3);color:var(--tower-cyan)}
+
+  .stats{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:14.5px;color:var(--text);margin-bottom:12px}
+  .stats .dot{width:4px;height:4px;border-radius:50%;background:rgba(244,238,229,.35)}
+  .stats b{color:var(--green);font-weight:600}
+  .urlRow{display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.08);padding-top:14px}
+  .url{font-family:"KSerif",Georgia,serif;font-weight:700;font-size:23px;color:var(--green);letter-spacing:-.01em}
+  .netBadge{font-size:12px;color:var(--k-t2);background:rgba(255,255,255,.05);padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.08)}
+
+  /* Right: The Luca AI Agent Box */
+  .luca{position:absolute;left:654px;top:44px;width:490px;
+    background:var(--k-card);border:1px solid var(--k-line);border-radius:20px;overflow:hidden;
+    box-shadow:inset 0 1px 0 rgba(250,249,245,.06),0 24px 70px rgba(0,0,0,.7),0 0 0 1px rgba(0,229,255,.12)}
+  .head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--k-line);background:rgba(255,255,255,.02)}
+  .bot{width:22px;height:22px;border-radius:6px;border:2px solid var(--k-brand);position:relative;flex:none}
+  .bot::before{content:"";position:absolute;left:3px;top:5px;width:4px;height:4px;border-radius:50%;background:var(--k-brand);box-shadow:8px 0 0 var(--k-brand)}
+  .bot::after{content:"";position:absolute;left:8px;top:-6px;width:2px;height:5px;background:var(--k-brand)}
+  .htitle{font-weight:600;font-size:14.5px;flex:1;color:var(--k-t1)}
+  .agentMode{font-size:11px;font-weight:600;text-transform:uppercase;color:var(--green);background:rgba(53,209,141,.12);border:1px solid rgba(53,209,141,.25);padding:3px 8px;border-radius:999px}
+
+  .well{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+  .who{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--k-t3);margin-bottom:3px}
+  .userMsg{font-size:14.5px;color:var(--k-t1);line-height:1.4}
+  .reply{font-size:14px;color:var(--k-t1);font-weight:450;line-height:1.45}
+
+  .routeCard{background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);border-radius:14px;padding:12px 14px;border-left:3px solid var(--tower-cyan)}
+  .rHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .rTitle{font-size:13px;font-weight:600;color:var(--k-t1);display:flex;align-items:center;gap:6px}
+  .rPill{font-size:10.5px;font-weight:600;color:var(--tower-cyan);background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.2);padding:2px 7px;border-radius:4px}
+  .rPath{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--k-t1);font-weight:600;background:rgba(255,255,255,.03);padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.05)}
+  .rPath .arrow{color:var(--k-t3);font-size:12px}
+  .rMeta{display:flex;align-items:center;justify-content:space-between;margin-top:9px;font-size:12px;color:var(--k-t2)}
+  .rMeta b{color:var(--green);font-weight:600}
+
+  .btnRow{margin-top:11px}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--k-brand);color:var(--k-brand-fg);
+    font-weight:650;font-size:13.5px;padding:10px 16px;border-radius:10px;width:100%;box-shadow:0 0 0 3px rgba(0,179,131,.15),0 4px 18px rgba(0,179,131,.3)}
+
+  .composer{margin:2px 16px 14px;display:flex;align-items:center;gap:10px;background:var(--k-glass-deep);box-shadow:var(--k-shadow-inset);
+    border:1px solid rgba(53,209,141,.3);border-radius:12px;padding:10px 12px}
+  .typed{flex:1;font-size:13.5px;color:var(--k-t3)}
+  .caret{display:inline-block;width:1.5px;height:14px;background:var(--green);vertical-align:-2px;margin-left:1px}
+  .send{width:26px;height:26px;border-radius:50%;background:var(--k-brand);display:grid;place-items:center;color:var(--k-brand-fg);font-size:12px}
+  .foot{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--k-t3);padding:0 18px 12px}
+  .liveDot{width:6px;height:6px;border-radius:50%;background:var(--k-pos)}
+</style>
+</head>
+<body>
+  <div class="bg"></div><div class="wash"></div>
+
+  <div class="copy">
+    <div class="brandRow">
+      <span class="brandBadge"></span>
+      <span class="word">Kaleido<i>fi</i></span>
+      <span class="plus">×</span>
+      <span class="partnerTag">Tower Exchange</span>
+    </div>
+
+    <div class="mid">
+      <div class="eyebrow"><span class="dot"></span>Regional Stablecoin Liquidity · Arc</div>
+      <div class="hero">Regional FX, routed in <i>one click</i>.</div>
+      <div class="sub">Tower Exchange is live on Kaleido. Trade <b>EURC, MXNB, BRLA, and cNGN</b> with aggregated Arc DEX liquidity and Circle StableFX.</div>
+      <div class="currencies">
+        <span class="currPill highlight">USDC</span>
+        <span class="currPill">EURC (Euro)</span>
+        <span class="currPill">MXNB (Peso)</span>
+        <span class="currPill">BRLA (Real)</span>
+        <span class="currPill">cNGN (Naira)</span>
+        <span class="currPill">ZAR (Rand)</span>
+      </div>
+    </div>
+
+    <div class="stats">
+      <span><b>Circle StableFX</b> 24/7 RFQ</span><span class="dot"></span>
+      <span><b>TowerSwapExecutor</b></span><span class="dot"></span>
+      <span>CCTP Powered</span>
+    </div>
+
+    <div class="urlRow">
+      <div class="url">kaleidofi.xyz/trade</div>
+      <div class="netBadge">Arc Mainnet (5042)</div>
+    </div>
+  </div>
+
+  <div class="luca">
+    <div class="head">
+      <span class="bot"></span>
+      <span class="htitle">Luca Trading Agent</span>
+      <span class="agentMode">Arc Active</span>
+    </div>
+
+    <div class="well">
+      <div>
+        <div class="who">You</div>
+        <div class="userMsg">Swap 1,000 USDC to Mexican Peso stablecoin at best rate</div>
+      </div>
+      <div>
+        <div class="who">Luca</div>
+        <div class="reply">Routed via Tower Exchange with Circle StableFX. 1,000 USDC converts to 18,240 MXNB with zero slippage and 0.05% price impact.</div>
+      </div>
+
+      <div class="routeCard">
+        <div class="rHead">
+          <div class="rTitle">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+            Optimal FX Route
+          </div>
+          <span class="rPill">Tower StableFX</span>
+        </div>
+        <div class="rPath">
+          <span>1,000 USDC</span>
+          <span class="arrow">➔</span>
+          <span style="color:var(--tower-cyan);">Tower Executor</span>
+          <span class="arrow">➔</span>
+          <span style="color:var(--green);">18,240 MXNB</span>
+        </div>
+        <div class="rMeta">
+          <span>Rate: 1 USDC ≈ 18.24 MXNB</span>
+          <span>Simulation: <b>Passed</b></span>
+        </div>
+        <div class="btnRow">
+          <span class="btn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Review and Sign (TowerSwapExecutor)
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <span class="typed"><span class="caret"></span> Ask Luca to quote or route…</span>
+      <span class="send">↑</span>
+    </div>
+    <div class="foot">
+      <span class="liveDot"></span>
+      <span>Simulated against Arc mainnet · Non-custodial</span>
+    </div>
+  </div>
+</body>
+</html>
