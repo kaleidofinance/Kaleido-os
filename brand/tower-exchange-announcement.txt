@@ -1,39 +1,35 @@
---- X / TWITTER ANNOUNCEMENT ---
+============================================================
+KALEIDO × TOWER EXCHANGE — OFFICIAL LAUNCH ANNOUNCEMENT
+============================================================
 
-Kaleido × Tower Exchange 🏛️ is live on Arc.
+--- OPTION 1: SYNTHRA-STYLE (RECOMMENDED) ---
+Kaleido × @TowerExchange 🏛️ is now live on @arc.
 
-Stablecoin liquidity on Arc is no longer fragmented.
+Luca now connects Tower regional stablecoin routing with Circle StableFX RFQ execution.
 
-You can now swap regional stablecoins — EURC, MXNB (Mexican Peso), BRLA (Brazilian Real), cNGN (Nigerian Naira), and ZAR (Rand) — directly inside Kaleido.
+Swap EURC, MXNB, BRLA, cNGN, and ZAR with zero manual hops, get institutional 24/7 RFQ pricing, and review every step before signing.
 
-Under the hood:
-• Tower aggregates every Arc DEX into a single optimal route
-• Layered with Circle StableFX 24/7 RFQ pricing & CCTP
-• Luca, our AI agent, quotes and plans the trade conversationally
-• Non-custodial: pre-simulated and fail-closed checked before signature
-
-Try it: ask Luca "Swap 1,000 USDC to MXNB" or trade directly on Kaleido Swap.
+One agent. Aggregated liquidity. Zero-slippage regional FX.
 
 → kaleidofi.xyz/trade
-Partnership overview: kaleidofi.xyz/kaleido-x-tower.html
 
 
---- TELEGRAM / DISCORD ANNOUNCEMENT ---
+--- OPTION 2: PEACH-STYLE (DIRECT ACTION-ORIENTED) ---
+Kaleido × @TowerExchange 🏛️ is live on @arc
 
-🏛️ Integration Announcement: Kaleido × Tower Exchange
+Regional stablecoins on @arc are now tradable on Kaleido. Tell Luca agent to swap EURC, MXNB, BRLA, cNGN, or ZAR — it aggregates every Arc DEX with Circle StableFX 24/7 RFQ pricing, bringing deep regional liquidity to trade in one interface.
 
-We’re thrilled to announce that Tower Exchange is officially integrated into Kaleido!
+→ kaleidofi.xyz/trade
 
-Tower is the liquidity layer for regional stablecoins on Arc. By combining Tower's multi-DEX aggregator with Circle StableFX and Luca's conversational execution engine, users can now swap EURC, MXNB, BRLA, cNGN, and ZAR with zero manual hops and institutional pricing.
 
-What’s Live:
-✅ Aggregated Arc DEX routing behind a single call
-✅ Circle StableFX 24/7 RFQ pricing
-✅ Conversational FX & remittances via Luca
-✅ Non-custodial, fail-closed pre-simulated execution
-
-Read our partnership overview & joint roadmap:
-👉 https://kaleidofi.xyz/kaleido-x-tower.html
-
-Trade regional stablecoins on Arc:
-👉 https://kaleidofi.xyz/trade
+============================================================
+CARD BANNER SPECIFICATION (brand/tower-exchange-integration.json)
+============================================================
+• Eyebrow: INTEGRATION · REGIONAL STABLECOINS
+• Co-Brand Lockup: [Kaleidofi Logo] Kaleidofi × [Tower Logo] Tower
+• Subtitle: Regional stablecoins on Arc are now discoverable and tradable through Luca via Tower Exchange.
+• Footer Chips: Circle StableFX · Live on Arc · Luca routed
+• Bottom URL: kaleidofi.xyz/trade
+• Backdrop: Dark Colosseum with center spotlight (colosseum-dark)
+• Output PNG: brand/out/tower-exchange-integration.png (2400×1260 @2x)
+• Public OG Asset: public/tower-exchange-og.png

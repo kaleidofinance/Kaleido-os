@@ -1,14 +1,14 @@
 {
-  "eyebrow": "Integration · Arc Stablecoins",
+  "eyebrow": "INTEGRATION · REGIONAL STABLECOINS",
   "hero": "",
   "partnerLockup": {
     "left": { "name": "Kaleidofi", "logo": "newklogo2.png" },
     "right": { "name": "Tower", "logo": "tower-favicon.svg" }
   },
-  "description": "Tower Exchange is now integrated into Kaleido. Swap regional stablecoins — EURC, MXNB, BRLA, cNGN and ZAR — through Luca and TowerSwapExecutor with Circle StableFX and aggregated Arc DEX routing.",
-  "stats": ["Circle StableFX 24/7 RFQ", "Live on Arc", "Zero Slippage FX"],
+  "description": "Regional stablecoins on Arc are now discoverable and tradable through Luca via Tower Exchange.",
+  "stats": ["Circle StableFX", "Live on Arc", "Luca routed"],
   "url": "kaleidofi.xyz/trade",
-  "background": "colosseum4",
+  "background": "colosseum-dark",
   "layout": "center",
   "effect": "spotlight"
 }
