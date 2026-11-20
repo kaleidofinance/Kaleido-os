@@ -8,7 +8,7 @@
   "description": "Regional stablecoins on Arc are now discoverable and tradable through Luca via Tower Exchange.",
   "stats": ["Circle StableFX", "Live on Arc", "Luca routed"],
   "url": "kaleidofi.xyz/trade",
-  "background": "colosseum3",
+  "background": "tower-beacon",
   "layout": "center",
-  "effect": "spotlight"
+  "effect": "beacon"
 }

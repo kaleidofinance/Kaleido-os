@@ -1,0 +1,14 @@
+{
+  "eyebrow": "INTEGRATION · REGIONAL STABLECOINS",
+  "hero": "",
+  "partnerLockup": {
+    "left": { "name": "Kaleidofi", "logo": "newklogo2.png" },
+    "right": { "name": "Tower", "logo": "tower-favicon.svg" }
+  },
+  "description": "Regional stablecoins on Arc are now discoverable and tradable through Luca via Tower Exchange.",
+  "stats": ["Circle StableFX", "Live on Arc", "Luca routed"],
+  "url": "kaleidofi.xyz/trade",
+  "background": "tower-colosseum",
+  "layout": "center",
+  "effect": "beacon"
+}

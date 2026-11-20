@@ -1,9 +1,9 @@
 ============================================================
-KALEIDO × TOWER EXCHANGE — OFFICIAL LAUNCH ANNOUNCEMENT
+KALEIDO × TOWER EXCHANGE — OFFICIAL INTEGRATION ANNOUNCEMENT
 ============================================================
 
 --- OPTION 1: SYNTHRA-STYLE (RECOMMENDED) ---
-Kaleido × @TowerExchange 🏛️ is now live on @arc.
+Kaleido × @TowerExchange 🗼 is now live on @arc.
 
 Luca now connects Tower regional stablecoin routing with Circle StableFX RFQ execution.
 
@@ -15,7 +15,7 @@ One agent. Aggregated liquidity. Zero-slippage regional FX.
 
 
 --- OPTION 2: PEACH-STYLE (DIRECT ACTION-ORIENTED) ---
-Kaleido × @TowerExchange 🏛️ is live on @arc
+Kaleido × @TowerExchange 🗼 is live on @arc
 
 Regional stablecoins on @arc are now tradable on Kaleido. Tell Luca agent to swap EURC, MXNB, BRLA, cNGN, or ZAR — it aggregates every Arc DEX with Circle StableFX 24/7 RFQ pricing, bringing deep regional liquidity to trade in one interface.
 
@@ -30,6 +30,7 @@ CARD BANNER SPECIFICATION (brand/tower-exchange-integration.json)
 • Subtitle: Regional stablecoins on Arc are now discoverable and tradable through Luca via Tower Exchange.
 • Footer Chips: Circle StableFX · Live on Arc · Luca routed
 • Bottom URL: kaleidofi.xyz/trade
-• Backdrop: Dark Colosseum with center spotlight (colosseum-dark)
+• Backdrop: Official Tower Beacon & Pisa spotlight beam (tower-beacon)
+• Alternative Backdrop: Tower Pisa x Colosseum Hybrid (tower-colosseum)
 • Output PNG: brand/out/tower-exchange-integration.png (2400×1260 @2x)
 • Public OG Asset: public/tower-exchange-og.png
