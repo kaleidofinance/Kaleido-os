@@ -1,20 +1,11 @@
 /**
- * The landing page's background texture.
+ * The landing page's background texture and Roman Colosseum scenography.
  *
- * A fine halftone dot dither laid across the WHOLE page — not a hero element —
- * in the --k-t1 token so it follows the theme, at an opacity low enough that it
- * is felt rather than seen and never lifts into the contrast of any text painted
- * over it. An earlier pass put an feTurbulence cloud behind the hero alone; its
- * uneven dark patches sat under the stat captions and planner hint and washed
- * them out, which is the one thing a background must not do. A uniform, faint
- * dot field has no patches to hide text behind.
- *
- * It lives on an inner wrapper rather than on `.kaleido-v2` (which is shared
- * with the app shell and carries its own ambient layer), and paints from a
- * fixed, negative-z pseudo-element: so it covers the viewport, stays put on
- * scroll, and sits behind every section — header, hero, rails and all — without
- * entering the flow. `isolation: isolate` keeps that negative z-index from
- * escaping the wrapper into the shared shell.
+ * Combines:
+ * 1. A fixed obsidian-ink canvas with radial mint and travertine ambient lighting.
+ * 2. The authentic Roman Colosseum arches (public/hero-colosseum.webp) blended at
+ *    the top and fading naturally down the page.
+ * 3. A fine halftone dot dither on a 5px grid to maintain high-tech tactile feel.
  */
 
 .shell {
@@ -23,18 +14,36 @@
   min-height: 100vh;
 }
 
+/* Layer 1: Ambient gradients, mint/travertine radiance, and dot dither */
 .shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse 70% 45% at 50% 0%, rgba(53, 209, 141, 0.10) 0%, transparent 70%),
+    radial-gradient(circle at 80% 20%, rgba(214, 192, 154, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 20% 70%, rgba(53, 209, 141, 0.05) 0%, transparent 50%),
+    radial-gradient(var(--k-t1, #eaf1ea) 0.6px, transparent 0.9px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 5px 5px;
+  background-color: var(--k-bg, #07120e);
+}
+
+/* Layer 2: Roman Colosseum stone arches backdrop */
+.shell::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  /* The dither itself: a token-coloured dot on a 5px grid. Sub-pixel radii keep
-     it a grain rather than a visible polka pattern. */
-  background-image: radial-gradient(var(--k-t1) 0.6px, transparent 0.9px);
-  background-size: 5px 5px;
-  /* Texture, not decoration. Strong enough to read as a printed grain up close,
-     far too faint to touch the legibility of anything above it. This number is
-     the safety margin — raise it and start testing text contrast. */
-  opacity: 0.05;
+  background-image:
+    linear-gradient(180deg, rgba(7, 18, 14, 0.55) 0%, rgba(7, 18, 14, 0.78) 38%, rgba(7, 18, 14, 0.94) 75%, rgba(7, 18, 14, 1) 100%),
+    linear-gradient(90deg, rgba(7, 18, 14, 0.8) 0%, transparent 22%, transparent 78%, rgba(7, 18, 14, 0.8) 100%),
+    url("/hero-colosseum.webp");
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: 0.32;
+  filter: contrast(1.15) brightness(0.85);
 }

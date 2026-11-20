@@ -6,6 +6,7 @@ import Brand from "./_components/Brand";
 import CapabilityTabs from "./_components/CapabilityTabs";
 import LivePlanner from "./_components/LivePlanner";
 import ProductRail from "./_components/ProductRail";
+import PartnerMarquee from "./_components/PartnerMarquee";
 import { ALL_TOOLS, EXECUTE_COUNT, READS } from "./_components/capabilities";
 import { PRODUCTS } from "./_components/products";
 import { getCapabilityTraces } from "./_components/traces";
@@ -151,9 +152,9 @@ import s from "./marketing.module.css";
  * The hero's eyebrow gave up that abbreviation to make room — see §1.
  */
 export const metadata: Metadata = {
-  title: "Kaleido DeFi-OS | The Autonomous Financial Layer",
+  title: "Kaleido DeFi-OS | The Autonomous Financial Layer on Arc",
   description:
-    "Tell it what you want. Luca plans across swaps, lending, liquidity, staking and stablecoins — priced, audited, signed by you. Non-custodial, open source.",
+    "Trade, lend, and route regional stablecoins across Arc with Luca. Non-custodial, open source AI execution agent with institutional RFQ pricing.",
   alternates: { canonical: "/" },
 };
 
@@ -214,6 +215,7 @@ const APP = "https://app.kaleidofi.xyz";
  * link to where the reader already is.
  */
 const ANCHORS = [
+  { href: "#ecosystem", label: "Ecosystem" },
   { href: "#can", label: "Capabilities" },
   { href: "#products", label: "Products" },
   { href: "#chains", label: "Chains" },
@@ -344,7 +346,7 @@ function StepArt({ n }: { n: string }) {
  * a grey dot, which reads as missing art rather than as that chain's colour.
  */
 const ROLLOUT: ReadonlyArray<{ name: string; note: string; iconId: string }> = [
-  { name: "Arc", note: "Circle's stablecoin L1", iconId: "arc" },
+  { name: "Arc Mainnet", note: "Primary stablecoin L1 · Native USDC gas", iconId: "arc" },
   { name: "Base", note: "Coinbase's L2", iconId: "base" },
   {
     name: "Robinhood Chain",
@@ -352,7 +354,7 @@ const ROLLOUT: ReadonlyArray<{ name: string; note: string; iconId: string }> = [
     iconId: "robinhood",
   },
   { name: "BNB Smart Chain", note: "BNB's L1", iconId: "binance-smart-chain" },
-  { name: "Ethereum", note: "the L1 itself", iconId: "ethereum" },
+  { name: "Ethereum", note: "The L1 itself", iconId: "ethereum" },
 ];
 
 /**
@@ -458,55 +460,55 @@ const ROADMAP: ReadonlyArray<{
   title: string;
   /** One line on what the milestone means. Rule 4: if it needs two, it is wrong. */
   lead: string;
-  /** Colours the node and the date. `now` is the September window. */
+  /** Colours the node and the date. `now` is the active window. */
   tone: "done" | "now" | "next";
   items: readonly string[];
 }> = [
   {
-    when: "Shipped",
-    title: "The full stack",
-    lead: "Four markets, and an agent with the tools to act on all of them.",
+    when: "Live Now",
+    title: "Arc Mainnet",
+    lead: "Flagship deployment live with full protocol capabilities.",
     tone: "done",
     items: [
-      "V3 DEX, peer-to-peer lending, kfUSD and the kafUSD vault, liquid staking",
-      `Luca: provider-agnostic reasoning, real read tools, ${EXECUTE_COUNT} execute tools, a local-first grammar`,
-      "Bounded on-chain agent mandates with caps, a health floor and an expiry",
-      "Season 0 settled — participation credit, capped at 300 points",
+      "EIP-2535 Diamond Standard core live on Arc Mainnet (5042)",
+      "Season 1 Points active: swap volume, liquidity, and task verification",
+      "Luca Agent with deterministic local grammar and live planner",
+      "Native USDC gas token and full EVM contract compatibility",
     ],
   },
   {
-    when: "September 2026",
-    title: "Mainnet",
-    lead: "Every market opens for real money.",
-    tone: "now",
+    when: "Active",
+    title: "Liquidity Layer",
+    lead: "Ecosystem launchpads & regional stablecoins unified.",
+    tone: "done",
     items: [
-      "Third-party audit",
-      "Protocol deployed across the five rollout chains",
-      "Signed bridging — the routes and the fees are already live",
-      "Points Season 1 opens: server-computed, receipt-verified, time-weighted",
-    ],
-  },
-  {
-    when: "Late September 2026",
-    title: "TGE",
-    lead: "KLD ships, and points become an allocation.",
-    tone: "now",
-    items: [
-      "KLD token generation event",
-      "Accrual frozen at a stated block, the full point table published",
-      "Allocation pro-rata on point share, after a dispute window",
-      "Initial KLD liquidity in Kaleido's own V3 pools",
+      "Tower Exchange: regional stablecoins (EURC, MXNB, BRLA, cNGN, ZAR)",
+      "Circle StableFX 24/7 institutional RFQ pricing integration",
+      "Launchpad-native discovery: Peach & Synthra LaunchPad contracts",
+      "Signed bridging via Circle CCTP V2 (Domain 26) and LI.FI",
     ],
   },
   {
     when: "Q4 2026",
-    title: "Listings",
-    lead: "KLD where the volume already is.",
+    title: "Limit Orders & RFQ",
+    lead: "Decentralized execution and keeper automation.",
+    tone: "now",
+    items: [
+      "KaleidoOrders V2 with automated keeper fills across Arc DEXs",
+      "Season 1 Points snapshot, public allocation table and verification",
+      "Initial KLD liquidity pools and protocol fee share activation",
+      "Permissioned agent mandates with daily spending caps and health floors",
+    ],
+  },
+  {
+    when: "2027",
+    title: "Agentic Mobile OS",
+    lead: "Conversational DeFi on every device.",
     tone: "next",
     items: [
-      "Centralised exchange listings",
-      "Season 2 opens — the points program continues past TGE",
-      "The agentic mobile interface",
+      "Agentic mobile interface with biometric wallet delegation",
+      "Season 2 ecosystem expansion across connected EVM networks",
+      "Cross-chain autonomous yield rebalancing via Luca",
     ],
   },
 ];
@@ -591,12 +593,10 @@ export default async function LandingPage() {
             a row reading as the same thing twice. */}
         <section className={s.hero}>
           <div className={s.heroCopy}>
-            {/* Just the name. This read "Kaleido DeFi-OS", which was the right
-                eyebrow over a headline that named a behaviour — but the h1 below
-                now spells out what "DeFi-OS" abbreviates, and the pair put
-                "operating system" on screen twice inside 40 vertical pixels. The
-                indexed <title> still carries the full string, so nothing is lost
-                where it is actually read; see the metadata docblock. */}
+            <div className={s.liveBadge}>
+              <span className={s.liveDot} />
+              Live on Arc Mainnet (5042)
+            </div>
             <p className={s.eyebrow}>Kaleido</p>
 
             {/* A category, not a behaviour. Two versions came before this one:
@@ -657,8 +657,8 @@ export default async function LandingPage() {
                 is step 3 of STEPS below, where a reader asking "what do I do"
                 meets it in sequence. Do not restore it here. */}
             <p className={s.lede}>
-              Swaps, lending, liquidity, staking and a native stablecoin — one
-              instruction, priced and routed across all of it.
+              Swaps, lending, liquidity, staking and regional stablecoins — one
+              natural instruction, priced and routed across Arc and beyond.
             </p>
 
             <div className={s.ctas}>
@@ -693,6 +693,11 @@ export default async function LandingPage() {
             <LivePlanner />
           </div>
         </section>
+
+        {/* ---- Ecosystem & Strategic Partners ---- */}
+        <div id="ecosystem">
+          <PartnerMarquee />
+        </div>
 
         {/* ---- 2. Getting started -------------------------------------
             The section this page did not have. See the STEPS docblock: the slot
@@ -814,15 +819,14 @@ export default async function LandingPage() {
             </ol>
 
             <div className={s.chainSide}>
+              <h3 className={s.cardTitle}>Signed bridging, executed on-chain</h3>
+              <p className={s.cardBody}>
+                Native USDC cross-chain rebalancing via Circle CCTP V2 (Domain 26) and single-transaction LI.FI execution. Handed to your wallet, signed by you.
+              </p>
               <h3 className={s.cardTitle}>Every registered chain</h3>
               <p className={s.cardBody}>
                 Balance reading, Polygon and Arbitrum and Hyperliquid and
                 Abstract included. Viewing, not trading.
-              </p>
-              <h3 className={s.cardTitle}>Bridging: quotes, not execution</h3>
-              <p className={s.cardBody}>
-                Live routes and fees from Relay and LI.FI. You are handed the
-                route; Kaleido does not sign it.
               </p>
             </div>
           </div>
@@ -870,7 +874,7 @@ export default async function LandingPage() {
           <div className={s.head}>
             <p className={s.eyebrow}>Roadmap</p>
             <h2 className={`${s.h2} k-display`}>
-              Mainnet in September, TGE by month end
+              Arc Mainnet live, Season 1 underway
             </h2>
           </div>
 
