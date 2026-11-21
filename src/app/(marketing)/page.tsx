@@ -152,9 +152,9 @@ import s from "./marketing.module.css";
  * The hero's eyebrow gave up that abbreviation to make room — see §1.
  */
 export const metadata: Metadata = {
-  title: "Kaleido DeFi-OS | The Autonomous Financial Layer on Arc",
+  title: "Kaleido DeFi-OS | The Autonomous Financial Layer Across Chains",
   description:
-    "Trade, lend, and route regional stablecoins across Arc with Luca. Non-custodial, open source AI execution agent with institutional RFQ pricing.",
+    "Trade, borrow, lend, and route regional stablecoins with Luca. Non-custodial, open source AI execution agent live across Arc, Elysium, Robinhood, Base, and EVM.",
   alternates: { canonical: "/" },
 };
 
@@ -347,14 +347,11 @@ function StepArt({ n }: { n: string }) {
  */
 const ROLLOUT: ReadonlyArray<{ name: string; note: string; iconId: string }> = [
   { name: "Arc Mainnet", note: "Primary stablecoin L1 · Native USDC gas", iconId: "arc" },
-  { name: "Base", note: "Coinbase's L2", iconId: "base" },
-  {
-    name: "Robinhood Chain",
-    note: "Robinhood's own chain",
-    iconId: "robinhood",
-  },
-  { name: "BNB Smart Chain", note: "BNB's L1", iconId: "binance-smart-chain" },
-  { name: "Ethereum", note: "The L1 itself", iconId: "ethereum" },
+  { name: "Elysium Mainnet", note: "HyperEVM Arbitrum Orbit L2 · HYPE gas", iconId: "elysium" },
+  { name: "Robinhood Chain", note: "Robinhood's own Arbitrum Orbit L2", iconId: "robinhood" },
+  { name: "Base", note: "Coinbase's L2 · Deep EVM liquidity", iconId: "base" },
+  { name: "BNB Smart Chain", note: "BNB's L1 · High-speed execution", iconId: "binance-smart-chain" },
+  { name: "Ethereum", note: "The foundational L1", iconId: "ethereum" },
 ];
 
 /**
@@ -593,84 +590,31 @@ export default async function LandingPage() {
             a row reading as the same thing twice. */}
         <section className={s.hero}>
           <div className={s.heroCopy}>
-            <div className={s.liveBadge}>
+            <div className={s.networkPill}>
               <span className={s.liveDot} />
-              Live on Arc Mainnet (5042)
+              <span className={s.pillMainText}>Live Across 5 Mainnets</span>
+              <span className={s.pillDivider}>·</span>
+              <span className={s.pillChains}>Arc, Elysium, Robinhood, Base, BSC</span>
             </div>
-            <p className={s.eyebrow}>Kaleido</p>
 
-            {/* A category, not a behaviour. Two versions came before this one:
-                "Tell it what you want. / It builds the plan.", which was two
-                sentences of dialogue captioning the planner rather than claiming
-                anything, and "DeFi that takes instructions", which claimed a
-                behaviour — true, and still a feature sentence on a page whose
-                competitors each name the category they intend to own.
+            <p className={s.eyebrow}>Kaleido DeFi-OS</p>
 
-                Five words and 39 characters against a 626px measure — the hero
-                grid is `minmax(0, 1fr) minmax(0, 500px)` with a 34px gap inside
-                a 1160px content box — set at 52px with a 1.08 line-height. The
-                break lands after "for" or after "system", so this is two lines
-                at desktop like the headline it replaced, and three only if the
-                column narrows. Whichever it is, do not buy a line back by
-                cutting it to "AI operating system for DeFi": "onchain finance"
-                is the larger claim, and it is the one the five products below
-                actually support.
-
-                "AI" is set as the initialism it is, not "Ai". At 52px in a serif
-                display face a lowercase "i" beside a capital "A" reads as a
-                typo rather than as styling, and this is the largest text on the
-                site.
-
-                It opens on "AI" rather than on "The", which drops the definite
-                article a category claim would normally carry. That is a trade
-                and it is the right one here: "AI operating system" is the claim
-                worth making first, and the eyebrow above already establishes
-                whose it is.
-
-                The indexed <title> keeps "The Autonomous Financial Layer"; see
-                the metadata docblock for why the two are allowed to differ. */}
             <h1 className={`${s.h1} k-display`}>
-              AI operating system for onchain finance
+              The Autonomous Financial Layer Across Chains
             </h1>
 
-            {/* The list is the argument. A headline claiming a category has to be
-                paid for in the next breath, and the payment is naming what is
-                underneath instead of gesturing at it: the middle beat here used
-                to be "a priced plan across the whole stack", which is a phrase a
-                reader has no reason to believe on sight.
-
-                Those five nouns are PRODUCTS — Trade, Liquidity, Borrow, Stake,
-                Stable — so this line and `PRODUCTS.length` in the stat row below
-                are two renderings of one fact. Add a sixth product and this
-                sentence is wrong. The order is by rhythm rather than by the
-                array; the set is what has to match.
-
-                "Ask in plain English" is gone and not missed: LivePlanner sits
-                immediately to the right running the real parser, so the claim is
-                demonstrated one keystroke away rather than asserted here.
-
-                THE OLD THIRD BEAT IS GONE ON PURPOSE. It was "Nothing moves
-                until you sign." — a guardrail, and the one framing this product
-                is explicitly not sold on, because it describes what the agent
-                cannot do in the one place on the page reserved for what the stack
-                can. It is not dropped from the page, only from the hero: signing
-                is step 3 of STEPS below, where a reader asking "what do I do"
-                meets it in sequence. Do not restore it here. */}
             <p className={s.lede}>
               Swaps, lending, liquidity, staking and regional stablecoins — one
-              natural instruction, priced and routed across Arc and beyond.
+              natural instruction, deterministically priced and routed across Arc,
+              Elysium, Robinhood, Base and beyond.
             </p>
 
             <div className={s.ctas}>
               <a href={APP} className={s.primary}>
-                Launch app
+                Launch app &rarr;
               </a>
-              {/* "See the stack" pointed at #stack, one screen down. A docs
-                  link is the second thing a reader of a DeFi front door
-                  actually wants, and it is the pairing the production page
-                  uses. */}
               <Link href={DOCS} className={s.secondary}>
-                Read the docs
+                Documentation
               </Link>
             </div>
 
@@ -684,12 +628,14 @@ export default async function LandingPage() {
             </dl>
           </div>
 
-          {/* No heading above this, and that is deliberate. It carried an h2
-              ("This is the real parser. Type something.") and a forty-word
-              intro explaining that it was not a mock — words spent asserting
-              what the reader can verify in one keystroke. The component's own
-              empty state says the same thing in a line. */}
           <div className={s.planner}>
+            <div className={s.plannerHeader}>
+              <div className={s.plannerStatus}>
+                <span className={s.plannerDot} />
+                <span>Luca Copilot · Intent Parser</span>
+              </div>
+              <span className={s.plannerTag}>Deterministic On-Chain</span>
+            </div>
             <LivePlanner />
           </div>
         </section>

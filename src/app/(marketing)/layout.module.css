@@ -1,20 +1,22 @@
 /**
- * The landing page's background texture and Roman Colosseum scenography.
+ * Calm & Smooth AI Startup Canvas with Majestic Roman Colosseum Architecture
  *
- * Combines:
- * 1. A fixed obsidian-ink canvas with radial mint and travertine ambient lighting.
- * 2. The authentic Roman Colosseum arches (public/hero-colosseum.webp) blended at
- *    the top and fading naturally down the page.
- * 3. A fine halftone dot dither on a 5px grid to maintain high-tech tactile feel.
+ * - Zero harsh dot matrices: pure, deep obsidian luxury canvas (#060908).
+ * - Majestic Roman Colosseum (/colosseum3.png) set as a grand atmospheric backdrop,
+ *   smoothly masked into the ambient background.
+ * - Ethereal, tranquil mint (#35d18d) and travertine gold (#d6c09a) ambient radiance.
  */
 
 .shell {
   position: relative;
   isolation: isolate;
   min-height: 100vh;
+  background-color: #060908;
+  color: #f0f4f1;
+  overflow-x: hidden;
 }
 
-/* Layer 1: Ambient gradients, mint/travertine radiance, and dot dither */
+/* Layer 1: Atmospheric ambient glows (Mint + Travertine) */
 .shell::before {
   content: "";
   position: fixed;
@@ -22,28 +24,32 @@
   z-index: -2;
   pointer-events: none;
   background-image:
-    radial-gradient(ellipse 70% 45% at 50% 0%, rgba(53, 209, 141, 0.10) 0%, transparent 70%),
-    radial-gradient(circle at 80% 20%, rgba(214, 192, 154, 0.08) 0%, transparent 45%),
-    radial-gradient(circle at 20% 70%, rgba(53, 209, 141, 0.05) 0%, transparent 50%),
-    radial-gradient(var(--k-t1, #eaf1ea) 0.6px, transparent 0.9px);
-  background-size: 100% 100%, 100% 100%, 100% 100%, 5px 5px;
-  background-color: var(--k-bg, #07120e);
+    radial-gradient(ellipse 75% 45% at 50% -5%, rgba(53, 209, 141, 0.12) 0%, transparent 65%),
+    radial-gradient(circle 500px at 80% 20%, rgba(214, 192, 154, 0.07) 0%, transparent 60%),
+    radial-gradient(circle 600px at 15% 45%, rgba(53, 209, 141, 0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 30% at 50% 100%, rgba(53, 209, 141, 0.04) 0%, transparent 70%);
+  background-color: #060908;
 }
 
-/* Layer 2: Roman Colosseum stone arches backdrop */
+/* Layer 2: Authentic Roman Colosseum Backdrop with Silky Fade */
 .shell::after {
   content: "";
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 850px;
   z-index: -1;
   pointer-events: none;
   background-image:
-    linear-gradient(180deg, rgba(7, 18, 14, 0.55) 0%, rgba(7, 18, 14, 0.78) 38%, rgba(7, 18, 14, 0.94) 75%, rgba(7, 18, 14, 1) 100%),
-    linear-gradient(90deg, rgba(7, 18, 14, 0.8) 0%, transparent 22%, transparent 78%, rgba(7, 18, 14, 0.8) 100%),
-    url("/hero-colosseum.webp");
-  background-position: center top;
+    linear-gradient(180deg, rgba(6, 9, 8, 0.15) 0%, rgba(6, 9, 8, 0.55) 45%, rgba(6, 9, 8, 0.88) 75%, #060908 100%),
+    linear-gradient(90deg, #060908 0%, rgba(6, 9, 8, 0.4) 15%, transparent 35%, transparent 65%, rgba(6, 9, 8, 0.4) 85%, #060908 100%),
+    url("/colosseum3.png");
+  background-position: center 10%;
   background-repeat: no-repeat;
   background-size: cover;
-  opacity: 0.32;
-  filter: contrast(1.15) brightness(0.85);
+  opacity: 0.55;
+  filter: contrast(1.08) brightness(0.92);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 60%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 60%, transparent 100%);
 }

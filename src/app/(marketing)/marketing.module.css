@@ -168,11 +168,8 @@
   isolation: isolate;
 }
 
-/* A faint Colosseum wash behind the whole hero. The muted + blurred treatment in
-   public/, at low opacity, faded out across the top so the headline, lede and the
-   glass planner stay clean and strongest toward the foot. z-index -1 inside
-   .hero's own isolate context, so it sits above the page dither and below every
-   hero child. Decorative; the two dials are opacity and the mask stop. */
+/* Ethereal lighting behind the hero so the headline, lede and glass planner
+   stand out with sharp contrast against the Roman Colosseum backdrop. */
 .hero::before {
   content: "";
   position: absolute;
@@ -180,45 +177,59 @@
   z-index: -1;
   pointer-events: none;
   background-image: 
-    radial-gradient(ellipse 65% 55% at 50% 25%, rgba(53, 209, 141, 0.12), transparent 70%),
-    linear-gradient(to bottom, rgba(7, 18, 14, 0.2) 0%, rgba(7, 18, 14, 0.85) 85%, var(--k-bg, #07120e) 100%),
-    url("/hero-colosseum.webp");
-  background-size: cover;
-  background-position: center 30%;
-  background-repeat: no-repeat;
-  opacity: 0.28;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%);
+    radial-gradient(ellipse 70% 60% at 30% 30%, rgba(53, 209, 141, 0.15), transparent 70%),
+    radial-gradient(circle at 70% 20%, rgba(214, 192, 154, 0.12), transparent 60%);
 }
 
 .heroCopy {
   min-width: 0;
 }
 
-.liveBadge {
+.networkPill {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 14px;
-  border-radius: var(--k-r-pill);
-  background: rgba(53, 209, 141, 0.12);
-  border: 1px solid rgba(53, 209, 141, 0.32);
-  color: var(--k-brand, #35d18d);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  margin-bottom: 20px;
-  box-shadow: 0 0 16px rgba(53, 209, 141, 0.15);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  background: rgba(14, 22, 18, 0.65);
+  border: 1px solid rgba(53, 209, 141, 0.22);
+  color: #d6e2d9;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 22px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 .liveDot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--k-brand, #35d18d);
-  box-shadow: 0 0 8px var(--k-brand, #35d18d);
-  display: inline-block;
+  background: #35d18d;
+  box-shadow: 0 0 10px #35d18d;
+  flex: none;
+  animation: pulseGlow 2.5s infinite ease-in-out;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 14px #35d18d; }
+}
+
+.pillMainText {
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pillDivider {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.pillChains {
+  color: #aab8ae;
+  font-size: 11.5px;
 }
 
 /* ------------------------------------------------------------------
@@ -283,59 +294,55 @@
    paragraph above it. Inside `.ctas` it changes nothing — a flex item is
    blockified regardless. */
 .primary {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   border-radius: var(--k-r-pill);
-  background: var(--k-btn-solid);
-  color: var(--k-btn-solid-fg);
+  background: var(--k-brand, #35d18d);
+  color: #041209;
   font-size: var(--k-fs-base);
-  font-weight: var(--k-fw-med);
-  padding: var(--k-s4) var(--k-s7);
+  font-weight: 600;
+  padding: 12px 28px;
   text-decoration: none;
+  box-shadow: 0 0 24px rgba(53, 209, 141, 0.25), 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: all 0.22s ease-in-out;
 }
 
 .primary:hover {
-  background: var(--k-btn-solid-hover);
+  background: #3eeea4;
+  transform: translateY(-1px);
+  box-shadow: 0 0 32px rgba(53, 209, 141, 0.4), 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 .secondary {
-  display: inline-block;
-  border: 1px solid var(--k-line2);
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--k-r-pill);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--k-t1);
   font-size: var(--k-fs-base);
   font-weight: var(--k-fw-med);
-  padding: var(--k-s4) var(--k-s7);
+  padding: 12px 26px;
   text-decoration: none;
+  transition: all 0.22s ease-in-out;
 }
 
 .secondary:hover {
-  background: var(--k-row-hover);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
 }
 
-/* ------------------------------------------------------------------
- * The hero's three figures.
- *
- * WHY THERE IS A ROW OF NUMBERS HERE AT ALL, given that a four-tile protocol
- * strip was deleted from a slot 200px below this one. page.tsx's docblock has
- * the long version; the short one is that the strip published protocol state,
- * two of its four figures were zero on real data, and NEXT_PUBLIC_MOCK_DATA was
- * the only reason that was not obvious. These three are not protocol state.
- * They are the size of the surface — counted from `capabilities.ts` and
- * `products.ts` at build time — so they cannot be zero, cannot be stale, and
- * cannot be wrong without `capabilities.test.ts` failing in the gate.
- *
- * A hairline above them rather than a card around each. Three glass tiles here
- * would be a third panel shape in the first screen, competing with the planner
- * beside them; a rule and a row of figures is the same vocabulary as
- * `.chainList` and the footer.
- * ------------------------------------------------------------------ */
 .stats {
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-s6);
   margin: var(--k-s7) 0 0;
   padding-top: var(--k-s5);
-  border-top: 1px solid var(--k-line);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .stat {
@@ -344,53 +351,73 @@
   gap: 2px;
 }
 
-/* Tabular, for the reason `.stepNum` is: 21, 27 and 5 in proportional figures
-   sit at different widths, and three of them on one line is where that shows. */
 .statValue {
   composes: tabular from global;
   font-size: var(--k-fs-2xl);
-  font-weight: var(--k-fw-med);
+  font-weight: 600;
+  color: #fff;
   line-height: 1.1;
+  letter-spacing: -0.02em;
 }
 
-/* margin: 0 is not tidying — <dd> carries a 40px UA inline-start margin, which
-   would indent every label out from under its own figure. */
 .statLabel {
   margin: 0;
   color: var(--k-t3);
   font-size: var(--k-fs-xs);
   line-height: 1.4;
+  letter-spacing: 0.02em;
 }
 
-/* ------------------------------------------------------------------
- * The planner slot in the hero.
- *
- * `min-width: 0` and nothing else. `LivePlanner.module.css` owns everything
- * about how that component looks, and it is the app's own component on the app's
- * own tokens — the point of putting it here is that it is identical to what a
- * visitor finds after clicking Launch app, so this file gets to set where it
- * sits and nothing more. No padding, no border, no background: a wrapper that
- * restyled it would be reintroducing the drift the route group exists to
- * prevent.
- *
- * NO CHROME AROUND IT, DELIBERATELY, and it is the one decision that makes the
- * top of this page work. The planner already composes `k-glass`, which is the
- * app's own panel material, so it reads as a live surface. The screenshot
- * directly below gets a window frame instead. A frame means "picture of the
- * app"; no frame means "the app" — and without that distinction the two panels
- * in a row read as the same thing twice.
- *
- * The margin-top is gone because this is a grid column now, not the fourth block
- * in a vertical stack; `.hero`'s `gap` sets the distance. The 720px rule still
- * closes the gap once the columns fold.
- *
- * What it replaced was a `.pillars` grid — three short claims under a hairline,
- * one per column. It was the honest version of a landing page with nothing to
- * show, and the reason the page did not read as a product: the whole fold was
- * four blocks of prose.
- * ------------------------------------------------------------------ */
 .planner {
   min-width: 0;
+  position: relative;
+  background: rgba(10, 15, 12, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(53, 209, 141, 0.08);
+  overflow: hidden;
+  transition: all 0.25s ease-in-out;
+}
+
+.planner:hover {
+  border-color: rgba(53, 209, 141, 0.25);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65), 0 0 24px rgba(53, 209, 141, 0.12);
+}
+
+.plannerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.025);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+}
+
+.plannerStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d0ded4;
+  font-weight: 500;
+}
+
+.plannerDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--k-brand, #35d18d);
+  box-shadow: 0 0 8px var(--k-brand, #35d18d);
+}
+
+.plannerTag {
+  color: var(--k-sand, #d6c09a);
+  font-family: var(--k-font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /* ------------------------------------------------------------------
