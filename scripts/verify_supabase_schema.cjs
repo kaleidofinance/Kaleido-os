@@ -193,6 +193,12 @@ const EXPECTED = [
     functions: ["claim_capped_x_task"],
     usedBy: "the first-300 Elysium Mainnet Live X tasks in /api/waitlist/x and /rewards",
   },
+  {
+    migration: "20261121170000_add_tower_integration_rewards.sql",
+    tables: { waitlist: ["x_tower_integration_at", "x_tower_integration_comment_at"] },
+    functions: ["claim_capped_x_task"],
+    usedBy: "the first-300 Tower Exchange Integration X tasks in /api/waitlist/x and /rewards",
+  },
 ];
 
 /* Replayed verbatim from the route files. If these two pass, the leaderboard
