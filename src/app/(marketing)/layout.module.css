@@ -1,10 +1,6 @@
 /**
  * Calm & Smooth AI Startup Canvas with Majestic Roman Colosseum Architecture
- *
- * - Zero harsh dot matrices: pure, deep obsidian luxury canvas (#060908).
- * - Majestic Roman Colosseum (/colosseum3.png) set as a grand atmospheric backdrop,
- *   smoothly masked into the ambient background.
- * - Ethereal, tranquil mint (#35d18d) and travertine gold (#d6c09a) ambient radiance.
+ * Fully supporting both Dark Mode (#060908) and Light Mode (#f6f3ed).
  */
 
 .shell {
@@ -14,6 +10,13 @@
   background-color: #060908;
   color: #f0f4f1;
   overflow-x: hidden;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Light Mode Canvas */
+:global(:root[data-theme="light"]) .shell {
+  background-color: #f6f3ed;
+  color: #141615;
 }
 
 /* Layer 1: Atmospheric ambient glows (Mint + Travertine) */
@@ -29,6 +32,16 @@
     radial-gradient(circle 600px at 15% 45%, rgba(53, 209, 141, 0.05) 0%, transparent 60%),
     radial-gradient(ellipse 60% 30% at 50% 100%, rgba(53, 209, 141, 0.04) 0%, transparent 70%);
   background-color: #060908;
+  transition: background-color 0.25s ease;
+}
+
+:global(:root[data-theme="light"]) .shell::before {
+  background-image:
+    radial-gradient(ellipse 75% 45% at 50% -5%, rgba(45, 179, 120, 0.14) 0%, transparent 65%),
+    radial-gradient(circle 500px at 80% 20%, rgba(195, 168, 125, 0.12) 0%, transparent 60%),
+    radial-gradient(circle 600px at 15% 45%, rgba(45, 179, 120, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 30% at 50% 100%, rgba(45, 179, 120, 0.05) 0%, transparent 70%);
+  background-color: #f6f3ed;
 }
 
 /* Layer 2: Authentic Roman Colosseum Backdrop with Silky Fade */
@@ -52,4 +65,14 @@
   filter: contrast(1.08) brightness(0.92);
   -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 60%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 0%, #000 60%, transparent 100%);
+  transition: opacity 0.25s ease, filter 0.25s ease;
+}
+
+:global(:root[data-theme="light"]) .shell::after {
+  background-image:
+    linear-gradient(180deg, rgba(246, 243, 237, 0.2) 0%, rgba(246, 243, 237, 0.65) 50%, rgba(246, 243, 237, 0.95) 80%, #f6f3ed 100%),
+    linear-gradient(90deg, #f6f3ed 0%, rgba(246, 243, 237, 0.4) 15%, transparent 35%, transparent 65%, rgba(246, 243, 237, 0.4) 85%, #f6f3ed 100%),
+    url("/colosseum3.png");
+  opacity: 0.42;
+  filter: contrast(1.05) brightness(1.02);
 }

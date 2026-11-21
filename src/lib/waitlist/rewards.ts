@@ -30,6 +30,8 @@ export const WAITLIST_TASK_POINTS = {
   peachIntegrationComment: 300,
   synthraIntegration: 300,
   synthraIntegrationComment: 300,
+  towerIntegration: 300,
+  towerIntegrationComment: 300,
   arcMainnet: 300,
   agent: 500,
   bridge: 500,
@@ -65,6 +67,8 @@ export interface WaitlistRewardRow {
   x_peach_integration_comment_at?: string | null;
   x_synthra_integration_at?: string | null;
   x_synthra_integration_comment_at?: string | null;
+  x_tower_integration_at?: string | null;
+  x_tower_integration_comment_at?: string | null;
   arc_mainnet_tx_at?: string | null;
   agent_tx_at?: string | null;
   bridge_tx_at?: string | null;
@@ -160,6 +164,8 @@ export function projectWaitlistRewards(
     heldTask("Comment on Peach Launchpad Integration", WAITLIST_TASK_POINTS.peachIntegrationComment, row.x_peach_integration_comment_at, now),
     heldTask("Like & RT Synthra SynRoute + LaunchPad Integration", WAITLIST_TASK_POINTS.synthraIntegration, row.x_synthra_integration_at, now),
     heldTask("Comment on Synthra SynRoute + LaunchPad Integration", WAITLIST_TASK_POINTS.synthraIntegrationComment, row.x_synthra_integration_comment_at, now),
+    heldTask("Like & RT Tower Exchange Integration Announcement", WAITLIST_TASK_POINTS.towerIntegration, row.x_tower_integration_at, now),
+    heldTask("Comment on Tower Exchange Integration Announcement", WAITLIST_TASK_POINTS.towerIntegrationComment, row.x_tower_integration_comment_at, now),
     {
       task: "First Arc mainnet transaction",
       points: WAITLIST_TASK_POINTS.arcMainnet,

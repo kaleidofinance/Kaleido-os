@@ -43,6 +43,8 @@ export const CAPPED_X_TASKS = {
   peachIntegrationComment: "x_peach_integration_comment_at",
   synthraIntegration: "x_synthra_integration_at",
   synthraIntegrationComment: "x_synthra_integration_comment_at",
+  towerIntegration: "x_tower_integration_at",
+  towerIntegrationComment: "x_tower_integration_comment_at",
 } as const;
 
 /** Per-task claim cap. `commented` keeps the original X_TASK_CAP; the $ARGUS
@@ -67,6 +69,8 @@ export const X_TASK_CAPS: Record<keyof typeof CAPPED_X_TASKS, number> = {
   peachIntegrationComment: 300,
   synthraIntegration: 300,
   synthraIntegrationComment: 300,
+  towerIntegration: 300,
+  towerIntegrationComment: 300,
 };
 
 /** The cap for a capped task column (undefined if the column is uncapped). */
@@ -105,6 +109,8 @@ const ALL_OPEN: Record<CappedTaskKey, boolean> = {
   peachIntegrationComment: false,
   synthraIntegration: false,
   synthraIntegrationComment: false,
+  towerIntegration: false,
+  towerIntegrationComment: false,
 };
 
 // A task closes once and stays closed (new claims are rejected, so its count

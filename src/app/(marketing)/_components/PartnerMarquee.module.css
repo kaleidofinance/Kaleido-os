@@ -182,3 +182,32 @@
   line-height: 1.45;
   margin: 0;
 }
+
+/* Light Mode Overrides */
+:global(:root[data-theme="light"]) .title {
+  color: #141413;
+}
+
+:global(:root[data-theme="light"]) .sub {
+  color: #556258;
+}
+
+:global(:root[data-theme="light"]) .partnerCard {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(195, 168, 125, 0.35);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+
+:global(:root[data-theme="light"]) .partnerCard:hover {
+  border-color: rgba(45, 179, 120, 0.5);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08), 0 0 20px rgba(45, 179, 120, 0.12);
+}
+
+:global(:root[data-theme="light"]) .partnerName {
+  color: #141413;
+}
+
+:global(:root[data-theme="light"]) .cardDesc {
+  color: #4b584f;
+}
+

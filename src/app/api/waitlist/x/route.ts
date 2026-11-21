@@ -21,8 +21,8 @@ import { capForColumn } from "@/lib/waitlist/xCap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment" | "lucaModelIntegration" | "lucaModelIntegrationComment" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment" | "synthraIntegration" | "synthraIntegrationComment";
-const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "lucaModelIntegration", "lucaModelIntegrationComment", "elysiumIntegration", "elysiumIntegrationComment", "elysiumLending", "elysiumLendingComment", "peachIntegration", "peachIntegrationComment", "synthraIntegration", "synthraIntegrationComment"];
+type Task = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "argusIntegration" | "argusIntegrationComment" | "lucaModelIntegration" | "lucaModelIntegrationComment" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment" | "synthraIntegration" | "synthraIntegrationComment" | "towerIntegration" | "towerIntegrationComment";
+const TASKS: Task[] = ["link", "follow", "retweet", "comment", "launch", "llama", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "lucaModelIntegration", "lucaModelIntegrationComment", "elysiumIntegration", "elysiumIntegrationComment", "elysiumLending", "elysiumLendingComment", "peachIntegration", "peachIntegrationComment", "synthraIntegration", "synthraIntegrationComment", "towerIntegration", "towerIntegrationComment"];
 
 /** The exact strings the client signs, rebuilt here from the posted address.
  * Not exported: a route module may only export HTTP handlers + route config, and
@@ -206,6 +206,8 @@ export async function POST(req: Request) {
     peachIntegrationComment: "x_peach_integration_comment_at",
     synthraIntegration: "x_synthra_integration_at",
     synthraIntegrationComment: "x_synthra_integration_comment_at",
+    towerIntegration: "x_tower_integration_at",
+    towerIntegrationComment: "x_tower_integration_comment_at",
   };
   const col = COL[t as Exclude<Task, "link">];
   const existing = row[col as keyof typeof row];

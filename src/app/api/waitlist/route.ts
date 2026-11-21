@@ -178,6 +178,16 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
       now,
       closedX.synthraIntegrationComment,
     ),
+    towerIntegration: xTaskState(
+      row.x_tower_integration_at as string | null,
+      now,
+      closedX.towerIntegration,
+    ),
+    towerIntegrationComment: xTaskState(
+      row.x_tower_integration_comment_at as string | null,
+      now,
+      closedX.towerIntegrationComment,
+    ),
     argusIntegrationComment: xTaskState(
       row.x_argus_integration_comment_at as string | null,
       now,
