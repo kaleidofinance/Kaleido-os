@@ -5,6 +5,7 @@ import { verifyWalletSignature } from "@/lib/auth/verifyWalletSignature";
 import { supabaseAdmin, isAdminConfigured } from "@/lib/supabase/serverClient";
 import { X_TASK_CAPS } from "@/lib/waitlist/xCap";
 import { readRewardFacts } from "@/lib/waitlist/readFacts";
+import { activateWalletIfEligible } from "@/lib/waitlist/activateWallet";
 import { swapVolumeStanding, taskVolumeTotal } from "@/lib/waitlist/swapVolume";
 import type { WaitlistStatus } from "@/lib/waitlist/status";
 import {
@@ -78,8 +79,22 @@ function xTaskState(at: string | null, now: number, closed = false) {
 }
 
 async function standing(wallet: string): Promise<WaitlistStatus | null> {
-  const facts = await readRewardFacts(supabaseAdmin!, wallet);
+  let facts = await readRewardFacts(supabaseAdmin!, wallet);
   if (!facts) return null;
+
+  // Auto-activate wallets with Arc activity that haven't been activated yet
+  if (!facts.season1) {
+    try {
+      const act = await activateWalletIfEligible(supabaseAdmin!, wallet);
+      if (act.activated && !act.alreadyActive) {
+        const refreshed = await readRewardFacts(supabaseAdmin!, wallet);
+        if (refreshed) facts = refreshed;
+      }
+    } catch (e) {
+      console.warn("[waitlist] auto-activation check skipped:", e);
+    }
+  }
+
   const { row, referral: lb } = facts;
 
   const referrals = Number(lb?.referrals ?? 0);

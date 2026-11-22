@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ethers } from "ethers";
 import { verifyWalletSignature } from "@/lib/auth/verifyWalletSignature";
 import { supabaseAdmin } from "@/lib/supabase/serverClient";
+import { activateWalletIfEligible } from "@/lib/waitlist/activateWallet";
 import {
   CHECKIN_CHAIN_ID,
   CHECKIN_POINTS,
@@ -120,11 +121,16 @@ export async function POST(request: NextRequest) {
     .eq("wallet", wallet)
     .eq("season", SEASON)
     .maybeSingle();
-  if (!bal)
-    return NextResponse.json(
-      { error: "Check-in unlocks once your wallet is active on Arc." },
-      { status: 403 },
-    );
+
+  if (!bal) {
+    const activation = await activateWalletIfEligible(supabaseAdmin, wallet);
+    if (!activation.activated) {
+      return NextResponse.json(
+        { error: "Check-in unlocks once your wallet is active on Arc. Make any transaction on Arc chain first." },
+        { status: 403 },
+      );
+    }
+  }
 
   const { error } = await supabaseAdmin.from("point_actions").insert({
     wallet,

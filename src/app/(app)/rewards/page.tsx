@@ -709,17 +709,15 @@ export default function WaitlistPage() {
                             : ""}
                       </span>
                       <span className={s.taskMeta}>
-                        {!status.season1
-                          ? "Unlocks once your wallet is active on Arc"
-                          : checkin?.checkedInToday
-                            ? `Checked in · ${streakLabel(checkin.streak ?? 1)} · next in ${Math.ceil(msUntilNextUtcDay() / 3_600_000)}h`
+                        {checkin?.checkedInToday
+                          ? `Checked in · ${streakLabel(checkin.streak ?? 1)} · next in ${Math.ceil(msUntilNextUtcDay() / 3_600_000)}h`
+                          : !status.season1
+                            ? `Unlocks once your wallet is active on Arc · +${CHECKIN_POINTS} $kPoint daily`
                             : `+${CHECKIN_POINTS} $kPoint daily · +${STREAK_BONUS} every ${STREAK_LENGTH}-day streak${checkin?.streak ? ` · ${streakLabel(checkin.streak)}` : ""}`}
                       </span>
                     </div>
                     {checkin?.checkedInToday ? (
                       <span className={s.taskDone}>✓</span>
-                    ) : !status.season1 ? (
-                      <span className={s.taskLock}>🔒</span>
                     ) : (
                       <button
                         className={s.taskBtn}

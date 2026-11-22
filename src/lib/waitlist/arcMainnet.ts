@@ -22,16 +22,22 @@ export const ARC_MAINNET_CHAIN_ID = 5042;
 export const ARC_MAINNET_RPC =
   process.env.ARC_MAINNET_RPC_URL ?? "https://rpc.mainnet.arc.io";
 
-let cached: JsonRpcProvider | null = null;
-function provider(): JsonRpcProvider {
-  if (!cached) {
-    // staticNetwork: the chain id is fixed and the endpoint is single-purpose, so
-    // skip the eth_chainId probe on every call.
-    cached = new JsonRpcProvider(ARC_MAINNET_RPC, ARC_MAINNET_CHAIN_ID, {
+const ARC_MAINNET_FALLBACK_RPCS = [
+  ARC_MAINNET_RPC,
+  "https://arc.drpc.org",
+  "https://arc-rpc.publicnode.com",
+];
+
+const providers: Map<string, JsonRpcProvider> = new Map();
+function providerFor(url: string): JsonRpcProvider {
+  let p = providers.get(url);
+  if (!p) {
+    p = new JsonRpcProvider(url, ARC_MAINNET_CHAIN_ID, {
       staticNetwork: true,
     });
+    providers.set(url, p);
   }
-  return cached;
+  return p;
 }
 
 /**
@@ -46,11 +52,18 @@ function provider(): JsonRpcProvider {
 export async function hasArcActivity(wallet: string): Promise<boolean> {
   // rpc.mainnet.arc.io rate-limits (-32005) under the activation reader's batch
   // of concurrent probes, and a throttled read is HTTP 200 with a JSON-RPC error
-  // — indistinguishable from "no activity" unless retried. Without this, most of
-  // a batch was counted as errors and rotated unchecked, so genuinely-active
-  // wallets could wait many runs to be seen. retryRpc backs off and asks again.
-  const nonce = await retryRpc(() =>
-    provider().getTransactionCount(wallet, "latest"),
-  );
-  return nonce > 0;
+  // — indistinguishable from "no activity" unless retried. We attempt the primary
+  // RPC with retryRpc, and rotate to known fallback nodes if needed.
+  for (const url of ARC_MAINNET_FALLBACK_RPCS) {
+    try {
+      const nonce = await retryRpc(() =>
+        providerFor(url).getTransactionCount(wallet, "latest"),
+      );
+      return nonce > 0;
+    } catch (e) {
+      // Try next fallback endpoint
+      continue;
+    }
+  }
+  return false;
 }
