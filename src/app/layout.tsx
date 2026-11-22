@@ -117,18 +117,22 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <Script
-        src={`https://www.googletagmanager.com/gtag/js?id=${envVars.measurementId}`}
-        strategy="afterInteractive"
-      />
-      <Script id="gtag-init" strategy="afterInteractive">
-        {`
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', '${envVars.measurementId}');
-        `}
-      </Script>
+      {envVars.measurementId ? (
+        <>
+          <Script
+            src={`https://www.googletagmanager.com/gtag/js?id=${envVars.measurementId}`}
+            strategy="afterInteractive"
+          />
+          <Script id="gtag-init" strategy="afterInteractive">
+            {`
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', '${envVars.measurementId}');
+            `}
+          </Script>
+        </>
+      ) : null}
       <body
         className={`${geist.variable} ${lora.variable} ${zenDots.variable}`}
       >

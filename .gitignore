@@ -82,3 +82,7 @@ brand/.card-*.html
 # Local anvil-fork rehearsal records (networks arcFork / fork) — never commit or register
 smart-contract/deployment-*[Ff]ork*.json
 smart-contract/pricefeeds-*[Ff]ork*.json
+
+# Local scratch scripts & temporary PR/analysis drafts
+scratch/
+_codex_pr_body.md

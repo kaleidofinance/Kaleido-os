@@ -1,18 +1,33 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hasArcActivity } from "@/lib/waitlist/arcMainnet";
-import {
-  eligibleTaskPoints,
-  X_TASK_COLUMNS,
-  type TaskRow,
-} from "./eligible";
+import { eligibleTaskPoints, type TaskRow } from "./eligible";
 import { walletTaskVolumeUsd } from "./swapVolume";
+
+/** Cooldown between negative Arc RPC probes on passive page reads (`GET /api/waitlist`). */
+export const PROBE_COOLDOWN_MS = 3 * 60 * 1000;
+
+export interface ActivationOptions {
+  /** Skip the Arc RPC probe if `waitlist.last_checked_at` is within `PROBE_COOLDOWN_MS`. */
+  respectCooldown?: boolean;
+  /** Override current timestamp (ms) for deterministic tests. */
+  nowMs?: number;
+  /** Override Arc activity probe for deterministic tests. */
+  checkArcActivity?: (wallet: string) => Promise<boolean>;
+}
 
 export interface ActivationResult {
   activated: boolean;
   alreadyActive?: boolean;
+  skippedCooldown?: boolean;
   points?: number;
   error?: string;
 }
+
+type WaitlistRow = TaskRow & {
+  wallet: string;
+  activated_at: string | null;
+  last_checked_at?: string | null;
+};
 
 /**
  * Real-time Arc activation: checks whether a wallet has transacted on Arc mainnet
@@ -26,8 +41,11 @@ export interface ActivationResult {
 export async function activateWalletIfEligible(
   admin: SupabaseClient,
   rawWallet: string,
+  options: ActivationOptions = {},
 ): Promise<ActivationResult> {
   const wallet = rawWallet.toLowerCase();
+  const nowMs = options.nowMs ?? Date.now();
+  const probeArc = options.checkArcActivity ?? hasArcActivity;
 
   // 1. Check if the wallet already has an active Season 1 balance
   const [{ data: bal }, { data: wRowData }] = await Promise.all([
@@ -43,27 +61,44 @@ export async function activateWalletIfEligible(
       .eq("wallet", wallet)
       .maybeSingle(),
   ]);
-  const wRow = wRowData as (TaskRow & { wallet: string; activated_at: string | null }) | null;
+  const wRow = wRowData as WaitlistRow | null;
 
-  if (bal && wRow?.activated_at) {
+  if (bal && (!wRow || wRow.activated_at)) {
     return { activated: true, alreadyActive: true };
+  }
+
+  // Respect cooldown on passive GET reads so repeated page refreshes don't hammer Arc RPCs.
+  if (options.respectCooldown && wRow?.last_checked_at) {
+    const lastChecked = Date.parse(wRow.last_checked_at);
+    if (Number.isFinite(lastChecked) && nowMs - lastChecked < PROBE_COOLDOWN_MS) {
+      return { activated: false, skippedCooldown: true };
+    }
   }
 
   // 2. Query Arc mainnet to check for on-chain transactions (nonce > 0)
   let active = false;
   try {
-    active = await hasArcActivity(wallet);
+    active = await probeArc(wallet);
   } catch (err) {
     console.error("[activateWallet] hasArcActivity failed for", wallet, err);
     return { activated: false, error: "Arc RPC probe failed" };
   }
 
+  const now = new Date(nowMs).toISOString();
+
   if (!active) {
+    // Stamp last_checked_at on negative probes so passive GETs respect the cooldown.
+    if (wRow) {
+      await admin
+        .from("waitlist")
+        .update({ last_checked_at: now })
+        .eq("wallet", wallet)
+        .is("activated_at", null);
+    }
     return { activated: false };
   }
 
   // 3. Wallet has on-chain activity on Arc! Compute eligible waitlist points
-  const now = new Date().toISOString();
   let points = 0;
 
   if (wRow) {
@@ -90,7 +125,7 @@ export async function activateWalletIfEligible(
       row: wRow as unknown as TaskRow,
       referrals,
       swapVolumeUsd,
-      now: Date.now(),
+      now: nowMs,
     });
   }
 

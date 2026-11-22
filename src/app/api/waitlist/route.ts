@@ -85,7 +85,9 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
   // Auto-activate wallets with Arc activity that haven't been activated yet
   if (!facts.season1) {
     try {
-      const act = await activateWalletIfEligible(supabaseAdmin!, wallet);
+      const act = await activateWalletIfEligible(supabaseAdmin!, wallet, {
+        respectCooldown: true,
+      });
       if (act.activated && !act.alreadyActive) {
         const refreshed = await readRewardFacts(supabaseAdmin!, wallet);
         if (refreshed) facts = refreshed;
