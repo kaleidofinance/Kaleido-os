@@ -188,56 +188,6 @@
   padding: 17px 18px;
 }
 
-/* The Sell/Buy wells are the swap card's framing surfaces, so they take glass.
-   They hold two things — a 34px amount and a token pill — not dense copy, so
-   blur behind them costs no legibility. */
-@supports (
-  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
-) {
-  .box {
-    background: var(--k-glass);
-    border-color: var(--k-glass-line);
-    -webkit-backdrop-filter: blur(var(--k-glass-blur))
-      saturate(var(--k-glass-sat));
-    backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));
-    /* --k-shadow-pop, up from --k-shadow-glass, which was `0 8px 32px` at 0.08
-       in light mode: an 8px offset under a 32px blur leaves almost the whole
-       shadow hidden behind the surface casting it, so these wells sat flat on
-       the page. Most of the fix is the offset, not the alpha.
-
-       Not --k-shadow-modal, which is what the equivalent single surface on Agent
-       takes. These wells stack 4px apart, and modal's 20px offset would drop the
-       upper well's shadow into the middle of the lower one as a dark band across
-       its top edge. pop's 12px still spills onto the seam, but softly enough to
-       read as a fold rather than a smudge — the one thing to look at if this
-       ever reads dirty. */
-    box-shadow:
-      inset 0 1px 0 var(--k-glass-highlight),
-      var(--k-shadow-pop);
-  }
-}
-
-/* Two-tone wells, the way Uniswap does it. It earns its keep: the two are 4px
-   apart with matching radii, so at one fill they read as a single tall surface
-   with a seam across it rather than as two sides of a control.
-
-   The rule is positional — top well recessed, bottom well raised — and it is
-   positional on purpose. "The well you put your own money into is the deep one"
-   is the nicer story and it does not survive Limit, where you type into both;
-   following it there inverts the card against every other tab, so flipping
-   between Swap and Limit shows two different silhouettes for no reason a user
-   could name. Position holds on all five.
-
-   The first pass at this used --k-glass for the deep side and
-   --k-glass-strong for the raised one, and was invisible: three points of white
-   alpha over a #141413 ground is not a step the eye can find. A recess has to
-   go *below* the ground, so `.deep` washes black and drops the lit top edge for
-   an inset groove, while `.raised` keeps the highlight and the drop shadow. The
-   optical cue does most of the work; the fill difference just backs it up.
-
-   Both tokens invert per theme, which is the reason they are tokens: the
-   naive version darkens the sell well in dark mode and darkens it in light
-   mode too, and light mode wants it *greyer*, not dirtier. */
 .deep {
   background: var(--k-well);
 }
@@ -465,7 +415,7 @@
   transform: translateX(-50%);
   width: 36px;
   height: 36px;
-  border-radius: 11px;
+  border-radius: var(--k-r-md);
   background: var(--k-well2);
   border: 4px solid var(--k-bg);
   color: var(--k-t1);
@@ -474,9 +424,13 @@
   font-size: 15px;
   z-index: 2;
   cursor: pointer;
+  transition: background-color var(--k-dur-fast) var(--k-ease-out), transform var(--k-dur-fast) var(--k-ease-out);
 }
 .arw:hover {
   background: var(--k-hover);
+}
+.arw:active {
+  transform: translateX(-50%) scale(0.95);
 }
 
 .kv {

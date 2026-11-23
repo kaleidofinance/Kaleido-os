@@ -115,55 +115,8 @@
   padding: 17px 18px;
 }
 
-/* Same glass as the swap wells, for the same reason: these hold large type and
-   step rows, not dense copy, so blur behind them costs no legibility. Never
-   nest another blurred surface inside — blurs do not compose. */
-@supports (
-  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
-) {
-  .box {
-    background: var(--k-glass);
-    border-color: var(--k-glass-line);
-    -webkit-backdrop-filter: blur(var(--k-glass-blur))
-      saturate(var(--k-glass-sat));
-    backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));
-    /* --k-shadow-modal, which is what the global `.k-glass-raised` utility in
-       tokens.css already pairs with --k-glass-strong — and this card is a local
-       copy of that utility, so it should have had the utility's shadow all along.
-       It was on --k-shadow-glass, whose 8px offset under a 32px blur keeps nearly
-       the whole shadow behind the card, so a 520px panel sat flat on the page.
-
-       Agent can take the heaviest step where the swap wells cannot: there is
-       exactly one `.box` on this route and nothing beneath it, so a 20px offset
-       falls on the page rather than onto a sibling 4px below. See `.box` in
-       trade.module.css for the other half of that trade-off. */
-    box-shadow:
-      inset 0 1px 0 var(--k-glass-highlight),
-      var(--k-shadow-modal);
-  }
-}
-
-/* The card takes the raised treatment, matching the lower of the swap card's two
-   wells — see `.deep`/`.raised` in trade.module.css for why raised is a lit top
-   edge and a drop shadow rather than one more step of white.
-
-   `.deep` is gone along with the prompt well it filled. That rule was positional
-   (top well recessed, bottom well raised) and there is only one well now, so
-   there is no position left for it to encode. The recess moved to `.sendRow`,
-   which is the surface you actually type into.
-
-   Duplicated rather than shared because these are separate CSS modules, and
-   `composes` across files would drag the whole `.box` definition along with
-   it. */
 .raised {
   background: var(--k-card);
-}
-@supports (
-  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
-) {
-  .raised {
-    background: var(--k-glass-strong);
-  }
 }
 
 /* The composer's field rings itself instead of the textarea inside it — same
@@ -1239,7 +1192,7 @@
 
 /* The transcript and composer share a readable measure at every window size. */
 .chat {
-  border-radius: 22px;
+  border-radius: var(--k-r-xl);
 }
 .head {
   padding: 6px 14px;
@@ -1279,8 +1232,8 @@
   align-self: flex-end;
   margin: 0 0 0 auto;
   padding: 8px 12px;
-  border-radius: 18px 18px 4px 18px;
-  background: var(--k-glass-deep);
+  border-radius: var(--k-r-lg);
+  background: var(--k-well);
   border: 1px solid var(--k-line);
 }
 .turnUser .who {
@@ -1303,7 +1256,7 @@
 }
 .sendRow {
   padding: 12px 14px 8px;
-  border-radius: 20px;
+  border-radius: var(--k-r-lg);
   gap: 4px;
 }
 .inp {
@@ -1336,7 +1289,7 @@
     align-self: center;
   }
   .chat {
-    border-radius: 18px;
+    border-radius: var(--k-r-xl);
   }
   .head {
     padding: 6px 12px;
@@ -1370,7 +1323,7 @@
   }
   .sendRow {
     padding: 10px 12px 6px;
-    border-radius: 18px;
+    border-radius: var(--k-r-lg);
   }
   .send {
     width: 44px;
@@ -1391,9 +1344,9 @@
   gap: 12px;
   padding: 8px 12px;
   margin: 8px 16px 0;
-  background: var(--k-surface-2, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--k-border, rgba(255, 255, 255, 0.08));
-  border-radius: 8px;
+  background: var(--k-well);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-md);
   font-size: var(--k-fs-xs, 12px);
   animation: fadeIn 0.2s ease-out;
 }
